@@ -1,0 +1,5 @@
+- [User profile](user_profile.md) — Guy, serious physical media collector, intermediate dev, French-speaking
+- [Project mybibli](project_mybibli.md) — Personal library manager in Rust, self-hosted on NAS, open source, GPL v3
+- [Feedback communication](feedback_communication.md) — User prefers French, Read tool output not visible to user
+- [Feedback thoroughness](feedback_thoroughness.md) — Guy values thorough upfront analysis over speed
+- [Feedback party mode](feedback_party_mode.md) — Guy uses Party Mode extensively for design decisions

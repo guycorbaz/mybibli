@@ -1,0 +1,36 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Node.js (Playwright tests)
+node_modules/
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Docker
+docker-compose.override.yml
+
+# Cover images (stored in Docker volume, not in repo)
+/data/covers/
+
+# Claude Code (local settings, not shared)
+.claude/settings.local.json
+
+# Build artifacts
+*.log
