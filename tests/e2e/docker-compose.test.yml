@@ -1,0 +1,34 @@
+services:
+  mybibli:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: mysql://mybibli:mybibli_test@db:3306/mybibli_test?charset=utf8mb4
+      HOST: "0.0.0.0"
+      PORT: "8080"
+      RUST_LOG: mybibli=debug
+      APP_LANGUAGE: "en"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mariadb:10.11
+    environment:
+      MYSQL_ROOT_PASSWORD: root_test
+      MYSQL_DATABASE: mybibli_test
+      MYSQL_USER: mybibli
+      MYSQL_PASSWORD: mybibli_test
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

@@ -1,0 +1,12 @@
+services:
+  mybibli:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: mysql://mybibli:${MYSQL_PASSWORD}@${MYSQL_HOST}:${MYSQL_PORT}/mybibli?charset=utf8mb4
+      HOST: "0.0.0.0"
+      PORT: "8080"
+      RUST_LOG: mybibli=info
+      APP_LANGUAGE: ${APP_LANGUAGE:-en}
+    restart: unless-stopped

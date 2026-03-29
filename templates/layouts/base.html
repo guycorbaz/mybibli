@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" class="h-full">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}mybibli{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/output.css">
+    <script src="/static/js/htmx.min.js"></script>
+    <script src="/static/js/theme.js"></script>
+    {% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 min-h-full{% endblock %}" data-user-role="{{ role }}">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:px-4 focus:py-2 focus:rounded focus:shadow">{{ skip_label }}</a>
+    {% include "components/nav_bar.html" %}
+    <main id="main-content">
+        {% block content %}{% endblock %}
+    </main>
+    <script src="/static/js/scan-field.js"></script>
+    <script src="/static/js/focus.js"></script>
+    <script src="/static/js/mybibli.js" defer></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

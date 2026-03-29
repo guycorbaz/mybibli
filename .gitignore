@@ -32,5 +32,12 @@ docker-compose.override.yml
 # Claude Code (local settings, not shared)
 .claude/settings.local.json
 
+# Generated CSS (built in CI/Docker)
+static/css/output.css
+
 # Build artifacts
 *.log
+
+# Tailwind build (root level, not tests/)
+/package.json
+/package-lock.json

@@ -1,0 +1,113 @@
+# generated: 2026-03-29
+# last_updated: 2026-03-29
+# project: mybibli
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+#
+# NOTE: Stories are not yet decomposed from epics. Use bmad-create-story to create
+# individual stories with acceptance criteria before starting development.
+# The epics document contains FR/NFR/AR/UX-DR assignments per epic.
+
+generated: 2026-03-29
+last_updated: 2026-03-29
+project: mybibli
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 1: Je catalogue mon premier livre
+  # FRs: FR1-FR10, FR13, FR20-FR23, FR30, FR51-FR54, FR60, FR69(partial), FR78-FR82, FR86, FR88(basic), FR90, FR92-FR94, FR96-FR97, FR101-FR109(pattern)
+  # ARs: AR1-AR6, AR8, AR12(basic), AR16-AR18, AR20-AR22, AR24-AR26
+  # NFRs: NFR1-NFR5, NFR7-NFR10, NFR12, NFR14, NFR22-NFR24, NFR26-NFR28, NFR30-NFR32, NFR34-NFR35, NFR38(foundation)
+  # UX-DRs: UX-DR1, UX-DR2(basic), UX-DR3, UX-DR5(basic), UX-DR6(basic), UX-DR10(basic), UX-DR15, UX-DR23, UX-DR24, UX-DR25(partial), UX-DR29(foundation)
+  epic-1: in-progress
+  1-1-project-skeleton-and-foundation: done
+  1-2-scan-field-and-catalog-page: done
+  1-3-title-crud-and-isbn-scanning: backlog
+  1-4-volume-management: backlog
+  1-5-contributor-management: backlog
+  1-6-search-and-browsing: backlog
+  1-7-scan-feedback-and-async-metadata: backlog
+  1-8-cross-cutting-patterns: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Je sais où sont mes livres
+  # FRs: FR24-FR29, FR31-FR35, FR116-FR117
+  # ARs: AR10, AR11
+  # UX-DRs: UX-DR11, UX-DR12, UX-DR19
+  epic-2: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Tous mes médias sont gérés
+  # FRs: FR9, FR11-FR12, FR14-FR19, FR61-FR64, FR85, FR88(complete), FR93
+  # ARs: AR7, AR12(extended), AR14
+  # NFRs: NFR6, NFR16-NFR20, NFR33, NFR36, NFR40
+  # UX-DRs: UX-DR2(complete), UX-DR10(complete), UX-DR22, UX-DR25(audio.js), UX-DR27
+  epic-3: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Je gère mes prêts
+  # FRs: FR41-FR50, FR89, FR98, FR119
+  # NFRs: NFR11
+  # UX-DRs: UX-DR5(LoanRow), UX-DR9
+  epic-4: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Mes séries et ma collection
+  # FRs: FR36-FR40, FR54, FR95, FR99, FR114-FR115, FR118
+  # UX-DRs: UX-DR16, UX-DR17, UX-DR18, UX-DR30
+  epic-5: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Accès multi-rôle & Sécurité
+  # FRs: FR65-FR67, FR69(timeout+Toast), FR77
+  # NFRs: NFR13, NFR15
+  # ARs: AR13, AR15, AR19
+  # UX-DRs: UX-DR14, UX-DR25(scanner-guard.js)
+  epic-6: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: Administration & Configuration
+  # FRs: FR68, FR70-FR76, FR87, FR91, FR100, FR110-FR113, FR120-FR121
+  # NFRs: NFR37, NFR39, NFR41
+  # ARs: AR9
+  # UX-DRs: UX-DR7, UX-DR20, UX-DR21
+  epic-7: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Polish UX & Accessibilité
+  # FRs: FR55-FR59, FR83-FR84
+  # UX-DRs: UX-DR4, UX-DR6(complete), UX-DR8, UX-DR13, UX-DR26, UX-DR28
+  epic-8: backlog
+  epic-8-retrospective: optional

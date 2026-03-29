@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "UPDATE sessions SET last_activity = NOW() WHERE token = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "48fa12a28a7ac75217bca6a4bb759c920f5998815488b3fd0cd3d277686f052d"
+}

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" class="h-full">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}mybibli{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/output.css">
+    <script src="/static/js/htmx.min.js"></script>
+    <script src="/static/js/theme.js"></script>
+    {% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 min-h-full{% endblock %}" data-user-role="{{ role }}">
+    <main id="main-content">
+        {% block content %}{% endblock %}
+    </main>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

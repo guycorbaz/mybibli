@@ -1,0 +1,23 @@
+fr:
+  app:
+    name: mybibli
+  home:
+    title: mybibli
+    subtitle: Votre bibliothèque personnelle
+  catalog:
+    title: Catalogue
+    scan_placeholder: "Scanner ou taper : ISBN, code V, code L, ou recherche..."
+    scan_label: Scanner un code-barres ou taper un code
+    scan_received: "Scan reçu : %{code}"
+  nav:
+    catalog: Catalogue
+    loans: Prêts
+    admin: Admin
+    login: Connexion
+    logout: Déconnexion
+    skip_to_content: Aller au contenu principal
+  error:
+    internal: Une erreur interne est survenue
+    not_found: La ressource demandée est introuvable
+    bad_request: Requête invalide
+    unauthorized: Authentification requise

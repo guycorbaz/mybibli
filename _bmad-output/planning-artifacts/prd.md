@@ -14,6 +14,12 @@ classification:
   complexity: medium
   projectContext: greenfield
 workflowType: 'prd'
+lastEdited: '2026-03-28'
+editHistory:
+  - date: '2026-03-28'
+    changes: 'Integrated 4 Change Requests (CR-0001 to CR-0004) and ~20 UX spec deferred decisions. Added 17 FRs (FR103-FR119), 4 NFRs (NFR38-NFR41). Upgraded accessibility to WCAG 2.2 AA. Added soft delete, Trash page, dedicated /catalog, preventive validation, similar titles, browse toggle, session counter, Dewey code, barcode Code 128, L-code retirement. Updated user journeys (QR→barcode, wizard steps). Updated Open Questions with architecture items from UX spec.'
+  - date: '2026-03-28'
+    changes: 'Post-Party-Mode validation fixes: FR61 aligned with UX spec (10s/20s hardcoded). FR80 clarified for soft-delete (applies to permanent delete only). FR69 updated with inactivity timeout 4h + Toast warning. FR114 added priority order for similar titles. FR108 clarified session counter reset semantics. FR107/FR115/FR116 cleaned of implementation leakage. Added FR120 (admin 5 tabs), FR121 (wizard idempotent). Added cross-references between FR sections. Error message quality process added to conventions.'
 ---
 
 # Product Requirements Document - mybibli
@@ -128,14 +134,16 @@ Built by a collector for his own 5,000+ item collection, then shared as open sou
 - Unified contributor entity with roles (author, director, composer, performer, illustrator...)
 - Many-to-many title-contributor relationships, multiple roles per contributor per title
 - Volume fields: unique label (V0001–V9999), configurable condition/state with loanable flag, edition comment, storage location
-- Title fields: type-adaptive form (fields shown/hidden based on media type), language field
+- Title fields: type-adaptive form (fields shown/hidden based on media type), language field, optional Dewey code (pre-filled by BnF API, used for physical sort order only)
 - One genre per title, configurable genre list
 
 **Storage & Organization**
 - Hierarchical storage locations as configurable tree of arbitrary depth
-- Storage location identifiers (L0001–L9999) scannable from pre-printed barcode/QR code labels (printed externally via gLabel)
+- Storage location identifiers (L0001–L9999) scannable from pre-printed barcode labels (Code 128, printed externally via gLabel)
+- Location barcode generation: individual Code 128 barcode display with L-code + location path, printable via browser (Ctrl+P)
+- L-codes never recycled after deletion (retired permanently to avoid confusion with printed labels)
 - "Not shelved" status for volumes awaiting shelving
-- Navigable location content view (sortable by title/author/genre)
+- Navigable location content view (sortable by title/author/genre/Dewey code, NULL Dewey sorted last)
 
 **Series Management**
 - Series definition (manual; API-populated on best-effort basis when metadata providers return series information)
@@ -151,16 +159,22 @@ Built by a collector for his own 5,000+ item collection, then shared as open sou
 - No loan history (current loans only)
 
 **Interface & UX**
+- Dedicated cataloging page (/catalog) separate from home page — focused workspace for scan loop
 - Single intelligent scan field with prefix auto-detection (978/979 → ISBN, 977 → ISSN, V → volume, L → location, other → UPC/unknown)
+- Preventive validation: ISBN/ISSN checksum validated client-side before server submission, immediate rejection of already-assigned V/L labels with details
+- Current title banner on /catalog — always shows which title volumes are being attached to
 - As-you-type search on title, subtitle, description, and contributor
 - Filters by genre and volume state
-- Classic pagination
+- Classic pagination (25 items per page, fixed across all list views)
 - Cross-navigation: everything clickable (contributor → titles, series → volumes, location → contents, title → volumes)
-- Dynamic scan feedback list (successful items fade, errors persist with clickable details)
-- Optional audio feedback (configurable sounds for title found, volume created, error)
+- Dynamic scan feedback list (successful items fade after 10s, errors persist with clickable details)
+- Session counter on /catalog (items cataloged this session, tied to HTTP session)
+- Optional audio feedback (configurable sounds for title found, volume created, error — Web Audio API, no external assets)
 - Autofocus on scan field after every server response
-- Keyboard shortcuts (Enter, Escape, Tab)
+- Keyboard shortcuts (Enter, Escape, Tab, Ctrl+K → /catalog, Ctrl+L → /loans, Ctrl+N → new title, Ctrl+Z → cancel last action)
 - Contextual help: tooltips, ? icons with help bubbles, placeholder text in fields
+- Similar titles section on title detail page (same author, same genre+decade, same series — max 8, metadata-based, no ML)
+- Browse display: list/grid toggle with preference persisted per user
 - Light mode and dark mode with manual toggle + prefers-color-scheme
 - Bilingual UI: French and English (internationalization-ready)
 
@@ -181,9 +195,12 @@ Built by a collector for his own 5,000+ item collection, then shared as open sou
 - System health page: mybibli version, MariaDB version, disk usage, entity counts, API status
 
 **Data Protection**
-- Deletion rules: no entity deleted if referenced elsewhere
+- Soft delete for all entities: deleted items marked invisible, retained for 30 days, then auto-purged
+- Admin Trash page: view soft-deleted items, restore (with conflict detection), permanently delete, auto-purge countdown
+- Deletion guards: no entity deleted if referenced elsewhere (volumes in location, loans on volume, titles in series, etc.)
 - Deleting last volume preserves the title
 - Volume return required before deletion
+- Borrower deletion: accessible from /borrowers, blocked if active loans, modal confirmation
 - Optimistic locking for concurrent access
 
 **Database**
@@ -192,6 +209,7 @@ Built by a collector for his own 5,000+ item collection, then shared as open sou
 
 ### Growth Features (Post-MVP)
 
+- Undo for recent scan actions (detach volume, cancel location assignment) within a 30-second window
 - CSV import (from Libib, Goodreads, spreadsheets)
 - CSV export (collection data)
 - Camera-based barcode scanning via browser (QuaggaJS/ZXing-js)
@@ -231,7 +249,7 @@ Book #23 has no barcode — an old edition. He clicks "Add title without ISBN," 
 
 **Climax:** 45 minutes in, Guy has cataloged 48 items. The dynamic feedback list shows 3 items in orange — metadata fetch failed (an obscure Swiss publisher, a regional CD). Everything else resolved automatically. He'll fix the 3 errors later. The counter shows 48 titles, 50 volumes. He feels something he hasn't felt before: *this is actually going to work.*
 
-**Resolution:** Guy moves to phase two. He carries the stack to the living room bookcase. He scans V0001, then scans the QR code on the shelf (L0003 — "Salon, Bibliothèque principale, Étagère 3"). *Beep*. V0001 is now shelved. He scans V0002, scans L0003 again. Repeat. The 50 books are shelved in 40 minutes. He opens the home page — 48 titles, 50 volumes, all located. The living room bookcase shows its full contents when he clicks L0003. Guy grabs the next stack.
+**Resolution:** Guy moves to phase two. He carries the stack to the living room bookcase. He scans V0001, then scans the barcode on the shelf (L0003 — "Salon, Bibliothèque principale, Étagère 3"). *Beep*. V0001 is now shelved. He scans V0002, scans L0003 again. Repeat. The 50 books are shelved in 40 minutes. He opens the home page — 48 titles, 50 volumes, all located. The living room bookcase shows its full contents when he clicks L0003. Guy grabs the next stack.
 
 **Requirements revealed:** Barcode scan input with auto-detection, async metadata queue, dynamic feedback list with persistent errors, manual entry fallback, two-phase workflow (catalog then shelve), volume counter, location content view, distinct feedback when scanning existing ISBN, explicit "New volume" action for duplicates.
 
@@ -309,10 +327,10 @@ He browses the BD section. Sees Blacksad tome 6. He searches "blacksad" — the 
 
 **Opening Scene:** Guy reads the README on GitHub. He copies the docker-compose.yml example, fills in his MariaDB credentials and a few environment variables (MYBIBLI_DB_HOST, MYBIBLI_DB_PASSWORD, API keys for Google Books and TMDb). He maps two Docker volumes: one for cover images (`./mybibli-covers:/data/covers`) and one for any local config. He adds the cover images volume to his Hyper Backup task so it's included in the NAS backup alongside MariaDB. He runs `docker-compose up -d`.
 
-**Rising Action:** The container starts in under 10 seconds — including automatic database table creation on first launch. He opens `http://nas-ip:8080` in his browser. First launch: the system presents a setup screen: "Create your admin account." He enters a username and password.
+**Rising Action:** The container starts in under 10 seconds — including automatic database table creation on first launch. He opens `http://nas-ip:8080` in his browser. First launch: the system presents a sequential setup wizard (4 steps: Account → Locations → Reference Data → API Status). Step 1: "Create your admin account." He enters a username and password.
 
 He's now logged in as Admin. The dashboard is empty — zero titles, zero volumes. He navigates to Settings:
-- **Storage locations:** He creates his hierarchy: Maison → Salon → Bibliothèque principale → Étagères 1-5. Then Bureau → Bibliothèque 2 → Étagères 1-3. Then Cave → Cartons 1-4. He prints QR code labels for each location using gLabel.
+- **Storage locations:** He creates his hierarchy: Maison → Salon → Bibliothèque principale → Étagères 1-5. Then Bureau → Bibliothèque 2 → Étagères 1-3. Then Cave → Cartons 1-4. He prints barcode labels (Code 128) for each location using gLabel — each label generated individually from mybibli's admin interface and printed via browser (Ctrl+P).
 - **Genres:** The default list (Roman, SF, Thriller, BD, Classique, Jazz, Rock, Action, Comédie...) is pre-loaded. He adds "Philosophie" and "Reportage."
 - **Volume states:** Default list (Neuf, Bon état, Acceptable, Usé, Endommagé, Hors service). "Hors service" has the "not loanable" flag checked. He keeps the defaults.
 - **Contributor roles:** Default list (Auteur, Illustrateur, Réalisateur, Compositeur, Interprète, Scénariste, Coloriste). He adds "Traducteur."
@@ -323,7 +341,7 @@ He creates a Librarian account for Marie (even though she'll mostly browse anony
 
 **Resolution:** Total setup time: 22 minutes from docker-compose to first successful scan. The system is ready for the Saturday marathon. MariaDB is backed up by the NAS. Cover images are backed up via Hyper Backup.
 
-**Requirements revealed:** Docker deployment with environment variables, configurable cover image volume, automatic DB schema creation on first launch, admin account setup wizard, pre-loaded default reference data (genres, states, roles), configuration CRUD for all reference data, system health page, Librarian account creation, QR/barcode generation for locations, startup time under 10 seconds.
+**Requirements revealed:** Docker deployment with environment variables, configurable cover image volume, automatic DB schema creation on first launch, sequential setup wizard (4 steps, idempotent — handles restart gracefully by detecting existing data), pre-loaded default reference data (genres, states, roles), configuration CRUD for all reference data, system health page, Librarian account creation, barcode generation (Code 128) for locations, startup time under 10 seconds.
 
 ### Journey 6: Guy Organizes His Tintin Collection — Series Management
 
@@ -422,12 +440,20 @@ Not applicable. mybibli is a private application accessed on local network or vi
 
 ### Accessibility
 
-- Basic accessibility without formal WCAG compliance in v1
-- Sufficient color contrast in both light and dark modes
-- Keyboard navigation support (Tab, Enter, Escape) — essential for scanner workflow
-- ARIA attributes on interactive elements (buttons, form fields, modals)
-- Semantic HTML (proper heading hierarchy, form labels, table structure)
-- No screen reader optimization in v1
+- **WCAG 2.2 Level AA** compliance as a requirement (not aspirational)
+- All text meets 4.5:1 contrast ratio against background in both light and dark themes
+- Color is never the sole information channel — always paired with icon and text (triple-channel feedback)
+- Keyboard navigation support (Tab, Enter, Escape, Ctrl+K, Ctrl+L, Ctrl+N) — essential for scanner workflow
+- ARIA attributes on all interactive elements (roles, labels, live regions, expanded states)
+- Semantic HTML (proper heading hierarchy, form labels, table structure, landmark regions)
+- Focus management: scan field as focus attractor on /catalog — focus returns automatically after every HTMX swap, modal close, or form close
+- `aria-live="polite"` on feedback list for screen reader announcements of new scan results
+- Skip link ("Skip to main content") on every page
+- Touch targets minimum 44×44px on tablet/mobile
+- `prefers-reduced-motion` respected: disables fade animations, shimmer, slide transitions
+- Dynamic `<html lang>` attribute updated on language toggle (WCAG 3.1.1)
+- All cover images have meaningful `alt` text ("Cover of [title name]")
+- Automated accessibility testing via `@axe-core/playwright` integrated into E2E test suite
 
 ### Implementation Considerations
 
@@ -461,6 +487,7 @@ The following rules must be established in the project's CLAUDE.md before develo
 - **Gate rule:** No milestone transition until ALL tests (unit + e2e) are green. A milestone is considered complete only when its full Playwright test suite passes.
 - **Retrospectives:** Mandatory at the end of each milestone/epic. Never postponed or skipped.
 - **Pre-retrospective testing:** Run the complete test suite (all milestones, unit + e2e) before each retrospective. The test results feed into the retrospective discussion.
+- **Error message quality:** Error messages are iteratively improved via milestone retrospectives. Real user feedback (from daily usage by the creator) informs message rewording, new error cases, and tone adjustments.
 
 ### Project Conventions
 
@@ -668,7 +695,7 @@ Each milestone is an independently testable and deployable increment. A mileston
 ### Scan Feedback & Error Handling
 
 - FR60: System can display a dynamic scan feedback list showing recent scan results
-- FR61: System can auto-dismiss successful scan entries after a configurable delay
+- FR61: System can auto-dismiss successful and informational scan entries (fade starts at 10 seconds, entry removed at 20 seconds). Warning and error entries persist until dismissed or resolved. Timing is hardcoded in v1, not admin-configurable
 - FR62: System can persist error entries in the feedback list with clickable error details
 - FR63: System can play configurable audio feedback for distinct scan outcomes (title found, volume created, error, existing ISBN)
 - FR64: Dashboard can display a count of titles with unresolved metadata errors
@@ -679,7 +706,7 @@ Each milestone is an independently testable and deployable increment. A mileston
 - FR66: Librarian can authenticate to access cataloging, loan, and editing capabilities
 - FR67: Admin can authenticate to access system configuration and user management
 - FR68: Admin can create, edit, and deactivate user accounts with role assignment (Librarian, Admin)
-- FR69: System can maintain user sessions without automatic timeout (session expires on browser close)
+- FR69: System can maintain user sessions with two expiry mechanisms: (1) session expires when the browser closes, and (2) session expires after a configurable inactivity timeout (default 4 hours, reset on any user interaction). A Toast notification warns the user 5 minutes before inactivity expiry with a "Stay connected" option
 
 ### Configuration & Administration
 
@@ -699,7 +726,7 @@ Each milestone is an independently testable and deployable increment. A mileston
 
 ### Data Protection
 
-- FR80: System can prevent deletion of any entity referenced by another entity
+- FR80: System can prevent permanent deletion (from Trash) of any entity that is still referenced by active (non-deleted) entities. Soft-delete (FR109) is always permitted — soft-deleted items become invisible but references persist until permanent purge
 - FR81: System can preserve a title when its last physical volume is deleted
 - FR82: System can enforce optimistic locking to prevent concurrent edit conflicts
 
@@ -708,8 +735,54 @@ Each milestone is an independently testable and deployable increment. A mileston
 - FR83: System can display contextual help on form fields and interactive elements (tooltips, help icons, placeholder text)
 - FR84: System can support keyboard shortcuts for common actions during scan workflows (submit, cancel, navigate)
 - FR85: System can operate in fully manual mode when no metadata API keys are configured
-- FR102: System can complete the scan-to-catalog and scan-to-shelve workflows without page navigation (single-page workflow during scan sessions)
+- FR102: System can complete the scan-to-catalog and scan-to-shelve workflows on a dedicated /catalog page without page navigation (single-page workflow during scan sessions)
 - FR88: System can display a fixed-size placeholder with media-type icon while cover images are loading
+
+### Preventive Validation & Trust
+
+> **Cross-references:** These FRs extend the scan field behavior defined in FR1–FR10 (Cataloging & Barcode Input) and FR60–FR64 (Scan Feedback). FR104 refines FR5 (label uniqueness).
+
+- FR103: System can validate ISBN/ISSN checksums client-side before server submission and display immediate feedback on invalid codes
+- FR104: System can reject already-assigned V/L labels at scan time with specific details ("Label V0042 is already assigned to L'Écume des jours. Scan a different label.")
+- FR105: System can display a current title banner on /catalog showing which title volumes are being attached to, updated on each new ISBN/UPC scan
+
+### Dedicated Cataloging Page
+
+> **Cross-references:** FR106 formalizes the page structure implied by FR10 (autofocus) and FR102 (single-page workflow). The scan field (FR1–FR2) and feedback list (FR60–FR64) live on this page.
+
+- FR106: System can provide a dedicated cataloging page (/catalog) separate from the home page, containing the intelligent scan field, dynamic feedback list, current title banner, and session counter
+- FR107: Librarian can navigate to /catalog via a global keyboard shortcut from any page
+- FR108: System can display a session counter on /catalog showing items cataloged this session (tied to HTTP session, survives page navigation, resets when a new HTTP session is created — after logout, session timeout, or browser close)
+
+### Soft Delete & Trash
+
+> **Cross-references:** FR109–FR113 replace the hard-delete behavior implied by FR34, FR49, FR50, FR54, FR80, FR100. Those FRs now apply to permanent deletion from Trash (FR112), not to the initial delete action. See FR80 for the updated rule.
+
+- FR109: System can soft-delete all entity types (titles, volumes, borrowers, series, locations, contributors) — deleted items become invisible in all views but are retained for 30 days
+- FR110: Admin can view all soft-deleted items on a Trash page (/admin → Trash tab) showing name, type, deletion date, and days remaining before purge
+- FR111: Admin can restore soft-deleted items, with conflict detection if associations have changed during deletion period (e.g., series position reassigned)
+- FR112: Admin can permanently delete items from Trash (modal confirmation, irreversible)
+- FR113: System can auto-purge soft-deleted items older than 30 days at application startup or daily check
+
+### Browse & Discovery
+
+- FR114: Any user can view a "Similar titles" section on the title detail page showing up to 8 related titles based on same author/contributor, same genre + publication decade, or same series. Priority when more than 8 candidates: same series first, then same author, then same genre+decade. Section absent if no matches. Titles without publication year excluded from decade matching
+- FR115: Any user can toggle between list and grid browse display modes, with preference persisted per user
+
+### Admin Page Structure
+
+- FR120: Admin page can be organized as 5 tabs: Health (default), Users, Reference Data, Trash, System — flat organization, no nested menus
+
+### Setup Wizard
+
+- FR121: Setup wizard steps can be idempotent — if interrupted and resumed, each step detects existing data (e.g., admin account already created) and presents it for editing, not blank creation forms. No data loss on restart, no duplicate creation
+
+### Additional Features
+
+- FR116: Admin can generate a barcode display for any storage location, showing the barcode image (Code 128) + L-code text + full location path + location name, printable or saveable as image
+- FR117: System can permanently retire L-codes after location deletion (never recycled) to avoid confusion with printed labels still physically present
+- FR118: Librarian can add a Dewey code to a title (optional field, pre-filled by BnF API when available, used for physical sort order only — not searchable, not filterable, NULL values sorted last)
+- FR119: Admin can delete a borrower from /borrowers page (blocked if borrower has active loans, modal confirmation if no active loans)
 
 ### First Launch & Setup
 
@@ -780,6 +853,10 @@ Each milestone is an independently testable and deployable increment. A mileston
 - NFR35: Application runtime memory consumption must not exceed 100 MB under normal operation (3–4 concurrent users, 10,000 titles)
 - NFR36: System must cache metadata lookup results for 24 hours to avoid redundant API calls for previously queried ISBN/UPC codes. Cache is invalidated when a user triggers a manual re-download for a specific title
 - NFR37: All user data (catalog, loans, borrower details, cover images) must remain on the local network — no telemetry, no cloud sync, no external data transmission beyond metadata API lookups
+- NFR38: All error messages must be cataloged as i18n keys (e.g., `error.isbn.not_found`, `error.label.already_assigned`) with human-written translations in FR and EN. Messages follow the pattern "What happened → Why → What you can do" in plain language. No technical jargon, no HTTP codes, no stack traces exposed to users
+- NFR39: All list views must display 25 items per page (fixed in v1, not user-configurable). Same pagination across all entity types
+- NFR40: Metadata fetch must use a configurable global timeout (default 30 seconds) per title. Multiple metadata fetches can run in parallel. Metadata fetching must never block the scan loop — the user can continue scanning while fetches resolve in the background
+- NFR41: Reference data (genres, volume states, contributor roles) is not translated in v1. Values are stored in the language of entry and displayed identically regardless of UI language
 
 ## Title Fields by Media Type
 
@@ -801,6 +878,7 @@ The title form adapts based on the assigned media type. All types share a common
 | Cover image | No | API / manual |
 | Contributors (with roles) | No | API / manual |
 | Series + position | No | Manual |
+| Dewey code | No | API (BnF) / manual |
 
 ### Type-Specific Fields
 
@@ -844,7 +922,10 @@ No manual database intervention required. Cover images and MariaDB data persist 
 | Cover image resize dimensions | Target max width (e.g., 300–400px), JPEG quality level | Storage and display trade-off |
 | Cache storage mechanism | In-memory (lost on restart) vs MariaDB table (persistent) for NFR36 | Performance vs durability |
 | Structured logging format | JSON lines? Key-value? Which fields per event type? | Observability |
-| Scan feedback auto-dismiss delay | Default value (e.g., 5 seconds), configurable range (1–30s) | UX tuning |
+| JS strategy | Single bundled `mybibli.js` with data-attribute modules (from UX spec) | Frontend architecture |
+| HTMX OOB convention | Axum middleware pattern for injecting Out-of-Band swap fragments | Server-side HTMX integration |
+| Template organization | `templates/{components,layouts,pages}/` directory structure | Project structure |
+| Cover lazy loading | `loading="eager"` above-fold, `loading="lazy"` below-fold (from UX spec) | Performance optimization |
 
 ## Glossary
 
@@ -865,6 +946,11 @@ No manual database intervention required. Cover images and MariaDB data persist 
 | **Semver** | Semantic versioning — MAJOR.MINOR.PATCH version numbering scheme |
 | **MPA** | Multi-Page Application — web architecture where each view is a separate server-rendered page (as opposed to SPA) |
 | **HTMX** | Lightweight JavaScript library for dynamic page updates via HTML attributes, without a full SPA framework |
+| **Code 128** | High-density 1D barcode symbology used for storage location labels (L-codes). More compact than QR codes for short alphanumeric identifiers |
+| **Soft delete** | Deletion pattern where entities are marked invisible but retained in the database for a configurable period (30 days) before permanent purge |
+| **Dewey code** | Dewey Decimal Classification number — optional field on titles, pre-filled by BnF API, used for physical shelf sort order |
+| **OOB swap** | HTMX Out-of-Band swap — technique for updating multiple page fragments in a single HTTP response (e.g., updating filter tag counts alongside table content) |
+| **axe-core** | Automated accessibility testing engine integrated with Playwright for WCAG compliance verification |
 
 ## Assumptions and Dependencies
 

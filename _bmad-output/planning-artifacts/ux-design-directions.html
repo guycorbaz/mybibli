@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mybibli — Design Direction Mockup</title>
+  <style>
+    /* ============================================
+       mybibli Design Direction Mockup
+       Visual Foundation tokens applied
+       ============================================ */
+
+    :root {
+      /* Neutral palette — warm stone */
+      --color-bg: #FAFAF9;
+      --color-surface: #FFFFFF;
+      --color-border: #E7E5E4;
+      --color-text: #1C1917;
+      --color-text-muted: #78716C;
+
+      /* Primary — indigo */
+      --color-primary: #4F46E5;
+      --color-primary-hover: #4338CA;
+
+      /* Feedback colors */
+      --color-success: #16A34A;
+      --color-info: #2563EB;
+      --color-warning: #D97706;
+      --color-danger: #DC2626;
+
+      /* Spacing */
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+
+      /* Border radius */
+      --radius-sm: 4px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-full: 9999px;
+
+      /* Shadows */
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+
+      /* Transitions */
+      --transition-fast: 150ms ease-out;
+      --transition-normal: 300ms ease-out;
+
+      /* Typography */
+      --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    html.dark {
+      --color-bg: #1C1917;
+      --color-surface: #292524;
+      --color-border: #44403C;
+      --color-text: #FAFAF9;
+      --color-text-muted: #A8A29E;
+
+      --color-success: #4ADE80;
+      --color-info: #60A5FA;
+      --color-warning: #FBBF24;
+      --color-danger: #F87171;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+      --shadow-md: 0 4px 6px rgba(0,0,0,0.3);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-sans);
+      font-size: 16px;
+      line-height: 1.5;
+      color: var(--color-text);
+      background: var(--color-bg);
+      transition: background var(--transition-normal), color var(--transition-normal);
+    }
+
+    /* ---- NAV BAR ---- */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 48px;
+      background: var(--color-surface);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      padding: 0 var(--space-8);
+      z-index: 10;
+      transition: background var(--transition-normal), border-color var(--transition-normal);
+    }
+    .navbar-brand {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--color-primary);
+      margin-right: var(--space-8);
+      text-decoration: none;
+    }
+    .navbar-links {
+      display: flex;
+      gap: var(--space-6);
+      list-style: none;
+      flex: 1;
+    }
+    .navbar-links a {
+      text-decoration: none;
+      color: var(--color-text-muted);
+      font-size: 0.875rem;
+      font-weight: 500;
+      padding: var(--space-2) 0;
+      border-bottom: 2px solid transparent;
+      transition: color var(--transition-fast), border-color var(--transition-fast);
+    }
+    .navbar-links a:hover {
+      color: var(--color-text);
+    }
+    .navbar-links a.active {
+      color: var(--color-primary);
+      border-bottom-color: var(--color-primary);
+    }
+    .navbar-right {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+    }
+    .navbar-right .lang-toggle,
+    .navbar-right .theme-toggle {
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: var(--space-1) var(--space-2);
+      color: var(--color-text-muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-family: var(--font-sans);
+      transition: all var(--transition-fast);
+    }
+    .navbar-right .lang-toggle:hover,
+    .navbar-right .theme-toggle:hover {
+      color: var(--color-text);
+      border-color: var(--color-text-muted);
+    }
+    .navbar-right .user-name {
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+    }
+
+    /* ---- MAIN CONTENT ---- */
+    .main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: calc(48px + var(--space-8)) var(--space-8) var(--space-12);
+    }
+
+    .page-title {
+      font-size: 1.875rem;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: var(--space-6);
+    }
+
+    /* ---- SESSION COUNTER ---- */
+    .session-counter {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full);
+      padding: var(--space-1) var(--space-3);
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-4);
+      transition: all var(--transition-normal);
+    }
+    .session-counter .count {
+      color: var(--color-success);
+      font-weight: 700;
+      font-size: 0.875rem;
+    }
+
+    /* ---- CONTEXT BANNER ---- */
+    .context-banner {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-3) var(--space-4);
+      margin-bottom: var(--space-4);
+      font-size: 0.875rem;
+      transition: all var(--transition-normal);
+    }
+    .context-banner .banner-icon {
+      font-size: 1.25rem;
+    }
+    .context-banner .banner-title {
+      font-weight: 600;
+    }
+    .context-banner .banner-meta {
+      color: var(--color-text-muted);
+    }
+
+    /* ---- SCAN FIELD ---- */
+    .scan-field-container {
+      margin-bottom: var(--space-4);
+    }
+    .scan-field-label {
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .scan-field-expand {
+      font-size: 0.75rem;
+      color: var(--color-primary);
+      cursor: pointer;
+      text-decoration: none;
+      border: none;
+      background: none;
+      font-family: var(--font-sans);
+    }
+    .scan-field-expand:hover {
+      text-decoration: underline;
+    }
+    .scan-field {
+      width: 100%;
+      min-height: 48px;
+      padding: var(--space-3) var(--space-4);
+      font-size: 1.125rem;
+      font-family: var(--font-mono);
+      border: 2px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-surface);
+      color: var(--color-text);
+      outline: none;
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+    .scan-field:focus {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+    }
+    .scan-field::placeholder {
+      color: var(--color-text-muted);
+      font-family: var(--font-sans);
+      font-size: 1rem;
+    }
+
+    /* ---- EXPANDED FIELDS ---- */
+    .expanded-fields {
+      display: none;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+      padding: var(--space-4);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+    }
+    .expanded-fields.visible {
+      display: grid;
+    }
+    .expanded-fields label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-1);
+      display: block;
+    }
+    .expanded-fields input {
+      width: 100%;
+      padding: var(--space-2) var(--space-3);
+      font-size: 1rem;
+      font-family: var(--font-mono);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg);
+      color: var(--color-text);
+      outline: none;
+      transition: border-color var(--transition-fast);
+    }
+    .expanded-fields input:focus {
+      border-color: var(--color-primary);
+    }
+
+    /* ---- FEEDBACK LIST ---- */
+    .feedback-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .feedback-entry {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      border-left: 4px solid transparent;
+      font-size: 1.125rem;
+      line-height: 1.4;
+      transition: all var(--transition-normal);
+    }
+    .feedback-entry.success { border-left-color: var(--color-success); }
+    .feedback-entry.info { border-left-color: var(--color-info); }
+    .feedback-entry.warning { border-left-color: var(--color-warning); }
+    .feedback-entry.danger { border-left-color: var(--color-danger); }
+
+    .feedback-entry .fb-icon {
+      flex-shrink: 0;
+      width: 20px;
+      height: 20px;
+      margin-top: 2px;
+    }
+    .feedback-entry.success .fb-icon { color: var(--color-success); }
+    .feedback-entry.info .fb-icon { color: var(--color-info); }
+    .feedback-entry.warning .fb-icon { color: var(--color-warning); }
+    .feedback-entry.danger .fb-icon { color: var(--color-danger); }
+
+    .feedback-entry .fb-content {
+      flex: 1;
+    }
+    .feedback-entry .fb-code {
+      font-family: var(--font-mono);
+      font-size: 1rem;
+    }
+    .feedback-entry .fb-detail {
+      color: var(--color-text-muted);
+      font-size: 0.875rem;
+      margin-top: var(--space-1);
+    }
+    .feedback-entry .fb-actions {
+      display: flex;
+      gap: var(--space-3);
+      margin-top: var(--space-2);
+    }
+    .feedback-entry .fb-suggestion {
+      color: var(--color-text-muted);
+      font-size: 0.875rem;
+      font-style: italic;
+      margin-top: var(--space-2);
+    }
+
+    /* ---- BUTTONS ---- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-3);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      font-family: var(--font-sans);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border);
+      background: var(--color-bg);
+      color: var(--color-text);
+      cursor: pointer;
+      text-decoration: none;
+      transition: all var(--transition-fast);
+    }
+    .btn:hover {
+      background: var(--color-border);
+    }
+    .btn-primary {
+      background: var(--color-primary);
+      color: #FFFFFF;
+      border-color: var(--color-primary);
+    }
+    .btn-primary:hover {
+      background: var(--color-primary-hover);
+    }
+    .btn-ghost {
+      background: transparent;
+      border-color: transparent;
+      color: var(--color-primary);
+    }
+    .btn-ghost:hover {
+      background: rgba(79, 70, 229, 0.05);
+    }
+    .btn-danger-outline {
+      color: var(--color-danger);
+      border-color: var(--color-danger);
+      background: transparent;
+    }
+    .btn-danger-outline:hover {
+      background: rgba(220, 38, 38, 0.05);
+    }
+
+    /* ---- FADING ANIMATION ---- */
+    .feedback-entry.fading {
+      opacity: 0.4;
+      transition: opacity 2s ease-in;
+    }
+
+    /* ---- AUDIO TOGGLE ---- */
+    .audio-toggle {
+      position: fixed;
+      bottom: var(--space-6);
+      right: var(--space-6);
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-full);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--color-text-muted);
+      font-size: 1.25rem;
+      box-shadow: var(--shadow-sm);
+      transition: all var(--transition-fast);
+      z-index: 5;
+    }
+    .audio-toggle:hover {
+      color: var(--color-text);
+      border-color: var(--color-text-muted);
+    }
+
+    /* ---- PAGE SWITCHER ---- */
+    .page-switcher {
+      position: fixed;
+      bottom: var(--space-6);
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: var(--space-2);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-full);
+      padding: var(--space-1);
+      box-shadow: var(--shadow-md);
+      z-index: 5;
+    }
+    .page-switcher button {
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      background: transparent;
+      border-radius: var(--radius-full);
+      font-family: var(--font-sans);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+    .page-switcher button:hover {
+      color: var(--color-text);
+    }
+    .page-switcher button.active {
+      background: var(--color-primary);
+      color: #FFFFFF;
+    }
+
+    /* ---- HOME PAGE ---- */
+    .page { display: none; }
+    .page.visible { display: block; }
+
+    .home-search-container {
+      max-width: 640px;
+      margin: var(--space-12) auto var(--space-8);
+      text-align: center;
+    }
+    .home-brand {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--color-primary);
+      margin-bottom: var(--space-2);
+    }
+    .home-tagline {
+      color: var(--color-text-muted);
+      font-size: 1.125rem;
+      margin-bottom: var(--space-8);
+    }
+    .home-search {
+      width: 100%;
+      min-height: 52px;
+      padding: var(--space-3) var(--space-6);
+      font-size: 1.125rem;
+      border: 2px solid var(--color-border);
+      border-radius: var(--radius-full);
+      background: var(--color-surface);
+      color: var(--color-text);
+      outline: none;
+      transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    }
+    .home-search:focus {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+    .home-search::placeholder {
+      color: var(--color-text-muted);
+    }
+
+    /* Dashboard tags */
+    .dashboard-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      justify-content: center;
+      margin-top: var(--space-6);
+    }
+    .dashboard-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-full);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      color: var(--color-text);
+      transition: all var(--transition-fast);
+      text-decoration: none;
+    }
+    .dashboard-tag:hover {
+      border-color: var(--color-text-muted);
+    }
+    .dashboard-tag .tag-count {
+      font-weight: 700;
+      font-size: 0.875rem;
+    }
+    .dashboard-tag.tag-warning .tag-count { color: var(--color-warning); }
+    .dashboard-tag.tag-danger .tag-count { color: var(--color-danger); }
+    .dashboard-tag.tag-success .tag-count { color: var(--color-success); }
+    .dashboard-tag.tag-info .tag-count { color: var(--color-info); }
+
+    /* ---- SEARCH RESULTS (HOME) ---- */
+    .search-results {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .search-result-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--color-border);
+      cursor: pointer;
+      transition: background var(--transition-fast);
+    }
+    .search-result-item:hover {
+      background: rgba(79, 70, 229, 0.03);
+    }
+    .search-result-cover {
+      width: 40px;
+      height: 60px;
+      background: var(--color-border);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-text-muted);
+      font-size: 0.625rem;
+      flex-shrink: 0;
+    }
+    .search-result-info {
+      flex: 1;
+    }
+    .search-result-title {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+    .search-result-author {
+      color: var(--color-text-muted);
+      font-size: 0.875rem;
+    }
+    .search-result-location {
+      font-size: 0.8125rem;
+      color: var(--color-text-muted);
+    }
+    .search-result-location span {
+      color: var(--color-text);
+    }
+    .status-badge {
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .status-badge.available {
+      color: var(--color-success);
+      background: rgba(22, 163, 74, 0.1);
+    }
+    .status-badge.on-loan {
+      color: var(--color-info);
+      background: rgba(37, 99, 235, 0.1);
+    }
+    .status-badge.overdue {
+      color: var(--color-danger);
+      background: rgba(220, 38, 38, 0.1);
+    }
+
+    html.dark .status-badge.available { background: rgba(74, 222, 128, 0.1); }
+    html.dark .status-badge.on-loan { background: rgba(96, 165, 250, 0.1); }
+    html.dark .status-badge.overdue { background: rgba(248, 113, 113, 0.1); }
+    html.dark .search-result-item:hover { background: rgba(79, 70, 229, 0.06); }
+    html.dark .btn-ghost:hover { background: rgba(79, 70, 229, 0.1); }
+    html.dark .btn-danger-outline:hover { background: rgba(220, 38, 38, 0.1); }
+
+    /* ---- KEYBOARD HINT ---- */
+    .kbd {
+      display: inline-block;
+      padding: 1px 6px;
+      font-size: 0.6875rem;
+      font-family: var(--font-mono);
+      color: var(--color-text-muted);
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: 3px;
+    }
+
+    /* ---- SECTION LABEL ---- */
+    .mockup-label {
+      position: fixed;
+      top: 56px;
+      right: var(--space-4);
+      background: var(--color-primary);
+      color: #FFFFFF;
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-sm);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      z-index: 15;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- MOCKUP LABEL -->
+  <div class="mockup-label" id="mockup-label">CATALOG PAGE — LIGHT MODE</div>
+
+  <!-- NAV BAR -->
+  <nav class="navbar">
+    <a href="#" class="navbar-brand">mybibli</a>
+    <ul class="navbar-links" id="nav-links">
+      <li><a href="#" id="nav-home">Home</a></li>
+      <li><a href="#" id="nav-catalog" class="active">Catalog <span class="kbd">⌘K</span></a></li>
+      <li><a href="#" id="nav-loans">Loans</a></li>
+      <li><a href="#" id="nav-series">Series</a></li>
+      <li><a href="#" id="nav-locations">Locations</a></li>
+      <li><a href="#" id="nav-borrowers">Borrowers</a></li>
+      <li><a href="#" id="nav-admin">Admin</a></li>
+    </ul>
+    <div class="navbar-right">
+      <button class="lang-toggle">FR / EN</button>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode">☀️</button>
+      <span class="user-name">Guy</span>
+    </div>
+  </nav>
+
+  <!-- ========== CATALOG PAGE ========== -->
+  <div class="page visible" id="page-catalog">
+    <main class="main">
+      <h1 class="page-title">Catalog</h1>
+
+      <!-- Session counter -->
+      <div class="session-counter">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span><span class="count">42</span> items cataloged this session</span>
+      </div>
+
+      <!-- Context banner — current title -->
+      <div class="context-banner">
+        <span class="banner-icon">📖</span>
+        <span>Current title: <span class="banner-title">L'Étranger</span>, Albert Camus —</span>
+        <span class="banner-meta">2 volumes, 1 shelved, 1 unshelved</span>
+      </div>
+
+      <!-- Scan field — collapsed mode -->
+      <div class="scan-field-container">
+        <div class="scan-field-label">
+          <span>Scan or type a code</span>
+          <button class="scan-field-expand" id="expand-toggle">▼ Show separate fields</button>
+        </div>
+        <input type="text" class="scan-field" id="scan-input" placeholder="ISBN, V-code, L-code, or search term..." autofocus>
+      </div>
+
+      <!-- Expanded fields — hidden by default -->
+      <div class="expanded-fields" id="expanded-fields">
+        <div>
+          <label for="field-isbn">ISBN / ISSN / UPC</label>
+          <input type="text" id="field-isbn" placeholder="978-2-07-036024-8">
+        </div>
+        <div>
+          <label for="field-vcode">Volume code</label>
+          <input type="text" id="field-vcode" placeholder="V0042">
+        </div>
+        <div>
+          <label for="field-lcode">Location code</label>
+          <input type="text" id="field-lcode" placeholder="L0012">
+        </div>
+      </div>
+
+      <!-- Feedback list -->
+      <div class="feedback-list">
+
+        <!-- Latest action — with Cancel button -->
+        <div class="feedback-entry success">
+          <svg class="fb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <div class="fb-content">
+            <div>Volume <span class="fb-code">V0042</span> attached to <strong>L'Étranger</strong> by Albert Camus.</div>
+            <div class="fb-detail">Location: not yet assigned.</div>
+            <div class="fb-suggestion">→ Scan a L-code to shelve this volume, or scan the next item.</div>
+            <div class="fb-actions">
+              <button class="btn btn-danger-outline">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Info — existing title -->
+        <div class="feedback-entry info">
+          <svg class="fb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <div class="fb-content">
+            <div>Existing title: <strong>L'Étranger</strong>, Albert Camus — <span class="fb-code">978-2-07-036024-8</span></div>
+            <div class="fb-detail">1 volume (V0041, Salon → Bibliothèque 1 → Étagère 3). Published 1942, Gallimard.</div>
+            <div class="fb-suggestion">→ Scan a V-code to add another volume to this title.</div>
+          </div>
+        </div>
+
+        <!-- Warning — metadata partial -->
+        <div class="feedback-entry warning">
+          <svg class="fb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div class="fb-content">
+            <div>ISBN <span class="fb-code">978-2-07-054168-8</span> — partial metadata.</div>
+            <div class="fb-detail">Title found: <strong>La Peste</strong>. No cover image available. Author missing.</div>
+            <div class="fb-actions">
+              <button class="btn btn-ghost">Complete later</button>
+              <button class="btn">Edit now</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Error — ISBN not found -->
+        <div class="feedback-entry danger">
+          <svg class="fb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          <div class="fb-content">
+            <div>ISBN <span class="fb-code">978-2-00-000000-0</span> not found in any metadata source.</div>
+            <div class="fb-detail">The code may be invalid or not yet indexed by our sources.</div>
+            <div class="fb-actions">
+              <button class="btn btn-primary">Create new title</button>
+              <button class="btn">Dismiss</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fading success (older) -->
+        <div class="feedback-entry success fading">
+          <svg class="fb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <div class="fb-content">
+            <div>Title created: <strong>Le Petit Prince</strong>, Antoine de Saint-Exupéry. Cover retrieved.</div>
+            <div class="fb-detail">Volume V0041 attached. Shelved: Salon → Bibliothèque 1 → Étagère 3.</div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ========== HOME PAGE ========== -->
+  <div class="page" id="page-home">
+    <main class="main">
+
+      <div class="home-search-container">
+        <div class="home-brand">mybibli</div>
+        <div class="home-tagline">Scan it, store it, find it.</div>
+        <input type="text" class="home-search" placeholder="Search by title, author, ISBN, or scan a code...">
+
+        <!-- Dashboard tags (Librarian view) -->
+        <div class="dashboard-tags">
+          <a class="dashboard-tag tag-warning" href="#"><span class="tag-count">12</span> unshelved</a>
+          <a class="dashboard-tag tag-danger" href="#"><span class="tag-count">2</span> overdue</a>
+          <a class="dashboard-tag tag-success" href="#"><span class="tag-count">847</span> cataloged this week</a>
+          <a class="dashboard-tag tag-info" href="#"><span class="tag-count">3</span> incomplete series</a>
+        </div>
+      </div>
+
+      <!-- Sample search results -->
+      <div class="search-results">
+        <div class="search-result-item">
+          <div class="search-result-cover">📕</div>
+          <div class="search-result-info">
+            <div class="search-result-title">L'Étranger</div>
+            <div class="search-result-author">Albert Camus · 1942 · Gallimard</div>
+            <div class="search-result-location">📍 <span>Salon → Bibliothèque 1 → Étagère 3</span></div>
+          </div>
+          <span class="status-badge available">Available</span>
+        </div>
+        <div class="search-result-item">
+          <div class="search-result-cover">📕</div>
+          <div class="search-result-info">
+            <div class="search-result-title">La Peste</div>
+            <div class="search-result-author">Albert Camus · 1947 · Gallimard</div>
+            <div class="search-result-location">📍 <span>Salon → Bibliothèque 1 → Étagère 3</span></div>
+          </div>
+          <span class="status-badge on-loan">On loan</span>
+        </div>
+        <div class="search-result-item">
+          <div class="search-result-cover">📕</div>
+          <div class="search-result-info">
+            <div class="search-result-title">La Chute</div>
+            <div class="search-result-author">Albert Camus · 1956 · Gallimard</div>
+            <div class="search-result-location">📍 <span>Bureau → Étagère 2</span></div>
+          </div>
+          <span class="status-badge overdue">Overdue</span>
+        </div>
+        <div class="search-result-item">
+          <div class="search-result-cover">📕</div>
+          <div class="search-result-info">
+            <div class="search-result-title">Le Mythe de Sisyphe</div>
+            <div class="search-result-author">Albert Camus · 1942 · Gallimard</div>
+            <div class="search-result-location">📍 <span>Salon → Bibliothèque 2 → Étagère 1</span></div>
+          </div>
+          <span class="status-badge available">Available</span>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Audio toggle -->
+  <button class="audio-toggle" title="Toggle audio feedback">🔇</button>
+
+  <!-- Page switcher -->
+  <div class="page-switcher">
+    <button class="active" id="sw-catalog">Catalog page</button>
+    <button id="sw-home">Home page</button>
+  </div>
+
+  <script>
+    // Theme toggle
+    const themeBtn = document.getElementById('theme-toggle');
+    const label = document.getElementById('mockup-label');
+
+    function updateLabel() {
+      const isDark = document.documentElement.classList.contains('dark');
+      const page = document.getElementById('page-catalog').classList.contains('visible') ? 'CATALOG PAGE' : 'HOME PAGE';
+      label.textContent = page + ' — ' + (isDark ? 'DARK MODE' : 'LIGHT MODE');
+    }
+
+    themeBtn.addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      themeBtn.textContent = document.documentElement.classList.contains('dark') ? '🌙' : '☀️';
+      updateLabel();
+    });
+
+    // Expand/collapse fields
+    const expandBtn = document.getElementById('expand-toggle');
+    const expandedFields = document.getElementById('expanded-fields');
+    expandBtn.addEventListener('click', () => {
+      expandedFields.classList.toggle('visible');
+      expandBtn.textContent = expandedFields.classList.contains('visible')
+        ? '▲ Hide separate fields'
+        : '▼ Show separate fields';
+    });
+
+    // Page switcher
+    const swCatalog = document.getElementById('sw-catalog');
+    const swHome = document.getElementById('sw-home');
+    const pageCatalog = document.getElementById('page-catalog');
+    const pageHome = document.getElementById('page-home');
+    const navLinks = {
+      catalog: document.getElementById('nav-catalog'),
+      home: document.getElementById('nav-home')
+    };
+
+    function showPage(page) {
+      pageCatalog.classList.toggle('visible', page === 'catalog');
+      pageHome.classList.toggle('visible', page === 'home');
+      swCatalog.classList.toggle('active', page === 'catalog');
+      swHome.classList.toggle('active', page === 'home');
+      navLinks.catalog.classList.toggle('active', page === 'catalog');
+      navLinks.home.classList.toggle('active', page === 'home');
+      updateLabel();
+    }
+
+    swCatalog.addEventListener('click', () => showPage('catalog'));
+    swHome.addEventListener('click', () => showPage('home'));
+    navLinks.catalog.addEventListener('click', (e) => { e.preventDefault(); showPage('catalog'); });
+    navLinks.home.addEventListener('click', (e) => { e.preventDefault(); showPage('home'); });
+
+    // Audio toggle
+    const audioBtn = document.querySelector('.audio-toggle');
+    audioBtn.addEventListener('click', () => {
+      audioBtn.textContent = audioBtn.textContent === '🔇' ? '🔊' : '🔇';
+    });
+  </script>
+
+</body>
+</html>

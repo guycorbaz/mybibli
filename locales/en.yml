@@ -1,0 +1,23 @@
+en:
+  app:
+    name: mybibli
+  home:
+    title: mybibli
+    subtitle: Your personal media library
+  catalog:
+    title: Catalog
+    scan_placeholder: "Scan or type: ISBN, V-code, L-code, or search..."
+    scan_label: Scan barcode or type code
+    scan_received: "Scan received: %{code}"
+  nav:
+    catalog: Catalog
+    loans: Loans
+    admin: Admin
+    login: Log in
+    logout: Log out
+    skip_to_content: Skip to main content
+  error:
+    internal: An internal error occurred
+    not_found: The requested resource was not found
+    bad_request: Invalid request
+    unauthorized: Authentication required

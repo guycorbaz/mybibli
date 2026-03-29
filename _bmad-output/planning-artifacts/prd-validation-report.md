@@ -1,15 +1,16 @@
 ---
 validationTarget: '_bmad-output/planning-artifacts/prd.md'
-validationDate: '2026-03-26'
-inputDocuments: [product-brief-mybibli.md, product-brief-mybibli-distillate.md, party-mode-vision-decisions.md]
-validationStepsCompleted: [step-v-01-discovery, step-v-02-format-detection, step-v-03-density, step-v-04-brief-coverage, step-v-05-measurability, step-v-06-traceability, step-v-07-implementation-leakage, step-v-08-domain-compliance, step-v-09-project-type, step-v-10-smart, step-v-11-holistic, step-v-12-completeness]
+validationDate: '2026-03-28'
+inputDocuments: [product-brief-mybibli.md, product-brief-mybibli-distillate.md, party-mode-vision-decisions.md, ux-design-specification.md, change_request.md]
+validationStepsCompleted: [step-v-01-discovery, party-mode-validation]
 validationStatus: COMPLETE
 ---
 
 # PRD Validation Report
 
 **PRD Being Validated:** _bmad-output/planning-artifacts/prd.md
-**Validation Date:** 2026-03-26
+**Validation Date:** 2026-03-28
+**Context:** Post-edit validation after integrating 4 Change Requests and ~20 UX spec deferred decisions.
 
 ## Input Documents
 
@@ -17,195 +18,38 @@ validationStatus: COMPLETE
 - Product Brief: product-brief-mybibli.md ✓
 - Product Brief Distillate: product-brief-mybibli-distillate.md ✓
 - Party Mode Decisions: party-mode-vision-decisions.md ✓
+- UX Design Specification: ux-design-specification.md ✓ (source of deferred decisions)
+- Change Requests: docs/change_request.md ✓ (CR-0001 to CR-0004)
 
 ## Validation Findings
 
-## Format Detection
+### Party Mode Validation (11 findings, all corrected)
 
-**PRD Structure (## Level 2 headers):**
-1. Executive Summary
-2. Project Classification
-3. Success Criteria
-4. Product Scope
-5. User Journeys
-6. Web Application Specific Requirements
-7. Project Scoping & Phased Development
-8. Functional Requirements
-9. Non-Functional Requirements
+| # | Severity | Finding | Correction Applied |
+|---|----------|---------|-------------------|
+| 1 | Medium | FR61 (auto-dismiss) said "configurable delay" — UX spec defines 10s/20s hardcoded | FR61 rewritten: 10s fade start, 20s remove, not configurable in v1 |
+| 2 | High | FR80 (prevent deletion) conflicted with FR109 (soft-delete) — couldn't soft-delete referenced entities | FR80 clarified: applies to permanent delete from Trash only. Soft-delete always permitted |
+| 3 | High | FR69 (session on browser close) missing inactivity timeout from UX spec (4h default + Toast warning) | FR69 updated: two expiry mechanisms (browser close + configurable inactivity timeout with Toast warning) |
+| 4 | Medium | FR114 (similar titles) missing priority order for >8 candidates — untestable | Added priority: same series > same author > same genre+decade |
+| 5 | Low | FR108 (session counter) "resets on next login" ambiguous | Clarified: resets when new HTTP session is created |
+| 6 | Low | FR107 contained "Ctrl+K" — implementation leakage (UI shortcut detail) | Reformulated as capability: "via a global keyboard shortcut" |
+| 7 | Low | FR115 contained "localStorage/profile" — implementation leakage (storage mechanism) | Simplified to "preference persisted per user" |
+| 8 | Medium | Admin 5-tab structure not formalized as FR | Added FR120: Admin page organized as 5 tabs |
+| 9 | Info | CR-0002 "iterative improvement" process not captured | Added to CLAUDE.md Foundation Rules / Project Conventions |
+| 10 | Medium | Setup wizard idempotent behavior not formalized as FR | Added FR121: wizard steps detect existing data on resume |
+| 11 | Info | New FR sections lack cross-references to related original FRs | Added cross-reference notes to Preventive Validation, Dedicated Cataloging Page, and Soft Delete sections |
 
-**BMAD Core Sections Present:**
-- Executive Summary: ✅ Present
-- Success Criteria: ✅ Present
-- Product Scope: ✅ Present
-- User Journeys: ✅ Present
-- Functional Requirements: ✅ Present
-- Non-Functional Requirements: ✅ Present
-
-**Format Classification:** BMAD Standard
-**Core Sections Present:** 6/6
-
-## Information Density Validation
-
-**Anti-Pattern Violations:**
-
-**Conversational Filler:** 0 occurrences
-**Wordy Phrases:** 0 occurrences
-**Redundant Phrases:** 0 occurrences
-
-**Total Violations:** 0
-
-**Severity Assessment:** Pass
-
-**Recommendation:** PRD demonstrates excellent information density with zero violations. Every sentence carries weight without filler.
-
-## Product Brief Coverage
-
-**Overall Coverage:** 95% Fully Covered, 5% Partially Covered, 0% Not Found
-**Items Checked:** 110 (100 Fully Covered, 5 Partially Covered, 5 Intentionally Excluded)
-
-**Critical Gaps:** 0
-**Moderate Gaps:** 0
-**Informational Gaps:** 5
-
-1. Privacy-first not declared as explicit NFR (enforced by technical choices but no declarative requirement)
-2. Cover image format specifics (400px, JPEG) deferred to architecture — PRD has NFR32 (< 100 KB)
-3. Multi-tab support inherently supported by MPA architecture but no explicit NFR
-4. Plugin architecture (post-v1) mentioned in Party Mode but not captured in PRD Growth/Vision
-5. Barcode generation crate (barcoders/rxing) correctly deferred to architecture
-
-**Recommendation:** PRD provides excellent coverage of Product Brief. Consider adding a privacy NFR for open-source positioning.
-
-**Actions Taken:** NFR37 (privacy) added. Plugin architecture added to Vision section.
-
-## Measurability Validation
-
-### Functional Requirements
-
-**Total FRs Analyzed:** 100
-
-**Format Violations:** 1 (FR64: "Dashboard" is not an actor — low severity)
-**Subjective Adjectives:** 3 (all low severity, mitigated by parenthetical lists)
-**Vague Quantifiers:** 2 (both mitigated by explicit enumerations in context)
-**Implementation Leakage:** 8 (pragmatic for solo-developer project that doubles as spec — informational only)
-
-**FR Violations Total:** 14 (all low/negligible severity)
-
-### Non-Functional Requirements
-
-**Total NFRs Analyzed:** 37
-
-**Missing/Vague Metrics (Medium severity):** 6 — ALL CORRECTED:
-- NFR10: Added "minimum 256-bit" token length
-- NFR15: Deferred specific CSP directives to architecture document
-- NFR21: Reformulated as "durable across restarts"
-- NFR23: Reformulated as "data remains accessible and unmodified after migration"
-- NFR25: Added "reconnect within 30 seconds, exponential backoff, max 5 retries"
-- NFR36: Added "cache for 24 hours, invalidate on manual re-download"
-
-**Remaining Low/Negligible NFR Issues:** 10 (acceptable for this project type)
-
-### Overall Assessment
-
-**Total Requirements:** 137 (100 FRs + 37 NFRs)
-**Violations Before Correction:** 30 (headline Critical, effective Warning)
-**Violations After Correction:** 24 (all low/negligible — effective Pass)
-
-**Severity:** Pass (after corrections)
-
-**Recommendation:** Requirements demonstrate good measurability. Remaining low-severity items are pragmatic implementation details acceptable for a solo-developer PRD.
-
-## Traceability Validation
-
-**Chain Status:**
-- Executive Summary → Success Criteria: **INTACT**
-- Success Criteria → User Journeys: **INTACT**
-- User Journeys → FRs: **INTACT** (after corrections)
-- Scope → FRs: **INTACT** (after corrections)
-- Orphan FRs: **NONE** (102/102 traceable)
-
-**Gaps Found and Corrected:**
-1. Scope clarified: location labels are pre-printed externally (gLabel), not generated by mybibli
-2. Scope clarified: series API-population is best-effort, not guaranteed
-3. FR101 added: genre assignment to title
-4. FR102 added: single-page scan workflow
-
-**Severity:** Pass (after corrections)
-
-## Implementation Leakage Validation
-
-**FR Implementation Leakage:** 8 instances (all low severity, pragmatic for solo-developer PRD)
-- FR1: "USB barcode scanner" — hardware specification (acceptable: clarifies input method)
-- FR2: prefix mapping "978/979, 977, V, L" — design decision (acceptable: core to scan detection logic)
-- FR11: specific API provider names — vendor names (acceptable: defines the integration scope)
-- FR30/FR31: "V0001-V9999", "L0001-L9999" — format spec (acceptable: pre-decided label format)
-- FR69: "session expires on browser close" — session behavior (acceptable: key UX decision)
-- FR75: "API keys" — authentication mechanism (acceptable: needed for configuration clarity)
-
-**NFR Implementation Leakage:** 0 in FRs. Technology names (Argon2, MariaDB, HTMX, Playwright) appear only in NFRs and Web App Requirements sections, which is the correct location for technology constraints.
-
-**Severity:** Pass — all instances are deliberate design decisions, not accidental leakage. This PRD doubles as a specification for a solo developer using Claude Code, where implementation clarity accelerates development.
-
-## Domain Compliance Validation
-
-**Domain:** collection_management (Medium complexity)
-**Assessment:** N/A — No special regulatory compliance requirements for this domain.
-
-## Project-Type Compliance Validation
-
-**Project Type:** web_app
-**Required Sections:** 5/5 present (browser_matrix, responsive_design, performance_targets, seo_strategy, accessibility_level)
-**Excluded Sections:** 0 violations (native_features, cli_commands correctly absent)
-**Severity:** Pass
-
-## SMART Requirements Validation
-
-**Sample:** 12 FRs scored across SMART criteria.
-**Results:** 9/12 scored 4+ on all criteria. 3 flagged:
-- FR15: cover resize width unspecified → deferred to architecture (Open Questions added)
-- FR61: auto-dismiss delay unbounded → deferred to architecture (Open Questions added)
-- FR93: media-type field matrix missing → **CORRECTED: field matrix table added to PRD**
-
-**Severity:** Pass (after correction)
-
-## Holistic Quality Assessment
-
-- **Consistency:** 4.5/5 — no contradictions. Duplicated Growth Features section removed (replaced with cross-reference).
-- **Clarity:** 4.5/5 — exceptionally clear writing throughout.
-- **Actionability:** 4.5/5 — development team can start immediately.
-- **Completeness:** 4.5/5 (after corrections) — all missing elements added.
-
-## Completeness Validation
-
-**Missing elements found and corrected:**
-1. ✅ Media-type field matrix added (Title Fields by Media Type section)
-2. ✅ V/L identifier ceiling behavior documented
-3. ✅ Glossary added (15 domain terms defined)
-4. ✅ Open Questions section added (7 deferred decisions consolidated)
-5. ✅ Application upgrade path documented
-6. ✅ Assumptions and Dependencies section added
-7. ✅ Growth Features duplication removed (cross-reference instead)
-8. ✅ Comic Vine added to MVP metadata source list
-
-**Severity:** Pass (after corrections)
-
----
-
-# VALIDATION SUMMARY
+### Validation Summary
 
 | Check | Result |
 |-------|--------|
-| Format Detection | **Pass** — BMAD Standard (6/6 core sections) |
-| Information Density | **Pass** — 0 violations |
-| Product Brief Coverage | **Pass** — 95% fully covered, 0 critical gaps |
-| Measurability | **Pass** — 6 NFRs corrected, 24 remaining low-severity accepted |
-| Traceability | **Pass** — all chains intact after 4 corrections (FR101, FR102, scope clarifications) |
-| Implementation Leakage | **Pass** — 8 deliberate design decisions, no accidental leakage |
-| Domain Compliance | **N/A** — no regulatory requirements |
-| Project-Type Compliance | **Pass** — 5/5 required sections, 0 excluded violations |
-| SMART Requirements | **Pass** — field matrix added for FR93 |
-| Holistic Quality | **Pass** — 4.5/5 overall |
-| Completeness | **Pass** — 8 missing elements added |
+| Information Density | **Pass** — new content follows same dense style as original PRD. Zero filler detected |
+| Measurability | **Pass** — FR114 priority order added, FR108 reset semantics clarified. All new FRs testable |
+| Traceability | **Pass** — all new FRs trace to UX spec decisions or Change Requests. Cross-references added |
+| Implementation Leakage | **Pass** — FR107, FR115, FR116 cleaned of UI shortcut and storage mechanism details |
+| Internal Consistency | **Pass** — FR61/FR69/FR80 aligned with UX spec. Soft-delete/hard-delete distinction clarified |
+| Completeness | **Pass** — CR-0001 to CR-0004 all integrated. UX deferred decisions all reflected. Admin tabs and wizard idempotent formalized |
 
 **OVERALL VALIDATION STATUS: PASS**
 
-The mybibli PRD is development-ready. It contains 102 functional requirements, 37 non-functional requirements, 6 detailed user journeys, 6 delivery milestones with Playwright validation criteria, comprehensive risk analysis, and complete supporting sections (glossary, assumptions, dependencies, open questions). All validation checks pass after corrections applied during this validation process.
+The mybibli PRD now contains 121 functional requirements (FR1–FR121), 41 non-functional requirements (NFR1–NFR41), and is fully aligned with the UX Design Specification. All Change Requests (CR-0001 to CR-0004) are integrated. The PRD is ready for Architecture design.
