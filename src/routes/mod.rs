@@ -20,6 +20,30 @@ pub fn build_router(state: AppState) -> Router {
             "/catalog/title/fields/{media_type}",
             axum::routing::get(catalog::type_specific_fields),
         )
+        .route(
+            "/catalog/contributors/form",
+            axum::routing::get(catalog::contributor_form_page),
+        )
+        .route(
+            "/catalog/contributors/search",
+            axum::routing::get(catalog::contributor_search),
+        )
+        .route(
+            "/catalog/contributors/add",
+            axum::routing::post(catalog::add_contributor),
+        )
+        .route(
+            "/catalog/contributors/remove",
+            axum::routing::post(catalog::remove_contributor),
+        )
+        .route(
+            "/catalog/contributors/update",
+            axum::routing::post(catalog::update_contributor),
+        )
+        .route(
+            "/catalog/contributors/{id}",
+            axum::routing::delete(catalog::delete_contributor),
+        )
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
         .with_state(state)

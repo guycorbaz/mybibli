@@ -1,3 +1,4 @@
+pub mod contributor;
 pub mod location;
 pub mod session;
 pub mod title;

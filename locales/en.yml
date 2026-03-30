@@ -24,6 +24,7 @@ en:
     exists: "Title already exists: %{title}"
     current_banner: "Current: %{title}"
     current_banner_with_volumes: "Current: %{title} — %{count} vol"
+    current_banner_with_author: "Current: %{title} — %{author} — %{count} vol"
     form:
       heading: New title
       title_label: Title
@@ -69,6 +70,23 @@ en:
     required: "This field is required."
     negative_number: "Numeric fields must be non-negative."
     invalid_date_format: "Invalid date format. Use YYYY, YYYY-MM, or YYYY-MM-DD."
+  contributor:
+    added: "%{name} added as %{role} to %{title}."
+    duplicate: "%{name} is already %{role} on this title."
+    updated: Contributor updated.
+    deleted: Contributor deleted.
+    delete_blocked: "Cannot delete: %{name} is associated with %{count} title(s)."
+    removed: Contributor removed from title.
+    error:
+      name_required: Contributor name is required.
+      name_too_long: Contributor name must be 255 characters or less.
+      role_not_found: Selected role does not exist.
+    form:
+      name: Name
+      role: Role
+      biography: Biography
+      submit: Add contributor
+      add_button: Add contributor
   error:
     internal: An internal error occurred
     not_found: The requested resource was not found

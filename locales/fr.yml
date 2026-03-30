@@ -24,6 +24,7 @@ fr:
     exists: "Titre déjà existant : %{title}"
     current_banner: "En cours : %{title}"
     current_banner_with_volumes: "En cours : %{title} — %{count} vol"
+    current_banner_with_author: "En cours : %{title} — %{author} — %{count} vol"
     form:
       heading: Nouveau titre
       title_label: Titre
@@ -69,6 +70,23 @@ fr:
     required: "Ce champ est obligatoire."
     negative_number: "Les champs numériques doivent être positifs ou nuls."
     invalid_date_format: "Format de date invalide. Utilisez AAAA, AAAA-MM ou AAAA-MM-JJ."
+  contributor:
+    added: "%{name} ajouté(e) en tant que %{role} pour %{title}."
+    duplicate: "%{name} est déjà %{role} sur ce titre."
+    updated: Contributeur mis à jour.
+    deleted: Contributeur supprimé.
+    delete_blocked: "Suppression impossible : %{name} est associé(e) à %{count} titre(s)."
+    removed: Contributeur retiré du titre.
+    error:
+      name_required: Le nom du contributeur est obligatoire.
+      name_too_long: Le nom du contributeur doit faire 255 caractères ou moins.
+      role_not_found: Le rôle sélectionné n'existe pas.
+    form:
+      name: Nom
+      role: Rôle
+      biography: Biographie
+      submit: Ajouter le contributeur
+      add_button: Ajouter un contributeur
   error:
     internal: Une erreur interne est survenue
     not_found: La ressource demandée est introuvable
