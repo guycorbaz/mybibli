@@ -10,6 +10,8 @@ en:
     scan_label: Scan barcode or type code
     scan_received: "Scan received: %{code}"
     new_title_button: New title
+    session_counter: "%{count} items this session"
+    session_counter_aria: "%{count} items cataloged this session"
   nav:
     catalog: Catalog
     loans: Loans
@@ -21,6 +23,7 @@ en:
     created: "Title created: %{title}"
     exists: "Title already exists: %{title}"
     current_banner: "Current: %{title}"
+    current_banner_with_volumes: "Current: %{title} — %{count} vol"
     form:
       heading: New title
       title_label: Title
@@ -54,6 +57,14 @@ en:
     title_exists_suggestion: "Scan a V-code to attach a volume."
     code_unsupported: "Media type disambiguation not yet available. Use manual title creation for non-ISBN codes."
     isbn_invalid: "This code doesn't appear to be a valid ISBN. Please check the barcode and scan again."
+    volume_created: "Volume %{label} attached to %{title}."
+    volume_created_suggestion: "Scan L-code to shelve, or scan another V-code."
+    volume_duplicate: "Label %{label} is already assigned to %{title}. Scan a different label."
+    volume_no_title: "No title selected. Scan an ISBN first to establish a title context."
+    volume_shelved: "Volume %{label} shelved at %{path}."
+    vcode_invalid: "Invalid volume code format. Expected V followed by 4 digits (e.g., V0042)."
+    lcode_not_found: "Location %{label} not found."
+    location_stub: "Location contents — coming soon."
   validation:
     required: "This field is required."
     negative_number: "Numeric fields must be non-negative."

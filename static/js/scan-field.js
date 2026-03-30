@@ -30,6 +30,16 @@
     }
 
     /**
+     * Validate V-code format: uppercase V + exactly 4 digits, V0001-V9999.
+     * @param {string} code - V-code string
+     * @returns {boolean} true if format is valid
+     */
+    function validateVcode(code) {
+        if (!/^V\d{4}$/.test(code)) return false;
+        return code !== "V0000";
+    }
+
+    /**
      * Check if the title form is currently open and has focus.
      */
     function isFormActiveAndFocused() {
@@ -105,6 +115,16 @@
                     }
                 }
 
+                // V-code format validation before server submission
+                if (prefix === "vcode") {
+                    if (!validateVcode(code)) {
+                        var vcodeError = field.getAttribute("data-vcode-error") || "Invalid volume code format";
+                        injectLocalFeedback("error", vcodeError);
+                        field.value = "";
+                        return;
+                    }
+                }
+
                 if (typeof htmx !== "undefined") {
                     htmx.ajax("POST", "/catalog/scan", {
                         target: "#feedback-list",
@@ -128,4 +148,5 @@
     // Expose for testing
     window.mybibliDetectPrefix = detectPrefix;
     window.mybibliValidateIsbn13 = validateIsbn13;
+    window.mybibliValidateVcode = validateVcode;
 })();

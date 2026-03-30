@@ -10,6 +10,8 @@ fr:
     scan_label: Scanner un code-barres ou taper un code
     scan_received: "Scan reçu : %{code}"
     new_title_button: Nouveau titre
+    session_counter: "%{count} items cette session"
+    session_counter_aria: "%{count} items catalogués cette session"
   nav:
     catalog: Catalogue
     loans: Prêts
@@ -21,6 +23,7 @@ fr:
     created: "Titre créé : %{title}"
     exists: "Titre déjà existant : %{title}"
     current_banner: "En cours : %{title}"
+    current_banner_with_volumes: "En cours : %{title} — %{count} vol"
     form:
       heading: Nouveau titre
       title_label: Titre
@@ -54,6 +57,14 @@ fr:
     title_exists_suggestion: "Scannez un code V pour attacher un volume."
     code_unsupported: "La distinction de type de média n'est pas encore disponible. Utilisez la création manuelle pour les codes non-ISBN."
     isbn_invalid: "Ce code ne semble pas être un ISBN valide. Vérifiez le code-barres et réessayez."
+    volume_created: "Volume %{label} attaché à %{title}."
+    volume_created_suggestion: "Scannez un code L pour ranger, ou scannez un autre code V."
+    volume_duplicate: "Le label %{label} est déjà assigné à %{title}. Scannez un autre label."
+    volume_no_title: "Aucun titre sélectionné. Scannez d'abord un ISBN pour établir un contexte."
+    volume_shelved: "Volume %{label} rangé à %{path}."
+    vcode_invalid: "Format de code volume invalide. Attendu : V suivi de 4 chiffres (ex. V0042)."
+    lcode_not_found: "Emplacement %{label} introuvable."
+    location_stub: "Contenu de l'emplacement — bientôt disponible."
   validation:
     required: "Ce champ est obligatoire."
     negative_number: "Les champs numériques doivent être positifs ou nuls."

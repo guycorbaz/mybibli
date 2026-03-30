@@ -7,7 +7,9 @@ use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
 use crate::models::session::SessionModel;
+use crate::models::volume::VolumeModel;
 use crate::services::title::{TitleForm, TitleService};
+use crate::services::volume::VolumeService;
 use crate::AppState;
 
 // ─── Feedback entry helpers ───────────────────────────────────────
@@ -71,8 +73,11 @@ fn feedback_html(variant: &str, message: &str, suggestion: &str) -> String {
     )
 }
 
-fn context_banner_html(title_name: &str, media_type: &str) -> String {
-    let label = rust_i18n::t!("title.current_banner", title = title_name).to_string();
+fn context_banner_html(title_name: &str, media_type: &str, volume_count: u64) -> String {
+    let label = rust_i18n::t!("title.current_banner_with_volumes",
+        title = title_name,
+        count = volume_count
+    ).to_string();
     format!(
         r##"<div class="flex items-center gap-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-md text-sm">
   <img src="/static/icons/{}.svg" alt="" class="w-5 h-5" aria-hidden="true">
@@ -82,6 +87,16 @@ fn context_banner_html(title_name: &str, media_type: &str) -> String {
 </div>"##,
         html_escape(media_type),
         html_escape(&label)
+    )
+}
+
+fn session_counter_html(count: u64) -> String {
+    let text = rust_i18n::t!("catalog.session_counter", count = count).to_string();
+    let aria = rust_i18n::t!("catalog.session_counter_aria", count = count).to_string();
+    format!(
+        r#"<span class="text-xs text-stone-500 dark:text-stone-400" aria-label="{}">{}</span>"#,
+        html_escape(&aria),
+        html_escape(&text)
     )
 }
 
@@ -103,6 +118,7 @@ pub struct CatalogTemplate {
     pub scan_label: String,
     pub scan_placeholder: String,
     pub isbn_error: String,
+    pub vcode_error: String,
     pub new_title_label: String,
 }
 
@@ -122,6 +138,7 @@ impl CatalogTemplate {
             scan_label: rust_i18n::t!("catalog.scan_label").to_string(),
             scan_placeholder: rust_i18n::t!("catalog.scan_placeholder").to_string(),
             isbn_error: rust_i18n::t!("feedback.isbn_invalid").to_string(),
+            vcode_error: rust_i18n::t!("feedback.vcode_invalid").to_string(),
             new_title_label: rust_i18n::t!("catalog.new_title_button").to_string(),
         }
     }
@@ -182,10 +199,12 @@ pub async fn handle_scan(
                 match TitleService::create_from_isbn(pool, &code, session.token.as_deref()).await {
                     Ok((title, is_new)) => {
                         // Update current title in session
-                        if let Some(token) = &session.token
-                            && let Err(e) = SessionModel::set_current_title(pool, token, title.id).await
-                        {
-                            tracing::warn!(error = %e, "Failed to update current title in session");
+                        if let Some(token) = &session.token {
+                            if let Err(e) = SessionModel::set_current_title(pool, token, title.id).await {
+                                tracing::warn!(error = %e, "Failed to update current title in session");
+                            }
+                            // Clear stale volume label on new title context
+                            let _ = SessionModel::set_last_volume_label(pool, token, "").await;
                         }
 
                         let (variant, message, suggestion) = if is_new {
@@ -202,12 +221,26 @@ pub async fn handle_scan(
                             )
                         };
 
+                        let vol_count = VolumeModel::count_by_title(pool, title.id).await.unwrap_or(0);
+
+                        // Increment session counter on title creation
+                        let mut oob = vec![OobUpdate {
+                            target: "context-banner".to_string(),
+                            content: context_banner_html(&title.title, &title.media_type, vol_count),
+                        }];
+                        if is_new
+                            && let Some(token) = &session.token
+                            && let Ok(counter) = SessionModel::increment_session_counter(pool, token).await
+                        {
+                            oob.push(OobUpdate {
+                                target: "session-counter".to_string(),
+                                content: session_counter_html(counter),
+                            });
+                        }
+
                         let resp = HtmxResponse {
                             main: feedback_html(variant, &message, &suggestion),
-                            oob: vec![OobUpdate {
-                                target: "context-banner".to_string(),
-                                content: context_banner_html(&title.title, &title.media_type),
-                            }],
+                            oob,
                         };
                         Ok(resp.into_response())
                     }
@@ -218,15 +251,120 @@ pub async fn handle_scan(
                     }
                 }
             }
-            "vcode" | "lcode" => {
-                // Stub behavior from Story 1-2 — return scan received feedback
-                let escaped_code = html_escape(&code);
-                let message = format!(
-                    "{}: {}",
-                    rust_i18n::t!("catalog.scan_received"),
-                    escaped_code
-                );
-                Ok(Html(feedback_html("info", &message, "")).into_response())
+            "vcode" => {
+                // Validate V-code format server-side
+                if !VolumeService::validate_vcode(&code) {
+                    let message = rust_i18n::t!("feedback.vcode_invalid").to_string();
+                    return Ok(Html(feedback_html("error", &message, "")).into_response());
+                }
+
+                // Check current title context
+                let current_title_id = match &session.token {
+                    Some(token) => SessionModel::get_current_title_id(pool, token).await?,
+                    None => None,
+                };
+
+                let Some(title_id) = current_title_id else {
+                    let message = rust_i18n::t!("feedback.volume_no_title").to_string();
+                    return Ok(Html(feedback_html("warning", &message, "")).into_response());
+                };
+
+                match VolumeService::create_volume(pool, &code, title_id).await {
+                    Ok(volume) => {
+                        if let Some(token) = &session.token {
+                            // Store last volume label for subsequent L-code scan
+                            if let Err(e) = SessionModel::set_last_volume_label(pool, token, &code).await {
+                                tracing::warn!(error = %e, "Failed to store last volume label in session");
+                            }
+                            // Increment session counter
+                            let counter = match SessionModel::increment_session_counter(pool, token).await {
+                                Ok(c) => c,
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "Failed to increment session counter");
+                                    0
+                                }
+                            };
+
+                            let vol_count = VolumeModel::count_by_title(pool, title_id).await.unwrap_or(0);
+                            let title = crate::models::title::TitleModel::find_by_id(pool, title_id).await?
+                                .map(|t| (t.title.clone(), t.media_type.clone()))
+                                .unwrap_or_else(|| ("?".to_string(), "book".to_string()));
+
+                            let message = rust_i18n::t!("feedback.volume_created", label = &volume.label, title = &title.0).to_string();
+                            let suggestion = rust_i18n::t!("feedback.volume_created_suggestion").to_string();
+
+                            let resp = HtmxResponse {
+                                main: feedback_html("success", &message, &suggestion),
+                                oob: vec![
+                                    OobUpdate {
+                                        target: "context-banner".to_string(),
+                                        content: context_banner_html(&title.0, &title.1, vol_count),
+                                    },
+                                    OobUpdate {
+                                        target: "session-counter".to_string(),
+                                        content: session_counter_html(counter),
+                                    },
+                                ],
+                            };
+                            return Ok(resp.into_response());
+                        }
+                        // Unreachable: session.token is always present for authenticated users
+                        // (require_role(Librarian) already validated the session)
+                        let message = rust_i18n::t!("feedback.volume_created", label = &volume.label, title = "?").to_string();
+                        Ok(Html(feedback_html("success", &message, "")).into_response())
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, code = %code, "V-code scan failed");
+                        let message = match &e {
+                            AppError::BadRequest(msg) => msg.clone(),
+                            _ => rust_i18n::t!("error.internal").to_string(),
+                        };
+                        Ok(Html(feedback_html("error", &message, "")).into_response())
+                    }
+                }
+            }
+            "lcode" => {
+                // Check if L-code exists in DB first
+                let location = crate::models::location::LocationModel::find_by_label(pool, &code).await?;
+
+                if location.is_none() {
+                    let message = rust_i18n::t!("feedback.lcode_not_found", label = &code).to_string();
+                    return Ok(Html(feedback_html("warning", &message, "")).into_response());
+                }
+
+                // Check last volume label from session
+                let last_volume = match &session.token {
+                    Some(token) => SessionModel::get_last_volume_label(pool, token).await?,
+                    None => None,
+                };
+
+                if let Some(vol_label) = last_volume {
+                    match VolumeService::assign_location(pool, &vol_label, &code).await {
+                        Ok((_volume, path)) => {
+                            // Clear last_volume_label to prevent re-shelving on next L-code
+                            if let Some(token) = &session.token {
+                                let _ = SessionModel::set_last_volume_label(pool, token, "").await;
+                            }
+                            let message = rust_i18n::t!("feedback.volume_shelved",
+                                label = &vol_label,
+                                path = &path
+                            ).to_string();
+                            Ok(Html(feedback_html("success", &message, "")).into_response())
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "L-code assignment failed");
+                            let message = match &e {
+                                AppError::BadRequest(msg) => msg.clone(),
+                                _ => rust_i18n::t!("error.internal").to_string(),
+                            };
+                            Ok(Html(feedback_html("error", &message, "")).into_response())
+                        }
+                    }
+                } else {
+                    // No volume context — info stub
+                    let message = rust_i18n::t!("feedback.location_stub").to_string();
+                    Ok(Html(feedback_html("info", &message, "")).into_response())
+                }
             }
             _ => {
                 // ISSN, UPC, unknown → amber warning
@@ -366,7 +504,7 @@ pub async fn create_title(
                     oob: vec![
                         OobUpdate {
                             target: "context-banner".to_string(),
-                            content: context_banner_html(&title.title, &title.media_type),
+                            content: context_banner_html(&title.title, &title.media_type, 0),
                         },
                         OobUpdate {
                             target: "title-form-container".to_string(),
@@ -492,6 +630,12 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_code_type_v0000() {
+        // V0000 matches vcode format — validation happens in VolumeService
+        assert_eq!(detect_code_type("V0000"), "vcode");
+    }
+
+    #[test]
     fn test_html_escape() {
         assert_eq!(html_escape("<script>"), "&lt;script&gt;");
         assert_eq!(html_escape("a&b"), "a&amp;b");
@@ -565,7 +709,7 @@ mod tests {
 
     #[test]
     fn test_context_banner_html() {
-        let html = context_banner_html("L'Étranger", "book");
+        let html = context_banner_html("L'Étranger", "book", 2);
         assert!(html.contains("/static/icons/book.svg"));
         // The title goes through t!() then html_escape, so the apostrophe
         // in the i18n label gets escaped
