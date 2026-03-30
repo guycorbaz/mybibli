@@ -9,6 +9,7 @@ fr:
     scan_placeholder: "Scanner ou taper : ISBN, code V, code L, ou recherche..."
     scan_label: Scanner un code-barres ou taper un code
     scan_received: "Scan reçu : %{code}"
+    new_title_button: Nouveau titre
   nav:
     catalog: Catalogue
     loans: Prêts
@@ -16,8 +17,63 @@ fr:
     login: Connexion
     logout: Déconnexion
     skip_to_content: Aller au contenu principal
+  title:
+    created: "Titre créé : %{title}"
+    exists: "Titre déjà existant : %{title}"
+    current_banner: "En cours : %{title}"
+    form:
+      heading: Nouveau titre
+      title_label: Titre
+      media_type: Type de média
+      genre: Genre
+      language: Langue
+      subtitle: Sous-titre
+      publisher: Éditeur
+      publication_date: Date de publication
+      isbn: ISBN
+      issn: ISSN
+      upc: UPC
+      page_count: Nombre de pages
+      track_count: Nombre de pistes
+      total_duration: "Durée totale (secondes)"
+      age_rating: Classification d'âge
+      issue_number: Numéro de parution
+      submit: Créer le titre
+      cancel: Annuler
+    media_types:
+      book: Livre
+      bd: BD
+      cd: CD
+      dvd: DVD
+      magazine: Revue
+      report: Rapport
+  feedback:
+    title_created: "Titre créé avec succès."
+    title_created_suggestion: "Scannez un code V pour attacher un volume, ou scannez un autre ISBN."
+    title_exists: "Ce titre est déjà dans votre catalogue."
+    title_exists_suggestion: "Scannez un code V pour attacher un volume."
+    code_unsupported: "La distinction de type de média n'est pas encore disponible. Utilisez la création manuelle pour les codes non-ISBN."
+    isbn_invalid: "Ce code ne semble pas être un ISBN valide. Vérifiez le code-barres et réessayez."
+  validation:
+    required: "Ce champ est obligatoire."
+    negative_number: "Les champs numériques doivent être positifs ou nuls."
+    invalid_date_format: "Format de date invalide. Utilisez AAAA, AAAA-MM ou AAAA-MM-JJ."
   error:
     internal: Une erreur interne est survenue
     not_found: La ressource demandée est introuvable
     bad_request: Requête invalide
     unauthorized: Authentification requise
+    title:
+      creation_failed: La création du titre a échoué
+      required: Le titre est obligatoire
+    isbn:
+      invalid_checksum: Checksum ISBN invalide
+      not_found: ISBN introuvable
+    genre:
+      required: Le genre est obligatoire
+    media_type:
+      required: Le type de média est obligatoire
+    language:
+      required: La langue est obligatoire
+    code:
+      unsupported_type: Type de code non pris en charge

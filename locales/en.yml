@@ -9,6 +9,7 @@ en:
     scan_placeholder: "Scan or type: ISBN, V-code, L-code, or search..."
     scan_label: Scan barcode or type code
     scan_received: "Scan received: %{code}"
+    new_title_button: New title
   nav:
     catalog: Catalog
     loans: Loans
@@ -16,8 +17,63 @@ en:
     login: Log in
     logout: Log out
     skip_to_content: Skip to main content
+  title:
+    created: "Title created: %{title}"
+    exists: "Title already exists: %{title}"
+    current_banner: "Current: %{title}"
+    form:
+      heading: New title
+      title_label: Title
+      media_type: Media type
+      genre: Genre
+      language: Language
+      subtitle: Subtitle
+      publisher: Publisher
+      publication_date: Publication date
+      isbn: ISBN
+      issn: ISSN
+      upc: UPC
+      page_count: Page count
+      track_count: Track count
+      total_duration: "Total duration (seconds)"
+      age_rating: Age rating
+      issue_number: Issue number
+      submit: Create title
+      cancel: Cancel
+    media_types:
+      book: Book
+      bd: Comic / Graphic novel
+      cd: CD
+      dvd: DVD
+      magazine: Magazine
+      report: Report
+  feedback:
+    title_created: "Title created successfully."
+    title_created_suggestion: "Scan a V-code to attach a volume, or scan another ISBN."
+    title_exists: "This title is already in your catalog."
+    title_exists_suggestion: "Scan a V-code to attach a volume."
+    code_unsupported: "Media type disambiguation not yet available. Use manual title creation for non-ISBN codes."
+    isbn_invalid: "This code doesn't appear to be a valid ISBN. Please check the barcode and scan again."
+  validation:
+    required: "This field is required."
+    negative_number: "Numeric fields must be non-negative."
+    invalid_date_format: "Invalid date format. Use YYYY, YYYY-MM, or YYYY-MM-DD."
   error:
     internal: An internal error occurred
     not_found: The requested resource was not found
     bad_request: Invalid request
     unauthorized: Authentication required
+    title:
+      creation_failed: Title creation failed
+      required: Title is required
+    isbn:
+      invalid_checksum: Invalid ISBN checksum
+      not_found: ISBN not found
+    genre:
+      required: Genre is required
+    media_type:
+      required: Media type is required
+    language:
+      required: Language is required
+    code:
+      unsupported_type: Unsupported code type

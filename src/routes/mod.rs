@@ -11,6 +11,15 @@ pub fn build_router(state: AppState) -> Router {
         .route("/", axum::routing::get(home::home))
         .route("/catalog", axum::routing::get(catalog::catalog_page))
         .route("/catalog/scan", axum::routing::post(catalog::handle_scan))
+        .route(
+            "/catalog/title/new",
+            axum::routing::get(catalog::title_form_page),
+        )
+        .route("/catalog/title", axum::routing::post(catalog::create_title))
+        .route(
+            "/catalog/title/fields/{media_type}",
+            axum::routing::get(catalog::type_specific_fields),
+        )
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
         .with_state(state)
