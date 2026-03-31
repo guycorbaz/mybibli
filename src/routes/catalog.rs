@@ -881,7 +881,7 @@ fn contributor_list_html(contributors: &[TitleContributorModel]) -> String {
 
     let mut html = String::from(r#"<ul role="list" aria-label="Contributors" class="flex flex-wrap gap-1 text-sm text-stone-700 dark:text-stone-300">"#);
 
-    for (i, (_cid, name, roles)) in grouped.iter().enumerate() {
+    for (i, (cid, name, roles)) in grouped.iter().enumerate() {
         if i > 0 {
             html.push_str(r#"<li class="text-stone-400"><span aria-hidden="true"> · </span></li>"#);
         }
@@ -892,8 +892,8 @@ fn contributor_list_html(contributors: &[TitleContributorModel]) -> String {
         let escaped_roles = html_escape(&roles_str);
 
         html.push_str(&format!(
-            r##"<li><a href="#" class="text-indigo-600 dark:text-indigo-400 hover:underline" aria-label="{}, {}">{}</a> <span class="text-stone-500" aria-hidden="true">({})</span>"##,
-            escaped_name, escaped_roles, escaped_name, escaped_roles
+            r##"<li><a href="/contributor/{}" class="text-indigo-600 dark:text-indigo-400 hover:underline" aria-label="{}, {}">{}</a> <span class="text-stone-500" aria-hidden="true">({})</span>"##,
+            cid, escaped_name, escaped_roles, escaped_name, escaped_roles
         ));
 
         // Add remove buttons for each role assignment

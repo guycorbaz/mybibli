@@ -104,6 +104,27 @@ impl VolumeModel {
         Ok(())
     }
 
+    /// Find a volume by label and return it alongside its parent title.
+    pub async fn find_by_label_with_title(
+        pool: &DbPool,
+        label: &str,
+    ) -> Result<Option<(VolumeModel, crate::models::title::TitleModel)>, AppError> {
+        tracing::debug!(label = %label, "Looking up volume with title by label");
+
+        let volume = VolumeModel::find_by_label(pool, label).await?;
+        match volume {
+            Some(v) => {
+                let title =
+                    crate::models::title::TitleModel::find_by_id(pool, v.title_id).await?;
+                match title {
+                    Some(t) => Ok(Some((v, t))),
+                    None => Ok(None),
+                }
+            }
+            None => Ok(None),
+        }
+    }
+
     pub async fn count_by_title(pool: &DbPool, title_id: u64) -> Result<u64, AppError> {
         let row: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM volumes WHERE title_id = ? AND deleted_at IS NULL",

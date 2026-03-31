@@ -19,6 +19,30 @@ impl std::fmt::Display for LocationModel {
 }
 
 impl LocationModel {
+    pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<Option<LocationModel>, AppError> {
+        tracing::debug!(id = id, "Looking up location by ID");
+
+        let row = sqlx::query(
+            r#"SELECT id, parent_id, name, node_type, label
+               FROM storage_locations
+               WHERE id = ? AND deleted_at IS NULL"#,
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+
+        match row {
+            Some(r) => Ok(Some(LocationModel {
+                id: r.try_get("id")?,
+                parent_id: r.try_get("parent_id")?,
+                name: r.try_get("name")?,
+                node_type: r.try_get("node_type")?,
+                label: r.try_get("label")?,
+            })),
+            None => Ok(None),
+        }
+    }
+
     pub async fn find_by_label(pool: &DbPool, label: &str) -> Result<Option<LocationModel>, AppError> {
         tracing::debug!(label = %label, "Looking up location by label");
 

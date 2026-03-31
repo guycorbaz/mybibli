@@ -1,0 +1,29 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ contributor.name }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ contributor.name }}</h1>
+
+    {% if let Some(bio) = contributor.biography %}
+        <p class="mt-2 text-stone-600 dark:text-stone-400">{{ bio }}</p>
+    {% endif %}
+
+    {% if !titles.is_empty() %}
+    <div class="mt-6">
+        <h2 class="text-lg font-semibold text-stone-800 dark:text-stone-200">{{ label_titles }}</h2>
+        <ul class="mt-2 space-y-1">
+            {% for t in titles %}
+            <li>
+                <a href="/title/{{ t.title_id }}"
+                   class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ t.title }}</a>
+                <span class="text-stone-500">({{ t.role_name }})</span>
+                <img src="/static/icons/{{ t.media_type }}.svg" alt="" class="inline w-4 h-4 ml-1 opacity-50" aria-hidden="true">
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

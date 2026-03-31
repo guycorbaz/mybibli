@@ -87,6 +87,30 @@ en:
       biography: Biography
       submit: Add contributor
       add_button: Add contributor
+  home:
+    search_placeholder: "Search titles, authors, series..."
+  search:
+    no_results: "No results for '%{query}'."
+    no_results_create: "+ Create new title"
+    results_count: "%{count} results found"
+    col:
+      title: Title
+      contributor: Contributor
+      genre: Genre
+      volumes: Volumes
+    connection_lost: "Connection lost — check your network."
+  pagination:
+    previous: Previous
+    next: Next
+  title_detail:
+    contributors: Contributors
+    volumes: Volumes
+    genre: Genre
+    publisher: Publisher
+    published: Published
+  contributor_detail:
+    titles: Titles
+    biography: Biography
   error:
     internal: An internal error occurred
     not_found: The requested resource was not found

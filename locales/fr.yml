@@ -87,6 +87,30 @@ fr:
       biography: Biographie
       submit: Ajouter le contributeur
       add_button: Ajouter un contributeur
+  home:
+    search_placeholder: "Rechercher titres, auteurs, séries..."
+  search:
+    no_results: "Aucun résultat pour '%{query}'."
+    no_results_create: "+ Créer un nouveau titre"
+    results_count: "%{count} résultats trouvés"
+    col:
+      title: Titre
+      contributor: Contributeur
+      genre: Genre
+      volumes: Volumes
+    connection_lost: "Connexion perdue — vérifiez votre réseau."
+  pagination:
+    previous: Précédent
+    next: Suivant
+  title_detail:
+    contributors: Contributeurs
+    volumes: Volumes
+    genre: Genre
+    publisher: Éditeur
+    published: Publié
+  contributor_detail:
+    titles: Titres
+    biography: Biographie
   error:
     internal: Une erreur interne est survenue
     not_found: La ressource demandée est introuvable

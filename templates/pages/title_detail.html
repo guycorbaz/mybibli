@@ -1,0 +1,61 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ title.title }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <div class="flex flex-col md:flex-row gap-8">
+        <div class="flex-shrink-0">
+            {% match title.cover_image_url %}
+                {% when Some with (url) %}
+                    <img src="{{ url }}" alt="" class="w-48 h-72 object-cover rounded-lg">
+                {% when None %}
+                    <div class="w-48 h-72 bg-stone-100 dark:bg-stone-800 rounded-lg flex items-center justify-center">
+                        <img src="/static/icons/{{ title.media_type }}.svg" alt="" class="w-12 h-12 opacity-50">
+                    </div>
+            {% endmatch %}
+        </div>
+        <div>
+            <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ title.title }}</h1>
+            {% if let Some(sub) = title.subtitle %}
+                <p class="text-lg text-stone-500 dark:text-stone-400">{{ sub }}</p>
+            {% endif %}
+            <div class="mt-4 flex flex-wrap gap-4 text-sm text-stone-600 dark:text-stone-400">
+                <span class="inline-flex items-center gap-1">
+                    <img src="/static/icons/{{ title.media_type }}.svg" alt="" class="w-4 h-4" aria-hidden="true">
+                    {{ title.media_type }}
+                </span>
+                <span>{{ genre_name }}</span>
+                <span>{{ volume_count }} {{ label_vol }}</span>
+            </div>
+            {% if let Some(pub_name) = title.publisher %}
+                <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ pub_name }}</p>
+            {% endif %}
+            {% if let Some(isbn) = title.isbn %}
+                <p class="mt-1 text-xs text-stone-400">ISBN: {{ isbn }}</p>
+            {% endif %}
+
+            {% if !contributors.is_empty() %}
+            <div class="mt-6">
+                <h2 class="text-lg font-semibold text-stone-800 dark:text-stone-200">{{ label_contributors }}</h2>
+                <ul class="mt-2 space-y-1">
+                    {% for tc in contributors %}
+                    <li>
+                        <a href="/contributor/{{ tc.contributor_id }}"
+                           class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ tc.contributor_name }}</a>
+                        <span class="text-stone-500">({{ tc.role_name }})</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if let Some(desc) = title.description %}
+            <div class="mt-6">
+                <p class="text-stone-700 dark:text-stone-300">{{ desc }}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

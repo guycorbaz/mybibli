@@ -1,5 +1,8 @@
 pub mod catalog;
+pub mod contributors;
 pub mod home;
+pub mod locations;
+pub mod titles;
 
 use axum::Router;
 use tower_http::services::ServeDir;
@@ -43,6 +46,19 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/catalog/contributors/{id}",
             axum::routing::delete(catalog::delete_contributor),
+        )
+        // Detail pages
+        .route(
+            "/title/{id}",
+            axum::routing::get(titles::title_detail),
+        )
+        .route(
+            "/contributor/{id}",
+            axum::routing::get(contributors::contributor_detail),
+        )
+        .route(
+            "/location/{id}",
+            axum::routing::get(locations::location_detail),
         )
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))

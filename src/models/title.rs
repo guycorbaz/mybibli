@@ -4,6 +4,7 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
+use crate::models::{PaginatedList, DEFAULT_PAGE_SIZE};
 
 /// Matches the `titles` table schema exactly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,9 +167,269 @@ impl TitleModel {
     }
 }
 
+/// Search result row for as-you-type search.
+#[derive(Debug, Clone)]
+pub struct SearchResult {
+    pub id: u64,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub media_type: String,
+    pub genre_name: String,
+    pub primary_contributor: Option<String>,
+    pub volume_count: u64,
+    pub cover_image_url: Option<String>,
+}
+
+/// Allowed sort columns for search results (validated whitelist to prevent SQL injection).
+const VALID_SORT_COLUMNS: &[&str] = &["title", "media_type", "genre_name", "volume_count"];
+const VALID_SORT_DIRS: &[&str] = &["asc", "desc"];
+
+fn validated_sort(sort: &Option<String>) -> &str {
+    match sort {
+        Some(s) if VALID_SORT_COLUMNS.contains(&s.as_str()) => s.as_str(),
+        _ => "title",
+    }
+}
+
+fn validated_dir(dir: &Option<String>) -> &str {
+    match dir {
+        Some(d) if VALID_SORT_DIRS.contains(&d.as_str()) => d.as_str(),
+        _ => "asc",
+    }
+}
+
+fn map_sort_to_column(sort: &str) -> &str {
+    match sort {
+        "title" => "t.title",
+        "media_type" => "t.media_type",
+        "genre_name" => "g.name",
+        "volume_count" => "volume_count",
+        _ => "t.title",
+    }
+}
+
+impl TitleModel {
+    /// Full-text search across titles with pagination, sorting, and optional genre/state filters.
+    pub async fn active_search(
+        pool: &DbPool,
+        query: &str,
+        genre_id: Option<u64>,
+        volume_state: Option<String>,
+        sort: &Option<String>,
+        dir: &Option<String>,
+        page: u32,
+    ) -> Result<PaginatedList<SearchResult>, AppError> {
+        let sort_col = validated_sort(sort);
+        let sort_dir = validated_dir(dir);
+        let sql_order_col = map_sort_to_column(sort_col);
+        let offset = (page.saturating_sub(1)) * DEFAULT_PAGE_SIZE;
+        let trimmed = query.trim();
+
+        // Escape LIKE wildcards and strip FULLTEXT operators from user input for LIKE queries
+        let cleaned_for_like: String = trimmed
+            .chars()
+            .filter(|c| !matches!(c, '+' | '-' | '~' | '<' | '>' | '(' | ')' | '"' | '@' | '*'))
+            .collect();
+        let escaped_for_like = cleaned_for_like
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+
+        // Strip FULLTEXT boolean mode operators from user input
+        let escaped_for_ft: String = trimmed
+            .chars()
+            .filter(|c| !matches!(c, '+' | '-' | '~' | '<' | '>' | '(' | ')' | '"' | '@' | '*'))
+            .collect();
+
+        // Build WHERE clauses — use BindValue enum to handle mixed types
+        let mut conditions = vec!["t.deleted_at IS NULL".to_string()];
+        let mut string_binds: Vec<String> = Vec::new();
+        let mut genre_bind: Option<u64> = None;
+        let mut state_bind: Option<String> = None;
+        let mut extra_join = String::new();
+
+        if !trimmed.is_empty() && (!escaped_for_ft.is_empty() || !escaped_for_like.is_empty()) {
+            if escaped_for_ft.len() >= 3 {
+                // Use FULLTEXT for 3+ chars (after stripping operators)
+                conditions.push(
+                    "(MATCH(t.title, t.subtitle, t.description) AGAINST(? IN BOOLEAN MODE) \
+                     OR t.id IN (SELECT tc.title_id FROM title_contributors tc \
+                     JOIN contributors c ON tc.contributor_id = c.id \
+                     WHERE c.name LIKE ? AND tc.deleted_at IS NULL AND c.deleted_at IS NULL))"
+                        .to_string(),
+                );
+                string_binds.push(format!("{}*", escaped_for_ft));
+                string_binds.push(format!("%{}%", escaped_for_like));
+            } else if !escaped_for_like.is_empty() {
+                // LIKE fallback for < 3 chars
+                conditions.push(
+                    "(t.title LIKE ? OR t.subtitle LIKE ? \
+                     OR t.id IN (SELECT tc.title_id FROM title_contributors tc \
+                     JOIN contributors c ON tc.contributor_id = c.id \
+                     WHERE c.name LIKE ? AND tc.deleted_at IS NULL AND c.deleted_at IS NULL))"
+                        .to_string(),
+                );
+                let like_pattern = format!("%{}%", escaped_for_like);
+                string_binds.push(like_pattern.clone());
+                string_binds.push(like_pattern.clone());
+                string_binds.push(like_pattern);
+            }
+        }
+
+        if let Some(gid) = genre_id {
+            conditions.push("t.genre_id = ?".to_string());
+            genre_bind = Some(gid);
+        }
+
+        if let Some(ref state_name) = volume_state {
+            // Filter titles that have at least one volume in the given state
+            extra_join = " JOIN volumes vol_f ON vol_f.title_id = t.id AND vol_f.deleted_at IS NULL \
+                           JOIN volume_states vs_f ON vol_f.condition_state_id = vs_f.id AND vs_f.deleted_at IS NULL"
+                .to_string();
+            conditions.push("vs_f.name = ?".to_string());
+            state_bind = Some(state_name.clone());
+        }
+
+        let where_clause = conditions.join(" AND ");
+
+        // Count query
+        let count_sql = format!(
+            "SELECT COUNT(DISTINCT t.id) as cnt FROM titles t \
+             JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL{} \
+             WHERE {}",
+            extra_join, where_clause
+        );
+
+        let mut count_query = sqlx::query(&count_sql);
+        for val in &string_binds {
+            count_query = count_query.bind(val);
+        }
+        if let Some(gid) = genre_bind {
+            count_query = count_query.bind(gid);
+        }
+        if let Some(ref sv) = state_bind {
+            count_query = count_query.bind(sv);
+        }
+        let count_row = count_query.fetch_one(pool).await?;
+        let total_items: i64 = count_row.try_get("cnt")?;
+
+        // Data query
+        let data_sql = format!(
+            "SELECT DISTINCT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, \
+                    g.name AS genre_name, \
+                    (SELECT c.name FROM title_contributors tc \
+                     JOIN contributors c ON tc.contributor_id = c.id \
+                     JOIN contributor_roles cr ON tc.role_id = cr.id \
+                     WHERE tc.title_id = t.id AND tc.deleted_at IS NULL AND c.deleted_at IS NULL AND cr.deleted_at IS NULL \
+                     ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC \
+                     LIMIT 1) AS primary_contributor, \
+                    (SELECT COUNT(*) FROM volumes v WHERE v.title_id = t.id AND v.deleted_at IS NULL) AS volume_count \
+             FROM titles t \
+             JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL{} \
+             WHERE {} \
+             ORDER BY {} {} \
+             LIMIT ? OFFSET ?",
+            extra_join, where_clause, sql_order_col, sort_dir
+        );
+
+        let mut data_query = sqlx::query(&data_sql);
+        for val in &string_binds {
+            data_query = data_query.bind(val);
+        }
+        if let Some(gid) = genre_bind {
+            data_query = data_query.bind(gid);
+        }
+        if let Some(ref sv) = state_bind {
+            data_query = data_query.bind(sv);
+        }
+        data_query = data_query.bind(DEFAULT_PAGE_SIZE).bind(offset);
+
+        let rows = data_query.fetch_all(pool).await?;
+
+        let items: Vec<SearchResult> = rows
+            .iter()
+            .map(|r| SearchResult {
+                id: r.try_get("id").unwrap_or(0),
+                title: r.try_get("title").unwrap_or_default(),
+                subtitle: r.try_get("subtitle").unwrap_or(None),
+                media_type: r.try_get("media_type").unwrap_or_default(),
+                genre_name: r.try_get("genre_name").unwrap_or_default(),
+                primary_contributor: r.try_get("primary_contributor").unwrap_or(None),
+                volume_count: r
+                    .try_get::<i64, _>("volume_count")
+                    .map(|v| v as u64)
+                    .unwrap_or(0),
+                cover_image_url: r.try_get("cover_image_url").unwrap_or(None),
+            })
+            .collect();
+
+        Ok(PaginatedList::new(
+            items,
+            page,
+            total_items as u64,
+            Some(sort_col.to_string()),
+            Some(sort_dir.to_string()),
+            None,
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_search_result_construction() {
+        let result = SearchResult {
+            id: 1,
+            title: "L'Étranger".to_string(),
+            subtitle: None,
+            media_type: "book".to_string(),
+            genre_name: "Roman".to_string(),
+            primary_contributor: Some("Albert Camus".to_string()),
+            volume_count: 2,
+            cover_image_url: None,
+        };
+        assert_eq!(result.id, 1);
+        assert_eq!(result.title, "L'Étranger");
+        assert_eq!(result.primary_contributor, Some("Albert Camus".to_string()));
+    }
+
+    #[test]
+    fn test_validated_sort_valid() {
+        assert_eq!(validated_sort(&Some("title".to_string())), "title");
+        assert_eq!(validated_sort(&Some("media_type".to_string())), "media_type");
+        assert_eq!(validated_sort(&Some("genre_name".to_string())), "genre_name");
+        assert_eq!(validated_sort(&Some("volume_count".to_string())), "volume_count");
+    }
+
+    #[test]
+    fn test_validated_sort_injection() {
+        assert_eq!(validated_sort(&Some("DROP TABLE".to_string())), "title");
+        assert_eq!(validated_sort(&Some("1; DROP TABLE--".to_string())), "title");
+        assert_eq!(validated_sort(&None), "title");
+    }
+
+    #[test]
+    fn test_validated_dir_valid() {
+        assert_eq!(validated_dir(&Some("asc".to_string())), "asc");
+        assert_eq!(validated_dir(&Some("desc".to_string())), "desc");
+    }
+
+    #[test]
+    fn test_validated_dir_injection() {
+        assert_eq!(validated_dir(&Some("DROP".to_string())), "asc");
+        assert_eq!(validated_dir(&None), "asc");
+    }
+
+    #[test]
+    fn test_map_sort_to_column() {
+        assert_eq!(map_sort_to_column("title"), "t.title");
+        assert_eq!(map_sort_to_column("media_type"), "t.media_type");
+        assert_eq!(map_sort_to_column("genre_name"), "g.name");
+        assert_eq!(map_sort_to_column("volume_count"), "volume_count");
+        assert_eq!(map_sort_to_column("unknown"), "t.title");
+    }
 
     #[test]
     fn test_title_model_display() {

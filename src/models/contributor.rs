@@ -136,6 +136,45 @@ impl ContributorModel {
         Ok(row.0 as u64)
     }
 
+    /// Load a contributor with all their title associations (for contributor detail page).
+    pub async fn find_by_id_with_titles(
+        pool: &DbPool,
+        id: u64,
+    ) -> Result<Option<(ContributorModel, Vec<ContributorTitleRow>)>, AppError> {
+        let contributor = ContributorModel::find_by_id(pool, id).await?;
+        match contributor {
+            Some(c) => {
+                let rows: Vec<(u64, String, String, String)> = sqlx::query_as(
+                    r#"SELECT t.id, t.title, t.media_type, cr.name
+                       FROM title_contributors tc
+                       JOIN titles t ON tc.title_id = t.id
+                       JOIN contributor_roles cr ON tc.role_id = cr.id
+                       WHERE tc.contributor_id = ?
+                         AND tc.deleted_at IS NULL
+                         AND t.deleted_at IS NULL
+                         AND cr.deleted_at IS NULL
+                       ORDER BY t.title ASC"#,
+                )
+                .bind(id)
+                .fetch_all(pool)
+                .await?;
+
+                let titles = rows
+                    .into_iter()
+                    .map(|(title_id, title, media_type, role_name)| ContributorTitleRow {
+                        title_id,
+                        title,
+                        media_type,
+                        role_name,
+                    })
+                    .collect();
+
+                Ok(Some((c, titles)))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub async fn soft_delete(pool: &DbPool, id: u64) -> Result<(), AppError> {
         tracing::info!(id = id, "Soft-deleting contributor");
 
@@ -154,6 +193,15 @@ impl ContributorModel {
 
         Ok(())
     }
+}
+
+/// Row returned from contributor detail page query (title + role).
+#[derive(Debug, Clone)]
+pub struct ContributorTitleRow {
+    pub title_id: u64,
+    pub title: String,
+    pub media_type: String,
+    pub role_name: String,
 }
 
 // ─── Title-contributor junction ───────────────────────────────────

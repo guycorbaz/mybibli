@@ -16,3 +16,17 @@
 - OobUpdate target/content not sanitized in HtmxResponse — currently server-controlled, sanitize if user input ever flows into targets
 - scan-field.js prefix overlap: ISSN (977) vs UPC starting with 977 — add disambiguation logic when media types are fully implemented
 - Ctrl+K keyboard shortcut hijacks browser address bar shortcut — evaluate alternative shortcut or make configurable
+
+## Deferred from: code review of 1-6-search-and-browsing (2026-03-31)
+
+- Pagination renders all page numbers without truncation — with 10,000 titles (400 pages), all 400 buttons rendered. Implement windowed pagination (current ± 3 + first/last)
+- Hardcoded French role name 'Auteur' in primary contributor SQL ORDER BY — use role ID or is_primary flag instead of localized name string. Same pattern exists in story 1-5
+- context_banner.html href="#" not updated to /title/{id} — requires adding title_id parameter to context_banner_html() function and updating all call sites in catalog.rs
+
+## Deferred from: code review pass 2 of 1-6-search-and-browsing (2026-03-31)
+
+- Volume state filter JOIN excludes titles whose volumes have NULL condition_state_id — document behavior or add `state:unassigned` filter
+- parse_filter does not validate state name against actual volume_states — invalid filter silently returns empty results
+- page=999999 in URL renders huge pagination (same as pass 1 — implement windowed pagination)
+- Missing aria-sort attributes on sortable column headers in home.html
+- Hardcoded aria-label strings (Pagination, Remove filter, Breadcrumb) — should use i18n keys
