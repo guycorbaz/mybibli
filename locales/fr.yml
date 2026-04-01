@@ -15,6 +15,7 @@ nav:
   catalog: Catalogue
   loans: Prêts
   admin: Admin
+  locations: Emplacements
   login: Connexion
   logout: Déconnexion
   skip_to_content: Aller au contenu principal
