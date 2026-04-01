@@ -71,9 +71,9 @@ development_status:
   2-1-location-hierarchy-crud: done
   2-2-shelving-by-scan: done
   2-3-browse-shelf-contents: done
-  # Note: Epic 2 complete — all 3 stories done
+  2-4-contextual-guide: ready-for-dev
   # Deferred: 2-x-barcode-label-generation (FR27, FR116-FR117) — Guy uses glabel for now
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # Epic 3: Tous mes médias sont gérés
   # FRs: FR9, FR11-FR12, FR14-FR19, FR61-FR64, FR85, FR88(complete), FR93
