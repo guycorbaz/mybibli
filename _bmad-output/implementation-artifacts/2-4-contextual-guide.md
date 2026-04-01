@@ -1,6 +1,6 @@
 # Story 2.4: Contextual Guide Strip
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 

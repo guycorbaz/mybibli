@@ -71,7 +71,7 @@ development_status:
   2-1-location-hierarchy-crud: done
   2-2-shelving-by-scan: done
   2-3-browse-shelf-contents: done
-  2-4-contextual-guide: ready-for-dev
+  2-4-contextual-guide: done
   # Deferred: 2-x-barcode-label-generation (FR27, FR116-FR117) — Guy uses glabel for now
   epic-2-retrospective: done
 

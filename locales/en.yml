@@ -142,6 +142,12 @@ error:
   delete_has_references: "Cannot delete: item is referenced by active records."
   code:
     unsupported_type: Unsupported code type
+guide:
+  initial: "Scan an ISBN to start cataloging, or an L-code to set a shelving location."
+  title_active: "Title active: %{title}. Scan a V-code to add a volume."
+  volume_ready: "Volume %{label} ready. Scan an L-code to shelve, or another V-code."
+  shelved: "Shelved! Scan another ISBN, V-code, or L-code."
+  batch_active: "Active location: %{path}. Scan V-codes to shelve here."
 volume:
   detail_title: Volume details
   edit_title: Edit volume

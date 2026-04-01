@@ -123,6 +123,20 @@ fn skeleton_feedback_html(title_id: u64, isbn: &str) -> String {
     )
 }
 
+fn push_guide_oob(oob: &mut Vec<OobUpdate>, message: &str) {
+    oob.push(OobUpdate {
+        target: "guide-strip".to_string(),
+        content: guide_strip_html(message),
+    });
+}
+
+fn guide_strip_html(message: &str) -> String {
+    format!(
+        r#"<p class="text-sm text-stone-500 dark:text-stone-400 flex items-center gap-2"><svg class="w-4 h-4 text-indigo-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" /></svg>{}</p>"#,
+        html_escape(message)
+    )
+}
+
 fn session_counter_html(count: u64) -> String {
     let text = rust_i18n::t!("catalog.session_counter", count = count).to_string();
     let aria = rust_i18n::t!("catalog.session_counter_aria", count = count).to_string();
@@ -153,10 +167,11 @@ pub struct CatalogTemplate {
     pub isbn_error: String,
     pub vcode_error: String,
     pub new_title_label: String,
+    pub guide_message: String,
 }
 
 impl CatalogTemplate {
-    fn from_session(session: &Session) -> Self {
+    fn new(session: &Session, guide_message: &str) -> Self {
         CatalogTemplate {
             lang: rust_i18n::locale().to_string(),
             role: session.role.to_string(),
@@ -173,14 +188,48 @@ impl CatalogTemplate {
             isbn_error: rust_i18n::t!("feedback.isbn_invalid").to_string(),
             vcode_error: rust_i18n::t!("feedback.vcode_invalid").to_string(),
             new_title_label: rust_i18n::t!("catalog.new_title_button").to_string(),
+            guide_message: guide_message.to_string(),
         }
     }
 }
 
-pub async fn catalog_page(session: Session) -> Result<impl IntoResponse, AppError> {
+/// Compute guide message from session state.
+async fn compute_guide_message(pool: &crate::db::DbPool, session: &Session) -> String {
+    let Some(token) = &session.token else {
+        return rust_i18n::t!("guide.initial").to_string();
+    };
+
+    // Check active location (batch mode)
+    if let Ok(Some(loc_id)) = SessionModel::get_active_location(pool, token).await {
+        if let Ok(Some(loc)) = crate::models::location::LocationModel::find_by_id(pool, loc_id).await {
+            let path = crate::models::location::LocationModel::get_path(pool, loc_id).await.unwrap_or_default();
+            return rust_i18n::t!("guide.batch_active", path = &path).to_string();
+        }
+    }
+
+    // Check last volume label
+    if let Ok(Some(vol_label)) = SessionModel::get_last_volume_label(pool, token).await {
+        return rust_i18n::t!("guide.volume_ready", label = &vol_label).to_string();
+    }
+
+    // Check current title
+    if let Ok(Some(title_id)) = SessionModel::get_current_title_id(pool, token).await {
+        if let Ok(Some(title)) = crate::models::title::TitleModel::find_by_id(pool, title_id).await {
+            return rust_i18n::t!("guide.title_active", title = &title.title).to_string();
+        }
+    }
+
+    rust_i18n::t!("guide.initial").to_string()
+}
+
+pub async fn catalog_page(
+    session: Session,
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Librarian)?;
 
-    let template = CatalogTemplate::from_session(&session);
+    let guide = compute_guide_message(&state.pool, &session).await;
+    let template = CatalogTemplate::new(&session, &guide);
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
         Err(e) => {
@@ -268,6 +317,8 @@ pub async fn handle_scan(
 
                         if !is_new {
                             // Existing title — return info feedback
+                            let guide = rust_i18n::t!("guide.title_active", title = &title.title).to_string();
+                            push_guide_oob(&mut oob, &guide);
                             let message = rust_i18n::t!("feedback.title_exists").to_string();
                             let suggestion = rust_i18n::t!("feedback.title_exists_suggestion").to_string();
                             let resp = HtmxResponse {
@@ -279,6 +330,8 @@ pub async fn handle_scan(
 
                         if let Some(cached_meta) = cached {
                             // Cache hit — apply metadata to title and return resolved immediately
+                            let guide = rust_i18n::t!("guide.title_active", title = &title.title).to_string();
+                            push_guide_oob(&mut oob, &guide);
                             let display_title = cached_meta.title.clone().unwrap_or_else(|| title.title.clone());
                             let message = rust_i18n::t!("feedback.metadata_cached",
                                 title = &display_title
@@ -312,6 +365,8 @@ pub async fn handle_scan(
                             timeout_secs,
                         ));
 
+                        let guide = rust_i18n::t!("guide.title_active", title = &title.title).to_string();
+                        push_guide_oob(&mut oob, &guide);
                         let skeleton = skeleton_feedback_html(title.id, &code);
                         let resp = HtmxResponse {
                             main: skeleton,
@@ -394,7 +449,7 @@ pub async fn handle_scan(
                                 .map(|t| (t.title.clone(), t.media_type.clone()))
                                 .unwrap_or_else(|| ("?".to_string(), "book".to_string()));
 
-                            let (message, suggestion) = if let Some(path) = shelved_path {
+                            let (message, suggestion) = if let Some(ref path) = shelved_path {
                                 (
                                     rust_i18n::t!("feedback.volume_created_and_shelved", label = &volume.label, title = &title.0, path = &path).to_string(),
                                     String::new(),
@@ -406,6 +461,11 @@ pub async fn handle_scan(
                                 )
                             };
 
+                            let guide_msg = if shelved_path.is_some() {
+                                rust_i18n::t!("guide.shelved").to_string()
+                            } else {
+                                rust_i18n::t!("guide.volume_ready", label = &volume.label).to_string()
+                            };
                             let resp = HtmxResponse {
                                 main: feedback_html("success", &message, &suggestion),
                                 oob: vec![
@@ -419,6 +479,10 @@ pub async fn handle_scan(
                                     OobUpdate {
                                         target: "session-counter".to_string(),
                                         content: session_counter_html(counter),
+                                    },
+                                    OobUpdate {
+                                        target: "guide-strip".to_string(),
+                                        content: guide_strip_html(&guide_msg),
                                     },
                                 ],
                             };
@@ -465,7 +529,15 @@ pub async fn handle_scan(
                                 label = &vol_label,
                                 path = &path
                             ).to_string();
-                            Ok(Html(feedback_html("success", &message, "")).into_response())
+                            let guide = rust_i18n::t!("guide.shelved").to_string();
+                            let resp = HtmxResponse {
+                                main: feedback_html("success", &message, ""),
+                                oob: vec![OobUpdate {
+                                    target: "guide-strip".to_string(),
+                                    content: guide_strip_html(&guide),
+                                }],
+                            };
+                            Ok(resp.into_response())
                         }
                         Err(e) => {
                             tracing::error!(error = %e, "L-code assignment failed");
@@ -485,7 +557,15 @@ pub async fn handle_scan(
                     let path = crate::models::location::LocationModel::get_path(pool, location.id).await?;
                     let message = rust_i18n::t!("feedback.active_location", path = &path).to_string();
                     let suggestion = rust_i18n::t!("feedback.scan_vcode_to_shelve").to_string();
-                    Ok(Html(feedback_html("info", &message, &suggestion)).into_response())
+                    let guide = rust_i18n::t!("guide.batch_active", path = &path).to_string();
+                    let resp = HtmxResponse {
+                        main: feedback_html("info", &message, &suggestion),
+                        oob: vec![OobUpdate {
+                            target: "guide-strip".to_string(),
+                            content: guide_strip_html(&guide),
+                        }],
+                    };
+                    Ok(resp.into_response())
                 }
             }
             _ => {
@@ -495,7 +575,7 @@ pub async fn handle_scan(
             }
         }
     } else {
-        let template = CatalogTemplate::from_session(&session);
+        let template = CatalogTemplate::new(&session, "");
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),
             Err(e) => {
@@ -579,7 +659,7 @@ pub async fn title_form_page(
                 Ok(Html(html).into_response())
             } else {
                 // Non-HTMX: wrap in full catalog page
-                let catalog = CatalogTemplate::from_session(&session);
+                let catalog = CatalogTemplate::new(&session, "");
                 match catalog.render() {
                     Ok(page_html) => Ok(Html(page_html).into_response()),
                     Err(e) => {
@@ -1340,7 +1420,7 @@ mod tests {
             user_id: Some(1),
             role: Role::Librarian,
         };
-        let template = CatalogTemplate::from_session(&session);
+        let template = CatalogTemplate::new(&session, "");
         let rendered = template.render().unwrap();
         assert!(rendered.contains("scan-field"));
         assert!(rendered.contains("feedback-list"));
@@ -1356,7 +1436,7 @@ mod tests {
             user_id: Some(1),
             role: Role::Librarian,
         };
-        let template = CatalogTemplate::from_session(&session);
+        let template = CatalogTemplate::new(&session, "");
         let rendered = template.render().unwrap();
         assert!(rendered.contains(r#"aria-current="page""#));
         assert!(rendered.contains("/catalog"));

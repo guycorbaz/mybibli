@@ -142,6 +142,12 @@ error:
   delete_has_references: "Suppression impossible : l'élément est référencé par des enregistrements actifs."
   code:
     unsupported_type: Type de code non pris en charge
+guide:
+  initial: "Scannez un ISBN pour cataloguer, ou un code L pour définir un emplacement de rangement."
+  title_active: "Titre actif : %{title}. Scannez un code V pour ajouter un volume."
+  volume_ready: "Volume %{label} prêt. Scannez un code L pour ranger, ou un autre code V."
+  shelved: "Rangé ! Scannez un autre ISBN, code V ou code L."
+  batch_active: "Emplacement actif : %{path}. Scannez des codes V pour ranger ici."
 volume:
   detail_title: Détails du volume
   edit_title: Modifier le volume
