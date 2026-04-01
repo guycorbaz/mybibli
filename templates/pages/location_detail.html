@@ -3,14 +3,108 @@
 {% block title %}{{ location.name }} — mybibli{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto px-4 py-8">
-    <nav class="text-sm text-stone-500 dark:text-stone-400 mb-4" aria-label="Breadcrumb">
-        {{ path }}
+<div class="max-w-5xl mx-auto px-4 lg:px-8 py-6 flex flex-col gap-4">
+
+    <!-- Breadcrumb -->
+    <nav class="text-sm text-stone-500 dark:text-stone-400" aria-label="Location path">
+        <ol class="flex items-center gap-1 flex-wrap">
+            {% for segment in breadcrumb_segments %}
+            {% if loop.last %}
+            <li aria-current="location" class="font-medium text-stone-700 dark:text-stone-300">{{ segment.1 }}</li>
+            {% else %}
+            <li><a href="/location/{{ segment.0 }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ segment.1 }}</a></li>
+            <li aria-hidden="true" class="text-stone-300 dark:text-stone-600">→</li>
+            {% endif %}
+            {% endfor %}
+        </ol>
     </nav>
-    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ location.name }}</h1>
-    <p class="mt-1 text-sm text-stone-400">{{ location.label }} · {{ location.node_type }}</p>
-    <div class="mt-8 text-center text-stone-500 dark:text-stone-400">
-        <p>{{ coming_soon }}</p>
+
+    <div>
+        <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ location.name }}</h1>
+        <p class="mt-1 text-sm text-stone-400">{{ location.label }} · {{ location.node_type }}</p>
     </div>
+
+    <h2 class="text-lg font-semibold text-stone-800 dark:text-stone-200">{{ contents_title }}</h2>
+
+    {% if volumes.items.is_empty() %}
+    <div class="text-center py-12 text-stone-500 dark:text-stone-400">
+        <p class="text-lg">{{ empty_volumes }}</p>
+    </div>
+    {% else %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+            <thead class="text-xs text-stone-500 dark:text-stone-400 uppercase border-b border-stone-200 dark:border-stone-700">
+                <tr>
+                    <th class="px-3 py-2 w-10"></th>
+                    <th class="px-3 py-2">
+                        <a href="/location/{{ location.id }}?sort=title&dir={% if volumes.sort == Some("title".to_string()) && volumes.dir == Some("asc".to_string()) %}desc{% else %}asc{% endif %}&page=1" class="hover:text-stone-700 dark:hover:text-stone-200">
+                            {{ col_title }} {% if volumes.sort == Some("title".to_string()) %}{% if volumes.dir == Some("asc".to_string()) %}▲{% else %}▼{% endif %}{% endif %}
+                        </a>
+                    </th>
+                    <th class="px-3 py-2">
+                        <a href="/location/{{ location.id }}?sort=primary_contributor&dir={% if volumes.sort == Some("primary_contributor".to_string()) && volumes.dir == Some("asc".to_string()) %}desc{% else %}asc{% endif %}&page=1" class="hover:text-stone-700 dark:hover:text-stone-200">
+                            {{ col_author }} {% if volumes.sort == Some("primary_contributor".to_string()) %}{% if volumes.dir == Some("asc".to_string()) %}▲{% else %}▼{% endif %}{% endif %}
+                        </a>
+                    </th>
+                    <th class="px-3 py-2">
+                        <a href="/location/{{ location.id }}?sort=genre_name&dir={% if volumes.sort == Some("genre_name".to_string()) && volumes.dir == Some("asc".to_string()) %}desc{% else %}asc{% endif %}&page=1" class="hover:text-stone-700 dark:hover:text-stone-200">
+                            {{ col_genre }} {% if volumes.sort == Some("genre_name".to_string()) %}{% if volumes.dir == Some("asc".to_string()) %}▲{% else %}▼{% endif %}{% endif %}
+                        </a>
+                    </th>
+                    <th class="px-3 py-2">{{ col_condition }}</th>
+                    <th class="px-3 py-2">{{ col_status }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vol in volumes.items %}
+                <tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50">
+                    <td class="px-3 py-2">
+                        <img src="/static/icons/{{ vol.media_type }}.svg" alt="" class="w-5 h-5" aria-hidden="true">
+                    </td>
+                    <td class="px-3 py-2">
+                        <a href="/title/{{ vol.title_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ vol.title_name }}</a>
+                        <span class="text-xs text-stone-400 ml-1 font-mono">{{ vol.label }}</span>
+                    </td>
+                    <td class="px-3 py-2 text-stone-600 dark:text-stone-400">
+                        {% match vol.primary_contributor %}
+                        {% when Some with (name) %}{{ name }}{% when None %}—{% endmatch %}
+                    </td>
+                    <td class="px-3 py-2 text-stone-600 dark:text-stone-400">{{ vol.genre_name }}</td>
+                    <td class="px-3 py-2 text-stone-600 dark:text-stone-400">
+                        {% if vol.condition_name.is_empty() %}—{% else %}{{ vol.condition_name }}{% endif %}
+                    </td>
+                    <td class="px-3 py-2">
+                        {% if vol.is_on_loan %}
+                        <span class="text-blue-600 dark:text-blue-400" title="On loan">📘</span>
+                        {% else %}
+                        <span class="text-green-600 dark:text-green-400" title="Shelved">✅</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if volumes.total_pages > 1 %}
+    <nav class="flex items-center justify-center gap-2 mt-4" aria-label="Pagination">
+        {% if volumes.has_previous() %}
+        <a href="/location/{{ location.id }}?sort={% match volumes.sort %}{% when Some with (s) %}{{ s }}{% when None %}title{% endmatch %}&dir={% match volumes.dir %}{% when Some with (d) %}{{ d }}{% when None %}asc{% endmatch %}&page={{ volumes.page - 1 }}"
+           class="px-3 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded hover:bg-stone-100 dark:hover:bg-stone-800">
+            {{ prev_label }}
+        </a>
+        {% endif %}
+        <span class="text-sm text-stone-500 dark:text-stone-400">{{ volumes.page }} / {{ volumes.total_pages }}</span>
+        {% if volumes.has_next() %}
+        <a href="/location/{{ location.id }}?sort={% match volumes.sort %}{% when Some with (s) %}{{ s }}{% when None %}title{% endmatch %}&dir={% match volumes.dir %}{% when Some with (d) %}{{ d }}{% when None %}asc{% endmatch %}&page={{ volumes.page + 1 }}"
+           class="px-3 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded hover:bg-stone-100 dark:hover:bg-stone-800">
+            {{ next_label }}
+        </a>
+        {% endif %}
+    </nav>
+    {% endif %}
+
+    {% endif %}
 </div>
 {% endblock %}

@@ -12,6 +12,23 @@ use crate::models::location::LocationModel;
 use crate::services::locations::LocationService;
 use crate::AppState;
 
+use crate::models::volume::{VolumeModel, VolumeWithTitle};
+use crate::models::PaginatedList;
+
+#[derive(Deserialize)]
+pub struct LocationDetailQuery {
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub dir: Option<String>,
+    #[serde(default = "default_page")]
+    pub page: u32,
+}
+
+fn default_page() -> u32 {
+    1
+}
+
 #[derive(Template)]
 #[template(path = "pages/location_detail.html")]
 pub struct LocationDetailTemplate {
@@ -25,15 +42,25 @@ pub struct LocationDetailTemplate {
     pub nav_login: String,
     pub nav_logout: String,
     pub location: LocationModel,
-    pub path: String,
-    pub coming_soon: String,
+    pub breadcrumb_segments: Vec<(u64, String)>,
+    pub volumes: PaginatedList<VolumeWithTitle>,
+    pub contents_title: String,
+    pub empty_volumes: String,
+    pub col_title: String,
+    pub col_author: String,
+    pub col_genre: String,
+    pub col_condition: String,
+    pub col_status: String,
+    pub prev_label: String,
+    pub next_label: String,
 }
 
 pub async fn location_detail(
     State(state): State<AppState>,
     session: Session,
-    HxRequest(is_htmx): HxRequest,
+    HxRequest(_is_htmx): HxRequest,
     Path(id): Path<u64>,
+    axum::extract::Query(params): axum::extract::Query<LocationDetailQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     let pool = &state.pool;
 
@@ -41,24 +68,8 @@ pub async fn location_detail(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
 
-    let path = LocationModel::get_path(pool, location.id).await?;
-
-    if is_htmx {
-        let html = format!(
-            "<div class=\"max-w-4xl mx-auto px-4 py-8\">\
-                <nav class=\"text-sm text-stone-500 dark:text-stone-400 mb-4\" aria-label=\"Breadcrumb\">{}</nav>\
-                <h1 class=\"text-2xl font-bold text-stone-900 dark:text-stone-100\">{}</h1>\
-                <p class=\"mt-1 text-sm text-stone-400\">{} · {}</p>\
-                <div class=\"mt-8 text-center text-stone-500 dark:text-stone-400\"><p>{}</p></div>\
-            </div>",
-            crate::utils::html_escape(&path),
-            crate::utils::html_escape(&location.name),
-            crate::utils::html_escape(&location.label),
-            crate::utils::html_escape(&location.node_type),
-            rust_i18n::t!("feedback.location_stub"),
-        );
-        return Ok(axum::response::Html(html).into_response());
-    }
+    let breadcrumb_segments = LocationModel::get_path_segments(pool, location.id).await?;
+    let volumes = VolumeModel::find_by_location(pool, id, &params.sort, &params.dir, params.page).await?;
 
     let template = LocationDetailTemplate {
         lang: rust_i18n::locale().to_string(),
@@ -70,13 +81,25 @@ pub async fn location_detail(
         nav_admin: rust_i18n::t!("nav.admin").to_string(),
         nav_login: rust_i18n::t!("nav.login").to_string(),
         nav_logout: rust_i18n::t!("nav.logout").to_string(),
+        contents_title: rust_i18n::t!("location.contents_title").to_string(),
+        empty_volumes: rust_i18n::t!("location.empty_volumes").to_string(),
+        col_title: rust_i18n::t!("location.col_title").to_string(),
+        col_author: rust_i18n::t!("location.col_author").to_string(),
+        col_genre: rust_i18n::t!("location.col_genre").to_string(),
+        col_condition: rust_i18n::t!("location.col_condition").to_string(),
+        col_status: rust_i18n::t!("location.col_status").to_string(),
+        prev_label: rust_i18n::t!("pagination.previous").to_string(),
+        next_label: rust_i18n::t!("pagination.next").to_string(),
         location,
-        path,
-        coming_soon: rust_i18n::t!("feedback.location_stub").to_string(),
+        breadcrumb_segments,
+        volumes,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to render location detail template");
+            Err(AppError::Internal("Template rendering failed".to_string()))
+        }
     }
 }
 
@@ -497,11 +520,20 @@ mod tests {
                 node_type: "room".to_string(),
                 label: "L0001".to_string(),
             },
-            path: "Maison → Salon".to_string(),
-            coming_soon: "Coming soon".to_string(),
+            breadcrumb_segments: vec![(1, "Salon".to_string())],
+            volumes: crate::models::PaginatedList::new(vec![], 1, 0, None, None, None),
+            contents_title: "Shelf contents".to_string(),
+            empty_volumes: "No volumes".to_string(),
+            col_title: "Title".to_string(),
+            col_author: "Author".to_string(),
+            col_genre: "Genre".to_string(),
+            col_condition: "Condition".to_string(),
+            col_status: "Status".to_string(),
+            prev_label: "Previous".to_string(),
+            next_label: "Next".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(rendered.contains("Salon"));
-        assert!(rendered.contains("Maison"));
+        assert!(rendered.contains("No volumes"));
     }
 }

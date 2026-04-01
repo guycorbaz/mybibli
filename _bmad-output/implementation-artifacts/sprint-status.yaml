@@ -70,7 +70,8 @@ development_status:
   epic-2: in-progress
   2-1-location-hierarchy-crud: done
   2-2-shelving-by-scan: done
-  2-3-browse-shelf-contents: backlog
+  2-3-browse-shelf-contents: done
+  # Note: Epic 2 complete — all 3 stories done
   # Deferred: 2-x-barcode-label-generation (FR27, FR116-FR117) — Guy uses glabel for now
   epic-2-retrospective: optional
 

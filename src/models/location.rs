@@ -207,6 +207,39 @@ impl LocationModel {
             .ok_or_else(|| AppError::Internal("Failed to retrieve updated location".to_string()))
     }
 
+    /// Walk the parent chain and return structured segments for linked breadcrumbs.
+    /// Returns `[(id, "Maison"), (id, "Salon"), (id, "Étagère 3")]` from root to leaf.
+    pub async fn get_path_segments(pool: &DbPool, id: u64) -> Result<Vec<(u64, String)>, AppError> {
+        const MAX_DEPTH: usize = 20;
+        let mut segments: Vec<(u64, String)> = Vec::new();
+        let mut current_id = Some(id);
+
+        while let Some(cid) = current_id {
+            if segments.len() >= MAX_DEPTH {
+                break;
+            }
+            let row = sqlx::query(
+                "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name FROM storage_locations WHERE id = ? AND deleted_at IS NULL",
+            )
+            .bind(cid)
+            .fetch_optional(pool)
+            .await?;
+
+            match row {
+                Some(r) => {
+                    let loc_id: u64 = r.try_get("id")?;
+                    let name: String = r.try_get("name")?;
+                    segments.push((loc_id, name));
+                    current_id = r.try_get::<Option<i64>, _>("parent_id")?.map(|v| v as u64);
+                }
+                None => break,
+            }
+        }
+
+        segments.reverse();
+        Ok(segments)
+    }
+
     /// Get the version of a location (for optimistic locking forms).
     pub async fn get_version(pool: &DbPool, id: u64) -> Result<i32, AppError> {
         let row: Option<(i32,)> = sqlx::query_as(

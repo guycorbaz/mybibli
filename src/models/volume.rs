@@ -210,6 +210,128 @@ impl VolumeModel {
     }
 }
 
+/// A volume with its title metadata, for location contents display.
+#[derive(Debug, Clone)]
+pub struct VolumeWithTitle {
+    pub volume_id: u64,
+    pub label: String,
+    pub title_id: u64,
+    pub title_name: String,
+    pub media_type: String,
+    pub primary_contributor: Option<String>,
+    pub genre_name: String,
+    pub condition_name: String,
+    pub is_on_loan: bool,
+}
+
+/// Sort column whitelist for location contents.
+const LOCATION_SORT_COLUMNS: &[&str] = &["title", "primary_contributor", "genre_name"];
+const SORT_DIRS: &[&str] = &["asc", "desc"];
+
+fn validated_location_sort(sort: &Option<String>) -> &str {
+    match sort {
+        Some(s) if LOCATION_SORT_COLUMNS.contains(&s.as_str()) => s.as_str(),
+        _ => "title",
+    }
+}
+
+fn validated_dir(dir: &Option<String>) -> &str {
+    match dir {
+        Some(d) if SORT_DIRS.contains(&d.as_str()) => d.as_str(),
+        _ => "asc",
+    }
+}
+
+fn map_location_sort_column(sort: &str) -> &str {
+    match sort {
+        "title" => "t.title",
+        "primary_contributor" => "primary_contributor",
+        "genre_name" => "genre_name",
+        _ => "t.title",
+    }
+}
+
+impl VolumeModel {
+    /// Find volumes at a location with title metadata, sorted and paginated.
+    pub async fn find_by_location(
+        pool: &crate::db::DbPool,
+        location_id: u64,
+        sort: &Option<String>,
+        dir: &Option<String>,
+        page: u32,
+    ) -> Result<crate::models::PaginatedList<VolumeWithTitle>, AppError> {
+        let sort_col = validated_location_sort(sort);
+        let sort_dir = validated_dir(dir);
+        let sql_col = map_location_sort_column(sort_col);
+        let offset = (page.saturating_sub(1)) * crate::models::DEFAULT_PAGE_SIZE;
+
+        // Count
+        let count_row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM volumes v \
+             JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL \
+             WHERE v.location_id = ? AND v.deleted_at IS NULL",
+        )
+        .bind(location_id)
+        .fetch_one(pool)
+        .await?;
+
+        // Data
+        let data_sql = format!(
+            "SELECT v.id as volume_id, v.label, \
+                    t.id as title_id, t.title as title_name, t.media_type, \
+                    COALESCE(g.name, '') as genre_name, \
+                    COALESCE(vs.name, '') as condition_name, \
+                    (SELECT c.name FROM title_contributors tc \
+                     JOIN contributors c ON tc.contributor_id = c.id \
+                     JOIN contributor_roles cr ON tc.role_id = cr.id \
+                     WHERE tc.title_id = t.id AND tc.deleted_at IS NULL AND c.deleted_at IS NULL AND cr.deleted_at IS NULL \
+                     ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC \
+                     LIMIT 1) as primary_contributor, \
+                    (CASE WHEN l.id IS NOT NULL THEN 1 ELSE 0 END) as is_on_loan \
+             FROM volumes v \
+             JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL \
+             LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
+             LEFT JOIN volume_states vs ON v.condition_state_id = vs.id AND vs.deleted_at IS NULL \
+             LEFT JOIN loans l ON v.id = l.volume_id AND l.returned_at IS NULL AND l.deleted_at IS NULL \
+             WHERE v.location_id = ? AND v.deleted_at IS NULL \
+             ORDER BY {} {} \
+             LIMIT ? OFFSET ?",
+            sql_col, sort_dir
+        );
+
+        let rows = sqlx::query(&data_sql)
+            .bind(location_id)
+            .bind(crate::models::DEFAULT_PAGE_SIZE)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?;
+
+        let items: Vec<VolumeWithTitle> = rows
+            .iter()
+            .map(|r| VolumeWithTitle {
+                volume_id: r.try_get("volume_id").unwrap_or(0),
+                label: r.try_get("label").unwrap_or_default(),
+                title_id: r.try_get("title_id").unwrap_or(0),
+                title_name: r.try_get("title_name").unwrap_or_default(),
+                media_type: r.try_get("media_type").unwrap_or_default(),
+                primary_contributor: r.try_get("primary_contributor").unwrap_or(None),
+                genre_name: r.try_get("genre_name").unwrap_or_default(),
+                condition_name: r.try_get("condition_name").unwrap_or_default(),
+                is_on_loan: r.try_get::<i32, _>("is_on_loan").unwrap_or(0) != 0,
+            })
+            .collect();
+
+        Ok(crate::models::PaginatedList::new(
+            items,
+            page,
+            count_row.0 as u64,
+            Some(sort_col.to_string()),
+            Some(sort_dir.to_string()),
+            None,
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
