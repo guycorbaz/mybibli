@@ -67,7 +67,11 @@ development_status:
   # FRs: FR24-FR29, FR31-FR35, FR116-FR117
   # ARs: AR10, AR11
   # UX-DRs: UX-DR11, UX-DR12, UX-DR19
-  epic-2: backlog
+  epic-2: in-progress
+  2-1-location-hierarchy-crud: done
+  2-2-shelving-by-scan: backlog
+  2-3-browse-shelf-contents: backlog
+  # Deferred: 2-x-barcode-label-generation (FR27, FR116-FR117) — Guy uses glabel for now
   epic-2-retrospective: optional
 
   # Epic 3: Tous mes médias sont gérés

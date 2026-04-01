@@ -24,6 +24,11 @@ fn html_escape(s: &str) -> String {
         .replace('\'', "&#x27;")
 }
 
+/// Public accessor for feedback_html used by other route modules.
+pub fn feedback_html_pub(variant: &str, message: &str, suggestion: &str) -> String {
+    feedback_html(variant, message, suggestion)
+}
+
 fn feedback_html(variant: &str, message: &str, suggestion: &str) -> String {
     let (border_color, bg_color, icon_color, icon_path) = match variant {
         "success" => (

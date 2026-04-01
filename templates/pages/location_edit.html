@@ -1,0 +1,53 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ edit_title }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 lg:px-8 py-6">
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100 mb-6">{{ edit_title }}: {{ location.name }}</h1>
+
+    <form method="POST" action="/locations/{{ location.id }}" class="space-y-4">
+        <input type="hidden" name="version" value="{{ version }}">
+
+        <div>
+            <label for="edit-name" class="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">{{ name_label }}</label>
+            <input type="text" id="edit-name" name="name" value="{{ location.name }}" required
+                   class="w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 min-h-[44px]">
+        </div>
+
+        <div>
+            <label for="edit-type" class="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">{{ type_label }}</label>
+            <select id="edit-type" name="node_type" required
+                    class="w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 min-h-[44px]">
+                {% for nt in node_types %}
+                <option value="{{ nt.1 }}" {% if nt.1 == location.node_type %}selected{% endif %}>{{ nt.1 }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label for="edit-parent" class="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">{{ parent_label }}</label>
+            <select id="edit-parent" name="parent_id"
+                    class="w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 min-h-[44px]">
+                <option value="">{{ none_label }}</option>
+                {% for loc in all_locations %}
+                {% if loc.id != location.id %}
+                <option value="{{ loc.id }}" {% if location.parent_id.is_some() && location.parent_id.unwrap() == loc.id %}selected{% endif %}>
+                    {{ loc.name }} ({{ loc.label }})
+                </option>
+                {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="flex gap-3">
+            <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md min-h-[44px]">
+                {{ submit_label }}
+            </button>
+            <a href="/locations" class="px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-md min-h-[44px] flex items-center">
+                ← Back
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

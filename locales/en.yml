@@ -139,6 +139,31 @@ error:
   delete_has_references: "Cannot delete: item is referenced by active records."
   code:
     unsupported_type: Unsupported code type
+location:
+  tree_title: Locations
+  add_root: Add root location
+  add_child: Add child
+  edit: Edit location
+  delete: Delete
+  name_label: Name
+  type_label: Type
+  lcode_label: L-code
+  parent_label: Parent location
+  submit: Save
+  none: "(none — root level)"
+  empty_state: "Create your first location to start organizing!"
+  created: "%{name} created (%{label})."
+  updated: Location updated.
+  deleted: Location deleted.
+  has_volumes: "Cannot delete: %{count} volumes stored here. Move volumes first."
+  has_children: "Cannot delete: has child locations. Delete or move children first."
+  cycle_detected: "Cannot move: would create a circular hierarchy."
+  lcode_invalid: "Invalid L-code format. Expected L followed by 4 digits (e.g., L0042)."
+  lcode_duplicate: "This L-code is already in use."
+  lcode_exhausted: "All L-codes (L0001–L9999) are in use."
+  invalid_node_type: "Invalid location type."
+  volumes_count: "%{count} volumes"
+  breadcrumb_label: Location path
 login:
   title: Log in
   username_label: Username

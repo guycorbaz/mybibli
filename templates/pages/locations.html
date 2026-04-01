@@ -1,0 +1,50 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ tree_title }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 lg:px-8 py-6 flex flex-col gap-4">
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ tree_title }}</h1>
+
+    {% if tree_html.is_empty() %}
+    <div class="text-center py-12 text-stone-500 dark:text-stone-400">
+        <svg class="w-12 h-12 mx-auto mb-4 text-stone-300 dark:text-stone-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+        <p class="text-lg">{{ empty_state }}</p>
+    </div>
+    {% else %}
+    <div role="tree" aria-label="{{ tree_title }}" class="space-y-1">
+        {{ tree_html|safe }}
+    </div>
+    {% endif %}
+
+    <!-- Add root location form -->
+    <details class="mt-4 border border-stone-200 dark:border-stone-700 rounded-md">
+        <summary class="px-4 py-2 cursor-pointer text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-stone-50 dark:hover:bg-stone-800">
+            + {{ add_root_label }}
+        </summary>
+        <form method="POST" action="/locations" class="px-4 py-3 space-y-3 border-t border-stone-200 dark:border-stone-700">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                    <label for="new-name" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ name_label }}</label>
+                    <input type="text" id="new-name" name="name" required class="mt-1 w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 min-h-[44px]">
+                </div>
+                <div>
+                    <label for="new-type" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ type_label }}</label>
+                    <select id="new-type" name="node_type" required class="mt-1 w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 min-h-[44px]">
+                        {% for nt in node_types %}
+                        <option value="{{ nt.1 }}">{{ nt.1 }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="new-lcode" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ lcode_label }}</label>
+                    <input type="text" id="new-lcode" name="label" value="{{ next_lcode }}" required maxlength="5" pattern="L[0-9]{4}" class="mt-1 w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-mono min-h-[44px]">
+                </div>
+            </div>
+            <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md min-h-[44px]">
+                {{ submit_label }}
+            </button>
+        </form>
+    </details>
+</div>
+{% endblock %}

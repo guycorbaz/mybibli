@@ -85,6 +85,23 @@ pub fn build_router(state: AppState) -> Router {
             "/location/{id}",
             axum::routing::get(locations::location_detail),
         )
+        // Location management
+        .route(
+            "/locations",
+            axum::routing::get(locations::locations_page).post(locations::create_location),
+        )
+        .route(
+            "/locations/next-lcode",
+            axum::routing::get(locations::next_lcode),
+        )
+        .route(
+            "/locations/{id}/edit",
+            axum::routing::get(locations::edit_location_page),
+        )
+        .route(
+            "/locations/{id}",
+            axum::routing::post(locations::update_location).delete(locations::delete_location),
+        )
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
         .with_state(state)

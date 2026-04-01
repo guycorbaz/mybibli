@@ -65,7 +65,7 @@ These apply to ALL sessions without exception.
 - **Error handling:** `AppError` enum with `IntoResponse`. Conflict = 409, Unauthorized = 303 redirect with HX-Redirect.
 - **Logging:** `tracing` macros only — no `println!`.
 - **i18n:** `rust_i18n::t!("key")` for ALL user-facing text. Keys in `locales/en.yml` + `locales/fr.yml`. JS strings: read `<html lang>` and use embedded string map. **CRITICAL YAML FORMAT: locale files must NOT have `en:` or `fr:` as top-level wrapper — the filename determines the locale. Keys start at root level (e.g., `nav:` not `en: nav:`). After adding/changing keys, run `touch src/lib.rs` before `cargo build` to force proc macro recompilation.**
-- **DB queries:** MUST include `deleted_at IS NULL` in every SELECT/JOIN on entity tables. Every entity table has `deleted_at`, `version`, `created_at`, `updated_at` columns.
+- **DB queries:** MUST include `deleted_at IS NULL` in every SELECT/JOIN on entity tables. Every entity table has `deleted_at`, `version`, `created_at`, `updated_at` columns. **MariaDB type gotchas:** (1) `JSON` columns are stored as `BLOB` — use `CAST(col AS CHAR)` to read as String. (2) `BIGINT UNSIGNED NULL` columns — use `CAST(col AS SIGNED)` and read as `Option<i64>`, then convert to `u64`. (3) Never use `CAST(... AS UNSIGNED)` in SELECT — SQLx can't decode `BIGINT UNSIGNED` into Rust integers reliably.
 - **Optimistic locking:** UPDATE with `WHERE id = ? AND version = ?`, then `check_update_result()` from `services/locking.rs`.
 - **Soft delete:** `services/soft_delete.rs` with table whitelist. Never hard-delete.
 - **HTMX responses:** `HtmxResponse { main, oob: Vec<OobUpdate> }`. Check `HxRequest(is_htmx)` — return fragment for HTMX, full page for direct navigation.
