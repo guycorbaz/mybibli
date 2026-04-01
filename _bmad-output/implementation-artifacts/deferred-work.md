@@ -30,3 +30,26 @@
 - page=999999 in URL renders huge pagination (same as pass 1 — implement windowed pagination)
 - Missing aria-sort attributes on sortable column headers in home.html
 - Hardcoded aria-label strings (Pagination, Remove filter, Breadcrumb) — should use i18n keys
+
+## Deferred from: code review of 1-7-scan-feedback-and-async-metadata (2026-03-31)
+
+- Race condition in contributor creation (SELECT then INSERT not atomic) — single-user NAS, accepted TOCTOU
+- Concurrent identical ISBN scans may create duplicate pending_metadata_updates rows — single-user NAS
+- XML parsing via naive string search is fragile with malformed/adversarial XML — acceptable for MVP with well-formed BnF responses
+- Fire-and-forget spawned tasks with no backpressure or concurrency limit — single-user NAS
+- Hardcoded "Auteur" role name in SQL queries for author contributor lookup — pre-existing DB seed pattern
+- No body size limit on BnF external API response read — single-user NAS, BnF trusted
+- reqwest::Client created per BnF request instead of reused — performance optimization deferred
+- Spawned metadata task panic silently swallowed (JoinHandle dropped) — acceptable for MVP
+- COALESCE with empty string metadata fields may update DB columns with empty values
+- Raw error strings in template rendering AppError::Internal("Template rendering failed") — pre-existing across all routes
+
+## Deferred from: code review of 1-8-cross-cutting-patterns (2026-03-31)
+
+- Conflict error conflates version mismatch with soft-deleted entity — both return same message
+- No HTTP endpoint calls update_with_locking yet — title edit form doesn't exist; infrastructure ready
+- Session timeout JS timer drifts from server on failed HTMX requests — low impact
+- Theme toggle aria-label selector fragile (matches onclick content) — works but brittle
+- Soft-delete already-deleted returns 404 not idempotent 200 — acceptable REST semantics
+- htmx might not be loaded when keepAlive() fires — fetch() fallback handles it
+- resetTimer on every htmx:afterRequest without debounce — cheap operation

@@ -34,11 +34,11 @@
 <!-- Mobile nav menu -->
 <div id="mobile-nav" class="hidden md:hidden bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 px-4 py-2">
     {% if role == "librarian" || role == "admin" %}
-    <a href="/catalog" class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">{{ nav_catalog }}</a>
-    <a href="/loans" class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">{{ nav_loans }}</a>
+    <a href="/catalog" {% if current_page == "catalog" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ nav_catalog }}</a>
+    <a href="/loans" {% if current_page == "loans" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ nav_loans }}</a>
     {% endif %}
     {% if role == "admin" %}
-    <a href="/admin" class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">{{ nav_admin }}</a>
+    <a href="/admin" {% if current_page == "admin" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ nav_admin }}</a>
     {% endif %}
 </div>
 </header>

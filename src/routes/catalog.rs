@@ -99,6 +99,25 @@ fn context_banner_html(title_name: &str, media_type: &str, volume_count: u64, au
     )
 }
 
+fn skeleton_feedback_html(title_id: u64, isbn: &str) -> String {
+    let message = rust_i18n::t!("feedback.metadata_fetching", isbn = isbn).to_string();
+    format!(
+        r##"<div id="feedback-entry-{title_id}" class="feedback-skeleton flex items-start gap-3 px-4 py-3 border-l-4 border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-800/50 rounded-r-md" role="status" aria-live="polite">
+    <svg class="animate-spin w-5 h-5 text-stone-400 flex-shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+    <div class="flex-1">
+        <p class="text-sm text-stone-700 dark:text-stone-300">{message}</p>
+        <div class="mt-1 h-2 bg-stone-200 dark:bg-stone-700 rounded shimmer-bar"></div>
+    </div>
+</div>
+<style>
+@keyframes shimmer {{ 0% {{ background-position: -200px 0; }} 100% {{ background-position: 200px 0; }} }}
+.shimmer-bar {{ background: linear-gradient(90deg, transparent, rgba(120,113,108,0.15), transparent); background-size: 200px 100%; animation: shimmer 1.5s infinite; }}
+@media (prefers-reduced-motion: reduce) {{ .shimmer-bar {{ animation: none; }} }}
+</style>"##,
+        message = html_escape(&message)
+    )
+}
+
 fn session_counter_html(count: u64) -> String {
     let text = rust_i18n::t!("catalog.session_counter", count = count).to_string();
     let aria = rust_i18n::t!("catalog.session_counter_aria", count = count).to_string();
@@ -205,6 +224,11 @@ pub async fn handle_scan(
 
         match code_type {
             "isbn" => {
+                // Check metadata cache first for immediate resolution
+                let cached = crate::models::metadata_cache::MetadataCacheModel::find_by_isbn(pool, &code)
+                    .await
+                    .unwrap_or(None);
+
                 match TitleService::create_from_isbn(pool, &code, session.token.as_deref()).await {
                     Ok((title, is_new)) => {
                         // Update current title in session
@@ -212,33 +236,18 @@ pub async fn handle_scan(
                             if let Err(e) = SessionModel::set_current_title(pool, token, title.id).await {
                                 tracing::warn!(error = %e, "Failed to update current title in session");
                             }
-                            // Clear stale volume label on new title context
                             let _ = SessionModel::set_last_volume_label(pool, token, "").await;
                         }
 
-                        let (variant, message, suggestion) = if is_new {
-                            (
-                                "success",
-                                rust_i18n::t!("feedback.title_created").to_string(),
-                                rust_i18n::t!("feedback.title_created_suggestion").to_string(),
-                            )
-                        } else {
-                            (
-                                "info",
-                                rust_i18n::t!("feedback.title_exists").to_string(),
-                                rust_i18n::t!("feedback.title_exists_suggestion").to_string(),
-                            )
-                        };
-
                         let vol_count = VolumeModel::count_by_title(pool, title.id).await.unwrap_or(0);
 
-                        // Increment session counter on title creation
+                        // Build OOB updates: context banner + session counter
                         let mut oob = vec![OobUpdate {
                             target: "context-banner".to_string(),
                             content: {
-                                        let author = TitleContributorModel::get_primary_contributor(pool, title.id).await.unwrap_or(None);
-                                        context_banner_html(&title.title, &title.media_type, vol_count, author.as_deref())
-                                    },
+                                let author = TitleContributorModel::get_primary_contributor(pool, title.id).await.unwrap_or(None);
+                                context_banner_html(&title.title, &title.media_type, vol_count, author.as_deref())
+                            },
                         }];
                         if is_new
                             && let Some(token) = &session.token
@@ -250,8 +259,55 @@ pub async fn handle_scan(
                             });
                         }
 
+                        if !is_new {
+                            // Existing title — return info feedback
+                            let message = rust_i18n::t!("feedback.title_exists").to_string();
+                            let suggestion = rust_i18n::t!("feedback.title_exists_suggestion").to_string();
+                            let resp = HtmxResponse {
+                                main: feedback_html("info", &message, &suggestion),
+                                oob,
+                            };
+                            return Ok(resp.into_response());
+                        }
+
+                        if let Some(cached_meta) = cached {
+                            // Cache hit — apply metadata to title and return resolved immediately
+                            let display_title = cached_meta.title.clone().unwrap_or_else(|| title.title.clone());
+                            let message = rust_i18n::t!("feedback.metadata_cached",
+                                title = &display_title
+                            ).to_string();
+                            tokio::spawn({
+                                let pool = pool.clone();
+                                let title_id = title.id;
+                                async move {
+                                    crate::tasks::metadata_fetch::apply_cached_metadata(
+                                        &pool, title_id, &cached_meta,
+                                    ).await;
+                                }
+                            });
+                            let resp = HtmxResponse {
+                                main: feedback_html("success", &message, ""),
+                                oob,
+                            };
+                            return Ok(resp.into_response());
+                        }
+
+                        // Cache miss — spawn async metadata fetch and return skeleton
+                        let timeout_secs = state.settings
+                            .read()
+                            .map(|s| s.metadata_fetch_timeout_secs)
+                            .unwrap_or(30);
+
+                        tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
+                            pool.clone(),
+                            title.id,
+                            code.clone(),
+                            timeout_secs,
+                        ));
+
+                        let skeleton = skeleton_feedback_html(title.id, &code);
                         let resp = HtmxResponse {
-                            main: feedback_html(variant, &message, &suggestion),
+                            main: skeleton,
                             oob,
                         };
                         Ok(resp.into_response())
@@ -914,6 +970,56 @@ fn contributor_list_html(contributors: &[TitleContributorModel]) -> String {
     html
 }
 
+// ─── Delete handlers ─────────────────────────────────────────────
+
+pub async fn delete_title(
+    session: Session,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+) -> Result<impl IntoResponse, AppError> {
+    session.require_role(Role::Librarian)?;
+
+    let pool = &state.pool;
+
+    // Check for active child volumes before soft-deleting title
+    let active_volumes = VolumeModel::count_by_title(pool, id).await.unwrap_or(0);
+    if active_volumes > 0 {
+        let message = rust_i18n::t!("error.delete_has_references").to_string();
+        return Ok(Html(feedback_html("warning", &message, "")));
+    }
+
+    crate::services::soft_delete::SoftDeleteService::soft_delete(pool, "titles", id).await?;
+
+    let message = rust_i18n::t!("feedback.deleted").to_string();
+    Ok(Html(feedback_html("success", &message, "")))
+}
+
+pub async fn delete_volume(
+    session: Session,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+) -> Result<impl IntoResponse, AppError> {
+    session.require_role(Role::Librarian)?;
+
+    crate::services::soft_delete::SoftDeleteService::soft_delete(&state.pool, "volumes", id).await?;
+
+    let message = rust_i18n::t!("feedback.deleted").to_string();
+    Ok(Html(feedback_html("success", &message, "")))
+}
+
+// ─── Session keepalive ───────────────────────────────────────────
+
+pub async fn session_keepalive(
+    session: Session,
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, AppError> {
+    let Some(token) = &session.token else {
+        return Err(AppError::Unauthorized);
+    };
+    SessionModel::update_last_activity(&state.pool, token).await?;
+    Ok(axum::http::StatusCode::OK)
+}
+
 // ─── Tests ────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1041,5 +1147,33 @@ mod tests {
         // in the i18n label gets escaped
         assert!(html.contains("book.svg"));
         assert!(html.contains("bg-indigo-50"));
+    }
+
+    #[test]
+    fn test_skeleton_feedback_html_structure() {
+        rust_i18n::set_locale("en");
+        let html = skeleton_feedback_html(42, "9782070360246");
+        assert!(html.contains(r#"id="feedback-entry-42""#));
+        assert!(html.contains("feedback-skeleton"));
+        assert!(html.contains("animate-spin"));
+        assert!(html.contains("shimmer-bar"));
+        assert!(html.contains("prefers-reduced-motion"));
+    }
+
+    #[test]
+    fn test_skeleton_feedback_html_has_spinner() {
+        rust_i18n::set_locale("en");
+        let html = skeleton_feedback_html(1, "9780306406157");
+        assert!(html.contains("animate-spin"));
+        assert!(html.contains(r#"role="status""#));
+        assert!(html.contains("aria-live"));
+    }
+
+    #[test]
+    fn test_session_counter_html() {
+        rust_i18n::set_locale("en");
+        let html = session_counter_html(5);
+        assert!(html.contains("5"));
+        assert!(html.contains("aria-label"));
     }
 }

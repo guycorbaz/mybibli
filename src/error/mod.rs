@@ -11,6 +11,7 @@ pub enum AppError {
     Internal(String),
     NotFound(String),
     BadRequest(String),
+    Conflict(String),
     Unauthorized,
     Database(sqlx::Error),
 }
@@ -21,6 +22,7 @@ impl std::fmt::Display for AppError {
             AppError::Internal(msg) => write!(f, "Internal error: {msg}"),
             AppError::NotFound(msg) => write!(f, "Not found: {msg}"),
             AppError::BadRequest(msg) => write!(f, "Bad request: {msg}"),
+            AppError::Conflict(msg) => write!(f, "Conflict: {msg}"),
             AppError::Unauthorized => write!(f, "Unauthorized"),
             AppError::Database(err) => write!(f, "Database error: {err}"),
         }
@@ -38,8 +40,8 @@ impl IntoResponse for AppError {
             return (
                 StatusCode::SEE_OTHER,
                 [
-                    (header::LOCATION, "/"),
-                    (header::HeaderName::from_static("hx-redirect"), "/"),
+                    (header::LOCATION, "/login"),
+                    (header::HeaderName::from_static("hx-redirect"), "/login"),
                 ],
             )
                 .into_response();
@@ -61,6 +63,11 @@ impl IntoResponse for AppError {
                 msg.clone(),
                 msg.clone(),
             ),
+            AppError::Conflict(msg) => (
+                StatusCode::CONFLICT,
+                msg.clone(),
+                msg.clone(),
+            ),
             AppError::Database(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 err.to_string(),
@@ -78,5 +85,52 @@ impl IntoResponse for AppError {
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
         AppError::Database(err)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_conflict_display() {
+        let err = AppError::Conflict("version mismatch".to_string());
+        assert_eq!(err.to_string(), "Conflict: version mismatch");
+    }
+
+    #[test]
+    fn test_conflict_into_response_status() {
+        let err = AppError::Conflict("record modified".to_string());
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn test_bad_request_into_response_status() {
+        let err = AppError::BadRequest("invalid input".to_string());
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_not_found_into_response_status() {
+        let err = AppError::NotFound("missing".to_string());
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_internal_into_response_status() {
+        let err = AppError::Internal("crash".to_string());
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn test_unauthorized_into_response_redirect_to_login() {
+        let err = AppError::Unauthorized;
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(response.headers().get("location").unwrap(), "/login");
     }
 }

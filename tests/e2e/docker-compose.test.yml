@@ -11,9 +11,12 @@ services:
       PORT: "8080"
       RUST_LOG: mybibli=debug
       APP_LANGUAGE: "en"
+      BNF_API_BASE_URL: "http://mock-metadata:9090"
     depends_on:
       db:
         condition: service_healthy
+      mock-metadata:
+        condition: service_started
 
   db:
     image: mariadb:10.11
@@ -32,3 +35,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  mock-metadata:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./mock-metadata-server:/app
+    command: python server.py
+    ports:
+      - "9090:9090"

@@ -58,9 +58,10 @@ development_status:
   1-4-volume-management: done
   1-5-contributor-management: done
   1-6-search-and-browsing: done
-  1-7-scan-feedback-and-async-metadata: backlog
-  1-8-cross-cutting-patterns: backlog
-  epic-1-retrospective: optional
+  1-7-scan-feedback-and-async-metadata: done
+  1-8-cross-cutting-patterns: done
+  1-9-minimal-login: done
+  epic-1-retrospective: done
 
   # Epic 2: Je sais où sont mes livres
   # FRs: FR24-FR29, FR31-FR35, FR116-FR117

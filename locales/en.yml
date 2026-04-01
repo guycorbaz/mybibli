@@ -1,132 +1,151 @@
-en:
-  app:
-    name: mybibli
-  home:
-    title: mybibli
-    subtitle: Your personal media library
-  catalog:
-    title: Catalog
-    scan_placeholder: "Scan or type: ISBN, V-code, L-code, or search..."
-    scan_label: Scan barcode or type code
-    scan_received: "Scan received: %{code}"
-    new_title_button: New title
-    session_counter: "%{count} items this session"
-    session_counter_aria: "%{count} items cataloged this session"
-  nav:
-    catalog: Catalog
-    loans: Loans
-    admin: Admin
-    login: Log in
-    logout: Log out
-    skip_to_content: Skip to main content
-  title:
-    created: "Title created: %{title}"
-    exists: "Title already exists: %{title}"
-    current_banner: "Current: %{title}"
-    current_banner_with_volumes: "Current: %{title} — %{count} vol"
-    current_banner_with_author: "Current: %{title} — %{author} — %{count} vol"
-    form:
-      heading: New title
-      title_label: Title
-      media_type: Media type
-      genre: Genre
-      language: Language
-      subtitle: Subtitle
-      publisher: Publisher
-      publication_date: Publication date
-      isbn: ISBN
-      issn: ISSN
-      upc: UPC
-      page_count: Page count
-      track_count: Track count
-      total_duration: "Total duration (seconds)"
-      age_rating: Age rating
-      issue_number: Issue number
-      submit: Create title
-      cancel: Cancel
-    media_types:
-      book: Book
-      bd: Comic / Graphic novel
-      cd: CD
-      dvd: DVD
-      magazine: Magazine
-      report: Report
-  feedback:
-    title_created: "Title created successfully."
-    title_created_suggestion: "Scan a V-code to attach a volume, or scan another ISBN."
-    title_exists: "This title is already in your catalog."
-    title_exists_suggestion: "Scan a V-code to attach a volume."
-    code_unsupported: "Media type disambiguation not yet available. Use manual title creation for non-ISBN codes."
-    isbn_invalid: "This code doesn't appear to be a valid ISBN. Please check the barcode and scan again."
-    volume_created: "Volume %{label} attached to %{title}."
-    volume_created_suggestion: "Scan L-code to shelve, or scan another V-code."
-    volume_duplicate: "Label %{label} is already assigned to %{title}. Scan a different label."
-    volume_no_title: "No title selected. Scan an ISBN first to establish a title context."
-    volume_shelved: "Volume %{label} shelved at %{path}."
-    vcode_invalid: "Invalid volume code format. Expected V followed by 4 digits (e.g., V0042)."
-    lcode_not_found: "Location %{label} not found."
-    location_stub: "Location contents — coming soon."
-  validation:
-    required: "This field is required."
-    negative_number: "Numeric fields must be non-negative."
-    invalid_date_format: "Invalid date format. Use YYYY, YYYY-MM, or YYYY-MM-DD."
-  contributor:
-    added: "%{name} added as %{role} to %{title}."
-    duplicate: "%{name} is already %{role} on this title."
-    updated: Contributor updated.
-    deleted: Contributor deleted.
-    delete_blocked: "Cannot delete: %{name} is associated with %{count} title(s)."
-    removed: Contributor removed from title.
-    error:
-      name_required: Contributor name is required.
-      name_too_long: Contributor name must be 255 characters or less.
-      role_not_found: Selected role does not exist.
-    form:
-      name: Name
-      role: Role
-      biography: Biography
-      submit: Add contributor
-      add_button: Add contributor
-  home:
-    search_placeholder: "Search titles, authors, series..."
-  search:
-    no_results: "No results for '%{query}'."
-    no_results_create: "+ Create new title"
-    results_count: "%{count} results found"
-    col:
-      title: Title
-      contributor: Contributor
-      genre: Genre
-      volumes: Volumes
-    connection_lost: "Connection lost — check your network."
-  pagination:
-    previous: Previous
-    next: Next
-  title_detail:
-    contributors: Contributors
-    volumes: Volumes
+app:
+  name: mybibli
+home:
+  title: mybibli
+  subtitle: Your personal media library
+catalog:
+  title: Catalog
+  scan_placeholder: "Scan or type: ISBN, V-code, L-code, or search..."
+  scan_label: Scan barcode or type code
+  scan_received: "Scan received: %{code}"
+  new_title_button: New title
+  session_counter: "%{count} items this session"
+  session_counter_aria: "%{count} items cataloged this session"
+nav:
+  catalog: Catalog
+  loans: Loans
+  admin: Admin
+  login: Log in
+  logout: Log out
+  skip_to_content: Skip to main content
+  theme_toggle: Toggle theme
+title:
+  created: "Title created: %{title}"
+  exists: "Title already exists: %{title}"
+  current_banner: "Current: %{title}"
+  current_banner_with_volumes: "Current: %{title} — %{count} vol"
+  current_banner_with_author: "Current: %{title} — %{author} — %{count} vol"
+  form:
+    heading: New title
+    title_label: Title
+    media_type: Media type
     genre: Genre
+    language: Language
+    subtitle: Subtitle
     publisher: Publisher
-    published: Published
-  contributor_detail:
-    titles: Titles
-    biography: Biography
+    publication_date: Publication date
+    isbn: ISBN
+    issn: ISSN
+    upc: UPC
+    page_count: Page count
+    track_count: Track count
+    total_duration: "Total duration (seconds)"
+    age_rating: Age rating
+    issue_number: Issue number
+    submit: Create title
+    cancel: Cancel
+  media_types:
+    book: Book
+    bd: Comic / Graphic novel
+    cd: CD
+    dvd: DVD
+    magazine: Magazine
+    report: Report
+feedback:
+  title_created: "Title created successfully."
+  title_created_suggestion: "Scan a V-code to attach a volume, or scan another ISBN."
+  title_exists: "This title is already in your catalog."
+  title_exists_suggestion: "Scan a V-code to attach a volume."
+  code_unsupported: "Media type disambiguation not yet available. Use manual title creation for non-ISBN codes."
+  isbn_invalid: "This code doesn't appear to be a valid ISBN. Please check the barcode and scan again."
+  volume_created: "Volume %{label} attached to %{title}."
+  volume_created_suggestion: "Scan L-code to shelve, or scan another V-code."
+  volume_duplicate: "Label %{label} is already assigned to %{title}. Scan a different label."
+  volume_no_title: "No title selected. Scan an ISBN first to establish a title context."
+  volume_shelved: "Volume %{label} shelved at %{path}."
+  vcode_invalid: "Invalid volume code format. Expected V followed by 4 digits (e.g., V0042)."
+  lcode_not_found: "Location %{label} not found."
+  location_stub: "Location contents — coming soon."
+  metadata_fetching: "Title created from ISBN %{isbn} — Fetching metadata..."
+  metadata_resolved: "Metadata found: %{title} by %{author}."
+  metadata_resolved_no_author: "Metadata found: %{title}."
+  metadata_failed: "No metadata found for ISBN %{isbn}. Edit the title manually."
+  metadata_cached: "Title created with cached metadata: %{title}."
+  edit_manually: "[Edit manually]"
+  deleted: "Item deleted."
+validation:
+  required: "This field is required."
+  negative_number: "Numeric fields must be non-negative."
+  invalid_date_format: "Invalid date format. Use YYYY, YYYY-MM, or YYYY-MM-DD."
+contributor:
+  added: "%{name} added as %{role} to %{title}."
+  duplicate: "%{name} is already %{role} on this title."
+  updated: Contributor updated.
+  deleted: Contributor deleted.
+  delete_blocked: "Cannot delete: %{name} is associated with %{count} title(s)."
+  removed: Contributor removed from title.
   error:
-    internal: An internal error occurred
-    not_found: The requested resource was not found
-    bad_request: Invalid request
-    unauthorized: Authentication required
-    title:
-      creation_failed: Title creation failed
-      required: Title is required
-    isbn:
-      invalid_checksum: Invalid ISBN checksum
-      not_found: ISBN not found
-    genre:
-      required: Genre is required
-    media_type:
-      required: Media type is required
-    language:
-      required: Language is required
-    code:
-      unsupported_type: Unsupported code type
+    name_required: Contributor name is required.
+    name_too_long: Contributor name must be 255 characters or less.
+    role_not_found: Selected role does not exist.
+  form:
+    name: Name
+    role: Role
+    biography: Biography
+    submit: Add contributor
+    add_button: Add contributor
+home:
+  search_placeholder: "Search titles, authors, series..."
+search:
+  no_results: "No results for '%{query}'."
+  no_results_create: "+ Create new title"
+  results_count: "%{count} results found"
+  col:
+    title: Title
+    contributor: Contributor
+    genre: Genre
+    volumes: Volumes
+  connection_lost: "Connection lost — check your network."
+pagination:
+  previous: Previous
+  next: Next
+title_detail:
+  contributors: Contributors
+  volumes: Volumes
+  genre: Genre
+  publisher: Publisher
+  published: Published
+contributor_detail:
+  titles: Titles
+  biography: Biography
+error:
+  internal: An internal error occurred
+  not_found: The requested resource was not found
+  bad_request: Invalid request
+  unauthorized: Authentication required
+  title:
+    creation_failed: Title creation failed
+    required: Title is required
+  isbn:
+    invalid_checksum: Invalid ISBN checksum
+    not_found: ISBN not found
+  genre:
+    required: Genre is required
+  media_type:
+    required: Media type is required
+  language:
+    required: Language is required
+  conflict: "This record was modified by another user. Please reload and try again."
+  delete_has_references: "Cannot delete: item is referenced by active records."
+  code:
+    unsupported_type: Unsupported code type
+login:
+  title: Log in
+  username_label: Username
+  password_label: Password
+  submit: Log in
+  error_invalid: "Invalid username or password."
+  back_to_home: Back to home
+session:
+  expiry_warning: "Your session will expire in 5 minutes."
+  stay_connected: Stay connected

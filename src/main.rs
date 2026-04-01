@@ -1,4 +1,6 @@
-use mybibli::config::Config;
+use std::sync::{Arc, RwLock};
+
+use mybibli::config::{AppSettings, Config};
 use mybibli::db;
 use mybibli::middleware::logging;
 use mybibli::routes;
@@ -33,11 +35,24 @@ async fn main() {
 
     tracing::info!("Database migrations completed");
 
+    // Load application settings from database
+    let app_settings = AppSettings::load_from_db(&pool)
+        .await
+        .expect("Failed to load application settings");
+
+    tracing::info!(
+        metadata_timeout = app_settings.metadata_fetch_timeout_secs,
+        "Application settings loaded from database"
+    );
+
     // Set i18n locale
     rust_i18n::set_locale(&config.app_language);
 
     // Build application
-    let state = AppState { pool };
+    let state = AppState {
+        pool,
+        settings: Arc::new(RwLock::new(app_settings)),
+    };
     let app = routes::build_router(state).layer(logging::trace_layer());
 
     // Start server

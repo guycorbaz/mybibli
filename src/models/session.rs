@@ -108,8 +108,10 @@ impl SessionModel {
     // ─── Internal helpers ─────────────────────────────────────────
 
     async fn load_session_data(pool: &DbPool, token: &str) -> Result<serde_json::Value, AppError> {
+        // CAST to CHAR because MariaDB stores JSON as BLOB internally,
+        // which is incompatible with sqlx's String decoder
         let row: Option<(String,)> = sqlx::query_as(
-            "SELECT data FROM sessions WHERE token = ? AND deleted_at IS NULL",
+            "SELECT CAST(data AS CHAR) FROM sessions WHERE token = ? AND deleted_at IS NULL",
         )
         .bind(token)
         .fetch_optional(pool)

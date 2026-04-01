@@ -36,6 +36,7 @@
     }
 
     // Auto-dismiss feedback entries: success/info fade at 10s, remove at 20s
+    // Skeletons (.feedback-skeleton) are excluded — they persist until replaced by OOB swap
     function initFeedbackAutoDismiss() {
         setInterval(function () {
             var entries = document.querySelectorAll(".feedback-entry");
@@ -45,10 +46,17 @@
                 var variant = entry.getAttribute("data-feedback-variant");
                 if (variant !== "success" && variant !== "info") return;
 
+                // For resolved entries delivered via OOB, use data-resolved-at as start time
                 var created = entry.getAttribute("data-feedback-created");
                 if (!created) {
-                    entry.setAttribute("data-feedback-created", String(now));
-                    return;
+                    var resolvedAt = entry.getAttribute("data-resolved-at");
+                    if (resolvedAt) {
+                        entry.setAttribute("data-feedback-created", resolvedAt);
+                        created = resolvedAt;
+                    } else {
+                        entry.setAttribute("data-feedback-created", String(now));
+                        return;
+                    }
                 }
 
                 var age = now - parseInt(created, 10);

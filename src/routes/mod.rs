@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod catalog;
 pub mod contributors;
 pub mod home;
@@ -7,11 +8,14 @@ pub mod titles;
 use axum::Router;
 use tower_http::services::ServeDir;
 
+use crate::middleware::pending_updates::pending_updates_middleware;
 use crate::AppState;
 
 pub fn build_router(state: AppState) -> Router {
-    Router::new()
-        .route("/", axum::routing::get(home::home))
+    let pool = state.pool.clone();
+
+    // Catalog routes with PendingUpdates middleware for async metadata delivery
+    let catalog_routes = Router::new()
         .route("/catalog", axum::routing::get(catalog::catalog_page))
         .route("/catalog/scan", axum::routing::post(catalog::handle_scan))
         .route(
@@ -47,6 +51,27 @@ pub fn build_router(state: AppState) -> Router {
             "/catalog/contributors/{id}",
             axum::routing::delete(catalog::delete_contributor),
         )
+        .route(
+            "/catalog/title/{id}",
+            axum::routing::delete(catalog::delete_title),
+        )
+        .route(
+            "/catalog/volume/{id}",
+            axum::routing::delete(catalog::delete_volume),
+        )
+        .layer(axum::Extension(pool))
+        .layer(axum::middleware::from_fn(pending_updates_middleware));
+
+    // All routes
+    Router::new()
+        .route("/", axum::routing::get(home::home))
+        .route("/login", axum::routing::get(auth::login_page).post(auth::login))
+        .route("/logout", axum::routing::get(auth::logout).post(auth::logout))
+        .route(
+            "/session/keepalive",
+            axum::routing::post(catalog::session_keepalive),
+        )
+        .merge(catalog_routes)
         // Detail pages
         .route(
             "/title/{id}",

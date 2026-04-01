@@ -165,6 +165,43 @@ impl TitleModel {
             .await?
             .ok_or_else(|| AppError::Internal("Failed to retrieve created title".to_string()))
     }
+
+    /// Update a title with optimistic locking (version check).
+    /// Returns the updated title, or AppError::Conflict if the version has changed.
+    pub async fn update_with_locking(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+        title: &str,
+        subtitle: Option<&str>,
+        publisher: Option<&str>,
+        language: &str,
+        genre_id: u64,
+        media_type: &str,
+    ) -> Result<TitleModel, AppError> {
+        let result = sqlx::query(
+            "UPDATE titles SET title = ?, subtitle = ?, publisher = ?, \
+             language = ?, genre_id = ?, media_type = ?, \
+             version = version + 1, updated_at = NOW() \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(title)
+        .bind(subtitle)
+        .bind(publisher)
+        .bind(language)
+        .bind(genre_id)
+        .bind(media_type)
+        .bind(id)
+        .bind(version)
+        .execute(pool)
+        .await?;
+
+        crate::services::locking::check_update_result(result.rows_affected(), "title")?;
+
+        TitleModel::find_by_id(pool, id)
+            .await?
+            .ok_or_else(|| AppError::Internal("Failed to retrieve updated title".to_string()))
+    }
 }
 
 /// Search result row for as-you-type search.

@@ -20,6 +20,14 @@
         } else {
             document.documentElement.classList.remove("dark");
         }
+        // Update theme toggle button aria-label
+        var btn = document.querySelector("[onclick*='mybibliToggleTheme']");
+        if (btn) {
+            btn.setAttribute(
+                "aria-label",
+                theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+            );
+        }
     }
 
     function toggleTheme() {
@@ -28,6 +36,16 @@
             : "light";
         var next = current === "dark" ? "light" : "dark";
         localStorage.setItem(STORAGE_KEY, next);
+
+        // Add smooth transition unless reduced motion preferred
+        var prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (!prefersReducedMotion) {
+            document.documentElement.style.transition =
+                "background-color 300ms ease-out, color 300ms ease-out";
+            setTimeout(function () {
+                document.documentElement.style.transition = "";
+            }, 300);
+        }
         applyTheme(next);
     }
 

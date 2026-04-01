@@ -11,6 +11,9 @@ pub mod services;
 pub mod tasks;
 pub mod utils;
 
+use std::sync::{Arc, RwLock};
+
+use config::AppSettings;
 use db::DbPool;
 
 rust_i18n::i18n!("locales", fallback = "en");
@@ -19,4 +22,5 @@ rust_i18n::i18n!("locales", fallback = "en");
 #[derive(Clone)]
 pub struct AppState {
     pub pool: DbPool,
+    pub settings: Arc<RwLock<AppSettings>>,
 }

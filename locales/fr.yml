@@ -1,132 +1,151 @@
-fr:
-  app:
-    name: mybibli
-  home:
-    title: mybibli
-    subtitle: Votre bibliothèque personnelle
-  catalog:
-    title: Catalogue
-    scan_placeholder: "Scanner ou taper : ISBN, code V, code L, ou recherche..."
-    scan_label: Scanner un code-barres ou taper un code
-    scan_received: "Scan reçu : %{code}"
-    new_title_button: Nouveau titre
-    session_counter: "%{count} items cette session"
-    session_counter_aria: "%{count} items catalogués cette session"
-  nav:
-    catalog: Catalogue
-    loans: Prêts
-    admin: Admin
-    login: Connexion
-    logout: Déconnexion
-    skip_to_content: Aller au contenu principal
-  title:
-    created: "Titre créé : %{title}"
-    exists: "Titre déjà existant : %{title}"
-    current_banner: "En cours : %{title}"
-    current_banner_with_volumes: "En cours : %{title} — %{count} vol"
-    current_banner_with_author: "En cours : %{title} — %{author} — %{count} vol"
-    form:
-      heading: Nouveau titre
-      title_label: Titre
-      media_type: Type de média
-      genre: Genre
-      language: Langue
-      subtitle: Sous-titre
-      publisher: Éditeur
-      publication_date: Date de publication
-      isbn: ISBN
-      issn: ISSN
-      upc: UPC
-      page_count: Nombre de pages
-      track_count: Nombre de pistes
-      total_duration: "Durée totale (secondes)"
-      age_rating: Classification d'âge
-      issue_number: Numéro de parution
-      submit: Créer le titre
-      cancel: Annuler
-    media_types:
-      book: Livre
-      bd: BD
-      cd: CD
-      dvd: DVD
-      magazine: Revue
-      report: Rapport
-  feedback:
-    title_created: "Titre créé avec succès."
-    title_created_suggestion: "Scannez un code V pour attacher un volume, ou scannez un autre ISBN."
-    title_exists: "Ce titre est déjà dans votre catalogue."
-    title_exists_suggestion: "Scannez un code V pour attacher un volume."
-    code_unsupported: "La distinction de type de média n'est pas encore disponible. Utilisez la création manuelle pour les codes non-ISBN."
-    isbn_invalid: "Ce code ne semble pas être un ISBN valide. Vérifiez le code-barres et réessayez."
-    volume_created: "Volume %{label} attaché à %{title}."
-    volume_created_suggestion: "Scannez un code L pour ranger, ou scannez un autre code V."
-    volume_duplicate: "Le label %{label} est déjà assigné à %{title}. Scannez un autre label."
-    volume_no_title: "Aucun titre sélectionné. Scannez d'abord un ISBN pour établir un contexte."
-    volume_shelved: "Volume %{label} rangé à %{path}."
-    vcode_invalid: "Format de code volume invalide. Attendu : V suivi de 4 chiffres (ex. V0042)."
-    lcode_not_found: "Emplacement %{label} introuvable."
-    location_stub: "Contenu de l'emplacement — bientôt disponible."
-  validation:
-    required: "Ce champ est obligatoire."
-    negative_number: "Les champs numériques doivent être positifs ou nuls."
-    invalid_date_format: "Format de date invalide. Utilisez AAAA, AAAA-MM ou AAAA-MM-JJ."
-  contributor:
-    added: "%{name} ajouté(e) en tant que %{role} pour %{title}."
-    duplicate: "%{name} est déjà %{role} sur ce titre."
-    updated: Contributeur mis à jour.
-    deleted: Contributeur supprimé.
-    delete_blocked: "Suppression impossible : %{name} est associé(e) à %{count} titre(s)."
-    removed: Contributeur retiré du titre.
-    error:
-      name_required: Le nom du contributeur est obligatoire.
-      name_too_long: Le nom du contributeur doit faire 255 caractères ou moins.
-      role_not_found: Le rôle sélectionné n'existe pas.
-    form:
-      name: Nom
-      role: Rôle
-      biography: Biographie
-      submit: Ajouter le contributeur
-      add_button: Ajouter un contributeur
-  home:
-    search_placeholder: "Rechercher titres, auteurs, séries..."
-  search:
-    no_results: "Aucun résultat pour '%{query}'."
-    no_results_create: "+ Créer un nouveau titre"
-    results_count: "%{count} résultats trouvés"
-    col:
-      title: Titre
-      contributor: Contributeur
-      genre: Genre
-      volumes: Volumes
-    connection_lost: "Connexion perdue — vérifiez votre réseau."
-  pagination:
-    previous: Précédent
-    next: Suivant
-  title_detail:
-    contributors: Contributeurs
-    volumes: Volumes
+app:
+  name: mybibli
+home:
+  title: mybibli
+  subtitle: Votre bibliothèque personnelle
+catalog:
+  title: Catalogue
+  scan_placeholder: "Scanner ou taper : ISBN, code V, code L, ou recherche..."
+  scan_label: Scanner un code-barres ou taper un code
+  scan_received: "Scan reçu : %{code}"
+  new_title_button: Nouveau titre
+  session_counter: "%{count} éléments cette session"
+  session_counter_aria: "%{count} éléments catalogués cette session"
+nav:
+  catalog: Catalogue
+  loans: Prêts
+  admin: Admin
+  login: Connexion
+  logout: Déconnexion
+  skip_to_content: Aller au contenu principal
+  theme_toggle: Basculer le thème
+title:
+  created: "Titre créé : %{title}"
+  exists: "Titre déjà existant : %{title}"
+  current_banner: "En cours : %{title}"
+  current_banner_with_volumes: "En cours : %{title} — %{count} vol"
+  current_banner_with_author: "En cours : %{title} — %{author} — %{count} vol"
+  form:
+    heading: Nouveau titre
+    title_label: Titre
+    media_type: Type de média
     genre: Genre
+    language: Langue
+    subtitle: Sous-titre
     publisher: Éditeur
-    published: Publié
-  contributor_detail:
-    titles: Titres
-    biography: Biographie
+    publication_date: Date de publication
+    isbn: ISBN
+    issn: ISSN
+    upc: UPC
+    page_count: Nombre de pages
+    track_count: Nombre de pistes
+    total_duration: "Durée totale (secondes)"
+    age_rating: Classification d'âge
+    issue_number: Numéro de parution
+    submit: Créer le titre
+    cancel: Annuler
+  media_types:
+    book: Livre
+    bd: BD
+    cd: CD
+    dvd: DVD
+    magazine: Revue
+    report: Rapport
+feedback:
+  title_created: "Titre créé avec succès."
+  title_created_suggestion: "Scannez un code V pour attacher un volume, ou scannez un autre ISBN."
+  title_exists: "Ce titre est déjà dans votre catalogue."
+  title_exists_suggestion: "Scannez un code V pour attacher un volume."
+  code_unsupported: "La distinction de type de média n'est pas encore disponible. Utilisez la création manuelle pour les codes non-ISBN."
+  isbn_invalid: "Ce code ne semble pas être un ISBN valide. Vérifiez le code-barres et réessayez."
+  volume_created: "Volume %{label} attaché à %{title}."
+  volume_created_suggestion: "Scannez un code L pour ranger, ou scannez un autre code V."
+  volume_duplicate: "Le label %{label} est déjà assigné à %{title}. Scannez un autre label."
+  volume_no_title: "Aucun titre sélectionné. Scannez d'abord un ISBN pour établir un contexte."
+  volume_shelved: "Volume %{label} rangé à %{path}."
+  vcode_invalid: "Format de code volume invalide. Attendu : V suivi de 4 chiffres (ex. V0042)."
+  lcode_not_found: "Emplacement %{label} introuvable."
+  location_stub: "Contenu de l'emplacement — bientôt disponible."
+  metadata_fetching: "Titre créé à partir de l'ISBN %{isbn} — Récupération des métadonnées..."
+  metadata_resolved: "Métadonnées trouvées : %{title} par %{author}."
+  metadata_resolved_no_author: "Métadonnées trouvées : %{title}."
+  metadata_failed: "Aucune métadonnée trouvée pour l'ISBN %{isbn}. Modifiez le titre manuellement."
+  metadata_cached: "Titre créé avec les métadonnées en cache : %{title}."
+  edit_manually: "[Modifier manuellement]"
+  deleted: "Élément supprimé."
+validation:
+  required: "Ce champ est obligatoire."
+  negative_number: "Les champs numériques doivent être positifs ou nuls."
+  invalid_date_format: "Format de date invalide. Utilisez AAAA, AAAA-MM ou AAAA-MM-JJ."
+contributor:
+  added: "%{name} ajouté(e) en tant que %{role} pour %{title}."
+  duplicate: "%{name} est déjà %{role} sur ce titre."
+  updated: Contributeur mis à jour.
+  deleted: Contributeur supprimé.
+  delete_blocked: "Suppression impossible : %{name} est associé(e) à %{count} titre(s)."
+  removed: Contributeur retiré du titre.
   error:
-    internal: Une erreur interne est survenue
-    not_found: La ressource demandée est introuvable
-    bad_request: Requête invalide
-    unauthorized: Authentification requise
-    title:
-      creation_failed: La création du titre a échoué
-      required: Le titre est obligatoire
-    isbn:
-      invalid_checksum: Checksum ISBN invalide
-      not_found: ISBN introuvable
-    genre:
-      required: Le genre est obligatoire
-    media_type:
-      required: Le type de média est obligatoire
-    language:
-      required: La langue est obligatoire
-    code:
-      unsupported_type: Type de code non pris en charge
+    name_required: Le nom du contributeur est obligatoire.
+    name_too_long: Le nom du contributeur doit faire 255 caractères ou moins.
+    role_not_found: Le rôle sélectionné n'existe pas.
+  form:
+    name: Nom
+    role: Rôle
+    biography: Biographie
+    submit: Ajouter le contributeur
+    add_button: Ajouter un contributeur
+home:
+  search_placeholder: "Rechercher titres, auteurs, séries..."
+search:
+  no_results: "Aucun résultat pour '%{query}'."
+  no_results_create: "+ Créer un nouveau titre"
+  results_count: "%{count} résultats trouvés"
+  col:
+    title: Titre
+    contributor: Contributeur
+    genre: Genre
+    volumes: Volumes
+  connection_lost: "Connexion perdue — vérifiez votre réseau."
+pagination:
+  previous: Précédent
+  next: Suivant
+title_detail:
+  contributors: Contributeurs
+  volumes: Volumes
+  genre: Genre
+  publisher: Éditeur
+  published: Publié
+contributor_detail:
+  titles: Titres
+  biography: Biographie
+error:
+  internal: Une erreur interne est survenue
+  not_found: La ressource demandée est introuvable
+  bad_request: Requête invalide
+  unauthorized: Authentification requise
+  title:
+    creation_failed: La création du titre a échoué
+    required: Le titre est obligatoire
+  isbn:
+    invalid_checksum: Checksum ISBN invalide
+    not_found: ISBN introuvable
+  genre:
+    required: Le genre est obligatoire
+  media_type:
+    required: Le type de média est obligatoire
+  language:
+    required: La langue est obligatoire
+  conflict: "Cet enregistrement a été modifié par un autre utilisateur. Veuillez recharger et réessayer."
+  delete_has_references: "Suppression impossible : l'élément est référencé par des enregistrements actifs."
+  code:
+    unsupported_type: Type de code non pris en charge
+login:
+  title: Connexion
+  username_label: "Nom d'utilisateur"
+  password_label: Mot de passe
+  submit: Se connecter
+  error_invalid: "Nom d'utilisateur ou mot de passe invalide."
+  back_to_home: Retour à l'accueil
+session:
+  expiry_warning: "Votre session expirera dans 5 minutes."
+  stay_connected: Rester connecté

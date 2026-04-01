@@ -1,1 +1,1 @@
-// Background tasks — stub for future implementation
+pub mod metadata_fetch;

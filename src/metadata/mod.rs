@@ -1,1 +1,2 @@
-// Metadata provider trait — stub for future implementation
+pub mod bnf;
+pub mod provider;
