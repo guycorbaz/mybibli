@@ -242,6 +242,8 @@ pub async fn handle_scan(
                                 tracing::warn!(error = %e, "Failed to update current title in session");
                             }
                             let _ = SessionModel::set_last_volume_label(pool, token, "").await;
+                            // Clear batch shelving mode on new ISBN context
+                            let _ = SessionModel::clear_active_location(pool, token).await;
                         }
 
                         let vol_count = VolumeModel::count_by_title(pool, title.id).await.unwrap_or(0);
@@ -349,6 +351,35 @@ pub async fn handle_scan(
                             if let Err(e) = SessionModel::set_last_volume_label(pool, token, &code).await {
                                 tracing::warn!(error = %e, "Failed to store last volume label in session");
                             }
+
+                            // Auto-shelve if batch location is active and still exists
+                            let active_loc = SessionModel::get_active_location(pool, token).await.unwrap_or(None);
+                            let shelved_path = if let Some(loc_id) = active_loc {
+                                // Validate location still exists (may have been deleted)
+                                match crate::models::location::LocationModel::find_by_id(pool, loc_id).await? {
+                                    Some(_) => {
+                                        match VolumeModel::update_location(pool, volume.id, loc_id).await {
+                                            Ok(()) => {
+                                                let path = crate::models::location::LocationModel::get_path(pool, loc_id).await.unwrap_or_default();
+                                                Some(path)
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!(error = %e, "Failed to auto-shelve volume at active location");
+                                                None
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        // Location was deleted — clear stale session
+                                        let _ = SessionModel::clear_active_location(pool, token).await;
+                                        tracing::warn!(loc_id = loc_id, "Active location no longer exists, clearing");
+                                        None
+                                    }
+                                }
+                            } else {
+                                None
+                            };
+
                             // Increment session counter
                             let counter = match SessionModel::increment_session_counter(pool, token).await {
                                 Ok(c) => c,
@@ -363,8 +394,17 @@ pub async fn handle_scan(
                                 .map(|t| (t.title.clone(), t.media_type.clone()))
                                 .unwrap_or_else(|| ("?".to_string(), "book".to_string()));
 
-                            let message = rust_i18n::t!("feedback.volume_created", label = &volume.label, title = &title.0).to_string();
-                            let suggestion = rust_i18n::t!("feedback.volume_created_suggestion").to_string();
+                            let (message, suggestion) = if let Some(path) = shelved_path {
+                                (
+                                    rust_i18n::t!("feedback.volume_created_and_shelved", label = &volume.label, title = &title.0, path = &path).to_string(),
+                                    String::new(),
+                                )
+                            } else {
+                                (
+                                    rust_i18n::t!("feedback.volume_created", label = &volume.label, title = &title.0).to_string(),
+                                    rust_i18n::t!("feedback.volume_created_suggestion").to_string(),
+                                )
+                            };
 
                             let resp = HtmxResponse {
                                 main: feedback_html("success", &message, &suggestion),
@@ -437,9 +477,15 @@ pub async fn handle_scan(
                         }
                     }
                 } else {
-                    // No volume context — info stub
-                    let message = rust_i18n::t!("feedback.location_stub").to_string();
-                    Ok(Html(feedback_html("info", &message, "")).into_response())
+                    // No volume context — set batch shelving mode
+                    let location = location.unwrap();
+                    if let Some(token) = &session.token {
+                        let _ = SessionModel::set_active_location(pool, token, location.id).await;
+                    }
+                    let path = crate::models::location::LocationModel::get_path(pool, location.id).await?;
+                    let message = rust_i18n::t!("feedback.active_location", path = &path).to_string();
+                    let suggestion = rust_i18n::t!("feedback.scan_vcode_to_shelve").to_string();
+                    Ok(Html(feedback_html("info", &message, &suggestion)).into_response())
                 }
             }
             _ => {
@@ -1010,6 +1056,178 @@ pub async fn delete_volume(
 
     let message = rust_i18n::t!("feedback.deleted").to_string();
     Ok(Html(feedback_html("success", &message, "")))
+}
+
+// ─── Volume detail & edit ────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "pages/volume_detail.html")]
+pub struct VolumeDetailTemplate {
+    pub lang: String,
+    pub role: String,
+    pub current_page: &'static str,
+    pub skip_label: String,
+    pub nav_catalog: String,
+    pub nav_loans: String,
+    pub nav_admin: String,
+    pub nav_login: String,
+    pub nav_logout: String,
+    pub volume: VolumeModel,
+    pub title_name: String,
+    pub condition_name: Option<String>,
+    pub location_path: Option<String>,
+    pub not_shelved_label: String,
+    pub detail_title: String,
+}
+
+pub async fn volume_detail(
+    session: Session,
+    HxRequest(_is_htmx): HxRequest,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+) -> Result<impl IntoResponse, AppError> {
+    let pool = &state.pool;
+    let volume = VolumeModel::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+
+    let title = crate::models::title::TitleModel::find_by_id(pool, volume.title_id)
+        .await?
+        .map(|t| t.title)
+        .unwrap_or_else(|| "?".to_string());
+
+    let condition_name = if let Some(csid) = volume.condition_state_id {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT name FROM volume_states WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(csid)
+        .fetch_optional(pool)
+        .await?;
+        row.map(|r| r.0)
+    } else {
+        None
+    };
+
+    let location_path = if let Some(loc_id) = volume.location_id {
+        Some(crate::models::location::LocationModel::get_path(pool, loc_id).await?)
+    } else {
+        None
+    };
+
+    let template = VolumeDetailTemplate {
+        lang: rust_i18n::locale().to_string(),
+        role: session.role.to_string(),
+        current_page: "catalog",
+        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
+        nav_loans: rust_i18n::t!("nav.loans").to_string(),
+        nav_admin: rust_i18n::t!("nav.admin").to_string(),
+        nav_login: rust_i18n::t!("nav.login").to_string(),
+        nav_logout: rust_i18n::t!("nav.logout").to_string(),
+        detail_title: rust_i18n::t!("volume.detail_title").to_string(),
+        not_shelved_label: rust_i18n::t!("volume.not_shelved").to_string(),
+        volume,
+        title_name: title,
+        condition_name,
+        location_path,
+    };
+    match template.render() {
+        Ok(html) => Ok(Html(html).into_response()),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to render volume detail template");
+            Err(AppError::Internal("Template rendering failed".to_string()))
+        }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "pages/volume_edit.html")]
+pub struct VolumeEditTemplate {
+    pub lang: String,
+    pub role: String,
+    pub current_page: &'static str,
+    pub skip_label: String,
+    pub nav_catalog: String,
+    pub nav_loans: String,
+    pub nav_admin: String,
+    pub nav_login: String,
+    pub nav_logout: String,
+    pub volume: VolumeModel,
+    pub version: i32,
+    pub states: Vec<(u64, String)>,
+    pub edit_title: String,
+    pub condition_label: String,
+    pub edition_label: String,
+    pub submit_label: String,
+}
+
+pub async fn volume_edit_page(
+    session: Session,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+) -> Result<impl IntoResponse, AppError> {
+    session.require_role(Role::Librarian)?;
+    let pool = &state.pool;
+
+    let volume = VolumeModel::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+    let states = VolumeModel::find_volume_states(pool).await?;
+
+    let template = VolumeEditTemplate {
+        lang: rust_i18n::locale().to_string(),
+        role: session.role.to_string(),
+        current_page: "catalog",
+        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
+        nav_loans: rust_i18n::t!("nav.loans").to_string(),
+        nav_admin: rust_i18n::t!("nav.admin").to_string(),
+        nav_login: rust_i18n::t!("nav.login").to_string(),
+        nav_logout: rust_i18n::t!("nav.logout").to_string(),
+        version: volume.version,
+        edit_title: rust_i18n::t!("volume.edit_title").to_string(),
+        condition_label: rust_i18n::t!("volume.condition_label").to_string(),
+        edition_label: rust_i18n::t!("volume.edition_label").to_string(),
+        submit_label: rust_i18n::t!("volume.submit").to_string(),
+        volume,
+        states,
+    };
+    match template.render() {
+        Ok(html) => Ok(Html(html).into_response()),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to render volume edit template");
+            Err(AppError::Internal("Template rendering failed".to_string()))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct VolumeEditForm {
+    pub version: i32,
+    #[serde(default)]
+    pub condition_state_id: Option<u64>,
+    #[serde(default)]
+    pub edition_comment: Option<String>,
+}
+
+pub async fn update_volume(
+    session: Session,
+    State(state): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+    axum::Form(form): axum::Form<VolumeEditForm>,
+) -> Result<impl IntoResponse, AppError> {
+    session.require_role(Role::Librarian)?;
+
+    VolumeModel::update_details(
+        &state.pool,
+        id,
+        form.version,
+        form.condition_state_id,
+        form.edition_comment.as_deref(),
+    )
+    .await?;
+
+    Ok(axum::response::Redirect::to(&format!("/volume/{id}")))
 }
 
 // ─── Session keepalive ───────────────────────────────────────────

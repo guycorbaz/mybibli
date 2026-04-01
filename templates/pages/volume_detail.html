@@ -1,0 +1,59 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ volume.label }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 lg:px-8 py-6">
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ detail_title }}: {{ volume.label }}</h1>
+
+    <div class="mt-6 space-y-4">
+        <div class="flex items-center gap-3">
+            <span class="text-sm font-medium text-stone-500 dark:text-stone-400 w-32">Title:</span>
+            <a href="/title/{{ volume.title_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ title_name }}</a>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <span class="text-sm font-medium text-stone-500 dark:text-stone-400 w-32">Label:</span>
+            <span class="font-mono text-stone-900 dark:text-stone-100">{{ volume.label }}</span>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <span class="text-sm font-medium text-stone-500 dark:text-stone-400 w-32">Condition:</span>
+            {% match condition_name %}
+            {% when Some with (name) %}
+            <span class="text-stone-900 dark:text-stone-100">{{ name }}</span>
+            {% when None %}
+            <span class="text-stone-400 italic">—</span>
+            {% endmatch %}
+        </div>
+
+        <div class="flex items-center gap-3">
+            <span class="text-sm font-medium text-stone-500 dark:text-stone-400 w-32">Edition:</span>
+            {% match volume.edition_comment %}
+            {% when Some with (comment) %}
+            <span class="text-stone-900 dark:text-stone-100">{{ comment }}</span>
+            {% when None %}
+            <span class="text-stone-400 italic">—</span>
+            {% endmatch %}
+        </div>
+
+        <div class="flex items-center gap-3">
+            <span class="text-sm font-medium text-stone-500 dark:text-stone-400 w-32">Location:</span>
+            {% match location_path %}
+            {% when Some with (path) %}
+            <span class="text-stone-900 dark:text-stone-100">{{ path }}</span>
+            {% when None %}
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-medium">
+                ⚠️ {{ not_shelved_label }}
+            </span>
+            {% endmatch %}
+        </div>
+    </div>
+
+    <div class="mt-6">
+        <a href="/volume/{{ volume.id }}/edit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">
+            ✏️ Edit
+        </a>
+    </div>
+</div>
+{% endblock %}

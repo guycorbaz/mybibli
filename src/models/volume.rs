@@ -125,6 +125,79 @@ impl VolumeModel {
         }
     }
 
+    pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<Option<VolumeModel>, AppError> {
+        let row = sqlx::query(
+            r#"SELECT id, title_id, label, condition_state_id, edition_comment, location_id, version
+               FROM volumes WHERE id = ? AND deleted_at IS NULL"#,
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+
+        match row {
+            Some(r) => Ok(Some(VolumeModel {
+                id: r.try_get("id")?,
+                title_id: r.try_get("title_id")?,
+                label: r.try_get("label")?,
+                condition_state_id: r.try_get("condition_state_id")?,
+                edition_comment: r.try_get("edition_comment")?,
+                location_id: r.try_get("location_id")?,
+                version: r.try_get("version")?,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn update_details(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+        condition_state_id: Option<u64>,
+        edition_comment: Option<&str>,
+    ) -> Result<VolumeModel, AppError> {
+        // Validate condition_state_id if provided
+        if let Some(csid) = condition_state_id {
+            let row: Option<(u64,)> = sqlx::query_as(
+                "SELECT id FROM volume_states WHERE id = ? AND deleted_at IS NULL",
+            )
+            .bind(csid)
+            .fetch_optional(pool)
+            .await?;
+            if row.is_none() {
+                return Err(AppError::BadRequest(
+                    rust_i18n::t!("error.bad_request").to_string(),
+                ));
+            }
+        }
+
+        let result = sqlx::query(
+            "UPDATE volumes SET condition_state_id = ?, edition_comment = ?, \
+             version = version + 1, updated_at = NOW() \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(condition_state_id)
+        .bind(edition_comment)
+        .bind(id)
+        .bind(version)
+        .execute(pool)
+        .await?;
+
+        crate::services::locking::check_update_result(result.rows_affected(), "volume")?;
+
+        Self::find_by_id(pool, id)
+            .await?
+            .ok_or_else(|| AppError::Internal("Failed to retrieve updated volume".to_string()))
+    }
+
+    pub async fn find_volume_states(pool: &DbPool) -> Result<Vec<(u64, String)>, AppError> {
+        let rows: Vec<(u64, String)> = sqlx::query_as(
+            "SELECT id, name FROM volume_states WHERE deleted_at IS NULL ORDER BY name",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn count_by_title(pool: &DbPool, title_id: u64) -> Result<u64, AppError> {
         let row: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM volumes WHERE title_id = ? AND deleted_at IS NULL",

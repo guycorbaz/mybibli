@@ -1,0 +1,41 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ edit_title }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 lg:px-8 py-6">
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100 mb-6">{{ edit_title }}: {{ volume.label }}</h1>
+
+    <form method="POST" action="/volume/{{ volume.id }}/update" class="space-y-4">
+        <input type="hidden" name="version" value="{{ version }}">
+
+        <div>
+            <label for="condition" class="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">{{ condition_label }}</label>
+            <select id="condition" name="condition_state_id"
+                    class="w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 min-h-[44px]">
+                <option value="">—</option>
+                {% for state in states %}
+                <option value="{{ state.0 }}" {% if volume.condition_state_id.is_some() && volume.condition_state_id.unwrap() == state.0 %}selected{% endif %}>{{ state.1 }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label for="edition" class="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">{{ edition_label }}</label>
+            <input type="text" id="edition" name="edition_comment"
+                   value="{% match volume.edition_comment %}{% when Some with (c) %}{{ c }}{% when None %}{% endmatch %}"
+                   placeholder="poche, relié, collector..."
+                   class="w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 min-h-[44px]">
+        </div>
+
+        <div class="flex gap-3">
+            <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md min-h-[44px]">
+                {{ submit_label }}
+            </button>
+            <a href="/volume/{{ volume.id }}" class="px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-md min-h-[44px] flex items-center">
+                ← Back
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -82,6 +82,18 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::get(contributors::contributor_detail),
         )
         .route(
+            "/volume/{id}",
+            axum::routing::get(catalog::volume_detail),
+        )
+        .route(
+            "/volume/{id}/edit",
+            axum::routing::get(catalog::volume_edit_page),
+        )
+        .route(
+            "/volume/{id}/update",
+            axum::routing::post(catalog::update_volume),
+        )
+        .route(
             "/location/{id}",
             axum::routing::get(locations::location_detail),
         )

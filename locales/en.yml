@@ -66,6 +66,9 @@ feedback:
   vcode_invalid: "Invalid volume code format. Expected V followed by 4 digits (e.g., V0042)."
   lcode_not_found: "Location %{label} not found."
   location_stub: "Location contents — coming soon."
+  active_location: "Active location: %{path}. Scan V-codes to shelve here."
+  scan_vcode_to_shelve: "Scan a V-code to shelve at this location."
+  volume_created_and_shelved: "Volume %{label} attached to %{title} and shelved at %{path}."
   metadata_fetching: "Title created from ISBN %{isbn} — Fetching metadata..."
   metadata_resolved: "Metadata found: %{title} by %{author}."
   metadata_resolved_no_author: "Metadata found: %{title}."
@@ -139,6 +142,13 @@ error:
   delete_has_references: "Cannot delete: item is referenced by active records."
   code:
     unsupported_type: Unsupported code type
+volume:
+  detail_title: Volume details
+  edit_title: Edit volume
+  condition_label: Condition
+  edition_label: Edition
+  not_shelved: Not shelved
+  submit: Save
 location:
   tree_title: Locations
   add_root: Add root location

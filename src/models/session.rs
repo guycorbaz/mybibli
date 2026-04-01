@@ -97,6 +97,35 @@ impl SessionModel {
         Ok(count)
     }
 
+    pub async fn set_active_location(
+        pool: &DbPool,
+        token: &str,
+        location_id: u64,
+    ) -> Result<(), AppError> {
+        let mut data = Self::load_session_data(pool, token).await?;
+        data["active_location_id"] = serde_json::json!(location_id);
+        Self::save_session_data(pool, token, &data).await
+    }
+
+    pub async fn get_active_location(
+        pool: &DbPool,
+        token: &str,
+    ) -> Result<Option<u64>, AppError> {
+        let data = Self::load_session_data(pool, token).await?;
+        Ok(data
+            .get("active_location_id")
+            .and_then(|v| v.as_u64()))
+    }
+
+    pub async fn clear_active_location(
+        pool: &DbPool,
+        token: &str,
+    ) -> Result<(), AppError> {
+        let mut data = Self::load_session_data(pool, token).await?;
+        data.as_object_mut().map(|o| o.remove("active_location_id"));
+        Self::save_session_data(pool, token, &data).await
+    }
+
     pub async fn get_session_counter(
         pool: &DbPool,
         token: &str,

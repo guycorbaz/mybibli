@@ -66,6 +66,9 @@ feedback:
   vcode_invalid: "Format de code volume invalide. Attendu : V suivi de 4 chiffres (ex. V0042)."
   lcode_not_found: "Emplacement %{label} introuvable."
   location_stub: "Contenu de l'emplacement — bientôt disponible."
+  active_location: "Emplacement actif : %{path}. Scannez des codes V pour ranger ici."
+  scan_vcode_to_shelve: "Scannez un code V pour ranger à cet emplacement."
+  volume_created_and_shelved: "Volume %{label} attaché à %{title} et rangé à %{path}."
   metadata_fetching: "Titre créé à partir de l'ISBN %{isbn} — Récupération des métadonnées..."
   metadata_resolved: "Métadonnées trouvées : %{title} par %{author}."
   metadata_resolved_no_author: "Métadonnées trouvées : %{title}."
@@ -139,6 +142,13 @@ error:
   delete_has_references: "Suppression impossible : l'élément est référencé par des enregistrements actifs."
   code:
     unsupported_type: Type de code non pris en charge
+volume:
+  detail_title: Détails du volume
+  edit_title: Modifier le volume
+  condition_label: État
+  edition_label: Édition
+  not_shelved: Non rangé
+  submit: Enregistrer
 location:
   tree_title: Emplacements
   add_root: Ajouter un emplacement racine
