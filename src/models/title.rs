@@ -106,6 +106,52 @@ impl TitleModel {
         }
     }
 
+    pub async fn find_by_upc(pool: &DbPool, upc: &str) -> Result<Option<TitleModel>, AppError> {
+        tracing::debug!(upc = %upc, "Looking up title by UPC");
+
+        let row = sqlx::query(
+            r#"SELECT id, title, subtitle, description, language,
+                      media_type, publication_date, publisher, isbn, issn, upc,
+                      cover_image_url, genre_id, dewey_code,
+                      page_count, track_count, total_duration,
+                      age_rating, issue_number, version
+               FROM titles
+               WHERE upc = ? AND deleted_at IS NULL
+               LIMIT 1"#,
+        )
+        .bind(upc)
+        .fetch_optional(pool)
+        .await?;
+
+        match row {
+            Some(r) => Ok(Some(row_to_title(r)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn find_by_issn(pool: &DbPool, issn: &str) -> Result<Option<TitleModel>, AppError> {
+        tracing::debug!(issn = %issn, "Looking up title by ISSN");
+
+        let row = sqlx::query(
+            r#"SELECT id, title, subtitle, description, language,
+                      media_type, publication_date, publisher, isbn, issn, upc,
+                      cover_image_url, genre_id, dewey_code,
+                      page_count, track_count, total_duration,
+                      age_rating, issue_number, version
+               FROM titles
+               WHERE issn = ? AND deleted_at IS NULL
+               LIMIT 1"#,
+        )
+        .bind(issn)
+        .fetch_optional(pool)
+        .await?;
+
+        match row {
+            Some(r) => Ok(Some(row_to_title(r)?)),
+            None => Ok(None),
+        }
+    }
+
     pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<Option<TitleModel>, AppError> {
         tracing::debug!(id = id, "Looking up title by ID");
 

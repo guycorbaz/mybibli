@@ -56,6 +56,7 @@ pub struct HomeTemplate {
     pub col_genre: String,
     pub col_volumes: String,
     pub connection_lost: String,
+    pub label_no_cover: String,
 }
 
 pub async fn home(
@@ -150,6 +151,7 @@ pub async fn home(
         col_genre: rust_i18n::t!("search.col.genre").to_string(),
         col_volumes: rust_i18n::t!("search.col.volumes").to_string(),
         connection_lost: rust_i18n::t!("search.connection_lost").to_string(),
+        label_no_cover: rust_i18n::t!("cover.no_cover").to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -422,6 +424,7 @@ mod tests {
             col_genre: "Genre".to_string(),
             col_volumes: "Volumes".to_string(),
             connection_lost: "Connection lost".to_string(),
+            label_no_cover: "No cover available".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(rendered.contains("mybibli"));

@@ -60,3 +60,16 @@
 - Per-provider timeout 5s hardcoded, not configurable or related to global timeout — design simplification acceptable for single-user NAS
 - Rate limit detection via string matching on "429" in error message, no generic rate limiter struct — proactive rate limiter planned for story 3-2 (MusicBrainz 1 req/sec)
 - Open Library author resolution is sequential within 5s per-provider timeout — consider concurrent resolution (futures::join_all) for multi-author books
+
+## Deferred from: code review of 3-2-media-type-scanning (2026-04-02)
+
+- Rate limiter TOCTOU race — acquire() drops mutex before sleep, allowing concurrent bypass. Acceptable for single-user NAS; fix with token-bucket or semaphore pattern if multi-user support added
+- OMDb provider makes 2 sequential HTTP requests (search + detail) within single 5s per-provider timeout — second request could exceed timeout. Acceptable for MVP
+- UPC codes stored without checksum validation — no standard UPC-A/UPC-E check digit validation applied before storage
+
+## Deferred from: code review of 3-3-cover-image-management (2026-04-02)
+
+- SSRF: no URL host validation on cover download — cover_url comes from trusted metadata providers, not user input. Add host allowlist if user-provided cover URLs are ever added
+- Race condition on concurrent cover file write for same title_id — write to temp file + atomic rename if multi-user support added
+- No cache busting for re-downloaded covers — filename stays {title_id}.jpg, browsers may serve stale version. Add version query param or content-hash when re-download is implemented (story 3-5)
+- Optimistic locking missing on cover_image_url UPDATE — pre-existing pattern gap, UPDATE without version check

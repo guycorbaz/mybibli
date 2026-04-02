@@ -1,40 +1,67 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::metadata::chain::ChainExecutor;
 use crate::metadata::registry::ProviderRegistry;
-use crate::models::media_type::MediaType;
+use crate::models::media_type::{CodeType, MediaType};
+use crate::services::cover::CoverService;
 
 /// Fetch metadata asynchronously for a title using the provider chain.
 /// This function is meant to be called via `tokio::spawn`.
 ///
 /// Flow:
 /// 1. ChainExecutor checks cache, then tries providers in order
-/// 2. On success: update title fields + mark resolved
-/// 3. On failure/no result: mark failed
+/// 2. Uses code_type to determine lookup method (isbn vs upc)
+/// 3. On success: update title fields + download cover + mark resolved
+/// 4. On failure/no result: mark failed
+#[allow(clippy::too_many_arguments)]
 pub async fn fetch_metadata_chain(
     pool: DbPool,
     title_id: u64,
-    isbn: String,
+    code: String,
+    code_type: CodeType,
     media_type: MediaType,
     registry: Arc<ProviderRegistry>,
     timeout_secs: u64,
+    http_client: reqwest::Client,
+    covers_dir: PathBuf,
 ) {
-    tracing::info!(title_id = title_id, isbn = %isbn, media_type = %media_type, "Starting async metadata fetch");
+    tracing::info!(title_id = title_id, code = %code, code_type = %code_type, media_type = %media_type, "Starting async metadata fetch");
 
-    match ChainExecutor::execute(&registry, &pool, &isbn, &media_type, timeout_secs).await {
+    match ChainExecutor::execute(&registry, &pool, &code, &code_type, &media_type, timeout_secs)
+        .await
+    {
         Some(metadata) => {
-            tracing::info!(title_id = title_id, isbn = %isbn, "Metadata fetch completed successfully");
+            tracing::info!(title_id = title_id, code = %code, "Metadata fetch completed successfully");
             if let Err(e) = update_title_from_metadata(&pool, title_id, &metadata).await {
                 tracing::warn!(title_id = title_id, error = %e, "Failed to update title from metadata");
                 mark_failed(&pool, title_id).await;
                 return;
             }
+
+            // Download and resize cover image if URL available
+            if let Some(cover_url) = &metadata.cover_url {
+                match CoverService::download_and_resize(&http_client, cover_url, title_id, &covers_dir).await {
+                    Ok(local_path) => {
+                        if let Err(e) = update_cover_image_url(&pool, title_id, Some(&local_path)).await {
+                            tracing::warn!(title_id = title_id, error = %e, "Failed to update cover_image_url");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(title_id = title_id, cover_url = %cover_url, error = %e, "Cover download failed");
+                        if let Err(db_err) = update_cover_image_url(&pool, title_id, None).await {
+                            tracing::warn!(title_id = title_id, error = %db_err, "Failed to clear cover_image_url after download failure");
+                        }
+                    }
+                }
+            }
+
             mark_resolved(&pool, title_id).await;
         }
         None => {
-            tracing::info!(title_id = title_id, isbn = %isbn, "No metadata found from providers");
+            tracing::info!(title_id = title_id, code = %code, "No metadata found from providers");
             mark_failed(&pool, title_id).await;
         }
     }
@@ -67,8 +94,11 @@ async fn update_title_from_metadata(
          publisher = COALESCE(?, publisher), \
          language = COALESCE(?, language), \
          page_count = COALESCE(?, page_count), \
-         cover_image_url = COALESCE(?, cover_image_url), \
          publication_date = COALESCE(?, publication_date), \
+         track_count = COALESCE(?, track_count), \
+         total_duration = COALESCE(?, total_duration), \
+         age_rating = COALESCE(?, age_rating), \
+         issue_number = COALESCE(?, issue_number), \
          updated_at = NOW() \
          WHERE id = ? AND deleted_at IS NULL",
     )
@@ -78,8 +108,11 @@ async fn update_title_from_metadata(
     .bind(&metadata.publisher)
     .bind(&metadata.language)
     .bind(metadata.page_count)
-    .bind(&metadata.cover_url)
     .bind(pub_date)
+    .bind(metadata.track_count)
+    .bind(&metadata.total_duration)
+    .bind(&metadata.age_rating)
+    .bind(&metadata.issue_number)
     .bind(title_id)
     .execute(pool)
     .await
@@ -150,6 +183,24 @@ async fn add_author_contributor(
     Ok(())
 }
 
+/// Update cover_image_url for a title (set to local path or NULL).
+async fn update_cover_image_url(
+    pool: &DbPool,
+    title_id: u64,
+    local_path: Option<&str>,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "UPDATE titles SET cover_image_url = ?, updated_at = NOW() \
+         WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(local_path)
+    .bind(title_id)
+    .execute(pool)
+    .await
+    .map_err(|e| AppError::Internal(format!("Failed to update cover_image_url: {e}")))?;
+    Ok(())
+}
+
 /// Mark a pending_metadata_updates row as resolved.
 async fn mark_resolved(pool: &DbPool, title_id: u64) {
     if let Err(e) = sqlx::query(
@@ -196,6 +247,7 @@ mod tests {
             cover_url: None,
             language: Some("fr".to_string()),
             page_count: None,
+            ..MetadataResult::default()
         };
         assert!(metadata.title.is_some());
         assert!(!metadata.authors.is_empty());

@@ -1,6 +1,12 @@
+pub mod bdgest;
 pub mod bnf;
 pub mod chain;
+pub mod comic_vine;
 pub mod google_books;
+pub mod musicbrainz;
+pub mod omdb;
 pub mod open_library;
 pub mod provider;
+pub mod rate_limiter;
 pub mod registry;
+pub mod tmdb;

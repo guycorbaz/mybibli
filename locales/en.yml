@@ -200,6 +200,18 @@ metadata:
   no_result: "No metadata found for this code."
   cached_result: "Using cached metadata."
   chain_timeout: "Metadata lookup timed out."
+media_type:
+  book: Book
+  bd: BD
+  cd: CD
+  dvd: DVD
+  magazine: Magazine
+  report: Report
+scan:
+  select_media_type: "What type of media is this?"
+cover:
+  alt_text: "Cover of %{title}"
+  no_cover: "No cover available"
 session:
   expiry_warning: "Your session will expire in 5 minutes."
   stay_connected: Stay connected

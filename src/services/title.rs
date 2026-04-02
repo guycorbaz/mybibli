@@ -1,5 +1,6 @@
 use crate::db::DbPool;
 use crate::error::AppError;
+use crate::models::media_type::{CodeType, MediaType};
 use crate::models::title::{NewTitle, TitleModel};
 
 pub struct TitleService;
@@ -77,6 +78,69 @@ impl TitleService {
         Self::insert_pending_metadata(pool, created.id, session_token.unwrap_or("unknown")).await?;
 
         tracing::info!(isbn = %isbn, title_id = created.id, "Created new title from ISBN");
+        Ok((created, true))
+    }
+
+    /// Create a new title from any scanned code (ISBN, UPC, or ISSN).
+    /// Stores the code in the correct column based on code_type.
+    /// Returns (title, is_new).
+    pub async fn create_from_code(
+        pool: &DbPool,
+        code: &str,
+        media_type: MediaType,
+        code_type: CodeType,
+        session_token: Option<&str>,
+    ) -> Result<(TitleModel, bool), AppError> {
+        // Check if code already exists
+        let existing = match code_type {
+            CodeType::Isbn => TitleModel::find_by_isbn(pool, code).await?,
+            CodeType::Upc => TitleModel::find_by_upc(pool, code).await?,
+            CodeType::Issn => TitleModel::find_by_issn(pool, code).await?,
+        };
+
+        if let Some(title) = existing {
+            tracing::info!(code = %code, code_type = %code_type, title_id = title.id, "Code already exists");
+            return Ok((title, false));
+        }
+
+        // Validate ISBN checksum for ISBN codes
+        if code_type == CodeType::Isbn && !Self::validate_isbn13_checksum(code) {
+            return Err(AppError::BadRequest(
+                rust_i18n::t!("error.isbn.invalid_checksum").to_string(),
+            ));
+        }
+
+        let genre_id = Self::find_default_genre_id(pool).await?;
+
+        let (isbn, issn, upc) = match code_type {
+            CodeType::Isbn => (Some(code.to_string()), None, None),
+            CodeType::Issn => (None, Some(code.to_string()), None),
+            CodeType::Upc => (None, None, Some(code.to_string())),
+        };
+
+        let new_title = NewTitle {
+            title: code.to_string(),
+            media_type: media_type.to_string(),
+            genre_id,
+            language: "fr".to_string(),
+            subtitle: None,
+            publisher: None,
+            publication_date: None,
+            isbn,
+            issn,
+            upc,
+            page_count: None,
+            track_count: None,
+            total_duration: None,
+            age_rating: None,
+            issue_number: None,
+        };
+
+        let created = TitleModel::create(pool, &new_title).await?;
+
+        Self::insert_pending_metadata(pool, created.id, session_token.unwrap_or("unknown")).await?;
+
+        tracing::info!(code = %code, code_type = %code_type, media_type = %media_type, title_id = created.id, "Created new title");
         Ok((created, true))
     }
 

@@ -1,6 +1,7 @@
 use askama::Template;
 use axum::extract::State;
 use axum::response::{Html, IntoResponse};
+use axum_extra::extract::cookie::{Cookie, CookieJar};
 use serde::Deserialize;
 
 use crate::error::AppError;
@@ -248,18 +249,74 @@ pub struct ScanForm {
     pub code: String,
 }
 
-fn detect_code_type(code: &str) -> &'static str {
-    if code.starts_with('V') && code.len() == 5 { return "vcode"; }
-    if code.starts_with('L') && code.len() == 5 { return "lcode"; }
-    if (code.starts_with("978") || code.starts_with("979")) && code.len() == 13 { return "isbn"; }
-    if code.starts_with("977") && code.len() >= 8 && code.len() <= 13 { return "issn"; }
-    if code.chars().all(|c| c.is_ascii_digit()) && code.len() >= 8 && code.len() <= 13 { return "upc"; }
-    "unknown"
+/// Result of barcode prefix detection.
+#[derive(Debug, PartialEq)]
+pub struct CodeDetection {
+    pub code_type: &'static str,
+    pub inferred_media_type: Option<crate::models::media_type::MediaType>,
+    pub inferred_code_type: Option<crate::models::media_type::CodeType>,
+}
+
+/// Validate an ISSN barcode as a valid EAN-13 with 977 prefix.
+/// ISSN-13 format: 977 + 7-digit ISSN body + 2-digit issue + 1 EAN check digit.
+/// Uses the standard EAN-13 checksum (same as ISBN-13: alternating weights 1,3).
+fn validate_issn_from_ean(code: &str) -> bool {
+    if code.len() != 13 || !code.starts_with("977") {
+        return false;
+    }
+    // EAN-13 check digit: same algorithm as ISBN-13
+    let digits: Vec<u32> = match code.chars().map(|c| c.to_digit(10)).collect() {
+        Some(d) => d,
+        None => return false,
+    };
+    let sum: u32 = digits
+        .iter()
+        .enumerate()
+        .take(12)
+        .map(|(i, &d)| if i % 2 == 0 { d } else { d * 3 })
+        .sum();
+    let check_digit = (10 - (sum % 10)) % 10;
+    check_digit == digits[12]
+}
+
+fn detect_code_type(code: &str) -> CodeDetection {
+    use crate::models::media_type::{CodeType, MediaType};
+
+    if code.starts_with('V') && code.len() == 5 {
+        return CodeDetection { code_type: "vcode", inferred_media_type: None, inferred_code_type: None };
+    }
+    if code.starts_with('L') && code.len() == 5 {
+        return CodeDetection { code_type: "lcode", inferred_media_type: None, inferred_code_type: None };
+    }
+    if (code.starts_with("978") || code.starts_with("979")) && code.len() == 13 {
+        return CodeDetection {
+            code_type: "isbn",
+            inferred_media_type: Some(MediaType::Book),
+            inferred_code_type: Some(CodeType::Isbn),
+        };
+    }
+    // 977 prefix: could be ISSN or UPC
+    if code.starts_with("977") && code.len() == 13 && validate_issn_from_ean(code) {
+        return CodeDetection {
+            code_type: "issn",
+            inferred_media_type: Some(MediaType::Magazine),
+            inferred_code_type: Some(CodeType::Issn),
+        };
+    }
+    if code.chars().all(|c| c.is_ascii_digit()) && code.len() >= 8 && code.len() <= 13 {
+        return CodeDetection {
+            code_type: "upc",
+            inferred_media_type: None, // Needs disambiguation
+            inferred_code_type: Some(CodeType::Upc),
+        };
+    }
+    CodeDetection { code_type: "unknown", inferred_media_type: None, inferred_code_type: None }
 }
 
 pub async fn handle_scan(
     session: Session,
     HxRequest(is_htmx): HxRequest,
+    jar: CookieJar,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<ScanForm>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -272,13 +329,13 @@ pub async fn handle_scan(
         ));
     }
 
-    let code_type = detect_code_type(&code);
-    tracing::info!(code = %code, code_type = code_type, "Processing scan");
+    let detection = detect_code_type(&code);
+    tracing::info!(code = %code, code_type = detection.code_type, "Processing scan");
 
     if is_htmx {
         let pool = &state.pool;
 
-        match code_type {
+        match detection.code_type {
             "isbn" => {
                 match TitleService::create_from_isbn(pool, &code, session.token.as_deref()).await {
                     Ok((title, is_new)) => {
@@ -334,13 +391,20 @@ pub async fn handle_scan(
                         let media_type = title.media_type.parse::<crate::models::media_type::MediaType>()
                             .unwrap_or(crate::models::media_type::MediaType::Book);
 
+                        // Determine code type for provider lookup method selection
+                        let fetch_code_type = detection.inferred_code_type
+                            .unwrap_or(crate::models::media_type::CodeType::Isbn);
+
                         tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
                             pool.clone(),
                             title.id,
                             code.clone(),
+                            fetch_code_type,
                             media_type,
                             state.registry.clone(),
                             timeout_secs,
+                            state.http_client.clone(),
+                            state.covers_dir.clone(),
                         ));
 
                         let guide = rust_i18n::t!("guide.title_active", title = &title.title).to_string();
@@ -546,8 +610,96 @@ pub async fn handle_scan(
                     Ok(resp.into_response())
                 }
             }
+            "issn" => {
+                // ISSN → Magazine media type, create immediately
+                use crate::models::media_type::{CodeType, MediaType};
+                match TitleService::create_from_code(pool, &code, MediaType::Magazine, CodeType::Issn, session.token.as_deref()).await {
+                    Ok((title, is_new)) => {
+                        if let Some(token) = &session.token {
+                            if let Err(e) = SessionModel::set_current_title(pool, token, title.id).await {
+                                tracing::warn!(error = %e, "Failed to update current title in session");
+                            }
+                            let _ = SessionModel::set_last_volume_label(pool, token, "").await;
+                            let _ = SessionModel::clear_active_location(pool, token).await;
+                        }
+
+                        let vol_count = VolumeModel::count_by_title(pool, title.id).await.unwrap_or(0);
+                        let mut oob = vec![OobUpdate {
+                            target: "context-banner".to_string(),
+                            content: {
+                                let author = TitleContributorModel::get_primary_contributor(pool, title.id).await.unwrap_or(None);
+                                context_banner_html(&title.title, &title.media_type, vol_count, author.as_deref())
+                            },
+                        }];
+                        if is_new
+                            && let Some(token) = &session.token
+                            && let Ok(counter) = SessionModel::increment_session_counter(pool, token).await
+                        {
+                            oob.push(OobUpdate {
+                                target: "session-counter".to_string(),
+                                content: session_counter_html(counter),
+                            });
+                        }
+
+                        if !is_new {
+                            let guide = rust_i18n::t!("guide.title_active", title = &title.title).to_string();
+                            push_guide_oob(&mut oob, &guide);
+                            let message = rust_i18n::t!("feedback.title_exists").to_string();
+                            let suggestion = rust_i18n::t!("feedback.title_exists_suggestion").to_string();
+                            return Ok(HtmxResponse { main: feedback_html("info", &message, &suggestion), oob }.into_response());
+                        }
+
+                        let timeout_secs = state.settings.read().map(|s| s.metadata_fetch_timeout_secs).unwrap_or(30);
+                        tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
+                            pool.clone(), title.id, code.clone(), CodeType::Issn, MediaType::Magazine, state.registry.clone(), timeout_secs,
+                            state.http_client.clone(), state.covers_dir.clone(),
+                        ));
+
+                        let guide = rust_i18n::t!("guide.title_active", title = &title.title).to_string();
+                        push_guide_oob(&mut oob, &guide);
+                        Ok(HtmxResponse { main: skeleton_feedback_html(title.id, &code), oob }.into_response())
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, code = %code, "ISSN scan failed");
+                        let message = rust_i18n::t!("error.title.creation_failed").to_string();
+                        Ok(Html(feedback_html("error", &message, "")).into_response())
+                    }
+                }
+            }
+            "upc" => {
+                // UPC → check session preference cookie, or show MediaTypeSelector
+                use crate::models::media_type::{CodeType, MediaType};
+
+                // Check session cookie for media type preference
+                let media_type_pref: Option<MediaType> = jar
+                    .get("media_type_preference")
+                    .and_then(|c| c.value().parse::<MediaType>().ok());
+
+                if let Some(media_type) = media_type_pref {
+                    // Session has preference → create title immediately
+                    match TitleService::create_from_code(pool, &code, media_type, CodeType::Upc, session.token.as_deref()).await {
+                        Ok((title, _is_new)) => {
+                            let timeout_secs = state.settings.read().map(|s| s.metadata_fetch_timeout_secs).unwrap_or(30);
+                            tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
+                                pool.clone(), title.id, code.clone(), CodeType::Upc, media_type, state.registry.clone(), timeout_secs,
+                                state.http_client.clone(), state.covers_dir.clone(),
+                            ));
+                            Ok(HtmxResponse { main: skeleton_feedback_html(title.id, &code), oob: vec![] }.into_response())
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, code = %code, "UPC scan failed");
+                            let message = rust_i18n::t!("error.title.creation_failed").to_string();
+                            Ok(Html(feedback_html("error", &message, "")).into_response())
+                        }
+                    }
+                } else {
+                    // No preference → return MediaTypeSelector disambiguation UI
+                    let html = media_type_selector_html(&code, None);
+                    Ok(Html(html).into_response())
+                }
+            }
             _ => {
-                // ISSN, UPC, unknown → amber warning
+                // unknown → amber warning
                 let message = rust_i18n::t!("feedback.code_unsupported").to_string();
                 Ok(Html(feedback_html("warning", &message, "")).into_response())
             }
@@ -560,6 +712,141 @@ pub async fn handle_scan(
                 tracing::error!(error = %e, "Failed to render catalog template");
                 Err(AppError::Internal("Template rendering failed".to_string()))
             }
+        }
+    }
+}
+
+/// Generate MediaTypeSelector HTML for UPC disambiguation (UX-DR22).
+fn media_type_selector_html(code: &str, suggested: Option<&str>) -> String {
+    let escaped_code = html_escape(code);
+    // Media type options with distinct emoji indicators (SVG icons planned for story 3-3)
+    let types = [
+        ("book", rust_i18n::t!("media_type.book").to_string(), "\u{1F4D6}"),      // 📖
+        ("bd", rust_i18n::t!("media_type.bd").to_string(), "\u{1F4DA}"),           // 📚
+        ("cd", rust_i18n::t!("media_type.cd").to_string(), "\u{1F4BF}"),           // 💿
+        ("dvd", rust_i18n::t!("media_type.dvd").to_string(), "\u{1F4C0}"),         // 📀
+        ("magazine", rust_i18n::t!("media_type.magazine").to_string(), "\u{1F4F0}"), // 📰
+        ("report", rust_i18n::t!("media_type.report").to_string(), "\u{1F4C4}"),   // 📄
+    ];
+
+    let mut buttons = String::new();
+    for (value, label, icon) in &types {
+        let is_suggested = suggested.is_some_and(|s| s == *value);
+        let bg = if is_suggested {
+            "bg-indigo-600 text-white"
+        } else {
+            "bg-white dark:bg-gray-800 text-indigo-600 border border-indigo-300 dark:border-indigo-600"
+        };
+        let aria = if is_suggested {
+            format!(r#" aria-label="{label} (suggested)""#)
+        } else {
+            String::new()
+        };
+        // Build hx-vals JSON manually to avoid format! escaping issues
+        let hx_vals = format!(r#"{{"code":"{}","media_type":"{}"}}"#, escaped_code, value);
+        let mut btn = String::new();
+        btn.push_str("<button type=\"button\" role=\"radio\" class=\"px-3 py-2 rounded-md text-sm font-medium ");
+        btn.push_str(bg);
+        btn.push_str(" hover:bg-indigo-100 dark:hover:bg-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[44px] min-w-[44px] cursor-pointer\" hx-post=\"/catalog/scan-with-type\" hx-target=\"#feedback-list\" hx-swap=\"afterbegin\" hx-vals='");
+        btn.push_str(&hx_vals);
+        btn.push('\'');
+        btn.push_str(&aria);
+        btn.push('>');
+        btn.push_str(icon);
+        btn.push(' ');
+        btn.push_str(label);
+        btn.push_str("</button>");
+        buttons.push_str(&btn);
+    }
+
+    let select_label = rust_i18n::t!("scan.select_media_type").to_string();
+    let question_icon = r#"<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>"#;
+    format!(
+        r#"<div class="flex items-start gap-3 p-3 rounded-lg border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950" role="status" aria-live="polite"><div class="flex-shrink-0 text-blue-500">{question_icon}</div><div class="flex-1"><p class="text-sm font-medium text-gray-800 dark:text-gray-200">UPC {escaped_code} — {select_label}</p><div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="{select_label}">{buttons}</div></div></div>"#
+    )
+}
+
+/// Handle scan-with-type: UPC + explicit media type from MediaTypeSelector.
+#[derive(Deserialize)]
+pub struct ScanWithTypeForm {
+    pub code: String,
+    pub media_type: String,
+}
+
+pub async fn handle_scan_with_type(
+    session: Session,
+    HxRequest(_is_htmx): HxRequest,
+    jar: CookieJar,
+    State(state): State<AppState>,
+    axum::Form(form): axum::Form<ScanWithTypeForm>,
+) -> Result<impl IntoResponse, AppError> {
+    session.require_role(Role::Librarian)?;
+
+    use crate::models::media_type::{CodeType, MediaType};
+
+    let code = form.code.trim().to_string();
+    if code.is_empty() {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.bad_request").to_string(),
+        ));
+    }
+    let media_type: MediaType = form.media_type.parse().map_err(|e: String| AppError::BadRequest(e))?;
+    let pool = &state.pool;
+
+    // Set cookie to remember media type preference for subsequent UPC scans
+    let updated_jar = jar.add(Cookie::build(("media_type_preference", media_type.to_string())).path("/catalog"));
+
+    match TitleService::create_from_code(pool, &code, media_type, CodeType::Upc, session.token.as_deref()).await {
+        Ok((title, is_new)) => {
+            if let Some(token) = &session.token {
+                if let Err(e) = SessionModel::set_current_title(pool, token, title.id).await {
+                    tracing::warn!(error = %e, "Failed to update current title");
+                }
+                let _ = SessionModel::set_last_volume_label(pool, token, "").await;
+                let _ = SessionModel::clear_active_location(pool, token).await;
+            }
+
+            let vol_count = VolumeModel::count_by_title(pool, title.id).await.unwrap_or(0);
+            let mut oob = vec![OobUpdate {
+                target: "context-banner".to_string(),
+                content: {
+                    let author = TitleContributorModel::get_primary_contributor(pool, title.id).await.unwrap_or(None);
+                    context_banner_html(&title.title, &title.media_type, vol_count, author.as_deref())
+                },
+            }];
+            if is_new
+                && let Some(token) = &session.token
+                && let Ok(counter) = SessionModel::increment_session_counter(pool, token).await
+            {
+                oob.push(OobUpdate {
+                    target: "session-counter".to_string(),
+                    content: session_counter_html(counter),
+                });
+            }
+
+            if is_new {
+                let timeout_secs = state.settings.read().map(|s| s.metadata_fetch_timeout_secs).unwrap_or(30);
+                tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
+                    pool.clone(), title.id, code.clone(), CodeType::Upc, media_type, state.registry.clone(), timeout_secs,
+                    state.http_client.clone(), state.covers_dir.clone(),
+                ));
+            }
+
+            let guide = rust_i18n::t!("guide.title_active", title = &title.title).to_string();
+            push_guide_oob(&mut oob, &guide);
+
+            if is_new {
+                Ok((updated_jar, HtmxResponse { main: skeleton_feedback_html(title.id, &code), oob }).into_response())
+            } else {
+                let message = rust_i18n::t!("feedback.title_exists").to_string();
+                let suggestion = rust_i18n::t!("feedback.title_exists_suggestion").to_string();
+                Ok((updated_jar, HtmxResponse { main: feedback_html("info", &message, &suggestion), oob }).into_response())
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, code = %code, "UPC scan-with-type failed");
+            let message = rust_i18n::t!("error.title.creation_failed").to_string();
+            Ok(Html(feedback_html("error", &message, "")).into_response())
         }
     }
 }
@@ -1313,43 +1600,66 @@ mod tests {
 
     #[test]
     fn test_detect_code_type_isbn_978() {
-        assert_eq!(detect_code_type("9782070360246"), "isbn");
+        let d = detect_code_type("9782070360246");
+        assert_eq!(d.code_type, "isbn");
+        assert_eq!(d.inferred_media_type, Some(crate::models::media_type::MediaType::Book));
+        assert_eq!(d.inferred_code_type, Some(crate::models::media_type::CodeType::Isbn));
     }
 
     #[test]
     fn test_detect_code_type_isbn_979() {
-        assert_eq!(detect_code_type("9791032305560"), "isbn");
+        assert_eq!(detect_code_type("9791032305560").code_type, "isbn");
     }
 
     #[test]
     fn test_detect_code_type_vcode() {
-        assert_eq!(detect_code_type("V0042"), "vcode");
+        assert_eq!(detect_code_type("V0042").code_type, "vcode");
     }
 
     #[test]
     fn test_detect_code_type_lcode() {
-        assert_eq!(detect_code_type("L0001"), "lcode");
-    }
-
-    #[test]
-    fn test_detect_code_type_issn() {
-        assert_eq!(detect_code_type("97712345"), "issn");
+        assert_eq!(detect_code_type("L0001").code_type, "lcode");
     }
 
     #[test]
     fn test_detect_code_type_upc() {
-        assert_eq!(detect_code_type("12345678"), "upc");
+        let d = detect_code_type("12345678");
+        assert_eq!(d.code_type, "upc");
+        assert!(d.inferred_media_type.is_none()); // UPC needs disambiguation
+        assert_eq!(d.inferred_code_type, Some(crate::models::media_type::CodeType::Upc));
     }
 
     #[test]
     fn test_detect_code_type_unknown() {
-        assert_eq!(detect_code_type("ABCDEF"), "unknown");
+        assert_eq!(detect_code_type("ABCDEF").code_type, "unknown");
     }
 
     #[test]
     fn test_detect_code_type_v0000() {
         // V0000 matches vcode format — validation happens in VolumeService
-        assert_eq!(detect_code_type("V0000"), "vcode");
+        assert_eq!(detect_code_type("V0000").code_type, "vcode");
+    }
+
+    #[test]
+    fn test_detect_code_type_977_valid_issn() {
+        // 13-digit 977-prefixed code with valid EAN-13 check digit → ISSN
+        let d = detect_code_type("9770000000003");
+        assert_eq!(d.code_type, "issn");
+        assert_eq!(d.inferred_media_type, Some(crate::models::media_type::MediaType::Magazine));
+    }
+
+    #[test]
+    fn test_detect_code_type_977_invalid_ean_checksum() {
+        // 13-digit 977-prefixed code with INVALID EAN-13 check digit → UPC
+        let d = detect_code_type("9770000000000");
+        assert_eq!(d.code_type, "upc");
+    }
+
+    #[test]
+    fn test_detect_code_type_977_invalid_issn_as_upc() {
+        // 977-prefix but shorter than 13 digits → falls through to UPC
+        let d = detect_code_type("9771234567");
+        assert_eq!(d.code_type, "upc");
     }
 
     #[test]

@@ -82,8 +82,8 @@ development_status:
   # UX-DRs: UX-DR2(complete), UX-DR10(complete), UX-DR22, UX-DR25(audio.js), UX-DR27
   epic-3: in-progress
   3-1-provider-chain-and-fallback: done
-  3-2-media-type-scanning: backlog
-  3-3-cover-image-management: backlog
+  3-2-media-type-scanning: done
+  3-3-cover-image-management: done
   3-4-scan-feedback-polish: backlog
   3-5-metadata-editing-and-redownload: backlog
   epic-3-retrospective: optional

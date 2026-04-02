@@ -195,6 +195,7 @@ impl MetadataProvider for OpenLibraryProvider {
             cover_url: parsed.cover_url,
             language: None, // Open Library book endpoint doesn't include language
             page_count: parsed.page_count,
+            ..MetadataResult::default()
         }))
     }
 }

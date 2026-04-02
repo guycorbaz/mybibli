@@ -11,6 +11,7 @@ pub mod services;
 pub mod tasks;
 pub mod utils;
 
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use config::AppSettings;
@@ -26,4 +27,5 @@ pub struct AppState {
     pub settings: Arc<RwLock<AppSettings>>,
     pub http_client: reqwest::Client,
     pub registry: Arc<ProviderRegistry>,
+    pub covers_dir: PathBuf,
 }

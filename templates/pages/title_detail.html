@@ -1,20 +1,12 @@
 {% extends "layouts/base.html" %}
+{% import "components/cover.html" as cover %}
 
 {% block title %}{{ title.title }} — mybibli{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 py-8">
     <div class="flex flex-col md:flex-row gap-8">
-        <div class="flex-shrink-0">
-            {% match title.cover_image_url %}
-                {% when Some with (url) %}
-                    <img src="{{ url }}" alt="" class="w-48 h-72 object-cover rounded-lg">
-                {% when None %}
-                    <div class="w-48 h-72 bg-stone-100 dark:bg-stone-800 rounded-lg flex items-center justify-center">
-                        <img src="/static/icons/{{ title.media_type }}.svg" alt="" class="w-12 h-12 opacity-50">
-                    </div>
-            {% endmatch %}
-        </div>
+        {% call cover::cover(title.cover_image_url.as_deref().unwrap_or_default(), title.title, title.media_type, "w-[200px] h-[300px]", "eager", label_no_cover) %}{% endcall %}
         <div>
             <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ title.title }}</h1>
             {% if let Some(sub) = title.subtitle %}

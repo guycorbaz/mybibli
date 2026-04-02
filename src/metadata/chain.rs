@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::db::DbPool;
-use crate::models::media_type::MediaType;
+use crate::models::media_type::{CodeType, MediaType};
 use crate::models::metadata_cache::MetadataCacheModel;
 
 use super::provider::MetadataResult;
@@ -15,16 +15,18 @@ impl ChainExecutor {
     ///
     /// 1. Check cache first (returns immediately on hit)
     /// 2. Iterate providers in priority order with per-provider timeout
-    /// 3. Cache first successful result
-    /// 4. Return None if all providers fail/return nothing
+    /// 3. Call appropriate lookup method based on code_type (isbn vs upc)
+    /// 4. Cache first successful result
+    /// 5. Return None if all providers fail/return nothing
     pub async fn execute(
         registry: &ProviderRegistry,
         pool: &DbPool,
         code: &str,
+        code_type: &CodeType,
         media_type: &MediaType,
         timeout_secs: u64,
     ) -> Option<MetadataResult> {
-        tracing::info!(code = %code, media_type = %media_type, "Starting metadata chain");
+        tracing::info!(code = %code, code_type = %code_type, media_type = %media_type, "Starting metadata chain");
 
         // 1. Check cache first
         match MetadataCacheModel::find_by_isbn(pool, code).await {
@@ -53,9 +55,17 @@ impl ChainExecutor {
                 let provider_name = provider.name();
                 let start = Instant::now();
 
+                // Acquire rate limiter if provider has one (proactive rate limiting)
+                if let Some(limiter) = provider.rate_limiter() {
+                    limiter.acquire().await;
+                }
+
                 let per_provider_timeout = Duration::from_secs(5);
-                let result =
-                    tokio::time::timeout(per_provider_timeout, provider.lookup_by_isbn(code)).await;
+                let lookup_future = match code_type {
+                    CodeType::Upc => provider.lookup_by_upc(code),
+                    CodeType::Isbn | CodeType::Issn => provider.lookup_by_isbn(code),
+                };
+                let result = tokio::time::timeout(per_provider_timeout, lookup_future).await;
 
                 let duration_ms = start.elapsed().as_millis();
 
@@ -351,6 +361,82 @@ mod tests {
         }
         assert!(result.is_some());
         assert_eq!(result.unwrap().title.as_deref(), Some("Test Title"));
+    }
+
+    /// Provider that only responds to lookup_by_upc (returns None for ISBN).
+    struct UpcOnlyProvider;
+
+    #[async_trait]
+    impl MetadataProvider for UpcOnlyProvider {
+        fn name(&self) -> &str {
+            "upc_only"
+        }
+        fn supports_media_type(&self, _media_type: &MediaType) -> bool {
+            true
+        }
+        async fn lookup_by_isbn(
+            &self,
+            _isbn: &str,
+        ) -> Result<Option<MetadataResult>, MetadataError> {
+            Ok(None) // ISBN lookup returns nothing
+        }
+        async fn lookup_by_upc(
+            &self,
+            _upc: &str,
+        ) -> Result<Option<MetadataResult>, MetadataError> {
+            Ok(Some(MetadataResult {
+                title: Some("UPC Result".to_string()),
+                ..MetadataResult::default()
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upc_code_type_calls_lookup_by_upc() {
+        // UpcOnlyProvider returns None for ISBN, Some for UPC
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(UpcOnlyProvider));
+
+        let chain = registry.chain_for(&MediaType::Cd);
+        let code_type = CodeType::Upc;
+
+        let mut result = None;
+        for provider in &chain {
+            let lookup = match code_type {
+                CodeType::Upc => provider.lookup_by_upc("0093624738626").await,
+                CodeType::Isbn | CodeType::Issn => provider.lookup_by_isbn("0093624738626").await,
+            };
+            if let Ok(Some(meta)) = lookup {
+                result = Some(meta);
+                break;
+            }
+        }
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().title.as_deref(), Some("UPC Result"));
+    }
+
+    #[tokio::test]
+    async fn test_isbn_code_type_calls_lookup_by_isbn() {
+        // UpcOnlyProvider returns None for ISBN — so ISBN code_type should get None
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(UpcOnlyProvider));
+
+        let chain = registry.chain_for(&MediaType::Book);
+        let code_type = CodeType::Isbn;
+
+        let mut result = None;
+        for provider in &chain {
+            let lookup = match code_type {
+                CodeType::Upc => provider.lookup_by_upc("9782070360246").await,
+                CodeType::Isbn | CodeType::Issn => provider.lookup_by_isbn("9782070360246").await,
+            };
+            if let Ok(Some(meta)) = lookup {
+                result = Some(meta);
+                break;
+            }
+        }
+        // UpcOnlyProvider returns None for ISBN lookup
+        assert!(result.is_none());
     }
 
     #[tokio::test]

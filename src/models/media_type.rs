@@ -1,6 +1,24 @@
 use std::fmt;
 use std::str::FromStr;
 
+/// The type of barcode/code scanned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodeType {
+    Isbn,
+    Upc,
+    Issn,
+}
+
+impl fmt::Display for CodeType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CodeType::Isbn => write!(f, "isbn"),
+            CodeType::Upc => write!(f, "upc"),
+            CodeType::Issn => write!(f, "issn"),
+        }
+    }
+}
+
 /// Media types supported by the library catalog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MediaType {
@@ -81,5 +99,12 @@ mod tests {
     #[test]
     fn test_from_str_unknown() {
         assert!("vinyl".parse::<MediaType>().is_err());
+    }
+
+    #[test]
+    fn test_code_type_display() {
+        assert_eq!(CodeType::Isbn.to_string(), "isbn");
+        assert_eq!(CodeType::Upc.to_string(), "upc");
+        assert_eq!(CodeType::Issn.to_string(), "issn");
     }
 }

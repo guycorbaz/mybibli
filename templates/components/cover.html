@@ -1,0 +1,11 @@
+{% macro cover(cover_url, title_text, media_type, size_class, lazy, no_cover_label) %}
+{% if !cover_url.is_empty() %}
+<div class="{{ size_class }} flex-shrink-0">
+    <img src="{{ cover_url }}" alt="Cover of {{ title_text }}" class="w-full h-full object-cover rounded-lg dark:shadow-sm" loading="{{ lazy }}">
+</div>
+{% else %}
+<div class="{{ size_class }} flex-shrink-0 bg-stone-100 dark:bg-stone-800 rounded-lg flex items-center justify-center" role="img" aria-label="{{ no_cover_label }}">
+    <img src="/static/icons/{{ media_type }}.svg" alt="" class="w-1/3 h-1/3 opacity-50">
+</div>
+{% endif %}
+{% endmacro %}

@@ -18,6 +18,7 @@ pub fn build_router(state: AppState) -> Router {
     let catalog_routes = Router::new()
         .route("/catalog", axum::routing::get(catalog::catalog_page))
         .route("/catalog/scan", axum::routing::post(catalog::handle_scan))
+        .route("/catalog/scan-with-type", axum::routing::post(catalog::handle_scan_with_type))
         .route(
             "/catalog/title/new",
             axum::routing::get(catalog::title_form_page),
@@ -116,6 +117,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
+        .nest_service("/covers", ServeDir::new(&state.covers_dir))
         .with_state(state)
 }
 

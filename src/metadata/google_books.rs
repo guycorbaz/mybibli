@@ -84,6 +84,7 @@ impl GoogleBooksProvider {
                 .get("pageCount")
                 .and_then(|v| v.as_i64())
                 .map(|n| n as i32),
+            ..MetadataResult::default()
         })
     }
 }

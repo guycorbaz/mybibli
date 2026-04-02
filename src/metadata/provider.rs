@@ -1,7 +1,11 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::models::media_type::MediaType;
+
+use super::rate_limiter::RateLimiter;
 
 /// Result of a metadata lookup from an external provider.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -15,6 +19,10 @@ pub struct MetadataResult {
     pub cover_url: Option<String>,
     pub language: Option<String>,
     pub page_count: Option<i32>,
+    pub track_count: Option<i32>,
+    pub total_duration: Option<String>,
+    pub age_rating: Option<String>,
+    pub issue_number: Option<String>,
 }
 
 /// Trait for external metadata providers (BnF, Google Books, Open Library, etc.).
@@ -37,6 +45,12 @@ pub trait MetadataProvider: Send + Sync {
     /// Search by title string.
     async fn search_by_title(&self, _title: &str) -> Result<Option<MetadataResult>, MetadataError> {
         Ok(None) // Default: not supported
+    }
+
+    /// Return the rate limiter for this provider, if any.
+    /// ChainExecutor calls `acquire()` before each lookup when present.
+    fn rate_limiter(&self) -> Option<Arc<RateLimiter>> {
+        None // Default: no rate limiting
     }
 }
 
@@ -84,6 +98,7 @@ mod tests {
             cover_url: None,
             language: Some("fr".to_string()),
             page_count: Some(235),
+            ..MetadataResult::default()
         };
         assert_eq!(result.title.as_deref(), Some("L'Ecume des jours"));
         assert_eq!(result.authors.len(), 1);

@@ -98,6 +98,22 @@ impl MetadataCacheModel {
                 .get("page_count")
                 .and_then(|v| v.as_i64())
                 .map(|n| n as i32),
+            track_count: obj
+                .get("track_count")
+                .and_then(|v| v.as_i64())
+                .map(|n| n as i32),
+            total_duration: obj
+                .get("total_duration")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            age_rating: obj
+                .get("age_rating")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            issue_number: obj
+                .get("issue_number")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         })
     }
 
@@ -113,6 +129,10 @@ impl MetadataCacheModel {
             "cover_url": result.cover_url,
             "language": result.language,
             "page_count": result.page_count,
+            "track_count": result.track_count,
+            "total_duration": result.total_duration,
+            "age_rating": result.age_rating,
+            "issue_number": result.issue_number,
         })
     }
 }
@@ -175,6 +195,7 @@ mod tests {
             cover_url: None,
             language: Some("en".to_string()),
             page_count: Some(300),
+            ..MetadataResult::default()
         };
         let json = MetadataCacheModel::to_cache_json(&original);
         let parsed = MetadataCacheModel::parse_cached_response(&json).unwrap();

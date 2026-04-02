@@ -3,10 +3,15 @@ use std::time::Duration;
 
 use mybibli::config::{AppSettings, Config};
 use mybibli::db;
+use mybibli::metadata::bdgest::BdgestProvider;
 use mybibli::metadata::bnf::BnfProvider;
 use mybibli::metadata::google_books::GoogleBooksProvider;
+use mybibli::metadata::musicbrainz::MusicBrainzProvider;
+use mybibli::metadata::omdb::OmdbProvider;
 use mybibli::metadata::open_library::OpenLibraryProvider;
+use mybibli::metadata::rate_limiter::RateLimiter;
 use mybibli::metadata::registry::ProviderRegistry;
+use mybibli::metadata::tmdb::TmdbProvider;
 use mybibli::middleware::logging;
 use mybibli::routes;
 use mybibli::AppState;
@@ -61,13 +66,46 @@ async fn main() {
         .build()
         .expect("Failed to create HTTP client");
 
-    // Build provider registry
+    // Build provider registry (registration order = chain priority)
     let mut registry = ProviderRegistry::new();
+
+    // Book chain: BnF → Google Books → Open Library
+    // BD chain: BDGest (stub) → BnF → Google Books
+    // Magazine chain: BnF → Google Books
+    registry.register(Box::new(BdgestProvider::new()));
     registry.register(Box::new(BnfProvider::new(http_client.clone())));
     let gb_key = std::env::var("GOOGLE_BOOKS_API_KEY").ok();
     registry.register(Box::new(GoogleBooksProvider::new(http_client.clone(), gb_key)));
     registry.register(Box::new(OpenLibraryProvider::new(http_client.clone())));
+
+    // CD chain: MusicBrainz (1 req/sec rate limit)
+    let mb_limiter = Arc::new(RateLimiter::per_second(1.0));
+    registry.register(Box::new(MusicBrainzProvider::new(http_client.clone(), mb_limiter)));
+
+    // DVD chain: OMDb → TMDb (OMDb first per architecture)
+    if let Ok(omdb_key) = std::env::var("OMDB_API_KEY") {
+        registry.register(Box::new(OmdbProvider::new(http_client.clone(), omdb_key)));
+    } else {
+        tracing::warn!("OMDB_API_KEY not set — OMDb provider disabled");
+    }
+    if let Ok(tmdb_key) = std::env::var("TMDB_API_KEY") {
+        registry.register(Box::new(TmdbProvider::new(http_client.clone(), tmdb_key)));
+    } else {
+        tracing::warn!("TMDB_API_KEY not set — TMDb provider disabled");
+    }
+
+    // Comic Vine: implemented but NOT registered per architecture (future use)
+    // let cv_key = std::env::var("COMIC_VINE_API_KEY").ok();
+    // if let Some(key) = cv_key { registry.register(Box::new(ComicVineProvider::new(http_client.clone(), key))); }
+
     tracing::info!(count = registry.len(), "Metadata providers registered");
+
+    // Configure covers directory
+    let covers_dir = std::path::PathBuf::from(
+        std::env::var("COVERS_DIR").unwrap_or_else(|_| "./covers".to_string()),
+    );
+    std::fs::create_dir_all(&covers_dir).expect("Failed to create covers directory");
+    tracing::info!(covers_dir = %covers_dir.display(), "Covers directory configured");
 
     // Build application
     let state = AppState {
@@ -75,6 +113,7 @@ async fn main() {
         settings: Arc::new(RwLock::new(app_settings)),
         http_client,
         registry: Arc::new(registry),
+        covers_dir,
     };
     let app = routes::build_router(state).layer(logging::trace_layer());
 

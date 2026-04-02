@@ -31,6 +31,7 @@ pub struct TitleDetailTemplate {
     pub contributors: Vec<TitleContributorModel>,
     pub label_contributors: String,
     pub label_vol: String,
+    pub label_no_cover: String,
 }
 
 pub async fn title_detail(
@@ -73,6 +74,7 @@ pub async fn title_detail(
             contributors,
             label_contributors: rust_i18n::t!("title_detail.contributors").to_string(),
             label_vol: rust_i18n::t!("title_detail.volumes").to_string(),
+            label_no_cover: rust_i18n::t!("cover.no_cover").to_string(),
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),
@@ -196,6 +198,7 @@ mod tests {
             contributors: vec![],
             label_contributors: "Contributors".to_string(),
             label_vol: "Volumes".to_string(),
+            label_no_cover: "No cover available".to_string(),
         };
         let rendered = template.render().unwrap();
         // Askama auto-escapes with HTML entities

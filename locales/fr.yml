@@ -200,6 +200,18 @@ metadata:
   no_result: "Aucune métadonnée trouvée pour ce code."
   cached_result: "Utilisation des métadonnées en cache."
   chain_timeout: "La recherche de métadonnées a expiré."
+media_type:
+  book: Livre
+  bd: BD
+  cd: CD
+  dvd: DVD
+  magazine: Magazine
+  report: Rapport
+scan:
+  select_media_type: "Quel type de média ?"
+cover:
+  alt_text: "Couverture de %{title}"
+  no_cover: "Pas de couverture disponible"
 session:
   expiry_warning: "Votre session expirera dans 5 minutes."
   stay_connected: Rester connecté
