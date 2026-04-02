@@ -1,7 +1,10 @@
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+
+use crate::models::media_type::MediaType;
 
 /// Result of a metadata lookup from an external provider.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MetadataResult {
     pub title: Option<String>,
     pub subtitle: Option<String>,
@@ -11,6 +14,7 @@ pub struct MetadataResult {
     pub publication_date: Option<String>,
     pub cover_url: Option<String>,
     pub language: Option<String>,
+    pub page_count: Option<i32>,
 }
 
 /// Trait for external metadata providers (BnF, Google Books, Open Library, etc.).
@@ -19,8 +23,8 @@ pub trait MetadataProvider: Send + Sync {
     /// Human-readable name of the provider.
     fn name(&self) -> &str;
 
-    /// Whether this provider supports the given media type (e.g., "book", "cd").
-    fn supports_media_type(&self, media_type: &str) -> bool;
+    /// Whether this provider supports the given media type.
+    fn supports_media_type(&self, media_type: &MediaType) -> bool;
 
     /// Look up metadata by ISBN-13.
     async fn lookup_by_isbn(&self, isbn: &str) -> Result<Option<MetadataResult>, MetadataError>;
@@ -79,11 +83,13 @@ mod tests {
             publication_date: Some("1947".to_string()),
             cover_url: None,
             language: Some("fr".to_string()),
+            page_count: Some(235),
         };
         assert_eq!(result.title.as_deref(), Some("L'Ecume des jours"));
         assert_eq!(result.authors.len(), 1);
         assert_eq!(result.authors[0], "Boris Vian");
         assert_eq!(result.publisher.as_deref(), Some("Gallimard"));
+        assert_eq!(result.page_count, Some(235));
     }
 
     #[test]

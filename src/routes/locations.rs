@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
-use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
+use crate::middleware::htmx::HxRequest;
 use crate::models::location::LocationModel;
 use crate::services::locations::LocationService;
 use crate::AppState;
@@ -170,10 +170,10 @@ fn render_node_at_depth(node: &TreeNode, html: &mut String, node_types: &[(u64, 
         let nt_escaped = crate::utils::html_escape(nt_name);
         type_options.push_str(&format!(r#"<option value="{nt_escaped}">{nt_escaped}</option>"#));
     }
-    let name_lbl = crate::utils::html_escape(&rust_i18n::t!("location.name_label").to_string());
-    let type_lbl = crate::utils::html_escape(&rust_i18n::t!("location.type_label").to_string());
-    let lcode_lbl = crate::utils::html_escape(&rust_i18n::t!("location.lcode_label").to_string());
-    let submit_lbl = crate::utils::html_escape(&rust_i18n::t!("location.submit").to_string());
+    let name_lbl = crate::utils::html_escape(rust_i18n::t!("location.name_label").as_ref());
+    let type_lbl = crate::utils::html_escape(rust_i18n::t!("location.type_label").as_ref());
+    let lcode_lbl = crate::utils::html_escape(rust_i18n::t!("location.lcode_label").as_ref());
+    let submit_lbl = crate::utils::html_escape(rust_i18n::t!("location.submit").as_ref());
     let form_id = format!("add-child-{}", node.location.id);
 
     // Indentation: 2rem per depth level

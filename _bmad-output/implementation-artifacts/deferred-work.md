@@ -53,3 +53,10 @@
 - Soft-delete already-deleted returns 404 not idempotent 200 — acceptable REST semantics
 - htmx might not be loaded when keepAlive() fires — fetch() fallback handles it
 - resetTimer on every htmx:afterRequest without debounce — cheap operation
+
+## Deferred from: code review of 3-1-provider-chain-and-fallback (2026-04-02)
+
+- timeout_secs=0 causes instant global timeout with no validation or minimum — add settings validation
+- Per-provider timeout 5s hardcoded, not configurable or related to global timeout — design simplification acceptable for single-user NAS
+- Rate limit detection via string matching on "429" in error message, no generic rate limiter struct — proactive rate limiter planned for story 3-2 (MusicBrainz 1 req/sec)
+- Open Library author resolution is sequential within 5s per-provider timeout — consider concurrent resolution (futures::join_all) for multi-author books

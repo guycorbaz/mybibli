@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-03-31
+# last_updated: 2026-04-02
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -39,7 +39,7 @@
 # The epics document contains FR/NFR/AR/UX-DR assignments per epic.
 
 generated: 2026-03-29
-last_updated: 2026-03-31
+last_updated: 2026-04-02
 project: mybibli
 project_key: NOKEY
 tracking_system: file-system
@@ -51,7 +51,7 @@ development_status:
   # ARs: AR1-AR6, AR8, AR12(basic), AR16-AR18, AR20-AR22, AR24-AR26
   # NFRs: NFR1-NFR5, NFR7-NFR10, NFR12, NFR14, NFR22-NFR24, NFR26-NFR28, NFR30-NFR32, NFR34-NFR35, NFR38(foundation)
   # UX-DRs: UX-DR1, UX-DR2(basic), UX-DR3, UX-DR5(basic), UX-DR6(basic), UX-DR10(basic), UX-DR15, UX-DR23, UX-DR24, UX-DR25(partial), UX-DR29(foundation)
-  epic-1: in-progress
+  epic-1: done
   1-1-project-skeleton-and-foundation: done
   1-2-scan-field-and-catalog-page: done
   1-3-title-crud-and-isbn-scanning: done
@@ -67,7 +67,7 @@ development_status:
   # FRs: FR24-FR29, FR31-FR35, FR116-FR117
   # ARs: AR10, AR11
   # UX-DRs: UX-DR11, UX-DR12, UX-DR19
-  epic-2: in-progress
+  epic-2: done
   2-1-location-hierarchy-crud: done
   2-2-shelving-by-scan: done
   2-3-browse-shelf-contents: done
@@ -80,7 +80,12 @@ development_status:
   # ARs: AR7, AR12(extended), AR14
   # NFRs: NFR6, NFR16-NFR20, NFR33, NFR36, NFR40
   # UX-DRs: UX-DR2(complete), UX-DR10(complete), UX-DR22, UX-DR25(audio.js), UX-DR27
-  epic-3: backlog
+  epic-3: in-progress
+  3-1-provider-chain-and-fallback: done
+  3-2-media-type-scanning: backlog
+  3-3-cover-image-management: backlog
+  3-4-scan-feedback-polish: backlog
+  3-5-metadata-editing-and-redownload: backlog
   epic-3-retrospective: optional
 
   # Epic 4: Je gère mes prêts

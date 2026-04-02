@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 
+use crate::models::media_type::MediaType;
+
 use super::provider::{MetadataError, MetadataProvider, MetadataResult};
 
 /// BnF (Bibliotheque nationale de France) metadata provider.
@@ -11,19 +13,16 @@ pub struct BnfProvider {
 }
 
 impl BnfProvider {
-    pub fn new() -> Self {
+    pub fn new(client: reqwest::Client) -> Self {
         let base_url = std::env::var("BNF_API_BASE_URL")
             .unwrap_or_else(|_| "https://catalogue.bnf.fr/api/SRU".to_string());
-        BnfProvider {
-            client: reqwest::Client::new(),
-            base_url,
-        }
+        BnfProvider { client, base_url }
     }
 
     /// Create with a custom base URL (for testing with mock server).
-    pub fn with_base_url(base_url: &str) -> Self {
+    pub fn with_base_url(client: reqwest::Client, base_url: &str) -> Self {
         BnfProvider {
-            client: reqwest::Client::new(),
+            client,
             base_url: base_url.to_string(),
         }
     }
@@ -38,30 +37,22 @@ impl BnfProvider {
             return None;
         }
 
-        let mut result = MetadataResult::default();
-
-        // Extract fields from UNIMARC datafields
-        result.title = Self::extract_subfield(xml, "200", "a");
-        result.subtitle = Self::extract_subfield(xml, "200", "e");
-        result.publisher = Self::extract_subfield(xml, "210", "c");
-        result.publication_date = Self::extract_subfield(xml, "210", "d");
-        result.language = Self::extract_subfield(xml, "101", "a");
-
         // Extract author from 700 field (surname + forename)
         let surname = Self::extract_subfield(xml, "700", "a");
         let forename = Self::extract_subfield(xml, "700", "b");
+        let mut authors = Vec::new();
         match (surname, forename) {
             (Some(s), Some(f)) => {
                 let name = format!("{} {}", f.trim(), s.trim());
                 let name = name.trim().to_string();
                 if !name.is_empty() {
-                    result.authors.push(name);
+                    authors.push(name);
                 }
             }
             (Some(s), None) => {
                 let name = s.trim().to_string();
                 if !name.is_empty() {
-                    result.authors.push(name);
+                    authors.push(name);
                 }
             }
             _ => {
@@ -69,21 +60,63 @@ impl BnfProvider {
                 if let Some(author_statement) = Self::extract_subfield(xml, "200", "f") {
                     let name = author_statement.trim().to_string();
                     if !name.is_empty() {
-                        result.authors.push(name);
+                        authors.push(name);
                     }
                 }
             }
         }
 
-        // Extract description from 330$a (abstract)
-        result.description = Self::extract_subfield(xml, "330", "a");
+        let title = Self::extract_subfield(xml, "200", "a");
+        title.as_ref()?;
 
-        // Only return if we found at least a title
-        if result.title.is_some() {
-            Some(result)
-        } else {
+        // Extract page count from 215$a (physical description).
+        // Common formats: "245 p.", "1 vol. (245 p.)", "XII-245 p.", "p. 245"
+        // Strategy: find a number that appears right before "p" or extract digits near "p."
+        let page_count = Self::extract_subfield(xml, "215", "a").and_then(|desc| {
+            // Look for pattern: digits followed by optional space and "p" (e.g. "245 p.", "245p")
+            let words: Vec<&str> = desc.split_whitespace().collect();
+            for (i, word) in words.iter().enumerate() {
+                if word.starts_with("p.") || *word == "p" {
+                    // The number should be the previous word
+                    if i > 0 {
+                        // Handle "XII-245" by taking the part after the last hyphen
+                        let prev = words[i - 1];
+                        let num_part = prev.rsplit('-').next().unwrap_or(prev);
+                        let cleaned: String = num_part.chars().filter(|c| c.is_ascii_digit()).collect();
+                        if let Ok(n) = cleaned.parse::<i32>()
+                            && n > 0
+                        {
+                            return Some(n);
+                        }
+                    }
+                }
+            }
+            // Fallback: extract digits from within parentheses like "(245 p.)"
+            if let Some(start) = desc.find('(')
+                && let Some(end) = desc.find(')')
+            {
+                let inner = &desc[start + 1..end];
+                let digits: String = inner.chars().take_while(|c| c.is_ascii_digit()).collect();
+                if let Ok(n) = digits.parse::<i32>()
+                    && n > 0
+                {
+                    return Some(n);
+                }
+            }
             None
-        }
+        });
+
+        Some(MetadataResult {
+            title,
+            subtitle: Self::extract_subfield(xml, "200", "e"),
+            publisher: Self::extract_subfield(xml, "210", "c"),
+            publication_date: Self::extract_subfield(xml, "210", "d"),
+            language: Self::extract_subfield(xml, "101", "a"),
+            description: Self::extract_subfield(xml, "330", "a"),
+            authors,
+            page_count,
+            ..MetadataResult::default()
+        })
     }
 
     /// Extract a subfield value from UNIMARC XML.
@@ -146,8 +179,8 @@ impl MetadataProvider for BnfProvider {
         "BnF"
     }
 
-    fn supports_media_type(&self, media_type: &str) -> bool {
-        matches!(media_type, "book" | "bd" | "magazine")
+    fn supports_media_type(&self, media_type: &MediaType) -> bool {
+        matches!(media_type, MediaType::Book | MediaType::Bd | MediaType::Magazine)
     }
 
     async fn lookup_by_isbn(&self, isbn: &str) -> Result<Option<MetadataResult>, MetadataError> {
@@ -269,17 +302,17 @@ mod tests {
 
     #[test]
     fn test_bnf_provider_supports_media_types() {
-        let provider = BnfProvider::new();
-        assert!(provider.supports_media_type("book"));
-        assert!(provider.supports_media_type("bd"));
-        assert!(provider.supports_media_type("magazine"));
-        assert!(!provider.supports_media_type("cd"));
-        assert!(!provider.supports_media_type("dvd"));
+        let provider = BnfProvider::new(reqwest::Client::new());
+        assert!(provider.supports_media_type(&MediaType::Book));
+        assert!(provider.supports_media_type(&MediaType::Bd));
+        assert!(provider.supports_media_type(&MediaType::Magazine));
+        assert!(!provider.supports_media_type(&MediaType::Cd));
+        assert!(!provider.supports_media_type(&MediaType::Dvd));
     }
 
     #[test]
     fn test_bnf_provider_name() {
-        let provider = BnfProvider::new();
+        let provider = BnfProvider::new(reqwest::Client::new());
         assert_eq!(provider.name(), "BnF");
     }
 
@@ -296,5 +329,58 @@ mod tests {
         assert_eq!(meta.title.as_deref(), Some("Minimal Title"));
         assert!(meta.authors.is_empty());
         assert!(meta.publisher.is_none());
+    }
+
+    #[test]
+    fn test_parse_page_count_simple() {
+        let xml = r#"<record>
+          <datafield tag="200" ind1="1" ind2=" ">
+            <subfield code="a">Test</subfield>
+          </datafield>
+          <datafield tag="215" ind1=" " ind2=" ">
+            <subfield code="a">245 p.</subfield>
+          </datafield>
+        </record>"#;
+        let result = BnfProvider::parse_sru_response(xml).unwrap();
+        assert_eq!(result.page_count, Some(245));
+    }
+
+    #[test]
+    fn test_parse_page_count_roman_prefix() {
+        let xml = r#"<record>
+          <datafield tag="200" ind1="1" ind2=" ">
+            <subfield code="a">Test</subfield>
+          </datafield>
+          <datafield tag="215" ind1=" " ind2=" ">
+            <subfield code="a">XII-245 p.</subfield>
+          </datafield>
+        </record>"#;
+        let result = BnfProvider::parse_sru_response(xml).unwrap();
+        assert_eq!(result.page_count, Some(245));
+    }
+
+    #[test]
+    fn test_parse_page_count_volume_with_parens() {
+        let xml = r#"<record>
+          <datafield tag="200" ind1="1" ind2=" ">
+            <subfield code="a">Test</subfield>
+          </datafield>
+          <datafield tag="215" ind1=" " ind2=" ">
+            <subfield code="a">1 vol. (320 p.)</subfield>
+          </datafield>
+        </record>"#;
+        let result = BnfProvider::parse_sru_response(xml).unwrap();
+        assert_eq!(result.page_count, Some(320));
+    }
+
+    #[test]
+    fn test_parse_page_count_none_when_missing() {
+        let xml = r#"<record>
+          <datafield tag="200" ind1="1" ind2=" ">
+            <subfield code="a">Test</subfield>
+          </datafield>
+        </record>"#;
+        let result = BnfProvider::parse_sru_response(xml).unwrap();
+        assert!(result.page_count.is_none());
     }
 }

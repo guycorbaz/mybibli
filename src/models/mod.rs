@@ -1,6 +1,7 @@
 pub mod contributor;
 pub mod genre;
 pub mod location;
+pub mod media_type;
 pub mod metadata_cache;
 pub mod session;
 pub mod title;

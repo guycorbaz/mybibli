@@ -195,6 +195,11 @@ login:
   submit: Se connecter
   error_invalid: "Nom d'utilisateur ou mot de passe invalide."
   back_to_home: Retour à l'accueil
+metadata:
+  provider_failed: "Le fournisseur de métadonnées %{provider} a échoué."
+  no_result: "Aucune métadonnée trouvée pour ce code."
+  cached_result: "Utilisation des métadonnées en cache."
+  chain_timeout: "La recherche de métadonnées a expiré."
 session:
   expiry_warning: "Votre session expirera dans 5 minutes."
   stay_connected: Rester connecté

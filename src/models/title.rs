@@ -168,6 +168,7 @@ impl TitleModel {
 
     /// Update a title with optimistic locking (version check).
     /// Returns the updated title, or AppError::Conflict if the version has changed.
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_with_locking(
         pool: &DbPool,
         id: u64,

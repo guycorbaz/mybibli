@@ -67,12 +67,12 @@ impl LocationService {
         }
 
         // Validate parent exists if provided
-        if let Some(pid) = parent_id {
-            if LocationModel::find_by_id(pool, pid).await?.is_none() {
-                return Err(AppError::NotFound(
-                    rust_i18n::t!("error.not_found").to_string(),
-                ));
-            }
+        if let Some(pid) = parent_id
+            && LocationModel::find_by_id(pool, pid).await?.is_none()
+        {
+            return Err(AppError::NotFound(
+                rust_i18n::t!("error.not_found").to_string(),
+            ));
         }
 
         // Validate node_type exists in reference table

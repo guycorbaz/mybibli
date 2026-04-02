@@ -149,8 +149,6 @@ impl ContributorService {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     // Validation tests (pure logic, no DB)
 
     #[test]

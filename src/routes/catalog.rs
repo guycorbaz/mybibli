@@ -202,11 +202,11 @@ async fn compute_guide_message(pool: &crate::db::DbPool, session: &Session) -> S
     };
 
     // Check active location (batch mode)
-    if let Ok(Some(loc_id)) = SessionModel::get_active_location(pool, token).await {
-        if let Ok(Some(loc)) = crate::models::location::LocationModel::find_by_id(pool, loc_id).await {
-            let path = crate::models::location::LocationModel::get_path(pool, loc_id).await.unwrap_or_default();
-            return rust_i18n::t!("guide.batch_active", path = &path).to_string();
-        }
+    if let Ok(Some(loc_id)) = SessionModel::get_active_location(pool, token).await
+        && let Ok(Some(_)) = crate::models::location::LocationModel::find_by_id(pool, loc_id).await
+    {
+        let path = crate::models::location::LocationModel::get_path(pool, loc_id).await.unwrap_or_default();
+        return rust_i18n::t!("guide.batch_active", path = &path).to_string();
     }
 
     // Check last volume label
@@ -215,10 +215,10 @@ async fn compute_guide_message(pool: &crate::db::DbPool, session: &Session) -> S
     }
 
     // Check current title
-    if let Ok(Some(title_id)) = SessionModel::get_current_title_id(pool, token).await {
-        if let Ok(Some(title)) = crate::models::title::TitleModel::find_by_id(pool, title_id).await {
-            return rust_i18n::t!("guide.title_active", title = &title.title).to_string();
-        }
+    if let Ok(Some(title_id)) = SessionModel::get_current_title_id(pool, token).await
+        && let Ok(Some(title)) = crate::models::title::TitleModel::find_by_id(pool, title_id).await
+    {
+        return rust_i18n::t!("guide.title_active", title = &title.title).to_string();
     }
 
     rust_i18n::t!("guide.initial").to_string()
@@ -280,11 +280,6 @@ pub async fn handle_scan(
 
         match code_type {
             "isbn" => {
-                // Check metadata cache first for immediate resolution
-                let cached = crate::models::metadata_cache::MetadataCacheModel::find_by_isbn(pool, &code)
-                    .await
-                    .unwrap_or(None);
-
                 match TitleService::create_from_isbn(pool, &code, session.token.as_deref()).await {
                     Ok((title, is_new)) => {
                         // Update current title in session
@@ -330,40 +325,21 @@ pub async fn handle_scan(
                             return Ok(resp.into_response());
                         }
 
-                        if let Some(cached_meta) = cached {
-                            // Cache hit — apply metadata to title and return resolved immediately
-                            let guide = rust_i18n::t!("guide.title_active", title = &title.title).to_string();
-                            push_guide_oob(&mut oob, &guide);
-                            let display_title = cached_meta.title.clone().unwrap_or_else(|| title.title.clone());
-                            let message = rust_i18n::t!("feedback.metadata_cached",
-                                title = &display_title
-                            ).to_string();
-                            tokio::spawn({
-                                let pool = pool.clone();
-                                let title_id = title.id;
-                                async move {
-                                    crate::tasks::metadata_fetch::apply_cached_metadata(
-                                        &pool, title_id, &cached_meta,
-                                    ).await;
-                                }
-                            });
-                            let resp = HtmxResponse {
-                                main: feedback_html("success", &message, ""),
-                                oob,
-                            };
-                            return Ok(resp.into_response());
-                        }
-
-                        // Cache miss — spawn async metadata fetch and return skeleton
+                        // Spawn async metadata fetch (ChainExecutor handles cache internally)
                         let timeout_secs = state.settings
                             .read()
                             .map(|s| s.metadata_fetch_timeout_secs)
                             .unwrap_or(30);
 
+                        let media_type = title.media_type.parse::<crate::models::media_type::MediaType>()
+                            .unwrap_or(crate::models::media_type::MediaType::Book);
+
                         tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
                             pool.clone(),
                             title.id,
                             code.clone(),
+                            media_type,
+                            state.registry.clone(),
                             timeout_secs,
                         ));
 

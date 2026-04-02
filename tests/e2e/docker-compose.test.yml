@@ -12,6 +12,8 @@ services:
       RUST_LOG: mybibli=debug
       APP_LANGUAGE: "en"
       BNF_API_BASE_URL: "http://mock-metadata:9090"
+      GOOGLE_BOOKS_API_BASE_URL: "http://mock-metadata:9090"
+      OPEN_LIBRARY_API_BASE_URL: "http://mock-metadata:9090"
     depends_on:
       db:
         condition: service_healthy

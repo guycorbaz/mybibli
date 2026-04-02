@@ -1,7 +1,12 @@
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use mybibli::config::{AppSettings, Config};
 use mybibli::db;
+use mybibli::metadata::bnf::BnfProvider;
+use mybibli::metadata::google_books::GoogleBooksProvider;
+use mybibli::metadata::open_library::OpenLibraryProvider;
+use mybibli::metadata::registry::ProviderRegistry;
 use mybibli::middleware::logging;
 use mybibli::routes;
 use mybibli::AppState;
@@ -48,10 +53,28 @@ async fn main() {
     // Set i18n locale
     rust_i18n::set_locale(&config.app_language);
 
+    // Create shared HTTP client
+    let http_client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .user_agent("mybibli/1.0")
+        .build()
+        .expect("Failed to create HTTP client");
+
+    // Build provider registry
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(BnfProvider::new(http_client.clone())));
+    let gb_key = std::env::var("GOOGLE_BOOKS_API_KEY").ok();
+    registry.register(Box::new(GoogleBooksProvider::new(http_client.clone(), gb_key)));
+    registry.register(Box::new(OpenLibraryProvider::new(http_client.clone())));
+    tracing::info!(count = registry.len(), "Metadata providers registered");
+
     // Build application
     let state = AppState {
         pool,
         settings: Arc::new(RwLock::new(app_settings)),
+        http_client,
+        registry: Arc::new(registry),
     };
     let app = routes::build_router(state).layer(logging::trace_layer());
 

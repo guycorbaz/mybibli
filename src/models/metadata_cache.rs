@@ -57,9 +57,7 @@ impl MetadataCacheModel {
         let obj = json.as_object()?;
 
         let title = obj.get("title").and_then(|v| v.as_str()).map(String::from);
-        if title.is_none() {
-            return None;
-        }
+        title.as_ref()?;
 
         Some(MetadataResult {
             title,
@@ -96,6 +94,10 @@ impl MetadataCacheModel {
                 .get("language")
                 .and_then(|v| v.as_str())
                 .map(String::from),
+            page_count: obj
+                .get("page_count")
+                .and_then(|v| v.as_i64())
+                .map(|n| n as i32),
         })
     }
 
@@ -110,6 +112,7 @@ impl MetadataCacheModel {
             "publication_date": result.publication_date,
             "cover_url": result.cover_url,
             "language": result.language,
+            "page_count": result.page_count,
         })
     }
 }
@@ -171,6 +174,7 @@ mod tests {
             publication_date: Some("2024".to_string()),
             cover_url: None,
             language: Some("en".to_string()),
+            page_count: Some(300),
         };
         let json = MetadataCacheModel::to_cache_json(&original);
         let parsed = MetadataCacheModel::parse_cached_response(&json).unwrap();

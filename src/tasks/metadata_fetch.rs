@@ -1,90 +1,42 @@
-use std::time::Duration;
+use std::sync::Arc;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::metadata::bnf::BnfProvider;
-use crate::metadata::provider::MetadataProvider;
-use crate::models::metadata_cache::MetadataCacheModel;
+use crate::metadata::chain::ChainExecutor;
+use crate::metadata::registry::ProviderRegistry;
+use crate::models::media_type::MediaType;
 
-/// Fetch metadata asynchronously for a title created from ISBN.
+/// Fetch metadata asynchronously for a title using the provider chain.
 /// This function is meant to be called via `tokio::spawn`.
 ///
 /// Flow:
-/// 1. Check metadata_cache for existing hit
-/// 2. If miss, call BnF provider
-/// 3. On success: update title fields + insert cache + mark resolved
-/// 4. On failure/timeout: mark failed
+/// 1. ChainExecutor checks cache, then tries providers in order
+/// 2. On success: update title fields + mark resolved
+/// 3. On failure/no result: mark failed
 pub async fn fetch_metadata_chain(
     pool: DbPool,
     title_id: u64,
     isbn: String,
+    media_type: MediaType,
+    registry: Arc<ProviderRegistry>,
     timeout_secs: u64,
 ) {
-    tracing::info!(title_id = title_id, isbn = %isbn, "Starting async metadata fetch");
+    tracing::info!(title_id = title_id, isbn = %isbn, media_type = %media_type, "Starting async metadata fetch");
 
-    let result = tokio::time::timeout(
-        Duration::from_secs(timeout_secs),
-        fetch_metadata_inner(&pool, title_id, &isbn),
-    )
-    .await;
-
-    match result {
-        Ok(Ok(true)) => {
+    match ChainExecutor::execute(&registry, &pool, &isbn, &media_type, timeout_secs).await {
+        Some(metadata) => {
             tracing::info!(title_id = title_id, isbn = %isbn, "Metadata fetch completed successfully");
+            if let Err(e) = update_title_from_metadata(&pool, title_id, &metadata).await {
+                tracing::warn!(title_id = title_id, error = %e, "Failed to update title from metadata");
+                mark_failed(&pool, title_id).await;
+                return;
+            }
             mark_resolved(&pool, title_id).await;
         }
-        Ok(Ok(false)) => {
+        None => {
             tracing::info!(title_id = title_id, isbn = %isbn, "No metadata found from providers");
             mark_failed(&pool, title_id).await;
         }
-        Ok(Err(e)) => {
-            tracing::warn!(title_id = title_id, isbn = %isbn, error = %e, "Metadata fetch failed");
-            mark_failed(&pool, title_id).await;
-        }
-        Err(_) => {
-            tracing::warn!(title_id = title_id, isbn = %isbn, timeout_secs = timeout_secs, "Metadata fetch timed out");
-            mark_failed(&pool, title_id).await;
-        }
-    }
-}
-
-/// Inner fetch logic: check cache, then try provider chain.
-/// Returns Ok(true) if metadata was found and title updated, Ok(false) if not found.
-async fn fetch_metadata_inner(
-    pool: &DbPool,
-    title_id: u64,
-    isbn: &str,
-) -> Result<bool, AppError> {
-    // 1. Check cache first
-    match MetadataCacheModel::find_by_isbn(pool, isbn).await {
-        Ok(Some(cached)) => {
-            tracing::debug!(isbn = %isbn, "Using cached metadata");
-            update_title_from_metadata(pool, title_id, &cached).await?;
-            return Ok(true);
-        }
-        Ok(None) => {} // Cache miss, continue to provider
-        Err(e) => {
-            tracing::warn!(isbn = %isbn, error = %e, "Cache lookup failed, continuing to provider");
-        }
-    }
-
-    // 2. Try BnF provider
-    let provider = BnfProvider::new();
-    match provider.lookup_by_isbn(isbn).await {
-        Ok(Some(metadata)) => {
-            // Update title fields
-            update_title_from_metadata(pool, title_id, &metadata).await?;
-
-            // Cache the result
-            let cache_json = MetadataCacheModel::to_cache_json(&metadata);
-            if let Err(e) = MetadataCacheModel::upsert(pool, isbn, &cache_json).await {
-                tracing::warn!(isbn = %isbn, error = %e, "Failed to cache metadata");
-            }
-
-            Ok(true)
-        }
-        Ok(None) => Ok(false),
-        Err(e) => Err(AppError::Internal(format!("BnF provider error: {e}"))),
     }
 }
 
@@ -100,6 +52,13 @@ async fn update_title_from_metadata(
         return Ok(());
     }
 
+    // Parse publication_date string to NaiveDate for the DATE column
+    let pub_date = metadata.publication_date.as_deref().and_then(|s| {
+        chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+            .or_else(|_| chrono::NaiveDate::parse_from_str(&format!("{s}-01-01"), "%Y-%m-%d"))
+            .ok()
+    });
+
     sqlx::query(
         "UPDATE titles SET \
          title = COALESCE(?, title), \
@@ -107,6 +66,9 @@ async fn update_title_from_metadata(
          description = COALESCE(?, description), \
          publisher = COALESCE(?, publisher), \
          language = COALESCE(?, language), \
+         page_count = COALESCE(?, page_count), \
+         cover_image_url = COALESCE(?, cover_image_url), \
+         publication_date = COALESCE(?, publication_date), \
          updated_at = NOW() \
          WHERE id = ? AND deleted_at IS NULL",
     )
@@ -115,16 +77,19 @@ async fn update_title_from_metadata(
     .bind(&metadata.description)
     .bind(&metadata.publisher)
     .bind(&metadata.language)
+    .bind(metadata.page_count)
+    .bind(&metadata.cover_url)
+    .bind(pub_date)
     .bind(title_id)
     .execute(pool)
     .await
     .map_err(|e| AppError::Internal(format!("Failed to update title: {e}")))?;
 
     // Add primary author as contributor if available (skip empty/whitespace names)
-    if let Some(author_name) = metadata.authors.first().map(|s| s.trim()).filter(|s| !s.is_empty()) {
-        if let Err(e) = add_author_contributor(pool, title_id, author_name).await {
-            tracing::warn!(title_id = title_id, error = %e, "Failed to add author contributor");
-        }
+    if let Some(author_name) = metadata.authors.first().map(|s| s.trim()).filter(|s| !s.is_empty())
+        && let Err(e) = add_author_contributor(pool, title_id, author_name).await
+    {
+        tracing::warn!(title_id = title_id, error = %e, "Failed to add author contributor");
     }
 
     Ok(())
@@ -200,19 +165,6 @@ async fn mark_resolved(pool: &DbPool, title_id: u64) {
     }
 }
 
-/// Apply cached metadata to a newly created title and mark as resolved.
-/// Called from the cache-hit path in handle_scan.
-pub async fn apply_cached_metadata(
-    pool: &DbPool,
-    title_id: u64,
-    metadata: &crate::metadata::provider::MetadataResult,
-) {
-    if let Err(e) = update_title_from_metadata(pool, title_id, metadata).await {
-        tracing::warn!(title_id = title_id, error = %e, "Failed to apply cached metadata to title");
-    }
-    mark_resolved(pool, title_id).await;
-}
-
 /// Mark a pending_metadata_updates row as failed.
 async fn mark_failed(pool: &DbPool, title_id: u64) {
     if let Err(e) = sqlx::query(
@@ -243,6 +195,7 @@ mod tests {
             publication_date: Some("1947".to_string()),
             cover_url: None,
             language: Some("fr".to_string()),
+            page_count: None,
         };
         assert!(metadata.title.is_some());
         assert!(!metadata.authors.is_empty());

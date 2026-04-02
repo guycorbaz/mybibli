@@ -15,6 +15,7 @@ use std::sync::{Arc, RwLock};
 
 use config::AppSettings;
 use db::DbPool;
+use metadata::registry::ProviderRegistry;
 
 rust_i18n::i18n!("locales", fallback = "en");
 
@@ -23,4 +24,6 @@ rust_i18n::i18n!("locales", fallback = "en");
 pub struct AppState {
     pub pool: DbPool,
     pub settings: Arc<RwLock<AppSettings>>,
+    pub http_client: reqwest::Client,
+    pub registry: Arc<ProviderRegistry>,
 }

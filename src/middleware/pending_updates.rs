@@ -68,10 +68,10 @@ pub async fn pending_updates_middleware(request: Request, next: Next) -> Respons
 fn extract_session_token(cookie_header: &str) -> Option<String> {
     for part in cookie_header.split(';') {
         let trimmed = part.trim();
-        if let Some(value) = trimmed.strip_prefix("session=") {
-            if !value.is_empty() {
-                return Some(value.to_string());
-            }
+        if let Some(value) = trimmed.strip_prefix("session=")
+            && !value.is_empty()
+        {
+            return Some(value.to_string());
         }
     }
     None
@@ -82,6 +82,7 @@ async fn fetch_resolved_updates(
     pool: &DbPool,
     session_token: &str,
 ) -> Result<Vec<PendingUpdate>, sqlx::Error> {
+    #[allow(clippy::type_complexity)]
     let rows: Vec<(u64, String, String, Option<String>, Option<String>)> = sqlx::query_as(
         "SELECT p.title_id, p.status, t.title, \
          (SELECT c.name FROM title_contributors tc \
