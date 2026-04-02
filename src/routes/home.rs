@@ -5,7 +5,7 @@ use axum::response::{Html, IntoResponse};
 use serde::Deserialize;
 
 use crate::error::AppError;
-use crate::middleware::auth::Session;
+use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
 use crate::models::genre::GenreModel;
 use crate::models::title::SearchResult;
@@ -57,6 +57,8 @@ pub struct HomeTemplate {
     pub col_volumes: String,
     pub connection_lost: String,
     pub label_no_cover: String,
+    pub metadata_error_count: u64,
+    pub label_metadata_errors: String,
 }
 
 pub async fn home(
@@ -121,6 +123,18 @@ pub async fn home(
         return Ok(Html(html).into_response());
     }
 
+    // Count titles with failed metadata (for librarian dashboard badge)
+    let metadata_error_count: u64 = if session.role == Role::Librarian {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(DISTINCT title_id) FROM pending_metadata_updates WHERE status = 'failed' AND deleted_at IS NULL"
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0) as u64
+    } else {
+        0
+    };
+
     let template = HomeTemplate {
         lang: rust_i18n::locale().to_string(),
         role: session.role.to_string(),
@@ -152,6 +166,8 @@ pub async fn home(
         col_volumes: rust_i18n::t!("search.col.volumes").to_string(),
         connection_lost: rust_i18n::t!("search.connection_lost").to_string(),
         label_no_cover: rust_i18n::t!("cover.no_cover").to_string(),
+        metadata_error_count,
+        label_metadata_errors: rust_i18n::t!("dashboard.metadata_errors", count = metadata_error_count).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -425,6 +441,8 @@ mod tests {
             col_volumes: "Volumes".to_string(),
             connection_lost: "Connection lost".to_string(),
             label_no_cover: "No cover available".to_string(),
+            metadata_error_count: 0,
+            label_metadata_errors: String::new(),
         };
         let rendered = template.render().unwrap();
         assert!(rendered.contains("mybibli"));

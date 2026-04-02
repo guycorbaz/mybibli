@@ -73,3 +73,8 @@
 - Race condition on concurrent cover file write for same title_id — write to temp file + atomic rename if multi-user support added
 - No cache busting for re-downloaded covers — filename stays {title_id}.jpg, browsers may serve stale version. Add version query param or content-hash when re-download is implemented (story 3-5)
 - Optimistic locking missing on cover_image_url UPDATE — pre-existing pattern gap, UPDATE without version check
+
+## Deferred from: code review of 3-4-scan-feedback-polish (2026-04-02)
+
+- Web Audio API oscillator/gain nodes not explicitly disconnected after playback — potential memory accumulation in marathon scanning sessions. Add osc.onended callback with disconnect() if needed
+- Script loading order: catalog_toolbar.html inline initToggle() script may run before DOM button exists in edge cases — currently works because script is after button in template flow

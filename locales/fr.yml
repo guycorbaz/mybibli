@@ -76,6 +76,7 @@ feedback:
   metadata_failed: "Aucune métadonnée trouvée pour l'ISBN %{isbn}. Modifiez le titre manuellement."
   metadata_cached: "Titre créé avec les métadonnées en cache : %{title}."
   edit_manually: "[Modifier manuellement]"
+  retry: Réessayer
   deleted: "Élément supprimé."
 validation:
   required: "Ce champ est obligatoire."
@@ -212,6 +213,11 @@ scan:
 cover:
   alt_text: "Couverture de %{title}"
   no_cover: "Pas de couverture disponible"
+audio:
+  enable: "Activer les sons de scan"
+  disable: "Désactiver les sons de scan"
+dashboard:
+  metadata_errors: "%{count} titre(s) avec erreurs de métadonnées"
 session:
   expiry_warning: "Votre session expirera dans 5 minutes."
   stay_connected: Rester connecté

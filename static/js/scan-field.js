@@ -125,6 +125,9 @@
                     }
                 }
 
+                // Store last scan code for error recovery (restored by mybibli.js HTMX error handler)
+                window.mybibliLastScanCode = code;
+
                 if (typeof htmx !== "undefined") {
                     htmx.ajax("POST", "/catalog/scan", {
                         target: "#feedback-list",

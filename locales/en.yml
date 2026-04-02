@@ -76,6 +76,7 @@ feedback:
   metadata_failed: "No metadata found for ISBN %{isbn}. Edit the title manually."
   metadata_cached: "Title created with cached metadata: %{title}."
   edit_manually: "[Edit manually]"
+  retry: Retry
   deleted: "Item deleted."
 validation:
   required: "This field is required."
@@ -212,6 +213,11 @@ scan:
 cover:
   alt_text: "Cover of %{title}"
   no_cover: "No cover available"
+audio:
+  enable: Enable scan sounds
+  disable: Disable scan sounds
+dashboard:
+  metadata_errors: "%{count} title(s) with metadata errors"
 session:
   expiry_warning: "Your session will expire in 5 minutes."
   stay_connected: Stay connected

@@ -84,7 +84,7 @@ development_status:
   3-1-provider-chain-and-fallback: done
   3-2-media-type-scanning: done
   3-3-cover-image-management: done
-  3-4-scan-feedback-polish: backlog
+  3-4-scan-feedback-polish: done
   3-5-metadata-editing-and-redownload: backlog
   epic-3-retrospective: optional
 

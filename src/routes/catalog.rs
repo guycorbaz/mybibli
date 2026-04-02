@@ -105,6 +105,30 @@ fn context_banner_html(title_name: &str, media_type: &str, volume_count: u64, au
     )
 }
 
+/// Error feedback with [Retry] and [Edit manually] action buttons.
+/// Used only for scan-related errors where retry makes sense.
+fn scan_error_feedback_html(message: &str, scan_code: &str) -> String {
+    let retry_label = html_escape(rust_i18n::t!("feedback.retry").as_ref());
+    let edit_label = html_escape(rust_i18n::t!("feedback.edit_manually").as_ref());
+    let escaped_msg = html_escape(message);
+    let escaped_code = html_escape(scan_code);
+    let hx_vals = format!(r#"{{"code":"{}"}}"#, escaped_code);
+
+    let mut html = String::new();
+    html.push_str("<div class=\"p-3 border-l-4 border-red-500 bg-red-50 dark:bg-red-900/20 rounded-r feedback-entry\" role=\"status\" data-feedback-variant=\"error\" data-scan-code=\"");
+    html.push_str(&escaped_code);
+    html.push_str("\"><div class=\"flex items-start gap-2\"><svg class=\"text-red-600 dark:text-red-400 w-5 h-5 flex-shrink-0 mt-0.5\" viewBox=\"0 0 20 20\" fill=\"currentColor\" aria-hidden=\"true\"><path fill-rule=\"evenodd\" d=\"M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z\" clip-rule=\"evenodd\" /></svg><div class=\"flex-1\"><p class=\"text-stone-700 dark:text-stone-300\">");
+    html.push_str(&escaped_msg);
+    html.push_str("</p><div class=\"mt-2 flex gap-2\"><button type=\"button\" class=\"text-xs px-2 py-1 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded hover:bg-red-200\" hx-post=\"/catalog/scan\" hx-target=\"#feedback-list\" hx-swap=\"afterbegin\" hx-vals='");
+    html.push_str(&hx_vals);
+    html.push_str("'>");
+    html.push_str(&retry_label);
+    html.push_str("</button><a href=\"/catalog/title/new\" class=\"text-xs px-2 py-1 bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded hover:bg-stone-200\">");
+    html.push_str(&edit_label);
+    html.push_str("</a></div></div><button type=\"button\" class=\"text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1\" aria-label=\"Dismiss\" onclick=\"this.closest('.feedback-entry').remove()\"><svg class=\"w-4 h-4\" viewBox=\"0 0 20 20\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z\" /></svg></button></div></div>");
+    html
+}
+
 fn skeleton_feedback_html(title_id: u64, isbn: &str) -> String {
     let message = rust_i18n::t!("feedback.metadata_fetching", isbn = isbn).to_string();
     format!(
@@ -170,6 +194,8 @@ pub struct CatalogTemplate {
     pub vcode_error: String,
     pub new_title_label: String,
     pub guide_message: String,
+    pub audio_enable: String,
+    pub audio_disable: String,
 }
 
 impl CatalogTemplate {
@@ -192,6 +218,8 @@ impl CatalogTemplate {
             vcode_error: rust_i18n::t!("feedback.vcode_invalid").to_string(),
             new_title_label: rust_i18n::t!("catalog.new_title_button").to_string(),
             guide_message: guide_message.to_string(),
+            audio_enable: rust_i18n::t!("audio.enable").to_string(),
+            audio_disable: rust_i18n::t!("audio.disable").to_string(),
         }
     }
 }
@@ -419,7 +447,7 @@ pub async fn handle_scan(
                     Err(e) => {
                         tracing::error!(error = %e, code = %code, "ISBN scan failed");
                         let message = rust_i18n::t!("error.title.creation_failed").to_string();
-                        Ok(Html(feedback_html("error", &message, "")).into_response())
+                        Ok(Html(scan_error_feedback_html(&message, &code)).into_response())
                     }
                 }
             }
@@ -662,7 +690,7 @@ pub async fn handle_scan(
                     Err(e) => {
                         tracing::error!(error = %e, code = %code, "ISSN scan failed");
                         let message = rust_i18n::t!("error.title.creation_failed").to_string();
-                        Ok(Html(feedback_html("error", &message, "")).into_response())
+                        Ok(Html(scan_error_feedback_html(&message, &code)).into_response())
                     }
                 }
             }
@@ -689,7 +717,7 @@ pub async fn handle_scan(
                         Err(e) => {
                             tracing::error!(error = %e, code = %code, "UPC scan failed");
                             let message = rust_i18n::t!("error.title.creation_failed").to_string();
-                            Ok(Html(feedback_html("error", &message, "")).into_response())
+                            Ok(Html(scan_error_feedback_html(&message, &code)).into_response())
                         }
                     }
                 } else {
@@ -846,7 +874,7 @@ pub async fn handle_scan_with_type(
         Err(e) => {
             tracing::error!(error = %e, code = %code, "UPC scan-with-type failed");
             let message = rust_i18n::t!("error.title.creation_failed").to_string();
-            Ok(Html(feedback_html("error", &message, "")).into_response())
+            Ok(Html(scan_error_feedback_html(&message, &code)).into_response())
         }
     }
 }
