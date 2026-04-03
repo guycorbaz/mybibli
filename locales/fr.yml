@@ -270,6 +270,8 @@ borrower:
   empty_state: "Aucun emprunteur. Ajoutez-en un pour commencer les prêts !"
   detail_title: "Détails de l'emprunteur"
   confirm_delete: "Supprimer cet emprunteur ?"
+  active_loans: "Prêts actifs"
+  no_active_loans: "Cet emprunteur n'a aucun prêt actif."
 loan:
   list_title: "Prêts actifs"
   new: "Nouveau prêt"

@@ -32,6 +32,69 @@
     </div>
     {% endif %}
 
-    <div id="borrower-feedback" class="mt-4"></div>
+    <div id="borrower-feedback" class="mt-4" aria-live="polite"></div>
+
+    <!-- Active loans section -->
+    <div class="mt-8">
+        <h2 class="text-lg font-semibold text-stone-900 dark:text-stone-100 mb-4">{{ active_loans_label }}</h2>
+
+        {% if active_loans.is_empty() %}
+        <p class="text-sm text-stone-500 dark:text-stone-400">{{ no_active_loans_label }}</p>
+        {% else %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-stone-200 dark:border-stone-700 text-left">
+                        <th class="px-4 py-3 text-stone-600 dark:text-stone-400">{{ col_volume }}</th>
+                        <th class="px-4 py-3 text-stone-600 dark:text-stone-400">{{ col_title }}</th>
+                        <th class="px-4 py-3 text-stone-600 dark:text-stone-400">{{ col_date }}</th>
+                        <th class="px-4 py-3 text-stone-600 dark:text-stone-400">{{ col_duration }}</th>
+                        {% if role == "librarian" || role == "admin" %}
+                        <th class="px-4 py-3 text-stone-600 dark:text-stone-400">{{ col_action }}</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for loan in active_loans %}
+                    <tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50">
+                        <td class="px-4 py-3">{{ loan.volume_label }}</td>
+                        <td class="px-4 py-3">{{ loan.title_name }}</td>
+                        <td class="px-4 py-3">{{ loan.loaned_at.format("%Y-%m-%d") }}</td>
+                        <td class="px-4 py-3 {% if loan.duration_days >= overdue_threshold %}text-red-600 dark:text-red-400 font-semibold{% elif loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% endif %}">
+                            {{ loan.duration_days }} {{ days_label }}
+                            {% if loan.duration_days >= overdue_threshold %}
+                            <span class="ml-1 inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">{{ overdue_label }}</span>
+                            {% endif %}
+                        </td>
+                        {% if role == "librarian" || role == "admin" %}
+                        <td class="px-4 py-3">
+                            <button hx-post="/loans/{{ loan.id }}/return"
+                                    hx-confirm="{{ confirm_label }}"
+                                    hx-target="#borrower-feedback"
+                                    hx-swap="innerHTML"
+                                    hx-disabled-elt="this"
+                                    class="px-3 py-1 text-sm font-medium text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50">
+                                {{ return_label }}
+                            </button>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
 </div>
+
+<script>
+(function() {
+    // Reload page after successful return to refresh the loans list
+    document.body.addEventListener('htmx:afterRequest', function(e) {
+        if (e.detail.pathInfo && e.detail.pathInfo.requestPath && e.detail.pathInfo.requestPath.includes('/return') && e.detail.successful) {
+            setTimeout(function() { window.location.reload(); }, 1500);
+        }
+    });
+})();
+</script>
 {% endblock %}

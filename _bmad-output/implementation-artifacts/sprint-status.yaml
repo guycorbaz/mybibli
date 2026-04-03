@@ -96,7 +96,7 @@ development_status:
   4-1-borrower-crud-and-search: done
   4-2-loan-registration-and-validation: done
   4-3-loan-return-and-location-restoration: done
-  4-4-borrower-detail-and-loan-history: backlog
+  4-4-borrower-detail-and-loan-history: done
   epic-4-retrospective: optional
 
   # Epic 5: Mes séries et ma collection

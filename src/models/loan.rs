@@ -234,6 +234,47 @@ impl LoanModel {
             None => Ok(None),
         }
     }
+
+    /// List active loans for a specific borrower (no pagination — typically few per borrower).
+    pub async fn list_active_by_borrower(
+        pool: &DbPool,
+        borrower_id: u64,
+    ) -> Result<Vec<LoanWithDetails>, AppError> {
+        let rows = sqlx::query(
+            r#"SELECT l.id, l.volume_id, l.borrower_id, l.loaned_at,
+                      b.name AS borrower_name,
+                      v.label AS volume_label,
+                      t.title AS title_name,
+                      DATEDIFF(NOW(), l.loaned_at) AS duration_days
+               FROM loans l
+               JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL
+               JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL
+               JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL
+               WHERE l.borrower_id = ? AND l.returned_at IS NULL AND l.deleted_at IS NULL
+               ORDER BY l.loaned_at DESC"#,
+        )
+        .bind(borrower_id)
+        .fetch_all(pool)
+        .await?;
+
+        let items: Vec<LoanWithDetails> = rows
+            .iter()
+            .map(|r| {
+                Ok(LoanWithDetails {
+                    id: r.try_get("id")?,
+                    volume_id: r.try_get("volume_id")?,
+                    borrower_id: r.try_get("borrower_id")?,
+                    borrower_name: r.try_get("borrower_name")?,
+                    volume_label: r.try_get("volume_label")?,
+                    title_name: r.try_get("title_name")?,
+                    loaned_at: r.try_get("loaned_at")?,
+                    duration_days: r.try_get::<i64, _>("duration_days").unwrap_or(0),
+                })
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+        Ok(items)
+    }
 }
 
 #[cfg(test)]

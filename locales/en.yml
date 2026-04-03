@@ -270,6 +270,8 @@ borrower:
   empty_state: "No borrowers yet. Add one to start lending!"
   detail_title: Borrower details
   confirm_delete: "Delete this borrower?"
+  active_loans: Active loans
+  no_active_loans: "This borrower has no active loans."
 loan:
   list_title: Active loans
   new: New loan

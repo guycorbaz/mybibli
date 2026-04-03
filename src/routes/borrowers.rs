@@ -7,6 +7,7 @@ use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
 use crate::models::borrower::BorrowerModel;
+use crate::models::loan::{LoanModel, LoanWithDetails};
 use crate::models::PaginatedList;
 use crate::services::borrowers::BorrowerService;
 use crate::AppState;
@@ -142,6 +143,19 @@ pub struct BorrowerDetailTemplate {
     pub edit_label: String,
     pub delete_label: String,
     pub confirm_delete: String,
+    pub active_loans: Vec<LoanWithDetails>,
+    pub active_loans_label: String,
+    pub no_active_loans_label: String,
+    pub overdue_threshold: i64,
+    pub days_label: String,
+    pub return_label: String,
+    pub overdue_label: String,
+    pub confirm_label: String,
+    pub col_volume: String,
+    pub col_title: String,
+    pub col_date: String,
+    pub col_duration: String,
+    pub col_action: String,
 }
 
 pub async fn borrower_detail(
@@ -156,6 +170,9 @@ pub async fn borrower_detail(
     let borrower = BorrowerModel::find_by_id(pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+
+    let active_loans = LoanModel::list_active_by_borrower(pool, borrower.id).await?;
+    let threshold = state.settings.read().unwrap().overdue_threshold_days;
 
     let template = BorrowerDetailTemplate {
         lang: rust_i18n::locale().to_string(),
@@ -176,6 +193,19 @@ pub async fn borrower_detail(
         edit_label: rust_i18n::t!("borrower.edit").to_string(),
         delete_label: rust_i18n::t!("borrower.delete").to_string(),
         confirm_delete: rust_i18n::t!("borrower.confirm_delete").to_string(),
+        active_loans,
+        active_loans_label: rust_i18n::t!("borrower.active_loans").to_string(),
+        no_active_loans_label: rust_i18n::t!("borrower.no_active_loans").to_string(),
+        overdue_threshold: threshold as i64,
+        days_label: rust_i18n::t!("loan.days").to_string(),
+        return_label: rust_i18n::t!("loan.return").to_string(),
+        overdue_label: rust_i18n::t!("loan.overdue").to_string(),
+        confirm_label: rust_i18n::t!("loan.return_confirm").to_string(),
+        col_volume: rust_i18n::t!("loan.col_volume").to_string(),
+        col_title: rust_i18n::t!("loan.col_title").to_string(),
+        col_date: rust_i18n::t!("loan.col_date").to_string(),
+        col_duration: rust_i18n::t!("loan.col_duration").to_string(),
+        col_action: rust_i18n::t!("loan.col_action").to_string(),
     };
 
     match template.render() {
