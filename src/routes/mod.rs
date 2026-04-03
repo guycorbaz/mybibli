@@ -76,7 +76,23 @@ pub fn build_router(state: AppState) -> Router {
         // Detail pages
         .route(
             "/title/{id}",
-            axum::routing::get(titles::title_detail),
+            axum::routing::get(titles::title_detail).post(titles::update_title),
+        )
+        .route(
+            "/title/{id}/edit",
+            axum::routing::get(titles::title_edit_form),
+        )
+        .route(
+            "/title/{id}/metadata",
+            axum::routing::get(titles::title_metadata_fragment),
+        )
+        .route(
+            "/title/{id}/redownload",
+            axum::routing::post(titles::redownload_metadata),
+        )
+        .route(
+            "/title/{id}/confirm-metadata",
+            axum::routing::post(titles::confirm_metadata),
         )
         .route(
             "/contributor/{id}",

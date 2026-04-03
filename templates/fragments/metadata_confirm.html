@@ -1,0 +1,77 @@
+<div class="space-y-4">
+    <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-100">{{ label_confirm_title }}</h3>
+
+    <form hx-post="/title/{{ title_id }}/confirm-metadata" hx-target="#title-metadata" hx-swap="innerHTML">
+        <input type="hidden" name="version" value="{{ version }}">
+        <!-- Pass new metadata values as hidden fields -->
+        <input type="hidden" name="new_title" value="{{ new_title }}">
+        <input type="hidden" name="new_subtitle" value="{{ new_subtitle }}">
+        <input type="hidden" name="new_description" value="{{ new_description }}">
+        <input type="hidden" name="new_publisher" value="{{ new_publisher }}">
+        <input type="hidden" name="new_language" value="{{ new_language }}">
+        <input type="hidden" name="new_publication_date" value="{{ new_publication_date }}">
+        <input type="hidden" name="new_page_count" value="{{ new_page_count }}">
+        <input type="hidden" name="new_track_count" value="{{ new_track_count }}">
+        <input type="hidden" name="new_total_duration" value="{{ new_total_duration }}">
+        <input type="hidden" name="new_age_rating" value="{{ new_age_rating }}">
+        <input type="hidden" name="new_issue_number" value="{{ new_issue_number }}">
+        <input type="hidden" name="new_cover_url" value="{{ new_cover_url }}">
+
+        {% if !conflicts.is_empty() %}
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-stone-200 dark:border-stone-700">
+                    <th class="text-left py-2 text-stone-600 dark:text-stone-400">{{ label_field }}</th>
+                    <th class="text-left py-2 text-stone-600 dark:text-stone-400">{{ label_current }}</th>
+                    <th class="text-left py-2 text-stone-600 dark:text-stone-400">{{ label_new }}</th>
+                    <th class="text-center py-2 text-stone-600 dark:text-stone-400">Accept?</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in conflicts %}
+                <tr class="border-b border-stone-100 dark:border-stone-800">
+                    <td class="py-2 font-medium text-stone-700 dark:text-stone-300">{{ c.label }}</td>
+                    <td class="py-2 text-stone-500 dark:text-stone-400 max-w-48 truncate">{{ c.current_value }}</td>
+                    <td class="py-2 text-indigo-600 dark:text-indigo-400 max-w-48 truncate">{{ c.new_value }}</td>
+                    <td class="py-2 text-center">
+                        <input type="checkbox" name="accept_{{ c.field_name }}" value="1" checked
+                               class="rounded border-stone-300 text-indigo-600 focus:ring-indigo-500">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        {% if !new_cover_url.is_empty() %}
+        <div class="mt-3 flex items-center gap-2 text-sm">
+            <input type="checkbox" name="accept_cover" value="1" checked
+                   class="rounded border-stone-300 text-indigo-600 focus:ring-indigo-500">
+            <span class="text-stone-700 dark:text-stone-300">{{ label_accept_cover }}</span>
+        </div>
+        {% endif %}
+
+        {% if !auto_updates.is_empty() %}
+        <div class="mt-3 text-sm text-stone-500 dark:text-stone-400">
+            <p class="font-medium">{{ label_auto_updated }}:</p>
+            <ul class="list-disc list-inside mt-1">
+                {% for a in auto_updates %}
+                <li>{{ a }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="flex justify-end gap-3 pt-4">
+            <button type="button"
+                    hx-get="/title/{{ title_id }}/metadata" hx-target="#title-metadata" hx-swap="innerHTML"
+                    class="px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-700 rounded-md hover:bg-stone-200 dark:hover:bg-stone-600">
+                {{ label_cancel }}
+            </button>
+            <button type="submit"
+                    class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
+                {{ label_apply }}
+            </button>
+        </div>
+    </form>
+</div>

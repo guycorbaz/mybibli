@@ -201,6 +201,37 @@ metadata:
   no_result: "No metadata found for this code."
   cached_result: "Using cached metadata."
   chain_timeout: "Metadata lookup timed out."
+  edit_metadata: Edit metadata
+  redownload: Re-download metadata
+  save_changes: Save changes
+  cancel: Cancel
+  redownloading: "Re-downloading metadata..."
+  confirm_title: Confirm metadata changes
+  field_conflict: "%{field} was manually edited. Accept new value?"
+  current_value: Current
+  new_value: New
+  apply_changes: Apply selected changes
+  update_success: "Updated %{updated} field(s), kept %{kept} manual edit(s)."
+  redownload_failed: "Re-download failed: no metadata found from any provider."
+  all_updated: "All metadata fields updated from provider."
+  no_changes: "No changes — metadata already matches provider data."
+  auto_updated: "Will be updated automatically"
+  field_label: Field
+  accept_cover: "Accept new cover image"
+  field:
+    title: Title
+    subtitle: Subtitle
+    description: Description
+    language: Language
+    genre: Genre
+    publisher: Publisher
+    publication_date: Publication date
+    dewey_code: Dewey code
+    page_count: Page count
+    track_count: Track count
+    total_duration: "Duration (min)"
+    age_rating: Age rating
+    issue_number: Issue number
 media_type:
   book: Book
   bd: BD

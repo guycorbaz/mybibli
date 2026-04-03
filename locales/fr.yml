@@ -201,6 +201,37 @@ metadata:
   no_result: "Aucune métadonnée trouvée pour ce code."
   cached_result: "Utilisation des métadonnées en cache."
   chain_timeout: "La recherche de métadonnées a expiré."
+  edit_metadata: Modifier les métadonnées
+  redownload: Re-télécharger les métadonnées
+  save_changes: Enregistrer
+  cancel: Annuler
+  redownloading: "Re-téléchargement des métadonnées..."
+  confirm_title: Confirmer les modifications de métadonnées
+  field_conflict: "%{field} a été modifié manuellement. Accepter la nouvelle valeur ?"
+  current_value: Actuel
+  new_value: Nouveau
+  apply_changes: Appliquer les modifications sélectionnées
+  update_success: "Mis à jour %{updated} champ(s), conservé %{kept} modification(s) manuelle(s)."
+  redownload_failed: "Échec du re-téléchargement : aucune métadonnée trouvée."
+  all_updated: "Tous les champs mis à jour depuis le fournisseur."
+  no_changes: "Aucun changement — les métadonnées correspondent déjà."
+  auto_updated: "Sera mis à jour automatiquement"
+  field_label: Champ
+  accept_cover: "Accepter la nouvelle couverture"
+  field:
+    title: Titre
+    subtitle: Sous-titre
+    description: Description
+    language: Langue
+    genre: Genre
+    publisher: Éditeur
+    publication_date: Date de publication
+    dewey_code: Code Dewey
+    page_count: Nombre de pages
+    track_count: Nombre de pistes
+    total_duration: "Durée (min)"
+    age_rating: "Classification d'âge"
+    issue_number: Numéro
 media_type:
   book: Livre
   bd: BD

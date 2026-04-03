@@ -28,6 +28,7 @@ pub struct TitleModel {
     pub total_duration: Option<i32>,
     pub age_rating: Option<String>,
     pub issue_number: Option<i32>,
+    pub manually_edited_fields: Option<String>,
     pub version: i32,
 }
 
@@ -78,6 +79,7 @@ fn row_to_title(row: sqlx::mysql::MySqlRow) -> Result<TitleModel, sqlx::Error> {
         total_duration: row.try_get("total_duration")?,
         age_rating: row.try_get("age_rating")?,
         issue_number: row.try_get("issue_number")?,
+        manually_edited_fields: row.try_get("manually_edited_fields")?,
         version: row.try_get("version")?,
     })
 }
@@ -91,7 +93,8 @@ impl TitleModel {
                       media_type, publication_date, publisher, isbn, issn, upc,
                       cover_image_url, genre_id, dewey_code,
                       page_count, track_count, total_duration,
-                      age_rating, issue_number, version
+                      age_rating, issue_number,
+                      CAST(manually_edited_fields AS CHAR) as manually_edited_fields, version
                FROM titles
                WHERE isbn = ? AND deleted_at IS NULL
                LIMIT 1"#,
@@ -114,7 +117,8 @@ impl TitleModel {
                       media_type, publication_date, publisher, isbn, issn, upc,
                       cover_image_url, genre_id, dewey_code,
                       page_count, track_count, total_duration,
-                      age_rating, issue_number, version
+                      age_rating, issue_number,
+                      CAST(manually_edited_fields AS CHAR) as manually_edited_fields, version
                FROM titles
                WHERE upc = ? AND deleted_at IS NULL
                LIMIT 1"#,
@@ -137,7 +141,8 @@ impl TitleModel {
                       media_type, publication_date, publisher, isbn, issn, upc,
                       cover_image_url, genre_id, dewey_code,
                       page_count, track_count, total_duration,
-                      age_rating, issue_number, version
+                      age_rating, issue_number,
+                      CAST(manually_edited_fields AS CHAR) as manually_edited_fields, version
                FROM titles
                WHERE issn = ? AND deleted_at IS NULL
                LIMIT 1"#,
@@ -160,7 +165,8 @@ impl TitleModel {
                       media_type, publication_date, publisher, isbn, issn, upc,
                       cover_image_url, genre_id, dewey_code,
                       page_count, track_count, total_duration,
-                      age_rating, issue_number, version
+                      age_rating, issue_number,
+                      CAST(manually_edited_fields AS CHAR) as manually_edited_fields, version
                FROM titles
                WHERE id = ? AND deleted_at IS NULL"#,
         )
@@ -249,6 +255,101 @@ impl TitleModel {
             .await?
             .ok_or_else(|| AppError::Internal("Failed to retrieve updated title".to_string()))
     }
+
+    /// Update all metadata fields on a title with optimistic locking.
+    /// Used by the metadata editing form and re-download confirmation.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_metadata(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+        title: &str,
+        subtitle: Option<&str>,
+        description: Option<&str>,
+        publisher: Option<&str>,
+        language: &str,
+        genre_id: u64,
+        publication_date: Option<chrono::NaiveDate>,
+        dewey_code: Option<&str>,
+        page_count: Option<i32>,
+        track_count: Option<i32>,
+        total_duration: Option<i32>,
+        age_rating: Option<&str>,
+        issue_number: Option<i32>,
+        manually_edited_fields: Option<&str>,
+    ) -> Result<TitleModel, AppError> {
+        let result = sqlx::query(
+            "UPDATE titles SET title = ?, subtitle = ?, description = ?, \
+             publisher = ?, language = ?, genre_id = ?, \
+             publication_date = ?, dewey_code = ?, \
+             page_count = ?, track_count = ?, total_duration = ?, \
+             age_rating = ?, issue_number = ?, \
+             manually_edited_fields = ?, \
+             version = version + 1, updated_at = NOW() \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(title)
+        .bind(subtitle)
+        .bind(description)
+        .bind(publisher)
+        .bind(language)
+        .bind(genre_id)
+        .bind(publication_date)
+        .bind(dewey_code)
+        .bind(page_count)
+        .bind(track_count)
+        .bind(total_duration)
+        .bind(age_rating)
+        .bind(issue_number)
+        .bind(manually_edited_fields)
+        .bind(id)
+        .bind(version)
+        .execute(pool)
+        .await?;
+
+        crate::services::locking::check_update_result(result.rows_affected(), "title")?;
+
+        TitleModel::find_by_id(pool, id)
+            .await?
+            .ok_or_else(|| AppError::Internal("Failed to retrieve updated title".to_string()))
+    }
+
+    /// Parse the manually_edited_fields JSON column into a Vec<String>.
+    pub fn parsed_manually_edited_fields(&self) -> Vec<String> {
+        self.manually_edited_fields
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
+            .unwrap_or_default()
+    }
+}
+
+/// Detect which metadata fields differ between an existing title and new form values.
+/// Returns the names of fields that changed.
+#[allow(clippy::too_many_arguments)]
+pub fn detect_edited_fields(old: &TitleModel, new_title: &str, new_subtitle: Option<&str>,
+    new_description: Option<&str>, new_publisher: Option<&str>, new_language: &str,
+    new_genre_id: u64, new_publication_date: Option<chrono::NaiveDate>,
+    new_dewey_code: Option<&str>, new_page_count: Option<i32>,
+    new_track_count: Option<i32>, new_total_duration: Option<i32>,
+    new_age_rating: Option<&str>, new_issue_number: Option<i32>,
+) -> Vec<String> {
+    let mut changed = Vec::new();
+
+    if old.title != new_title { changed.push("title".to_string()); }
+    if old.subtitle.as_deref() != new_subtitle { changed.push("subtitle".to_string()); }
+    if old.description.as_deref() != new_description { changed.push("description".to_string()); }
+    if old.publisher.as_deref() != new_publisher { changed.push("publisher".to_string()); }
+    if old.language != new_language { changed.push("language".to_string()); }
+    if old.genre_id != new_genre_id { changed.push("genre_id".to_string()); }
+    if old.publication_date != new_publication_date { changed.push("publication_date".to_string()); }
+    if old.dewey_code.as_deref() != new_dewey_code { changed.push("dewey_code".to_string()); }
+    if old.page_count != new_page_count { changed.push("page_count".to_string()); }
+    if old.track_count != new_track_count { changed.push("track_count".to_string()); }
+    if old.total_duration != new_total_duration { changed.push("total_duration".to_string()); }
+    if old.age_rating.as_deref() != new_age_rating { changed.push("age_rating".to_string()); }
+    if old.issue_number != new_issue_number { changed.push("issue_number".to_string()); }
+
+    changed
 }
 
 /// Search result row for as-you-type search.
@@ -537,6 +638,7 @@ mod tests {
             total_duration: None,
             age_rating: None,
             issue_number: None,
+            manually_edited_fields: None,
             version: 1,
         };
         assert_eq!(title.to_string(), "L'Étranger (book)");
@@ -564,8 +666,92 @@ mod tests {
             total_duration: Some(2756),
             age_rating: None,
             issue_number: None,
+            manually_edited_fields: None,
             version: 1,
         };
         assert_eq!(title.to_string(), "Kind of Blue (cd)");
+    }
+
+    fn make_test_title() -> TitleModel {
+        TitleModel {
+            id: 1,
+            title: "Original Title".to_string(),
+            subtitle: Some("Original Sub".to_string()),
+            description: None,
+            language: "fr".to_string(),
+            media_type: "book".to_string(),
+            publication_date: None,
+            publisher: Some("Gallimard".to_string()),
+            isbn: Some("9782070360246".to_string()),
+            issn: None,
+            upc: None,
+            cover_image_url: None,
+            genre_id: 1,
+            dewey_code: None,
+            page_count: Some(186),
+            track_count: None,
+            total_duration: None,
+            age_rating: None,
+            issue_number: None,
+            manually_edited_fields: None,
+            version: 1,
+        }
+    }
+
+    #[test]
+    fn test_detect_edited_fields_no_changes() {
+        let old = make_test_title();
+        let changed = detect_edited_fields(
+            &old, "Original Title", Some("Original Sub"), None,
+            Some("Gallimard"), "fr", 1, None, None,
+            Some(186), None, None, None, None,
+        );
+        assert!(changed.is_empty());
+    }
+
+    #[test]
+    fn test_detect_edited_fields_publisher_changed() {
+        let old = make_test_title();
+        let changed = detect_edited_fields(
+            &old, "Original Title", Some("Original Sub"), None,
+            Some("Flammarion"), "fr", 1, None, None,
+            Some(186), None, None, None, None,
+        );
+        assert_eq!(changed, vec!["publisher"]);
+    }
+
+    #[test]
+    fn test_detect_edited_fields_multiple_changes() {
+        let old = make_test_title();
+        let changed = detect_edited_fields(
+            &old, "New Title", Some("Original Sub"), Some("A description"),
+            Some("Gallimard"), "en", 1, None, None,
+            Some(186), None, None, None, None,
+        );
+        assert!(changed.contains(&"title".to_string()));
+        assert!(changed.contains(&"description".to_string()));
+        assert!(changed.contains(&"language".to_string()));
+        assert_eq!(changed.len(), 3);
+    }
+
+    #[test]
+    fn test_parsed_manually_edited_fields_none() {
+        let title = make_test_title();
+        assert!(title.parsed_manually_edited_fields().is_empty());
+    }
+
+    #[test]
+    fn test_parsed_manually_edited_fields_valid_json() {
+        let mut title = make_test_title();
+        title.manually_edited_fields = Some(r#"["publisher","description"]"#.to_string());
+        let fields = title.parsed_manually_edited_fields();
+        assert_eq!(fields, vec!["publisher", "description"]);
+    }
+
+    #[test]
+    fn test_parsed_manually_edited_fields_invalid_json() {
+        let mut title = make_test_title();
+        title.manually_edited_fields = Some("not json".to_string());
+        assert!(title.parsed_manually_edited_fields().is_empty());
     }
 }

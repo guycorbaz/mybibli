@@ -458,6 +458,39 @@ pub async fn handle_scan(
                     return Ok(Html(feedback_html("error", &message, "")).into_response());
                 }
 
+                // If volume already exists and batch location is active, shelve it
+                if let Some(existing_vol) = VolumeModel::find_by_label(pool, &code).await? {
+                    let active_loc = match &session.token {
+                        Some(token) => SessionModel::get_active_location(pool, token).await.unwrap_or(None),
+                        None => None,
+                    };
+                    if let Some(loc_id) = active_loc {
+                        // Validate location still exists
+                        if crate::models::location::LocationModel::find_by_id(pool, loc_id).await?.is_some() {
+                            match VolumeModel::update_location(pool, existing_vol.id, loc_id).await {
+                                Ok(()) => {
+                                    let path = crate::models::location::LocationModel::get_path(pool, loc_id).await.unwrap_or_default();
+                                    let message = rust_i18n::t!("feedback.volume_shelved", label = &code, path = &path).to_string();
+                                    let guide = rust_i18n::t!("guide.shelved").to_string();
+                                    let resp = HtmxResponse {
+                                        main: feedback_html("success", &message, ""),
+                                        oob: vec![OobUpdate {
+                                            target: "guide-strip".to_string(),
+                                            content: guide_strip_html(&guide),
+                                        }],
+                                    };
+                                    return Ok(resp.into_response());
+                                }
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "Failed to shelve existing volume at active location");
+                                }
+                            }
+                        } else if let Some(token) = &session.token {
+                            let _ = SessionModel::clear_active_location(pool, token).await;
+                        }
+                    }
+                }
+
                 // Check current title context
                 let current_title_id = match &session.token {
                     Some(token) => SessionModel::get_current_title_id(pool, token).await?,
@@ -588,6 +621,13 @@ pub async fn handle_scan(
                     None => None,
                 };
 
+                // Always activate batch shelving mode when scanning L-code
+                let location = location.unwrap();
+                if let Some(token) = &session.token {
+                    let _ = SessionModel::set_active_location(pool, token, location.id).await;
+                }
+                let loc_path = crate::models::location::LocationModel::get_path(pool, location.id).await?;
+
                 if let Some(vol_label) = last_volume {
                     match VolumeService::assign_location(pool, &vol_label, &code).await {
                         Ok((_volume, path)) => {
@@ -599,9 +639,10 @@ pub async fn handle_scan(
                                 label = &vol_label,
                                 path = &path
                             ).to_string();
-                            let guide = rust_i18n::t!("guide.shelved").to_string();
+                            let suggestion = rust_i18n::t!("feedback.scan_vcode_to_shelve").to_string();
+                            let guide = rust_i18n::t!("guide.batch_active", path = &loc_path).to_string();
                             let resp = HtmxResponse {
-                                main: feedback_html("success", &message, ""),
+                                main: feedback_html("success", &message, &suggestion),
                                 oob: vec![OobUpdate {
                                     target: "guide-strip".to_string(),
                                     content: guide_strip_html(&guide),
@@ -619,15 +660,10 @@ pub async fn handle_scan(
                         }
                     }
                 } else {
-                    // No volume context — set batch shelving mode
-                    let location = location.unwrap();
-                    if let Some(token) = &session.token {
-                        let _ = SessionModel::set_active_location(pool, token, location.id).await;
-                    }
-                    let path = crate::models::location::LocationModel::get_path(pool, location.id).await?;
-                    let message = rust_i18n::t!("feedback.active_location", path = &path).to_string();
+                    // No volume context — just activate batch shelving mode
+                    let message = rust_i18n::t!("feedback.active_location", path = &loc_path).to_string();
                     let suggestion = rust_i18n::t!("feedback.scan_vcode_to_shelve").to_string();
-                    let guide = rust_i18n::t!("guide.batch_active", path = &path).to_string();
+                    let guide = rust_i18n::t!("guide.batch_active", path = &loc_path).to_string();
                     let resp = HtmxResponse {
                         main: feedback_html("info", &message, &suggestion),
                         oob: vec![OobUpdate {

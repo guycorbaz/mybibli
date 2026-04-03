@@ -78,3 +78,10 @@
 
 - Web Audio API oscillator/gain nodes not explicitly disconnected after playback — potential memory accumulation in marathon scanning sessions. Add osc.onended callback with disconnect() if needed
 - Script loading order: catalog_toolbar.html inline initToggle() script may run before DOM button exists in edge cases — currently works because script is after button in template flow
+
+## Deferred from: code review of 3-5-metadata-editing-and-redownload (2026-04-03)
+
+- SSRF via cover URL in confirm form — cover_url comes from metadata providers (trusted); add host allowlist if user-provided cover URLs ever added
+- genre_id=0 from malformed form submission causes DB foreign key constraint error — DB enforces FK correctly, acceptable for single-user NAS
+- RwLock .unwrap() panic on poisoned lock — pre-existing pattern across all handlers, not specific to story 3-5
+- Stale version in confirmation form (TOCTOU between redownload and confirm) — optimistic locking correctly prevents data loss; single-user NAS makes concurrent edits extremely unlikely

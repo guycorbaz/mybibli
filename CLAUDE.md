@@ -35,8 +35,8 @@ touch src/lib.rs && cargo build      # Force i18n proc macro to re-read YAML fil
 These apply to ALL sessions without exception.
 
 1. **DRY** — No duplicated code. Shared utilities go in `src/utils.rs`.
-2. **Unit Tests** — All functions must have unit tests, written alongside implementation.
-3. **E2E Tests** — All features must have Playwright tests. Must include a smoke test covering the real user journey (no cookie injection shortcuts).
+2. **Unit Tests** — All code must have unit tests, written alongside implementation. No code ships without corresponding unit tests. Bug fixes must include a regression test.
+3. **E2E Tests** — All features and bug fixes must have Playwright E2E tests covering the real user scenario. Must include a smoke test covering the real user journey (no cookie injection shortcuts). A feature without E2E coverage is not done.
 4. **Code Language** — All code, comments, variables, and commit messages in English.
 5. **Gate Rule** — No milestone transition until ALL tests (unit + E2E) are green.
 6. **Code Review Loop** — After code review, if any Medium+ severity findings are discovered, re-run the review after fixes. Story is clean only when a full pass finds no Medium+ issues.

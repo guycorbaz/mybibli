@@ -7,25 +7,60 @@
 <div class="max-w-4xl mx-auto px-4 py-8">
     <div class="flex flex-col md:flex-row gap-8">
         {% call cover::cover(title.cover_image_url.as_deref().unwrap_or_default(), title.title, title.media_type, "w-[200px] h-[300px]", "eager", label_no_cover) %}{% endcall %}
-        <div>
-            <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ title.title }}</h1>
-            {% if let Some(sub) = title.subtitle %}
-                <p class="text-lg text-stone-500 dark:text-stone-400">{{ sub }}</p>
-            {% endif %}
-            <div class="mt-4 flex flex-wrap gap-4 text-sm text-stone-600 dark:text-stone-400">
-                <span class="inline-flex items-center gap-1">
-                    <img src="/static/icons/{{ title.media_type }}.svg" alt="" class="w-4 h-4" aria-hidden="true">
-                    {{ title.media_type }}
-                </span>
-                <span>{{ genre_name }}</span>
-                <span>{{ volume_count }} {{ label_vol }}</span>
+        <div class="flex-1">
+            <div id="title-metadata">
+                <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ title.title }}</h1>
+                {% if let Some(sub) = title.subtitle %}
+                    <p class="text-lg text-stone-500 dark:text-stone-400">{{ sub }}</p>
+                {% endif %}
+                <div class="mt-4 flex flex-wrap gap-4 text-sm text-stone-600 dark:text-stone-400">
+                    <span class="inline-flex items-center gap-1">
+                        <img src="/static/icons/{{ title.media_type }}.svg" alt="" class="w-4 h-4" aria-hidden="true">
+                        {{ title.media_type }}
+                    </span>
+                    <span>{{ genre_name }}</span>
+                    <span>{{ volume_count }} {{ label_vol }}</span>
+                </div>
+                {% if let Some(pub_name) = title.publisher %}
+                    <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ pub_name }}</p>
+                {% endif %}
+                {% if let Some(isbn) = title.isbn %}
+                    <p class="mt-1 text-xs text-stone-400">ISBN: {{ isbn }}</p>
+                {% endif %}
+                {% if let Some(issn) = title.issn %}
+                    <p class="mt-1 text-xs text-stone-400">ISSN: {{ issn }}</p>
+                {% endif %}
+                {% if let Some(upc) = title.upc %}
+                    <p class="mt-1 text-xs text-stone-400">UPC: {{ upc }}</p>
+                {% endif %}
+                {% if let Some(desc) = title.description %}
+                <div class="mt-4">
+                    <p class="text-stone-700 dark:text-stone-300 text-sm">{{ desc }}</p>
+                </div>
+                {% endif %}
+                {% if let Some(dewey) = title.dewey_code %}
+                    <p class="mt-1 text-xs text-stone-400">Dewey: {{ dewey }}</p>
+                {% endif %}
+
+                {% if role == "librarian" || role == "admin" %}
+                <div class="mt-4 flex gap-3">
+                    <button hx-get="/title/{{ title.id }}/edit" hx-target="#title-metadata" hx-swap="innerHTML"
+                            class="px-3 py-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-700 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
+                        {{ label_edit }}
+                    </button>
+                    {% if has_code %}
+                    <button hx-post="/title/{{ title.id }}/redownload" hx-target="#title-metadata" hx-swap="innerHTML"
+                            hx-indicator="#redownload-spinner"
+                            class="px-3 py-1.5 text-sm font-medium text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-700 rounded-md hover:bg-stone-50 dark:hover:bg-stone-800">
+                        {{ label_redownload }}
+                        <span id="redownload-spinner" class="htmx-indicator ml-1">
+                            <svg class="animate-spin inline h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                        </span>
+                    </button>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
-            {% if let Some(pub_name) = title.publisher %}
-                <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ pub_name }}</p>
-            {% endif %}
-            {% if let Some(isbn) = title.isbn %}
-                <p class="mt-1 text-xs text-stone-400">ISBN: {{ isbn }}</p>
-            {% endif %}
 
             {% if !contributors.is_empty() %}
             <div class="mt-6">
@@ -41,13 +76,8 @@
                 </ul>
             </div>
             {% endif %}
-
-            {% if let Some(desc) = title.description %}
-            <div class="mt-6">
-                <p class="text-stone-700 dark:text-stone-300">{{ desc }}</p>
-            </div>
-            {% endif %}
         </div>
     </div>
+    <div id="title-feedback" class="mt-4"></div>
 </div>
 {% endblock %}

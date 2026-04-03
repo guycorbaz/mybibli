@@ -298,6 +298,128 @@ pub struct TitleForm {
     pub issue_number: Option<i32>,
 }
 
+/// Result of comparing metadata from a provider against existing title fields.
+pub struct RedownloadResult {
+    pub metadata: crate::metadata::provider::MetadataResult,
+    pub conflicts: Vec<FieldConflict>,
+    pub auto_updates: Vec<String>,
+}
+
+/// A field where the user's manual edit conflicts with the provider's new value.
+#[derive(Clone)]
+pub struct FieldConflict {
+    pub field_name: String,
+    pub label: String,
+    pub current_value: String,
+    pub new_value: String,
+}
+
+impl TitleService {
+    /// Invalidate the metadata cache for the given code (soft-delete).
+    pub async fn invalidate_metadata_cache(pool: &DbPool, code: &str) -> Result<(), AppError> {
+        sqlx::query("UPDATE metadata_cache SET deleted_at = NOW() WHERE code = ? AND deleted_at IS NULL")
+            .bind(code)
+            .execute(pool)
+            .await?;
+        tracing::info!(code = %code, "Invalidated metadata cache for re-download");
+        Ok(())
+    }
+
+    /// Build field conflicts between a title's manually edited fields and new metadata.
+    pub fn build_field_conflicts(
+        title: &TitleModel,
+        metadata: &crate::metadata::provider::MetadataResult,
+        manually_edited: &[String],
+    ) -> Vec<FieldConflict> {
+        let mut conflicts = Vec::new();
+        for field in manually_edited {
+            let current = Self::get_title_field_value(title, field);
+            let new_val = Self::get_metadata_field_value(metadata, field);
+            if !new_val.is_empty() && current != new_val {
+                conflicts.push(FieldConflict {
+                    field_name: field.clone(),
+                    label: Self::field_label(field),
+                    current_value: current,
+                    new_value: new_val,
+                });
+            }
+        }
+        conflicts
+    }
+
+    /// Build list of auto-update descriptions for non-manually-edited fields.
+    pub fn build_auto_updates(
+        title: &TitleModel,
+        metadata: &crate::metadata::provider::MetadataResult,
+        manually_edited: &[String],
+    ) -> Vec<String> {
+        let all_fields = ["title", "subtitle", "description", "publisher", "language",
+            "publication_date", "page_count", "track_count", "total_duration", "age_rating", "issue_number"];
+        let mut updates = Vec::new();
+        for field in all_fields {
+            if manually_edited.contains(&field.to_string()) { continue; }
+            let current = Self::get_title_field_value(title, field);
+            let new_val = Self::get_metadata_field_value(metadata, field);
+            if !new_val.is_empty() && current != new_val {
+                updates.push(format!("{}: {} -> {}", Self::field_label(field), current, new_val));
+            }
+        }
+        updates
+    }
+
+    /// Get the i18n label for a metadata field name.
+    pub fn field_label(field: &str) -> String {
+        match field {
+            "title" => rust_i18n::t!("metadata.field.title").to_string(),
+            "subtitle" => rust_i18n::t!("metadata.field.subtitle").to_string(),
+            "description" => rust_i18n::t!("metadata.field.description").to_string(),
+            "publisher" => rust_i18n::t!("metadata.field.publisher").to_string(),
+            "language" => rust_i18n::t!("metadata.field.language").to_string(),
+            "publication_date" => rust_i18n::t!("metadata.field.publication_date").to_string(),
+            "page_count" => rust_i18n::t!("metadata.field.page_count").to_string(),
+            "track_count" => rust_i18n::t!("metadata.field.track_count").to_string(),
+            "total_duration" => rust_i18n::t!("metadata.field.total_duration").to_string(),
+            "age_rating" => rust_i18n::t!("metadata.field.age_rating").to_string(),
+            "issue_number" => rust_i18n::t!("metadata.field.issue_number").to_string(),
+            _ => field.to_string(),
+        }
+    }
+
+    fn get_title_field_value(title: &TitleModel, field: &str) -> String {
+        match field {
+            "title" => title.title.clone(),
+            "subtitle" => title.subtitle.clone().unwrap_or_default(),
+            "description" => title.description.clone().unwrap_or_default(),
+            "publisher" => title.publisher.clone().unwrap_or_default(),
+            "language" => title.language.clone(),
+            "publication_date" => title.publication_date.map(|d| d.to_string()).unwrap_or_default(),
+            "page_count" => title.page_count.map(|v| v.to_string()).unwrap_or_default(),
+            "track_count" => title.track_count.map(|v| v.to_string()).unwrap_or_default(),
+            "total_duration" => title.total_duration.map(|v| v.to_string()).unwrap_or_default(),
+            "age_rating" => title.age_rating.clone().unwrap_or_default(),
+            "issue_number" => title.issue_number.map(|v| v.to_string()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    }
+
+    fn get_metadata_field_value(metadata: &crate::metadata::provider::MetadataResult, field: &str) -> String {
+        match field {
+            "title" => metadata.title.clone().unwrap_or_default(),
+            "subtitle" => metadata.subtitle.clone().unwrap_or_default(),
+            "description" => metadata.description.clone().unwrap_or_default(),
+            "publisher" => metadata.publisher.clone().unwrap_or_default(),
+            "language" => metadata.language.clone().unwrap_or_default(),
+            "publication_date" => metadata.publication_date.clone().unwrap_or_default(),
+            "page_count" => metadata.page_count.map(|v| v.to_string()).unwrap_or_default(),
+            "track_count" => metadata.track_count.map(|v| v.to_string()).unwrap_or_default(),
+            "total_duration" => metadata.total_duration.clone().unwrap_or_default(),
+            "age_rating" => metadata.age_rating.clone().unwrap_or_default(),
+            "issue_number" => metadata.issue_number.clone().unwrap_or_default(),
+            _ => String::new(),
+        }
+    }
+}
+
 fn default_language() -> String {
     "fr".to_string()
 }
