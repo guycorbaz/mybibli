@@ -85,7 +85,7 @@ impl VolumeService {
                 )
             })?;
 
-        VolumeModel::update_location(pool, volume.id, location.id).await?;
+        VolumeModel::update_location(pool, volume.id, Some(location.id)).await?;
 
         let path = LocationModel::get_path(pool, location.id).await?;
 

@@ -1,6 +1,7 @@
 pub mod borrowers;
 pub mod contributor;
 pub mod cover;
+pub mod loans;
 pub mod locations;
 pub mod locking;
 pub mod search;

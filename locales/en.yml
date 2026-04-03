@@ -158,6 +158,7 @@ volume:
   edition_label: Edition
   not_shelved: Not shelved
   submit: Save
+  currently_on_loan: "Cannot delete: this volume is currently on loan."
 location:
   tree_title: Locations
   add_root: Add root location
@@ -269,6 +270,36 @@ borrower:
   empty_state: "No borrowers yet. Add one to start lending!"
   detail_title: Borrower details
   confirm_delete: "Delete this borrower?"
+loan:
+  list_title: Active loans
+  new: New loan
+  volume_label: Volume label
+  borrower: Borrower
+  loaned_at: Loaned on
+  duration: Duration
+  days: days
+  created: "Loan registered: %{label} to %{borrower}"
+  already_on_loan: "This volume is already on loan."
+  not_loanable: "This volume's condition does not allow lending."
+  volume_not_found: "Volume not found."
+  not_on_loan: "This volume is not currently on loan."
+  scan_placeholder: "Scan V-code to find loan..."
+  empty_state: "No active loans."
+  col_borrower: Borrower
+  col_volume: Volume
+  col_title: Title
+  col_date: Date
+  col_duration: Duration
+  register: Register loan
+  borrower_search: "Search borrower..."
+  return: Return
+  returned: "Loan returned: %{label} restored to %{path}"
+  returned_no_location: "Loan returned: %{label} (no previous location)"
+  already_returned: "This loan has already been returned."
+  overdue: Overdue
+  return_confirm: "Return this volume?"
+  not_found: "Loan not found."
+  col_action: Action
 session:
   expiry_warning: "Your session will expire in 5 minutes."
   stay_connected: Stay connected

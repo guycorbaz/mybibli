@@ -1,0 +1,224 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ list_title }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ list_title }}</h1>
+        {% if role == "librarian" || role == "admin" %}
+        <button type="button" onclick="document.getElementById('new-loan-form').classList.toggle('hidden');document.getElementById('loan-volume-label').focus();"
+                class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
+            {{ new_loan_label }}
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- Scan field -->
+    {% if role == "librarian" || role == "admin" %}
+    <div class="mb-4">
+        <input type="text" id="loan-scan-field"
+               placeholder="{{ scan_placeholder }}"
+               hx-get="/loans/scan"
+               hx-trigger="keydown[key=='Enter'] from:this"
+               hx-target="#scan-result"
+               hx-swap="innerHTML"
+               hx-include="this"
+               name="code"
+               class="w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm min-h-[44px] md:min-h-[36px]"
+               autocomplete="off">
+    </div>
+    <div id="scan-result" class="mb-4" aria-live="polite">
+        <!-- Scan results appear here -->
+    </div>
+    {% endif %}
+
+    <!-- Feedback area for return actions -->
+    <div id="loan-feedback" class="mb-4" aria-live="polite">
+        <!-- Return feedback appears here -->
+    </div>
+
+    <!-- New loan form -->
+    {% if role == "librarian" || role == "admin" %}
+    <div id="new-loan-form" class="hidden mb-6 p-4 bg-stone-50 dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700">
+        <form method="POST" action="/loans" id="loan-create-form"
+              hx-post="/loans"
+              hx-target="#loan-feedback"
+              hx-swap="innerHTML">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="loan-volume-label" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ volume_label_label }} *</label>
+                    <input type="text" id="loan-volume-label" name="volume_label" required
+                           pattern="V[0-9]{4}" placeholder="V0001"
+                           class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="loan-borrower-search" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ borrower_label }} *</label>
+                    <div class="relative">
+                        <input type="text" id="loan-borrower-search"
+                               placeholder="{{ borrower_search_label }}"
+                               autocomplete="off"
+                               class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <input type="hidden" id="loan-borrower-id" name="borrower_id" required>
+                        <div id="borrower-dropdown" class="hidden absolute z-10 mt-1 w-full bg-white dark:bg-stone-700 border border-stone-200 dark:border-stone-600 rounded-md shadow-lg max-h-48 overflow-auto"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end">
+                <button type="submit"
+                        class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">{{ register_label }}</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    <!-- Loans table -->
+    {% if loans.items.is_empty() %}
+    <p class="text-center py-12 text-stone-500 dark:text-stone-400">{{ empty_state }}</p>
+    {% else %}
+    <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="border-b border-stone-200 dark:border-stone-700 text-left">
+                    <th class="px-4 py-3 text-stone-600 dark:text-stone-400">
+                        <a href="/loans?sort=borrower&dir={% if current_sort == "borrower" && current_dir == "asc" %}desc{% else %}asc{% endif %}&page=1"
+                           class="hover:underline">{{ col_borrower }}{% if current_sort == "borrower" %} {% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}</a>
+                    </th>
+                    <th class="px-4 py-3 text-stone-600 dark:text-stone-400">{{ col_volume }}</th>
+                    <th class="px-4 py-3 text-stone-600 dark:text-stone-400">
+                        <a href="/loans?sort=title&dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}&page=1"
+                           class="hover:underline">{{ col_title }}{% if current_sort == "title" %} {% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}</a>
+                    </th>
+                    <th class="px-4 py-3 text-stone-600 dark:text-stone-400">
+                        <a href="/loans?sort=date&dir={% if current_sort == "date" && current_dir == "desc" %}asc{% else %}desc{% endif %}&page=1"
+                           class="hover:underline">{{ col_date }}{% if current_sort == "date" %} {% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}</a>
+                    </th>
+                    <th class="px-4 py-3 text-stone-600 dark:text-stone-400">
+                        <a href="/loans?sort=duration&dir={% if current_sort == "duration" && current_dir == "desc" %}asc{% else %}desc{% endif %}&page=1"
+                           class="hover:underline">{{ col_duration }}{% if current_sort == "duration" %} {% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}</a>
+                    </th>
+                    {% if role == "librarian" || role == "admin" %}
+                    <th class="px-4 py-3 text-stone-600 dark:text-stone-400">{{ col_action }}</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody id="loans-table-body">
+                {% for loan in loans.items %}
+                <tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50{% if highlight_loan_id.is_some() && highlight_loan_id.unwrap() == loan.id %} bg-yellow-100 dark:bg-yellow-900/30{% endif %}"
+                    id="loan-row-{{ loan.id }}">
+                    <td class="px-4 py-3"><a href="/borrower/{{ loan.borrower_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ loan.borrower_name }}</a></td>
+                    <td class="px-4 py-3">{{ loan.volume_label }}</td>
+                    <td class="px-4 py-3">{{ loan.title_name }}</td>
+                    <td class="px-4 py-3">{{ loan.loaned_at.format("%Y-%m-%d") }}</td>
+                    <td class="px-4 py-3 {% if loan.duration_days >= overdue_threshold %}text-red-600 dark:text-red-400 font-semibold{% elif loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% endif %}">
+                        {{ loan.duration_days }} {{ days_label }}
+                        {% if loan.duration_days >= overdue_threshold %}
+                        <span class="ml-1 inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">{{ overdue_label }}</span>
+                        {% endif %}
+                    </td>
+                    {% if role == "librarian" || role == "admin" %}
+                    <td class="px-4 py-3">
+                        <button hx-post="/loans/{{ loan.id }}/return"
+                                hx-confirm="{{ confirm_label }}"
+                                hx-target="#loan-feedback"
+                                hx-swap="innerHTML"
+                                hx-disabled-elt="this"
+                                class="px-3 py-1 text-sm font-medium text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50">
+                            {{ return_label }}
+                        </button>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if loans.total_pages > 1 %}
+    <nav aria-label="Pagination" class="flex justify-center gap-2 mt-6">
+        {% if loans.has_previous() %}
+        <a href="/loans?sort={{ current_sort }}&dir={{ current_dir }}&page={{ loans.page - 1 }}" class="px-3 py-1 text-sm border rounded-md hover:bg-stone-50 dark:hover:bg-stone-800">{{ prev_label }}</a>
+        {% endif %}
+        <span class="px-3 py-1 text-sm text-stone-500">{{ loans.page }} / {{ loans.total_pages }}</span>
+        {% if loans.has_next() %}
+        <a href="/loans?sort={{ current_sort }}&dir={{ current_dir }}&page={{ loans.page + 1 }}" class="px-3 py-1 text-sm border rounded-md hover:bg-stone-50 dark:hover:bg-stone-800">{{ next_label }}</a>
+        {% endif %}
+    </nav>
+    {% endif %}
+    {% endif %}
+</div>
+
+<script>
+// Borrower autocomplete
+(function() {
+    const searchInput = document.getElementById('loan-borrower-search');
+    const hiddenInput = document.getElementById('loan-borrower-id');
+    const dropdown = document.getElementById('borrower-dropdown');
+    if (!searchInput) return;
+
+    let debounceTimer;
+
+    searchInput.addEventListener('input', function() {
+        const q = this.value.trim();
+        clearTimeout(debounceTimer);
+        // Always clear stale selection when user types
+        hiddenInput.value = '';
+        if (q.length < 2) {
+            dropdown.classList.add('hidden');
+            dropdown.innerHTML = '';
+            return;
+        }
+        debounceTimer = setTimeout(async function() {
+            try {
+                const resp = await fetch('/borrowers/search?q=' + encodeURIComponent(q));
+                if (!resp.ok) return;
+                const data = await resp.json();
+                dropdown.innerHTML = '';
+                if (data.length === 0) {
+                    dropdown.classList.add('hidden');
+                    return;
+                }
+                data.forEach(function(b) {
+                    const item = document.createElement('div');
+                    item.className = 'px-3 py-2 cursor-pointer hover:bg-stone-100 dark:hover:bg-stone-600 text-sm text-stone-900 dark:text-stone-100';
+                    item.textContent = b.name;
+                    item.addEventListener('click', function() {
+                        searchInput.value = b.name;
+                        hiddenInput.value = b.id;
+                        dropdown.classList.add('hidden');
+                    });
+                    dropdown.appendChild(item);
+                });
+                dropdown.classList.remove('hidden');
+            } catch(e) { /* ignore */ }
+        }, 300);
+    });
+
+    // Close dropdown on outside click
+    document.addEventListener('click', function(e) {
+        if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.classList.add('hidden');
+        }
+    });
+
+    // Clear scan field after scan
+    const scanField = document.getElementById('loan-scan-field');
+    if (scanField) {
+        scanField.addEventListener('htmx:afterRequest', function() {
+            setTimeout(function() { scanField.value = ''; scanField.focus(); }, 100);
+        });
+    }
+
+    // Reload page after successful return to refresh the table (preserve sort params)
+    document.body.addEventListener('htmx:afterRequest', function(e) {
+        if (e.detail.pathInfo && e.detail.pathInfo.requestPath && e.detail.pathInfo.requestPath.includes('/return') && e.detail.successful) {
+            setTimeout(function() {
+                var params = new URLSearchParams(window.location.search);
+                params.set('page', '1');
+                window.location.search = params.toString();
+            }, 1500);
+        }
+    });
+})();
+</script>
+{% endblock %}

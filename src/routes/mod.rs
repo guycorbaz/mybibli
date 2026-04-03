@@ -3,6 +3,7 @@ pub mod borrowers;
 pub mod catalog;
 pub mod contributors;
 pub mod home;
+pub mod loans;
 pub mod locations;
 pub mod titles;
 
@@ -127,6 +128,19 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/borrower/{id}/edit",
             axum::routing::get(borrowers::edit_borrower_page),
+        )
+        // Loan routes
+        .route(
+            "/loans",
+            axum::routing::get(loans::loans_page).post(loans::create_loan),
+        )
+        .route(
+            "/loans/scan",
+            axum::routing::get(loans::scan_on_loans),
+        )
+        .route(
+            "/loans/{id}/return",
+            axum::routing::post(loans::return_loan_handler),
         )
         .route(
             "/location/{id}",

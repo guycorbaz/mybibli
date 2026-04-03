@@ -469,7 +469,7 @@ pub async fn handle_scan(
                     if let Some(loc_id) = active_loc {
                         // Validate location still exists
                         if crate::models::location::LocationModel::find_by_id(pool, loc_id).await?.is_some() {
-                            match VolumeModel::update_location(pool, existing_vol.id, loc_id).await {
+                            match VolumeModel::update_location(pool, existing_vol.id, Some(loc_id)).await {
                                 Ok(()) => {
                                     let path = crate::models::location::LocationModel::get_path(pool, loc_id).await.unwrap_or_default();
                                     let message = rust_i18n::t!("feedback.volume_shelved", label = &code, path = &path).to_string();
@@ -518,7 +518,7 @@ pub async fn handle_scan(
                                 // Validate location still exists (may have been deleted)
                                 match crate::models::location::LocationModel::find_by_id(pool, loc_id).await? {
                                     Some(_) => {
-                                        match VolumeModel::update_location(pool, volume.id, loc_id).await {
+                                        match VolumeModel::update_location(pool, volume.id, Some(loc_id)).await {
                                             Ok(()) => {
                                                 let path = crate::models::location::LocationModel::get_path(pool, loc_id).await.unwrap_or_default();
                                                 Some(path)
@@ -1462,8 +1462,18 @@ pub async fn delete_volume(
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Librarian)?;
+    let pool = &state.pool;
 
-    crate::services::soft_delete::SoftDeleteService::soft_delete(&state.pool, "volumes", id).await?;
+    // Guard: block deletion if volume is currently on loan
+    if crate::models::loan::LoanModel::find_active_by_volume(pool, id)
+        .await?
+        .is_some()
+    {
+        let message = rust_i18n::t!("volume.currently_on_loan").to_string();
+        return Ok(Html(feedback_html("warning", &message, "")));
+    }
+
+    crate::services::soft_delete::SoftDeleteService::soft_delete(pool, "volumes", id).await?;
 
     let message = rust_i18n::t!("feedback.deleted").to_string();
     Ok(Html(feedback_html("success", &message, "")))

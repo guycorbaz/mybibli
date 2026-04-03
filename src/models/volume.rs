@@ -86,8 +86,8 @@ impl VolumeModel {
         }
     }
 
-    pub async fn update_location(pool: &DbPool, id: u64, location_id: u64) -> Result<(), AppError> {
-        tracing::info!(volume_id = id, location_id = location_id, "Updating volume location");
+    pub async fn update_location(pool: &DbPool, id: u64, location_id: Option<u64>) -> Result<(), AppError> {
+        tracing::info!(volume_id = id, location_id = ?location_id, "Updating volume location");
 
         let result = sqlx::query(
             "UPDATE volumes SET location_id = ? WHERE id = ? AND deleted_at IS NULL",

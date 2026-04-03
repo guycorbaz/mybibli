@@ -1,6 +1,7 @@
 pub mod borrower;
 pub mod contributor;
 pub mod genre;
+pub mod loan;
 pub mod location;
 pub mod media_type;
 pub mod metadata_cache;

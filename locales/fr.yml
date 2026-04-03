@@ -158,6 +158,7 @@ volume:
   edition_label: Édition
   not_shelved: Non rangé
   submit: Enregistrer
+  currently_on_loan: "Suppression impossible : ce volume est actuellement en prêt."
 location:
   tree_title: Emplacements
   add_root: Ajouter un emplacement racine
@@ -269,6 +270,36 @@ borrower:
   empty_state: "Aucun emprunteur. Ajoutez-en un pour commencer les prêts !"
   detail_title: "Détails de l'emprunteur"
   confirm_delete: "Supprimer cet emprunteur ?"
+loan:
+  list_title: "Prêts actifs"
+  new: "Nouveau prêt"
+  volume_label: "Étiquette du volume"
+  borrower: Emprunteur
+  loaned_at: "Prêté le"
+  duration: "Durée"
+  days: jours
+  created: "Prêt enregistré : %{label} à %{borrower}"
+  already_on_loan: "Ce volume est déjà en prêt."
+  not_loanable: "L'état de ce volume ne permet pas le prêt."
+  volume_not_found: "Volume introuvable."
+  not_on_loan: "Ce volume n'est pas en prêt actuellement."
+  scan_placeholder: "Scanner un code V pour trouver un prêt..."
+  empty_state: "Aucun prêt actif."
+  col_borrower: Emprunteur
+  col_volume: Volume
+  col_title: Titre
+  col_date: Date
+  col_duration: "Durée"
+  register: "Enregistrer le prêt"
+  borrower_search: "Chercher un emprunteur..."
+  return: Retourner
+  returned: "Prêt retourné : %{label} remis à %{path}"
+  returned_no_location: "Prêt retourné : %{label} (aucun emplacement précédent)"
+  already_returned: "Ce prêt a déjà été retourné."
+  overdue: "En retard"
+  return_confirm: "Retourner ce volume ?"
+  not_found: "Prêt introuvable."
+  col_action: Action
 session:
   expiry_warning: "Votre session expirera dans 5 minutes."
   stay_connected: Rester connecté
