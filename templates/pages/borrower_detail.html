@@ -1,0 +1,37 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ borrower.name }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ borrower.name }}</h1>
+
+    <div class="mt-6 space-y-2 text-sm">
+        {% if let Some(addr) = borrower.address %}
+        <p><span class="text-stone-500 dark:text-stone-400">{{ address_label }}:</span> {{ addr }}</p>
+        {% endif %}
+        {% if let Some(em) = borrower.email %}
+        <p><span class="text-stone-500 dark:text-stone-400">{{ email_label }}:</span> <a href="mailto:{{ em }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ em }}</a></p>
+        {% endif %}
+        {% if let Some(ph) = borrower.phone %}
+        <p><span class="text-stone-500 dark:text-stone-400">{{ phone_label }}:</span> {{ ph }}</p>
+        {% endif %}
+    </div>
+
+    {% if role == "admin" %}
+    <div class="mt-6 flex gap-3">
+        <a href="/borrower/{{ borrower.id }}/edit"
+           class="px-3 py-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-700 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
+            {{ edit_label }}
+        </a>
+        <button hx-delete="/borrower/{{ borrower.id }}" hx-confirm="{{ confirm_delete }}"
+                hx-target="body"
+                class="px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20">
+            {{ delete_label }}
+        </button>
+    </div>
+    {% endif %}
+
+    <div id="borrower-feedback" class="mt-4"></div>
+</div>
+{% endblock %}

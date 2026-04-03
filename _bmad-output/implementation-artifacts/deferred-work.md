@@ -85,3 +85,10 @@
 - genre_id=0 from malformed form submission causes DB foreign key constraint error — DB enforces FK correctly, acceptable for single-user NAS
 - RwLock .unwrap() panic on poisoned lock — pre-existing pattern across all handlers, not specific to story 3-5
 - Stale version in confirmation form (TOCTOU between redownload and confirm) — optimistic locking correctly prevents data loss; single-user NAS makes concurrent edits extremely unlikely
+
+## Deferred from: code review of 4-1-borrower-crud-and-search (2026-04-03)
+
+- LIKE search missing `ESCAPE '\'` clause — pre-existing pattern (contributor_search has same issue); backslash escaping works by default with MariaDB but not guaranteed
+- count_active_loans doesn't JOIN volumes table — intentional, loan record exists independently of volume soft-deletion
+- Page handlers don't differentiate is_htmx for fragment/full-page — consistent with existing location CRUD pattern; add when HTMX navigation is implemented for these pages
+- PRG pattern (redirect after POST) doesn't support inline FeedbackEntry — would require flash sessions or HTMX form submission; consistent with location CRUD pattern

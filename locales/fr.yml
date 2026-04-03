@@ -16,6 +16,7 @@ nav:
   loans: Prêts
   admin: Admin
   locations: Emplacements
+  borrowers: Emprunteurs
   login: Connexion
   logout: Déconnexion
   skip_to_content: Aller au contenu principal
@@ -249,6 +250,25 @@ audio:
   disable: "Désactiver les sons de scan"
 dashboard:
   metadata_errors: "%{count} titre(s) avec erreurs de métadonnées"
+borrower:
+  list_title: Emprunteurs
+  add: Ajouter un emprunteur
+  name: Nom
+  address: Adresse
+  email: Email
+  phone: "Téléphone"
+  edit: "Modifier l'emprunteur"
+  delete: Supprimer
+  created: "Emprunteur créé : %{name}"
+  updated: Emprunteur mis à jour.
+  deleted: Emprunteur supprimé.
+  delete_has_loans: "Suppression impossible : %{name} a %{count} prêt(s) actif(s)."
+  name_required: "Le nom de l'emprunteur est obligatoire."
+  save: Enregistrer
+  cancel: Annuler
+  empty_state: "Aucun emprunteur. Ajoutez-en un pour commencer les prêts !"
+  detail_title: "Détails de l'emprunteur"
+  confirm_delete: "Supprimer cet emprunteur ?"
 session:
   expiry_warning: "Votre session expirera dans 5 minutes."
   stay_connected: Rester connecté

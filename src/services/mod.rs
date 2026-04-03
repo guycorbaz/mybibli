@@ -1,3 +1,4 @@
+pub mod borrowers;
 pub mod contributor;
 pub mod cover;
 pub mod locations;

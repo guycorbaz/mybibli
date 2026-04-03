@@ -1,0 +1,48 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ edit_title }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100 mb-6">{{ edit_title }}</h1>
+
+    <form method="POST" action="/borrower/{{ borrower.id }}" class="space-y-4">
+        <input type="hidden" name="version" value="{{ borrower.version }}">
+
+        <div>
+            <label for="edit-name" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ name_label }} *</label>
+            <input type="text" id="edit-name" name="name" value="{{ borrower.name }}" required
+                   class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+        </div>
+
+        <div>
+            <label for="edit-email" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ email_label }}</label>
+            <input type="email" id="edit-email" name="email" value="{{ borrower.email.as_deref().unwrap_or_default() }}"
+                   class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+        </div>
+
+        <div>
+            <label for="edit-phone" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ phone_label }}</label>
+            <input type="tel" id="edit-phone" name="phone" value="{{ borrower.phone.as_deref().unwrap_or_default() }}"
+                   class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+        </div>
+
+        <div>
+            <label for="edit-address" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ address_label }}</label>
+            <textarea id="edit-address" name="address" rows="3"
+                      class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">{{ borrower.address.as_deref().unwrap_or_default() }}</textarea>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-2">
+            <a href="/borrower/{{ borrower.id }}"
+               class="px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-700 rounded-md hover:bg-stone-200 dark:hover:bg-stone-600">
+                {{ cancel_label }}
+            </a>
+            <button type="submit"
+                    class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
+                {{ save_label }}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

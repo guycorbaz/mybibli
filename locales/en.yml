@@ -16,6 +16,7 @@ nav:
   loans: Loans
   admin: Admin
   locations: Locations
+  borrowers: Borrowers
   login: Log in
   logout: Log out
   skip_to_content: Skip to main content
@@ -249,6 +250,25 @@ audio:
   disable: Disable scan sounds
 dashboard:
   metadata_errors: "%{count} title(s) with metadata errors"
+borrower:
+  list_title: Borrowers
+  add: Add borrower
+  name: Name
+  address: Address
+  email: Email
+  phone: Phone
+  edit: Edit borrower
+  delete: Delete
+  created: "Borrower created: %{name}"
+  updated: Borrower updated.
+  deleted: Borrower deleted.
+  delete_has_loans: "Cannot delete: %{name} has %{count} active loan(s)."
+  name_required: Borrower name is required.
+  save: Save
+  cancel: Cancel
+  empty_state: "No borrowers yet. Add one to start lending!"
+  detail_title: Borrower details
+  confirm_delete: "Delete this borrower?"
 session:
   expiry_warning: "Your session will expire in 5 minutes."
   stay_connected: Stay connected

@@ -671,6 +671,54 @@ The cataloger can register borrowers, lend volumes, track overdue loans, and pro
 **NFRs:** NFR11
 **UX-DRs:** UX-DR5 (LoanRow variant), UX-DR9
 
+#### Story 4.1: Borrower CRUD & Search
+**As a** librarian, **I want** to create, edit, search, and delete borrowers, **so that** I can manage the people who borrow from my library.
+
+**FRs:** FR41, FR42, FR98, FR119, FR50
+**NFRs:** NFR11
+
+**Acceptance Criteria:**
+- Given /borrowers page, when librarian adds a borrower with name/address/email/phone, then the borrower is created and appears in the list
+- Given a borrower exists, when librarian searches by name with autocomplete, then matching borrowers appear after 2+ characters
+- Given a borrower detail page, when librarian edits contact details and saves, then changes are persisted with optimistic locking
+- Given a borrower with no active loans, when admin clicks delete, then a confirmation modal appears and the borrower is soft-deleted
+- Given a borrower with active loans, when admin clicks delete, then deletion is blocked with a message showing active loan count
+- Given an anonymous user, when they access /borrowers or /borrower/{id}, then they are redirected to login (NFR11)
+
+#### Story 4.2: Loan Registration & Validation
+**As a** librarian, **I want** to lend a volume to a borrower, **so that** I can track who has which books.
+
+**FRs:** FR43, FR44, FR47
+**NFRs:** NFR11
+
+**Acceptance Criteria:**
+- Given a volume and a borrower, when librarian clicks "Lend" on the volume (from /title/{id} or /loans), then a borrower autocomplete appears, and selecting a borrower creates the loan with loaned_at = NOW()
+- Given a volume whose condition state is flagged as not loanable, when librarian attempts to lend it, then the loan is blocked with a warning message
+- Given the /loans page with a scan field, when librarian scans a V-code, then the matching loan row is highlighted (or "not on loan" feedback if volume is available)
+- Given a volume already on loan, when librarian attempts to lend it again, then the loan is blocked with "already on loan" message
+
+#### Story 4.3: Loan Return & Location Restoration
+**As a** librarian, **I want** to process book returns with automatic location restoration, **so that** returned books go back where they belong.
+
+**FRs:** FR45, FR46, FR48, FR49
+
+**Acceptance Criteria:**
+- Given the /loans page showing all active loans, when librarian clicks "Return" on a loan row, then returned_at is set to NOW() and the volume's location is restored to its previous_location_id
+- Given active loans exist, when the /loans page loads, then each loan shows: borrower name, volume label, title, loan duration in days, and a "Return" button
+- Given a configurable overdue threshold (default 30 days), when a loan exceeds the threshold, then it is highlighted in red with "overdue" badge
+- Given a volume currently on loan, when librarian attempts to delete it, then deletion is blocked with "volume currently on loan" message
+- Given the loans page, when loans are displayed, then they are paginated (25 per page) and sortable by borrower/title/date/duration
+
+#### Story 4.4: Borrower Detail & Loan History
+**As a** librarian, **I want** to view a borrower's active loans and loan history, **so that** I can manage individual borrower relationships.
+
+**FRs:** FR89
+
+**Acceptance Criteria:**
+- Given a borrower detail page at /borrower/{id}, when it loads, then it displays the borrower's contact details and a list of their active loans
+- Given a borrower with active loans, when viewing their detail page, then each active loan shows volume label, title, loaned_at date, and duration
+- Given the borrower detail page, when librarian clicks "Return" on a loan, then the loan is returned (same behavior as /loans page return)
+
 ### Epic 5: Mes séries et ma collection
 The cataloger can organize titles into series, visualize gaps, browse the collection with list/grid modes, discover similar titles, and track Dewey codes for physical shelf order.
 

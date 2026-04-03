@@ -14,6 +14,13 @@
                 return;
             }
 
+            // Ctrl+Shift+B → navigate to /borrowers
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "B") {
+                e.preventDefault();
+                window.location.href = "/borrowers";
+                return;
+            }
+
             // Ctrl+N / Cmd+N → open title creation form (on /catalog only)
             if ((e.ctrlKey || e.metaKey) && e.key === "n") {
                 if (window.location.pathname !== "/catalog") return;

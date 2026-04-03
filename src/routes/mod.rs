@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod borrowers;
 pub mod catalog;
 pub mod contributors;
 pub mod home;
@@ -109,6 +110,23 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/volume/{id}/update",
             axum::routing::post(catalog::update_volume),
+        )
+        // Borrower routes
+        .route(
+            "/borrowers",
+            axum::routing::get(borrowers::borrowers_page).post(borrowers::create_borrower),
+        )
+        .route(
+            "/borrowers/search",
+            axum::routing::get(borrowers::borrower_search),
+        )
+        .route(
+            "/borrower/{id}",
+            axum::routing::get(borrowers::borrower_detail).post(borrowers::update_borrower).delete(borrowers::delete_borrower),
+        )
+        .route(
+            "/borrower/{id}/edit",
+            axum::routing::get(borrowers::edit_borrower_page),
         )
         .route(
             "/location/{id}",
