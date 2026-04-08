@@ -60,7 +60,9 @@ fn map_loan_sort_column(sort: &str) -> &str {
 impl LoanModel {
     pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<Option<LoanModel>, AppError> {
         let row = sqlx::query(
-            r#"SELECT id, volume_id, borrower_id, loaned_at, returned_at,
+            r#"SELECT id, volume_id, borrower_id,
+                      CAST(loaned_at AS DATETIME) AS loaned_at,
+                      CAST(returned_at AS DATETIME) AS returned_at,
                       previous_location_id, version
                FROM loans WHERE id = ? AND deleted_at IS NULL"#,
         )
@@ -102,7 +104,8 @@ impl LoanModel {
         .await?;
 
         let data_sql = format!(
-            r#"SELECT l.id, l.volume_id, l.borrower_id, l.loaned_at,
+            r#"SELECT l.id, l.volume_id, l.borrower_id,
+                      CAST(l.loaned_at AS DATETIME) AS loaned_at,
                       b.name AS borrower_name,
                       v.label AS volume_label,
                       t.title AS title_name,
@@ -152,7 +155,9 @@ impl LoanModel {
     /// Check if a volume currently has an active loan.
     pub async fn find_active_by_volume(pool: &DbPool, volume_id: u64) -> Result<Option<LoanModel>, AppError> {
         let row = sqlx::query(
-            r#"SELECT id, volume_id, borrower_id, loaned_at, returned_at,
+            r#"SELECT id, volume_id, borrower_id,
+                      CAST(loaned_at AS DATETIME) AS loaned_at,
+                      CAST(returned_at AS DATETIME) AS returned_at,
                       previous_location_id, version
                FROM loans
                WHERE volume_id = ? AND returned_at IS NULL AND deleted_at IS NULL"#,
@@ -205,7 +210,8 @@ impl LoanModel {
         label: &str,
     ) -> Result<Option<LoanWithDetails>, AppError> {
         let row = sqlx::query(
-            r#"SELECT l.id, l.volume_id, l.borrower_id, l.loaned_at,
+            r#"SELECT l.id, l.volume_id, l.borrower_id,
+                      CAST(l.loaned_at AS DATETIME) AS loaned_at,
                       b.name AS borrower_name,
                       v.label AS volume_label,
                       t.title AS title_name,
@@ -241,7 +247,8 @@ impl LoanModel {
         borrower_id: u64,
     ) -> Result<Vec<LoanWithDetails>, AppError> {
         let rows = sqlx::query(
-            r#"SELECT l.id, l.volume_id, l.borrower_id, l.loaned_at,
+            r#"SELECT l.id, l.volume_id, l.borrower_id,
+                      CAST(l.loaned_at AS DATETIME) AS loaned_at,
                       b.name AS borrower_name,
                       v.label AS volume_label,
                       t.title AS title_name,
@@ -354,6 +361,29 @@ mod tests {
         assert_eq!(map_loan_sort_column("date"), "l.loaned_at");
         assert_eq!(map_loan_sort_column("duration"), "duration_days");
         assert_eq!(map_loan_sort_column("unknown"), "l.loaned_at");
+    }
+
+    /// Regression test: all dynamic queries reading TIMESTAMP columns must use
+    /// CAST(... AS DATETIME) to avoid type mismatch with NaiveDateTime in SQLx
+    /// dynamic queries. See: MariaDB TIMESTAMP vs DATETIME decoding issue.
+    #[test]
+    fn test_loan_model_no_location() {
+        // Verify LoanModel works with previous_location_id = None (no prior location)
+        let loan = LoanModel {
+            id: 3,
+            volume_id: 12,
+            borrower_id: 22,
+            loaned_at: NaiveDate::from_ymd_opt(2026, 4, 1)
+                .unwrap()
+                .and_hms_opt(10, 0, 0)
+                .unwrap(),
+            returned_at: None,
+            previous_location_id: None,
+            version: 1,
+        };
+        assert_eq!(loan.id, 3);
+        assert!(loan.previous_location_id.is_none());
+        assert!(loan.returned_at.is_none());
     }
 
     #[test]

@@ -725,6 +725,149 @@ The cataloger can organize titles into series, visualize gaps, browse the collec
 **FRs:** FR36-FR40, FR54, FR95, FR99, FR114-FR115, FR118
 **UX-DRs:** UX-DR16, UX-DR17, UX-DR18, UX-DR30
 
+#### Story 5.1: E2E Stabilization & Test Pattern Documentation
+**As a** developer, **I want** a reliable E2E test suite running green against Docker, **so that** feature work on Epic 5+ can trust automated regression detection.
+
+**Source:** Epic 4 retrospective (2026-04-04) action items — carried items #1 (stabilize 6 failing E2E tests) and #2 (document E2E patterns in CLAUDE.md). Team agreement: no Epic 5 feature story enters in-progress until 5-1 is done.
+
+**Scope (technical debt, not FRs):**
+- Fix 6 fragile E2E tests: HTMX timing, data isolation between parallel tests, volume edit navigation for non-loanable test
+- Document E2E patterns in CLAUDE.md: data isolation, HTMX wait strategies, login fixtures vs cookie injection, shared-DB test ordering
+- Verify `cargo sqlx prepare --check` runs clean and add it as a CI gate
+
+**Acceptance Criteria:**
+- Given the full E2E suite running against `docker compose -f docker-compose.test.yml`, when `npm test` runs, then 100% of tests pass reliably across 3 consecutive runs (zero flakes)
+- Given a developer reading CLAUDE.md, when they look for E2E guidance, then they find documented patterns for data isolation, HTMX response waiting, login vs cookie fixtures, and shared-DB test ordering
+- Given the 6 previously-fragile tests (loan flows, volume edit, parallel isolation), when each is run 10 times consecutively, then none flakes
+- Given a CI pipeline, when `cargo sqlx prepare --check` is added as a gate, then it passes on current `.sqlx/` cache
+- Blocker rule: stories 5-2 through 5-8 must not enter in-progress until 5-1 is done
+
+#### Story 5.1b: E2E Data Isolation Architecture
+**As a** developer, **I want** the E2E test suite to reach 100% passing with `fullyParallel: true` restored, **so that** feature work on Epic 5+ has trustworthy regression coverage and fast feedback loops.
+
+**Source:** Discovered during story 5-1 implementation (2026-04-05). Baseline audit revealed 47 failures (not ~6 as estimated in Epic 4 retro). Root cause identified: 11+ spec files share the ISBN constant `9782070360246` and related seed data, causing cascading "already exists" failures regardless of parallel/serial mode. Story 5-1 recovered 11 tests (73 → 84 passing) via serial mode + `loginAs()` helper; 36 failures remain owned by this story. Full audit in `tests/e2e/FLAKY_AUDIT.md`.
+
+**Replaces story 5-1 as the blocker** for Epic 5 feature stories (5-2 through 5-8) until the suite is 100% green and `fullyParallel: true` is restored.
+
+**Acceptance Criteria:**
+- Given the E2E test suite, when run against fresh Docker with `fullyParallel: true` restored in `playwright.config.ts`, then all tests pass 120/120 across 3 consecutive fresh-Docker runs (same criterion as story 5-1 AC1)
+- Given any two spec files that scan ISBNs, when they run in any order (parallel or serial), then neither depends on the other having or not having scanned the ISBN first (data independence)
+- Solution approach: implement one of (or combine) the following, documented in CLAUDE.md:
+  - **Option A — Per-spec unique ISBN generator**: introduce `tests/e2e/helpers/isbn.ts` with a function that produces valid EAN-13 ISBNs from a spec-scoped seed; migrate all 11+ specs to use it; extend `e2e-mock-metadata-1` to respond to arbitrary ISBNs with synthetic metadata
+  - **Option B — DB reset between spec files**: globalSetup or per-describe `beforeAll` hook that truncates `titles`, `volumes`, `loans`, `borrowers`, `locations` tables via direct DB connection from the test runner
+  - **Option C — Idempotent test assertions**: rewrite tests to accept either "success" or "info" feedback variants (loss of specificity, not recommended)
+- Delete `tests/e2e/FLAKY_AUDIT.md` once suite reaches 100% green
+- Remove the "Known suite state" paragraph from CLAUDE.md's E2E Test Patterns section once resolved
+- Restore `fullyParallel: true` and `workers: undefined` (Playwright default) in `playwright.config.ts`
+- Verify smoke tests continue to use `loginAs()` helper (do not regress the Rule #7 compliance delivered by 5-1)
+- Known remaining failures breakdown (from story 5-1 final audit — 36 tests):
+  - ~30 tests: shared ISBN pollution (catalog-title, catalog-volume, catalog-metadata, cover-image, cross-cutting, loan-*, metadata-editing, shelving, location-*, locations, etc.)
+  - ~4 tests: smoke tests with downstream state dependencies (epic2-smoke SmokeTestRoom location, borrower-loans smoke lifecycle, metadata-editing smoke, media-type-scanning smoke)
+  - ~2 tests: accessibility tests timing out as secondary effects
+
+
+**As a** librarian, **I want** to be prevented from deleting a contributor still referenced by titles, **so that** I don't leave orphaned references in my catalog.
+
+**FRs:** FR54
+
+**Acceptance Criteria:**
+- Given a contributor referenced by at least one title, when librarian clicks delete, then deletion is blocked with a message showing the count of referencing titles
+- Given a contributor with zero title references, when librarian clicks delete, then soft-delete proceeds normally via the existing confirmation modal
+- Given the error message, when displayed, then it follows the "What happened → Why → What you can do" pattern (NFR38) with i18n key `error.contributor.has_titles`
+- Unit test: `ContributorService::delete()` returns `AppError::Conflict` when referencing titles exist
+- E2E smoke: create contributor → assign to title → attempt delete → see block message → unassign → delete succeeds
+
+#### Story 5.3: Series CRUD & Listing
+**As a** librarian, **I want** to create, edit, and browse series, **so that** I can organize my titles into coherent collections.
+
+**FRs:** FR36, FR95, FR99
+
+**Acceptance Criteria:**
+- Given `/series` page, when librarian creates a series with name, type (open/closed), and (if closed) total volume count, then the series is created and appears in the series list
+- Given series exist, when any user visits `/series`, then the list shows name, type, owned count, total count (for closed), and gap count, paginated 25/page per NFR39
+- Given a series detail page `/series/{id}`, when librarian edits name/type/total count with optimistic locking, then changes are persisted (409 on version mismatch)
+- Given a closed series, when librarian tries to set total count below owned count, then the edit is blocked with a preventive validation message
+- Given an anonymous user, when they visit `/series` or `/series/{id}`, then they see the list (public read per FR95) — no auth required
+- Soft delete pattern: `series` table gets `deleted_at`, `version`, `created_at`, `updated_at` columns; unique(name) WHERE deleted_at IS NULL
+- Unit tests: SeriesModel CRUD, optimistic locking
+- E2E smoke: create closed series → visit detail → edit → verify persistence
+
+#### Story 5.4: Title-to-Series Assignment & Gap Detection
+**As a** librarian, **I want** to assign titles to a series with a position number and see which volumes are missing, **so that** I can identify gaps in my collection.
+
+**FRs:** FR37, FR38, FR39
+**UX-DRs:** UX-DR16 (SeriesGapGrid)
+
+**Acceptance Criteria:**
+- Given a title detail page, when librarian assigns the title to a series with a position number, then the assignment is persisted with unique(series_id, position) constraint
+- Given a series with assigned titles, when viewing `/series/{id}`, then SeriesGapGrid displays filled squares for owned positions and empty squares (with diagonal hatch pattern for colorblind accessibility) for missing positions, 8 per row desktop / 4 tablet
+- Given a filled square, when clicked, then it navigates to the title detail page
+- Given a square is hovered, when the user waits, then a tooltip shows the position number and title name (or "Missing" for empty)
+- Given a closed series with total=10 and titles at positions [1,2,4,7], when `/series/{id}` loads, then gap count displays "6 missing" and the grid shows 4 filled + 6 empty squares
+- Given an open series, when viewed, then no total/gap count is shown (only owned titles list)
+- Unit test: gap detection algorithm for closed series
+- E2E smoke: create closed series → assign titles at positions 1,3 → verify gap grid shows position 2 as missing
+
+#### Story 5.5: BD Omnibus Multi-Position Volume
+**As a** librarian, **I want** to register a BD omnibus as a volume covering multiple positions in a series, **so that** my gap detection accurately reflects reality when I own an omnibus instead of individual issues.
+
+**FRs:** FR40
+
+**Acceptance Criteria:**
+- Given a title assigned to a series, when librarian creates a volume and marks it as "omnibus", then they can specify a position range (e.g., positions 1-3) instead of a single position
+- Given an omnibus volume covering positions [5,6,7] in a series, when `/series/{id}` renders the gap grid, then positions 5, 6, 7 all display as filled
+- Given a filled square backed by an omnibus, when clicked, then it navigates to the omnibus volume's title detail
+- Given a series where the same position is covered by both an individual title and an omnibus, when rendered, then both contribute to "filled" (idempotent, no error)
+- Migration: add `volume_series_positions` link table supporting N positions per volume
+- Unit test: gap calculation with mixed individual + omnibus assignments
+- E2E: create series → add omnibus covering 3 positions → verify grid filled
+
+#### Story 5.6: Browse List/Grid Toggle with Persistent Preference
+**As a** user, **I want** to toggle between list and grid display modes when browsing titles, **so that** I can see more titles at once (grid) or more detail per title (list) depending on my task.
+
+**FRs:** FR115
+**UX-DRs:** UX-DR17 (TitleCard), UX-DR18 (BrowseToggle)
+
+**Acceptance Criteria:**
+- Given `/catalog` or any browse view, when the page loads, then a BrowseToggle radiogroup (list/grid) is visible at the top
+- Given list mode, when rendered, then each TitleCard shows cover on left + title/contributors/year/media icon on right (single row)
+- Given grid mode, when rendered, then each TitleCard shows cover on top + title below, with hover overlay revealing contributors + media icon + volume count + any status badge
+- Given a touch device in grid mode, when user taps a card, then first tap shows overlay, second tap navigates to title detail
+- Given a user changes the toggle, when navigating away and back, then the preference persists (cookie or localStorage, per-user session)
+- ARIA: BrowseToggle uses `role="radiogroup"` with keyboard arrow navigation per WCAG 2.2 AA
+- Unit test: TitleCard template rendering both modes with/without optional fields
+- E2E: load catalog → toggle grid → verify layout → reload → verify grid persisted
+
+#### Story 5.7: Similar Titles Section
+**As a** user, **I want** to see similar titles on a title detail page, **so that** I can discover related books in my own collection.
+
+**FRs:** FR114
+**UX-DRs:** UX-DR30
+
+**Acceptance Criteria:**
+- Given a title detail page, when it loads, then a "Similar titles" section displays up to 8 related titles using the priority order: same series > same author/contributor > same genre+publication decade
+- Given fewer than 8 candidates across all criteria, when rendered, then the section shows only the matches (no padding)
+- Given zero candidates, when rendered, then the "Similar titles" section is entirely absent (not shown as empty)
+- Given a title without a publication year, when candidates are computed, then that title is excluded from genre+decade matching (series and contributor matching still apply)
+- Given a similar title card, when clicked, then navigation goes to that title's detail page
+- Performance: similar titles query must complete in < 200ms for a catalog of 10k titles (single query with UNION, not N+1)
+- Unit test: priority algorithm with mixed candidate sources
+- E2E: create 3 titles by same author → view one → verify other 2 appear in Similar Titles
+
+#### Story 5.8: Dewey Code Management
+**As a** librarian, **I want** to assign a Dewey code to a title, **so that** I can sort my physical shelves by classification.
+
+**FRs:** FR118
+
+**Acceptance Criteria:**
+- Given the title detail/edit form, when librarian enters a Dewey code (optional free-text field), then it is persisted on the title
+- Given a title created via ISBN scan with BnF metadata that includes a Dewey code, when the title is created, then the Dewey field is pre-filled
+- Given a catalog sort by Dewey code, when applied, then titles are sorted alphanumerically by dewey_code with NULL values last
+- Given search/filter UI, when user searches, then Dewey code is NOT a searchable or filterable field (physical sort order only, per FR118)
+- Migration: add `dewey_code VARCHAR(32) NULL` to titles table
+- Unit test: sort order with NULL last
+- E2E: edit title → set Dewey "843.914" → verify persisted → sort catalog by Dewey → verify ordering
+
 ### Epic 6: Accès multi-rôle & Sécurité
 Anonymous users can browse and search without login. Librarian and Admin roles enforce access control. Sessions include inactivity timeout with Toast warning. Language toggle switches between FR/EN.
 

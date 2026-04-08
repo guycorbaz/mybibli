@@ -92,3 +92,9 @@
 - count_active_loans doesn't JOIN volumes table — intentional, loan record exists independently of volume soft-deletion
 - Page handlers don't differentiate is_htmx for fragment/full-page — consistent with existing location CRUD pattern; add when HTMX navigation is implemented for these pages
 - PRG pattern (redirect after POST) doesn't support inline FeedbackEntry — would require flash sessions or HTMX form submission; consistent with location CRUD pattern
+
+## Deferred from: code review of 5-1-e2e-stabilization (2026-04-06)
+
+- Regression test creates data (borrower, loan) without cleanup — owned by story 5-1b (data isolation architecture)
+- Serial mode (`fullyParallel: false`, `workers: 1`) is a workaround masking shared-data failures — owned by story 5-1b (will restore `fullyParallel: true` with per-spec data isolation)
+- `logout()` helper in `tests/e2e/helpers/auth.ts` doesn't await navigation completion after `page.goto("/login")` — stub not currently used by any test; fix when logout flow is needed

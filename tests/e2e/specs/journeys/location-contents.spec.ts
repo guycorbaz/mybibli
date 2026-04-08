@@ -18,8 +18,10 @@ test.describe("Browse Shelf Contents (Story 2-3)", () => {
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
 
     // Navigate to the location detail
-    // Find the location link or use the edit link to get the ID
-    const editLink = page.locator('a[href*="/locations/"][href*="/edit"]').first();
+    // Find the edit link for the specific location we just created
+    const contentTestRow = page.locator('text=ContentTest').first().locator('..');
+    const editLink = contentTestRow.locator('a[href*="/edit"]').first();
+    await expect(editLink).toBeVisible({ timeout: 3000 });
     const href = await editLink.getAttribute("href");
     const id = href?.match(/\/locations\/(\d+)/)?.[1];
     if (id) {

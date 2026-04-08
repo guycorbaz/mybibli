@@ -46,7 +46,7 @@ impl LoanService {
             })?;
 
         // 4. Transaction: double-loan check + location update + loan insert
-        let mut tx = pool.begin().await.map_err(|e| AppError::Database(e))?;
+        let mut tx = pool.begin().await.map_err(AppError::Database)?;
 
         // Re-check active loan inside transaction to prevent TOCTOU race
         let active_loan = sqlx::query(
@@ -57,7 +57,7 @@ impl LoanService {
         .await?;
 
         if active_loan.is_some() {
-            tx.rollback().await.map_err(|e| AppError::Database(e))?;
+            tx.rollback().await.map_err(AppError::Database)?;
             return Err(AppError::BadRequest(
                 rust_i18n::t!("loan.already_on_loan").to_string(),
             ));
@@ -84,7 +84,9 @@ impl LoanService {
 
         // Read back the created loan inside the transaction
         let row = sqlx::query(
-            r#"SELECT id, volume_id, borrower_id, loaned_at, returned_at,
+            r#"SELECT id, volume_id, borrower_id,
+                      CAST(loaned_at AS DATETIME) AS loaned_at,
+                      CAST(returned_at AS DATETIME) AS returned_at,
                       previous_location_id, version
                FROM loans WHERE id = ? AND deleted_at IS NULL"#,
         )
@@ -92,7 +94,7 @@ impl LoanService {
         .fetch_optional(&mut *tx)
         .await?;
 
-        tx.commit().await.map_err(|e| AppError::Database(e))?;
+        tx.commit().await.map_err(AppError::Database)?;
 
         match row {
             Some(r) => Ok(LoanModel {

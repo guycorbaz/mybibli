@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
+import { specIsbn } from "../../helpers/isbn";
 
 const DEV_SESSION_COOKIE = {
   name: "session",
@@ -7,7 +9,7 @@ const DEV_SESSION_COOKIE = {
   path: "/",
 };
 
-const VALID_ISBN = "9782070360246";
+const VALID_ISBN = specIsbn("BL", 1);
 
 test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
   test.beforeEach(async ({ context }) => {
@@ -30,7 +32,7 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
     const scanField = page.locator("#scan-field");
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
-    await page.waitForSelector(".feedback-entry", { timeout: 10000 });
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 10000 });
     await scanField.fill(volumeLabel);
     await scanField.press("Enter");
     await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 });
@@ -114,12 +116,8 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
   test("smoke: login → create borrower → lend → detail → return → verify", async ({ context, page }) => {
     await context.clearCookies();
 
-    // Login
-    await page.goto("/login");
-    await page.locator("#username").fill("admin");
-    await page.locator("#password").fill("admin");
-    await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/\/catalog/, { timeout: 5000 });
+    // Real login via shared helper (Foundation Rule #7)
+    await loginAs(page);
 
     // Create borrower
     await page.goto("/borrowers");
@@ -133,7 +131,7 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
     const scanField = page.locator("#scan-field");
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
-    await page.waitForSelector(".feedback-entry", { timeout: 10000 });
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 10000 });
     await scanField.fill("V0082");
     await scanField.press("Enter");
     await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 });

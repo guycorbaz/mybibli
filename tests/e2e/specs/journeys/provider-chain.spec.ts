@@ -37,8 +37,8 @@ test.describe("Provider Chain & Fallback (Story 3-1)", () => {
     );
     await expect(anyFeedback.first()).toBeVisible({ timeout: 5000 });
 
-    // Wait for async metadata fetch to complete
-    await page.waitForTimeout(4000);
+    // Wait for async metadata fetch to complete (BnF timeout + Google Books fallback)
+    await page.waitForTimeout(8000);
 
     // Trigger OOB delivery by scanning again
     await scanField.fill(GOOGLE_BOOKS_ISBN);

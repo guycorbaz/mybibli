@@ -1,16 +1,14 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
+import { specIsbn } from "../../helpers/isbn";
 
-const VALID_ISBN = "9782070360246";
-const VALID_ISBN_2 = "9780306406157";
-const VALID_ISBN_3 = "9791032305560";
+const VALID_ISBN = specIsbn("SH", 1);
+const VALID_ISBN_2 = specIsbn("SH", 2);
+const VALID_ISBN_3 = specIsbn("SH", 3);
 
 test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/login");
-    await page.locator("#username").fill("admin");
-    await page.locator("#password").fill("admin");
-    await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/\/catalog/, { timeout: 5000 });
+    await loginAs(page);
   });
 
   // AC1: V-code then L-code shelving (single volume)
@@ -62,7 +60,7 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
     await scanField.press("Enter");
     await page.waitForTimeout(1500);
 
-    await scanField.fill("V0071");
+    await scanField.fill("V0051");
     await scanField.press("Enter");
     await page.waitForTimeout(1000);
     await expect(page.locator(".feedback-entry").first()).toBeVisible({
@@ -95,7 +93,7 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
     expect(lcodeText).not.toMatch(/error|erreur/i);
 
     // Phase 3: Scan the other existing V-code in batch mode
-    await scanField.fill("V0071");
+    await scanField.fill("V0051");
     await scanField.press("Enter");
     await page.waitForTimeout(1000);
 
@@ -119,7 +117,7 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
     await scanField.press("Enter");
     await page.waitForTimeout(1500);
 
-    await scanField.fill("V0080");
+    await scanField.fill("V0052");
     await scanField.press("Enter");
     await page.waitForTimeout(1000);
     await expect(page.locator(".feedback-entry").first()).toBeVisible({
@@ -143,7 +141,7 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
     });
 
     // Scan existing V-code — should shelve at active location
-    await scanField.fill("V0080");
+    await scanField.fill("V0052");
     await scanField.press("Enter");
 
     const shelveFeedback = page.locator(".feedback-entry").first();
@@ -186,18 +184,28 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
 
     // Navigate to locations page and verify volume count
     await page.goto("/locations");
-    await expect(page.locator("body")).toBeVisible();
 
-    // The location should show at least 1 volume
-    const locationRow = page.locator("text=L0001").first();
-    if (await locationRow.isVisible()) {
-      // Location exists — click to see contents
-      await locationRow.click();
-      await page.waitForTimeout(1000);
-      // Should show at least one volume in the contents
-      const volumeRows = page.locator("table tbody tr");
-      const count = await volumeRows.count();
-      expect(count).toBeGreaterThan(0);
+    // The location L0001 should show volume count
+    const l0001Label = page.locator("text=L0001").first();
+    await expect(l0001Label).toBeVisible({ timeout: 3000 });
+
+    // Find the location's edit link to extract the ID, then navigate to detail
+    const l0001Row = l0001Label.locator("..").locator("..");
+    const editLink = l0001Row.locator('a[href*="/edit"]').first();
+    if (await editLink.isVisible({ timeout: 2000 }).catch(() => false)) {
+      const href = await editLink.getAttribute("href");
+      const locId = href?.match(/\/locations\/(\d+)/)?.[1];
+      if (locId) {
+        await page.goto(`/location/${locId}`);
+        // Should show at least one volume in the contents
+        const volumeRows = page.locator("table tbody tr");
+        const count = await volumeRows.count();
+        expect(count).toBeGreaterThan(0);
+      }
+    } else {
+      // Fallback: check volume count text in the tree
+      const volCount = l0001Row.locator("text=/\\d+ vol/");
+      await expect(volCount).toBeVisible({ timeout: 3000 });
     }
   });
 });

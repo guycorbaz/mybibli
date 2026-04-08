@@ -1,13 +1,12 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
+import { specIsbn } from "../../helpers/isbn";
+
+const ISBN_FOR_BOOK_DETECT = specIsbn("MT", 1);
 
 test.describe("Media Type Scanning Journey", () => {
   test.beforeEach(async ({ page }) => {
-    // Login as librarian
-    await page.goto("/");
-    await page.fill('[name="username"]', "admin");
-    await page.fill('[name="password"]', "admin123");
-    await page.click('button[type="submit"]');
-    await page.waitForURL("**/catalog");
+    await loginAs(page);
   });
 
   test("UPC scan shows MediaTypeSelector disambiguation", async ({ page }) => {
@@ -59,7 +58,7 @@ test.describe("Media Type Scanning Journey", () => {
     page,
   }) => {
     const scanField = page.locator("[data-mybibli-scan-field]");
-    await scanField.fill("9782070360246");
+    await scanField.fill(ISBN_FOR_BOOK_DETECT);
     await scanField.press("Enter");
 
     // Should see skeleton feedback directly (no disambiguation)
@@ -92,14 +91,8 @@ test.describe("Media Type Scanning Smoke Test", () => {
   test("blank browser → login → scan UPC → select type → verify", async ({
     page,
   }) => {
-    // Start from scratch (no injected cookies)
-    await page.goto("/");
-
-    // Login
-    await page.fill('[name="username"]', "admin");
-    await page.fill('[name="password"]', "admin123");
-    await page.click('button[type="submit"]');
-    await page.waitForURL("**/catalog");
+    // Real login via shared helper (Foundation Rule #7 — smoke tests must use loginAs)
+    await loginAs(page);
 
     // Scan UPC
     const scanField = page.locator("[data-mybibli-scan-field]");

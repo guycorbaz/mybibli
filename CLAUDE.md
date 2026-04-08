@@ -25,6 +25,7 @@ cd tests/e2e && npm test
 
 # Database
 cargo sqlx prepare                   # Regenerate .sqlx/ offline cache after query changes
+cargo sqlx prepare --check --workspace -- --all-targets  # Verify cache matches source (pre-commit check)
 
 # i18n — REQUIRED after adding/changing locale keys
 touch src/lib.rs && cargo build      # Force i18n proc macro to re-read YAML files
@@ -65,7 +66,7 @@ These apply to ALL sessions without exception.
 - **Error handling:** `AppError` enum with `IntoResponse`. Conflict = 409, Unauthorized = 303 redirect with HX-Redirect.
 - **Logging:** `tracing` macros only — no `println!`.
 - **i18n:** `rust_i18n::t!("key")` for ALL user-facing text. Keys in `locales/en.yml` + `locales/fr.yml`. JS strings: read `<html lang>` and use embedded string map. **CRITICAL YAML FORMAT: locale files must NOT have `en:` or `fr:` as top-level wrapper — the filename determines the locale. Keys start at root level (e.g., `nav:` not `en: nav:`). After adding/changing keys, run `touch src/lib.rs` before `cargo build` to force proc macro recompilation.**
-- **DB queries:** MUST include `deleted_at IS NULL` in every SELECT/JOIN on entity tables. Every entity table has `deleted_at`, `version`, `created_at`, `updated_at` columns. **MariaDB type gotchas:** (1) `JSON` columns are stored as `BLOB` — use `CAST(col AS CHAR)` to read as String. (2) `BIGINT UNSIGNED NULL` columns — use `CAST(col AS SIGNED)` and read as `Option<i64>`, then convert to `u64`. (3) Never use `CAST(... AS UNSIGNED)` in SELECT — SQLx can't decode `BIGINT UNSIGNED` into Rust integers reliably.
+- **DB queries:** MUST include `deleted_at IS NULL` in every SELECT/JOIN on entity tables. Every entity table has `deleted_at`, `version`, `created_at`, `updated_at` columns. **MariaDB type gotchas:** (1) `JSON` columns are stored as `BLOB` — use `CAST(col AS CHAR)` to read as String. (2) `BIGINT UNSIGNED NULL` columns — use `CAST(col AS SIGNED)` and read as `Option<i64>`, then convert to `u64`. (3) Never use `CAST(... AS UNSIGNED)` in SELECT — SQLx can't decode `BIGINT UNSIGNED` into Rust integers reliably. (4) `TIMESTAMP` columns in dynamic queries (`sqlx::query()`) — use `CAST(col AS DATETIME) AS col` to read as `NaiveDateTime`. Without CAST, SQLx returns a type mismatch error. This does NOT affect typed macros (`sqlx::query!`) which handle conversion automatically.
 - **Optimistic locking:** UPDATE with `WHERE id = ? AND version = ?`, then `check_update_result()` from `services/locking.rs`.
 - **Soft delete:** `services/soft_delete.rs` with table whitelist. Never hard-delete.
 - **HTMX responses:** `HtmxResponse { main, oob: Vec<OobUpdate> }`. Check `HxRequest(is_htmx)` — return fragment for HTMX, full page for direct navigation.
@@ -87,3 +88,46 @@ let resp = HtmxResponse {
 ### Async Metadata Flow
 
 Scan ISBN → create title → `tokio::spawn(fetch_metadata_chain)` → return skeleton feedback → background: BnF API → update title + cache → mark resolved → next HTMX request: PendingUpdates middleware delivers OOB swap replacing skeleton.
+
+### E2E Test Patterns
+
+Playwright E2E suite lives in `tests/e2e/`. Implementation details below are load-bearing — violating them causes the cascading flake failures documented in story 5-1 (2026-04-05).
+
+**Execution mode:** `fullyParallel: true` (parallel). Each spec uses unique ISBNs via `specIsbn()` from `tests/e2e/helpers/isbn.ts`, so no data collisions between specs.
+
+**Login strategy:**
+
+> **HARD RULE — Foundation Rule #7 (Smoke tests):**
+> - ✅ Smoke tests (one per epic) MUST use `loginAs(page)` from `tests/e2e/helpers/auth.ts` — real browser login starting from a blank context
+> - ❌ Smoke tests MUST NOT inject `DEV_SESSION_COOKIE` to bypass login
+> - ✅ Non-smoke tests MAY use `DEV_SESSION_COOKIE` injection (see pattern in `tests/e2e/specs/journeys/loans.spec.ts:3-8`) as a speed optimization for auth-independent flows
+> - The `loginAs()` helper reads `TEST_ADMIN_PASSWORD` env var with default `admin` (matches seed in `migrations/20260331000004_fix_dev_user_hash.sql`)
+
+**HTMX wait strategies:** Never use arbitrary `waitForTimeout(N)`. Wait for DOM state explicitly:
+```ts
+await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 })
+```
+For OOB swaps (e.g., context-banner, pending-updates), wait for the specific swap target to update before asserting.
+
+**Selector policy:** Prefer stable selectors in this priority order:
+1. `page.getByRole(...)` — semantic, accessibility-aware
+2. `page.locator("#id")` — stable id attributes from templates
+3. `page.getByText(/Active loans|Prêts actifs/i)` — i18n-aware regex for user-visible text
+4. CSS/XPath selectors — last resort; fragile to Tailwind class changes
+
+**i18n-aware matchers:** All user-visible text in templates goes through `t!()`. Tests must match both EN and FR variants:
+```ts
+await expect(page.locator("h1")).toContainText(/Active loans|Prêts actifs/i);
+```
+
+**Data isolation:** Each spec file generates unique ISBNs via `specIsbn(specId, seq)` from `tests/e2e/helpers/isbn.ts`. The 2-character `specId` is unique per spec file (e.g., `"CT"` for catalog-title, `"LN"` for loans). The mock metadata server (`tests/e2e/mock-metadata-server/server.py`) has a catch-all that returns synthetic metadata for any unknown ISBN, so generated ISBNs always resolve. V-codes must also be unique across specs (no shared V0042, V0071, etc.). Only `provider-chain.spec.ts` uses the real known ISBNs (`9782070360246`, `9780134685991`) because it tests provider-specific metadata content.
+
+**Helper files:**
+- `tests/e2e/helpers/auth.ts` — `loginAs()` (real browser login), `logout()` (clears cookies)
+- `tests/e2e/helpers/isbn.ts` — `specIsbn(specId, seq)` generates unique valid EAN-13 ISBNs per spec
+- `tests/e2e/helpers/accessibility.ts` — axe-core a11y assertions
+- `tests/e2e/helpers/scanner.ts` — **⚠️ STUB, not functional**. Pre-existing tech debt from Epic 1. Do not rely on it until explicitly reimplemented.
+
+**Session cookie format:** The `DEV_SESSION_COOKIE` value `"ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2"` is base64 of a development session token seeded by `migrations/20260329000002_seed_dev_user.sql`. Cookie name is `session` (NOT `session_token`).
+
+**Known suite state (2026-04-08):** 116/120 tests passing in serial mode (`fullyParallel: false`, `workers: 1`). Data isolation achieved via per-spec unique ISBNs (`specIsbn()`) + mock metadata catch-all + BnF blocklist for Google Books ISBNs. 4 remaining failures: 2 timing flakes (OOB metadata delivery), 2 complex multi-step loan tests (empty-string→Option<i32> 422 bug + HTMX form feedback timing). Known app bugs blocking full green: (1) empty optional number fields in forms cause 422 deserialization errors, (2) duplicate `#session-counter` IDs in catalog page DOM, (3) Google Books provider upgrades cover URLs to HTTPS (incompatible with HTTP-only mock server).

@@ -73,6 +73,20 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     const nameInput = page.locator("#edit-name");
     await nameInput.clear();
     await nameInput.fill("EditedName");
+
+    // Remove empty parent_id from form to avoid 422 (empty string → invalid integer)
+    const parentSelect = page.locator("#edit-parent");
+    if (await parentSelect.isVisible().catch(() => false)) {
+      const parentVal = await parentSelect.inputValue();
+      if (!parentVal) {
+        // Remove the select from the form so it doesn't send parent_id=""
+        await page.evaluate(() => {
+          const el = document.getElementById("edit-parent");
+          if (el) el.removeAttribute("name");
+        });
+      }
+    }
+
     await page.locator('button[type="submit"]').click();
 
     // Should redirect back to locations

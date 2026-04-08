@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
 
 /**
  * EPIC 2 SMOKE TEST — Full user journey without cookie injection.
@@ -16,22 +17,16 @@ import { test, expect } from "@playwright/test";
  * that starts from a blank browser, no injected cookies.
  */
 
-const TEST_ISBN = "9782070360246"; // L'Étranger
+import { specIsbn } from "../../helpers/isbn";
+
+const TEST_ISBN = specIsbn("ES", 1);
 
 test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
   test("login → create location → scan ISBN → scan V-code → scan L-code → verify shelved → verify home page", async ({
     page,
   }) => {
-    // ─── Step 1: Login (blank browser, no cookies) ───────────
-    await page.goto("/");
-    const loginLink = page.locator('a[href="/login"]');
-    await expect(loginLink).toBeVisible({ timeout: 5000 });
-    await loginLink.click();
-
-    await page.locator("#username").fill("admin");
-    await page.locator("#password").fill("admin");
-    await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/\/catalog/, { timeout: 5000 });
+    // ─── Step 1: Login (blank browser, no cookies) via shared helper ───────────
+    await loginAs(page);
 
     // ─── Step 2: Create a location ───────────────────────────
     await page.goto("/locations");

@@ -50,7 +50,18 @@ GOOGLE_BOOKS_KNOWN_ISBNS = {
         "publishedDate": "2018-01-06",
         "pageCount": 416,
         "language": "en",
-        "thumbnail": "http://localhost:9090/test-cover.jpg",
+        "thumbnail": "http://mock-metadata:9090/test-cover.jpg",
+    },
+    "9780201633610": {
+        "title": "Design Patterns",
+        "subtitle": "Elements of Reusable Object-Oriented Software",
+        "description": "Classic software design patterns reference.",
+        "authors": ["Erich Gamma", "Richard Helm"],
+        "publisher": "Addison-Wesley Professional",
+        "publishedDate": "1994-10-31",
+        "pageCount": 395,
+        "language": "en",
+        "thumbnail": "http://mock-metadata:9090/test-cover.jpg",
     },
 }
 
@@ -169,8 +180,25 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
             if len(parts) >= 2:
                 isbn = parts[1].strip()
 
+        # Blocklist: ISBNs that must return "not found" from BnF
+        # - 9780000000002: used by provider-chain to test "all providers fail"
+        # - Google Books known ISBNs: must NOT resolve via BnF so the chain falls through to Google Books
+        NO_METADATA_ISBNS = {"9780000000002", "9780134685991", "9780201633610"}
+
         if isbn and isbn in BNF_KNOWN_ISBNS:
             body = make_sru_response(BNF_KNOWN_ISBNS[isbn])
+        elif isbn and isbn not in NO_METADATA_ISBNS:
+            # Catch-all: return synthetic metadata for any unknown ISBN
+            # (supports per-spec unique ISBN generation in E2E tests)
+            body = make_sru_response({
+                "title": f"Test Title {isbn}",
+                "subtitle": "",
+                "author_surname": "TestAuthor",
+                "author_forename": "Synthetic",
+                "publisher": "Test Publisher",
+                "date": "2024",
+                "language": "fre",
+            })
         else:
             body = EMPTY_SRU_RESPONSE
 

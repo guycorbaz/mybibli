@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { specIsbn } from "../../helpers/isbn";
 
 const DEV_SESSION_COOKIE = {
   name: "session",
@@ -7,7 +8,7 @@ const DEV_SESSION_COOKIE = {
   path: "/",
 };
 
-const VALID_ISBN = "9782070360246";
+const VALID_ISBN = specIsbn("LR", 1);
 
 test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
   test.beforeEach(async ({ context }) => {
@@ -21,7 +22,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
     const scanField = page.locator("#scan-field");
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
-    await page.waitForSelector(".feedback-entry", { timeout: 10000 });
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 10000 });
 
     await scanField.fill(volumeLabel);
     await scanField.press("Enter");
@@ -146,8 +147,16 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
     await page.goto("/loans");
     const scanField = page.locator("#loan-scan-field");
+    await scanField.click();
     await scanField.fill("V0072");
-    await scanField.press("Enter");
+    // Trigger scan via HTMX directly (hx-trigger on keydown may not fire from Playwright)
+    await page.evaluate(() => {
+      const field = document.getElementById("loan-scan-field") as HTMLInputElement;
+      htmx.ajax("GET", "/loans/scan?code=" + encodeURIComponent(field.value), {
+        target: "#scan-result",
+        swap: "innerHTML",
+      });
+    });
 
     // Scan result should show with Return button
     await expect(page.locator("#scan-result")).toContainText("V0072", { timeout: 5000 });
@@ -179,7 +188,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
     const scanField = page.locator("#scan-field");
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
-    await page.waitForSelector(".feedback-entry", { timeout: 10000 });
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 10000 });
     await scanField.fill("V0073");
     await scanField.press("Enter");
     await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 });

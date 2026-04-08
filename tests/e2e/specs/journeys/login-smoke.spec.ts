@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
+import { specIsbn } from "../../helpers/isbn";
 
 // NO cookie injection in this file — this is the smoke test
-const VALID_ISBN = "9782070360246";
+const VALID_ISBN = specIsbn("LS", 1);
 
 test.describe("Login/Logout & Epic 1 Smoke Test (Story 1-9)", () => {
   // AC6: FULL USER JOURNEY — blank browser, no cookies

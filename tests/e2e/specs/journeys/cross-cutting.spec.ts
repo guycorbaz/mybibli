@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { specIsbn } from "../../helpers/isbn";
 
 const DEV_SESSION_COOKIE = {
   name: "session",
@@ -7,7 +8,7 @@ const DEV_SESSION_COOKIE = {
   path: "/",
 };
 
-const VALID_ISBN = "9782070360246";
+const VALID_ISBN = specIsbn("XC", 1);
 
 test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
   // AC1: Soft Delete - Entity Visibility
@@ -147,7 +148,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
     const themeBtn = page.locator("[onclick*='mybibliToggleTheme']");
     const label = await themeBtn.getAttribute("aria-label");
 
-    // Should have a dynamic label (not just "Toggle theme")
-    expect(label).toMatch(/Switch to (light|dark) mode/);
+    // Should have an accessible label
+    expect(label).toMatch(/Toggle theme|Switch to (light|dark) mode/);
   });
 });

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { specIsbn } from "../../helpers/isbn";
 
 // Dev session cookie for librarian access
 const DEV_SESSION_COOKIE = {
@@ -8,10 +9,10 @@ const DEV_SESSION_COOKIE = {
   path: "/",
 };
 
-// Valid ISBN-13 for testing
-const VALID_ISBN = "9782070360246";
+const VALID_ISBN = specIsbn("CM", 1);
+const COUNTER_ISBN = specIsbn("CM", 2); // Unique ISBN for session counter test
 // Invalid ISBN-13 (wrong checksum)
-const INVALID_ISBN = "9782070360247";
+const INVALID_ISBN = specIsbn("CM", 99).slice(0, 12) + "0";
 
 test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
   test.beforeEach(async ({ context }) => {
@@ -69,13 +70,13 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
   test("session counter increments on new ISBN scan", async ({ page }) => {
     await page.goto("/catalog");
 
+    // Use a unique ISBN so the title is truly NEW (is_new=true triggers counter OOB)
     const scanField = page.locator("#scan-field");
-    await scanField.fill(VALID_ISBN);
+    await scanField.fill(COUNTER_ISBN);
     await scanField.press("Enter");
 
-    // Session counter should appear via OOB swap
-    const counter = page.locator("#session-counter");
-    await expect(counter).toBeVisible({ timeout: 5000 });
+    // Session counter text should appear via OOB swap (use .first() due to duplicate IDs in DOM)
+    await expect(page.locator("#session-counter").first()).toContainText(/session|éléments/i, { timeout: 5000 });
   });
 
   // AC5: Client-side ISBN validation
@@ -109,7 +110,7 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     await page.waitForTimeout(1000);
 
     // Create a volume
-    await scanField.fill("V0042");
+    await scanField.fill("V0055");
     await scanField.press("Enter");
 
     // Wait for volume created feedback
@@ -119,7 +120,7 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     await expect(volFeedback.first()).toBeVisible({ timeout: 5000 });
 
     // Try to assign same V-code again
-    await scanField.fill("V0042");
+    await scanField.fill("V0055");
     await scanField.press("Enter");
 
     // Should get error about already assigned
@@ -155,13 +156,13 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     await scanField.press("Enter");
 
     // Verify deterministic content from mock server
-    // Mock returns "L'Étranger" by "Albert Camus" for ISBN 9782070360246
+    // Mock catch-all returns "Test Title {isbn}" by "Synthetic TestAuthor" for unique ISBNs
     await page.waitForTimeout(1000);
     const pageContent = await page.textContent("body");
     // The title or author from mock metadata should appear somewhere on page
     // (in context banner, feedback entry, or resolved OOB swap)
     expect(
-      pageContent?.includes("tranger") || pageContent?.includes("Camus")
+      pageContent?.includes("Test Title") || pageContent?.includes("TestAuthor")
     ).toBeTruthy();
   });
 });
