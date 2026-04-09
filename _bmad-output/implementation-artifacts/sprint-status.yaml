@@ -39,7 +39,7 @@
 # The epics document contains FR/NFR/AR/UX-DR assignments per epic.
 
 generated: 2026-03-29
-last_updated: 2026-04-09 # Story 5-6 → review
+last_updated: 2026-04-09 # Story 5-6 → done
 project: mybibli
 project_key: NOKEY
 tracking_system: file-system
@@ -109,7 +109,7 @@ development_status:
   5-3-series-crud-and-listing: done
   5-4-title-series-assignment-and-gap-detection: done
   5-5-bd-omnibus-multi-position-volume: done
-  5-6-browse-list-grid-toggle: review
+  5-6-browse-list-grid-toggle: done
   5-7-similar-titles-section: backlog
   5-8-dewey-code-management: backlog
   epic-5-retrospective: optional

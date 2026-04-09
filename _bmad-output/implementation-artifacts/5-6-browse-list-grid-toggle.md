@@ -1,6 +1,6 @@
 # Story 5.6: Browse List/Grid Toggle with Persistent Preference
 
-Status: review
+Status: done
 
 ## Story
 

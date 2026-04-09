@@ -16,10 +16,9 @@
     // Update radiogroup
     var radios = document.querySelectorAll("[data-browse-mode]");
     radios.forEach(function (btn) {
-      btn.setAttribute(
-        "aria-checked",
-        btn.dataset.browseMode === mode ? "true" : "false",
-      );
+      var isActive = btn.dataset.browseMode === mode;
+      btn.setAttribute("aria-checked", isActive ? "true" : "false");
+      btn.setAttribute("tabindex", isActive ? "0" : "-1");
       if (btn.dataset.browseMode === mode) {
         btn.classList.add(
           "bg-indigo-600",
@@ -59,7 +58,9 @@
     if (!focused || !focused.dataset.browseMode) return;
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
       e.preventDefault();
-      var newMode = focused.dataset.browseMode === "list" ? "grid" : "list";
+      // ArrowRight → next (list→grid), ArrowLeft → previous (grid→list)
+      var newMode =
+        e.key === "ArrowRight" ? "grid" : "list";
       window.mybibliSetBrowseMode(newMode);
       var next = document.querySelector(
         '[data-browse-mode="' + newMode + '"]',

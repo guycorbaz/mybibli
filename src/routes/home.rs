@@ -356,11 +356,11 @@ fn render_empty_state(query: &str, is_librarian: bool) -> String {
     };
 
     format!(
-        r#"<tr><td colspan="5" class="text-center py-12 text-stone-500 dark:text-stone-400">
+        r#"<div class="text-center py-12 text-stone-500 dark:text-stone-400">
             <svg class="mx-auto w-12 h-12 text-stone-300 dark:text-stone-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
             <p>{}</p>
             {}
-        </td></tr>"#,
+        </div>"#,
         message, create_link
     )
 }
@@ -414,6 +414,35 @@ mod tests {
         assert!(html.contains("/title/42"));
         assert!(html.contains("Albert Camus"));
         assert!(html.contains("Roman"));
+        // Verify card-based HTML structure (not table rows)
+        assert!(html.contains("article"));
+        assert!(html.contains("title-card"));
+        assert!(html.contains("title-card-link"));
+        assert!(html.contains("title-card-cover"));
+        assert!(html.contains("title-card-info"));
+        assert!(html.contains("title-card-title"));
+        assert!(html.contains("title-card-contributor"));
+        assert!(html.contains("title-card-overlay"));
+        assert!(!html.contains("<tr"), "Should not contain table row markup");
+        assert!(!html.contains("<td"), "Should not contain table cell markup");
+    }
+
+    #[test]
+    fn test_render_search_row_with_date() {
+        let item = SearchResult {
+            id: 1,
+            title: "Test".to_string(),
+            subtitle: None,
+            media_type: "book".to_string(),
+            genre_name: "Fiction".to_string(),
+            primary_contributor: None,
+            volume_count: 0,
+            cover_image_url: Some("/covers/test.jpg".to_string()),
+            publication_date: Some(chrono::NaiveDate::from_ymd_opt(1942, 1, 1).unwrap()),
+        };
+        let html = render_search_row(&item);
+        assert!(html.contains("1942"), "Should display publication year");
+        assert!(html.contains("/covers/test.jpg"), "Should include cover URL");
     }
 
     #[test]
