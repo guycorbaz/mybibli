@@ -70,7 +70,7 @@ test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
     await searchField.fill(TEST_ISBN.substring(0, 5));
     await searchField.press("Enter");
     await page.waitForTimeout(2000);
-    const resultsBody = page.locator("#search-results-body");
+    const resultsBody = page.locator("#browse-results");
     const resultsHtml = await resultsBody.innerHTML().catch(() => "");
     // Results may or may not contain matches depending on FULLTEXT index timing
   });

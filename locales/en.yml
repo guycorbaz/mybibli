@@ -1,5 +1,10 @@
 app:
   name: mybibli
+browse:
+  list_view: List view
+  grid_view: Grid view
+  display_mode: Display mode
+  sort_by: "Sort by"
 home:
   title: mybibli
   subtitle: Your personal media library

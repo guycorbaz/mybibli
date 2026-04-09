@@ -18,7 +18,7 @@ test.describe("Home page search", () => {
     await searchField.dispatchEvent("search-fire");
     // Wait for HTMX swap
     await page.waitForTimeout(500);
-    const tbody = page.locator("#search-results-body");
+    const tbody = page.locator("#browse-results");
     await expect(tbody).toBeVisible();
   });
 
@@ -27,7 +27,7 @@ test.describe("Home page search", () => {
   }) => {
     await page.goto("/?q=test");
     // If results exist, click first row
-    const rows = page.locator("#search-results-body tr[role='link']");
+    const rows = page.locator("#browse-results article.title-card");
     const count = await rows.count();
     if (count > 0) {
       await rows.first().click();
@@ -46,7 +46,7 @@ test.describe("Home page search", () => {
   test("should show empty state for no results", async ({ page }) => {
     await page.goto("/?q=zzzznonexistent99999");
     // Check for empty state SVG or message
-    const emptyState = page.locator("#search-results-body td[colspan]");
+    const emptyState = page.locator("#browse-results .text-center");
     if ((await emptyState.count()) > 0) {
       await expect(emptyState).toContainText("No results");
     }

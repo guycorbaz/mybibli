@@ -1,5 +1,10 @@
 app:
   name: mybibli
+browse:
+  list_view: Vue liste
+  grid_view: Vue grille
+  display_mode: Mode d'affichage
+  sort_by: "Trier par"
 home:
   title: mybibli
   subtitle: Votre bibliothèque personnelle

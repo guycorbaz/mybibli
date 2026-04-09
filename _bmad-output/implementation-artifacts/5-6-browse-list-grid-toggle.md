@@ -1,6 +1,6 @@
 # Story 5.6: Browse List/Grid Toggle with Persistent Preference
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -176,8 +176,38 @@ No backend browse mode tracking needed — it's entirely client-side via localSt
 
 ### Agent Model Used
 
-### Debug Log References
+Claude Opus 4.6 (1M context)
 
 ### Completion Notes List
 
+- Replaced table-based search results with card-based TitleCard articles
+- CSS-only layout switch: `.browse-list` (flex column) vs `.browse-grid` (CSS grid auto-fill)
+- BrowseToggle radiogroup with list/grid SVG icons, ARIA roles, keyboard nav
+- localStorage persistence via `browse-mode.js` (key: `mybibli_browse_mode`)
+- Grid hover overlay: semi-transparent dark bg with media icon + volume count
+- Sort controls migrated from table column headers to dropdown select
+- Added `publication_date` to SearchResult struct for year display in list mode
+- Updated `render_search_row()` from `<tr>` to `<article>` card HTML
+- Updated HTMX target from `#search-results-body` to `#browse-results`
+- Updated search.js error handling references
+- Updated home-search.spec.ts and epic2-smoke.spec.ts selectors
+- 3 new E2E tests: smoke toggle+persist, card rendering, ARIA radiogroup
+- Dark mode CSS support for both list and grid modes
+
 ### File List
+
+**Created:**
+- `static/js/browse-mode.js` — localStorage persistence + toggle + keyboard + HTMX reinit
+- `tests/e2e/specs/journeys/browse-toggle.spec.ts` — 3 E2E tests
+
+**Modified:**
+- `templates/pages/home.html` — Table → card layout, BrowseToggle, sort dropdown, CSS styles
+- `templates/layouts/base.html` — Added browse-mode.js script
+- `src/routes/home.rs` — Added browse labels to HomeTemplate, updated render_search_row to cards
+- `src/models/title.rs` — Added publication_date to SearchResult struct + query
+- `src/services/search.rs` — Added publication_date to SearchResult construction
+- `static/js/search.js` — Updated element ID references
+- `locales/en.yml` — Added browse.* i18n keys
+- `locales/fr.yml` — Same (French)
+- `tests/e2e/specs/journeys/home-search.spec.ts` — Updated selectors for card layout
+- `tests/e2e/specs/journeys/epic2-smoke.spec.ts` — Updated search results selector

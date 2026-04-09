@@ -61,6 +61,10 @@ pub struct HomeTemplate {
     pub label_no_cover: String,
     pub metadata_error_count: u64,
     pub label_metadata_errors: String,
+    pub browse_list_label: String,
+    pub browse_grid_label: String,
+    pub browse_mode_label: String,
+    pub browse_sort_label: String,
 }
 
 pub async fn home(
@@ -172,6 +176,10 @@ pub async fn home(
         label_no_cover: rust_i18n::t!("cover.no_cover").to_string(),
         metadata_error_count,
         label_metadata_errors: rust_i18n::t!("dashboard.metadata_errors", count = metadata_error_count).to_string(),
+        browse_list_label: rust_i18n::t!("browse.list_view").to_string(),
+        browse_grid_label: rust_i18n::t!("browse.grid_view").to_string(),
+        browse_mode_label: rust_i18n::t!("browse.display_mode").to_string(),
+        browse_sort_label: rust_i18n::t!("browse.sort_by").to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -232,27 +240,34 @@ fn render_search_row(item: &SearchResult) -> String {
         .map(|c| html_escape(c))
         .unwrap_or_default();
     let escaped_genre = html_escape(&item.genre_name);
+    let escaped_media = html_escape(&item.media_type);
 
     let cover_html = match &item.cover_image_url {
         Some(url) => format!(
-            r#"<img src="{}" alt="" class="w-10 h-15 object-cover rounded" loading="lazy">"#,
+            r#"<img src="{}" alt="" class="w-full h-full object-cover" loading="lazy">"#,
             html_escape(url)
         ),
         None => format!(
-            r#"<div class="w-10 h-15 bg-stone-100 dark:bg-stone-800 rounded flex items-center justify-center"><img src="/static/icons/{}.svg" alt="" class="w-5 h-5 opacity-50"></div>"#,
-            html_escape(&item.media_type)
+            r#"<div class="w-full h-full bg-stone-100 dark:bg-stone-800 flex items-center justify-center"><img src="/static/icons/{}.svg" alt="" class="w-8 h-8 opacity-50"></div>"#,
+            escaped_media
         ),
     };
 
+    let year = item
+        .publication_date
+        .map(|d| format!(" · {}", d.format("%Y")))
+        .unwrap_or_default();
+
     format!(
-        "<tr class=\"hover:bg-stone-50 dark:hover:bg-stone-800 cursor-pointer\" hx-get=\"/title/{}\" hx-push-url=\"true\" hx-target=\"#main-content\" hx-swap=\"innerHTML\" role=\"link\" tabindex=\"0\">\
-            <td class=\"px-3 py-2 w-10\">{}</td>\
-            <td class=\"px-3 py-2 font-medium text-stone-900 dark:text-stone-100\">{}</td>\
-            <td class=\"px-3 py-2 text-stone-600 dark:text-stone-400\">{}</td>\
-            <td class=\"px-3 py-2 text-stone-500 hidden lg:table-cell\">{}</td>\
-            <td class=\"px-3 py-2 text-stone-500 text-center hidden lg:table-cell\">{}</td>\
-        </tr>",
-        item.id, cover_html, escaped_title, escaped_contributor, escaped_genre, item.volume_count
+        r##"<article class="title-card group"><a href="/title/{id}" class="title-card-link" aria-label="{title} — {contributor}"><div class="title-card-cover">{cover}<div class="title-card-overlay"><img src="/static/icons/{media}.svg" alt="" class="w-5 h-5 opacity-80"><span class="text-xs">{vols} vol</span></div></div><div class="title-card-info"><p class="title-card-title">{title}</p><p class="title-card-contributor">{contributor}</p><p class="title-card-meta">{genre}{year}</p><p class="title-card-volumes">{vols} vol</p></div></a></article>"##,
+        id = item.id,
+        cover = cover_html,
+        title = escaped_title,
+        contributor = escaped_contributor,
+        genre = escaped_genre,
+        media = escaped_media,
+        vols = item.volume_count,
+        year = year,
     )
 }
 
@@ -286,7 +301,7 @@ fn render_pagination_oob(
     };
 
     let link_class = "px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm";
-    let target = "#search-results-body";
+    let target = "#browse-results";
 
     // Previous button
     if paginated.has_previous() {
@@ -393,6 +408,7 @@ mod tests {
             primary_contributor: Some("Albert Camus".to_string()),
             volume_count: 2,
             cover_image_url: None,
+            publication_date: None,
         };
         let html = render_search_row(&item);
         assert!(html.contains("/title/42"));
@@ -449,9 +465,14 @@ mod tests {
             label_no_cover: "No cover available".to_string(),
             metadata_error_count: 0,
             label_metadata_errors: String::new(),
+            browse_list_label: "List view".to_string(),
+            browse_grid_label: "Grid view".to_string(),
+            browse_mode_label: "Display mode".to_string(),
+            browse_sort_label: "Sort by".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(rendered.contains("mybibli"));
         assert!(rendered.contains("search-field"));
+        assert!(rendered.contains("browse-results"));
     }
 }

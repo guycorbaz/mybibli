@@ -56,6 +56,7 @@ impl SearchService {
             primary_contributor,
             volume_count,
             cover_image_url: title.cover_image_url.clone(),
+            publication_date: title.publication_date,
         }
     }
 }

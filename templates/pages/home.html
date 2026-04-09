@@ -22,7 +22,7 @@
                autocomplete="off"
                hx-get="/"
                hx-trigger="search-fire"
-               hx-target="#search-results-body"
+               hx-target="#browse-results"
                hx-swap="innerHTML"
                hx-push-url="true"
                hx-sync="this:replace"
@@ -41,7 +41,7 @@
             {{ genre.name }}
             <button type="button"
                     hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
-                    hx-target="#search-results-body"
+                    hx-target="#browse-results"
                     hx-swap="innerHTML"
                     hx-push-url="true"
                     class="ml-1 text-indigo-500 hover:text-indigo-700"
@@ -50,7 +50,7 @@
         {% else %}
         <a href="/?q={{ query_encoded }}&amp;filter=genre:{{ genre.id }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
            hx-get="/?q={{ query_encoded }}&amp;filter=genre:{{ genre.id }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
-           hx-target="#search-results-body"
+           hx-target="#browse-results"
            hx-swap="innerHTML"
            hx-push-url="true"
            class="px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 text-sm hover:bg-stone-200 dark:hover:bg-stone-700"
@@ -73,58 +73,68 @@
     </div>
     {% endif %}
 
-    <!-- Search results table -->
-    <div class="w-full max-w-4xl mt-6">
-        <table class="w-full text-left" id="search-results-table">
-            <thead class="text-xs text-stone-500 dark:text-stone-400 uppercase border-b border-stone-200 dark:border-stone-700">
-                <tr>
-                    <th class="px-3 py-2 w-10"></th>
-                    <th class="px-3 py-2 cursor-pointer"
-                        hx-get="/?q={{ query_encoded }}&amp;sort=title&amp;dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}&amp;page=1{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                        hx-target="#search-results-body"
-                        hx-swap="innerHTML"
-                        hx-push-url="true">
-                        {{ col_title }} {% if current_sort == "title" %}{% if current_dir == "asc" %}&#9650;{% else %}&#9660;{% endif %}{% endif %}
-                    </th>
-                    <th class="px-3 py-2">{{ col_contributor }}</th>
-                    <th class="px-3 py-2 hidden lg:table-cell cursor-pointer"
-                        hx-get="/?q={{ query_encoded }}&amp;sort=genre_name&amp;dir={% if current_sort == "genre_name" && current_dir == "asc" %}desc{% else %}asc{% endif %}&amp;page=1{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                        hx-target="#search-results-body"
-                        hx-swap="innerHTML"
-                        hx-push-url="true">
-                        {{ col_genre }} {% if current_sort == "genre_name" %}{% if current_dir == "asc" %}&#9650;{% else %}&#9660;{% endif %}{% endif %}
-                    </th>
-                    <th class="px-3 py-2 text-center hidden lg:table-cell">{{ col_volumes }}</th>
-                </tr>
-            </thead>
-            <tbody id="search-results-body" class="divide-y divide-stone-100 dark:divide-stone-800">
+    <!-- Browse toggle + sort -->
+    <div class="w-full max-w-4xl mt-6 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+            <label class="text-xs text-stone-500 dark:text-stone-400">{{ browse_sort_label }}:</label>
+            <select onchange="var url='/?q={{ query_encoded }}&amp;sort='+this.value.split(':')[0]+'&amp;dir='+this.value.split(':')[1]+'&amp;page=1{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}';window.location=url"
+                    class="text-xs border border-stone-300 dark:border-stone-600 rounded px-2 py-1 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300">
+                <option value="title:asc" {% if current_sort == "title" && current_dir == "asc" %}selected{% endif %}>{{ col_title }} &#9650;</option>
+                <option value="title:desc" {% if current_sort == "title" && current_dir == "desc" %}selected{% endif %}>{{ col_title }} &#9660;</option>
+                <option value="genre_name:asc" {% if current_sort == "genre_name" && current_dir == "asc" %}selected{% endif %}>{{ col_genre }} &#9650;</option>
+                <option value="genre_name:desc" {% if current_sort == "genre_name" && current_dir == "desc" %}selected{% endif %}>{{ col_genre }} &#9660;</option>
+            </select>
+        </div>
+        <div role="radiogroup" aria-label="{{ browse_mode_label }}" class="flex border border-stone-300 dark:border-stone-600 rounded-md overflow-hidden">
+            <button data-browse-mode="list" role="radio" aria-checked="true" aria-label="{{ browse_list_label }}"
+                    onclick="mybibliSetBrowseMode('list')" tabindex="0"
+                    class="px-2 py-1 text-sm bg-indigo-600 text-white dark:bg-indigo-500">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+            </button>
+            <button data-browse-mode="grid" role="radio" aria-checked="false" aria-label="{{ browse_grid_label }}"
+                    onclick="mybibliSetBrowseMode('grid')" tabindex="-1"
+                    class="px-2 py-1 text-sm text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Search results (list/grid) -->
+    <div class="w-full max-w-4xl mt-4">
+        <div id="browse-results" class="browse-list">
                 {% if let Some(paginated) = results %}
                     {% if paginated.items.is_empty() %}
-                    <tr><td colspan="5" class="text-center py-12 text-stone-500 dark:text-stone-400">
+                    <div class="text-center py-12 text-stone-500 dark:text-stone-400">
                         <svg class="mx-auto w-12 h-12 text-stone-300 dark:text-stone-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         <p>{{ no_results_text }}</p>
                         {% if role == "librarian" || role == "admin" %}
                         <a href="/catalog/title/new?title={{ query_encoded }}" class="mt-2 inline-block text-indigo-600 dark:text-indigo-400 hover:underline">{{ no_results_create }}</a>
                         {% endif %}
-                    </td></tr>
+                    </div>
                     {% else %}
                         {% for item in paginated.items %}
-                        <tr class="hover:bg-stone-50 dark:hover:bg-stone-800 cursor-pointer"
-                            hx-get="/title/{{ item.id }}" hx-push-url="true" hx-target="#main-content" hx-swap="innerHTML"
-                            role="link" tabindex="0">
-                            <td class="px-3 py-2 w-10">
-                                {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-10 h-[60px]", "lazy", label_no_cover) %}{% endcall %}
-                            </td>
-                            <td class="px-3 py-2 font-medium text-stone-900 dark:text-stone-100">{{ item.title }}</td>
-                            <td class="px-3 py-2 text-stone-600 dark:text-stone-400">{{ item.primary_contributor.as_deref().unwrap_or("") }}</td>
-                            <td class="px-3 py-2 text-stone-500 hidden lg:table-cell">{{ item.genre_name }}</td>
-                            <td class="px-3 py-2 text-stone-500 text-center hidden lg:table-cell">{{ item.volume_count }}</td>
-                        </tr>
+                        <article class="title-card group">
+                            <a href="/title/{{ item.id }}" class="title-card-link"
+                               aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
+                                <div class="title-card-cover">
+                                    {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
+                                    <div class="title-card-overlay">
+                                        <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
+                                        <span class="text-xs">{{ item.volume_count }} vol</span>
+                                    </div>
+                                </div>
+                                <div class="title-card-info">
+                                    <p class="title-card-title">{{ item.title }}</p>
+                                    <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
+                                    <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
+                                    <p class="title-card-volumes">{{ item.volume_count }} vol</p>
+                                </div>
+                            </a>
+                        </article>
                         {% endfor %}
                     {% endif %}
                 {% endif %}
-            </tbody>
-        </table>
+        </div>
 
         <!-- Pagination -->
         <nav id="pagination" aria-label="Pagination" class="flex items-center justify-center gap-2 mt-4">
@@ -133,7 +143,7 @@
                     {% if paginated.has_previous() %}
                     <a href="/?q={{ query_encoded }}&amp;page={{ paginated.page - 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
                        hx-get="/?q={{ query_encoded }}&amp;page={{ paginated.page - 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                       hx-target="#search-results-body" hx-swap="innerHTML" hx-push-url="true"
+                       hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
                        class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">&laquo; {{ pagination_previous }}</a>
                     {% endif %}
                     {% for p in 1..=paginated.total_pages %}
@@ -142,14 +152,14 @@
                         {% else %}
                         <a href="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
                            hx-get="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                           hx-target="#search-results-body" hx-swap="innerHTML" hx-push-url="true"
+                           hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
                            class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">{{ p }}</a>
                         {% endif %}
                     {% endfor %}
                     {% if paginated.has_next() %}
                     <a href="/?q={{ query_encoded }}&amp;page={{ paginated.page + 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
                        hx-get="/?q={{ query_encoded }}&amp;page={{ paginated.page + 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                       hx-target="#search-results-body" hx-swap="innerHTML" hx-push-url="true"
+                       hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
                        class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">{{ pagination_next }} &raquo;</a>
                     {% endif %}
                 {% endif %}
@@ -159,9 +169,49 @@
 </div>
 
 <style>
-.htmx-request #search-results-body {
+.htmx-request #browse-results {
     opacity: 0.7;
     transition: opacity 150ms ease;
 }
+
+/* List mode: horizontal cards */
+.browse-list { display: flex; flex-direction: column; gap: 0.25rem; }
+.browse-list .title-card { border-bottom: 1px solid var(--color-stone-100, #f5f5f4); }
+.browse-list .title-card-link { display: flex; flex-direction: row; align-items: center; gap: 0.75rem; padding: 0.5rem; text-decoration: none; color: inherit; border-radius: 0.375rem; }
+.browse-list .title-card-link:hover { background: var(--color-stone-50, #fafaf9); }
+.browse-list .title-card-cover { width: 40px; height: 60px; flex-shrink: 0; position: relative; }
+.browse-list .title-card-overlay { display: none; }
+.browse-list .title-card-info { flex: 1; min-width: 0; }
+.browse-list .title-card-title { font-weight: 500; color: var(--color-stone-900, #1c1917); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-list .title-card-contributor { font-size: 0.875rem; color: var(--color-stone-500, #78716c); }
+.browse-list .title-card-meta { font-size: 0.75rem; color: var(--color-stone-400, #a8a29e); }
+.browse-list .title-card-volumes { font-size: 0.75rem; color: var(--color-stone-400, #a8a29e); }
+
+/* Grid mode: card grid */
+.browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem; }
+.browse-grid .title-card-link { display: flex; flex-direction: column; text-decoration: none; color: inherit; border-radius: 0.5rem; overflow: hidden; border: 1px solid var(--color-stone-200, #e7e5e4); transition: box-shadow 150ms; }
+.browse-grid .title-card-link:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.browse-grid .title-card-cover { width: 100%; aspect-ratio: 2/3; position: relative; overflow: hidden; background: var(--color-stone-100, #f5f5f4); }
+.browse-grid .title-card-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem; color: white; opacity: 0; transition: opacity 150ms; }
+.browse-grid .title-card:hover .title-card-overlay { opacity: 1; }
+.browse-grid .title-card-info { padding: 0.5rem; }
+.browse-grid .title-card-title { font-size: 0.8125rem; font-weight: 500; color: var(--color-stone-900, #1c1917); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-grid .title-card-contributor { font-size: 0.75rem; color: var(--color-stone-500, #78716c); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-grid .title-card-meta { display: none; }
+.browse-grid .title-card-volumes { display: none; }
+
+/* Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+    .browse-list .title-card { border-color: #292524; }
+    .browse-list .title-card-link:hover { background: #1c1917; }
+    .browse-list .title-card-title, .browse-grid .title-card-title { color: #f5f5f4; }
+    .browse-grid .title-card-link { border-color: #44403c; }
+    .browse-grid .title-card-cover { background: #292524; }
+}
+.dark .browse-list .title-card { border-color: #292524; }
+.dark .browse-list .title-card-link:hover { background: #1c1917; }
+.dark .browse-list .title-card-title, .dark .browse-grid .title-card-title { color: #f5f5f4; }
+.dark .browse-grid .title-card-link { border-color: #44403c; }
+.dark .browse-grid .title-card-cover { background: #292524; }
 </style>
 {% endblock %}

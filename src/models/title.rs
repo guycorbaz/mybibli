@@ -363,6 +363,7 @@ pub struct SearchResult {
     pub primary_contributor: Option<String>,
     pub volume_count: u64,
     pub cover_image_url: Option<String>,
+    pub publication_date: Option<chrono::NaiveDate>,
 }
 
 /// Allowed sort columns for search results (validated whitelist to prevent SQL injection).
@@ -500,7 +501,7 @@ impl TitleModel {
 
         // Data query
         let data_sql = format!(
-            "SELECT DISTINCT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, \
+            "SELECT DISTINCT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, CAST(t.publication_date AS DATE) AS publication_date, \
                     g.name AS genre_name, \
                     (SELECT c.name FROM title_contributors tc \
                      JOIN contributors c ON tc.contributor_id = c.id \
@@ -545,6 +546,7 @@ impl TitleModel {
                     .map(|v| v as u64)
                     .unwrap_or(0),
                 cover_image_url: r.try_get("cover_image_url").unwrap_or(None),
+                publication_date: r.try_get("publication_date").unwrap_or(None),
             })
             .collect();
 
@@ -574,6 +576,7 @@ mod tests {
             primary_contributor: Some("Albert Camus".to_string()),
             volume_count: 2,
             cover_image_url: None,
+            publication_date: None,
         };
         assert_eq!(result.id, 1);
         assert_eq!(result.title, "L'Étranger");

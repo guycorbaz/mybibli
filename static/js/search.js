@@ -111,17 +111,17 @@
 
         // HTMX error handling
         document.body.addEventListener("htmx:responseError", function () {
-            var tbody = document.getElementById("search-results-body");
+            var tbody = document.getElementById("browse-results");
             if (tbody) tbody.style.opacity = "1";
         });
 
         document.body.addEventListener("htmx:sendError", function () {
-            var tbody = document.getElementById("search-results-body");
+            var tbody = document.getElementById("browse-results");
             if (tbody) {
                 tbody.style.opacity = "1";
                 var msg = field.dataset.connectionLost || "Connection lost";
                 tbody.innerHTML =
-                    '<tr><td colspan="5" class="text-center py-8 text-red-500">' + msg + '</td></tr>';
+                    '<div class="text-center py-8 text-red-500">' + msg + '</div>';
             }
         });
     }
