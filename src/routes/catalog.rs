@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::extract::State;
-use axum::response::{Html, IntoResponse};
+use axum::response::{Html, IntoResponse, Redirect};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use serde::Deserialize;
 
@@ -184,6 +184,7 @@ pub struct CatalogTemplate {
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
+    pub nav_series: String,
     pub nav_borrowers: String,
     pub nav_admin: String,
     pub nav_login: String,
@@ -209,6 +210,7 @@ impl CatalogTemplate {
             nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
             nav_loans: rust_i18n::t!("nav.loans").to_string(),
             nav_locations: rust_i18n::t!("nav.locations").to_string(),
+            nav_series: rust_i18n::t!("nav.series").to_string(),
             nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
             nav_admin: rust_i18n::t!("nav.admin").to_string(),
             nav_login: rust_i18n::t!("nav.login").to_string(),
@@ -1315,6 +1317,7 @@ pub async fn update_contributor(
 pub async fn delete_contributor(
     session: Session,
     State(state): State<AppState>,
+    HxRequest(is_htmx): HxRequest,
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Librarian)?;
@@ -1323,12 +1326,20 @@ pub async fn delete_contributor(
 
     match ContributorService::delete_contributor(pool, id).await {
         Ok(()) => {
-            let message = rust_i18n::t!("contributor.deleted").to_string();
-            Ok(Html(feedback_html("success", &message, "")).into_response())
+            if is_htmx {
+                Ok((
+                    axum::http::StatusCode::OK,
+                    [(axum::http::header::HeaderName::from_static("hx-redirect"), "/catalog".to_string())],
+                    String::new(),
+                ).into_response())
+            } else {
+                Ok(Redirect::to("/catalog").into_response())
+            }
         }
         Err(e) => {
             let message = match &e {
-                AppError::BadRequest(msg) => msg.clone(),
+                AppError::Conflict(msg) => msg.clone(),
+                AppError::NotFound(msg) => msg.clone(),
                 _ => rust_i18n::t!("error.internal").to_string(),
             };
             Ok(Html(feedback_html("error", &message, "")).into_response())
@@ -1491,6 +1502,7 @@ pub struct VolumeDetailTemplate {
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
+    pub nav_series: String,
     pub nav_borrowers: String,
     pub nav_admin: String,
     pub nav_login: String,
@@ -1545,6 +1557,7 @@ pub async fn volume_detail(
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
             nav_locations: rust_i18n::t!("nav.locations").to_string(),
+            nav_series: rust_i18n::t!("nav.series").to_string(),
             nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
         nav_admin: rust_i18n::t!("nav.admin").to_string(),
         nav_login: rust_i18n::t!("nav.login").to_string(),
@@ -1575,6 +1588,7 @@ pub struct VolumeEditTemplate {
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
+    pub nav_series: String,
     pub nav_borrowers: String,
     pub nav_admin: String,
     pub nav_login: String,
@@ -1609,6 +1623,7 @@ pub async fn volume_edit_page(
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
             nav_locations: rust_i18n::t!("nav.locations").to_string(),
+            nav_series: rust_i18n::t!("nav.series").to_string(),
             nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
         nav_admin: rust_i18n::t!("nav.admin").to_string(),
         nav_login: rust_i18n::t!("nav.login").to_string(),

@@ -1,13 +1,9 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
 
 test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
   test.beforeEach(async ({ page }) => {
-    // Login as admin — no cookie injection
-    await page.goto("/login");
-    await page.locator("#username").fill("admin");
-    await page.locator("#password").fill("admin");
-    await page.locator('button[type="submit"]').click();
-    await expect(page).toHaveURL(/\/catalog/, { timeout: 5000 });
+    await loginAs(page);
   });
 
   // AC6: Tree display + empty state
@@ -32,11 +28,12 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.goto("/locations");
 
     await page.locator("summary").filter({ hasText: /add root/i }).click();
-    await page.locator("#new-name").fill("TestMaison");
+    await page.locator("#new-name").fill("LO-TestMaison");
+    await page.locator("#new-lcode").fill("L5001");
     await page.locator('button[type="submit"]').last().click();
 
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
-    await expect(page.locator("text=TestMaison")).toBeVisible();
+    await expect(page.locator("text=LO-TestMaison")).toBeVisible();
   });
 
   // AC1: Create child location (nested under parent)
@@ -45,10 +42,41 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
 
     // Create parent first
     await page.locator("summary").filter({ hasText: /add root/i }).click();
-    await page.locator("#new-name").fill("ParentLoc");
+    await page.locator("#new-name").fill("LO-ParentLoc");
+    await page.locator("#new-lcode").fill("L5002");
     await page.locator('button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
-    await expect(page.locator("text=ParentLoc")).toBeVisible();
+    await expect(page.locator("text=LO-ParentLoc")).toBeVisible();
+
+    // Get parent's ID from its edit link
+    const editLink = page.locator('a[aria-label*="LO-ParentLoc"][href*="/edit"]').first();
+    await expect(editLink).toBeVisible({ timeout: 3000 });
+    const href = await editLink.getAttribute("href");
+    const parentId = href?.match(/\/locations\/(\d+)/)?.[1];
+    expect(parentId).toBeTruthy();
+
+    // Create child as root first
+    await page.locator("summary").filter({ hasText: /add root/i }).click();
+    await page.locator("#new-name").fill("LO-ChildLoc");
+    await page.locator("#new-lcode").fill("L5003");
+    await page.locator('button[type="submit"]').last().click();
+    await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
+    await expect(page.locator("text=LO-ChildLoc")).toBeVisible();
+
+    // Edit child to set parent
+    const childEditLink = page.locator('a[aria-label*="LO-ChildLoc"][href*="/edit"]').first();
+    await expect(childEditLink).toBeVisible({ timeout: 3000 });
+    await childEditLink.click();
+    await expect(page).toHaveURL(/\/locations\/\d+\/edit/);
+
+    const parentSelect = page.locator("#edit-parent");
+    await parentSelect.selectOption(parentId!);
+    await page.locator('button[type="submit"]').click();
+    await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
+
+    // Both parent and child should be visible in the tree
+    await expect(page.locator("text=LO-ParentLoc")).toBeVisible();
+    await expect(page.locator("text=LO-ChildLoc")).toBeVisible();
   });
 
   // AC2: Edit location name
@@ -57,14 +85,13 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
 
     // Create a location first
     await page.locator("summary").filter({ hasText: /add root/i }).click();
-    await page.locator("#new-name").fill("EditTest");
+    await page.locator("#new-name").fill("LO-EditTest");
+    await page.locator("#new-lcode").fill("L5004");
     await page.locator('button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
 
-    // Click edit on the location
-    const editLink = page
-      .locator('a[href*="/locations/"][href*="/edit"]')
-      .first();
+    // Click edit on the specific location
+    const editLink = page.locator('a[aria-label*="LO-EditTest"][href*="/edit"]').first();
     await expect(editLink).toBeVisible({ timeout: 5000 });
     await editLink.click();
     await expect(page).toHaveURL(/\/locations\/\d+\/edit/);
@@ -72,7 +99,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     // Change name and submit
     const nameInput = page.locator("#edit-name");
     await nameInput.clear();
-    await nameInput.fill("EditedName");
+    await nameInput.fill("LO-EditedName");
 
     // Remove empty parent_id from form to avoid 422 (empty string → invalid integer)
     const parentSelect = page.locator("#edit-parent");
@@ -91,7 +118,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
 
     // Should redirect back to locations
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
-    await expect(page.locator("text=EditedName")).toBeVisible();
+    await expect(page.locator("text=LO-EditedName")).toBeVisible();
   });
 
   // AC3: Delete empty location
@@ -100,15 +127,16 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
 
     // Create a location to delete
     await page.locator("summary").filter({ hasText: /add root/i }).click();
-    await page.locator("#new-name").fill("ToDelete");
+    await page.locator("#new-name").fill("LO-ToDelete");
+    await page.locator("#new-lcode").fill("L5005");
     await page.locator('button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
-    await expect(page.locator("text=ToDelete")).toBeVisible();
+    await expect(page.locator("text=LO-ToDelete")).toBeVisible();
 
     // Click delete — accept browser confirm dialog
     page.on("dialog", (dialog) => dialog.accept());
     const deleteBtn = page
-      .locator('button[aria-label*="Delete ToDelete"]')
+      .locator('button[aria-label*="Delete LO-ToDelete"]')
       .first();
     await expect(deleteBtn).toBeVisible({ timeout: 5000 });
     await deleteBtn.click();

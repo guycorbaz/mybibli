@@ -93,19 +93,20 @@ Scan ISBN → create title → `tokio::spawn(fetch_metadata_chain)` → return s
 
 Playwright E2E suite lives in `tests/e2e/`. Implementation details below are load-bearing — violating them causes the cascading flake failures documented in story 5-1 (2026-04-05).
 
-**Execution mode:** `fullyParallel: true` (parallel). Each spec uses unique ISBNs via `specIsbn()` from `tests/e2e/helpers/isbn.ts`, so no data collisions between specs.
+**Execution mode:** `fullyParallel: true` (parallel, default workers). Each spec uses unique ISBNs via `specIsbn()` from `tests/e2e/helpers/isbn.ts` and unique V-codes/L-codes/borrower names to ensure no data collisions between specs. All non-smoke specs use `loginAs()` for per-test session isolation.
 
 **Login strategy:**
 
 > **HARD RULE — Foundation Rule #7 (Smoke tests):**
 > - ✅ Smoke tests (one per epic) MUST use `loginAs(page)` from `tests/e2e/helpers/auth.ts` — real browser login starting from a blank context
-> - ❌ Smoke tests MUST NOT inject `DEV_SESSION_COOKIE` to bypass login
-> - ✅ Non-smoke tests MAY use `DEV_SESSION_COOKIE` injection (see pattern in `tests/e2e/specs/journeys/loans.spec.ts:3-8`) as a speed optimization for auth-independent flows
+> - ✅ All non-smoke tests also use `loginAs(page)` in `beforeEach` — each test gets its own server-side session for parallel safety
+> - ❌ Do NOT inject `DEV_SESSION_COOKIE` — it causes session state pollution in parallel mode
 > - The `loginAs()` helper reads `TEST_ADMIN_PASSWORD` env var with default `admin` (matches seed in `migrations/20260331000004_fix_dev_user_hash.sql`)
 
 **HTMX wait strategies:** Never use arbitrary `waitForTimeout(N)`. Wait for DOM state explicitly:
 ```ts
-await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 })
+// For V-code creation feedback — wait for the specific V-code text to avoid stale entries
+await expect(page.locator(".feedback-entry").first()).toContainText(/V0060/i, { timeout: 10000 });
 ```
 For OOB swaps (e.g., context-banner, pending-updates), wait for the specific swap target to update before asserting.
 
@@ -130,4 +131,4 @@ await expect(page.locator("h1")).toContainText(/Active loans|Prêts actifs/i);
 
 **Session cookie format:** The `DEV_SESSION_COOKIE` value `"ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2"` is base64 of a development session token seeded by `migrations/20260329000002_seed_dev_user.sql`. Cookie name is `session` (NOT `session_token`).
 
-**Known suite state (2026-04-08):** 116/120 tests passing in serial mode (`fullyParallel: false`, `workers: 1`). Data isolation achieved via per-spec unique ISBNs (`specIsbn()`) + mock metadata catch-all + BnF blocklist for Google Books ISBNs. 4 remaining failures: 2 timing flakes (OOB metadata delivery), 2 complex multi-step loan tests (empty-string→Option<i32> 422 bug + HTMX form feedback timing). Known app bugs blocking full green: (1) empty optional number fields in forms cause 422 deserialization errors, (2) duplicate `#session-counter` IDs in catalog page DOM, (3) Google Books provider upgrades cover URLs to HTTPS (incompatible with HTTP-only mock server).
+**Known app quirks (non-blocking):** (1) duplicate `#session-counter` IDs in catalog page DOM (mitigated with `.first()` in tests), (2) Google Books provider upgrades cover URLs to HTTPS (mitigated by accepting placeholder SVG in cover-image tests).

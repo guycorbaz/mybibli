@@ -19,6 +19,7 @@ pub struct ContributorDetailTemplate {
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
+    pub nav_series: String,
     pub nav_borrowers: String,
     pub nav_admin: String,
     pub nav_login: String,
@@ -26,6 +27,8 @@ pub struct ContributorDetailTemplate {
     pub contributor: ContributorModel,
     pub titles: Vec<ContributorTitleRow>,
     pub label_titles: String,
+    pub delete_label: String,
+    pub confirm_delete: String,
 }
 
 pub async fn contributor_detail(
@@ -52,6 +55,7 @@ pub async fn contributor_detail(
             nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
             nav_loans: rust_i18n::t!("nav.loans").to_string(),
             nav_locations: rust_i18n::t!("nav.locations").to_string(),
+            nav_series: rust_i18n::t!("nav.series").to_string(),
             nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
             nav_admin: rust_i18n::t!("nav.admin").to_string(),
             nav_login: rust_i18n::t!("nav.login").to_string(),
@@ -59,6 +63,8 @@ pub async fn contributor_detail(
             contributor,
             titles,
             label_titles: rust_i18n::t!("contributor_detail.titles").to_string(),
+            delete_label: rust_i18n::t!("contributor_detail.delete").to_string(),
+            confirm_delete: rust_i18n::t!("contributor_detail.confirm_delete").to_string(),
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),

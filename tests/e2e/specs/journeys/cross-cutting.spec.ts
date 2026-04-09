@@ -1,22 +1,18 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
-
-const DEV_SESSION_COOKIE = {
-  name: "session",
-  value: "ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2",
-  domain: "localhost",
-  path: "/",
-};
 
 const VALID_ISBN = specIsbn("XC", 1);
 
 test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
+  });
+
   // AC1: Soft Delete - Entity Visibility
   test("delete a volume → it disappears from catalog", async ({
     page,
-    context,
   }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
     await page.goto("/catalog");
 
     const scanField = page.locator("#scan-field");
@@ -27,7 +23,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
     await page.waitForTimeout(1000);
 
     // Create a volume
-    await scanField.fill("V0099");
+    await scanField.fill("V0098");
     await scanField.press("Enter");
     const volFeedback = page.locator(
       '.feedback-entry[data-feedback-variant="success"]'
@@ -38,9 +34,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
   // AC5: Theme - System Preference Detection
   test("theme toggle applies dark mode class and persists", async ({
     page,
-    context,
   }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
     await page.goto("/catalog");
 
     // Initial state: check if dark class is present or not
@@ -68,9 +62,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
   // AC6: Theme Toggle - Persistence
   test("theme preference persists after page reload", async ({
     page,
-    context,
   }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
     await page.goto("/catalog");
 
     // Get initial dark state
@@ -99,9 +91,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
   // AC9: Navigation Bar
   test("navigation bar shows Catalog link for librarian", async ({
     page,
-    context,
   }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
     await page.goto("/catalog");
 
     const nav = page.locator("nav[aria-label='Main navigation']");
@@ -113,9 +103,11 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
   });
 
   test("navigation bar not showing Catalog for anonymous", async ({
+    context,
     page,
   }) => {
-    // No session cookie = anonymous
+    // Clear session from beforeEach — anonymous access
+    await context.clearCookies();
     await page.goto("/");
 
     const nav = page.locator("nav[aria-label='Main navigation']");
@@ -127,8 +119,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
   });
 
   // AC9: Current page highlighted
-  test("current page highlighted in nav bar", async ({ page, context }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test("current page highlighted in nav bar", async ({ page }) => {
     await page.goto("/catalog");
 
     const catalogLink = page.locator(
@@ -140,9 +131,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
   // Theme toggle aria-label updates dynamically
   test("theme toggle has accessible aria-label", async ({
     page,
-    context,
   }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
     await page.goto("/catalog");
 
     const themeBtn = page.locator("[onclick*='mybibliToggleTheme']");

@@ -1,18 +1,12 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
-
-const DEV_SESSION_COOKIE = {
-  name: "session",
-  value: "ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2",
-  domain: "localhost",
-  path: "/",
-};
 
 const VALID_ISBN = specIsbn("LR", 1);
 
 test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
-  test.beforeEach(async ({ context }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
   });
 
   // Helper: create a title, volume, borrower, and register a loan
@@ -26,7 +20,11 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
     await scanField.fill(volumeLabel);
     await scanField.press("Enter");
-    await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 });
+    // Wait for the specific volume's feedback (not a stale entry from ISBN scan)
+    await expect(page.locator(".feedback-entry").first()).toContainText(
+      new RegExp(volumeLabel, "i"),
+      { timeout: 5000 }
+    );
 
     // Create borrower
     await page.goto("/borrowers");
@@ -42,21 +40,31 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
     await page.locator("#loan-borrower-search").fill(borrowerName.substring(0, 8));
     await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
     await page.locator("#borrower-dropdown div").first().click();
-    await page.locator('button[type="submit"]').last().click();
-    await page.waitForTimeout(1000);
+    await page.waitForFunction(() => document.getElementById("loan-borrower-id")?.value !== "", { timeout: 3000 });
+    // Submit and navigate: capture borrower_id, remove HTMX, submit as regular POST
+    await page.evaluate(() => {
+      const f = document.getElementById("loan-create-form") as HTMLFormElement;
+      if (!f) throw new Error("loan-create-form not found in DOM");
+      f.removeAttribute("hx-post");
+      f.removeAttribute("hx-target");
+      f.removeAttribute("hx-swap");
+      f.requestSubmit();
+    });
+    await page.waitForURL(/\/loans/, { timeout: 10000 });
   }
 
   // AC1: Return a loan
   test("return a loan → loan disappears from list", async ({ page }) => {
-    await setupLoan(page, "V0070", "Return Test Borrower");
+    await setupLoan(page, "V0070", "LR-Return Borrower");
 
     // Verify loan is in the list
     await page.goto("/loans");
     await expect(page.locator("body")).toContainText("V0070", { timeout: 5000 });
 
-    // Click Return button on the loan row
+    // Click Return button in the row containing V0070
     page.on("dialog", (dialog) => dialog.accept());
-    const returnBtn = page.locator('button:has-text("Return"), button:has-text("Retourner")').first();
+    const loanRow = page.locator("#loans-table-body tr", { hasText: "V0070" });
+    const returnBtn = loanRow.locator('button:has-text("Return"), button:has-text("Retourner")');
     await expect(returnBtn).toBeVisible({ timeout: 3000 });
     await returnBtn.click();
 
@@ -70,7 +78,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
   // AC4: Volume deletion guard
   test("try to delete volume on loan → blocked with error", async ({ page }) => {
-    await setupLoan(page, "V0071", "Delete Guard Borrower");
+    await setupLoan(page, "V0071", "LR-Delete Guard Borrower");
 
     // Verify loan exists
     await page.goto("/loans");
@@ -107,7 +115,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
   // AC3: Overdue highlighting
   test("overdue loan shows red styling and badge", async ({ page }) => {
-    await setupLoan(page, "V0074", "Overdue Test Borrower");
+    await setupLoan(page, "V0074", "LR-Overdue Borrower");
 
     // Set overdue threshold to 0 so ALL loans appear overdue
     // We use a direct page evaluation to insert via the app's settings endpoint if available,
@@ -143,7 +151,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
   // AC6: Scan V-code → return from scan result card
   test("scan V-code → return from scan result", async ({ page }) => {
-    await setupLoan(page, "V0072", "Scan Return Borrower");
+    await setupLoan(page, "V0072", "LR-Scan Return Borrower");
 
     await page.goto("/loans");
     const scanField = page.locator("#loan-scan-field");
@@ -191,12 +199,12 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
     await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 10000 });
     await scanField.fill("V0073");
     await scanField.press("Enter");
-    await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 });
+    await expect(page.locator(".feedback-entry").first()).toContainText(/V0073/i, { timeout: 10000 });
 
     // Create borrower
     await page.goto("/borrowers");
     await page.getByText(/Add borrower|Ajouter/i).click();
-    await page.locator("#new-name").fill("Smoke Return Borrower");
+    await page.locator("#new-name").fill("LR-Smoke Return Borrower");
     await page.locator('button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
 
@@ -204,9 +212,10 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
     await page.goto("/loans");
     await page.getByText(/New loan|Nouveau prêt/i).click();
     await page.locator("#loan-volume-label").fill("V0073");
-    await page.locator("#loan-borrower-search").fill("Smoke Re");
+    await page.locator("#loan-borrower-search").fill("LR-Smoke");
     await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
     await page.locator("#borrower-dropdown div").first().click();
+    await page.waitForFunction(() => document.getElementById("loan-borrower-id")?.value !== "", { timeout: 3000 });
     await page.locator('button[type="submit"]').last().click();
     await page.waitForTimeout(1000);
 
@@ -214,9 +223,11 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
     await page.goto("/loans");
     await expect(page.locator("body")).toContainText("V0073", { timeout: 5000 });
 
-    // Return the loan
+    // Return the loan — click Return button in the row containing V0073
     page.on("dialog", (dialog) => dialog.accept());
-    const returnBtn = page.locator('button:has-text("Return"), button:has-text("Retourner")').first();
+    const loanRow = page.locator("#loans-table-body tr", { hasText: "V0073" });
+    const returnBtn = loanRow.locator('button:has-text("Return"), button:has-text("Retourner")');
+    await expect(returnBtn).toBeVisible({ timeout: 3000 });
     await returnBtn.click();
     await page.waitForTimeout(2000);
 

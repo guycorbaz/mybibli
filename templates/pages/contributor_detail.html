@@ -10,6 +10,18 @@
         <p class="mt-2 text-stone-600 dark:text-stone-400">{{ bio }}</p>
     {% endif %}
 
+    {% if role == "librarian" || role == "admin" %}
+    <div class="mt-6 flex gap-3">
+        <button hx-delete="/catalog/contributors/{{ contributor.id }}" hx-confirm="{{ confirm_delete }}"
+                hx-target="#contributor-feedback" hx-swap="innerHTML"
+                class="px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20">
+            {{ delete_label }}
+        </button>
+    </div>
+    {% endif %}
+
+    <div id="contributor-feedback" class="mt-4" aria-live="polite"></div>
+
     {% if !titles.is_empty() %}
     <div class="mt-6">
         <h2 class="text-lg font-semibold text-stone-800 dark:text-stone-200">{{ label_titles }}</h2>

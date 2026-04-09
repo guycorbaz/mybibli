@@ -98,3 +98,49 @@
 - Regression test creates data (borrower, loan) without cleanup — owned by story 5-1b (data isolation architecture)
 - Serial mode (`fullyParallel: false`, `workers: 1`) is a workaround masking shared-data failures — owned by story 5-1b (will restore `fullyParallel: true` with per-spec data isolation)
 - `logout()` helper in `tests/e2e/helpers/auth.ts` doesn't await navigation completion after `page.goto("/login")` — stub not currently used by any test; fix when logout flow is needed
+
+## Deferred from: code review of 5-1-e2e-stabilization session 3 (2026-04-08)
+
+- `create_loan` handler catches only `BadRequest` for HTMX feedback, not `Conflict`/`Database` — register_loan only returns BadRequest currently; add catch-all if error contract expands
+- `create_loan` success path: borrower lookup error propagated after loan already committed — pre-existing pattern, refactored not introduced; user sees error but loan exists
+- `waitForTimeout` calls remain in several E2E specs despite documented "never use arbitrary waits" — pragmatic for async metadata resolution; eliminating requires polling mechanism
+- Brute-force volume ID search limited to 100 in loans.spec.ts non-loanable test — works for current suite size; increase if test suite grows significantly
+- Title ID extraction from skeleton element ID is fragile (metadata-editing.spec.ts) — pre-existing pattern; breaks silently if feedback ID scheme changes
+- `INVALID_ISBN` generation may accidentally produce valid ISBN (check digit = 0 case) — unlikely with current specIsbn seeds but not guaranteed
+- Accessibility `color-contrast` rule disabled in 3 catalog specs — known UX issue with placeholder text contrast; should be fixed and rules re-enabled
+- Location contents/shelving tests use fragile parent traversal (`..` / `..`) selectors — pre-existing pattern; works but brittle to HTML structure changes
+- No unit test for `create_loan` handler's new HTMX error path — project pattern: handlers tested via E2E not unit tests
+
+## Deferred from: code review of 5-1b-e2e-data-isolation-architecture (2026-04-08)
+
+- Brute-force volume ID search (1..100) in loans.spec.ts AC3 — pre-existing; breaks if volume IDs exceed 100 in parallel
+- Inconsistent loan form submission strategies across specs (HTMX vs stripped HTMX vs button click) — design choice from parallel load workaround
+- Hardcoded L-codes without generator function (unlike specIsbn) — documented design choice; manual coordination required
+- `waitForTimeout` still present in smoke tests (borrower-loans, loan-returns, epic2-smoke, cross-cutting, catalog-metadata) — pre-existing; should be replaced with deterministic waits
+- Unused variable `resultsHtml` in epic2-smoke.spec.ts home search step — pre-existing; variable assigned but never asserted
+- `conditionSelect.selectOption({ label: "Endommagé" })` hardcodes French label in loans.spec.ts — pre-existing; use value-based selection for i18n safety
+
+## Deferred from: code review of 5-2-contributor-deletion-guard (2026-04-09)
+
+- TOCTOU race between count_title_associations and soft_delete — no transaction wrapping. Same pattern in location/borrower guards. Low real-world risk for single-user app.
+- count_title_associations doesn't JOIN titles to filter soft-deleted titles — contributor blocked from deletion even when all associated titles are in trash.
+- HTMX fragment path (contributor_detail_fragment) doesn't include delete button or feedback container — only affects HTMX partial navigation to contributor detail.
+- waitForTimeout(1000) anti-pattern in existing duplicate-contributor E2E test (catalog-contributor.spec.ts:106) — should use DOM state wait.
+- No E2E coverage for double-delete scenario (two tabs, same contributor) — returns generic error instead of meaningful message.
+
+## Deferred from: code review of 5-3-series-crud-and-listing (2026-04-09)
+
+- Soft delete doesn't check optimistic locking version — pre-existing pattern shared by all entities. Low real-world risk.
+- TOCTOU race on series name uniqueness — application-level check only, no DB UNIQUE constraint. Pre-existing MariaDB limitation pattern.
+- Delete series allows orphaned title_series assignments — story 5.4 will add assignments + deletion guard.
+
+## Deferred from: cross-story code review (2026-04-09)
+
+- borrowers.spec.ts and location-contents.spec.ts use manual login instead of loginAs() helper — pre-existing, should be migrated.
+- 32 waitForTimeout instances across 9 E2E spec files — pre-existing, should be replaced with deterministic waits.
+- Non-unique contributor names ("Albert Camus", "Boris Vian", "Test Author") in catalog-contributor.spec.ts existing tests — collision risk in parallel mode.
+
+## Deferred from: code review of 5-4-title-series-assignment-and-gap-detection (2026-04-09)
+
+- Non-existent series_id/title_id not validated in assign handler — FK constraint returns DB error instead of user-friendly 404. UX improvement only.
+- Assignments beyond total_volume_count invisible after total reduction — edge case when total is lowered below existing assignments. Low priority.

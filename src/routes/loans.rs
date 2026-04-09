@@ -36,6 +36,7 @@ pub struct LoansTemplate {
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
+    pub nav_series: String,
     pub nav_borrowers: String,
     pub nav_admin: String,
     pub nav_login: String,
@@ -91,6 +92,7 @@ pub async fn loans_page(
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
         nav_locations: rust_i18n::t!("nav.locations").to_string(),
+        nav_series: rust_i18n::t!("nav.series").to_string(),
         nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
         nav_admin: rust_i18n::t!("nav.admin").to_string(),
         nav_login: rust_i18n::t!("nav.login").to_string(),
@@ -149,38 +151,55 @@ pub async fn create_loan(
     let volume_label = form.volume_label.trim().to_uppercase();
 
     // Look up volume by label
-    let volume = VolumeModel::find_by_label(pool, &volume_label)
-        .await?
-        .ok_or_else(|| {
-            AppError::BadRequest(rust_i18n::t!("loan.volume_not_found").to_string())
-        })?;
-
-    let loan = LoanService::register_loan(pool, volume.id, form.borrower_id).await?;
-
-    // Get borrower name for success message (HTML-escaped for safe rendering)
-    let borrower = crate::models::borrower::BorrowerModel::find_by_id(pool, loan.borrower_id)
-        .await?
-        .map(|b| b.name)
-        .unwrap_or_default();
-    let escaped_borrower = crate::utils::html_escape(&borrower);
-    let escaped_label = crate::utils::html_escape(&volume_label);
-
-    let message = rust_i18n::t!(
-        "loan.created",
-        label = escaped_label,
-        borrower = escaped_borrower
-    )
-    .to_string();
-
-    if is_htmx {
-        let feedback = crate::routes::catalog::feedback_html_pub("success", &message, "");
-        Ok(HtmxResponse {
-            main: feedback,
-            oob: vec![],
+    let volume = match VolumeModel::find_by_label(pool, &volume_label).await? {
+        Some(v) => v,
+        None if is_htmx => {
+            let message = rust_i18n::t!("loan.volume_not_found").to_string();
+            let feedback = crate::routes::catalog::feedback_html_pub("error", &message, "");
+            return Ok(Html(feedback).into_response());
         }
-        .into_response())
-    } else {
-        Ok(axum::response::Redirect::to("/loans").into_response())
+        None => {
+            return Err(AppError::BadRequest(
+                rust_i18n::t!("loan.volume_not_found").to_string(),
+            ));
+        }
+    };
+
+    match LoanService::register_loan(pool, volume.id, form.borrower_id).await {
+        Ok(loan) => {
+            // Get borrower name for success message (HTML-escaped for safe rendering)
+            let borrower =
+                crate::models::borrower::BorrowerModel::find_by_id(pool, loan.borrower_id)
+                    .await?
+                    .map(|b| b.name)
+                    .unwrap_or_default();
+            let escaped_borrower = crate::utils::html_escape(&borrower);
+            let escaped_label = crate::utils::html_escape(&volume_label);
+
+            let message = rust_i18n::t!(
+                "loan.created",
+                label = escaped_label,
+                borrower = escaped_borrower
+            )
+            .to_string();
+
+            if is_htmx {
+                let feedback =
+                    crate::routes::catalog::feedback_html_pub("success", &message, "");
+                Ok(HtmxResponse {
+                    main: feedback,
+                    oob: vec![],
+                }
+                .into_response())
+            } else {
+                Ok(axum::response::Redirect::to("/loans").into_response())
+            }
+        }
+        Err(AppError::BadRequest(msg)) if is_htmx => {
+            let feedback = crate::routes::catalog::feedback_html_pub("error", &msg, "");
+            Ok(Html(feedback).into_response())
+        }
+        Err(e) => Err(e),
     }
 }
 

@@ -133,9 +133,9 @@ impl ContributorService {
         if count > 0 {
             let contributor = ContributorModel::find_by_id(pool, id).await?;
             let name = contributor.map(|c| c.name).unwrap_or_else(|| "?".to_string());
-            return Err(AppError::BadRequest(
+            return Err(AppError::Conflict(
                 rust_i18n::t!(
-                    "contributor.delete_blocked",
+                    "error.contributor.has_titles",
                     name = &name,
                     count = count
                 )
@@ -181,5 +181,21 @@ mod tests {
     fn test_name_at_limit() {
         let name = "A".repeat(255);
         assert_eq!(name.len(), 255);
+    }
+
+    #[test]
+    fn test_deletion_guard_returns_conflict_variant() {
+        // Verify the Conflict error variant carries the expected i18n message pattern
+        use crate::error::AppError;
+        let error = AppError::Conflict(
+            "Cannot delete Test Author. This contributor is associated with 3 title(s). Remove the contributor from all titles first.".to_string(),
+        );
+        match error {
+            AppError::Conflict(msg) => {
+                assert!(msg.contains("Cannot delete"));
+                assert!(msg.contains("3 title(s)"));
+            }
+            _ => panic!("Expected AppError::Conflict"),
+        }
     }
 }

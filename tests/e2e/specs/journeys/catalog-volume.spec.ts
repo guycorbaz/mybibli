@@ -1,20 +1,14 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
-
-const DEV_SESSION_COOKIE = {
-  name: "session",
-  value: "ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2",
-  domain: "localhost",
-  path: "/",
-};
+import { createLocation } from "../../helpers/locations";
 
 const VALID_ISBN = specIsbn("CV", 1);
 const COUNTER_ISBN = specIsbn("CV", 2);
 
 test.describe("Volume Management", () => {
-  test.beforeEach(async ({ context }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
   });
 
   // AC1: Create volume from V-code scan with current title
@@ -171,6 +165,9 @@ test.describe("Volume Management", () => {
 
   // AC6: L-code assigns location (needs location data in DB)
   test("scan V-code then L-code shelves volume", async ({ page }) => {
+    // Create a location and capture its L-code dynamically
+    const lcode = await createLocation(page, "CV-ShelveLoc", "L3001");
+
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
@@ -185,8 +182,8 @@ test.describe("Volume Management", () => {
       '.feedback-entry[data-feedback-variant="success"]',
     );
 
-    // Scan L-code — may not have location data in DB, expect warning or success
-    await scanField.fill("L0001");
+    // Scan L-code — location exists, expect success or active location
+    await scanField.fill(lcode);
     await scanField.press("Enter");
 
     // Should get either success (if location exists) or warning (if not)
@@ -198,10 +195,13 @@ test.describe("Volume Management", () => {
   test("scan L-code without volume context shows info stub", async ({
     page,
   }) => {
+    // Create a location and capture its L-code dynamically
+    const lcode = await createLocation(page, "CV-InfoStub", "L3002");
+
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
-    await scanField.fill("L0001");
+    await scanField.fill(lcode);
     await scanField.press("Enter");
 
     const entry = page.locator(".feedback-entry").first();
@@ -217,8 +217,8 @@ test.describe("Volume Management", () => {
 });
 
 test.describe("Volume accessibility", () => {
-  test.beforeEach(async ({ context }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
   });
 
   test("catalog page passes accessibility checks after volume operations", async ({

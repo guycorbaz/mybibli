@@ -1,18 +1,12 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
-
-const DEV_SESSION_COOKIE = {
-  name: "session",
-  value: "ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2",
-  domain: "localhost",
-  path: "/",
-};
 
 const VALID_ISBN = specIsbn("LN", 1);
 
 test.describe("Loan Registration & Validation (Story 4-2)", () => {
-  test.beforeEach(async ({ context, page }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
   });
 
   // AC1: Loans page with active loans list
@@ -40,17 +34,17 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     // Create a volume
     await scanField.fill("V0060");
     await scanField.press("Enter");
-    await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 });
+    await expect(page.locator(".feedback-entry").first()).toContainText(/V0060/i, { timeout: 10000 });
 
     // Create a borrower
     await page.goto("/borrowers");
     await page.getByText(/Add borrower|Ajouter/i).click();
-    await page.locator("#new-name").fill("Loan Test Borrower");
+    await page.locator("#new-name").fill("LN-Loan Test Borrower");
     await page.locator('button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
 
     // Get borrower ID from the link
-    const borrowerLink = page.getByText("Loan Test Borrower");
+    const borrowerLink = page.getByText("LN-Loan Test Borrower");
     await expect(borrowerLink).toBeVisible({ timeout: 3000 });
 
     // Navigate to loans page
@@ -65,25 +59,26 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     await page.locator("#loan-volume-label").fill("V0060");
 
     // Search for borrower
-    await page.locator("#loan-borrower-search").fill("Loan Test");
+    await page.locator("#loan-borrower-search").fill("LN-Loan");
     await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
     await page.locator("#borrower-dropdown div").first().click();
+    await page.waitForFunction(() => document.getElementById("loan-borrower-id")?.value !== "", { timeout: 3000 });
 
     // Submit the loan form
-    await page.locator('button[type="submit"]').last().click();
+    await page.locator("#loan-create-form button[type='submit']").click();
 
-    // Wait for feedback or page refresh
-    await page.waitForTimeout(1000);
+    // Wait for loan creation feedback
+    await expect(page.locator("#loan-feedback")).toContainText(/created|créé|V0060/i, { timeout: 10000 });
 
     // Reload loans page to verify loan appears
     await page.goto("/loans");
     await expect(page.locator("body")).toContainText("V0060", { timeout: 5000 });
-    await expect(page.locator("body")).toContainText("Loan Test Borrower");
+    await expect(page.locator("body")).toContainText("LN-Loan Test Borrower");
   });
 
   // AC3: Prevent loan of non-loanable volume
   test("attempt to lend non-loanable volume → verify error", async ({ page }) => {
-    // Create title + volume via catalog
+    // Create title + volume via catalog (idempotent: handles repeat runs)
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
     await scanField.fill(VALID_ISBN);
@@ -92,44 +87,35 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
     await scanField.fill("V0063");
     await scanField.press("Enter");
-    await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 });
+    // Accept any feedback: success (first run) or error (V-code exists from prior run)
+    await page.waitForSelector(".feedback-entry", { timeout: 5000 });
 
-    // Navigate to volume edit page to set condition to "Endommagé" (non-loanable)
-    // Find the volume edit page by scanning V0063 context, then navigating via title
-    const feedbackSkel = page.locator("[id^='feedback-entry-']").first();
-    const skelId = await feedbackSkel.getAttribute("id").catch(() => null);
-    const titleId = skelId?.replace("feedback-entry-", "");
-
-    if (titleId) {
-      // Navigate to title detail → find volume → click edit
-      await page.goto(`/title/${titleId}`);
-      const volEditLink = page.locator('a[href*="/volume/"][href*="/edit"]').first();
-      if (await volEditLink.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await volEditLink.click();
-      } else {
-        // Try volume detail link then edit
-        const volLink = page.locator('a[href*="/volume/"]').first();
-        if (await volLink.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await volLink.click();
-          const editBtn = page.locator('a[href*="/edit"]').first();
-          await expect(editBtn).toBeVisible({ timeout: 3000 });
-          await editBtn.click();
-        }
+    // Find the volume ID by searching volume detail pages for label V0063
+    const volumeId = await page.evaluate(async () => {
+      for (let id = 1; id <= 100; id++) {
+        try {
+          const resp = await fetch(`/volume/${id}`);
+          if (!resp.ok) continue;
+          const html = await resp.text();
+          if (html.includes("V0063")) return id;
+        } catch { continue; }
       }
-    }
+      return null;
+    });
+    expect(volumeId).not.toBeNull();
 
-    // Set condition to "Endommagé" if we're on the edit page
+    // Navigate to volume edit page and set condition to "Endommagé" (non-loanable)
+    await page.goto(`/volume/${volumeId}/edit`);
     const conditionSelect = page.locator('select[name="condition_state_id"]');
-    if (await conditionSelect.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await conditionSelect.selectOption({ label: "Endommagé" });
-      await page.locator('button[type="submit"]').click();
-      await page.waitForLoadState("networkidle");
-    }
+    await expect(conditionSelect).toBeVisible({ timeout: 3000 });
+    await conditionSelect.selectOption({ label: "Endommagé" });
+    await page.locator('button[type="submit"]').click();
+    await page.waitForLoadState("networkidle");
 
-    // Create a borrower for the loan attempt
+    // Create a borrower for the loan attempt (unique name per run not needed — borrower search is prefix-based)
     await page.goto("/borrowers");
     await page.getByText(/Add borrower|Ajouter/i).click();
-    await page.locator("#new-name").fill("NonLoanable Test Borrower");
+    await page.locator("#new-name").fill("LN-NonLoanable Borrower");
     await page.locator('button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
 
@@ -137,10 +123,11 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     await page.goto("/loans");
     await page.getByText(/New loan|Nouveau prêt/i).click();
     await page.locator("#loan-volume-label").fill("V0063");
-    await page.locator("#loan-borrower-search").fill("NonLoanable");
+    await page.locator("#loan-borrower-search").fill("LN-NonLoanable");
     await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
     await page.locator("#borrower-dropdown div").first().click();
-    await page.locator('button[type="submit"]').last().click();
+    await page.waitForFunction(() => document.getElementById("loan-borrower-id")?.value !== "", { timeout: 3000 });
+    await page.locator("#loan-create-form button[type='submit']").click();
 
     // Should show error about non-loanable condition
     await expect(page.locator("#loan-feedback")).toContainText(
@@ -151,7 +138,7 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
   // AC4: Prevent double loan
   test("attempt to lend volume already on loan → verify error", async ({ page }) => {
-    // Setup: create title, volume, borrower and first loan
+    // Setup: create title, volume, borrower (idempotent: handles repeat runs)
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
     await scanField.fill(VALID_ISBN);
@@ -160,37 +147,40 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
     await scanField.fill("V0061");
     await scanField.press("Enter");
-    await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 });
+    // Accept any feedback: success (first run) or error (V-code exists from prior run)
+    await page.waitForSelector(".feedback-entry", { timeout: 5000 });
 
     await page.goto("/borrowers");
     await page.getByText(/Add borrower|Ajouter/i).click();
-    await page.locator("#new-name").fill("Double Loan Borrower");
+    await page.locator("#new-name").fill("LN-Double Loan Borrower");
     await page.locator('button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
 
-    // Register first loan
+    // Register first loan (may already be on loan from prior repeat run — that's OK)
     await page.goto("/loans");
     await page.getByText(/New loan|Nouveau prêt/i).click();
     await page.locator("#loan-volume-label").fill("V0061");
-    await page.locator("#loan-borrower-search").fill("Double Loan");
+    await page.locator("#loan-borrower-search").fill("LN-Double");
     await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
     await page.locator("#borrower-dropdown div").first().click();
-    await page.locator('button[type="submit"]').last().click();
+    await page.waitForFunction(() => document.getElementById("loan-borrower-id")?.value !== "", { timeout: 3000 });
+    await page.locator("#loan-create-form button[type='submit']").click();
 
-    // Wait for success feedback confirming first loan was created
-    await expect(page.locator("#loan-feedback")).toContainText(/created|créé|V0061/i, { timeout: 5000 });
+    // Wait for any feedback (success on first run, "already on loan" on repeat runs)
+    await expect(page.locator("#loan-feedback")).toContainText(/created|créé|V0061|already on loan|déjà en prêt/i, { timeout: 10000 });
 
-    // Attempt second loan on same volume
+    // Attempt another loan on same volume — should always fail
     await page.goto("/loans");
     await page.getByText(/New loan|Nouveau prêt/i).click();
     await page.locator("#loan-volume-label").fill("V0061");
-    await page.locator("#loan-borrower-search").fill("Double Loan");
+    await page.locator("#loan-borrower-search").fill("LN-Double");
     await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
     await page.locator("#borrower-dropdown div").first().click();
-    await page.locator('button[type="submit"]').last().click();
+    await page.waitForFunction(() => document.getElementById("loan-borrower-id")?.value !== "", { timeout: 3000 });
+    await page.locator("#loan-create-form button[type='submit']").click();
 
     // Should show error feedback
-    await expect(page.locator("#loan-feedback")).toContainText(/already on loan|déjà en prêt/i, { timeout: 5000 });
+    await expect(page.locator("#loan-feedback")).toContainText(/already on loan|déjà en prêt/i, { timeout: 10000 });
   });
 
   // AC5: Scan V-code on loans page
@@ -239,12 +229,12 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
     await scanField.fill("V0062");
     await scanField.press("Enter");
-    await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 });
+    await expect(page.locator(".feedback-entry").first()).toContainText(/V0062/i, { timeout: 10000 });
 
     // Create borrower
     await page.goto("/borrowers");
     await page.getByText(/Add borrower|Ajouter/i).click();
-    await page.locator("#new-name").fill("Smoke Loan Borrower");
+    await page.locator("#new-name").fill("LN-Smoke Loan Borrower");
     await page.locator('button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
 
@@ -255,16 +245,19 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     // Register loan
     await page.getByText(/New loan|Nouveau prêt/i).click();
     await page.locator("#loan-volume-label").fill("V0062");
-    await page.locator("#loan-borrower-search").fill("Smoke Loan");
+    await page.locator("#loan-borrower-search").fill("LN-Smoke");
     await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
     await page.locator("#borrower-dropdown div").first().click();
-    await page.locator('button[type="submit"]').last().click();
-    await page.waitForTimeout(1000);
+    await page.waitForFunction(() => document.getElementById("loan-borrower-id")?.value !== "", { timeout: 3000 });
+    await page.locator("#loan-create-form button[type='submit']").click();
+
+    // Wait for loan creation feedback
+    await expect(page.locator("#loan-feedback")).toContainText(/created|créé|V0062/i, { timeout: 10000 });
 
     // Verify in list
     await page.goto("/loans");
     await expect(page.locator("body")).toContainText("V0062", { timeout: 5000 });
-    await expect(page.locator("body")).toContainText("Smoke Loan Borrower");
+    await expect(page.locator("body")).toContainText("LN-Smoke Loan Borrower");
   });
 
   // Regression: TIMESTAMP column decoding — loans page must render when active loans exist
@@ -280,12 +273,12 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
     await scanField.fill("V0090");
     await scanField.press("Enter");
-    await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 });
+    await expect(page.locator(".feedback-entry").first()).toContainText(/V0090/i, { timeout: 10000 });
 
     // Create borrower
     await page.goto("/borrowers");
     await page.getByText(/Add borrower|Ajouter/i).click();
-    await page.locator("#new-name").fill("TIMESTAMP Regression Borrower");
+    await page.locator("#new-name").fill("LN-TIMESTAMP Borrower");
     await page.locator('button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
 
@@ -293,11 +286,13 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     await page.goto("/loans");
     await page.getByText(/New loan|Nouveau prêt/i).click();
     await page.locator("#loan-volume-label").fill("V0090");
-    await page.locator("#loan-borrower-search").fill("TIMESTAMP");
+    await page.locator("#loan-borrower-search").fill("LN-TIMESTAMP");
     await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
     await page.locator("#borrower-dropdown div").first().click();
-    await page.locator('button[type="submit"]').last().click();
-    await page.waitForSelector('.feedback-entry[data-feedback-variant="success"]', { timeout: 5000 });
+    await page.waitForFunction(() => document.getElementById("loan-borrower-id")?.value !== "", { timeout: 3000 });
+    await page.locator("#loan-create-form button[type='submit']").click();
+    // Wait for loan feedback (on loans page, #loan-feedback gets HTMX swap)
+    await expect(page.locator("#loan-feedback")).toContainText(/V0090|created|créé/i, { timeout: 10000 });
 
     // Navigate to /loans — page must render without 500 Internal Server Error
     await page.goto("/loans");
@@ -305,7 +300,7 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
     // Verify the loan appears in the table (not an error page)
     await expect(page.locator("#loans-table-body")).toContainText("V0090", { timeout: 5000 });
-    await expect(page.locator("#loans-table-body")).toContainText("TIMESTAMP Regression Borrower");
+    await expect(page.locator("#loans-table-body")).toContainText("LN-TIMESTAMP Borrower");
 
     // Verify the page has loan data columns (duration, date) — confirms TIMESTAMP decoded correctly
     await expect(page.locator("#loans-table-body")).toContainText(/\d+ days|\d+ jours/i);

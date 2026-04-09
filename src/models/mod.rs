@@ -5,6 +5,7 @@ pub mod loan;
 pub mod location;
 pub mod media_type;
 pub mod metadata_cache;
+pub mod series;
 pub mod session;
 pub mod title;
 pub mod volume;

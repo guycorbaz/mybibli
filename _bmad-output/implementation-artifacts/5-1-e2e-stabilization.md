@@ -1,6 +1,6 @@
 # Story 5.1: E2E Stabilization & Test Pattern Documentation
 
-Status: in-progress
+Status: done
 
 ## Story
 
@@ -139,6 +139,19 @@ so that Epic 5+ feature work can trust automated regression detection and new st
 - [x] [Review][Defer] #6 — Serial mode is workaround not fix [tests/e2e/playwright.config.ts] — deferred, owned by story 5-1b (will restore fullyParallel: true)
 - [x] [Review][Defer] #7 — logout() helper doesn't await navigation completion [tests/e2e/helpers/auth.ts:28-31] — deferred, stub not currently used by any test
 
+### Review Findings (Session 3 — 2026-04-08)
+
+- [x] [Review][Patch] #8 — CLAUDE.md says `fullyParallel: true` but config has `false` [CLAUDE.md:96] — FIXED: updated to document serial mode with explanation
+- [x] [Review][Defer] #9 — `create_loan` handler catches only BadRequest, not Conflict/Database for HTMX [src/routes/loans.rs:196] — deferred, register_loan only returns BadRequest currently
+- [x] [Review][Defer] #10 — `create_loan` success path: borrower lookup error propagated after loan committed [src/routes/loans.rs:169] — deferred, pre-existing pattern (refactored, not introduced)
+- [x] [Review][Defer] #11 — `waitForTimeout` calls remain despite documented "never use" pattern [multiple spec files] — deferred, pragmatic for async metadata; eliminating requires architectural change
+- [x] [Review][Defer] #12 — Brute-force volume ID search limited to 100 [tests/e2e/specs/journeys/loans.spec.ts:98] — deferred, works for current suite size
+- [x] [Review][Defer] #13 — Title ID extraction from skeleton element ID is fragile [tests/e2e/specs/journeys/metadata-editing.spec.ts:31] — deferred, pre-existing pattern
+- [x] [Review][Defer] #14 — INVALID_ISBN generation may accidentally produce valid ISBN [catalog-title.spec.ts:14] — deferred, unlikely with current specIsbn seeds
+- [x] [Review][Defer] #15 — Accessibility color-contrast rules disabled in 3 specs [catalog-title, catalog-volume, catalog-contributor] — deferred, known UX issue
+- [x] [Review][Defer] #16 — Location contents uses fragile parent traversal selectors [shelving.spec.ts, location-contents.spec.ts] — deferred, pre-existing pattern
+- [x] [Review][Defer] #17 — No unit test for create_loan handler HTMX error path [src/routes/loans.rs] — deferred, project pattern: handlers tested via E2E, not unit tests
+
 ### Data Isolation Implementation (2026-04-06, in-progress)
 
 **Infrastructure delivered:**
@@ -178,25 +191,20 @@ With unique ISBNs, titles are truly NEW on each scan. The scan handler returns `
 19. ✅ Fixed double loan: verify first loan via feedback before attempting second
 20. ✅ Fixed cover-image: accept placeholder SVG as valid (HTTPS cover download not possible in Docker mock)
 
-**Remaining 4 failures (documented for story 5-1b):**
+**Previous 4 failures — ALL FIXED (session 3, 2026-04-08):**
 
-1. **catalog-metadata:39 — "second scan triggers OOB delivery of resolved metadata"**
-   - Root cause: flaky timing. In serial mode, the first scan creates the title. The 3-second wait before second scan may not be enough for metadata to resolve AND for PendingUpdates middleware to detect the resolved state.
-   - Passes ~50% of the time. Not a code bug — a timing sensitivity.
+1. **catalog-metadata:39 + catalog-title:41 — "info" feedback strict mode violation**
+   - Initial diagnosis (session 2): timing flakes — passes ~50%. Misleading because the test sometimes ran as the first test in the file (title not yet created → skeleton instead of info → no duplicate).
+   - Actual root cause (session 3): in serial mode, the ISBN already exists from the prior test. Both scans return "info" (already exists), producing 2 info entries. Playwright's strict mode rejects the ambiguous locator.
+   - Fix: `.last()` on the info feedback locator.
 
-2. **catalog-title:41 — "scan same ISBN again shows info feedback"**
-   - Root cause: similar timing issue. After first scan creates title (skeleton), `waitForLoadState("networkidle")` before second scan may not be sufficient. The second scan returns "info" but Playwright sometimes doesn't find the info entry in time.
-   - Also passes ~50% of the time.
+2. **loans:85 — "non-loanable volume" + loans:153 — "already on loan"**
+   - Initial diagnosis (session 2): empty-string 422 bug + HTMX form feedback timing.
+   - Actual root cause (session 3): `create_loan` handler returned `Err(AppError::BadRequest(...))` which renders as plain text 400. HTMX does NOT swap DOM on 4xx responses → `#loan-feedback` stays empty.
+   - Fix: catch `AppError::BadRequest` in the handler and return `Ok(Html(feedback_html_pub("error", ...)))` for HTMX requests.
+   - Additional fix for loans:85: title detail page has no volume links — rewrote test to find volume ID via `page.evaluate()` iterating `/volume/{id}` pages. Made both tests idempotent for `--repeat-each`.
 
-3. **loans:85 — "attempt to lend non-loanable volume → verify error"**
-   - Root cause: the test needs to navigate to volume edit page, set condition to "Endommagé", then attempt a loan. Navigation to volume edit via title detail works but the condition select may not have the expected option label, or the form submission triggers a 422 from empty optional fields.
-   - Requires: reliable volume condition update mechanism (either fix server-side empty-string-to-Option<i32> handling, or add a dedicated test endpoint).
-
-4. **loans:153 — "attempt to lend volume already on loan → verify error"**
-   - Root cause: the first loan is registered but the `#loan-feedback` success confirmation doesn't always appear before the second loan attempt. The HTMX form response may redirect instead of showing inline feedback.
-   - Requires: more robust wait after first loan registration — possibly checking the loans table directly instead of feedback text.
-
-**Current test counts (serial mode, rebuilt Docker):** 116 passed / 4 failed / 120 total
+**Current test counts (serial mode, rebuilt Docker):** 120 passed / 0 failed / 120 total
 
 ## Dev Notes
 
@@ -304,6 +312,7 @@ The audit in Task 1 must classify each failure into one of these buckets so the 
 
 - Session 1: Claude Opus 4.6 (1M context) — executed via `/bmad-dev-story` on 2026-04-05
 - Session 2: Claude Opus 4.6 (1M context) — executed via `/bmad-dev-story` on 2026-04-07/08
+- Session 3: Claude Opus 4.6 (1M context) — executed via `/bmad-dev-story` on 2026-04-08
 
 ### Debug Log References
 
@@ -313,7 +322,10 @@ The audit in Task 1 must classify each failure into one of these buckets so the 
 - Session 2 post-data-isolation: 83 passing / 37 failed / 120 total (start of session, pre-skeleton-fix)
 - Session 2 post-skeleton-fix: 106 passing / 14 failed / 120 total (feedback-skeleton + feedback-entry selectors)
 - Session 2 post-remaining-fixes: 116 passing / 4 failed / 120 total (session counters, mock blocklist, location navigation, cover image)
-- Docker stack managed via `tests/e2e/docker-compose.test.yml` with ~10 full `down -v && up -d` cycles over session 2
+- Session 3 post-final-fixes: 120 passing / 0 failed / 120 total (loans handler HTMX feedback, info entry `.last()`, non-loanable navigation rewrite)
+- Session 3 AC1 validation: 3 consecutive fresh-Docker cycles, all 120/120
+- Session 3 AC2 validation: 4 target tests pass 10/10 in isolation (`--repeat-each=10`)
+- Docker stack managed via `tests/e2e/docker-compose.test.yml` with ~10 full `down -v && up -d` cycles over session 2, ~6 cycles over session 3
 - `cargo sqlx prepare --check --workspace -- --all-targets` executed inside a throwaway `rust:1-bookworm` container joined to `e2e_default` network — result: clean compile, no cache drift
 
 ### Completion Notes List
@@ -334,13 +346,12 @@ All three are now fixed by routing through `loginAs()` which reads the current s
 
 **Tasks 2, 3, 4 were re-scoped, not skipped.** Task 2 (HTMX timing) was unnecessary because the failures were not HTMX timing — they were data pollution. Task 3 (data isolation) delivered the pragmatic `fullyParallel: false` change but the deep fix is deferred. Task 4 (volume edit navigation) was subsumed into the broader data pollution category, no standalone fix needed.
 
-**Constraints & DoD status (updated 2026-04-08):**
-- ⚠️ AC1 partially satisfied — 116/120 passing; 4 remaining failures documented above. 3 fresh-Docker validation cycles not yet executed.
-- ⚠️ AC2 partially satisfied — 116 of 120 tests pass; 4 require deeper fixes (empty-string deserialization bug, HTMX trigger timing).
+**Constraints & DoD status (updated 2026-04-08, session 3):**
+- ✅ AC1 satisfied — 120/120 passing across 3 consecutive fresh-Docker cycles (0 flakes).
+- ✅ AC2 satisfied — all 4 previously-failing tests pass 10/10 in isolation (`--repeat-each=10`).
 - ✅ AC3 satisfied — CLAUDE.md E2E Test Patterns section complete with all required content.
 - ✅ AC4 satisfied — `loginAs()` implemented and 4 smoke tests migrated (1 per epic).
 - ✅ AC5 satisfied — `cargo sqlx prepare --check` verified clean and documented.
-- 🔁 Blocker rule: story remains in-progress until 120/120 or 4 remaining failures are transferred to 5-1b with clear ownership.
 
 ### File List
 
@@ -374,11 +385,16 @@ All three are now fixed by routing through `loginAs()` which reads the current s
 **Created (Session 1):**
 - `tests/e2e/FLAKY_AUDIT.md` — audit evidence kept in-tree for story 5-1b handoff
 
+**Modified (Session 3 — 2026-04-08):**
+- `src/routes/loans.rs` — `create_loan` handler returns HTML feedback for HTMX error responses (BadRequest for non-loanable/already-on-loan now renders as error feedback in `#loan-feedback` instead of plain text 400)
+- `tests/e2e/specs/journeys/catalog-title.spec.ts` — `.last()` on info feedback locator (serial mode produces 2 info entries)
+- `tests/e2e/specs/journeys/catalog-metadata.spec.ts` — `.last()` on info feedback locator (same serial mode fix)
+- `tests/e2e/specs/journeys/loans.spec.ts` — non-loanable test: robust volume edit navigation via `page.evaluate()` ID lookup; both loan error tests: idempotent setup for `--repeat-each` compatibility
+
 **Unchanged:**
-- No Rust source files (`src/`) modified in Session 2
 - No migrations added
 - No dependencies changed
-- `.sqlx/` cache verified clean (no regeneration needed)
+- `.sqlx/` cache verified clean (no new SQL queries)
 
 ### Change Log
 
@@ -389,3 +405,4 @@ All three are now fixed by routing through `loginAs()` which reads the current s
 - 2026-04-05: Story implemented via `/bmad-dev-story`. Scope re-contracted mid-execution (Option C Hybrid) after baseline audit revealed 47 failures vs ~6 retro estimate. Delivered: serial mode config, `loginAs()` helper with 4 smoke migrations, CLAUDE.md E2E Test Patterns section, `cargo sqlx prepare --check` verified clean and documented. Side effect: fixed credential drift in 2 smoke tests + 1 beforeEach hook (dev/dev and admin123 → admin). Test suite: 73 → 84 passing (+11). Remaining 36 failures transferred to new story 5-1b (E2E Data Isolation Architecture) which now replaces 5-1 as the blocker for Epic 5 feature stories. Story status → review.
 - 2026-04-06: Data isolation infrastructure delivered (helpers/isbn.ts, mock catch-all, 14 specs migrated). Test counts: 83 passed / 37 failed. Critical skeleton vs feedback-entry finding documented.
 - 2026-04-07/08: Session 2 via `/bmad-dev-story`. Systematic fix of remaining failures: 20 skeleton/entry selectors, anonymous user tests, Ctrl+N dispatch, session counters (duplicate IDs + unique ISBNs), HTMX trigger workarounds for loan scan, metadata-editing navigation via skeleton ID, BnF blocklist for Google Books ISBNs, location navigation fixes, cover image placeholder acceptance. Test suite: 83 → 116 passing (+33). 4 remaining failures documented with root causes: 2 timing flakes (OOB delivery), 2 complex multi-step loan tests (empty-string 422 + HTMX form feedback). Story remains in-progress.
+- 2026-04-08: Session 3 via `/bmad-dev-story`. Fixed all 4 remaining failures. Root causes were NOT timing flakes: (1) catalog-metadata + catalog-title: strict mode violation from 2 info entries in serial mode — fixed with `.last()` locator. (2) loans non-loanable + already-on-loan: `create_loan` handler returned `Err(AppError::BadRequest)` as plain text 400, but HTMX doesn't swap on error status codes — fixed by catching BadRequest and returning HTML feedback for HTMX. Non-loanable test also had broken navigation (title detail page has no volume links) — rewritten with `page.evaluate()` volume ID lookup. Both loan tests made idempotent for `--repeat-each`. Test suite: 116 → 120 passing. AC1 validated: 3 consecutive fresh-Docker cycles all 120/120. AC2 validated: 4 target tests pass 10/10 in isolation. Story status → review.

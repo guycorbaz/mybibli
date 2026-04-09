@@ -5,6 +5,7 @@ pub mod contributors;
 pub mod home;
 pub mod loans;
 pub mod locations;
+pub mod series;
 pub mod titles;
 
 use axum::Router;
@@ -97,6 +98,18 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::post(titles::confirm_metadata),
         )
         .route(
+            "/title/{id}/series",
+            axum::routing::post(titles::assign_to_series),
+        )
+        .route(
+            "/title/{id}/series/{assignment_id}/remove",
+            axum::routing::post(titles::unassign_from_series),
+        )
+        .route(
+            "/title/{id}/series-remove",
+            axum::routing::post(titles::unassign_omnibus_from_series),
+        )
+        .route(
             "/contributor/{id}",
             axum::routing::get(contributors::contributor_detail),
         )
@@ -111,6 +124,23 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/volume/{id}/update",
             axum::routing::post(catalog::update_volume),
+        )
+        // Series routes
+        .route(
+            "/series",
+            axum::routing::get(series::series_list_page).post(series::create_series),
+        )
+        .route(
+            "/series/new",
+            axum::routing::get(series::create_series_form),
+        )
+        .route(
+            "/series/{id}",
+            axum::routing::get(series::series_detail_page).post(series::update_series).delete(series::delete_series),
+        )
+        .route(
+            "/series/{id}/edit",
+            axum::routing::get(series::edit_series_form),
         )
         // Borrower routes
         .route(

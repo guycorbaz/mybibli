@@ -26,14 +26,14 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await expect(page.locator("#new-name")).toBeVisible({ timeout: 3000 });
 
     // Fill in name and submit
-    await page.locator("#new-name").fill("Jean Dupont");
+    await page.locator("#new-name").fill("BW-Jean Dupont");
     await page.locator("#new-email").fill("jean@example.com");
     await page.locator("#new-phone").fill("+33612345678");
     await page.locator('button[type="submit"]').last().click();
 
     // Should redirect back to /borrowers with new borrower in list
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
-    await expect(page.locator("body")).toContainText("Jean Dupont");
+    await expect(page.locator("body")).toContainText("BW-Jean Dupont");
   });
 
   // AC3: Borrower detail page
@@ -78,13 +78,13 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     // First create a borrower to delete
     await page.goto("/borrowers");
     await page.getByText(/Add borrower|Ajouter/i).click();
-    await page.locator("#new-name").fill("Temp Borrower");
+    await page.locator("#new-name").fill("BW-Temp Borrower");
     await page.locator('button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
 
     // Navigate to the borrower detail
-    await page.getByText("Temp Borrower").click();
-    await expect(page.locator("h1")).toContainText("Temp Borrower");
+    await page.getByText("BW-Temp Borrower").click();
+    await expect(page.locator("h1")).toContainText("BW-Temp Borrower");
 
     // Delete
     page.on("dialog", (dialog) => dialog.accept());
@@ -124,14 +124,14 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
 
     // Create
     await page.getByText(/Add borrower|Ajouter/i).click();
-    await page.locator("#new-name").fill("Smoke Test Borrower");
+    await page.locator("#new-name").fill("BW-Smoke Borrower");
     await page.locator("#new-email").fill("smoke@test.com");
     await page.locator('button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
-    await expect(page.locator("body")).toContainText("Smoke Test Borrower");
+    await expect(page.locator("body")).toContainText("BW-Smoke Borrower");
 
     // Click into detail
-    await page.getByText("Smoke Test Borrower").click();
-    await expect(page.locator("h1")).toContainText("Smoke Test Borrower");
+    await page.getByText("BW-Smoke Borrower").click();
+    await expect(page.locator("h1")).toContainText("BW-Smoke Borrower");
   });
 });

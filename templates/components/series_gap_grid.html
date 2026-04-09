@@ -1,0 +1,23 @@
+<div role="grid" aria-label="{{ grid_label }}" class="mt-6">
+    <div class="grid grid-cols-4 lg:grid-cols-8 gap-2">
+        {% for pos in positions %}
+        {% if let Some(tid) = pos.title_id %}
+        <a href="/title/{{ tid }}"
+           role="gridcell"
+           aria-label="{{ pos.title_name.as_deref().unwrap_or("") }}, {{ position_label }} {{ pos.position }}"
+           title="{{ position_label }} {{ pos.position }}: {{ pos.title_name.as_deref().unwrap_or("") }}"
+           class="flex flex-col items-center justify-center p-2 rounded border border-green-300 dark:border-green-700 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors cursor-pointer min-h-[3rem]">
+            <span class="text-xs font-medium">{{ pos.position }}</span>
+        </a>
+        {% else %}
+        <div role="gridcell"
+             aria-label="{{ missing_label }} {{ pos.position }}"
+             title="{{ missing_label }} {{ pos.position }}"
+             class="flex flex-col items-center justify-center p-2 rounded border border-dashed border-red-300 dark:border-red-700 text-red-400 dark:text-red-500 min-h-[3rem]"
+             style="background-color: rgba(239, 68, 68, 0.05); background-image: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(239, 68, 68, 0.1) 3px, rgba(239, 68, 68, 0.1) 6px);">
+            <span class="text-xs">{{ pos.position }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>

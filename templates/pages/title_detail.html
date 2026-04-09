@@ -76,6 +76,75 @@
                 </ul>
             </div>
             {% endif %}
+
+            <div class="mt-6">
+                <h2 class="text-lg font-semibold text-stone-800 dark:text-stone-200">{{ label_series }}</h2>
+                {% if series_assignments.is_empty() %}
+                <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ label_no_series }}</p>
+                {% else %}
+                <ul class="mt-2 space-y-1">
+                    {% for sa in series_assignments %}
+                    <li class="flex items-center gap-2">
+                        <a href="/series/{{ sa.series_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ sa.series_name }}</a>
+                        {% if let Some(end) = sa.position_end %}
+                        <span class="text-stone-500">(#{{ sa.position_start }}-{{ end }})</span>
+                        {% else %}
+                        <span class="text-stone-500">(#{{ sa.position_start }})</span>
+                        {% endif %}
+                        {% if role == "librarian" || role == "admin" %}
+                        {% if sa.is_omnibus %}
+                        <form method="POST" action="/title/{{ title.id }}/series-remove" class="inline">
+                            <input type="hidden" name="series_id" value="{{ sa.series_id }}">
+                            <button type="submit"
+                                    class="text-red-400 hover:text-red-600 text-xs" aria-label="{{ label_unassign }} {{ sa.series_name }}">&times;</button>
+                        </form>
+                        {% else %}
+                        <form method="POST" action="/title/{{ title.id }}/series/{{ sa.id }}/remove" class="inline">
+                            <button type="submit"
+                                    class="text-red-400 hover:text-red-600 text-xs" aria-label="{{ label_unassign }} {{ sa.series_name }}">&times;</button>
+                        </form>
+                        {% endif %}
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+
+                {% if role == "librarian" || role == "admin" %}
+                {% if !all_series.is_empty() %}
+                <form method="POST" action="/title/{{ title.id }}/series" class="mt-3 flex items-end gap-2 flex-wrap">
+                    <div>
+                        <label for="assign-series" class="block text-xs text-stone-600 dark:text-stone-400">{{ label_series }}</label>
+                        <select id="assign-series" name="series_id" required
+                                class="mt-1 rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 text-sm">
+                            <option value="">{{ label_select_series }}</option>
+                            {% for s in all_series %}
+                            <option value="{{ s.id }}">{{ s.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="assign-position" class="block text-xs text-stone-600 dark:text-stone-400">{{ label_position }}</label>
+                        <input type="number" id="assign-position" name="position_number" min="1" required
+                               class="mt-1 w-20 rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 text-sm">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="assign-omnibus" name="omnibus"
+                               onchange="document.getElementById('end-position-group').style.display=this.checked?'block':'none'"
+                               class="rounded border-stone-300 dark:border-stone-600">
+                        <label for="assign-omnibus" class="text-xs text-stone-600 dark:text-stone-400">{{ label_omnibus }}</label>
+                    </div>
+                    <div id="end-position-group" style="display:none">
+                        <label for="assign-end-position" class="block text-xs text-stone-600 dark:text-stone-400">{{ label_end_position }}</label>
+                        <input type="number" id="assign-end-position" name="end_position" min="1"
+                               class="mt-1 w-20 rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 text-sm">
+                    </div>
+                    <button type="submit" id="assign-series-submit"
+                            class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">{{ label_assign }}</button>
+                </form>
+                {% endif %}
+                {% endif %}
+            </div>
         </div>
     </div>
     <div id="title-feedback" class="mt-4"></div>

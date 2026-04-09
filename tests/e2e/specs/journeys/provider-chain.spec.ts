@@ -1,12 +1,5 @@
 import { test, expect } from "@playwright/test";
-
-// Dev session cookie for librarian access
-const DEV_SESSION_COOKIE = {
-  name: "session",
-  value: "ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2",
-  domain: "localhost",
-  path: "/",
-};
+import { loginAs } from "../../helpers/auth";
 
 // ISBN known to BnF mock (primary provider)
 const BNF_ISBN = "9782070360246";
@@ -16,8 +9,8 @@ const GOOGLE_BOOKS_ISBN = "9780134685991";
 const UNKNOWN_ISBN = "9780000000002";
 
 test.describe("Provider Chain & Fallback (Story 3-1)", () => {
-  test.beforeEach(async ({ context }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
   });
 
   // AC2, AC3: Fallback to Google Books when BnF returns no result

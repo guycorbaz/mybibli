@@ -1,18 +1,12 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
-
-const DEV_SESSION_COOKIE = {
-  name: "session",
-  value: "ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2",
-  domain: "localhost",
-  path: "/",
-};
 
 const VALID_ISBN = specIsbn("CC", 1);
 
 test.describe("Contributor Management", () => {
-  test.beforeEach(async ({ context }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
   });
 
   // AC1: Open contributor form and search
@@ -109,7 +103,8 @@ test.describe("Contributor Management", () => {
       await roleSelect.selectOption({ index: 1 });
     }
     await form.locator('button[type="submit"]').click();
-    await page.waitForTimeout(1000);
+    // Wait for success feedback before retrying
+    await expect(page.locator(".feedback-entry").first()).toBeVisible({ timeout: 5000 });
 
     // Try adding same again
     await page.evaluate(() => {
@@ -135,14 +130,130 @@ test.describe("Contributor Management", () => {
     await expect(errorEntry).toBeVisible({ timeout: 5000 });
   });
 
-  // AC5: Prevent deletion of referenced contributor
-  test("delete contributor with associations shows error", async ({
+  // AC5: Prevent deletion of referenced contributor (deletion guard)
+  test("delete contributor with associations shows block message, unassign then delete succeeds", async ({
     page,
   }) => {
-    // This test requires a contributor that has title associations
-    // The exact behavior depends on DB state
+    const GUARD_ISBN = specIsbn("CC", 10);
+    const CONTRIBUTOR_NAME = `CC-Guard-${Date.now()}`;
+
+    // Step 1: Create a title by scanning an ISBN
     await page.goto("/catalog");
-    // Test is structural — verifies the DELETE route exists and returns feedback
+    const scanField = page.locator("#scan-field");
+    await scanField.fill(GUARD_ISBN);
+    await scanField.press("Enter");
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry");
+
+    // Step 2: Add a uniquely-named contributor to this title
+    await page.evaluate(() => {
+      htmx.ajax("GET", "/catalog/contributors/form", {
+        target: "#contributor-form-container",
+        swap: "innerHTML",
+      });
+    });
+    const form = page.locator("#contributor-form-container form");
+    await expect(form).toBeVisible({ timeout: 5000 });
+    await form.locator("#contributor-name-input").fill(CONTRIBUTOR_NAME);
+    const roleSelect = form.locator("#contributor-role-select");
+    if ((await roleSelect.locator("option").count()) > 1) {
+      await roleSelect.selectOption({ index: 1 });
+    }
+    await form.locator('button[type="submit"]').click();
+    // Wait for success feedback confirming contributor was added (appears at top of feedback list)
+    await expect(
+      page.locator(`.feedback-entry:has-text("${CONTRIBUTOR_NAME}")`),
+    ).toBeVisible({ timeout: 5000 });
+
+    // Step 3: Extract contributor ID and junction ID from the contributor list
+    // The OOB swap populates #contributor-list with links and remove buttons
+    await page.waitForFunction(
+      (name: string) => {
+        const el = document.querySelector("#contributor-list");
+        return el && el.innerHTML.includes(name);
+      },
+      CONTRIBUTOR_NAME,
+      { timeout: 10000 },
+    );
+    const ids = await page.evaluate((name: string) => {
+      const links = document.querySelectorAll(
+        '#contributor-list a[href^="/contributor/"]',
+      );
+      let contributorHref: string | null = null;
+      for (const link of links) {
+        if (link.textContent?.includes(name)) {
+          contributorHref = link.getAttribute("href");
+          break;
+        }
+      }
+      // Extract junction_id from the remove button's hx-vals
+      const buttons = document.querySelectorAll(
+        '#contributor-list button[hx-post*="remove"]',
+      );
+      let junctionId: string | null = null;
+      let titleId: string | null = null;
+      for (const btn of buttons) {
+        const ariaLabel = btn.getAttribute("aria-label") || "";
+        if (ariaLabel.includes(name)) {
+          const vals = btn.getAttribute("hx-vals");
+          if (vals) {
+            const parsed = JSON.parse(vals);
+            junctionId = String(parsed.junction_id);
+            titleId = String(parsed.title_id);
+          }
+          break;
+        }
+      }
+      return { contributorHref, junctionId, titleId };
+    }, CONTRIBUTOR_NAME);
+    expect(ids.contributorHref).toBeTruthy();
+    expect(ids.junctionId).toBeTruthy();
+    const contributorId = ids.contributorHref!.split("/").pop()!;
+
+    // Step 4: Navigate to contributor detail and attempt deletion
+    await page.goto(`/contributor/${contributorId}`);
+    await expect(page.locator("h1")).toContainText(CONTRIBUTOR_NAME);
+
+    // Set up dialog handler to auto-accept the native confirm()
+    page.on("dialog", (d) => d.accept());
+
+    // Click delete button
+    const deleteBtn = page.getByRole("button", {
+      name: /delete|supprimer/i,
+    });
+    await expect(deleteBtn).toBeVisible();
+    await deleteBtn.click();
+
+    // Step 5: Verify block message appears in feedback container
+    const feedback = page.locator("#contributor-feedback");
+    await expect(feedback).toContainText(
+      /Cannot delete|Impossible de supprimer/i,
+      { timeout: 5000 },
+    );
+
+    // Step 6: Unassign the contributor via direct POST (avoids catalog page reload issue)
+    const removeResponse = await page.request.post(
+      "/catalog/contributors/remove",
+      {
+        form: {
+          junction_id: ids.junctionId!,
+          title_id: ids.titleId!,
+        },
+      },
+    );
+    expect(removeResponse.ok()).toBeTruthy();
+
+    // Step 7: Now delete should succeed — navigate back to contributor detail
+    await page.goto(`/contributor/${contributorId}`);
+    await expect(page.locator("h1")).toContainText(CONTRIBUTOR_NAME);
+
+    // Click delete again — this time it should redirect
+    const deleteBtn2 = page.getByRole("button", {
+      name: /delete|supprimer/i,
+    });
+    await deleteBtn2.click();
+
+    // Verify redirect to catalog
+    await page.waitForURL("**/catalog", { timeout: 5000 });
   });
 
   // AC8: Context banner shows author
@@ -190,8 +301,8 @@ test.describe("Contributor Management", () => {
 });
 
 test.describe("Contributor accessibility", () => {
-  test.beforeEach(async ({ context }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
   });
 
   test("contributor form passes accessibility checks", async ({ page }) => {

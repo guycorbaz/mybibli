@@ -3,17 +3,22 @@ use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse};
 use axum::Form;
 
+use axum::response::Redirect;
+use serde::Deserialize;
+
 use crate::error::AppError;
 use crate::metadata::chain::ChainExecutor;
 use crate::metadata::provider::MetadataResult;
-use crate::middleware::auth::Session;
+use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
 use crate::models::contributor::TitleContributorModel;
 use crate::models::genre::GenreModel;
+use crate::models::series::{SeriesModel, TitleSeriesAssignment};
 use crate::models::title::{detect_edited_fields, TitleModel};
 use crate::models::volume::VolumeModel;
 use crate::routes::catalog::feedback_html_pub;
 use crate::services::cover::CoverService;
+use crate::services::series::SeriesService;
 use crate::services::title::{FieldConflict, TitleService};
 use crate::utils::html_escape;
 use crate::AppState;
@@ -28,6 +33,7 @@ pub struct TitleDetailTemplate {
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
+    pub nav_series: String,
     pub nav_borrowers: String,
     pub nav_admin: String,
     pub nav_login: String,
@@ -42,6 +48,16 @@ pub struct TitleDetailTemplate {
     pub label_edit: String,
     pub label_redownload: String,
     pub has_code: bool,
+    pub series_assignments: Vec<TitleSeriesAssignment>,
+    pub all_series: Vec<SeriesModel>,
+    pub label_series: String,
+    pub label_assign: String,
+    pub label_position: String,
+    pub label_unassign: String,
+    pub label_no_series: String,
+    pub label_select_series: String,
+    pub label_omnibus: String,
+    pub label_end_position: String,
 }
 
 pub async fn title_detail(
@@ -60,6 +76,8 @@ pub async fn title_detail(
     let contributors = TitleContributorModel::find_by_title(pool, title.id).await?;
     let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
     let has_code = title.isbn.is_some() || title.issn.is_some() || title.upc.is_some();
+    let series_assignments = crate::models::series::TitleSeriesModel::find_by_title(pool, title.id).await?;
+    let all_series = SeriesModel::active_list(pool, 1).await?.items;
 
     if is_htmx {
         let html = title_detail_fragment(&title, &genre_name, volume_count, &contributors, &session, has_code);
@@ -73,6 +91,7 @@ pub async fn title_detail(
             nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
             nav_loans: rust_i18n::t!("nav.loans").to_string(),
             nav_locations: rust_i18n::t!("nav.locations").to_string(),
+            nav_series: rust_i18n::t!("nav.series").to_string(),
             nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
             nav_admin: rust_i18n::t!("nav.admin").to_string(),
             nav_login: rust_i18n::t!("nav.login").to_string(),
@@ -87,6 +106,16 @@ pub async fn title_detail(
             label_edit: rust_i18n::t!("metadata.edit_metadata").to_string(),
             label_redownload: rust_i18n::t!("metadata.redownload").to_string(),
             has_code,
+            series_assignments,
+            all_series,
+            label_series: rust_i18n::t!("nav.series").to_string(),
+            label_assign: rust_i18n::t!("series.assign").to_string(),
+            label_position: rust_i18n::t!("series.position").to_string(),
+            label_unassign: rust_i18n::t!("series.unassign").to_string(),
+            label_no_series: rust_i18n::t!("series.no_assignments").to_string(),
+            label_select_series: rust_i18n::t!("series.select_series").to_string(),
+            label_omnibus: rust_i18n::t!("series.omnibus").to_string(),
+            label_end_position: rust_i18n::t!("series.end_position").to_string(),
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),
@@ -924,6 +953,7 @@ mod tests {
             nav_catalog: "Catalog".to_string(),
             nav_loans: "Loans".to_string(),
             nav_locations: "Locations".to_string(),
+            nav_series: "Series".to_string(),
             nav_borrowers: "Borrowers".to_string(),
             nav_admin: "Admin".to_string(),
             nav_login: "Log in".to_string(),
@@ -938,6 +968,16 @@ mod tests {
             label_edit: "Edit metadata".to_string(),
             label_redownload: "Re-download".to_string(),
             has_code: true,
+            series_assignments: vec![],
+            all_series: vec![],
+            label_series: "Series".to_string(),
+            label_assign: "Add to series".to_string(),
+            label_position: "Position".to_string(),
+            label_unassign: "Remove".to_string(),
+            label_no_series: "Not assigned".to_string(),
+            label_select_series: "Select a series...".to_string(),
+            label_omnibus: "Omnibus".to_string(),
+            label_end_position: "End position".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(rendered.contains("tranger"), "Expected title to appear in rendered output");
@@ -1004,4 +1044,73 @@ mod tests {
         assert_eq!(non_empty(&Some("  ".to_string())), None);
         assert_eq!(non_empty(&None), None);
     }
+}
+
+// ─── Series Assignment ──────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct AssignToSeriesForm {
+    pub series_id: u64,
+    pub position_number: i32,
+    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_i32")]
+    pub end_position: Option<i32>,
+    #[serde(default)]
+    pub omnibus: Option<String>,
+}
+
+pub async fn assign_to_series(
+    State(state): State<AppState>,
+    session: Session,
+    Path(title_id): Path<u64>,
+    Form(form): Form<AssignToSeriesForm>,
+) -> Result<impl IntoResponse, AppError> {
+    session.require_role(Role::Librarian)?;
+    let pool = &state.pool;
+
+    let is_omnibus = form.omnibus.as_deref() == Some("on");
+    if is_omnibus {
+        let end = form.end_position.unwrap_or(form.position_number);
+        if end == form.position_number {
+            // Single position, treat as normal assignment
+            SeriesService::assign_title(pool, title_id, form.series_id, form.position_number).await?;
+        } else {
+            SeriesService::assign_omnibus(pool, title_id, form.series_id, form.position_number, end).await?;
+        }
+    } else {
+        SeriesService::assign_title(pool, title_id, form.series_id, form.position_number).await?;
+    }
+
+    Ok(Redirect::to(&format!("/title/{title_id}")))
+}
+
+#[derive(Deserialize)]
+pub struct UnassignFromSeriesForm {
+    pub series_id: u64,
+}
+
+pub async fn unassign_omnibus_from_series(
+    State(state): State<AppState>,
+    session: Session,
+    Path(title_id): Path<u64>,
+    Form(form): Form<UnassignFromSeriesForm>,
+) -> Result<impl IntoResponse, AppError> {
+    session.require_role(Role::Librarian)?;
+    let pool = &state.pool;
+
+    SeriesService::unassign_all_from_series(pool, title_id, form.series_id).await?;
+
+    Ok(Redirect::to(&format!("/title/{title_id}")))
+}
+
+pub async fn unassign_from_series(
+    State(state): State<AppState>,
+    session: Session,
+    Path((title_id, assignment_id)): Path<(u64, u64)>,
+) -> Result<impl IntoResponse, AppError> {
+    session.require_role(Role::Librarian)?;
+    let pool = &state.pool;
+
+    SeriesService::unassign_title(pool, assignment_id, title_id).await?;
+
+    Ok(Redirect::to(&format!("/title/{title_id}")))
 }

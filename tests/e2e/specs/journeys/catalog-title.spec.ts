@@ -1,21 +1,14 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
-
-// Dev session cookie for librarian access
-const DEV_SESSION_COOKIE = {
-  name: "session",
-  value: "ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2",
-  domain: "localhost",
-  path: "/",
-};
 
 const VALID_ISBN = specIsbn("CT", 1);
 // Invalid ISBN-13 (wrong checksum — last digit changed)
 const INVALID_ISBN = specIsbn("CT", 99).slice(0, 12) + "0";
 
 test.describe("Title CRUD & ISBN Scanning", () => {
-  test.beforeEach(async ({ context }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
   });
 
   // AC1: Create new title from ISBN scan
@@ -54,9 +47,10 @@ test.describe("Title CRUD & ISBN Scanning", () => {
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
 
+    // Use .last() to match the most recent scan's feedback entry
     const infoEntry = page.locator(
       '.feedback-entry[data-feedback-variant="info"]',
-    );
+    ).last();
     await expect(infoEntry).toBeVisible({ timeout: 5000 });
   });
 
@@ -275,8 +269,8 @@ test.describe("Title CRUD & ISBN Scanning", () => {
 });
 
 test.describe("Catalog accessibility", () => {
-  test.beforeEach(async ({ context }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
   });
 
   test("catalog page with form passes accessibility checks", async ({

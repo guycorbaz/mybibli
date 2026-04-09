@@ -16,6 +16,7 @@ nav:
   loans: Loans
   admin: Admin
   locations: Locations
+  series: Series
   borrowers: Borrowers
   login: Log in
   logout: Log out
@@ -88,7 +89,6 @@ contributor:
   duplicate: "%{name} is already %{role} on this title."
   updated: Contributor updated.
   deleted: Contributor deleted.
-  delete_blocked: "Cannot delete: %{name} is associated with %{count} title(s)."
   removed: Contributor removed from title.
   error:
     name_required: Contributor name is required.
@@ -124,6 +124,52 @@ title_detail:
 contributor_detail:
   titles: Titles
   biography: Biography
+  delete: Delete
+  confirm_delete: "Delete this contributor?"
+series:
+  list_title: Series
+  add: Add series
+  name: Name
+  description: Description
+  type: Type
+  type_open: Open
+  type_closed: Closed
+  total_count: Total volumes
+  owned_count: Owned
+  gap_count: Missing
+  edit: Edit
+  delete: Delete
+  confirm_delete: "Delete this series?"
+  created: "Series created: %{name}"
+  updated: Series updated.
+  deleted: Series deleted.
+  empty_state: "No series yet. Create one to organize your titles!"
+  name_required: Series name is required.
+  name_duplicate: "A series named \"%{name}\" already exists."
+  total_required_for_closed: Total volume count is required for closed series.
+  total_below_owned: "Total count (%{total}) cannot be less than owned count (%{owned})."
+  detail_title: Series details
+  save: Save
+  cancel: Cancel
+  back_to_list: Back to series
+  prev: Previous
+  next: Next
+  assign: Add to series
+  unassign: Remove from series
+  position: Position
+  position_taken: "Position %{position} is already taken in this series."
+  position_invalid: "Position must be at least 1."
+  position_exceeds_total: "Position %{position} exceeds total volume count (%{total})."
+  assigned: "Assigned to %{series} at position %{position}."
+  unassigned: "Removed from series."
+  missing_volume: "Missing volume #"
+  ongoing: "ongoing, last known: #%{position}"
+  no_assignments: "Not assigned to any series."
+  delete_has_titles: "Cannot delete %{name}: %{count} title(s) assigned. Remove all title assignments first."
+  omnibus: Omnibus
+  end_position: End position
+  omnibus_assigned: "Omnibus assigned to %{series} covering positions %{start}-%{end}."
+  select_series: "Select a series..."
 error:
   internal: An internal error occurred
   not_found: The requested resource was not found
@@ -143,6 +189,8 @@ error:
     required: Language is required
   conflict: "This record was modified by another user. Please reload and try again."
   delete_has_references: "Cannot delete: item is referenced by active records."
+  contributor:
+    has_titles: "Cannot delete %{name}. This contributor is associated with %{count} title(s). Remove the contributor from all titles first."
   code:
     unsupported_type: Unsupported code type
 guide:

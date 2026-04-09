@@ -1,13 +1,6 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
-
-// Dev session cookie for librarian access
-const DEV_SESSION_COOKIE = {
-  name: "session",
-  value: "ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2",
-  domain: "localhost",
-  path: "/",
-};
 
 const VALID_ISBN = specIsbn("CM", 1);
 const COUNTER_ISBN = specIsbn("CM", 2); // Unique ISBN for session counter test
@@ -15,8 +8,8 @@ const COUNTER_ISBN = specIsbn("CM", 2); // Unique ISBN for session counter test
 const INVALID_ISBN = specIsbn("CM", 99).slice(0, 12) + "0";
 
 test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
-  test.beforeEach(async ({ context }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
   });
 
   // AC1: Skeleton FeedbackEntry on ISBN scan
@@ -52,17 +45,17 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     );
     await expect(firstFeedback.first()).toBeVisible({ timeout: 5000 });
 
-    // Wait a moment for the async metadata task to complete
+    // Wait for the async metadata task to complete
     await page.waitForTimeout(3000);
 
     // Second scan: triggers PendingUpdates middleware to deliver resolved data
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
 
-    // The info feedback for "already exists" should appear
+    // Use .last() to match the most recent scan's feedback entry
     const infoEntry = page.locator(
       '.feedback-entry[data-feedback-variant="info"]'
-    );
+    ).last();
     await expect(infoEntry).toBeVisible({ timeout: 5000 });
   });
 

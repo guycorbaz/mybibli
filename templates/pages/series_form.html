@@ -1,0 +1,59 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{% if is_edit %}{{ edit_title }}{% else %}{{ create_title }}{% endif %} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 py-8">
+    <div class="mb-4">
+        <a href="/series" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">&larr; {{ back_label }}</a>
+    </div>
+
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100 mb-6">
+        {% if is_edit %}{{ edit_title }}{% else %}{{ create_title }}{% endif %}
+    </h1>
+
+    <div id="series-form-feedback" class="mb-4" aria-live="polite"></div>
+
+    <form method="POST" action="{% if is_edit %}/series/{{ series_id }}{% else %}/series{% endif %}" class="space-y-4">
+        {% if is_edit %}
+        <input type="hidden" name="version" value="{{ version }}">
+        {% endif %}
+
+        <div>
+            <label for="series-name" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ name_label }} *</label>
+            <input type="text" id="series-name" name="name" required maxlength="255"
+                   value="{{ name_value }}"
+                   class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+        </div>
+
+        <div>
+            <label for="series-description" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ description_label }}</label>
+            <textarea id="series-description" name="description" rows="3"
+                      class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">{{ description_value }}</textarea>
+        </div>
+
+        <div>
+            <label for="series-type" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ type_label }}</label>
+            <select id="series-type" name="series_type"
+                    onchange="var g=document.getElementById('total-count-group');var t=document.getElementById('series-total');if(this.value!=='closed'){t.value='';g.style.display='none'}else{g.style.display='block'}"
+                    class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                <option value="open" {% if type_value == "open" %}selected{% endif %}>{{ type_open_label }}</option>
+                <option value="closed" {% if type_value == "closed" %}selected{% endif %}>{{ type_closed_label }}</option>
+            </select>
+        </div>
+
+        <div id="total-count-group" {% if type_value != "closed" %}style="display:none"{% endif %}>
+            <label for="series-total" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ total_label }}</label>
+            <input type="number" id="series-total" name="total_volume_count" min="1"
+                   value="{{ total_value }}"
+                   class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+        </div>
+
+        <div class="flex justify-end gap-3 pt-4">
+            <a href="/series" class="px-3 py-1.5 text-sm text-stone-600 dark:text-stone-400">{{ cancel_label }}</a>
+            <button type="submit"
+                    class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">{{ save_label }}</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

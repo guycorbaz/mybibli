@@ -2,21 +2,13 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 
-// Dev session cookie for librarian access
-const DEV_SESSION_COOKIE = {
-  name: "session",
-  value: "ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2",
-  domain: "localhost",
-  path: "/",
-};
-
 const ISBN_EDIT = specIsbn("ME", 1);
 const ISBN_CANCEL = specIsbn("ME", 2);
 const ISBN_SMOKE = specIsbn("ME", 3);
 
 test.describe("Metadata Editing & Re-Download (Story 3-5)", () => {
-  test.beforeEach(async ({ context }) => {
-    await context.addCookies([DEV_SESSION_COOKIE]);
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
   });
 
   // AC1: Manual metadata editing form

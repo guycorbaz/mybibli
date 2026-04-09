@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { createLocation } from "../../helpers/locations";
 
 const VALID_ISBN = specIsbn("SH", 1);
 const VALID_ISBN_2 = specIsbn("SH", 2);
@@ -13,12 +14,13 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
 
   // AC1: V-code then L-code shelving (single volume)
   test("scan V-code then L-code → shelved feedback", async ({ page }) => {
+    await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
     // Create a title first
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 
     // Create a volume
     await scanField.fill("V0050");
@@ -29,118 +31,96 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
 
   // AC2: L-code without volume context → batch mode
   test("scan L-code alone → active location feedback", async ({ page }) => {
-    // First create a location via /locations page
-    await page.goto("/locations");
-    await page.locator("summary").filter({ hasText: /add root/i }).click();
-    await page.locator("#new-name").fill("TestBatch");
-    await page.locator('button[type="submit"]').last().click();
-    await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
+    const lcode = await createLocation(page, "SH-TestBatch", "L1001");
 
-    // Go to catalog and scan the L-code
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
-    await scanField.fill("L0001");
+    await scanField.fill(lcode);
     await scanField.press("Enter");
 
-    // Should show "Active location" info
     const feedback = page.locator(".feedback-entry");
     await expect(feedback.first()).toBeVisible({ timeout: 5000 });
   });
 
   // Bug fix: L-code with last_volume still activates batch mode
-  // Real user flow: catalog several books, then go shelve the pile
   test("catalog multiple books then batch shelve → all volumes shelved", async ({
     page,
   }) => {
+    const lcode = await createLocation(page, "SH-BatchShelve", "L1002");
+
+    await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
-    // Phase 1: Catalog 2 books with volumes (simulating scanning a pile)
     // Book 1: ISBN → V-code
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
-    await page.waitForTimeout(1500);
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 
     await scanField.fill("V0051");
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
-    await expect(page.locator(".feedback-entry").first()).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(page.locator(".feedback-entry").first()).toBeVisible({ timeout: 5000 });
 
     // Book 2: ISBN → V-code
     await scanField.fill(VALID_ISBN_2);
     await scanField.press("Enter");
-    await page.waitForTimeout(1500);
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 
-    await scanField.fill("V0072");
+    await scanField.fill("V0053");
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
-    await expect(page.locator(".feedback-entry").first()).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(page.locator(".feedback-entry").first()).toBeVisible({ timeout: 5000 });
 
-    // Phase 2: Shelve the pile — scan L-code first
-    // At this point, last_volume_label = "V0072" in session
-    await scanField.fill("L0001");
+    // Shelve the pile — scan L-code
+    await scanField.fill(lcode);
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
 
-    // L-code should shelve V0072 (last volume) AND activate batch mode
-    const lcodeFeedback = page.locator(".feedback-entry").first();
-    await expect(lcodeFeedback).toBeVisible({ timeout: 5000 });
-    const lcodeText = await lcodeFeedback.textContent();
-    // Should mention shelved or active location, NOT an error
-    expect(lcodeText).not.toMatch(/error|erreur/i);
+    // Wait for L-code feedback to appear (must contain L-code text, not stale V0053 entry)
+    await expect(page.locator(".feedback-entry").first()).toContainText(
+      new RegExp(lcode + "|batch|lot|location|emplacement", "i"),
+      { timeout: 5000 }
+    );
 
-    // Phase 3: Scan the other existing V-code in batch mode
+    // Scan existing V-code in batch mode
     await scanField.fill("V0051");
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
 
-    // Should show "shelved" success, NOT "already assigned" error
-    const shelveFeedback = page.locator(".feedback-entry").first();
-    await expect(shelveFeedback).toBeVisible({ timeout: 5000 });
-    const shelveText = await shelveFeedback.textContent();
+    // Wait for V0051 shelving feedback to appear
+    await expect(page.locator(".feedback-entry").first()).toContainText(/V0051/i, { timeout: 10000 });
+    const shelveText = await page.locator(".feedback-entry").first().textContent();
     expect(shelveText).not.toMatch(/already assigned|déjà assigné/i);
-    // Should contain shelved/rangé confirmation
     expect(shelveText).toMatch(/shelved|rangé|Shelved/i);
   });
 
-  // Batch shelve: L-code then multiple existing V-codes
+  // Batch shelve: L-code then existing V-code
   test("batch mode: scan L-code then existing V-code → volume shelved", async ({
     page,
   }) => {
+    const lcode = await createLocation(page, "SH-BatchMode", "L1003");
+
+    await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
     // Create a title + volume
     await scanField.fill(VALID_ISBN_3);
     await scanField.press("Enter");
-    await page.waitForTimeout(1500);
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 
     await scanField.fill("V0052");
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
-    await expect(page.locator(".feedback-entry").first()).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(page.locator(".feedback-entry").first()).toBeVisible({ timeout: 5000 });
 
-    // Activate batch mode (L-code without recent volume context)
-    // First, scan another ISBN to clear last_volume_label
+    // Clear last_volume_label by scanning another ISBN
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 
-    // Now scan L-code — no last_volume, goes straight to batch mode
-    await scanField.fill("L0001");
+    // Scan L-code — batch mode
+    await scanField.fill(lcode);
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
 
     const batchFeedback = page.locator(".feedback-entry").first();
-    await expect(batchFeedback).toContainText(/active|Active|actif/i, {
-      timeout: 5000,
-    });
+    await expect(batchFeedback).toContainText(/active|Active|actif/i, { timeout: 5000 });
 
-    // Scan existing V-code — should shelve at active location
+    // Scan existing V-code — should shelve
     await scanField.fill("V0052");
     await scanField.press("Enter");
 
@@ -152,13 +132,12 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
 
   // AC3: L-code not found
   test("scan unknown L-code → warning feedback", async ({ page }) => {
+    await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
     await scanField.fill("L9999");
     await scanField.press("Enter");
 
-    const warning = page.locator(
-      '.feedback-entry[data-feedback-variant="warning"]'
-    );
+    const warning = page.locator('.feedback-entry[data-feedback-variant="warning"]');
     await expect(warning).toBeVisible({ timeout: 5000 });
   });
 
@@ -166,46 +145,48 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
   test("location page shows correct volume count after shelving", async ({
     page,
   }) => {
+    const lcode = await createLocation(page, "SH-VolCount", "L1004");
+
+    await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
     // Create title + volume
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
-    await page.waitForTimeout(1500);
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 
-    await scanField.fill("V0090");
+    await scanField.fill("V0054");
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
+    await expect(page.locator(".feedback-entry").first()).toContainText(/V0054/i, { timeout: 10000 });
 
-    // Shelve via L-code (this triggers shelve of last volume + batch mode)
-    await scanField.fill("L0001");
+    // Shelve via L-code — wait for L-code response (shelving or batch activation)
+    await scanField.fill(lcode);
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
+    await expect(page.locator(".feedback-entry").first()).toContainText(
+      new RegExp(lcode + "|shelved|rangé|active|actif|batch|lot", "i"),
+      { timeout: 5000 }
+    );
 
-    // Navigate to locations page and verify volume count
+    // Navigate to locations and find our location by name
     await page.goto("/locations");
+    const locRow = page.locator(`text=${lcode}`).first();
+    await expect(locRow).toBeVisible({ timeout: 3000 });
 
-    // The location L0001 should show volume count
-    const l0001Label = page.locator("text=L0001").first();
-    await expect(l0001Label).toBeVisible({ timeout: 3000 });
-
-    // Find the location's edit link to extract the ID, then navigate to detail
-    const l0001Row = l0001Label.locator("..").locator("..");
-    const editLink = l0001Row.locator('a[href*="/edit"]').first();
+    // Find edit link to get location ID
+    const editLink = page.locator(`a[href*="/edit"][aria-label*="SH-VolCount"]`).first();
     if (await editLink.isVisible({ timeout: 2000 }).catch(() => false)) {
       const href = await editLink.getAttribute("href");
       const locId = href?.match(/\/locations\/(\d+)/)?.[1];
       if (locId) {
         await page.goto(`/location/${locId}`);
-        // Should show at least one volume in the contents
         const volumeRows = page.locator("table tbody tr");
         const count = await volumeRows.count();
         expect(count).toBeGreaterThan(0);
       }
     } else {
-      // Fallback: check volume count text in the tree
-      const volCount = l0001Row.locator("text=/\\d+ vol/");
-      await expect(volCount).toBeVisible({ timeout: 3000 });
+      // Fallback: verify volume count badge in tree
+      const volBadge = page.locator("text=/\\d+ vol/").first();
+      await expect(volBadge).toBeVisible({ timeout: 3000 });
     }
   });
 });

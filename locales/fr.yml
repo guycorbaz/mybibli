@@ -16,6 +16,7 @@ nav:
   loans: Prêts
   admin: Admin
   locations: Emplacements
+  series: Séries
   borrowers: Emprunteurs
   login: Connexion
   logout: Déconnexion
@@ -88,7 +89,6 @@ contributor:
   duplicate: "%{name} est déjà %{role} sur ce titre."
   updated: Contributeur mis à jour.
   deleted: Contributeur supprimé.
-  delete_blocked: "Suppression impossible : %{name} est associé(e) à %{count} titre(s)."
   removed: Contributeur retiré du titre.
   error:
     name_required: Le nom du contributeur est obligatoire.
@@ -124,6 +124,52 @@ title_detail:
 contributor_detail:
   titles: Titres
   biography: Biographie
+  delete: Supprimer
+  confirm_delete: "Supprimer ce contributeur ?"
+series:
+  list_title: Séries
+  add: Ajouter une série
+  name: Nom
+  description: Description
+  type: Type
+  type_open: Ouverte
+  type_closed: Fermée
+  total_count: Nombre total de volumes
+  owned_count: Possédés
+  gap_count: Manquants
+  edit: Modifier
+  delete: Supprimer
+  confirm_delete: "Supprimer cette série ?"
+  created: "Série créée : %{name}"
+  updated: Série mise à jour.
+  deleted: Série supprimée.
+  empty_state: "Aucune série. Créez-en une pour organiser vos titres !"
+  name_required: Le nom de la série est obligatoire.
+  name_duplicate: "Une série nommée \"%{name}\" existe déjà."
+  total_required_for_closed: Le nombre total de volumes est obligatoire pour une série fermée.
+  total_below_owned: "Le total (%{total}) ne peut pas être inférieur au nombre possédé (%{owned})."
+  detail_title: Détails de la série
+  save: Enregistrer
+  cancel: Annuler
+  back_to_list: Retour aux séries
+  prev: Précédent
+  next: Suivant
+  assign: Ajouter à une série
+  unassign: Retirer de la série
+  position: Position
+  position_taken: "La position %{position} est déjà prise dans cette série."
+  position_invalid: "La position doit être au moins 1."
+  position_exceeds_total: "La position %{position} dépasse le nombre total de volumes (%{total})."
+  assigned: "Assigné à %{series} à la position %{position}."
+  unassigned: "Retiré de la série."
+  missing_volume: "Volume manquant #"
+  ongoing: "en cours, dernier connu : #%{position}"
+  no_assignments: "Non assigné à aucune série."
+  delete_has_titles: "Impossible de supprimer %{name} : %{count} titre(s) assigné(s). Retirez d'abord toutes les assignations."
+  omnibus: Omnibus
+  end_position: Position de fin
+  omnibus_assigned: "Omnibus assigné à %{series} couvrant les positions %{start}-%{end}."
+  select_series: "Sélectionner une série..."
 error:
   internal: Une erreur interne est survenue
   not_found: La ressource demandée est introuvable
@@ -143,6 +189,8 @@ error:
     required: La langue est obligatoire
   conflict: "Cet enregistrement a été modifié par un autre utilisateur. Veuillez recharger et réessayer."
   delete_has_references: "Suppression impossible : l'élément est référencé par des enregistrements actifs."
+  contributor:
+    has_titles: "Impossible de supprimer %{name}. Ce contributeur est associé à %{count} titre(s). Retirez d'abord le contributeur de tous les titres."
   code:
     unsupported_type: Type de code non pris en charge
 guide:
