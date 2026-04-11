@@ -132,8 +132,9 @@ await expect(page.locator("h1")).toContainText(/Active loans|Prêts actifs/i);
 - `tests/e2e/helpers/auth.ts` — `loginAs()` (real browser login), `logout()` (clears cookies)
 - `tests/e2e/helpers/isbn.ts` — `specIsbn(specId, seq)` generates unique valid EAN-13 ISBNs per spec
 - `tests/e2e/helpers/accessibility.ts` — axe-core a11y assertions
+- `tests/e2e/helpers/loans.ts` — `scanTitleAndVolume`, `createBorrower`, `createLoan`, `returnLoanFromLoansPage`. Canonical loan-flow helpers. `createLoan` submits via direct `page.request.post('/loans', ...)` instead of the HTMX form — the HTMX path proved racy under parallel load (story 5-1c) because `waitForURL(/\/loans/)` was a no-op when the form lives on /loans.
 - `tests/e2e/helpers/scanner.ts` — **⚠️ STUB, not functional**. Pre-existing tech debt from Epic 1. Do not rely on it until explicitly reimplemented.
 
 **Session cookie format:** The `DEV_SESSION_COOKIE` value `"ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2"` is base64 of a development session token seeded by `migrations/20260329000002_seed_dev_user.sql`. Cookie name is `session` (NOT `session_token`).
 
-**Known app quirks (non-blocking):** (1) duplicate `#session-counter` IDs in catalog page DOM (mitigated with `.first()` in tests), (2) Google Books provider upgrades cover URLs to HTTPS (mitigated by accepting placeholder SVG in cover-image tests).
+**Known app quirks (non-blocking):** (1) duplicate `#session-counter` IDs in catalog page DOM (mitigated with `.first()` in tests), (2) Google Books provider upgrades cover URLs to HTTPS (mitigated by accepting placeholder SVG in cover-image tests), (3) parallel loan creation can hit MariaDB deadlocks (SQLSTATE 40001) on concurrent `FOR UPDATE` + UPDATE volumes + INSERT loans — `LoanService::register_loan` auto-retries up to 3 times (story 5-1c fix at `src/services/loans.rs`). E2E loan helpers in `tests/e2e/helpers/loans.ts` submit loans via direct POST to avoid HTMX form-swap races.

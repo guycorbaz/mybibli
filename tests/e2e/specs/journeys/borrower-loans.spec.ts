@@ -1,6 +1,11 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import {
+  createBorrower,
+  createLoan,
+  scanTitleAndVolume,
+} from "../../helpers/loans";
 
 const VALID_ISBN = specIsbn("BL", 1);
 
@@ -9,49 +14,32 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
     await loginAs(page);
   });
 
-  // Helper: create borrower and return their detail page URL
-  async function createBorrower(page: any, name: string): Promise<void> {
-    await page.goto("/borrowers");
-    await page.getByText(/Add borrower|Ajouter/i).click();
-    await page.locator("#new-name").fill(name);
-    await page.locator('button[type="submit"]').last().click();
-    await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
-  }
-
-  // Helper: create a loan for a borrower
-  async function createLoanForBorrower(page: any, volumeLabel: string, borrowerName: string) {
-    // Create title + volume
-    await page.goto("/catalog");
-    const scanField = page.locator("#scan-field");
-    await scanField.fill(VALID_ISBN);
-    await scanField.press("Enter");
-    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 10000 });
-    await scanField.fill(volumeLabel);
-    await scanField.press("Enter");
-    // Wait for the specific volume's feedback (not a stale entry from ISBN scan)
-    await expect(page.locator(".feedback-entry").first()).toContainText(
-      new RegExp(volumeLabel, "i"),
-      { timeout: 5000 }
-    );
-
-    // Register loan
-    await page.goto("/loans");
-    await page.getByText(/New loan|Nouveau prêt/i).click();
-    await page.locator("#loan-volume-label").fill(volumeLabel);
-    await page.locator("#loan-borrower-search").fill(borrowerName.substring(0, 8));
-    await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
-    await page.locator("#borrower-dropdown div").first().click();
-    await page.waitForFunction(() => document.getElementById("loan-borrower-id")?.value !== "", { timeout: 3000 });
-    // Submit and navigate: capture borrower_id, remove HTMX, submit as regular POST
-    await page.evaluate(() => {
-      const f = document.getElementById("loan-create-form") as HTMLFormElement;
-      if (!f) throw new Error("loan-create-form not found in DOM");
-      f.removeAttribute("hx-post");
-      f.removeAttribute("hx-target");
-      f.removeAttribute("hx-swap");
-      f.requestSubmit();
+  /**
+   * Return a loan from the borrower detail page (not from /loans).
+   * Registers the dialog handler BEFORE clicking and waits for the row to
+   * disappear from the borrower's active loans section.
+   */
+  async function returnLoanFromBorrowerDetail(
+    page: Page,
+    volumeLabel: string,
+  ): Promise<void> {
+    page.once("dialog", (dialog) => {
+      dialog.accept().catch(() => {});
     });
-    await page.waitForURL(/\/loans/, { timeout: 10000 });
+    // Scope the Return button to the active loans section so loan-history
+    // or other sections on the detail page cannot pick up a stale button.
+    const activeLoans = page.locator("#active-loans-section");
+    const returnBtn = activeLoans
+      .locator('button:has-text("Return"), button:has-text("Retourner")')
+      .first();
+    await expect(returnBtn).toBeVisible({ timeout: 3000 });
+    await returnBtn.click();
+    // Wait for the volume label to disappear from the ACTIVE LOANS section.
+    // Asserting on body would false-fail if the label appears elsewhere
+    // (flash message, loan history, breadcrumbs).
+    await expect(activeLoans).not.toContainText(volumeLabel, {
+      timeout: 10000,
+    });
   }
 
   // AC1: Borrower detail shows active loans section
@@ -60,111 +48,99 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
 
     // Navigate to borrower detail
     await page.getByText("BL-Detail Borrower").click();
-    await expect(page.locator("h1")).toContainText("BL-Detail Borrower", { timeout: 3000 });
+    await expect(page.locator("h1")).toContainText("BL-Detail Borrower", {
+      timeout: 3000,
+    });
 
     // Active loans section should be visible (with empty state)
     await expect(page.locator("body")).toContainText(
       /Active loans|Prêts actifs/i,
-      { timeout: 3000 }
+      { timeout: 3000 },
     );
     await expect(page.locator("body")).toContainText(
       /no active loans|aucun prêt actif/i,
-      { timeout: 3000 }
+      { timeout: 3000 },
     );
   });
 
   // AC2: Loan details shown on borrower page
   test("borrower with loan shows loan details", async ({ page }) => {
     await createBorrower(page, "BL-Loan Detail Borrower");
-    await createLoanForBorrower(page, "V0080", "BL-Loan D");
+    await scanTitleAndVolume(page, VALID_ISBN, "V0080");
+    await createLoan(page, "V0080", "BL-Loan Detail Borrower");
 
     // Navigate to borrower detail
     await page.goto("/borrowers");
     await page.getByText("BL-Loan Detail Borrower").click();
-    await expect(page.locator("h1")).toContainText("BL-Loan Detail Borrower", { timeout: 3000 });
+    await expect(page.locator("h1")).toContainText("BL-Loan Detail Borrower", {
+      timeout: 3000,
+    });
 
     // Should show the loan with volume label and title
     await expect(page.locator("body")).toContainText("V0080", { timeout: 5000 });
 
     // Should show Return button
-    const returnBtn = page.locator('button:has-text("Return"), button:has-text("Retourner")');
+    const returnBtn = page.locator(
+      'button:has-text("Return"), button:has-text("Retourner")',
+    );
     await expect(returnBtn.first()).toBeVisible({ timeout: 3000 });
   });
 
   // AC3: Return loan from borrower detail
   test("return loan from borrower detail → loan disappears", async ({ page }) => {
     await createBorrower(page, "BL-Return Detail Borrower");
-    await createLoanForBorrower(page, "V0081", "BL-Return");
+    await scanTitleAndVolume(page, VALID_ISBN, "V0081");
+    await createLoan(page, "V0081", "BL-Return Detail Borrower");
 
     // Navigate to borrower detail
     await page.goto("/borrowers");
     await page.getByText("BL-Return Detail Borrower").click();
-    await expect(page.locator("body")).toContainText("V0081", { timeout: 5000 });
+    await expect(page.locator("#active-loans-section")).toContainText("V0081", {
+      timeout: 5000,
+    });
 
-    // Click Return
-    page.on("dialog", (dialog) => dialog.accept());
-    const returnBtn = page.locator('button:has-text("Return"), button:has-text("Retourner")').first();
-    await returnBtn.click();
+    // Return via the canonical helper
+    await returnLoanFromBorrowerDetail(page, "V0081");
 
-    // Wait for reload
-    await page.waitForTimeout(2000);
+    // Reload the borrower detail page and verify the empty state
     await page.reload();
-
-    // Loan should be gone, empty state shown
-    await expect(page.locator("body")).not.toContainText("V0081", { timeout: 5000 });
-    await expect(page.locator("body")).toContainText(
+    const activeLoans = page.locator("#active-loans-section");
+    await expect(activeLoans).not.toContainText("V0081", { timeout: 5000 });
+    await expect(activeLoans).toContainText(
       /no active loans|aucun prêt actif/i,
-      { timeout: 3000 }
+      { timeout: 3000 },
     );
   });
 
   // Smoke test: full lifecycle
-  test("smoke: login → create borrower → lend → detail → return → verify", async ({ context, page }) => {
+  test("smoke: login → create borrower → lend → detail → return → verify", async ({
+    context,
+    page,
+  }) => {
     await context.clearCookies();
 
     // Real login via shared helper (Foundation Rule #7)
     await loginAs(page);
 
-    // Create borrower
-    await page.goto("/borrowers");
-    await page.getByText(/Add borrower|Ajouter/i).click();
-    await page.locator("#new-name").fill("BL-Smoke Detail Borrower");
-    await page.locator('button[type="submit"]').last().click();
-    await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
-
-    // Create title + volume + loan
-    await page.goto("/catalog");
-    const scanField = page.locator("#scan-field");
-    await scanField.fill(VALID_ISBN);
-    await scanField.press("Enter");
-    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 10000 });
-    await scanField.fill("V0082");
-    await scanField.press("Enter");
-    await expect(page.locator(".feedback-entry").first()).toContainText(/V0082/i, { timeout: 10000 });
-
-    await page.goto("/loans");
-    await page.getByText(/New loan|Nouveau prêt/i).click();
-    await page.locator("#loan-volume-label").fill("V0082");
-    await page.locator("#loan-borrower-search").fill("BL-Smoke");
-    await page.waitForSelector("#borrower-dropdown div", { timeout: 5000 });
-    await page.locator("#borrower-dropdown div").first().click();
-    await page.waitForFunction(() => document.getElementById("loan-borrower-id")?.value !== "", { timeout: 3000 });
-    await page.locator('button[type="submit"]').last().click();
-    await page.waitForTimeout(1000);
+    // Create borrower + title + volume + loan
+    await createBorrower(page, "BL-Smoke Detail Borrower");
+    await scanTitleAndVolume(page, VALID_ISBN, "V0082");
+    await createLoan(page, "V0082", "BL-Smoke Detail Borrower");
 
     // Navigate to borrower detail — should see loan
     await page.goto("/borrowers");
     await page.getByText("BL-Smoke Detail Borrower").click();
-    await expect(page.locator("body")).toContainText("V0082", { timeout: 5000 });
+    const activeLoans = page.locator("#active-loans-section");
+    await expect(activeLoans).toContainText("V0082", { timeout: 5000 });
 
     // Return from detail page
-    page.on("dialog", (dialog) => dialog.accept());
-    const returnBtn = page.locator('button:has-text("Return"), button:has-text("Retourner")').first();
-    await returnBtn.click();
-    await page.waitForTimeout(2000);
-    await page.reload();
+    await returnLoanFromBorrowerDetail(page, "V0082");
 
-    // Verify loan is gone
-    await expect(page.locator("body")).not.toContainText("V0082", { timeout: 5000 });
+    // Reload and verify
+    await page.reload();
+    await expect(page.locator("#active-loans-section")).not.toContainText(
+      "V0082",
+      { timeout: 5000 },
+    );
   });
 });

@@ -152,3 +152,17 @@
 - Unknown `media_type` values render a broken icon 404 via `cover.html` — same bug on home page; fix belongs to the cover macro itself.
 - E2E spec leaks `ST Shared Author 2026` / `ST Anon Author 2026` contributor rows on repeated local runs (no afterEach cleanup) — shared-DB accretion is a suite-wide pattern.
 - E2E `selectOption({ index: 1 })` for contributor role is ordering-sensitive — same pattern used in `catalog-contributor.spec.ts`; fix should be suite-wide.
+
+## Deferred from: code review of 5-1c-epic-4-loan-spec-parallel-flakes (2026-04-11)
+
+- `LoanService::register_loan` retry loop has no terminal "exhausted retries" error log — per-attempt `tracing::warn!` is emitted but the final return on `Err(e)` does not distinguish exhaustion from a non-deadlock error. Observability enhancement only; not urgent since log count reconstructs the history.
+- `tests/e2e/helpers/loans.ts:returnLoanFromLoansPage` — `page.once("dialog", ...)` is not awaited nor verified. If the `/loans` template ever drops the `confirm()` prompt, the click proceeds silently and the helper still passes. Implicit contract; no current regression.
+- No deterministic E2E test injects a synthetic MariaDB deadlock to exercise `is_deadlock_error` + `register_loan` retry path. Probabilistic coverage from parallel runs is acceptable for now; a dedicated concurrency harness would require a DB-level fault injection layer.
+- `createLoan` helper in `tests/e2e/helpers/loans.ts` throws `Failed to create loan …` on any non-2xx response instead of surfacing the feedback body for assertions. No current caller uses it for the negative path (the double-loan spec uses the HTMX form directly), but this is an implicit contract to watch when the helper gets reused.
+
+## Deferred from: code review pass 2 of 5-1c-epic-4-loan-spec-parallel-flakes (2026-04-11)
+
+- `getBorrowerIdByName` helper in `tests/e2e/helpers/loans.ts` fails once active borrower count exceeds `/borrowers` default page size (25). `BorrowerModel::list_active` renders page 1 only. Currently ~12 borrowers per full E2E run and no `afterEach` cleanup, so accumulated data will breach the threshold. Pre-existing limitation — the old `.first().getAttribute("href")` had the same blindspot. Fix likely requires a borrower-search helper or a paginated walk.
+- `LoanService::register_loan` retry log trail is misleading when a concurrent soft-delete between attempts flips the second attempt into a `BadRequest` — logs show `warn!("retrying")` immediately followed by a business-rule error, implying the retry caused the error. Observability debt; carry `attempt` / `prior_transient` through the tracing span on final error.
+- `LoanService::register_loan` retry loop does NOT retry `sqlx::Error::PoolTimedOut` — by design (retrying on pool exhaustion could worsen contention), but the CLAUDE.md "auto-retries" phrasing is broader than the actual behavior. Defer doc refinement.
+- `returnLoanFromBorrowerDetail` helper in `borrower-loans.spec.ts` asserts row disappearance in `#active-loans-section`, which assumes the loan-return HTMX handler swaps that section. Current specs add `page.reload()` after so the risk is masked. Future reusers who skip the reload will hit a false flake if the handler's OOB targets diverge. Verify return handler targets.
