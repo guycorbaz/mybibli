@@ -321,6 +321,204 @@ impl TitleModel {
             .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
             .unwrap_or_default()
     }
+
+    /// Find up to 8 related titles for a title detail page.
+    /// Priority: same series (1) > same contributor (2) > same genre+decade (3).
+    /// Deduplicated across criteria (keeps lowest priority number per title).
+    /// Returns an empty Vec when no criterion yields candidates — the caller
+    /// must render nothing in that case (FR114 / UX-DR30: section entirely absent).
+    pub async fn find_similar(pool: &DbPool, title_id: u64) -> Result<Vec<SimilarTitle>, AppError> {
+        // Load the anchor title to extract the match criteria
+        let anchor = match TitleModel::find_by_id(pool, title_id).await? {
+            Some(t) => t,
+            None => return Ok(Vec::new()),
+        };
+
+        // Collect series_ids this title belongs to. LIMIT 20 caps worst-case
+        // placeholder expansion on anthologies or omnibus collections.
+        let series_ids: Vec<u64> = sqlx::query(
+            "SELECT DISTINCT ts.series_id FROM title_series ts \
+             JOIN series s ON ts.series_id = s.id AND s.deleted_at IS NULL \
+             WHERE ts.title_id = ? AND ts.deleted_at IS NULL \
+             LIMIT 20",
+        )
+        .bind(title_id)
+        .fetch_all(pool)
+        .await?
+        .iter()
+        .map(|r| r.try_get::<u64, _>("series_id"))
+        .collect::<Result<Vec<_>, _>>()?;
+
+        // Collect contributor_ids for this title. LIMIT 20 bounds the IN(...)
+        // clause on titles with many contributors (translator + editor + many authors).
+        let contributor_ids: Vec<u64> = sqlx::query(
+            "SELECT DISTINCT tc.contributor_id FROM title_contributors tc \
+             JOIN contributors c ON tc.contributor_id = c.id AND c.deleted_at IS NULL \
+             WHERE tc.title_id = ? AND tc.deleted_at IS NULL \
+             LIMIT 20",
+        )
+        .bind(title_id)
+        .fetch_all(pool)
+        .await?
+        .iter()
+        .map(|r| r.try_get::<u64, _>("contributor_id"))
+        .collect::<Result<Vec<_>, _>>()?;
+
+        // Decade bounds from publication year (inclusive)
+        let decade_bounds: Option<(i32, i32)> = anchor.publication_date.map(decade_bounds_for_date);
+
+        // Early return: no criteria → empty result, no query issued
+        if series_ids.is_empty() && contributor_ids.is_empty() && decade_bounds.is_none() {
+            return Ok(Vec::new());
+        }
+
+        // Build UNION ALL arms dynamically
+        let mut arms: Vec<String> = Vec::new();
+        let mut binds: Vec<BindVal> = Vec::new();
+
+        // MariaDB requires parentheses around each UNION branch that contains
+        // ORDER BY / LIMIT, so every arm is wrapped in (...).
+        if !series_ids.is_empty() {
+            let placeholders = vec!["?"; series_ids.len()].join(", ");
+            arms.push(format!(
+                "(SELECT DISTINCT t.id, t.title, t.media_type, t.cover_image_url, 1 AS priority \
+                 FROM titles t \
+                 JOIN title_series ts ON ts.title_id = t.id AND ts.deleted_at IS NULL \
+                 JOIN series s ON ts.series_id = s.id AND s.deleted_at IS NULL \
+                 WHERE ts.series_id IN ({placeholders}) AND t.id <> ? AND t.deleted_at IS NULL \
+                 ORDER BY t.id ASC LIMIT 16)"
+            ));
+            for sid in &series_ids {
+                binds.push(BindVal::U64(*sid));
+            }
+            binds.push(BindVal::U64(title_id));
+        }
+
+        if !contributor_ids.is_empty() {
+            let placeholders = vec!["?"; contributor_ids.len()].join(", ");
+            arms.push(format!(
+                "(SELECT DISTINCT t.id, t.title, t.media_type, t.cover_image_url, 2 AS priority \
+                 FROM titles t \
+                 JOIN title_contributors tc ON tc.title_id = t.id AND tc.deleted_at IS NULL \
+                 JOIN contributors c ON c.id = tc.contributor_id AND c.deleted_at IS NULL \
+                 WHERE tc.contributor_id IN ({placeholders}) AND t.id <> ? AND t.deleted_at IS NULL \
+                 ORDER BY t.id ASC LIMIT 16)"
+            ));
+            for cid in &contributor_ids {
+                binds.push(BindVal::U64(*cid));
+            }
+            binds.push(BindVal::U64(title_id));
+        }
+
+        if let Some((start, end)) = decade_bounds {
+            arms.push(
+                "(SELECT t.id, t.title, t.media_type, t.cover_image_url, 3 AS priority \
+                 FROM titles t \
+                 WHERE t.genre_id = ? \
+                   AND t.publication_date IS NOT NULL \
+                   AND YEAR(t.publication_date) BETWEEN ? AND ? \
+                   AND t.id <> ? \
+                   AND t.deleted_at IS NULL \
+                 ORDER BY t.id ASC LIMIT 16)"
+                    .to_string(),
+            );
+            binds.push(BindVal::U64(anchor.genre_id));
+            binds.push(BindVal::I32(start));
+            binds.push(BindVal::I32(end));
+            binds.push(BindVal::U64(title_id));
+        }
+
+        // Safety: arms is non-empty because at least one criterion is present (checked above)
+        let union_sql = arms.join(" UNION ALL ");
+
+        // Outer SELECT: dedup via GROUP BY + MIN(priority), attach primary contributor,
+        // then order by priority ASC, id ASC and take top 8.
+        //
+        // CAST(u.id AS SIGNED) because MariaDB propagates BIGINT UNSIGNED from the inner
+        // titles.id, and SQLx cannot decode BIGINT UNSIGNED into Rust integers (see
+        // CLAUDE.md — MariaDB type gotchas). Read as i64, convert to u64 on the Rust side.
+        let full_sql = format!(
+            "SELECT CAST(u.id AS SIGNED) AS id, u.title, u.media_type, u.cover_image_url, \
+             MIN(u.priority) AS priority, \
+             (SELECT c.name FROM title_contributors tc \
+              JOIN contributors c ON tc.contributor_id = c.id AND c.deleted_at IS NULL \
+              JOIN contributor_roles cr ON tc.role_id = cr.id AND cr.deleted_at IS NULL \
+              WHERE tc.title_id = u.id AND tc.deleted_at IS NULL \
+              ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC \
+              LIMIT 1) AS primary_contributor \
+             FROM ({union_sql}) AS u \
+             GROUP BY u.id, u.title, u.media_type, u.cover_image_url \
+             ORDER BY priority ASC, id ASC \
+             LIMIT 8"
+        );
+
+        let mut query = sqlx::query(&full_sql);
+        for b in &binds {
+            query = match b {
+                BindVal::U64(v) => query.bind(v),
+                BindVal::I32(v) => query.bind(v),
+            };
+        }
+
+        let rows = query.fetch_all(pool).await?;
+
+        let mut items: Vec<SimilarTitle> = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let id: i64 = row.try_get::<i64, _>("id")?;
+            let priority_raw: i64 = row.try_get::<i64, _>("priority")?;
+            // Explicit range check — silently clamping masks backend bugs
+            // if a new arm ever yields an unexpected priority.
+            let priority: u8 = match priority_raw {
+                1..=3 => priority_raw as u8,
+                other => {
+                    return Err(AppError::Internal(format!(
+                        "find_similar: unexpected priority value {other} (expected 1..=3)"
+                    )))
+                }
+            };
+            items.push(SimilarTitle {
+                id: id as u64,
+                title: row.try_get::<String, _>("title")?,
+                media_type: row.try_get::<String, _>("media_type")?,
+                cover_image_url: row.try_get::<Option<String>, _>("cover_image_url")?,
+                primary_contributor: row.try_get::<Option<String>, _>("primary_contributor")?,
+                priority,
+            });
+        }
+
+        Ok(items)
+    }
+}
+
+/// Compact row for the "Similar titles" section on /title/{id}.
+/// Lean deliberately — no subtitle, no year, no volume count (UX-DR30 §24 anatomy).
+#[derive(Debug, Clone)]
+pub struct SimilarTitle {
+    pub id: u64,
+    pub title: String,
+    pub media_type: String,
+    pub cover_image_url: Option<String>,
+    pub primary_contributor: Option<String>,
+    /// 1 = same series, 2 = same contributor, 3 = same genre+decade.
+    pub priority: u8,
+}
+
+/// Internal bind accumulator for the dynamic UNION in find_similar.
+enum BindVal {
+    U64(u64),
+    I32(i32),
+}
+
+/// Compute the inclusive decade bounds for a publication date.
+///
+/// A "decade" is a 10-year span starting on a multiple of 10: e.g., 1957 → (1950, 1959),
+/// 2020 → (2020, 2029), 2000 → (2000, 2009). Used by `find_similar` for the
+/// genre+decade matching criterion (FR114).
+pub fn decade_bounds_for_date(date: chrono::NaiveDate) -> (i32, i32) {
+    use chrono::Datelike;
+    let year = date.year();
+    let start = year - year.rem_euclid(10);
+    (start, start + 9)
 }
 
 /// Detect which metadata fields differ between an existing title and new form values.
@@ -617,6 +815,56 @@ mod tests {
         assert_eq!(map_sort_to_column("genre_name"), "g.name");
         assert_eq!(map_sort_to_column("volume_count"), "volume_count");
         assert_eq!(map_sort_to_column("unknown"), "t.title");
+    }
+
+    // ─── Similar titles — decade bounds (pure function) ────────────────
+    // The decade computation is the only non-SQL-bound logic in find_similar.
+    // DB-backed tests for the full query live in E2E (no Rust integration test
+    // infrastructure in this project).
+
+    #[test]
+    fn test_decade_bounds_start_of_decade() {
+        let d = chrono::NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
+        assert_eq!(decade_bounds_for_date(d), (2020, 2029));
+    }
+
+    #[test]
+    fn test_decade_bounds_middle_of_decade() {
+        let d = chrono::NaiveDate::from_ymd_opt(1957, 6, 19).unwrap();
+        assert_eq!(decade_bounds_for_date(d), (1950, 1959));
+    }
+
+    #[test]
+    fn test_decade_bounds_end_of_decade() {
+        let d = chrono::NaiveDate::from_ymd_opt(1999, 12, 31).unwrap();
+        assert_eq!(decade_bounds_for_date(d), (1990, 1999));
+    }
+
+    #[test]
+    fn test_decade_bounds_year_2000() {
+        let d = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
+        assert_eq!(decade_bounds_for_date(d), (2000, 2009));
+    }
+
+    #[test]
+    fn test_decade_bounds_year_1900() {
+        let d = chrono::NaiveDate::from_ymd_opt(1900, 7, 4).unwrap();
+        assert_eq!(decade_bounds_for_date(d), (1900, 1909));
+    }
+
+    #[test]
+    fn test_similar_title_struct_construction() {
+        let st = SimilarTitle {
+            id: 42,
+            title: "La Peste".to_string(),
+            media_type: "book".to_string(),
+            cover_image_url: Some("https://example.com/cover.jpg".to_string()),
+            primary_contributor: Some("Albert Camus".to_string()),
+            priority: 2,
+        };
+        assert_eq!(st.id, 42);
+        assert_eq!(st.priority, 2);
+        assert_eq!(st.primary_contributor.as_deref(), Some("Albert Camus"));
     }
 
     #[test]

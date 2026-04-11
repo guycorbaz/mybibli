@@ -1,0 +1,21 @@
+services:
+  rust-test-db:
+    image: mariadb:10.11
+    container_name: mybibli-rust-test-db
+    ports:
+      - "3307:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: root_test
+      MARIADB_DATABASE: mybibli_rust_test
+      MARIADB_USER: test
+      MARIADB_PASSWORD: test
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 3s
+      timeout: 3s
+      retries: 20

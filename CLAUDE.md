@@ -15,6 +15,11 @@ cargo test                           # Run all unit tests
 cargo test config::                  # Run tests in a specific module
 cargo test test_name -- --nocapture  # Run single test with output
 
+# DB-backed integration tests (tests/find_similar.rs uses #[sqlx::test])
+docker compose -f tests/docker-compose.rust-test.yml up -d  # Starts dedicated MariaDB on port 3307
+SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
+    cargo test --test find_similar   # Each test gets a fresh DB via #[sqlx::test(migrations = "./migrations")]
+
 # E2E tests (requires running app + MariaDB)
 cd tests/e2e && npm test             # Run all Playwright E2E tests
 cd tests/e2e && npx playwright test specs/journeys/catalog-title.spec.ts  # Single spec

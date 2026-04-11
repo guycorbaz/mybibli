@@ -1,5 +1,6 @@
 {% extends "layouts/base.html" %}
 {% import "components/cover.html" as cover %}
+{% import "components/similar_titles.html" as similar %}
 
 {% block title %}{{ title.title }} — mybibli{% endblock %}
 
@@ -147,6 +148,7 @@
             </div>
         </div>
     </div>
+    {% call similar::similar_titles(similar_titles, label_similar_titles, label_no_cover) %}{% endcall %}
     <div id="title-feedback" class="mt-4"></div>
 </div>
 {% endblock %}

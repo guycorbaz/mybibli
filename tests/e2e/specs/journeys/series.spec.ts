@@ -131,10 +131,10 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
     // Step 3: Find title 1 via home search — navigate with query param
     // The title is created during scan, so it should be searchable immediately
     await page.goto(`/?q=${specIsbn("SE", 10)}`);
-    const title1Row = page.locator("tr[hx-get^='/title/']").first();
-    await expect(title1Row).toBeVisible({ timeout: 15000 });
-    const title1HxGet = (await title1Row.getAttribute("hx-get"))!;
-    await page.goto(title1HxGet);
+    const title1Link = page.locator("a[href^='/title/']").first();
+    await expect(title1Link).toBeVisible({ timeout: 15000 });
+    const title1Href = (await title1Link.getAttribute("href"))!;
+    await page.goto(title1Href);
     await page.waitForURL(/\/title\/\d+/);
     const title1Url = page.url();
 
@@ -151,10 +151,10 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
 
     // Step 4: Find title 2 via home search and navigate to detail
     await page.goto(`/?q=${specIsbn("SE", 11)}`);
-    const title2Row = page.locator("[hx-get^='/title/']").first();
-    await expect(title2Row).toBeVisible({ timeout: 10000 });
-    const title2HxGet = (await title2Row.getAttribute("hx-get"))!;
-    await page.goto(title2HxGet);
+    const title2Link = page.locator("a[href^='/title/']").first();
+    await expect(title2Link).toBeVisible({ timeout: 10000 });
+    const title2Href = (await title2Link.getAttribute("href"))!;
+    await page.goto(title2Href);
     await page.waitForURL(/\/title\/\d+/);
 
     // Assign title 2 at position 3
@@ -208,10 +208,10 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
 
     // Find the title via home search
     await page.goto(`/?q=${ISBN}`);
-    const titleRow = page.locator("[hx-get^='/title/']").first();
-    await expect(titleRow).toBeVisible({ timeout: 10000 });
-    const titleHxGet = (await titleRow.getAttribute("hx-get"))!;
-    await page.goto(titleHxGet);
+    const titleLink = page.locator("a[href^='/title/']").first();
+    await expect(titleLink).toBeVisible({ timeout: 10000 });
+    const titleHref = (await titleLink.getAttribute("href"))!;
+    await page.goto(titleHref);
     await page.waitForURL(/\/title\/\d+/);
 
     // Assign to series at position 2
@@ -253,10 +253,10 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
 
     // Find title via home search
     await page.goto(`/?q=${specIsbn("SE", 20)}`);
-    const titleRow = page.locator("[hx-get^='/title/']").first();
-    await expect(titleRow).toBeVisible({ timeout: 10000 });
-    const titleHxGet = (await titleRow.getAttribute("hx-get"))!;
-    await page.goto(titleHxGet);
+    const titleLink = page.locator("a[href^='/title/']").first();
+    await expect(titleLink).toBeVisible({ timeout: 10000 });
+    const titleHref = (await titleLink.getAttribute("href"))!;
+    await page.goto(titleHref);
     await page.waitForURL(/\/title\/\d+/);
 
     // Assign as omnibus positions 3-5

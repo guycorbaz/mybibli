@@ -14,7 +14,7 @@ use crate::middleware::htmx::HxRequest;
 use crate::models::contributor::TitleContributorModel;
 use crate::models::genre::GenreModel;
 use crate::models::series::{SeriesModel, TitleSeriesAssignment};
-use crate::models::title::{detect_edited_fields, TitleModel};
+use crate::models::title::{detect_edited_fields, SimilarTitle, TitleModel};
 use crate::models::volume::VolumeModel;
 use crate::routes::catalog::feedback_html_pub;
 use crate::services::cover::CoverService;
@@ -58,6 +58,8 @@ pub struct TitleDetailTemplate {
     pub label_select_series: String,
     pub label_omnibus: String,
     pub label_end_position: String,
+    pub similar_titles: Vec<SimilarTitle>,
+    pub label_similar_titles: String,
 }
 
 pub async fn title_detail(
@@ -83,6 +85,7 @@ pub async fn title_detail(
         let html = title_detail_fragment(&title, &genre_name, volume_count, &contributors, &session, has_code);
         Ok(Html(html).into_response())
     } else {
+        let similar_titles = TitleModel::find_similar(pool, title.id).await?;
         let template = TitleDetailTemplate {
             lang: rust_i18n::locale().to_string(),
             role: session.role.to_string(),
@@ -116,6 +119,8 @@ pub async fn title_detail(
             label_select_series: rust_i18n::t!("series.select_series").to_string(),
             label_omnibus: rust_i18n::t!("series.omnibus").to_string(),
             label_end_position: rust_i18n::t!("series.end_position").to_string(),
+            similar_titles,
+            label_similar_titles: rust_i18n::t!("title_detail.similar_titles").to_string(),
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),
@@ -978,9 +983,113 @@ mod tests {
             label_select_series: "Select a series...".to_string(),
             label_omnibus: "Omnibus".to_string(),
             label_end_position: "End position".to_string(),
+            similar_titles: vec![],
+            label_similar_titles: "Similar titles".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(rendered.contains("tranger"), "Expected title to appear in rendered output");
+        // AC #3: empty similar_titles list → no <section> and no heading in output
+        assert!(
+            !rendered.contains("Similar titles"),
+            "Expected empty similar_titles to render NO section heading"
+        );
+        assert!(
+            !rendered.contains("aria-label=\"Similar titles\""),
+            "Expected empty similar_titles to render NO <section> element"
+        );
+    }
+
+    #[test]
+    fn test_title_detail_template_renders_similar_titles_section() {
+        // AC #1, #9: non-empty similar_titles list → section with aria-label is present
+        let title = TitleModel {
+            id: 1,
+            title: "L'Étranger".to_string(),
+            subtitle: None,
+            description: None,
+            language: "fr".to_string(),
+            media_type: "book".to_string(),
+            publication_date: None,
+            publisher: None,
+            isbn: None,
+            issn: None,
+            upc: None,
+            cover_image_url: None,
+            genre_id: 1,
+            dewey_code: None,
+            page_count: None,
+            track_count: None,
+            total_duration: None,
+            age_rating: None,
+            issue_number: None,
+            manually_edited_fields: None,
+            version: 1,
+        };
+        let similar = vec![
+            SimilarTitle {
+                id: 42,
+                title: "La Peste".to_string(),
+                media_type: "book".to_string(),
+                cover_image_url: None,
+                primary_contributor: Some("Albert Camus".to_string()),
+                priority: 2,
+            },
+            SimilarTitle {
+                id: 43,
+                title: "La Chute".to_string(),
+                media_type: "book".to_string(),
+                cover_image_url: None,
+                primary_contributor: Some("Albert Camus".to_string()),
+                priority: 2,
+            },
+        ];
+        let template = TitleDetailTemplate {
+            lang: "en".to_string(),
+            role: "anonymous".to_string(),
+            current_page: "title",
+            skip_label: "Skip".to_string(),
+            nav_catalog: "Catalog".to_string(),
+            nav_loans: "Loans".to_string(),
+            nav_locations: "Locations".to_string(),
+            nav_series: "Series".to_string(),
+            nav_borrowers: "Borrowers".to_string(),
+            nav_admin: "Admin".to_string(),
+            nav_login: "Log in".to_string(),
+            nav_logout: "Log out".to_string(),
+            title,
+            genre_name: "Roman".to_string(),
+            volume_count: 1,
+            contributors: vec![],
+            label_contributors: "Contributors".to_string(),
+            label_vol: "Volumes".to_string(),
+            label_no_cover: "No cover available".to_string(),
+            label_edit: "Edit metadata".to_string(),
+            label_redownload: "Re-download".to_string(),
+            has_code: false,
+            series_assignments: vec![],
+            all_series: vec![],
+            label_series: "Series".to_string(),
+            label_assign: "Add to series".to_string(),
+            label_position: "Position".to_string(),
+            label_unassign: "Remove".to_string(),
+            label_no_series: "Not assigned".to_string(),
+            label_select_series: "Select a series...".to_string(),
+            label_omnibus: "Omnibus".to_string(),
+            label_end_position: "End position".to_string(),
+            similar_titles: similar,
+            label_similar_titles: "Similar titles".to_string(),
+        };
+        let rendered = template.render().unwrap();
+        assert!(
+            rendered.contains("aria-label=\"Similar titles\""),
+            "Expected <section aria-label=\"Similar titles\"> in rendered output"
+        );
+        assert!(rendered.contains("La Peste"), "Expected similar title name");
+        assert!(rendered.contains("La Chute"), "Expected similar title name");
+        assert!(
+            rendered.contains("/title/42") && rendered.contains("/title/43"),
+            "Expected links to similar titles"
+        );
     }
 
     #[test]

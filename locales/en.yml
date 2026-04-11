@@ -126,6 +126,7 @@ title_detail:
   genre: Genre
   publisher: Publisher
   published: Published
+  similar_titles: Similar titles
 contributor_detail:
   titles: Titles
   biography: Biography

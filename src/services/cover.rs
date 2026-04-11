@@ -179,7 +179,7 @@ mod tests {
         let bad_bytes = b"this is not an image";
         let result = ImageReader::new(Cursor::new(bad_bytes))
             .with_guessed_format()
-            .and_then(|reader| Ok(reader.decode()));
+            .map(|reader| reader.decode());
 
         // Should fail at decode
         match result {

@@ -144,3 +144,11 @@
 
 - Non-existent series_id/title_id not validated in assign handler — FK constraint returns DB error instead of user-friendly 404. UX improvement only.
 - Assignments beyond total_volume_count invisible after total reduction — edge case when total is lowered below existing assignments. Low priority.
+
+## Deferred from: code review of 5-7-similar-titles-section (2026-04-10)
+
+- `primary_contributor` subquery hardcodes the French role name `'Auteur'` — pre-existing pattern in `active_search` (src/models/title.rs:506-511). Fix should span both sites in a dedicated story.
+- Arm 3 of `find_similar` matches `anchor.genre_id` without excluding a potential "Unknown" sentinel — system-wide issue, not introduced by story 5-7.
+- Unknown `media_type` values render a broken icon 404 via `cover.html` — same bug on home page; fix belongs to the cover macro itself.
+- E2E spec leaks `ST Shared Author 2026` / `ST Anon Author 2026` contributor rows on repeated local runs (no afterEach cleanup) — shared-DB accretion is a suite-wide pattern.
+- E2E `selectOption({ index: 1 })` for contributor role is ordering-sensitive — same pattern used in `catalog-contributor.spec.ts`; fix should be suite-wide.
