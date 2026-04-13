@@ -153,4 +153,6 @@ v1 release will ship after Epic 8. See [`epics.md`](_bmad-output/planning-artifa
 
 ## License
 
-Not yet licensed — all rights reserved. A permissive license will be added before v1 release.
+Licensed under the **GNU Affero General Public License v3.0 or later** (AGPL-3.0-or-later). See [`LICENSE`](LICENSE) for the full text.
+
+AGPL was chosen deliberately to keep mybibli and any fork freely modifiable by end users, including forks that are hosted as a service: if you run a modified version, you must offer the corresponding source to your users.
