@@ -1,4 +1,4 @@
-name: Build & Test
+name: CI
 
 on:
   push:
@@ -6,42 +6,64 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  CARGO_TERM_COLOR: always
-  SQLX_OFFLINE: "true"
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: Build & Test
-    runs-on: ubuntu-latest
+  rust-tests:
+    name: rust-tests
+    uses: ./.github/workflows/_gates.yml
 
+  db-integration:
+    name: db-integration
+    uses: ./.github/workflows/_gates.yml
+
+  e2e:
+    name: e2e
+    uses: ./.github/workflows/_gates.yml
+
+  docker-publish:
+    name: Docker Hub publish (main)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [rust-tests, db-integration, e2e]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
         with:
-          components: clippy
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Cache cargo dependencies
-        uses: actions/cache@v4
+      - name: Extract metadata (tags)
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          images: guycorbaz/mybibli
+          tags: |
+            type=sha,format=short,prefix=main-
 
-      - name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features mysql,rustls
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Run tests
-        run: cargo test
-
-      - name: Run clippy
-        run: cargo clippy -- -D warnings
-
-      - name: Check SQLx offline metadata
-        run: cargo sqlx prepare --check
+      - name: Summary
+        run: echo "Pushed ${{ steps.meta.outputs.tags }}"

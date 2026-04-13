@@ -1,5 +1,7 @@
 # mybibli
 
+![CI](https://github.com/guycorbaz/mybibli/actions/workflows/ci.yml/badge.svg?branch=main)
+
 > Personal library cataloging for home collectors.
 
 **Status:** active development — pre-v1 (current version: `0.1.0`). First release targeted after Epic 8 (admin page) lands.
@@ -133,7 +135,7 @@ Product and planning documents are versioned under `_bmad-output/`:
 - [`implementation-artifacts/sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) — live sprint state
 - [`implementation-artifacts/epic-*-retro-*.md`](_bmad-output/implementation-artifacts/) — per-epic retrospectives
 
-Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](CLAUDE.md).
+Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](CLAUDE.md). CI/CD pipeline, Docker Hub publishing, and release procedure are documented in [`docs/ci-cd.md`](docs/ci-cd.md).
 
 ## Roadmap
 
