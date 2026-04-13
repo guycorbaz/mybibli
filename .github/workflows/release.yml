@@ -60,7 +60,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: guycorbaz/mybibli
+          images: gcorbaz/mybibli
           tags: |
             type=raw,value=${{ needs.verify-version.outputs.version }}
             type=raw,value=latest

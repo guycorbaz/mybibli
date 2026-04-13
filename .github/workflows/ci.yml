@@ -42,7 +42,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: guycorbaz/mybibli
+          images: gcorbaz/mybibli
           tags: |
             type=sha,format=short,prefix=main-
 

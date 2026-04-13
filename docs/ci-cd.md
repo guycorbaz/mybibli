@@ -16,8 +16,8 @@ The three gates are exposed as a reusable workflow at `.github/workflows/_gates.
 
 After the gates pass:
 
-- **On push to `main`** — `ci.yml` runs a 4th job `docker-publish` that builds the root `Dockerfile` and pushes `guycorbaz/mybibli:main-<sha7>` to Docker Hub.
-- **On `v*.*.*` tag push** — `release.yml` runs `verify-version` (Cargo.toml vs. tag), re-runs the 3 gates, then `publish` pushes `guycorbaz/mybibli:<semver>` and `guycorbaz/mybibli:latest`.
+- **On push to `main`** — `ci.yml` runs a 4th job `docker-publish` that builds the root `Dockerfile` and pushes `gcorbaz/mybibli:main-<sha7>` to Docker Hub.
+- **On `v*.*.*` tag push** — `release.yml` runs `verify-version` (Cargo.toml vs. tag), re-runs the 3 gates, then `publish` pushes `gcorbaz/mybibli:<semver>` and `gcorbaz/mybibli:latest`.
 
 The `latest` tag is ONLY updated on tag releases, never on `main` pushes.
 
@@ -67,14 +67,14 @@ The `latest` tag is ONLY updated on tag releases, never on `main` pushes.
 | Name                 | Purpose                                                                        |
 |----------------------|--------------------------------------------------------------------------------|
 | `DOCKERHUB_USERNAME` | Docker Hub account (`guycorbaz`), used by `docker/login-action@v3`.            |
-| `DOCKERHUB_TOKEN`    | Docker Hub Personal Access Token scoped to the `guycorbaz/mybibli` repo only.  |
+| `DOCKERHUB_TOKEN`    | Docker Hub Personal Access Token scoped to the `gcorbaz/mybibli` repo only.  |
 
 ### Creating the Docker Hub PAT
 
 1. Log in to https://hub.docker.com/settings/security
 2. Click **New Access Token**
 3. Name: `github-actions-mybibli` (or similar)
-4. Scope: **Read, Write, Delete** on `guycorbaz/mybibli` only (not account-wide — least privilege).
+4. Scope: **Read, Write, Delete** on `gcorbaz/mybibli` only (not account-wide — least privilege).
 5. Copy the token once (it is not shown again).
 
 ### Adding secrets to GitHub
@@ -155,7 +155,7 @@ Navigate to **Settings → General → Default branch**. Confirm `main` is selec
    git tag -a vX.Y.Z -m "Release vX.Y.Z"
    git push origin vX.Y.Z
    ```
-6. **Observe `release.yml`** at https://github.com/guycorbaz/mybibli/actions. On success, `guycorbaz/mybibli:X.Y.Z` and `guycorbaz/mybibli:latest` are pushed to Docker Hub.
+6. **Observe `release.yml`** at https://github.com/guycorbaz/mybibli/actions. On success, `gcorbaz/mybibli:X.Y.Z` and `gcorbaz/mybibli:latest` are pushed to Docker Hub.
 
 The tag regex is `^v[0-9]+\.[0-9]+\.[0-9]+$` — pre-release suffixes (`v1.0.0-rc1`, `v1.0.0-beta`) are rejected in v1. Add them in a future story if release-candidate flow is needed.
 
