@@ -5,6 +5,10 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 
 # mybibli - Epic Breakdown
 
+## Changelog
+
+- **2026-04-13** — Inserted new **Epic 6: Pipeline CI/CD et fiabilité** between Epic 5 closure and original Epic 6. Renumbered: original Epic 6 (Accès multi-rôle & Sécurité) → Epic 7; original Epic 7 (Administration & Configuration) → Epic 8; original Epic 8 (Polish UX & Accessibilité) → Epic 9. Historical documents (old story files, old retros, readiness report) updated in the same pass for consistency. FR assignments did not change — only the epic labels that hold them.
+
 ## Overview
 
 This document provides the complete epic and story breakdown for mybibli, decomposing the requirements from the PRD, UX Design, and Architecture into implementable stories.
@@ -260,60 +264,60 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 | FR41-FR50 | 4 | Loan management (borrowers, loans, overdue, returns) |
 | FR51-FR53 | 1 | Contributor management (create, roles, multi-role) |
 | FR54 | 1 | Contributor deletion protection |
-| FR55-FR57 | 8 | Dashboard: global stats, recent additions, genre stats |
-| FR58-FR59 | 8 | Dashboard: actionable indicators, loan status visibility |
+| FR55-FR57 | 9 | Dashboard: global stats, recent additions, genre stats |
+| FR58-FR59 | 9 | Dashboard: actionable indicators, loan status visibility |
 | FR60 | 1 | Dynamic scan feedback list (basic) |
 | FR61-FR64 | 3 | Feedback lifecycle (fade, persist errors, audio, metadata error count) |
-| FR65-FR67 | 6 | Anonymous browse, Librarian auth, Admin auth |
-| FR68 | 7 | User account management |
-| FR69 | 1+6 | Sessions: browser close (Epic 1), inactivity timeout + Toast (Epic 6) |
-| FR70-FR76 | 7 | Admin configuration (genres, states, roles, node types, overdue threshold, API keys, health page) |
-| FR77 | 6 | Language switch FR/EN |
+| FR65-FR67 | 7 | Anonymous browse, Librarian auth, Admin auth |
+| FR68 | 8 | User account management |
+| FR69 | 1+7 | Sessions: browser close (Epic 1), inactivity timeout + Toast (Epic 7) |
+| FR70-FR76 | 8 | Admin configuration (genres, states, roles, node types, overdue threshold, API keys, health page) |
+| FR77 | 7 | Language switch FR/EN |
 | FR78-FR79 | 1 | Light/dark mode toggle + prefers-color-scheme (basic in Epic 1) |
 | FR80 | 1 | Permanent deletion protection (foundation — soft-delete pattern) |
 | FR81 | 1 | Preserve title when last volume deleted |
 | FR82 | 1 | Optimistic locking |
-| FR83-FR84 | 8 | Contextual help, keyboard shortcuts (complete) |
+| FR83-FR84 | 9 | Contextual help, keyboard shortcuts (complete) |
 | FR85 | 3 | Manual mode without API keys |
 | FR86 | 1 | Auto DB schema creation on first launch |
-| FR87 | 7 | First-launch setup wizard |
+| FR87 | 8 | First-launch setup wizard |
 | FR88 | 3 | Cover placeholder with media-type icon |
 | FR89 | 4 | Borrower detail: active loans list |
 | FR90 | 1 | Volume count/status on title detail |
-| FR91 | 7 | Initialize default reference data on first launch |
+| FR91 | 8 | Initialize default reference data on first launch |
 | FR92-FR94 | 1 | Media type assignment, form adaptation, language field |
 | FR95 | 5 | Series list with completion status |
 | FR96 | 1 | Search by volume label |
 | FR97 | 1 | Edit contributor details |
 | FR98 | 4 | Edit borrower details |
 | FR99 | 5 | Edit series details |
-| FR100 | 7 | Reference data deletion protection |
+| FR100 | 8 | Reference data deletion protection |
 | FR101 | 1 | Genre assignment to title |
 | FR102-FR108 | 1 | Dedicated /catalog page, preventive validation, title banner, shortcut, session counter |
 | FR109 | 1 | Soft-delete pattern (deleted_at on all tables, active_* queries) — foundation only |
-| FR110-FR112 | 7 | Admin Trash page (view, restore, permanent delete) |
-| FR113 | 7 | Auto-purge soft-deleted items (30 days) |
+| FR110-FR112 | 8 | Admin Trash page (view, restore, permanent delete) |
+| FR113 | 8 | Auto-purge soft-deleted items (30 days) |
 | FR114-FR115 | 5 | Similar titles, list/grid browse toggle |
 | FR116-FR117 | 2 | Barcode generation for locations, L-code retirement |
 | FR118 | 5 | Dewey code field |
 | FR119 | 4 | Borrower deletion with guard |
-| FR120 | 7 | Admin page 5 tabs structure |
-| FR121 | 7 | Setup wizard idempotent steps |
+| FR120 | 8 | Admin page 5 tabs structure |
+| FR121 | 8 | Setup wizard idempotent steps |
 
 **NFR Distribution:**
 - NFR1-NFR5, NFR7-NFR10, NFR12, NFR14, NFR22-NFR24, NFR26-NFR28, NFR30-NFR32, NFR34-NFR35, NFR38 (foundation) → Epic 1
 - NFR6, NFR16-NFR20, NFR33, NFR36, NFR40 → Epic 3
 - NFR11 → Epic 4
-- NFR13, NFR15 → Epic 6
-- NFR37, NFR39, NFR41 → Epic 7
+- NFR13, NFR15 → Epic 7
+- NFR37, NFR39, NFR41 → Epic 8
 - NFR8, NFR21, NFR25, NFR29 → Cross-cutting (verified per epic)
 
 **AR Distribution:**
 - AR1-AR6, AR8, AR12 (mock basic), AR16-AR18, AR20-AR22, AR24-AR26 → Epic 1
 - AR10, AR11 → Epic 2
 - AR7, AR12 (mock extended), AR14 → Epic 3
-- AR9, AR13 → Epic 6/7
-- AR15, AR19 → Epic 6
+- AR9, AR13 → Epic 7/8
+- AR15, AR19 → Epic 7
 
 **UX-DR Distribution:**
 - UX-DR1, UX-DR2 (basic), UX-DR3, UX-DR5 (basic), UX-DR6 (basic), UX-DR10 (basic), UX-DR15, UX-DR23, UX-DR24, UX-DR25 (scan-field, feedback, focus, theme), UX-DR29 (foundation) → Epic 1
@@ -321,9 +325,9 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR2 (complete), UX-DR10 (complete), UX-DR22, UX-DR25 (audio.js), UX-DR27 → Epic 3
 - UX-DR5 (LoanRow), UX-DR9 → Epic 4
 - UX-DR16, UX-DR17, UX-DR18, UX-DR30 → Epic 5
-- UX-DR14 (Toast), UX-DR25 (scanner-guard.js) → Epic 6
-- UX-DR7, UX-DR20, UX-DR21 → Epic 7
-- UX-DR4, UX-DR6 (complete), UX-DR8, UX-DR13, UX-DR26, UX-DR28 → Epic 8
+- UX-DR14 (Toast), UX-DR25 (scanner-guard.js) → Epic 7
+- UX-DR7, UX-DR20, UX-DR21 → Epic 8
+- UX-DR4, UX-DR6 (complete), UX-DR8, UX-DR13, UX-DR26, UX-DR28 → Epic 9
 
 **Coverage: 121/121 FRs, 41/41 NFRs, 26/26 ARs, 30/30 UX-DRs — ZERO orphans.**
 
@@ -868,7 +872,62 @@ The cataloger can organize titles into series, visualize gaps, browse the collec
 - Unit test: sort order with NULL last
 - E2E: edit title → set Dewey "843.914" → verify persisted → sort catalog by Dewey → verify ordering
 
-### Epic 6: Accès multi-rôle & Sécurité
+### Epic 6: Pipeline CI/CD et fiabilité
+Inserted 2026-04-13 (between Epic 5 closure and original Epic 6/auth work). Groups the infrastructure and debt-cleanup needed before v1 release can be contemplated: a GitHub Actions CI/CD pipeline with automated Docker Hub publishing, plus the three carry-over action items from the Epic 5 retrospective (seeded librarian user + `loginAs(role)`; `manually_edited_fields` race fix; `waitForTimeout` E2E cleanup with a grep gate). Closing this epic produces a pushable GitHub repo with gated merges to `main`, plus the prerequisites that unblock Epic 7 (multi-role auth) E2E stories.
+
+**Source:** Sprint planning decision 2026-04-13 after Epic 5 retrospective. No FR/NFR mapping — this is tooling + test-debt work.
+
+**Stories:**
+
+#### Story 6.1: GitHub repo + CI/CD pipeline + Docker Hub publishing
+**As a** project maintainer, **I want** every push validated by an automated pipeline and every tagged release producing a Docker Hub image, **so that** I can ship mybibli with confidence and without manual image-building.
+
+**Acceptance Criteria:**
+- Given the `github.com/guycorbaz/mybibli` repo exists, when the current `master` branch is renamed to `main` and pushed via SSH, then the remote tracks `origin/main` and all existing history is preserved
+- Given a GitHub Actions workflow file, when any push or PR runs, then 3 jobs execute in parallel: `rust-tests` (clippy + cargo test lib/bins + sqlx prepare --check), `db-integration` (MariaDB 10.11 service container + the 3 integration-test crates), `e2e` (Docker Compose stack + Playwright full suite)
+- Given a PR, when any of the 3 gate jobs fails, then the PR cannot merge
+- Given a push to `main` that passes all 3 gates, when the `docker-publish` job runs, then a `mybibli:main-<sha7>` image is pushed to Docker Hub
+- Given a git tag matching `v<semver>` (e.g. `v0.1.0`), when the tag is pushed, then the pipeline verifies `Cargo.toml` version matches the tag and fails otherwise; on match, it builds and pushes `mybibli:<semver>` + `mybibli:latest`
+- Given an E2E or integration-test failure, when the job completes, then Playwright traces and screenshots are stored as GitHub artifacts
+- Given the Docker Hub secret `DOCKERHUB_TOKEN`, when configured in GitHub repo secrets, then the publish step authenticates and succeeds (not committed to repo)
+
+#### Story 6.2: Seeded librarian user + `loginAs(page, role?)`
+**As a** test author, **I want** a seeded librarian-role user and a role-aware `loginAs()` helper, **so that** I can write multi-role E2E tests before Epic 7 starts.
+
+**FRs touched:** none (test infrastructure)
+
+**Acceptance Criteria:**
+- Given the dev migration set, when a fresh DB is bootstrapped, then both an `admin` user (existing) and a `librarian` user are seeded with known passwords
+- Given `loginAs(page, "admin")` or `loginAs(page, "librarian")` is called in a test, when the helper runs, then the real browser login flow completes and the session cookie reflects the requested role
+- Given `loginAs(page)` without a role argument, when called, then behavior is unchanged (logs in as admin) for backward compatibility across existing 133 tests
+- Given one existing smoke test is migrated to librarian role, when it runs, then it passes and demonstrates the end-to-end pattern
+- Full E2E suite remains green (133+/133+) on parallel mode
+
+#### Story 6.3: Fix `manually_edited_fields` + background-fetch race
+**As a** librarian, **I want** my manually-edited metadata to survive a concurrent background metadata fetch, **so that** typing over an auto-populated field is not silently overwritten.
+
+**FRs touched:** NFR11 (reliability), NFR28 (data integrity)
+
+**Acceptance Criteria:**
+- Given `tasks/metadata_fetch.rs::update_title_from_metadata`, when it runs, then it respects both the current `manually_edited_fields` JSON and the optimistic `version` column — a concurrent manual edit cannot be silently overwritten
+- Given `src/routes/titles.rs::confirm_metadata`, when the `accept_<field>` checkbox is checked but the form value equals the kept value, then the `manually_edited_fields` flag is NOT cleared for that field
+- Given `src/routes/titles.rs::confirm_metadata`, when the accepted form value differs from the previously-edited value, then the flag IS cleared (existing behavior for the true "accept replacement" case)
+- Unit tests: both branches per field for at least 3 representative fields (publisher, dewey_code, subtitle)
+- Integration test via `#[sqlx::test]`: race scenario where a manual edit + background fetch both target the same title; the manual edit wins
+
+#### Story 6.4: Cleanup `waitForTimeout` + grep gate
+**As a** test author, **I want** every E2E wait expressed as a DOM-state assertion and a CI gate that prevents `waitForTimeout` regressions, **so that** test flakes are bounded and new contributors cannot reintroduce the anti-pattern.
+
+**FRs touched:** none (test infrastructure)
+
+**Acceptance Criteria:**
+- Given the current 32 `waitForTimeout` occurrences across 9 specs, when the story completes, then zero remain (`grep -rE "waitForTimeout\\(" tests/e2e/specs/ | wc -l` returns 0)
+- Given each replaced wait, when executed, then the test uses an explicit `expect(locator).toBeVisible()`, `.toContainText(/.../i)`, or equivalent DOM-state assertion
+- Given CLAUDE.md Build & Test Commands, when read, then it documents the grep gate command as a pre-commit / pre-PR check
+- Given the GitHub Actions pipeline from story 6.1, when a PR introduces a new `waitForTimeout`, then the `rust-tests` or `e2e` job fails (pick the cheapest host for the grep)
+- Full E2E suite runs green on 5 consecutive fresh-Docker cycles with zero flakes
+
+### Epic 7: Accès multi-rôle & Sécurité
 Anonymous users can browse and search without login. Librarian and Admin roles enforce access control. Sessions include inactivity timeout with Toast warning. Language toggle switches between FR/EN.
 
 **FRs:** FR65-FR67, FR69 (timeout + Toast), FR77
@@ -876,7 +935,7 @@ Anonymous users can browse and search without login. Librarian and Admin roles e
 **ARs:** AR13, AR15, AR19
 **UX-DRs:** UX-DR14, UX-DR25 (scanner-guard.js)
 
-### Epic 7: Administration & Configuration
+### Epic 8: Administration & Configuration
 The admin can manage users, configure reference data (genres, states, roles), manage the storage hierarchy, view system health, and manage the Trash (soft-deleted items). The setup wizard guides first-time configuration.
 
 **FRs:** FR68, FR70-FR76, FR87, FR91, FR100, FR110-FR113, FR120-FR121
@@ -884,7 +943,7 @@ The admin can manage users, configure reference data (genres, states, roles), ma
 **ARs:** AR9
 **UX-DRs:** UX-DR7, UX-DR20, UX-DR21
 
-### Epic 8: Polish UX & Accessibilité
+### Epic 9: Polish UX & Accessibilité
 The dashboard shows actionable indicators with counts. Every page has encouraging empty states. Contextual help and keyboard shortcuts are complete. Responsive layouts are optimized per page. The home page scanner state machine handles dual detection. Modals guard destructive actions. WCAG 2.2 AA compliance is verified end-to-end.
 
 **FRs:** FR55-FR59, FR83-FR84

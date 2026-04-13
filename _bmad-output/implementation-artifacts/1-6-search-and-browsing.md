@@ -71,7 +71,7 @@ so that I can quickly find items in my collection.
 - Dashboard tags with counts (FR55-FR59) — Epic 5 or later (requires aggregate queries, dashboard service)
 - Series detail page — Epic 5
 - Location content view — Epic 2
-- Similar titles section — Epic 8
+- Similar titles section — Epic 9
 
 ## Tasks / Subtasks
 

@@ -65,7 +65,7 @@ so that I can find titles by contributor and maintain accurate bibliographic dat
 - Cross-navigation from title → contributor → other titles
 - Search by contributor name in global search
 
-**Deferred to Epic 7 (Administration):**
+**Deferred to Epic 8 (Administration):**
 - Contributor role CRUD (admin can add/edit/delete roles via FR70-FR76)
 - Role deletion protection ("Cannot delete: 28 assignments use this role")
 

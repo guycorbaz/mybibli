@@ -290,9 +290,9 @@ The epics document contains a comprehensive FR Coverage Map mapping all 121 FRs 
 | Epic 3 | Tous mes médias sont gérés | FR9, FR11-FR12, FR14-FR19, FR61-FR64, FR85, FR88 (complete), FR93 |
 | Epic 4 | Je gère mes prêts | FR41-FR50, FR89, FR98, FR119 |
 | Epic 5 | Mes séries et ma collection | FR36-FR40, FR54, FR95, FR99, FR114-FR115, FR118 |
-| Epic 6 | Accès multi-rôle & Sécurité | FR65-FR67, FR69 (timeout+Toast), FR77 |
-| Epic 7 | Administration & Configuration | FR68, FR70-FR76, FR87, FR91, FR100, FR110-FR113, FR120-FR121 |
-| Epic 8 | Polish UX & Accessibilité | FR55-FR59, FR83-FR84 |
+| Epic 7 | Accès multi-rôle & Sécurité | FR65-FR67, FR69 (timeout+Toast), FR77 |
+| Epic 8 | Administration & Configuration | FR68, FR70-FR76, FR87, FR91, FR100, FR110-FR113, FR120-FR121 |
+| Epic 9 | Polish UX & Accessibilité | FR55-FR59, FR83-FR84 |
 
 ### Additional Coverage
 
@@ -315,10 +315,10 @@ The epics document contains a comprehensive FR Coverage Map mapping all 121 FRs 
 
 ### Notable Observations
 
-1. **Progressive delivery pattern:** Several FRs are split across epics (e.g., FR69 browser close in Epic 1, inactivity timeout in Epic 6; FR88 basic in Epic 1, complete in Epic 3). This is sound engineering practice.
+1. **Progressive delivery pattern:** Several FRs are split across epics (e.g., FR69 browser close in Epic 1, inactivity timeout in Epic 7; FR88 basic in Epic 1, complete in Epic 3). This is sound engineering practice.
 2. **FR54 appears in both Epic 1 and Epic 5** — contributor deletion protection. Epic 1 introduces the foundation; Epic 5 may extend it for series context.
 3. **FR93 appears in both Epic 1 and Epic 3** — media type form adaptation. Epic 1 does basic, Epic 3 handles all 6 media types.
-4. **FR109 in Epic 1 is "pattern only"** — soft-delete database pattern is laid early, with full Trash UI in Epic 7.
+4. **FR109 in Epic 1 is "pattern only"** — soft-delete database pattern is laid early, with full Trash UI in Epic 8.
 
 ## 4. UX Alignment Assessment
 
@@ -390,14 +390,14 @@ None. The three documents (PRD, UX, Architecture) are well-aligned with consiste
 | 3 | Tous mes médias sont gérés | ✅ | User can catalog all media types — extends capability |
 | 4 | Je gère mes prêts | ✅ | User can manage loans — distinct user value |
 | 5 | Mes séries et ma collection | ✅ | User can track series and browse — discovery value |
-| 6 | Accès multi-rôle & Sécurité | ⚠️ | Borderline — security is infrastructure, but multi-role access IS user-facing (Marie can browse without login) |
-| 7 | Administration & Configuration | ⚠️ | Borderline — admin configuration is user value for the admin persona specifically |
-| 8 | Polish UX & Accessibilité | ⚠️ | Dashboard + accessibility are user-facing, but "Polish" implies cleanup rather than user value |
+| 7 | Accès multi-rôle & Sécurité | ⚠️ | Borderline — security is infrastructure, but multi-role access IS user-facing (Marie can browse without login) |
+| 8 | Administration & Configuration | ⚠️ | Borderline — admin configuration is user value for the admin persona specifically |
+| 9 | Polish UX & Accessibilité | ⚠️ | Dashboard + accessibility are user-facing, but "Polish" implies cleanup rather than user value |
 
-**Assessment:** All epics have user-facing outcomes. Epics 6-8 are borderline but acceptable because:
-- Epic 6 enables the Anonymous user persona (Marie) — that IS user value
-- Epic 7 enables the Admin's first-run and ongoing configuration — required for self-hosted deployment
-- Epic 8 delivers dashboard actionable indicators (FR55-FR59) — direct user value
+**Assessment:** All epics have user-facing outcomes. Epics 7-9 are borderline but acceptable because:
+- Epic 7 enables the Anonymous user persona (Marie) — that IS user value
+- Epic 8 enables the Admin's first-run and ongoing configuration — required for self-hosted deployment
+- Epic 9 delivers dashboard actionable indicators (FR55-FR59) — direct user value
 
 ### B. Epic Independence Validation
 
@@ -408,11 +408,11 @@ None. The three documents (PRD, UX, Architecture) are well-aligned with consiste
 | 3 | Epic 1 | ✅ | Adds multi-API metadata to working catalog (could technically skip Epic 2) |
 | 4 | Epic 1 | ✅ | Adds loans — only needs titles/volumes from Epic 1 |
 | 5 | Epic 1 | ✅ | Adds series — only needs titles from Epic 1 |
-| 6 | Epic 1 | ✅ | Adds role separation to existing single-role system |
-| 7 | Epic 6 | ✅ | Adds admin UI — needs role system from Epic 6 |
-| 8 | Epics 1-7 | ✅ | Polish layer — needs all features to exist |
+| 7 | Epic 1 | ✅ | Adds role separation to existing single-role system |
+| 8 | Epic 7 | ✅ | Adds admin UI — needs role system from Epic 7 |
+| 9 | Epics 1-8 | ✅ | Polish layer — needs all features to exist |
 
-**No forward dependencies detected.** No epic requires a later epic to function. Epic ordering is logical: 1 → 2-5 (parallelizable) → 6 → 7 → 8.
+**No forward dependencies detected.** No epic requires a later epic to function. Epic ordering is logical: 1 → 2-5 (parallelizable) → 6 → 7 → 8 → 9.
 
 ### C. Story Quality Assessment
 
@@ -464,7 +464,7 @@ None at epic level.
 
 **MC-1: Epic 1 scope is very large.** Epic 1 carries ~50 FRs, 16 ARs, 11 UX-DRs, and 18 NFRs — it is essentially the entire project foundation. This is expected for a greenfield project's first epic but should be decomposed into many focused stories during story creation.
 
-**MC-2: Epic 8 is a "polish" bucket.** Epics named "polish" tend to become catch-all repositories. The FR assignments are specific (FR55-FR59, FR83-FR84) which mitigates this risk, but monitor scope creep during story creation.
+**MC-2: Epic 9 is a "polish" bucket.** Epics named "polish" tend to become catch-all repositories. The FR assignments are specific (FR55-FR59, FR83-FR84) which mitigates this risk, but monitor scope creep during story creation.
 
 ## 6. Summary and Recommendations
 

@@ -67,9 +67,9 @@ so that I can access the catalog and start cataloging books.
 - i18n keys for login form labels and error messages
 
 **NOT in scope:**
-- User registration / account creation (Epic 6)
-- Password reset (Epic 6)
-- Admin user management (Epic 7)
+- User registration / account creation (Epic 7)
+- Password reset (Epic 7)
+- Admin user management (Epic 8)
 - CSRF tokens (deferred — noted in deferred-work.md)
 - "Remember me" / persistent sessions
 - OAuth / SSO

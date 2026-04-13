@@ -46,7 +46,7 @@ so that Epic 5+ feature work can trust automated regression detection and new st
 - Given `tests/e2e/helpers/auth.ts` currently contains a stub `loginAs()` function
 - When the helper is reimplemented
 - Then `loginAs(page)` performs a real browser login as the seeded `admin` user: navigate to `/login`, fill `#username` and `#password`, submit form, verify redirect, and store session in the page context (no cookie injection)
-- **Note on roles:** the only seeded user is `admin` (see `migrations/20260331000004_fix_dev_user_hash.sql`). There is currently no seeded librarian-role user. The helper takes no role parameter in this story — it always logs in as admin. Librarian-specific tests remain out of scope until Epic 6 (multi-role access).
+- **Note on roles:** the only seeded user is `admin` (see `migrations/20260331000004_fix_dev_user_hash.sql`). There is currently no seeded librarian-role user. The helper takes no role parameter in this story — it always logs in as admin. Librarian-specific tests remain out of scope until Epic 7 (multi-role access).
 - And at least one existing smoke test per epic (1, 2, 3, 4) is migrated from `DEV_SESSION_COOKIE` injection to `loginAs()` to prove the helper works end-to-end
 - And the tests using cookie injection for non-smoke scenarios remain unchanged (speed optimization for auth-independent flows is acceptable)
 
@@ -233,7 +233,7 @@ From `epic-4-retro-2026-04-04.md:57-58`:
 - **Framework:** Playwright `@playwright/test`, `fullyParallel: true`, Chromium only, HTML reporter
 - **Config:** `tests/e2e/playwright.config.ts` — `baseURL` from env (`http://localhost:8080`), `retries: 2` in CI only
 - **Auth shortcut:** `DEV_SESSION_COOKIE = "ZGV2ZGV2ZGV2..."` hardcoded in most specs. Violates CLAUDE.md Foundation Rule #7 for smoke tests.
-- **Seed user:** the only seeded user is `admin` / `admin` (role=admin) per `migrations/20260331000004_fix_dev_user_hash.sql`. There is NO librarian-role user — any test requiring a librarian would need a new seed migration (out of scope for this story; Epic 6 territory).
+- **Seed user:** the only seeded user is `admin` / `admin` (role=admin) per `migrations/20260331000004_fix_dev_user_hash.sql`. There is NO librarian-role user — any test requiring a librarian would need a new seed migration (out of scope for this story; Epic 7 territory).
 - **Helpers:** `helpers/auth.ts` is a **stub** (both `loginAs` and `logout` are empty functions — must be implemented in Task 5). `helpers/scanner.ts` is also a **stub** despite the scan field being functional since Epic 1 — this is pre-existing tech debt, NOT in scope for this story, but flag it in the Task 6 CLAUDE.md documentation as a deferred item.
 - **Specs inventory:** 20 spec files under `tests/e2e/specs/journeys/`, ~100+ tests total
 - **Loan-related specs** (most affected by retro):

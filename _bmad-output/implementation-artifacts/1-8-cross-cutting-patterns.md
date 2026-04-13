@@ -16,13 +16,13 @@ so that all entity operations follow consistent patterns and the UI is productio
 **When** the delete is processed,
 **Then** the entity's `deleted_at` is set (soft-delete) and it becomes invisible in all normal views but remains in the database.
 
-### AC2: Soft Delete - Referential Integrity (Deferred to Epic 7)
+### AC2: Soft Delete - Referential Integrity (Deferred to Epic 8)
 
 **Given** a soft-deleted entity is referenced by active entities,
 **When** an admin tries to permanently delete it from Trash,
 **Then** the system prevents permanent deletion with an error listing the referencing entities (FR80).
 
-> **NOTE:** This AC is about permanent deletion from Trash (Epic 7 scope). In story 1-8, only the soft-delete action itself is implemented. The referential integrity check will be implemented when the Trash/purge UI is built in Epic 7.
+> **NOTE:** This AC is about permanent deletion from Trash (Epic 8 scope). In story 1-8, only the soft-delete action itself is implemented. The referential integrity check will be implemented when the Trash/purge UI is built in Epic 8.
 
 ### AC3: Cascade Delete Prevention
 
@@ -86,10 +86,10 @@ so that all entity operations follow consistent patterns and the UI is productio
 - i18n keys for all new user-facing text
 
 **NOT in scope (deferred to later epics):**
-- Admin Trash view (Epic 7)
-- Permanent purge from Trash (Epic 7)
-- Login/logout UI (Epic 6) — dev seed session is sufficient for Epic 1
-- Language toggle (Epic 7)
+- Admin Trash view (Epic 8)
+- Permanent purge from Trash (Epic 8)
+- Login/logout UI (Epic 7) — dev seed session is sufficient for Epic 1
+- Language toggle (Epic 8)
 - Series link, Locations link, Borrowers link (future epics — Loans and Admin links already exist and stay)
 - Mobile hamburger menu full slide-out drawer (current toggle stub is sufficient)
 - Keyboard shortcut Ctrl+L for /loans (future epic)
