@@ -40,7 +40,7 @@
                 </div>
                 {% endif %}
                 {% if let Some(dewey) = title.dewey_code %}
-                    <p class="mt-1 text-xs text-stone-400">Dewey: {{ dewey }}</p>
+                    <p class="mt-1 text-xs text-stone-400">{{ label_dewey_code }}: {{ dewey }}</p>
                 {% endif %}
 
                 {% if role == "librarian" || role == "admin" %}

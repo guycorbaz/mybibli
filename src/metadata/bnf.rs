@@ -113,6 +113,7 @@ impl BnfProvider {
             publication_date: Self::extract_subfield(xml, "210", "d"),
             language: Self::extract_subfield(xml, "101", "a"),
             description: Self::extract_subfield(xml, "330", "a"),
+            dewey_code: Self::extract_subfield(xml, "676", "a"),
             authors,
             page_count,
             ..MetadataResult::default()
@@ -371,6 +372,28 @@ mod tests {
         </record>"#;
         let result = BnfProvider::parse_sru_response(xml).unwrap();
         assert_eq!(result.page_count, Some(320));
+    }
+
+    #[test]
+    fn test_parse_sru_response_with_dewey_676a() {
+        let xml = r#"<record>
+          <mxc:datafield tag="200" ind1="1" ind2=" ">
+            <mxc:subfield code="a">Test Title</mxc:subfield>
+          </mxc:datafield>
+          <mxc:datafield tag="676" ind1=" " ind2=" ">
+            <mxc:subfield code="a">843.914</mxc:subfield>
+            <mxc:subfield code="v">23</mxc:subfield>
+            <mxc:subfield code="z">fre</mxc:subfield>
+          </mxc:datafield>
+        </record>"#;
+        let result = BnfProvider::parse_sru_response(xml).unwrap();
+        assert_eq!(result.dewey_code.as_deref(), Some("843.914"));
+    }
+
+    #[test]
+    fn test_parse_sru_response_without_dewey_returns_none() {
+        let result = BnfProvider::parse_sru_response(SAMPLE_BNF_RESPONSE).unwrap();
+        assert!(result.dewey_code.is_none());
     }
 
     #[test]

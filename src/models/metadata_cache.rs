@@ -114,6 +114,10 @@ impl MetadataCacheModel {
                 .get("issue_number")
                 .and_then(|v| v.as_str())
                 .map(String::from),
+            dewey_code: obj
+                .get("dewey_code")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         })
     }
 
@@ -133,6 +137,7 @@ impl MetadataCacheModel {
             "total_duration": result.total_duration,
             "age_rating": result.age_rating,
             "issue_number": result.issue_number,
+            "dewey_code": result.dewey_code,
         })
     }
 }

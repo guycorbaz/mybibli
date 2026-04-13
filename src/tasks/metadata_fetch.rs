@@ -68,7 +68,7 @@ pub async fn fetch_metadata_chain(
 }
 
 /// Update title fields from resolved metadata.
-async fn update_title_from_metadata(
+pub async fn update_title_from_metadata(
     pool: &DbPool,
     title_id: u64,
     metadata: &crate::metadata::provider::MetadataResult,
@@ -95,6 +95,7 @@ async fn update_title_from_metadata(
          language = COALESCE(?, language), \
          page_count = COALESCE(?, page_count), \
          publication_date = COALESCE(?, publication_date), \
+         dewey_code = COALESCE(?, dewey_code), \
          track_count = COALESCE(?, track_count), \
          total_duration = COALESCE(?, total_duration), \
          age_rating = COALESCE(?, age_rating), \
@@ -109,6 +110,7 @@ async fn update_title_from_metadata(
     .bind(&metadata.language)
     .bind(metadata.page_count)
     .bind(pub_date)
+    .bind(&metadata.dewey_code)
     .bind(metadata.track_count)
     .bind(&metadata.total_duration)
     .bind(&metadata.age_rating)

@@ -222,10 +222,11 @@ pub struct VolumeWithTitle {
     pub genre_name: String,
     pub condition_name: String,
     pub is_on_loan: bool,
+    pub dewey_code: Option<String>,
 }
 
 /// Sort column whitelist for location contents.
-const LOCATION_SORT_COLUMNS: &[&str] = &["title", "primary_contributor", "genre_name"];
+const LOCATION_SORT_COLUMNS: &[&str] = &["title", "primary_contributor", "genre_name", "dewey_code"];
 const SORT_DIRS: &[&str] = &["asc", "desc"];
 
 fn validated_location_sort(sort: &Option<String>) -> &str {
@@ -247,7 +248,16 @@ fn map_location_sort_column(sort: &str) -> &str {
         "title" => "t.title",
         "primary_contributor" => "primary_contributor",
         "genre_name" => "genre_name",
+        "dewey_code" => "t.dewey_code",
         _ => "t.title",
+    }
+}
+
+fn order_by_clause(sql_col: &str, sort_dir: &str) -> String {
+    if sql_col == "t.dewey_code" {
+        format!("{} IS NULL, {} {}", sql_col, sql_col, sort_dir)
+    } else {
+        format!("{} {}", sql_col, sort_dir)
     }
 }
 
@@ -287,16 +297,17 @@ impl VolumeModel {
                      WHERE tc.title_id = t.id AND tc.deleted_at IS NULL AND c.deleted_at IS NULL AND cr.deleted_at IS NULL \
                      ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC \
                      LIMIT 1) as primary_contributor, \
-                    (CASE WHEN l.id IS NOT NULL THEN 1 ELSE 0 END) as is_on_loan \
+                    (CASE WHEN l.id IS NOT NULL THEN 1 ELSE 0 END) as is_on_loan, \
+                    t.dewey_code \
              FROM volumes v \
              JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL \
              LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
              LEFT JOIN volume_states vs ON v.condition_state_id = vs.id AND vs.deleted_at IS NULL \
              LEFT JOIN loans l ON v.id = l.volume_id AND l.returned_at IS NULL AND l.deleted_at IS NULL \
              WHERE v.location_id = ? AND v.deleted_at IS NULL \
-             ORDER BY {} {} \
+             ORDER BY {} \
              LIMIT ? OFFSET ?",
-            sql_col, sort_dir
+            order_by_clause(sql_col, sort_dir)
         );
 
         let rows = sqlx::query(&data_sql)
@@ -318,6 +329,7 @@ impl VolumeModel {
                 genre_name: r.try_get("genre_name").unwrap_or_default(),
                 condition_name: r.try_get("condition_name").unwrap_or_default(),
                 is_on_loan: r.try_get::<i32, _>("is_on_loan").unwrap_or(0) != 0,
+                dewey_code: r.try_get::<Option<String>, _>("dewey_code").unwrap_or(None),
             })
             .collect();
 
@@ -363,5 +375,24 @@ mod tests {
         };
         assert_eq!(vol.label, "V0001");
         assert_eq!(vol.location_id, Some(5));
+    }
+
+    #[test]
+    fn test_validated_location_sort_accepts_dewey_code() {
+        assert_eq!(validated_location_sort(&Some("dewey_code".to_string())), "dewey_code");
+        assert_eq!(map_location_sort_column("dewey_code"), "t.dewey_code");
+    }
+
+    #[test]
+    fn test_order_by_clause_dewey_null_last() {
+        let asc = order_by_clause("t.dewey_code", "asc");
+        assert_eq!(asc, "t.dewey_code IS NULL, t.dewey_code asc");
+        let desc = order_by_clause("t.dewey_code", "desc");
+        assert_eq!(desc, "t.dewey_code IS NULL, t.dewey_code desc");
+    }
+
+    #[test]
+    fn test_order_by_clause_other_columns_unchanged() {
+        assert_eq!(order_by_clause("t.title", "asc"), "t.title asc");
     }
 }

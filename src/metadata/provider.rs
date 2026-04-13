@@ -23,6 +23,7 @@ pub struct MetadataResult {
     pub total_duration: Option<String>,
     pub age_rating: Option<String>,
     pub issue_number: Option<String>,
+    pub dewey_code: Option<String>,
 }
 
 /// Trait for external metadata providers (BnF, Google Books, Open Library, etc.).

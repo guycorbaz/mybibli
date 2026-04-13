@@ -29,8 +29,15 @@ docker-compose.override.yml
 # Cover images (stored in Docker volume, not in repo)
 /data/covers/
 
-# Claude Code (local settings, not shared)
+# Claude Code (local settings + auto-memory, not shared)
 .claude/settings.local.json
+.claude/settings.json
+.claude/projects/
+
+# Playwright test artifacts
+/test-results/
+tests/e2e/test-results/
+tests/e2e/playwright-report/
 
 # Generated CSS (built in CI/Docker)
 static/css/output.css

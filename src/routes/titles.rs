@@ -60,6 +60,7 @@ pub struct TitleDetailTemplate {
     pub label_end_position: String,
     pub similar_titles: Vec<SimilarTitle>,
     pub label_similar_titles: String,
+    pub label_dewey_code: String,
 }
 
 pub async fn title_detail(
@@ -121,6 +122,7 @@ pub async fn title_detail(
             label_end_position: rust_i18n::t!("series.end_position").to_string(),
             similar_titles,
             label_similar_titles: rust_i18n::t!("title_detail.similar_titles").to_string(),
+            label_dewey_code: rust_i18n::t!("metadata.field.dewey_code").to_string(),
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),
@@ -284,7 +286,7 @@ fn metadata_display_html(title: &TitleModel, genre_name: &str, session: &Session
         .map(|d| format!(r#"<div class="mt-4"><p class="text-stone-700 dark:text-stone-300 text-sm">{}</p></div>"#, html_escape(d)))
         .unwrap_or_default();
     let dewey_html = title.dewey_code.as_ref()
-        .map(|d| format!(r#"<p class="mt-1 text-xs text-stone-400">Dewey: {}</p>"#, html_escape(d)))
+        .map(|d| format!(r#"<p class="mt-1 text-xs text-stone-400">{}: {}</p>"#, rust_i18n::t!("metadata.field.dewey_code"), html_escape(d)))
         .unwrap_or_default();
 
     format!(
@@ -591,6 +593,7 @@ pub async fn redownload_metadata(
         new_total_duration: metadata.total_duration.clone().unwrap_or_default(),
         new_age_rating: metadata.age_rating.clone().unwrap_or_default(),
         new_issue_number: metadata.issue_number.clone().unwrap_or_default(),
+        new_dewey_code: metadata.dewey_code.clone().unwrap_or_default(),
         new_cover_url: metadata.cover_url.clone().unwrap_or_default(),
         label_confirm_title: rust_i18n::t!("metadata.confirm_title").to_string(),
         label_current: rust_i18n::t!("metadata.current_value").to_string(),
@@ -636,6 +639,8 @@ pub struct MetadataConfirmForm {
     #[serde(default)]
     pub new_issue_number: String,
     #[serde(default)]
+    pub new_dewey_code: String,
+    #[serde(default)]
     pub new_cover_url: String,
     // Per-field accept checkboxes — present = accept new value
     #[serde(default)]
@@ -660,6 +665,8 @@ pub struct MetadataConfirmForm {
     pub accept_age_rating: Option<String>,
     #[serde(default)]
     pub accept_issue_number: Option<String>,
+    #[serde(default)]
+    pub accept_dewey_code: Option<String>,
     #[serde(default)]
     pub accept_cover: Option<String>,
 }
@@ -774,6 +781,13 @@ pub async fn confirm_metadata(
         v
     } else { kept_count += 1; title.issue_number };
 
+    let final_dewey_code = if use_new("dewey_code", &form.accept_dewey_code, &manually_edited) {
+        let v = non_empty(&Some(form.new_dewey_code.clone()));
+        if v != title.dewey_code { updated_count += 1; }
+        if form.accept_dewey_code.is_some() { manually_edited.remove("dewey_code"); }
+        v
+    } else { kept_count += 1; title.dewey_code.clone() };
+
     // Serialize remaining manually_edited_fields
     let edited_json = if manually_edited.is_empty() {
         None
@@ -787,7 +801,7 @@ pub async fn confirm_metadata(
         pool, id, form.version, &final_title,
         final_subtitle.as_deref(), final_description.as_deref(), final_publisher.as_deref(),
         &final_language, title.genre_id, final_pub_date,
-        title.dewey_code.as_deref(), final_page_count, final_track_count, final_total_duration,
+        final_dewey_code.as_deref(), final_page_count, final_track_count, final_total_duration,
         final_age_rating.as_deref(), final_issue_number, edited_json.as_deref(),
     ).await?;
 
@@ -858,11 +872,13 @@ async fn apply_metadata_to_title(
         .and_then(|s| s.parse::<i32>().ok())
         .or(title.issue_number);
 
+    let new_dewey_code = metadata.dewey_code.as_deref().or(title.dewey_code.as_deref());
+
     let updated = TitleModel::update_metadata(
         pool, title.id, title.version, new_title,
         new_subtitle, new_description, new_publisher,
         new_language, title.genre_id, new_pub_date,
-        title.dewey_code.as_deref(), new_page_count, new_track_count, new_total_duration,
+        new_dewey_code, new_page_count, new_track_count, new_total_duration,
         new_age_rating, new_issue_number, title.manually_edited_fields.as_deref(),
     ).await?;
 
@@ -910,6 +926,7 @@ struct MetadataConfirmTemplate {
     new_total_duration: String,
     new_age_rating: String,
     new_issue_number: String,
+    new_dewey_code: String,
     new_cover_url: String,
     label_confirm_title: String,
     label_current: String,
@@ -985,6 +1002,7 @@ mod tests {
             label_end_position: "End position".to_string(),
             similar_titles: vec![],
             label_similar_titles: "Similar titles".to_string(),
+            label_dewey_code: "Dewey code".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(rendered.contains("tranger"), "Expected title to appear in rendered output");
@@ -1078,6 +1096,7 @@ mod tests {
             label_end_position: "End position".to_string(),
             similar_titles: similar,
             label_similar_titles: "Similar titles".to_string(),
+            label_dewey_code: "Dewey code".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(

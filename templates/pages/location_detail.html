@@ -51,6 +51,11 @@
                             {{ col_genre }} {% if volumes.sort == Some("genre_name".to_string()) %}{% if volumes.dir == Some("asc".to_string()) %}▲{% else %}▼{% endif %}{% endif %}
                         </a>
                     </th>
+                    <th class="px-3 py-2">
+                        <a href="/location/{{ location.id }}?sort=dewey_code&dir={% if volumes.sort == Some("dewey_code".to_string()) && volumes.dir == Some("asc".to_string()) %}desc{% else %}asc{% endif %}&page=1" class="hover:text-stone-700 dark:hover:text-stone-200">
+                            {{ col_dewey }} {% if volumes.sort == Some("dewey_code".to_string()) %}{% if volumes.dir == Some("asc".to_string()) %}▲{% else %}▼{% endif %}{% endif %}
+                        </a>
+                    </th>
                     <th class="px-3 py-2">{{ col_condition }}</th>
                     <th class="px-3 py-2">{{ col_status }}</th>
                 </tr>
@@ -70,6 +75,9 @@
                         {% when Some with (name) %}{{ name }}{% when None %}—{% endmatch %}
                     </td>
                     <td class="px-3 py-2 text-stone-600 dark:text-stone-400">{{ vol.genre_name }}</td>
+                    <td class="px-3 py-2 text-stone-600 dark:text-stone-400">
+                        {% match vol.dewey_code %}{% when Some with (d) %}<code class="font-mono text-xs">{{ d }}</code>{% when None %}—{% endmatch %}
+                    </td>
                     <td class="px-3 py-2 text-stone-600 dark:text-stone-400">
                         {% if vol.condition_name.is_empty() %}—{% else %}{{ vol.condition_name }}{% endif %}
                     </td>

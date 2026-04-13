@@ -354,7 +354,7 @@ impl TitleService {
         manually_edited: &[String],
     ) -> Vec<String> {
         let all_fields = ["title", "subtitle", "description", "publisher", "language",
-            "publication_date", "page_count", "track_count", "total_duration", "age_rating", "issue_number"];
+            "publication_date", "dewey_code", "page_count", "track_count", "total_duration", "age_rating", "issue_number"];
         let mut updates = Vec::new();
         for field in all_fields {
             if manually_edited.contains(&field.to_string()) { continue; }
@@ -381,6 +381,7 @@ impl TitleService {
             "total_duration" => rust_i18n::t!("metadata.field.total_duration").to_string(),
             "age_rating" => rust_i18n::t!("metadata.field.age_rating").to_string(),
             "issue_number" => rust_i18n::t!("metadata.field.issue_number").to_string(),
+            "dewey_code" => rust_i18n::t!("metadata.field.dewey_code").to_string(),
             _ => field.to_string(),
         }
     }
@@ -398,6 +399,7 @@ impl TitleService {
             "total_duration" => title.total_duration.map(|v| v.to_string()).unwrap_or_default(),
             "age_rating" => title.age_rating.clone().unwrap_or_default(),
             "issue_number" => title.issue_number.map(|v| v.to_string()).unwrap_or_default(),
+            "dewey_code" => title.dewey_code.clone().unwrap_or_default(),
             _ => String::new(),
         }
     }
@@ -415,6 +417,7 @@ impl TitleService {
             "total_duration" => metadata.total_duration.clone().unwrap_or_default(),
             "age_rating" => metadata.age_rating.clone().unwrap_or_default(),
             "issue_number" => metadata.issue_number.clone().unwrap_or_default(),
+            "dewey_code" => metadata.dewey_code.clone().unwrap_or_default(),
             _ => String::new(),
         }
     }
@@ -502,5 +505,49 @@ mod tests {
     #[test]
     fn test_non_empty_option_trims() {
         assert_eq!(non_empty_option(&Some("  hello  ".to_string())), Some("hello".to_string()));
+    }
+
+    fn make_title_with_dewey(dewey: Option<&str>, manually_edited: Option<&str>) -> crate::models::title::TitleModel {
+        crate::models::title::TitleModel {
+            id: 1, title: "T".to_string(), subtitle: None, description: None,
+            language: "fr".to_string(), media_type: "book".to_string(),
+            publication_date: None, publisher: None, isbn: None, issn: None,
+            upc: None, cover_image_url: None, genre_id: 1,
+            dewey_code: dewey.map(|s| s.to_string()),
+            page_count: None, track_count: None, total_duration: None,
+            age_rating: None, issue_number: None,
+            manually_edited_fields: manually_edited.map(|s| s.to_string()),
+            version: 1,
+        }
+    }
+
+    #[test]
+    fn test_build_field_conflicts_dewey_code() {
+        let title = make_title_with_dewey(Some("800"), Some(r#"["dewey_code"]"#));
+        let metadata = crate::metadata::provider::MetadataResult {
+            dewey_code: Some("843.914".to_string()),
+            ..Default::default()
+        };
+        let manually_edited = title.parsed_manually_edited_fields();
+        let conflicts = TitleService::build_field_conflicts(&title, &metadata, &manually_edited);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].field_name, "dewey_code");
+        assert_eq!(conflicts[0].current_value, "800");
+        assert_eq!(conflicts[0].new_value, "843.914");
+    }
+
+    #[test]
+    fn test_build_auto_updates_dewey_code() {
+        let title = make_title_with_dewey(Some("800"), None);
+        let metadata = crate::metadata::provider::MetadataResult {
+            dewey_code: Some("843.914".to_string()),
+            ..Default::default()
+        };
+        let manually_edited: Vec<String> = vec![];
+        let updates = TitleService::build_auto_updates(&title, &metadata, &manually_edited);
+        assert!(
+            updates.iter().any(|u| u.contains("Dewey") && u.contains("800") && u.contains("843.914")),
+            "expected dewey_code auto-update entry referencing the Dewey label, got: {updates:?}"
+        );
     }
 }

@@ -790,6 +790,11 @@ mod tests {
     }
 
     #[test]
+    fn test_validated_sort_rejects_dewey_code_on_search() {
+        assert_eq!(validated_sort(&Some("dewey_code".to_string())), "title");
+    }
+
+    #[test]
     fn test_validated_sort_injection() {
         assert_eq!(validated_sort(&Some("DROP TABLE".to_string())), "title");
         assert_eq!(validated_sort(&Some("1; DROP TABLE--".to_string())), "title");

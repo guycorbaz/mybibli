@@ -243,6 +243,7 @@ location:
   col_title: Titre
   col_author: Auteur
   col_genre: Genre
+  col_dewey: Dewey
   col_condition: État
   col_status: Statut
 login:
