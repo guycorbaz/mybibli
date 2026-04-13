@@ -5,7 +5,6 @@ Cargo.lock
 
 # Node.js (Playwright tests)
 node_modules/
-package-lock.json
 
 # IDE
 .vscode/
