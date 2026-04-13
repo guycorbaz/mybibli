@@ -111,10 +111,10 @@ Navigate to **Settings → Branches → Branch protection rules → Add rule** (
    - **Require approvals:** OFF (solo-maintainer mode — see rationale below).
 3. **Require status checks to pass before merging:** ON
    - **Require branches to be up to date before merging:** ON
-   - **Required status checks** — add EXACTLY these three (they appear under `CI /` when called from a reusable workflow):
-     - `rust-tests / rust-tests`
-     - `db-integration / db-integration`
-     - `e2e / e2e`
+   - **Required status checks** — add EXACTLY these three (the parent job that calls the reusable workflow is named `gates`):
+     - `gates / rust-tests`
+     - `gates / db-integration`
+     - `gates / e2e`
 
      > GitHub shows reusable-workflow jobs as `<parent-job-id> / <called-job-name>`. If the exact label does not appear in the autocomplete, push a dummy commit first so GitHub learns the check names, then edit the protection rule.
 4. **Do NOT add `docker-publish` to required checks.** It is skipped on PRs (`if: github.ref == 'refs/heads/main' && github.event_name == 'push'`) and a skipped check never reports a status — requiring it would lock every PR out of merging. The same applies to release-only jobs (`verify-version`, `publish`) in `release.yml`.

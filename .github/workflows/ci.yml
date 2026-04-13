@@ -14,23 +14,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  rust-tests:
-    name: rust-tests
-    uses: ./.github/workflows/_gates.yml
-
-  db-integration:
-    name: db-integration
-    uses: ./.github/workflows/_gates.yml
-
-  e2e:
-    name: e2e
+  gates:
+    name: gates
     uses: ./.github/workflows/_gates.yml
 
   docker-publish:
     name: Docker Hub publish (main)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [rust-tests, db-integration, e2e]
+    needs: [gates]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: read

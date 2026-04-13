@@ -207,7 +207,7 @@ claude-opus-4-6 (1M context) — dev-story session 2026-04-13
 
 **Pending handoff — blocks story → review transition:**
 
-- **Task 4.2** — Configure branch protection on `main` per `docs/ci-cd.md#branch-protection-for-main`. The three required checks must be selected as `rust-tests / rust-tests`, `db-integration / db-integration`, `e2e / e2e` (GitHub reports reusable-workflow checks as `<parent-job-id> / <called-job-name>`). Do NOT add `docker-publish` or release-only jobs to required checks — they skip on PRs and would lock merges.
+- **Task 4.2** — Configure branch protection on `main` per `docs/ci-cd.md#branch-protection-for-main`. The three required checks must be selected as `gates / rust-tests`, `gates / db-integration`, `gates / e2e` (single `gates` parent job calls the reusable `_gates.yml`; GitHub reports each reusable-workflow inner job as `<parent-job-id> / <called-job-name>`). Do NOT add `docker-publish` or release-only jobs to required checks — they skip on PRs and would lock merges.
 - **Task 4.3** — Verify default branch is `main` in GitHub Settings → General (no-op if already `main`).
 - **Task 5** — Red-path smoke (deliberately break a Playwright spec on a branch `ci-red-path-test`, verify PR merge button is disabled, retrieve the Playwright artifact, revert). Record per-gate wall-clock times → fill `docs/ci-cd.md#timing-baselines` and Task 6.2.
 - **Task 7.2** — Observe first green CI run on a PR (AC #12 verification gate). Then transition story → `review`.

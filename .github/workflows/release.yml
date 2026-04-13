@@ -35,15 +35,7 @@ jobs:
           echo "version=$CARGO_VERSION" >> "$GITHUB_OUTPUT"
           echo "Verified version $CARGO_VERSION matches tag $GITHUB_REF_NAME"
 
-  rust-tests:
-    needs: verify-version
-    uses: ./.github/workflows/_gates.yml
-
-  db-integration:
-    needs: verify-version
-    uses: ./.github/workflows/_gates.yml
-
-  e2e:
+  gates:
     needs: verify-version
     uses: ./.github/workflows/_gates.yml
 
@@ -51,7 +43,7 @@ jobs:
     name: Build & push Docker Hub release tags
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [verify-version, rust-tests, db-integration, e2e]
+    needs: [verify-version, gates]
     steps:
       - uses: actions/checkout@v4
 
