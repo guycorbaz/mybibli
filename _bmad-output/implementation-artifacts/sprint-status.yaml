@@ -39,7 +39,7 @@
 # The epics document contains FR/NFR/AR/UX-DR assignments per epic.
 
 generated: 2026-03-29
-last_updated: 2026-04-14 # Story 6-4 → done (code-review patches applied)
+last_updated: 2026-04-14 # Epic 6 → done + retrospective done
 project: mybibli
 project_key: NOKEY
 tracking_system: file-system
@@ -118,12 +118,12 @@ development_status:
   # Epic 6: Pipeline CI/CD et fiabilité (inserted 2026-04-13)
   # Groups infrastructure + Epic 5 retro action items before Epic 7 auth work.
   # No FR/NFR mapping — tooling + test-debt work.
-  epic-6: in-progress
+  epic-6: done
   6-1-github-and-ci-cd-pipeline: done
   6-2-seed-librarian-and-loginas-role: done
   6-3-fix-manually-edited-fields-race: done
   6-4-cleanup-waitfortimeout-and-grep-gate: done
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
 
   # Epic 7: Accès multi-rôle & Sécurité
   # FRs: FR65-FR67, FR69(timeout+Toast), FR77
