@@ -16,10 +16,10 @@ The three gates are exposed as a reusable workflow at `.github/workflows/_gates.
 
 After the gates pass:
 
-- **On push to `main`** — `ci.yml` runs a 4th job `docker-publish` that builds the root `Dockerfile` and pushes `gcorbaz/mybibli:main-<sha7>` to Docker Hub.
+- **On push to `main`** — nothing else runs. `ci.yml` ends after the 3 gates. **No Docker Hub publish on main pushes** (per "version stricte" policy: images ship only at semver releases, never per mid-Epic story merge).
 - **On `v*.*.*` tag push** — `release.yml` runs `verify-version` (Cargo.toml vs. tag), re-runs the 3 gates, then `publish` pushes `gcorbaz/mybibli:<semver>` and `gcorbaz/mybibli:latest`.
 
-The `latest` tag is ONLY updated on tag releases, never on `main` pushes.
+Docker Hub publishing is the exclusive responsibility of `release.yml`; both `<semver>` and `latest` tags are produced only on `v*.*.*` tag pushes.
 
 ## Job details
 
@@ -117,7 +117,7 @@ Navigate to **Settings → Branches → Branch protection rules → Add rule** (
      - `gates / e2e`
 
      > GitHub shows reusable-workflow jobs as `<parent-job-id> / <called-job-name>`. If the exact label does not appear in the autocomplete, push a dummy commit first so GitHub learns the check names, then edit the protection rule.
-4. **Do NOT add `docker-publish` to required checks.** It is skipped on PRs (`if: github.ref == 'refs/heads/main' && github.event_name == 'push'`) and a skipped check never reports a status — requiring it would lock every PR out of merging. The same applies to release-only jobs (`verify-version`, `publish`) in `release.yml`.
+4. **Do NOT add release-only jobs to required checks.** `verify-version` and `publish` from `release.yml` only run on `v*.*.*` tag pushes; they never report a status on PRs, so requiring them would lock every PR out of merging. (Note: `ci.yml` no longer has a `docker-publish` job — Docker Hub publishing is now release-only per "version stricte" policy.)
 5. **Require conversation resolution before merging:** ON (optional, nice-to-have).
 6. **Require signed commits:** OFF (not enforced; opt-in only).
 7. **Require linear history:** ON (prevents merge bubbles on `main`).
@@ -187,7 +187,7 @@ _To be filled during Task 5.4 smoke test (recorded from the first green `main` P
 | `rust-tests`     | TBD            | TBD                       |
 | `db-integration` | TBD            | TBD                       |
 | `e2e`            | TBD            | TBD                       |
-| `docker-publish` | TBD            | TBD                       |
+| `release.publish` | TBD            | TBD                       |
 
 Future stories that add CI steps should measure their overhead against these numbers and justify any regression > 30 s.
 
