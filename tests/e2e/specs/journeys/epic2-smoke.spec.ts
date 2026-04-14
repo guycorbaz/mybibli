@@ -32,7 +32,11 @@ test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
     // Step 5: Scan L-code → volume shelved
     await scanField.fill(lcode);
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
+    // Wait for the L-code scan's own feedback entry to land before reading the list.
+    await expect(page.locator("#feedback-list")).toContainText(
+      /shelved|rangé|ES-SmokeTestRoom/i,
+      { timeout: 5000 },
+    );
     const allFeedback = await page.locator("#feedback-list").textContent();
     const hasShelvedFeedback =
       allFeedback?.includes("shelved") ||
@@ -43,10 +47,10 @@ test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
       // Re-scan V-code then L-code (volume context may have been cleared by ISBN scan)
       await scanField.fill("V0077");
       await scanField.press("Enter");
-      await page.waitForTimeout(500);
+      await expect(page.locator('.feedback-entry[data-feedback-variant="success"]').first()).toBeVisible({ timeout: 5000 });
       await scanField.fill(lcode);
       await scanField.press("Enter");
-      await page.waitForTimeout(1000);
+      await expect(page.locator("#feedback-list")).toContainText(/shelved|rangé|ES-SmokeTestRoom/i, { timeout: 5000 });
     }
 
     // Step 6: Verify location detail
@@ -69,8 +73,8 @@ test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
     await expect(searchField).toBeVisible();
     await searchField.fill(TEST_ISBN.substring(0, 5));
     await searchField.press("Enter");
-    await page.waitForTimeout(2000);
     const resultsBody = page.locator("#browse-results");
+    await expect(resultsBody).toBeVisible({ timeout: 5000 });
     const resultsHtml = await resultsBody.innerHTML().catch(() => "");
     // Results may or may not contain matches depending on FULLTEXT index timing
   });
@@ -93,12 +97,14 @@ test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
     // Scan L-code FIRST (batch mode)
     await scanField.fill(lcode);
     await scanField.press("Enter");
-    await page.waitForTimeout(500);
+    await expect(page.locator("#feedback-list .feedback-entry").first()).toBeVisible({ timeout: 5000 });
 
     // Scan V-code → should auto-shelve at active location
     await scanField.fill("V0088");
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
+    await expect(page.locator("#feedback-list")).toContainText(/V0088/i, {
+      timeout: 5000,
+    });
 
     const afterShelve = await page.locator("#feedback-list").textContent();
     expect(afterShelve).toBeTruthy();

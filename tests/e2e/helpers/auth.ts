@@ -1,20 +1,28 @@
 import { Page } from "@playwright/test";
 
+export type Role = "admin" | "librarian";
+
 /**
- * Perform a real browser login as the seeded admin user.
+ * Perform a real browser login as one of the seeded users.
  *
  * Uses stable id selectors `#username` and `#password` from templates/pages/login.html.
- * Credentials default to the seed values in migrations/20260331000004_fix_dev_user_hash.sql
- * (admin/admin). Override via TEST_ADMIN_PASSWORD env var if the seed changes.
+ * - `"admin"` (default) — seeded by migrations/20260331000004_fix_dev_user_hash.sql.
+ *   Override password via `TEST_ADMIN_PASSWORD` env var.
+ * - `"librarian"` — seeded by migrations/20260414000001_seed_librarian_user.sql.
+ *   Override password via `TEST_LIBRARIAN_PASSWORD` env var.
  *
  * Smoke tests (one per epic, per CLAUDE.md Foundation Rule #7) MUST use this helper
- * instead of injecting DEV_SESSION_COOKIE. Non-smoke tests MAY continue to use cookie
- * injection as a speed optimization for auth-independent flows.
+ * instead of injecting DEV_SESSION_COOKIE.
  */
-export async function loginAs(page: Page): Promise<void> {
-  const password = process.env.TEST_ADMIN_PASSWORD || "admin";
+export async function loginAs(page: Page, role: Role = "admin"): Promise<void> {
+  const username = role;
+  // Guard empty-string env overrides (common CI misconfig when a secret is unset):
+  // `??` only guards null/undefined, so `TEST_*_PASSWORD=""` would leak through.
+  const envPassword =
+    role === "admin" ? process.env.TEST_ADMIN_PASSWORD : process.env.TEST_LIBRARIAN_PASSWORD;
+  const password = envPassword && envPassword.length > 0 ? envPassword : role;
   await page.goto("/login");
-  await page.fill("#username", "admin");
+  await page.fill("#username", username);
   await page.fill("#password", password);
   await page.click('button[type="submit"]');
   // Login currently redirects to /catalog; accept any URL that is not /login.

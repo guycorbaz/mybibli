@@ -137,11 +137,8 @@ test.describe("Volume Management", () => {
     await scanField.fill("V0045");
     await scanField.press("Enter");
 
-    // Wait for second success
-    await page.waitForTimeout(1000);
-
     const banner = page.locator("#context-banner");
-    await expect(banner).toContainText("vol", { timeout: 3000 });
+    await expect(banner).toContainText("vol", { timeout: 5000 });
   });
 
   // AC8: Session counter increments

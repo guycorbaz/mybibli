@@ -16,10 +16,12 @@ test.describe("Home page search", () => {
     await searchField.fill("te");
     // Trigger search-fire event (simulating debounce completion)
     await searchField.dispatchEvent("search-fire");
-    // Wait for HTMX swap
-    await page.waitForTimeout(500);
     const tbody = page.locator("#browse-results");
-    await expect(tbody).toBeVisible();
+    // Wait for HTMX swap to complete: either title cards render or the empty-state
+    // block appears. Matching either variant guarantees the swap landed.
+    await expect(
+      tbody.locator('article.title-card, .text-center').first(),
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test("should navigate to title detail page on row click", async ({

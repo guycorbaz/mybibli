@@ -45,10 +45,8 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     );
     await expect(firstFeedback.first()).toBeVisible({ timeout: 5000 });
 
-    // Wait for the async metadata task to complete
-    await page.waitForTimeout(3000);
-
-    // Second scan: triggers PendingUpdates middleware to deliver resolved data
+    // Second scan: triggers PendingUpdates middleware to deliver resolved data.
+    // Timeout bounded to 15s to cover BnF timeout + Google Books fallback under CI load.
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
 
@@ -56,7 +54,7 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     const infoEntry = page.locator(
       '.feedback-entry[data-feedback-variant="info"]'
     ).last();
-    await expect(infoEntry).toBeVisible({ timeout: 5000 });
+    await expect(infoEntry).toBeVisible({ timeout: 15000 });
   });
 
   // AC7: Session counter
@@ -100,7 +98,7 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     // First: create a title
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
+    await expect(page.locator("#feedback-list .feedback-skeleton, #feedback-list .feedback-entry").first()).toBeVisible({ timeout: 5000 });
 
     // Create a volume
     await scanField.fill("V0055");
@@ -143,19 +141,11 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     const banner = page.locator("#context-banner");
     await expect(banner).not.toHaveClass(/hidden/, { timeout: 5000 });
 
-    // Wait for async metadata to resolve, then trigger delivery
-    await page.waitForTimeout(3000);
+    // Trigger delivery; bounded to 15s for BnF timeout + Google Books fallback under CI load.
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
 
-    // Verify deterministic content from mock server
-    // Mock catch-all returns "Test Title {isbn}" by "Synthetic TestAuthor" for unique ISBNs
-    await page.waitForTimeout(1000);
-    const pageContent = await page.textContent("body");
-    // The title or author from mock metadata should appear somewhere on page
-    // (in context banner, feedback entry, or resolved OOB swap)
-    expect(
-      pageContent?.includes("Test Title") || pageContent?.includes("TestAuthor")
-    ).toBeTruthy();
+    // Mock catch-all returns "Test Title {isbn}" by "Synthetic TestAuthor" for unique ISBNs.
+    await expect(page.locator("body")).toContainText(/Test Title|TestAuthor/i, { timeout: 15000 });
   });
 });

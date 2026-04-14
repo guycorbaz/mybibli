@@ -76,7 +76,9 @@ jobs:
           cargo test \
             --test find_similar \
             --test find_by_location_dewey \
-            --test metadata_fetch_dewey
+            --test metadata_fetch_dewey \
+            --test metadata_fetch_race \
+            --test seeded_users
 
       - name: Collect MariaDB logs on failure
         if: failure() || cancelled()
@@ -122,6 +124,18 @@ jobs:
       - name: Install E2E deps
         working-directory: tests/e2e
         run: npm ci
+
+      - name: Typecheck E2E (tsc --noEmit)
+        working-directory: tests/e2e
+        run: npx tsc --noEmit
+
+      - name: Grep gate — no page.waitForTimeout in specs
+        working-directory: tests/e2e
+        run: |
+          if grep -rE "waitForTimeout\(" specs/ helpers/; then
+            echo "::error::page.waitForTimeout is forbidden — use DOM-state assertions."
+            exit 1
+          fi
 
       - name: Install Playwright Chromium
         working-directory: tests/e2e

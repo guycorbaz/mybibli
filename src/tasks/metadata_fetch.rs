@@ -1,11 +1,14 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::metadata::chain::ChainExecutor;
+use crate::metadata::provider::MetadataResult;
 use crate::metadata::registry::ProviderRegistry;
 use crate::models::media_type::{CodeType, MediaType};
+use crate::models::title::TitleModel;
 use crate::services::cover::CoverService;
 
 /// Fetch metadata asynchronously for a title using the provider chain.
@@ -68,25 +71,81 @@ pub async fn fetch_metadata_chain(
 }
 
 /// Update title fields from resolved metadata.
+///
+/// Story 6-3: applies a per-field guard against `manually_edited_fields` and an
+/// optimistic `version` check, so a concurrent manual edit always wins the race.
+/// When the version check fails (concurrent edit landed first), the function
+/// logs at info and returns `Ok(())` — losing the race is the intended outcome,
+/// not an error to propagate to `mark_failed`.
 pub async fn update_title_from_metadata(
     pool: &DbPool,
     title_id: u64,
-    metadata: &crate::metadata::provider::MetadataResult,
+    metadata: &MetadataResult,
 ) -> Result<(), AppError> {
     // Only update fields that have values from metadata
-    let title = metadata.title.as_deref().unwrap_or("");
-    if title.is_empty() {
+    let new_title = metadata.title.as_deref().unwrap_or("");
+    if new_title.is_empty() {
         return Ok(());
     }
 
-    // Parse publication_date string to NaiveDate for the DATE column
+    // Snapshot read — gives us the current `version` for optimistic locking
+    // and the `manually_edited_fields` set used to bypass per-field writes.
+    // If the title was soft-deleted between scan and fetch, no-op silently.
+    let snapshot = match TitleModel::find_by_id(pool, title_id).await? {
+        Some(t) => t,
+        None => return Ok(()),
+    };
+
+    let rows = do_update(pool, title_id, metadata, &snapshot).await?;
+    if rows == 0 {
+        tracing::info!(
+            title_id = title_id,
+            "Background fetch lost race with concurrent manual edit; column UPDATE no-op"
+        );
+    }
+
+    // Add primary author as contributor if available (skip empty/whitespace names).
+    // Runs unconditionally (per story spec Task 3.6) — contributors are tracked via
+    // the `title_contributors` junction, not `manually_edited_fields`, and the INSERT
+    // IGNORE at line 224 makes re-runs idempotent. Extending the guard to contributor
+    // rows is a separate (future) story.
+    if let Some(author_name) = metadata.authors.first().map(|s| s.trim()).filter(|s| !s.is_empty())
+        && let Err(e) = add_author_contributor(pool, title_id, author_name).await
+    {
+        tracing::warn!(title_id = title_id, error = %e, "Failed to add author contributor");
+    }
+
+    Ok(())
+}
+
+/// Run the actual UPDATE for the metadata-fetch path. Honors:
+///   - `manually_edited_fields` from `snapshot` (fields in the set are bound as
+///     `NULL`, so the SQL's `COALESCE(?, col)` keeps the existing column value).
+///   - The optimistic `WHERE version = ?` check from `snapshot.version`; concurrent
+///     manual edits bump version and cause this UPDATE to affect zero rows.
+///
+/// Returns `rows_affected` (0 means the version check lost the race).
+// NOTE: must stay `pub` (not `pub(crate)`): the integration test in
+// `tests/metadata_fetch_race.rs` lives in an external crate and calls
+// `do_update` directly to simulate the stale-snapshot race (AC #2).
+// The spec's Task 4.3 `pub(crate)` wording was inconsistent with its own
+// test contract — integration tests cannot reach crate-private items.
+pub async fn do_update(
+    pool: &DbPool,
+    title_id: u64,
+    metadata: &MetadataResult,
+    snapshot: &TitleModel,
+) -> Result<u64, AppError> {
     let pub_date = metadata.publication_date.as_deref().and_then(|s| {
         chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
             .or_else(|_| chrono::NaiveDate::parse_from_str(&format!("{s}-01-01"), "%Y-%m-%d"))
             .ok()
     });
 
-    sqlx::query(
+    let guarded: HashSet<String> = snapshot.parsed_manually_edited_fields().into_iter().collect();
+    let g = |field: &str| guarded.contains(field);
+
+    let result = sqlx::query(
         "UPDATE titles SET \
          title = COALESCE(?, title), \
          subtitle = COALESCE(?, subtitle), \
@@ -100,34 +159,29 @@ pub async fn update_title_from_metadata(
          total_duration = COALESCE(?, total_duration), \
          age_rating = COALESCE(?, age_rating), \
          issue_number = COALESCE(?, issue_number), \
+         version = version + 1, \
          updated_at = NOW() \
-         WHERE id = ? AND deleted_at IS NULL",
+         WHERE id = ? AND version = ? AND deleted_at IS NULL",
     )
-    .bind(&metadata.title)
-    .bind(&metadata.subtitle)
-    .bind(&metadata.description)
-    .bind(&metadata.publisher)
-    .bind(&metadata.language)
-    .bind(metadata.page_count)
-    .bind(pub_date)
-    .bind(&metadata.dewey_code)
-    .bind(metadata.track_count)
-    .bind(&metadata.total_duration)
-    .bind(&metadata.age_rating)
-    .bind(&metadata.issue_number)
+    .bind(if g("title") { None } else { metadata.title.clone() })
+    .bind(if g("subtitle") { None } else { metadata.subtitle.clone() })
+    .bind(if g("description") { None } else { metadata.description.clone() })
+    .bind(if g("publisher") { None } else { metadata.publisher.clone() })
+    .bind(if g("language") { None } else { metadata.language.clone() })
+    .bind(if g("page_count") { None } else { metadata.page_count })
+    .bind(if g("publication_date") { None } else { pub_date })
+    .bind(if g("dewey_code") { None } else { metadata.dewey_code.clone() })
+    .bind(if g("track_count") { None } else { metadata.track_count })
+    .bind(if g("total_duration") { None } else { metadata.total_duration.clone() })
+    .bind(if g("age_rating") { None } else { metadata.age_rating.clone() })
+    .bind(if g("issue_number") { None } else { metadata.issue_number.clone() })
     .bind(title_id)
+    .bind(snapshot.version)
     .execute(pool)
     .await
     .map_err(|e| AppError::Internal(format!("Failed to update title: {e}")))?;
 
-    // Add primary author as contributor if available (skip empty/whitespace names)
-    if let Some(author_name) = metadata.authors.first().map(|s| s.trim()).filter(|s| !s.is_empty())
-        && let Err(e) = add_author_contributor(pool, title_id, author_name).await
-    {
-        tracing::warn!(title_id = title_id, error = %e, "Failed to add author contributor");
-    }
-
-    Ok(())
+    Ok(result.rows_affected())
 }
 
 /// Add an author contributor to a title (if not already present).

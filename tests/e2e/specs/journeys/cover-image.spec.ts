@@ -20,16 +20,14 @@ test.describe("Cover Image Journey", () => {
     // Wait for skeleton feedback
     await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 
-    // Wait for async metadata to complete
-    await page.waitForTimeout(6000);
-
     // Trigger OOB delivery by scanning again (PendingUpdates middleware)
+    // Bounded to 15s to cover BnF timeout + Google Books fallback under CI load.
     await scanField.fill(COVER_ISBN);
     await scanField.press("Enter");
 
     // Context banner should be visible with title info (cover or placeholder)
     const banner = page.locator("#context-banner");
-    await expect(banner).not.toHaveClass(/hidden/, { timeout: 5000 });
+    await expect(banner).not.toHaveClass(/hidden/, { timeout: 15000 });
 
     // Should show either a cover image or the placeholder SVG icon
     const coverOrPlaceholder = page.locator('#context-banner img[src*="/covers/"], #context-banner img[src*="/static/icons/"]');
