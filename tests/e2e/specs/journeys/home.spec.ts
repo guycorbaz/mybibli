@@ -20,4 +20,13 @@ test.describe("Home page", () => {
     // Indigo color should be applied (not default black)
     expect(color).not.toBe("rgb(0, 0, 0)");
   });
+
+  // CI RED-PATH SMOKE TEST (story 6-1 Task 5) — DELIBERATELY FAILING.
+  // Revert this whole block after verifying the PR merge is blocked.
+  test("ci-red-path-smoke — DELIBERATELY FAILING", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("#this-element-does-not-exist")).toBeVisible({
+      timeout: 3000,
+    });
+  });
 });
