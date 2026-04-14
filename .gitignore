@@ -5,6 +5,8 @@ Cargo.lock
 
 # Node.js (Playwright tests)
 node_modules/
+package-lock.json
+!tests/e2e/package-lock.json
 
 # IDE
 .vscode/
@@ -46,4 +48,3 @@ static/css/output.css
 
 # Tailwind build (root level, not tests/)
 /package.json
-/package-lock.json
