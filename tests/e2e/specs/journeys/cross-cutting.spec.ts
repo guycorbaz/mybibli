@@ -20,9 +20,10 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
     // Create a title
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
-    await expect(
-      page.locator('.feedback-entry[data-feedback-variant="success"]').first(),
-    ).toBeVisible({ timeout: 5000 });
+    // ISBN scan lands as a skeleton first (resolved later via OOB swap).
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", {
+      timeout: 5000,
+    });
 
     // Create a volume
     await scanField.fill("V0098");
