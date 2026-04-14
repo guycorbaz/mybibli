@@ -79,7 +79,7 @@ jobs:
             --test metadata_fetch_dewey
 
       - name: Collect MariaDB logs on failure
-        if: failure()
+        if: failure() || cancelled()
         run: |
           set +e
           CID=$(docker ps --filter "ancestor=mariadb:10.11" --format '{{.ID}}' | head -1)
@@ -88,10 +88,10 @@ jobs:
           fi
 
       - name: Upload MariaDB logs on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: mariadb-logs-${{ github.run_id }}
+          name: mariadb-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/mariadb.log
           retention-days: 7
           if-no-files-found: ignore
@@ -115,8 +115,6 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-
 
       - name: Build and start E2E stack
         run: docker compose -f tests/e2e/docker-compose.test.yml up -d --build --wait
@@ -143,10 +141,10 @@ jobs:
         run: docker compose -f tests/e2e/docker-compose.test.yml down -v || true
 
       - name: Upload Playwright report on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ github.run_id }}
+          name: playwright-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tests/e2e/playwright-report/
             tests/e2e/test-results/
@@ -154,10 +152,10 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload compose logs on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: compose-logs-${{ github.run_id }}
+          name: compose-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/compose-logs.txt
           retention-days: 7
           if-no-files-found: ignore

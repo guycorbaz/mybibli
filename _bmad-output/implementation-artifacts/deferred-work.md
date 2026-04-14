@@ -175,3 +175,9 @@
 - `VolumeModel::find_by_location` (and parallel sorts in `home.rs` / `active_search`) lacks a secondary `id ASC` tiebreaker in `ORDER BY`. MariaDB's order within equal sort keys is implementation-defined, so rows with identical values can reorder across paginated requests, causing volumes to be skipped or duplicated. Amplified on Dewey sort (NULLs are common). Cross-cutting retro item.
 - `rust_i18n::t!(...)` output is not HTML-escaped when inserted into `format!`-based response strings (e.g. `src/routes/titles.rs:288`). Low risk (translator-controlled), inconsistent with `html_escape(d)` applied to user-entered values. Pattern appears across many `format!` sites. Cross-cutting cleanup.
 - `BnfProvider::extract_subfield("676", "a")` returns only the first 676 datafield when a record has multiple DDC classifications (fiction + translation studies, etc.). Deterministic but arbitrary choice. Same pattern used for all other UNIMARC fields; not a regression.
+
+## Deferred from: code review of story-6-1 (2026-04-14)
+
+- Cargo.toml version parsing in `release.yml:30` (`grep '^version = "' | head -1`) is fragile against `[workspace.package]` tables, UTF-8 BOM, CRLF line endings, and single-quoted values. Today Cargo.toml has none of these. Future fix: migrate to `cargo pkgid` or `cargo metadata --format-version 1 --no-deps | jq -r '.packages[0].version'`.
+- `_gates.yml` callers do not pass `secrets: inherit`. No current gate needs secrets, but adding one later will silently produce empty env vars. Documented in `docs/ci-cd.md#known-gotchas`; address when a gate first needs a secret.
+- Task 3.5 tag-mismatch smoke test (push a tag whose semver differs from Cargo.toml, observe workflow fails fast) was deferred in the story itself; tracked here for traceability.
