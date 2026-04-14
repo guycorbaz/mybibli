@@ -180,14 +180,16 @@ The tag regex is `^v[0-9]+\.[0-9]+\.[0-9]+$` — pre-release suffixes (`v1.0.0-r
 
 ## Timing baselines
 
-_To be filled during Task 5.4 smoke test (recorded from the first green `main` PR)._
+Recorded 2026-04-14 on `ubuntu-latest` runners, repo default cache-policy.
 
-| Gate             | First cold run | Steady-state (cache warm) |
-|------------------|----------------|---------------------------|
-| `rust-tests`     | TBD            | TBD                       |
-| `db-integration` | TBD            | TBD                       |
-| `e2e`            | TBD            | TBD                       |
-| `release.publish` | TBD            | TBD                       |
+| Gate             | Observed run time (warm cache) | Notes                                                 |
+|------------------|--------------------------------|-------------------------------------------------------|
+| `rust-tests`     | 50 s – 1 m 21 s                | `Swatinem/rust-cache@v2`; clippy + unit + sqlx-check  |
+| `db-integration` | 48 s – 1 m 10 s                | MariaDB service container spins in ~5 s              |
+| `e2e`            | 9 m 21 s – 9 m 22 s            | Dominated by `docker compose up --build --wait` + Playwright suite (~6 min tests) |
+| `release.publish` | not yet measured (no tag pushed) | Will be filled after first `vX.Y.Z` release          |
+
+Wall-clock PR end-to-end: **~10 min** (Playwright is the long pole; the other two finish in ~90 s).
 
 Future stories that add CI steps should measure their overhead against these numbers and justify any regression > 30 s.
 
