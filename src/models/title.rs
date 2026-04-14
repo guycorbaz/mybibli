@@ -315,11 +315,27 @@ impl TitleModel {
     }
 
     /// Parse the manually_edited_fields JSON column into a Vec<String>.
+    ///
+    /// Returns an empty Vec when the column is NULL. If the JSON is present but
+    /// malformed (not an array of strings), logs a warning and returns empty —
+    /// a fail-open that weakens the metadata-fetch guard for a single corrupt
+    /// row, but surfaces the corruption in logs instead of silently masking it.
     pub fn parsed_manually_edited_fields(&self) -> Vec<String> {
-        self.manually_edited_fields
-            .as_deref()
-            .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
-            .unwrap_or_default()
+        let Some(raw) = self.manually_edited_fields.as_deref() else {
+            return Vec::new();
+        };
+        match serde_json::from_str::<Vec<String>>(raw) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    title_id = self.id,
+                    error = %e,
+                    raw = %raw,
+                    "manually_edited_fields is not a valid JSON array of strings; treating as empty"
+                );
+                Vec::new()
+            }
+        }
     }
 
     /// Find up to 8 related titles for a title detail page.

@@ -415,6 +415,14 @@ fn non_empty(s: &Option<String>) -> Option<String> {
     s.as_ref().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
+/// Whether to clear a field's `manually_edited` flag when handling a metadata
+/// re-download confirmation. Clear only when the user accepted the replacement
+/// AND the new value actually differs from the kept value — re-accepting an
+/// identical value preserves the manual-edit marker.
+fn should_clear_flag(accept: &Option<String>, changed: bool) -> bool {
+    accept.is_some() && changed
+}
+
 pub async fn update_title(
     State(state): State<AppState>,
     session: Session,
@@ -700,91 +708,103 @@ pub async fn confirm_metadata(
 
     let final_title = if use_new("title", &form.accept_title, &manually_edited) {
         let v = non_empty(&Some(form.new_title.clone())).unwrap_or_else(|| title.title.clone());
-        if v != title.title { updated_count += 1; }
-        if form.accept_title.is_some() { manually_edited.remove("title"); }
+        let changed = v != title.title;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_title, changed) { manually_edited.remove("title"); }
         v
     } else { kept_count += 1; title.title.clone() };
 
     let final_subtitle = if use_new("subtitle", &form.accept_subtitle, &manually_edited) {
         let v = non_empty(&Some(form.new_subtitle.clone()));
-        if v != title.subtitle { updated_count += 1; }
-        if form.accept_subtitle.is_some() { manually_edited.remove("subtitle"); }
+        let changed = v != title.subtitle;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_subtitle, changed) { manually_edited.remove("subtitle"); }
         v
     } else { kept_count += 1; title.subtitle.clone() };
 
     let final_description = if use_new("description", &form.accept_description, &manually_edited) {
         let v = non_empty(&Some(form.new_description.clone()));
-        if v != title.description { updated_count += 1; }
-        if form.accept_description.is_some() { manually_edited.remove("description"); }
+        let changed = v != title.description;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_description, changed) { manually_edited.remove("description"); }
         v
     } else { kept_count += 1; title.description.clone() };
 
     let final_publisher = if use_new("publisher", &form.accept_publisher, &manually_edited) {
         let v = non_empty(&Some(form.new_publisher.clone()));
-        if v != title.publisher { updated_count += 1; }
-        if form.accept_publisher.is_some() { manually_edited.remove("publisher"); }
+        let changed = v != title.publisher;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_publisher, changed) { manually_edited.remove("publisher"); }
         v
     } else { kept_count += 1; title.publisher.clone() };
 
     let final_language = if use_new("language", &form.accept_language, &manually_edited) {
         let v = non_empty(&Some(form.new_language.clone())).unwrap_or_else(|| title.language.clone());
-        if v != title.language { updated_count += 1; }
-        if form.accept_language.is_some() { manually_edited.remove("language"); }
+        let changed = v != title.language;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_language, changed) { manually_edited.remove("language"); }
         v
     } else { kept_count += 1; title.language.clone() };
 
     let final_pub_date = if use_new("publication_date", &form.accept_publication_date, &manually_edited) {
         let v = form.new_publication_date.trim();
-        if form.accept_publication_date.is_some() { manually_edited.remove("publication_date"); }
         let result = if v.is_empty() { title.publication_date } else {
             chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d")
                 .or_else(|_| chrono::NaiveDate::parse_from_str(&format!("{v}-01-01"), "%Y-%m-%d"))
                 .ok()
                 .or(title.publication_date)
         };
-        if result != title.publication_date { updated_count += 1; }
+        let changed = result != title.publication_date;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_publication_date, changed) { manually_edited.remove("publication_date"); }
         result
     } else { kept_count += 1; title.publication_date };
 
     let final_page_count = if use_new("page_count", &form.accept_page_count, &manually_edited) {
-        if form.accept_page_count.is_some() { manually_edited.remove("page_count"); }
         let v = form.new_page_count.parse().ok().or(title.page_count);
-        if v != title.page_count { updated_count += 1; }
+        let changed = v != title.page_count;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_page_count, changed) { manually_edited.remove("page_count"); }
         v
     } else { kept_count += 1; title.page_count };
 
     let final_track_count = if use_new("track_count", &form.accept_track_count, &manually_edited) {
-        if form.accept_track_count.is_some() { manually_edited.remove("track_count"); }
         let v = form.new_track_count.parse().ok().or(title.track_count);
-        if v != title.track_count { updated_count += 1; }
+        let changed = v != title.track_count;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_track_count, changed) { manually_edited.remove("track_count"); }
         v
     } else { kept_count += 1; title.track_count };
 
     let final_total_duration = if use_new("total_duration", &form.accept_total_duration, &manually_edited) {
-        if form.accept_total_duration.is_some() { manually_edited.remove("total_duration"); }
         let v = form.new_total_duration.parse().ok().or(title.total_duration);
-        if v != title.total_duration { updated_count += 1; }
+        let changed = v != title.total_duration;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_total_duration, changed) { manually_edited.remove("total_duration"); }
         v
     } else { kept_count += 1; title.total_duration };
 
     let final_age_rating = if use_new("age_rating", &form.accept_age_rating, &manually_edited) {
-        if form.accept_age_rating.is_some() { manually_edited.remove("age_rating"); }
         let v = non_empty(&Some(form.new_age_rating.clone())).or(title.age_rating.clone());
-        if v != title.age_rating { updated_count += 1; }
+        let changed = v != title.age_rating;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_age_rating, changed) { manually_edited.remove("age_rating"); }
         v
     } else { kept_count += 1; title.age_rating.clone() };
 
     let final_issue_number = if use_new("issue_number", &form.accept_issue_number, &manually_edited) {
-        if form.accept_issue_number.is_some() { manually_edited.remove("issue_number"); }
         let v = form.new_issue_number.parse().ok().or(title.issue_number);
-        if v != title.issue_number { updated_count += 1; }
+        let changed = v != title.issue_number;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_issue_number, changed) { manually_edited.remove("issue_number"); }
         v
     } else { kept_count += 1; title.issue_number };
 
     let final_dewey_code = if use_new("dewey_code", &form.accept_dewey_code, &manually_edited) {
         let v = non_empty(&Some(form.new_dewey_code.clone()));
-        if v != title.dewey_code { updated_count += 1; }
-        if form.accept_dewey_code.is_some() { manually_edited.remove("dewey_code"); }
+        let changed = v != title.dewey_code;
+        if changed { updated_count += 1; }
+        if should_clear_flag(&form.accept_dewey_code, changed) { manually_edited.remove("dewey_code"); }
         v
     } else { kept_count += 1; title.dewey_code.clone() };
 
@@ -1171,6 +1191,94 @@ mod tests {
         assert_eq!(non_empty(&Some("".to_string())), None);
         assert_eq!(non_empty(&Some("  ".to_string())), None);
         assert_eq!(non_empty(&None), None);
+    }
+
+    // ── Story 6-3: should_clear_flag — confirm_metadata flag-wipe semantics ──
+    //
+    // Each test mirrors a final_<field> branch in `confirm_metadata`. Verifies
+    // that re-accepting an identical value preserves the manually-edited marker
+    // (Defect B fix). Uses representative shapes per AC #7:
+    //   - publisher       → Option<String>
+    //   - dewey_code      → Option<String> (non_empty semantics)
+    //   - page_count      → Option<i32>
+
+    fn changed<T: PartialEq>(new: &T, kept: &T) -> bool { new != kept }
+
+    #[test]
+    fn should_clear_flag_publisher_accepted_same_value_keeps_flag() {
+        let kept: Option<String> = Some("Gallimard".into());
+        let new: Option<String> = non_empty(&Some("Gallimard".into()));
+        let accept = Some("on".to_string()); // checkbox checked → form sends "on"
+        assert!(!should_clear_flag(&accept, changed(&new, &kept)),
+            "re-accepting the existing publisher must keep the flag");
+    }
+
+    #[test]
+    fn should_clear_flag_publisher_accepted_different_value_clears_flag() {
+        let kept: Option<String> = Some("Gallimard".into());
+        let new: Option<String> = non_empty(&Some("BnF".into()));
+        let accept = Some("on".to_string());
+        assert!(should_clear_flag(&accept, changed(&new, &kept)),
+            "accepting a replacement publisher must clear the flag");
+    }
+
+    #[test]
+    fn should_clear_flag_publisher_unchecked_keeps_flag() {
+        // accept absent → outer use_new() returns false; the conditional is
+        // never reached. We still verify the helper short-circuits.
+        let kept: Option<String> = Some("Gallimard".into());
+        let new: Option<String> = non_empty(&Some("BnF".into()));
+        let accept: Option<String> = None;
+        assert!(!should_clear_flag(&accept, changed(&new, &kept)),
+            "unchecked accept must never clear the flag");
+    }
+
+    #[test]
+    fn should_clear_flag_dewey_accepted_same_value_keeps_flag() {
+        let kept: Option<String> = Some("843.914".into());
+        let new: Option<String> = non_empty(&Some("843.914".into()));
+        let accept = Some("on".to_string());
+        assert!(!should_clear_flag(&accept, changed(&new, &kept)));
+    }
+
+    #[test]
+    fn should_clear_flag_dewey_accepted_different_value_clears_flag() {
+        let kept: Option<String> = Some("843.914".into());
+        let new: Option<String> = non_empty(&Some("843.92".into()));
+        let accept = Some("on".to_string());
+        assert!(should_clear_flag(&accept, changed(&new, &kept)));
+    }
+
+    #[test]
+    fn should_clear_flag_dewey_unchecked_keeps_flag() {
+        let kept: Option<String> = Some("843.914".into());
+        let new: Option<String> = non_empty(&Some("843.92".into()));
+        let accept: Option<String> = None;
+        assert!(!should_clear_flag(&accept, changed(&new, &kept)));
+    }
+
+    #[test]
+    fn should_clear_flag_page_count_accepted_same_value_keeps_flag() {
+        let kept: Option<i32> = Some(235);
+        let new: Option<i32> = "235".parse().ok().or(kept);
+        let accept = Some("on".to_string());
+        assert!(!should_clear_flag(&accept, changed(&new, &kept)));
+    }
+
+    #[test]
+    fn should_clear_flag_page_count_accepted_different_value_clears_flag() {
+        let kept: Option<i32> = Some(235);
+        let new: Option<i32> = "300".parse().ok().or(kept);
+        let accept = Some("on".to_string());
+        assert!(should_clear_flag(&accept, changed(&new, &kept)));
+    }
+
+    #[test]
+    fn should_clear_flag_page_count_unchecked_keeps_flag() {
+        let kept: Option<i32> = Some(235);
+        let new: Option<i32> = "300".parse().ok().or(kept);
+        let accept: Option<String> = None;
+        assert!(!should_clear_flag(&accept, changed(&new, &kept)));
     }
 }
 

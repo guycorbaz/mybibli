@@ -30,10 +30,8 @@ test.describe("Provider Chain & Fallback (Story 3-1)", () => {
     );
     await expect(anyFeedback.first()).toBeVisible({ timeout: 5000 });
 
-    // Wait for async metadata fetch to complete (BnF timeout + Google Books fallback)
-    await page.waitForTimeout(8000);
-
-    // Trigger OOB delivery by scanning again
+    // Trigger OOB delivery by scanning again.
+    // Bounded to 15s to cover BnF timeout + Google Books fallback under CI load.
     await scanField.fill(GOOGLE_BOOKS_ISBN);
     await scanField.press("Enter");
 
@@ -41,16 +39,10 @@ test.describe("Provider Chain & Fallback (Story 3-1)", () => {
     const infoEntry = page.locator(
       '.feedback-entry[data-feedback-variant="info"]'
     );
-    await expect(infoEntry).toBeVisible({ timeout: 5000 });
+    await expect(infoEntry).toBeVisible({ timeout: 15000 });
 
-    // Verify metadata from Google Books appeared on page
-    // The mock returns "Effective Java" by "Joshua Bloch"
-    await page.waitForTimeout(1000);
-    const pageContent = await page.textContent("body");
-    expect(
-      pageContent?.includes("Effective Java") ||
-        pageContent?.includes("Bloch")
-    ).toBeTruthy();
+    // Mock returns "Effective Java" by "Joshua Bloch"
+    await expect(page.locator("body")).toContainText(/Effective Java|Bloch/i, { timeout: 15000 });
   });
 
   // AC8: All providers fail — title exists with no metadata, no blocking error
@@ -70,10 +62,8 @@ test.describe("Provider Chain & Fallback (Story 3-1)", () => {
     );
     await expect(anyFeedback.first()).toBeVisible({ timeout: 5000 });
 
-    // Wait for all providers to fail
-    await page.waitForTimeout(4000);
-
-    // Scan again to confirm title was created despite no metadata
+    // Scan again to confirm title was created despite no metadata.
+    // Bounded to 15s for all-providers-fail scenario under CI load.
     await scanField.fill(UNKNOWN_ISBN);
     await scanField.press("Enter");
 
@@ -81,7 +71,7 @@ test.describe("Provider Chain & Fallback (Story 3-1)", () => {
     const infoEntry = page.locator(
       '.feedback-entry[data-feedback-variant="info"]'
     );
-    await expect(infoEntry).toBeVisible({ timeout: 5000 });
+    await expect(infoEntry).toBeVisible({ timeout: 15000 });
 
     // No error feedback should be present — chain failure is silent to user
     const errorEntries = page.locator(
@@ -110,16 +100,11 @@ test.describe("Provider Chain & Fallback (Story 3-1)", () => {
     const banner = page.locator("#context-banner");
     await expect(banner).not.toHaveClass(/hidden/, { timeout: 5000 });
 
-    // Wait for metadata resolution
-    await page.waitForTimeout(3000);
+    // Trigger OOB delivery; bounded to 15s for BnF resolution under CI load.
     await scanField.fill(BNF_ISBN);
     await scanField.press("Enter");
 
     // Verify BnF metadata: "L'Étranger" by "Albert Camus"
-    await page.waitForTimeout(1000);
-    const pageContent = await page.textContent("body");
-    expect(
-      pageContent?.includes("tranger") || pageContent?.includes("Camus")
-    ).toBeTruthy();
+    await expect(page.locator("body")).toContainText(/tranger|Camus/i, { timeout: 15000 });
   });
 });

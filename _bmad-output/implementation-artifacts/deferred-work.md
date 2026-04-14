@@ -181,3 +181,15 @@
 - Cargo.toml version parsing in `release.yml:30` (`grep '^version = "' | head -1`) is fragile against `[workspace.package]` tables, UTF-8 BOM, CRLF line endings, and single-quoted values. Today Cargo.toml has none of these. Future fix: migrate to `cargo pkgid` or `cargo metadata --format-version 1 --no-deps | jq -r '.packages[0].version'`.
 - `_gates.yml` callers do not pass `secrets: inherit`. No current gate needs secrets, but adding one later will silently produce empty env vars. Documented in `docs/ci-cd.md#known-gotchas`; address when a gate first needs a secret.
 - Task 3.5 tag-mismatch smoke test (push a tag whose semver differs from Cargo.toml, observe workflow fails fast) was deferred in the story itself; tracked here for traceability.
+
+## Deferred from: code review of 6-2-seed-librarian-and-loginas-role (2026-04-14)
+
+- Seed migration `INSERT ... WHERE NOT EXISTS` pattern ignores hash/role drift. If a prior env has a `librarian` row with stale hash or role, the new migration is a no-op and login silently uses stale creds. Shared with `seed_dev_user.sql` — worth a project-wide revisit.
+- `tests/e2e/tsconfig.json` does not enable `noUncheckedIndexedAccess` or `exactOptionalPropertyTypes`. `strict: true` is on but these stricter flags would harden the new typecheck gate.
+
+## Deferred from: code review of 6-3-fix-manually-edited-fields-race (2026-04-14)
+
+- `non_empty` trim asymmetry: `confirm_metadata` trims form input via `non_empty()` but compares the result against untrimmed `title.<field>`. Legacy rows with trailing whitespace will compute `changed = true` on re-accept, clearing the manually-edited flag. Low risk (no known whitespace legacy data); revisit if any such rows appear.
+- `publication_date` form handling parses `"2024"` as `2024-01-01`. If stored value is a full date and metadata returns year-only (or vice-versa), the same-value comparison reports `changed` and clears the flag even though the user sees "same year". Pre-existing parse behavior; fix requires a normalization helper shared with the parser.
+- Numeric form fields (`page_count`, `track_count`, `total_duration`, `issue_number`) use `form.new_X.parse().ok().or(title.X)`, which masks an empty submit back to the stored value. Users cannot semantically "clear to NULL" via the confirm-metadata form. Pre-existing; tracked for a dedicated form-UX pass.
+- Background-fetch `version` bump can cause 409 Conflict for users who opened the edit form before the BnF fetch landed. Decision 2026-04-14: accept as correct optimistic-locking semantics. If real-world reports appear, revisit — options: (a) friendly 409 UX + merge hint, (b) drop the version bump and rely purely on `manually_edited_fields` guard, (c) client-side retry/merge flow.

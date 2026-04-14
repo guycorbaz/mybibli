@@ -28,6 +28,9 @@ cd tests/e2e && npx playwright test specs/journeys/catalog-title.spec.ts  # Sing
 cd tests/e2e && docker compose -f docker-compose.test.yml up -d
 cd tests/e2e && npm test
 
+# Flake gate (run before committing E2E changes) — enforced by CI in the e2e job
+grep -rE "waitForTimeout\(" tests/e2e/specs/ tests/e2e/helpers/ && exit 1 || true
+
 # Database
 cargo sqlx prepare                   # Regenerate .sqlx/ offline cache after query changes
 cargo sqlx prepare --check --workspace -- --all-targets  # Verify cache matches source (pre-commit check)
@@ -106,9 +109,11 @@ Playwright E2E suite lives in `tests/e2e/`. Implementation details below are loa
 > - ✅ Smoke tests (one per epic) MUST use `loginAs(page)` from `tests/e2e/helpers/auth.ts` — real browser login starting from a blank context
 > - ✅ All non-smoke tests also use `loginAs(page)` in `beforeEach` — each test gets its own server-side session for parallel safety
 > - ❌ Do NOT inject `DEV_SESSION_COOKIE` — it causes session state pollution in parallel mode
-> - The `loginAs()` helper reads `TEST_ADMIN_PASSWORD` env var with default `admin` (matches seed in `migrations/20260331000004_fix_dev_user_hash.sql`)
+> - Signature: `loginAs(page, role?)` with `role: "admin" | "librarian"` (default `"admin"`). Passwords resolve from `TEST_ADMIN_PASSWORD` / `TEST_LIBRARIAN_PASSWORD` (defaults `admin` / `librarian`), matching seeds in `migrations/20260331000004_fix_dev_user_hash.sql` and `migrations/20260414000001_seed_librarian_user.sql`. The role argument is a typed union so typos fail `tsc --noEmit` — the typecheck is wired into the `e2e` CI job.
+> - Env-var overrides apply when Playwright runs on the host (the `_gates.yml` default: only the app runs in docker, `npm test` runs directly). If Playwright is ever moved into docker-compose, pass those vars through the Playwright service's `environment:` block.
+> - **`TEST_*_PASSWORD` overrides are local-only.** CI does not set `TEST_ADMIN_PASSWORD` / `TEST_LIBRARIAN_PASSWORD`, so CI always uses the seed defaults (`admin` / `librarian`). If you rotate a seed password in a migration, update the seed itself — do NOT rely on env overrides as the source of truth in CI.
 
-**HTMX wait strategies:** Never use arbitrary `waitForTimeout(N)`. Wait for DOM state explicitly:
+**HTMX wait strategies:** Never use arbitrary `waitForTimeout(N)`. This is enforced by a CI grep gate in the `e2e` job — new `waitForTimeout` calls fail the PR. Use the DOM-state assertions below instead:
 ```ts
 // For V-code creation feedback — wait for the specific V-code text to avoid stale entries
 await expect(page.locator(".feedback-entry").first()).toContainText(/V0060/i, { timeout: 10000 });

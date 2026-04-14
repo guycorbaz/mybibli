@@ -20,7 +20,9 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
     // Create a title
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
-    await page.waitForTimeout(1000);
+    await expect(
+      page.locator('.feedback-entry[data-feedback-variant="success"]').first(),
+    ).toBeVisible({ timeout: 5000 });
 
     // Create a volume
     await scanField.fill("V0098");

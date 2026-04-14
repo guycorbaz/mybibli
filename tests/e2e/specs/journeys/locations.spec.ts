@@ -141,8 +141,11 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await expect(deleteBtn).toBeVisible({ timeout: 5000 });
     await deleteBtn.click();
 
-    // Location should be removed (or page refreshed without it)
-    await page.waitForTimeout(1000);
+    // Location should be removed from the tree — assert the delete button is gone
+    // (scoped selector avoids matching any success-toast copy containing the name).
+    await expect(
+      page.locator('button[aria-label*="Delete LO-ToDelete"]'),
+    ).toHaveCount(0, { timeout: 5000 });
   });
 
   // AC9: Node type dropdown has options

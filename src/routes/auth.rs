@@ -265,6 +265,17 @@ mod tests {
         assert!(!verify_password("anything", "not-a-valid-hash"));
     }
 
+    // Story 6-2: guard against seed-hash drift. If the migration hash is regenerated
+    // with a mismatched variant or wrong password, this test fails at `cargo test`
+    // time instead of at E2E login time.
+    const LIBRARIAN_SEED_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$NfI9SYT0huhcqAanQWa9pw$mSEHLW8Wl8wlk504MRpzyS42JlcU9w2CXYVVFMFvbcU";
+
+    #[test]
+    fn test_librarian_seed_hash_verifies() {
+        assert!(verify_password("librarian", LIBRARIAN_SEED_HASH));
+        assert!(!verify_password("wrongpass", LIBRARIAN_SEED_HASH));
+    }
+
     #[test]
     fn test_login_template_renders() {
         let template = LoginTemplate::new("");
