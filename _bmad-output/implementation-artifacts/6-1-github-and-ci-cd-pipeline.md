@@ -1,6 +1,6 @@
 # Story 6.1: GitHub repo + CI/CD pipeline + Docker Hub publishing
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -92,20 +92,20 @@ so that I can ship mybibli with confidence, merge-gated on green tests, and with
   - [x] 4.3 In Settings → General → Default branch, confirm `main`. **DONE 2026-04-14** — already `main`, no switch needed.
   - [x] 4.4 All settings documented in `docs/ci-cd.md` with exact navigation paths. **DONE 2026-04-14.**
 
-- [ ] **Task 5 — Smoke-test the red path** (AC: #3, #12)
-  - [ ] 5.1 On a feature branch `ci-red-path-test`, deliberately break one Playwright spec (e.g., change a selector to a nonexistent ID). Push, open a draft PR. Observe: `e2e` fails, PR merge button is disabled with "Required status checks must pass before merging".
-  - [ ] 5.2 Download the uploaded `playwright-report-*` artifact, verify the HTML report opens and shows the failing test trace.
-  - [ ] 5.3 Revert the deliberate break, push again, observe all 3 gates go green, merge button re-enables. Close the PR without merging (it was a smoke test).
-  - [ ] 5.4 Record the total wall-clock time for each gate job in `docs/ci-cd.md` "Timing baselines" section (rust-tests, db-integration, e2e). Future stories can measure regressions against these numbers.
+- [x] **Task 5 — Smoke-test the red path** (AC: #3, #12) — **DONE 2026-04-14**
+  - [x] 5.1 Branch `ci-red-path-test` + draft PR #3 opened with failing Playwright test `ci-red-path-smoke — DELIBERATELY FAILING` in `tests/e2e/specs/journeys/home.spec.ts`. Observed: `gates / Playwright E2E` failed; `Rebase and merge` button greyed out.
+  - [x] 5.2 Artifact `playwright-report-24397382398` downloaded via `gh run download`, HTML report opened locally — failing test + trace + screenshot all visible.
+  - [x] 5.3 PR #3 closed without merging; branch `ci-red-path-test` deleted remotely. Deliberate break reverted.
+  - [x] 5.4 Timing baselines recorded in `docs/ci-cd.md` (rust-tests ~50 s–1 m 21 s, db-integration ~48 s–1 m 10 s, e2e ~9 m 22 s).
 
 - [x] **Task 6 — Write `docs/ci-cd.md`** (AC: #9)
   - [x] 6.1 `docs/ci-cd.md` created with all mandated sections: Overview, Job details, Secrets (PAT creation + rotation cadence of 90 days + leak-prevention grep gate), Branch protection (exact GitHub UI checklist matching Task 4 including the reusable-workflow check-name gotcha), Release procedure, Retrieving artifacts, Known gotchas (service-container DNS, mock-metadata warmup, Playwright install, migration bootstrap, reusable-workflow check names, reusable-workflow secrets).
-  - [ ] 6.2 Timing baselines subsection — placeholder table added; values filled during Task 5 smoke test (pending remote push).
+  - [x] 6.2 Timing baselines filled from 2026-04-14 runs. **DONE.**
   - [x] 6.3 `docs/ci-cd.md` linked from README under Documentation section.
 
-- [~] **Task 7 — README badge + verification gate** (AC: #10, #12)
+- [x] **Task 7 — README badge + verification gate** (AC: #10, #12) — **DONE 2026-04-14**
   - [x] 7.1 CI badge added at top of `README.md` on its own line. No Docker Hub pulls badge.
-  - [ ] 7.2 Full Foundation Rule #5 verification — clippy + sqlx-prepare --check passed locally. Full `cargo test` + DB integration + E2E + green CI run on a draft PR pending remote push. Local run intentionally scoped to no-infra verifications (no Rust source changed in this story).
+  - [x] 7.2 Foundation Rule #5 verified on PR #2 (`story-6-1-doc-fixes`): all 3 gates green (runs 24397165994 push + 24397172638 PR). Red path validated on PR #3 (Task 5). Branch protection enforces the gates.
 
 ## Dev Notes
 
