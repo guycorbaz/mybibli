@@ -112,11 +112,11 @@ Navigate to **Settings → Branches → Branch protection rules → Add rule** (
 3. **Require status checks to pass before merging:** ON
    - **Require branches to be up to date before merging:** ON
    - **Required status checks** — add EXACTLY these three (the parent job that calls the reusable workflow is named `gates`):
-     - `gates / rust-tests`
-     - `gates / db-integration`
-     - `gates / e2e`
+     - `gates / Rust tests + clippy + sqlx-prepare`
+     - `gates / DB integration tests`
+     - `gates / Playwright E2E`
 
-     > GitHub shows reusable-workflow jobs as `<parent-job-id> / <called-job-name>`. If the exact label does not appear in the autocomplete, push a dummy commit first so GitHub learns the check names, then edit the protection rule.
+     > GitHub shows reusable-workflow jobs as `<parent-job-id> / <job-display-name>` where the display name is the `name:` field of each job in `_gates.yml` (NOT the job ID). If the labels do not appear in the autocomplete, trigger a push so a full CI run indexes the check names, then edit the protection rule.
 4. **Do NOT add release-only jobs to required checks.** `verify-version` and `publish` from `release.yml` only run on `v*.*.*` tag pushes; they never report a status on PRs, so requiring them would lock every PR out of merging. (Note: `ci.yml` no longer has a `docker-publish` job — Docker Hub publishing is now release-only per "version stricte" policy.)
 5. **Require conversation resolution before merging:** ON (optional, nice-to-have).
 6. **Require signed commits:** OFF (not enforced; opt-in only).
