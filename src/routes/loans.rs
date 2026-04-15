@@ -249,7 +249,9 @@ pub async fn scan_on_loans(
     uri: axum::http::Uri,
     axum::extract::Query(params): axum::extract::Query<ScanQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
+    // Strip query string from `next` — no point replaying a failed scan after login,
+    // and the user-supplied `?code=` shouldn't be reflected into the login form.
+    session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
     let code = params.code.trim().to_uppercase();
 

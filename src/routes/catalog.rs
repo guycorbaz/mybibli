@@ -955,8 +955,9 @@ pub async fn title_form_page(
     session: Session,
     HxRequest(is_htmx): HxRequest,
     State(state): State<AppState>,
+    uri: axum::http::Uri,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
 
     let pool = &state.pool;
     let genres = load_genres(pool).await?;

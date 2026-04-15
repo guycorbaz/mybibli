@@ -340,9 +340,13 @@ struct TitleEditFormTemplate {
 pub async fn title_edit_form(
     State(state): State<AppState>,
     session: Session,
+    uri: axum::http::Uri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(crate::middleware::auth::Role::Librarian)?;
+    session.require_role_with_return(
+        crate::middleware::auth::Role::Librarian,
+        &uri.to_string(),
+    )?;
     let pool = &state.pool;
 
     let title = TitleModel::find_by_id(pool, id)

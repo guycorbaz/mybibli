@@ -48,3 +48,4 @@ static/css/output.css
 
 # Tailwind build (root level, not tests/)
 /package.json
+.claude/scheduled_tasks.lock

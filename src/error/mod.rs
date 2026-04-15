@@ -43,16 +43,31 @@ impl std::error::Error for AppError {}
 /// Returns true if `next` is a safe same-origin path-only return URL.
 /// Rejects schemes, protocol-relative `//host/...`, and anything not starting with `/`.
 pub fn is_safe_next(next: &str) -> bool {
-    if next.is_empty() || !next.starts_with('/') {
+    // Length cap — reject absurdly long return URLs (DoS / cookie pressure).
+    if next.is_empty() || next.len() > 2048 || !next.starts_with('/') {
         return false;
     }
     // Protocol-relative: `//evil.example.com/...`
     if next.starts_with("//") {
         return false;
     }
-    // Control characters and backslashes (some browsers normalize `\` → `/`)
-    if next.contains(|c: char| c.is_control() || c == '\\') {
+    // Control characters, Unicode line separators, and backslashes (some
+    // browsers normalize `\` → `/`). U+2028/U+2029 are not `is_control()`.
+    if next.contains(|c: char| c.is_control() || c == '\\' || c == '\u{2028}' || c == '\u{2029}') {
         return false;
+    }
+    // Defeat encoded bypasses: decode once and re-check the structural rules.
+    // Rejects `/%2F%2Fevil.com` (→ `//evil.com`) and `/%5Cevil.com` (→ `/\evil.com`).
+    let decoded: String = percent_encoding::percent_decode_str(next)
+        .decode_utf8_lossy()
+        .into_owned();
+    if decoded != next {
+        if !decoded.starts_with('/') || decoded.starts_with("//") {
+            return false;
+        }
+        if decoded.contains(|c: char| c.is_control() || c == '\\' || c == '\u{2028}' || c == '\u{2029}') {
+            return false;
+        }
     }
     true
 }
@@ -97,9 +112,20 @@ impl IntoResponse for AppError {
                 let title = rust_i18n::t!("error.forbidden.title").to_string();
                 let body = rust_i18n::t!("error.forbidden.body").to_string();
                 let html = crate::routes::catalog::feedback_html_pub("error", &title, &body);
+                // HX-Retarget + HX-Reswap force HTMX to swap the feedback fragment
+                // into #feedback-container instead of dropping the response (default
+                // HTMX behavior on non-2xx is no-swap, which makes admin-route 403s
+                // look like silent failures to the user).
                 return (
                     StatusCode::FORBIDDEN,
-                    [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                    [
+                        (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                        (
+                            header::HeaderName::from_static("hx-retarget"),
+                            "#feedback-container",
+                        ),
+                        (header::HeaderName::from_static("hx-reswap"), "beforeend"),
+                    ],
                     html,
                 )
                     .into_response();
@@ -231,6 +257,38 @@ mod tests {
     fn test_is_safe_next_rejects_control_chars() {
         assert!(!is_safe_next("/path\nwith\nnewlines"));
         assert!(!is_safe_next("/path\rwith\rcr"));
+    }
+
+    #[test]
+    fn test_is_safe_next_rejects_unicode_line_separators() {
+        assert!(!is_safe_next("/path\u{2028}bad"));
+        assert!(!is_safe_next("/path\u{2029}bad"));
+    }
+
+    #[test]
+    fn test_is_safe_next_rejects_overlong_input() {
+        let long = format!("/{}", "a".repeat(2100));
+        assert!(!is_safe_next(&long));
+    }
+
+    #[test]
+    fn test_is_safe_next_rejects_encoded_protocol_relative() {
+        // /%2F%2Fevil.com → decodes to //evil.com
+        assert!(!is_safe_next("/%2F%2Fevil.example.com/"));
+        assert!(!is_safe_next("/%2f%2fevil.example.com/"));
+    }
+
+    #[test]
+    fn test_is_safe_next_rejects_encoded_backslash() {
+        // /%5Cevil.com → decodes to /\evil.com
+        assert!(!is_safe_next("/%5Cevil.example.com"));
+        assert!(!is_safe_next("/%5cevil.example.com"));
+    }
+
+    #[test]
+    fn test_is_safe_next_accepts_benign_encoded_chars() {
+        // Encoded spaces and query params should still be accepted.
+        assert!(is_safe_next("/search?q=hello%20world"));
     }
 
     #[test]

@@ -193,3 +193,12 @@
 - `publication_date` form handling parses `"2024"` as `2024-01-01`. If stored value is a full date and metadata returns year-only (or vice-versa), the same-value comparison reports `changed` and clears the flag even though the user sees "same year". Pre-existing parse behavior; fix requires a normalization helper shared with the parser.
 - Numeric form fields (`page_count`, `track_count`, `total_duration`, `issue_number`) use `form.new_X.parse().ok().or(title.X)`, which masks an empty submit back to the stored value. Users cannot semantically "clear to NULL" via the confirm-metadata form. Pre-existing; tracked for a dedicated form-UX pass.
 - Background-fetch `version` bump can cause 409 Conflict for users who opened the edit form before the BnF fetch landed. Decision 2026-04-14: accept as correct optimistic-locking semantics. If real-world reports appear, revisit — options: (a) friendly 409 UX + merge hint, (b) drop the version bump and rely purely on `manually_edited_fields` guard, (c) client-side retry/merge flow.
+
+## Deferred from: code review of story-7-1 (2026-04-15)
+
+- `/logout` exposed as `GET` link enabling logout-CSRF — out of Epic 7 scope (CSRF story to follow)
+- `AppError::Forbidden` couples error layer to `routes::catalog::feedback_html_pub` — move helper to `src/utils.rs` or `src/error/handlers.rs`
+- AC #3 anonymous-write test coverage is partial — only `POST /locations` asserted; extend to titles/volumes/contributors/series/loans/borrowers
+- 3-cycle fresh-Docker E2E gate (Task 9) not completed — only 1 cycle measured
+- `BaseContext { role, is_authenticated, can_edit, can_loan, can_admin }` struct deferred in favor of ad-hoc per-template `role` plumbing (spec Task 4)
+- Login cookie missing `Secure` flag — pre-existing, tracked separately
