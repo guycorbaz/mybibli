@@ -1,6 +1,6 @@
 # Story 7.1: Anonymous browsing + role gating
 
-Status: review
+Status: done
 
 ## Story
 
@@ -199,6 +199,8 @@ claude-opus-4-6 (1M context)
 | 2026-04-15 | E2E spec adaptations (commit `e4386a1`). |
 | 2026-04-15 | Quality gates green; status → `review`. |
 | 2026-04-15 | Adversarial code review (3 reviewers); findings appended below. |
+| 2026-04-15 | Review pass-2 fixed 2 missed GET handlers + unified `uri.path()`. |
+| 2026-04-15 | Review pass-3 clean (no Medium+); 4 HTMX fragment GETs aligned for consistency. Status → `done`. |
 
 ### Review Findings
 
