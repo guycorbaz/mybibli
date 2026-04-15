@@ -405,10 +405,11 @@ pub async fn edit_location_page(
     session: Session,
     HxRequest(_is_htmx): HxRequest,
     State(state): State<AppState>,
+    uri: axum::http::Uri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 1a: Admin → Librarian.
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
 
     let pool = &state.pool;
     let location = LocationModel::find_by_id(pool, id)

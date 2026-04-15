@@ -198,3 +198,21 @@ claude-opus-4-6 (1M context)
 | 2026-04-15 | Tasks 1-7 implemented; commits `096ada9` + `44af824`. |
 | 2026-04-15 | E2E spec adaptations (commit `e4386a1`). |
 | 2026-04-15 | Quality gates green; status → `review`. |
+| 2026-04-15 | Adversarial code review (3 reviewers); findings appended below. |
+
+### Review Findings
+
+- [ ] [Review][Decision] AC #1 templates not in diff — `title_detail.html`, `contributor_detail.html`, `series.html`, `series_detail.html` not modified; verify their edit/delete affordances are already role-gated or anonymous sees non-functional buttons
+- [ ] [Review][Decision] `require_role_with_return` inconsistent across GETs — borrower/loans use it; `title_edit_form`, `series_edit`, `edit_location_page` use plain `require_role` (matrix doesn't require `_with_return` but behavior diverges)
+- [ ] [Review][Decision] `AppError::Forbidden` lacks `HX-Reswap`/`HX-Retarget` — HTMX default on non-2xx = no swap = silent failure for librarian clicks; fix now or follow-up?
+- [ ] [Review][Patch] CRITICAL: stray `</parameter></invoke>` at tail of `templates/components/nav_bar.html` — rendered into every page DOM
+- [ ] [Review][Patch] `is_safe_next` accepts encoded bypasses (`/%2F%2Fevil.com`, `/%5Cevil.com`) [src/error/mod.rs:618-633]
+- [ ] [Review][Patch] `is_safe_next` lacks length cap and `\u{2028}`/`\u{2029}` rejection [src/error/mod.rs:618-633]
+- [ ] [Review][Patch] `AppError::Forbidden` returns bare HTML fragment without layout for full-page requests [src/error/mod.rs:99]
+- [ ] [Review][Patch] `scan_on_loans` captures user query string into `?next=` [src/routes/loans.rs:75] — strip query from uri
+- [x] [Review][Defer] `/logout` exposed as GET link (logout-CSRF) — deferred, explicitly out of Epic 7 scope
+- [x] [Review][Defer] `AppError::Forbidden` couples error layer to `routes::catalog::feedback_html_pub` — deferred, architectural smell
+- [x] [Review][Defer] AC #3 anonymous-write test coverage partial (only POST /locations) — deferred, follow-up test expansion
+- [x] [Review][Defer] 3-cycle fresh-Docker E2E gate not completed (Task 9) — deferred, re-run before tagging done
+- [x] [Review][Defer] `BaseContext` struct deferred (Task 4) — already noted in Completion Notes
+- [x] [Review][Defer] Login cookie missing `Secure` flag — deferred, pre-existing, tracked separately
