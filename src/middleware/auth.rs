@@ -192,6 +192,64 @@ mod tests {
         }
     }
 
+    /// AC #8 role × route matrix. For every combination of (user_role, min_role)
+    /// assert the exact error variant (or Ok) so the Anonymous vs Forbidden split
+    /// that drives the /login redirect vs 403 cannot regress silently.
+    fn make_session(role: Role) -> Session {
+        if role == Role::Anonymous {
+            Session::anonymous()
+        } else {
+            Session {
+                token: Some("t".to_string()),
+                user_id: Some(1),
+                role,
+            }
+        }
+    }
+
+    #[test]
+    fn test_role_gating_matrix_anonymous_vs_librarian_min() {
+        match make_session(Role::Anonymous).require_role(Role::Librarian) {
+            Err(AppError::Unauthorized) => {}
+            other => panic!("Anonymous/Librarian expected Unauthorized, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_role_gating_matrix_anonymous_vs_admin_min() {
+        match make_session(Role::Anonymous).require_role(Role::Admin) {
+            Err(AppError::Unauthorized) => {}
+            other => panic!("Anonymous/Admin expected Unauthorized, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_role_gating_matrix_librarian_vs_librarian_min() {
+        assert!(make_session(Role::Librarian)
+            .require_role(Role::Librarian)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_role_gating_matrix_librarian_vs_admin_min() {
+        match make_session(Role::Librarian).require_role(Role::Admin) {
+            Err(AppError::Forbidden) => {}
+            other => panic!("Librarian/Admin expected Forbidden, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_role_gating_matrix_admin_vs_librarian_min() {
+        assert!(make_session(Role::Admin)
+            .require_role(Role::Librarian)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_role_gating_matrix_admin_vs_admin_min() {
+        assert!(make_session(Role::Admin).require_role(Role::Admin).is_ok());
+    }
+
     #[test]
     fn test_require_role_admin_passes_librarian() {
         let session = Session {
