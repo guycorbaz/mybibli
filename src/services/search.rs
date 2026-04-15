@@ -1,10 +1,10 @@
 use crate::db::DbPool;
 use crate::error::AppError;
+use crate::models::PaginatedList;
 use crate::models::contributor::TitleContributorModel;
 use crate::models::genre::GenreModel;
 use crate::models::title::{SearchResult, TitleModel};
 use crate::models::volume::VolumeModel;
-use crate::models::PaginatedList;
 
 /// Detected code type from search input.
 #[derive(Debug, PartialEq)]
@@ -93,8 +93,7 @@ impl SearchService {
         match detect_code(trimmed) {
             CodeType::VCode(code) => {
                 tracing::info!(code = %code, "V-code lookup");
-                let result =
-                    VolumeModel::find_by_label_with_title(pool, &code).await?;
+                let result = VolumeModel::find_by_label_with_title(pool, &code).await?;
                 match result {
                     Some((_vol, title)) => {
                         let item = Self::enrich_title(pool, &title).await;
@@ -109,21 +108,36 @@ impl SearchService {
                     }
                     None => {
                         // Fall through to text search
-                        Self::fulltext_search(pool, trimmed, genre_id, volume_state, sort, dir, page)
-                            .await
+                        Self::fulltext_search(
+                            pool,
+                            trimmed,
+                            genre_id,
+                            volume_state,
+                            sort,
+                            dir,
+                            page,
+                        )
+                        .await
                     }
                 }
             }
             CodeType::LCode(code) => {
                 tracing::info!(code = %code, "L-code lookup");
                 let location =
-                    crate::models::location::LocationModel::find_by_label(pool, &code)
-                        .await?;
+                    crate::models::location::LocationModel::find_by_label(pool, &code).await?;
                 match location {
                     Some(loc) => Ok(SearchOutcome::Redirect(format!("/location/{}", loc.id))),
                     None => {
-                        Self::fulltext_search(pool, trimmed, genre_id, volume_state, sort, dir, page)
-                            .await
+                        Self::fulltext_search(
+                            pool,
+                            trimmed,
+                            genre_id,
+                            volume_state,
+                            sort,
+                            dir,
+                            page,
+                        )
+                        .await
                     }
                 }
             }
@@ -143,8 +157,16 @@ impl SearchService {
                         )))
                     }
                     None => {
-                        Self::fulltext_search(pool, trimmed, genre_id, volume_state, sort, dir, page)
-                            .await
+                        Self::fulltext_search(
+                            pool,
+                            trimmed,
+                            genre_id,
+                            volume_state,
+                            sort,
+                            dir,
+                            page,
+                        )
+                        .await
                     }
                 }
             }
@@ -164,8 +186,7 @@ impl SearchService {
         page: u32,
     ) -> Result<SearchOutcome, AppError> {
         let results =
-            TitleModel::active_search(pool, query, genre_id, volume_state, sort, dir, page)
-                .await?;
+            TitleModel::active_search(pool, query, genre_id, volume_state, sort, dir, page).await?;
         Ok(SearchOutcome::Results(results))
     }
 }

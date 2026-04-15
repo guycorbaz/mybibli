@@ -1,11 +1,12 @@
 use askama::Template;
+use axum::Form;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse};
-use axum::Form;
 
 use axum::response::Redirect;
 use serde::Deserialize;
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::metadata::chain::ChainExecutor;
 use crate::metadata::provider::MetadataResult;
@@ -14,14 +15,13 @@ use crate::middleware::htmx::HxRequest;
 use crate::models::contributor::TitleContributorModel;
 use crate::models::genre::GenreModel;
 use crate::models::series::{SeriesModel, TitleSeriesAssignment};
-use crate::models::title::{detect_edited_fields, SimilarTitle, TitleModel};
+use crate::models::title::{SimilarTitle, TitleModel, detect_edited_fields};
 use crate::models::volume::VolumeModel;
 use crate::routes::catalog::feedback_html_pub;
 use crate::services::cover::CoverService;
 use crate::services::series::SeriesService;
 use crate::services::title::{FieldConflict, TitleService};
 use crate::utils::html_escape;
-use crate::AppState;
 
 #[derive(Template)]
 #[template(path = "pages/title_detail.html")]
@@ -30,6 +30,7 @@ pub struct TitleDetailTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -79,11 +80,19 @@ pub async fn title_detail(
     let contributors = TitleContributorModel::find_by_title(pool, title.id).await?;
     let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
     let has_code = title.isbn.is_some() || title.issn.is_some() || title.upc.is_some();
-    let series_assignments = crate::models::series::TitleSeriesModel::find_by_title(pool, title.id).await?;
+    let series_assignments =
+        crate::models::series::TitleSeriesModel::find_by_title(pool, title.id).await?;
     let all_series = SeriesModel::active_list(pool, 1).await?.items;
 
     if is_htmx {
-        let html = title_detail_fragment(&title, &genre_name, volume_count, &contributors, &session, has_code);
+        let html = title_detail_fragment(
+            &title,
+            &genre_name,
+            volume_count,
+            &contributors,
+            &session,
+            has_code,
+        );
         Ok(Html(html).into_response())
     } else {
         let similar_titles = TitleModel::find_similar(pool, title.id).await?;
@@ -92,6 +101,7 @@ pub async fn title_detail(
             role: session.role.to_string(),
             current_page: "title",
             skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+            session_timeout_secs: state.session_timeout_secs(),
             nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
             nav_loans: rust_i18n::t!("nav.loans").to_string(),
             nav_locations: rust_i18n::t!("nav.locations").to_string(),
@@ -158,7 +168,12 @@ fn title_detail_fragment(
     let subtitle_html = title
         .subtitle
         .as_ref()
-        .map(|s| format!(r#"<p class="text-lg text-stone-500 dark:text-stone-400">{}</p>"#, html_escape(s)))
+        .map(|s| {
+            format!(
+                r#"<p class="text-lg text-stone-500 dark:text-stone-400">{}</p>"#,
+                html_escape(s)
+            )
+        })
         .unwrap_or_default();
 
     let contributor_html = if contributors.is_empty() {
@@ -178,7 +193,10 @@ fn title_detail_fragment(
         format!(
             r#"<div class="mt-4"><h2 class="text-lg font-semibold text-stone-800 dark:text-stone-200">{}</h2><ul class="mt-2 space-y-1">{}</ul></div>"#,
             rust_i18n::t!("title_detail.contributors"),
-            items.iter().map(|i| format!("<li>{}</li>", i)).collect::<String>()
+            items
+                .iter()
+                .map(|i| format!("<li>{}</li>", i))
+                .collect::<String>()
         )
     };
 
@@ -231,8 +249,14 @@ fn title_detail_fragment(
             </div>
             <div id="title-feedback" class="mt-4"></div>
         </div>"#,
-        cover_html, escaped_title, subtitle_html, escaped_genre, volume_count, rust_i18n::t!("title_detail.volumes"),
-        edit_buttons, contributor_html
+        cover_html,
+        escaped_title,
+        subtitle_html,
+        escaped_genre,
+        volume_count,
+        rust_i18n::t!("title_detail.volumes"),
+        edit_buttons,
+        contributor_html
     )
 }
 
@@ -249,10 +273,20 @@ pub async fn title_metadata_fragment(
     let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
     let has_code = title.isbn.is_some() || title.issn.is_some() || title.upc.is_some();
 
-    Ok(Html(metadata_display_html(&title, &genre_name, &session, has_code)))
+    Ok(Html(metadata_display_html(
+        &title,
+        &genre_name,
+        &session,
+        has_code,
+    )))
 }
 
-fn metadata_display_html(title: &TitleModel, genre_name: &str, session: &Session, has_code: bool) -> String {
+fn metadata_display_html(
+    title: &TitleModel,
+    genre_name: &str,
+    session: &Session,
+    has_code: bool,
+) -> String {
     let role_str = session.role.to_string();
     let target = r##"hx-target="#title-metadata""##;
     let edit_buttons = if role_str == "librarian" || role_str == "admin" {
@@ -260,33 +294,71 @@ fn metadata_display_html(title: &TitleModel, genre_name: &str, session: &Session
             format!(
                 r##"<button hx-post="/title/{}/redownload" {target} hx-swap="innerHTML"
                           class="px-3 py-1.5 text-sm font-medium text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-700 rounded-md hover:bg-stone-50 dark:hover:bg-stone-800">{}</button>"##,
-                title.id, rust_i18n::t!("metadata.redownload"), target = target,
+                title.id,
+                rust_i18n::t!("metadata.redownload"),
+                target = target,
             )
-        } else { String::new() };
+        } else {
+            String::new()
+        };
         format!(
             r##"<div class="mt-4 flex gap-3">
                 <button hx-get="/title/{}/edit" {target} hx-swap="innerHTML"
                         class="px-3 py-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-700 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-900/20">{}</button>
                 {}
             </div>"##,
-            title.id, rust_i18n::t!("metadata.edit_metadata"), redownload_btn, target = target,
+            title.id,
+            rust_i18n::t!("metadata.edit_metadata"),
+            redownload_btn,
+            target = target,
         )
-    } else { String::new() };
+    } else {
+        String::new()
+    };
 
-    let subtitle_html = title.subtitle.as_ref()
-        .map(|s| format!(r#"<p class="text-lg text-stone-500 dark:text-stone-400">{}</p>"#, html_escape(s)))
+    let subtitle_html = title
+        .subtitle
+        .as_ref()
+        .map(|s| {
+            format!(
+                r#"<p class="text-lg text-stone-500 dark:text-stone-400">{}</p>"#,
+                html_escape(s)
+            )
+        })
         .unwrap_or_default();
-    let publisher_html = title.publisher.as_ref()
-        .map(|p| format!(r#"<p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{}</p>"#, html_escape(p)))
+    let publisher_html = title
+        .publisher
+        .as_ref()
+        .map(|p| {
+            format!(
+                r#"<p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{}</p>"#,
+                html_escape(p)
+            )
+        })
         .unwrap_or_default();
-    let isbn_html = title.isbn.as_ref()
-        .map(|i| format!(r#"<p class="mt-1 text-xs text-stone-400">ISBN: {}</p>"#, html_escape(i)))
+    let isbn_html = title
+        .isbn
+        .as_ref()
+        .map(|i| {
+            format!(
+                r#"<p class="mt-1 text-xs text-stone-400">ISBN: {}</p>"#,
+                html_escape(i)
+            )
+        })
         .unwrap_or_default();
     let desc_html = title.description.as_ref()
         .map(|d| format!(r#"<div class="mt-4"><p class="text-stone-700 dark:text-stone-300 text-sm">{}</p></div>"#, html_escape(d)))
         .unwrap_or_default();
-    let dewey_html = title.dewey_code.as_ref()
-        .map(|d| format!(r#"<p class="mt-1 text-xs text-stone-400">{}: {}</p>"#, rust_i18n::t!("metadata.field.dewey_code"), html_escape(d)))
+    let dewey_html = title
+        .dewey_code
+        .as_ref()
+        .map(|d| {
+            format!(
+                r#"<p class="mt-1 text-xs text-stone-400">{}: {}</p>"#,
+                rust_i18n::t!("metadata.field.dewey_code"),
+                html_escape(d)
+            )
+        })
         .unwrap_or_default();
 
     format!(
@@ -343,10 +415,7 @@ pub async fn title_edit_form(
     uri: axum::http::Uri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(
-        crate::middleware::auth::Role::Librarian,
-        uri.path(),
-    )?;
+    session.require_role_with_return(crate::middleware::auth::Role::Librarian, uri.path())?;
     let pool = &state.pool;
 
     let title = TitleModel::find_by_id(pool, id)
@@ -413,10 +482,14 @@ pub struct TitleEditForm {
     pub issue_number: Option<i32>,
 }
 
-fn default_language() -> String { "fr".to_string() }
+fn default_language() -> String {
+    "fr".to_string()
+}
 
 fn non_empty(s: &Option<String>) -> Option<String> {
-    s.as_ref().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    s.as_ref()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 /// Whether to clear a field's `manually_edited` flag when handling a metadata
@@ -437,7 +510,9 @@ pub async fn update_title(
     let pool = &state.pool;
 
     if form.title.trim().is_empty() {
-        return Err(AppError::BadRequest(rust_i18n::t!("error.title.required").to_string()));
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.title.required").to_string(),
+        ));
     }
 
     let old_title = TitleModel::find_by_id(pool, id)
@@ -451,21 +526,32 @@ pub async fn update_title(
     let dewey_code = non_empty(&form.dewey_code);
     let age_rating = non_empty(&form.age_rating);
 
-    let publication_date = form.publication_date.as_deref()
-        .and_then(|s| {
-            let t = s.trim();
-            if t.is_empty() { return None; }
-            chrono::NaiveDate::parse_from_str(t, "%Y-%m-%d")
-                .or_else(|_| chrono::NaiveDate::parse_from_str(&format!("{t}-01-01"), "%Y-%m-%d"))
-                .ok()
-        });
+    let publication_date = form.publication_date.as_deref().and_then(|s| {
+        let t = s.trim();
+        if t.is_empty() {
+            return None;
+        }
+        chrono::NaiveDate::parse_from_str(t, "%Y-%m-%d")
+            .or_else(|_| chrono::NaiveDate::parse_from_str(&format!("{t}-01-01"), "%Y-%m-%d"))
+            .ok()
+    });
 
     // Detect which fields changed
     let changed = detect_edited_fields(
-        &old_title, trimmed_title, subtitle.as_deref(), description.as_deref(),
-        publisher.as_deref(), &form.language, form.genre_id, publication_date,
-        dewey_code.as_deref(), form.page_count, form.track_count, form.total_duration,
-        age_rating.as_deref(), form.issue_number,
+        &old_title,
+        trimmed_title,
+        subtitle.as_deref(),
+        description.as_deref(),
+        publisher.as_deref(),
+        &form.language,
+        form.genre_id,
+        publication_date,
+        dewey_code.as_deref(),
+        form.page_count,
+        form.track_count,
+        form.total_duration,
+        age_rating.as_deref(),
+        form.issue_number,
     );
 
     // Merge with existing manually_edited_fields (cumulative)
@@ -485,12 +571,25 @@ pub async fn update_title(
     };
 
     let updated = TitleModel::update_metadata(
-        pool, id, form.version, trimmed_title,
-        subtitle.as_deref(), description.as_deref(), publisher.as_deref(),
-        &form.language, form.genre_id, publication_date,
-        dewey_code.as_deref(), form.page_count, form.track_count, form.total_duration,
-        age_rating.as_deref(), form.issue_number, edited_json.as_deref(),
-    ).await?;
+        pool,
+        id,
+        form.version,
+        trimmed_title,
+        subtitle.as_deref(),
+        description.as_deref(),
+        publisher.as_deref(),
+        &form.language,
+        form.genre_id,
+        publication_date,
+        dewey_code.as_deref(),
+        form.page_count,
+        form.track_count,
+        form.total_duration,
+        age_rating.as_deref(),
+        form.issue_number,
+        edited_json.as_deref(),
+    )
+    .await?;
 
     let genre_name = GenreModel::find_name_by_id(pool, updated.genre_id).await?;
     let has_code = updated.isbn.is_some() || updated.issn.is_some() || updated.upc.is_some();
@@ -498,7 +597,9 @@ pub async fn update_title(
 
     // Append success feedback as OOB swap
     let feedback = feedback_html_pub("success", &rust_i18n::t!("metadata.save_changes"), "");
-    html.push_str(&format!(r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#));
+    html.push_str(&format!(
+        r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
+    ));
 
     tracing::info!(title_id = id, "Title metadata updated manually");
     Ok(Html(html))
@@ -526,7 +627,9 @@ pub async fn redownload_metadata(
     } else if let Some(issn) = &title.issn {
         (issn.clone(), crate::models::media_type::CodeType::Issn)
     } else {
-        return Err(AppError::BadRequest("No code available for re-download".to_string()));
+        return Err(AppError::BadRequest(
+            "No code available for re-download".to_string(),
+        ));
     };
 
     let media_type = title.media_type.parse::<crate::models::media_type::MediaType>()
@@ -546,8 +649,14 @@ pub async fn redownload_metadata(
 
     // Execute chain synchronously (user is waiting for result)
     let metadata_opt = ChainExecutor::execute(
-        &state.registry, pool, &code, &code_type, &media_type, timeout_secs,
-    ).await;
+        &state.registry,
+        pool,
+        &code,
+        &code_type,
+        &media_type,
+        timeout_secs,
+    )
+    .await;
 
     let metadata = match metadata_opt {
         Some(m) => m,
@@ -555,8 +664,11 @@ pub async fn redownload_metadata(
             let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
             let has_code = true;
             let mut html = metadata_display_html(&title, &genre_name, &session, has_code);
-            let feedback = feedback_html_pub("error", &rust_i18n::t!("metadata.redownload_failed"), "");
-            html.push_str(&format!(r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#));
+            let feedback =
+                feedback_html_pub("error", &rust_i18n::t!("metadata.redownload_failed"), "");
+            html.push_str(&format!(
+                r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
+            ));
             return Ok(Html(html));
         }
     };
@@ -570,8 +682,13 @@ pub async fn redownload_metadata(
         let has_code = true;
         let mut html = metadata_display_html(&updated, &genre_name, &session, has_code);
         let feedback = feedback_html_pub("success", &rust_i18n::t!("metadata.all_updated"), "");
-        html.push_str(&format!(r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#));
-        tracing::info!(title_id = id, "Metadata re-downloaded and applied (no conflicts)");
+        html.push_str(&format!(
+            r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
+        ));
+        tracing::info!(
+            title_id = id,
+            "Metadata re-downloaded and applied (no conflicts)"
+        );
         return Ok(Html(html));
     }
 
@@ -584,7 +701,9 @@ pub async fn redownload_metadata(
         let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
         let mut html = metadata_display_html(&title, &genre_name, &session, true);
         let feedback = feedback_html_pub("info", &rust_i18n::t!("metadata.no_changes"), "");
-        html.push_str(&format!(r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#));
+        html.push_str(&format!(
+            r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
+        ));
         return Ok(Html(html));
     }
 
@@ -600,8 +719,14 @@ pub async fn redownload_metadata(
         new_publisher: metadata.publisher.clone().unwrap_or_default(),
         new_language: metadata.language.clone().unwrap_or_default(),
         new_publication_date: metadata.publication_date.clone().unwrap_or_default(),
-        new_page_count: metadata.page_count.map(|v| v.to_string()).unwrap_or_default(),
-        new_track_count: metadata.track_count.map(|v| v.to_string()).unwrap_or_default(),
+        new_page_count: metadata
+            .page_count
+            .map(|v| v.to_string())
+            .unwrap_or_default(),
+        new_track_count: metadata
+            .track_count
+            .map(|v| v.to_string())
+            .unwrap_or_default(),
         new_total_duration: metadata.total_duration.clone().unwrap_or_default(),
         new_age_rating: metadata.age_rating.clone().unwrap_or_default(),
         new_issue_number: metadata.issue_number.clone().unwrap_or_default(),
@@ -696,121 +821,224 @@ pub async fn confirm_metadata(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
 
-    let mut manually_edited: std::collections::HashSet<String> = title
-        .parsed_manually_edited_fields()
-        .into_iter()
-        .collect();
+    let mut manually_edited: std::collections::HashSet<String> =
+        title.parsed_manually_edited_fields().into_iter().collect();
 
     // For each field, use new value if: (a) not manually edited, or (b) accept checkbox checked
     let mut updated_count = 0u32;
     let mut kept_count = 0u32;
 
-    let use_new = |field: &str, accept: &Option<String>, manually_edited: &std::collections::HashSet<String>| -> bool {
-        if !manually_edited.contains(field) { return true; }
+    let use_new = |field: &str,
+                   accept: &Option<String>,
+                   manually_edited: &std::collections::HashSet<String>|
+     -> bool {
+        if !manually_edited.contains(field) {
+            return true;
+        }
         accept.is_some()
     };
 
     let final_title = if use_new("title", &form.accept_title, &manually_edited) {
         let v = non_empty(&Some(form.new_title.clone())).unwrap_or_else(|| title.title.clone());
         let changed = v != title.title;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_title, changed) { manually_edited.remove("title"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_title, changed) {
+            manually_edited.remove("title");
+        }
         v
-    } else { kept_count += 1; title.title.clone() };
+    } else {
+        kept_count += 1;
+        title.title.clone()
+    };
 
     let final_subtitle = if use_new("subtitle", &form.accept_subtitle, &manually_edited) {
         let v = non_empty(&Some(form.new_subtitle.clone()));
         let changed = v != title.subtitle;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_subtitle, changed) { manually_edited.remove("subtitle"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_subtitle, changed) {
+            manually_edited.remove("subtitle");
+        }
         v
-    } else { kept_count += 1; title.subtitle.clone() };
+    } else {
+        kept_count += 1;
+        title.subtitle.clone()
+    };
 
     let final_description = if use_new("description", &form.accept_description, &manually_edited) {
         let v = non_empty(&Some(form.new_description.clone()));
         let changed = v != title.description;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_description, changed) { manually_edited.remove("description"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_description, changed) {
+            manually_edited.remove("description");
+        }
         v
-    } else { kept_count += 1; title.description.clone() };
+    } else {
+        kept_count += 1;
+        title.description.clone()
+    };
 
     let final_publisher = if use_new("publisher", &form.accept_publisher, &manually_edited) {
         let v = non_empty(&Some(form.new_publisher.clone()));
         let changed = v != title.publisher;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_publisher, changed) { manually_edited.remove("publisher"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_publisher, changed) {
+            manually_edited.remove("publisher");
+        }
         v
-    } else { kept_count += 1; title.publisher.clone() };
+    } else {
+        kept_count += 1;
+        title.publisher.clone()
+    };
 
     let final_language = if use_new("language", &form.accept_language, &manually_edited) {
-        let v = non_empty(&Some(form.new_language.clone())).unwrap_or_else(|| title.language.clone());
+        let v =
+            non_empty(&Some(form.new_language.clone())).unwrap_or_else(|| title.language.clone());
         let changed = v != title.language;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_language, changed) { manually_edited.remove("language"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_language, changed) {
+            manually_edited.remove("language");
+        }
         v
-    } else { kept_count += 1; title.language.clone() };
+    } else {
+        kept_count += 1;
+        title.language.clone()
+    };
 
-    let final_pub_date = if use_new("publication_date", &form.accept_publication_date, &manually_edited) {
+    let final_pub_date = if use_new(
+        "publication_date",
+        &form.accept_publication_date,
+        &manually_edited,
+    ) {
         let v = form.new_publication_date.trim();
-        let result = if v.is_empty() { title.publication_date } else {
+        let result = if v.is_empty() {
+            title.publication_date
+        } else {
             chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d")
                 .or_else(|_| chrono::NaiveDate::parse_from_str(&format!("{v}-01-01"), "%Y-%m-%d"))
                 .ok()
                 .or(title.publication_date)
         };
         let changed = result != title.publication_date;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_publication_date, changed) { manually_edited.remove("publication_date"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_publication_date, changed) {
+            manually_edited.remove("publication_date");
+        }
         result
-    } else { kept_count += 1; title.publication_date };
+    } else {
+        kept_count += 1;
+        title.publication_date
+    };
 
     let final_page_count = if use_new("page_count", &form.accept_page_count, &manually_edited) {
         let v = form.new_page_count.parse().ok().or(title.page_count);
         let changed = v != title.page_count;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_page_count, changed) { manually_edited.remove("page_count"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_page_count, changed) {
+            manually_edited.remove("page_count");
+        }
         v
-    } else { kept_count += 1; title.page_count };
+    } else {
+        kept_count += 1;
+        title.page_count
+    };
 
     let final_track_count = if use_new("track_count", &form.accept_track_count, &manually_edited) {
         let v = form.new_track_count.parse().ok().or(title.track_count);
         let changed = v != title.track_count;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_track_count, changed) { manually_edited.remove("track_count"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_track_count, changed) {
+            manually_edited.remove("track_count");
+        }
         v
-    } else { kept_count += 1; title.track_count };
+    } else {
+        kept_count += 1;
+        title.track_count
+    };
 
-    let final_total_duration = if use_new("total_duration", &form.accept_total_duration, &manually_edited) {
-        let v = form.new_total_duration.parse().ok().or(title.total_duration);
+    let final_total_duration = if use_new(
+        "total_duration",
+        &form.accept_total_duration,
+        &manually_edited,
+    ) {
+        let v = form
+            .new_total_duration
+            .parse()
+            .ok()
+            .or(title.total_duration);
         let changed = v != title.total_duration;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_total_duration, changed) { manually_edited.remove("total_duration"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_total_duration, changed) {
+            manually_edited.remove("total_duration");
+        }
         v
-    } else { kept_count += 1; title.total_duration };
+    } else {
+        kept_count += 1;
+        title.total_duration
+    };
 
     let final_age_rating = if use_new("age_rating", &form.accept_age_rating, &manually_edited) {
         let v = non_empty(&Some(form.new_age_rating.clone())).or(title.age_rating.clone());
         let changed = v != title.age_rating;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_age_rating, changed) { manually_edited.remove("age_rating"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_age_rating, changed) {
+            manually_edited.remove("age_rating");
+        }
         v
-    } else { kept_count += 1; title.age_rating.clone() };
+    } else {
+        kept_count += 1;
+        title.age_rating.clone()
+    };
 
-    let final_issue_number = if use_new("issue_number", &form.accept_issue_number, &manually_edited) {
+    let final_issue_number = if use_new("issue_number", &form.accept_issue_number, &manually_edited)
+    {
         let v = form.new_issue_number.parse().ok().or(title.issue_number);
         let changed = v != title.issue_number;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_issue_number, changed) { manually_edited.remove("issue_number"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_issue_number, changed) {
+            manually_edited.remove("issue_number");
+        }
         v
-    } else { kept_count += 1; title.issue_number };
+    } else {
+        kept_count += 1;
+        title.issue_number
+    };
 
     let final_dewey_code = if use_new("dewey_code", &form.accept_dewey_code, &manually_edited) {
         let v = non_empty(&Some(form.new_dewey_code.clone()));
         let changed = v != title.dewey_code;
-        if changed { updated_count += 1; }
-        if should_clear_flag(&form.accept_dewey_code, changed) { manually_edited.remove("dewey_code"); }
+        if changed {
+            updated_count += 1;
+        }
+        if should_clear_flag(&form.accept_dewey_code, changed) {
+            manually_edited.remove("dewey_code");
+        }
         v
-    } else { kept_count += 1; title.dewey_code.clone() };
+    } else {
+        kept_count += 1;
+        title.dewey_code.clone()
+    };
 
     // Serialize remaining manually_edited_fields
     let edited_json = if manually_edited.is_empty() {
@@ -822,17 +1050,37 @@ pub async fn confirm_metadata(
     };
 
     let updated = TitleModel::update_metadata(
-        pool, id, form.version, &final_title,
-        final_subtitle.as_deref(), final_description.as_deref(), final_publisher.as_deref(),
-        &final_language, title.genre_id, final_pub_date,
-        final_dewey_code.as_deref(), final_page_count, final_track_count, final_total_duration,
-        final_age_rating.as_deref(), final_issue_number, edited_json.as_deref(),
-    ).await?;
+        pool,
+        id,
+        form.version,
+        &final_title,
+        final_subtitle.as_deref(),
+        final_description.as_deref(),
+        final_publisher.as_deref(),
+        &final_language,
+        title.genre_id,
+        final_pub_date,
+        final_dewey_code.as_deref(),
+        final_page_count,
+        final_track_count,
+        final_total_duration,
+        final_age_rating.as_deref(),
+        final_issue_number,
+        edited_json.as_deref(),
+    )
+    .await?;
 
     // Download new cover if URL provided and accepted
     if !form.new_cover_url.is_empty() && form.accept_cover.is_some() {
         let covers_dir = &state.covers_dir;
-        match CoverService::download_and_resize(&state.http_client, &form.new_cover_url, id, covers_dir).await {
+        match CoverService::download_and_resize(
+            &state.http_client,
+            &form.new_cover_url,
+            id,
+            covers_dir,
+        )
+        .await
+        {
             Ok(local_path) => {
                 let cache_busted = format!("{}?v={}", local_path, chrono::Utc::now().timestamp());
                 match sqlx::query(
@@ -852,17 +1100,27 @@ pub async fn confirm_metadata(
     }
 
     // Re-fetch title to get fresh state (including cover URL update)
-    let updated = TitleModel::find_by_id(pool, id)
-        .await?
-        .unwrap_or(updated);
+    let updated = TitleModel::find_by_id(pool, id).await?.unwrap_or(updated);
     let genre_name = GenreModel::find_name_by_id(pool, updated.genre_id).await?;
     let has_code = updated.isbn.is_some() || updated.issn.is_some() || updated.upc.is_some();
     let mut html = metadata_display_html(&updated, &genre_name, &session, has_code);
-    let message = rust_i18n::t!("metadata.update_success", updated = updated_count, kept = kept_count).to_string();
+    let message = rust_i18n::t!(
+        "metadata.update_success",
+        updated = updated_count,
+        kept = kept_count
+    )
+    .to_string();
     let feedback = feedback_html_pub("success", &message, "");
-    html.push_str(&format!(r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#));
+    html.push_str(&format!(
+        r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
+    ));
 
-    tracing::info!(title_id = id, updated = updated_count, kept = kept_count, "Metadata re-download confirmed");
+    tracing::info!(
+        title_id = id,
+        updated = updated_count,
+        kept = kept_count,
+        "Metadata re-download confirmed"
+    );
     Ok(Html(html))
 }
 
@@ -882,33 +1140,66 @@ async fn apply_metadata_to_title(
 
     let new_title = metadata.title.as_deref().unwrap_or(&title.title);
     let new_subtitle = metadata.subtitle.as_deref().or(title.subtitle.as_deref());
-    let new_description = metadata.description.as_deref().or(title.description.as_deref());
+    let new_description = metadata
+        .description
+        .as_deref()
+        .or(title.description.as_deref());
     let new_publisher = metadata.publisher.as_deref().or(title.publisher.as_deref());
     let new_language = metadata.language.as_deref().unwrap_or(&title.language);
     let new_pub_date = pub_date.or(title.publication_date);
     let new_page_count = metadata.page_count.or(title.page_count);
     let new_track_count = metadata.track_count.or(title.track_count);
-    let new_total_duration = metadata.total_duration.as_deref()
+    let new_total_duration = metadata
+        .total_duration
+        .as_deref()
         .and_then(|s| s.parse::<i32>().ok())
         .or(title.total_duration);
-    let new_age_rating = metadata.age_rating.as_deref().or(title.age_rating.as_deref());
-    let new_issue_number = metadata.issue_number.as_deref()
+    let new_age_rating = metadata
+        .age_rating
+        .as_deref()
+        .or(title.age_rating.as_deref());
+    let new_issue_number = metadata
+        .issue_number
+        .as_deref()
         .and_then(|s| s.parse::<i32>().ok())
         .or(title.issue_number);
 
-    let new_dewey_code = metadata.dewey_code.as_deref().or(title.dewey_code.as_deref());
+    let new_dewey_code = metadata
+        .dewey_code
+        .as_deref()
+        .or(title.dewey_code.as_deref());
 
     let updated = TitleModel::update_metadata(
-        pool, title.id, title.version, new_title,
-        new_subtitle, new_description, new_publisher,
-        new_language, title.genre_id, new_pub_date,
-        new_dewey_code, new_page_count, new_track_count, new_total_duration,
-        new_age_rating, new_issue_number, title.manually_edited_fields.as_deref(),
-    ).await?;
+        pool,
+        title.id,
+        title.version,
+        new_title,
+        new_subtitle,
+        new_description,
+        new_publisher,
+        new_language,
+        title.genre_id,
+        new_pub_date,
+        new_dewey_code,
+        new_page_count,
+        new_track_count,
+        new_total_duration,
+        new_age_rating,
+        new_issue_number,
+        title.manually_edited_fields.as_deref(),
+    )
+    .await?;
 
     // Download cover if available (use updated version for locking)
     if let Some(cover_url) = &metadata.cover_url {
-        match CoverService::download_and_resize(&state.http_client, cover_url, title.id, &state.covers_dir).await {
+        match CoverService::download_and_resize(
+            &state.http_client,
+            cover_url,
+            title.id,
+            &state.covers_dir,
+        )
+        .await
+        {
             Ok(local_path) => {
                 let cache_busted = format!("{}?v={}", local_path, chrono::Utc::now().timestamp());
                 match sqlx::query(
@@ -926,7 +1217,9 @@ async fn apply_metadata_to_title(
             }
         }
         // Re-fetch to get fresh cover_image_url
-        return Ok(TitleModel::find_by_id(pool, title.id).await?.unwrap_or(updated));
+        return Ok(TitleModel::find_by_id(pool, title.id)
+            .await?
+            .unwrap_or(updated));
     }
 
     Ok(updated)
@@ -996,6 +1289,7 @@ mod tests {
             role: "anonymous".to_string(),
             current_page: "title",
             skip_label: "Skip".to_string(),
+            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
             nav_catalog: "Catalog".to_string(),
             nav_loans: "Loans".to_string(),
             nav_locations: "Locations".to_string(),
@@ -1029,7 +1323,10 @@ mod tests {
             label_dewey_code: "Dewey code".to_string(),
         };
         let rendered = template.render().unwrap();
-        assert!(rendered.contains("tranger"), "Expected title to appear in rendered output");
+        assert!(
+            rendered.contains("tranger"),
+            "Expected title to appear in rendered output"
+        );
         // AC #3: empty similar_titles list → no <section> and no heading in output
         assert!(
             !rendered.contains("Similar titles"),
@@ -1090,6 +1387,7 @@ mod tests {
             role: "anonymous".to_string(),
             current_page: "title",
             skip_label: "Skip".to_string(),
+            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
             nav_catalog: "Catalog".to_string(),
             nav_loans: "Loans".to_string(),
             nav_locations: "Locations".to_string(),
@@ -1149,13 +1447,27 @@ mod tests {
     #[test]
     fn test_build_field_conflicts_detects_differences() {
         let title = TitleModel {
-            id: 1, title: "Old Title".to_string(), subtitle: None, description: None,
-            language: "fr".to_string(), media_type: "book".to_string(),
-            publication_date: None, publisher: Some("Old Publisher".to_string()),
-            isbn: Some("9782070360246".to_string()), issn: None, upc: None,
-            cover_image_url: None, genre_id: 1, dewey_code: None,
-            page_count: None, track_count: None, total_duration: None,
-            age_rating: None, issue_number: None, manually_edited_fields: None, version: 1,
+            id: 1,
+            title: "Old Title".to_string(),
+            subtitle: None,
+            description: None,
+            language: "fr".to_string(),
+            media_type: "book".to_string(),
+            publication_date: None,
+            publisher: Some("Old Publisher".to_string()),
+            isbn: Some("9782070360246".to_string()),
+            issn: None,
+            upc: None,
+            cover_image_url: None,
+            genre_id: 1,
+            dewey_code: None,
+            page_count: None,
+            track_count: None,
+            total_duration: None,
+            age_rating: None,
+            issue_number: None,
+            manually_edited_fields: None,
+            version: 1,
         };
         let metadata = MetadataResult {
             title: Some("New Title".to_string()),
@@ -1172,13 +1484,27 @@ mod tests {
     #[test]
     fn test_build_field_conflicts_skips_same_values() {
         let title = TitleModel {
-            id: 1, title: "Same Title".to_string(), subtitle: None, description: None,
-            language: "fr".to_string(), media_type: "book".to_string(),
-            publication_date: None, publisher: None,
-            isbn: None, issn: None, upc: None,
-            cover_image_url: None, genre_id: 1, dewey_code: None,
-            page_count: None, track_count: None, total_duration: None,
-            age_rating: None, issue_number: None, manually_edited_fields: None, version: 1,
+            id: 1,
+            title: "Same Title".to_string(),
+            subtitle: None,
+            description: None,
+            language: "fr".to_string(),
+            media_type: "book".to_string(),
+            publication_date: None,
+            publisher: None,
+            isbn: None,
+            issn: None,
+            upc: None,
+            cover_image_url: None,
+            genre_id: 1,
+            dewey_code: None,
+            page_count: None,
+            track_count: None,
+            total_duration: None,
+            age_rating: None,
+            issue_number: None,
+            manually_edited_fields: None,
+            version: 1,
         };
         let metadata = MetadataResult {
             title: Some("Same Title".to_string()),
@@ -1191,7 +1517,10 @@ mod tests {
 
     #[test]
     fn test_non_empty_helper() {
-        assert_eq!(non_empty(&Some("hello".to_string())), Some("hello".to_string()));
+        assert_eq!(
+            non_empty(&Some("hello".to_string())),
+            Some("hello".to_string())
+        );
         assert_eq!(non_empty(&Some("".to_string())), None);
         assert_eq!(non_empty(&Some("  ".to_string())), None);
         assert_eq!(non_empty(&None), None);
@@ -1206,15 +1535,19 @@ mod tests {
     //   - dewey_code      → Option<String> (non_empty semantics)
     //   - page_count      → Option<i32>
 
-    fn changed<T: PartialEq>(new: &T, kept: &T) -> bool { new != kept }
+    fn changed<T: PartialEq>(new: &T, kept: &T) -> bool {
+        new != kept
+    }
 
     #[test]
     fn should_clear_flag_publisher_accepted_same_value_keeps_flag() {
         let kept: Option<String> = Some("Gallimard".into());
         let new: Option<String> = non_empty(&Some("Gallimard".into()));
         let accept = Some("on".to_string()); // checkbox checked → form sends "on"
-        assert!(!should_clear_flag(&accept, changed(&new, &kept)),
-            "re-accepting the existing publisher must keep the flag");
+        assert!(
+            !should_clear_flag(&accept, changed(&new, &kept)),
+            "re-accepting the existing publisher must keep the flag"
+        );
     }
 
     #[test]
@@ -1222,8 +1555,10 @@ mod tests {
         let kept: Option<String> = Some("Gallimard".into());
         let new: Option<String> = non_empty(&Some("BnF".into()));
         let accept = Some("on".to_string());
-        assert!(should_clear_flag(&accept, changed(&new, &kept)),
-            "accepting a replacement publisher must clear the flag");
+        assert!(
+            should_clear_flag(&accept, changed(&new, &kept)),
+            "accepting a replacement publisher must clear the flag"
+        );
     }
 
     #[test]
@@ -1233,8 +1568,10 @@ mod tests {
         let kept: Option<String> = Some("Gallimard".into());
         let new: Option<String> = non_empty(&Some("BnF".into()));
         let accept: Option<String> = None;
-        assert!(!should_clear_flag(&accept, changed(&new, &kept)),
-            "unchecked accept must never clear the flag");
+        assert!(
+            !should_clear_flag(&accept, changed(&new, &kept)),
+            "unchecked accept must never clear the flag"
+        );
     }
 
     #[test]
@@ -1292,7 +1629,10 @@ mod tests {
 pub struct AssignToSeriesForm {
     pub series_id: u64,
     pub position_number: i32,
-    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_i32")]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::series::deserialize_optional_i32"
+    )]
     pub end_position: Option<i32>,
     #[serde(default)]
     pub omnibus: Option<String>,
@@ -1312,9 +1652,17 @@ pub async fn assign_to_series(
         let end = form.end_position.unwrap_or(form.position_number);
         if end == form.position_number {
             // Single position, treat as normal assignment
-            SeriesService::assign_title(pool, title_id, form.series_id, form.position_number).await?;
+            SeriesService::assign_title(pool, title_id, form.series_id, form.position_number)
+                .await?;
         } else {
-            SeriesService::assign_omnibus(pool, title_id, form.series_id, form.position_number, end).await?;
+            SeriesService::assign_omnibus(
+                pool,
+                title_id,
+                form.series_id,
+                form.position_number,
+                end,
+            )
+            .await?;
         }
     } else {
         SeriesService::assign_title(pool, title_id, form.series_id, form.position_number).await?;

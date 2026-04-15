@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "UPDATE sessions SET last_activity = UTC_TIMESTAMP() WHERE token = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "f0909b6c02a55599d3ad1fe5d25edd9ad6e6e310d611917fac3120790dd949db"
+}

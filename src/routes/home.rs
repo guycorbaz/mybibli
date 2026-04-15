@@ -4,16 +4,16 @@ use axum::http::header;
 use axum::response::{Html, IntoResponse};
 use serde::Deserialize;
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
+use crate::models::PaginatedList;
 use crate::models::genre::GenreModel;
 use crate::models::title::SearchResult;
 use crate::models::volume_state::VolumeStateModel;
-use crate::models::PaginatedList;
 use crate::services::search::{SearchOutcome, SearchService};
 use crate::utils::{html_escape, url_encode};
-use crate::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct SearchParams {
@@ -31,6 +31,7 @@ pub struct HomeTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -107,15 +108,14 @@ pub async fn home(
             // HX-Redirect tells HTMX to do a full-page navigation
             return Ok((
                 axum::http::StatusCode::OK,
-                [(axum::http::header::HeaderName::from_static("hx-redirect"), url)],
+                [(
+                    axum::http::header::HeaderName::from_static("hx-redirect"),
+                    url,
+                )],
             )
                 .into_response());
         } else {
-            return Ok((
-                axum::http::StatusCode::FOUND,
-                [(header::LOCATION, url)],
-            )
-                .into_response());
+            return Ok((axum::http::StatusCode::FOUND, [(header::LOCATION, url)]).into_response());
         }
     }
 
@@ -125,7 +125,14 @@ pub async fn home(
 
     if is_htmx && !query.trim().is_empty() {
         // Return search results fragment + pagination OOB
-        let html = render_search_fragment(&results, &query, &params.filter, &params.sort, &params.dir, &session);
+        let html = render_search_fragment(
+            &results,
+            &query,
+            &params.filter,
+            &params.sort,
+            &params.dir,
+            &session,
+        );
         return Ok(Html(html).into_response());
     }
 
@@ -146,11 +153,12 @@ pub async fn home(
         role: session.role.to_string(),
         current_page: "home",
         skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
-            nav_locations: rust_i18n::t!("nav.locations").to_string(),
-            nav_series: rust_i18n::t!("nav.series").to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
+        nav_locations: rust_i18n::t!("nav.locations").to_string(),
+        nav_series: rust_i18n::t!("nav.series").to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
         nav_admin: rust_i18n::t!("nav.admin").to_string(),
         nav_login: rust_i18n::t!("nav.login").to_string(),
         nav_logout: rust_i18n::t!("nav.logout").to_string(),
@@ -159,8 +167,14 @@ pub async fn home(
         query_encoded: url_encode(&query),
         query,
         active_filter: params.filter.clone().unwrap_or_default(),
-        current_sort: results.as_ref().and_then(|r| r.sort.clone()).unwrap_or_else(|| "title".to_string()),
-        current_dir: results.as_ref().and_then(|r| r.dir.clone()).unwrap_or_else(|| "asc".to_string()),
+        current_sort: results
+            .as_ref()
+            .and_then(|r| r.sort.clone())
+            .unwrap_or_else(|| "title".to_string()),
+        current_dir: results
+            .as_ref()
+            .and_then(|r| r.dir.clone())
+            .unwrap_or_else(|| "asc".to_string()),
         genres,
         volume_states,
         results,
@@ -175,7 +189,11 @@ pub async fn home(
         connection_lost: rust_i18n::t!("search.connection_lost").to_string(),
         label_no_cover: rust_i18n::t!("cover.no_cover").to_string(),
         metadata_error_count,
-        label_metadata_errors: rust_i18n::t!("dashboard.metadata_errors", count = metadata_error_count).to_string(),
+        label_metadata_errors: rust_i18n::t!(
+            "dashboard.metadata_errors",
+            count = metadata_error_count
+        )
+        .to_string(),
         browse_list_label: rust_i18n::t!("browse.list_view").to_string(),
         browse_grid_label: rust_i18n::t!("browse.grid_view").to_string(),
         browse_mode_label: rust_i18n::t!("browse.display_mode").to_string(),
@@ -225,7 +243,9 @@ fn render_search_fragment(
             // Empty state + clear stale pagination
             let is_librarian = session.role >= crate::middleware::auth::Role::Librarian;
             html.push_str(&render_empty_state(query, is_librarian));
-            html.push_str("<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>");
+            html.push_str(
+                "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>",
+            );
         }
     }
 
@@ -279,7 +299,8 @@ fn render_pagination_oob(
     dir: &Option<String>,
 ) -> String {
     if paginated.total_pages <= 1 {
-        return "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>".to_string();
+        return "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>"
+            .to_string();
     }
 
     let mut html = String::from(
@@ -424,7 +445,10 @@ mod tests {
         assert!(html.contains("title-card-contributor"));
         assert!(html.contains("title-card-overlay"));
         assert!(!html.contains("<tr"), "Should not contain table row markup");
-        assert!(!html.contains("<td"), "Should not contain table cell markup");
+        assert!(
+            !html.contains("<td"),
+            "Should not contain table cell markup"
+        );
     }
 
     #[test]
@@ -442,7 +466,10 @@ mod tests {
         };
         let html = render_search_row(&item);
         assert!(html.contains("1942"), "Should display publication year");
-        assert!(html.contains("/covers/test.jpg"), "Should include cover URL");
+        assert!(
+            html.contains("/covers/test.jpg"),
+            "Should include cover URL"
+        );
     }
 
     #[test]
@@ -464,6 +491,7 @@ mod tests {
             role: "anonymous".to_string(),
             current_page: "home",
             skip_label: "Skip to main content".to_string(),
+            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
             nav_catalog: "Catalog".to_string(),
             nav_loans: "Loans".to_string(),
             nav_locations: "Locations".to_string(),

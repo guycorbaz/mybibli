@@ -203,3 +203,9 @@
 - `BaseContext { role, is_authenticated, can_edit, can_loan, can_admin }` struct deferred in favor of ad-hoc per-template `role` plumbing (spec Task 4)
 - Login cookie missing `Secure` flag — pre-existing, tracked separately
 - `AppError::Forbidden` response lacks full-page layout for direct browser navigation — wrap feedback fragment in minimal HTML shell (nav + skip-link) for non-HTMX 403s
+
+## Deferred from: code review of 7-2-session-inactivity-timeout-and-toast (2026-04-15)
+
+- i18n JS↔YAML synchronization relies on sync-comments — systemic tech debt pre-dating 7-2; revisit via a shared extraction pattern (e.g., emit a `window.I18N` JSON block from the template)
+- `document.documentElement.lang || "en"` fallback in session-timeout.js — pre-existing; tolerable while all templates set `lang`
+- `SessionRow.last_activity` nullability — currently NOT NULL at schema level; add an explicit guard only if the column ever becomes nullable

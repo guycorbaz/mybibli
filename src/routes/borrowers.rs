@@ -3,14 +3,14 @@ use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Redirect};
 use serde::Deserialize;
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
+use crate::models::PaginatedList;
 use crate::models::borrower::BorrowerModel;
 use crate::models::loan::{LoanModel, LoanWithDetails};
-use crate::models::PaginatedList;
 use crate::services::borrowers::BorrowerService;
-use crate::AppState;
 
 // ─── List page ──────────────────────────────────────────
 
@@ -20,7 +20,9 @@ pub struct BorrowerListQuery {
     pub page: u32,
 }
 
-fn default_page() -> u32 { 1 }
+fn default_page() -> u32 {
+    1
+}
 
 #[derive(Template)]
 #[template(path = "pages/borrowers.html")]
@@ -29,6 +31,7 @@ pub struct BorrowersTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -68,6 +71,7 @@ pub async fn borrowers_page(
         role: session.role.to_string(),
         current_page: "borrowers",
         skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
         nav_locations: rust_i18n::t!("nav.locations").to_string(),
@@ -117,7 +121,9 @@ pub async fn create_borrower(
     session.require_role(Role::Librarian)?;
     let pool = &state.pool;
 
-    let borrower = BorrowerService::create_borrower(pool, &form.name, form.address, form.email, form.phone).await?;
+    let borrower =
+        BorrowerService::create_borrower(pool, &form.name, form.address, form.email, form.phone)
+            .await?;
 
     tracing::info!(borrower_id = borrower.id, name = %borrower.name, "Borrower created");
     Ok(Redirect::to("/borrowers"))
@@ -132,6 +138,7 @@ pub struct BorrowerDetailTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -184,6 +191,7 @@ pub async fn borrower_detail(
         role: session.role.to_string(),
         current_page: "borrowers",
         skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
         nav_locations: rust_i18n::t!("nav.locations").to_string(),
@@ -229,6 +237,7 @@ pub struct BorrowerEditTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -267,6 +276,7 @@ pub async fn edit_borrower_page(
         role: session.role.to_string(),
         current_page: "borrowers",
         skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
         nav_locations: rust_i18n::t!("nav.locations").to_string(),
@@ -315,7 +325,16 @@ pub async fn update_borrower(
     session.require_role(Role::Librarian)?;
     let pool = &state.pool;
 
-    BorrowerService::update_borrower(pool, id, form.version, &form.name, form.address, form.email, form.phone).await?;
+    BorrowerService::update_borrower(
+        pool,
+        id,
+        form.version,
+        &form.name,
+        form.address,
+        form.email,
+        form.phone,
+    )
+    .await?;
 
     tracing::info!(borrower_id = id, "Borrower updated");
     Ok(Redirect::to(&format!("/borrower/{id}")))
@@ -338,9 +357,13 @@ pub async fn delete_borrower(
         // HX-Redirect tells HTMX to do a full-page navigation
         Ok((
             axum::http::StatusCode::OK,
-            [(axum::http::header::HeaderName::from_static("hx-redirect"), "/borrowers".to_string())],
+            [(
+                axum::http::header::HeaderName::from_static("hx-redirect"),
+                "/borrowers".to_string(),
+            )],
             String::new(),
-        ).into_response())
+        )
+            .into_response())
     } else {
         Ok(Redirect::to("/borrowers").into_response())
     }

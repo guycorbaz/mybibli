@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT s.token, s.user_id, u.role as `role: String`\n               FROM sessions s\n               JOIN users u ON s.user_id = u.id\n               WHERE s.token = ?\n                 AND s.deleted_at IS NULL\n                 AND u.deleted_at IS NULL\n                 AND s.last_activity > DATE_SUB(NOW(), INTERVAL 4 HOUR)",
+  "query": "SELECT s.token, s.user_id, u.role as `role: String`, s.last_activity\n               FROM sessions s\n               JOIN users u ON s.user_id = u.id\n               WHERE s.token = ?\n                 AND s.deleted_at IS NULL\n                 AND u.deleted_at IS NULL",
   "describe": {
     "columns": [
       {
@@ -29,6 +29,15 @@
           "flags": "NOT_NULL | ENUM",
           "max_size": 36
         }
+      },
+      {
+        "ordinal": 3,
+        "name": "last_activity",
+        "type_info": {
+          "type": "Timestamp",
+          "flags": "NOT_NULL | MULTIPLE_KEY | UNSIGNED | BINARY | TIMESTAMP | ON_UPDATE_NOW",
+          "max_size": 19
+        }
       }
     ],
     "parameters": {
@@ -37,8 +46,9 @@
     "nullable": [
       false,
       true,
+      false,
       false
     ]
   },
-  "hash": "32a5b76068f1f76deb1411d647d91b76ee983a37f2f39b3245d07bbcda1f633d"
+  "hash": "c7cd9e0872f74b7124dc85c27d6c3ad20e769f260a6d2ab5c40cb291fc71d571"
 }

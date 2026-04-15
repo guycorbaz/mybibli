@@ -361,5 +361,10 @@ loan:
   not_found: "Loan not found."
   col_action: Action
 session:
-  expiry_warning: "Your session will expire in 5 minutes."
+  # Mirrored in static/js/session-timeout.js (i18n object) — keep in sync.
+  # The JS picks `expiry_in_minutes` when the remaining window >= 1 min,
+  # else falls back to the parameterless `expiry_soon`.
+  expiry_soon: "Your session is about to expire."
+  expiry_in_minutes: "Your session will expire in %{minutes} min."
   stay_connected: Stay connected
+  dismiss_aria: Dismiss

@@ -82,7 +82,8 @@ impl BnfProvider {
                         // Handle "XII-245" by taking the part after the last hyphen
                         let prev = words[i - 1];
                         let num_part = prev.rsplit('-').next().unwrap_or(prev);
-                        let cleaned: String = num_part.chars().filter(|c| c.is_ascii_digit()).collect();
+                        let cleaned: String =
+                            num_part.chars().filter(|c| c.is_ascii_digit()).collect();
                         if let Ok(n) = cleaned.parse::<i32>()
                             && n > 0
                         {
@@ -181,15 +182,15 @@ impl MetadataProvider for BnfProvider {
     }
 
     fn supports_media_type(&self, media_type: &MediaType) -> bool {
-        matches!(media_type, MediaType::Book | MediaType::Bd | MediaType::Magazine)
+        matches!(
+            media_type,
+            MediaType::Book | MediaType::Bd | MediaType::Magazine
+        )
     }
 
     async fn lookup_by_isbn(&self, isbn: &str) -> Result<Option<MetadataResult>, MetadataError> {
         // URL-encode ISBN to prevent query injection from malformed input
-        let encoded_isbn: String = isbn
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .collect();
+        let encoded_isbn: String = isbn.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
         let url = format!(
             "{}?version=1.2&operation=searchRetrieve&query=bib.isbn%20adj%20%22{}%22&recordSchema=unimarcXchange&maximumRecords=1",
             self.base_url, encoded_isbn

@@ -49,8 +49,10 @@ mod tests {
 
     #[test]
     fn test_html_escape_special_chars() {
-        assert_eq!(html_escape("<script>alert('xss')</script>"),
-            "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;");
+        assert_eq!(
+            html_escape("<script>alert('xss')</script>"),
+            "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
+        );
     }
 
     #[test]
@@ -60,7 +62,10 @@ mod tests {
 
     #[test]
     fn test_html_escape_quotes() {
-        assert_eq!(html_escape(r#"He said "hello""#), "He said &quot;hello&quot;");
+        assert_eq!(
+            html_escape(r#"He said "hello""#),
+            "He said &quot;hello&quot;"
+        );
     }
 
     #[test]

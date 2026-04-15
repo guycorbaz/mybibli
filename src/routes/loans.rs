@@ -3,14 +3,14 @@ use axum::extract::State;
 use axum::response::{Html, IntoResponse};
 use serde::Deserialize;
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest};
+use crate::models::PaginatedList;
 use crate::models::loan::{LoanModel, LoanWithDetails};
 use crate::models::volume::VolumeModel;
-use crate::models::PaginatedList;
 use crate::services::loans::LoanService;
-use crate::AppState;
 
 // ─── List page ──────────────────────────────────────────
 
@@ -33,6 +33,7 @@ pub struct LoansTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -91,6 +92,7 @@ pub async fn loans_page(
         role: session.role.to_string(),
         current_page: "loans",
         skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
         nav_locations: rust_i18n::t!("nav.locations").to_string(),
@@ -186,8 +188,7 @@ pub async fn create_loan(
             .to_string();
 
             if is_htmx {
-                let feedback =
-                    crate::routes::catalog::feedback_html_pub("success", &message, "");
+                let feedback = crate::routes::catalog::feedback_html_pub("success", &message, "");
                 Ok(HtmxResponse {
                     main: feedback,
                     oob: vec![],

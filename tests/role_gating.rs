@@ -18,14 +18,14 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use axum::body::Body;
-use axum::http::{header, Method, Request, StatusCode};
+use axum::http::{Method, Request, StatusCode, header};
 use sqlx::MySqlPool;
 use tower::ServiceExt;
 
+use mybibli::AppState;
 use mybibli::config::AppSettings;
 use mybibli::metadata::registry::ProviderRegistry;
 use mybibli::routes::build_router;
-use mybibli::AppState;
 
 fn build_state(pool: MySqlPool) -> AppState {
     AppState {
@@ -78,7 +78,11 @@ async fn anonymous_gets_200_on_catalog(pool: MySqlPool) {
         .oneshot(req(Method::GET, "/catalog", None))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "AC #1: /catalog is anonymous-readable");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "AC #1: /catalog is anonymous-readable"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -88,21 +92,37 @@ async fn anonymous_gets_200_on_locations(pool: MySqlPool) {
         .oneshot(req(Method::GET, "/locations", None))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "AC #1: /locations browser is anonymous-readable");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "AC #1: /locations browser is anonymous-readable"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
 async fn anonymous_loans_redirects_to_login_with_next(pool: MySqlPool) {
     let app = build_router(build_state(pool));
-    let resp = app
-        .oneshot(req(Method::GET, "/loans", None))
-        .await
+    let resp = app.oneshot(req(Method::GET, "/loans", None)).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::SEE_OTHER,
+        "AC #2: /loans → redirect for anonymous"
+    );
+    let loc = resp
+        .headers()
+        .get(header::LOCATION)
+        .unwrap()
+        .to_str()
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::SEE_OTHER, "AC #2: /loans → redirect for anonymous");
-    let loc = resp.headers().get(header::LOCATION).unwrap().to_str().unwrap();
-    assert_eq!(loc, "/login?next=%2Floans", "AC #2: next param preserves original path");
+    assert_eq!(
+        loc, "/login?next=%2Floans",
+        "AC #2: next param preserves original path"
+    );
     let hx = resp.headers().get("hx-redirect").unwrap().to_str().unwrap();
-    assert_eq!(hx, "/login?next=%2Floans", "HTMX clients get the same target via HX-Redirect");
+    assert_eq!(
+        hx, "/login?next=%2Floans",
+        "HTMX clients get the same target via HX-Redirect"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -113,7 +133,12 @@ async fn anonymous_borrowers_redirects_to_login_with_next(pool: MySqlPool) {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-    let loc = resp.headers().get(header::LOCATION).unwrap().to_str().unwrap();
+    let loc = resp
+        .headers()
+        .get(header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert_eq!(loc, "/login?next=%2Fborrowers");
 }
 
@@ -147,7 +172,10 @@ async fn anonymous_post_locations_rejected_and_db_snapshot_unchanged(pool: MySql
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(before, after, "AC #3: DB snapshot unchanged after rejected write");
+    assert_eq!(
+        before, after,
+        "AC #3: DB snapshot unchanged after rejected write"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -198,7 +226,10 @@ async fn librarian_delete_borrower_returns_403_forbidden(pool: MySqlPool) {
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(before, after, "AC #4: DB snapshot unchanged after Forbidden");
+    assert_eq!(
+        before, after,
+        "AC #4: DB snapshot unchanged after Forbidden"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -232,12 +263,11 @@ async fn admin_delete_borrower_succeeds(pool: MySqlPool) {
         resp.status()
     );
 
-    let (remaining,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM borrowers WHERE id = ? AND deleted_at IS NULL",
-    )
-    .bind(borrower_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let (remaining,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM borrowers WHERE id = ? AND deleted_at IS NULL")
+            .bind(borrower_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(remaining, 0, "AC #5: borrower soft-deleted by admin");
 }

@@ -3,13 +3,25 @@
 (function () {
     "use strict";
 
-    var WARNING_BEFORE_SECS = 5 * 60; // 5 minutes before expiry
+    // Warning offset is derived from the total timeout instead of being
+    // hardcoded to 5 min so that:
+    //   - short timeouts (e.g. admin-configured 60s, or E2E test mode)
+    //     still produce a visible warning instead of silent logout;
+    //   - the warning always fires roughly one third into the session's
+    //     remaining life, capped at 5 min for long timeouts.
+    var WARNING_MAX_SECS = 5 * 60;
     var timerId = null;
     var toastEl = null;
 
     function getTimeoutSecs() {
         var attr = document.body.getAttribute("data-session-timeout");
         return attr ? parseInt(attr, 10) : 0;
+    }
+
+    function computeWarningBeforeSecs(timeoutSecs) {
+        // At least 1s before expiry, at most 5min, ~1/3 of the window.
+        var third = Math.floor(timeoutSecs / 3);
+        return Math.max(1, Math.min(WARNING_MAX_SECS, third));
     }
 
     function createToast() {
@@ -33,23 +45,44 @@
         return toast;
     }
 
-    function showWarning() {
+    function showWarning(warningBeforeSecs) {
         if (toastEl) return; // Already showing
         toastEl = createToast();
         // i18n: detect language from <html lang> and use appropriate strings
         var msgEl = toastEl.querySelector("#session-timeout-message");
         var btnEl = toastEl.querySelector("#session-keepalive-btn");
         var lang = document.documentElement.lang || "en";
+        // Mirrored in locales/{en,fr}.yml under `session.*` — keep in sync.
+        // `expiry_soon` = short/parameterless form when remaining < 1 min.
+        // `expiry_in_minutes` = parameterized on %{minutes}.
         var i18n = {
-            en: { expiry: "Your session will expire in 5 minutes.", stay: "Stay connected" },
-            fr: { expiry: "Votre session expirera dans 5 minutes.", stay: "Rester connecté" },
+            en: {
+                expiry_soon: "Your session is about to expire.",
+                expiry_in_minutes: "Your session will expire in %{minutes} min.",
+                stay: "Stay connected",
+                dismiss: "Dismiss",
+            },
+            fr: {
+                expiry_soon: "Votre session va bientôt expirer.",
+                expiry_in_minutes: "Votre session expirera dans %{minutes} min.",
+                stay: "Rester connecté",
+                dismiss: "Fermer",
+            },
         };
         var strings = i18n[lang] || i18n.en;
-        msgEl.textContent = strings.expiry;
+        var minutes = Math.round(warningBeforeSecs / 60);
+        var msg =
+            minutes >= 1
+                ? strings.expiry_in_minutes.replace("%{minutes}", String(minutes))
+                : strings.expiry_soon;
+        msgEl.textContent = msg;
         btnEl.textContent = strings.stay;
         btnEl.addEventListener("click", keepAlive);
         var dismissBtn = toastEl.querySelector("#session-timeout-dismiss");
-        if (dismissBtn) dismissBtn.addEventListener("click", hideWarning);
+        if (dismissBtn) {
+            dismissBtn.setAttribute("aria-label", strings.dismiss);
+            dismissBtn.addEventListener("click", hideWarning);
+        }
         document.body.appendChild(toastEl);
     }
 
@@ -76,10 +109,13 @@
 
         if (timerId) clearTimeout(timerId);
 
-        var warningDelay = (timeout - WARNING_BEFORE_SECS) * 1000;
-        if (warningDelay <= 0) return; // Timeout too short for warning
+        var warningBeforeSecs = computeWarningBeforeSecs(timeout);
+        var warningDelay = (timeout - warningBeforeSecs) * 1000;
+        if (warningDelay <= 0) return;
 
-        timerId = setTimeout(showWarning, warningDelay);
+        timerId = setTimeout(function () {
+            showWarning(warningBeforeSecs);
+        }, warningDelay);
     }
 
     function init() {

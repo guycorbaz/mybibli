@@ -1,9 +1,9 @@
 pub mod codes;
 pub mod handlers;
 
-use axum::http::{header, StatusCode};
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 
 /// Application-wide error type.
 /// All error returns must use this enum — no `anyhow` or raw strings.
@@ -65,7 +65,9 @@ pub fn is_safe_next(next: &str) -> bool {
         if !decoded.starts_with('/') || decoded.starts_with("//") {
             return false;
         }
-        if decoded.contains(|c: char| c.is_control() || c == '\\' || c == '\u{2028}' || c == '\u{2029}') {
+        if decoded
+            .contains(|c: char| c.is_control() || c == '\\' || c == '\u{2028}' || c == '\u{2029}')
+        {
             return false;
         }
     }
@@ -147,9 +149,9 @@ impl IntoResponse for AppError {
                 err.to_string(),
                 "An internal error occurred".to_string(),
             ),
-            AppError::Unauthorized
-            | AppError::UnauthorizedWithReturn(_)
-            | AppError::Forbidden => unreachable!(),
+            AppError::Unauthorized | AppError::UnauthorizedWithReturn(_) | AppError::Forbidden => {
+                unreachable!()
+            }
         };
 
         tracing::error!(%status, message = %log_message, "request error");
@@ -225,7 +227,12 @@ mod tests {
     fn test_unauthorized_with_return_encodes_query_chars() {
         let err = AppError::UnauthorizedWithReturn("/search?q=hello world".to_string());
         let response = err.into_response();
-        let loc = response.headers().get("location").unwrap().to_str().unwrap();
+        let loc = response
+            .headers()
+            .get("location")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(loc.starts_with("/login?next="));
         // Query chars must be encoded so they don't leak into /login's query string.
         assert!(loc.contains("%3F"), "? must be encoded, got {loc}");

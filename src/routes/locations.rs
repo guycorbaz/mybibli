@@ -5,15 +5,15 @@ use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse};
 use serde::Deserialize;
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
 use crate::models::location::LocationModel;
 use crate::services::locations::LocationService;
-use crate::AppState;
 
-use crate::models::volume::{VolumeModel, VolumeWithTitle};
 use crate::models::PaginatedList;
+use crate::models::volume::{VolumeModel, VolumeWithTitle};
 
 #[derive(Deserialize)]
 pub struct LocationDetailQuery {
@@ -36,6 +36,7 @@ pub struct LocationDetailTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -73,18 +74,20 @@ pub async fn location_detail(
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
 
     let breadcrumb_segments = LocationModel::get_path_segments(pool, location.id).await?;
-    let volumes = VolumeModel::find_by_location(pool, id, &params.sort, &params.dir, params.page).await?;
+    let volumes =
+        VolumeModel::find_by_location(pool, id, &params.sort, &params.dir, params.page).await?;
 
     let template = LocationDetailTemplate {
         lang: rust_i18n::locale().to_string(),
         role: session.role.to_string(),
         current_page: "location",
         skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
-            nav_locations: rust_i18n::t!("nav.locations").to_string(),
-            nav_series: rust_i18n::t!("nav.series").to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
+        nav_locations: rust_i18n::t!("nav.locations").to_string(),
+        nav_series: rust_i18n::t!("nav.series").to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
         nav_admin: rust_i18n::t!("nav.admin").to_string(),
         nav_login: rust_i18n::t!("nav.login").to_string(),
         nav_logout: rust_i18n::t!("nav.logout").to_string(),
@@ -181,9 +184,16 @@ fn render_node_at_depth(
     let name = crate::utils::html_escape(&node.location.name);
     let label = crate::utils::html_escape(&node.location.label);
     let node_type = crate::utils::html_escape(&node.location.node_type);
-    let icon = if node.children.is_empty() { "📍" } else { "📁" };
+    let icon = if node.children.is_empty() {
+        "📍"
+    } else {
+        "📁"
+    };
     let vol = if node.volume_count > 0 {
-        format!(r#" <span class="text-xs text-indigo-600 dark:text-indigo-400">{} vol</span>"#, node.volume_count)
+        format!(
+            r#" <span class="text-xs text-indigo-600 dark:text-indigo-400">{} vol</span>"#,
+            node.volume_count
+        )
     } else {
         String::new()
     };
@@ -192,7 +202,9 @@ fn render_node_at_depth(
     let mut type_options = String::new();
     for (_, nt_name) in node_types {
         let nt_escaped = crate::utils::html_escape(nt_name);
-        type_options.push_str(&format!(r#"<option value="{nt_escaped}">{nt_escaped}</option>"#));
+        type_options.push_str(&format!(
+            r#"<option value="{nt_escaped}">{nt_escaped}</option>"#
+        ));
     }
     let name_lbl = crate::utils::html_escape(rust_i18n::t!("location.name_label").as_ref());
     let type_lbl = crate::utils::html_escape(rust_i18n::t!("location.type_label").as_ref());
@@ -260,6 +272,7 @@ pub struct LocationsTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -309,11 +322,12 @@ pub async fn locations_page(
         role: session.role.to_string(),
         current_page: "locations",
         skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
-            nav_locations: rust_i18n::t!("nav.locations").to_string(),
-            nav_series: rust_i18n::t!("nav.series").to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
+        nav_locations: rust_i18n::t!("nav.locations").to_string(),
+        nav_series: rust_i18n::t!("nav.series").to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
         nav_admin: rust_i18n::t!("nav.admin").to_string(),
         nav_login: rust_i18n::t!("nav.login").to_string(),
         nav_logout: rust_i18n::t!("nav.logout").to_string(),
@@ -381,6 +395,7 @@ pub struct LocationEditTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -424,11 +439,12 @@ pub async fn edit_location_page(
         role: session.role.to_string(),
         current_page: "locations",
         skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
-            nav_locations: rust_i18n::t!("nav.locations").to_string(),
-            nav_series: rust_i18n::t!("nav.series").to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
+        nav_locations: rust_i18n::t!("nav.locations").to_string(),
+        nav_series: rust_i18n::t!("nav.series").to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
         nav_admin: rust_i18n::t!("nav.admin").to_string(),
         nav_login: rust_i18n::t!("nav.login").to_string(),
         nav_logout: rust_i18n::t!("nav.logout").to_string(),
@@ -546,9 +562,27 @@ mod tests {
     #[test]
     fn test_build_tree_nested() {
         let locations = vec![
-            LocationModel { id: 1, parent_id: None, name: "Maison".to_string(), node_type: "Room".to_string(), label: "L0001".to_string() },
-            LocationModel { id: 2, parent_id: Some(1), name: "Salon".to_string(), node_type: "Room".to_string(), label: "L0002".to_string() },
-            LocationModel { id: 3, parent_id: Some(2), name: "Étagère 1".to_string(), node_type: "Shelf".to_string(), label: "L0003".to_string() },
+            LocationModel {
+                id: 1,
+                parent_id: None,
+                name: "Maison".to_string(),
+                node_type: "Room".to_string(),
+                label: "L0001".to_string(),
+            },
+            LocationModel {
+                id: 2,
+                parent_id: Some(1),
+                name: "Salon".to_string(),
+                node_type: "Room".to_string(),
+                label: "L0002".to_string(),
+            },
+            LocationModel {
+                id: 3,
+                parent_id: Some(2),
+                name: "Étagère 1".to_string(),
+                node_type: "Shelf".to_string(),
+                label: "L0003".to_string(),
+            },
         ];
         let mut counts = HashMap::new();
         counts.insert(3, 5u64);
@@ -566,6 +600,7 @@ mod tests {
             role: "anonymous".to_string(),
             current_page: "location",
             skip_label: "Skip".to_string(),
+            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
             nav_catalog: "Catalog".to_string(),
             nav_loans: "Loans".to_string(),
             nav_locations: "Locations".to_string(),

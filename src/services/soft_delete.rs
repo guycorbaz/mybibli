@@ -28,10 +28,7 @@ impl SoftDeleteService {
             table
         );
 
-        let result = sqlx::query(&query_str)
-            .bind(id)
-            .execute(pool)
-            .await?;
+        let result = sqlx::query(&query_str).bind(id).execute(pool).await?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound(

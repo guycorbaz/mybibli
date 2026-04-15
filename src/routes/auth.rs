@@ -4,10 +4,10 @@ use axum::response::{Html, IntoResponse, Redirect};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use serde::Deserialize;
 
-use crate::error::{is_safe_next, AppError};
+use crate::AppState;
+use crate::error::{AppError, is_safe_next};
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
-use crate::AppState;
 
 // ─── Login form template ─────────────────────────────────────────
 
@@ -18,6 +18,7 @@ pub struct LoginTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -47,6 +48,8 @@ impl LoginTemplate {
             role: "anonymous".to_string(),
             current_page: "login",
             skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+            // Login page is anonymous — value is not rendered (guarded in base.html).
+            session_timeout_secs: 0,
             nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
             nav_loans: rust_i18n::t!("nav.loans").to_string(),
             nav_locations: rust_i18n::t!("nav.locations").to_string(),
@@ -141,9 +144,11 @@ pub async fn login(
     // Generate session token
     let token = generate_session_token();
 
-    // Insert session into database
+    // Insert session into database. Explicitly UTC_TIMESTAMP so the
+    // expiry check (Rust-side `Utc::now()`) cannot drift vs a server
+    // `time_zone` that is not UTC.
     sqlx::query(
-        "INSERT INTO sessions (token, user_id, data) VALUES (?, ?, '{}')",
+        "INSERT INTO sessions (token, user_id, data, last_activity) VALUES (?, ?, '{}', UTC_TIMESTAMP())",
     )
     .bind(&token)
     .bind(user_id)
@@ -166,7 +171,10 @@ pub async fn login(
         "/catalog".to_string()
     };
 
-    Ok((jar.add(cookie), Redirect::to(&redirect_target).into_response()))
+    Ok((
+        jar.add(cookie),
+        Redirect::to(&redirect_target).into_response(),
+    ))
 }
 
 fn render_login_error(
@@ -204,9 +212,7 @@ pub async fn logout(
     }
 
     // Clear cookie by removing it
-    let cookie = Cookie::build(("session", ""))
-        .path("/")
-        .build();
+    let cookie = Cookie::build(("session", "")).path("/").build();
 
     Ok((jar.remove(cookie), Redirect::to("/").into_response()))
 }
@@ -239,7 +245,11 @@ mod tests {
     #[test]
     fn test_generate_session_token_length() {
         let token = generate_session_token();
-        assert_eq!(token.len(), 44, "Token should be 44 chars (32 bytes base64)");
+        assert_eq!(
+            token.len(),
+            44,
+            "Token should be 44 chars (32 bytes base64)"
+        );
     }
 
     #[test]
@@ -248,7 +258,11 @@ mod tests {
         let token = generate_session_token();
         let decoded = base64::engine::general_purpose::STANDARD.decode(&token);
         assert!(decoded.is_ok(), "Token should be valid base64");
-        assert_eq!(decoded.unwrap().len(), 32, "Decoded token should be 32 bytes");
+        assert_eq!(
+            decoded.unwrap().len(),
+            32,
+            "Decoded token should be 32 bytes"
+        );
     }
 
     #[test]
@@ -261,8 +275,8 @@ mod tests {
     #[test]
     fn test_verify_password_valid() {
         // Generate a hash for "testpass" and verify it
-        use argon2::{Argon2, PasswordHasher};
         use argon2::password_hash::SaltString;
+        use argon2::{Argon2, PasswordHasher};
         use rand::rngs::OsRng;
 
         let salt = SaltString::generate(OsRng);
@@ -276,8 +290,8 @@ mod tests {
 
     #[test]
     fn test_verify_password_invalid() {
-        use argon2::{Argon2, PasswordHasher};
         use argon2::password_hash::SaltString;
+        use argon2::{Argon2, PasswordHasher};
         use rand::rngs::OsRng;
 
         let salt = SaltString::generate(OsRng);
@@ -338,5 +352,4 @@ mod tests {
         assert!(!html.contains("evil.example.com"));
         assert!(!html.contains(r#"name="next""#));
     }
-
 }

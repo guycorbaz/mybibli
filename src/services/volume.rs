@@ -49,13 +49,19 @@ impl VolumeService {
             Ok(vol) => Ok(vol),
             Err(AppError::BadRequest(msg)) if msg.starts_with("DUPLICATE_LABEL:") => {
                 // Duplicate label — look up which title owns the existing volume
-                let existing_title = if let Some(existing_vol) = VolumeModel::find_by_label(pool, label).await? {
-                    Self::get_volume_title_name(pool, &existing_vol).await
-                } else {
-                    "?".to_string()
-                };
+                let existing_title =
+                    if let Some(existing_vol) = VolumeModel::find_by_label(pool, label).await? {
+                        Self::get_volume_title_name(pool, &existing_vol).await
+                    } else {
+                        "?".to_string()
+                    };
                 Err(AppError::BadRequest(
-                    rust_i18n::t!("feedback.volume_duplicate", label = label, title = &existing_title).to_string(),
+                    rust_i18n::t!(
+                        "feedback.volume_duplicate",
+                        label = label,
+                        title = &existing_title
+                    )
+                    .to_string(),
                 ))
             }
             Err(e) => Err(e),
@@ -71,11 +77,7 @@ impl VolumeService {
     ) -> Result<(VolumeModel, String), AppError> {
         let volume = VolumeModel::find_by_label(pool, volume_label)
             .await?
-            .ok_or_else(|| {
-                AppError::NotFound(
-                    rust_i18n::t!("error.not_found").to_string(),
-                )
-            })?;
+            .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
 
         let location = LocationModel::find_by_label(pool, location_label)
             .await?

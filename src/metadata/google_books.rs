@@ -24,11 +24,7 @@ impl GoogleBooksProvider {
     }
 
     /// Create with a custom base URL (for testing with mock server).
-    pub fn with_base_url(
-        client: reqwest::Client,
-        api_key: Option<String>,
-        base_url: &str,
-    ) -> Self {
+    pub fn with_base_url(client: reqwest::Client, api_key: Option<String>, base_url: &str) -> Self {
         GoogleBooksProvider {
             client,
             api_key,
@@ -100,15 +96,9 @@ impl MetadataProvider for GoogleBooksProvider {
     }
 
     async fn lookup_by_isbn(&self, isbn: &str) -> Result<Option<MetadataResult>, MetadataError> {
-        let encoded_isbn: String = isbn
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .collect();
+        let encoded_isbn: String = isbn.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
 
-        let mut url = format!(
-            "{}/books/v1/volumes?q=isbn:{}",
-            self.base_url, encoded_isbn
-        );
+        let mut url = format!("{}/books/v1/volumes?q=isbn:{}", self.base_url, encoded_isbn);
         if let Some(ref key) = self.api_key {
             let encoded_key = crate::utils::url_encode(key);
             url.push_str(&format!("&key={encoded_key}"));

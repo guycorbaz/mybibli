@@ -145,18 +145,12 @@ impl TitleService {
     }
 
     /// Find an existing title by ISBN.
-    pub async fn find_by_isbn(
-        pool: &DbPool,
-        isbn: &str,
-    ) -> Result<Option<TitleModel>, AppError> {
+    pub async fn find_by_isbn(pool: &DbPool, isbn: &str) -> Result<Option<TitleModel>, AppError> {
         TitleModel::find_by_isbn(pool, isbn).await
     }
 
     /// Create a title from manual form input.
-    pub async fn create_manual(
-        pool: &DbPool,
-        form: &TitleForm,
-    ) -> Result<TitleModel, AppError> {
+    pub async fn create_manual(pool: &DbPool, form: &TitleForm) -> Result<TitleModel, AppError> {
         if form.title.trim().is_empty() {
             return Err(AppError::BadRequest(
                 rust_i18n::t!("error.title.required").to_string(),
@@ -202,10 +196,14 @@ impl TitleService {
                     None
                 } else if let Ok(d) = chrono::NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
                     Some(d)
-                } else if let Ok(d) = chrono::NaiveDate::parse_from_str(&format!("{}-01-01", trimmed), "%Y-%m-%d") {
+                } else if let Ok(d) =
+                    chrono::NaiveDate::parse_from_str(&format!("{}-01-01", trimmed), "%Y-%m-%d")
+                {
                     // Accept YYYY -> first day of year
                     Some(d)
-                } else if let Ok(d) = chrono::NaiveDate::parse_from_str(&format!("{}-01", trimmed), "%Y-%m-%d") {
+                } else if let Ok(d) =
+                    chrono::NaiveDate::parse_from_str(&format!("{}-01", trimmed), "%Y-%m-%d")
+                {
                     // Accept YYYY-MM -> first day of month
                     Some(d)
                 } else {
@@ -252,14 +250,16 @@ impl TitleService {
         })
     }
 
-    async fn insert_pending_metadata(pool: &DbPool, title_id: u64, session_token: &str) -> Result<(), AppError> {
-        sqlx::query(
-            "INSERT INTO pending_metadata_updates (title_id, session_token) VALUES (?, ?)",
-        )
-        .bind(title_id)
-        .bind(session_token)
-        .execute(pool)
-        .await?;
+    async fn insert_pending_metadata(
+        pool: &DbPool,
+        title_id: u64,
+        session_token: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query("INSERT INTO pending_metadata_updates (title_id, session_token) VALUES (?, ?)")
+            .bind(title_id)
+            .bind(session_token)
+            .execute(pool)
+            .await?;
 
         tracing::debug!(title_id = title_id, "Inserted pending metadata update stub");
         Ok(())
@@ -317,10 +317,12 @@ pub struct FieldConflict {
 impl TitleService {
     /// Invalidate the metadata cache for the given code (soft-delete).
     pub async fn invalidate_metadata_cache(pool: &DbPool, code: &str) -> Result<(), AppError> {
-        sqlx::query("UPDATE metadata_cache SET deleted_at = NOW() WHERE code = ? AND deleted_at IS NULL")
-            .bind(code)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE metadata_cache SET deleted_at = NOW() WHERE code = ? AND deleted_at IS NULL",
+        )
+        .bind(code)
+        .execute(pool)
+        .await?;
         tracing::info!(code = %code, "Invalidated metadata cache for re-download");
         Ok(())
     }
@@ -353,15 +355,34 @@ impl TitleService {
         metadata: &crate::metadata::provider::MetadataResult,
         manually_edited: &[String],
     ) -> Vec<String> {
-        let all_fields = ["title", "subtitle", "description", "publisher", "language",
-            "publication_date", "dewey_code", "page_count", "track_count", "total_duration", "age_rating", "issue_number"];
+        let all_fields = [
+            "title",
+            "subtitle",
+            "description",
+            "publisher",
+            "language",
+            "publication_date",
+            "dewey_code",
+            "page_count",
+            "track_count",
+            "total_duration",
+            "age_rating",
+            "issue_number",
+        ];
         let mut updates = Vec::new();
         for field in all_fields {
-            if manually_edited.contains(&field.to_string()) { continue; }
+            if manually_edited.contains(&field.to_string()) {
+                continue;
+            }
             let current = Self::get_title_field_value(title, field);
             let new_val = Self::get_metadata_field_value(metadata, field);
             if !new_val.is_empty() && current != new_val {
-                updates.push(format!("{}: {} -> {}", Self::field_label(field), current, new_val));
+                updates.push(format!(
+                    "{}: {} -> {}",
+                    Self::field_label(field),
+                    current,
+                    new_val
+                ));
             }
         }
         updates
@@ -393,18 +414,30 @@ impl TitleService {
             "description" => title.description.clone().unwrap_or_default(),
             "publisher" => title.publisher.clone().unwrap_or_default(),
             "language" => title.language.clone(),
-            "publication_date" => title.publication_date.map(|d| d.to_string()).unwrap_or_default(),
+            "publication_date" => title
+                .publication_date
+                .map(|d| d.to_string())
+                .unwrap_or_default(),
             "page_count" => title.page_count.map(|v| v.to_string()).unwrap_or_default(),
             "track_count" => title.track_count.map(|v| v.to_string()).unwrap_or_default(),
-            "total_duration" => title.total_duration.map(|v| v.to_string()).unwrap_or_default(),
+            "total_duration" => title
+                .total_duration
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
             "age_rating" => title.age_rating.clone().unwrap_or_default(),
-            "issue_number" => title.issue_number.map(|v| v.to_string()).unwrap_or_default(),
+            "issue_number" => title
+                .issue_number
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
             "dewey_code" => title.dewey_code.clone().unwrap_or_default(),
             _ => String::new(),
         }
     }
 
-    fn get_metadata_field_value(metadata: &crate::metadata::provider::MetadataResult, field: &str) -> String {
+    fn get_metadata_field_value(
+        metadata: &crate::metadata::provider::MetadataResult,
+        field: &str,
+    ) -> String {
         match field {
             "title" => metadata.title.clone().unwrap_or_default(),
             "subtitle" => metadata.subtitle.clone().unwrap_or_default(),
@@ -412,8 +445,14 @@ impl TitleService {
             "publisher" => metadata.publisher.clone().unwrap_or_default(),
             "language" => metadata.language.clone().unwrap_or_default(),
             "publication_date" => metadata.publication_date.clone().unwrap_or_default(),
-            "page_count" => metadata.page_count.map(|v| v.to_string()).unwrap_or_default(),
-            "track_count" => metadata.track_count.map(|v| v.to_string()).unwrap_or_default(),
+            "page_count" => metadata
+                .page_count
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            "track_count" => metadata
+                .track_count
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
             "total_duration" => metadata.total_duration.clone().unwrap_or_default(),
             "age_rating" => metadata.age_rating.clone().unwrap_or_default(),
             "issue_number" => metadata.issue_number.clone().unwrap_or_default(),
@@ -484,7 +523,10 @@ mod tests {
 
     #[test]
     fn test_non_empty_option_with_value() {
-        assert_eq!(non_empty_option(&Some("hello".to_string())), Some("hello".to_string()));
+        assert_eq!(
+            non_empty_option(&Some("hello".to_string())),
+            Some("hello".to_string())
+        );
     }
 
     #[test]
@@ -504,18 +546,36 @@ mod tests {
 
     #[test]
     fn test_non_empty_option_trims() {
-        assert_eq!(non_empty_option(&Some("  hello  ".to_string())), Some("hello".to_string()));
+        assert_eq!(
+            non_empty_option(&Some("  hello  ".to_string())),
+            Some("hello".to_string())
+        );
     }
 
-    fn make_title_with_dewey(dewey: Option<&str>, manually_edited: Option<&str>) -> crate::models::title::TitleModel {
+    fn make_title_with_dewey(
+        dewey: Option<&str>,
+        manually_edited: Option<&str>,
+    ) -> crate::models::title::TitleModel {
         crate::models::title::TitleModel {
-            id: 1, title: "T".to_string(), subtitle: None, description: None,
-            language: "fr".to_string(), media_type: "book".to_string(),
-            publication_date: None, publisher: None, isbn: None, issn: None,
-            upc: None, cover_image_url: None, genre_id: 1,
+            id: 1,
+            title: "T".to_string(),
+            subtitle: None,
+            description: None,
+            language: "fr".to_string(),
+            media_type: "book".to_string(),
+            publication_date: None,
+            publisher: None,
+            isbn: None,
+            issn: None,
+            upc: None,
+            cover_image_url: None,
+            genre_id: 1,
             dewey_code: dewey.map(|s| s.to_string()),
-            page_count: None, track_count: None, total_duration: None,
-            age_rating: None, issue_number: None,
+            page_count: None,
+            track_count: None,
+            total_duration: None,
+            age_rating: None,
+            issue_number: None,
             manually_edited_fields: manually_edited.map(|s| s.to_string()),
             version: 1,
         }
@@ -546,7 +606,9 @@ mod tests {
         let manually_edited: Vec<String> = vec![];
         let updates = TitleService::build_auto_updates(&title, &metadata, &manually_edited);
         assert!(
-            updates.iter().any(|u| u.contains("Dewey") && u.contains("800") && u.contains("843.914")),
+            updates
+                .iter()
+                .any(|u| u.contains("Dewey") && u.contains("800") && u.contains("843.914")),
             "expected dewey_code auto-update entry referencing the Dewey label, got: {updates:?}"
         );
     }

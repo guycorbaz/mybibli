@@ -33,8 +33,15 @@ pub async fn fetch_metadata_chain(
 ) {
     tracing::info!(title_id = title_id, code = %code, code_type = %code_type, media_type = %media_type, "Starting async metadata fetch");
 
-    match ChainExecutor::execute(&registry, &pool, &code, &code_type, &media_type, timeout_secs)
-        .await
+    match ChainExecutor::execute(
+        &registry,
+        &pool,
+        &code,
+        &code_type,
+        &media_type,
+        timeout_secs,
+    )
+    .await
     {
         Some(metadata) => {
             tracing::info!(title_id = title_id, code = %code, "Metadata fetch completed successfully");
@@ -46,9 +53,18 @@ pub async fn fetch_metadata_chain(
 
             // Download and resize cover image if URL available
             if let Some(cover_url) = &metadata.cover_url {
-                match CoverService::download_and_resize(&http_client, cover_url, title_id, &covers_dir).await {
+                match CoverService::download_and_resize(
+                    &http_client,
+                    cover_url,
+                    title_id,
+                    &covers_dir,
+                )
+                .await
+                {
                     Ok(local_path) => {
-                        if let Err(e) = update_cover_image_url(&pool, title_id, Some(&local_path)).await {
+                        if let Err(e) =
+                            update_cover_image_url(&pool, title_id, Some(&local_path)).await
+                        {
                             tracing::warn!(title_id = title_id, error = %e, "Failed to update cover_image_url");
                         }
                     }
@@ -109,7 +125,11 @@ pub async fn update_title_from_metadata(
     // the `title_contributors` junction, not `manually_edited_fields`, and the INSERT
     // IGNORE at line 224 makes re-runs idempotent. Extending the guard to contributor
     // rows is a separate (future) story.
-    if let Some(author_name) = metadata.authors.first().map(|s| s.trim()).filter(|s| !s.is_empty())
+    if let Some(author_name) = metadata
+        .authors
+        .first()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
         && let Err(e) = add_author_contributor(pool, title_id, author_name).await
     {
         tracing::warn!(title_id = title_id, error = %e, "Failed to add author contributor");
@@ -142,7 +162,10 @@ pub async fn do_update(
             .ok()
     });
 
-    let guarded: HashSet<String> = snapshot.parsed_manually_edited_fields().into_iter().collect();
+    let guarded: HashSet<String> = snapshot
+        .parsed_manually_edited_fields()
+        .into_iter()
+        .collect();
     let g = |field: &str| guarded.contains(field);
 
     let result = sqlx::query(
@@ -163,18 +186,66 @@ pub async fn do_update(
          updated_at = NOW() \
          WHERE id = ? AND version = ? AND deleted_at IS NULL",
     )
-    .bind(if g("title") { None } else { metadata.title.clone() })
-    .bind(if g("subtitle") { None } else { metadata.subtitle.clone() })
-    .bind(if g("description") { None } else { metadata.description.clone() })
-    .bind(if g("publisher") { None } else { metadata.publisher.clone() })
-    .bind(if g("language") { None } else { metadata.language.clone() })
-    .bind(if g("page_count") { None } else { metadata.page_count })
-    .bind(if g("publication_date") { None } else { pub_date })
-    .bind(if g("dewey_code") { None } else { metadata.dewey_code.clone() })
-    .bind(if g("track_count") { None } else { metadata.track_count })
-    .bind(if g("total_duration") { None } else { metadata.total_duration.clone() })
-    .bind(if g("age_rating") { None } else { metadata.age_rating.clone() })
-    .bind(if g("issue_number") { None } else { metadata.issue_number.clone() })
+    .bind(if g("title") {
+        None
+    } else {
+        metadata.title.clone()
+    })
+    .bind(if g("subtitle") {
+        None
+    } else {
+        metadata.subtitle.clone()
+    })
+    .bind(if g("description") {
+        None
+    } else {
+        metadata.description.clone()
+    })
+    .bind(if g("publisher") {
+        None
+    } else {
+        metadata.publisher.clone()
+    })
+    .bind(if g("language") {
+        None
+    } else {
+        metadata.language.clone()
+    })
+    .bind(if g("page_count") {
+        None
+    } else {
+        metadata.page_count
+    })
+    .bind(if g("publication_date") {
+        None
+    } else {
+        pub_date
+    })
+    .bind(if g("dewey_code") {
+        None
+    } else {
+        metadata.dewey_code.clone()
+    })
+    .bind(if g("track_count") {
+        None
+    } else {
+        metadata.track_count
+    })
+    .bind(if g("total_duration") {
+        None
+    } else {
+        metadata.total_duration.clone()
+    })
+    .bind(if g("age_rating") {
+        None
+    } else {
+        metadata.age_rating.clone()
+    })
+    .bind(if g("issue_number") {
+        None
+    } else {
+        metadata.issue_number.clone()
+    })
     .bind(title_id)
     .bind(snapshot.version)
     .execute(pool)
@@ -196,18 +267,14 @@ async fn add_author_contributor(
     )
     .bind(author_name)
     .fetch_optional(pool)
-    .await
-    ?
+    .await?
     {
         Some((id,)) => id,
         None => {
-            let result = sqlx::query(
-                "INSERT INTO contributors (name) VALUES (?)",
-            )
-            .bind(author_name)
-            .execute(pool)
-            .await
-            ?;
+            let result = sqlx::query("INSERT INTO contributors (name) VALUES (?)")
+                .bind(author_name)
+                .execute(pool)
+                .await?;
             result.last_insert_id()
         }
     };
@@ -217,8 +284,7 @@ async fn add_author_contributor(
         "SELECT id FROM contributor_roles WHERE name = 'Auteur' AND deleted_at IS NULL LIMIT 1",
     )
     .fetch_optional(pool)
-    .await
-    ?
+    .await?
     {
         Some((id,)) => id,
         None => return Ok(()), // No author role found, skip

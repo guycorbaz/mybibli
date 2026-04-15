@@ -108,12 +108,8 @@ impl SeriesService {
                 && (total as u64) < owned
             {
                 return Err(AppError::BadRequest(
-                    rust_i18n::t!(
-                        "series.total_below_owned",
-                        total = total,
-                        owned = owned
-                    )
-                    .to_string(),
+                    rust_i18n::t!("series.total_below_owned", total = total, owned = owned)
+                        .to_string(),
                 ));
             }
 
@@ -122,8 +118,16 @@ impl SeriesService {
             None
         };
 
-        SeriesModel::update_with_locking(pool, id, version, trimmed, description, series_type, total)
-            .await
+        SeriesModel::update_with_locking(
+            pool,
+            id,
+            version,
+            trimmed,
+            description,
+            series_type,
+            total,
+        )
+        .await
     }
 
     pub async fn delete_series(pool: &DbPool, id: u64) -> Result<(), AppError> {
@@ -216,12 +220,20 @@ impl SeriesService {
     }
 
     /// Unassign a title from a series. Verifies title_id ownership.
-    pub async fn unassign_title(pool: &DbPool, assignment_id: u64, title_id: u64) -> Result<(), AppError> {
+    pub async fn unassign_title(
+        pool: &DbPool,
+        assignment_id: u64,
+        title_id: u64,
+    ) -> Result<(), AppError> {
         TitleSeriesModel::unassign(pool, assignment_id, title_id).await
     }
 
     /// Unassign ALL positions for a title in a specific series (for omnibus removal).
-    pub async fn unassign_all_from_series(pool: &DbPool, title_id: u64, series_id: u64) -> Result<(), AppError> {
+    pub async fn unassign_all_from_series(
+        pool: &DbPool,
+        title_id: u64,
+        series_id: u64,
+    ) -> Result<(), AppError> {
         TitleSeriesModel::unassign_all_for_title_in_series(pool, title_id, series_id).await?;
         Ok(())
     }

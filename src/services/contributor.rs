@@ -1,8 +1,6 @@
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::contributor::{
-    ContributorModel, ContributorRoleModel, TitleContributorModel,
-};
+use crate::models::contributor::{ContributorModel, ContributorRoleModel, TitleContributorModel};
 use crate::models::title::TitleModel;
 
 pub struct ContributorService;
@@ -132,14 +130,12 @@ impl ContributorService {
         let count = ContributorModel::count_title_associations(pool, id).await?;
         if count > 0 {
             let contributor = ContributorModel::find_by_id(pool, id).await?;
-            let name = contributor.map(|c| c.name).unwrap_or_else(|| "?".to_string());
+            let name = contributor
+                .map(|c| c.name)
+                .unwrap_or_else(|| "?".to_string());
             return Err(AppError::Conflict(
-                rust_i18n::t!(
-                    "error.contributor.has_titles",
-                    name = &name,
-                    count = count
-                )
-                .to_string(),
+                rust_i18n::t!("error.contributor.has_titles", name = &name, count = count)
+                    .to_string(),
             ));
         }
 

@@ -4,7 +4,7 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::{PaginatedList, DEFAULT_PAGE_SIZE};
+use crate::models::{DEFAULT_PAGE_SIZE, PaginatedList};
 
 /// Matches the `titles` table schema exactly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -489,7 +489,7 @@ impl TitleModel {
                 other => {
                     return Err(AppError::Internal(format!(
                         "find_similar: unexpected priority value {other} (expected 1..=3)"
-                    )))
+                    )));
                 }
             };
             items.push(SimilarTitle {
@@ -540,28 +540,63 @@ pub fn decade_bounds_for_date(date: chrono::NaiveDate) -> (i32, i32) {
 /// Detect which metadata fields differ between an existing title and new form values.
 /// Returns the names of fields that changed.
 #[allow(clippy::too_many_arguments)]
-pub fn detect_edited_fields(old: &TitleModel, new_title: &str, new_subtitle: Option<&str>,
-    new_description: Option<&str>, new_publisher: Option<&str>, new_language: &str,
-    new_genre_id: u64, new_publication_date: Option<chrono::NaiveDate>,
-    new_dewey_code: Option<&str>, new_page_count: Option<i32>,
-    new_track_count: Option<i32>, new_total_duration: Option<i32>,
-    new_age_rating: Option<&str>, new_issue_number: Option<i32>,
+pub fn detect_edited_fields(
+    old: &TitleModel,
+    new_title: &str,
+    new_subtitle: Option<&str>,
+    new_description: Option<&str>,
+    new_publisher: Option<&str>,
+    new_language: &str,
+    new_genre_id: u64,
+    new_publication_date: Option<chrono::NaiveDate>,
+    new_dewey_code: Option<&str>,
+    new_page_count: Option<i32>,
+    new_track_count: Option<i32>,
+    new_total_duration: Option<i32>,
+    new_age_rating: Option<&str>,
+    new_issue_number: Option<i32>,
 ) -> Vec<String> {
     let mut changed = Vec::new();
 
-    if old.title != new_title { changed.push("title".to_string()); }
-    if old.subtitle.as_deref() != new_subtitle { changed.push("subtitle".to_string()); }
-    if old.description.as_deref() != new_description { changed.push("description".to_string()); }
-    if old.publisher.as_deref() != new_publisher { changed.push("publisher".to_string()); }
-    if old.language != new_language { changed.push("language".to_string()); }
-    if old.genre_id != new_genre_id { changed.push("genre_id".to_string()); }
-    if old.publication_date != new_publication_date { changed.push("publication_date".to_string()); }
-    if old.dewey_code.as_deref() != new_dewey_code { changed.push("dewey_code".to_string()); }
-    if old.page_count != new_page_count { changed.push("page_count".to_string()); }
-    if old.track_count != new_track_count { changed.push("track_count".to_string()); }
-    if old.total_duration != new_total_duration { changed.push("total_duration".to_string()); }
-    if old.age_rating.as_deref() != new_age_rating { changed.push("age_rating".to_string()); }
-    if old.issue_number != new_issue_number { changed.push("issue_number".to_string()); }
+    if old.title != new_title {
+        changed.push("title".to_string());
+    }
+    if old.subtitle.as_deref() != new_subtitle {
+        changed.push("subtitle".to_string());
+    }
+    if old.description.as_deref() != new_description {
+        changed.push("description".to_string());
+    }
+    if old.publisher.as_deref() != new_publisher {
+        changed.push("publisher".to_string());
+    }
+    if old.language != new_language {
+        changed.push("language".to_string());
+    }
+    if old.genre_id != new_genre_id {
+        changed.push("genre_id".to_string());
+    }
+    if old.publication_date != new_publication_date {
+        changed.push("publication_date".to_string());
+    }
+    if old.dewey_code.as_deref() != new_dewey_code {
+        changed.push("dewey_code".to_string());
+    }
+    if old.page_count != new_page_count {
+        changed.push("page_count".to_string());
+    }
+    if old.track_count != new_track_count {
+        changed.push("track_count".to_string());
+    }
+    if old.total_duration != new_total_duration {
+        changed.push("total_duration".to_string());
+    }
+    if old.age_rating.as_deref() != new_age_rating {
+        changed.push("age_rating".to_string());
+    }
+    if old.issue_number != new_issue_number {
+        changed.push("issue_number".to_string());
+    }
 
     changed
 }
@@ -800,9 +835,18 @@ mod tests {
     #[test]
     fn test_validated_sort_valid() {
         assert_eq!(validated_sort(&Some("title".to_string())), "title");
-        assert_eq!(validated_sort(&Some("media_type".to_string())), "media_type");
-        assert_eq!(validated_sort(&Some("genre_name".to_string())), "genre_name");
-        assert_eq!(validated_sort(&Some("volume_count".to_string())), "volume_count");
+        assert_eq!(
+            validated_sort(&Some("media_type".to_string())),
+            "media_type"
+        );
+        assert_eq!(
+            validated_sort(&Some("genre_name".to_string())),
+            "genre_name"
+        );
+        assert_eq!(
+            validated_sort(&Some("volume_count".to_string())),
+            "volume_count"
+        );
     }
 
     #[test]
@@ -813,7 +857,10 @@ mod tests {
     #[test]
     fn test_validated_sort_injection() {
         assert_eq!(validated_sort(&Some("DROP TABLE".to_string())), "title");
-        assert_eq!(validated_sort(&Some("1; DROP TABLE--".to_string())), "title");
+        assert_eq!(
+            validated_sort(&Some("1; DROP TABLE--".to_string())),
+            "title"
+        );
         assert_eq!(validated_sort(&None), "title");
     }
 
@@ -974,9 +1021,20 @@ mod tests {
     fn test_detect_edited_fields_no_changes() {
         let old = make_test_title();
         let changed = detect_edited_fields(
-            &old, "Original Title", Some("Original Sub"), None,
-            Some("Gallimard"), "fr", 1, None, None,
-            Some(186), None, None, None, None,
+            &old,
+            "Original Title",
+            Some("Original Sub"),
+            None,
+            Some("Gallimard"),
+            "fr",
+            1,
+            None,
+            None,
+            Some(186),
+            None,
+            None,
+            None,
+            None,
         );
         assert!(changed.is_empty());
     }
@@ -985,9 +1043,20 @@ mod tests {
     fn test_detect_edited_fields_publisher_changed() {
         let old = make_test_title();
         let changed = detect_edited_fields(
-            &old, "Original Title", Some("Original Sub"), None,
-            Some("Flammarion"), "fr", 1, None, None,
-            Some(186), None, None, None, None,
+            &old,
+            "Original Title",
+            Some("Original Sub"),
+            None,
+            Some("Flammarion"),
+            "fr",
+            1,
+            None,
+            None,
+            Some(186),
+            None,
+            None,
+            None,
+            None,
         );
         assert_eq!(changed, vec!["publisher"]);
     }
@@ -996,9 +1065,20 @@ mod tests {
     fn test_detect_edited_fields_multiple_changes() {
         let old = make_test_title();
         let changed = detect_edited_fields(
-            &old, "New Title", Some("Original Sub"), Some("A description"),
-            Some("Gallimard"), "en", 1, None, None,
-            Some(186), None, None, None, None,
+            &old,
+            "New Title",
+            Some("Original Sub"),
+            Some("A description"),
+            Some("Gallimard"),
+            "en",
+            1,
+            None,
+            None,
+            Some(186),
+            None,
+            None,
+            None,
+            None,
         );
         assert!(changed.contains(&"title".to_string()));
         assert!(changed.contains(&"description".to_string()));

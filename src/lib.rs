@@ -29,3 +29,15 @@ pub struct AppState {
     pub registry: Arc<ProviderRegistry>,
     pub covers_dir: PathBuf,
 }
+
+impl AppState {
+    /// Read the currently-configured session inactivity timeout (seconds).
+    /// Clones the scalar out of the `RwLock` so callers never hold the guard
+    /// across `.await` points.
+    pub fn session_timeout_secs(&self) -> u64 {
+        self.settings
+            .read()
+            .map(|s| s.session_timeout_secs)
+            .unwrap_or_else(|_| AppSettings::default().session_timeout_secs)
+    }
+}

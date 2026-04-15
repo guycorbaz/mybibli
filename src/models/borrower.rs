@@ -2,7 +2,7 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::{PaginatedList, DEFAULT_PAGE_SIZE};
+use crate::models::{DEFAULT_PAGE_SIZE, PaginatedList};
 
 #[derive(Debug, Clone)]
 pub struct BorrowerModel {
@@ -47,14 +47,16 @@ impl BorrowerModel {
         }
     }
 
-    pub async fn list_active(pool: &DbPool, page: u32) -> Result<PaginatedList<BorrowerModel>, AppError> {
+    pub async fn list_active(
+        pool: &DbPool,
+        page: u32,
+    ) -> Result<PaginatedList<BorrowerModel>, AppError> {
         let offset = (page.saturating_sub(1)) * DEFAULT_PAGE_SIZE;
 
-        let count_row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM borrowers WHERE deleted_at IS NULL",
-        )
-        .fetch_one(pool)
-        .await?;
+        let count_row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM borrowers WHERE deleted_at IS NULL")
+                .fetch_one(pool)
+                .await?;
 
         let rows = sqlx::query(
             "SELECT id, name, address, email, phone, version \
@@ -71,7 +73,14 @@ impl BorrowerModel {
             .map(row_to_borrower)
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(PaginatedList::new(items, page, count_row.0 as u64, None, None, None))
+        Ok(PaginatedList::new(
+            items,
+            page,
+            count_row.0 as u64,
+            None,
+            None,
+            None,
+        ))
     }
 
     pub async fn create(
@@ -83,15 +92,14 @@ impl BorrowerModel {
     ) -> Result<BorrowerModel, AppError> {
         tracing::info!(name = %name, "Creating borrower");
 
-        let result = sqlx::query(
-            "INSERT INTO borrowers (name, address, email, phone) VALUES (?, ?, ?, ?)",
-        )
-        .bind(name)
-        .bind(address)
-        .bind(email)
-        .bind(phone)
-        .execute(pool)
-        .await?;
+        let result =
+            sqlx::query("INSERT INTO borrowers (name, address, email, phone) VALUES (?, ?, ?, ?)")
+                .bind(name)
+                .bind(address)
+                .bind(email)
+                .bind(phone)
+                .execute(pool)
+                .await?;
 
         let id = result.last_insert_id();
         BorrowerModel::find_by_id(pool, id)

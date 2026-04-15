@@ -15,8 +15,8 @@ pub struct TmdbProvider {
 
 impl TmdbProvider {
     pub fn new(client: Client, api_key: String) -> Self {
-        let base_url =
-            std::env::var("TMDB_API_BASE_URL").unwrap_or_else(|_| "https://api.themoviedb.org".to_string());
+        let base_url = std::env::var("TMDB_API_BASE_URL")
+            .unwrap_or_else(|_| "https://api.themoviedb.org".to_string());
         Self {
             client,
             api_key,
@@ -35,17 +35,11 @@ impl MetadataProvider for TmdbProvider {
         matches!(media_type, MediaType::Dvd)
     }
 
-    async fn lookup_by_isbn(
-        &self,
-        _isbn: &str,
-    ) -> Result<Option<MetadataResult>, MetadataError> {
+    async fn lookup_by_isbn(&self, _isbn: &str) -> Result<Option<MetadataResult>, MetadataError> {
         Ok(None) // TMDb doesn't support ISBN lookup
     }
 
-    async fn lookup_by_upc(
-        &self,
-        upc: &str,
-    ) -> Result<Option<MetadataResult>, MetadataError> {
+    async fn lookup_by_upc(&self, upc: &str) -> Result<Option<MetadataResult>, MetadataError> {
         let response = self
             .client
             .get(format!("{}/3/search/movie", self.base_url))
@@ -75,7 +69,10 @@ fn parse_tmdb_response(json: &serde_json::Value) -> Result<Option<MetadataResult
         None => return Ok(None),
     };
 
-    let title = movie.get("title").and_then(|v| v.as_str()).map(String::from);
+    let title = movie
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     if title.is_none() {
         return Ok(None);
     }
@@ -146,9 +143,18 @@ mod tests {
 
         let result = parse_tmdb_response(&json).unwrap().unwrap();
         assert_eq!(result.title.as_deref(), Some("Inception"));
-        assert_eq!(result.description.as_deref(), Some("A mind-bending thriller"));
+        assert_eq!(
+            result.description.as_deref(),
+            Some("A mind-bending thriller")
+        );
         assert_eq!(result.publication_date.as_deref(), Some("2010-07-16"));
-        assert!(result.cover_url.as_deref().unwrap().starts_with("https://image.tmdb.org"));
+        assert!(
+            result
+                .cover_url
+                .as_deref()
+                .unwrap()
+                .starts_with("https://image.tmdb.org")
+        );
         assert_eq!(result.language.as_deref(), Some("en"));
     }
 

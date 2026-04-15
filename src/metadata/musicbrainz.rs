@@ -20,8 +20,8 @@ pub struct MusicBrainzProvider {
 
 impl MusicBrainzProvider {
     pub fn new(client: Client, rate_limiter: Arc<RateLimiter>) -> Self {
-        let base_url =
-            std::env::var("MUSICBRAINZ_API_BASE_URL").unwrap_or_else(|_| "https://musicbrainz.org".to_string());
+        let base_url = std::env::var("MUSICBRAINZ_API_BASE_URL")
+            .unwrap_or_else(|_| "https://musicbrainz.org".to_string());
         Self {
             client,
             base_url,
@@ -40,17 +40,11 @@ impl MetadataProvider for MusicBrainzProvider {
         matches!(media_type, MediaType::Cd)
     }
 
-    async fn lookup_by_isbn(
-        &self,
-        _isbn: &str,
-    ) -> Result<Option<MetadataResult>, MetadataError> {
+    async fn lookup_by_isbn(&self, _isbn: &str) -> Result<Option<MetadataResult>, MetadataError> {
         Ok(None) // MusicBrainz doesn't support ISBN lookup
     }
 
-    async fn lookup_by_upc(
-        &self,
-        upc: &str,
-    ) -> Result<Option<MetadataResult>, MetadataError> {
+    async fn lookup_by_upc(&self, upc: &str) -> Result<Option<MetadataResult>, MetadataError> {
         let url = format!(
             "{}/ws/2/release/?query=barcode:{}&fmt=json",
             self.base_url, upc
@@ -92,7 +86,10 @@ fn parse_musicbrainz_response(
         None => return Ok(None),
     };
 
-    let title = release.get("title").and_then(|v| v.as_str()).map(String::from);
+    let title = release
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     if title.is_none() {
         return Ok(None);
     }
@@ -198,7 +195,13 @@ mod tests {
         assert_eq!(result.publication_date.as_deref(), Some("1997-06-16"));
         assert_eq!(result.description.as_deref(), Some("reissue"));
         assert_eq!(result.track_count, Some(12));
-        assert!(result.cover_url.as_deref().unwrap().contains("coverartarchive.org"));
+        assert!(
+            result
+                .cover_url
+                .as_deref()
+                .unwrap()
+                .contains("coverartarchive.org")
+        );
     }
 
     #[test]

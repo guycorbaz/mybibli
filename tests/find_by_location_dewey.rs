@@ -36,15 +36,13 @@ async fn create_location(pool: &MySqlPool) -> u64 {
 }
 
 async fn create_volume(pool: &MySqlPool, title_id: u64, location_id: u64, label: &str) {
-    sqlx::query(
-        "INSERT INTO volumes (title_id, location_id, label) VALUES (?, ?, ?)",
-    )
-    .bind(title_id)
-    .bind(location_id)
-    .bind(label)
-    .execute(pool)
-    .await
-    .expect("insert volume");
+    sqlx::query("INSERT INTO volumes (title_id, location_id, label) VALUES (?, ?, ?)")
+        .bind(title_id)
+        .bind(location_id)
+        .bind(label)
+        .execute(pool)
+        .await
+        .expect("insert volume");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -62,7 +60,8 @@ async fn test_dewey_sort_asc_null_last(pool: MySqlPool) {
     create_volume(&pool, t4, loc_id, "V0004").await;
 
     let result = VolumeModel::find_by_location(
-        &pool, loc_id,
+        &pool,
+        loc_id,
         &Some("dewey_code".to_string()),
         &Some("asc".to_string()),
         1,
@@ -70,7 +69,11 @@ async fn test_dewey_sort_asc_null_last(pool: MySqlPool) {
     .await
     .unwrap();
 
-    let deweys: Vec<Option<&str>> = result.items.iter().map(|v| v.dewey_code.as_deref()).collect();
+    let deweys: Vec<Option<&str>> = result
+        .items
+        .iter()
+        .map(|v| v.dewey_code.as_deref())
+        .collect();
     assert_eq!(
         deweys,
         vec![Some("200"), Some("843.2"), Some("843.914"), None],
@@ -93,7 +96,8 @@ async fn test_dewey_sort_desc_null_last(pool: MySqlPool) {
     create_volume(&pool, t4, loc_id, "V0004").await;
 
     let result = VolumeModel::find_by_location(
-        &pool, loc_id,
+        &pool,
+        loc_id,
         &Some("dewey_code".to_string()),
         &Some("desc".to_string()),
         1,
@@ -101,7 +105,11 @@ async fn test_dewey_sort_desc_null_last(pool: MySqlPool) {
     .await
     .unwrap();
 
-    let deweys: Vec<Option<&str>> = result.items.iter().map(|v| v.dewey_code.as_deref()).collect();
+    let deweys: Vec<Option<&str>> = result
+        .items
+        .iter()
+        .map(|v| v.dewey_code.as_deref())
+        .collect();
     assert_eq!(
         deweys,
         vec![Some("843.914"), Some("843.2"), Some("200"), None],

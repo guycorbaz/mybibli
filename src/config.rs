@@ -12,8 +12,8 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Result<Self, ConfigError> {
-        let database_url = env::var("DATABASE_URL")
-            .map_err(|_| ConfigError::Missing("DATABASE_URL"))?;
+        let database_url =
+            env::var("DATABASE_URL").map_err(|_| ConfigError::Missing("DATABASE_URL"))?;
         let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
         let port = env::var("PORT")
             .unwrap_or_else(|_| "8080".to_string())
@@ -86,32 +86,69 @@ impl AppSettings {
         .await?;
 
         let mut settings = AppSettings::default();
+        // Pass 1: everything except the seconds-granularity session override —
+        // so row iteration order cannot let `_hours` silently win over `_seconds`.
+        let mut seconds_override: Option<u64> = None;
 
         for (key, value) in &rows {
             match key.as_str() {
                 "overdue_loan_threshold_days" => match value.parse::<i32>() {
                     Ok(v) => settings.overdue_threshold_days = v,
-                    Err(_) => tracing::warn!(key = %key, value = %value, "Invalid setting value, using default"),
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
                 },
                 "scanner_burst_threshold_ms" => match value.parse::<u64>() {
                     Ok(v) => settings.scanner_burst_threshold_ms = v,
-                    Err(_) => tracing::warn!(key = %key, value = %value, "Invalid setting value, using default"),
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
                 },
                 "search_debounce_delay_ms" => match value.parse::<u64>() {
                     Ok(v) => settings.search_debounce_delay_ms = v,
-                    Err(_) => tracing::warn!(key = %key, value = %value, "Invalid setting value, using default"),
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
                 },
                 "session_inactivity_timeout_hours" => match value.parse::<u64>() {
-                    Ok(v) => settings.session_timeout_secs = v * 3600,
-                    Err(_) => tracing::warn!(key = %key, value = %value, "Invalid setting value, using default"),
+                    Ok(v) => match v.checked_mul(3600) {
+                        Some(secs) => settings.session_timeout_secs = secs,
+                        None => {
+                            tracing::warn!(key = %key, value = %value, "Timeout overflow (hours * 3600), using default")
+                        }
+                    },
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
+                },
+                // Sub-hour granularity (used by E2E tests with a short timeout).
+                // Always overrides `session_inactivity_timeout_hours` — applied
+                // in pass 2 below so precedence is independent of row order.
+                "session_inactivity_timeout_seconds" => match value.parse::<u64>() {
+                    Ok(v) if v >= 1 => seconds_override = Some(v),
+                    Ok(_) => {
+                        tracing::warn!(key = %key, value = %value, "Timeout must be >= 1s, using default")
+                    }
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
                 },
                 "metadata_fetch_timeout_seconds" => match value.parse::<u64>() {
                     Ok(v) if v >= 1 => settings.metadata_fetch_timeout_secs = v,
-                    Ok(_) => tracing::warn!(key = %key, value = %value, "Timeout must be >= 1s, using default"),
-                    Err(_) => tracing::warn!(key = %key, value = %value, "Invalid setting value, using default"),
+                    Ok(_) => {
+                        tracing::warn!(key = %key, value = %value, "Timeout must be >= 1s, using default")
+                    }
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
                 },
                 _ => {} // Ignore unknown keys
             }
+        }
+
+        // Pass 2: `_seconds` explicitly wins over `_hours`.
+        if let Some(secs) = seconds_override {
+            settings.session_timeout_secs = secs;
         }
 
         Ok(settings)
@@ -156,14 +193,20 @@ mod tests {
     #[test]
     fn test_config_with_all_vars() {
         let vars = HashMap::from([
-            ("DATABASE_URL", "mysql://test:test@localhost/test?charset=utf8mb4"),
+            (
+                "DATABASE_URL",
+                "mysql://test:test@localhost/test?charset=utf8mb4",
+            ),
             ("HOST", "127.0.0.1"),
             ("PORT", "3000"),
             ("APP_LANGUAGE", "fr"),
         ]);
 
         let config = Config::from_map(&vars).unwrap();
-        assert_eq!(config.database_url, "mysql://test:test@localhost/test?charset=utf8mb4");
+        assert_eq!(
+            config.database_url,
+            "mysql://test:test@localhost/test?charset=utf8mb4"
+        );
         assert_eq!(config.host, "127.0.0.1");
         assert_eq!(config.port, 3000);
         assert_eq!(config.app_language, "fr");
@@ -171,9 +214,7 @@ mod tests {
 
     #[test]
     fn test_config_defaults() {
-        let vars = HashMap::from([
-            ("DATABASE_URL", "mysql://test:test@localhost/test"),
-        ]);
+        let vars = HashMap::from([("DATABASE_URL", "mysql://test:test@localhost/test")]);
 
         let config = Config::from_map(&vars).unwrap();
         assert_eq!(config.host, "0.0.0.0");

@@ -3,14 +3,14 @@ use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Redirect};
 use serde::Deserialize;
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
-use crate::models::series::{SeriesModel, SeriesType};
 use crate::models::PaginatedList;
+use crate::models::series::{SeriesModel, SeriesType};
 use crate::routes::catalog::feedback_html_pub;
 use crate::services::series::{SeriesPositionInfo, SeriesService};
-use crate::AppState;
 
 /// Compute gap count for a closed series: total - owned, clamped to 0.
 fn compute_gap(series: &SeriesModel, owned: u64) -> u64 {
@@ -48,6 +48,7 @@ pub struct SeriesListTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -99,6 +100,7 @@ pub async fn series_list_page(
         role: session.role.to_string(),
         current_page: "series",
         skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
         nav_locations: rust_i18n::t!("nav.locations").to_string(),
@@ -138,6 +140,7 @@ pub struct SeriesDetailTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -187,6 +190,7 @@ pub async fn series_detail_page(
         role: session.role.to_string(),
         current_page: "series",
         skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
         nav_locations: rust_i18n::t!("nav.locations").to_string(),
@@ -210,7 +214,11 @@ pub async fn series_detail_page(
         positions,
         position_label: rust_i18n::t!("series.position").to_string(),
         missing_label: rust_i18n::t!("series.missing_volume").to_string(),
-        grid_label: format!("{} — {}", rust_i18n::t!("series.list_title"), series_name_for_grid),
+        grid_label: format!(
+            "{} — {}",
+            rust_i18n::t!("series.list_title"),
+            series_name_for_grid
+        ),
         no_assignments_label: rust_i18n::t!("series.no_assignments").to_string(),
     };
 
@@ -229,6 +237,7 @@ pub struct SeriesFormTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -257,12 +266,13 @@ pub struct SeriesFormTemplate {
     pub total_value: String,
 }
 
-fn form_template_labels(session: &Session) -> SeriesFormTemplate {
+fn form_template_labels(session: &Session, session_timeout_secs: u64) -> SeriesFormTemplate {
     SeriesFormTemplate {
         lang: rust_i18n::locale().to_string(),
         role: session.role.to_string(),
         current_page: "series",
         skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        session_timeout_secs,
         nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
         nav_loans: rust_i18n::t!("nav.loans").to_string(),
         nav_locations: rust_i18n::t!("nav.locations").to_string(),
@@ -293,12 +303,13 @@ fn form_template_labels(session: &Session) -> SeriesFormTemplate {
 }
 
 pub async fn create_series_form(
+    State(state): State<AppState>,
     session: Session,
     uri: axum::http::Uri,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role_with_return(Role::Librarian, uri.path())?;
 
-    let template = form_template_labels(&session);
+    let template = form_template_labels(&session, state.session_timeout_secs());
 
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -353,7 +364,9 @@ pub async fn create_series(
 
     let desc = form.description.as_deref().filter(|s| !s.trim().is_empty());
 
-    let series = SeriesService::create_series(pool, &form.name, desc, series_type, form.total_volume_count).await?;
+    let series =
+        SeriesService::create_series(pool, &form.name, desc, series_type, form.total_volume_count)
+            .await?;
 
     tracing::info!(series_id = series.id, name = %series.name, "Series created");
     Ok(Redirect::to(&format!("/series/{}", series.id)))
@@ -374,7 +387,7 @@ pub async fn edit_series_form(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
 
-    let mut template = form_template_labels(&session);
+    let mut template = form_template_labels(&session, state.session_timeout_secs());
     template.is_edit = true;
     template.series_id = series.id;
     template.version = series.version;

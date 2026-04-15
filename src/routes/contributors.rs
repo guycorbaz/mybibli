@@ -2,12 +2,12 @@ use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse};
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::Session;
 use crate::middleware::htmx::HxRequest;
 use crate::models::contributor::{ContributorModel, ContributorTitleRow};
 use crate::utils::html_escape;
-use crate::AppState;
 
 #[derive(Template)]
 #[template(path = "pages/contributor_detail.html")]
@@ -16,6 +16,7 @@ pub struct ContributorDetailTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -52,6 +53,7 @@ pub async fn contributor_detail(
             role: session.role.to_string(),
             current_page: "contributor",
             skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+            session_timeout_secs: state.session_timeout_secs(),
             nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
             nav_loans: rust_i18n::t!("nav.loans").to_string(),
             nav_locations: rust_i18n::t!("nav.locations").to_string(),
@@ -81,7 +83,12 @@ fn contributor_detail_fragment(
     let bio_html = contributor
         .biography
         .as_ref()
-        .map(|b| format!(r#"<p class="mt-2 text-stone-600 dark:text-stone-400">{}</p>"#, html_escape(b)))
+        .map(|b| {
+            format!(
+                r#"<p class="mt-2 text-stone-600 dark:text-stone-400">{}</p>"#,
+                html_escape(b)
+            )
+        })
         .unwrap_or_default();
 
     let titles_html: String = titles

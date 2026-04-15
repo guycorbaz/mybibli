@@ -43,7 +43,10 @@ impl LocationModel {
         }
     }
 
-    pub async fn find_by_label(pool: &DbPool, label: &str) -> Result<Option<LocationModel>, AppError> {
+    pub async fn find_by_label(
+        pool: &DbPool,
+        label: &str,
+    ) -> Result<Option<LocationModel>, AppError> {
         tracing::debug!(label = %label, "Looking up location by label");
 
         let row = sqlx::query(
@@ -75,7 +78,10 @@ impl LocationModel {
 
         while let Some(cid) = current_id {
             if segments.len() >= MAX_DEPTH {
-                tracing::warn!(id = id, "Location path exceeded MAX_DEPTH, possible circular reference");
+                tracing::warn!(
+                    id = id,
+                    "Location path exceeded MAX_DEPTH, possible circular reference"
+                );
                 break;
             }
             let row = sqlx::query(
@@ -113,7 +119,10 @@ impl LocationModel {
             .iter()
             .map(|r| LocationModel {
                 id: r.try_get("id").unwrap_or(0),
-                parent_id: r.try_get::<Option<i64>, _>("parent_id").unwrap_or(None).map(|v| v as u64),
+                parent_id: r
+                    .try_get::<Option<i64>, _>("parent_id")
+                    .unwrap_or(None)
+                    .map(|v| v as u64),
                 name: r.try_get("name").unwrap_or_default(),
                 node_type: r.try_get("node_type").unwrap_or_default(),
                 label: r.try_get("label").unwrap_or_default(),
@@ -122,7 +131,10 @@ impl LocationModel {
     }
 
     /// Find direct children of a location.
-    pub async fn find_children(pool: &DbPool, parent_id: u64) -> Result<Vec<LocationModel>, AppError> {
+    pub async fn find_children(
+        pool: &DbPool,
+        parent_id: u64,
+    ) -> Result<Vec<LocationModel>, AppError> {
         let rows = sqlx::query(
             "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label \
              FROM storage_locations WHERE parent_id = ? AND deleted_at IS NULL \
@@ -136,7 +148,10 @@ impl LocationModel {
             .iter()
             .map(|r| LocationModel {
                 id: r.try_get("id").unwrap_or(0),
-                parent_id: r.try_get::<Option<i64>, _>("parent_id").unwrap_or(None).map(|v| v as u64),
+                parent_id: r
+                    .try_get::<Option<i64>, _>("parent_id")
+                    .unwrap_or(None)
+                    .map(|v| v as u64),
                 name: r.try_get("name").unwrap_or_default(),
                 node_type: r.try_get("node_type").unwrap_or_default(),
                 label: r.try_get("label").unwrap_or_default(),

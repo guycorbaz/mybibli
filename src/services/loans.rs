@@ -214,9 +214,9 @@ impl LoanService {
         loan_id: u64,
     ) -> Result<(String, Option<String>), AppError> {
         // 1. Fetch loan — must exist and be active
-        let loan = LoanModel::find_by_id(pool, loan_id).await?.ok_or_else(|| {
-            AppError::BadRequest(rust_i18n::t!("loan.not_found").to_string())
-        })?;
+        let loan = LoanModel::find_by_id(pool, loan_id)
+            .await?
+            .ok_or_else(|| AppError::BadRequest(rust_i18n::t!("loan.not_found").to_string()))?;
 
         if loan.returned_at.is_some() {
             return Err(AppError::BadRequest(

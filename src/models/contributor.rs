@@ -42,7 +42,10 @@ impl ContributorModel {
         }
     }
 
-    pub async fn find_by_name_exact(pool: &DbPool, name: &str) -> Result<Option<ContributorModel>, AppError> {
+    pub async fn find_by_name_exact(
+        pool: &DbPool,
+        name: &str,
+    ) -> Result<Option<ContributorModel>, AppError> {
         let row = sqlx::query(
             "SELECT id, name, biography, version FROM contributors WHERE name = ? AND deleted_at IS NULL",
         )
@@ -61,10 +64,17 @@ impl ContributorModel {
         }
     }
 
-    pub async fn search_by_name(pool: &DbPool, query: &str, limit: u32) -> Result<Vec<ContributorModel>, AppError> {
+    pub async fn search_by_name(
+        pool: &DbPool,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<ContributorModel>, AppError> {
         tracing::debug!(query = %query, "Searching contributors by name");
 
-        let escaped_query = query.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let escaped_query = query
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
         let pattern = format!("%{}%", escaped_query);
         let rows: Vec<(u64, String, Option<String>, i32)> = sqlx::query_as(
             "SELECT id, name, biography, version FROM contributors WHERE name LIKE ? AND deleted_at IS NULL ORDER BY name LIMIT ?",
@@ -85,16 +95,18 @@ impl ContributorModel {
             .collect())
     }
 
-    pub async fn create(pool: &DbPool, name: &str, biography: Option<&str>) -> Result<ContributorModel, AppError> {
+    pub async fn create(
+        pool: &DbPool,
+        name: &str,
+        biography: Option<&str>,
+    ) -> Result<ContributorModel, AppError> {
         tracing::info!(name = %name, "Creating contributor");
 
-        let result = sqlx::query(
-            "INSERT INTO contributors (name, biography) VALUES (?, ?)",
-        )
-        .bind(name)
-        .bind(biography)
-        .execute(pool)
-        .await?;
+        let result = sqlx::query("INSERT INTO contributors (name, biography) VALUES (?, ?)")
+            .bind(name)
+            .bind(biography)
+            .execute(pool)
+            .await?;
 
         let id = result.last_insert_id();
         Ok(ContributorModel {
@@ -105,7 +117,12 @@ impl ContributorModel {
         })
     }
 
-    pub async fn update(pool: &DbPool, id: u64, name: &str, biography: Option<&str>) -> Result<(), AppError> {
+    pub async fn update(
+        pool: &DbPool,
+        id: u64,
+        name: &str,
+        biography: Option<&str>,
+    ) -> Result<(), AppError> {
         tracing::info!(id = id, name = %name, "Updating contributor");
 
         let result = sqlx::query(
@@ -161,12 +178,14 @@ impl ContributorModel {
 
                 let titles = rows
                     .into_iter()
-                    .map(|(title_id, title, media_type, role_name)| ContributorTitleRow {
-                        title_id,
-                        title,
-                        media_type,
-                        role_name,
-                    })
+                    .map(
+                        |(title_id, title, media_type, role_name)| ContributorTitleRow {
+                            title_id,
+                            title,
+                            media_type,
+                            role_name,
+                        },
+                    )
                     .collect();
 
                 Ok(Some((c, titles)))
@@ -217,7 +236,10 @@ pub struct TitleContributorModel {
 }
 
 impl TitleContributorModel {
-    pub async fn find_by_title(pool: &DbPool, title_id: u64) -> Result<Vec<TitleContributorModel>, AppError> {
+    pub async fn find_by_title(
+        pool: &DbPool,
+        title_id: u64,
+    ) -> Result<Vec<TitleContributorModel>, AppError> {
         tracing::debug!(title_id = title_id, "Finding contributors for title");
 
         let rows: Vec<(u64, u64, u64, u64, String, String)> = sqlx::query_as(
@@ -237,16 +259,18 @@ impl TitleContributorModel {
 
         Ok(rows
             .into_iter()
-            .map(|(id, title_id, contributor_id, role_id, contributor_name, role_name)| {
-                TitleContributorModel {
-                    id,
-                    title_id,
-                    contributor_id,
-                    role_id,
-                    contributor_name,
-                    role_name,
-                }
-            })
+            .map(
+                |(id, title_id, contributor_id, role_id, contributor_name, role_name)| {
+                    TitleContributorModel {
+                        id,
+                        title_id,
+                        contributor_id,
+                        role_id,
+                        contributor_name,
+                        role_name,
+                    }
+                },
+            )
             .collect())
     }
 
@@ -256,7 +280,12 @@ impl TitleContributorModel {
         contributor_id: u64,
         role_id: u64,
     ) -> Result<(), AppError> {
-        tracing::info!(title_id = title_id, contributor_id = contributor_id, role_id = role_id, "Adding contributor to title");
+        tracing::info!(
+            title_id = title_id,
+            contributor_id = contributor_id,
+            role_id = role_id,
+            "Adding contributor to title"
+        );
 
         let result = sqlx::query(
             "INSERT INTO title_contributors (title_id, contributor_id, role_id) VALUES (?, ?, ?)",
@@ -271,8 +300,12 @@ impl TitleContributorModel {
             Ok(_) => Ok(()),
             Err(e) => {
                 let err_str = e.to_string();
-                if err_str.contains("Duplicate entry") || err_str.contains("uq_title_contributor_role") {
-                    Err(AppError::BadRequest("DUPLICATE_CONTRIBUTOR_ROLE".to_string()))
+                if err_str.contains("Duplicate entry")
+                    || err_str.contains("uq_title_contributor_role")
+                {
+                    Err(AppError::BadRequest(
+                        "DUPLICATE_CONTRIBUTOR_ROLE".to_string(),
+                    ))
                 } else {
                     Err(AppError::Database(e))
                 }
@@ -281,7 +314,10 @@ impl TitleContributorModel {
     }
 
     pub async fn remove_from_title(pool: &DbPool, id: u64) -> Result<(), AppError> {
-        tracing::info!(junction_id = id, "Removing contributor from title (soft delete)");
+        tracing::info!(
+            junction_id = id,
+            "Removing contributor from title (soft delete)"
+        );
 
         sqlx::query(
             "UPDATE title_contributors SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL",
@@ -293,7 +329,10 @@ impl TitleContributorModel {
         Ok(())
     }
 
-    pub async fn get_primary_contributor(pool: &DbPool, title_id: u64) -> Result<Option<String>, AppError> {
+    pub async fn get_primary_contributor(
+        pool: &DbPool,
+        title_id: u64,
+    ) -> Result<Option<String>, AppError> {
         let row: Option<(String,)> = sqlx::query_as(
             r#"SELECT c.name FROM title_contributors tc
                JOIN contributors c ON tc.contributor_id = c.id
@@ -316,12 +355,11 @@ pub struct ContributorRoleModel;
 
 impl ContributorRoleModel {
     pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<bool, AppError> {
-        let row: Option<(u64,)> = sqlx::query_as(
-            "SELECT id FROM contributor_roles WHERE id = ? AND deleted_at IS NULL",
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+        let row: Option<(u64,)> =
+            sqlx::query_as("SELECT id FROM contributor_roles WHERE id = ? AND deleted_at IS NULL")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
 
         Ok(row.is_some())
     }

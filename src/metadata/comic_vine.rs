@@ -36,10 +36,7 @@ impl MetadataProvider for ComicVineProvider {
         matches!(media_type, MediaType::Bd)
     }
 
-    async fn lookup_by_isbn(
-        &self,
-        isbn: &str,
-    ) -> Result<Option<MetadataResult>, MetadataError> {
+    async fn lookup_by_isbn(&self, isbn: &str) -> Result<Option<MetadataResult>, MetadataError> {
         let response = self
             .client
             .get(format!("{}/api/issues/", self.base_url))
@@ -164,7 +161,10 @@ mod tests {
         });
 
         let result = parse_comic_vine_response(&json).unwrap().unwrap();
-        assert_eq!(result.title.as_deref(), Some("Batman - The Dark Knight Returns"));
+        assert_eq!(
+            result.title.as_deref(),
+            Some("Batman - The Dark Knight Returns")
+        );
         assert_eq!(result.authors, vec!["Frank Miller", "Klaus Janson"]);
         assert_eq!(result.publication_date.as_deref(), Some("1986-02"));
         assert!(result.cover_url.is_some());

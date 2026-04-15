@@ -3,7 +3,7 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::{PaginatedList, DEFAULT_PAGE_SIZE};
+use crate::models::{DEFAULT_PAGE_SIZE, PaginatedList};
 
 #[derive(Debug, Clone)]
 pub struct LoanModel {
@@ -121,10 +121,10 @@ impl LoanModel {
         );
 
         let rows = sqlx::query(&data_sql)
-        .bind(DEFAULT_PAGE_SIZE)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?;
+            .bind(DEFAULT_PAGE_SIZE)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?;
 
         let items: Vec<LoanWithDetails> = rows
             .iter()
@@ -153,7 +153,10 @@ impl LoanModel {
     }
 
     /// Check if a volume currently has an active loan.
-    pub async fn find_active_by_volume(pool: &DbPool, volume_id: u64) -> Result<Option<LoanModel>, AppError> {
+    pub async fn find_active_by_volume(
+        pool: &DbPool,
+        volume_id: u64,
+    ) -> Result<Option<LoanModel>, AppError> {
         let row = sqlx::query(
             r#"SELECT id, volume_id, borrower_id,
                       CAST(loaned_at AS DATETIME) AS loaned_at,
@@ -187,7 +190,11 @@ impl LoanModel {
         borrower_id: u64,
         previous_location_id: Option<u64>,
     ) -> Result<LoanModel, AppError> {
-        tracing::info!(volume_id = volume_id, borrower_id = borrower_id, "Creating loan");
+        tracing::info!(
+            volume_id = volume_id,
+            borrower_id = borrower_id,
+            "Creating loan"
+        );
 
         let result = sqlx::query(
             "INSERT INTO loans (volume_id, borrower_id, previous_location_id) VALUES (?, ?, ?)",
@@ -334,10 +341,16 @@ mod tests {
 
     #[test]
     fn test_validated_loan_sort_valid() {
-        assert_eq!(validated_loan_sort(&Some("borrower".to_string())), "borrower");
+        assert_eq!(
+            validated_loan_sort(&Some("borrower".to_string())),
+            "borrower"
+        );
         assert_eq!(validated_loan_sort(&Some("title".to_string())), "title");
         assert_eq!(validated_loan_sort(&Some("date".to_string())), "date");
-        assert_eq!(validated_loan_sort(&Some("duration".to_string())), "duration");
+        assert_eq!(
+            validated_loan_sort(&Some("duration".to_string())),
+            "duration"
+        );
     }
 
     #[test]

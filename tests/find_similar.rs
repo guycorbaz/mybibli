@@ -83,15 +83,13 @@ async fn create_series(pool: &MySqlPool, name: &str) -> u64 {
 }
 
 async fn link_series(pool: &MySqlPool, title_id: u64, series_id: u64, position: i32) {
-    sqlx::query(
-        "INSERT INTO title_series (title_id, series_id, position_number) VALUES (?, ?, ?)",
-    )
-    .bind(title_id)
-    .bind(series_id)
-    .bind(position)
-    .execute(pool)
-    .await
-    .expect("link series");
+    sqlx::query("INSERT INTO title_series (title_id, series_id, position_number) VALUES (?, ?, ?)")
+        .bind(title_id)
+        .bind(series_id)
+        .bind(position)
+        .execute(pool)
+        .await
+        .expect("link series");
 }
 
 fn date(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -152,7 +150,14 @@ async fn test_genre_decade_only_match(pool: MySqlPool) {
     let out_of_decade =
         create_title(&pool, "Candidate 1969", 1, "book", Some(date(1969, 3, 1))).await;
     // Different genre — must NOT match
-    let wrong_genre = create_title(&pool, "Candidate 1957 BD", 2, "book", Some(date(1957, 3, 1))).await;
+    let wrong_genre = create_title(
+        &pool,
+        "Candidate 1957 BD",
+        2,
+        "book",
+        Some(date(1957, 3, 1)),
+    )
+    .await;
 
     let results = TitleModel::find_similar(&pool, anchor).await.unwrap();
     let ids: Vec<u64> = results.iter().map(|s| s.id).collect();
@@ -181,7 +186,11 @@ async fn test_dedup_series_beats_contributor(pool: MySqlPool) {
     let results = TitleModel::find_similar(&pool, anchor).await.unwrap();
     let ids: Vec<u64> = results.iter().map(|s| s.id).collect();
 
-    assert_eq!(ids, vec![dual_match], "dedup: candidate appears exactly once");
+    assert_eq!(
+        ids,
+        vec![dual_match],
+        "dedup: candidate appears exactly once"
+    );
     assert_eq!(
         results[0].priority, 1,
         "multi-match must collapse to highest priority (series)"
@@ -228,13 +237,19 @@ async fn test_year_less_candidate_excluded_from_decade_only(pool: MySqlPool) {
     let results = TitleModel::find_similar(&pool, anchor).await.unwrap();
     let ids: Vec<u64> = results.iter().map(|s| s.id).collect();
 
-    assert!(ids.contains(&via_contrib), "arm 2 still matches year-less titles");
+    assert!(
+        ids.contains(&via_contrib),
+        "arm 2 still matches year-less titles"
+    );
     assert!(
         !ids.contains(&via_nothing),
         "year-less stray must not appear (arm 3 filters IS NOT NULL)"
     );
     let hit = results.iter().find(|s| s.id == via_contrib).unwrap();
-    assert_eq!(hit.priority, 2, "year-less match comes from contributor arm, not decade");
+    assert_eq!(
+        hit.priority, 2,
+        "year-less match comes from contributor arm, not decade"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -277,7 +292,10 @@ async fn test_soft_deleted_candidates_excluded(pool: MySqlPool) {
     let ids: Vec<u64> = results.iter().map(|s| s.id).collect();
 
     assert!(ids.contains(&cand_live));
-    assert!(!ids.contains(&cand_dead), "soft-deleted candidates must not appear");
+    assert!(
+        !ids.contains(&cand_dead),
+        "soft-deleted candidates must not appear"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -315,7 +333,10 @@ async fn test_limit_8_and_ordering(pool: MySqlPool) {
     // First 3 are series (priority 1), remaining 5 are contributor (priority 2).
     // Within each bucket the inner arm LIMIT 16 plus outer ORDER BY id ASC
     // guarantees the lowest IDs first.
-    assert_eq!(&results[0..3].iter().map(|s| s.id).collect::<Vec<_>>(), &series_ids);
+    assert_eq!(
+        &results[0..3].iter().map(|s| s.id).collect::<Vec<_>>(),
+        &series_ids
+    );
     for s in &results[0..3] {
         assert_eq!(s.priority, 1);
     }
@@ -345,7 +366,10 @@ async fn test_empty_early_return_no_criteria(pool: MySqlPool) {
     let _noise = create_title(&pool, "Noise 1", 1, "book", Some(date(2024, 1, 1))).await;
 
     let results = TitleModel::find_similar(&pool, anchor).await.unwrap();
-    assert!(results.is_empty(), "no criteria = no results (early return)");
+    assert!(
+        results.is_empty(),
+        "no criteria = no results (early return)"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]

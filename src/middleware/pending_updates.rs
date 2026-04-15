@@ -101,13 +101,15 @@ async fn fetch_resolved_updates(
 
     Ok(rows
         .into_iter()
-        .map(|(title_id, status, title_name, author_name, isbn)| PendingUpdate {
-            title_id,
-            status,
-            title_name,
-            author_name,
-            isbn,
-        })
+        .map(
+            |(title_id, status, title_name, author_name, isbn)| PendingUpdate {
+                title_id,
+                status,
+                title_name,
+                author_name,
+                isbn,
+            },
+        )
         .collect())
 }
 
@@ -134,8 +136,7 @@ fn render_oob_updates(updates: &[PendingUpdate]) -> String {
             }
             _ => {
                 let isbn = update.isbn.as_deref().unwrap_or("?");
-                let message =
-                    rust_i18n::t!("feedback.metadata_failed", isbn = isbn).to_string();
+                let message = rust_i18n::t!("feedback.metadata_failed", isbn = isbn).to_string();
                 failed_feedback_html(&message, update.title_id)
             }
         };
@@ -182,7 +183,11 @@ fn failed_feedback_html(message: &str, title_id: u64) -> String {
 use crate::utils::html_escape;
 
 /// Soft-delete processed pending_metadata_updates rows (batched, scoped to session).
-async fn soft_delete_processed(pool: &DbPool, title_ids: &[u64], session_token: &str) -> Result<(), sqlx::Error> {
+async fn soft_delete_processed(
+    pool: &DbPool,
+    title_ids: &[u64],
+    session_token: &str,
+) -> Result<(), sqlx::Error> {
     if title_ids.is_empty() {
         return Ok(());
     }
