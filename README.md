@@ -19,7 +19,7 @@ Built for collectors who want more than a spreadsheet: barcode-first cataloging 
 - **Templates:** [Askama](https://github.com/djc/askama) 0.15 (compile-time type-checked)
 - **Frontend:** [HTMX](https://htmx.org/) 2.0 + [Tailwind CSS](https://tailwindcss.com/) v4 — no SPA framework
 - **i18n:** [rust-i18n](https://github.com/longbridgeapp/rust-i18n) — French + English
-- **Testing:** `cargo test` (326 unit), `#[sqlx::test]` (18 DB integration), [Playwright](https://playwright.dev/) (133 E2E)
+- **Testing:** `cargo test` (353 unit), `#[sqlx::test]` (25 DB integration), [Playwright](https://playwright.dev/) (~135 E2E)
 
 ## Quick start (end users)
 
@@ -54,7 +54,7 @@ cargo clippy -- -D warnings          # Lint (zero-warnings policy)
 ### Unit tests
 
 ```bash
-cargo test                           # All unit tests (326)
+cargo test                           # All unit tests (353)
 cargo test config::                  # Module-scoped
 cargo test <name> -- --nocapture     # Single test with output
 ```
@@ -77,7 +77,7 @@ Each test gets a fresh DB via `#[sqlx::test(migrations = "./migrations")]`.
 ```bash
 cd tests/e2e
 docker compose -f docker-compose.test.yml up --build -d
-npm test                             # Full suite (133 tests, parallel mode)
+npm test                             # Full suite (~135 tests, parallel mode)
 npx playwright test specs/journeys/<spec>.spec.ts  # Single spec
 ```
 
@@ -146,8 +146,8 @@ Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](
 | 3 | Tous mes médias sont gérés | ✅ done |
 | 4 | Je gère mes prêts | ✅ done |
 | 5 | Mes séries et ma collection | ✅ done |
-| 6 | Pipeline CI/CD et fiabilité | 🚧 in planning |
-| 7 | Accès multi-rôle & Sécurité | ⏳ backlog |
+| 6 | Pipeline CI/CD et fiabilité | ✅ done |
+| 7 | Accès multi-rôle & Sécurité | 🚧 in progress (story 7-1 in review) |
 | 8 | Administration & Configuration | ⏳ backlog |
 | 9 | Polish UX & Accessibilité | ⏳ backlog |
 
