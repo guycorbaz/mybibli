@@ -202,14 +202,14 @@ claude-opus-4-6 (1M context)
 
 ### Review Findings
 
-- [ ] [Review][Decision] AC #1 templates not in diff — `title_detail.html`, `contributor_detail.html`, `series.html`, `series_detail.html` not modified; verify their edit/delete affordances are already role-gated or anonymous sees non-functional buttons
-- [ ] [Review][Decision] `require_role_with_return` inconsistent across GETs — borrower/loans use it; `title_edit_form`, `series_edit`, `edit_location_page` use plain `require_role` (matrix doesn't require `_with_return` but behavior diverges)
-- [ ] [Review][Decision] `AppError::Forbidden` lacks `HX-Reswap`/`HX-Retarget` — HTMX default on non-2xx = no swap = silent failure for librarian clicks; fix now or follow-up?
-- [ ] [Review][Patch] CRITICAL: stray `</parameter></invoke>` at tail of `templates/components/nav_bar.html` — rendered into every page DOM
-- [ ] [Review][Patch] `is_safe_next` accepts encoded bypasses (`/%2F%2Fevil.com`, `/%5Cevil.com`) [src/error/mod.rs:618-633]
-- [ ] [Review][Patch] `is_safe_next` lacks length cap and `\u{2028}`/`\u{2029}` rejection [src/error/mod.rs:618-633]
-- [ ] [Review][Patch] `AppError::Forbidden` returns bare HTML fragment without layout for full-page requests [src/error/mod.rs:99]
-- [ ] [Review][Patch] `scan_on_loans` captures user query string into `?next=` [src/routes/loans.rs:75] — strip query from uri
+- [x] [Review][Decision] AC #1 templates not in diff — audited: `title_detail.html`, `contributor_detail.html`, `series_list.html`, `series_detail.html` all already role-gated (`{% if role == "librarian" || role == "admin" %}`). No regression.
+- [x] [Review][Decision] `require_role_with_return` extended to GET edit forms: `title_edit_form`, `title_form_page`, `create_series_form`, `edit_series_form`, `edit_location_page`.
+- [x] [Review][Decision] `AppError::Forbidden` now emits `HX-Retarget: #feedback-container` + `HX-Reswap: beforeend` so HTMX swaps the 403 fragment instead of silently dropping the response.
+- [x] [Review][Patch] Stray `</parameter></invoke>` removed from `templates/components/nav_bar.html`.
+- [x] [Review][Patch] `is_safe_next` now decodes-and-rechecks to reject `/%2F%2F…` and `/%5C…` encoded bypasses.
+- [x] [Review][Patch] `is_safe_next` caps length at 2048 chars and rejects `\u{2028}`/`\u{2029}`; 6 new unit tests.
+- [x] [Review][Patch] `scan_on_loans` uses `uri.path()` — strips user `?code=…` from the reflected login form.
+- [x] [Review][Defer] `AppError::Forbidden` full-page layout wrap — deferred; HTMX path is now correct, direct browser navigation to admin-only routes still renders the bare fragment (acceptable edge case, tracked in deferred-work).
 - [x] [Review][Defer] `/logout` exposed as GET link (logout-CSRF) — deferred, explicitly out of Epic 7 scope
 - [x] [Review][Defer] `AppError::Forbidden` couples error layer to `routes::catalog::feedback_html_pub` — deferred, architectural smell
 - [x] [Review][Defer] AC #3 anonymous-write test coverage partial (only POST /locations) — deferred, follow-up test expansion

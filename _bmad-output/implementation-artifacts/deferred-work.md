@@ -202,3 +202,4 @@
 - 3-cycle fresh-Docker E2E gate (Task 9) not completed — only 1 cycle measured
 - `BaseContext { role, is_authenticated, can_edit, can_loan, can_admin }` struct deferred in favor of ad-hoc per-template `role` plumbing (spec Task 4)
 - Login cookie missing `Secure` flag — pre-existing, tracked separately
+- `AppError::Forbidden` response lacks full-page layout for direct browser navigation — wrap feedback fragment in minimal HTML shell (nav + skip-link) for non-HTMX 403s
