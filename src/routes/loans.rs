@@ -76,7 +76,7 @@ pub async fn loans_page(
     axum::extract::Query(params): axum::extract::Query<LoanListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     // AC #2: preserve `next` so post-login lands back on /loans.
-    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
 
     let loans = LoanModel::list_active(pool, params.page, &params.sort, &params.dir).await?;

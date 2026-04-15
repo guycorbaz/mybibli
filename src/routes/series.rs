@@ -296,7 +296,7 @@ pub async fn create_series_form(
     session: Session,
     uri: axum::http::Uri,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
 
     let template = form_template_labels(&session);
 
@@ -367,7 +367,7 @@ pub async fn edit_series_form(
     uri: axum::http::Uri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
 
     let series = SeriesModel::active_find_by_id(pool, id)
