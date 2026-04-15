@@ -356,9 +356,10 @@ pub struct BorrowerSearchQuery {
 pub async fn borrower_search(
     session: Session,
     State(state): State<AppState>,
+    uri: axum::http::Uri,
     axum::extract::Query(query): axum::extract::Query<BorrowerSearchQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
 
     let q = query.q.trim();
     if q.len() < 2 || q.len() > 255 {

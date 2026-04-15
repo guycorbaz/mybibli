@@ -508,9 +508,10 @@ pub async fn delete_location(
 pub async fn next_lcode(
     session: Session,
     State(state): State<AppState>,
+    uri: axum::http::Uri,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 1a: Admin → Librarian (used by create-location form).
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
 
     let lcode = LocationService::get_next_available_lcode(&state.pool).await?;
     Ok(axum::Json(serde_json::json!({"lcode": lcode})))

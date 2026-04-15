@@ -1082,9 +1082,10 @@ struct TypeSpecificFieldsTemplate {
 
 pub async fn type_specific_fields(
     session: Session,
+    uri: axum::http::Uri,
     axum::extract::Path(media_type): axum::extract::Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
 
     let template = TypeSpecificFieldsTemplate {
         show_page_count: matches!(media_type.as_str(), "book" | "bd" | "magazine" | "report"),
@@ -1133,9 +1134,10 @@ pub struct ContributorSearchQuery {
 pub async fn contributor_search(
     session: Session,
     State(state): State<AppState>,
+    uri: axum::http::Uri,
     axum::extract::Query(query): axum::extract::Query<ContributorSearchQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
 
     let q = query.q.trim();
     if q.len() < 2 || q.len() > 255 {
