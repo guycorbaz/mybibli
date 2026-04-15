@@ -52,8 +52,28 @@ impl Session {
     pub fn require_role(&self, min_role: Role) -> Result<(), AppError> {
         if self.role >= min_role {
             Ok(())
-        } else {
+        } else if self.role == Role::Anonymous {
             Err(AppError::Unauthorized)
+        } else {
+            Err(AppError::Forbidden)
+        }
+    }
+
+    /// Like `require_role`, but for GET handlers — if the user is Anonymous, the error
+    /// preserves `return_path` so `/login` can bounce them back after sign-in.
+    /// Authenticated-but-insufficient still produces `Forbidden` (no point returning to
+    /// a page the user can't access anyway).
+    pub fn require_role_with_return(
+        &self,
+        min_role: Role,
+        return_path: &str,
+    ) -> Result<(), AppError> {
+        if self.role >= min_role {
+            Ok(())
+        } else if self.role == Role::Anonymous {
+            Err(AppError::UnauthorizedWithReturn(return_path.to_string()))
+        } else {
+            Err(AppError::Forbidden)
         }
     }
 }
@@ -127,9 +147,49 @@ mod tests {
     }
 
     #[test]
-    fn test_require_role_anonymous_fails() {
+    fn test_require_role_anonymous_returns_unauthorized() {
         let session = Session::anonymous();
-        assert!(session.require_role(Role::Librarian).is_err());
+        match session.require_role(Role::Librarian) {
+            Err(AppError::Unauthorized) => {}
+            other => panic!("expected Unauthorized, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_require_role_librarian_insufficient_returns_forbidden() {
+        let session = Session {
+            token: Some("t".to_string()),
+            user_id: Some(1),
+            role: Role::Librarian,
+        };
+        match session.require_role(Role::Admin) {
+            Err(AppError::Forbidden) => {}
+            other => panic!("expected Forbidden, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_require_role_with_return_anonymous_preserves_path() {
+        let session = Session::anonymous();
+        match session.require_role_with_return(Role::Librarian, "/loans") {
+            Err(AppError::UnauthorizedWithReturn(next)) => {
+                assert_eq!(next, "/loans");
+            }
+            other => panic!("expected UnauthorizedWithReturn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_require_role_with_return_librarian_still_forbidden() {
+        let session = Session {
+            token: Some("t".to_string()),
+            user_id: Some(1),
+            role: Role::Librarian,
+        };
+        match session.require_role_with_return(Role::Admin, "/admin") {
+            Err(AppError::Forbidden) => {}
+            other => panic!("expected Forbidden, got {other:?}"),
+        }
     }
 
     #[test]

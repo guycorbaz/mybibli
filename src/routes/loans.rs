@@ -72,9 +72,11 @@ pub async fn loans_page(
     State(state): State<AppState>,
     session: Session,
     HxRequest(_is_htmx): HxRequest,
+    uri: axum::http::Uri,
     axum::extract::Query(params): axum::extract::Query<LoanListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    // AC #2: preserve `next` so post-login lands back on /loans.
+    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
     let pool = &state.pool;
 
     let loans = LoanModel::list_active(pool, params.page, &params.sort, &params.dir).await?;
@@ -244,9 +246,10 @@ pub async fn scan_on_loans(
     State(state): State<AppState>,
     session: Session,
     HxRequest(_is_htmx): HxRequest,
+    uri: axum::http::Uri,
     axum::extract::Query(params): axum::extract::Query<ScanQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
     let pool = &state.pool;
     let code = params.code.trim().to_uppercase();
 

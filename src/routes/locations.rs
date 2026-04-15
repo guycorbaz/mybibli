@@ -147,19 +147,37 @@ fn build_subtree(
 }
 
 /// Render the tree as HTML string (avoids recursive template which crashes Askama compiler).
-fn render_tree_html(nodes: &[TreeNode], node_types: &[(u64, String)], next_lcode: &str) -> String {
+fn render_tree_html(
+    nodes: &[TreeNode],
+    node_types: &[(u64, String)],
+    next_lcode: &str,
+    can_edit: bool,
+) -> String {
     let mut html = String::new();
     for node in nodes {
-        render_node_html(node, &mut html, node_types, next_lcode);
+        render_node_html(node, &mut html, node_types, next_lcode, can_edit);
     }
     html
 }
 
-fn render_node_html(node: &TreeNode, html: &mut String, node_types: &[(u64, String)], next_lcode: &str) {
-    render_node_at_depth(node, html, node_types, next_lcode, 0);
+fn render_node_html(
+    node: &TreeNode,
+    html: &mut String,
+    node_types: &[(u64, String)],
+    next_lcode: &str,
+    can_edit: bool,
+) {
+    render_node_at_depth(node, html, node_types, next_lcode, 0, can_edit);
 }
 
-fn render_node_at_depth(node: &TreeNode, html: &mut String, node_types: &[(u64, String)], next_lcode: &str, depth: usize) {
+fn render_node_at_depth(
+    node: &TreeNode,
+    html: &mut String,
+    node_types: &[(u64, String)],
+    next_lcode: &str,
+    depth: usize,
+    can_edit: bool,
+) {
     let name = crate::utils::html_escape(&node.location.name);
     let label = crate::utils::html_escape(&node.location.label);
     let node_type = crate::utils::html_escape(&node.location.node_type);
@@ -185,20 +203,18 @@ fn render_node_at_depth(node: &TreeNode, html: &mut String, node_types: &[(u64, 
     // Indentation: 2rem per depth level
     let indent_px = depth * 32;
 
-    html.push_str(&format!(
-        r#"<div role="treeitem" style="padding-left: {indent_px}px;">
-<div class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 group">
-<span class="text-stone-400" aria-hidden="true">{icon}</span>
-<span class="font-medium text-stone-900 dark:text-stone-100">{name}</span>
-<span class="text-xs text-stone-400 font-mono">{label}</span>
-<span class="text-xs text-stone-500 dark:text-stone-400">({node_type})</span>{vol}
-<span class="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+    let (mutation_controls, child_form) = if can_edit {
+        (
+            format!(
+                r#"<span class="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
 <button type="button" onclick="document.getElementById('{form_id}').classList.toggle('hidden')" class="p-1 text-stone-400 hover:text-green-600 dark:hover:text-green-400" aria-label="Add child under {name}">➕</button>
 <a href="/locations/{id}/edit" class="p-1 text-stone-400 hover:text-indigo-600 dark:hover:text-indigo-400" aria-label="Edit {name}">✏️</a>
 <button type="button" hx-delete="/locations/{id}" hx-confirm="Delete {name} ({label})?" hx-target="closest [role=treeitem]" hx-swap="outerHTML" class="p-1 text-stone-400 hover:text-red-600 dark:hover:text-red-400" aria-label="Delete {name}">🗑️</button>
-</span>
-</div>
-<form id="{form_id}" method="POST" action="/locations" class="hidden px-3 py-2 space-y-2 bg-stone-50 dark:bg-stone-800/50 rounded-md mt-1 mb-2" style="margin-left: {child_indent}px;">
+</span>"#,
+                id = node.location.id,
+            ),
+            format!(
+                r#"<form id="{form_id}" method="POST" action="/locations" class="hidden px-3 py-2 space-y-2 bg-stone-50 dark:bg-stone-800/50 rounded-md mt-1 mb-2" style="margin-left: {child_indent}px;">
 <input type="hidden" name="parent_id" value="{id}">
 <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
 <div><label class="block text-xs text-stone-600 dark:text-stone-400">{name_lbl}</label><input type="text" name="name" required class="w-full px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100"></div>
@@ -206,16 +222,32 @@ fn render_node_at_depth(node: &TreeNode, html: &mut String, node_types: &[(u64, 
 <div><label class="block text-xs text-stone-600 dark:text-stone-400">{lcode_lbl}</label><input type="text" name="label" value="{next_lcode}" required maxlength="5" pattern="L[0-9]{{4}}" class="w-full px-2 py-1 text-sm font-mono border border-stone-300 dark:border-stone-600 rounded bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100"></div>
 </div>
 <button type="submit" class="px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded">{submit_lbl}</button>
-</form>
+</form>"#,
+                id = node.location.id,
+                child_indent = indent_px + 32,
+                next_lcode = crate::utils::html_escape(next_lcode),
+            ),
+        )
+    } else {
+        (String::new(), String::new())
+    };
+
+    html.push_str(&format!(
+        r#"<div role="treeitem" style="padding-left: {indent_px}px;">
+<div class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 group">
+<span class="text-stone-400" aria-hidden="true">{icon}</span>
+<span class="font-medium text-stone-900 dark:text-stone-100">{name}</span>
+<span class="text-xs text-stone-400 font-mono">{label}</span>
+<span class="text-xs text-stone-500 dark:text-stone-400">({node_type})</span>{vol}
+{mutation_controls}
+</div>
+{child_form}
 </div>"#,
-        id = node.location.id,
-        child_indent = indent_px + 32,
-        next_lcode = crate::utils::html_escape(next_lcode),
     ));
 
     // Render children at deeper indentation
     for child in &node.children {
-        render_node_at_depth(child, html, node_types, next_lcode, depth + 1);
+        render_node_at_depth(child, html, node_types, next_lcode, depth + 1, can_edit);
     }
 }
 
@@ -253,8 +285,7 @@ pub async fn locations_page(
     HxRequest(_is_htmx): HxRequest,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
-
+    // AC #1: location tree browser is Anonymous-accessible. Template gates mutation affordances.
     let pool = &state.pool;
     let locations = LocationModel::find_all_tree(pool).await?;
     let node_types = LocationModel::find_node_types(pool).await?;
@@ -270,7 +301,8 @@ pub async fn locations_page(
     }
 
     let tree = build_tree(&locations, &volume_counts);
-    let tree_html = render_tree_html(&tree, &node_types, &next_lcode);
+    let can_edit = session.role >= Role::Librarian;
+    let tree_html = render_tree_html(&tree, &node_types, &next_lcode, can_edit);
 
     let template = LocationsTemplate {
         lang: rust_i18n::locale().to_string(),
@@ -321,7 +353,8 @@ pub async fn create_location(
     State(state): State<AppState>,
     axum::Form(form): axum::Form<CreateLocationForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Admin)?;
+    // Story 7-1 decision 1a: location creation promoted from Admin → Librarian.
+    session.require_role(Role::Librarian)?;
 
     let pool = &state.pool;
     let location = LocationService::create_location(
@@ -374,7 +407,8 @@ pub async fn edit_location_page(
     State(state): State<AppState>,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Admin)?;
+    // Story 7-1 decision 1a: Admin → Librarian.
+    session.require_role(Role::Librarian)?;
 
     let pool = &state.pool;
     let location = LocationModel::find_by_id(pool, id)
@@ -432,7 +466,8 @@ pub async fn update_location(
     Path(id): Path<u64>,
     axum::Form(form): axum::Form<UpdateLocationForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Admin)?;
+    // Story 7-1 decision 1a: Admin → Librarian.
+    session.require_role(Role::Librarian)?;
 
     LocationService::update_location(
         &state.pool,
@@ -473,7 +508,8 @@ pub async fn next_lcode(
     session: Session,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Admin)?;
+    // Story 7-1 decision 1a: Admin → Librarian (used by create-location form).
+    session.require_role(Role::Librarian)?;
 
     let lcode = LocationService::get_next_available_lcode(&state.pool).await?;
     Ok(axum::Json(serde_json::json!({"lcode": lcode})))

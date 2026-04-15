@@ -181,6 +181,9 @@ error:
   not_found: The requested resource was not found
   bad_request: Invalid request
   unauthorized: Authentication required
+  forbidden:
+    title: Access denied
+    body: Your account does not have permission to perform this action. Ask an administrator if you need access.
   title:
     creation_failed: Title creation failed
     required: Title is required

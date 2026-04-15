@@ -181,6 +181,9 @@ error:
   not_found: La ressource demandée est introuvable
   bad_request: Requête invalide
   unauthorized: Authentification requise
+  forbidden:
+    title: Accès refusé
+    body: Votre compte ne dispose pas des droits nécessaires pour cette action. Contactez un administrateur si vous avez besoin d'un accès.
   title:
     creation_failed: La création du titre a échoué
     required: Le titre est obligatoire

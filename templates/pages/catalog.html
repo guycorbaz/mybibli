@@ -35,16 +35,20 @@
 
         <div class="order-2 lg:order-2 flex items-center gap-3">
             {% include "components/catalog_toolbar.html" %}
+            {% if role == "librarian" || role == "admin" %}
             <button type="button" id="new-title-btn"
                     class="px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md min-h-[44px] md:min-h-[36px]"
                     onclick="htmx.ajax('GET', '/catalog/title/new', {target: '#title-form-container', swap: 'innerHTML'})">
                 + {{ new_title_label }}
             </button>
+            {% endif %}
         </div>
 
+        {% if role == "librarian" || role == "admin" %}
         <div class="order-3 lg:order-1">
             {% include "components/scan_field.html" %}
         </div>
+        {% endif %}
     </div>
 
     <div id="title-form-container">
