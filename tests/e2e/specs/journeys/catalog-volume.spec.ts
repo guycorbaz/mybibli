@@ -205,11 +205,12 @@ test.describe("Volume Management", () => {
     await expect(entry).toBeVisible({ timeout: 5000 });
   });
 
-  // Anonymous access
-  test("anonymous user is redirected from catalog", async ({ context, page }) => {
+  // Story 7-1 AC #1: /catalog is anonymous-readable; scan field hidden.
+  test("anonymous user sees catalog without scan field", async ({ context, page }) => {
     await context.clearCookies();
-    const response = await page.goto("/catalog");
-    expect(page.url()).not.toContain("/catalog");
+    await page.goto("/catalog");
+    expect(page.url()).toContain("/catalog");
+    await expect(page.locator("#scan-field")).toHaveCount(0);
   });
 });
 

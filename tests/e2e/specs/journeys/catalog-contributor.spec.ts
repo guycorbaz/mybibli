@@ -289,14 +289,21 @@ test.describe("Contributor Management", () => {
     await expect(banner).not.toHaveClass(/hidden/, { timeout: 5000 });
   });
 
-  // Anonymous access
-  test("anonymous user cannot access contributor endpoints", async ({
+  // Story 7-1 AC #1 + #3: /catalog readable, but contributor mutation
+  // endpoints reject anonymous POST without state change.
+  test("anonymous user cannot POST to contributor endpoints", async ({
     context,
     page,
   }) => {
     await context.clearCookies();
-    const response = await page.goto("/catalog");
-    expect(page.url()).not.toContain("/catalog");
+    const resp = await page.request.post("/catalog/contributors/add", {
+      form: { title_id: "1", contributor_name: "Anon", role_id: "1" },
+      maxRedirects: 0,
+      failOnStatusCode: false,
+    });
+    // 303 redirect to /login (Anonymous → Unauthorized) — never 200.
+    expect(resp.status()).toBe(303);
+    expect(resp.headers()["location"]).toMatch(/\/login/);
   });
 });
 

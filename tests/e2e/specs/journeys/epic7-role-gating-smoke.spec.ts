@@ -27,8 +27,8 @@ test.describe("Epic 7 smoke — anonymous browsing + role gating", () => {
     await expect(page.locator("#new-title-btn")).toHaveCount(0);
 
     // AC #6: nav bar exposes Login link and hides admin/loans/borrowers items.
-    await expect(page.getByRole("link", { name: /login|connexion/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /^logout$|^déconnexion$/i })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /log.?in|connexion/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /log.?out|déconnexion/i })).toHaveCount(0);
     // /admin dead link must be gone (Epic 5/6 carry-over).
     await expect(page.locator('a[href="/admin"]')).toHaveCount(0);
 
@@ -67,8 +67,10 @@ test.describe("Epic 7 smoke — anonymous browsing + role gating", () => {
     // Create a borrower so there's something to target, then attempt DELETE as librarian.
     await page.goto("/borrowers");
     const borrowerName = `RG-ForbiddenTarget-${Date.now()}`;
-    await page.fill('input[name="name"]', borrowerName);
-    await page.click('button[type="submit"]');
+    // Reveal the hidden add-borrower form (template uses #add-form.hidden + click link).
+    await page.locator("#add-form").evaluate((el) => el.classList.remove("hidden"));
+    await page.fill("#new-name", borrowerName);
+    await page.click('#add-form button[type="submit"]');
     // Reload the list and read the new borrower's detail URL from the anchor.
     await page.goto("/borrowers");
     const borrowerLink = page.getByRole("link", { name: borrowerName }).first();

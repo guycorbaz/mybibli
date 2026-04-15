@@ -235,13 +235,17 @@ test.describe("Title CRUD & ISBN Scanning", () => {
     expect(iconSrc).toContain("/static/icons/book.svg");
   });
 
-  // AC11: Anonymous user cannot access title creation endpoints
-  test("anonymous user is redirected from catalog", async ({ context, page }) => {
-    // Clear cookies from beforeEach — anonymous access
+  // Story 7-1 AC #1: /catalog is anonymous-readable. What anonymous CANNOT do
+  // is access title creation affordances or POST to mutation endpoints.
+  test("anonymous user sees catalog read-only (no scan field, no new-title button)", async ({
+    context,
+    page,
+  }) => {
     await context.clearCookies();
-    const response = await page.goto("/catalog");
-    // Should redirect to home (303)
-    expect(page.url()).not.toContain("/catalog");
+    await page.goto("/catalog");
+    expect(page.url()).toContain("/catalog");
+    await expect(page.locator("#scan-field")).toHaveCount(0);
+    await expect(page.locator("#new-title-btn")).toHaveCount(0);
   });
 
   // Enter key inside form submits form, not scan field
