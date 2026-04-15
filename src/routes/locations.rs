@@ -409,7 +409,7 @@ pub async fn edit_location_page(
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 1a: Admin → Librarian.
-    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
 
     let pool = &state.pool;
     let location = LocationModel::find_by_id(pool, id)

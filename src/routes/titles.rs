@@ -345,7 +345,7 @@ pub async fn title_edit_form(
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role_with_return(
         crate::middleware::auth::Role::Librarian,
-        &uri.to_string(),
+        uri.path(),
     )?;
     let pool = &state.pool;
 

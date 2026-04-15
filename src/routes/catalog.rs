@@ -957,7 +957,7 @@ pub async fn title_form_page(
     State(state): State<AppState>,
     uri: axum::http::Uri,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
 
     let pool = &state.pool;
     let genres = load_genres(pool).await?;
@@ -1361,8 +1361,9 @@ struct ContributorFormTemplate {
 pub async fn contributor_form_page(
     session: Session,
     State(state): State<AppState>,
+    uri: axum::http::Uri,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
 
     let pool = &state.pool;
 
@@ -1605,9 +1606,10 @@ pub struct VolumeEditTemplate {
 pub async fn volume_edit_page(
     session: Session,
     State(state): State<AppState>,
+    uri: axum::http::Uri,
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
 
     let volume = VolumeModel::find_by_id(pool, id)

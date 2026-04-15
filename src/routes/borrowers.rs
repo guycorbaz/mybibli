@@ -58,7 +58,7 @@ pub async fn borrowers_page(
     uri: axum::http::Uri,
     axum::extract::Query(params): axum::extract::Query<BorrowerListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
 
     let borrowers = BorrowerModel::list_active(pool, params.page).await?;
@@ -169,7 +169,7 @@ pub async fn borrower_detail(
     uri: axum::http::Uri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
 
     let borrower = BorrowerModel::find_by_id(pool, id)
@@ -255,7 +255,7 @@ pub async fn edit_borrower_page(
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 2a: Admin → Librarian.
-    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
 
     let borrower = BorrowerModel::find_by_id(pool, id)
