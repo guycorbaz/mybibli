@@ -261,8 +261,7 @@ pub async fn catalog_page(
     session: Session,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
-
+    // AC #1: catalog browsing is Anonymous-accessible. Template-layer gates edit affordances.
     let guide = compute_guide_message(&state.pool, &session).await;
     let template = CatalogTemplate::new(&session, &guide);
     match template.render() {

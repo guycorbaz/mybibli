@@ -24,6 +24,7 @@ rust-i18n = "3.1.5"
 axum-extra = { version = "0.10", features = ["cookie"] }
 async-trait = "0.1"
 base64 = "0.22"
+percent-encoding = "2"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

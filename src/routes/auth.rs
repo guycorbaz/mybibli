@@ -1,10 +1,10 @@
 use askama::Template;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::response::{Html, IntoResponse, Redirect};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use serde::Deserialize;
 
-use crate::error::AppError;
+use crate::error::{is_safe_next, AppError};
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
 use crate::AppState;
@@ -32,10 +32,16 @@ pub struct LoginTemplate {
     pub submit_label: String,
     pub back_to_home: String,
     pub error_message: String,
+    pub next: String,
 }
 
 impl LoginTemplate {
-    fn new(error_message: &str) -> Self {
+    fn new(error_message: &str, next: &str) -> Self {
+        let next = if is_safe_next(next) {
+            next.to_string()
+        } else {
+            String::new()
+        };
         LoginTemplate {
             lang: rust_i18n::locale().to_string(),
             role: "anonymous".to_string(),
@@ -55,22 +61,35 @@ impl LoginTemplate {
             submit_label: rust_i18n::t!("login.submit").to_string(),
             back_to_home: rust_i18n::t!("login.back_to_home").to_string(),
             error_message: error_message.to_string(),
+            next,
         }
     }
+}
+
+#[derive(Deserialize, Default)]
+pub struct LoginQuery {
+    #[serde(default)]
+    pub next: String,
 }
 
 // ─── Login form page ─────────────────────────────────────────────
 
 pub async fn login_page(
     session: Session,
+    Query(query): Query<LoginQuery>,
     HxRequest(_is_htmx): HxRequest,
 ) -> Result<impl IntoResponse, AppError> {
-    // Already authenticated → redirect to catalog
+    // Already authenticated → redirect. Honor ?next= if safe, else /catalog.
     if session.role >= Role::Librarian {
-        return Ok(Redirect::to("/catalog").into_response());
+        let target = if is_safe_next(&query.next) {
+            query.next.as_str()
+        } else {
+            "/catalog"
+        };
+        return Ok(Redirect::to(target).into_response());
     }
 
-    let template = LoginTemplate::new("");
+    let template = LoginTemplate::new("", &query.next);
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
         Err(e) => {
@@ -86,6 +105,8 @@ pub async fn login_page(
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
+    #[serde(default)]
+    pub next: String,
 }
 
 pub async fn login(
@@ -108,13 +129,13 @@ pub async fn login(
 
     let Some((user_id, password_hash, role)) = user_row else {
         tracing::info!(username = %username, "Login failed: user not found");
-        return render_login_error(jar);
+        return render_login_error(jar, &form.next);
     };
 
     // Verify password with Argon2
     if !verify_password(password, &password_hash) {
         tracing::info!(username = %username, "Login failed: invalid password");
-        return render_login_error(jar);
+        return render_login_error(jar, &form.next);
     }
 
     // Generate session token
@@ -138,14 +159,22 @@ pub async fn login(
         .same_site(SameSite::Lax)
         .build();
 
-    Ok((jar.add(cookie), Redirect::to("/catalog").into_response()))
+    // Honor ?next= if safe and same-origin, else default to /catalog.
+    let redirect_target = if is_safe_next(&form.next) {
+        form.next.clone()
+    } else {
+        "/catalog".to_string()
+    };
+
+    Ok((jar.add(cookie), Redirect::to(&redirect_target).into_response()))
 }
 
 fn render_login_error(
     jar: CookieJar,
+    next: &str,
 ) -> Result<(CookieJar, axum::response::Response), AppError> {
     let error_msg = rust_i18n::t!("login.error_invalid").to_string();
-    let template = LoginTemplate::new(&error_msg);
+    let template = LoginTemplate::new(&error_msg, next);
     match template.render() {
         Ok(html) => Ok((jar, Html(html).into_response())),
         Err(e) => {
@@ -278,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_login_template_renders() {
-        let template = LoginTemplate::new("");
+        let template = LoginTemplate::new("", "");
         let result = template.render();
         assert!(result.is_ok());
         let html = result.unwrap();
@@ -289,10 +318,25 @@ mod tests {
 
     #[test]
     fn test_login_template_with_error() {
-        let template = LoginTemplate::new("Invalid credentials");
-        let result = template.render();
-        assert!(result.is_ok());
-        let html = result.unwrap();
+        let template = LoginTemplate::new("Invalid credentials", "");
+        let html = template.render().unwrap();
         assert!(html.contains("Invalid credentials"));
     }
+
+    #[test]
+    fn test_login_template_renders_next_hidden_field() {
+        let template = LoginTemplate::new("", "/loans");
+        let html = template.render().unwrap();
+        assert!(html.contains(r#"name="next""#));
+        assert!(html.contains(r#"value="/loans""#));
+    }
+
+    #[test]
+    fn test_login_template_drops_unsafe_next() {
+        let template = LoginTemplate::new("", "https://evil.example.com/");
+        let html = template.render().unwrap();
+        assert!(!html.contains("evil.example.com"));
+        assert!(!html.contains(r#"name="next""#));
+    }
+
 }

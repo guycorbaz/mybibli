@@ -935,6 +935,95 @@ Anonymous users can browse and search without login. Librarian and Admin roles e
 **ARs:** AR13, AR15, AR19
 **UX-DRs:** UX-DR14, UX-DR25 (scanner-guard.js)
 
+**Scope note — anonymous visibility (2026-04-15):** Anonymous users (FR65) can read the public catalog — titles, volumes, series, contributors, locations — but NOT loan-related data (loans, loan history, borrowers). Borrower records and loan data stay behind librarian/admin auth for privacy reasons.
+
+**Stories:**
+
+#### Story 7.1: Anonymous browsing + role gating
+**As a** visitor, **I want** to browse and search the catalog without logging in, **so that** I can explore Guy's library before deciding to request access; **and as a** librarian/admin, **I want** cataloging, editing, loan, and admin operations strictly gated by role, **so that** unauthorized users cannot mutate state or access private data.
+
+**FRs:** FR65, FR66, FR67
+**NFRs:** NFR13
+
+**Acceptance Criteria:**
+- Given an anonymous visitor (no session cookie), when they navigate to `/catalog`, `/series`, a title detail page, a volume detail page, a contributor page, or a location browse page, then the page renders with read-only affordances (no edit/delete/create buttons, no loan actions, no scan field)
+- Given an anonymous visitor, when they attempt to access `/loans`, `/borrowers`, or any borrower/loan detail route, then the middleware redirects them to `/login` with a return URL
+- Given an anonymous visitor, when they attempt a write route (POST/PUT/DELETE to titles, volumes, contributors, locations, series, loans, borrowers), then the server returns 303 redirect to `/login` (HX-Redirect for HTMX) and no state change occurs
+- Given a librarian-role user, when they attempt admin-only routes (user management, system configuration, settings), then the server returns 403 Forbidden rendered via AppError → FeedbackEntry
+- Given an admin-role user, when they access any route, then all operations are permitted
+- Given the nav bar, when rendered for an anonymous user, then the "Login" link is visible and cataloging/loan/admin nav items are hidden; for librarian, admin items are hidden; for admin, all items are visible
+- Route audit: every existing route in `src/routes/` is annotated with its required role (Anonymous / Librarian / Admin) in a single reference table committed to the repo
+- Unit tests: role-gating middleware rejects/allows for each of the 3 roles × at least 2 representative routes per role
+- E2E smoke (Foundation Rule #7): blank browser → browse catalog anonymously → click a title → verify read-only → attempt `/loans` → verify redirect → login as librarian → verify cataloging unlocked → verify admin route still 403
+
+#### Story 7.2: Session inactivity timeout + Toast warning
+**As a** logged-in user, **I want** my session to expire after a period of inactivity with a 5-minute Toast warning, **so that** an unattended browser does not leave the app open indefinitely, and I never lose work silently.
+
+**FRs:** FR69 (inactivity timeout + Toast — browser-close side already delivered in Epic 1)
+**ARs:** AR13
+**UX-DRs:** UX-DR14
+
+**Acceptance Criteria:**
+- Given the `sessions` table, when the migration runs, then a `last_activity TIMESTAMP NOT NULL` column is added (default `CURRENT_TIMESTAMP`), backfilled for existing rows, and indexed for the cleanup query
+- Given any authenticated request, when it passes through the session middleware, then `last_activity` is updated to `NOW()` before the handler runs
+- Given an authenticated request, when `NOW() - last_activity > inactivity_timeout` (from `AppSettings`, default 4 hours), then the session is invalidated (soft-delete or row removal) and the middleware returns 303 redirect to `/login` (HX-Redirect for HTMX)
+- Given `AppSettings`, when `inactivity_timeout_seconds` is configurable via the settings table (read into `Arc<RwLock<AppSettings>>`), then changing it takes effect for new session checks without restart
+- Given a logged-in user on any page, when the remaining time before expiry drops to 5 minutes, then a Toast slides down with i18n-aware text (EN/FR), a "Stay connected" button that issues a keep-alive POST to refresh `last_activity`, and a dismiss affordance
+- Given the "Stay connected" button is clicked, when the keep-alive returns success, then the Toast hides and the countdown resets
+- Given the Toast is dismissed without action, when the 5 minutes elapse, then the next request returns a redirect to `/login` and the page shows a "Session expired" feedback entry after re-login (optional)
+- JS: new `toast.js` module (or extend existing JS) — no new framework dependency, follows the UX-DR25 7-module pattern
+- i18n: EN + FR keys for Toast text, "Stay connected", "Session expired"
+- Unit tests: middleware invalidation boundary (just before vs just after timeout); keep-alive handler; Toast time calculation
+- E2E: shorten `inactivity_timeout` to e.g. 90 s via settings seed for the test, log in, wait, verify Toast appears, click "Stay connected", verify session extended; second test: wait through timeout, verify redirect
+
+#### Story 7.3: Language toggle FR/EN
+**As a** user (anonymous or authenticated), **I want** to switch the UI language between French and English from a visible toggle, **so that** I can use the app in my preferred language and the choice persists across sessions.
+
+**FRs:** FR77
+**ARs:** AR19
+
+**Acceptance Criteria:**
+- Given the nav bar, when rendered, then a language toggle (FR / EN) is visible for all roles including anonymous
+- Given the toggle is clicked, when the browser navigates, then it performs a full page reload (not HTMX swap) to the same route with the new language applied (AR19)
+- Given no explicit preference, when the app renders, then the default language is French (Guy's primary language) unless `Accept-Language` strongly prefers English
+- Given a language choice is made, when the response is returned, then the preference is stored in a cookie `lang=fr|en` (SameSite=Lax, 1-year max-age) and honored on subsequent requests
+- Given an authenticated user with a `users.preferred_language` column, when logged in, then the cookie is synced to the DB preference on login and writes to both on toggle
+- Given `rust_i18n::t!()` wiring, when a request arrives, then the locale is set from (1) query param override `?lang=`, (2) cookie, (3) user preference, (4) `Accept-Language`, (5) default `fr`
+- Given the toggle on any page, when clicked, then the user returns to the same URL (not the home page) with the new language
+- i18n key audit: every user-visible string in templates and JS has both EN and FR translations (grep gate in CI: zero `t!("key")` calls without matching EN+FR entries)
+- Unit tests: locale resolution priority chain; cookie round-trip
+- E2E: anonymous visitor toggles FR→EN on `/catalog`, verify page reloads with EN strings, verify cookie set, navigate, verify EN persists; login, verify DB preference updated
+
+#### Story 7.4: Content Security Policy headers
+**As the** project maintainer, **I want** strict CSP headers on every response, **so that** XSS vectors (inline scripts, malicious external resources) are blocked while legitimate cover-image sources still load.
+
+**NFRs:** NFR15
+
+**Acceptance Criteria:**
+- Given an Axum middleware layer, when any response is produced, then the `Content-Security-Policy` header is set with directives: `default-src 'self'`; `script-src 'self'` (no `'unsafe-inline'`, no `'unsafe-eval'`); `style-src 'self'` (Tailwind is precompiled — no inline styles); `img-src 'self' data: https://<bnf-cover-host> https://books.google.com https://*.googleusercontent.com` (exact hostnames defined in the architecture doc); `connect-src 'self'` (HTMX same-origin); `font-src 'self'`; `frame-ancestors 'none'`; `base-uri 'self'`; `form-action 'self'`
+- Given any HTMX interaction, when it runs, then no CSP violation is logged in the browser console (test manually via E2E + DevTools assertion)
+- Given a cover-image URL from BnF or Google Books, when rendered on a title detail page, then it loads successfully under the CSP
+- Given the CSP, when a developer accidentally introduces an inline `<script>` or `style`, then the browser blocks it AND the E2E test fails
+- Additional security headers set by the same middleware: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(self)` (scanner needs camera on same origin)
+- CSP report-only mode available via env var `CSP_REPORT_ONLY=true` for debugging, default off in production
+- Unit test: middleware sets expected headers on a sample response
+- E2E: load `/catalog`, title detail with external cover, login flow — verify no CSP violations reported; inject a test inline script via DOM mutation and verify it is blocked
+
+#### Story 7.5: Scanner-guard modal interception
+**As a** librarian scanning barcodes, **I want** the scanner input to be captured by any open modal, **so that** a scan performed while a confirmation dialog is open does not leak into the background scan field and trigger an unintended catalog action.
+
+**UX-DRs:** UX-DR25 (scanner-guard.js — last of the 7 JS modules)
+
+**Acceptance Criteria:**
+- Given `tests/e2e/helpers/scanner.ts` stub (noted as tech debt in CLAUDE.md), when this story runs, then the stub is either completed to a functional helper or the story explicitly reuses the existing `scan-field.js` test hooks
+- Given a new `scanner-guard.js` module, when any modal (Askama `<dialog>` or the existing confirmation components) opens, then the module installs a keydown capture listener at `document` level that routes scanner-pattern events (fast sequence ending in Enter, per `scan-field.js` heuristic) to the modal's focused input instead of the background `#scan-field`
+- Given a modal closes, when the event fires, then the guard listener is removed and the background scan field resumes receiving events
+- Given a scan occurs with no modal open, when detected, then behavior is unchanged (scan field receives it)
+- Given nested modals (unlikely but possible), when opened, then the guard stacks correctly (LIFO) and the topmost modal captures scans
+- Integration with `mybibli.js`: `scanner-guard.js` is imported and initialized in the entry point alongside the other 6 modules (scan-field, feedback, audio, theme, focus, scanner-guard, mybibli)
+- Unit tests (JS): simulate keydown sequences with/without modal open, verify routing
+- E2E: open a confirmation modal (e.g., delete volume confirmation), simulate a barcode scan via keyboard events, verify the scan is consumed by the modal or dropped — never leaks to background `#scan-field`; close modal, perform scan, verify normal flow resumes
+
 ### Epic 8: Administration & Configuration
 The admin can manage users, configure reference data (genres, states, roles), manage the storage hierarchy, view system health, and manage the Trash (soft-deleted items). The setup wizard guides first-time configuration.
 

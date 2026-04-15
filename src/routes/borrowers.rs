@@ -55,9 +55,10 @@ pub async fn borrowers_page(
     State(state): State<AppState>,
     session: Session,
     HxRequest(_is_htmx): HxRequest,
+    uri: axum::http::Uri,
     axum::extract::Query(params): axum::extract::Query<BorrowerListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
     let pool = &state.pool;
 
     let borrowers = BorrowerModel::list_active(pool, params.page).await?;
@@ -165,9 +166,10 @@ pub async fn borrower_detail(
     State(state): State<AppState>,
     session: Session,
     HxRequest(_is_htmx): HxRequest,
+    uri: axum::http::Uri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
     let pool = &state.pool;
 
     let borrower = BorrowerModel::find_by_id(pool, id)
@@ -249,9 +251,11 @@ pub async fn edit_borrower_page(
     State(state): State<AppState>,
     session: Session,
     HxRequest(_is_htmx): HxRequest,
+    uri: axum::http::Uri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Admin)?;
+    // Story 7-1 decision 2a: Admin → Librarian.
+    session.require_role_with_return(Role::Librarian, &uri.to_string())?;
     let pool = &state.pool;
 
     let borrower = BorrowerModel::find_by_id(pool, id)
@@ -307,7 +311,8 @@ pub async fn update_borrower(
     Path(id): Path<u64>,
     axum::Form(form): axum::Form<UpdateBorrowerForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Admin)?;
+    // Story 7-1 decision 2a: Admin → Librarian.
+    session.require_role(Role::Librarian)?;
     let pool = &state.pool;
 
     BorrowerService::update_borrower(pool, id, form.version, &form.name, form.address, form.email, form.phone).await?;
