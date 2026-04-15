@@ -80,9 +80,10 @@ test.describe("Login/Logout & Epic 1 Smoke Test (Story 1-9)", () => {
     // Should redirect to home
     await expect(page).toHaveURL("/", { timeout: 5000 });
 
-    // Try to access catalog — should redirect to login
-    await page.goto("/catalog");
-    await expect(page).toHaveURL(/\/login/, { timeout: 5000 });
+    // Story 7-1 AC #1: /catalog is now anonymous-readable; verify /loans
+    // (still librarian-guarded) redirects to /login with next param instead.
+    await page.goto("/loans");
+    await expect(page).toHaveURL(/\/login\?next=%2Floans/, { timeout: 5000 });
   });
 
   // AC1: Login form accessibility
@@ -111,11 +112,12 @@ test.describe("Login/Logout & Epic 1 Smoke Test (Story 1-9)", () => {
     await expect(username).toHaveAttribute("autofocus", "");
   });
 
-  // Anonymous user redirected to login
-  test("anonymous user accessing /catalog is redirected to /login", async ({
+  // Story 7-1 AC #1: /catalog is anonymous-readable now. The redirect contract
+  // moved to /loans (still librarian-guarded) with a next= round-trip.
+  test("anonymous user accessing /loans is redirected to /login with next param", async ({
     page,
   }) => {
-    await page.goto("/catalog");
-    await expect(page).toHaveURL(/\/login/, { timeout: 5000 });
+    await page.goto("/loans");
+    await expect(page).toHaveURL(/\/login\?next=%2Floans/, { timeout: 5000 });
   });
 });

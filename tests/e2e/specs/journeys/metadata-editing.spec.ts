@@ -143,8 +143,10 @@ test.describe("Metadata Editing & Re-Download (Story 3-5)", () => {
       if (!val) await pageCount.fill("0");
     }
 
-    // Save (no changes beyond page_count fix, just verify the round-trip works)
-    await page.locator('button[type="submit"]').click();
+    // Save (no changes beyond page_count fix, just verify the round-trip works).
+    // Scope to the edit form to avoid matching unrelated submit buttons on the page
+    // (e.g. #assign-series-submit), which would trip strict mode.
+    await page.locator("#title-metadata").getByRole("button", { name: /save changes|enregistrer/i }).click();
 
     // Display mode should be restored
     await expect(page.locator("#title-metadata h1")).toBeVisible({ timeout: 5000 });
