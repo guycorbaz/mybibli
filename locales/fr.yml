@@ -8,6 +8,7 @@ browse:
 home:
   title: mybibli
   subtitle: Votre bibliothèque personnelle
+  search_placeholder: "Rechercher titres, auteurs, séries..."
 catalog:
   title: Catalogue
   scan_placeholder: "Scanner ou taper : ISBN, code V, code L, ou recherche..."
@@ -27,6 +28,7 @@ nav:
   logout: Déconnexion
   skip_to_content: Aller au contenu principal
   theme_toggle: Basculer le thème
+  language_toggle_aria: Changer la langue
 title:
   created: "Titre créé : %{title}"
   exists: "Titre déjà existant : %{title}"
@@ -105,8 +107,6 @@ contributor:
     biography: Biographie
     submit: Ajouter le contributeur
     add_button: Ajouter un contributeur
-home:
-  search_placeholder: "Rechercher titres, auteurs, séries..."
 search:
   no_results: "Aucun résultat pour '%{query}'."
   no_results_create: "+ Créer un nouveau titre"

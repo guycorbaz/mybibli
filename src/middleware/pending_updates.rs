@@ -29,12 +29,32 @@ pub async fn pending_updates_middleware(request: Request, next: Next) -> Respons
         return next.run(request).await;
     }
 
-    // Extract session token from cookie
-    let session_token = request
+    let cookie_header = request
         .headers()
         .get("cookie")
         .and_then(|v| v.to_str().ok())
-        .and_then(extract_session_token);
+        .map(str::to_string);
+
+    // Extract session token from cookie
+    let session_token = cookie_header.as_deref().and_then(extract_session_token);
+
+    // Prefer the locale already resolved by `locale_resolve_middleware`
+    // (outer layer) — this guarantees the OOB fragment renders in the exact
+    // same language as the main response (query override, user pref via DB,
+    // case-normalized cookie all covered). Falls back to cookie-only parsing
+    // for the rare case where the extension is missing, and finally to
+    // `"fr"` to match `resolve_locale`'s default.
+    let lang_cookie: String = request
+        .extensions()
+        .get::<crate::middleware::locale::Locale>()
+        .map(|l| l.0.to_string())
+        .or_else(|| {
+            cookie_header
+                .as_deref()
+                .and_then(extract_lang_cookie)
+                .filter(|v| v == "fr" || v == "en")
+        })
+        .unwrap_or_else(|| "fr".to_string());
 
     // Extract pool from extensions
     let pool = request.extensions().get::<DbPool>().cloned();
@@ -53,7 +73,7 @@ pub async fn pending_updates_middleware(request: Request, next: Next) -> Respons
     };
 
     // Render OOB swaps and append to response body
-    let oob_html = render_oob_updates(&updates);
+    let oob_html = render_oob_updates(&updates, &lang_cookie);
 
     // Soft-delete processed rows
     let title_ids: Vec<u64> = updates.iter().map(|u| u.title_id).collect();
@@ -69,6 +89,20 @@ fn extract_session_token(cookie_header: &str) -> Option<String> {
     for part in cookie_header.split(';') {
         let trimmed = part.trim();
         if let Some(value) = trimmed.strip_prefix("session=")
+            && !value.is_empty()
+        {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+/// Extract the `lang` cookie value. Mirrors `extract_session_token` but for
+/// the language-preference cookie (story 7-3).
+fn extract_lang_cookie(cookie_header: &str) -> Option<String> {
+    for part in cookie_header.split(';') {
+        let trimmed = part.trim();
+        if let Some(value) = trimmed.strip_prefix("lang=")
             && !value.is_empty()
         {
             return Some(value.to_string());
@@ -114,7 +148,7 @@ async fn fetch_resolved_updates(
 }
 
 /// Render OOB swap HTML for resolved pending updates.
-fn render_oob_updates(updates: &[PendingUpdate]) -> String {
+fn render_oob_updates(updates: &[PendingUpdate], loc: &str) -> String {
     let mut html = String::new();
     for update in updates {
         let entry_html = match update.status.as_str() {
@@ -122,12 +156,14 @@ fn render_oob_updates(updates: &[PendingUpdate]) -> String {
                 let message = match &update.author_name {
                     Some(author) => rust_i18n::t!(
                         "feedback.metadata_resolved",
+                        locale = loc,
                         title = &update.title_name,
                         author = author
                     )
                     .to_string(),
                     None => rust_i18n::t!(
                         "feedback.metadata_resolved_no_author",
+                        locale = loc,
                         title = &update.title_name
                     )
                     .to_string(),
@@ -136,8 +172,9 @@ fn render_oob_updates(updates: &[PendingUpdate]) -> String {
             }
             _ => {
                 let isbn = update.isbn.as_deref().unwrap_or("?");
-                let message = rust_i18n::t!("feedback.metadata_failed", isbn = isbn).to_string();
-                failed_feedback_html(&message, update.title_id)
+                let message =
+                    rust_i18n::t!("feedback.metadata_failed", locale = loc, isbn = isbn).to_string();
+                failed_feedback_html(&message, update.title_id, loc)
             }
         };
         html.push_str(&entry_html);
@@ -162,9 +199,9 @@ fn resolved_feedback_html(message: &str, title_id: u64) -> String {
 }
 
 /// Render a warning feedback entry for failed metadata (OOB swap).
-fn failed_feedback_html(message: &str, title_id: u64) -> String {
+fn failed_feedback_html(message: &str, title_id: u64, loc: &str) -> String {
     let escaped = html_escape(message);
-    let edit_label = rust_i18n::t!("feedback.edit_manually").to_string();
+    let edit_label = rust_i18n::t!("feedback.edit_manually", locale = loc).to_string();
     format!(
         r#"<div id="feedback-entry-{title_id}" hx-swap-oob="true" class="p-3 border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-900/20 rounded-r feedback-entry" role="status" data-feedback-variant="warning">
   <div class="flex items-start gap-2">
@@ -274,8 +311,9 @@ mod tests {
 
     #[test]
     fn test_failed_feedback_html_contains_oob() {
-        rust_i18n::set_locale("en");
-        let html = failed_feedback_html("No metadata found", 99);
+        // Keyed-form: pass locale explicitly rather than relying on the
+        // process-global `rust_i18n::set_locale` (story 7-3 Task 4).
+        let html = failed_feedback_html("No metadata found", 99, "en");
         assert!(html.contains(r#"id="feedback-entry-99""#));
         assert!(html.contains("hx-swap-oob=\"true\""));
         assert!(html.contains("No metadata found"));
@@ -291,7 +329,22 @@ mod tests {
 
     #[test]
     fn test_render_oob_updates_empty() {
-        let html = render_oob_updates(&[]);
+        let html = render_oob_updates(&[], "en");
         assert!(html.is_empty());
+    }
+
+    #[test]
+    fn test_extract_lang_cookie_finds_value() {
+        assert_eq!(extract_lang_cookie("lang=en"), Some("en".to_string()));
+        assert_eq!(
+            extract_lang_cookie("session=abc; lang=fr"),
+            Some("fr".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_lang_cookie_none_when_missing() {
+        assert_eq!(extract_lang_cookie(""), None);
+        assert_eq!(extract_lang_cookie("session=abc"), None);
     }
 }

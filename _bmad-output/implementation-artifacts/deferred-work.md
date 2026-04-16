@@ -209,3 +209,14 @@
 - i18n JS↔YAML synchronization relies on sync-comments — systemic tech debt pre-dating 7-2; revisit via a shared extraction pattern (e.g., emit a `window.I18N` JSON block from the template)
 - `document.documentElement.lang || "en"` fallback in session-timeout.js — pre-existing; tolerable while all templates set `lang`
 - `SessionRow.last_activity` nullability — currently NOT NULL at schema level; add an explicit guard only if the column ever becomes nullable
+
+## Deferred from: code review of 7-3-language-toggle-fr-en (2026-04-16)
+
+- `CARGO_MANIFEST_DIR` path resolution in the i18n audit test will break if the crate is ever moved into a Cargo workspace member — not a workspace today, revisit when/if workspace split happens
+- `SessionRow.preferred_language` has no Rust-side validation when the DB ENUM widens (e.g. adding `'de'`) — centralize on `i18n::resolve::normalize_exact` once a third locale is added
+- New migration does not hint `ALGORITHM=INSTANT, LOCK=NONE` — dev-focused app, no production deployment today; add the hint when the app grows a prod deployment target
+- `serde_yaml` dev-dependency triggers RUSTSEC-2024-0320 (unmaintained) — swap for `serde_norway` or `serde_yml` in a follow-up maintenance story
+- Locale middleware layer ordering vs `pending_updates_middleware` + `nest_service` — functionally correct today (verified by 141 E2E pass) but worth an architectural consistency pass
+- `SameSite=Lax` + no `Secure` flag on the `lang` cookie — consistent with the existing `session` cookie pattern; revisit cookie policy repo-wide as part of a production-hardening story
+- `BaseContext` helper to collapse the 17 duplicated template init blocks — spec explicitly allows deferral (Task 8 "Refactor opportunity"); log as LLM-proofing debt for next touch of these files
+- `Promise.all([waitForLoadState("load"), click()])` race in `language-toggle.spec.ts` — spec Task 10 prescribes this pattern and Playwright auto-retry absorbs the risk in practice

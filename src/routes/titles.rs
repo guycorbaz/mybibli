@@ -1,7 +1,7 @@
 use askama::Template;
-use axum::Form;
-use axum::extract::{Path, State};
+use axum::extract::{OriginalUri, Path, State};
 use axum::response::{Html, IntoResponse};
+use axum::{Extension, Form};
 
 use axum::response::Redirect;
 use serde::Deserialize;
@@ -12,6 +12,7 @@ use crate::metadata::chain::ChainExecutor;
 use crate::metadata::provider::MetadataResult;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
+use crate::middleware::locale::Locale;
 use crate::models::contributor::TitleContributorModel;
 use crate::models::genre::GenreModel;
 use crate::models::series::{SeriesModel, TitleSeriesAssignment};
@@ -21,7 +22,7 @@ use crate::routes::catalog::feedback_html_pub;
 use crate::services::cover::CoverService;
 use crate::services::series::SeriesService;
 use crate::services::title::{FieldConflict, TitleService};
-use crate::utils::html_escape;
+use crate::utils::{current_url, html_escape};
 
 #[derive(Template)]
 #[template(path = "pages/title_detail.html")]
@@ -62,19 +63,24 @@ pub struct TitleDetailTemplate {
     pub similar_titles: Vec<SimilarTitle>,
     pub label_similar_titles: String,
     pub label_dewey_code: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn title_detail(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     HxRequest(is_htmx): HxRequest,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     let pool = &state.pool;
+    let loc = locale.0;
 
     let title = TitleModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     let volume_count = VolumeModel::count_by_title(pool, title.id).await?;
     let contributors = TitleContributorModel::find_by_title(pool, title.id).await?;
@@ -92,47 +98,50 @@ pub async fn title_detail(
             &contributors,
             &session,
             has_code,
+            loc,
         );
         Ok(Html(html).into_response())
     } else {
         let similar_titles = TitleModel::find_similar(pool, title.id).await?;
         let template = TitleDetailTemplate {
-            lang: rust_i18n::locale().to_string(),
+            lang: loc.to_string(),
             role: session.role.to_string(),
             current_page: "title",
-            skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+            skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
             session_timeout_secs: state.session_timeout_secs(),
-            nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-            nav_loans: rust_i18n::t!("nav.loans").to_string(),
-            nav_locations: rust_i18n::t!("nav.locations").to_string(),
-            nav_series: rust_i18n::t!("nav.series").to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-            nav_admin: rust_i18n::t!("nav.admin").to_string(),
-            nav_login: rust_i18n::t!("nav.login").to_string(),
-            nav_logout: rust_i18n::t!("nav.logout").to_string(),
+            nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+            nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+            nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+            nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+            nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+            nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+            nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+            nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
             title,
             genre_name,
             volume_count,
             contributors,
-            label_contributors: rust_i18n::t!("title_detail.contributors").to_string(),
-            label_vol: rust_i18n::t!("title_detail.volumes").to_string(),
-            label_no_cover: rust_i18n::t!("cover.no_cover").to_string(),
-            label_edit: rust_i18n::t!("metadata.edit_metadata").to_string(),
-            label_redownload: rust_i18n::t!("metadata.redownload").to_string(),
+            label_contributors: rust_i18n::t!("title_detail.contributors", locale = loc).to_string(),
+            label_vol: rust_i18n::t!("title_detail.volumes", locale = loc).to_string(),
+            label_no_cover: rust_i18n::t!("cover.no_cover", locale = loc).to_string(),
+            label_edit: rust_i18n::t!("metadata.edit_metadata", locale = loc).to_string(),
+            label_redownload: rust_i18n::t!("metadata.redownload", locale = loc).to_string(),
             has_code,
             series_assignments,
             all_series,
-            label_series: rust_i18n::t!("nav.series").to_string(),
-            label_assign: rust_i18n::t!("series.assign").to_string(),
-            label_position: rust_i18n::t!("series.position").to_string(),
-            label_unassign: rust_i18n::t!("series.unassign").to_string(),
-            label_no_series: rust_i18n::t!("series.no_assignments").to_string(),
-            label_select_series: rust_i18n::t!("series.select_series").to_string(),
-            label_omnibus: rust_i18n::t!("series.omnibus").to_string(),
-            label_end_position: rust_i18n::t!("series.end_position").to_string(),
+            label_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+            label_assign: rust_i18n::t!("series.assign", locale = loc).to_string(),
+            label_position: rust_i18n::t!("series.position", locale = loc).to_string(),
+            label_unassign: rust_i18n::t!("series.unassign", locale = loc).to_string(),
+            label_no_series: rust_i18n::t!("series.no_assignments", locale = loc).to_string(),
+            label_select_series: rust_i18n::t!("series.select_series", locale = loc).to_string(),
+            label_omnibus: rust_i18n::t!("series.omnibus", locale = loc).to_string(),
+            label_end_position: rust_i18n::t!("series.end_position", locale = loc).to_string(),
             similar_titles,
-            label_similar_titles: rust_i18n::t!("title_detail.similar_titles").to_string(),
-            label_dewey_code: rust_i18n::t!("metadata.field.dewey_code").to_string(),
+            label_similar_titles: rust_i18n::t!("title_detail.similar_titles", locale = loc).to_string(),
+            label_dewey_code: rust_i18n::t!("metadata.field.dewey_code", locale = loc).to_string(),
+            current_url: current_url(&uri),
+            lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),
@@ -148,6 +157,7 @@ fn title_detail_fragment(
     contributors: &[TitleContributorModel],
     session: &Session,
     has_code: bool,
+    loc: &str,
 ) -> String {
     let escaped_title = html_escape(&title.title);
     let escaped_genre = html_escape(genre_name);
@@ -192,7 +202,7 @@ fn title_detail_fragment(
             .collect();
         format!(
             r#"<div class="mt-4"><h2 class="text-lg font-semibold text-stone-800 dark:text-stone-200">{}</h2><ul class="mt-2 space-y-1">{}</ul></div>"#,
-            rust_i18n::t!("title_detail.contributors"),
+            rust_i18n::t!("title_detail.contributors", locale = loc),
             items
                 .iter()
                 .map(|i| format!("<li>{}</li>", i))
@@ -208,7 +218,7 @@ fn title_detail_fragment(
                 r##"<button hx-post="/title/{}/redownload" {target} hx-swap="innerHTML"
                           class="px-3 py-1.5 text-sm font-medium text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-700 rounded-md hover:bg-stone-50 dark:hover:bg-stone-800">{}</button>"##,
                 title.id,
-                rust_i18n::t!("metadata.redownload"),
+                rust_i18n::t!("metadata.redownload", locale = loc),
                 target = target,
             )
         } else {
@@ -221,7 +231,7 @@ fn title_detail_fragment(
                 {}
             </div>"##,
             title.id,
-            rust_i18n::t!("metadata.edit_metadata"),
+            rust_i18n::t!("metadata.edit_metadata", locale = loc),
             redownload_btn,
             target = target,
         )
@@ -254,7 +264,7 @@ fn title_detail_fragment(
         subtitle_html,
         escaped_genre,
         volume_count,
-        rust_i18n::t!("title_detail.volumes"),
+        rust_i18n::t!("title_detail.volumes", locale = loc),
         edit_buttons,
         contributor_html
     )
@@ -264,12 +274,14 @@ fn title_detail_fragment(
 pub async fn title_metadata_fragment(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     let pool = &state.pool;
+    let loc = locale.0;
     let title = TitleModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
     let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
     let has_code = title.isbn.is_some() || title.issn.is_some() || title.upc.is_some();
 
@@ -278,6 +290,7 @@ pub async fn title_metadata_fragment(
         &genre_name,
         &session,
         has_code,
+        loc,
     )))
 }
 
@@ -286,6 +299,7 @@ fn metadata_display_html(
     genre_name: &str,
     session: &Session,
     has_code: bool,
+    loc: &str,
 ) -> String {
     let role_str = session.role.to_string();
     let target = r##"hx-target="#title-metadata""##;
@@ -295,7 +309,7 @@ fn metadata_display_html(
                 r##"<button hx-post="/title/{}/redownload" {target} hx-swap="innerHTML"
                           class="px-3 py-1.5 text-sm font-medium text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-700 rounded-md hover:bg-stone-50 dark:hover:bg-stone-800">{}</button>"##,
                 title.id,
-                rust_i18n::t!("metadata.redownload"),
+                rust_i18n::t!("metadata.redownload", locale = loc),
                 target = target,
             )
         } else {
@@ -308,7 +322,7 @@ fn metadata_display_html(
                 {}
             </div>"##,
             title.id,
-            rust_i18n::t!("metadata.edit_metadata"),
+            rust_i18n::t!("metadata.edit_metadata", locale = loc),
             redownload_btn,
             target = target,
         )
@@ -355,7 +369,7 @@ fn metadata_display_html(
         .map(|d| {
             format!(
                 r#"<p class="mt-1 text-xs text-stone-400">{}: {}</p>"#,
-                rust_i18n::t!("metadata.field.dewey_code"),
+                rust_i18n::t!("metadata.field.dewey_code", locale = loc),
                 html_escape(d)
             )
         })
@@ -412,36 +426,38 @@ struct TitleEditFormTemplate {
 pub async fn title_edit_form(
     State(state): State<AppState>,
     session: Session,
-    uri: axum::http::Uri,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role_with_return(crate::middleware::auth::Role::Librarian, uri.path())?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     let title = TitleModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
     let genres = GenreModel::list_active(pool).await?;
 
     let template = TitleEditFormTemplate {
         title,
         genres,
-        label_title: rust_i18n::t!("metadata.field.title").to_string(),
-        label_subtitle: rust_i18n::t!("metadata.field.subtitle").to_string(),
-        label_description: rust_i18n::t!("metadata.field.description").to_string(),
-        label_publisher: rust_i18n::t!("metadata.field.publisher").to_string(),
-        label_language: rust_i18n::t!("metadata.field.language").to_string(),
-        label_genre: rust_i18n::t!("metadata.field.genre").to_string(),
-        label_publication_date: rust_i18n::t!("metadata.field.publication_date").to_string(),
-        label_dewey_code: rust_i18n::t!("metadata.field.dewey_code").to_string(),
-        label_page_count: rust_i18n::t!("metadata.field.page_count").to_string(),
-        label_track_count: rust_i18n::t!("metadata.field.track_count").to_string(),
-        label_total_duration: rust_i18n::t!("metadata.field.total_duration").to_string(),
-        label_age_rating: rust_i18n::t!("metadata.field.age_rating").to_string(),
-        label_issue_number: rust_i18n::t!("metadata.field.issue_number").to_string(),
-        label_media_type: rust_i18n::t!("title.form.media_type").to_string(),
-        label_save: rust_i18n::t!("metadata.save_changes").to_string(),
-        label_cancel: rust_i18n::t!("metadata.cancel").to_string(),
+        label_title: rust_i18n::t!("metadata.field.title", locale = loc).to_string(),
+        label_subtitle: rust_i18n::t!("metadata.field.subtitle", locale = loc).to_string(),
+        label_description: rust_i18n::t!("metadata.field.description", locale = loc).to_string(),
+        label_publisher: rust_i18n::t!("metadata.field.publisher", locale = loc).to_string(),
+        label_language: rust_i18n::t!("metadata.field.language", locale = loc).to_string(),
+        label_genre: rust_i18n::t!("metadata.field.genre", locale = loc).to_string(),
+        label_publication_date: rust_i18n::t!("metadata.field.publication_date", locale = loc).to_string(),
+        label_dewey_code: rust_i18n::t!("metadata.field.dewey_code", locale = loc).to_string(),
+        label_page_count: rust_i18n::t!("metadata.field.page_count", locale = loc).to_string(),
+        label_track_count: rust_i18n::t!("metadata.field.track_count", locale = loc).to_string(),
+        label_total_duration: rust_i18n::t!("metadata.field.total_duration", locale = loc).to_string(),
+        label_age_rating: rust_i18n::t!("metadata.field.age_rating", locale = loc).to_string(),
+        label_issue_number: rust_i18n::t!("metadata.field.issue_number", locale = loc).to_string(),
+        label_media_type: rust_i18n::t!("title.form.media_type", locale = loc).to_string(),
+        label_save: rust_i18n::t!("metadata.save_changes", locale = loc).to_string(),
+        label_cancel: rust_i18n::t!("metadata.cancel", locale = loc).to_string(),
     };
 
     match template.render() {
@@ -503,21 +519,23 @@ fn should_clear_flag(accept: &Option<String>, changed: bool) -> bool {
 pub async fn update_title(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
     Form(form): Form<TitleEditForm>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(crate::middleware::auth::Role::Librarian)?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     if form.title.trim().is_empty() {
         return Err(AppError::BadRequest(
-            rust_i18n::t!("error.title.required").to_string(),
+            rust_i18n::t!("error.title.required", locale = loc).to_string(),
         ));
     }
 
     let old_title = TitleModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     let trimmed_title = form.title.trim();
     let subtitle = non_empty(&form.subtitle);
@@ -593,10 +611,14 @@ pub async fn update_title(
 
     let genre_name = GenreModel::find_name_by_id(pool, updated.genre_id).await?;
     let has_code = updated.isbn.is_some() || updated.issn.is_some() || updated.upc.is_some();
-    let mut html = metadata_display_html(&updated, &genre_name, &session, has_code);
+    let mut html = metadata_display_html(&updated, &genre_name, &session, has_code, loc);
 
     // Append success feedback as OOB swap
-    let feedback = feedback_html_pub("success", &rust_i18n::t!("metadata.save_changes"), "");
+    let feedback = feedback_html_pub(
+        "success",
+        &rust_i18n::t!("metadata.save_changes", locale = loc),
+        "",
+    );
     html.push_str(&format!(
         r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
     ));
@@ -610,14 +632,16 @@ pub async fn update_title(
 pub async fn redownload_metadata(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(crate::middleware::auth::Role::Librarian)?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     let title = TitleModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     // Determine code and code_type
     let (code, code_type) = if let Some(isbn) = &title.isbn {
@@ -663,9 +687,12 @@ pub async fn redownload_metadata(
         None => {
             let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
             let has_code = true;
-            let mut html = metadata_display_html(&title, &genre_name, &session, has_code);
-            let feedback =
-                feedback_html_pub("error", &rust_i18n::t!("metadata.redownload_failed"), "");
+            let mut html = metadata_display_html(&title, &genre_name, &session, has_code, loc);
+            let feedback = feedback_html_pub(
+                "error",
+                &rust_i18n::t!("metadata.redownload_failed", locale = loc),
+                "",
+            );
             html.push_str(&format!(
                 r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
             ));
@@ -680,8 +707,12 @@ pub async fn redownload_metadata(
         let updated = apply_metadata_to_title(pool, &state, &title, &metadata).await?;
         let genre_name = GenreModel::find_name_by_id(pool, updated.genre_id).await?;
         let has_code = true;
-        let mut html = metadata_display_html(&updated, &genre_name, &session, has_code);
-        let feedback = feedback_html_pub("success", &rust_i18n::t!("metadata.all_updated"), "");
+        let mut html = metadata_display_html(&updated, &genre_name, &session, has_code, loc);
+        let feedback = feedback_html_pub(
+            "success",
+            &rust_i18n::t!("metadata.all_updated", locale = loc),
+            "",
+        );
         html.push_str(&format!(
             r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
         ));
@@ -699,8 +730,12 @@ pub async fn redownload_metadata(
     if conflicts.is_empty() && auto_updates.is_empty() {
         // No actual changes
         let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
-        let mut html = metadata_display_html(&title, &genre_name, &session, true);
-        let feedback = feedback_html_pub("info", &rust_i18n::t!("metadata.no_changes"), "");
+        let mut html = metadata_display_html(&title, &genre_name, &session, true, loc);
+        let feedback = feedback_html_pub(
+            "info",
+            &rust_i18n::t!("metadata.no_changes", locale = loc),
+            "",
+        );
         html.push_str(&format!(
             r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
         ));
@@ -732,14 +767,14 @@ pub async fn redownload_metadata(
         new_issue_number: metadata.issue_number.clone().unwrap_or_default(),
         new_dewey_code: metadata.dewey_code.clone().unwrap_or_default(),
         new_cover_url: metadata.cover_url.clone().unwrap_or_default(),
-        label_confirm_title: rust_i18n::t!("metadata.confirm_title").to_string(),
-        label_current: rust_i18n::t!("metadata.current_value").to_string(),
-        label_new: rust_i18n::t!("metadata.new_value").to_string(),
-        label_apply: rust_i18n::t!("metadata.apply_changes").to_string(),
-        label_cancel: rust_i18n::t!("metadata.cancel").to_string(),
-        label_auto_updated: rust_i18n::t!("metadata.auto_updated").to_string(),
-        label_field: rust_i18n::t!("metadata.field_label").to_string(),
-        label_accept_cover: rust_i18n::t!("metadata.accept_cover").to_string(),
+        label_confirm_title: rust_i18n::t!("metadata.confirm_title", locale = loc).to_string(),
+        label_current: rust_i18n::t!("metadata.current_value", locale = loc).to_string(),
+        label_new: rust_i18n::t!("metadata.new_value", locale = loc).to_string(),
+        label_apply: rust_i18n::t!("metadata.apply_changes", locale = loc).to_string(),
+        label_cancel: rust_i18n::t!("metadata.cancel", locale = loc).to_string(),
+        label_auto_updated: rust_i18n::t!("metadata.auto_updated", locale = loc).to_string(),
+        label_field: rust_i18n::t!("metadata.field_label", locale = loc).to_string(),
+        label_accept_cover: rust_i18n::t!("metadata.accept_cover", locale = loc).to_string(),
     };
 
     match confirm.render() {
@@ -811,15 +846,17 @@ pub struct MetadataConfirmForm {
 pub async fn confirm_metadata(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
     Form(form): Form<MetadataConfirmForm>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(crate::middleware::auth::Role::Librarian)?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     let title = TitleModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     let mut manually_edited: std::collections::HashSet<String> =
         title.parsed_manually_edited_fields().into_iter().collect();
@@ -1103,9 +1140,10 @@ pub async fn confirm_metadata(
     let updated = TitleModel::find_by_id(pool, id).await?.unwrap_or(updated);
     let genre_name = GenreModel::find_name_by_id(pool, updated.genre_id).await?;
     let has_code = updated.isbn.is_some() || updated.issn.is_some() || updated.upc.is_some();
-    let mut html = metadata_display_html(&updated, &genre_name, &session, has_code);
+    let mut html = metadata_display_html(&updated, &genre_name, &session, has_code, loc);
     let message = rust_i18n::t!(
         "metadata.update_success",
+        locale = loc,
         updated = updated_count,
         kept = kept_count
     )
@@ -1321,6 +1359,8 @@ mod tests {
             similar_titles: vec![],
             label_similar_titles: "Similar titles".to_string(),
             label_dewey_code: "Dewey code".to_string(),
+            current_url: "/title/1".to_string(),
+            lang_toggle_aria: "Change language".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(
@@ -1419,6 +1459,8 @@ mod tests {
             similar_titles: similar,
             label_similar_titles: "Similar titles".to_string(),
             label_dewey_code: "Dewey code".to_string(),
+            current_url: "/title/1".to_string(),
+            lang_toggle_aria: "Change language".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(

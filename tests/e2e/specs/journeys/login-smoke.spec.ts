@@ -27,7 +27,7 @@ test.describe("Login/Logout & Epic 1 Smoke Test (Story 1-9)", () => {
     // Fill credentials and submit
     await usernameInput.fill("admin");
     await passwordInput.fill("admin");
-    await page.locator('button[type="submit"]').click();
+    await page.locator("#login-submit").click();
 
     // Verify redirect to catalog
     await expect(page).toHaveURL(/\/catalog/, { timeout: 5000 });
@@ -53,7 +53,7 @@ test.describe("Login/Logout & Epic 1 Smoke Test (Story 1-9)", () => {
 
     await page.locator("#username").fill("wrong_user");
     await page.locator("#password").fill("wrong_pass");
-    await page.locator('button[type="submit"]').click();
+    await page.locator("#login-submit").click();
 
     // Should stay on login page with error
     await expect(page).toHaveURL(/\/login/);
@@ -69,7 +69,7 @@ test.describe("Login/Logout & Epic 1 Smoke Test (Story 1-9)", () => {
     await page.goto("/login");
     await page.locator("#username").fill("admin");
     await page.locator("#password").fill("admin");
-    await page.locator('button[type="submit"]').click();
+    await page.locator("#login-submit").click();
     await expect(page).toHaveURL(/\/catalog/, { timeout: 5000 });
 
     // Click logout

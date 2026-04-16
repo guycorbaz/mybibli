@@ -1,3 +1,18 @@
+/// Return `/path` or `/path?query` from an `axum::http::Uri`, stripping the
+/// scheme, host, and fragment. Used to populate the `current_url` hidden
+/// field on the language-toggle form (story 7-3 AC 8) so clicking FR/EN
+/// returns the user to the exact same path + query.
+///
+/// Pass `OriginalUri` (not the plain `Uri` extractor) — in nested routers
+/// the plain `Uri` returns the post-nest sub-path, while `OriginalUri`
+/// preserves the full request path.
+pub fn current_url(uri: &axum::http::Uri) -> String {
+    match uri.query() {
+        Some(q) if !q.is_empty() => format!("{}?{}", uri.path(), q),
+        _ => uri.path().to_string(),
+    }
+}
+
 /// Percent-encode a string for use in URL query parameter values.
 pub fn url_encode(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
@@ -26,6 +41,30 @@ pub fn html_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_current_url_path_only() {
+        let uri: axum::http::Uri = "/catalog".parse().unwrap();
+        assert_eq!(current_url(&uri), "/catalog");
+    }
+
+    #[test]
+    fn test_current_url_with_query() {
+        let uri: axum::http::Uri = "/catalog?q=tintin&sort=title".parse().unwrap();
+        assert_eq!(current_url(&uri), "/catalog?q=tintin&sort=title");
+    }
+
+    #[test]
+    fn test_current_url_root() {
+        let uri: axum::http::Uri = "/".parse().unwrap();
+        assert_eq!(current_url(&uri), "/");
+    }
+
+    #[test]
+    fn test_current_url_empty_query_drops_question_mark() {
+        let uri: axum::http::Uri = "/foo".parse().unwrap();
+        assert_eq!(current_url(&uri), "/foo");
+    }
 
     #[test]
     fn test_url_encode_simple() {

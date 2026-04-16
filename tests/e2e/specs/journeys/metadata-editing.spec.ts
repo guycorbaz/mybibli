@@ -52,9 +52,10 @@ test.describe("Metadata Editing & Re-Download (Story 3-5)", () => {
         if (!val) await pageCount.fill("0");
       }
 
-      // Click Save
-      const saveButton = page.locator('button[type="submit"]');
-      await saveButton.click();
+      // Click Save — scope to the edit form via its stable ID (the nav bar
+      // has its own language-toggle submit buttons since story 7-3, and the
+      // title detail page can have other forms rendered after the metadata).
+      await page.locator("#edit-title-submit").click();
 
       // Verify the updated publisher appears in the metadata display
       await expect(page.locator("#title-metadata")).toContainText(

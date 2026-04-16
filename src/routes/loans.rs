@@ -1,5 +1,6 @@
 use askama::Template;
-use axum::extract::State;
+use axum::Extension;
+use axum::extract::{OriginalUri, State};
 use axum::response::{Html, IntoResponse};
 use serde::Deserialize;
 
@@ -7,10 +8,12 @@ use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest};
+use crate::middleware::locale::Locale;
 use crate::models::PaginatedList;
 use crate::models::loan::{LoanModel, LoanWithDetails};
 use crate::models::volume::VolumeModel;
 use crate::services::loans::LoanService;
+use crate::utils::current_url;
 
 // ─── List page ──────────────────────────────────────────
 
@@ -67,18 +70,22 @@ pub struct LoansTemplate {
     pub current_dir: String,
     pub loans: PaginatedList<LoanWithDetails>,
     pub highlight_loan_id: Option<u64>,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn loans_page(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     HxRequest(_is_htmx): HxRequest,
-    uri: axum::http::Uri,
     axum::extract::Query(params): axum::extract::Query<LoanListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     // AC #2: preserve `next` so post-login lands back on /loans.
     session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     let loans = LoanModel::list_active(pool, params.page, &params.sort, &params.dir).await?;
     let threshold = state.settings.read().unwrap().overdue_threshold_days;
@@ -88,44 +95,46 @@ pub async fn loans_page(
     let current_dir = loans.dir.clone().unwrap_or_else(|| "desc".to_string());
 
     let template = LoansTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "loans",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
         session_timeout_secs: state.session_timeout_secs(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-        nav_locations: rust_i18n::t!("nav.locations").to_string(),
-        nav_series: rust_i18n::t!("nav.series").to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
-        list_title: rust_i18n::t!("loan.list_title").to_string(),
-        new_loan_label: rust_i18n::t!("loan.new").to_string(),
-        volume_label_label: rust_i18n::t!("loan.volume_label").to_string(),
-        borrower_label: rust_i18n::t!("loan.borrower").to_string(),
-        borrower_search_label: rust_i18n::t!("loan.borrower_search").to_string(),
-        register_label: rust_i18n::t!("loan.register").to_string(),
-        col_borrower: rust_i18n::t!("loan.col_borrower").to_string(),
-        col_volume: rust_i18n::t!("loan.col_volume").to_string(),
-        col_title: rust_i18n::t!("loan.col_title").to_string(),
-        col_date: rust_i18n::t!("loan.col_date").to_string(),
-        col_duration: rust_i18n::t!("loan.col_duration").to_string(),
-        days_label: rust_i18n::t!("loan.days").to_string(),
-        scan_placeholder: rust_i18n::t!("loan.scan_placeholder").to_string(),
-        empty_state: rust_i18n::t!("loan.empty_state").to_string(),
-        prev_label: rust_i18n::t!("pagination.previous").to_string(),
-        next_label: rust_i18n::t!("pagination.next").to_string(),
-        return_label: rust_i18n::t!("loan.return").to_string(),
-        overdue_label: rust_i18n::t!("loan.overdue").to_string(),
-        confirm_label: rust_i18n::t!("loan.return_confirm").to_string(),
-        col_action: rust_i18n::t!("loan.col_action").to_string(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
+        list_title: rust_i18n::t!("loan.list_title", locale = loc).to_string(),
+        new_loan_label: rust_i18n::t!("loan.new", locale = loc).to_string(),
+        volume_label_label: rust_i18n::t!("loan.volume_label", locale = loc).to_string(),
+        borrower_label: rust_i18n::t!("loan.borrower", locale = loc).to_string(),
+        borrower_search_label: rust_i18n::t!("loan.borrower_search", locale = loc).to_string(),
+        register_label: rust_i18n::t!("loan.register", locale = loc).to_string(),
+        col_borrower: rust_i18n::t!("loan.col_borrower", locale = loc).to_string(),
+        col_volume: rust_i18n::t!("loan.col_volume", locale = loc).to_string(),
+        col_title: rust_i18n::t!("loan.col_title", locale = loc).to_string(),
+        col_date: rust_i18n::t!("loan.col_date", locale = loc).to_string(),
+        col_duration: rust_i18n::t!("loan.col_duration", locale = loc).to_string(),
+        days_label: rust_i18n::t!("loan.days", locale = loc).to_string(),
+        scan_placeholder: rust_i18n::t!("loan.scan_placeholder", locale = loc).to_string(),
+        empty_state: rust_i18n::t!("loan.empty_state", locale = loc).to_string(),
+        prev_label: rust_i18n::t!("pagination.previous", locale = loc).to_string(),
+        next_label: rust_i18n::t!("pagination.next", locale = loc).to_string(),
+        return_label: rust_i18n::t!("loan.return", locale = loc).to_string(),
+        overdue_label: rust_i18n::t!("loan.overdue", locale = loc).to_string(),
+        confirm_label: rust_i18n::t!("loan.return_confirm", locale = loc).to_string(),
+        col_action: rust_i18n::t!("loan.col_action", locale = loc).to_string(),
         overdue_threshold: threshold as i64,
         current_sort,
         current_dir,
         loans,
         highlight_loan_id: None,
+        current_url: current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
 
     match template.render() {
@@ -145,11 +154,13 @@ pub struct CreateLoanForm {
 pub async fn create_loan(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
     axum::Form(form): axum::Form<CreateLoanForm>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Librarian)?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     // Trim volume label to handle whitespace from form input
     let volume_label = form.volume_label.trim().to_uppercase();
@@ -158,13 +169,13 @@ pub async fn create_loan(
     let volume = match VolumeModel::find_by_label(pool, &volume_label).await? {
         Some(v) => v,
         None if is_htmx => {
-            let message = rust_i18n::t!("loan.volume_not_found").to_string();
+            let message = rust_i18n::t!("loan.volume_not_found", locale = loc).to_string();
             let feedback = crate::routes::catalog::feedback_html_pub("error", &message, "");
             return Ok(Html(feedback).into_response());
         }
         None => {
             return Err(AppError::BadRequest(
-                rust_i18n::t!("loan.volume_not_found").to_string(),
+                rust_i18n::t!("loan.volume_not_found", locale = loc).to_string(),
             ));
         }
     };
@@ -182,6 +193,7 @@ pub async fn create_loan(
 
             let message = rust_i18n::t!(
                 "loan.created",
+                locale = loc,
                 label = escaped_label,
                 borrower = escaped_borrower
             )
@@ -211,17 +223,23 @@ pub async fn create_loan(
 pub async fn return_loan_handler(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
     axum::extract::Path(loan_id): axum::extract::Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Librarian)?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     let (label, path) = LoanService::return_loan(pool, loan_id).await?;
 
     let message = match path {
-        Some(ref p) => rust_i18n::t!("loan.returned", label = label, path = p).to_string(),
-        None => rust_i18n::t!("loan.returned_no_location", label = label).to_string(),
+        Some(ref p) => {
+            rust_i18n::t!("loan.returned", locale = loc, label = label, path = p).to_string()
+        }
+        None => {
+            rust_i18n::t!("loan.returned_no_location", locale = loc, label = label).to_string()
+        }
     };
 
     if is_htmx {
@@ -246,19 +264,21 @@ pub struct ScanQuery {
 pub async fn scan_on_loans(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     HxRequest(_is_htmx): HxRequest,
-    uri: axum::http::Uri,
     axum::extract::Query(params): axum::extract::Query<ScanQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     // Strip query string from `next` — no point replaying a failed scan after login,
     // and the user-supplied `?code=` shouldn't be reflected into the login form.
     session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
+    let loc = locale.0;
     let code = params.code.trim().to_uppercase();
 
     // Check if V-code format
     if !crate::services::volume::VolumeService::validate_vcode(&code) {
-        let message = rust_i18n::t!("feedback.vcode_invalid").to_string();
+        let message = rust_i18n::t!("feedback.vcode_invalid", locale = loc).to_string();
         return Ok(Html(crate::routes::catalog::feedback_html_pub(
             "warning", &message, "",
         ))
@@ -268,7 +288,7 @@ pub async fn scan_on_loans(
     // Check if volume exists
     let volume = VolumeModel::find_by_label(pool, &code).await?;
     if volume.is_none() {
-        let message = rust_i18n::t!("loan.volume_not_found").to_string();
+        let message = rust_i18n::t!("loan.volume_not_found", locale = loc).to_string();
         return Ok(Html(crate::routes::catalog::feedback_html_pub(
             "warning", &message, "",
         ))
@@ -279,11 +299,11 @@ pub async fn scan_on_loans(
     match LoanModel::find_active_by_volume_label(pool, &code).await? {
         Some(loan_detail) => {
             // Return highlighted loan row
-            let row_html = loan_row_html(&loan_detail, true);
+            let row_html = loan_row_html(&loan_detail, true, loc);
             Ok(Html(row_html).into_response())
         }
         None => {
-            let message = rust_i18n::t!("loan.not_on_loan").to_string();
+            let message = rust_i18n::t!("loan.not_on_loan", locale = loc).to_string();
             Ok(Html(crate::routes::catalog::feedback_html_pub(
                 "info", &message, "",
             ))
@@ -293,7 +313,7 @@ pub async fn scan_on_loans(
 }
 
 /// Render a loan match result card (for scan-to-find on /loans page).
-fn loan_row_html(loan: &LoanWithDetails, highlight: bool) -> String {
+fn loan_row_html(loan: &LoanWithDetails, highlight: bool, loc: &str) -> String {
     let bg = if highlight {
         "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-400"
     } else {
@@ -303,9 +323,9 @@ fn loan_row_html(loan: &LoanWithDetails, highlight: bool) -> String {
     let escaped_label = crate::utils::html_escape(&loan.volume_label);
     let escaped_title = crate::utils::html_escape(&loan.title_name);
     let date = loan.loaned_at.format("%Y-%m-%d").to_string();
-    let days = rust_i18n::t!("loan.days").to_string();
-    let return_label = rust_i18n::t!("loan.return").to_string();
-    let confirm_label = rust_i18n::t!("loan.return_confirm").to_string();
+    let days = rust_i18n::t!("loan.days", locale = loc).to_string();
+    let return_label = rust_i18n::t!("loan.return", locale = loc).to_string();
+    let confirm_label = rust_i18n::t!("loan.return_confirm", locale = loc).to_string();
 
     format!(
         r#"<div class="p-3 rounded-md border {bg}" id="scan-loan-{id}">
@@ -377,7 +397,7 @@ mod tests {
                 .unwrap(),
             duration_days: 3,
         };
-        let html = loan_row_html(&loan, true);
+        let html = loan_row_html(&loan, true, "en");
         assert!(html.contains("bg-yellow-50"));
         assert!(html.contains("border-yellow-400"));
         assert!(html.contains("Jean"));
@@ -401,7 +421,7 @@ mod tests {
                 .unwrap(),
             duration_days: 0,
         };
-        let html = loan_row_html(&loan, false);
+        let html = loan_row_html(&loan, false, "en");
         assert!(!html.contains("bg-yellow-50"));
         assert!(html.contains("bg-stone-50"));
         assert!(html.contains("Marie"));
@@ -422,7 +442,7 @@ mod tests {
                 .unwrap(),
             duration_days: 1,
         };
-        let html = loan_row_html(&loan, false);
+        let html = loan_row_html(&loan, false, "en");
         assert!(!html.contains("<script>"));
         assert!(html.contains("&amp;"));
     }

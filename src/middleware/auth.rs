@@ -38,6 +38,9 @@ pub struct Session {
     pub token: Option<String>,
     pub user_id: Option<u64>,
     pub role: Role,
+    /// Stored per-user UI language (`"fr"` / `"en"`). `None` for anonymous users
+    /// and for authenticated users who have not clicked the language toggle.
+    pub preferred_language: Option<String>,
 }
 
 impl Session {
@@ -46,6 +49,7 @@ impl Session {
             token: None,
             user_id: None,
             role: Role::Anonymous,
+            preferred_language: None,
         }
     }
 
@@ -116,6 +120,7 @@ impl FromRequestParts<crate::AppState> for Session {
                     token: Some(token.to_string()),
                     user_id: row.user_id,
                     role: Role::from_db(&row.role),
+                    preferred_language: row.preferred_language,
                 })
             }
             _ => Ok(Session::anonymous()),
@@ -153,6 +158,7 @@ mod tests {
             token: Some("test".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            preferred_language: None,
         };
         assert!(session.require_role(Role::Librarian).is_ok());
     }
@@ -172,6 +178,7 @@ mod tests {
             token: Some("t".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            preferred_language: None,
         };
         match session.require_role(Role::Admin) {
             Err(AppError::Forbidden) => {}
@@ -196,6 +203,7 @@ mod tests {
             token: Some("t".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            preferred_language: None,
         };
         match session.require_role_with_return(Role::Admin, "/admin") {
             Err(AppError::Forbidden) => {}
@@ -214,6 +222,7 @@ mod tests {
                 token: Some("t".to_string()),
                 user_id: Some(1),
                 role,
+                preferred_language: None,
             }
         }
     }
@@ -279,6 +288,7 @@ mod tests {
             user_id: Some(1),
             role: row_role.to_string(),
             last_activity: now - chrono::Duration::seconds(last_activity_offset_secs),
+            preferred_language: None,
         };
         if SessionModel::is_expired(row.last_activity, now, timeout_secs) {
             Session::anonymous()
@@ -287,6 +297,7 @@ mod tests {
                 token: Some(row.token),
                 user_id: row.user_id,
                 role: Role::from_db(&row.role),
+                preferred_language: row.preferred_language,
             }
         }
     }
@@ -318,6 +329,7 @@ mod tests {
             token: Some("test".to_string()),
             user_id: Some(1),
             role: Role::Admin,
+            preferred_language: None,
         };
         assert!(session.require_role(Role::Librarian).is_ok());
     }

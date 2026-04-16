@@ -30,7 +30,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("summary").filter({ hasText: /add root/i }).click();
     await page.locator("#new-name").fill("LO-TestMaison");
     await page.locator("#new-lcode").fill("L5001");
-    await page.locator('button[type="submit"]').last().click();
+    await page.locator("#add-root-submit").click();
 
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
     await expect(page.locator("text=LO-TestMaison")).toBeVisible();
@@ -44,7 +44,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("summary").filter({ hasText: /add root/i }).click();
     await page.locator("#new-name").fill("LO-ParentLoc");
     await page.locator("#new-lcode").fill("L5002");
-    await page.locator('button[type="submit"]').last().click();
+    await page.locator("#add-root-submit").click();
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
     await expect(page.locator("text=LO-ParentLoc")).toBeVisible();
 
@@ -59,7 +59,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("summary").filter({ hasText: /add root/i }).click();
     await page.locator("#new-name").fill("LO-ChildLoc");
     await page.locator("#new-lcode").fill("L5003");
-    await page.locator('button[type="submit"]').last().click();
+    await page.locator("#add-root-submit").click();
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
     await expect(page.locator("text=LO-ChildLoc")).toBeVisible();
 
@@ -71,7 +71,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
 
     const parentSelect = page.locator("#edit-parent");
     await parentSelect.selectOption(parentId!);
-    await page.locator('button[type="submit"]').click();
+    await page.locator("#edit-location-submit").click();
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
 
     // Both parent and child should be visible in the tree
@@ -87,7 +87,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("summary").filter({ hasText: /add root/i }).click();
     await page.locator("#new-name").fill("LO-EditTest");
     await page.locator("#new-lcode").fill("L5004");
-    await page.locator('button[type="submit"]').last().click();
+    await page.locator("#add-root-submit").click();
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
 
     // Click edit on the specific location
@@ -114,7 +114,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
       }
     }
 
-    await page.locator('button[type="submit"]').click();
+    await page.locator("#edit-location-submit").click();
 
     // Should redirect back to locations
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
@@ -129,7 +129,7 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await page.locator("summary").filter({ hasText: /add root/i }).click();
     await page.locator("#new-name").fill("LO-ToDelete");
     await page.locator("#new-lcode").fill("L5005");
-    await page.locator('button[type="submit"]').last().click();
+    await page.locator("#add-root-submit").click();
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
     await expect(page.locator("text=LO-ToDelete")).toBeVisible();
 

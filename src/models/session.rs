@@ -6,6 +6,10 @@ pub struct SessionRow {
     pub user_id: Option<u64>,
     pub role: String,
     pub last_activity: chrono::DateTime<chrono::Utc>,
+    /// Stored `users.preferred_language` (`'fr'`/`'en'`). `None` when the user
+    /// has not picked a language — locale resolution then falls through to the
+    /// cookie / `Accept-Language` / default chain.
+    pub preferred_language: Option<String>,
 }
 
 pub struct SessionModel;
@@ -21,7 +25,11 @@ impl SessionModel {
     ) -> Result<Option<SessionRow>, AppError> {
         let row = sqlx::query_as!(
             SessionRow,
-            r#"SELECT s.token, s.user_id, u.role as `role: String`, s.last_activity
+            r#"SELECT s.token,
+                      s.user_id,
+                      u.role as `role: String`,
+                      s.last_activity,
+                      u.preferred_language as `preferred_language?: String`
                FROM sessions s
                JOIN users u ON s.user_id = u.id
                WHERE s.token = ?

@@ -222,41 +222,51 @@ pub struct CatalogTemplate {
     pub guide_message: String,
     pub audio_enable: String,
     pub audio_disable: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 impl CatalogTemplate {
-    fn new(session: &Session, guide_message: &str, session_timeout_secs: u64) -> Self {
+    fn new(
+        session: &Session,
+        guide_message: &str,
+        session_timeout_secs: u64,
+        loc: &str,
+        current_url_value: String,
+    ) -> Self {
         CatalogTemplate {
-            lang: rust_i18n::locale().to_string(),
+            lang: loc.to_string(),
             role: session.role.to_string(),
             current_page: "catalog",
-            skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+            skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
             session_timeout_secs,
-            nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-            nav_loans: rust_i18n::t!("nav.loans").to_string(),
-            nav_locations: rust_i18n::t!("nav.locations").to_string(),
-            nav_series: rust_i18n::t!("nav.series").to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-            nav_admin: rust_i18n::t!("nav.admin").to_string(),
-            nav_login: rust_i18n::t!("nav.login").to_string(),
-            nav_logout: rust_i18n::t!("nav.logout").to_string(),
-            catalog_title: rust_i18n::t!("catalog.title").to_string(),
-            scan_label: rust_i18n::t!("catalog.scan_label").to_string(),
-            scan_placeholder: rust_i18n::t!("catalog.scan_placeholder").to_string(),
-            isbn_error: rust_i18n::t!("feedback.isbn_invalid").to_string(),
-            vcode_error: rust_i18n::t!("feedback.vcode_invalid").to_string(),
-            new_title_label: rust_i18n::t!("catalog.new_title_button").to_string(),
+            nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+            nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+            nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+            nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+            nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+            nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+            nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+            nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
+            catalog_title: rust_i18n::t!("catalog.title", locale = loc).to_string(),
+            scan_label: rust_i18n::t!("catalog.scan_label", locale = loc).to_string(),
+            scan_placeholder: rust_i18n::t!("catalog.scan_placeholder", locale = loc).to_string(),
+            isbn_error: rust_i18n::t!("feedback.isbn_invalid", locale = loc).to_string(),
+            vcode_error: rust_i18n::t!("feedback.vcode_invalid", locale = loc).to_string(),
+            new_title_label: rust_i18n::t!("catalog.new_title_button", locale = loc).to_string(),
             guide_message: guide_message.to_string(),
-            audio_enable: rust_i18n::t!("audio.enable").to_string(),
-            audio_disable: rust_i18n::t!("audio.disable").to_string(),
+            audio_enable: rust_i18n::t!("audio.enable", locale = loc).to_string(),
+            audio_disable: rust_i18n::t!("audio.disable", locale = loc).to_string(),
+            current_url: current_url_value,
+            lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
         }
     }
 }
 
 /// Compute guide message from session state.
-async fn compute_guide_message(pool: &crate::db::DbPool, session: &Session) -> String {
+async fn compute_guide_message(pool: &crate::db::DbPool, session: &Session, loc: &str) -> String {
     let Some(token) = &session.token else {
-        return rust_i18n::t!("guide.initial").to_string();
+        return rust_i18n::t!("guide.initial", locale = loc).to_string();
     };
 
     // Check active location (batch mode)
@@ -266,31 +276,40 @@ async fn compute_guide_message(pool: &crate::db::DbPool, session: &Session) -> S
         let path = crate::models::location::LocationModel::get_path(pool, loc_id)
             .await
             .unwrap_or_default();
-        return rust_i18n::t!("guide.batch_active", path = &path).to_string();
+        return rust_i18n::t!("guide.batch_active", locale = loc, path = &path).to_string();
     }
 
     // Check last volume label
     if let Ok(Some(vol_label)) = SessionModel::get_last_volume_label(pool, token).await {
-        return rust_i18n::t!("guide.volume_ready", label = &vol_label).to_string();
+        return rust_i18n::t!("guide.volume_ready", locale = loc, label = &vol_label).to_string();
     }
 
     // Check current title
     if let Ok(Some(title_id)) = SessionModel::get_current_title_id(pool, token).await
         && let Ok(Some(title)) = crate::models::title::TitleModel::find_by_id(pool, title_id).await
     {
-        return rust_i18n::t!("guide.title_active", title = &title.title).to_string();
+        return rust_i18n::t!("guide.title_active", locale = loc, title = &title.title).to_string();
     }
 
-    rust_i18n::t!("guide.initial").to_string()
+    rust_i18n::t!("guide.initial", locale = loc).to_string()
 }
 
 pub async fn catalog_page(
     session: Session,
+    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
+    axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
     // AC #1: catalog browsing is Anonymous-accessible. Template-layer gates edit affordances.
-    let guide = compute_guide_message(&state.pool, &session).await;
-    let template = CatalogTemplate::new(&session, &guide, state.session_timeout_secs());
+    let loc = locale.0;
+    let guide = compute_guide_message(&state.pool, &session, loc).await;
+    let template = CatalogTemplate::new(
+        &session,
+        &guide,
+        state.session_timeout_secs(),
+        loc,
+        crate::utils::current_url(&uri),
+    );
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
         Err(e) => {
@@ -385,17 +404,20 @@ fn detect_code_type(code: &str) -> CodeDetection {
 
 pub async fn handle_scan(
     session: Session,
+    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
+    axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     HxRequest(is_htmx): HxRequest,
     jar: CookieJar,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<ScanForm>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Librarian)?;
+    let loc = locale.0;
 
     let code = form.code.trim().to_string();
     if code.is_empty() {
         return Err(AppError::BadRequest(
-            rust_i18n::t!("error.bad_request").to_string(),
+            rust_i18n::t!("error.bad_request", locale = loc).to_string(),
         ));
     }
 
@@ -972,7 +994,20 @@ pub async fn handle_scan(
             }
         }
     } else {
-        let template = CatalogTemplate::new(&session, "", state.session_timeout_secs());
+        // Non-HTMX fallback: the request path here is `POST /catalog/scan`,
+        // which is not a reachable GET target — echoing it into the toggle's
+        // `next` field would produce a `/language` → 303 → 405. Hardcode
+        // `/catalog` so the toggle always returns to the main catalog page.
+        let template = CatalogTemplate::new(
+            &session,
+            "",
+            state.session_timeout_secs(),
+            loc,
+            "/catalog".to_string(),
+        );
+        // Silence unused — `uri` is kept on the handler signature for
+        // future non-fallback branches that may need it.
+        let _ = &uri;
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),
             Err(e) => {
@@ -1223,37 +1258,42 @@ struct TitleFormTemplate {
 
 pub async fn title_form_page(
     session: Session,
+    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
+    axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     HxRequest(is_htmx): HxRequest,
     State(state): State<AppState>,
-    uri: axum::http::Uri,
 ) -> Result<impl IntoResponse, AppError> {
+    // Use the pre-nest original URI for BOTH the role-gate return path and
+    // the toggle's `current_url` so the two stay aligned under any future
+    // router nesting.
     session.require_role_with_return(Role::Librarian, uri.path())?;
+    let loc = locale.0;
 
     let pool = &state.pool;
     let genres = load_genres(pool).await?;
 
     let template = TitleFormTemplate {
-        form_heading: rust_i18n::t!("title.form.heading").to_string(),
-        label_title: rust_i18n::t!("title.form.title_label").to_string(),
-        label_media_type: rust_i18n::t!("title.form.media_type").to_string(),
-        label_genre: rust_i18n::t!("title.form.genre").to_string(),
-        label_language: rust_i18n::t!("title.form.language").to_string(),
-        label_subtitle: rust_i18n::t!("title.form.subtitle").to_string(),
-        label_publisher: rust_i18n::t!("title.form.publisher").to_string(),
-        label_publication_date: rust_i18n::t!("title.form.publication_date").to_string(),
-        label_isbn: rust_i18n::t!("title.form.isbn").to_string(),
-        label_issn: rust_i18n::t!("title.form.issn").to_string(),
-        label_upc: rust_i18n::t!("title.form.upc").to_string(),
-        label_submit: rust_i18n::t!("title.form.submit").to_string(),
-        label_cancel: rust_i18n::t!("title.form.cancel").to_string(),
-        mt_book: rust_i18n::t!("title.media_types.book").to_string(),
-        mt_bd: rust_i18n::t!("title.media_types.bd").to_string(),
-        mt_cd: rust_i18n::t!("title.media_types.cd").to_string(),
-        mt_dvd: rust_i18n::t!("title.media_types.dvd").to_string(),
-        mt_magazine: rust_i18n::t!("title.media_types.magazine").to_string(),
-        mt_report: rust_i18n::t!("title.media_types.report").to_string(),
+        form_heading: rust_i18n::t!("title.form.heading", locale = loc).to_string(),
+        label_title: rust_i18n::t!("title.form.title_label", locale = loc).to_string(),
+        label_media_type: rust_i18n::t!("title.form.media_type", locale = loc).to_string(),
+        label_genre: rust_i18n::t!("title.form.genre", locale = loc).to_string(),
+        label_language: rust_i18n::t!("title.form.language", locale = loc).to_string(),
+        label_subtitle: rust_i18n::t!("title.form.subtitle", locale = loc).to_string(),
+        label_publisher: rust_i18n::t!("title.form.publisher", locale = loc).to_string(),
+        label_publication_date: rust_i18n::t!("title.form.publication_date", locale = loc).to_string(),
+        label_isbn: rust_i18n::t!("title.form.isbn", locale = loc).to_string(),
+        label_issn: rust_i18n::t!("title.form.issn", locale = loc).to_string(),
+        label_upc: rust_i18n::t!("title.form.upc", locale = loc).to_string(),
+        label_submit: rust_i18n::t!("title.form.submit", locale = loc).to_string(),
+        label_cancel: rust_i18n::t!("title.form.cancel", locale = loc).to_string(),
+        mt_book: rust_i18n::t!("title.media_types.book", locale = loc).to_string(),
+        mt_bd: rust_i18n::t!("title.media_types.bd", locale = loc).to_string(),
+        mt_cd: rust_i18n::t!("title.media_types.cd", locale = loc).to_string(),
+        mt_dvd: rust_i18n::t!("title.media_types.dvd", locale = loc).to_string(),
+        mt_magazine: rust_i18n::t!("title.media_types.magazine", locale = loc).to_string(),
+        mt_report: rust_i18n::t!("title.media_types.report", locale = loc).to_string(),
         genres,
-        required_error: rust_i18n::t!("validation.required").to_string(),
+        required_error: rust_i18n::t!("validation.required", locale = loc).to_string(),
     };
 
     match template.render() {
@@ -1262,7 +1302,13 @@ pub async fn title_form_page(
                 Ok(Html(html).into_response())
             } else {
                 // Non-HTMX: wrap in full catalog page
-                let catalog = CatalogTemplate::new(&session, "", state.session_timeout_secs());
+                let catalog = CatalogTemplate::new(
+                    &session,
+                    "",
+                    state.session_timeout_secs(),
+                    loc,
+                    crate::utils::current_url(&uri),
+                );
                 match catalog.render() {
                     Ok(page_html) => Ok(Html(page_html).into_response()),
                     Err(e) => {
@@ -1281,11 +1327,13 @@ pub async fn title_form_page(
 
 pub async fn create_title(
     session: Session,
+    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
     HxRequest(is_htmx): HxRequest,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<TitleForm>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Librarian)?;
+    let loc = locale.0;
 
     let pool = &state.pool;
 
@@ -1301,8 +1349,9 @@ pub async fn create_title(
             }
 
             if is_htmx {
-                let message = rust_i18n::t!("feedback.title_created").to_string();
-                let suggestion = rust_i18n::t!("feedback.title_created_suggestion").to_string();
+                let message = rust_i18n::t!("feedback.title_created", locale = loc).to_string();
+                let suggestion =
+                    rust_i18n::t!("feedback.title_created_suggestion", locale = loc).to_string();
 
                 let resp = HtmxResponse {
                     main: feedback_html("success", &message, &suggestion),
@@ -1326,7 +1375,7 @@ pub async fn create_title(
             tracing::error!(error = %e, "Manual title creation failed");
             let message = match &e {
                 AppError::BadRequest(msg) => msg.clone(),
-                _ => rust_i18n::t!("error.title.creation_failed").to_string(),
+                _ => rust_i18n::t!("error.title.creation_failed", locale = loc).to_string(),
             };
             Ok(Html(feedback_html("error", &message, "")).into_response())
         }
@@ -1820,18 +1869,23 @@ pub struct VolumeDetailTemplate {
     pub location_path: Option<String>,
     pub not_shelved_label: String,
     pub detail_title: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn volume_detail(
     session: Session,
+    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
+    axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     HxRequest(_is_htmx): HxRequest,
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     let pool = &state.pool;
+    let loc = locale.0;
     let volume = VolumeModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     let title = crate::models::title::TitleModel::find_by_id(pool, volume.title_id)
         .await?
@@ -1856,25 +1910,27 @@ pub async fn volume_detail(
     };
 
     let template = VolumeDetailTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "catalog",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
         session_timeout_secs: state.session_timeout_secs(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-        nav_locations: rust_i18n::t!("nav.locations").to_string(),
-        nav_series: rust_i18n::t!("nav.series").to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
-        detail_title: rust_i18n::t!("volume.detail_title").to_string(),
-        not_shelved_label: rust_i18n::t!("volume.not_shelved").to_string(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
+        detail_title: rust_i18n::t!("volume.detail_title", locale = loc).to_string(),
+        not_shelved_label: rust_i18n::t!("volume.not_shelved", locale = loc).to_string(),
         volume,
         title_name: title,
         condition_name,
         location_path,
+        current_url: crate::utils::current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -1908,43 +1964,49 @@ pub struct VolumeEditTemplate {
     pub condition_label: String,
     pub edition_label: String,
     pub submit_label: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn volume_edit_page(
     session: Session,
+    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
+    axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     State(state): State<AppState>,
-    uri: axum::http::Uri,
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     let volume = VolumeModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
     let states = VolumeModel::find_volume_states(pool).await?;
 
     let template = VolumeEditTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "catalog",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
         session_timeout_secs: state.session_timeout_secs(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-        nav_locations: rust_i18n::t!("nav.locations").to_string(),
-        nav_series: rust_i18n::t!("nav.series").to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
         version: volume.version,
-        edit_title: rust_i18n::t!("volume.edit_title").to_string(),
-        condition_label: rust_i18n::t!("volume.condition_label").to_string(),
-        edition_label: rust_i18n::t!("volume.edition_label").to_string(),
-        submit_label: rust_i18n::t!("volume.submit").to_string(),
+        edit_title: rust_i18n::t!("volume.edit_title", locale = loc).to_string(),
+        condition_label: rust_i18n::t!("volume.condition_label", locale = loc).to_string(),
+        edition_label: rust_i18n::t!("volume.edition_label", locale = loc).to_string(),
+        submit_label: rust_i18n::t!("volume.submit", locale = loc).to_string(),
         volume,
         states,
+        current_url: crate::utils::current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -2165,11 +2227,14 @@ mod tests {
             token: Some("test".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            preferred_language: None,
         };
         let template = CatalogTemplate::new(
             &session,
             "",
             crate::config::AppSettings::default().session_timeout_secs,
+            "en",
+            "/catalog".to_string(),
         );
         let rendered = template.render().unwrap();
         assert!(rendered.contains("scan-field"));
@@ -2185,11 +2250,14 @@ mod tests {
             token: Some("test".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            preferred_language: None,
         };
         let template = CatalogTemplate::new(
             &session,
             "",
             crate::config::AppSettings::default().session_timeout_secs,
+            "en",
+            "/catalog".to_string(),
         );
         let rendered = template.render().unwrap();
         assert!(rendered.contains(r#"aria-current="page""#));
@@ -2229,6 +2297,7 @@ mod tests {
             token: Some("t".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            preferred_language: None,
         };
         assert!(session.token.is_some());
     }

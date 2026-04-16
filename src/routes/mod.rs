@@ -12,6 +12,7 @@ use axum::Router;
 use tower_http::services::ServeDir;
 
 use crate::AppState;
+use crate::middleware::locale::locale_resolve_middleware;
 use crate::middleware::pending_updates::pending_updates_middleware;
 
 pub fn build_router(state: AppState) -> Router {
@@ -80,6 +81,7 @@ pub fn build_router(state: AppState) -> Router {
             "/logout",
             axum::routing::get(auth::logout).post(auth::logout),
         )
+        .route("/language", axum::routing::post(auth::change_language))
         .route(
             "/session/keepalive",
             axum::routing::post(catalog::session_keepalive),
@@ -207,6 +209,14 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
         .nest_service("/covers", ServeDir::new(&state.covers_dir))
+        // Locale middleware runs on every request (before the state-consuming
+        // `.with_state(state)` call) so handlers can read `Extension<Locale>`
+        // without per-route wiring. Registered here after route mounting —
+        // axum applies layers bottom-up, so this wraps the whole router.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            locale_resolve_middleware,
+        ))
         .with_state(state)
 }
 
