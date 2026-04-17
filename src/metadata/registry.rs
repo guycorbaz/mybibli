@@ -44,6 +44,11 @@ impl ProviderRegistry {
     pub fn is_empty(&self) -> bool {
         self.providers.is_empty()
     }
+
+    /// Iterate over all registered providers (story 8-1 — Admin Health tab).
+    pub fn iter(&self) -> impl Iterator<Item = &dyn MetadataProvider> {
+        self.providers.iter().map(|p| p.as_ref())
+    }
 }
 
 #[cfg(test)]

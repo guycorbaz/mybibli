@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod auth;
 pub mod borrowers;
 pub mod catalog;
@@ -211,6 +212,19 @@ pub fn build_router(state: AppState) -> Router {
             "/locations/{id}",
             axum::routing::post(locations::update_location).delete(locations::delete_location),
         )
+        // Admin (story 8-1) — 5-tab shell. Every handler's first line is
+        // `require_role(Role::Admin)?`; librarians → 403, anonymous → 303
+        // → /login?next=%2Fadmin. Routes live at the top level (not under
+        // the catalog sub-router) so they skip `pending_updates_middleware`.
+        .route("/admin", axum::routing::get(admin::admin_page))
+        .route("/admin/health", axum::routing::get(admin::admin_health_panel))
+        .route("/admin/users", axum::routing::get(admin::admin_users_panel))
+        .route(
+            "/admin/reference-data",
+            axum::routing::get(admin::admin_reference_data_panel),
+        )
+        .route("/admin/trash", axum::routing::get(admin::admin_trash_panel))
+        .route("/admin/system", axum::routing::get(admin::admin_system_panel))
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
         .nest_service("/covers", ServeDir::new(&state.covers_dir))

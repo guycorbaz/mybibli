@@ -368,3 +368,36 @@ session:
   expiry_in_minutes: "Your session will expire in %{minutes} min."
   stay_connected: Stay connected
   dismiss_aria: Dismiss
+admin:
+  page_title: Administration
+  tabs_aria: Administration tabs
+  tabs:
+    health: Health
+    users: Users
+    reference_data: Reference data
+    trash: Trash
+    system: System
+  trash:
+    badge_aria: "Trash, %{count} items"
+  health:
+    app_version: Application version
+    db_version: Database version
+    disk_usage: Disk usage
+    disk_usage_format: "%{used} / %{total} used (%{pct}%)"
+    disk_usage_unknown: Unknown
+    counts_heading: Entity counts
+    count_titles: Titles
+    count_volumes: Volumes
+    count_contributors: Contributors
+    count_borrowers: Borrowers
+    count_active_loans: Active loans
+    providers_heading: Metadata providers
+    provider_status_up: Reachable
+    provider_status_down: Unreachable
+    provider_status_unknown: Unknown
+    provider_status_na: n/a
+    last_checked: "Last checked: %{when}"
+    last_checked_never: Never
+  placeholder:
+    coming_in_story: "Coming in story %{story}"
+    trash_preview: "Preview of soft-deleted items — full list and restore UI shipping in story 8-5."

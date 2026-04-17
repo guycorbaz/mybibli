@@ -15,6 +15,8 @@ use mybibli::metadata::registry::ProviderRegistry;
 use mybibli::metadata::tmdb::TmdbProvider;
 use mybibli::middleware::logging;
 use mybibli::routes;
+use mybibli::services::admin_health;
+use mybibli::tasks::provider_health;
 
 use tokio::net::TcpListener;
 
@@ -113,14 +115,30 @@ async fn main() {
     std::fs::create_dir_all(&covers_dir).expect("Failed to create covers directory");
     tracing::info!(covers_dir = %covers_dir.display(), "Covers directory configured");
 
+    // Admin → Health tab (story 8-1): provider-reachability map + MariaDB
+    // version cache. Both start empty; the background ping task below
+    // populates the map asynchronously without blocking admin page loads.
+    let provider_health_map = provider_health::new_provider_health_map();
+    let mariadb_version_cache = admin_health::new_mariadb_version_cache();
+
+    let registry = Arc::new(registry);
+
     // Build application
     let state = AppState {
         pool,
         settings: Arc::new(RwLock::new(app_settings)),
-        http_client,
-        registry: Arc::new(registry),
+        http_client: http_client.clone(),
+        registry: registry.clone(),
         covers_dir,
+        provider_health: provider_health_map.clone(),
+        mariadb_version_cache,
     };
+
+    // Spawn provider-health background task AFTER AppState is built so we
+    // don't borrow fields before they're in place. Pings run on a dedicated
+    // 5-min cadence with a 10 s warm-up delay.
+    provider_health::spawn(http_client, registry, provider_health_map);
+
     let app = routes::build_router(state).layer(logging::trace_layer());
 
     // Start server

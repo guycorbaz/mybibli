@@ -26,6 +26,9 @@ time = "0.3"
 async-trait = "0.1"
 base64 = "0.22"
 percent-encoding = "2"
+# Admin Health tab (story 8-1) — disk-usage via statvfs(2). Linux-only.
+# The `fs` feature is enough; avoids pulling in `sysinfo`'s CPU/memory/network surface.
+nix = { version = "0.29", features = ["fs"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

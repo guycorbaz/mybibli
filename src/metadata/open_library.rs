@@ -197,6 +197,10 @@ impl MetadataProvider for OpenLibraryProvider {
             ..MetadataResult::default()
         }))
     }
+
+    fn health_check_url(&self) -> Option<&str> {
+        Some("https://openlibrary.org/")
+    }
 }
 
 #[cfg(test)]

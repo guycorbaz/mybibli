@@ -553,6 +553,8 @@ mod language_tests {
             http_client: reqwest::Client::new(),
             registry: Arc::new(crate::metadata::registry::ProviderRegistry::new()),
             covers_dir: std::path::PathBuf::from("/tmp"),
+            provider_health: crate::tasks::provider_health::new_provider_health_map(),
+            mariadb_version_cache: crate::services::admin_health::new_mariadb_version_cache(),
         };
         Router::new()
             .route("/language", axum::routing::post(change_language))
@@ -791,6 +793,8 @@ mod language_tests {
             http_client: reqwest::Client::new(),
             registry: Arc::new(crate::metadata::registry::ProviderRegistry::new()),
             covers_dir: std::path::PathBuf::from("/tmp"),
+            provider_health: crate::tasks::provider_health::new_provider_health_map(),
+            mariadb_version_cache: crate::services::admin_health::new_mariadb_version_cache(),
         };
         let app = axum::Router::new()
             .route("/login", axum::routing::post(login))

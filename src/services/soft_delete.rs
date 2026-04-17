@@ -2,7 +2,14 @@ use crate::db::DbPool;
 use crate::error::AppError;
 
 /// Allowed table names for soft-delete operations (whitelist prevents SQL injection).
-const ALLOWED_TABLES: &[&str] = &[
+///
+/// Story 8-1 promoted this from private to `pub` so the Admin → Health tab's
+/// Trash badge can enumerate exactly the same set used by `SoftDeleteService::soft_delete`.
+/// Zero drift between "what can be soft-deleted" and "what counts as trash."
+/// Whitelist extension (loans, genres, volume_states, contributor_roles,
+/// location_node_types) is owned by story 8-5 (Trash view + restore), which
+/// will add matching `deleted_at` column migrations.
+pub const ALLOWED_TABLES: &[&str] = &[
     "titles",
     "volumes",
     "contributors",

@@ -26,6 +26,8 @@ use mybibli::AppState;
 use mybibli::config::AppSettings;
 use mybibli::metadata::registry::ProviderRegistry;
 use mybibli::routes::build_router;
+use mybibli::services::admin_health::new_mariadb_version_cache;
+use mybibli::tasks::provider_health::new_provider_health_map;
 
 fn build_state(pool: MySqlPool) -> AppState {
     AppState {
@@ -34,6 +36,8 @@ fn build_state(pool: MySqlPool) -> AppState {
         http_client: reqwest::Client::new(),
         registry: Arc::new(ProviderRegistry::new()),
         covers_dir: PathBuf::from("/tmp/mybibli-test-covers"),
+        provider_health: new_provider_health_map(),
+        mariadb_version_cache: new_mariadb_version_cache(),
     }
 }
 

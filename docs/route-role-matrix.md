@@ -1,7 +1,7 @@
 # Route Role Matrix
 
 **Status:** authoritative reference for Story 7-1 (anonymous browsing + role gating).
-**Last updated:** 2026-04-15.
+**Last updated:** 2026-04-17.
 
 ## Role model
 
@@ -131,6 +131,19 @@ Columns: `method | path | current_role | target_role | note`. Rows where `curren
 | POST | `/loans` | Librarian | Librarian | — |
 | GET | `/loans/scan` | Librarian | Librarian | — |
 | POST | `/loans/{id}/return` | Librarian | Librarian | — |
+
+### Admin (`src/routes/admin.rs`)
+
+Story 8-1 introduced the `/admin` surface. Every handler's first line is `session.require_role_with_return(Role::Admin, …)?` — Librarian → 403 FeedbackEntry body; Anonymous → 303 → `/login?next=%2Fadmin`. All read-only in 8-1; mutations land in 8-2+.
+
+| method | path                     | current | target | note                                                        |
+|--------|--------------------------|---------|--------|-------------------------------------------------------------|
+| GET    | `/admin`                 | —       | Admin  | New (8-1). 5-tab shell; Librarian → 403, Anonymous → 303 /login. |
+| GET    | `/admin/health`          | —       | Admin  | New (8-1). Health panel fragment (HTMX + direct).                 |
+| GET    | `/admin/users`           | —       | Admin  | New (8-1). Stub panel — story 8-2 fills in.                       |
+| GET    | `/admin/reference-data`  | —       | Admin  | New (8-1). Stub panel — story 8-3 fills in.                       |
+| GET    | `/admin/trash`           | —       | Admin  | New (8-1). Stub panel — story 8-5 fills in.                       |
+| GET    | `/admin/system`          | —       | Admin  | New (8-1). Stub panel — story 8-4 fills in.                       |
 
 ### Static
 

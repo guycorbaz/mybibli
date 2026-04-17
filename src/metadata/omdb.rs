@@ -93,6 +93,10 @@ impl MetadataProvider for OmdbProvider {
 
         parse_omdb_detail(&detail_json)
     }
+
+    fn health_check_url(&self) -> Option<&str> {
+        Some("https://www.omdbapi.com/")
+    }
 }
 
 fn parse_omdb_detail(json: &serde_json::Value) -> Result<Option<MetadataResult>, MetadataError> {

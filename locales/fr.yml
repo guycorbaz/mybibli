@@ -368,3 +368,36 @@ session:
   expiry_in_minutes: "Votre session expirera dans %{minutes} min."
   stay_connected: Rester connecté
   dismiss_aria: Fermer
+admin:
+  page_title: Administration
+  tabs_aria: "Onglets d'administration"
+  tabs:
+    health: "Santé"
+    users: Utilisateurs
+    reference_data: "Données de référence"
+    trash: Corbeille
+    system: "Système"
+  trash:
+    badge_aria: "Corbeille, %{count} éléments"
+  health:
+    app_version: "Version de l'application"
+    db_version: "Version de la base de données"
+    disk_usage: "Espace disque"
+    disk_usage_format: "%{used} / %{total} utilisés (%{pct} %)"
+    disk_usage_unknown: Inconnu
+    counts_heading: "Compteurs d'entités"
+    count_titles: Titres
+    count_volumes: Volumes
+    count_contributors: Contributeurs
+    count_borrowers: Emprunteurs
+    count_active_loans: "Prêts actifs"
+    providers_heading: "Fournisseurs de métadonnées"
+    provider_status_up: Accessible
+    provider_status_down: Inaccessible
+    provider_status_unknown: Inconnu
+    provider_status_na: "n/a"
+    last_checked: "Dernier contrôle : %{when}"
+    last_checked_never: Jamais
+  placeholder:
+    coming_in_story: "À venir dans la story %{story}"
+    trash_preview: "Aperçu des éléments supprimés — liste complète et restauration dans la story 8-5."

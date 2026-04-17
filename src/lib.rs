@@ -20,6 +20,8 @@ use std::sync::{Arc, RwLock};
 use config::AppSettings;
 use db::DbPool;
 use metadata::registry::ProviderRegistry;
+use services::admin_health::MariadbVersionCache;
+use tasks::provider_health::ProviderHealthMap;
 
 rust_i18n::i18n!("locales", fallback = "en");
 
@@ -31,6 +33,11 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub registry: Arc<ProviderRegistry>,
     pub covers_dir: PathBuf,
+    /// Admin → Health tab state (story 8-1). See `tasks::provider_health`
+    /// for the background task that populates the map, and
+    /// `services::admin_health` for the MariaDB version cache.
+    pub provider_health: ProviderHealthMap,
+    pub mariadb_version_cache: MariadbVersionCache,
 }
 
 impl AppState {

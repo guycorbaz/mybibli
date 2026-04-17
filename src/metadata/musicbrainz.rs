@@ -75,6 +75,10 @@ impl MetadataProvider for MusicBrainzProvider {
     fn rate_limiter(&self) -> Option<Arc<RateLimiter>> {
         Some(self.limiter.clone())
     }
+
+    fn health_check_url(&self) -> Option<&str> {
+        Some("https://musicbrainz.org/")
+    }
 }
 
 fn parse_musicbrainz_response(

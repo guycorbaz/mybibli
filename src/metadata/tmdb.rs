@@ -60,6 +60,10 @@ impl MetadataProvider for TmdbProvider {
 
         parse_tmdb_response(&json)
     }
+
+    fn health_check_url(&self) -> Option<&str> {
+        Some("https://www.themoviedb.org/")
+    }
 }
 
 fn parse_tmdb_response(json: &serde_json::Value) -> Result<Option<MetadataResult>, MetadataError> {

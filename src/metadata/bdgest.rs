@@ -30,6 +30,10 @@ impl MetadataProvider for BdgestProvider {
         tracing::info!(isbn = %isbn, "BDGest provider not yet implemented");
         Ok(None)
     }
+
+    fn health_check_url(&self) -> Option<&str> {
+        Some("https://www.bedetheque.com/")
+    }
 }
 
 #[cfg(test)]

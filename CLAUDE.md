@@ -67,13 +67,13 @@ These apply to ALL sessions without exception.
 
 ### Source Layout
 
-- `src/routes/` — HTTP handlers. Thin: extract params, call service, return response.
-- `src/services/` — Business logic. All domain rules live here, never in handlers.
+- `src/routes/` — HTTP handlers. Thin: extract params, call service, return response. `admin.rs` ships the `/admin` page (tabs: health, users, reference_data, trash, system) — admin-only.
+- `src/services/` — Business logic. All domain rules live here, never in handlers. `admin_health.rs` owns Health-tab data builders (entity counts, trash count, MariaDB version cache, disk usage).
 - `src/models/` — Database models. SQL queries, row mapping, `DbPool` parameter.
 - `src/middleware/` — Axum middleware: `auth.rs` (Session extractor), `htmx.rs` (HxRequest + HtmxResponse), `pending_updates.rs` (OOB metadata delivery), `logging.rs`, `csp.rs` (Content-Security-Policy + hardening headers, story 7-4).
 - `src/error/` — `AppError` enum (Internal, NotFound, BadRequest, Conflict, Unauthorized, Database). All errors must use this — no `anyhow` or raw strings.
 - `src/metadata/` — External metadata providers. `MetadataProvider` async trait + BnF implementation.
-- `src/tasks/` — Background tasks (tokio::spawn). `metadata_fetch.rs` for async BnF lookups.
+- `src/tasks/` — Background tasks (tokio::spawn). `metadata_fetch.rs` for async BnF lookups; `provider_health.rs` for 5-min provider-reachability pings (story 8-1).
 - `src/config.rs` — `Config` (env vars) + `AppSettings` (DB settings table, `Arc<RwLock>`).
 - `src/lib.rs` — `AppState { pool: DbPool, settings: Arc<RwLock<AppSettings>> }`.
 
@@ -93,6 +93,7 @@ These apply to ALL sessions without exception.
 - **SQLx offline:** Run `cargo sqlx prepare` after any query change, commit `.sqlx/`.
 - **CSP & hardening headers (story 7-4):** `src/middleware/csp.rs` is wrapped outermost in `routes::build_router` (per AR16: `Logging → Auth → [Handler] → PendingUpdates → CSP`). Strict directive — `script-src 'self'`, `style-src 'self'`, no `unsafe-inline` / no `unsafe-eval`. **Zero inline `<script>`, `<style>`, `style="..."`, `onclick=` etc.** in templates AND in HTML produced from Rust (`feedback_html`, `pending_updates`, `locations` tree, …). All dismiss buttons use `data-action="dismiss-feedback"` (delegated handler in `static/js/mybibli.js`). HTMX trigger filters that need JS evaluation (e.g. `hx-trigger="keydown[key=='Enter']"`) are forbidden — emit a `CustomEvent` from a JS module instead. The `src/templates_audit.rs` `#[test]` walks `templates/` and panics on regressions; pair it with manual greps over `src/` for HTML strings when adding new server-rendered fragments. Toggle observe-only mode with `CSP_REPORT_ONLY=true`.
 - **Modal scanner-guard invariant (story 7-5):** `static/js/scanner-guard.js` watches `dialog[open]` and `[aria-modal="true"]` surfaces via MutationObserver. While any modal is open it captures `keydown` at the document-capture phase and either forwards printable chars / Enter to the modal's focused text input or blocks them — preventing a USB scanner burst from leaking into `#scan-field` (duplicate scan) or activating a modal's default-focused Cancel/Confirm button. New destructive action UX MUST use the UX-DR8 Modal component (Epic 9) so it automatically inherits this protection. New `hx-confirm=` attributes are BLOCKED by `src/templates_audit.rs::hx_confirm_matches_allowlist`; the allowlist is frozen at 5 grandfathered sites and only changes through explicit review.
+- **Admin page tab pattern (story 8-1):** `/admin?tab=<name>` for deep-linking and history; `/admin/<name>` for HTMX panel swap via `hx-get` + `hx-push-url`. Tab resolution is server-side; invalid `?tab=` falls back to `health`. Every Epic-8 story fills in exactly one panel stub — extend `AdminTab` enum + replace the corresponding `admin_<name>_panel.html` fragment. All admin handlers start with `session.require_role_with_return(Role::Admin, "/admin...")?` so Anonymous bounces to `/login?next=%2Fadmin` and Librarian gets a 403 FeedbackEntry body.
 
 ### HTMX OOB Swap Pattern
 
