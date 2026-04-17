@@ -60,6 +60,13 @@ jobs:
       - name: Unit & bin tests
         run: cargo test --lib --bins
 
+      # `cargo sqlx prepare --check` regenerates `.sqlx/` against a live DB to
+      # compare with the committed cache. `#[sqlx::test]` creates throwaway DBs
+      # via admin, so `mybibli_rust_test` itself stays empty — we need to run
+      # the migrations manually here so the SQL macros resolve.
+      - name: Apply migrations to rust-test DB
+        run: sqlx migrate run --source ./migrations
+
       - name: Check SQLx offline metadata
         run: cargo sqlx prepare --check --workspace -- --all-targets
 

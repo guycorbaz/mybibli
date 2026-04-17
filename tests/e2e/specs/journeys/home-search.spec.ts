@@ -96,9 +96,11 @@ test.describe("Home page search", () => {
   }) => {
     await page.goto("/");
 
-    // Pre-click sanity — exactly one <main> and one <nav> on a clean render.
+    // Pre-click sanity — exactly one <header> and one <main>. Can't count
+    // bare <nav> because home.html legitimately has two: the main nav bar
+    // AND `<nav id="pagination">` emitted by `render_pagination_oob`.
+    await expect(page.locator("header")).toHaveCount(1);
     await expect(page.locator("main#main-content")).toHaveCount(1);
-    await expect(page.locator("nav")).toHaveCount(1);
 
     // Click any genre pill. The pills live in a tag area on the home page
     // and carry `hx-get` with `filter=genre:<id>`.
@@ -116,10 +118,10 @@ test.describe("Home page search", () => {
       results.locator("article.title-card, .text-center").first(),
     ).toBeVisible({ timeout: 10000 });
 
-    // THE REGRESSION ASSERTION: still exactly one <main> and one <nav>.
+    // THE REGRESSION ASSERTION: still exactly one <header> and one <main>.
     // With the bug, the full layout was swapped INTO `#browse-results`,
-    // yielding 2 <main> and 2 <nav> elements in the DOM.
+    // yielding 2 <header> and 2 <main> elements in the DOM.
+    await expect(page.locator("header")).toHaveCount(1);
     await expect(page.locator("main#main-content")).toHaveCount(1);
-    await expect(page.locator("nav")).toHaveCount(1);
   });
 });
