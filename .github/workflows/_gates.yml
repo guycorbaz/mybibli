@@ -15,6 +15,31 @@ jobs:
     name: Rust tests + clippy + sqlx-prepare
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # `cargo test --lib` covers the `#[sqlx::test]` cases introduced in story
+    # 7-3 (src/routes/auth.rs language_tests and src/middleware/locale.rs
+    # middleware_integration_tests). Those macros provision a throwaway DB via
+    # `MARIADB_ROOT_PASSWORD` and need `DATABASE_URL` at runtime — otherwise
+    # the process panics with `DATABASE_URL must be set: EnvVar(NotPresent)`.
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root_test
+          MARIADB_DATABASE: mybibli_rust_test
+          MARIADB_USER: test
+          MARIADB_PASSWORD: test
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=3s
+          --health-timeout=3s
+          --health-retries=20
+
+    env:
+      DATABASE_URL: mysql://root:root_test@127.0.0.1:3307/mybibli_rust_test
+
     steps:
       - uses: actions/checkout@v4
 
