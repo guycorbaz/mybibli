@@ -1,0 +1,73 @@
+name: 🐛 Bug Report
+description: Report a defect or regression in the app.
+title: "[Bug] "
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for **defects** — something that should work and doesn't, or used to work and regressed. Attach a screenshot or copy a browser console error when helpful. For accepted-risk quirks, use Known Failure instead.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: One or two sentence summary of what's broken.
+      placeholder: "Clicking a genre pill on `/` with an empty query duplicates the full page layout."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered list — what the user did, in order.
+      placeholder: |
+        1. Log in as admin and navigate to `/`.
+        2. Leave the search field empty.
+        3. Click the "BD" genre pill.
+        4. Observe the page.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: "The browse-results area updates to show titles in the BD genre; the rest of the page stays unchanged."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happens. Attach a screenshot if visual.
+      placeholder: "The full page layout (nav, hero, search, pills, sort-by) is rendered a second time inside `#browse-results`."
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser / OS / app commit or Docker tag (if relevant).
+      placeholder: "Chromium on Linux, dev stack at commit 5b209e7"
+
+  - type: input
+    id: related
+    attributes:
+      label: Related story, PR, or commit
+      placeholder: "e.g. story 7-5, commit 772bd27, PR #7"
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - High (blocks a core workflow)
+        - Medium (degrades a workflow but workaround exists)
+        - Low (cosmetic or edge case)
+      default: 1
+    validations:
+      required: true

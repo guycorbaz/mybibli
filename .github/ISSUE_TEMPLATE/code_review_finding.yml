@@ -1,0 +1,58 @@
+name: 🔍 Code Review Finding
+description: Track a deferred finding from an adversarial code review (Blind Hunter / Edge Case Hunter / Acceptance Auditor).
+title: "[CR-Review] "
+labels: ["type:code-review-finding"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use for **individual findings** surfaced by a code review that the story chose to defer rather than fix in-line. Each finding gets its own issue so it can be triaged, scheduled, closed, or escalated independently.
+
+        If the finding was fixed in the same story, it belongs in the story's Change Log, not here.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Finding summary
+      description: One-line title + 1–3 sentence context.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - High
+        - Medium
+        - Low
+      default: 1
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Source review
+      placeholder: "e.g. Story 7-5 review (2026-04-17), Edge Case Hunter pass"
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: File:line (if applicable)
+      placeholder: "e.g. src/services/search.rs:82, static/js/scanner-guard.js:89"
+
+  - type: textarea
+    id: resolution
+    attributes:
+      label: Resolution approach
+      description: Defer permanently, accept-with-rationale, schedule for story X, or fix-now with issue closure.
+      placeholder: "Defer until UX-DR8 Modal ships in Epic 9 — no current DOM modal exists so this is a latent concern, not an active bug."
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Why the reviewer flagged it, what breaks if ignored, dependencies on other work.

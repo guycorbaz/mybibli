@@ -1,0 +1,58 @@
+name: ⚠️ Known Failure
+description: Document a known, non-blocking issue or app quirk (accepted risk).
+title: "[KF] "
+labels: ["type:known-failure"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use for **accepted-risk items, documented quirks, or non-blocking failures** that the team has decided not to fix immediately — but that need to stay visible. Examples: duplicate `#session-counter` IDs, Google Books HTTPS upgrade cosmetic, MariaDB deadlock retry under parallel load.
+
+        For actionable defects, use Bug Report. For product change proposals, use Change Request.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What fails, in what scenario, and why we know about it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: Concrete symptoms. Include error messages, test flake signatures, or observable UX artifacts.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround (if any)
+      description: What the team does to live with it. Leave empty if none.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - High (functional but demands attention)
+        - Medium (degrades a non-critical path)
+        - Low (cosmetic / extremely rare)
+      default: 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: mitigation
+    attributes:
+      label: Mitigation / acceptance rationale
+      description: Why this is accepted as-is, OR conditions under which we would fix it.
+      placeholder: "Acceptable for single-user NAS; revisit if multi-user support is added."
+
+  - type: input
+    id: related
+    attributes:
+      label: Related files, commits, or docs
+      placeholder: "e.g. src/services/cover.rs:103, CLAUDE.md §Known app quirks, commit e2ab07b"

@@ -1,0 +1,64 @@
+name: 🔀 Change Request
+description: Propose a change to the product requirements, architecture, or implementation.
+title: "[CR] "
+labels: ["type:change-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for **product / architectural shifts** — a Change Request is a proposed change to the PRD, architecture, data model, or cross-cutting concern. For defects, use the Bug Report template; for accepted-risk quirks, use Known Failure.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to change and why. Include motivation, user signal, or UX rationale.
+      placeholder: |
+        Librarian can undo the last scan action (detach volume, cancel location assignment) from the feedback list within a 30-second window. Acts as a safety net for accidental associations.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: impacts
+    attributes:
+      label: Impacts
+      description: Check every area the change touches.
+      options:
+        - label: PRD (new FR / NFR / refinement)
+        - label: Architecture
+        - label: Data model / migration
+        - label: API / route
+        - label: UI / UX
+        - label: Tests
+        - label: Documentation / CLAUDE.md
+
+  - type: input
+    id: requested_by
+    attributes:
+      label: Requested by
+      placeholder: "e.g. UX Design session, Guy, code review of story 7-5"
+
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Target milestone
+      options:
+        - M1 (foundation)
+        - M2
+        - M3
+        - M4
+        - M5
+        - M6
+        - Post-MVP / Growth
+        - N/A
+      default: 7
+    validations:
+      required: false
+
+  - type: textarea
+    id: decision
+    attributes:
+      label: Decision (fill when resolved)
+      description: Outcome + rationale. Link to the PR, story, or retrospective that resolved it.
+      placeholder: |
+        Deferred to Growth. MVP relies on preventive validation and explicit confirmation. See Epic 2 retro.

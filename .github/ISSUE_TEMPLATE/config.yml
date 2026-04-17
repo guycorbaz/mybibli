@@ -1,0 +1,13 @@
+# Disable blank issues to force contributors through a typed template.
+# Templates cover the current migration scope (Change Request, Bug, Known
+# Failure, Code Review Finding). Add new templates here when new issue
+# categories emerge — do NOT re-enable blank issues.
+blank_issues_enabled: false
+
+contact_links:
+  - name: 📚 Project documentation
+    url: https://github.com/guycorbaz/mybibli/blob/main/CLAUDE.md
+    about: Coding standards, architecture overview, project conventions, and known app quirks.
+  - name: 🗺️ Epics & PRD
+    url: https://github.com/guycorbaz/mybibli/tree/main/_bmad-output/planning-artifacts
+    about: Product requirements, epic breakdowns, and UX design specifications.
