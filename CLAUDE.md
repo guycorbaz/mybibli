@@ -28,6 +28,11 @@ cd tests/e2e && npx playwright test specs/journeys/catalog-title.spec.ts  # Sing
 cd tests/e2e && docker compose -f docker-compose.test.yml up -d
 cd tests/e2e && npm test
 
+# E2E stack reset — single-command teardown + rebuild + wait-for-ready.
+# Use when local DB state is polluted and tests expect a fresh baseline
+# (see Epic 7 retrospective Action 4 for the backstory).
+./scripts/e2e-reset.sh
+
 # Flake gate (run before committing E2E changes) — enforced by CI in the e2e job
 grep -rE "waitForTimeout\(" tests/e2e/specs/ tests/e2e/helpers/ && exit 1 || true
 
