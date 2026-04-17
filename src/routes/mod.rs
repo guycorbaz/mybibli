@@ -12,6 +12,7 @@ use axum::Router;
 use tower_http::services::ServeDir;
 
 use crate::AppState;
+use crate::middleware::csp::apply_csp_layer;
 use crate::middleware::locale::locale_resolve_middleware;
 use crate::middleware::pending_updates::pending_updates_middleware;
 
@@ -70,8 +71,12 @@ pub fn build_router(state: AppState) -> Router {
         .layer(axum::Extension(pool))
         .layer(axum::middleware::from_fn(pending_updates_middleware));
 
-    // All routes
-    Router::new()
+    // CSP + hardening headers — wrapped outermost so EVERY response (incl.
+    // /static/*, /covers/*, /health, redirects, 4xx/5xx) carries the
+    // headers. Per AR16: Logging → Auth → [Handler] → PendingUpdates → CSP.
+    // Read mode once at startup (AR26 — no dotenvy).
+    let report_only = crate::config::csp_report_only();
+    let app = Router::new()
         .route("/", axum::routing::get(home::home))
         .route(
             "/login",
@@ -217,7 +222,9 @@ pub fn build_router(state: AppState) -> Router {
             state.clone(),
             locale_resolve_middleware,
         ))
-        .with_state(state)
+        .with_state(state);
+
+    apply_csp_layer(app, report_only)
 }
 
 async fn health_check() -> &'static str {

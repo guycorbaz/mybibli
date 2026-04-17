@@ -131,11 +131,10 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <input type="checkbox" id="assign-omnibus" name="omnibus"
-                               onchange="document.getElementById('end-position-group').style.display=this.checked?'block':'none'"
                                class="rounded border-stone-300 dark:border-stone-600">
                         <label for="assign-omnibus" class="text-xs text-stone-600 dark:text-stone-400">{{ label_omnibus }}</label>
                     </div>
-                    <div id="end-position-group" style="display:none">
+                    <div id="end-position-group" class="hidden">
                         <label for="assign-end-position" class="block text-xs text-stone-600 dark:text-stone-400">{{ label_end_position }}</label>
                         <input type="number" id="assign-end-position" name="end_position" min="1"
                                class="mt-1 w-20 rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 text-sm">

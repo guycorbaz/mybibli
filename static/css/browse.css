@@ -1,0 +1,152 @@
+/*
+ * browse.css — list/grid card styles + series gap stripes.
+ *
+ * Pre-CSP these lived inline in templates/pages/home.html and as a style
+ * attribute on templates/components/series_gap_grid.html. Strict
+ * `style-src 'self'` requires same-origin stylesheets only.
+ */
+
+.htmx-request #browse-results {
+    opacity: 0.7;
+    transition: opacity 150ms ease;
+}
+
+/* List mode: horizontal cards */
+.browse-list { display: flex; flex-direction: column; gap: 0.25rem; }
+.browse-list .title-card { border-bottom: 1px solid var(--color-stone-100, #f5f5f4); }
+.browse-list .title-card-link { display: flex; flex-direction: row; align-items: center; gap: 0.75rem; padding: 0.5rem; text-decoration: none; color: inherit; border-radius: 0.375rem; }
+.browse-list .title-card-link:hover { background: var(--color-stone-50, #fafaf9); }
+.browse-list .title-card-cover { width: 40px; height: 60px; flex-shrink: 0; position: relative; }
+.browse-list .title-card-overlay { display: none; }
+.browse-list .title-card-info { flex: 1; min-width: 0; }
+.browse-list .title-card-title { font-weight: 500; color: var(--color-stone-900, #1c1917); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-list .title-card-contributor { font-size: 0.875rem; color: var(--color-stone-500, #78716c); }
+.browse-list .title-card-meta { font-size: 0.75rem; color: var(--color-stone-400, #a8a29e); }
+.browse-list .title-card-volumes { font-size: 0.75rem; color: var(--color-stone-400, #a8a29e); }
+
+/* Grid mode: card grid */
+.browse-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem; }
+.browse-grid .title-card-link { display: flex; flex-direction: column; text-decoration: none; color: inherit; border-radius: 0.5rem; overflow: hidden; border: 1px solid var(--color-stone-200, #e7e5e4); transition: box-shadow 150ms; }
+.browse-grid .title-card-link:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.browse-grid .title-card-cover { width: 100%; aspect-ratio: 2/3; position: relative; overflow: hidden; background: var(--color-stone-100, #f5f5f4); }
+.browse-grid .title-card-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem; color: white; opacity: 0; transition: opacity 150ms; }
+.browse-grid .title-card:hover .title-card-overlay { opacity: 1; }
+.browse-grid .title-card-info { padding: 0.5rem; }
+.browse-grid .title-card-title { font-size: 0.8125rem; font-weight: 500; color: var(--color-stone-900, #1c1917); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-grid .title-card-contributor { font-size: 0.75rem; color: var(--color-stone-500, #78716c); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-grid .title-card-meta { display: none; }
+.browse-grid .title-card-volumes { display: none; }
+
+/* Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+    .browse-list .title-card { border-color: #292524; }
+    .browse-list .title-card-link:hover { background: #1c1917; }
+    .browse-list .title-card-title, .browse-grid .title-card-title { color: #f5f5f4; }
+    .browse-grid .title-card-link { border-color: #44403c; }
+    .browse-grid .title-card-cover { background: #292524; }
+}
+.dark .browse-list .title-card { border-color: #292524; }
+.dark .browse-list .title-card-link:hover { background: #1c1917; }
+.dark .browse-list .title-card-title, .dark .browse-grid .title-card-title { color: #f5f5f4; }
+.dark .browse-grid .title-card-link { border-color: #44403c; }
+.dark .browse-grid .title-card-cover { background: #292524; }
+
+/* Series-gap diagonal stripe overlay (pre-CSP was inline `style=`). */
+.series-gap-stripes {
+    background-color: rgba(239, 68, 68, 0.05);
+    background-image: repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 3px,
+        rgba(239, 68, 68, 0.1) 3px,
+        rgba(239, 68, 68, 0.1) 6px
+    );
+}
+
+/*
+ * CSP-safe replacements for runtime JS style writes. Chromium under
+ * strict `style-src 'self'` (no `unsafe-inline`/`unsafe-hashes`) blocks
+ * `element.style.foo = "..."` mutations, so behaviour that needs a
+ * style change at runtime now toggles a class instead.
+ */
+
+/* Feedback-entry auto-dismiss: 10s linear fade then removal at 20s. */
+.feedback-entry.feedback-fading {
+    opacity: 0;
+    transition: opacity 10s linear;
+}
+
+/* HTMX request fade-back: explicit reset when error handlers want to
+ * undo the `.htmx-request` 0.7 dim before painting an error fragment. */
+.htmx-opacity-reset {
+    opacity: 1 !important;
+}
+
+/* Theme toggle: 300ms color fade applied only on actual switch. The
+ * class is toggled on <html> by theme.js for the duration of the
+ * transition, then removed (so it never sticks across page loads). */
+.theme-transitioning {
+    transition: background-color 300ms ease-out, color 300ms ease-out;
+}
+
+/* HTMX indicator rules — relocated from htmx's auto-injected <style> block
+ * (disabled in base.html via `htmx-config: includeIndicatorStyles:false`
+ * because strict CSP blocks the inline insertion). Same selectors and
+ * values htmx 2.x uses internally — verified against htmx.min.js source. */
+.htmx-indicator {
+    opacity: 0;
+    visibility: hidden;
+}
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 200ms ease-in;
+}
+
+/* Skeleton loading shimmer — used by skeleton_feedback_html in
+ * src/routes/catalog.rs. Pre-CSP this lived in an inline `<style>`
+ * block right next to the skeleton fragment. */
+@keyframes shimmer {
+    0%   { background-position: -200px 0; }
+    100% { background-position:  200px 0; }
+}
+.shimmer-bar {
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(120, 113, 108, 0.15),
+        transparent
+    );
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .shimmer-bar { animation: none; }
+}
+
+/* Locations tree depth indentation — replaces inline `style="padding-left: …px"`
+ * and `style="margin-left: …px"` (blocked by strict `style-src 'self'`).
+ * Step = 32 px per level (matches the legacy depth*32 calculation).
+ * Capped at level 8 (256 px); deeper hierarchies fall back to `tree-indent-cap`.
+ */
+.tree-indent-0 { padding-left: 0; }
+.tree-indent-1 { padding-left: 32px; }
+.tree-indent-2 { padding-left: 64px; }
+.tree-indent-3 { padding-left: 96px; }
+.tree-indent-4 { padding-left: 128px; }
+.tree-indent-5 { padding-left: 160px; }
+.tree-indent-6 { padding-left: 192px; }
+.tree-indent-7 { padding-left: 224px; }
+.tree-indent-8,
+.tree-indent-cap { padding-left: 256px; }
+
+.tree-margin-1 { margin-left: 32px; }
+.tree-margin-2 { margin-left: 64px; }
+.tree-margin-3 { margin-left: 96px; }
+.tree-margin-4 { margin-left: 128px; }
+.tree-margin-5 { margin-left: 160px; }
+.tree-margin-6 { margin-left: 192px; }
+.tree-margin-7 { margin-left: 224px; }
+.tree-margin-8,
+.tree-margin-cap { margin-left: 256px; }

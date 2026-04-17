@@ -86,15 +86,4 @@
         {% endif %}
     </div>
 </div>
-
-<script>
-(function() {
-    // Reload page after successful return to refresh the loans list
-    document.body.addEventListener('htmx:afterRequest', function(e) {
-        if (e.detail.pathInfo && e.detail.pathInfo.requestPath && e.detail.pathInfo.requestPath.includes('/return') && e.detail.successful) {
-            setTimeout(function() { window.location.reload(); }, 1500);
-        }
-    });
-})();
-</script>
 {% endblock %}

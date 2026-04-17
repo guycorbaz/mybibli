@@ -1,5 +1,5 @@
-<form hx-post="/title/{{ title.id }}" hx-target="#title-metadata" hx-swap="innerHTML"
-      class="space-y-4" onkeydown="if(event.key==='Escape'){document.getElementById('cancel-edit')?.click();}">
+<form id="title-edit-form" hx-post="/title/{{ title.id }}" hx-target="#title-metadata" hx-swap="innerHTML"
+      class="space-y-4">
     <input type="hidden" name="version" value="{{ title.version }}">
 
     <div>

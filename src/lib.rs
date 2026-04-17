@@ -11,6 +11,9 @@ pub mod services;
 pub mod tasks;
 pub mod utils;
 
+#[cfg(test)]
+mod templates_audit;
+
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 

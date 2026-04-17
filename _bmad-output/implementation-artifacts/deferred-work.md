@@ -220,3 +220,38 @@
 - `SameSite=Lax` + no `Secure` flag on the `lang` cookie — consistent with the existing `session` cookie pattern; revisit cookie policy repo-wide as part of a production-hardening story
 - `BaseContext` helper to collapse the 17 duplicated template init blocks — spec explicitly allows deferral (Task 8 "Refactor opportunity"); log as LLM-proofing debt for next touch of these files
 - `Promise.all([waitForLoadState("load"), click()])` race in `language-toggle.spec.ts` — spec Task 10 prescribes this pattern and Playwright auto-retry absorbs the risk in practice
+
+## Deferred from: code review of 7-4-content-security-policy-headers (2026-04-16)
+
+- Audit's `inline_script` regex skips `<script src="x.js">body</script>` because `attrs` matches `src=` allowance — browsers ignore the body when `src=` is set per HTML spec, so no executable inline can sneak through; tracked as a regex-tightening follow-up
+- `strip_html_comments` casts UTF-8 bytes to `char`; failure-report snippets garble accented characters (line numbers + ASCII pattern detection unaffected) — cosmetic only
+- `apply_security_headers` `entry().or_insert` could let an upstream layer downgrade headers — design choice per AC 1 / Task 1; revisit if a reverse proxy or future middleware ever sets these headers upstream
+- HTMX-swapped `/loans` would not re-wire `loan-borrower-search.js` due to body-level `loansWired` sentinel — needs an explicit HTMX swap path to /loans before this matters
+- `initOmnibusToggle` / `initSeriesTypeToggle` only run at DOMContentLoaded — would not attach if title_detail / series_form were HTMX-injected; both are full-page nav today
+- `img-src` allowlist hardcoded; new metadata providers under `src/metadata/` would silently 404 their cover URLs — extend allowlist whenever a new provider lands
+- Dual `Content-Security-Policy` headers possible if a future reverse proxy adds one — no proxy in current Synology HTTP-on-LAN deployment
+- `tree-indent-cap` collapses depths ≥ 8 visually flat — library hierarchies cap at 4-5 levels in practice
+- Tree-indent levels duplicated across Rust (`src/routes/locations.rs`) and CSS (`static/css/browse.css`); no test asserts they agree — depth cap rarely changes
+- `fetch("/borrowers/search?q=")` swallows non-200 / network errors silently — pre-existing pattern preserved by the refactor
+- `wireMediaTypeChange` doesn't surface htmx.ajax errors — pre-existing pattern from the inline `onchange`
+- Templates audit script regex misparses `<script attr="a > b">` literal `>` — no current template uses literal `>` in a script attr
+- Dockerfile asymmetry: `output.css` from css build stage but `browse.css` copied from build context — needs a generalized `static/css/` copy when more files arrive
+- `audio.js` toggle stuck if `localStorage.getItem` fails — hypothetical (failures exceedingly rare)
+- `theme-toggle` button has no `htmx:afterSettle` re-wire — nav_bar.html is server-rendered on every page nav, never HTMX-swapped today
+- Templates audit `<style>` regex would false-positive on inline `<svg><style>…</style></svg>` — no current SVG carries inline `<style>`
+- `X-Frame-Options` may be stripped by a future reverse proxy — verifiable only post-deployment behind a proxy
+- `fetch("/borrowers/search")` 401 silent — pre-existing UX behaviour; broader UX policy decision for a separate story
+
+## Delivered — 2026-04-17
+
+- ~~Scanner guard during modals (UX-DR25 `scanner-guard.js`, Epic 1 architecture.md:84)~~ — delivered in story 7-5 (2026-04-17) as a latent safety net; activates automatically once UX-DR8 Modal ships in Epic 9.
+- ~~`tests/e2e/helpers/scanner.ts` stub (Epic 1 tech debt)~~ — delivered in story 7-5 (2026-04-17): `simulateScan` (20 ms inter-key) + `simulateTyping` (100 ms) both use Playwright-native `{ delay }` options.
+
+## Deferred from: code review of 7-5-scanner-guard-modal-interception (2026-04-17)
+
+- `src/templates_audit.rs::strip_html_comments` silently consumes the rest of a file when a template has an unterminated `<!--`, hiding every subsequent CSP/inline-handler/hx-confirm violation. Pre-existing from story 7-4. Small targeted fix (bail out with `break` instead of accepting `end = bytes.len()`) belongs in a dedicated audit-hardening follow-up.
+- `static/js/scanner-guard.js` forwards printable chars to focused modal text inputs by setting `.value` directly. This bypasses the browser input pipeline — IME composition, selection replacement, maxLength, and pattern constraints are ignored. Acceptable for scanner-burst payloads (pure ASCII printable, no IME); revisit if UX-DR8 introduces IME-heavy modal forms.
+- Synthetic Enter dispatched onto a focused modal text input does not trigger the browser's implicit form-submit default. No `<dialog><form>` exists today; fix when Epic 9 UX-DR8 actually ships a modal with a native form.
+- `TEXT_INPUT_TYPES` in scanner-guard flags `number` / `tel` / `url` as text-accepting; firing arbitrary chars into `type="number"` produces invalid DOM state (Firefox silently blanks the value). No current modal uses numeric inputs; fix when the first lands.
+- Shadow DOM retargeting: `event.target` and `document.activeElement` both report the host when keystrokes originate inside a shadow root, so a web-component modal input would silently drop bursts. No web-component modals today.
+- `<iframe>`-hosted modals: `document.activeElement` is the iframe element (never text-accepting), so bursts targeting iframe-hosted inputs get dropped silently. No iframe modals today.

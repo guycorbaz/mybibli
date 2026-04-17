@@ -68,7 +68,11 @@ fn feedback_html(variant: &str, message: &str, suggestion: &str) -> String {
     };
 
     let dismiss_html = if variant == "warning" || variant == "error" {
-        r#"<button type="button" class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1 min-w-[44px] min-h-[44px] md:min-w-[36px] md:min-h-[36px] flex items-center justify-center" aria-label="Dismiss" onclick="this.closest('.feedback-entry').remove()"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg></button>"#
+        // Pre-CSP this carried `onclick="this.closest('.feedback-entry').remove()"`.
+        // Strict `script-src 'self'` blocks the inline handler; mybibli.js
+        // initFeedbackDismiss() handles `[data-action="dismiss-feedback"]`
+        // via document-level delegation.
+        r#"<button type="button" class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1 min-w-[44px] min-h-[44px] md:min-w-[36px] md:min-h-[36px] flex items-center justify-center" aria-label="Dismiss" data-action="dismiss-feedback"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg></button>"#
     } else {
         ""
     };
@@ -148,12 +152,18 @@ fn scan_error_feedback_html(message: &str, scan_code: &str) -> String {
     html.push_str(&retry_label);
     html.push_str("</button><a href=\"/catalog/title/new\" class=\"text-xs px-2 py-1 bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded hover:bg-stone-200\">");
     html.push_str(&edit_label);
-    html.push_str("</a></div></div><button type=\"button\" class=\"text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1\" aria-label=\"Dismiss\" onclick=\"this.closest('.feedback-entry').remove()\"><svg class=\"w-4 h-4\" viewBox=\"0 0 20 20\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z\" /></svg></button></div></div>");
+    // Dismiss button: `data-action="dismiss-feedback"` (handled by mybibli.js
+    // delegated listener) instead of an inline `onclick` — strict CSP blocks
+    // inline handlers even when the HTML was assembled in the backend.
+    html.push_str("</a></div></div><button type=\"button\" class=\"text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1\" aria-label=\"Dismiss\" data-action=\"dismiss-feedback\"><svg class=\"w-4 h-4\" viewBox=\"0 0 20 20\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z\" /></svg></button></div></div>");
     html
 }
 
 fn skeleton_feedback_html(title_id: u64, isbn: &str) -> String {
     let message = rust_i18n::t!("feedback.metadata_fetching", isbn = isbn).to_string();
+    // The shimmer keyframes + class moved to static/css/browse.css under
+    // `.shimmer-bar` (and the `@keyframes shimmer` rule). Inlining a
+    // `<style>` block here was blocked by strict `style-src 'self'`.
     format!(
         r##"<div id="feedback-entry-{title_id}" class="feedback-skeleton flex items-start gap-3 px-4 py-3 border-l-4 border-stone-300 dark:border-stone-600 bg-stone-50 dark:bg-stone-800/50 rounded-r-md" role="status" aria-live="polite">
     <svg class="animate-spin w-5 h-5 text-stone-400 flex-shrink-0 mt-0.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
@@ -161,12 +171,7 @@ fn skeleton_feedback_html(title_id: u64, isbn: &str) -> String {
         <p class="text-sm text-stone-700 dark:text-stone-300">{message}</p>
         <div class="mt-1 h-2 bg-stone-200 dark:bg-stone-700 rounded shimmer-bar"></div>
     </div>
-</div>
-<style>
-@keyframes shimmer {{ 0% {{ background-position: -200px 0; }} 100% {{ background-position: 200px 0; }} }}
-.shimmer-bar {{ background: linear-gradient(90deg, transparent, rgba(120,113,108,0.15), transparent); background-size: 200px 100%; animation: shimmer 1.5s infinite; }}
-@media (prefers-reduced-motion: reduce) {{ .shimmer-bar {{ animation: none; }} }}
-</style>"##,
+</div>"##,
         message = html_escape(&message)
     )
 }
@@ -2319,8 +2324,10 @@ mod tests {
         assert!(html.contains(r#"id="feedback-entry-42""#));
         assert!(html.contains("feedback-skeleton"));
         assert!(html.contains("animate-spin"));
+        // `.shimmer-bar` class is applied here; the keyframes + the
+        // `prefers-reduced-motion` override now live in static/css/browse.css
+        // (story 7-4 — strict CSP forbids inline `<style>` blocks).
         assert!(html.contains("shimmer-bar"));
-        assert!(html.contains("prefers-reduced-motion"));
     }
 
     #[test]

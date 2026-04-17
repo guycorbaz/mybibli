@@ -30,3 +30,4 @@ percent-encoding = "2"
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 serde_yaml = "0.9"
+regex = "1"

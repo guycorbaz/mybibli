@@ -202,7 +202,11 @@ pub async fn borrower_detail(
     let template = BorrowerDetailTemplate {
         lang: loc.to_string(),
         role: session.role.to_string(),
-        current_page: "borrowers",
+        // "borrower-detail" (not "borrowers") so the body[data-page] hook in
+        // mybibli.js (initBorrowerDetailReload) only fires here, while the
+        // nav highlight stays on /borrowers via the `borrowers` aria-current
+        // matcher in nav_bar.html (no other code keys off this string).
+        current_page: "borrower-detail",
         skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
         session_timeout_secs: state.session_timeout_secs(),
         nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),

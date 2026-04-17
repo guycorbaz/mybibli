@@ -38,7 +38,7 @@
             {% if role == "librarian" || role == "admin" %}
             <button type="button" id="new-title-btn"
                     class="px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md min-h-[44px] md:min-h-[36px]"
-                    onclick="htmx.ajax('GET', '/catalog/title/new', {target: '#title-form-container', swap: 'innerHTML'})">
+                    hx-get="/catalog/title/new" hx-target="#title-form-container" hx-swap="innerHTML">
                 + {{ new_title_label }}
             </button>
             {% endif %}

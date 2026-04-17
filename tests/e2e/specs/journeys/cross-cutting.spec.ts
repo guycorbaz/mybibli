@@ -44,7 +44,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
     const htmlEl = page.locator("html");
 
     // Click theme toggle
-    const themeBtn = page.locator("[onclick*='mybibliToggleTheme']");
+    const themeBtn = page.locator("#theme-toggle");
     await themeBtn.click();
 
     // Check that class toggled
@@ -75,7 +75,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
     );
 
     // Toggle theme
-    const themeBtn = page.locator("[onclick*='mybibliToggleTheme']");
+    const themeBtn = page.locator("#theme-toggle");
     await themeBtn.click();
 
     // Reload page
@@ -88,7 +88,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
     expect(afterReloadDark).not.toBe(initialDark);
 
     // Restore original state
-    await page.locator("[onclick*='mybibliToggleTheme']").click();
+    await page.locator("#theme-toggle").click();
   });
 
   // AC9: Navigation Bar
@@ -145,7 +145,7 @@ test.describe("Cross-Cutting Patterns (Story 1-8)", () => {
   }) => {
     await page.goto("/catalog");
 
-    const themeBtn = page.locator("[onclick*='mybibliToggleTheme']");
+    const themeBtn = page.locator("#theme-toggle");
     const label = await themeBtn.getAttribute("aria-label");
 
     // Should have an accessible label

@@ -229,21 +229,34 @@ fn render_node_at_depth(
         crate::utils::html_escape(rust_i18n::t!("location.submit", locale = loc).as_ref());
     let form_id = format!("add-child-{}", node.location.id);
 
-    // Indentation: 2rem per depth level
-    let indent_px = depth * 32;
+    // Indentation classes (defined in static/css/browse.css). Pre-CSP this
+    // was an inline `style="padding-left: …px"` / `margin-left: …px`,
+    // blocked by strict `style-src 'self'`. Levels deeper than 8 fall back
+    // to a single capped value (the tree never realistically reaches that).
+    let indent_class = if depth >= 8 {
+        "tree-indent-cap".to_string()
+    } else {
+        format!("tree-indent-{depth}")
+    };
+    let child_depth = depth + 1;
+    let child_margin_class = if child_depth >= 8 {
+        "tree-margin-cap".to_string()
+    } else {
+        format!("tree-margin-{child_depth}")
+    };
 
     let (mutation_controls, child_form) = if can_edit {
         (
             format!(
                 r#"<span class="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-<button type="button" onclick="document.getElementById('{form_id}').classList.toggle('hidden')" class="p-1 text-stone-400 hover:text-green-600 dark:hover:text-green-400" aria-label="Add child under {name}">➕</button>
+<button type="button" data-locations-toggle="{form_id}" class="p-1 text-stone-400 hover:text-green-600 dark:hover:text-green-400" aria-label="Add child under {name}">➕</button>
 <a href="/locations/{id}/edit" class="p-1 text-stone-400 hover:text-indigo-600 dark:hover:text-indigo-400" aria-label="Edit {name}">✏️</a>
 <button type="button" hx-delete="/locations/{id}" hx-confirm="Delete {name} ({label})?" hx-target="closest [role=treeitem]" hx-swap="outerHTML" class="p-1 text-stone-400 hover:text-red-600 dark:hover:text-red-400" aria-label="Delete {name}">🗑️</button>
 </span>"#,
                 id = node.location.id,
             ),
             format!(
-                r#"<form id="{form_id}" method="POST" action="/locations" class="hidden px-3 py-2 space-y-2 bg-stone-50 dark:bg-stone-800/50 rounded-md mt-1 mb-2" style="margin-left: {child_indent}px;">
+                r#"<form id="{form_id}" method="POST" action="/locations" class="hidden {child_margin_class} px-3 py-2 space-y-2 bg-stone-50 dark:bg-stone-800/50 rounded-md mt-1 mb-2">
 <input type="hidden" name="parent_id" value="{id}">
 <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
 <div><label class="block text-xs text-stone-600 dark:text-stone-400">{name_lbl}</label><input type="text" name="name" required class="w-full px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100"></div>
@@ -253,7 +266,6 @@ fn render_node_at_depth(
 <button type="submit" class="px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded">{submit_lbl}</button>
 </form>"#,
                 id = node.location.id,
-                child_indent = indent_px + 32,
                 next_lcode = crate::utils::html_escape(next_lcode),
             ),
         )
@@ -262,7 +274,7 @@ fn render_node_at_depth(
     };
 
     html.push_str(&format!(
-        r#"<div role="treeitem" style="padding-left: {indent_px}px;">
+        r#"<div role="treeitem" class="{indent_class}">
 <div class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 group">
 <span class="text-stone-400" aria-hidden="true">{icon}</span>
 <span class="font-medium text-stone-900 dark:text-stone-100">{name}</span>

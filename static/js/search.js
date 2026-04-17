@@ -109,16 +109,17 @@
             }
         });
 
-        // HTMX error handling
+        // HTMX error handling — class toggle instead of `.style.opacity`
+        // (strict CSP blocks runtime style writes; class lives in browse.css).
         document.body.addEventListener("htmx:responseError", function () {
             var tbody = document.getElementById("browse-results");
-            if (tbody) tbody.style.opacity = "1";
+            if (tbody) tbody.classList.add("htmx-opacity-reset");
         });
 
         document.body.addEventListener("htmx:sendError", function () {
             var tbody = document.getElementById("browse-results");
             if (tbody) {
-                tbody.style.opacity = "1";
+                tbody.classList.add("htmx-opacity-reset");
                 var msg = field.dataset.connectionLost || "Connection lost";
                 tbody.innerHTML =
                     '<div class="text-center py-8 text-red-500">' + msg + '</div>';

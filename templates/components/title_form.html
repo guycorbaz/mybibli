@@ -1,7 +1,7 @@
 <div class="bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-600 rounded-lg p-6 max-w-lg w-full">
     <h2 class="text-lg font-semibold text-stone-900 dark:text-stone-100 mb-4">{{ form_heading }}</h2>
 
-    <form hx-post="/catalog/title"
+    <form id="title-create-form" hx-post="/catalog/title"
           hx-target="#feedback-list"
           hx-swap="afterbegin"
           hx-disabled-elt="find button[type='submit']"
@@ -27,7 +27,6 @@
             <select id="media-type-field" name="media_type" required
                     aria-required="true"
                     data-required-error="{{ required_error }}"
-                    onchange="if(this.value){htmx.ajax('GET','/catalog/title/fields/'+this.value,{target:'#type-specific-fields',swap:'innerHTML'});}else{document.getElementById('type-specific-fields').innerHTML='';}"
                     class="w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-700 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[44px] md:min-h-[36px]">
                 <option value="">--</option>
                 <option value="book">{{ mt_book }}</option>
@@ -128,9 +127,8 @@
         </div>
 
         <div class="flex justify-end gap-3 mt-2">
-            <button type="button"
-                    class="px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-stone-600 rounded-md hover:bg-stone-50 dark:hover:bg-stone-700 min-h-[44px] md:min-h-[36px]"
-                    onclick="document.getElementById('title-form-container').innerHTML=''; document.getElementById('scan-field').focus();">
+            <button type="button" id="title-form-cancel"
+                    class="px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-stone-600 rounded-md hover:bg-stone-50 dark:hover:bg-stone-700 min-h-[44px] md:min-h-[36px]">
                 {{ label_cancel }}
             </button>
             <button type="submit"
@@ -139,70 +137,4 @@
             </button>
         </div>
     </form>
-
-    <script>
-    (function() {
-        var requiredIds = ['title-field', 'media-type-field', 'genre-field', 'language-field'];
-
-        function isEmpty(el) {
-            var v = el.value;
-            if (el.tagName === 'SELECT') {
-                return v === '' || v === '0';
-            }
-            return v.trim() === '';
-        }
-
-        function showError(el) {
-            var errP = el.parentElement.querySelector('.field-error');
-            if (!errP) return;
-            var msg = el.getAttribute('data-required-error') || 'Required';
-            errP.textContent = msg;
-            errP.classList.remove('hidden');
-            el.classList.add('border-red-500');
-        }
-
-        function hideError(el) {
-            var errP = el.parentElement.querySelector('.field-error');
-            if (!errP) return;
-            errP.textContent = '';
-            errP.classList.add('hidden');
-            el.classList.remove('border-red-500');
-        }
-
-        requiredIds.forEach(function(id) {
-            var el = document.getElementById(id);
-            if (!el) return;
-
-            el.addEventListener('blur', function() {
-                if (isEmpty(el)) { showError(el); }
-            });
-
-            el.addEventListener('input', function() {
-                hideError(el);
-            });
-
-            el.addEventListener('change', function() {
-                hideError(el);
-            });
-        });
-
-        var form = document.querySelector('#title-form-container form');
-        if (form) {
-            form.addEventListener('submit', function(e) {
-                var hasError = false;
-                requiredIds.forEach(function(id) {
-                    var el = document.getElementById(id);
-                    if (el && isEmpty(el)) {
-                        showError(el);
-                        hasError = true;
-                    }
-                });
-                if (hasError) {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                }
-            });
-        }
-    })();
-    </script>
 </div>

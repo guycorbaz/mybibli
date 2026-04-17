@@ -49,6 +49,94 @@ impl std::fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
+/// Read `CSP_REPORT_ONLY` once at startup and emit a `tracing::info!` line
+/// recording the resolved mode so misconfigurations don't fail silently.
+/// Accepts `true` / `True` / `TRUE` / `1` / `yes` (case-insensitive) as
+/// "report-only"; anything else (incl. unset) means enforced. Per AR26,
+/// no `dotenvy`.
+pub fn csp_report_only() -> bool {
+    let raw = env::var("CSP_REPORT_ONLY").ok();
+    let report_only = matches!(
+        raw.as_deref().map(str::trim).map(str::to_ascii_lowercase).as_deref(),
+        Some("true" | "1" | "yes")
+    );
+    let mode = if report_only { "report-only" } else { "enforced" };
+    match raw.as_deref() {
+        Some(v) => tracing::info!(
+            csp_mode = mode,
+            csp_report_only_env = v,
+            "CSP mode resolved from CSP_REPORT_ONLY env var"
+        ),
+        None => tracing::info!(csp_mode = mode, "CSP mode resolved (no CSP_REPORT_ONLY env var)"),
+    }
+    report_only
+}
+
+#[cfg(test)]
+mod csp_report_only_tests {
+    use super::csp_report_only;
+    use std::sync::Mutex;
+
+    // Serialize tests because `std::env` is process-global; running them
+    // in parallel would leak the env var between cases.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_env<F: FnOnce()>(value: Option<&str>, body: F) {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev = std::env::var("CSP_REPORT_ONLY").ok();
+        // SAFETY: `set_var` / `remove_var` are unsafe in 2024 edition;
+        // tests serialize on ENV_LOCK so no concurrent access.
+        unsafe {
+            match value {
+                Some(v) => std::env::set_var("CSP_REPORT_ONLY", v),
+                None => std::env::remove_var("CSP_REPORT_ONLY"),
+            }
+        }
+        body();
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("CSP_REPORT_ONLY", v),
+                None => std::env::remove_var("CSP_REPORT_ONLY"),
+            }
+        }
+    }
+
+    #[test]
+    fn unset_env_means_enforced() {
+        with_env(None, || assert!(!csp_report_only()));
+    }
+
+    #[test]
+    fn lowercase_true_means_report_only() {
+        with_env(Some("true"), || assert!(csp_report_only()));
+    }
+
+    #[test]
+    fn uppercase_true_also_means_report_only() {
+        with_env(Some("TRUE"), || assert!(csp_report_only()));
+        with_env(Some("True"), || assert!(csp_report_only()));
+    }
+
+    #[test]
+    fn one_and_yes_also_mean_report_only() {
+        with_env(Some("1"), || assert!(csp_report_only()));
+        with_env(Some("yes"), || assert!(csp_report_only()));
+    }
+
+    #[test]
+    fn anything_else_means_enforced() {
+        with_env(Some("false"), || assert!(!csp_report_only()));
+        with_env(Some("0"), || assert!(!csp_report_only()));
+        with_env(Some(""), || assert!(!csp_report_only()));
+        with_env(Some("on"), || assert!(!csp_report_only()));
+    }
+
+    #[test]
+    fn whitespace_is_trimmed() {
+        with_env(Some("  true  "), || assert!(csp_report_only()));
+    }
+}
+
 // ─── Application settings loaded from database ──────────────────
 
 use crate::db::DbPool;

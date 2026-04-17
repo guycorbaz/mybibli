@@ -24,6 +24,7 @@ FROM alpine:latest
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/mybibli /usr/local/bin/
 COPY --from=css /app/static/css/output.css /app/static/css/output.css
+COPY static/css/browse.css /app/static/css/browse.css
 COPY static/js/ /app/static/js/
 COPY static/icons/ /app/static/icons/
 COPY locales/ /app/locales/
