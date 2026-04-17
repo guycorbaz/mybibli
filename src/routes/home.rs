@@ -88,8 +88,12 @@ pub async fn home(
     // Parse filter to extract genre_id
     let (genre_id, volume_state) = parse_filter(&params.filter);
 
-    // Perform search if query is present
-    let (results, redirect) = if !query.trim().is_empty() {
+    // Perform search/browse when either a query is typed OR a filter pill is active.
+    // Filter-only requests (e.g. clicking the "BD" genre pill with empty query) must
+    // still populate results — without this, HTMX would swap an empty results block
+    // and render the full layout into `#browse-results`, duplicating the page.
+    let has_filter = params.filter.is_some();
+    let (results, redirect) = if !query.trim().is_empty() || has_filter {
         let outcome = SearchService::search(
             pool,
             &query,
@@ -130,8 +134,9 @@ pub async fn home(
     let genres = GenreModel::list_active(pool).await?;
     let volume_states = VolumeStateModel::list_active(pool).await?;
 
-    if is_htmx && !query.trim().is_empty() {
-        // Return search results fragment + pagination OOB
+    if is_htmx && (!query.trim().is_empty() || has_filter) {
+        // Return search results fragment + pagination OOB. Covers both the
+        // typed-query path and the filter-pill path (e.g. clicking "BD").
         let html = render_search_fragment(
             &results,
             &query,

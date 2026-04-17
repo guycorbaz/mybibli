@@ -79,7 +79,10 @@ impl SearchService {
         page: u32,
     ) -> Result<SearchOutcome, AppError> {
         let trimmed = query.trim();
-        if trimmed.is_empty() {
+        // Browse-without-query path: empty query + no filter → no results.
+        // Empty query WITH a genre/state filter falls through to `fulltext_search`
+        // (pill-driven browse, e.g. clicking "BD" on the home page).
+        if trimmed.is_empty() && genre_id.is_none() && volume_state.is_none() {
             return Ok(SearchOutcome::Results(PaginatedList::new(
                 vec![],
                 1,
@@ -88,6 +91,12 @@ impl SearchService {
                 dir.clone(),
                 None,
             )));
+        }
+
+        // Empty query + filter set → skip code detection, go straight to fulltext_search.
+        if trimmed.is_empty() {
+            return Self::fulltext_search(pool, trimmed, genre_id, volume_state, sort, dir, page)
+                .await;
         }
 
         match detect_code(trimmed) {
