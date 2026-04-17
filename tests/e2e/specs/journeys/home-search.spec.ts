@@ -86,4 +86,42 @@ test.describe("Home page search", () => {
     const response = await page.goto("/location/1");
     expect(response?.status()).toBeLessThanOrEqual(404);
   });
+
+  // Regression — 2026-04-17: clicking a genre pill with an empty query caused
+  // the home route's HTMX branch to fall through to the full-page render,
+  // which HTMX then swapped into `#browse-results`, duplicating the nav bar,
+  // hero, search field, and pills. Guard against re-introducing the bug.
+  test("clicking a genre pill does NOT duplicate the page layout", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    // Pre-click sanity — exactly one <header> and one <main>. Can't count
+    // bare <nav> because home.html legitimately has two: the main nav bar
+    // AND `<nav id="pagination">` emitted by `render_pagination_oob`.
+    await expect(page.locator("header")).toHaveCount(1);
+    await expect(page.locator("main#main-content")).toHaveCount(1);
+
+    // Click any genre pill. The pills live in a tag area on the home page
+    // and carry `hx-get` with `filter=genre:<id>`.
+    const firstGenrePill = page.locator("a[hx-get*='filter=genre:']").first();
+    await expect(firstGenrePill).toBeVisible();
+    const pillHref = await firstGenrePill.getAttribute("hx-get");
+    expect(pillHref).toMatch(/filter=genre:\d+/);
+
+    await firstGenrePill.click();
+
+    // Post-click: #browse-results swap landed. Wait for either a title card
+    // or the empty-state block to materialize inside the target.
+    const results = page.locator("#browse-results");
+    await expect(
+      results.locator("article.title-card, .text-center").first(),
+    ).toBeVisible({ timeout: 10000 });
+
+    // THE REGRESSION ASSERTION: still exactly one <header> and one <main>.
+    // With the bug, the full layout was swapped INTO `#browse-results`,
+    // yielding 2 <header> and 2 <main> elements in the DOM.
+    await expect(page.locator("header")).toHaveCount(1);
+    await expect(page.locator("main#main-content")).toHaveCount(1);
+  });
 });

@@ -380,10 +380,7 @@ mod tests {
         ) -> Result<Option<MetadataResult>, MetadataError> {
             Ok(None) // ISBN lookup returns nothing
         }
-        async fn lookup_by_upc(
-            &self,
-            _upc: &str,
-        ) -> Result<Option<MetadataResult>, MetadataError> {
+        async fn lookup_by_upc(&self, _upc: &str) -> Result<Option<MetadataResult>, MetadataError> {
             Ok(Some(MetadataResult {
                 title: Some("UPC Result".to_string()),
                 ..MetadataResult::default()

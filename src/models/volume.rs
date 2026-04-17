@@ -22,7 +22,10 @@ impl std::fmt::Display for VolumeModel {
 }
 
 impl VolumeModel {
-    pub async fn find_by_label(pool: &DbPool, label: &str) -> Result<Option<VolumeModel>, AppError> {
+    pub async fn find_by_label(
+        pool: &DbPool,
+        label: &str,
+    ) -> Result<Option<VolumeModel>, AppError> {
         tracing::debug!(label = %label, "Looking up volume by label");
 
         let row = sqlx::query(
@@ -48,16 +51,18 @@ impl VolumeModel {
         }
     }
 
-    pub async fn create(pool: &DbPool, title_id: u64, label: &str) -> Result<VolumeModel, AppError> {
+    pub async fn create(
+        pool: &DbPool,
+        title_id: u64,
+        label: &str,
+    ) -> Result<VolumeModel, AppError> {
         tracing::info!(title_id = title_id, label = %label, "Creating volume");
 
-        let result = sqlx::query(
-            "INSERT INTO volumes (title_id, label) VALUES (?, ?)",
-        )
-        .bind(title_id)
-        .bind(label)
-        .execute(pool)
-        .await;
+        let result = sqlx::query("INSERT INTO volumes (title_id, label) VALUES (?, ?)")
+            .bind(title_id)
+            .bind(label)
+            .execute(pool)
+            .await;
 
         match result {
             Ok(r) => {
@@ -76,9 +81,7 @@ impl VolumeModel {
                 // Handle UNIQUE constraint violation gracefully
                 let err_str = e.to_string();
                 if err_str.contains("Duplicate entry") || err_str.contains("uq_volumes_label") {
-                    Err(AppError::BadRequest(
-                        format!("DUPLICATE_LABEL:{}", label),
-                    ))
+                    Err(AppError::BadRequest(format!("DUPLICATE_LABEL:{}", label)))
                 } else {
                     Err(AppError::Database(e))
                 }
@@ -86,16 +89,19 @@ impl VolumeModel {
         }
     }
 
-    pub async fn update_location(pool: &DbPool, id: u64, location_id: Option<u64>) -> Result<(), AppError> {
+    pub async fn update_location(
+        pool: &DbPool,
+        id: u64,
+        location_id: Option<u64>,
+    ) -> Result<(), AppError> {
         tracing::info!(volume_id = id, location_id = ?location_id, "Updating volume location");
 
-        let result = sqlx::query(
-            "UPDATE volumes SET location_id = ? WHERE id = ? AND deleted_at IS NULL",
-        )
-        .bind(location_id)
-        .bind(id)
-        .execute(pool)
-        .await?;
+        let result =
+            sqlx::query("UPDATE volumes SET location_id = ? WHERE id = ? AND deleted_at IS NULL")
+                .bind(location_id)
+                .bind(id)
+                .execute(pool)
+                .await?;
 
         if result.rows_affected() == 0 {
             tracing::warn!(volume_id = id, "Volume not found for location update");
@@ -114,8 +120,7 @@ impl VolumeModel {
         let volume = VolumeModel::find_by_label(pool, label).await?;
         match volume {
             Some(v) => {
-                let title =
-                    crate::models::title::TitleModel::find_by_id(pool, v.title_id).await?;
+                let title = crate::models::title::TitleModel::find_by_id(pool, v.title_id).await?;
                 match title {
                     Some(t) => Ok(Some((v, t))),
                     None => Ok(None),
@@ -157,12 +162,11 @@ impl VolumeModel {
     ) -> Result<VolumeModel, AppError> {
         // Validate condition_state_id if provided
         if let Some(csid) = condition_state_id {
-            let row: Option<(u64,)> = sqlx::query_as(
-                "SELECT id FROM volume_states WHERE id = ? AND deleted_at IS NULL",
-            )
-            .bind(csid)
-            .fetch_optional(pool)
-            .await?;
+            let row: Option<(u64,)> =
+                sqlx::query_as("SELECT id FROM volume_states WHERE id = ? AND deleted_at IS NULL")
+                    .bind(csid)
+                    .fetch_optional(pool)
+                    .await?;
             if row.is_none() {
                 return Err(AppError::BadRequest(
                     rust_i18n::t!("error.bad_request").to_string(),
@@ -226,7 +230,8 @@ pub struct VolumeWithTitle {
 }
 
 /// Sort column whitelist for location contents.
-const LOCATION_SORT_COLUMNS: &[&str] = &["title", "primary_contributor", "genre_name", "dewey_code"];
+const LOCATION_SORT_COLUMNS: &[&str] =
+    &["title", "primary_contributor", "genre_name", "dewey_code"];
 const SORT_DIRS: &[&str] = &["asc", "desc"];
 
 fn validated_location_sort(sort: &Option<String>) -> &str {
@@ -379,7 +384,10 @@ mod tests {
 
     #[test]
     fn test_validated_location_sort_accepts_dewey_code() {
-        assert_eq!(validated_location_sort(&Some("dewey_code".to_string())), "dewey_code");
+        assert_eq!(
+            validated_location_sort(&Some("dewey_code".to_string())),
+            "dewey_code"
+        );
         assert_eq!(map_location_sort_column("dewey_code"), "t.dewey_code");
     }
 

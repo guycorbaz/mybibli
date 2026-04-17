@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+use mybibli::AppState;
 use mybibli::config::{AppSettings, Config};
 use mybibli::db;
 use mybibli::metadata::bdgest::BdgestProvider;
@@ -14,7 +15,6 @@ use mybibli::metadata::registry::ProviderRegistry;
 use mybibli::metadata::tmdb::TmdbProvider;
 use mybibli::middleware::logging;
 use mybibli::routes;
-use mybibli::AppState;
 
 use tokio::net::TcpListener;
 
@@ -75,12 +75,18 @@ async fn main() {
     registry.register(Box::new(BdgestProvider::new()));
     registry.register(Box::new(BnfProvider::new(http_client.clone())));
     let gb_key = std::env::var("GOOGLE_BOOKS_API_KEY").ok();
-    registry.register(Box::new(GoogleBooksProvider::new(http_client.clone(), gb_key)));
+    registry.register(Box::new(GoogleBooksProvider::new(
+        http_client.clone(),
+        gb_key,
+    )));
     registry.register(Box::new(OpenLibraryProvider::new(http_client.clone())));
 
     // CD chain: MusicBrainz (1 req/sec rate limit)
     let mb_limiter = Arc::new(RateLimiter::per_second(1.0));
-    registry.register(Box::new(MusicBrainzProvider::new(http_client.clone(), mb_limiter)));
+    registry.register(Box::new(MusicBrainzProvider::new(
+        http_client.clone(),
+        mb_limiter,
+    )));
 
     // DVD chain: OMDb → TMDb (OMDb first per architecture)
     if let Ok(omdb_key) = std::env::var("OMDB_API_KEY") {
@@ -125,7 +131,5 @@ async fn main() {
 
     tracing::info!(%addr, "Server listening");
 
-    axum::serve(listener, app)
-        .await
-        .expect("Server failed");
+    axum::serve(listener, app).await.expect("Server failed");
 }

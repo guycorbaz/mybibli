@@ -91,7 +91,10 @@ mod tests {
 
     #[test]
     fn test_non_empty_with_value() {
-        assert_eq!(non_empty(&Some("hello".to_string())), Some("hello".to_string()));
+        assert_eq!(
+            non_empty(&Some("hello".to_string())),
+            Some("hello".to_string())
+        );
     }
 
     #[test]
@@ -106,6 +109,9 @@ mod tests {
 
     #[test]
     fn test_non_empty_trims() {
-        assert_eq!(non_empty(&Some("  hello  ".to_string())), Some("hello".to_string()));
+        assert_eq!(
+            non_empty(&Some("  hello  ".to_string())),
+            Some("hello".to_string())
+        );
     }
 }

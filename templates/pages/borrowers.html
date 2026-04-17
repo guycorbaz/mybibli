@@ -7,7 +7,7 @@
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ list_title }}</h1>
         {% if role == "librarian" || role == "admin" %}
-        <a href="#add-form" onclick="document.getElementById('add-form').classList.remove('hidden');document.getElementById('new-name').focus();return false;"
+        <a href="#add-form" id="borrowers-show-add-form"
            class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
             {{ add_label }}
         </a>
@@ -38,7 +38,7 @@
                           class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"></textarea>
             </div>
             <div class="flex justify-end gap-3">
-                <button type="button" onclick="document.getElementById('add-form').classList.add('hidden')"
+                <button type="button" id="borrowers-hide-add-form"
                         class="px-3 py-1.5 text-sm text-stone-600 dark:text-stone-400">{{ cancel_label }}</button>
                 <button type="submit"
                         class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">{{ save_label }}</button>

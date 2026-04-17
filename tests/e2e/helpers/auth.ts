@@ -24,7 +24,10 @@ export async function loginAs(page: Page, role: Role = "admin"): Promise<void> {
   await page.goto("/login");
   await page.fill("#username", username);
   await page.fill("#password", password);
-  await page.click('button[type="submit"]');
+  // Story 7-3 added a language-toggle form to every page (including /login),
+  // so `button[type="submit"]` is no longer unique. `#login-submit` points
+  // specifically at the login form's submit button.
+  await page.click("#login-submit");
   // Login currently redirects to /catalog; accept any URL that is not /login.
   await page.waitForURL(/^(?!.*\/login).*$/, { timeout: 5000 });
 }

@@ -37,6 +37,9 @@ cargo sqlx prepare --check --workspace -- --all-targets  # Verify cache matches 
 
 # i18n — REQUIRED after adding/changing locale keys
 touch src/lib.rs && cargo build      # Force i18n proc macro to re-read YAML files
+
+# CSP report-only mode (story 7-4) — observe violations without blocking
+CSP_REPORT_ONLY=true cargo run       # Switches header to Content-Security-Policy-Report-Only
 ```
 
 ## Foundation Rules
@@ -62,7 +65,7 @@ These apply to ALL sessions without exception.
 - `src/routes/` — HTTP handlers. Thin: extract params, call service, return response.
 - `src/services/` — Business logic. All domain rules live here, never in handlers.
 - `src/models/` — Database models. SQL queries, row mapping, `DbPool` parameter.
-- `src/middleware/` — Axum middleware: `auth.rs` (Session extractor), `htmx.rs` (HxRequest + HtmxResponse), `pending_updates.rs` (OOB metadata delivery), `logging.rs`.
+- `src/middleware/` — Axum middleware: `auth.rs` (Session extractor), `htmx.rs` (HxRequest + HtmxResponse), `pending_updates.rs` (OOB metadata delivery), `logging.rs`, `csp.rs` (Content-Security-Policy + hardening headers, story 7-4).
 - `src/error/` — `AppError` enum (Internal, NotFound, BadRequest, Conflict, Unauthorized, Database). All errors must use this — no `anyhow` or raw strings.
 - `src/metadata/` — External metadata providers. `MetadataProvider` async trait + BnF implementation.
 - `src/tasks/` — Background tasks (tokio::spawn). `metadata_fetch.rs` for async BnF lookups.
@@ -83,6 +86,8 @@ These apply to ALL sessions without exception.
 - **HTML escaping:** Use `crate::utils::html_escape()` — DO NOT duplicate.
 - **Pool access:** `pool: &DbPool` from `AppState`. For spawned tasks: `pool.clone()` (Arc internally).
 - **SQLx offline:** Run `cargo sqlx prepare` after any query change, commit `.sqlx/`.
+- **CSP & hardening headers (story 7-4):** `src/middleware/csp.rs` is wrapped outermost in `routes::build_router` (per AR16: `Logging → Auth → [Handler] → PendingUpdates → CSP`). Strict directive — `script-src 'self'`, `style-src 'self'`, no `unsafe-inline` / no `unsafe-eval`. **Zero inline `<script>`, `<style>`, `style="..."`, `onclick=` etc.** in templates AND in HTML produced from Rust (`feedback_html`, `pending_updates`, `locations` tree, …). All dismiss buttons use `data-action="dismiss-feedback"` (delegated handler in `static/js/mybibli.js`). HTMX trigger filters that need JS evaluation (e.g. `hx-trigger="keydown[key=='Enter']"`) are forbidden — emit a `CustomEvent` from a JS module instead. The `src/templates_audit.rs` `#[test]` walks `templates/` and panics on regressions; pair it with manual greps over `src/` for HTML strings when adding new server-rendered fragments. Toggle observe-only mode with `CSP_REPORT_ONLY=true`.
+- **Modal scanner-guard invariant (story 7-5):** `static/js/scanner-guard.js` watches `dialog[open]` and `[aria-modal="true"]` surfaces via MutationObserver. While any modal is open it captures `keydown` at the document-capture phase and either forwards printable chars / Enter to the modal's focused text input or blocks them — preventing a USB scanner burst from leaking into `#scan-field` (duplicate scan) or activating a modal's default-focused Cancel/Confirm button. New destructive action UX MUST use the UX-DR8 Modal component (Epic 9) so it automatically inherits this protection. New `hx-confirm=` attributes are BLOCKED by `src/templates_audit.rs::hx_confirm_matches_allowlist`; the allowlist is frozen at 5 grandfathered sites and only changes through explicit review.
 
 ### HTMX OOB Swap Pattern
 
@@ -138,7 +143,7 @@ await expect(page.locator("h1")).toContainText(/Active loans|Prêts actifs/i);
 - `tests/e2e/helpers/isbn.ts` — `specIsbn(specId, seq)` generates unique valid EAN-13 ISBNs per spec
 - `tests/e2e/helpers/accessibility.ts` — axe-core a11y assertions
 - `tests/e2e/helpers/loans.ts` — `scanTitleAndVolume`, `createBorrower`, `createLoan`, `returnLoanFromLoansPage`. Canonical loan-flow helpers. `createLoan` submits via direct `page.request.post('/loans', ...)` instead of the HTMX form — the HTMX path proved racy under parallel load (story 5-1c) because `waitForURL(/\/loans/)` was a no-op when the form lives on /loans.
-- `tests/e2e/helpers/scanner.ts` — **⚠️ STUB, not functional**. Pre-existing tech debt from Epic 1. Do not rely on it until explicitly reimplemented.
+- `tests/e2e/helpers/scanner.ts` — `simulateScan` (scanner burst, 20 ms inter-key) and `simulateTyping` (human pace, 100 ms inter-key). Uses Playwright's native `{ delay }` option — do NOT re-roll `waitForTimeout` sequences.
 
 **Session cookie format:** The `DEV_SESSION_COOKIE` value `"ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2"` is base64 of a development session token seeded by `migrations/20260329000002_seed_dev_user.sql`. Cookie name is `session` (NOT `session_token`).
 

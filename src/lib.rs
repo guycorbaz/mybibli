@@ -11,6 +11,9 @@ pub mod services;
 pub mod tasks;
 pub mod utils;
 
+#[cfg(test)]
+mod templates_audit;
+
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -28,4 +31,16 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub registry: Arc<ProviderRegistry>,
     pub covers_dir: PathBuf,
+}
+
+impl AppState {
+    /// Read the currently-configured session inactivity timeout (seconds).
+    /// Clones the scalar out of the `RwLock` so callers never hold the guard
+    /// across `.await` points.
+    pub fn session_timeout_secs(&self) -> u64 {
+        self.settings
+            .read()
+            .map(|s| s.session_timeout_secs)
+            .unwrap_or_else(|_| AppSettings::default().session_timeout_secs)
+    }
 }

@@ -20,8 +20,9 @@
         } else {
             document.documentElement.classList.remove("dark");
         }
-        // Update theme toggle button aria-label
-        var btn = document.querySelector("[onclick*='mybibliToggleTheme']");
+        // Update theme toggle button aria-label (no-op on bare.html where the
+        // button doesn't exist — early-return keeps the file CSP-safe).
+        var btn = document.getElementById("theme-toggle");
         if (btn) {
             btn.setAttribute(
                 "aria-label",
@@ -37,13 +38,13 @@
         var next = current === "dark" ? "light" : "dark";
         localStorage.setItem(STORAGE_KEY, next);
 
-        // Add smooth transition unless reduced motion preferred
+        // Smooth transition via class toggle (CSP-safe — no inline style).
+        // Class lives in browse.css; honour prefers-reduced-motion.
         var prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         if (!prefersReducedMotion) {
-            document.documentElement.style.transition =
-                "background-color 300ms ease-out, color 300ms ease-out";
+            document.documentElement.classList.add("theme-transitioning");
             setTimeout(function () {
-                document.documentElement.style.transition = "";
+                document.documentElement.classList.remove("theme-transitioning");
             }, 300);
         }
         applyTheme(next);
@@ -61,6 +62,18 @@
             }
         });
 
-    // Expose toggle for UI buttons
-    window.mybibliToggleTheme = toggleTheme;
+    // Wire #theme-toggle button (idempotent). Bare.html (login/logout) has
+    // no nav, so the button is absent — wireToggle is a no-op there.
+    function wireToggle() {
+        var btn = document.getElementById("theme-toggle");
+        if (!btn || btn.dataset.wired === "true") return;
+        btn.dataset.wired = "true";
+        btn.addEventListener("click", toggleTheme);
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", wireToggle);
+    } else {
+        wireToggle();
+    }
 })();

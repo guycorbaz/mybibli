@@ -64,7 +64,9 @@ impl OpenLibraryProvider {
             if let Some(s) = v.as_str() {
                 Some(s.to_string())
             } else {
-                v.get("value").and_then(|inner| inner.as_str()).map(String::from)
+                v.get("value")
+                    .and_then(|inner| inner.as_str())
+                    .map(String::from)
             }
         });
 
@@ -143,10 +145,7 @@ impl MetadataProvider for OpenLibraryProvider {
     }
 
     async fn lookup_by_isbn(&self, isbn: &str) -> Result<Option<MetadataResult>, MetadataError> {
-        let encoded_isbn: String = isbn
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .collect();
+        let encoded_isbn: String = isbn.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
 
         let url = format!("{}/isbn/{}.json", self.base_url, encoded_isbn);
 
@@ -221,7 +220,10 @@ mod tests {
         let parsed = OpenLibraryProvider::parse_response(&json).unwrap();
         assert_eq!(parsed.title.as_deref(), Some("L'Étranger"));
         assert_eq!(parsed.subtitle.as_deref(), Some("roman"));
-        assert_eq!(parsed.description.as_deref(), Some("A novel by Albert Camus."));
+        assert_eq!(
+            parsed.description.as_deref(),
+            Some("A novel by Albert Camus.")
+        );
         assert_eq!(parsed.author_keys, vec!["/authors/OL124171A"]);
         assert_eq!(parsed.publisher.as_deref(), Some("Gallimard"));
         assert_eq!(parsed.publication_date.as_deref(), Some("1942"));

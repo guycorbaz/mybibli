@@ -66,7 +66,7 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     const conditionSelect = page.locator('select[name="condition_state_id"]');
     await expect(conditionSelect).toBeVisible({ timeout: 3000 });
     await conditionSelect.selectOption({ label: "Endommagé" });
-    await page.locator('button[type="submit"]').click();
+    await page.locator('main button[type="submit"]').last().click();
     // Positive assertion on the volume detail URL — the handler returns
     // `Redirect::to("/volume/{id}")` on success (src/routes/catalog.rs).
     // Negative assertions like `not.toHaveURL(/\/edit$/)` false-pass on 4xx

@@ -96,8 +96,8 @@
             if (!btn) return;
             var iconOn = btn.querySelector(".icon-audio-on");
             var iconOff = btn.querySelector(".icon-audio-off");
-            if (iconOn) iconOn.style.display = enabled ? "block" : "none";
-            if (iconOff) iconOff.style.display = enabled ? "none" : "block";
+            if (iconOn) iconOn.classList.toggle("hidden", !enabled);
+            if (iconOff) iconOff.classList.toggle("hidden", enabled);
             btn.setAttribute("aria-label", enabled ? (btn.dataset.labelDisable || "Disable scan sounds") : (btn.dataset.labelEnable || "Enable scan sounds"));
         },
 
@@ -107,4 +107,24 @@
     };
 
     window.mybibliAudio = AudioFeedback;
+
+    // Auto-wire #audio-toggle: idempotent (sentinel-guarded) so HTMX
+    // re-inserts of the toolbar fragment don't double-bind the click.
+    function wireAudioToggle() {
+        var btn = document.getElementById("audio-toggle");
+        if (!btn || btn.dataset.wired === "true") return;
+        btn.dataset.wired = "true";
+        btn.addEventListener("click", function () {
+            AudioFeedback.toggle();
+        });
+        AudioFeedback.initToggle();
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", wireAudioToggle);
+    } else {
+        wireAudioToggle();
+    }
+    // HTMX may swap the toolbar fragment back in (e.g., after navigation).
+    document.body.addEventListener("htmx:afterSettle", wireAudioToggle);
 })();

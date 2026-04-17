@@ -3,9 +3,8 @@
     <button id="audio-toggle" type="button"
         class="p-1.5 rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         data-label-enable="{{ audio_enable }}" data-label-disable="{{ audio_disable }}"
-        onclick="if(window.mybibliAudio){window.mybibliAudio.toggle();}"
         aria-label="{{ audio_enable }}">
-        <span class="icon-audio-on" style="display:none;">
+        <span class="icon-audio-on hidden">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M17.95 6.05a8 8 0 010 11.9M6.5 8.5l5-4v15l-5-4H4a1 1 0 01-1-1v-5a1 1 0 011-1h2.5z" /></svg>
         </span>
         <span class="icon-audio-off">
@@ -14,4 +13,3 @@
     </button>
     <span id="session-counter" class="text-xs text-stone-500 dark:text-stone-400 ml-2" aria-label=""></span>
 </div>
-<script>if(window.mybibliAudio){window.mybibliAudio.initToggle();}</script>

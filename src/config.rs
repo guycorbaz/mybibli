@@ -12,8 +12,8 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Result<Self, ConfigError> {
-        let database_url = env::var("DATABASE_URL")
-            .map_err(|_| ConfigError::Missing("DATABASE_URL"))?;
+        let database_url =
+            env::var("DATABASE_URL").map_err(|_| ConfigError::Missing("DATABASE_URL"))?;
         let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
         let port = env::var("PORT")
             .unwrap_or_else(|_| "8080".to_string())
@@ -48,6 +48,94 @@ impl std::fmt::Display for ConfigError {
 }
 
 impl std::error::Error for ConfigError {}
+
+/// Read `CSP_REPORT_ONLY` once at startup and emit a `tracing::info!` line
+/// recording the resolved mode so misconfigurations don't fail silently.
+/// Accepts `true` / `True` / `TRUE` / `1` / `yes` (case-insensitive) as
+/// "report-only"; anything else (incl. unset) means enforced. Per AR26,
+/// no `dotenvy`.
+pub fn csp_report_only() -> bool {
+    let raw = env::var("CSP_REPORT_ONLY").ok();
+    let report_only = matches!(
+        raw.as_deref().map(str::trim).map(str::to_ascii_lowercase).as_deref(),
+        Some("true" | "1" | "yes")
+    );
+    let mode = if report_only { "report-only" } else { "enforced" };
+    match raw.as_deref() {
+        Some(v) => tracing::info!(
+            csp_mode = mode,
+            csp_report_only_env = v,
+            "CSP mode resolved from CSP_REPORT_ONLY env var"
+        ),
+        None => tracing::info!(csp_mode = mode, "CSP mode resolved (no CSP_REPORT_ONLY env var)"),
+    }
+    report_only
+}
+
+#[cfg(test)]
+mod csp_report_only_tests {
+    use super::csp_report_only;
+    use std::sync::Mutex;
+
+    // Serialize tests because `std::env` is process-global; running them
+    // in parallel would leak the env var between cases.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_env<F: FnOnce()>(value: Option<&str>, body: F) {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev = std::env::var("CSP_REPORT_ONLY").ok();
+        // SAFETY: `set_var` / `remove_var` are unsafe in 2024 edition;
+        // tests serialize on ENV_LOCK so no concurrent access.
+        unsafe {
+            match value {
+                Some(v) => std::env::set_var("CSP_REPORT_ONLY", v),
+                None => std::env::remove_var("CSP_REPORT_ONLY"),
+            }
+        }
+        body();
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("CSP_REPORT_ONLY", v),
+                None => std::env::remove_var("CSP_REPORT_ONLY"),
+            }
+        }
+    }
+
+    #[test]
+    fn unset_env_means_enforced() {
+        with_env(None, || assert!(!csp_report_only()));
+    }
+
+    #[test]
+    fn lowercase_true_means_report_only() {
+        with_env(Some("true"), || assert!(csp_report_only()));
+    }
+
+    #[test]
+    fn uppercase_true_also_means_report_only() {
+        with_env(Some("TRUE"), || assert!(csp_report_only()));
+        with_env(Some("True"), || assert!(csp_report_only()));
+    }
+
+    #[test]
+    fn one_and_yes_also_mean_report_only() {
+        with_env(Some("1"), || assert!(csp_report_only()));
+        with_env(Some("yes"), || assert!(csp_report_only()));
+    }
+
+    #[test]
+    fn anything_else_means_enforced() {
+        with_env(Some("false"), || assert!(!csp_report_only()));
+        with_env(Some("0"), || assert!(!csp_report_only()));
+        with_env(Some(""), || assert!(!csp_report_only()));
+        with_env(Some("on"), || assert!(!csp_report_only()));
+    }
+
+    #[test]
+    fn whitespace_is_trimmed() {
+        with_env(Some("  true  "), || assert!(csp_report_only()));
+    }
+}
 
 // ─── Application settings loaded from database ──────────────────
 
@@ -86,32 +174,69 @@ impl AppSettings {
         .await?;
 
         let mut settings = AppSettings::default();
+        // Pass 1: everything except the seconds-granularity session override —
+        // so row iteration order cannot let `_hours` silently win over `_seconds`.
+        let mut seconds_override: Option<u64> = None;
 
         for (key, value) in &rows {
             match key.as_str() {
                 "overdue_loan_threshold_days" => match value.parse::<i32>() {
                     Ok(v) => settings.overdue_threshold_days = v,
-                    Err(_) => tracing::warn!(key = %key, value = %value, "Invalid setting value, using default"),
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
                 },
                 "scanner_burst_threshold_ms" => match value.parse::<u64>() {
                     Ok(v) => settings.scanner_burst_threshold_ms = v,
-                    Err(_) => tracing::warn!(key = %key, value = %value, "Invalid setting value, using default"),
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
                 },
                 "search_debounce_delay_ms" => match value.parse::<u64>() {
                     Ok(v) => settings.search_debounce_delay_ms = v,
-                    Err(_) => tracing::warn!(key = %key, value = %value, "Invalid setting value, using default"),
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
                 },
                 "session_inactivity_timeout_hours" => match value.parse::<u64>() {
-                    Ok(v) => settings.session_timeout_secs = v * 3600,
-                    Err(_) => tracing::warn!(key = %key, value = %value, "Invalid setting value, using default"),
+                    Ok(v) => match v.checked_mul(3600) {
+                        Some(secs) => settings.session_timeout_secs = secs,
+                        None => {
+                            tracing::warn!(key = %key, value = %value, "Timeout overflow (hours * 3600), using default")
+                        }
+                    },
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
+                },
+                // Sub-hour granularity (used by E2E tests with a short timeout).
+                // Always overrides `session_inactivity_timeout_hours` — applied
+                // in pass 2 below so precedence is independent of row order.
+                "session_inactivity_timeout_seconds" => match value.parse::<u64>() {
+                    Ok(v) if v >= 1 => seconds_override = Some(v),
+                    Ok(_) => {
+                        tracing::warn!(key = %key, value = %value, "Timeout must be >= 1s, using default")
+                    }
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
                 },
                 "metadata_fetch_timeout_seconds" => match value.parse::<u64>() {
                     Ok(v) if v >= 1 => settings.metadata_fetch_timeout_secs = v,
-                    Ok(_) => tracing::warn!(key = %key, value = %value, "Timeout must be >= 1s, using default"),
-                    Err(_) => tracing::warn!(key = %key, value = %value, "Invalid setting value, using default"),
+                    Ok(_) => {
+                        tracing::warn!(key = %key, value = %value, "Timeout must be >= 1s, using default")
+                    }
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
                 },
                 _ => {} // Ignore unknown keys
             }
+        }
+
+        // Pass 2: `_seconds` explicitly wins over `_hours`.
+        if let Some(secs) = seconds_override {
+            settings.session_timeout_secs = secs;
         }
 
         Ok(settings)
@@ -156,14 +281,20 @@ mod tests {
     #[test]
     fn test_config_with_all_vars() {
         let vars = HashMap::from([
-            ("DATABASE_URL", "mysql://test:test@localhost/test?charset=utf8mb4"),
+            (
+                "DATABASE_URL",
+                "mysql://test:test@localhost/test?charset=utf8mb4",
+            ),
             ("HOST", "127.0.0.1"),
             ("PORT", "3000"),
             ("APP_LANGUAGE", "fr"),
         ]);
 
         let config = Config::from_map(&vars).unwrap();
-        assert_eq!(config.database_url, "mysql://test:test@localhost/test?charset=utf8mb4");
+        assert_eq!(
+            config.database_url,
+            "mysql://test:test@localhost/test?charset=utf8mb4"
+        );
         assert_eq!(config.host, "127.0.0.1");
         assert_eq!(config.port, 3000);
         assert_eq!(config.app_language, "fr");
@@ -171,9 +302,7 @@ mod tests {
 
     #[test]
     fn test_config_defaults() {
-        let vars = HashMap::from([
-            ("DATABASE_URL", "mysql://test:test@localhost/test"),
-        ]);
+        let vars = HashMap::from([("DATABASE_URL", "mysql://test:test@localhost/test")]);
 
         let config = Config::from_map(&vars).unwrap();
         assert_eq!(config.host, "0.0.0.0");

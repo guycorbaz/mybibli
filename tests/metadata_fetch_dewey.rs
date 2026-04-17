@@ -16,11 +16,7 @@ use mybibli::models::title::TitleModel;
 use mybibli::tasks::metadata_fetch::update_title_from_metadata;
 use sqlx::MySqlPool;
 
-async fn create_minimal_title(
-    pool: &MySqlPool,
-    title: &str,
-    dewey_code: Option<&str>,
-) -> u64 {
+async fn create_minimal_title(pool: &MySqlPool, title: &str, dewey_code: Option<&str>) -> u64 {
     let result = sqlx::query(
         "INSERT INTO titles (title, language, media_type, genre_id, dewey_code) \
          VALUES (?, 'fr', 'book', 1, ?)",

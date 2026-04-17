@@ -28,7 +28,7 @@ test.describe("Series CRUD & Listing (Story 5-3)", () => {
     await page.locator("#series-name").fill(SERIES_NAME);
     await page.locator("#series-type").selectOption("closed");
     await page.locator("#series-total").fill("10");
-    await page.locator('button[type="submit"]').click();
+    await page.locator('main button[type="submit"]').last().click();
 
     // Should redirect to detail page
     await page.waitForURL(/\/series\/\d+/);
@@ -48,7 +48,7 @@ test.describe("Series CRUD & Listing (Story 5-3)", () => {
 
     // Change name
     await page.locator("#series-name").fill(EDITED_NAME);
-    await page.locator('button[type="submit"]').click();
+    await page.locator('main button[type="submit"]').last().click();
 
     // Should redirect back to detail with updated name
     await page.waitForURL(/\/series\/\d+$/);
@@ -75,7 +75,7 @@ test.describe("Series CRUD & Listing (Story 5-3)", () => {
     // Create a series first
     await page.goto("/series/new");
     await page.locator("#series-name").fill(SERIES_NAME);
-    await page.locator('button[type="submit"]').click();
+    await page.locator('main button[type="submit"]').last().click();
     await page.waitForURL(/\/series\/\d+/);
 
     // Set up dialog handler for hx-confirm
@@ -111,7 +111,7 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
     await page.locator("#series-name").fill(SERIES_NAME);
     await page.locator("#series-type").selectOption("closed");
     await page.locator("#series-total").fill("5");
-    await page.locator('button[type="submit"]').click();
+    await page.locator('main button[type="submit"]').last().click();
     await page.waitForURL(/\/series\/\d+/);
     const seriesUrl = page.url();
 
@@ -196,7 +196,7 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
     await page.locator("#series-name").fill(SERIES_NAME);
     await page.locator("#series-type").selectOption("closed");
     await page.locator("#series-total").fill("3");
-    await page.locator('button[type="submit"]').click();
+    await page.locator('main button[type="submit"]').last().click();
     await page.waitForURL(/\/series\/\d+/);
     const seriesUrl = page.url();
 
@@ -241,7 +241,7 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
     await page.locator("#series-name").fill(SERIES_NAME);
     await page.locator("#series-type").selectOption("closed");
     await page.locator("#series-total").fill("8");
-    await page.locator('button[type="submit"]').click();
+    await page.locator('main button[type="submit"]').last().click();
     await page.waitForURL(/\/series\/\d+/);
     const seriesUrl = page.url();
 

@@ -5,7 +5,7 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::{PaginatedList, DEFAULT_PAGE_SIZE};
+use crate::models::{DEFAULT_PAGE_SIZE, PaginatedList};
 
 /// Series type: open (ongoing) or closed (fixed total).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +69,10 @@ fn row_to_series(row: sqlx::mysql::MySqlRow) -> Result<SeriesModel, sqlx::Error>
 }
 
 impl SeriesModel {
-    pub async fn active_find_by_id(pool: &DbPool, id: u64) -> Result<Option<SeriesModel>, AppError> {
+    pub async fn active_find_by_id(
+        pool: &DbPool,
+        id: u64,
+    ) -> Result<Option<SeriesModel>, AppError> {
         let row = sqlx::query(
             "SELECT id, name, description, series_type, total_volume_count, version \
              FROM series WHERE id = ? AND deleted_at IS NULL",
@@ -84,14 +87,16 @@ impl SeriesModel {
         }
     }
 
-    pub async fn active_list(pool: &DbPool, page: u32) -> Result<PaginatedList<SeriesModel>, AppError> {
+    pub async fn active_list(
+        pool: &DbPool,
+        page: u32,
+    ) -> Result<PaginatedList<SeriesModel>, AppError> {
         let offset = (page.saturating_sub(1)) * DEFAULT_PAGE_SIZE;
 
-        let count_row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM series WHERE deleted_at IS NULL",
-        )
-        .fetch_one(pool)
-        .await?;
+        let count_row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM series WHERE deleted_at IS NULL")
+                .fetch_one(pool)
+                .await?;
 
         let rows = sqlx::query(
             "SELECT id, name, description, series_type, total_volume_count, version \
@@ -108,10 +113,20 @@ impl SeriesModel {
             .map(row_to_series)
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(PaginatedList::new(items, page, count_row.0 as u64, None, None, None))
+        Ok(PaginatedList::new(
+            items,
+            page,
+            count_row.0 as u64,
+            None,
+            None,
+            None,
+        ))
     }
 
-    pub async fn active_find_by_name(pool: &DbPool, name: &str) -> Result<Option<SeriesModel>, AppError> {
+    pub async fn active_find_by_name(
+        pool: &DbPool,
+        name: &str,
+    ) -> Result<Option<SeriesModel>, AppError> {
         let row = sqlx::query(
             "SELECT id, name, description, series_type, total_volume_count, version \
              FROM series WHERE name = ? AND deleted_at IS NULL",
@@ -183,12 +198,11 @@ impl SeriesModel {
     }
 
     pub async fn soft_delete(pool: &DbPool, id: u64) -> Result<(), AppError> {
-        let result = sqlx::query(
-            "UPDATE series SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL",
-        )
-        .bind(id)
-        .execute(pool)
-        .await?;
+        let result =
+            sqlx::query("UPDATE series SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL")
+                .bind(id)
+                .execute(pool)
+                .await?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound(

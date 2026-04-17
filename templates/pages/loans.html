@@ -7,7 +7,7 @@
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ list_title }}</h1>
         {% if role == "librarian" || role == "admin" %}
-        <button type="button" onclick="document.getElementById('new-loan-form').classList.toggle('hidden');document.getElementById('loan-volume-label').focus();"
+        <button type="button" id="loans-new-loan-toggle"
                 class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
             {{ new_loan_label }}
         </button>
@@ -20,7 +20,7 @@
         <input type="text" id="loan-scan-field"
                placeholder="{{ scan_placeholder }}"
                hx-get="/loans/scan"
-               hx-trigger="keydown[key=='Enter'] from:this"
+               hx-trigger="loan-scan-fire"
                hx-target="#scan-result"
                hx-swap="innerHTML"
                hx-include="this"
@@ -147,78 +147,4 @@
     {% endif %}
     {% endif %}
 </div>
-
-<script>
-// Borrower autocomplete
-(function() {
-    const searchInput = document.getElementById('loan-borrower-search');
-    const hiddenInput = document.getElementById('loan-borrower-id');
-    const dropdown = document.getElementById('borrower-dropdown');
-    if (!searchInput) return;
-
-    let debounceTimer;
-
-    searchInput.addEventListener('input', function() {
-        const q = this.value.trim();
-        clearTimeout(debounceTimer);
-        // Always clear stale selection when user types
-        hiddenInput.value = '';
-        if (q.length < 2) {
-            dropdown.classList.add('hidden');
-            dropdown.innerHTML = '';
-            return;
-        }
-        debounceTimer = setTimeout(async function() {
-            try {
-                const resp = await fetch('/borrowers/search?q=' + encodeURIComponent(q));
-                if (!resp.ok) return;
-                const data = await resp.json();
-                dropdown.innerHTML = '';
-                if (data.length === 0) {
-                    dropdown.classList.add('hidden');
-                    return;
-                }
-                data.forEach(function(b) {
-                    const item = document.createElement('div');
-                    item.className = 'px-3 py-2 cursor-pointer hover:bg-stone-100 dark:hover:bg-stone-600 text-sm text-stone-900 dark:text-stone-100';
-                    item.textContent = b.name;
-                    item.addEventListener('click', function() {
-                        searchInput.value = b.name;
-                        hiddenInput.value = b.id;
-                        dropdown.classList.add('hidden');
-                    });
-                    dropdown.appendChild(item);
-                });
-                dropdown.classList.remove('hidden');
-            } catch(e) { /* ignore */ }
-        }, 300);
-    });
-
-    // Close dropdown on outside click
-    document.addEventListener('click', function(e) {
-        if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
-            dropdown.classList.add('hidden');
-        }
-    });
-
-    // Clear scan field after scan
-    const scanField = document.getElementById('loan-scan-field');
-    if (scanField) {
-        scanField.addEventListener('htmx:afterRequest', function() {
-            setTimeout(function() { scanField.value = ''; scanField.focus(); }, 100);
-        });
-    }
-
-    // Reload page after successful return to refresh the table (preserve sort params)
-    document.body.addEventListener('htmx:afterRequest', function(e) {
-        if (e.detail.pathInfo && e.detail.pathInfo.requestPath && e.detail.pathInfo.requestPath.includes('/return') && e.detail.successful) {
-            setTimeout(function() {
-                var params = new URLSearchParams(window.location.search);
-                params.set('page', '1');
-                window.location.search = params.toString();
-            }, 1500);
-        }
-    });
-})();
-</script>
 {% endblock %}

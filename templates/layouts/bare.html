@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}mybibli{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/output.css">
+    <!-- Tell HTMX NOT to inject its inline `.htmx-indicator { ... }` <style>
+         block (CSP `style-src 'self'` blocks it). bare.html doesn't load
+         browse.css; the indicator rules don't matter on login/logout. -->
+    <meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/theme.js"></script>
     {% block head %}{% endblock %}

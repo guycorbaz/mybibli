@@ -1,16 +1,19 @@
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::Extension;
+use axum::extract::{OriginalUri, Path, State};
 use axum::response::{Html, IntoResponse, Redirect};
 use serde::Deserialize;
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
+use crate::middleware::locale::Locale;
+use crate::models::PaginatedList;
 use crate::models::borrower::BorrowerModel;
 use crate::models::loan::{LoanModel, LoanWithDetails};
-use crate::models::PaginatedList;
 use crate::services::borrowers::BorrowerService;
-use crate::AppState;
+use crate::utils::current_url;
 
 // ─── List page ──────────────────────────────────────────
 
@@ -20,7 +23,9 @@ pub struct BorrowerListQuery {
     pub page: u32,
 }
 
-fn default_page() -> u32 { 1 }
+fn default_page() -> u32 {
+    1
+}
 
 #[derive(Template)]
 #[template(path = "pages/borrowers.html")]
@@ -29,6 +34,7 @@ pub struct BorrowersTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -49,45 +55,52 @@ pub struct BorrowersTemplate {
     pub prev_label: String,
     pub next_label: String,
     pub borrowers: PaginatedList<BorrowerModel>,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn borrowers_page(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     HxRequest(_is_htmx): HxRequest,
-    uri: axum::http::Uri,
     axum::extract::Query(params): axum::extract::Query<BorrowerListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     let borrowers = BorrowerModel::list_active(pool, params.page).await?;
 
     let template = BorrowersTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "borrowers",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-        nav_locations: rust_i18n::t!("nav.locations").to_string(),
-        nav_series: rust_i18n::t!("nav.series").to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
-        list_title: rust_i18n::t!("borrower.list_title").to_string(),
-        add_label: rust_i18n::t!("borrower.add").to_string(),
-        name_label: rust_i18n::t!("borrower.name").to_string(),
-        email_label: rust_i18n::t!("borrower.email").to_string(),
-        phone_label: rust_i18n::t!("borrower.phone").to_string(),
-        address_label: rust_i18n::t!("borrower.address").to_string(),
-        save_label: rust_i18n::t!("borrower.save").to_string(),
-        cancel_label: rust_i18n::t!("borrower.cancel").to_string(),
-        empty_state: rust_i18n::t!("borrower.empty_state").to_string(),
-        prev_label: rust_i18n::t!("pagination.previous").to_string(),
-        next_label: rust_i18n::t!("pagination.next").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
+        list_title: rust_i18n::t!("borrower.list_title", locale = loc).to_string(),
+        add_label: rust_i18n::t!("borrower.add", locale = loc).to_string(),
+        name_label: rust_i18n::t!("borrower.name", locale = loc).to_string(),
+        email_label: rust_i18n::t!("borrower.email", locale = loc).to_string(),
+        phone_label: rust_i18n::t!("borrower.phone", locale = loc).to_string(),
+        address_label: rust_i18n::t!("borrower.address", locale = loc).to_string(),
+        save_label: rust_i18n::t!("borrower.save", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("borrower.cancel", locale = loc).to_string(),
+        empty_state: rust_i18n::t!("borrower.empty_state", locale = loc).to_string(),
+        prev_label: rust_i18n::t!("pagination.previous", locale = loc).to_string(),
+        next_label: rust_i18n::t!("pagination.next", locale = loc).to_string(),
         borrowers,
+        current_url: current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
 
     match template.render() {
@@ -117,7 +130,9 @@ pub async fn create_borrower(
     session.require_role(Role::Librarian)?;
     let pool = &state.pool;
 
-    let borrower = BorrowerService::create_borrower(pool, &form.name, form.address, form.email, form.phone).await?;
+    let borrower =
+        BorrowerService::create_borrower(pool, &form.name, form.address, form.email, form.phone)
+            .await?;
 
     tracing::info!(borrower_id = borrower.id, name = %borrower.name, "Borrower created");
     Ok(Redirect::to("/borrowers"))
@@ -132,6 +147,7 @@ pub struct BorrowerDetailTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -160,58 +176,69 @@ pub struct BorrowerDetailTemplate {
     pub col_date: String,
     pub col_duration: String,
     pub col_action: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn borrower_detail(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     HxRequest(_is_htmx): HxRequest,
-    uri: axum::http::Uri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     let borrower = BorrowerModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     let active_loans = LoanModel::list_active_by_borrower(pool, borrower.id).await?;
     let threshold = state.settings.read().unwrap().overdue_threshold_days;
 
     let template = BorrowerDetailTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
-        current_page: "borrowers",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-        nav_locations: rust_i18n::t!("nav.locations").to_string(),
-        nav_series: rust_i18n::t!("nav.series").to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
+        // "borrower-detail" (not "borrowers") so the body[data-page] hook in
+        // mybibli.js (initBorrowerDetailReload) only fires here, while the
+        // nav highlight stays on /borrowers via the `borrowers` aria-current
+        // matcher in nav_bar.html (no other code keys off this string).
+        current_page: "borrower-detail",
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
         borrower,
-        address_label: rust_i18n::t!("borrower.address").to_string(),
-        email_label: rust_i18n::t!("borrower.email").to_string(),
-        phone_label: rust_i18n::t!("borrower.phone").to_string(),
-        edit_label: rust_i18n::t!("borrower.edit").to_string(),
-        delete_label: rust_i18n::t!("borrower.delete").to_string(),
-        confirm_delete: rust_i18n::t!("borrower.confirm_delete").to_string(),
+        address_label: rust_i18n::t!("borrower.address", locale = loc).to_string(),
+        email_label: rust_i18n::t!("borrower.email", locale = loc).to_string(),
+        phone_label: rust_i18n::t!("borrower.phone", locale = loc).to_string(),
+        edit_label: rust_i18n::t!("borrower.edit", locale = loc).to_string(),
+        delete_label: rust_i18n::t!("borrower.delete", locale = loc).to_string(),
+        confirm_delete: rust_i18n::t!("borrower.confirm_delete", locale = loc).to_string(),
         active_loans,
-        active_loans_label: rust_i18n::t!("borrower.active_loans").to_string(),
-        no_active_loans_label: rust_i18n::t!("borrower.no_active_loans").to_string(),
+        active_loans_label: rust_i18n::t!("borrower.active_loans", locale = loc).to_string(),
+        no_active_loans_label: rust_i18n::t!("borrower.no_active_loans", locale = loc).to_string(),
         overdue_threshold: threshold as i64,
-        days_label: rust_i18n::t!("loan.days").to_string(),
-        return_label: rust_i18n::t!("loan.return").to_string(),
-        overdue_label: rust_i18n::t!("loan.overdue").to_string(),
-        confirm_label: rust_i18n::t!("loan.return_confirm").to_string(),
-        col_volume: rust_i18n::t!("loan.col_volume").to_string(),
-        col_title: rust_i18n::t!("loan.col_title").to_string(),
-        col_date: rust_i18n::t!("loan.col_date").to_string(),
-        col_duration: rust_i18n::t!("loan.col_duration").to_string(),
-        col_action: rust_i18n::t!("loan.col_action").to_string(),
+        days_label: rust_i18n::t!("loan.days", locale = loc).to_string(),
+        return_label: rust_i18n::t!("loan.return", locale = loc).to_string(),
+        overdue_label: rust_i18n::t!("loan.overdue", locale = loc).to_string(),
+        confirm_label: rust_i18n::t!("loan.return_confirm", locale = loc).to_string(),
+        col_volume: rust_i18n::t!("loan.col_volume", locale = loc).to_string(),
+        col_title: rust_i18n::t!("loan.col_title", locale = loc).to_string(),
+        col_date: rust_i18n::t!("loan.col_date", locale = loc).to_string(),
+        col_duration: rust_i18n::t!("loan.col_duration", locale = loc).to_string(),
+        col_action: rust_i18n::t!("loan.col_action", locale = loc).to_string(),
+        current_url: current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
 
     match template.render() {
@@ -229,6 +256,7 @@ pub struct BorrowerEditTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -245,44 +273,51 @@ pub struct BorrowerEditTemplate {
     pub address_label: String,
     pub save_label: String,
     pub cancel_label: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn edit_borrower_page(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     HxRequest(_is_htmx): HxRequest,
-    uri: axum::http::Uri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 2a: Admin → Librarian.
     session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     let borrower = BorrowerModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     let template = BorrowerEditTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "borrowers",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-        nav_locations: rust_i18n::t!("nav.locations").to_string(),
-        nav_series: rust_i18n::t!("nav.series").to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
         borrower,
-        edit_title: rust_i18n::t!("borrower.edit").to_string(),
-        name_label: rust_i18n::t!("borrower.name").to_string(),
-        email_label: rust_i18n::t!("borrower.email").to_string(),
-        phone_label: rust_i18n::t!("borrower.phone").to_string(),
-        address_label: rust_i18n::t!("borrower.address").to_string(),
-        save_label: rust_i18n::t!("borrower.save").to_string(),
-        cancel_label: rust_i18n::t!("borrower.cancel").to_string(),
+        edit_title: rust_i18n::t!("borrower.edit", locale = loc).to_string(),
+        name_label: rust_i18n::t!("borrower.name", locale = loc).to_string(),
+        email_label: rust_i18n::t!("borrower.email", locale = loc).to_string(),
+        phone_label: rust_i18n::t!("borrower.phone", locale = loc).to_string(),
+        address_label: rust_i18n::t!("borrower.address", locale = loc).to_string(),
+        save_label: rust_i18n::t!("borrower.save", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("borrower.cancel", locale = loc).to_string(),
+        current_url: current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
 
     match template.render() {
@@ -315,7 +350,16 @@ pub async fn update_borrower(
     session.require_role(Role::Librarian)?;
     let pool = &state.pool;
 
-    BorrowerService::update_borrower(pool, id, form.version, &form.name, form.address, form.email, form.phone).await?;
+    BorrowerService::update_borrower(
+        pool,
+        id,
+        form.version,
+        &form.name,
+        form.address,
+        form.email,
+        form.phone,
+    )
+    .await?;
 
     tracing::info!(borrower_id = id, "Borrower updated");
     Ok(Redirect::to(&format!("/borrower/{id}")))
@@ -338,9 +382,13 @@ pub async fn delete_borrower(
         // HX-Redirect tells HTMX to do a full-page navigation
         Ok((
             axum::http::StatusCode::OK,
-            [(axum::http::header::HeaderName::from_static("hx-redirect"), "/borrowers".to_string())],
+            [(
+                axum::http::header::HeaderName::from_static("hx-redirect"),
+                "/borrowers".to_string(),
+            )],
             String::new(),
-        ).into_response())
+        )
+            .into_response())
     } else {
         Ok(Redirect::to("/borrowers").into_response())
     }
@@ -356,9 +404,10 @@ pub struct BorrowerSearchQuery {
 pub async fn borrower_search(
     session: Session,
     State(state): State<AppState>,
+    uri: axum::http::Uri,
     axum::extract::Query(query): axum::extract::Query<BorrowerSearchQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
 
     let q = query.q.trim();
     if q.len() < 2 || q.len() > 255 {

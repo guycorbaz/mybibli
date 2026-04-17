@@ -15,12 +15,14 @@ use sqlx::MySqlPool;
 #[sqlx::test(migrations = "./migrations")]
 async fn admin_and_librarian_seeds_present(pool: MySqlPool) {
     // AC #1: fresh DB must contain EXACTLY these two users, both active.
-    let (total,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL")
-            .fetch_one(&pool)
-            .await
-            .expect("count users");
-    assert_eq!(total, 2, "fresh DB must seed exactly two users (admin + librarian), got {total}");
+    let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL")
+        .fetch_one(&pool)
+        .await
+        .expect("count users");
+    assert_eq!(
+        total, 2,
+        "fresh DB must seed exactly two users (admin + librarian), got {total}"
+    );
 
     let rows: Vec<(String, String, bool)> = sqlx::query_as(
         "SELECT username, role, active FROM users \

@@ -1,3 +1,6 @@
+# ⚠️  E2E TEST STACK ONLY — NEVER COPY `TEST_MODE: "1"` INTO A PRODUCTION
+# COMPOSE FILE. TEST_MODE unlocks the `/debug/session-timeout` admin
+# endpoint (still role-gated to Admin by the handler as defense-in-depth).
 services:
   mybibli:
     build:
@@ -20,6 +23,7 @@ services:
       TMDB_API_BASE_URL: "http://mock-metadata:9090"
       TMDB_API_KEY: "test-tmdb-key"
       COVERS_DIR: "/tmp/test-covers"
+      TEST_MODE: "1"
     depends_on:
       db:
         condition: service_healthy

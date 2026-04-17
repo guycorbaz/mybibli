@@ -138,7 +138,10 @@ async fn version_check_blocks_stale_write(pool: MySqlPool) {
         refreshed.language, "fr",
         "language must keep its pre-fetch value when the version check fails"
     );
-    assert_eq!(refreshed.version, 2, "no extra version bump from the no-op UPDATE");
+    assert_eq!(
+        refreshed.version, 2,
+        "no extra version bump from the no-op UPDATE"
+    );
 }
 
 // ─── AC #1/#2 regression — public entry point reads a fresh snapshot ──────
@@ -156,14 +159,12 @@ async fn update_title_from_metadata_re_reads_snapshot(pool: MySqlPool) {
     // Simulate a manual edit that stamped `manually_edited_fields` WITHOUT
     // bumping version (e.g. an admin repair, or a future writer missing a
     // version bump). The per-field guard must still hold.
-    sqlx::query(
-        "UPDATE titles SET publisher = 'user', manually_edited_fields = ? WHERE id = ?",
-    )
-    .bind(r#"["publisher"]"#)
-    .bind(id)
-    .execute(&pool)
-    .await
-    .expect("stamp manually_edited_fields");
+    sqlx::query("UPDATE titles SET publisher = 'user', manually_edited_fields = ? WHERE id = ?")
+        .bind(r#"["publisher"]"#)
+        .bind(id)
+        .execute(&pool)
+        .await
+        .expect("stamp manually_edited_fields");
 
     let metadata = MetadataResult {
         title: Some("Anchor".to_string()),

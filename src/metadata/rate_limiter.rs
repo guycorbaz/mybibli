@@ -99,10 +99,9 @@ mod tests {
         let limiter2 = limiter.clone();
 
         let start = Instant::now();
-        let (_, _) = tokio::join!(
-            async move { limiter1.acquire().await },
-            async move { limiter2.acquire().await },
-        );
+        let (_, _) = tokio::join!(async move { limiter1.acquire().await }, async move {
+            limiter2.acquire().await
+        },);
         // At least one of the two should have waited
         assert!(start.elapsed() >= Duration::from_millis(30));
     }

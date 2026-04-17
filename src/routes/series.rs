@@ -1,16 +1,19 @@
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::Extension;
+use axum::extract::{OriginalUri, Path, State};
 use axum::response::{Html, IntoResponse, Redirect};
 use serde::Deserialize;
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
-use crate::models::series::{SeriesModel, SeriesType};
+use crate::middleware::locale::Locale;
 use crate::models::PaginatedList;
+use crate::models::series::{SeriesModel, SeriesType};
 use crate::routes::catalog::feedback_html_pub;
 use crate::services::series::{SeriesPositionInfo, SeriesService};
-use crate::AppState;
+use crate::utils::current_url;
 
 /// Compute gap count for a closed series: total - owned, clamped to 0.
 fn compute_gap(series: &SeriesModel, owned: u64) -> u64 {
@@ -48,6 +51,7 @@ pub struct SeriesListTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -70,15 +74,20 @@ pub struct SeriesListTemplate {
     pub next_label: String,
     pub series: PaginatedList<SeriesModel>,
     pub series_rows: Vec<SeriesListRow>,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn series_list_page(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     axum::extract::Query(params): axum::extract::Query<SeriesListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     // No auth required — anonymous read per FR95
     let pool = &state.pool;
+    let loc = locale.0;
 
     let series = SeriesModel::active_list(pool, params.page).await?;
 
@@ -95,32 +104,35 @@ pub async fn series_list_page(
     }
 
     let template = SeriesListTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "series",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-        nav_locations: rust_i18n::t!("nav.locations").to_string(),
-        nav_series: rust_i18n::t!("nav.series").to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
-        list_title: rust_i18n::t!("series.list_title").to_string(),
-        add_label: rust_i18n::t!("series.add").to_string(),
-        name_label: rust_i18n::t!("series.name").to_string(),
-        type_label: rust_i18n::t!("series.type").to_string(),
-        type_open_label: rust_i18n::t!("series.type_open").to_string(),
-        type_closed_label: rust_i18n::t!("series.type_closed").to_string(),
-        owned_label: rust_i18n::t!("series.owned_count").to_string(),
-        total_label: rust_i18n::t!("series.total_count").to_string(),
-        gap_label: rust_i18n::t!("series.gap_count").to_string(),
-        empty_state: rust_i18n::t!("series.empty_state").to_string(),
-        prev_label: rust_i18n::t!("pagination.previous").to_string(),
-        next_label: rust_i18n::t!("pagination.next").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
+        list_title: rust_i18n::t!("series.list_title", locale = loc).to_string(),
+        add_label: rust_i18n::t!("series.add", locale = loc).to_string(),
+        name_label: rust_i18n::t!("series.name", locale = loc).to_string(),
+        type_label: rust_i18n::t!("series.type", locale = loc).to_string(),
+        type_open_label: rust_i18n::t!("series.type_open", locale = loc).to_string(),
+        type_closed_label: rust_i18n::t!("series.type_closed", locale = loc).to_string(),
+        owned_label: rust_i18n::t!("series.owned_count", locale = loc).to_string(),
+        total_label: rust_i18n::t!("series.total_count", locale = loc).to_string(),
+        gap_label: rust_i18n::t!("series.gap_count", locale = loc).to_string(),
+        empty_state: rust_i18n::t!("series.empty_state", locale = loc).to_string(),
+        prev_label: rust_i18n::t!("pagination.previous", locale = loc).to_string(),
+        next_label: rust_i18n::t!("pagination.next", locale = loc).to_string(),
         series,
         series_rows,
+        current_url: current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
 
     match template.render() {
@@ -138,6 +150,7 @@ pub struct SeriesDetailTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -163,19 +176,24 @@ pub struct SeriesDetailTemplate {
     pub missing_label: String,
     pub grid_label: String,
     pub no_assignments_label: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn series_detail_page(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     // No auth required — anonymous read per FR95
     let pool = &state.pool;
+    let loc = locale.0;
 
     let series = SeriesModel::active_find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     let positions = SeriesService::get_series_positions(pool, &series).await?;
     let owned = positions.iter().filter(|p| p.title_id.is_some()).count() as u64;
@@ -183,35 +201,42 @@ pub async fn series_detail_page(
     let series_name_for_grid = series.name.clone();
 
     let template = SeriesDetailTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "series",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-        nav_locations: rust_i18n::t!("nav.locations").to_string(),
-        nav_series: rust_i18n::t!("nav.series").to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
         series,
         owned_count: owned,
         gap_count: gap,
-        type_open_label: rust_i18n::t!("series.type_open").to_string(),
-        type_closed_label: rust_i18n::t!("series.type_closed").to_string(),
-        owned_label: rust_i18n::t!("series.owned_count").to_string(),
-        total_label: rust_i18n::t!("series.total_count").to_string(),
-        gap_label: rust_i18n::t!("series.gap_count").to_string(),
-        edit_label: rust_i18n::t!("series.edit").to_string(),
-        delete_label: rust_i18n::t!("series.delete").to_string(),
-        confirm_delete: rust_i18n::t!("series.confirm_delete").to_string(),
-        back_label: rust_i18n::t!("series.back_to_list").to_string(),
+        type_open_label: rust_i18n::t!("series.type_open", locale = loc).to_string(),
+        type_closed_label: rust_i18n::t!("series.type_closed", locale = loc).to_string(),
+        owned_label: rust_i18n::t!("series.owned_count", locale = loc).to_string(),
+        total_label: rust_i18n::t!("series.total_count", locale = loc).to_string(),
+        gap_label: rust_i18n::t!("series.gap_count", locale = loc).to_string(),
+        edit_label: rust_i18n::t!("series.edit", locale = loc).to_string(),
+        delete_label: rust_i18n::t!("series.delete", locale = loc).to_string(),
+        confirm_delete: rust_i18n::t!("series.confirm_delete", locale = loc).to_string(),
+        back_label: rust_i18n::t!("series.back_to_list", locale = loc).to_string(),
         positions,
-        position_label: rust_i18n::t!("series.position").to_string(),
-        missing_label: rust_i18n::t!("series.missing_volume").to_string(),
-        grid_label: format!("{} — {}", rust_i18n::t!("series.list_title"), series_name_for_grid),
-        no_assignments_label: rust_i18n::t!("series.no_assignments").to_string(),
+        position_label: rust_i18n::t!("series.position", locale = loc).to_string(),
+        missing_label: rust_i18n::t!("series.missing_volume", locale = loc).to_string(),
+        grid_label: format!(
+            "{} — {}",
+            rust_i18n::t!("series.list_title", locale = loc),
+            series_name_for_grid
+        ),
+        no_assignments_label: rust_i18n::t!("series.no_assignments", locale = loc).to_string(),
+        current_url: current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
 
     match template.render() {
@@ -229,6 +254,7 @@ pub struct SeriesFormTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -255,50 +281,67 @@ pub struct SeriesFormTemplate {
     pub description_value: String,
     pub type_value: String,
     pub total_value: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
-fn form_template_labels(session: &Session) -> SeriesFormTemplate {
+fn form_template_labels(
+    session: &Session,
+    session_timeout_secs: u64,
+    loc: &str,
+    current_url_value: String,
+) -> SeriesFormTemplate {
     SeriesFormTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "series",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-        nav_locations: rust_i18n::t!("nav.locations").to_string(),
-        nav_series: rust_i18n::t!("nav.series").to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
+        session_timeout_secs,
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
         is_edit: false,
-        create_title: rust_i18n::t!("series.add").to_string(),
-        edit_title: rust_i18n::t!("series.edit").to_string(),
-        name_label: rust_i18n::t!("series.name").to_string(),
-        description_label: rust_i18n::t!("series.description").to_string(),
-        type_label: rust_i18n::t!("series.type").to_string(),
-        type_open_label: rust_i18n::t!("series.type_open").to_string(),
-        type_closed_label: rust_i18n::t!("series.type_closed").to_string(),
-        total_label: rust_i18n::t!("series.total_count").to_string(),
-        save_label: rust_i18n::t!("series.save").to_string(),
-        cancel_label: rust_i18n::t!("series.cancel").to_string(),
-        back_label: rust_i18n::t!("series.back_to_list").to_string(),
+        create_title: rust_i18n::t!("series.add", locale = loc).to_string(),
+        edit_title: rust_i18n::t!("series.edit", locale = loc).to_string(),
+        name_label: rust_i18n::t!("series.name", locale = loc).to_string(),
+        description_label: rust_i18n::t!("series.description", locale = loc).to_string(),
+        type_label: rust_i18n::t!("series.type", locale = loc).to_string(),
+        type_open_label: rust_i18n::t!("series.type_open", locale = loc).to_string(),
+        type_closed_label: rust_i18n::t!("series.type_closed", locale = loc).to_string(),
+        total_label: rust_i18n::t!("series.total_count", locale = loc).to_string(),
+        save_label: rust_i18n::t!("series.save", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("series.cancel", locale = loc).to_string(),
+        back_label: rust_i18n::t!("series.back_to_list", locale = loc).to_string(),
         series_id: 0,
         version: 0,
         name_value: String::new(),
         description_value: String::new(),
         type_value: "open".to_string(),
         total_value: String::new(),
+        current_url: current_url_value,
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     }
 }
 
 pub async fn create_series_form(
+    State(state): State<AppState>,
     session: Session,
-    uri: axum::http::Uri,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role_with_return(Role::Librarian, uri.path())?;
 
-    let template = form_template_labels(&session);
+    let template = form_template_labels(
+        &session,
+        state.session_timeout_secs(),
+        locale.0,
+        current_url(&uri),
+    );
 
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -353,7 +396,9 @@ pub async fn create_series(
 
     let desc = form.description.as_deref().filter(|s| !s.trim().is_empty());
 
-    let series = SeriesService::create_series(pool, &form.name, desc, series_type, form.total_volume_count).await?;
+    let series =
+        SeriesService::create_series(pool, &form.name, desc, series_type, form.total_volume_count)
+            .await?;
 
     tracing::info!(series_id = series.id, name = %series.name, "Series created");
     Ok(Redirect::to(&format!("/series/{}", series.id)))
@@ -364,17 +409,20 @@ pub async fn create_series(
 pub async fn edit_series_form(
     State(state): State<AppState>,
     session: Session,
-    uri: axum::http::Uri,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role_with_return(Role::Librarian, uri.path())?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     let series = SeriesModel::active_find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
-    let mut template = form_template_labels(&session);
+    let mut template =
+        form_template_labels(&session, state.session_timeout_secs(), loc, current_url(&uri));
     template.is_edit = true;
     template.series_id = series.id;
     template.version = series.version;
@@ -439,11 +487,13 @@ pub async fn update_series(
 pub async fn delete_series(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Librarian)?;
     let pool = &state.pool;
+    let loc = locale.0;
 
     match SeriesService::delete_series(pool, id).await {
         Ok(()) => {
@@ -464,7 +514,7 @@ pub async fn delete_series(
         Err(e) => {
             let message = match &e {
                 AppError::NotFound(msg) => msg.clone(),
-                _ => rust_i18n::t!("error.internal").to_string(),
+                _ => rust_i18n::t!("error.internal", locale = loc).to_string(),
             };
             Ok(Html(feedback_html_pub("error", &message, "")).into_response())
         }

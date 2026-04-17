@@ -38,6 +38,9 @@ pub struct Session {
     pub token: Option<String>,
     pub user_id: Option<u64>,
     pub role: Role,
+    /// Stored per-user UI language (`"fr"` / `"en"`). `None` for anonymous users
+    /// and for authenticated users who have not clicked the language toggle.
+    pub preferred_language: Option<String>,
 }
 
 impl Session {
@@ -46,6 +49,7 @@ impl Session {
             token: None,
             user_id: None,
             role: Role::Anonymous,
+            preferred_language: None,
         }
     }
 
@@ -96,15 +100,27 @@ impl FromRequestParts<crate::AppState> for Session {
         let token = cookie.value();
         let pool = &state.pool;
 
+        // Clone the scalar out of the settings guard so it is NOT held across
+        // the .await points below. Single fallback source via AppState helper.
+        let timeout_secs = state.session_timeout_secs();
+
         match SessionModel::find_with_role(pool, token).await {
             Ok(Some(row)) => {
-                // Update last activity (fire and forget)
+                let now = chrono::Utc::now();
+                if SessionModel::is_expired(row.last_activity, now, timeout_secs) {
+                    // Expired: soft-effect anonymous. Row stays; last_activity is
+                    // NOT updated (so the session cannot revive itself).
+                    return Ok(Session::anonymous());
+                }
+
+                // Valid session — refresh last_activity (fire and forget).
                 let _ = SessionModel::update_last_activity(pool, token).await;
 
                 Ok(Session {
                     token: Some(token.to_string()),
                     user_id: row.user_id,
                     role: Role::from_db(&row.role),
+                    preferred_language: row.preferred_language,
                 })
             }
             _ => Ok(Session::anonymous()),
@@ -142,6 +158,7 @@ mod tests {
             token: Some("test".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            preferred_language: None,
         };
         assert!(session.require_role(Role::Librarian).is_ok());
     }
@@ -161,6 +178,7 @@ mod tests {
             token: Some("t".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            preferred_language: None,
         };
         match session.require_role(Role::Admin) {
             Err(AppError::Forbidden) => {}
@@ -185,6 +203,7 @@ mod tests {
             token: Some("t".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            preferred_language: None,
         };
         match session.require_role_with_return(Role::Admin, "/admin") {
             Err(AppError::Forbidden) => {}
@@ -203,6 +222,7 @@ mod tests {
                 token: Some("t".to_string()),
                 user_id: Some(1),
                 role,
+                preferred_language: None,
             }
         }
     }
@@ -225,9 +245,11 @@ mod tests {
 
     #[test]
     fn test_role_gating_matrix_librarian_vs_librarian_min() {
-        assert!(make_session(Role::Librarian)
-            .require_role(Role::Librarian)
-            .is_ok());
+        assert!(
+            make_session(Role::Librarian)
+                .require_role(Role::Librarian)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -240,14 +262,65 @@ mod tests {
 
     #[test]
     fn test_role_gating_matrix_admin_vs_librarian_min() {
-        assert!(make_session(Role::Admin)
-            .require_role(Role::Librarian)
-            .is_ok());
+        assert!(
+            make_session(Role::Admin)
+                .require_role(Role::Librarian)
+                .is_ok()
+        );
     }
 
     #[test]
     fn test_role_gating_matrix_admin_vs_admin_min() {
         assert!(make_session(Role::Admin).require_role(Role::Admin).is_ok());
+    }
+
+    // ─── Timeout boundary contract (AC 10 / Task 6) ─────────────
+    // These exercise the logic the extractor runs on each request. The
+    // extractor's side-effectful parts (DB + RwLock + fire-and-forget
+    // update) are covered by E2E; here we pin the purely-computational
+    // decision that turns a `SessionRow` + clock + timeout into a
+    // Session::anonymous() vs an authenticated `Session`.
+    fn decide(row_role: &str, last_activity_offset_secs: i64, timeout_secs: u64) -> Session {
+        use crate::models::session::{SessionModel, SessionRow};
+        let now = chrono::Utc::now();
+        let row = SessionRow {
+            token: "t".to_string(),
+            user_id: Some(1),
+            role: row_role.to_string(),
+            last_activity: now - chrono::Duration::seconds(last_activity_offset_secs),
+            preferred_language: None,
+        };
+        if SessionModel::is_expired(row.last_activity, now, timeout_secs) {
+            Session::anonymous()
+        } else {
+            Session {
+                token: Some(row.token),
+                user_id: row.user_id,
+                role: Role::from_db(&row.role),
+                preferred_language: row.preferred_language,
+            }
+        }
+    }
+
+    #[test]
+    fn test_extractor_decision_within_window_returns_librarian() {
+        let s = decide("librarian", 30, 60);
+        assert_eq!(s.role, Role::Librarian);
+        assert!(s.token.is_some());
+    }
+
+    #[test]
+    fn test_extractor_decision_past_timeout_returns_anonymous() {
+        let s = decide("librarian", 90, 60);
+        assert_eq!(s.role, Role::Anonymous);
+        assert!(s.token.is_none());
+    }
+
+    #[test]
+    fn test_extractor_decision_exact_boundary_still_authenticated() {
+        // Elapsed == timeout → NOT expired (strict greater-than).
+        let s = decide("admin", 60, 60);
+        assert_eq!(s.role, Role::Admin);
     }
 
     #[test]
@@ -256,6 +329,7 @@ mod tests {
             token: Some("test".to_string()),
             user_id: Some(1),
             role: Role::Admin,
+            preferred_language: None,
         };
         assert!(session.require_role(Role::Librarian).is_ok());
     }

@@ -43,7 +43,7 @@ test.describe("Dewey Code Management (Story 5-8)", () => {
     }
 
     // Click Save via type=submit (canonical pattern from metadata-editing.spec.ts)
-    await page.locator('button[type="submit"]').click();
+    await page.locator('main button[type="submit"]').last().click();
 
     // Verify Dewey appears in metadata display after HTMX swap
     await expect(page.locator("#title-metadata")).toContainText("843.914", {
@@ -103,7 +103,7 @@ test.describe("Dewey Code Management (Story 5-8)", () => {
         const val = await pc.inputValue();
         if (!val) await pc.fill("0");
       }
-      await page.locator('button[type="submit"]').click();
+      await page.locator("#edit-title-submit").click();
       await expect(page.locator("#title-metadata")).toContainText(dewey, {
         timeout: 10000,
       });

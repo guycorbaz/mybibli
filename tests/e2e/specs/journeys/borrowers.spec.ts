@@ -5,7 +5,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await page.goto("/login");
     await page.locator("#username").fill("admin");
     await page.locator("#password").fill("admin");
-    await page.locator('button[type="submit"]').click();
+    await page.locator("#login-submit").click();
     await expect(page).toHaveURL(/\/catalog/, { timeout: 5000 });
   });
 
@@ -29,7 +29,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await page.locator("#new-name").fill("BW-Jean Dupont");
     await page.locator("#new-email").fill("jean@example.com");
     await page.locator("#new-phone").fill("+33612345678");
-    await page.locator('button[type="submit"]').last().click();
+    await page.locator('main button[type="submit"]').last().click();
 
     // Should redirect back to /borrowers with new borrower in list
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
@@ -63,7 +63,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
 
         // Modify phone
         await page.locator("#edit-phone").fill("+33699887766");
-        await page.locator('button[type="submit"]').click();
+        await page.locator('form button[type="submit"]').last().click();
 
         // Should redirect to detail page
         await expect(page.locator("body")).toContainText("+33699887766", {
@@ -79,7 +79,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await page.goto("/borrowers");
     await page.getByText(/Add borrower|Ajouter/i).click();
     await page.locator("#new-name").fill("BW-Temp Borrower");
-    await page.locator('button[type="submit"]').last().click();
+    await page.locator('main button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
 
     // Navigate to the borrower detail
@@ -115,7 +115,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await page.goto("/login");
     await page.locator("#username").fill("admin");
     await page.locator("#password").fill("admin");
-    await page.locator('button[type="submit"]').click();
+    await page.locator("#login-submit").click();
     await expect(page).toHaveURL(/\/catalog/, { timeout: 5000 });
 
     // Navigate to borrowers
@@ -126,7 +126,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await page.getByText(/Add borrower|Ajouter/i).click();
     await page.locator("#new-name").fill("BW-Smoke Borrower");
     await page.locator("#new-email").fill("smoke@test.com");
-    await page.locator('button[type="submit"]').last().click();
+    await page.locator('main button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
     await expect(page.locator("body")).toContainText("BW-Smoke Borrower");
 

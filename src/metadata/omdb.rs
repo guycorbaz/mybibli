@@ -15,8 +15,8 @@ pub struct OmdbProvider {
 
 impl OmdbProvider {
     pub fn new(client: Client, api_key: String) -> Self {
-        let base_url =
-            std::env::var("OMDB_API_BASE_URL").unwrap_or_else(|_| "https://www.omdbapi.com".to_string());
+        let base_url = std::env::var("OMDB_API_BASE_URL")
+            .unwrap_or_else(|_| "https://www.omdbapi.com".to_string());
         Self {
             client,
             api_key,
@@ -35,17 +35,11 @@ impl MetadataProvider for OmdbProvider {
         matches!(media_type, MediaType::Dvd)
     }
 
-    async fn lookup_by_isbn(
-        &self,
-        _isbn: &str,
-    ) -> Result<Option<MetadataResult>, MetadataError> {
+    async fn lookup_by_isbn(&self, _isbn: &str) -> Result<Option<MetadataResult>, MetadataError> {
         Ok(None) // OMDb doesn't support ISBN lookup
     }
 
-    async fn lookup_by_upc(
-        &self,
-        upc: &str,
-    ) -> Result<Option<MetadataResult>, MetadataError> {
+    async fn lookup_by_upc(&self, upc: &str) -> Result<Option<MetadataResult>, MetadataError> {
         // Search by UPC as query text
         let response = self
             .client

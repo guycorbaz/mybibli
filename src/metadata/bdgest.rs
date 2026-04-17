@@ -26,10 +26,7 @@ impl MetadataProvider for BdgestProvider {
         matches!(media_type, MediaType::Bd)
     }
 
-    async fn lookup_by_isbn(
-        &self,
-        isbn: &str,
-    ) -> Result<Option<MetadataResult>, MetadataError> {
+    async fn lookup_by_isbn(&self, isbn: &str) -> Result<Option<MetadataResult>, MetadataError> {
         tracing::info!(isbn = %isbn, "BDGest provider not yet implemented");
         Ok(None)
     }

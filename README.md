@@ -147,7 +147,7 @@ Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](
 | 4 | Je gère mes prêts | ✅ done |
 | 5 | Mes séries et ma collection | ✅ done |
 | 6 | Pipeline CI/CD et fiabilité | ✅ done |
-| 7 | Accès multi-rôle & Sécurité | 🚧 in progress (story 7-1 in review) |
+| 7 | Accès multi-rôle & Sécurité | 🚧 in progress (story 7-1 done) |
 | 8 | Administration & Configuration | ⏳ backlog |
 | 9 | Polish UX & Accessibilité | ⏳ backlog |
 

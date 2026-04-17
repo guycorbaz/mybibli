@@ -66,14 +66,7 @@ mod tests {
 
     #[test]
     fn test_paginated_list_single_page() {
-        let list: PaginatedList<u32> = PaginatedList::new(
-            vec![1, 2, 3],
-            1,
-            3,
-            None,
-            None,
-            None,
-        );
+        let list: PaginatedList<u32> = PaginatedList::new(vec![1, 2, 3], 1, 3, None, None, None);
         assert_eq!(list.total_pages, 1);
         assert!(!list.has_previous());
         assert!(!list.has_next());
@@ -96,14 +89,8 @@ mod tests {
 
     #[test]
     fn test_paginated_list_middle_page() {
-        let list: PaginatedList<u32> = PaginatedList::new(
-            vec![1; 25],
-            2,
-            60,
-            None,
-            None,
-            Some("genre:3".to_string()),
-        );
+        let list: PaginatedList<u32> =
+            PaginatedList::new(vec![1; 25], 2, 60, None, None, Some("genre:3".to_string()));
         assert_eq!(list.total_pages, 3);
         assert!(list.has_previous());
         assert!(list.has_next());
@@ -111,14 +98,7 @@ mod tests {
 
     #[test]
     fn test_paginated_list_last_page() {
-        let list: PaginatedList<u32> = PaginatedList::new(
-            vec![1; 10],
-            3,
-            60,
-            None,
-            None,
-            None,
-        );
+        let list: PaginatedList<u32> = PaginatedList::new(vec![1; 10], 3, 60, None, None, None);
         assert_eq!(list.total_pages, 3);
         assert!(list.has_previous());
         assert!(!list.has_next());
@@ -126,14 +106,7 @@ mod tests {
 
     #[test]
     fn test_paginated_list_zero_items() {
-        let list: PaginatedList<u32> = PaginatedList::new(
-            vec![],
-            1,
-            0,
-            None,
-            None,
-            None,
-        );
+        let list: PaginatedList<u32> = PaginatedList::new(vec![], 1, 0, None, None, None);
         assert_eq!(list.total_pages, 1);
         assert!(!list.has_previous());
         assert!(!list.has_next());
@@ -141,27 +114,13 @@ mod tests {
 
     #[test]
     fn test_paginated_list_exactly_25_items() {
-        let list: PaginatedList<u32> = PaginatedList::new(
-            vec![1; 25],
-            1,
-            25,
-            None,
-            None,
-            None,
-        );
+        let list: PaginatedList<u32> = PaginatedList::new(vec![1; 25], 1, 25, None, None, None);
         assert_eq!(list.total_pages, 1);
     }
 
     #[test]
     fn test_paginated_list_26_items() {
-        let list: PaginatedList<u32> = PaginatedList::new(
-            vec![1; 25],
-            1,
-            26,
-            None,
-            None,
-            None,
-        );
+        let list: PaginatedList<u32> = PaginatedList::new(vec![1; 25], 1, 26, None, None, None);
         assert_eq!(list.total_pages, 2);
     }
 }

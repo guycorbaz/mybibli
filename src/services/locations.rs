@@ -159,12 +159,8 @@ impl LocationService {
             ));
         }
 
-        crate::services::soft_delete::SoftDeleteService::soft_delete(
-            pool,
-            "storage_locations",
-            id,
-        )
-        .await?;
+        crate::services::soft_delete::SoftDeleteService::soft_delete(pool, "storage_locations", id)
+            .await?;
 
         tracing::info!(id = id, "Location deleted");
         Ok(())

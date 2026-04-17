@@ -1,19 +1,21 @@
 use askama::Template;
-use axum::extract::{Query, State};
+use axum::Extension;
+use axum::extract::{OriginalUri, Query, State};
 use axum::http::header;
 use axum::response::{Html, IntoResponse};
 use serde::Deserialize;
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
+use crate::middleware::locale::Locale;
+use crate::models::PaginatedList;
 use crate::models::genre::GenreModel;
 use crate::models::title::SearchResult;
 use crate::models::volume_state::VolumeStateModel;
-use crate::models::PaginatedList;
 use crate::services::search::{SearchOutcome, SearchService};
-use crate::utils::{html_escape, url_encode};
-use crate::AppState;
+use crate::utils::{current_url, html_escape, url_encode};
 
 #[derive(Debug, Deserialize)]
 pub struct SearchParams {
@@ -31,6 +33,7 @@ pub struct HomeTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -65,14 +68,19 @@ pub struct HomeTemplate {
     pub browse_grid_label: String,
     pub browse_mode_label: String,
     pub browse_sort_label: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn home(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     HxRequest(is_htmx): HxRequest,
     Query(params): Query<SearchParams>,
 ) -> Result<impl IntoResponse, AppError> {
+    let loc = locale.0;
     let pool = &state.pool;
     let query = params.q.unwrap_or_default();
     let page = params.page.unwrap_or(1).max(1);
@@ -80,8 +88,12 @@ pub async fn home(
     // Parse filter to extract genre_id
     let (genre_id, volume_state) = parse_filter(&params.filter);
 
-    // Perform search if query is present
-    let (results, redirect) = if !query.trim().is_empty() {
+    // Perform search/browse when either a query is typed OR a filter pill is active.
+    // Filter-only requests (e.g. clicking the "BD" genre pill with empty query) must
+    // still populate results — without this, HTMX would swap an empty results block
+    // and render the full layout into `#browse-results`, duplicating the page.
+    let has_filter = params.filter.is_some();
+    let (results, redirect) = if !query.trim().is_empty() || has_filter {
         let outcome = SearchService::search(
             pool,
             &query,
@@ -107,15 +119,14 @@ pub async fn home(
             // HX-Redirect tells HTMX to do a full-page navigation
             return Ok((
                 axum::http::StatusCode::OK,
-                [(axum::http::header::HeaderName::from_static("hx-redirect"), url)],
+                [(
+                    axum::http::header::HeaderName::from_static("hx-redirect"),
+                    url,
+                )],
             )
                 .into_response());
         } else {
-            return Ok((
-                axum::http::StatusCode::FOUND,
-                [(header::LOCATION, url)],
-            )
-                .into_response());
+            return Ok((axum::http::StatusCode::FOUND, [(header::LOCATION, url)]).into_response());
         }
     }
 
@@ -123,9 +134,18 @@ pub async fn home(
     let genres = GenreModel::list_active(pool).await?;
     let volume_states = VolumeStateModel::list_active(pool).await?;
 
-    if is_htmx && !query.trim().is_empty() {
-        // Return search results fragment + pagination OOB
-        let html = render_search_fragment(&results, &query, &params.filter, &params.sort, &params.dir, &session);
+    if is_htmx && (!query.trim().is_empty() || has_filter) {
+        // Return search results fragment + pagination OOB. Covers both the
+        // typed-query path and the filter-pill path (e.g. clicking "BD").
+        let html = render_search_fragment(
+            &results,
+            &query,
+            &params.filter,
+            &params.sort,
+            &params.dir,
+            &session,
+            loc,
+        );
         return Ok(Html(html).into_response());
     }
 
@@ -142,44 +162,58 @@ pub async fn home(
     };
 
     let template = HomeTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "home",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-            nav_locations: rust_i18n::t!("nav.locations").to_string(),
-            nav_series: rust_i18n::t!("nav.series").to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
-        subtitle: rust_i18n::t!("home.subtitle").to_string(),
-        search_placeholder: rust_i18n::t!("home.search_placeholder").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
+        subtitle: rust_i18n::t!("home.subtitle", locale = loc).to_string(),
+        search_placeholder: rust_i18n::t!("home.search_placeholder", locale = loc).to_string(),
         query_encoded: url_encode(&query),
         query,
         active_filter: params.filter.clone().unwrap_or_default(),
-        current_sort: results.as_ref().and_then(|r| r.sort.clone()).unwrap_or_else(|| "title".to_string()),
-        current_dir: results.as_ref().and_then(|r| r.dir.clone()).unwrap_or_else(|| "asc".to_string()),
+        current_sort: results
+            .as_ref()
+            .and_then(|r| r.sort.clone())
+            .unwrap_or_else(|| "title".to_string()),
+        current_dir: results
+            .as_ref()
+            .and_then(|r| r.dir.clone())
+            .unwrap_or_else(|| "asc".to_string()),
         genres,
         volume_states,
         results,
-        no_results_text: rust_i18n::t!("search.no_results").to_string(),
-        no_results_create: rust_i18n::t!("search.no_results_create").to_string(),
-        pagination_previous: rust_i18n::t!("pagination.previous").to_string(),
-        pagination_next: rust_i18n::t!("pagination.next").to_string(),
-        col_title: rust_i18n::t!("search.col.title").to_string(),
-        col_contributor: rust_i18n::t!("search.col.contributor").to_string(),
-        col_genre: rust_i18n::t!("search.col.genre").to_string(),
-        col_volumes: rust_i18n::t!("search.col.volumes").to_string(),
-        connection_lost: rust_i18n::t!("search.connection_lost").to_string(),
-        label_no_cover: rust_i18n::t!("cover.no_cover").to_string(),
+        no_results_text: rust_i18n::t!("search.no_results", locale = loc).to_string(),
+        no_results_create: rust_i18n::t!("search.no_results_create", locale = loc).to_string(),
+        pagination_previous: rust_i18n::t!("pagination.previous", locale = loc).to_string(),
+        pagination_next: rust_i18n::t!("pagination.next", locale = loc).to_string(),
+        col_title: rust_i18n::t!("search.col.title", locale = loc).to_string(),
+        col_contributor: rust_i18n::t!("search.col.contributor", locale = loc).to_string(),
+        col_genre: rust_i18n::t!("search.col.genre", locale = loc).to_string(),
+        col_volumes: rust_i18n::t!("search.col.volumes", locale = loc).to_string(),
+        connection_lost: rust_i18n::t!("search.connection_lost", locale = loc).to_string(),
+        label_no_cover: rust_i18n::t!("cover.no_cover", locale = loc).to_string(),
         metadata_error_count,
-        label_metadata_errors: rust_i18n::t!("dashboard.metadata_errors", count = metadata_error_count).to_string(),
-        browse_list_label: rust_i18n::t!("browse.list_view").to_string(),
-        browse_grid_label: rust_i18n::t!("browse.grid_view").to_string(),
-        browse_mode_label: rust_i18n::t!("browse.display_mode").to_string(),
-        browse_sort_label: rust_i18n::t!("browse.sort_by").to_string(),
+        label_metadata_errors: rust_i18n::t!(
+            "dashboard.metadata_errors",
+            locale = loc,
+            count = metadata_error_count
+        )
+        .to_string(),
+        browse_list_label: rust_i18n::t!("browse.list_view", locale = loc).to_string(),
+        browse_grid_label: rust_i18n::t!("browse.grid_view", locale = loc).to_string(),
+        browse_mode_label: rust_i18n::t!("browse.display_mode", locale = loc).to_string(),
+        browse_sort_label: rust_i18n::t!("browse.sort_by", locale = loc).to_string(),
+        current_url: current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -208,6 +242,7 @@ fn render_search_fragment(
     sort: &Option<String>,
     dir: &Option<String>,
     session: &Session,
+    loc: &str,
 ) -> String {
     let mut html = String::new();
 
@@ -219,13 +254,17 @@ fn render_search_fragment(
             }
 
             // OOB pagination update
-            html.push_str(&render_pagination_oob(paginated, query, filter, sort, dir));
+            html.push_str(&render_pagination_oob(
+                paginated, query, filter, sort, dir, loc,
+            ));
         }
         _ => {
             // Empty state + clear stale pagination
             let is_librarian = session.role >= crate::middleware::auth::Role::Librarian;
-            html.push_str(&render_empty_state(query, is_librarian));
-            html.push_str("<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>");
+            html.push_str(&render_empty_state(query, is_librarian, loc));
+            html.push_str(
+                "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>",
+            );
         }
     }
 
@@ -277,9 +316,11 @@ fn render_pagination_oob(
     filter: &Option<String>,
     sort: &Option<String>,
     dir: &Option<String>,
+    loc: &str,
 ) -> String {
     if paginated.total_pages <= 1 {
-        return "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>".to_string();
+        return "<nav id=\"pagination\" hx-swap-oob=\"true\" aria-label=\"Pagination\"></nav>"
+            .to_string();
     }
 
     let mut html = String::from(
@@ -306,7 +347,7 @@ fn render_pagination_oob(
     // Previous button
     if paginated.has_previous() {
         let url = build_url(paginated.page - 1);
-        let label = rust_i18n::t!("pagination.previous");
+        let label = rust_i18n::t!("pagination.previous", locale = loc);
         html.push_str(&format!(
             "<a href=\"{url}\" hx-get=\"{url}\" hx-target=\"{target}\" hx-swap=\"innerHTML\" hx-push-url=\"true\" class=\"{cls}\">&laquo; {label}</a>",
             url = url, target = target, cls = link_class, label = label,
@@ -332,7 +373,7 @@ fn render_pagination_oob(
     // Next button
     if paginated.has_next() {
         let url = build_url(paginated.page + 1);
-        let label = rust_i18n::t!("pagination.next");
+        let label = rust_i18n::t!("pagination.next", locale = loc);
         html.push_str(&format!(
             "<a href=\"{url}\" hx-get=\"{url}\" hx-target=\"{target}\" hx-swap=\"innerHTML\" hx-push-url=\"true\" class=\"{cls}\">{label} &raquo;</a>",
             url = url, target = target, cls = link_class, label = label,
@@ -343,13 +384,13 @@ fn render_pagination_oob(
     html
 }
 
-fn render_empty_state(query: &str, is_librarian: bool) -> String {
-    let message = rust_i18n::t!("search.no_results", query = html_escape(query));
+fn render_empty_state(query: &str, is_librarian: bool, loc: &str) -> String {
+    let message = rust_i18n::t!("search.no_results", locale = loc, query = html_escape(query));
     let create_link = if is_librarian {
         format!(
             r#"<a href="/catalog/title/new?title={}" class="mt-2 inline-block text-indigo-600 dark:text-indigo-400 hover:underline">{}</a>"#,
             url_encode(query),
-            rust_i18n::t!("search.no_results_create")
+            rust_i18n::t!("search.no_results_create", locale = loc)
         )
     } else {
         String::new()
@@ -424,7 +465,10 @@ mod tests {
         assert!(html.contains("title-card-contributor"));
         assert!(html.contains("title-card-overlay"));
         assert!(!html.contains("<tr"), "Should not contain table row markup");
-        assert!(!html.contains("<td"), "Should not contain table cell markup");
+        assert!(
+            !html.contains("<td"),
+            "Should not contain table cell markup"
+        );
     }
 
     #[test]
@@ -442,18 +486,21 @@ mod tests {
         };
         let html = render_search_row(&item);
         assert!(html.contains("1942"), "Should display publication year");
-        assert!(html.contains("/covers/test.jpg"), "Should include cover URL");
+        assert!(
+            html.contains("/covers/test.jpg"),
+            "Should include cover URL"
+        );
     }
 
     #[test]
     fn test_render_empty_state_librarian() {
-        let html = render_empty_state("test query", true);
+        let html = render_empty_state("test query", true, "en");
         assert!(html.contains("/catalog/title/new"));
     }
 
     #[test]
     fn test_render_empty_state_anonymous() {
-        let html = render_empty_state("test query", false);
+        let html = render_empty_state("test query", false, "en");
         assert!(!html.contains("/catalog/title/new"));
     }
 
@@ -464,6 +511,7 @@ mod tests {
             role: "anonymous".to_string(),
             current_page: "home",
             skip_label: "Skip to main content".to_string(),
+            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
             nav_catalog: "Catalog".to_string(),
             nav_loans: "Loans".to_string(),
             nav_locations: "Locations".to_string(),
@@ -498,6 +546,8 @@ mod tests {
             browse_grid_label: "Grid view".to_string(),
             browse_mode_label: "Display mode".to_string(),
             browse_sort_label: "Sort by".to_string(),
+            current_url: "/".to_string(),
+            lang_toggle_aria: "Change language".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(rendered.contains("mybibli"));

@@ -11,8 +11,10 @@ pub mod titles;
 use axum::Router;
 use tower_http::services::ServeDir;
 
-use crate::middleware::pending_updates::pending_updates_middleware;
 use crate::AppState;
+use crate::middleware::csp::apply_csp_layer;
+use crate::middleware::locale::locale_resolve_middleware;
+use crate::middleware::pending_updates::pending_updates_middleware;
 
 pub fn build_router(state: AppState) -> Router {
     let pool = state.pool.clone();
@@ -21,7 +23,10 @@ pub fn build_router(state: AppState) -> Router {
     let catalog_routes = Router::new()
         .route("/catalog", axum::routing::get(catalog::catalog_page))
         .route("/catalog/scan", axum::routing::post(catalog::handle_scan))
-        .route("/catalog/scan-with-type", axum::routing::post(catalog::handle_scan_with_type))
+        .route(
+            "/catalog/scan-with-type",
+            axum::routing::post(catalog::handle_scan_with_type),
+        )
         .route(
             "/catalog/title/new",
             axum::routing::get(catalog::title_form_page),
@@ -66,14 +71,29 @@ pub fn build_router(state: AppState) -> Router {
         .layer(axum::Extension(pool))
         .layer(axum::middleware::from_fn(pending_updates_middleware));
 
-    // All routes
-    Router::new()
+    // CSP + hardening headers — wrapped outermost so EVERY response (incl.
+    // /static/*, /covers/*, /health, redirects, 4xx/5xx) carries the
+    // headers. Per AR16: Logging → Auth → [Handler] → PendingUpdates → CSP.
+    // Read mode once at startup (AR26 — no dotenvy).
+    let report_only = crate::config::csp_report_only();
+    let app = Router::new()
         .route("/", axum::routing::get(home::home))
-        .route("/login", axum::routing::get(auth::login_page).post(auth::login))
-        .route("/logout", axum::routing::get(auth::logout).post(auth::logout))
+        .route(
+            "/login",
+            axum::routing::get(auth::login_page).post(auth::login),
+        )
+        .route(
+            "/logout",
+            axum::routing::get(auth::logout).post(auth::logout),
+        )
+        .route("/language", axum::routing::post(auth::change_language))
         .route(
             "/session/keepalive",
             axum::routing::post(catalog::session_keepalive),
+        )
+        .route(
+            "/debug/session-timeout",
+            axum::routing::post(catalog::debug_set_session_timeout),
         )
         .merge(catalog_routes)
         // Detail pages
@@ -113,10 +133,7 @@ pub fn build_router(state: AppState) -> Router {
             "/contributor/{id}",
             axum::routing::get(contributors::contributor_detail),
         )
-        .route(
-            "/volume/{id}",
-            axum::routing::get(catalog::volume_detail),
-        )
+        .route("/volume/{id}", axum::routing::get(catalog::volume_detail))
         .route(
             "/volume/{id}/edit",
             axum::routing::get(catalog::volume_edit_page),
@@ -136,7 +153,9 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route(
             "/series/{id}",
-            axum::routing::get(series::series_detail_page).post(series::update_series).delete(series::delete_series),
+            axum::routing::get(series::series_detail_page)
+                .post(series::update_series)
+                .delete(series::delete_series),
         )
         .route(
             "/series/{id}/edit",
@@ -153,7 +172,9 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route(
             "/borrower/{id}",
-            axum::routing::get(borrowers::borrower_detail).post(borrowers::update_borrower).delete(borrowers::delete_borrower),
+            axum::routing::get(borrowers::borrower_detail)
+                .post(borrowers::update_borrower)
+                .delete(borrowers::delete_borrower),
         )
         .route(
             "/borrower/{id}/edit",
@@ -164,10 +185,7 @@ pub fn build_router(state: AppState) -> Router {
             "/loans",
             axum::routing::get(loans::loans_page).post(loans::create_loan),
         )
-        .route(
-            "/loans/scan",
-            axum::routing::get(loans::scan_on_loans),
-        )
+        .route("/loans/scan", axum::routing::get(loans::scan_on_loans))
         .route(
             "/loans/{id}/return",
             axum::routing::post(loans::return_loan_handler),
@@ -196,7 +214,17 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
         .nest_service("/covers", ServeDir::new(&state.covers_dir))
-        .with_state(state)
+        // Locale middleware runs on every request (before the state-consuming
+        // `.with_state(state)` call) so handlers can read `Extension<Locale>`
+        // without per-route wiring. Registered here after route mounting —
+        // axum applies layers bottom-up, so this wraps the whole router.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            locale_resolve_middleware,
+        ))
+        .with_state(state);
+
+    apply_csp_layer(app, report_only)
 }
 
 async fn health_check() -> &'static str {

@@ -1,19 +1,22 @@
 use std::collections::HashMap;
 
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::Extension;
+use axum::extract::{OriginalUri, Path, State};
 use axum::response::{Html, IntoResponse};
 use serde::Deserialize;
 
+use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
+use crate::middleware::locale::Locale;
 use crate::models::location::LocationModel;
 use crate::services::locations::LocationService;
-use crate::AppState;
+use crate::utils::current_url;
 
-use crate::models::volume::{VolumeModel, VolumeWithTitle};
 use crate::models::PaginatedList;
+use crate::models::volume::{VolumeModel, VolumeWithTitle};
 
 #[derive(Deserialize)]
 pub struct LocationDetailQuery {
@@ -36,6 +39,7 @@ pub struct LocationDetailTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -57,50 +61,59 @@ pub struct LocationDetailTemplate {
     pub col_status: String,
     pub prev_label: String,
     pub next_label: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn location_detail(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     HxRequest(_is_htmx): HxRequest,
     Path(id): Path<u64>,
     axum::extract::Query(params): axum::extract::Query<LocationDetailQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     let pool = &state.pool;
+    let loc = locale.0;
 
     let location = LocationModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     let breadcrumb_segments = LocationModel::get_path_segments(pool, location.id).await?;
-    let volumes = VolumeModel::find_by_location(pool, id, &params.sort, &params.dir, params.page).await?;
+    let volumes =
+        VolumeModel::find_by_location(pool, id, &params.sort, &params.dir, params.page).await?;
 
     let template = LocationDetailTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "location",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-            nav_locations: rust_i18n::t!("nav.locations").to_string(),
-            nav_series: rust_i18n::t!("nav.series").to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
-        contents_title: rust_i18n::t!("location.contents_title").to_string(),
-        empty_volumes: rust_i18n::t!("location.empty_volumes").to_string(),
-        col_title: rust_i18n::t!("location.col_title").to_string(),
-        col_author: rust_i18n::t!("location.col_author").to_string(),
-        col_genre: rust_i18n::t!("location.col_genre").to_string(),
-        col_dewey: rust_i18n::t!("location.col_dewey").to_string(),
-        col_condition: rust_i18n::t!("location.col_condition").to_string(),
-        col_status: rust_i18n::t!("location.col_status").to_string(),
-        prev_label: rust_i18n::t!("pagination.previous").to_string(),
-        next_label: rust_i18n::t!("pagination.next").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
+        contents_title: rust_i18n::t!("location.contents_title", locale = loc).to_string(),
+        empty_volumes: rust_i18n::t!("location.empty_volumes", locale = loc).to_string(),
+        col_title: rust_i18n::t!("location.col_title", locale = loc).to_string(),
+        col_author: rust_i18n::t!("location.col_author", locale = loc).to_string(),
+        col_genre: rust_i18n::t!("location.col_genre", locale = loc).to_string(),
+        col_dewey: rust_i18n::t!("location.col_dewey", locale = loc).to_string(),
+        col_condition: rust_i18n::t!("location.col_condition", locale = loc).to_string(),
+        col_status: rust_i18n::t!("location.col_status", locale = loc).to_string(),
+        prev_label: rust_i18n::t!("pagination.previous", locale = loc).to_string(),
+        next_label: rust_i18n::t!("pagination.next", locale = loc).to_string(),
         location,
         breadcrumb_segments,
         volumes,
+        current_url: current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -152,10 +165,11 @@ fn render_tree_html(
     node_types: &[(u64, String)],
     next_lcode: &str,
     can_edit: bool,
+    loc: &str,
 ) -> String {
     let mut html = String::new();
     for node in nodes {
-        render_node_html(node, &mut html, node_types, next_lcode, can_edit);
+        render_node_html(node, &mut html, node_types, next_lcode, can_edit, loc);
     }
     html
 }
@@ -166,8 +180,9 @@ fn render_node_html(
     node_types: &[(u64, String)],
     next_lcode: &str,
     can_edit: bool,
+    loc: &str,
 ) {
-    render_node_at_depth(node, html, node_types, next_lcode, 0, can_edit);
+    render_node_at_depth(node, html, node_types, next_lcode, 0, can_edit, loc);
 }
 
 fn render_node_at_depth(
@@ -177,13 +192,21 @@ fn render_node_at_depth(
     next_lcode: &str,
     depth: usize,
     can_edit: bool,
+    loc: &str,
 ) {
     let name = crate::utils::html_escape(&node.location.name);
     let label = crate::utils::html_escape(&node.location.label);
     let node_type = crate::utils::html_escape(&node.location.node_type);
-    let icon = if node.children.is_empty() { "📍" } else { "📁" };
+    let icon = if node.children.is_empty() {
+        "📍"
+    } else {
+        "📁"
+    };
     let vol = if node.volume_count > 0 {
-        format!(r#" <span class="text-xs text-indigo-600 dark:text-indigo-400">{} vol</span>"#, node.volume_count)
+        format!(
+            r#" <span class="text-xs text-indigo-600 dark:text-indigo-400">{} vol</span>"#,
+            node.volume_count
+        )
     } else {
         String::new()
     };
@@ -192,29 +215,48 @@ fn render_node_at_depth(
     let mut type_options = String::new();
     for (_, nt_name) in node_types {
         let nt_escaped = crate::utils::html_escape(nt_name);
-        type_options.push_str(&format!(r#"<option value="{nt_escaped}">{nt_escaped}</option>"#));
+        type_options.push_str(&format!(
+            r#"<option value="{nt_escaped}">{nt_escaped}</option>"#
+        ));
     }
-    let name_lbl = crate::utils::html_escape(rust_i18n::t!("location.name_label").as_ref());
-    let type_lbl = crate::utils::html_escape(rust_i18n::t!("location.type_label").as_ref());
-    let lcode_lbl = crate::utils::html_escape(rust_i18n::t!("location.lcode_label").as_ref());
-    let submit_lbl = crate::utils::html_escape(rust_i18n::t!("location.submit").as_ref());
+    let name_lbl =
+        crate::utils::html_escape(rust_i18n::t!("location.name_label", locale = loc).as_ref());
+    let type_lbl =
+        crate::utils::html_escape(rust_i18n::t!("location.type_label", locale = loc).as_ref());
+    let lcode_lbl =
+        crate::utils::html_escape(rust_i18n::t!("location.lcode_label", locale = loc).as_ref());
+    let submit_lbl =
+        crate::utils::html_escape(rust_i18n::t!("location.submit", locale = loc).as_ref());
     let form_id = format!("add-child-{}", node.location.id);
 
-    // Indentation: 2rem per depth level
-    let indent_px = depth * 32;
+    // Indentation classes (defined in static/css/browse.css). Pre-CSP this
+    // was an inline `style="padding-left: …px"` / `margin-left: …px`,
+    // blocked by strict `style-src 'self'`. Levels deeper than 8 fall back
+    // to a single capped value (the tree never realistically reaches that).
+    let indent_class = if depth >= 8 {
+        "tree-indent-cap".to_string()
+    } else {
+        format!("tree-indent-{depth}")
+    };
+    let child_depth = depth + 1;
+    let child_margin_class = if child_depth >= 8 {
+        "tree-margin-cap".to_string()
+    } else {
+        format!("tree-margin-{child_depth}")
+    };
 
     let (mutation_controls, child_form) = if can_edit {
         (
             format!(
                 r#"<span class="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-<button type="button" onclick="document.getElementById('{form_id}').classList.toggle('hidden')" class="p-1 text-stone-400 hover:text-green-600 dark:hover:text-green-400" aria-label="Add child under {name}">➕</button>
+<button type="button" data-locations-toggle="{form_id}" class="p-1 text-stone-400 hover:text-green-600 dark:hover:text-green-400" aria-label="Add child under {name}">➕</button>
 <a href="/locations/{id}/edit" class="p-1 text-stone-400 hover:text-indigo-600 dark:hover:text-indigo-400" aria-label="Edit {name}">✏️</a>
 <button type="button" hx-delete="/locations/{id}" hx-confirm="Delete {name} ({label})?" hx-target="closest [role=treeitem]" hx-swap="outerHTML" class="p-1 text-stone-400 hover:text-red-600 dark:hover:text-red-400" aria-label="Delete {name}">🗑️</button>
 </span>"#,
                 id = node.location.id,
             ),
             format!(
-                r#"<form id="{form_id}" method="POST" action="/locations" class="hidden px-3 py-2 space-y-2 bg-stone-50 dark:bg-stone-800/50 rounded-md mt-1 mb-2" style="margin-left: {child_indent}px;">
+                r#"<form id="{form_id}" method="POST" action="/locations" class="hidden {child_margin_class} px-3 py-2 space-y-2 bg-stone-50 dark:bg-stone-800/50 rounded-md mt-1 mb-2">
 <input type="hidden" name="parent_id" value="{id}">
 <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
 <div><label class="block text-xs text-stone-600 dark:text-stone-400">{name_lbl}</label><input type="text" name="name" required class="w-full px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100"></div>
@@ -224,7 +266,6 @@ fn render_node_at_depth(
 <button type="submit" class="px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded">{submit_lbl}</button>
 </form>"#,
                 id = node.location.id,
-                child_indent = indent_px + 32,
                 next_lcode = crate::utils::html_escape(next_lcode),
             ),
         )
@@ -233,7 +274,7 @@ fn render_node_at_depth(
     };
 
     html.push_str(&format!(
-        r#"<div role="treeitem" style="padding-left: {indent_px}px;">
+        r#"<div role="treeitem" class="{indent_class}">
 <div class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 group">
 <span class="text-stone-400" aria-hidden="true">{icon}</span>
 <span class="font-medium text-stone-900 dark:text-stone-100">{name}</span>
@@ -247,7 +288,15 @@ fn render_node_at_depth(
 
     // Render children at deeper indentation
     for child in &node.children {
-        render_node_at_depth(child, html, node_types, next_lcode, depth + 1, can_edit);
+        render_node_at_depth(
+            child,
+            html,
+            node_types,
+            next_lcode,
+            depth + 1,
+            can_edit,
+            loc,
+        );
     }
 }
 
@@ -260,6 +309,7 @@ pub struct LocationsTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -278,55 +328,63 @@ pub struct LocationsTemplate {
     pub type_label: String,
     pub lcode_label: String,
     pub submit_label: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn locations_page(
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     HxRequest(_is_htmx): HxRequest,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
     // AC #1: location tree browser is Anonymous-accessible. Template gates mutation affordances.
     let pool = &state.pool;
+    let loc = locale.0;
     let locations = LocationModel::find_all_tree(pool).await?;
     let node_types = LocationModel::find_node_types(pool).await?;
     let next_lcode = LocationService::get_next_available_lcode(pool).await?;
 
     // Get volume counts for each location
     let mut volume_counts = HashMap::new();
-    for loc in &locations {
-        let count = LocationService::get_recursive_volume_count(pool, loc.id)
+    for location_row in &locations {
+        let count = LocationService::get_recursive_volume_count(pool, location_row.id)
             .await
             .unwrap_or(0);
-        volume_counts.insert(loc.id, count);
+        volume_counts.insert(location_row.id, count);
     }
 
     let tree = build_tree(&locations, &volume_counts);
     let can_edit = session.role >= Role::Librarian;
-    let tree_html = render_tree_html(&tree, &node_types, &next_lcode, can_edit);
+    let tree_html = render_tree_html(&tree, &node_types, &next_lcode, can_edit, loc);
 
     let template = LocationsTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "locations",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-            nav_locations: rust_i18n::t!("nav.locations").to_string(),
-            nav_series: rust_i18n::t!("nav.series").to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
-        tree_title: rust_i18n::t!("location.tree_title").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
+        tree_title: rust_i18n::t!("location.tree_title", locale = loc).to_string(),
         tree_html,
         node_types,
         next_lcode,
-        empty_state: rust_i18n::t!("location.empty_state").to_string(),
-        add_root_label: rust_i18n::t!("location.add_root").to_string(),
-        name_label: rust_i18n::t!("location.name_label").to_string(),
-        type_label: rust_i18n::t!("location.type_label").to_string(),
-        lcode_label: rust_i18n::t!("location.lcode_label").to_string(),
-        submit_label: rust_i18n::t!("location.submit").to_string(),
+        empty_state: rust_i18n::t!("location.empty_state", locale = loc).to_string(),
+        add_root_label: rust_i18n::t!("location.add_root", locale = loc).to_string(),
+        name_label: rust_i18n::t!("location.name_label", locale = loc).to_string(),
+        type_label: rust_i18n::t!("location.type_label", locale = loc).to_string(),
+        lcode_label: rust_i18n::t!("location.lcode_label", locale = loc).to_string(),
+        submit_label: rust_i18n::t!("location.submit", locale = loc).to_string(),
+        current_url: current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -381,6 +439,7 @@ pub struct LocationEditTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub session_timeout_secs: u64,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -399,49 +458,56 @@ pub struct LocationEditTemplate {
     pub parent_label: String,
     pub submit_label: String,
     pub none_label: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
 }
 
 pub async fn edit_location_page(
     session: Session,
+    Extension(locale): Extension<Locale>,
+    OriginalUri(uri): OriginalUri,
     HxRequest(_is_htmx): HxRequest,
     State(state): State<AppState>,
-    uri: axum::http::Uri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 1a: Admin → Librarian.
     session.require_role_with_return(Role::Librarian, uri.path())?;
 
     let pool = &state.pool;
+    let loc = locale.0;
     let location = LocationModel::find_by_id(pool, id)
         .await?
-        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))?;
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
     let version = LocationModel::get_version(pool, id).await?;
     let node_types = LocationModel::find_node_types(pool).await?;
     let all_locations = LocationModel::find_all_tree(pool).await?;
 
     let template = LocationEditTemplate {
-        lang: rust_i18n::locale().to_string(),
+        lang: loc.to_string(),
         role: session.role.to_string(),
         current_page: "locations",
-        skip_label: rust_i18n::t!("nav.skip_to_content").to_string(),
-        nav_catalog: rust_i18n::t!("nav.catalog").to_string(),
-        nav_loans: rust_i18n::t!("nav.loans").to_string(),
-            nav_locations: rust_i18n::t!("nav.locations").to_string(),
-            nav_series: rust_i18n::t!("nav.series").to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers").to_string(),
-        nav_admin: rust_i18n::t!("nav.admin").to_string(),
-        nav_login: rust_i18n::t!("nav.login").to_string(),
-        nav_logout: rust_i18n::t!("nav.logout").to_string(),
-        edit_title: rust_i18n::t!("location.edit").to_string(),
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
+        session_timeout_secs: state.session_timeout_secs(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
+        edit_title: rust_i18n::t!("location.edit", locale = loc).to_string(),
         location,
         version,
         node_types,
         all_locations,
-        name_label: rust_i18n::t!("location.name_label").to_string(),
-        type_label: rust_i18n::t!("location.type_label").to_string(),
-        parent_label: rust_i18n::t!("location.parent_label").to_string(),
-        submit_label: rust_i18n::t!("location.submit").to_string(),
-        none_label: rust_i18n::t!("location.none").to_string(),
+        name_label: rust_i18n::t!("location.name_label", locale = loc).to_string(),
+        type_label: rust_i18n::t!("location.type_label", locale = loc).to_string(),
+        parent_label: rust_i18n::t!("location.parent_label", locale = loc).to_string(),
+        submit_label: rust_i18n::t!("location.submit", locale = loc).to_string(),
+        none_label: rust_i18n::t!("location.none", locale = loc).to_string(),
+        current_url: current_url(&uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -487,14 +553,16 @@ pub async fn update_location(
 
 pub async fn delete_location(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Admin)?;
+    let loc = locale.0;
 
     LocationService::delete_location(&state.pool, id).await?;
 
-    let message = rust_i18n::t!("location.deleted").to_string();
+    let message = rust_i18n::t!("location.deleted", locale = loc).to_string();
     Ok(Html(format!(
         r#"<div class="p-3 border-l-4 border-green-500 bg-green-50 dark:bg-green-900/20 rounded-r" role="status">
             <p class="text-stone-700 dark:text-stone-300">{}</p>
@@ -508,9 +576,10 @@ pub async fn delete_location(
 pub async fn next_lcode(
     session: Session,
     State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 1a: Admin → Librarian (used by create-location form).
-    session.require_role(Role::Librarian)?;
+    session.require_role_with_return(Role::Librarian, uri.path())?;
 
     let lcode = LocationService::get_next_available_lcode(&state.pool).await?;
     Ok(axum::Json(serde_json::json!({"lcode": lcode})))
@@ -545,9 +614,27 @@ mod tests {
     #[test]
     fn test_build_tree_nested() {
         let locations = vec![
-            LocationModel { id: 1, parent_id: None, name: "Maison".to_string(), node_type: "Room".to_string(), label: "L0001".to_string() },
-            LocationModel { id: 2, parent_id: Some(1), name: "Salon".to_string(), node_type: "Room".to_string(), label: "L0002".to_string() },
-            LocationModel { id: 3, parent_id: Some(2), name: "Étagère 1".to_string(), node_type: "Shelf".to_string(), label: "L0003".to_string() },
+            LocationModel {
+                id: 1,
+                parent_id: None,
+                name: "Maison".to_string(),
+                node_type: "Room".to_string(),
+                label: "L0001".to_string(),
+            },
+            LocationModel {
+                id: 2,
+                parent_id: Some(1),
+                name: "Salon".to_string(),
+                node_type: "Room".to_string(),
+                label: "L0002".to_string(),
+            },
+            LocationModel {
+                id: 3,
+                parent_id: Some(2),
+                name: "Étagère 1".to_string(),
+                node_type: "Shelf".to_string(),
+                label: "L0003".to_string(),
+            },
         ];
         let mut counts = HashMap::new();
         counts.insert(3, 5u64);
@@ -565,6 +652,7 @@ mod tests {
             role: "anonymous".to_string(),
             current_page: "location",
             skip_label: "Skip".to_string(),
+            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
             nav_catalog: "Catalog".to_string(),
             nav_loans: "Loans".to_string(),
             nav_locations: "Locations".to_string(),
@@ -592,6 +680,8 @@ mod tests {
             col_status: "Status".to_string(),
             prev_label: "Previous".to_string(),
             next_label: "Next".to_string(),
+            current_url: "/location/1".to_string(),
+            lang_toggle_aria: "Change language".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(rendered.contains("Salon"));

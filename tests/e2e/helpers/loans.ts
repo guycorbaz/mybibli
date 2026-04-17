@@ -70,7 +70,7 @@ export async function createBorrower(page: Page, name: string): Promise<void> {
   await page.goto("/borrowers");
   await page.getByText(/Add borrower|Ajouter/i).click();
   await page.locator("#new-name").fill(name);
-  await page.locator('button[type="submit"]').last().click();
+  await page.locator('main button[type="submit"]').last().click();
   // Assertion-as-wait: the borrower anchor appearing in the list confirms
   // the server committed the INSERT. Scoped to the actual `/borrower/:id`
   // anchor so stale DOM (form input echo, nav, breadcrumbs) cannot trip
