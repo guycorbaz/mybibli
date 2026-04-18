@@ -7,7 +7,11 @@ Requirements mapping: NFR13 (role isolation — defense-in-depth), NFR15 (strict
 
 ---
 
-> **TL;DR** — Closes the five-deferral CSRF debt. Ships a **synchronizer-token** CSRF middleware keyed on `sessions.csrf_token` (new column), a **template-audit-enforced** hidden-input pattern for every `<form method="POST">`, an **`X-CSRF-Token` header** path for all HTMX mutations driven by a new `static/js/csrf.js` that listens on `htmx:configRequest` (CSP-compliant, no inline script), and **rewires the nav-bar logout from GET-anchor to POST-form** to close the `<img src="/logout">` surface flagged in Epic 7 retro. Only exemption is `POST /login` (no session exists yet — `SameSite=Lax` handles login-CSRF). The middleware slots into the AR16 layer order between Auth (session extractor) and the handlers: `Logging → Auth → **CSRF** → [Handler] → PendingUpdates → CSP`. Foundation for every admin-mutation surface in 8-3..8-8.
+> **TL;DR** — Closes the five-deferral CSRF debt. Ships (1) a **synchronizer-token** middleware keyed on a new `sessions.csrf_token` column (migration backfills via `HEX(RANDOM_BYTES(32))`, no heal-on-read race); (2) a **`base_context()` helper** that injects `csrf_token` into every full-page template struct (~15-18 structs, fragment templates skipped); (3) a **template-audit-enforced** hidden-input pattern for every `<form method="POST">`; (4) a **`static/js/csrf.js`** classic script with two listeners — `htmx:configRequest` (injects `X-CSRF-Token` header) and `htmx:beforeSwap` (force-swaps the server-rendered 403 feedback body into `#feedback-list` via `HX-Retarget`/`HX-Reswap`); (5) a patch to `static/js/session-timeout.js`'s `fetch()` fallback so it carries the token; (6) **rewires the nav-bar logout from GET-anchor to POST-form** (closes the `<img src="/logout">` surface flagged in Epic 7 retro); (7) **lazy anonymous-session rows** (first-hit INSERT) + **7-day daily purge task** to keep the `sessions` table bounded. Only exemption is `POST /login` (no session exists yet — `SameSite=Lax` handles login-CSRF). The middleware slots into the AR16 layer order between Auth and the handlers: `Logging → Auth → **CSRF** → [Handler] → PendingUpdates → CSP`. Foundation for every admin-mutation surface in 8-3..8-8.
+>
+> **Change log:**
+> - 2026-04-18 (create-story): initial draft
+> - 2026-04-18 (validate-story): 7 critical + 5 enhancement patches applied — drop `user_id` ALTER (no-op; would have been destructive), migration-time backfill (closes empty-token race), `csrf.js` rewritten without `window.i18n`/`window.mybibli`/`type="module"` (none existed), explicit empty-token rejection in middleware, `/session/keepalive` + `/debug/session-timeout` coverage clarified, `session-timeout.js` `fetch()` fallback patch added, anonymous-session-purge task added, `HX-Trigger` documented as NEW idiom, multipart caveat removed, template-blast-radius clarified (~15-18 full-page structs, not 29).
 
 ## Story
 
@@ -28,7 +32,10 @@ so that cross-site requests from hostile pages cannot trigger logout, language t
 **Current CSRF surface — 24 mutation points across 17 templates** (grep `method="POST"` + `hx-(post|put|delete|patch)` in `templates/`) plus any HTMX `hx-post` in `.rs` code-generated HTML (check `feedback_html`, `pending_updates`, `locations` tree, `admin_*_panel.html` fragments). `GET /logout` is additionally a mutation (session delete on GET) — the `<a href="/logout">` link in `templates/components/nav_bar.html:42` is the load-bearing example flagged in Epic 7 retro §5. This story converts it to a POST form.
 
 **Ships:**
-1. **Migration: `migrations/20260418000000_add_csrf_token_to_sessions.sql`** — `ALTER TABLE sessions ADD COLUMN csrf_token VARCHAR(64) NOT NULL DEFAULT ''`, then a UPDATE that fills existing rows with freshly generated tokens (compute in Rust inside a `#[sqlx::migrate]` helper? No — MariaDB doesn't run Rust. Use `SET @token = ...` with MariaDB's `HEX(RANDOM_BYTES(32))` per row via a loop in the migration, OR accept empty string for pre-migration sessions and have the Session extractor detect `csrf_token == ""` on read and rotate via a server-side UPDATE on the first request of a pre-existing session). Pick the simpler path: **default `""`, detect-and-rotate on first hit post-deploy in `SessionModel::lookup_by_token`** — one `UPDATE sessions SET csrf_token = ? WHERE id = ?` per pre-existing session on its next request, logged at `info`. Migration is schema-only (add column + `NOT NULL DEFAULT ''`).
+1. **Migration: `migrations/20260418000000_add_csrf_token_to_sessions.sql`** — two statements in one file:
+   - `ALTER TABLE sessions ADD COLUMN csrf_token VARCHAR(64) NOT NULL DEFAULT ''`
+   - `UPDATE sessions SET csrf_token = LOWER(HEX(RANDOM_BYTES(32))) WHERE csrf_token = ''` — backfill at migration time using MariaDB's `RANDOM_BYTES()` (available since MariaDB 10.10 — the project's MariaDB version is ≥ 10.10 per `tests/docker-compose.rust-test.yml`; verify). `HEX(RANDOM_BYTES(32))` produces a 64-char hex string that fits the column. Rust-side tokens are 43-char base64; the two encodings coexist because constant-time compare is byte-level and `csrf_middleware` never cares about format. **Critical: the middleware MUST reject any request where the session's stored `csrf_token` is empty** — belt-and-braces against a row that somehow escapes the backfill. Migration is destructive-to-empty-only; existing sessions keep working with a fresh token.
+   - Rationale for migration-time backfill (vs heal-on-read): closes a race window where a pre-existing session with `csrf_token=''` could — between deploy and first read — accept a forged request whose `X-CSRF-Token: ""` matches the stored empty string via `ConstantTimeEq`. Backfill at migration means no session row ever carries `''` in production.
 
 2. **`src/middleware/csrf.rs`** (new module). Exports:
    - `pub const CSRF_EXEMPT_ROUTES: &[(&str, &str)] = &[("POST", "/login")];` — single entry, frozen by `src/templates_audit.rs` (below).
@@ -50,16 +57,52 @@ so that cross-site requests from hostile pages cannot trigger logout, language t
 
 5. **`src/middleware/auth.rs::Session`** — add `pub csrf_token: String` to the `Session` struct (next to `token`, `user_id`, `role`, `preferred_language`). Anonymous sessions get a fresh token too (see point 6 below). `Session::anonymous()` now requires a caller-provided token — change to `Session::anonymous_with_token(csrf_token: String)` constructed by the auth middleware, which either (a) reads the session row and reuses `csrf_token`, or (b) mints one for a first-hit anonymous visitor and persists it via a lazy anonymous-session INSERT (see point 6).
 
-6. **Lazy anonymous session row** — currently `Session::anonymous()` returns a purely in-memory value with no DB row. To give anonymous visitors a CSRF token that survives across their anonymous requests (so anonymous `/language` POSTs and anonymous `/login` forms both work), create a session row on the **first GET from a browser with no `session` cookie**, with `user_id = NULL` and a fresh `csrf_token`. The cookie is set as an anonymous-session cookie (still `HttpOnly`, `SameSite=Lax`, no `Max-Age`). On login, the handler either (a) UPDATEs the existing anonymous row to attach `user_id` + rotate `csrf_token`, or (b) soft-deletes the anonymous row and inserts a fresh authenticated one — pick (b) for clarity (one INSERT, the anonymous row becomes garbage, the existing daily purge removes it).
+6. **Lazy anonymous session row** — currently `Session::anonymous()` returns a purely in-memory value with no DB row (verified: `src/middleware/auth.rs:96-98` / `:126`). To give anonymous visitors a CSRF token that survives across their anonymous requests (so anonymous `/language` POSTs and anonymous `/login` forms both work), create a session row on the **first GET from a browser with no `session` cookie**, with `user_id = NULL` and a fresh `csrf_token`. The cookie is set as an anonymous-session cookie (still `HttpOnly`, `SameSite=Lax`, no `Max-Age`). On login, the handler soft-deletes the anonymous row and INSERTs a fresh authenticated one (simpler than in-place UPDATE — the anonymous row becomes garbage and the daily purge — see below — removes it).
 
-   **Migration follow-up:** `sessions.user_id` must accept NULL. Check current schema — if `user_id INT NOT NULL`, add a migration `ALTER TABLE sessions MODIFY user_id INT NULL` in this story. (Sanity-check via `\d sessions` before writing the migration.)
+   **Pre-verified schema facts (confirmed 2026-04-18):** `sessions.user_id` is ALREADY `BIGINT UNSIGNED NULL` since the initial migration (`migrations/20260329000000_initial_schema.sql:224`). **No `ALTER user_id` migration needed** — any such ALTER would be destructive (would change the type from `BIGINT UNSIGNED` → `INT` and silently break the FK `fk_sessions_user`, same file line 234). Task 1 in §Tasks reflects this: schema migration is the `csrf_token` column only.
+
+   **Anonymous session lifecycle + purge (NEW — previously implicit):**
+   - Anonymous session rows accumulate as crawlers / drive-by scrapers visit the site. Left unbounded, the `sessions` table grows without feedback loop.
+   - Add a daily purge task: `DELETE FROM sessions WHERE user_id IS NULL AND last_activity < UTC_TIMESTAMP() - INTERVAL 7 DAY`. Anonymous visitors who return after 7 days of absence simply get a fresh anonymous session row on their next hit — no user-visible impact.
+   - The purge runs in the existing background-task scaffold (see `src/tasks/`). Reuse the `tokio::spawn` + `tokio::time::interval(24h)` idiom already used by `src/tasks/provider_health.rs` (story 8-1). New file: `src/tasks/anonymous_session_purge.rs`.
+   - Authenticated sessions are **NOT** affected by this purge — the existing session-timeout (inactivity 4h default, story 7-2) already soft-deletes inactive authenticated rows.
+   - GDPR posture: anonymous rows carry `user_id = NULL`, cookie token, `csrf_token`, timestamps. No PII. The 7-day purge satisfies "do not retain beyond necessary" for the narrow purpose of CSRF-token continuity across anonymous POSTs.
 
 7. **`AppError::Forbidden`** — already exists, already renders FeedbackEntry. Confirm the existing `IntoResponse` impl emits a 403 status. The CSRF middleware's rejection path adds a `HX-Trigger: csrf-rejected` header on top of the existing response — use `.headers_mut().insert("HX-Trigger", HeaderValue::from_static("csrf-rejected"))` on the `Response` built from `AppError::Forbidden`.
 
-8. **`static/js/csrf.js`** (new module). Registered in `layouts/base.html` alongside the other 6 JS modules (scan-field, feedback, audio, theme, focus, scanner-guard, mybibli). Behavior:
-   - On `htmx:configRequest` (fires before every HTMX request): set `event.detail.headers['X-CSRF-Token']` = `document.querySelector('meta[name="csrf-token"]').content`.
-   - Listen for the `csrf-rejected` trigger (fired by the middleware's 403 rejection via `HX-Trigger` response header — HTMX dispatches it on the body): read `i18n.csrf_rejected` from the existing `window.i18n` string map pattern (per CLAUDE.md "JS strings: read `<html lang>` and use embedded string map"), and emit a FeedbackEntry via `window.mybibli.appendFeedback('error', message, suggestion)` (or whatever the existing public API of `mybibli.js` is — verify).
-   - No inline script. No `eval`. CSP-compliant (`script-src 'self'` only).
+8. **`static/js/csrf.js`** (new module). Registered in `layouts/base.html` alongside the other 6 JS modules (scan-field, feedback, audio, theme, focus, scanner-guard, mybibli). **Classic `<script src>`, NOT `type="module"`** — matches the existing module-loading convention (`base.html` currently loads all 6 scripts as classic, and mixing a module with classic scripts would perturb execution order).
+
+   Behavior — exactly two listeners, nothing else:
+
+   ```js
+   // csrf.js (public shape; implementation mirrors session-timeout.js IIFE pattern)
+   (function () {
+       // Listener 1 — token injection. Covers every HTMX-driven mutation
+       // (hx-post / hx-put / hx-patch / hx-delete) in the app.
+       document.body.addEventListener("htmx:configRequest", function (evt) {
+           var meta = document.querySelector('meta[name="csrf-token"]');
+           if (meta) evt.detail.headers["X-CSRF-Token"] = meta.getAttribute("content");
+       });
+
+       // Listener 2 — force-swap the 403 feedback body into the page so the
+       // user sees the server-rendered error without inventing any client-side
+       // i18n. The middleware emits `HX-Retarget: #feedback-list` + `HX-Reswap:
+       // beforeend` + `HX-Trigger: csrf-rejected` on 403; we opt-in to the
+       // swap despite HTMX's default "don't swap on error" behaviour.
+       document.body.addEventListener("htmx:beforeSwap", function (evt) {
+           var xhr = evt.detail.xhr;
+           if (xhr && xhr.status === 403 && xhr.getResponseHeader("HX-Trigger") === "csrf-rejected") {
+               evt.detail.shouldSwap = true;
+               evt.detail.isError = false; // let HTMX treat the body as a normal swap payload
+           }
+       });
+   })();
+   ```
+
+   Design decisions captured above:
+   - **No `window.i18n` access** — the pattern does NOT exist in this codebase (verified via `grep`; every JS module declares its own local `var i18n = {...}` block, e.g. `session-timeout.js:58-71`). The feedback body the middleware returns is already server-rendered in the user's language via `rust_i18n::t!()`, so `csrf.js` does NO string work — it just forces the DOM swap.
+   - **No `window.mybibli.appendFeedback` call** — that API does not exist (`mybibli.js` exposes no public `window.mybibli` object; it manipulates `.feedback-entry` DOM nodes directly). Force-swapping the server-rendered 403 body into `#feedback-list` via `HX-Retarget` + `HX-Reswap: beforeend` achieves the same UX without inventing a new JS API.
+   - **`fetch()` fallback in `static/js/session-timeout.js`** — the existing keep-alive path (`session-timeout.js:97-101`) uses `htmx.ajax(...)` when HTMX is loaded, else `fetch("/session/keepalive", { method: "POST" })`. The HTMX path is covered by listener 1 above (HTMX fires `htmx:configRequest` on `htmx.ajax` too). **The bare `fetch()` branch is NOT covered**, so this story patches `session-timeout.js` to set `X-CSRF-Token` manually in the fallback branch — see Task 6.6.
 
 9. **`templates/layouts/base.html`** — add a single `<meta name="csrf-token" content="{{ csrf_token|e }}">` tag inside `<head>`. Use Askama's `|e` escape filter (already on several places in the codebase). This is the one HTML output of the token to the client; form-hidden-inputs reference the SAME value via the same template variable.
 
@@ -75,21 +118,22 @@ so that cross-site requests from hostile pages cannot trigger logout, language t
 
 12. **`src/templates_audit.rs` extension** — add a test `forms_include_csrf_token`: walk `templates/`, regex-match every `<form method="(post|POST)"...>` and assert the very next occurrence of `<input` inside the same form carries `name="_csrf_token"` or `name='_csrf_token'`. Panics on regression. Complementary to the CSP-guard test already there. Also add `csrf_exempt_routes_frozen`: parse `src/middleware/csrf.rs` source, extract `CSRF_EXEMPT_ROUTES`, assert its length is exactly 1 and its single entry is `("POST", "/login")`. Growing the allowlist requires deliberate removal of this guard — review signal, same frozen-allowlist pattern as `hx-confirm` (story 7-5).
 
-13. **HTMX mutation sites in Rust-generated HTML** — check `src/utils.rs::feedback_html`, `src/middleware/pending_updates.rs`, and any `format!("<form ...")` in route modules. If any of them render `hx-post` / `hx-delete` etc., the JS `htmx:configRequest` listener covers the header side (no template change needed). But if any of them render server-side POST forms (without HTMX), they need the hidden input too. Grep: `format!.*<form.*method.*post` across `src/` → expected zero hits; confirm, add to Dev Notes as a pre-flight check.
+13. **HTMX mutation sites in Rust-generated HTML** — check `src/utils.rs::feedback_html`, `src/middleware/pending_updates.rs`, and any `format!("<form ...")` in route modules. If any of them render `hx-post` / `hx-delete` etc., the JS `htmx:configRequest` listener covers the header side (no template change needed). But if any of them render server-side POST forms (without HTMX), they need the hidden input too. Grep: `format!.*<form.*method.*post` across `src/` → expected zero hits; confirm, add to Dev Notes as a pre-flight check. (Multipart/file-upload: verified 2026-04-18 that no route accepts multipart — `grep -i "multipart" src/` returns zero hits; covers are fetched server-side, not uploaded. So the middleware's body-buffer limit of 1 MiB does not impact any existing route.)
 
 14. **Nav-bar logout** — `templates/components/nav_bar.html:42` becomes (desktop and mobile variants):
     ```html
-    <form method="POST" action="/logout" class="inline">
+    <form method="POST" action="/logout" class="contents">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
-      <button type="submit" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">{{ nav_logout }}</button>
+      <button type="submit" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 bg-transparent border-none p-0 cursor-pointer">{{ nav_logout }}</button>
     </form>
     ```
-    Keep the `<button>` visually indistinguishable from the old `<a>` link — Tailwind `text-*` classes, no `border`, no `bg-*`, `inline` form so the button sits inline with siblings. Check the existing nav-bar visual on the Playwright screenshot and match.
+    Tailwind `display: contents` (form `class="contents"`) makes the form element disappear from the box-model — the button inherits the parent flex/inline layout directly, so the logout link stays visually indistinguishable from siblings (no width/gap/alignment shift). The `bg-transparent border-none p-0 cursor-pointer` on the button strips default browser button styling (browsers render `<button>` with grey backgrounds and borders that would otherwise break the nav strip). Inline `style=` is CSP-blocked (story 7-4), so all of this is plain class-based. Visual regression check via a Playwright screenshot diff is part of Task 9.
 
-15. **i18n keys** — new keys under `error:` and `js:`:
-    - `error.csrf_rejected`: EN `"Your session token expired. Please refresh the page and retry."` / FR `"Le jeton de session a expiré. Veuillez actualiser la page et réessayer."`
-    - `error.csrf_suggestion`: EN `"Press Ctrl+R (Cmd+R on Mac) to reload, then retry your action."` / FR `"Appuyez sur Ctrl+R (Cmd+R sur Mac) pour recharger, puis réessayez."`
-    - `js.csrf_rejected_title`: EN `"Session expired"` / FR `"Session expirée"` — used by `csrf.js` when it emits the client-side FeedbackEntry.
+15. **i18n keys — server-side only** (JS touches no strings in this story; see §Ships 8 rationale):
+    - `error.csrf_rejected_title`: EN `"Session expired"` / FR `"Session expirée"` — rendered as the FeedbackEntry heading.
+    - `error.csrf_rejected_message`: EN `"Your CSRF token is missing or expired. Please refresh the page and retry your action."` / FR `"Votre jeton CSRF est manquant ou expiré. Actualisez la page et réessayez."` — rendered as the FeedbackEntry body.
+
+    The CSRF middleware builds the 403 response body by calling `feedback_html("error", &t!("error.csrf_rejected_title", locale = loc), &t!("error.csrf_rejected_message", locale = loc))` — same helper used everywhere else in the codebase (DRY per Foundation Rule #1). Locale resolved via the existing `middleware::locale::Locale` extension.
 
     **Remember:** `touch src/lib.rs && cargo build` after YAML edits (rust-i18n proc macro re-read).
 
@@ -102,18 +146,23 @@ so that cross-site requests from hostile pages cannot trigger logout, language t
     - Middleware on POST with matching form field (no header) → calls handler.
     - Middleware on POST with BOTH header and form field mismatching → 403 (header wins, so this hits the header-mismatch path).
     - Middleware on POST with neither → 403.
-    - Middleware on POST with mismatch only → 403, and the response carries `HX-Trigger: csrf-rejected`.
+    - Middleware on POST with mismatch only → 403; assert ALL THREE response headers: `HX-Trigger: csrf-rejected`, `HX-Retarget: #feedback-list`, `HX-Reswap: beforeend`.
+    - **Empty-token guard (critical per validation):** Middleware on POST where `session.csrf_token == ""` returns `AppError::Internal`, NOT 403 and NOT a match against the empty client value. Asserts the internal-error path is taken even when client sends `X-CSRF-Token: ""`.
     - Constant-time compare (smoke test: feed a loop of tokens varying from prefix-match to full-match to no-match, assert `ConstantTimeEq` returns the correct bit without panicking).
     - Exempt-route allowlist bypass: `POST /login` with no token → handler is called (the wrapping router has the CSRF layer, but the middleware checks the `(method, path)` tuple against the frozen allowlist before validation).
+    - `CSRF_EXEMPT_ROUTES.len() == 1` and the single entry is `("POST", "/login")` — same assertion as `src/templates_audit.rs::csrf_exempt_routes_frozen` but co-located with the middleware for defense in depth.
 
 17. **Integration tests (new, `tests/csrf_integration.rs`, uses `#[sqlx::test]`):**
-    - Login persists a valid CSRF token in `sessions.csrf_token`.
+    - Login persists a valid CSRF token in `sessions.csrf_token` (non-empty, 43+ chars).
     - POST `/logout` without the token → 403; with the token → 303 to `/`.
     - POST `/language` without the token → 403; with the token → 303 + cookie set (preserves all story 7-3 behaviors).
+    - POST `/session/keepalive` without the token → 403; with the token → 200 (or whatever the current success status is — verify).
     - POST `/login` with no token (and no session) → handler runs; on success the new session row has a fresh CSRF token; the old anonymous row is soft-deleted.
     - Token rotation on re-login: submit two `/login` POSTs back-to-back from the same browser (same cookie), assert the second session has a distinct `csrf_token` and the first token no longer validates on any subsequent mutation.
     - GET `/logout` → 405 Method Not Allowed (router no longer wires the GET method).
-    - Anonymous first-hit: clear cookies, GET `/catalog` → response sets a `session` cookie; the rendered HTML contains the `<meta name="csrf-token" content="...">`; a subsequent POST `/language` with that token succeeds.
+    - Anonymous first-hit: clear cookies, GET `/catalog` → response sets a `session` cookie; the DB now has a row with `user_id=NULL` and `csrf_token != ''`; the rendered HTML contains the `<meta name="csrf-token" content="...">`; a subsequent POST `/language` with that token succeeds.
+    - Migration backfill: after running migration on a DB pre-populated with 5 session rows, `SELECT COUNT(*) FROM sessions WHERE csrf_token = ''` returns 0, and each row has a distinct `csrf_token` value (no duplicates from RAND collision).
+    - Anonymous session purge: seed 3 anonymous rows with `last_activity = NOW() - INTERVAL 8 DAY` + 2 with `NOW() - INTERVAL 3 DAY` + 1 authenticated with `NOW() - INTERVAL 8 DAY`; run the purge; assert 3 rows deleted (only the old anonymous ones), 2 anonymous + 1 authenticated remain.
 
 18. **E2E test (`tests/e2e/specs/security/csrf.spec.ts`, spec ID `"CS"`):**
     - **Smoke path (Foundation Rule #7 for this story):** blank browser → login admin → navigate to `/catalog` → grab `meta[name=csrf-token]` content via `page.locator('meta[name="csrf-token"]').getAttribute('content')` → submit the language toggle form with the valid token → assert 303 + cookie set. Mutate the token in DevTools via `page.evaluate((bad) => document.querySelector('meta[name=csrf-token]').setAttribute('content', bad), 'bogus')` → retry the toggle → assert the response is 403 and the on-page FeedbackEntry says "Session expired" (i18n-aware regex per CLAUDE.md). Confirm the `HX-Trigger: csrf-rejected` path fired by checking the FeedbackEntry appeared without a full-page reload (HTMX swap).
@@ -147,22 +196,23 @@ so that cross-site requests from hostile pages cannot trigger logout, language t
 
 ## Acceptance Criteria
 
-1. **Migration: `sessions.csrf_token` column exists with the expected shape.**
-   - File: `migrations/20260418000000_add_csrf_token_to_sessions.sql`.
-   - Schema: `ALTER TABLE sessions ADD COLUMN csrf_token VARCHAR(64) NOT NULL DEFAULT ''`. The default is intentionally the empty string so the migration is non-destructive on existing rows; the Session extractor heals empty strings on first read (see AC 3).
-   - Verify via `SHOW COLUMNS FROM sessions` in a fresh DB — exactly `varchar(64), NO (NULL), ''` for the three relevant columns (Type, Null, Default).
+1. **Migration: `sessions.csrf_token` column exists and every row is backfilled.**
+   - File: `migrations/20260418000000_add_csrf_token_to_sessions.sql`. Two statements: `ALTER TABLE sessions ADD COLUMN csrf_token VARCHAR(64) NOT NULL DEFAULT ''` followed by `UPDATE sessions SET csrf_token = LOWER(HEX(RANDOM_BYTES(32))) WHERE csrf_token = ''`.
+   - Verify via `SHOW COLUMNS FROM sessions` in a fresh DB — `varchar(64), NO (NULL), ''` for (Type, Null, Default).
+   - Verify via `SELECT COUNT(*) FROM sessions WHERE csrf_token = ''` post-migration — exactly zero.
+   - MariaDB `RANDOM_BYTES()` requires MariaDB ≥ 10.10 — confirm against `tests/docker-compose.rust-test.yml` target version before merge; if the prod image pins an older version, substitute `SUBSTRING(MD5(CONCAT(RAND(), token, UUID())), 1, 43)` (weaker entropy, acceptable one-off for backfill only — still 172 bits).
    - No additional index on `csrf_token` — the middleware reads it alongside the session row (already indexed on `token`), no join path needs the extra index.
 
-2. **Migration: `sessions.user_id` becomes nullable.**
-   - Check current schema first. If `user_id INT NOT NULL`, add `ALTER TABLE sessions MODIFY user_id INT NULL` in the same migration file above (one file, two ALTERs).
-   - If already nullable, note in Dev Notes and skip.
-   - Rationale: anonymous sessions get a row for CSRF persistence; `user_id` must be NULL for those rows.
+2. **No migration on `sessions.user_id` — pre-verified already nullable.**
+   - Current schema: `migrations/20260329000000_initial_schema.sql:224` declares `user_id BIGINT UNSIGNED NULL`. Confirmed via file read 2026-04-18.
+   - FK constraint `fk_sessions_user` (same file line 234) has no explicit `ON DELETE` clause — default `RESTRICT`. Anonymous sessions (`user_id=NULL`) are exempt from FK enforcement (standard MySQL/MariaDB FK behavior with NULL).
+   - Any `ALTER` against `user_id` in this story is **forbidden** — it would change the type from `BIGINT UNSIGNED` to `INT` and silently break the FK.
 
 3. **Session row lifecycle covers anonymous and authenticated flows.**
-   - Given a request with no `session` cookie, when the auth middleware runs, then it INSERTs an anonymous session row (`user_id = NULL`, fresh `csrf_token`), sets the `session` cookie, and the request continues as anonymous. **Idempotent under concurrency:** two simultaneous first-hits from the same browser should not both create rows — use `INSERT IGNORE` or wrap in a simple optimistic check (SELECT by cookie first; race-losers re-SELECT).
+   - Given a request with no `session` cookie, when the auth middleware runs, then it INSERTs an anonymous session row (`user_id = NULL`, `token` = new session token, `csrf_token` = new CSRF token), sets the `session` cookie, and the request continues as anonymous. **Idempotent under concurrency:** use `INSERT` with unique constraint on `token` + random 32-byte value → collision probability negligible (2^-128); if two concurrent first-hits from the same browser both generate DIFFERENT tokens, the server writes two rows but only the latest cookie wins on the client — the other row is orphaned and the daily purge (below) collects it.
    - Given a request with a valid anonymous-session cookie, when the user POSTs `/login` successfully, then: (a) the anonymous session row is soft-deleted (`deleted_at = NOW()`), (b) a new authenticated session row is INSERTed with a fresh `csrf_token`, (c) the `session` cookie is overwritten with the new token. The CSRF token rotates on login.
-   - Given a request with a session cookie but the DB row has `csrf_token = ''` (heal path for rows migrated from the pre-CSRF schema), when the auth middleware reads the row, then it generates a fresh token, UPDATEs the row, and continues. Logged at `tracing::info!(session_id, "healed empty csrf_token on first post-migration read")`. This path runs at most once per pre-existing session.
-   - Given POST `/logout`, when it succeeds, then the session row is soft-deleted (existing behavior) and no new row is created — next request is a fresh anonymous-session INSERT.
+   - Given POST `/logout`, when it succeeds, then the authenticated session row is soft-deleted (existing behavior) and no new row is created — next GET request is a fresh anonymous-session INSERT.
+   - Given the daily purge task runs (new, per §Ships 6), when it fires, then `DELETE FROM sessions WHERE user_id IS NULL AND last_activity < UTC_TIMESTAMP() - INTERVAL 7 DAY` executes. Authenticated session rows are NOT touched (they are managed by story 7-2's inactivity timeout). Logged at `tracing::info!(rows_deleted = n, "anonymous session purge completed")`.
 
 4. **Session extractor propagates `csrf_token` into the `Session` struct.**
    - `src/middleware/auth.rs::Session` gains `pub csrf_token: String`.
@@ -176,21 +226,27 @@ so that cross-site requests from hostile pages cannot trigger logout, language t
    - Given a state-changing request with `X-CSRF-Token` header matching `session.csrf_token` (constant-time), when the middleware runs, then the handler is called; the request body is unmodified.
    - Given a state-changing request with no header but `_csrf_token` form field matching, when the middleware runs, then the handler is called; the body is buffered once and re-attached to the request (Axum's `Request::from_parts` + body re-injection pattern).
    - Given a state-changing request with both header AND form field, when the middleware runs, then the header wins; if header mismatches, 403 is returned regardless of form field value.
+   - Given the session's stored `csrf_token` is empty string (should never happen post-migration; defense in depth), when the middleware runs on a state-changing request, then it returns `AppError::Internal("session CSRF token unset")` — NOT a 403 match against `""`. This closes the heal-on-read race identified in validation.
    - Given the request's `(method, path)` tuple is present in `CSRF_EXEMPT_ROUTES`, when the middleware runs, then validation is skipped and the handler is called.
-   - Given a mismatch/missing-token rejection, when the response is built, then it is `AppError::Forbidden` with status 403, the existing FeedbackEntry body, AND a new `HX-Trigger: csrf-rejected` response header.
+   - **`POST /session/keepalive`** is NOT exempt. It is HTMX-driven via `htmx.ajax(...)` in `static/js/session-timeout.js:97-98` (covered by listener 1 of `csrf.js`) and via the `fetch()` fallback on line 100 (covered by Task 6.6 which patches that fallback to include `X-CSRF-Token` manually from the meta tag). Token validates against the authenticated session's `csrf_token`.
+   - **`POST /debug/session-timeout`** is NOT exempt. It is guarded at runtime by `std::env::var("TEST_MODE") == "1"` + `require_role(Admin)` (`src/routes/catalog.rs:2086-2089`), so in production it returns 404 before CSRF runs anyway. In test mode it must still carry a valid token (tests drive it via HTMX or include the header explicitly). No additional changes needed — it inherits CSRF validation from the middleware layer.
+   - Given a mismatch/missing-token rejection, when the response is built, then it is `AppError::Forbidden` with status 403, a server-rendered FeedbackEntry body localized via `rust_i18n::t!("error.csrf_rejected_*")`, AND three HTMX-coordination headers: `HX-Trigger: csrf-rejected`, `HX-Retarget: #feedback-list`, `HX-Reswap: beforeend`. Together these let `csrf.js`'s force-swap listener (§Ships 8 listener 2) inject the server-rendered body into the page's FeedbackEntry list without any client-side i18n.
 
-6. **`AppError::Forbidden` 403 response carries `HX-Trigger: csrf-rejected` only on CSRF rejection paths.**
-   - The middleware builds the response by calling `AppError::Forbidden.into_response()` then mutating `.headers_mut().insert("HX-Trigger", HeaderValue::from_static("csrf-rejected"))`. Non-CSRF `Forbidden` paths (e.g., librarian hitting `/admin`) do NOT carry this header — the trigger is CSRF-specific.
+6. **CSRF-rejection 403 response carries CSRF-specific coordination headers.**
+   - The middleware builds the response by calling `feedback_html("error", title, message)` (via `rust_i18n::t!()` for the two new `error.csrf_rejected_*` keys) wrapped in `Response::builder().status(403)`, then sets three headers: `HX-Trigger: csrf-rejected`, `HX-Retarget: #feedback-list`, `HX-Reswap: beforeend`. Non-CSRF `Forbidden` paths (e.g., librarian hitting `/admin`) do NOT carry these headers — they still go through `AppError::Forbidden.into_response()` with the generic feedback.
+   - **New pattern alert:** The `HX-Trigger` → JS-listener idiom is NEW for this codebase (verified via `grep "HX-Trigger" src/` → zero hits). Document it in Dev Notes as a project pattern worth reusing for future server-driven UI coordination.
 
 7. **`templates/layouts/base.html` emits `<meta name="csrf-token" content="{{ csrf_token|e }}">` in `<head>`.**
    - Placed right after `<meta charset="utf-8">` / `<meta name="viewport">` and before any stylesheet link, so the value is available before any external resource loads.
    - The `|e` escape filter is mandatory — the token is base64 URL-safe (no HTML-unsafe chars expected) but belt-and-braces.
 
-8. **`static/js/csrf.js` injects `X-CSRF-Token` on every HTMX mutation.**
-   - File: `static/js/csrf.js`. Imported from `layouts/base.html` via `<script type="module" src="/static/js/csrf.js"></script>` (matches existing module loading; `type="module"` is CSP-fine under `script-src 'self'`).
-   - On `document.addEventListener('htmx:configRequest', evt => { evt.detail.headers['X-CSRF-Token'] = document.querySelector('meta[name="csrf-token"]').content; })`.
-   - On `document.body.addEventListener('csrf-rejected', () => { window.mybibli.appendFeedback('error', i18n.js_csrf_rejected_title, i18n.error_csrf_suggestion); });` — dispatched by HTMX when the 403 response includes `HX-Trigger: csrf-rejected`.
-   - Uses the existing `window.i18n` JS string map pattern (per CLAUDE.md i18n § "JS strings: read `<html lang>` and use embedded string map"). Add the three new keys (`js.csrf_rejected_title`, `error.csrf_rejected`, `error.csrf_suggestion`) to the embedded map generator in `templates/layouts/base.html` or wherever the existing i18n JS map is initialized (confirm file by greying `window.i18n =` in `templates/` and `static/`).
+8. **`static/js/csrf.js` — exactly two listeners, no client-side i18n, no new JS API.**
+   - File: `static/js/csrf.js`. Loaded from `layouts/base.html` via **classic** `<script src="/static/js/csrf.js"></script>` (NOT `type="module"` — matches the existing convention for all 6 other JS modules).
+   - **Listener 1 — token injection:** `document.body.addEventListener("htmx:configRequest", evt => evt.detail.headers["X-CSRF-Token"] = document.querySelector('meta[name="csrf-token"]').content)`. Runs on every HTMX-driven mutation.
+   - **Listener 2 — force-swap the 403 body:** `document.body.addEventListener("htmx:beforeSwap", evt => { if (evt.detail.xhr.status === 403 && evt.detail.xhr.getResponseHeader("HX-Trigger") === "csrf-rejected") { evt.detail.shouldSwap = true; evt.detail.isError = false; } })`. Lets HTMX inject the server-rendered feedback body into `#feedback-list` (via the `HX-Retarget` + `HX-Reswap` headers the middleware also emits) — default HTMX behavior on 403 would be to discard the body.
+   - **Zero local i18n strings** — the 403 body arrives pre-localized by `rust_i18n::t!()` in the middleware.
+   - **Zero new `window.*` APIs** — the module is an IIFE with no exports (same shape as `session-timeout.js`).
+   - CSP compliance: `script-src 'self'`, no inline, no `eval`.
 
 9. **Every `<form method="POST">` in `templates/` includes the hidden CSRF input.**
    - The hidden input is placed as the **first child** of the `<form>` element (immediately after the opening tag) for readability and to match the regex pattern that the audit test uses.
@@ -213,76 +269,89 @@ so that cross-site requests from hostile pages cannot trigger logout, language t
 
 14. **Integration tests pass (new) — see §Ships point 17 for the list.**
 
-15. **E2E tests pass (new) — see §Ships point 18 for the list.**
+15. **i18n keys added — server-side only, per §Ships 15.**
+    - New keys: `error.csrf_rejected_title`, `error.csrf_rejected_message` in both `locales/en.yml` and `locales/fr.yml`.
+    - No JS-side i18n keys (the 403 body is server-rendered; `csrf.js` is string-free).
+    - Post-edit: `touch src/lib.rs && cargo build` to force proc-macro re-read (per CLAUDE.md i18n §).
 
-16. **All 24 existing mutation points continue to work in the happy path.**
+16. **E2E tests pass (new) — see §Ships point 18 for the list.** Foundation Rule #7 smoke path included: blank browser → login → submit form with valid token → tamper token → verify 403 + localized feedback injected without page reload.
+
+17. **All 24 existing mutation points continue to work in the happy path.**
     - Login → catalog scan → title/volume/contributor edits → location CRUD → series CRUD → borrower CRUD → loan registration + return → language toggle → logout. No regression; every flow carries a valid token and is accepted.
     - Verified via the existing Playwright suite (`cd tests/e2e && npm test`) — zero new flakes; the 3-cycle fresh-stack gate is green.
 
-17. **Documentation complete — CLAUDE.md bullet, architecture subsection, route-role-matrix column — per §Ships point 19.**
+18. **Documentation complete — CLAUDE.md bullet, architecture subsection, route-role-matrix column — per §Ships point 19.**
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Schema + lazy anonymous sessions (AC: 1, 2, 3)**
-  - [ ] 1.1 Audit current `sessions` schema — is `user_id` nullable?
-  - [ ] 1.2 Write migration `20260418000000_add_csrf_token_to_sessions.sql` (ADD csrf_token column; MODIFY user_id to NULL if needed)
-  - [ ] 1.3 Run migration locally, verify via `SHOW COLUMNS FROM sessions`
-  - [ ] 1.4 Update `SessionModel` (`src/models/session.rs`) to read/write `csrf_token`
-  - [ ] 1.5 Implement anonymous-session INSERT in the auth middleware on first-hit
-  - [ ] 1.6 Implement empty-token heal path on first post-migration read
-  - [ ] 1.7 `cargo sqlx prepare` to regenerate `.sqlx/` offline cache
+- [ ] **Task 1: Schema migration — csrf_token column only (AC: 1, 2)**
+  - [ ] 1.1 Confirm MariaDB target version supports `RANDOM_BYTES()` (≥ 10.10); if not, use `MD5(CONCAT(RAND(), token, UUID()))` backfill fallback
+  - [ ] 1.2 Write `migrations/20260418000000_add_csrf_token_to_sessions.sql` with TWO statements: `ALTER ADD csrf_token VARCHAR(64) NOT NULL DEFAULT ''` + `UPDATE sessions SET csrf_token = LOWER(HEX(RANDOM_BYTES(32))) WHERE csrf_token = ''`
+  - [ ] 1.3 **Do NOT touch `sessions.user_id`** — it is already `BIGINT UNSIGNED NULL` per `migrations/20260329000000_initial_schema.sql:224`; any ALTER is destructive to the FK
+  - [ ] 1.4 Run migration on a seeded DB; verify `SELECT COUNT(*) FROM sessions WHERE csrf_token = ''` returns 0
+  - [ ] 1.5 Update `SessionModel` (`src/models/session.rs`) to read/write `csrf_token`
+  - [ ] 1.6 `cargo sqlx prepare` to regenerate `.sqlx/` offline cache
 
 - [ ] **Task 2: `src/middleware/csrf.rs` (AC: 5, 6, 10, 12)**
   - [ ] 2.1 Add `subtle = "2.6"` to `Cargo.toml`
-  - [ ] 2.2 Implement `csrf_middleware`, `CSRF_EXEMPT_ROUTES`, `generate_csrf_token`
-  - [ ] 2.3 Handle body buffering + re-injection for form-field fallback
-  - [ ] 2.4 Wire into `src/routes/mod.rs::build_router` in the correct layer order
-  - [ ] 2.5 Unit tests (§Ships 16)
+  - [ ] 2.2 Implement `csrf_middleware`, `CSRF_EXEMPT_ROUTES` (single entry `("POST", "/login")`), `generate_csrf_token`
+  - [ ] 2.3 Handle body buffering + re-injection for form-field fallback (1 MiB cap via `axum::body::to_bytes`)
+  - [ ] 2.4 Explicit guard: reject with `AppError::Internal` if the session's stored `csrf_token` is empty (never match on `""`) — AC 5 empty-token clause
+  - [ ] 2.5 403 response emits `HX-Trigger: csrf-rejected` + `HX-Retarget: #feedback-list` + `HX-Reswap: beforeend` alongside the localized FeedbackEntry body
+  - [ ] 2.6 Wire into `src/routes/mod.rs::build_router` in the correct layer order (`Logging → Auth → CSRF → [Handler] → PendingUpdates → CSP`)
+  - [ ] 2.7 Unit tests (§Ships 16) — include empty-token-rejection case
 
-- [ ] **Task 3: Session struct propagation (AC: 4)**
+- [ ] **Task 3: Session struct propagation + lazy anonymous row (AC: 3, 4)**
   - [ ] 3.1 Add `csrf_token: String` to `Session`
-  - [ ] 3.2 Rename/replace `Session::anonymous()` → `Session::anonymous_with_token(...)`
-  - [ ] 3.3 Update all call sites (audit via `grep -rn "Session::anonymous" src/`)
+  - [ ] 3.2 Rename/replace `Session::anonymous()` → `Session::anonymous_with_token(...)`; update call sites (audit via `grep -rn "Session::anonymous" src/`)
+  - [ ] 3.3 Implement anonymous-session INSERT in auth middleware on first-hit (no cookie → INSERT + set cookie)
+  - [ ] 3.4 Adjust `src/routes/auth.rs::login` to soft-delete the anonymous row and INSERT a fresh authenticated row
 
-- [ ] **Task 4: Login / logout wiring (AC: 3, 11)**
-  - [ ] 4.1 `login` handler: generate `csrf_token` alongside session token, persist both
-  - [ ] 4.2 `login` handler: soft-delete anonymous row, INSERT authenticated row
-  - [ ] 4.3 Drop GET-method variant of `/logout` in `src/routes/mod.rs`
-  - [ ] 4.4 Convert nav-bar logout anchor to POST form (desktop + mobile)
+- [ ] **Task 4: Anonymous session purge task (AC: 3)**
+  - [ ] 4.1 New file `src/tasks/anonymous_session_purge.rs` — mirrors `src/tasks/provider_health.rs` spawn+interval pattern
+  - [ ] 4.2 Query: `DELETE FROM sessions WHERE user_id IS NULL AND last_activity < UTC_TIMESTAMP() - INTERVAL 7 DAY`
+  - [ ] 4.3 Interval: `tokio::time::interval(Duration::from_secs(86400))` — first run 24h after boot
+  - [ ] 4.4 Log at `info` with `rows_deleted` count
+  - [ ] 4.5 Spawned from `src/main.rs` next to the existing provider-health spawn
 
-- [ ] **Task 5: Base template + BaseContext + per-template propagation (AC: 7, 9)**
-  - [ ] 5.1 Add `<meta name="csrf-token">` to `templates/layouts/base.html`
-  - [ ] 5.2 Design `base_context(&session)` helper returning common fields
-  - [ ] 5.3 Add `csrf_token: String` to every page-template struct in `src/routes/*.rs`
-  - [ ] 5.4 Walk all `<form method="POST">` in `templates/` — add hidden input
-  - [ ] 5.5 Extend `src/templates_audit.rs::forms_include_csrf_token` test
+- [ ] **Task 5: Login / logout wiring (AC: 3, 11)**
+  - [ ] 5.1 `login` handler: generate `csrf_token` alongside session token, persist both in the same INSERT
+  - [ ] 5.2 Drop GET-method variant of `/logout` in `src/routes/mod.rs`
+  - [ ] 5.3 Convert nav-bar logout anchor to POST form (desktop + mobile) with hidden CSRF input
+  - [ ] 5.4 Delete the obsolete "No CSRF token" docstring paragraph in `src/routes/auth.rs::change_language` (lines 247-250)
 
-- [ ] **Task 6: `static/js/csrf.js` + i18n (AC: 8, 15)**
-  - [ ] 6.1 Create `static/js/csrf.js` with `htmx:configRequest` + `csrf-rejected` listeners
-  - [ ] 6.2 Register the module in `templates/layouts/base.html`
-  - [ ] 6.3 Add i18n keys `error.csrf_rejected`, `error.csrf_suggestion`, `js.csrf_rejected_title` in EN + FR
-  - [ ] 6.4 Wire the three keys into the embedded `window.i18n` JS string map
-  - [ ] 6.5 `touch src/lib.rs && cargo build` (i18n proc macro re-read)
+- [ ] **Task 6: Base template + BaseContext + JS + per-template propagation (AC: 7, 8, 9, 15)**
+  - [ ] 6.1 Add `<meta name="csrf-token" content="{{ csrf_token|e }}">` to `templates/layouts/base.html`
+  - [ ] 6.2 Design `base_context(&session, locale, current_page)` helper returning common fields (incl. `csrf_token`)
+  - [ ] 6.3 Add `csrf_token: String` to every **full-page** template struct that extends `base.html` (filter via `grep "extends \"layouts/base.html\"" templates/` — approx. 15-18 structs, not the full 29; fragment-only templates don't need the field)
+  - [ ] 6.4 Walk all `<form method="POST">` in `templates/` — add hidden input `<input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">` as the first child
+  - [ ] 6.5 Create `static/js/csrf.js` with the two listeners specified in §Ships 8 — classic script, no `window.*` exports, no local i18n
+  - [ ] 6.6 Patch `static/js/session-timeout.js` `fetch()` fallback (line 100) to include `X-CSRF-Token` from the meta tag: `fetch("/session/keepalive", { method: "POST", headers: { "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content } })`
+  - [ ] 6.7 Register `csrf.js` in `templates/layouts/base.html` via classic `<script src="/static/js/csrf.js"></script>`
+  - [ ] 6.8 Add i18n keys `error.csrf_rejected_title` + `error.csrf_rejected_message` in EN + FR
+  - [ ] 6.9 `touch src/lib.rs && cargo build` (i18n proc macro re-read)
 
-- [ ] **Task 7: Template audit hardening (AC: 10)**
-  - [ ] 7.1 Add `csrf_exempt_routes_frozen` test in `src/templates_audit.rs`
-  - [ ] 7.2 Ensure both audit tests fail loudly on regression
+- [ ] **Task 7: Template audit hardening (AC: 9, 10)**
+  - [ ] 7.1 Add `forms_include_csrf_token` test in `src/templates_audit.rs` — walks `templates/`, regex every `<form method="(post|POST)"...>`, asserts next `<input>` is the CSRF hidden field
+  - [ ] 7.2 Add `csrf_exempt_routes_frozen` test — asserts `CSRF_EXEMPT_ROUTES.len() == 1` and entry is `("POST", "/login")`
+  - [ ] 7.3 Ensure both audit tests fail loudly on regression
 
 - [ ] **Task 8: Integration tests (AC: 14)**
   - [ ] 8.1 New file `tests/csrf_integration.rs` with `#[sqlx::test]` cases per §Ships 17
   - [ ] 8.2 Reuse `seed_user_and_session` pattern from `src/routes/auth.rs::language_tests`
+  - [ ] 8.3 Include: `GET /logout` → 405 (router no longer wires the GET method); `POST /session/keepalive` with token → 200, without → 403; anonymous first-hit creates session row with fresh token
 
-- [ ] **Task 9: E2E spec (AC: 15)**
+- [ ] **Task 9: E2E spec (AC: 16)**
   - [ ] 9.1 `tests/e2e/specs/security/csrf.spec.ts`, spec ID `"CS"`
-  - [ ] 9.2 Smoke, logout-GET-blocked, stripped-token-admin, i18n-FR paths
-  - [ ] 9.3 Verify the existing `scripts/e2e-reset.sh` path produces a fresh DB with the new migration applied
+  - [ ] 9.2 Smoke (Foundation Rule #7), logout-GET-blocked, i18n-FR, feedback-force-swap paths
+  - [ ] 9.3 Verify `scripts/e2e-reset.sh` produces a fresh DB with the new migration applied (backfill runs clean)
 
-- [ ] **Task 10: Documentation (AC: 17)**
-  - [ ] 10.1 CLAUDE.md — "Key Patterns" bullet for CSRF
-  - [ ] 10.2 architecture.md — Authentication & Security subsection + fix stale `SameSite=Strict` language
-  - [ ] 10.3 docs/route-role-matrix.md — add `csrf_exempt` column
+- [ ] **Task 10: Documentation (AC: 18)**
+  - [ ] 10.1 CLAUDE.md — "Key Patterns" bullet for CSRF (include: synchronizer-token bound to `sessions.csrf_token`, `base_context()` helper, `csrf.js` two-listener design, `HX-Trigger: csrf-rejected` as NEW pattern for the project, frozen exempt-route allowlist)
+  - [ ] 10.2 `_bmad-output/planning-artifacts/architecture.md` — Authentication & Security subsection + fix stale `SameSite=Strict` language (code is `Lax` since 7-3)
+  - [ ] 10.3 `docs/route-role-matrix.md` — add `csrf_exempt` column
 
-- [ ] **Task 11: Regression gate (AC: 16)**
+- [ ] **Task 11: Regression gate (AC: 17)**
   - [ ] 11.1 Run `cargo test` — all unit + integration green
   - [ ] 11.2 Run `cargo clippy -- -D warnings` — zero warnings
   - [ ] 11.3 Run `./scripts/e2e-reset.sh` + `cd tests/e2e && npm test` — 3 clean cycles
@@ -304,11 +373,13 @@ AR16 currently reads `Logging → Auth → [Handler] → PendingUpdates → CSP`
 
 ### Body buffering for form-field fallback
 
-Axum's default body limit is ~2 MB. Buffer the body once with `axum::body::to_bytes(body, MAX_CSRF_BODY_BYTES)` (use a sane limit like 1 MiB — mutations are tiny forms, not file uploads; covers + imports go through multipart which is excluded from this story's mutation set) and re-attach via `Request::from_parts(parts, Body::from(bytes))`. If the body exceeds the limit, return 413 Payload Too Large without even looking at CSRF (saves reading megabytes of garbage before rejecting). Document the limit in the middleware doc-comment.
+Axum's default body limit is ~2 MB. Buffer the body once with `axum::body::to_bytes(body, MAX_CSRF_BODY_BYTES)` (use a sane limit like 1 MiB — mutations are tiny forms). **Multipart upload handling is not a concern**: verified 2026-04-18 that no route in this codebase accepts multipart (`grep -i multipart src/` → zero hits; covers are fetched server-side from provider APIs, never uploaded by the user). Re-attach the body via `Request::from_parts(parts, Body::from(bytes))`. If the body exceeds the limit, return 413 Payload Too Large without even looking at CSRF (saves reading megabytes of garbage before rejecting). Document the limit in the middleware doc-comment.
 
 ### Template refactor concern — `base_context` helper
 
-Adding `csrf_token` to every page-template struct touches ~30 structs across `src/routes/*.rs`. Rather than mechanically add `csrf_token: session.csrf_token.clone()` 30×, build a helper:
+**Blast radius (verified 2026-04-18):** `grep "#\[derive(Template)\]" src/routes/*.rs` counts 29 structs. **But only full-page structs that `{% extends "layouts/base.html" %}` need the `csrf_token` field** — fragment-only templates (feedback entries, metadata OOB fragments, admin sub-panels rendered via HTMX into a parent page) do not. Before Task 6.3 starts, run `grep -l 'extends "layouts/base.html"' templates/**/*.html` to get the exact subset (expected ~15-18 templates, filter correspondingly in the Rust struct side).
+
+Rather than mechanically add `csrf_token: session.csrf_token.clone()` to every full-page struct, build a helper:
 
 ```rust
 pub struct BaseContextFields {
@@ -363,9 +434,10 @@ cd tests/e2e && for i in 1 2 3; do npm test || exit 1; done
 
 ### Project Structure Notes
 
-- New files: `src/middleware/csrf.rs`, `static/js/csrf.js`, `tests/csrf_integration.rs`, `migrations/20260418000000_add_csrf_token_to_sessions.sql`, `tests/e2e/specs/security/csrf.spec.ts`.
-- Modified files: `src/middleware/mod.rs` (register new module), `src/middleware/auth.rs` (Session struct), `src/models/session.rs` (csrf_token row field), `src/routes/auth.rs` (login/logout handlers), `src/routes/mod.rs` (middleware wiring, drop GET /logout), every `src/routes/*.rs` (csrf_token in template structs via `base_context` helper), `src/templates_audit.rs` (two new assertions), `templates/layouts/base.html` (meta tag + csrf.js script), `templates/components/nav_bar.html` (logout form), every `templates/**/*.html` with `method="POST"` (hidden input), `locales/en.yml` + `locales/fr.yml` (three keys), `Cargo.toml` (`subtle = "2.6"` dependency), `CLAUDE.md` (Key Patterns bullet), `_bmad-output/planning-artifacts/architecture.md` (Auth & Security subsection + AR16 update + SameSite correction), `docs/route-role-matrix.md` (csrf_exempt column).
-- Detected conflicts / variances: none expected — this is additive. The `SameSite=Strict` docs-vs-code drift is pre-existing and fixed as part of the architecture.md update here.
+- New files: `src/middleware/csrf.rs`, `src/tasks/anonymous_session_purge.rs`, `static/js/csrf.js`, `tests/csrf_integration.rs`, `migrations/20260418000000_add_csrf_token_to_sessions.sql`, `tests/e2e/specs/security/csrf.spec.ts`.
+- Modified files: `src/middleware/mod.rs` (register new module), `src/middleware/auth.rs` (Session struct), `src/models/session.rs` (csrf_token row field + anonymous-session INSERT), `src/routes/auth.rs` (login handler — persist CSRF token; DELETE the obsolete "No CSRF token" docstring at lines 247-250), `src/routes/mod.rs` (middleware wiring; drop GET /logout method), every `src/routes/*.rs` that owns a full-page template struct (`csrf_token` field via `base_context` helper — approx. 15-18 structs, NOT all 29 `#[derive(Template)]`), `src/tasks/mod.rs` (register anonymous-session purge task), `src/main.rs` (spawn the purge task), `src/templates_audit.rs` (two new assertions), `templates/layouts/base.html` (meta tag + classic `<script src>` for csrf.js), `templates/components/nav_bar.html` (logout anchor → POST form), every `templates/**/*.html` with `method="POST"` (hidden `_csrf_token` input), `static/js/session-timeout.js` (patch `fetch()` fallback to include `X-CSRF-Token`), `locales/en.yml` + `locales/fr.yml` (two keys — `error.csrf_rejected_title`, `error.csrf_rejected_message`), `Cargo.toml` (`subtle = "2.6"` dependency), `CLAUDE.md` (Key Patterns bullet — include the NEW HX-Trigger idiom), `_bmad-output/planning-artifacts/architecture.md` (Auth & Security subsection + AR16 update + SameSite correction), `docs/route-role-matrix.md` (csrf_exempt column).
+- **NOT modified (explicitly):** `sessions.user_id` schema (already `BIGINT UNSIGNED NULL` per initial migration), FK `fk_sessions_user` (untouched; NULL `user_id` rows are FK-exempt by MySQL/MariaDB default behavior).
+- Detected conflicts / variances: none expected — this is additive. Two pre-existing doc drifts are opportunistically fixed here (`SameSite=Strict` → `Lax` in architecture.md; obsolete "No CSRF token" docstring removed from `change_language`).
 
 ### References
 
@@ -377,7 +449,7 @@ cd tests/e2e && for i in 1 2 3; do npm test || exit 1; done
 - [Source: _bmad-output/implementation-artifacts/epic-7-retro-2026-04-17.md — §4 bullet 3 (chronic deferral), §7 Action 1 (hard deadline), §5 logout-CSRF surface]
 - [Source: _bmad-output/implementation-artifacts/1-9-minimal-login.md — CSRF deferral note, Logout Pattern §]
 - [Source: _bmad-output/implementation-artifacts/7-1-anonymous-browsing-and-role-gating.md — `require_role_with_return` pattern, `docs/route-role-matrix.md` creation]
-- [Source: _bmad-output/implementation-artifacts/7-3-language-toggle-fr-en.md — language toggle POST pattern + embedded `window.i18n` JS string map]
+- [Source: _bmad-output/implementation-artifacts/7-3-language-toggle-fr-en.md — language toggle POST pattern; local per-module `var i18n = {...}` JS pattern (see `static/js/session-timeout.js:58-71` — no `window.i18n` global exists)]
 - [Source: _bmad-output/implementation-artifacts/7-4-content-security-policy-headers.md — `src/templates_audit.rs` pattern, strict CSP constraints]
 - [Source: _bmad-output/implementation-artifacts/7-5-scanner-guard-modal-interception.md — frozen-allowlist pattern in `src/templates_audit.rs`]
 - [Source: src/routes/auth.rs lines 173-177 (SameSite=Lax), lines 247-250 (current CSRF docstring — to be deleted)]
@@ -397,13 +469,15 @@ cd tests/e2e && for i in 1 2 3; do npm test || exit 1; done
 - The `<meta name="csrf-token">` injection point (this story's AC 7) must be compatible with every page that extends `layouts/base.html`, including the `/admin` page from 8-1 (which DOES extend base.html — verified in `templates/pages/admin.html`).
 
 **Story 7-3 (language toggle) — load-bearing trap to avoid:**
-- The `change_language` handler in `src/routes/auth.rs` has a docstring (lines 247-250) that explicitly says "No CSRF token". This story DELETES that paragraph. Do not just amend — delete it, because the wording "matches the `/login` and `/logout` handler pattern" becomes actively wrong after this story ships (login remains exempt; logout becomes protected).
+- The `change_language` handler in `src/routes/auth.rs` has a docstring (lines 247-250) that explicitly says "No CSRF token". This story DELETES that paragraph (Task 5.4). Do not just amend — delete it, because the wording "matches the `/login` and `/logout` handler pattern" becomes actively wrong after this story ships (login remains exempt; logout becomes protected).
 - The language toggle form in `templates/components/nav_bar.html` already wraps `<form method="POST" action="/language">` — just add the hidden CSRF input, no structural change.
 - The authenticated-persistence branch (optimistic-locking UPDATE on `users.preferred_language`) is unchanged by this story.
+- **JS i18n pattern clarification:** 7-3's references list mentions "embedded `window.i18n` JS string map" but the reality is each JS module declares its OWN local `var i18n = {...}` block (see `static/js/session-timeout.js:58-71`). There is no global `window.i18n`. Corrected in this story's AC 8 / §Ships 8: `csrf.js` has no i18n at all (feedback body is server-rendered); no new JS-side string keys are needed.
 
 **Story 7-5 (scanner-guard) — frozen-allowlist pattern to reuse:**
-- `src/templates_audit.rs::hx_confirm_matches_allowlist` is the template for `csrf_exempt_routes_frozen`. Copy the structure, adapt the data source (parse `src/middleware/csrf.rs` const or import it directly via a reachable module path — import is cleaner; see if `templates_audit` is in the same crate as `middleware::csrf` — it is, `src/templates_audit.rs` is under `src/` so `use crate::middleware::csrf::CSRF_EXEMPT_ROUTES;` works).
-- 7-5's modal-guard pattern is not load-bearing here (no new modals in this story) but the `HX-Trigger` → JS-listener pattern used for `csrf-rejected` mirrors 7-5's out-of-band event model. If a prior implementation exists for a similar trigger (e.g., the language toggle or a scan flow), reuse its JS event-dispatch idiom verbatim for consistency.
+- `src/templates_audit.rs::hx_confirm_matches_allowlist` is the template for `csrf_exempt_routes_frozen`. Copy the structure, import the const via `use crate::middleware::csrf::CSRF_EXEMPT_ROUTES;` (same crate, same `src/` tree — direct import is cleaner than re-parsing source).
+- 7-5's modal-guard pattern is not load-bearing here (no new modals in this story).
+- **The `HX-Trigger` → JS-listener idiom is NEW for this codebase** — verified via `grep "HX-Trigger" src/` → zero hits and `grep "HX-Retarget" src/` → zero hits. Earlier drafts claimed this "mirrors 7-5's out-of-band event model" — corrected: 7-5 uses JS-side `CustomEvent` for modal-scoped coordination, not server-driven HTMX triggers. Document the new idiom in the CLAUDE.md bullet so future admin-mutation stories (8-3..8-8) can reuse it for optimistic-locking conflicts, session expiry, etc.
 
 **Story 7-4 (CSP) — constraint boundaries:**
 - Strict CSP (`script-src 'self'`, no `unsafe-inline`) means every JS behavior we add goes through a loaded `.js` module and event listeners. The new `csrf.js` module follows the 6 existing modules' pattern.
