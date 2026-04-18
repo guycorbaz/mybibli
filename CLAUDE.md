@@ -60,6 +60,7 @@ These apply to ALL sessions without exception.
 7. **E2E Smoke Test per Epic** — Each epic MUST have at least one E2E test that starts from a blank browser (no injected cookies), performs the epic's core user journey end-to-end (e.g., login → navigate → perform action → verify result). If this test fails, the epic is NOT done.
 8. **Retrospectives** — Mandatory at the end of each epic, never postponed. Run the complete test suite before each retrospective.
 9. **Error Message Quality** — Error messages are iteratively improved via retrospectives from real usage.
+10. **Commit & Push Cadence** — Commit after every workflow step (after `create-story`, after `validate`, after `dev-story`, after `code-review`). Push only on demand or at epic close (after retrospective) — this saves CI minutes and keeps the remote history aligned with epic milestones rather than intra-story churn.
 
 ## Architecture
 
