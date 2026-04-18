@@ -176,16 +176,20 @@ async fn anonymous_post_locations_rejected_and_db_snapshot_unchanged(pool: MySql
         .unwrap();
     let resp = app.oneshot(request).await.unwrap();
 
-    // Story 8-2 introduced the global CSRF middleware which rejects any
-    // state-changing request without a matching token BEFORE the auth
-    // layer has a chance to issue its redirect. So a cross-site anonymous
-    // POST now stops at 403 instead of the 303 → /login it used to emit.
-    // Either outcome satisfies AC #3 ("rejected and DB snapshot
-    // unchanged") — this assertion pins the current layer order.
-    assert_eq!(
-        resp.status(),
-        StatusCode::FORBIDDEN,
-        "AC #3: anonymous POST without CSRF → 403 (not a DB mutation)"
+    // Story 8-2: the global CSRF middleware rejects any state-changing
+    // request without a matching token BEFORE the auth layer gets a
+    // chance to redirect. The rejection shape depends on the request
+    // flavor: HTMX form-post → 403 with HX-envelope; plain-browser form
+    // post (no `hx-request` header) → 303 to /login. AC #3 only requires
+    // "rejected AND DB snapshot unchanged" — either status satisfies it.
+    assert!(
+        matches!(
+            resp.status(),
+            StatusCode::FORBIDDEN | StatusCode::SEE_OTHER
+        ),
+        "AC #3: anonymous POST without CSRF must be rejected \
+         (got {:?}, expected 403 or 303)",
+        resp.status()
     );
 
     let (after,): (i64,) =

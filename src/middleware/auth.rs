@@ -138,10 +138,16 @@ pub async fn session_resolve_middleware(
     let mut response = next.run(request).await;
 
     if let Some(new_token) = new_cookie_token {
+        // Match cookie lifetime to the 7-day anonymous-purge window so the
+        // browser discards a cookie whose DB row the purge task will have
+        // deleted. Without Max-Age the cookie persists until browser close
+        // and a week-old tab can submit a form against a purged session
+        // row — a 403 the user has no signal to recover from.
         let cookie = Cookie::build(("session", new_token))
             .http_only(true)
             .path("/")
             .same_site(SameSite::Lax)
+            .max_age(time::Duration::days(7))
             .build();
         if let Ok(value) = cookie.to_string().parse() {
             response

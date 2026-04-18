@@ -12,10 +12,12 @@
     document.body.addEventListener("htmx:configRequest", function (evt) {
         var meta = document.querySelector('meta[name="csrf-token"]');
         // Defensive: if the meta tag is missing (should never happen —
-        // base.html emits it on every page), send the empty string so
-        // the middleware returns a clean 403 instead of the browser
-        // throwing a TypeError.
-        evt.detail.headers["X-CSRF-Token"] = meta ? meta.getAttribute("content") : "";
+        // base.html emits it on every page) or content is whitespace /
+        // null, send the empty string so the middleware returns a clean
+        // 403 instead of the browser throwing a TypeError or sending
+        // whitespace that never matches the stored token.
+        var raw = meta ? meta.getAttribute("content") : "";
+        evt.detail.headers["X-CSRF-Token"] = raw ? raw.trim() : "";
     });
 
     // Listener 2 — force-swap the 403 feedback body into the page.

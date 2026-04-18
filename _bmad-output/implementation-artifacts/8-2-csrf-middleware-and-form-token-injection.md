@@ -1,6 +1,6 @@
 # Story 8.2: CSRF middleware and form-token injection
 
-Status: review
+Status: in-progress
 
 Epic: 8 — Administration & Configuration
 Requirements mapping: NFR13 (role isolation — defense-in-depth), NFR15 (strict-CSP defense chain), Epic 7 retro §7 Action 1 (closure), Foundation Rules #1 / #2 / #3 (DRY + unit + E2E coverage), AR15 (session semantics preserved)
@@ -369,6 +369,75 @@ so that cross-site requests from hostile pages cannot trigger logout, language t
   - [x] 11.2 Run `cargo clippy -- -D warnings` — zero warnings
   - [x] 11.3 Run `./scripts/e2e-reset.sh` + `cd tests/e2e && npm test` — 3 clean cycles
   - [x] 11.4 Run the flake gate `grep -rE "waitForTimeout\(" tests/e2e/specs/ tests/e2e/helpers/` — zero hits (new spec uses DOM-state assertions)
+
+### Review Findings
+
+_Code review 2026-04-18 (bmad-code-review on commits aff102e..HEAD): 3 layers (Blind Hunter + Edge Case Hunter + Acceptance Auditor). After dedup & triage: 5 decision-needed → all resolved as patch, 38 patches total, 8 deferred, 8 dismissed as noise._
+
+**Resolved decisions (now patches):**
+
+- [ ] [Review][Patch] (from D1) Implement `base_context()` DRY helper — §Ships 10 + §Template refactor concern. Create `BaseContextFields` struct + `base_context(session, locale, current_page)` helper, then refactor ~17 page-struct + call-site pairs across 9 `src/routes/*.rs` to consume it. Foundation Rule #1. **(skipped in batch — large refactor; dedicated follow-up needed)**
+- [ ] [Review][Patch] (from D2) Scope `session_resolve_middleware` to dynamic routes — skip `/static/*` and `/covers/*` (either via layer placement before `nest_service` calls or an early-return on `path.starts_with("/static") || path.starts_with("/covers")`) [src/routes/mod.rs] **(skipped — architectural, needs layer-placement design)**
+- [x] [Review][Patch] (from D3) Add `Max-Age = 7 * 24 * 3600` on anonymous-session cookie to match the purge window [src/middleware/auth.rs:140-152] — **applied 2026-04-18**
+- [x] [Review][Patch] (from D4) Detect absence of `HX-Request` in CSRF rejection path and return `303 /login` (or full-page error) instead of a bare feedback fragment [src/middleware/csrf.rs:is_htmx_request + build_rejection_response] — **applied 2026-04-18; scoped to `is_form && !is_htmx` so JSON/API clients still receive the 403 envelope**
+- [ ] [Review][Patch] (from D5) Server emits `HX-Trigger: csrf-rotated` + new token (response header) when the resolver mints a fresh row on a long-lived page; `csrf.js` listens and rotates the meta tag + hidden inputs in the DOM [src/middleware/auth.rs + static/js/csrf.js] **(skipped — new cross-cutting pattern design)**
+
+**Patches (unchecked — fixable without human input):**
+
+_Security / correctness (critical behavior):_
+
+- [ ] [Review][Patch] Fallback `Session::anonymous_with_token(String::new())` → empty CSRF token → 500 on any route that bypasses the resolver [src/middleware/auth.rs:260-302, 490] **(skipped — architectural; tied to P_D1/P_D2 refactor)**
+- [x] [Review][Patch] Empty `X-CSRF-Token` header disables form-field fallback (legitimate form 403s) [src/middleware/csrf.rs] — **applied 2026-04-18; trim + empty-filter before is_none()**
+- [x] [Review][Patch] `Content-Type starts_with("application/x-www-form-urlencoded")` lets smuggling succeed — parse mime essence strictly [src/middleware/csrf.rs] — **applied 2026-04-18; split on `;` and `eq_ignore_ascii_case`**
+- [x] [Review][Patch] Duplicate `_csrf_token` form fields not rejected — first-vs-last mismatch with downstream parser [src/middleware/csrf.rs] — **applied 2026-04-18; reject with tracing::warn! + HTMX rejection envelope**
+- [ ] [Review][Patch] Anonymous-session cookie missing `Secure` flag — diverges from login cookie [src/middleware/auth.rs:140-152] **(skipped — login cookie lacks Secure too; needs TLS detection + coordinated change)**
+- [ ] [Review][Patch] Login INSERT + prior-anon soft-delete not transactional — partial failure leaves live orphan row [src/routes/auth.rs:192-212] **(skipped — needs DB transaction plumbing)**
+- [ ] [Review][Patch] Exempt-route path comparison is literal — `/login/` or `//login` or percent-encoded variants bypass the exempt list [src/middleware/csrf.rs:77-83] **(skipped — needs router-semantics decision: normalize here vs rely on Axum matcher)**
+- [x] [Review][Patch] `forms_include_csrf_token` audit regex requires quoted `method="POST"` — unquoted or single-quoted variants escape the gate [src/templates_audit.rs:307] — **applied 2026-04-18; accept `method=POST`, `method="POST"`, `method='POST'`**
+- [x] [Review][Patch] `csrf_exempt_routes_frozen` only spot-checks index 0 — adding a second entry with an updated `len` assertion passes [src/templates_audit.rs:392-406] — **applied 2026-04-18; full-slice equality**
+- [x] [Review][Patch] Anonymous-session purge first-run delay is 1h, spec §Task 4.3 requires 24h [src/tasks/anonymous_session_purge.rs:31] — **applied 2026-04-18**
+- [x] [Review][Patch] Anonymous-session purge uses sleep-loop; drift + restart starvation. Use `tokio::time::interval` and a boot-time catch-up [src/tasks/anonymous_session_purge.rs:28-44] — **partially applied 2026-04-18; `tokio::time::interval` + `MissedTickBehavior::Delay` for drift. Restart starvation (E9) still open — would need persistent last-purge state.**
+
+_Tests & docs (spec-mandated coverage):_
+
+- [x] [Review][Patch] FR-locale E2E assertion `/Session expirée|Session expired/i` passes on EN fallback — §Ships 18 required FR-strict [tests/e2e/specs/security/csrf.spec.ts:112] — **applied 2026-04-18; strict FR regex + explicit `not.toMatch(/Session expired/)`**
+- [ ] [Review][Patch] Unit test for `tracing::warn!` emission on CSRF rejection missing — §Ships 16 [src/middleware/csrf.rs::tests] **(skipped — needs `tracing_test::traced_test` harness)**
+- [x] [Review][Patch] Unit test for HEAD / OPTIONS bypass missing — §Ships 16 [src/middleware/csrf.rs::tests] — **applied 2026-04-18; `head_and_options_bypass_csrf`**
+- [ ] [Review][Patch] Integration test for `POST /session/keepalive` with/without token missing — §Ships 17 + AC 5 [tests/csrf_integration.rs] **(skipped — needs authenticated-session fixture)**
+- [ ] [Review][Patch] Integration test for token rotation on re-login missing — §Ships 17 (second login distinctness + first-token invalidation) [tests/csrf_integration.rs::login_is_exempt_and_rotates_csrf_token] **(skipped — needs multi-login fixture)**
+- [ ] [Review][Patch] Integration test for login soft-delete of the prior anonymous row missing — §Ships 17 + AC 3 [tests/csrf_integration.rs] **(skipped — needs anon→auth transition fixture)**
+- [x] [Review][Patch] Constant-time compare loop test missing — §Ships 16 prefix → full → no-match gradient [src/middleware/csrf.rs::tests] — **applied 2026-04-18; `test_ct_eq_gradient_prefix_full_nomatch`**
+- [x] [Review][Patch] `HX-Trigger: csrf-rejected` not asserted on `mismatched_header_returns_403` — only the missing-token test covers all four headers [src/middleware/csrf.rs] — **applied 2026-04-18; all 4 headers asserted**
+- [ ] [Review][Patch] `POST /debug/session-timeout` CSRF coverage missing — AC 5 explicitly in scope [tests/csrf_integration.rs] **(skipped — needs debug-mode fixture)**
+- [ ] [Review][Patch] `docs/route-role-matrix.md` does not add a `csrf_exempt` column — §Ships 19 + Task 10.3 [docs/route-role-matrix.md] **(skipped — large doc churn; current top CSRF section already carries the info equivalently)**
+- [x] [Review][Patch] Test fixture uses 44-char CSRF token, production minting is 43-char URL-safe-no-pad — width mismatch [tests/csrf_integration.rs:~109] — **verified 2026-04-18: fixture is actually 43 chars; added `assert_eq!(csrf.len(), 43)` pin**
+- [ ] [Review][Patch] Flake-gate `catalog-contributor.spec.ts` flipped 303→403 without adding a DB-snapshot assertion that the mutation didn't fire [tests/e2e/specs/journeys/catalog-contributor.spec.ts] **(skipped — needs DB-snapshot helper; also, the status-code range now tolerates both 303 and 403 per `role_gating.rs` update — update the E2E assertion similarly as part of the helper rollout)**
+- [ ] [Review][Patch] Audit `forms_include_csrf_token` scans "first 5 inputs / 2000 bytes" — spec AC 9 requires strict "first child" placement [src/templates_audit.rs:347-364] **(skipped — current regex is a superset; strict-first-child would tighten enforcement)**
+
+_Minor (code quality / drift):_
+
+- [x] [Review][Patch] 413 on oversize body bypasses the HTMX swap envelope (no `HX-Trigger/Retarget/Reswap`) — user sees nothing [src/middleware/csrf.rs] — **applied 2026-04-18; `build_payload_too_large_response` + i18n keys `csrf_payload_too_large_title/message`**
+- [x] [Review][Patch] `csrf.js` uses `meta.getAttribute("content")`, `session-timeout.js` patch uses `meta.content` — align + defensive trim / whitespace guard [static/js/csrf.js + static/js/session-timeout.js] — **applied 2026-04-18; both use `getAttribute` + `trim`, treat whitespace-only as empty**
+- [ ] [Review][Patch] `Locale.0` type assumption in `csrf.rs:161-167` — `.map(|l| l.0)` couples to `Locale` being `Copy`; use `.map(|l| l.0.as_str())` or `&l.0` [src/middleware/csrf.rs:161-167] **(dismissed — `Locale(pub &'static str)` is Copy; `l.0` is idiomatic)**
+- [ ] [Review][Patch] `login()` guard `if Some(old) = &session.token && old != &token` is vacuous — newly-generated token never collides; cleanup intent unclear [src/routes/auth.rs:~200] **(skipped — intent unclear; needs design review)**
+- [ ] [Review][Patch] `login` render when session Extension is missing emits ephemeral in-memory CSRF token (no DB row holds it) — subsequent non-login POSTs 403 [src/routes/auth.rs:112-118, 251-267] **(skipped — architectural; tied to P1)**
+- [ ] [Review][Patch] `find_resolved` LEFT JOIN returns `role = None` for soft-deleted users — resolver maps to Anonymous while preserving `user_id = Some(…)`; inconsistent session state [src/middleware/auth.rs:170-192] **(skipped — policy decision: soft-delete user while session alive)**
+- [ ] [Review][Patch] `resolve_or_mint` expired-authenticated branch returns `user_id: None` + `role: Anonymous` while `token = Some(row.token)` still points at a live authenticated row [src/middleware/auth.rs:491-501] **(skipped — policy decision on expired-auth cleanup)**
+- [ ] [Review][Patch] `extract_session_cookie` returns `None` for `Cookie: session=` (empty value) → triggers a fresh anonymous INSERT on every request from such a client [src/middleware/auth.rs:520-536] **(skipped — minor, coupled with P_D2 resolver scoping)**
+- [ ] [Review][Patch] `generate_session_token` defined in both `src/middleware/auth.rs` and `src/routes/auth.rs` — DRY violation; encoding drift risk (STANDARD vs URL_SAFE) [src/middleware/auth.rs:103-105 + src/routes/auth.rs] **(skipped — tied to P1/P28 refactor)**
+
+**Deferred (pre-existing or out-of-scope for this story):**
+
+- [x] [Review][Defer] `resolve_or_mint` DB-insert failure returns ephemeral in-memory token — user is permanently trapped until DB recovers [src/middleware/auth.rs:229-232] — deferred, requires 5xx propagation design
+- [x] [Review][Defer] Purge DELETE is unbatched — long-lock risk at scale [src/tasks/anonymous_session_purge.rs:49-56] — deferred, no scale concern today
+- [x] [Review][Defer] CSRF middleware buffers 1 MiB body for JSON/multipart POSTs — documented trade-off in §Ships 2 [src/middleware/csrf.rs] — deferred, architectural decision recorded
+- [x] [Review][Defer] `Session::clone()` per extractor call — csrf_token + token + lang heap-allocate each time [src/middleware/auth.rs:262-265] — deferred, perf not critical on NAS
+- [x] [Review][Defer] Unbounded `tokio::spawn` for `update_last_activity` on every authenticated request [src/middleware/auth.rs:466-470] — deferred, single-user scale
+- [x] [Review][Defer] `csrf.js` HX-Trigger exact-match `=== "csrf-rejected"` breaks on any future multi-event trigger [static/js/csrf.js:27-37] — deferred, invariant today
+- [x] [Review][Defer] Stored CSRF token with trailing whitespace / charset drift (manual DB edit) [src/middleware/csrf.rs:151] — deferred, out-of-scope
+- [x] [Review][Defer] `Locale` extension default to `"fr"` on middleware-bypass routes [src/middleware/csrf.rs:161-167] — deferred, CLAUDE.md notes the mitigation
+
+_Dismissed as noise (not persisted): 8 findings — AppError::Internal → 500 assumption, E2E keepalive diagnostic strength, rfind on response Set-Cookie ordering, mobile-nav logout variant (pre-existing), TOCTOU during login rotation (exempt route), Cache-Control header case, cookie-parse-infallible orphan scenario, migration-race window (addressed by spec backfill)._
 
 ## Dev Notes
 

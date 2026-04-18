@@ -186,6 +186,8 @@ error:
     body: Your account does not have permission to perform this action. Ask an administrator if you need access.
   csrf_rejected_title: Session expired
   csrf_rejected_message: Your CSRF token is missing or expired. Please refresh the page and retry your action.
+  csrf_payload_too_large_title: Request too large
+  csrf_payload_too_large_message: The submitted form exceeded the server's size limit. Please shorten your input and retry.
   title:
     creation_failed: Title creation failed
     required: Title is required

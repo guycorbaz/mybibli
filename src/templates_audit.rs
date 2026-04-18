@@ -304,7 +304,12 @@ fn forms_include_csrf_token() {
 
     // Match the opening <form> tag together with the text following it so
     // we can inspect the first few inputs inline. `(?s)` enables dot-matches-newline.
-    let form_open = Regex::new(r#"(?is)<form\b[^>]*\bmethod\s*=\s*["']post["'][^>]*>"#).unwrap();
+    // Accept `method="POST"`, `method='POST'`, or unquoted `method=POST`.
+    // Strict bare-word form `method=post\b` avoids matching `method=post-junk`.
+    let form_open = Regex::new(
+        r#"(?is)<form\b[^>]*\bmethod\s*=\s*(?:["']post["']|post\b)[^>]*>"#,
+    )
+    .unwrap();
     let csrf_token_input =
         Regex::new(r#"(?is)<input\b[^>]*\bname\s*=\s*["']_csrf_token["']"#).unwrap();
     let any_input = Regex::new(r#"(?is)<input\b"#).unwrap();
@@ -391,16 +396,14 @@ fn forms_include_csrf_token() {
 #[test]
 fn csrf_exempt_routes_frozen() {
     use crate::middleware::csrf::CSRF_EXEMPT_ROUTES;
+    // Full-slice equality: any addition, removal, reorder, or edit of an
+    // exempt entry fails the assertion. Len-only + index-0 checks let a
+    // second entry sneak in with a one-line len update.
+    let expected: &[(&str, &str)] = &[("POST", "/login")];
     assert_eq!(
-        CSRF_EXEMPT_ROUTES.len(),
-        1,
-        "CSRF exempt-route allowlist has grown — this is a review signal. \
+        CSRF_EXEMPT_ROUTES, expected,
+        "CSRF exempt-route allowlist changed — this is a review signal. \
          If adding a new exempt route is genuinely required, update this \
-         assertion in the same PR and justify in the review description."
-    );
-    assert_eq!(
-        CSRF_EXEMPT_ROUTES[0],
-        ("POST", "/login"),
-        "The sole exempt entry must remain POST /login"
+         expected list in the same PR and justify in the review description."
     );
 }

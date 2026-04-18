@@ -108,8 +108,11 @@ test.describe("Story 8-2 smoke — CSRF", () => {
       return { status: r.status, body: await r.text() };
     });
     expect(tamperedResponse.status).toBe(403);
-    // FR key: "Session expirée". The EN version would read "Session expired".
-    expect(tamperedResponse.body).toMatch(/Session expirée|Session expired/i);
+    // Strict FR assertion — passing on the EN key would mask a locale
+    // resolution regression (the point of AC 15 is to verify that the
+    // `lang=fr` cookie actually routes through `rust_i18n::t!`).
+    expect(tamperedResponse.body).toMatch(/Session expirée/);
+    expect(tamperedResponse.body).not.toMatch(/Session expired/);
   });
 
   test("anonymous visitor receives a CSRF token on first hit", async ({ page }) => {

@@ -130,6 +130,12 @@ async fn language_post_without_token_returns_403(pool: DbPool) {
         .oneshot(
             Request::post("/language")
                 .header("content-type", "application/x-www-form-urlencoded")
+                // Simulate an HTMX-driven form post (the language toggle in
+                // nav_bar.html runs under HTMX). Without this header the
+                // middleware treats a failing form POST as a plain-browser
+                // submission and redirects to /login (303) — a UX fallback
+                // covered by its own test.
+                .header("hx-request", "true")
                 .body(Body::from("lang=en&next=/"))
                 .unwrap(),
         )
@@ -219,7 +225,11 @@ async fn logout_with_valid_token_succeeds(pool: DbPool) {
         .await
         .unwrap();
     let token = "CSRFLOGOUTOKTOKEN000000000000000000000000xyz";
+    // Width matches production `generate_csrf_token` output (43 chars of
+    // URL-safe base64, no padding) — a future change to the token format
+    // must update this fixture OR re-justify the mismatch.
     let csrf = "good_csrf_token_xxxxxxxxxxxxxxxxxxxxxxxxxxx";
+    assert_eq!(csrf.len(), 43);
     sqlx::query(
         "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
          VALUES (?, ?, ?, '{}', UTC_TIMESTAMP())",

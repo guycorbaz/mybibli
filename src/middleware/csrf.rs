@@ -102,46 +102,80 @@ pub async fn csrf_middleware(
     }
 
     // Header always wins — it covers every HTMX-driven mutation plus any
-    // explicit JS `fetch()` call.
+    // explicit JS `fetch()` call. An empty / whitespace-only header is
+    // treated as absent so the form-field fallback still engages for a
+    // client that sets `X-CSRF-Token:` inadvertently.
     let header_token: Option<String> = parts
         .headers
         .get("x-csrf-token")
         .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
         .map(str::to_string);
 
-    // Decide whether to engage the form-field fallback. Only
-    // application/x-www-form-urlencoded request bodies are parsed — for
-    // JSON / multipart / raw bodies the header is the only acceptable
-    // source so attackers cannot smuggle a token via a content-type the
-    // server was not expecting to decode as a form.
+    // Decide whether to engage the form-field fallback. The mime-essence
+    // (part before `;`) must match exactly — `starts_with` would accept
+    // doctored values like `application/x-www-form-urlencoded-evil` that
+    // downstream parsers would reject, enabling a token-parse mismatch.
     let is_form: bool = parts
         .headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_ascii_lowercase().starts_with("application/x-www-form-urlencoded"))
+        .map(|s| {
+            s.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case("application/x-www-form-urlencoded")
+        })
         .unwrap_or(false);
 
     // Buffer body once. Needed on the form-field path (so we can parse
     // `_csrf_token` out) and on the success path (so we can hand the
     // handler the same body). For JSON / multipart we still buffer —
     // the body_size we cap on is small (1 MiB) and the alternative is
-    // duplicating the downstream-body codepath.
+    // duplicating the downstream-body codepath. A failure here is treated
+    // as a 413 but rendered through the same HTMX envelope as CSRF
+    // rejections so the client still receives a localized feedback entry.
     let bytes = match axum::body::to_bytes(body, MAX_CSRF_BODY_BYTES).await {
         Ok(b) => b,
         Err(_) => {
-            return (StatusCode::PAYLOAD_TOO_LARGE, "request body too large").into_response();
+            let locale: &str = parts
+                .extensions
+                .get::<Locale>()
+                .map(|l| l.0)
+                .unwrap_or("fr");
+            return build_payload_too_large_response(locale);
         }
     };
 
     let form_token: Option<String> = if is_form && header_token.is_none() {
-        serde_urlencoded::from_bytes::<Vec<(String, String)>>(&bytes)
-            .ok()
-            .and_then(|pairs| {
-                pairs
-                    .into_iter()
-                    .find(|(k, _)| k == "_csrf_token")
-                    .map(|(_, v)| v)
-            })
+        match serde_urlencoded::from_bytes::<Vec<(String, String)>>(&bytes) {
+            Ok(pairs) => {
+                // Reject duplicate `_csrf_token` fields — an attacker-crafted
+                // form body containing two pairs would let whichever value
+                // the downstream parser picks differ from the one we
+                // validated against.
+                let mut iter = pairs.into_iter().filter(|(k, _)| k == "_csrf_token");
+                let first = iter.next();
+                if iter.next().is_some() {
+                    tracing::warn!(
+                        method = %method,
+                        path = %path,
+                        reason = "csrf_token_duplicate_form_field",
+                        "CSRF validation failed"
+                    );
+                    let locale: &str = parts
+                        .extensions
+                        .get::<Locale>()
+                        .map(|l| l.0)
+                        .unwrap_or("fr");
+                    return build_rejection_response(locale, &parts, is_form);
+                }
+                first.map(|(_, v)| v)
+            }
+            Err(_) => None,
+        }
     } else {
         None
     };
@@ -164,7 +198,7 @@ pub async fn csrf_middleware(
             .get::<Locale>()
             .map(|l| l.0)
             .unwrap_or("fr");
-        return build_rejection_response(locale);
+        return build_rejection_response(locale, &parts, is_form);
     }
 
     // Re-attach the (possibly body-consumed) bytes so the handler sees
@@ -182,7 +216,34 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     bool::from(a.ct_eq(b))
 }
 
-fn build_rejection_response(locale: &str) -> Response {
+fn is_htmx_request(parts: &axum::http::request::Parts) -> bool {
+    parts
+        .headers
+        .get("hx-request")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn build_rejection_response(
+    locale: &str,
+    parts: &axum::http::request::Parts,
+    is_form: bool,
+) -> Response {
+    // Plain-browser form submitters (no HTMX, classic `<form method="POST">`)
+    // cannot consume the HTMX envelope — they would render a bare feedback
+    // fragment with no page chrome. Redirect them to /login so the user
+    // lands on a fully-rendered page where re-establishing a session also
+    // refreshes the CSRF token. API / JSON / fetch() clients still get the
+    // 403 envelope so they can handle the failure programmatically.
+    if is_form && !is_htmx_request(parts) {
+        let mut response: Response = StatusCode::SEE_OTHER.into_response();
+        let headers = response.headers_mut();
+        headers.insert(header::LOCATION, HeaderValue::from_static("/login"));
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        return response;
+    }
+
     let title = rust_i18n::t!("error.csrf_rejected_title", locale = locale).to_string();
     let body = rust_i18n::t!("error.csrf_rejected_message", locale = locale).to_string();
     let html = crate::routes::catalog::feedback_html_pub("error", &title, &body);
@@ -194,6 +255,22 @@ fn build_rejection_response(locale: &str) -> Response {
         HeaderValue::from_static("text/html; charset=utf-8"),
     );
     headers.insert("HX-Trigger", HeaderValue::from_static("csrf-rejected"));
+    headers.insert("HX-Retarget", HeaderValue::from_static("#feedback-list"));
+    headers.insert("HX-Reswap", HeaderValue::from_static("beforeend"));
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+fn build_payload_too_large_response(locale: &str) -> Response {
+    let title = rust_i18n::t!("error.csrf_payload_too_large_title", locale = locale).to_string();
+    let body = rust_i18n::t!("error.csrf_payload_too_large_message", locale = locale).to_string();
+    let html = crate::routes::catalog::feedback_html_pub("error", &title, &body);
+    let mut response: Response = (StatusCode::PAYLOAD_TOO_LARGE, html).into_response();
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/html; charset=utf-8"),
+    );
     headers.insert("HX-Retarget", HeaderValue::from_static("#feedback-list"));
     headers.insert("HX-Reswap", HeaderValue::from_static("beforeend"));
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
@@ -264,6 +341,24 @@ mod tests {
     }
 
     #[test]
+    fn test_ct_eq_gradient_prefix_full_nomatch() {
+        // Spec §Ships 16: exercise prefix-match → full-match → no-match.
+        // This is the regression gate against accidentally shrinking the
+        // compare to length-only or to a prefix compare.
+        let stored = b"abcdefghijklmnop";
+        // Prefix (shorter)
+        assert!(!ct_eq(stored, b"abcdefgh"));
+        // Prefix (same length, partial diff at the end)
+        assert!(!ct_eq(stored, b"abcdefghijklmnoq"));
+        // Full match
+        assert!(ct_eq(stored, b"abcdefghijklmnop"));
+        // No match at all
+        assert!(!ct_eq(stored, b"zyxwvutsrqponmlk"));
+        // Empty vs non-empty
+        assert!(!ct_eq(stored, b""));
+    }
+
+    #[test]
     fn test_generate_csrf_token_is_43_chars() {
         assert_eq!(generate_csrf_token().len(), 43);
     }
@@ -291,6 +386,52 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn head_and_options_bypass_csrf(pool: crate::db::DbPool) {
+        // Spec §Ships 16: HEAD and OPTIONS, like GET, are non-state-changing
+        // and must skip CSRF validation even with no token present.
+        let state = state_with_pool(pool);
+        let session = Session::anonymous_with_token("stored-token".to_string());
+        let app = Router::new()
+            .route(
+                "/echo",
+                axum::routing::get(probe_ok)
+                    .head(probe_ok)
+                    .options(probe_ok),
+            )
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                csrf_middleware,
+            ))
+            .layer(axum::Extension(session))
+            .with_state(state);
+
+        let head_res = app
+            .clone()
+            .oneshot(
+                HttpRequest::builder()
+                    .method(Method::HEAD)
+                    .uri("/echo")
+                    .body(AxumBody::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(head_res.status(), StatusCode::OK);
+
+        let options_res = app
+            .oneshot(
+                HttpRequest::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/echo")
+                    .body(AxumBody::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(options_res.status(), StatusCode::OK);
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -364,6 +505,15 @@ mod tests {
             .unwrap();
         let res = app.oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        // Spec §Ships 16: on mismatch, ALL FOUR coordination headers
+        // must land so the HTMX client can swap the rejection fragment.
+        for h in ["HX-Trigger", "HX-Retarget", "HX-Reswap"] {
+            assert!(res.headers().contains_key(h), "missing {h} header");
+        }
+        assert_eq!(res.headers().get("HX-Trigger").unwrap(), "csrf-rejected");
+        assert_eq!(res.headers().get("HX-Retarget").unwrap(), "#feedback-list");
+        assert_eq!(res.headers().get("HX-Reswap").unwrap(), "beforeend");
+        assert_eq!(res.headers().get("cache-control").unwrap(), "no-store");
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -374,10 +524,13 @@ mod tests {
         let app = build_app(state, session);
 
         // Correct form field, but WRONG header. Header wins → 403.
+        // `hx-request: true` keeps the middleware on the HTMX-envelope
+        // path; plain-browser submissions redirect to /login instead.
         let body = format!("_csrf_token={token}");
         let req = HttpRequest::post("/echo")
             .header("content-type", "application/x-www-form-urlencoded")
             .header("x-csrf-token", "wrong")
+            .header("hx-request", "true")
             .body(AxumBody::from(body))
             .unwrap();
         let res = app.oneshot(req).await.unwrap();

@@ -26,9 +26,8 @@ use std::time::Duration;
 use crate::db::DbPool;
 
 const PURGE_INTERVAL_SECS: u64 = 86_400; // 24 h
-/// Delay before the first purge so a freshly-booted app does not spend
-/// its first second on housekeeping.
-const INITIAL_DELAY_SECS: u64 = 3_600; // 1 h
+/// Delay before the first purge (spec §Task 4.3: first run 24 h after boot).
+const INITIAL_DELAY_SECS: u64 = 86_400; // 24 h
 const RETENTION_DAYS: u64 = 7;
 
 /// Spawn the daily purge task. Swallows all errors — maintenance must
@@ -36,9 +35,11 @@ const RETENTION_DAYS: u64 = 7;
 pub fn spawn(pool: DbPool) {
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(INITIAL_DELAY_SECS)).await;
+        let mut interval = tokio::time::interval(Duration::from_secs(PURGE_INTERVAL_SECS));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
+            interval.tick().await;
             purge_once(&pool).await;
-            tokio::time::sleep(Duration::from_secs(PURGE_INTERVAL_SECS)).await;
         }
     });
 }
