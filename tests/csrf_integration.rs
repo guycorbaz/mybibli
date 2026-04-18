@@ -48,6 +48,14 @@ fn extract_cookie(res: &axum::response::Response, name: &str) -> Option<String> 
     // Take the LAST matching Set-Cookie — both the login handler and the
     // session resolver middleware can emit one in the same response, and
     // browsers honor the later value.
+    //
+    // Percent-decode the value: `axum_extra::CookieJar` serializes via
+    // `Cookie::encoded()` which URL-encodes base64 standard chars
+    // (`/` → `%2F`, `=` → `%3D`, `+` → `%2B`). Database rows store the
+    // raw base64 form, so tests that look the token up in SQL need the
+    // decoded value. A real browser would also send the decoded form
+    // back in subsequent Cookie headers — the percent-encoding is purely
+    // a Set-Cookie transport detail.
     let prefix = format!("{name}=");
     res.headers()
         .get_all(axum::http::header::SET_COOKIE)
@@ -58,7 +66,11 @@ fn extract_cookie(res: &axum::response::Response, name: &str) -> Option<String> 
             s.split(';')
                 .next()
                 .and_then(|kv| kv.split_once('='))
-                .map(|(_, v)| v.to_string())
+                .map(|(_, v)| {
+                    percent_encoding::percent_decode_str(v)
+                        .decode_utf8_lossy()
+                        .to_string()
+                })
         })
 }
 
@@ -286,4 +298,277 @@ async fn login_is_exempt_and_rotates_csrf_token(pool: DbPool) {
         "login must persist a 32-byte CSRF token (>=43 base64 chars)"
     );
     assert!(!stored_csrf.is_empty());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn keepalive_without_token_returns_403(pool: DbPool) {
+    // Spec §Ships 17 + AC 5: POST /session/keepalive is NOT CSRF-exempt.
+    // HTMX-driven callers ride listener 1; the bare fetch() fallback in
+    // static/js/session-timeout.js adds the X-CSRF-Token manually.
+    // Without a token, the middleware rejects before the handler ever sees
+    // the request.
+    let (username, _) = seed_librarian(&pool).await;
+    let user_id: u64 = sqlx::query_scalar("SELECT id FROM users WHERE username = ?")
+        .bind(&username)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let token = "CSRFKEEPTOKEN0000000000000000000000000000abc";
+    let csrf = "good_keepalive_csrf_xxxxxxxxxxxxxxxxxxxxxxx";
+    sqlx::query(
+        "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
+         VALUES (?, ?, ?, '{}', UTC_TIMESTAMP())",
+    )
+    .bind(token)
+    .bind(user_id)
+    .bind(csrf)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = state_with_pool(pool);
+    let res = app(state)
+        .oneshot(
+            Request::post("/session/keepalive")
+                .header("cookie", format!("session={token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn keepalive_with_valid_token_returns_200(pool: DbPool) {
+    let (username, _) = seed_librarian(&pool).await;
+    let user_id: u64 = sqlx::query_scalar("SELECT id FROM users WHERE username = ?")
+        .bind(&username)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let token = "CSRFKEEPOKTOKEN000000000000000000000000000ok";
+    let csrf = "good_keepalive_csrf_yyyyyyyyyyyyyyyyyyyyyyy";
+    sqlx::query(
+        "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
+         VALUES (?, ?, ?, '{}', UTC_TIMESTAMP())",
+    )
+    .bind(token)
+    .bind(user_id)
+    .bind(csrf)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = state_with_pool(pool);
+    let res = app(state)
+        .oneshot(
+            Request::post("/session/keepalive")
+                .header("cookie", format!("session={token}"))
+                .header("x-csrf-token", csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn debug_session_timeout_without_token_returns_403(pool: DbPool) {
+    // Spec §Ships 17 + AC 5: POST /debug/session-timeout is NOT CSRF-exempt.
+    // The handler's TEST_MODE guard only fires AFTER the CSRF middleware
+    // passes. Requests without a token must be rejected at the middleware
+    // layer — regardless of whether TEST_MODE is set at runtime.
+    let (username, _) = seed_librarian(&pool).await;
+    let user_id: u64 = sqlx::query_scalar("SELECT id FROM users WHERE username = ?")
+        .bind(&username)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let token = "CSRFDEBUGTOKEN00000000000000000000000000dbg";
+    let csrf = "good_debug_csrf_token_xxxxxxxxxxxxxxxxxxxxxx";
+    sqlx::query(
+        "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
+         VALUES (?, ?, ?, '{}', UTC_TIMESTAMP())",
+    )
+    .bind(token)
+    .bind(user_id)
+    .bind(&csrf[..43])
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = state_with_pool(pool);
+    let res = app(state)
+        .oneshot(
+            Request::post("/debug/session-timeout")
+                .header("cookie", format!("session={token}"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("hx-request", "true")
+                .body(Body::from("secs=60"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn login_rotates_csrf_on_reauth(pool: DbPool) {
+    // Spec §Ships 17: token rotation on re-login.
+    // Two successive logins for the same user must mint DISTINCT
+    // csrf_tokens, and the first token must no longer validate against
+    // any active session afterwards (the old row was soft-deleted).
+    let (username, _) = seed_librarian(&pool).await;
+
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+
+    // First login — no prior cookie.
+    let res1 = router
+        .clone()
+        .oneshot(
+            Request::post("/login")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!(
+                    "username={username}&password=librarian&next=/"
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res1.status(), StatusCode::SEE_OTHER);
+    let auth_token_1 = extract_cookie(&res1, "session").unwrap();
+    let csrf_1: String = sqlx::query_scalar("SELECT csrf_token FROM sessions WHERE token = ?")
+        .bind(&auth_token_1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // Second login — same browser (forward the first session cookie so
+    // the resolver treats this as a re-auth of an already-authenticated
+    // session; the login handler must rotate the CSRF token regardless).
+    let res2 = router
+        .oneshot(
+            Request::post("/login")
+                .header("cookie", format!("session={auth_token_1}"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!(
+                    "username={username}&password=librarian&next=/"
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res2.status(), StatusCode::SEE_OTHER);
+    let auth_token_2 = extract_cookie(&res2, "session").unwrap();
+    let csrf_2: String = sqlx::query_scalar("SELECT csrf_token FROM sessions WHERE token = ?")
+        .bind(&auth_token_2)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    assert_ne!(
+        auth_token_1, auth_token_2,
+        "re-login must mint a distinct session token"
+    );
+    assert_ne!(
+        csrf_1, csrf_2,
+        "re-login must mint a distinct CSRF token (synchronizer rotation)"
+    );
+
+    // First session row must be soft-deleted — the old csrf_token cannot
+    // be used to authenticate a subsequent mutation.
+    let still_active: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sessions WHERE token = ? AND deleted_at IS NULL",
+    )
+    .bind(&auth_token_1)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        still_active, 0,
+        "old session row must be soft-deleted after re-login"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn login_soft_deletes_prior_anonymous_row(pool: DbPool) {
+    // Spec §Ships 17 + AC 3: first-hit anonymous session row must be
+    // soft-deleted when the visitor successfully logs in — otherwise the
+    // daily anonymous-session purge sweeps it up eventually, but in the
+    // meantime the orphaned row carries a stale CSRF token for nobody.
+    let (username, _) = seed_librarian(&pool).await;
+
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+
+    // Step 1: anonymous first-hit mints a session row + cookie.
+    let first = router
+        .clone()
+        .oneshot(Request::get("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let anon_cookie = extract_cookie(&first, "session").unwrap();
+
+    // Capture the anonymous session's CSRF token BEFORE login so we can
+    // verify rotation after the row is soft-deleted.
+    let anon_csrf: String = sqlx::query_scalar(
+        "SELECT csrf_token FROM sessions WHERE token = ? AND deleted_at IS NULL",
+    )
+    .bind(&anon_cookie)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // Step 2: log in carrying the anonymous cookie.
+    let login = router
+        .oneshot(
+            Request::post("/login")
+                .header("cookie", format!("session={anon_cookie}"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!(
+                    "username={username}&password=librarian&next=/"
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(login.status(), StatusCode::SEE_OTHER);
+
+    // Step 3: anonymous row must now be soft-deleted (the `sessions`
+    // table uses `token` as PRIMARY KEY — no surrogate id column).
+    // CAST is mandatory here: per CLAUDE.md DB notes, `sqlx::query()`
+    // cannot decode `TIMESTAMP` into `NaiveDateTime` directly.
+    let row_is_deleted: Option<chrono::NaiveDateTime> = sqlx::query_scalar(
+        "SELECT CAST(deleted_at AS DATETIME) FROM sessions WHERE token = ?",
+    )
+    .bind(&anon_cookie)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        row_is_deleted.is_some(),
+        "anonymous session row must be soft-deleted after successful login"
+    );
+
+    // Step 4: the new authenticated row must exist and carry a fresh
+    // CSRF token distinct from the anonymous one.
+    let auth_cookie = extract_cookie(&login, "session").unwrap();
+    assert_ne!(
+        anon_cookie, auth_cookie,
+        "login must issue a new session cookie, not reuse the anonymous one"
+    );
+    let auth_csrf: String = sqlx::query_scalar(
+        "SELECT csrf_token FROM sessions WHERE token = ? AND deleted_at IS NULL",
+    )
+    .bind(&auth_cookie)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_ne!(
+        auth_csrf, anon_csrf,
+        "authenticated session must carry a freshly-minted CSRF token"
+    );
 }

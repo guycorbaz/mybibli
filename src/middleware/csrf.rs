@@ -516,6 +516,35 @@ mod tests {
         assert_eq!(res.headers().get("cache-control").unwrap(), "no-store");
     }
 
+    #[tracing_test::traced_test]
+    #[sqlx::test(migrations = "./migrations")]
+    async fn mismatched_token_emits_tracing_warn(pool: crate::db::DbPool) {
+        // Spec §Ships 16 + AC 6: CSRF rejection MUST emit a warn-level
+        // tracing event with `reason = "csrf_token_mismatch"` and the
+        // request method+path — the security audit trail the story
+        // commits to for anomaly detection / incident review.
+        let state = state_with_pool(pool);
+        let session = Session::anonymous_with_token("stored-xxx".to_string());
+        let app = build_app(state, session);
+
+        let req = HttpRequest::post("/echo")
+            .header("x-csrf-token", "bogus")
+            .body(AxumBody::from(""))
+            .unwrap();
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+        assert!(
+            logs_contain("csrf_token_mismatch"),
+            "expected tracing::warn! with reason=csrf_token_mismatch"
+        );
+        assert!(
+            logs_contain("CSRF validation failed"),
+            "expected the warn! message body"
+        );
+        assert!(logs_contain("/echo"), "expected the request path in the event fields");
+    }
+
     #[sqlx::test(migrations = "./migrations")]
     async fn header_wins_over_form_field(pool: crate::db::DbPool) {
         let state = state_with_pool(pool);

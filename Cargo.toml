@@ -38,3 +38,6 @@ serde_urlencoded = "0.7"
 tower = { version = "0.5", features = ["util"] }
 serde_yaml = "0.9"
 regex = "1"
+# Captures tracing events emitted during a test so we can assert on
+# security-audit warnings (story 8-2 §Ships 16 — CSRF-rejection warn log).
+tracing-test = "0.2"

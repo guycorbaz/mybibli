@@ -1,6 +1,6 @@
 # Story 8.2: CSRF middleware and form-token injection
 
-Status: in-progress
+Status: review
 
 Epic: 8 — Administration & Configuration
 Requirements mapping: NFR13 (role isolation — defense-in-depth), NFR15 (strict-CSP defense chain), Epic 7 retro §7 Action 1 (closure), Foundation Rules #1 / #2 / #3 (DRY + unit + E2E coverage), AR15 (session semantics preserved)
@@ -376,23 +376,23 @@ _Code review 2026-04-18 (bmad-code-review on commits aff102e..HEAD): 3 layers (B
 
 **Resolved decisions (now patches):**
 
-- [ ] [Review][Patch] (from D1) Implement `base_context()` DRY helper — §Ships 10 + §Template refactor concern. Create `BaseContextFields` struct + `base_context(session, locale, current_page)` helper, then refactor ~17 page-struct + call-site pairs across 9 `src/routes/*.rs` to consume it. Foundation Rule #1. **(skipped in batch — large refactor; dedicated follow-up needed)**
-- [ ] [Review][Patch] (from D2) Scope `session_resolve_middleware` to dynamic routes — skip `/static/*` and `/covers/*` (either via layer placement before `nest_service` calls or an early-return on `path.starts_with("/static") || path.starts_with("/covers")`) [src/routes/mod.rs] **(skipped — architectural, needs layer-placement design)**
+- [x] [Review][Patch] (from D1) Implement `base_context()` DRY helper — §Ships 10 + §Template refactor concern. Create `BaseContextFields` struct + `base_context(session, locale, current_page)` helper, then refactor ~17 page-struct + call-site pairs across 9 `src/routes/*.rs` to consume it. Foundation Rule #1. **(deferred 2026-04-18 — Issue #35, large refactor; bundles P1 empty-token fallback + duplicate generate_session_token)**
+- [x] [Review][Patch] (from D2) Scope `session_resolve_middleware` to dynamic routes — skip `/static/*` and `/covers/*` (either via layer placement before `nest_service` calls or an early-return on `path.starts_with("/static") || path.starts_with("/covers")`) [src/routes/mod.rs] **(deferred 2026-04-18 — Issue #36, architectural; bundles `extract_session_cookie` empty-value fresh-INSERT)**
 - [x] [Review][Patch] (from D3) Add `Max-Age = 7 * 24 * 3600` on anonymous-session cookie to match the purge window [src/middleware/auth.rs:140-152] — **applied 2026-04-18**
 - [x] [Review][Patch] (from D4) Detect absence of `HX-Request` in CSRF rejection path and return `303 /login` (or full-page error) instead of a bare feedback fragment [src/middleware/csrf.rs:is_htmx_request + build_rejection_response] — **applied 2026-04-18; scoped to `is_form && !is_htmx` so JSON/API clients still receive the 403 envelope**
-- [ ] [Review][Patch] (from D5) Server emits `HX-Trigger: csrf-rotated` + new token (response header) when the resolver mints a fresh row on a long-lived page; `csrf.js` listens and rotates the meta tag + hidden inputs in the DOM [src/middleware/auth.rs + static/js/csrf.js] **(skipped — new cross-cutting pattern design)**
+- [x] [Review][Patch] (from D5) Server emits `HX-Trigger: csrf-rotated` + new token (response header) when the resolver mints a fresh row on a long-lived page; `csrf.js` listens and rotates the meta tag + hidden inputs in the DOM [src/middleware/auth.rs + static/js/csrf.js] **(deferred 2026-04-18 — Issue #37, new cross-cutting pattern design)**
 
 **Patches (unchecked — fixable without human input):**
 
 _Security / correctness (critical behavior):_
 
-- [ ] [Review][Patch] Fallback `Session::anonymous_with_token(String::new())` → empty CSRF token → 500 on any route that bypasses the resolver [src/middleware/auth.rs:260-302, 490] **(skipped — architectural; tied to P_D1/P_D2 refactor)**
+- [x] [Review][Patch] Fallback `Session::anonymous_with_token(String::new())` → empty CSRF token → 500 on any route that bypasses the resolver [src/middleware/auth.rs:260-302, 490] **(deferred 2026-04-18 — Issue #35, bundled with base_context refactor)**
 - [x] [Review][Patch] Empty `X-CSRF-Token` header disables form-field fallback (legitimate form 403s) [src/middleware/csrf.rs] — **applied 2026-04-18; trim + empty-filter before is_none()**
 - [x] [Review][Patch] `Content-Type starts_with("application/x-www-form-urlencoded")` lets smuggling succeed — parse mime essence strictly [src/middleware/csrf.rs] — **applied 2026-04-18; split on `;` and `eq_ignore_ascii_case`**
 - [x] [Review][Patch] Duplicate `_csrf_token` form fields not rejected — first-vs-last mismatch with downstream parser [src/middleware/csrf.rs] — **applied 2026-04-18; reject with tracing::warn! + HTMX rejection envelope**
-- [ ] [Review][Patch] Anonymous-session cookie missing `Secure` flag — diverges from login cookie [src/middleware/auth.rs:140-152] **(skipped — login cookie lacks Secure too; needs TLS detection + coordinated change)**
-- [ ] [Review][Patch] Login INSERT + prior-anon soft-delete not transactional — partial failure leaves live orphan row [src/routes/auth.rs:192-212] **(skipped — needs DB transaction plumbing)**
-- [ ] [Review][Patch] Exempt-route path comparison is literal — `/login/` or `//login` or percent-encoded variants bypass the exempt list [src/middleware/csrf.rs:77-83] **(skipped — needs router-semantics decision: normalize here vs rely on Axum matcher)**
+- [x] [Review][Patch] Anonymous-session cookie missing `Secure` flag — diverges from login cookie [src/middleware/auth.rs:140-152] **(deferred 2026-04-18 — Issue #38, login cookie lacks Secure too; coordinated TLS-detection + cookie_secure config flag)**
+- [x] [Review][Patch] Login INSERT + prior-anon soft-delete not transactional — partial failure leaves live orphan row [src/routes/auth.rs:192-212] **(deferred 2026-04-18 — Issue #39, needs sqlx::Transaction plumbing)**
+- [x] [Review][Patch] Exempt-route path comparison is literal — `/login/` or `//login` or percent-encoded variants bypass the exempt list [src/middleware/csrf.rs:77-83] **(deferred 2026-04-18 — Issue #40, router-semantics decision: normalize vs MatchedPath)**
 - [x] [Review][Patch] `forms_include_csrf_token` audit regex requires quoted `method="POST"` — unquoted or single-quoted variants escape the gate [src/templates_audit.rs:307] — **applied 2026-04-18; accept `method=POST`, `method="POST"`, `method='POST'`**
 - [x] [Review][Patch] `csrf_exempt_routes_frozen` only spot-checks index 0 — adding a second entry with an updated `len` assertion passes [src/templates_audit.rs:392-406] — **applied 2026-04-18; full-slice equality**
 - [x] [Review][Patch] Anonymous-session purge first-run delay is 1h, spec §Task 4.3 requires 24h [src/tasks/anonymous_session_purge.rs:31] — **applied 2026-04-18**
@@ -401,30 +401,30 @@ _Security / correctness (critical behavior):_
 _Tests & docs (spec-mandated coverage):_
 
 - [x] [Review][Patch] FR-locale E2E assertion `/Session expirée|Session expired/i` passes on EN fallback — §Ships 18 required FR-strict [tests/e2e/specs/security/csrf.spec.ts:112] — **applied 2026-04-18; strict FR regex + explicit `not.toMatch(/Session expired/)`**
-- [ ] [Review][Patch] Unit test for `tracing::warn!` emission on CSRF rejection missing — §Ships 16 [src/middleware/csrf.rs::tests] **(skipped — needs `tracing_test::traced_test` harness)**
+- [x] [Review][Patch] Unit test for `tracing::warn!` emission on CSRF rejection missing — §Ships 16 [src/middleware/csrf.rs::tests] — **applied 2026-04-18; added `tracing-test = "0.2"` dev-dep + `mismatched_token_emits_tracing_warn` test asserting `reason=csrf_token_mismatch`, `"CSRF validation failed"`, and request path in fields**
 - [x] [Review][Patch] Unit test for HEAD / OPTIONS bypass missing — §Ships 16 [src/middleware/csrf.rs::tests] — **applied 2026-04-18; `head_and_options_bypass_csrf`**
-- [ ] [Review][Patch] Integration test for `POST /session/keepalive` with/without token missing — §Ships 17 + AC 5 [tests/csrf_integration.rs] **(skipped — needs authenticated-session fixture)**
-- [ ] [Review][Patch] Integration test for token rotation on re-login missing — §Ships 17 (second login distinctness + first-token invalidation) [tests/csrf_integration.rs::login_is_exempt_and_rotates_csrf_token] **(skipped — needs multi-login fixture)**
-- [ ] [Review][Patch] Integration test for login soft-delete of the prior anonymous row missing — §Ships 17 + AC 3 [tests/csrf_integration.rs] **(skipped — needs anon→auth transition fixture)**
+- [x] [Review][Patch] Integration test for `POST /session/keepalive` with/without token missing — §Ships 17 + AC 5 [tests/csrf_integration.rs] — **applied 2026-04-18; `keepalive_without_token_returns_403` + `keepalive_with_valid_token_returns_200` using seeded-librarian fixture**
+- [x] [Review][Patch] Integration test for token rotation on re-login missing — §Ships 17 (second login distinctness + first-token invalidation) [tests/csrf_integration.rs::login_is_exempt_and_rotates_csrf_token] — **applied 2026-04-18; `login_rotates_csrf_on_reauth` — two back-to-back logins, distinct session+CSRF tokens, first row soft-deleted**
+- [x] [Review][Patch] Integration test for login soft-delete of the prior anonymous row missing — §Ships 17 + AC 3 [tests/csrf_integration.rs] — **applied 2026-04-18; `login_soft_deletes_prior_anonymous_row` — anon first-hit → login, anon row deleted_at set, auth row has fresh CSRF token. Exposed+fixed a pre-existing `extract_cookie` bug where URL-encoded token values (axum_extra CookieJar `.encoded()`) did not round-trip to the DB raw base64; helper now percent-decodes.**
 - [x] [Review][Patch] Constant-time compare loop test missing — §Ships 16 prefix → full → no-match gradient [src/middleware/csrf.rs::tests] — **applied 2026-04-18; `test_ct_eq_gradient_prefix_full_nomatch`**
 - [x] [Review][Patch] `HX-Trigger: csrf-rejected` not asserted on `mismatched_header_returns_403` — only the missing-token test covers all four headers [src/middleware/csrf.rs] — **applied 2026-04-18; all 4 headers asserted**
-- [ ] [Review][Patch] `POST /debug/session-timeout` CSRF coverage missing — AC 5 explicitly in scope [tests/csrf_integration.rs] **(skipped — needs debug-mode fixture)**
-- [ ] [Review][Patch] `docs/route-role-matrix.md` does not add a `csrf_exempt` column — §Ships 19 + Task 10.3 [docs/route-role-matrix.md] **(skipped — large doc churn; current top CSRF section already carries the info equivalently)**
+- [x] [Review][Patch] `POST /debug/session-timeout` CSRF coverage missing — AC 5 explicitly in scope [tests/csrf_integration.rs] — **applied 2026-04-18; `debug_session_timeout_without_token_returns_403` — no need to set TEST_MODE env since CSRF middleware fires before the handler's TEST_MODE guard**
+- [x] [Review][Patch] `docs/route-role-matrix.md` does not add a `csrf_exempt` column — §Ships 19 + Task 10.3 [docs/route-role-matrix.md] — **applied 2026-04-18; added `csrf_exempt` column to every matrix table (POST /login = yes, all other mutating = no, GET/static = —)**
 - [x] [Review][Patch] Test fixture uses 44-char CSRF token, production minting is 43-char URL-safe-no-pad — width mismatch [tests/csrf_integration.rs:~109] — **verified 2026-04-18: fixture is actually 43 chars; added `assert_eq!(csrf.len(), 43)` pin**
-- [ ] [Review][Patch] Flake-gate `catalog-contributor.spec.ts` flipped 303→403 without adding a DB-snapshot assertion that the mutation didn't fire [tests/e2e/specs/journeys/catalog-contributor.spec.ts] **(skipped — needs DB-snapshot helper; also, the status-code range now tolerates both 303 and 403 per `role_gating.rs` update — update the E2E assertion similarly as part of the helper rollout)**
-- [ ] [Review][Patch] Audit `forms_include_csrf_token` scans "first 5 inputs / 2000 bytes" — spec AC 9 requires strict "first child" placement [src/templates_audit.rs:347-364] **(skipped — current regex is a superset; strict-first-child would tighten enforcement)**
+- [x] [Review][Patch] Flake-gate `catalog-contributor.spec.ts` flipped 303→403 without adding a DB-snapshot assertion that the mutation didn't fire [tests/e2e/specs/journeys/catalog-contributor.spec.ts] **(deferred 2026-04-18 — Issue #43, needs shared `dbSnapshot()` E2E helper)**
+- [x] [Review][Patch] Audit `forms_include_csrf_token` scans "first 5 inputs / 2000 bytes" — spec AC 9 requires strict "first child" placement [src/templates_audit.rs:347-364] **(deferred 2026-04-18 — Issue #42, current regex is a superset that passes all existing templates; strict-first-child is a nice-to-have tightening)**
 
 _Minor (code quality / drift):_
 
 - [x] [Review][Patch] 413 on oversize body bypasses the HTMX swap envelope (no `HX-Trigger/Retarget/Reswap`) — user sees nothing [src/middleware/csrf.rs] — **applied 2026-04-18; `build_payload_too_large_response` + i18n keys `csrf_payload_too_large_title/message`**
 - [x] [Review][Patch] `csrf.js` uses `meta.getAttribute("content")`, `session-timeout.js` patch uses `meta.content` — align + defensive trim / whitespace guard [static/js/csrf.js + static/js/session-timeout.js] — **applied 2026-04-18; both use `getAttribute` + `trim`, treat whitespace-only as empty**
 - [ ] [Review][Patch] `Locale.0` type assumption in `csrf.rs:161-167` — `.map(|l| l.0)` couples to `Locale` being `Copy`; use `.map(|l| l.0.as_str())` or `&l.0` [src/middleware/csrf.rs:161-167] **(dismissed — `Locale(pub &'static str)` is Copy; `l.0` is idiomatic)**
-- [ ] [Review][Patch] `login()` guard `if Some(old) = &session.token && old != &token` is vacuous — newly-generated token never collides; cleanup intent unclear [src/routes/auth.rs:~200] **(skipped — intent unclear; needs design review)**
-- [ ] [Review][Patch] `login` render when session Extension is missing emits ephemeral in-memory CSRF token (no DB row holds it) — subsequent non-login POSTs 403 [src/routes/auth.rs:112-118, 251-267] **(skipped — architectural; tied to P1)**
-- [ ] [Review][Patch] `find_resolved` LEFT JOIN returns `role = None` for soft-deleted users — resolver maps to Anonymous while preserving `user_id = Some(…)`; inconsistent session state [src/middleware/auth.rs:170-192] **(skipped — policy decision: soft-delete user while session alive)**
-- [ ] [Review][Patch] `resolve_or_mint` expired-authenticated branch returns `user_id: None` + `role: Anonymous` while `token = Some(row.token)` still points at a live authenticated row [src/middleware/auth.rs:491-501] **(skipped — policy decision on expired-auth cleanup)**
-- [ ] [Review][Patch] `extract_session_cookie` returns `None` for `Cookie: session=` (empty value) → triggers a fresh anonymous INSERT on every request from such a client [src/middleware/auth.rs:520-536] **(skipped — minor, coupled with P_D2 resolver scoping)**
-- [ ] [Review][Patch] `generate_session_token` defined in both `src/middleware/auth.rs` and `src/routes/auth.rs` — DRY violation; encoding drift risk (STANDARD vs URL_SAFE) [src/middleware/auth.rs:103-105 + src/routes/auth.rs] **(skipped — tied to P1/P28 refactor)**
+- [x] [Review][Patch] `login()` guard `if Some(old) = &session.token && old != &token` is vacuous — newly-generated token never collides; cleanup intent unclear [src/routes/auth.rs:~200] **(deferred 2026-04-18 — Issue #44, 30-sec design review: either delete the clause or document intent)**
+- [x] [Review][Patch] `login` render when session Extension is missing emits ephemeral in-memory CSRF token (no DB row holds it) — subsequent non-login POSTs 403 [src/routes/auth.rs:112-118, 251-267] **(deferred 2026-04-18 — Issue #35, bundled with base_context refactor)**
+- [x] [Review][Patch] `find_resolved` LEFT JOIN returns `role = None` for soft-deleted users — resolver maps to Anonymous while preserving `user_id = Some(…)`; inconsistent session state [src/middleware/auth.rs:170-192] **(deferred 2026-04-18 — Issue #41, bundled with resolve_or_mint expired-auth under "soft-deleted user / expired-auth policy")**
+- [x] [Review][Patch] `resolve_or_mint` expired-authenticated branch returns `user_id: None` + `role: Anonymous` while `token = Some(row.token)` still points at a live authenticated row [src/middleware/auth.rs:491-501] **(deferred 2026-04-18 — Issue #41, same policy bundle as find_resolved role=None)**
+- [x] [Review][Patch] `extract_session_cookie` returns `None` for `Cookie: session=` (empty value) → triggers a fresh anonymous INSERT on every request from such a client [src/middleware/auth.rs:520-536] **(deferred 2026-04-18 — Issue #36, referenced in resolver-scoping bundle)**
+- [x] [Review][Patch] `generate_session_token` defined in both `src/middleware/auth.rs` and `src/routes/auth.rs` — DRY violation; encoding drift risk (STANDARD vs URL_SAFE) [src/middleware/auth.rs:103-105 + src/routes/auth.rs] **(deferred 2026-04-18 — Issue #35, bundled with base_context refactor as a DRY cluster)**
 
 **Deferred (pre-existing or out-of-scope for this story):**
 
@@ -777,6 +777,48 @@ claude-opus-4-7[1m] (via Claude Code / BMM dev-story skill).
   up + ~15 min per cycle); deferred to code-review / retrospective
   verification.
 
+- **Code-review Tier 1 closure (2026-04-18):** after the batch commit
+  of 16 findings, the remaining 22 were triaged into 3 tiers per
+  Foundation Rule #6.
+  - **Tier 1 — closed in this session (6 items):**
+    - `csrf_exempt` column added to `docs/route-role-matrix.md` (AC 18
+      now literally satisfied, not just equivalently via the top CSRF
+      section).
+    - Unit test for `tracing::warn!` emission on CSRF rejection
+      (§Ships 16) — added `tracing-test = "0.2"` dev-dep + new
+      `mismatched_token_emits_tracing_warn` test asserting
+      `reason=csrf_token_mismatch`, the warn message body, and the
+      request path in fields.
+    - Integration tests for (a) `POST /session/keepalive` with/without
+      token (§Ships 17 + AC 5), (b) CSRF rotation on re-login
+      (§Ships 17 — two back-to-back logins → distinct tokens + first
+      row soft-deleted), (c) anonymous-row soft-delete on login
+      (§Ships 17 + AC 3), (d) `POST /debug/session-timeout` without
+      token → 403 (AC 5, no TEST_MODE env manipulation needed since
+      CSRF fires before the handler's TEST_MODE guard). All land in
+      `tests/csrf_integration.rs`. Total integration count: 8 → 13.
+    - Exposed and fixed a pre-existing `extract_cookie` helper bug:
+      `axum_extra::CookieJar` serializes via `Cookie::encoded()` which
+      URL-encodes base64 STANDARD chars (`/`, `+`, `=`), but the DB
+      stores the raw form. The helper now percent-decodes.
+      `login_is_exempt_and_rotates_csrf_token` was silently querying
+      the anonymous-session row (not the auth row) — the loose
+      `len() >= 43` assertion passed accidentally. Fix unblocked the
+      new strict-equality tests.
+  - **Tier 2 — deferred to GitHub Issues (10 items) per Foundation
+    Rule #11:** D1 base_context refactor (#35, also bundles P1
+    empty-token fallback + duplicate `generate_session_token` +
+    ephemeral-token-on-login-render), D2 resolver scoping (#36,
+    bundles empty-cookie fresh-INSERT), D5 HX-Trigger rotation
+    pattern (#37), Secure-flag coordination (#38), transactional
+    login (#39), exempt-route path normalization (#40), soft-deleted
+    user / expired-auth role policy (#41, bundles `find_resolved` +
+    `resolve_or_mint`), audit strict-first-child tightening (#42),
+    E2E DB-snapshot helper (#43), vacuous login guard (#44).
+  - **Tier 3 — dismissed inline:** `Locale.0` `Copy` assumption
+    (already dismissed in this doc); the remaining minor items were
+    either bundled into Tier 2 issues or collapsed into #44.
+
 ### File List
 
 **New files:**
@@ -854,6 +896,18 @@ claude-opus-4-7[1m] (via Claude Code / BMM dev-story skill).
 **Modified — Tests / fixtures:**
 - `tests/role_gating.rs` (`TEST_CSRF_TOKEN` fixture + X-CSRF-Token header;
   anonymous-POST assertion flipped 303 → 403)
+- `tests/csrf_integration.rs` (Tier 1 closure — added
+  `keepalive_without_token_returns_403`,
+  `keepalive_with_valid_token_returns_200`,
+  `debug_session_timeout_without_token_returns_403`,
+  `login_rotates_csrf_on_reauth`,
+  `login_soft_deletes_prior_anonymous_row`; `extract_cookie` helper
+  now percent-decodes URL-encoded token values)
+- `src/middleware/csrf.rs` (Tier 1 closure — new unit test
+  `mismatched_token_emits_tracing_warn` using `tracing-test`)
+- `Cargo.toml` (added dev-dep `tracing-test = "0.2"`)
+- `docs/route-role-matrix.md` (Tier 1 closure — `csrf_exempt` column
+  added to every matrix table)
 
 **Modified — Docs:**
 - `CLAUDE.md` (CSRF Key Patterns bullet; hx-confirm count 5 → 4)
@@ -867,4 +921,11 @@ claude-opus-4-7[1m] (via Claude Code / BMM dev-story skill).
 - 2026-04-18 — Implemented story 8-2 CSRF middleware + form-token injection,
   session-resolver middleware for lazy anonymous-session rows, daily
   purge task, template-audit gates, unit + integration + E2E coverage.
+- 2026-04-18 — Code-review Tier 1 closure: 6 findings resolved
+  (`csrf_exempt` doc column, `tracing::warn!` unit test via
+  `tracing-test`, 4 integration tests — keepalive / token-rotation /
+  anon-row-soft-delete / debug-session-timeout, `extract_cookie`
+  helper percent-decode fix). Tier 2 findings (10 items) tracked as
+  GitHub Issues #35–#44 per Foundation Rule #11. Tier 3 minor items
+  dismissed or bundled. Status → review.
   533 tests green; clippy clean; sqlx cache in sync.
