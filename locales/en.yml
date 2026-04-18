@@ -380,6 +380,7 @@ admin:
   trash:
     badge_aria: "Trash, %{count} items"
   health:
+    versions_heading: Versions
     app_version: Application version
     db_version: Database version
     disk_usage: Disk usage

@@ -108,16 +108,9 @@ async fn ping_all(
     for provider in registry.iter() {
         let name = provider.name().to_string();
         let Some(url) = provider.health_check_url() else {
-            // Mark NotApplicable once; never re-probe.
-            if let Ok(mut guard) = map.write() {
-                guard.insert(
-                    name,
-                    ProviderHealth {
-                        status: ProviderStatus::NotApplicable,
-                        last_checked: Some(Utc::now()),
-                    },
-                );
-            }
+            // NotApplicable providers were seeded in `spawn()` with
+            // status=NotApplicable and last_checked=None — never re-probe,
+            // never re-stamp a timestamp for something that was never checked.
             continue;
         };
 

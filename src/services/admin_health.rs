@@ -87,6 +87,10 @@ pub fn new_mariadb_version_cache() -> MariadbVersionCache {
 
 /// Read (or refresh) the cached MariaDB version. Falls back to `"unknown"` on
 /// any DB error — the Health tab must never hard-fail on a diagnostic read.
+///
+/// Only successful fetches are written to the cache; a transient DB error
+/// returns `"unknown"` passthrough without poisoning the next 60 seconds of
+/// renders. On the next request after recovery the real version is refetched.
 pub async fn mariadb_version(pool: &DbPool, cache: &MariadbVersionCache) -> String {
     const TTL_SECS: u64 = 60;
 
@@ -98,17 +102,21 @@ pub async fn mariadb_version(pool: &DbPool, cache: &MariadbVersionCache) -> Stri
         return v.clone();
     }
 
-    let fetched: Option<String> = sqlx::query_scalar::<_, String>("SELECT VERSION()")
+    match sqlx::query_scalar::<_, String>("SELECT VERSION()")
         .fetch_one(pool)
         .await
-        .ok();
-
-    let value = fetched.unwrap_or_else(|| "unknown".to_string());
-
-    if let Ok(mut guard) = cache.write() {
-        *guard = Some((value.clone(), Instant::now()));
+    {
+        Ok(v) => {
+            if let Ok(mut guard) = cache.write() {
+                *guard = Some((v.clone(), Instant::now()));
+            }
+            v
+        }
+        Err(e) => {
+            tracing::debug!(error = %e, "mariadb_version fetch failed; returning fallback");
+            "unknown".to_string()
+        }
     }
-    value
 }
 
 /// Used/total bytes on the filesystem containing `path`. `None` on any

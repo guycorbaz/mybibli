@@ -202,8 +202,14 @@ pub async fn admin_page(
     HxRequest(is_htmx): HxRequest,
     Query(params): Query<AdminQuery>,
 ) -> Result<Response, AppError> {
-    // Preserve `next` for Anonymous → /login?next=%2Fadmin.
-    session.require_role_with_return(Role::Admin, "/admin")?;
+    // Preserve the full `?tab=<name>` deep link on Anonymous → /login?next=<encoded>.
+    // `OriginalUri` includes the query string (e.g. "/admin?tab=trash") so a
+    // post-login bounce lands back on the tab the user originally asked for.
+    let return_path = uri
+        .path_and_query()
+        .map(|pq| pq.as_str().to_string())
+        .unwrap_or_else(|| "/admin".to_string());
+    session.require_role_with_return(Role::Admin, &return_path)?;
 
     let tab = AdminTab::from_query_str(params.tab.as_deref());
     render_admin(&state, &session, locale.0, &uri, is_htmx, tab).await
@@ -441,7 +447,8 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
     let providers = build_provider_rows(&state.registry, &state.provider_health, loc);
 
     let panel = AdminHealthPanel {
-        versions_heading: rust_i18n::t!("admin.page_title", locale = loc).to_string(),
+        versions_heading: rust_i18n::t!("admin.health.versions_heading", locale = loc)
+            .to_string(),
         app_version_label: rust_i18n::t!("admin.health.app_version", locale = loc).to_string(),
         app_version: env!("CARGO_PKG_VERSION"),
         db_version_label: rust_i18n::t!("admin.health.db_version", locale = loc).to_string(),
@@ -607,12 +614,17 @@ mod tests {
         assert_eq!(AdminTab::Trash.hx_path(), "trash");
     }
 
-    // ─── Role gating (unit) ─────────────────────────────────
+    // ─── Role gating — (role, path) → AppError pin ──────────
     //
-    // The full request flow is exercised by the integration test in
-    // `tests/e2e/specs/journeys/admin-smoke.spec.ts` and by the role-gating
-    // integration test in `tests/role_gating.rs`. Here we pin the decision
-    // that turns a (role, path) pair into the right AppError variant.
+    // These tests are *intentionally* limited to pinning the mapping between
+    // `(role, /admin*)` and the `AppError` variant the handler's guard returns.
+    // They do NOT invoke the `admin_page` / `admin_*_panel` handler functions
+    // directly — the full request flow is exercised end-to-end by
+    // `tests/role_gating.rs::anonymous_admin_redirects_to_login_with_next`,
+    // `tests/role_gating.rs::librarian_admin_returns_403_forbidden`, and by
+    // `tests/e2e/specs/journeys/admin-smoke.spec.ts`. Keeping this split means
+    // the unit tests stay pool-free (fast; no `#[sqlx::test]`) while the
+    // integration layer catches any drift in the handler's first-line guard.
 
     fn make_session(role: Role) -> Session {
         if role == Role::Anonymous {

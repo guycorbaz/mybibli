@@ -380,6 +380,7 @@ admin:
   trash:
     badge_aria: "Corbeille, %{count} éléments"
   health:
+    versions_heading: Versions
     app_version: "Version de l'application"
     db_version: "Version de la base de données"
     disk_usage: "Espace disque"

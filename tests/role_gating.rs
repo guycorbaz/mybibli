@@ -236,6 +236,91 @@ async fn librarian_delete_borrower_returns_403_forbidden(pool: MySqlPool) {
     );
 }
 
+// ─── Story 8-1: /admin role gating (adds handler-level coverage
+// that the co-located unit tests in src/routes/admin.rs
+// intentionally do not provide — see the module's test comment). ───
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anonymous_admin_redirects_to_login_with_next(pool: MySqlPool) {
+    let app = build_router(build_state(pool));
+    let resp = app.oneshot(req(Method::GET, "/admin", None)).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::SEE_OTHER,
+        "anonymous /admin → 303 redirect"
+    );
+    let loc = resp
+        .headers()
+        .get(header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert_eq!(
+        loc, "/login?next=%2Fadmin",
+        "anonymous /admin preserves the return path"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anonymous_admin_with_tab_preserves_full_query(pool: MySqlPool) {
+    // Deep-link regression guard (story 8-1 review P3): the `?tab=<name>`
+    // part of the URL must survive the `next=` round-trip, so a post-login
+    // bounce lands the user on the tab they originally asked for rather
+    // than on Health.
+    let app = build_router(build_state(pool));
+    let resp = app
+        .oneshot(req(Method::GET, "/admin?tab=trash", None))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let loc = resp
+        .headers()
+        .get(header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert_eq!(
+        loc, "/login?next=%2Fadmin%3Ftab%3Dtrash",
+        "the ?tab= query must be preserved through the login redirect"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn librarian_admin_returns_403_forbidden(pool: MySqlPool) {
+    let librarian_cookie = seed_session(&pool, "librarian").await;
+    let app = build_router(build_state(pool));
+    let resp = app
+        .oneshot(req(Method::GET, "/admin", Some(&librarian_cookie)))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "librarian /admin → 403 (not a redirect)"
+    );
+    assert!(
+        resp.headers().get(header::LOCATION).is_none(),
+        "403 must not carry a Location header"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn librarian_admin_health_subpath_returns_403_forbidden(pool: MySqlPool) {
+    // Every sub-handler must enforce the same guard as the parent route —
+    // deep-linking to /admin/health must not bypass the role check.
+    let librarian_cookie = seed_session(&pool, "librarian").await;
+    let app = build_router(build_state(pool));
+    let resp = app
+        .oneshot(req(Method::GET, "/admin/health", Some(&librarian_cookie)))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "librarian /admin/health → 403"
+    );
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn admin_delete_borrower_succeeds(pool: MySqlPool) {
     // AC #5: admin can execute admin-only operations.
