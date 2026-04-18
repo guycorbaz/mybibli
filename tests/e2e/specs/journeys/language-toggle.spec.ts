@@ -27,8 +27,13 @@ test.use({ locale: "fr-FR", extraHTTPHeaders: { "Accept-Language": "fr" } });
  * E2E DB). Requires an authenticated librarian session on the page.
  */
 async function resetLibrarianPreferenceToFr(page: Page): Promise<void> {
+  // Story 8-2: POST /language requires a CSRF token. Read it from the
+  // meta tag emitted on whatever page the caller was on.
+  const csrfToken = await page
+    .locator('meta[name="csrf-token"]')
+    .getAttribute("content");
   await page.request.post("/language", {
-    form: { lang: "fr", next: "/catalog" },
+    form: { _csrf_token: csrfToken ?? "", lang: "fr", next: "/catalog" },
     maxRedirects: 0,
   });
 }

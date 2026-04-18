@@ -5,11 +5,25 @@ pub struct SessionRow {
     pub token: String,
     pub user_id: Option<u64>,
     pub role: String,
+    pub csrf_token: String,
     pub last_activity: chrono::DateTime<chrono::Utc>,
     /// Stored `users.preferred_language` (`'fr'`/`'en'`). `None` when the user
     /// has not picked a language — locale resolution then falls through to the
     /// cookie / `Accept-Language` / default chain.
     pub preferred_language: Option<String>,
+}
+
+/// Resolved session row used by the session resolver middleware — covers
+/// both authenticated rows (user_id set, role from users table) and
+/// anonymous rows (user_id NULL, role NULL). Uses a LEFT JOIN so a single
+/// query handles both cases.
+pub struct ResolvedSessionRow {
+    pub token: String,
+    pub user_id: Option<u64>,
+    pub csrf_token: String,
+    pub role: Option<String>,
+    pub preferred_language: Option<String>,
+    pub last_activity: chrono::DateTime<chrono::Utc>,
 }
 
 pub struct SessionModel;
@@ -28,6 +42,7 @@ impl SessionModel {
             r#"SELECT s.token,
                       s.user_id,
                       u.role as `role: String`,
+                      s.csrf_token,
                       s.last_activity,
                       u.preferred_language as `preferred_language?: String`
                FROM sessions s
@@ -41,6 +56,67 @@ impl SessionModel {
         .await?;
 
         Ok(row)
+    }
+
+    /// Resolve any session (authenticated or anonymous) by token via a
+    /// single LEFT JOIN. Returns `None` if the row is absent or
+    /// soft-deleted. Authenticated rows carry `role` and
+    /// `preferred_language`; anonymous rows (user_id NULL) return `None`
+    /// for both.
+    pub async fn find_resolved(
+        pool: &DbPool,
+        token: &str,
+    ) -> Result<Option<ResolvedSessionRow>, AppError> {
+        let row = sqlx::query_as!(
+            ResolvedSessionRow,
+            r#"SELECT s.token,
+                      s.user_id,
+                      s.csrf_token,
+                      u.role as `role?: String`,
+                      u.preferred_language as `preferred_language?: String`,
+                      s.last_activity
+               FROM sessions s
+               LEFT JOIN users u ON s.user_id = u.id AND u.deleted_at IS NULL
+               WHERE s.token = ?
+                 AND s.deleted_at IS NULL"#,
+            token
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Insert a fresh anonymous session row (user_id NULL) with the given
+    /// tokens. Used by the session resolver middleware on first hit from a
+    /// browser with no session cookie.
+    pub async fn insert_anonymous(
+        pool: &DbPool,
+        token: &str,
+        csrf_token: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query!(
+            "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
+             VALUES (?, NULL, ?, '{}', UTC_TIMESTAMP())",
+            token,
+            csrf_token
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Soft-delete a session row by token. Called on logout and when a
+    /// login replaces an anonymous-session row with a fresh authenticated
+    /// one.
+    pub async fn soft_delete(pool: &DbPool, token: &str) -> Result<(), AppError> {
+        sqlx::query!(
+            "UPDATE sessions SET deleted_at = UTC_TIMESTAMP() WHERE token = ? AND deleted_at IS NULL",
+            token
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 
     /// Returns true if `last_activity` is more than `timeout_secs` ago compared

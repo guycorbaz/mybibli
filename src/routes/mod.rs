@@ -13,7 +13,9 @@ use axum::Router;
 use tower_http::services::ServeDir;
 
 use crate::AppState;
+use crate::middleware::auth::session_resolve_middleware;
 use crate::middleware::csp::apply_csp_layer;
+use crate::middleware::csrf::csrf_middleware;
 use crate::middleware::locale::locale_resolve_middleware;
 use crate::middleware::pending_updates::pending_updates_middleware;
 
@@ -83,10 +85,10 @@ pub fn build_router(state: AppState) -> Router {
             "/login",
             axum::routing::get(auth::login_page).post(auth::login),
         )
-        .route(
-            "/logout",
-            axum::routing::get(auth::logout).post(auth::logout),
-        )
+        // Logout is POST-only (story 8-2). GET /logout returns 405 so a
+        // cross-origin `<img src="/logout">` or mistyped anchor cannot
+        // end a session without a CSRF-bound submission.
+        .route("/logout", axum::routing::post(auth::logout))
         .route("/language", axum::routing::post(auth::change_language))
         .route(
             "/session/keepalive",
@@ -228,6 +230,23 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
         .nest_service("/covers", ServeDir::new(&state.covers_dir))
+        // Layer stack (axum applies layers bottom-up; at request time
+        // the request hits the OUTERMOST layer first):
+        //
+        //   CSP  →  Session-resolve  →  Locale  →  CSRF  →  [handler /
+        //   PendingUpdates on catalog routes]
+        //
+        //   * Session-resolve must run before CSRF so the CSRF middleware
+        //     sees a populated `Session` extension (including anonymous
+        //     visitors that just had a row + csrf_token minted on
+        //     first-hit).
+        //   * Locale runs after session-resolve so the CSRF rejection
+        //     body can be localized via the cached session's
+        //     preferred_language (Pattern A in story 7-3 still works).
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            csrf_middleware,
+        ))
         // Locale middleware runs on every request (before the state-consuming
         // `.with_state(state)` call) so handlers can read `Extension<Locale>`
         // without per-route wiring. Registered here after route mounting —
@@ -235,6 +254,10 @@ pub fn build_router(state: AppState) -> Router {
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             locale_resolve_middleware,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            session_resolve_middleware,
         ))
         .with_state(state);
 

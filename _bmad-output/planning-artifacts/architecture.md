@@ -463,15 +463,46 @@ Rationale: Tailwind v4 with `@theme` CSS-native configuration produces a static 
 
 **Session Token: 32 Bytes Random, Base64url Encoded**
 
-Generated via `rand::thread_rng().gen::<[u8; 32]>()`, encoded as base64url. Provides 256 bits of entropy (NFR10). Stored in MariaDB `sessions` table. Transmitted as `HttpOnly`, `SameSite=Strict`, `Secure` (when behind HTTPS) cookie. Token is opaque — no JWT, no embedded claims.
+Generated via `rand::thread_rng().gen::<[u8; 32]>()`, encoded as base64. Provides 256 bits of entropy (NFR10). Stored in MariaDB `sessions` table. Transmitted as `HttpOnly`, `SameSite=Lax`, `Secure` (when behind HTTPS) cookie. Token is opaque — no JWT, no embedded claims. (`SameSite=Lax` since story 7-3 — the same-site top-level POST carrying the cookie is required by the language toggle, and the CSRF synchronizer token covers what `Strict` would have added.)
 
-**Session Lifecycle:**
-1. Login: generate token → insert session row → set cookie
-2. Each request: middleware reads cookie → lookup session → check `last_activity` for timeout → update `last_activity`
-3. Inactivity timeout (4h default): middleware detects `now() - last_activity > threshold` → delete session → redirect to home
-4. Toast warning: client-side JS timer fires at `timeout - 5min` → shows Toast → "Stay connected" sends keepalive HTMX request → resets `last_activity`
-5. Logout: delete session row → clear cookie
-6. Browser close: cookie expires (session cookie, no `max-age`) → next request has no token → anonymous
+**Session Lifecycle (story 8-2 — lazy anonymous row):**
+1. First GET from a browser with no cookie: session-resolver middleware INSERTs an anonymous session row (`user_id=NULL`, fresh CSRF token) and sets the session cookie
+2. Login: soft-delete anonymous row → insert authenticated session (with a fresh CSRF token) → overwrite session cookie
+3. Each request: middleware reads cookie → lookup session (LEFT JOIN users) → check `last_activity` for timeout → fire-and-forget update to `last_activity`
+4. Inactivity timeout (4h default): middleware detects `now() - last_activity > threshold` → downgrades to anonymous response (row stays; cannot revive itself since `last_activity` is not refreshed)
+5. Toast warning: client-side JS timer fires at `timeout - 5min` → shows Toast → "Stay connected" sends keepalive HTMX request → resets `last_activity`
+6. Logout: soft-delete session row → clear cookie → next GET creates a new anonymous session
+7. Browser close: cookie expires (session cookie, no `max-age`) → next request has no cookie → goto step 1
+8. Daily purge task: `DELETE FROM sessions WHERE user_id IS NULL AND last_activity < NOW() - INTERVAL 7 DAY` keeps anonymous accumulation bounded
+
+**CSRF Synchronizer Token (story 8-2):**
+
+Every `sessions` row carries a `csrf_token` column (VARCHAR(64)). The token is minted
+at the same time as the session (login, or anonymous first-hit), rotates on every login,
+and lives server-side only — browsers read it from `<meta name="csrf-token">` in
+`layouts/base.html`. Every state-changing request (POST/PUT/PATCH/DELETE) is validated
+by `src/middleware/csrf.rs` via constant-time compare (`subtle` crate). The sole exempt
+route is `POST /login` (no authenticated session exists at request time; `SameSite=Lax`
+handles login-CSRF). The exempt allowlist is frozen by
+`src/templates_audit.rs::csrf_exempt_routes_frozen`, and every POST form is required
+to carry a `_csrf_token` hidden input by `forms_include_csrf_token` in the same file.
+
+**Middleware Layer Order (AR16, updated for story 8-2):**
+
+At request time (outermost layer first):
+
+```
+CSP  →  Session-resolve  →  Locale  →  CSRF  →  [handler / PendingUpdates on catalog routes]
+```
+
+Session-resolve MUST run before CSRF so the CSRF middleware sees a populated `Session`
+extension for every request, including anonymous first-hits that just had a row and
+CSRF token minted. On a CSRF rejection, PendingUpdates never sees the response (no OOB
+leak into error body); CSP still runs over the 403 so the hardening headers are set.
+This matches the current `src/routes/mod.rs::build_router`; the earlier
+"Logging → Auth → …" wording was aspirational — logging is scattered `tracing` macros
+and auth was a `FromRequestParts` extractor until this story elevated it to a
+Tower middleware.
 
 ### API & Communication Patterns
 

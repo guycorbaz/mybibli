@@ -31,8 +31,13 @@ const AUTEUR_ROLE_ID = "1"; // seeded via migrations/20260330000002_seed_default
 const ROMAN_GENRE_ID = "1"; // seeded via migrations/20260330000001_seed_default_genres.sql
 
 async function createTitleManually(page: Page, name: string): Promise<void> {
+  // Story 8-2 — direct POST must carry the session's CSRF token.
+  const csrf = (await page
+    .locator('meta[name="csrf-token"]')
+    .getAttribute("content")) ?? "";
   const response = await page.request.post("/catalog/title", {
     form: {
+      _csrf_token: csrf,
       title: name,
       media_type: "book",
       genre_id: ROMAN_GENRE_ID,
@@ -74,8 +79,12 @@ async function addContributorToTitle(
   titleId: string,
   contributorName: string,
 ): Promise<void> {
+  const csrf = (await page
+    .locator('meta[name="csrf-token"]')
+    .getAttribute("content")) ?? "";
   const response = await page.request.post("/catalog/contributors/add", {
     form: {
+      _csrf_token: csrf,
       title_id: titleId,
       contributor_name: contributorName,
       role_id: AUTEUR_ROLE_ID,

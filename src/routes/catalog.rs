@@ -210,6 +210,7 @@ pub struct CatalogTemplate {
     pub current_page: &'static str,
     pub skip_label: String,
     pub session_timeout_secs: u64,
+    pub csrf_token: String,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -245,6 +246,7 @@ impl CatalogTemplate {
             current_page: "catalog",
             skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
             session_timeout_secs,
+            csrf_token: session.csrf_token.clone(),
             nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
             nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
             nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
@@ -1860,6 +1862,7 @@ pub struct VolumeDetailTemplate {
     pub current_page: &'static str,
     pub skip_label: String,
     pub session_timeout_secs: u64,
+    pub csrf_token: String,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -1920,6 +1923,7 @@ pub async fn volume_detail(
         current_page: "catalog",
         skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
         session_timeout_secs: state.session_timeout_secs(),
+        csrf_token: session.csrf_token.clone(),
         nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
         nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
         nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
@@ -1954,6 +1958,7 @@ pub struct VolumeEditTemplate {
     pub current_page: &'static str,
     pub skip_label: String,
     pub session_timeout_secs: u64,
+    pub csrf_token: String,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -1995,6 +2000,7 @@ pub async fn volume_edit_page(
         current_page: "catalog",
         skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
         session_timeout_secs: state.session_timeout_secs(),
+        csrf_token: session.csrf_token.clone(),
         nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
         nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
         nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
@@ -2232,6 +2238,7 @@ mod tests {
             token: Some("test".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            csrf_token: String::new(),
             preferred_language: None,
         };
         let template = CatalogTemplate::new(
@@ -2255,6 +2262,7 @@ mod tests {
             token: Some("test".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            csrf_token: String::new(),
             preferred_language: None,
         };
         let template = CatalogTemplate::new(
@@ -2280,7 +2288,7 @@ mod tests {
         // We cannot call the async handler without an AppState, but we
         // can assert the precondition check that gates the DB call:
         // session.token.is_none() => Unauthorized.
-        let session = Session::anonymous();
+        let session = Session::anonymous_with_token(String::new());
         assert!(session.token.is_none());
         // Mirror the handler's guard:
         let result: Result<(), AppError> = session
@@ -2302,6 +2310,7 @@ mod tests {
             token: Some("t".to_string()),
             user_id: Some(1),
             role: Role::Librarian,
+            csrf_token: String::new(),
             preferred_language: None,
         };
         assert!(session.token.is_some());

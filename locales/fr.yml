@@ -184,6 +184,8 @@ error:
   forbidden:
     title: Accès refusé
     body: Votre compte ne dispose pas des droits nécessaires pour cette action. Contactez un administrateur si vous avez besoin d'un accès.
+  csrf_rejected_title: Session expirée
+  csrf_rejected_message: Votre jeton CSRF est manquant ou expiré. Actualisez la page et réessayez.
   title:
     creation_failed: La création du titre a échoué
     required: Le titre est obligatoire

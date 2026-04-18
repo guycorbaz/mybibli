@@ -80,7 +80,12 @@ test.describe("Epic 7 smoke — anonymous browsing + role gating", () => {
     expect(borrowerId).toBeTruthy();
 
     // AC #4: librarian hits admin-only DELETE → 403, NOT a redirect, with feedback body.
-    const deleteResp = await page.request.delete(`/borrower/${borrowerId}`);
+    // Story 8-2: include CSRF token so the 403 is the ROLE 403, not the CSRF 403.
+    const librarianCsrf =
+      (await page.locator('meta[name="csrf-token"]').getAttribute("content")) ?? "";
+    const deleteResp = await page.request.delete(`/borrower/${borrowerId}`, {
+      headers: { "X-CSRF-Token": librarianCsrf },
+    });
     expect(deleteResp.status(), "AC #4: librarian on admin route → 403 Forbidden").toBe(
       403,
     );
@@ -96,7 +101,12 @@ test.describe("Epic 7 smoke — anonymous browsing + role gating", () => {
     // ── Admin phase (cleanup + AC #5 happy path) ──────────────────
     await logout(page);
     await loginAs(page, "admin");
-    const adminDelete = await page.request.delete(`/borrower/${borrowerId}`);
+    await page.goto(`/borrower/${borrowerId}`);
+    const adminCsrf =
+      (await page.locator('meta[name="csrf-token"]').getAttribute("content")) ?? "";
+    const adminDelete = await page.request.delete(`/borrower/${borrowerId}`, {
+      headers: { "X-CSRF-Token": adminCsrf },
+    });
     expect(
       [200, 204, 303].includes(adminDelete.status()),
       `AC #5: admin DELETE must succeed (got ${adminDelete.status()})`,

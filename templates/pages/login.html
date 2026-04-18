@@ -14,6 +14,7 @@
         {% endif %}
 
         <form method="POST" action="/login" class="space-y-4">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
             {% if !next.is_empty() %}
             <input type="hidden" name="next" value="{{ next }}">
             {% endif %}

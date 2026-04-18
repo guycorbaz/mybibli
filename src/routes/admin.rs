@@ -99,6 +99,7 @@ struct AdminPageTemplate {
     current_page: &'static str,
     skip_label: String,
     session_timeout_secs: u64,
+    csrf_token: String,
     nav_catalog: String,
     nav_loans: String,
     nav_locations: String,
@@ -299,6 +300,7 @@ async fn render_admin(
         current_page: "admin",
         skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
         session_timeout_secs: state.session_timeout_secs(),
+        csrf_token: session.csrf_token.clone(),
         nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
         nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
         nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
@@ -628,12 +630,13 @@ mod tests {
 
     fn make_session(role: Role) -> Session {
         if role == Role::Anonymous {
-            Session::anonymous()
+            Session::anonymous_with_token(String::new())
         } else {
             Session {
                 token: Some("t".to_string()),
                 user_id: Some(1),
                 role,
+                csrf_token: String::new(),
                 preferred_language: None,
             }
         }

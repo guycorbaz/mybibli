@@ -41,6 +41,11 @@ fn build_state(pool: MySqlPool) -> AppState {
     }
 }
 
+/// Shared CSRF token used by every seeded session in this test file.
+/// Tests that POST/PUT/PATCH/DELETE must echo it via the
+/// `X-CSRF-Token` header — see `req(...)`.
+const TEST_CSRF_TOKEN: &str = "role_gating_fixture_csrf_token_abcdef1234567890ab";
+
 /// Seed a session for a given user and return the cookie value.
 async fn seed_session(pool: &MySqlPool, username: &str) -> String {
     let token = format!("test-session-{username}-{}", rand_suffix());
@@ -51,9 +56,10 @@ async fn seed_session(pool: &MySqlPool, username: &str) -> String {
             .await
             .expect("user exists");
 
-    sqlx::query("INSERT INTO sessions (token, user_id, data) VALUES (?, ?, '{}')")
+    sqlx::query("INSERT INTO sessions (token, user_id, csrf_token, data) VALUES (?, ?, ?, '{}')")
         .bind(&token)
         .bind(user_id)
+        .bind(TEST_CSRF_TOKEN)
         .execute(pool)
         .await
         .expect("insert session");
@@ -71,6 +77,11 @@ fn req(method: Method, uri: &str, session_cookie: Option<&str>) -> Request<Body>
     let mut b = Request::builder().method(method).uri(uri);
     if let Some(token) = session_cookie {
         b = b.header(header::COOKIE, format!("session={token}"));
+        // Story 8-2: the global CSRF middleware rejects state-changing
+        // requests without a matching token. Inject the fixture token
+        // alongside every cookied request so tests that exercise the
+        // role gate (not CSRF) keep working.
+        b = b.header("X-CSRF-Token", TEST_CSRF_TOKEN);
     }
     b.body(Body::empty()).unwrap()
 }
@@ -165,10 +176,16 @@ async fn anonymous_post_locations_rejected_and_db_snapshot_unchanged(pool: MySql
         .unwrap();
     let resp = app.oneshot(request).await.unwrap();
 
+    // Story 8-2 introduced the global CSRF middleware which rejects any
+    // state-changing request without a matching token BEFORE the auth
+    // layer has a chance to issue its redirect. So a cross-site anonymous
+    // POST now stops at 403 instead of the 303 → /login it used to emit.
+    // Either outcome satisfies AC #3 ("rejected and DB snapshot
+    // unchanged") — this assertion pins the current layer order.
     assert_eq!(
         resp.status(),
-        StatusCode::SEE_OTHER,
-        "AC #3: anonymous POST → redirect to login"
+        StatusCode::FORBIDDEN,
+        "AC #3: anonymous POST without CSRF → 403 (not a DB mutation)"
     );
 
     let (after,): (i64,) =

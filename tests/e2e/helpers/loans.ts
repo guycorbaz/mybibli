@@ -133,12 +133,20 @@ export async function createLoan(
   borrowerName: string,
 ): Promise<void> {
   const borrowerId = await getBorrowerIdByName(page, borrowerName);
+  // Story 8-2: the direct `page.request.post(...)` path does NOT fire
+  // HTMX's `htmx:configRequest`, so `csrf.js` cannot inject the token.
+  // Read the meta tag off the current /loans page and echo it via the
+  // X-CSRF-Token header ourselves.
+  const csrfToken = await page
+    .locator('meta[name="csrf-token"]')
+    .getAttribute("content");
   // maxRedirects: 0 so we observe the handler's 303 directly. Following the
   // 303 would re-GET /loans, and a 500 there would be reported as
   // "Failed to create loan …" even though the POST actually committed —
   // hiding the real failure mode.
   const response = await page.request.post("/loans", {
     form: {
+      _csrf_token: csrfToken ?? "",
       volume_label: volumeLabel,
       borrower_id: borrowerId,
     },

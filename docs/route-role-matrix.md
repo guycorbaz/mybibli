@@ -1,7 +1,21 @@
 # Route Role Matrix
 
 **Status:** authoritative reference for Story 7-1 (anonymous browsing + role gating).
-**Last updated:** 2026-04-17.
+**Last updated:** 2026-04-18 (story 8-2 — CSRF exempt-route section added).
+
+## CSRF exemption (story 8-2)
+
+Every state-changing method (POST / PUT / PATCH / DELETE) on every route in
+this matrix requires a matching `X-CSRF-Token` header or `_csrf_token` form
+field — see `src/middleware/csrf.rs`. The sole exempt route is:
+
+| method | path | rationale |
+|---|---|---|
+| POST | `/login` | No authenticated session exists at request time. `SameSite=Lax` on the session cookie is the login-CSRF mitigation (a cross-site top-level POST does not carry the cookie). |
+
+Frozen by `src/templates_audit.rs::csrf_exempt_routes_frozen` — adding a new
+exempt route requires a visible edit to `CSRF_EXEMPT_ROUTES` in
+`src/middleware/csrf.rs` AND an update to the audit assertion in the same PR.
 
 ## Role model
 
@@ -37,8 +51,8 @@ Columns: `method | path | current_role | target_role | note`. Rows where `curren
 |---|---|---|---|---|
 | GET | `/login` | Anonymous | Anonymous | Accepts `?next=` (Task 3). Redirects Librarian+ to `/catalog`. |
 | POST | `/login` | Anonymous | Anonymous | On success: redirect to same-origin `next` if present, else `/`. |
-| GET | `/logout` | Anonymous | Anonymous | Idempotent; soft-deletes session row. |
-| POST | `/logout` | Anonymous | Anonymous | Same as GET. |
+| GET | `/logout` | — | **405** | **CHANGE (story 8-2)** — GET `/logout` removed; the router only exposes POST so a cross-origin `<img src="/logout">` or mistyped anchor cannot end a session. |
+| POST | `/logout` | Anonymous | Anonymous | Requires CSRF token. The nav-bar logout is a POST form (story 8-2). |
 
 ### Catalog (`src/routes/catalog.rs`)
 

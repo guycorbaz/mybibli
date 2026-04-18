@@ -72,10 +72,14 @@ test.describe("Login/Logout & Epic 1 Smoke Test (Story 1-9)", () => {
     await page.locator("#login-submit").click();
     await expect(page).toHaveURL(/\/catalog/, { timeout: 5000 });
 
-    // Click logout
-    const logoutLink = page.locator('a[href="/logout"]');
-    await expect(logoutLink).toBeVisible();
-    await logoutLink.click();
+    // Click logout. Story 8-2 converted the nav-bar logout from an
+    // `<a href="/logout">` to a POST form + submit button that carries
+    // a hidden CSRF input.
+    const logoutBtn = page
+      .locator('form[action="/logout"] button[type="submit"]')
+      .first();
+    await expect(logoutBtn).toBeVisible();
+    await logoutBtn.click();
 
     // Should redirect to home
     await expect(page).toHaveURL("/", { timeout: 5000 });

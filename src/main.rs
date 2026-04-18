@@ -16,7 +16,7 @@ use mybibli::metadata::tmdb::TmdbProvider;
 use mybibli::middleware::logging;
 use mybibli::routes;
 use mybibli::services::admin_health;
-use mybibli::tasks::provider_health;
+use mybibli::tasks::{anonymous_session_purge, provider_health};
 
 use tokio::net::TcpListener;
 
@@ -138,6 +138,11 @@ async fn main() {
     // don't borrow fields before they're in place. Pings run on a dedicated
     // 5-min cadence with a 10 s warm-up delay.
     provider_health::spawn(http_client, registry, provider_health_map);
+
+    // Story 8-2: daily purge of anonymous session rows older than 7 days.
+    // Bounded accumulation — unauthenticated visitors now get a DB row
+    // on first hit so their CSRF token survives across requests.
+    anonymous_session_purge::spawn(state.pool.clone());
 
     let app = routes::build_router(state).layer(logging::trace_layer());
 

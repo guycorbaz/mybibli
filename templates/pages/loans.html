@@ -45,6 +45,7 @@
               hx-post="/loans"
               hx-target="#loan-feedback"
               hx-swap="innerHTML">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                     <label for="loan-volume-label" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ volume_label_label }} *</label>

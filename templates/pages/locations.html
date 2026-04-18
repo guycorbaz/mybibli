@@ -24,6 +24,7 @@
             + {{ add_root_label }}
         </summary>
         <form method="POST" action="/locations" class="px-4 py-3 space-y-3 border-t border-stone-200 dark:border-stone-700">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                     <label for="new-name" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ name_label }}</label>
