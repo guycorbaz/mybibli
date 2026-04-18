@@ -17,6 +17,12 @@
         // 403 instead of the browser throwing a TypeError or sending
         // whitespace that never matches the stored token.
         var raw = meta ? meta.getAttribute("content") : "";
+        // Pass-2 review B-H2: some htmx.ajax() call sites may initialise
+        // `evt.detail.headers` to null; guard against a silent TypeError
+        // that would otherwise drop the request with no visible error.
+        if (!evt.detail.headers) {
+            evt.detail.headers = {};
+        }
         evt.detail.headers["X-CSRF-Token"] = raw ? raw.trim() : "";
     });
 
@@ -26,13 +32,22 @@
     // "Session expired" FeedbackEntry without a full-page reload.
     // `HX-Retarget: #feedback-list` + `HX-Reswap: beforeend` (set by
     // the middleware) tell HTMX where to drop the fragment.
+    //
+    // Pass-2 review B-H3: `HX-Trigger` is a comma-separated list per
+    // the HTMX spec; a future middleware that appends a second trigger
+    // (`csrf-rejected, session-warn`) would silently break the
+    // force-swap if compared with strict equality. Parse as a list.
     document.body.addEventListener("htmx:beforeSwap", function (evt) {
         var xhr = evt.detail.xhr;
-        if (
-            xhr &&
-            xhr.status === 403 &&
-            xhr.getResponseHeader("HX-Trigger") === "csrf-rejected"
-        ) {
+        if (!xhr || xhr.status !== 403) {
+            return;
+        }
+        var triggerHeader = xhr.getResponseHeader("HX-Trigger") || "";
+        var hasCsrfRejected = triggerHeader
+            .split(",")
+            .map(function (s) { return s.trim(); })
+            .indexOf("csrf-rejected") !== -1;
+        if (hasCsrfRejected) {
             evt.detail.shouldSwap = true;
             evt.detail.isError = false;
         }

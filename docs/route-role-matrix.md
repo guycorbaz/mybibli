@@ -53,6 +53,7 @@ Columns: `method | path | current_role | target_role | csrf_exempt | note`. Rows
 | POST | `/login` | Anonymous | Anonymous | **yes** | No authenticated session at request time; `SameSite=Lax` mitigates login-CSRF. Frozen in `CSRF_EXEMPT_ROUTES`. |
 | GET | `/logout` | — | **405** | — | **CHANGE (story 8-2)** — GET `/logout` removed; the router only exposes POST so a cross-origin `<img src="/logout">` or mistyped anchor cannot end a session. |
 | POST | `/logout` | Anonymous | Anonymous | no | Requires CSRF token. The nav-bar logout is a POST form (story 8-2). |
+| POST | `/language` | Anonymous | Anonymous | no | Language toggle (story 7-3). Requires CSRF token (story 8-2 added hidden `_csrf_token` to the nav-bar form). Anonymous visitors carry a CSRF token via the lazy-anonymous session row. |
 
 ### Catalog (`src/routes/catalog.rs`)
 

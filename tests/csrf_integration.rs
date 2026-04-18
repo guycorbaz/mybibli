@@ -269,7 +269,14 @@ async fn logout_with_valid_token_succeeds(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn login_is_exempt_and_rotates_csrf_token(pool: DbPool) {
+async fn login_is_exempt_and_persists_fresh_csrf_token(pool: DbPool) {
+    // Renamed Pass 2 (C-H1): the original test was called
+    // `login_is_exempt_and_rotates_csrf_token` but it only asserted a
+    // freshly-minted token length — it did NOT capture a pre-existing
+    // token to compare against. The actual re-auth rotation invariant
+    // is covered by `login_rotates_csrf_on_reauth`; the anon→auth
+    // rotation by `login_soft_deletes_prior_anonymous_row`. This test
+    // covers only the exemption + fresh-row-on-login contract.
     let (username, _) = seed_librarian(&pool).await;
 
     let state = state_with_pool(pool.clone());
@@ -541,16 +548,26 @@ async fn login_soft_deletes_prior_anonymous_row(pool: DbPool) {
     // table uses `token` as PRIMARY KEY — no surrogate id column).
     // CAST is mandatory here: per CLAUDE.md DB notes, `sqlx::query()`
     // cannot decode `TIMESTAMP` into `NaiveDateTime` directly.
-    let row_is_deleted: Option<chrono::NaiveDateTime> = sqlx::query_scalar(
+    //
+    // Pass 2 review C-H3: use `fetch_optional` so we can distinguish
+    // soft-delete (row present, `deleted_at` NOT NULL) from a
+    // regression to hard-delete (row absent — would panic on
+    // `fetch_one` with a confusing "no rows returned" error instead of
+    // a clean assertion failure).
+    let row: Option<(Option<chrono::NaiveDateTime>,)> = sqlx::query_as(
         "SELECT CAST(deleted_at AS DATETIME) FROM sessions WHERE token = ?",
     )
     .bind(&anon_cookie)
-    .fetch_one(&pool)
+    .fetch_optional(&pool)
     .await
     .unwrap();
     assert!(
-        row_is_deleted.is_some(),
-        "anonymous session row must be soft-deleted after successful login"
+        row.is_some(),
+        "anonymous session row must still be present after login (soft-delete, NOT hard-delete)"
+    );
+    assert!(
+        row.unwrap().0.is_some(),
+        "anonymous session row must be soft-deleted (deleted_at IS NOT NULL) after successful login"
     );
 
     // Step 4: the new authenticated row must exist and carry a fresh

@@ -310,8 +310,18 @@ fn forms_include_csrf_token() {
         r#"(?is)<form\b[^>]*\bmethod\s*=\s*(?:["']post["']|post\b)[^>]*>"#,
     )
     .unwrap();
-    let csrf_token_input =
-        Regex::new(r#"(?is)<input\b[^>]*\bname\s*=\s*["']_csrf_token["']"#).unwrap();
+    // Must match BOTH `name="_csrf_token"` AND a `value="{{ csrf_token …"`
+    // binding. Without the value check, a template regression that ships
+    // `<input name="_csrf_token" value="">` or a hardcoded literal would
+    // pass the audit while leaving every POST 403'd at runtime.
+    //
+    // Accepts either attribute order (`name` before `value` or vice
+    // versa) and either `{{` or `{{-` (whitespace-control) template
+    // delimiters.
+    let csrf_token_input = Regex::new(
+        r#"(?is)<input\b(?:[^>]*\bname\s*=\s*["']_csrf_token["'][^>]*\bvalue\s*=\s*["']\{\{-?\s*csrf_token\b|[^>]*\bvalue\s*=\s*["']\{\{-?\s*csrf_token\b[^>]*\bname\s*=\s*["']_csrf_token["'])"#,
+    )
+    .unwrap();
     let any_input = Regex::new(r#"(?is)<input\b"#).unwrap();
     let form_close = Regex::new(r#"(?is)</form>"#).unwrap();
 

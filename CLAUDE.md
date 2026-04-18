@@ -88,7 +88,7 @@ These apply to ALL sessions without exception.
 - **Optimistic locking:** UPDATE with `WHERE id = ? AND version = ?`, then `check_update_result()` from `services/locking.rs`.
 - **Soft delete:** `services/soft_delete.rs` with table whitelist. Never hard-delete.
 - **HTMX responses:** `HtmxResponse { main, oob: Vec<OobUpdate> }`. Check `HxRequest(is_htmx)` — return fragment for HTMX, full page for direct navigation.
-- **Session:** Cookie named `"session"` (NOT "session_token"). HttpOnly, SameSite=Strict, no max-age. Session extractor in `middleware/auth.rs`. Roles: Anonymous < Librarian < Admin.
+- **Session:** Cookie named `"session"` (NOT "session_token"). HttpOnly, `SameSite=Lax` (downgraded from Strict in story 7-3 so the language-toggle top-level POST from a same-site link still carries the session; a drift-compatible risk accepted in the story). Authenticated cookies: no max-age (session cookie). Anonymous-session cookies (story 8-2): `Max-Age=7d` aligned with the daily purge window. Session extractor in `middleware/auth.rs`. Roles: Anonymous < Librarian < Admin.
 - **Templates:** Askama templates extend `layouts/base.html` via `{% block content %}`. Nav bar in `components/nav_bar.html`. All page templates must pass `lang`, `role`, `current_page`, `skip_label`, nav labels.
 - **HTML escaping:** Use `crate::utils::html_escape()` — DO NOT duplicate.
 - **Pool access:** `pool: &DbPool` from `AppState`. For spawned tasks: `pool.clone()` (Arc internally).

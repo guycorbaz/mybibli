@@ -240,21 +240,42 @@ async fn resolve_or_mint(
 }
 
 fn extract_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
-    let header: String = headers
+    // Collect every `session=` cookie across all `Cookie` headers. A
+    // parent-domain attacker (subdomain takeover, stale wildcard cert,
+    // etc.) can set a shadow `session=evil; Domain=example.com` that
+    // rides alongside the legitimate app-scoped cookie. If more than
+    // one `session=` is present we cannot safely pick either — reject
+    // outright so the resolver mints a fresh anonymous row instead of
+    // promoting the attacker's value. Also unquotes RFC6265 quoted
+    // values (`session="abc"`) and trims inner whitespace.
+    let mut matches: Vec<String> = Vec::new();
+    for raw in headers
         .get_all("cookie")
         .iter()
         .filter_map(|v| v.to_str().ok())
-        .collect::<Vec<&str>>()
-        .join("; ");
-    for part in header.split(';') {
-        let trimmed = part.trim();
-        if let Some(value) = trimmed.strip_prefix("session=")
-            && !value.is_empty()
-        {
-            return Some(value.to_string());
+    {
+        for part in raw.split(';') {
+            let trimmed = part.trim();
+            if let Some(raw_value) = trimmed.strip_prefix("session=") {
+                let unquoted = raw_value
+                    .strip_prefix('"')
+                    .and_then(|v| v.strip_suffix('"'))
+                    .unwrap_or(raw_value)
+                    .trim();
+                if !unquoted.is_empty() {
+                    matches.push(unquoted.to_string());
+                }
+            }
         }
     }
-    None
+    if matches.len() > 1 {
+        tracing::warn!(
+            count = matches.len(),
+            "multiple `session=` cookies received — rejecting to prevent cookie shadowing"
+        );
+        return None;
+    }
+    matches.pop()
 }
 
 impl FromRequestParts<crate::AppState> for Session {
@@ -572,5 +593,34 @@ mod tests {
         let mut h = axum::http::HeaderMap::new();
         h.insert("cookie", "session=".parse().unwrap());
         assert_eq!(extract_session_cookie(&h), None);
+    }
+
+    #[test]
+    fn test_extract_session_cookie_rejects_multiple_session_cookies() {
+        // Pass-2 review M1′: a parent-domain attacker setting a shadow
+        // `session=evil` must not win over the legitimate cookie.
+        // Picking either opens a session-shadowing attack, so we reject.
+        let mut h = axum::http::HeaderMap::new();
+        h.insert("cookie", "session=victim; session=attacker".parse().unwrap());
+        assert_eq!(extract_session_cookie(&h), None);
+    }
+
+    #[test]
+    fn test_extract_session_cookie_rejects_multiple_session_cookies_across_headers() {
+        // Same attack, but split across two Cookie header lines (HTTP/2
+        // header folding or a careless proxy). Same rejection.
+        let mut h = axum::http::HeaderMap::new();
+        h.append("cookie", "session=victim".parse().unwrap());
+        h.append("cookie", "session=attacker".parse().unwrap());
+        assert_eq!(extract_session_cookie(&h), None);
+    }
+
+    #[test]
+    fn test_extract_session_cookie_unquotes_rfc6265_quoted_value() {
+        // A client that quotes the value (some proxies do) must
+        // round-trip to the raw value, not the quoted literal.
+        let mut h = axum::http::HeaderMap::new();
+        h.insert("cookie", "session=\"abc123\"".parse().unwrap());
+        assert_eq!(extract_session_cookie(&h), Some("abc123".to_string()));
     }
 }

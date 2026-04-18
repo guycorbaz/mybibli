@@ -105,13 +105,41 @@ pub async fn csrf_middleware(
     // explicit JS `fetch()` call. An empty / whitespace-only header is
     // treated as absent so the form-field fallback still engages for a
     // client that sets `X-CSRF-Token:` inadvertently.
-    let header_token: Option<String> = parts
+    //
+    // Defense-in-depth: duplicate `X-CSRF-Token` headers (HTTP/2 header
+    // folding abuse, proxy misconfiguration, or injection) would let an
+    // attacker smuggle a valid token past a legitimate rejection
+    // depending on which one the middleware picks. Reject outright when
+    // >1 value is present.
+    let header_values: Vec<&str> = parts
         .headers
-        .get("x-csrf-token")
-        .and_then(|v| v.to_str().ok())
-        .map(str::trim)
+        .get_all("x-csrf-token")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .collect();
+    if header_values.len() > 1 {
+        tracing::warn!(
+            method = %method,
+            path = %path,
+            count = header_values.len(),
+            reason = "csrf_multiple_headers",
+            "CSRF validation failed"
+        );
+        let locale: &str = parts
+            .extensions
+            .get::<Locale>()
+            .map(|l| l.0)
+            .unwrap_or("fr");
+        // `is_form` not yet computed here; pass false to get the HTMX /
+        // JSON envelope response. Plain-form attackers would need to
+        // bypass SameSite=Lax to reach this path anyway.
+        return build_rejection_response(locale, &parts, false);
+    }
+    let header_token: Option<String> = header_values
+        .first()
+        .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(str::to_string);
+        .map(|s| s.to_string());
 
     // Decide whether to engage the form-field fallback. The mime-essence
     // (part before `;`) must match exactly — `starts_with` would accept
@@ -635,5 +663,32 @@ mod tests {
             .unwrap();
         let res = app.oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tracing_test::traced_test]
+    #[sqlx::test(migrations = "./migrations")]
+    async fn duplicate_csrf_header_rejected(pool: crate::db::DbPool) {
+        // Pass-2 review M2: duplicate `X-CSRF-Token` headers MUST be
+        // rejected outright. Picking either (even the "correct" one)
+        // would let an attacker who can smuggle a second header bypass
+        // a legitimate rejection path. Attack vectors: HTTP/2 header
+        // folding abuse, proxy misconfiguration, header-injection.
+        let state = state_with_pool(pool);
+        let token = "real-token";
+        let session = Session::anonymous_with_token(token.to_string());
+        let app = build_app(state, session);
+
+        let req = HttpRequest::post("/echo")
+            .header("x-csrf-token", token) // "legitimate"
+            .header("x-csrf-token", "bogus") // shadow
+            .header("hx-request", "true")
+            .body(AxumBody::from(""))
+            .unwrap();
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        assert!(
+            logs_contain("csrf_multiple_headers"),
+            "expected tracing::warn! with reason=csrf_multiple_headers"
+        );
     }
 }
