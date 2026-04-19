@@ -209,7 +209,6 @@ struct ProviderHealthRow {
 #[derive(Template)]
 #[template(path = "fragments/admin_users_panel.html")]
 struct AdminUsersPanel {
-    lang: String,
     csrf_token: String,
     heading: String,
     pagination_aria: String,
@@ -827,7 +826,6 @@ async fn render_users_panel(
     };
 
     let panel = AdminUsersPanel {
-        lang: loc.to_string(),
         csrf_token: session.csrf_token.clone(),
         heading: rust_i18n::t!("admin.users.heading", locale = loc).to_string(),
         pagination_aria: rust_i18n::t!("admin.users.pagination_aria", locale = loc).to_string(),
