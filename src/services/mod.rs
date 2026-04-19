@@ -5,6 +5,7 @@ pub mod cover;
 pub mod loans;
 pub mod locations;
 pub mod locking;
+pub mod password;
 pub mod search;
 pub mod series;
 pub mod soft_delete;

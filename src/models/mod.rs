@@ -8,6 +8,7 @@ pub mod metadata_cache;
 pub mod series;
 pub mod session;
 pub mod title;
+pub mod user;
 pub mod volume;
 pub mod volume_state;
 

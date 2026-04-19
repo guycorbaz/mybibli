@@ -88,6 +88,42 @@ pub struct AdminQuery {
     pub tab: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UsersQuery {
+    pub role: Option<String>,
+    pub status: Option<String>,
+    pub page: Option<u32>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateUserForm {
+    pub username: String,
+    pub password: String,
+    pub role: String,
+    pub _csrf_token: String,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateUserForm {
+    pub username: String,
+    pub role: String,
+    pub password: String,
+    pub version: i32,
+    pub _csrf_token: String,
+}
+
+#[derive(Deserialize)]
+pub struct DeactivateForm {
+    pub version: i32,
+    pub _csrf_token: String,
+}
+
+#[derive(Deserialize)]
+pub struct ReactivateForm {
+    pub version: i32,
+    pub _csrf_token: String,
+}
+
 // ─── Templates ──────────────────────────────────────────────────
 
 #[derive(Template)]
@@ -170,7 +206,40 @@ struct ProviderHealthRow {
 #[derive(Template)]
 #[template(path = "fragments/admin_users_panel.html")]
 struct AdminUsersPanel {
-    stub_message: String,
+    lang: String,
+    csrf_token: String,
+    heading: String,
+    pagination_aria: String,
+    empty_state: String,
+    filter_role_label: String,
+    filter_status_label: String,
+    filter_role_all: String,
+    filter_status_active: String,
+    filter_status_deactivated: String,
+    filter_status_all: String,
+    col_username: String,
+    col_role: String,
+    col_status: String,
+    col_created: String,
+    col_last_login: String,
+    col_actions: String,
+    role_librarian: String,
+    role_admin: String,
+    status_active: String,
+    status_deactivated: String,
+    last_login_never: String,
+    btn_new: String,
+    btn_edit: String,
+    btn_deactivate: String,
+    btn_reactivate: String,
+    users: Vec<crate::models::user::UserRow>,
+    filter_role: Option<String>,
+    filter_status: String,
+    page: u32,
+    total_pages: u32,
+    total_items: u64,
+    acting_admin_id: u64,
+    confirm_deactivate: String,
 }
 
 #[derive(Template)]
@@ -233,9 +302,35 @@ pub async fn admin_users_panel(
     Extension(locale): Extension<Locale>,
     OriginalUri(uri): OriginalUri,
     HxRequest(is_htmx): HxRequest,
+    Query(_query): Query<UsersQuery>,
+) -> Result<Response, AppError> {
+    let return_path = uri
+        .path_and_query()
+        .map(|pq| pq.as_str().to_string())
+        .unwrap_or_else(|| "/admin?tab=users".to_string());
+    session.require_role_with_return(Role::Admin, &return_path)?;
+
+    let tab = AdminTab::Users;
+    render_admin(&state, &session, locale.0, &uri, is_htmx, tab).await
+}
+
+pub async fn admin_users_create_form(
+    session: Session,
+    Extension(locale): Extension<Locale>,
+) -> Result<Html<String>, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    let form_html = format!(
+        "<p>{}</p>",
+        rust_i18n::t!("admin.placeholder.coming_in_story", locale = locale.0, story = "8-3-create-form")
+    );
+    Ok(Html(form_html))
+}
+
+pub async fn admin_users_create(
+    session: Session,
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
-    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::Users).await
+    Err(AppError::Internal("Not implemented".to_string()))
 }
 
 pub async fn admin_reference_data_panel(
@@ -287,7 +382,7 @@ async fn render_admin(
     // tab's current count without requiring a round-trip to the real panel.
     let trash_count = admin_health::trash_count(pool).await?;
 
-    let panel_html = render_panel(state, loc, tab).await?;
+    let panel_html = render_panel(state, loc, tab, session).await?;
     let tabs_html = render_shell(loc, tab, trash_count, panel_html)?;
 
     if is_htmx {
@@ -374,23 +469,93 @@ fn render_shell(
         .map_err(|_| AppError::Internal("admin shell render failed".to_string()))
 }
 
+async fn render_users_panel(
+    state: &AppState,
+    loc: &'static str,
+    session: &Session,
+) -> Result<String, AppError> {
+    let pool = &state.pool;
+
+    let users = crate::models::user::UserModel::list_page(
+        pool,
+        None,
+        crate::models::user::UserStatus::Active,
+        0,
+        25,
+    )
+    .await?;
+
+    let total = crate::models::user::UserModel::count_all(
+        pool,
+        None,
+        crate::models::user::UserStatus::Active,
+    )
+    .await?;
+
+    let total_pages = if total == 0 { 1 } else { ((total as f64) / 25.0).ceil() as u32 };
+
+    let empty_state = if users.is_empty() && total == 0 {
+        rust_i18n::t!("admin.users.empty_state", locale = loc).to_string()
+    } else {
+        String::new()
+    };
+
+    let panel = AdminUsersPanel {
+        lang: loc.to_string(),
+        csrf_token: session.csrf_token.clone(),
+        heading: rust_i18n::t!("admin.users.heading", locale = loc).to_string(),
+        pagination_aria: rust_i18n::t!("admin.users.pagination_aria", locale = loc).to_string(),
+        empty_state,
+        filter_role_label: rust_i18n::t!("admin.users.filter_role_label", locale = loc).to_string(),
+        filter_status_label: rust_i18n::t!("admin.users.filter_status_label", locale = loc).to_string(),
+        filter_role_all: rust_i18n::t!("admin.users.filter_role_all", locale = loc).to_string(),
+        filter_status_active: rust_i18n::t!("admin.users.filter_status_active", locale = loc).to_string(),
+        filter_status_deactivated: rust_i18n::t!("admin.users.filter_status_deactivated", locale = loc).to_string(),
+        filter_status_all: rust_i18n::t!("admin.users.filter_status_all", locale = loc).to_string(),
+        col_username: rust_i18n::t!("admin.users.col_username", locale = loc).to_string(),
+        col_role: rust_i18n::t!("admin.users.col_role", locale = loc).to_string(),
+        col_status: rust_i18n::t!("admin.users.col_status", locale = loc).to_string(),
+        col_created: rust_i18n::t!("admin.users.col_created", locale = loc).to_string(),
+        col_last_login: rust_i18n::t!("admin.users.col_last_login", locale = loc).to_string(),
+        col_actions: rust_i18n::t!("admin.users.col_actions", locale = loc).to_string(),
+        role_librarian: rust_i18n::t!("admin.users.role_librarian", locale = loc).to_string(),
+        role_admin: rust_i18n::t!("admin.users.role_admin", locale = loc).to_string(),
+        status_active: rust_i18n::t!("admin.users.status_active", locale = loc).to_string(),
+        status_deactivated: rust_i18n::t!("admin.users.status_deactivated", locale = loc).to_string(),
+        last_login_never: rust_i18n::t!("admin.users.last_login_never", locale = loc).to_string(),
+        btn_new: rust_i18n::t!("admin.users.btn_new", locale = loc).to_string(),
+        btn_edit: rust_i18n::t!("admin.users.btn_edit", locale = loc).to_string(),
+        btn_deactivate: rust_i18n::t!("admin.users.btn_deactivate", locale = loc).to_string(),
+        btn_reactivate: rust_i18n::t!("admin.users.btn_reactivate", locale = loc).to_string(),
+        users,
+        filter_role: None,
+        filter_status: "active".to_string(),
+        page: 1,
+        total_pages,
+        total_items: total as u64,
+        acting_admin_id: session.user_id.unwrap_or(0),
+        confirm_deactivate: rust_i18n::t!(
+            "admin.users.confirm_deactivate",
+            locale = loc,
+            username = ""
+        )
+        .to_string(),
+    };
+
+    panel
+        .render()
+        .map_err(|_| AppError::Internal("admin users panel render failed".to_string()))
+}
+
 async fn render_panel(
     state: &AppState,
     loc: &'static str,
     tab: AdminTab,
+    session: &Session,
 ) -> Result<String, AppError> {
     match tab {
         AdminTab::Health => render_health_panel(state, loc).await,
-        AdminTab::Users => AdminUsersPanel {
-            stub_message: rust_i18n::t!(
-                "admin.placeholder.coming_in_story",
-                locale = loc,
-                story = "8-2"
-            )
-            .to_string(),
-        }
-        .render()
-        .map_err(|_| AppError::Internal("admin users panel render failed".to_string())),
+        AdminTab::Users => render_users_panel(state, loc, session).await,
         AdminTab::ReferenceData => AdminReferenceDataPanel {
             stub_message: rust_i18n::t!(
                 "admin.placeholder.coming_in_story",

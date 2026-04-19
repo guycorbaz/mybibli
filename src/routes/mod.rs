@@ -220,7 +220,8 @@ pub fn build_router(state: AppState) -> Router {
         // the catalog sub-router) so they skip `pending_updates_middleware`.
         .route("/admin", axum::routing::get(admin::admin_page))
         .route("/admin/health", axum::routing::get(admin::admin_health_panel))
-        .route("/admin/users", axum::routing::get(admin::admin_users_panel))
+        .route("/admin/users", axum::routing::get(admin::admin_users_panel).post(admin::admin_users_create))
+        .route("/admin/users/new", axum::routing::get(admin::admin_users_create_form))
         .route(
             "/admin/reference-data",
             axum::routing::get(admin::admin_reference_data_panel),

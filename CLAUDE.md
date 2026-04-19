@@ -62,6 +62,7 @@ These apply to ALL sessions without exception.
 9. **Error Message Quality** — Error messages are iteratively improved via retrospectives from real usage.
 10. **Commit & Push Cadence** — Commit after every workflow step (after `create-story`, after `validate`, after `dev-story`, after `code-review`). Push only on demand or at epic close (after retrospective) — this saves CI minutes and keeps the remote history aligned with epic milestones rather than intra-story churn.
 11. **Issue Tracking on GitHub** — Change requests, bugs, known-failures, code-review findings, and any other deferred work are tracked as GitHub Issues (labels `type:change-request`, `type:bug`, `type:known-failure`, `type:code-review-finding`). Never re-introduce a local markdown tracking doc (`deferred-work.md`, `known-issues.md`, etc.) — GitHub Issues is the single source of truth.
+12. **Source File Size Limit** — No single source file should exceed 2000 lines. When a file approaches this limit, split it into focused modules or separate concerns into `src/services/`, `src/models/`, or new submodules. Maintainability and testability degrade when files grow beyond this threshold.
 
 ## Architecture
 

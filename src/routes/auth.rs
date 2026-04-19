@@ -169,7 +169,7 @@ pub async fn login(
     };
 
     // Verify password with Argon2
-    if !verify_password(password, &password_hash) {
+    if !crate::services::password::verify_password(password, &password_hash) {
         tracing::info!(username = %username, "Login failed: invalid password");
         return render_login_error(
             jar,
@@ -435,17 +435,6 @@ pub async fn logout(
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
-fn verify_password(password: &str, hash: &str) -> bool {
-    use argon2::{Argon2, PasswordHash, PasswordVerifier};
-    let Ok(parsed_hash) = PasswordHash::new(hash) else {
-        tracing::warn!("Invalid password hash format in database");
-        return false;
-    };
-    Argon2::default()
-        .verify_password(password.as_bytes(), &parsed_hash)
-        .is_ok()
-}
-
 pub fn generate_session_token() -> String {
     use base64::Engine;
     let bytes: [u8; 32] = rand::random();
@@ -490,38 +479,19 @@ mod tests {
 
     #[test]
     fn test_verify_password_valid() {
-        // Generate a hash for "testpass" and verify it
-        use argon2::password_hash::SaltString;
-        use argon2::{Argon2, PasswordHasher};
-        use rand::rngs::OsRng;
-
-        let salt = SaltString::generate(OsRng);
-        let hash = Argon2::default()
-            .hash_password(b"testpass", &salt)
-            .unwrap()
-            .to_string();
-
-        assert!(verify_password("testpass", &hash));
+        let hash = crate::services::password::hash_password("testpass").unwrap();
+        assert!(crate::services::password::verify_password("testpass", &hash));
     }
 
     #[test]
     fn test_verify_password_invalid() {
-        use argon2::password_hash::SaltString;
-        use argon2::{Argon2, PasswordHasher};
-        use rand::rngs::OsRng;
-
-        let salt = SaltString::generate(OsRng);
-        let hash = Argon2::default()
-            .hash_password(b"testpass", &salt)
-            .unwrap()
-            .to_string();
-
-        assert!(!verify_password("wrongpass", &hash));
+        let hash = crate::services::password::hash_password("testpass").unwrap();
+        assert!(!crate::services::password::verify_password("wrongpass", &hash));
     }
 
     #[test]
     fn test_verify_password_invalid_hash_format() {
-        assert!(!verify_password("anything", "not-a-valid-hash"));
+        assert!(!crate::services::password::verify_password("anything", "not-a-valid-hash"));
     }
 
     // Story 6-2: guard against seed-hash drift. If the migration hash is regenerated
