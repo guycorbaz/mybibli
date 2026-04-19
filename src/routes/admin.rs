@@ -259,6 +259,23 @@ struct AdminUsersFormCreate {
 }
 
 #[derive(Template)]
+#[template(path = "fragments/admin_users_row.html")]
+struct AdminUsersRow {
+    user: crate::models::user::UserRow,
+    csrf_token: String,
+    role_admin: String,
+    role_librarian: String,
+    status_active: String,
+    status_deactivated: String,
+    last_login_never: String,
+    btn_edit: String,
+    btn_deactivate: String,
+    btn_reactivate: String,
+    confirm_deactivate: String,
+    acting_admin_id: u64,
+}
+
+#[derive(Template)]
 #[template(path = "fragments/admin_reference_data_panel.html")]
 struct AdminReferenceDataPanel {
     stub_message: String,
@@ -410,6 +427,75 @@ pub async fn admin_users_create(
         main: format!("{}{}", feedback, users_panel_html),
         oob: vec![],
     })
+}
+
+pub async fn admin_users_edit_form(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+) -> Result<Html<String>, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    Err(AppError::Internal("admin_users_edit_form: not implemented".to_string()))
+}
+
+pub async fn admin_users_update(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+    Form(form): Form<UpdateUserForm>,
+) -> Result<HtmxResponse, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    Err(AppError::Internal("admin_users_update: not implemented".to_string()))
+}
+
+pub async fn admin_users_deactivate(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+    Form(form): Form<DeactivateForm>,
+) -> Result<Html<String>, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    let loc = locale.0;
+    let acting_admin_id = session.user_id.ok_or_else(|| {
+        AppError::Internal("admin session missing user_id".to_string())
+    })?;
+
+    // Deactivate the user (guards handled by UserModel::deactivate)
+    UserModel::deactivate(&state.pool, id, form.version, acting_admin_id).await?;
+
+    // Fetch updated user and render row
+    let user = UserModel::find_by_id(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound("User not found".to_string()))?;
+
+    let row_html = render_user_row(&state, loc, &session, &user).await?;
+    Ok(Html(row_html))
+}
+
+pub async fn admin_users_reactivate(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+    Form(form): Form<ReactivateForm>,
+) -> Result<Html<String>, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    let loc = locale.0;
+
+    // Reactivate the user
+    UserModel::reactivate(&state.pool, id, form.version).await?;
+
+    // Fetch updated user and render row
+    let user = UserModel::find_by_id(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound("User not found".to_string()))?;
+
+    let acting_admin_id = session.user_id.unwrap_or(0);
+    let row_html = render_user_row(&state, loc, &session, &user).await?;
+    Ok(Html(row_html))
 }
 
 pub async fn admin_reference_data_panel(
@@ -624,6 +710,32 @@ async fn render_users_panel(
     panel
         .render()
         .map_err(|_| AppError::Internal("admin users panel render failed".to_string()))
+}
+
+async fn render_user_row(
+    state: &AppState,
+    loc: &'static str,
+    session: &Session,
+    user: &crate::models::user::UserRow,
+) -> Result<String, AppError> {
+    let row = AdminUsersRow {
+        user: user.clone(),
+        csrf_token: session.csrf_token.clone(),
+        role_admin: rust_i18n::t!("admin.users.role_admin", locale = loc).to_string(),
+        role_librarian: rust_i18n::t!("admin.users.role_librarian", locale = loc).to_string(),
+        status_active: rust_i18n::t!("admin.users.status_active", locale = loc).to_string(),
+        status_deactivated: rust_i18n::t!("admin.users.status_deactivated", locale = loc).to_string(),
+        last_login_never: rust_i18n::t!("admin.users.last_login_never", locale = loc).to_string(),
+        btn_edit: rust_i18n::t!("admin.users.btn_edit", locale = loc).to_string(),
+        btn_deactivate: rust_i18n::t!("admin.users.btn_deactivate", locale = loc).to_string(),
+        btn_reactivate: rust_i18n::t!("admin.users.btn_reactivate", locale = loc).to_string(),
+        confirm_deactivate: rust_i18n::t!("admin.users.confirm_deactivate", locale = loc, username = &user.username)
+            .to_string(),
+        acting_admin_id: session.user_id.unwrap_or(0),
+    };
+
+    row.render()
+        .map_err(|_| AppError::Internal("admin user row render failed".to_string()))
 }
 
 async fn render_panel(
