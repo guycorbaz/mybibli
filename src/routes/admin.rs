@@ -98,6 +98,13 @@ pub struct UsersQuery {
     pub page: Option<u32>,
 }
 
+#[derive(Debug, Clone)]
+struct UsersFilters {
+    role: Option<String>,
+    status: Option<String>,
+    page: Option<u32>,
+}
+
 #[derive(Deserialize)]
 pub struct CreateUserForm {
     pub username: String,
@@ -355,9 +362,21 @@ pub async fn admin_users_panel(
     session.require_role_with_return(Role::Admin, &return_path)?;
 
     let tab = AdminTab::Users;
-    // Extract page from query (1-based, clamp to 1 if 0 or missing)
-    let page = query.page.unwrap_or(1).max(1);
-    render_admin(&state, &session, locale.0, &uri, is_htmx, tab, Some(page)).await
+    let filters = UsersFilters {
+        role: query.role,
+        status: query.status,
+        page: query.page,
+    };
+    render_admin(
+        &state,
+        &session,
+        locale.0,
+        &uri,
+        is_htmx,
+        tab,
+        Some(filters),
+    )
+    .await
 }
 
 pub async fn admin_users_create_form(
@@ -434,7 +453,7 @@ pub async fn admin_users_create(
     let feedback = feedback_html_pub("success", &success_msg, "");
 
     // Fetch fresh users list for the panel (page 1)
-    let users_panel_html = render_users_panel(&state, loc, &session, None).await?;
+    let users_panel_html = render_users_panel(&state, loc, &session, None, None).await?;
 
     Ok(HtmxResponse {
         main: format!("{}{}", feedback, users_panel_html),
@@ -693,7 +712,7 @@ async fn render_admin(
     uri: &axum::http::Uri,
     is_htmx: bool,
     tab: AdminTab,
-    page: Option<u32>,
+    filters: Option<UsersFilters>,
 ) -> Result<Response, AppError> {
     let pool = &state.pool;
 
@@ -701,7 +720,8 @@ async fn render_admin(
     // tab's current count without requiring a round-trip to the real panel.
     let trash_count = admin_health::trash_count(pool).await?;
 
-    let panel_html = render_panel(state, loc, tab, session, page).await?;
+    let page = filters.as_ref().and_then(|f| f.page);
+    let panel_html = render_panel(state, loc, tab, session, page, filters).await?;
     let tabs_html = render_shell(loc, tab, trash_count, panel_html)?;
 
     if is_htmx {
@@ -793,18 +813,25 @@ async fn render_users_panel(
     loc: &'static str,
     session: &Session,
     page: Option<u32>,
+    filters: Option<UsersFilters>,
 ) -> Result<String, AppError> {
     let pool = &state.pool;
     let current_page = page.unwrap_or(1).max(1);
 
-    // TODO(8-3): These should come from query parameters; hardcoded for now
-    let filter_role_query: Option<String> = None;
-    let filter_status_query: Option<String> = None;
+    // Extract and normalize filters
+    let filters = filters.unwrap_or(UsersFilters { role: None, status: None, page: None });
+    let role_filter = filters.role.as_deref();
+    let status_filter = match filters.status.as_deref().unwrap_or("active") {
+        "active" => crate::models::user::UserStatus::Active,
+        "deactivated" => crate::models::user::UserStatus::Deactivated,
+        "all" => crate::models::user::UserStatus::All,
+        _ => crate::models::user::UserStatus::Active,
+    };
 
     let users = crate::models::user::UserModel::list_page(
         pool,
-        None,
-        crate::models::user::UserStatus::Active,
+        role_filter,
+        status_filter,
         (current_page - 1) * 25,
         25,
     )
@@ -812,8 +839,8 @@ async fn render_users_panel(
 
     let total = crate::models::user::UserModel::count_all(
         pool,
-        None,
-        crate::models::user::UserStatus::Active,
+        role_filter,
+        status_filter,
     )
     .await?;
 
@@ -852,8 +879,8 @@ async fn render_users_panel(
         btn_deactivate: rust_i18n::t!("admin.users.btn_deactivate", locale = loc).to_string(),
         btn_reactivate: rust_i18n::t!("admin.users.btn_reactivate", locale = loc).to_string(),
         users,
-        filter_role: filter_role_query.unwrap_or_default(),
-        filter_status: filter_status_query.unwrap_or_else(|| "active".to_string()),
+        filter_role: filters.role.clone().unwrap_or_default(),
+        filter_status: filters.status.clone().unwrap_or_else(|| "active".to_string()),
         page: current_page,
         total_pages,
         acting_admin_id: session.user_id.unwrap_or(0),
@@ -896,10 +923,11 @@ async fn render_panel(
     tab: AdminTab,
     session: &Session,
     page: Option<u32>,
+    filters: Option<UsersFilters>,
 ) -> Result<String, AppError> {
     match tab {
         AdminTab::Health => render_health_panel(state, loc).await,
-        AdminTab::Users => render_users_panel(state, loc, session, page).await,
+        AdminTab::Users => render_users_panel(state, loc, session, page, filters).await,
         AdminTab::ReferenceData => AdminReferenceDataPanel {
             stub_message: rust_i18n::t!(
                 "admin.placeholder.coming_in_story",
