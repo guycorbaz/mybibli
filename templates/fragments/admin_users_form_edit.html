@@ -28,7 +28,7 @@
 
             <div class="flex justify-end gap-3 pt-4">
                 <button type="button" id="cancel-edit"
-                        hx-get="/admin/users" hx-target="#admin-users-row-{{ user.id }}" hx-swap="outerHTML"
+                        hx-get="/admin/users/{{ user.id }}" hx-target="#admin-users-row-{{ user.id }}" hx-swap="outerHTML"
                         class="px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-700 rounded-md hover:bg-stone-200 dark:hover:bg-stone-600">
                     {{ btn_cancel }}
                 </button>

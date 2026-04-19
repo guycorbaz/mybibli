@@ -37,6 +37,7 @@ const ALLOWED_HX_CONFIRM_SITES: &[(&str, usize)] = &[
     ("templates/pages/borrower_detail.html", 2),
     ("templates/pages/contributor_detail.html", 1),
     ("templates/pages/series_detail.html", 1),
+    ("templates/fragments/admin_users_row.html", 1),
 ];
 
 #[test]

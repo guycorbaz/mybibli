@@ -329,7 +329,7 @@ pub async fn admin_page(
     session.require_role_with_return(Role::Admin, &return_path)?;
 
     let tab = AdminTab::from_query_str(params.tab.as_deref());
-    render_admin(&state, &session, locale.0, &uri, is_htmx, tab).await
+    render_admin(&state, &session, locale.0, &uri, is_htmx, tab, None).await
 }
 
 pub async fn admin_health_panel(
@@ -340,7 +340,7 @@ pub async fn admin_health_panel(
     HxRequest(is_htmx): HxRequest,
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=health")?;
-    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::Health).await
+    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::Health, None).await
 }
 
 pub async fn admin_users_panel(
@@ -349,7 +349,7 @@ pub async fn admin_users_panel(
     Extension(locale): Extension<Locale>,
     OriginalUri(uri): OriginalUri,
     HxRequest(is_htmx): HxRequest,
-    Query(_query): Query<UsersQuery>,
+    Query(query): Query<UsersQuery>,
 ) -> Result<Response, AppError> {
     let return_path = uri
         .path_and_query()
@@ -358,7 +358,9 @@ pub async fn admin_users_panel(
     session.require_role_with_return(Role::Admin, &return_path)?;
 
     let tab = AdminTab::Users;
-    render_admin(&state, &session, locale.0, &uri, is_htmx, tab).await
+    // Extract page from query (1-based, clamp to 1 if 0 or missing)
+    let page = query.page.unwrap_or(1).max(1);
+    render_admin(&state, &session, locale.0, &uri, is_htmx, tab, Some(page)).await
 }
 
 pub async fn admin_users_create_form(
@@ -434,8 +436,8 @@ pub async fn admin_users_create(
         .to_string();
     let feedback = feedback_html_pub("success", &success_msg, "");
 
-    // Fetch fresh users list for the panel
-    let users_panel_html = render_users_panel(&state, loc, &session).await?;
+    // Fetch fresh users list for the panel (page 1)
+    let users_panel_html = render_users_panel(&state, loc, &session, None).await?;
 
     Ok(HtmxResponse {
         main: format!("{}{}", feedback, users_panel_html),
@@ -472,6 +474,24 @@ pub async fn admin_users_edit_form(
     let html = form
         .render()
         .map_err(|_| AppError::Internal("admin users edit form render failed".to_string()))?;
+    Ok(Html(html))
+}
+
+pub async fn admin_users_row_view(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+) -> Result<Html<String>, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    let loc = locale.0;
+
+    // Fetch user
+    let user = UserModel::find_by_id(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound("User not found".to_string()))?;
+
+    let html = render_user_row(&state, loc, &session, &user).await?;
     Ok(Html(html))
 }
 
@@ -517,8 +537,26 @@ pub async fn admin_users_update(
         Some(password::hash_password(&form.password)?)
     };
 
+    // Check last-admin demote guard if role is changing
+    let acting_admin_id = session.user_id.ok_or_else(|| {
+        AppError::Internal("admin session missing user_id".to_string())
+    })?;
+    if form.role != "admin" {
+        // Only check demote guard when changing TO a non-admin role
+        if let Err(e) = UserModel::demote_guard(&state.pool, id, &form.role, acting_admin_id).await {
+            return match e {
+                AppError::Conflict(ref msg) if msg == "last_admin_demote_blocked" => {
+                    Err(AppError::BadRequest(
+                        rust_i18n::t!("error.user.last_admin_demote", locale = loc).to_string(),
+                    ))
+                }
+                _ => Err(e),
+            };
+        }
+    }
+
     // Update user
-    UserModel::update(
+    if let Err(e) = UserModel::update(
         &state.pool,
         id,
         form.version,
@@ -526,7 +564,17 @@ pub async fn admin_users_update(
         &form.role,
         password_hash.as_deref(),
     )
-    .await?;
+    .await
+    {
+        return match e {
+            AppError::Conflict(ref msg) if msg.contains("username_taken") => {
+                Err(AppError::BadRequest(
+                    rust_i18n::t!("error.user.username_taken", locale = loc, username = &username).to_string(),
+                ))
+            }
+            _ => Err(e),
+        };
+    }
 
     // Fetch updated user and render row
     let user = UserModel::find_by_id(&state.pool, id)
@@ -551,7 +599,7 @@ pub async fn admin_users_deactivate(
     Extension(locale): Extension<Locale>,
     axum::extract::Path(id): axum::extract::Path<u64>,
     Form(form): Form<DeactivateForm>,
-) -> Result<Html<String>, AppError> {
+) -> Result<HtmxResponse, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
     let loc = locale.0;
     let acting_admin_id = session.user_id.ok_or_else(|| {
@@ -566,8 +614,15 @@ pub async fn admin_users_deactivate(
         .await?
         .ok_or(AppError::NotFound("User not found".to_string()))?;
 
+    let success_msg = rust_i18n::t!("admin.users.success_deactivated", locale = loc, username = &user.username, count = 1)
+        .to_string();
+    let feedback = feedback_html_pub("success", &success_msg, "");
+
     let row_html = render_user_row(&state, loc, &session, &user).await?;
-    Ok(Html(row_html))
+    Ok(HtmxResponse {
+        main: format!("{}{}", feedback, row_html),
+        oob: vec![],
+    })
 }
 
 pub async fn admin_users_reactivate(
@@ -576,7 +631,7 @@ pub async fn admin_users_reactivate(
     Extension(locale): Extension<Locale>,
     axum::extract::Path(id): axum::extract::Path<u64>,
     Form(form): Form<ReactivateForm>,
-) -> Result<Html<String>, AppError> {
+) -> Result<HtmxResponse, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
     let loc = locale.0;
 
@@ -588,9 +643,15 @@ pub async fn admin_users_reactivate(
         .await?
         .ok_or(AppError::NotFound("User not found".to_string()))?;
 
-    let acting_admin_id = session.user_id.unwrap_or(0);
+    let success_msg = rust_i18n::t!("admin.users.success_reactivated", locale = loc, username = &user.username)
+        .to_string();
+    let feedback = feedback_html_pub("success", &success_msg, "");
+
     let row_html = render_user_row(&state, loc, &session, &user).await?;
-    Ok(Html(row_html))
+    Ok(HtmxResponse {
+        main: format!("{}{}", feedback, row_html),
+        oob: vec![],
+    })
 }
 
 pub async fn admin_reference_data_panel(
@@ -601,7 +662,7 @@ pub async fn admin_reference_data_panel(
     HxRequest(is_htmx): HxRequest,
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
-    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::ReferenceData).await
+    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::ReferenceData, None).await
 }
 
 pub async fn admin_trash_panel(
@@ -612,7 +673,7 @@ pub async fn admin_trash_panel(
     HxRequest(is_htmx): HxRequest,
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=trash")?;
-    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::Trash).await
+    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::Trash, None).await
 }
 
 pub async fn admin_system_panel(
@@ -623,7 +684,7 @@ pub async fn admin_system_panel(
     HxRequest(is_htmx): HxRequest,
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=system")?;
-    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::System).await
+    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::System, None).await
 }
 
 // ─── Rendering ──────────────────────────────────────────────────
@@ -635,6 +696,7 @@ async fn render_admin(
     uri: &axum::http::Uri,
     is_htmx: bool,
     tab: AdminTab,
+    page: Option<u32>,
 ) -> Result<Response, AppError> {
     let pool = &state.pool;
 
@@ -642,7 +704,7 @@ async fn render_admin(
     // tab's current count without requiring a round-trip to the real panel.
     let trash_count = admin_health::trash_count(pool).await?;
 
-    let panel_html = render_panel(state, loc, tab, session).await?;
+    let panel_html = render_panel(state, loc, tab, session, page).await?;
     let tabs_html = render_shell(loc, tab, trash_count, panel_html)?;
 
     if is_htmx {
@@ -733,14 +795,16 @@ async fn render_users_panel(
     state: &AppState,
     loc: &'static str,
     session: &Session,
+    page: Option<u32>,
 ) -> Result<String, AppError> {
     let pool = &state.pool;
+    let current_page = page.unwrap_or(1).max(1);
 
     let users = crate::models::user::UserModel::list_page(
         pool,
         None,
         crate::models::user::UserStatus::Active,
-        0,
+        (current_page - 1) * 25,
         25,
     )
     .await?;
@@ -790,7 +854,7 @@ async fn render_users_panel(
         users,
         filter_role: None,
         filter_status: "active".to_string(),
-        page: 1,
+        page: current_page,
         total_pages,
         total_items: total as u64,
         acting_admin_id: session.user_id.unwrap_or(0),
@@ -808,7 +872,7 @@ async fn render_users_panel(
 }
 
 async fn render_user_row(
-    state: &AppState,
+    _state: &AppState,
     loc: &'static str,
     session: &Session,
     user: &crate::models::user::UserRow,
@@ -838,10 +902,11 @@ async fn render_panel(
     loc: &'static str,
     tab: AdminTab,
     session: &Session,
+    page: Option<u32>,
 ) -> Result<String, AppError> {
     match tab {
         AdminTab::Health => render_health_panel(state, loc).await,
-        AdminTab::Users => render_users_panel(state, loc, session).await,
+        AdminTab::Users => render_users_panel(state, loc, session, page).await,
         AdminTab::ReferenceData => AdminReferenceDataPanel {
             stub_message: rust_i18n::t!(
                 "admin.placeholder.coming_in_story",

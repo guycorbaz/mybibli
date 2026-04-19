@@ -475,6 +475,53 @@ This story's Deactivate button is a legitimate destructive-confirm. Two options:
   - [ ] 11.4 `./scripts/e2e-reset.sh` + `cd tests/e2e && npm test` — 3 clean cycles
   - [ ] 11.5 `cargo test templates_audit` — CSRF-form + hx-confirm-allowlist + CSP audits green with the new templates
 
+## Review Findings (Code Review Pass 1 — 2026-04-19)
+
+### CRITICAL Issues (Block merge)
+
+- [ ] [Review][Patch] Missing `demote_guard` call in `admin_users_update` [admin.rs:521]
+  - The handler calls `UserModel::update()` directly when role changes, without first calling `UserModel::demote_guard()` to enforce the last-admin-demote guard. This allows the sole admin to demote themselves to Librarian, leaving zero active admins. **Fix:** Call `demote_guard` before `update` when role changes.
+
+- [ ] [Review][Patch] `demote_guard` missing `FOR UPDATE` row-lock [user.rs:~340]
+  - Unlike `deactivate`, the `demote_guard` function does not acquire a row-lock. Two concurrent admin sessions could each see "one other admin remains" and both proceed to demote themselves. **Fix:** Wrap `demote_guard` in a transaction with `SELECT ... FOR UPDATE` on the target user.
+
+- [ ] [Review][Patch] `hx-confirm` allowlist NOT extended (4 → 5) [templates_audit.rs:35]
+  - The deactivate button in `admin_users_panel.html:51` contains `hx-confirm=`, but `ALLOWED_HX_CONFIRM_SITES` has only 4 entries. The `cargo test templates_audit` audit will fail. **Fix:** Add the deactivate site identifier to the allowlist and update the assertion from `len == 4` to `len == 5`.
+
+- [ ] [Review][Patch] Missing import `verify_password` in auth.rs tests [auth.rs:504-505]
+  - Lines 504-505 call `verify_password()` without importing it; elsewhere the code uses the qualified path `crate::services::password::verify_password()`. This causes a compilation error. **Fix:** Add `use crate::services::password::verify_password;` at the top of the test module or use the qualified path consistently.
+
+- [ ] [Review][Patch] Pagination `?page=` parameter completely ignored [admin.rs:732-755]
+  - The `UsersQuery` struct defines a `page` field, and the template renders pagination UI, but the handler uses `Query(_query)` (underscore = ignored) and always renders page 1. The `page` parameter is never read or used for pagination offset. **Fix:** Extract `page` from query, validate (clamp to 1 if 0), convert to offset = (page-1)*25, and pass to `list_page()`.
+
+### HIGH Priority Issues (Major gaps)
+
+- [ ] [Review][Patch] Missing error handling for `demote_guard` conflicts [admin.rs:478]
+  - When `demote_guard()` returns `Conflict("last_admin_demote_blocked")`, the handler has no error mapping to convert this to a user-visible FeedbackEntry. Currently the error bubbles up as a raw 409 conflict. **Fix:** Catch the conflict, map to the i18n key `error.user.last_admin_demote`, and return a FeedbackEntry with the localized message.
+
+- [ ] [Review][Patch] No error mapping for `Conflict` in `admin_users_update` [admin.rs:521]
+  - The `UserModel::update()` returns `Conflict("username_taken")` on duplicate username, but the handler doesn't catch it. The error bubbles up as a plain 409 with the raw identifier string, not a localized FeedbackEntry. **Fix:** Catch `Conflict("username_taken")` and return localized feedback like `admin_users_create` does.
+
+- [ ] [Review][Patch] Deactivate/reactivate missing success feedback messages [admin.rs:548-594]
+  - Both `admin_users_deactivate` and `admin_users_reactivate` return only the updated row HTML, but lack the success FeedbackEntry OOB swap that `admin_users_create` includes. Users see no explicit confirmation message. The i18n keys `success_deactivated` and `success_reactivated` are defined but never rendered. **Fix:** Return `HtmxResponse` with both the row and a feedback OOB swap (like create does).
+
+- [ ] [Review][Patch] `confirm_deactivate` i18n placeholder is empty [admin.rs:797]
+  - The panel renders `confirm_deactivate` with an empty `username=""` placeholder, so every Deactivate button shows a generic confirmation like "Deactivate ? They'll be signed out...". The username is only substituted in `render_user_row`, not in the panel. **Fix:** Pass the actual username in the i18n call, or compute the confirmation message dynamically per row.
+
+### MEDIUM Priority Issues
+
+- [ ] [Review][Patch] Edit form cancel button has broken HTMX target [templates/fragments/admin_users_form_edit.html:31]
+  - The Cancel button fetches `/admin/users` (the full panel HTML) but targets `#admin-users-row-{{ user.id }}` (a single `<tr>`), causing DOM corruption. The entire panel gets swapped into a row cell. **Fix:** Either (a) fetch only the row fragment via a dedicated handler, or (b) change the target to `#admin-users-list` and swap the entire list, or (c) use a simpler cancel mechanism (e.g., close the form without a new fetch).
+
+### MINOR / LOW Issues (Warnings)
+
+- [x] [Review][Dismiss] Unused variable warnings (state, acting_admin_id) — compiler warnings, non-blocking
+- [x] [Review][Dismiss] Case-insensitive username collation — documented behavior per CLAUDE.md, acceptable
+
+---
+
+**Summary:** 9 issues identified (5 CRITICAL, 4 HIGH, 0 MEDIUM at implementation level). All are actionable patches with clear fixes. Implementation is ~80% feature-complete but requires these corrections before merge.
+
 ## Dev Notes
 
 ### Deactivation semantics clarification (`deleted_at` vs `active`)

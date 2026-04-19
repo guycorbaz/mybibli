@@ -501,8 +501,8 @@ mod tests {
 
     #[test]
     fn test_librarian_seed_hash_verifies() {
-        assert!(verify_password("librarian", LIBRARIAN_SEED_HASH));
-        assert!(!verify_password("wrongpass", LIBRARIAN_SEED_HASH));
+        assert!(crate::services::password::verify_password("librarian", LIBRARIAN_SEED_HASH));
+        assert!(!crate::services::password::verify_password("wrongpass", LIBRARIAN_SEED_HASH));
     }
 
     #[test]
