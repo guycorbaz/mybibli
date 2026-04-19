@@ -276,6 +276,20 @@ struct AdminUsersRow {
 }
 
 #[derive(Template)]
+#[template(path = "fragments/admin_users_form_edit.html")]
+struct AdminUsersFormEdit {
+    user: crate::models::user::UserRow,
+    csrf_token: String,
+    form_label_username: String,
+    form_label_password_edit: String,
+    form_label_role: String,
+    role_librarian: String,
+    role_admin: String,
+    btn_cancel: String,
+    btn_save: String,
+}
+
+#[derive(Template)]
 #[template(path = "fragments/admin_reference_data_panel.html")]
 struct AdminReferenceDataPanel {
     stub_message: String,
@@ -436,7 +450,29 @@ pub async fn admin_users_edit_form(
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<Html<String>, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
-    Err(AppError::Internal("admin_users_edit_form: not implemented".to_string()))
+    let loc = locale.0;
+
+    // Fetch user
+    let user = UserModel::find_by_id(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound("User not found".to_string()))?;
+
+    let form = AdminUsersFormEdit {
+        user,
+        csrf_token: session.csrf_token.clone(),
+        form_label_username: rust_i18n::t!("admin.users.form_label_username", locale = loc).to_string(),
+        form_label_password_edit: rust_i18n::t!("admin.users.form_label_password_edit", locale = loc).to_string(),
+        form_label_role: rust_i18n::t!("admin.users.form_label_role", locale = loc).to_string(),
+        role_librarian: rust_i18n::t!("admin.users.role_librarian", locale = loc).to_string(),
+        role_admin: rust_i18n::t!("admin.users.role_admin", locale = loc).to_string(),
+        btn_cancel: rust_i18n::t!("admin.users.btn_cancel", locale = loc).to_string(),
+        btn_save: rust_i18n::t!("admin.users.btn_save", locale = loc).to_string(),
+    };
+
+    let html = form
+        .render()
+        .map_err(|_| AppError::Internal("admin users edit form render failed".to_string()))?;
+    Ok(Html(html))
 }
 
 pub async fn admin_users_update(
@@ -447,7 +483,66 @@ pub async fn admin_users_update(
     Form(form): Form<UpdateUserForm>,
 ) -> Result<HtmxResponse, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
-    Err(AppError::Internal("admin_users_update: not implemented".to_string()))
+    let loc = locale.0;
+
+    // Validate username (trim whitespace, check not empty)
+    let username = form.username.trim().to_string();
+    if username.is_empty() {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.user.username_empty", locale = loc).to_string(),
+        ));
+    }
+
+    // Validate role
+    if form.role != "admin" && form.role != "librarian" {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.user.role_invalid", locale = loc).to_string(),
+        ));
+    }
+
+    // Validate and hash password (optional)
+    let password_hash = if form.password.is_empty() {
+        None
+    } else {
+        if form.password.len() < 8 {
+            return Err(AppError::BadRequest(
+                rust_i18n::t!("error.user.password_too_short", locale = loc).to_string(),
+            ));
+        }
+        if form.password.len() > 72 {
+            return Err(AppError::BadRequest(
+                rust_i18n::t!("error.user.password_too_long", locale = loc).to_string(),
+            ));
+        }
+        Some(password::hash_password(&form.password)?)
+    };
+
+    // Update user
+    UserModel::update(
+        &state.pool,
+        id,
+        form.version,
+        &username,
+        &form.role,
+        password_hash.as_deref(),
+    )
+    .await?;
+
+    // Fetch updated user and render row
+    let user = UserModel::find_by_id(&state.pool, id)
+        .await?
+        .ok_or(AppError::NotFound("User not found".to_string()))?;
+
+    let success_msg = rust_i18n::t!("admin.users.success_updated", locale = loc, username = &username)
+        .to_string();
+    let feedback = feedback_html_pub("success", &success_msg, "");
+
+    let row_html = render_user_row(&state, loc, &session, &user).await?;
+
+    Ok(HtmxResponse {
+        main: format!("{}{}", feedback, row_html),
+        oob: vec![],
+    })
 }
 
 pub async fn admin_users_deactivate(
