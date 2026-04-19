@@ -7,10 +7,10 @@
             <button hx-get="/admin/users/new" hx-target="#admin-users-form-slot" hx-swap="innerHTML" class="px-4 py-2 bg-blue-600 text-white rounded-md">{{ btn_new }}</button>
         </div>
 
-        <form method="GET" action="/admin/users" hx-get="/admin/users" hx-target="#admin-users-panel" hx-swap="outerHTML" hx-push-url="true" class="flex gap-4 items-end">
+        <form method="GET" action="/admin/users" hx-get="/admin/users" hx-target="#admin-users-panel" hx-swap="outerHTML" hx-push-url="true" class="flex gap-4 items-end" id="admin-users-filters">
             <div class="flex flex-col">
                 <label for="filter-role" class="text-sm font-semibold mb-1">{{ filter_role_label }}</label>
-                <select id="filter-role" name="role" class="px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800" onchange="this.form.dispatchEvent(new Event('submit'))">
+                <select id="filter-role" name="role" class="px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800" hx-trigger="change" hx-get="/admin/users" hx-target="#admin-users-panel" hx-swap="outerHTML" hx-push-url="true">
                     <option value="">{{ filter_role_all }}</option>
                     <option value="librarian" {% if filter_role == "librarian" %}selected{% endif %}>{{ role_librarian }}</option>
                     <option value="admin" {% if filter_role == "admin" %}selected{% endif %}>{{ role_admin }}</option>
@@ -19,7 +19,7 @@
 
             <div class="flex flex-col">
                 <label for="filter-status" class="text-sm font-semibold mb-1">{{ filter_status_label }}</label>
-                <select id="filter-status" name="status" class="px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800" onchange="this.form.dispatchEvent(new Event('submit'))">
+                <select id="filter-status" name="status" class="px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800" hx-trigger="change" hx-get="/admin/users" hx-target="#admin-users-panel" hx-swap="outerHTML" hx-push-url="true">
                     <option value="active" {% if filter_status == "active" %}selected{% endif %}>{{ filter_status_active }}</option>
                     <option value="deactivated" {% if filter_status == "deactivated" %}selected{% endif %}>{{ filter_status_deactivated }}</option>
                     <option value="all" {% if filter_status == "all" %}selected{% endif %}>{{ filter_status_all }}</option>
