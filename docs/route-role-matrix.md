@@ -1,7 +1,7 @@
 # Route Role Matrix
 
 **Status:** authoritative reference for Story 7-1 (anonymous browsing + role gating).
-**Last updated:** 2026-04-18 (story 8-2 — CSRF exempt-route section added).
+**Last updated:** 2026-04-19 (story 8-3 — 6 user-admin routes + deactivate/reactivate actions added).
 
 ## CSRF exemption (story 8-2)
 
@@ -155,8 +155,14 @@ Story 8-1 introduced the `/admin` surface. Every handler's first line is `sessio
 |--------|--------------------------|---------|--------|-------------|-------------------------------------------------------------|
 | GET    | `/admin`                 | —       | Admin  | —           | New (8-1). 5-tab shell; Librarian → 403, Anonymous → 303 /login. |
 | GET    | `/admin/health`          | —       | Admin  | —           | New (8-1). Health panel fragment (HTMX + direct).                 |
-| GET    | `/admin/users`           | —       | Admin  | —           | New (8-1). Stub panel — story 8-2 fills in.                       |
-| GET    | `/admin/reference-data`  | —       | Admin  | —           | New (8-1). Stub panel — story 8-3 fills in.                       |
+| GET    | `/admin/users`           | —       | Admin  | —           | New (8-1). List + form container (story 8-3 implements).           |
+| GET    | `/admin/users/new`       | —       | Admin  | —           | New (8-3). Create user form fragment (HTMX).                       |
+| POST   | `/admin/users`           | —       | Admin  | no          | New (8-3). Create user; validates; hashes password Argon2.        |
+| GET    | `/admin/users/{id}/edit` | —       | Admin  | —           | New (8-3). Edit user form fragment (HTMX, pre-filled).             |
+| POST   | `/admin/users/{id}`      | —       | Admin  | no          | New (8-3). Update user (role, username, optional password).        |
+| POST   | `/admin/users/{id}/deactivate` | — | Admin | no | New (8-3). Soft-delete user + invalidate sessions (atomic tx). |
+| POST   | `/admin/users/{id}/reactivate` | — | Admin | no | New (8-3). Clear `deleted_at`; user can log in again.              |
+| GET    | `/admin/reference-data`  | —       | Admin  | —           | New (8-1). Stub panel — story 8-3 fills in (reference data).      |
 | GET    | `/admin/trash`           | —       | Admin  | —           | New (8-1). Stub panel — story 8-5 fills in.                       |
 | GET    | `/admin/system`          | —       | Admin  | —           | New (8-1). Stub panel — story 8-4 fills in.                       |
 
