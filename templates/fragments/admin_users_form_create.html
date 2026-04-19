@@ -1,0 +1,37 @@
+{# Admin Users → Create form (story 8-3). #}
+<form id="admin-users-form-create" hx-post="/admin/users" hx-target="#admin-users-form-slot" hx-swap="innerHTML" class="space-y-4">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+
+    <div>
+        <label for="create-username" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ form_label_username }} *</label>
+        <input type="text" id="create-username" name="username" required autocomplete="username"
+               class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+    </div>
+
+    <div>
+        <label for="create-password" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ form_label_password }} *</label>
+        <input type="password" id="create-password" name="password" required autocomplete="new-password"
+               class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+    </div>
+
+    <div>
+        <label for="create-role" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ form_label_role }} *</label>
+        <select id="create-role" name="role" required
+                class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            <option value="librarian">{{ role_librarian }}</option>
+            <option value="admin">{{ role_admin }}</option>
+        </select>
+    </div>
+
+    <div class="flex justify-end gap-3 pt-4">
+        <button type="button" id="cancel-create"
+                hx-get="/admin/users" hx-target="#admin-users-form-slot" hx-swap="innerHTML"
+                class="px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-700 rounded-md hover:bg-stone-200 dark:hover:bg-stone-600">
+            {{ btn_cancel }}
+        </button>
+        <button type="submit" id="create-user-submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50">
+            {{ btn_save }}
+        </button>
+    </div>
+</form>

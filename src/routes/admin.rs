@@ -1,13 +1,13 @@
-//! Admin page shell + Health tab (story 8-1).
+//! Admin page shell + Health tab (story 8-1) + Users panel (story 8-3).
 //!
-//! One entry point (`GET /admin`) with five tabs. Health ships real content;
-//! the other four are stubs that later Epic 8 stories fill in exactly one at
+//! One entry point (`GET /admin`) with five tabs. Health and Users are complete;
+//! the other three are stubs that later Epic 8 stories fill in exactly one at
 //! a time:
-//!   - Users         → story 8-2
-//!   - Reference     → story 8-3
-//!   - System        → story 8-4
-//!   - Trash (view)  → story 8-5
-//!   - Trash (purge) → story 8-6
+//!   - Users         → story 8-3 ✓
+//!   - Reference     → story 8-4
+//!   - System        → story 8-5
+//!   - Trash (view)  → story 8-6
+//!   - Trash (purge) → story 8-7
 //!
 //! Middleware order follows AR16 — admin routes live at the top level
 //! alongside the non-catalog routes so they skip `pending_updates_middleware`
@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use askama::Template;
 use axum::Extension;
-use axum::extract::{OriginalUri, Query, State};
+use axum::extract::{Form, OriginalUri, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use serde::Deserialize;
@@ -26,9 +26,12 @@ use crate::AppState;
 use crate::error::AppError;
 use crate::metadata::registry::ProviderRegistry;
 use crate::middleware::auth::{Role, Session};
-use crate::middleware::htmx::HxRequest;
+use crate::middleware::htmx::{HtmxResponse, HxRequest};
 use crate::middleware::locale::Locale;
+use crate::models::user::UserModel;
+use crate::routes::catalog::feedback_html_pub;
 use crate::services::admin_health;
+use crate::services::password;
 use crate::tasks::provider_health::{ProviderHealthMap, ProviderStatus};
 use crate::utils::current_url;
 
@@ -243,6 +246,19 @@ struct AdminUsersPanel {
 }
 
 #[derive(Template)]
+#[template(path = "fragments/admin_users_form_create.html")]
+struct AdminUsersFormCreate {
+    csrf_token: String,
+    form_label_username: String,
+    form_label_password: String,
+    form_label_role: String,
+    role_librarian: String,
+    role_admin: String,
+    btn_cancel: String,
+    btn_save: String,
+}
+
+#[derive(Template)]
 #[template(path = "fragments/admin_reference_data_panel.html")]
 struct AdminReferenceDataPanel {
     stub_message: String,
@@ -319,18 +335,81 @@ pub async fn admin_users_create_form(
     Extension(locale): Extension<Locale>,
 ) -> Result<Html<String>, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
-    let form_html = format!(
-        "<p>{}</p>",
-        rust_i18n::t!("admin.placeholder.coming_in_story", locale = locale.0, story = "8-3-create-form")
-    );
-    Ok(Html(form_html))
+    let loc = locale.0;
+
+    let form = AdminUsersFormCreate {
+        csrf_token: session.csrf_token.clone(),
+        form_label_username: rust_i18n::t!("admin.users.form_label_username", locale = loc)
+            .to_string(),
+        form_label_password: rust_i18n::t!("admin.users.form_label_password", locale = loc)
+            .to_string(),
+        form_label_role: rust_i18n::t!("admin.users.form_label_role", locale = loc).to_string(),
+        role_librarian: rust_i18n::t!("admin.users.role_librarian", locale = loc).to_string(),
+        role_admin: rust_i18n::t!("admin.users.role_admin", locale = loc).to_string(),
+        btn_cancel: rust_i18n::t!("admin.users.btn_cancel", locale = loc).to_string(),
+        btn_save: rust_i18n::t!("admin.users.btn_save", locale = loc).to_string(),
+    };
+
+    let html = form
+        .render()
+        .map_err(|_| AppError::Internal("admin users create form render failed".to_string()))?;
+    Ok(Html(html))
 }
 
 pub async fn admin_users_create(
+    State(state): State<AppState>,
     session: Session,
-) -> Result<Response, AppError> {
+    Extension(locale): Extension<Locale>,
+    Form(form): Form<CreateUserForm>,
+) -> Result<HtmxResponse, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
-    Err(AppError::Internal("Not implemented".to_string()))
+    let loc = locale.0;
+
+    // Validate username (trim whitespace, check not empty)
+    let username = form.username.trim().to_string();
+    if username.is_empty() {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.user.username_empty", locale = loc).to_string(),
+        ));
+    }
+
+    // Validate password length (8-72 chars)
+    if form.password.len() < 8 {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.user.password_too_short", locale = loc).to_string(),
+        ));
+    }
+    if form.password.len() > 72 {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.user.password_too_long", locale = loc).to_string(),
+        ));
+    }
+
+    // Validate role
+    if form.role != "admin" && form.role != "librarian" {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.user.role_invalid", locale = loc).to_string(),
+        ));
+    }
+
+    // Hash password
+    let password_hash = password::hash_password(&form.password)?;
+
+    // Create user
+    UserModel::create(&state.pool, &username, &password_hash, &form.role).await?;
+
+    // Render feedback and updated users list
+    let success_msg = rust_i18n::t!("admin.users.success_created", locale = loc, username = &username)
+        .to_string();
+    let feedback = feedback_html_pub("success", &success_msg, "");
+
+    // Fetch fresh users list for the panel
+    let users_panel_html = render_users_panel(&state, loc, &session).await?;
+
+    Ok(HtmxResponse {
+        main: format!("{}{}", feedback, users_panel_html),
+        oob: vec![],
+    })
 }
 
 pub async fn admin_reference_data_panel(
