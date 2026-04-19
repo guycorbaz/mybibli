@@ -31,62 +31,7 @@
     <div id="admin-users-form-slot" aria-live="polite"></div>
 
     <div id="admin-users-list">
-        {% if users.is_empty() %}
-            <p class="text-stone-500 italic">{{ empty_state }}</p>
-        {% else %}
-            <table class="w-full border-collapse text-sm">
-                <thead>
-                    <tr class="bg-stone-100 dark:bg-stone-800 border-b border-stone-300">
-                        <th class="px-4 py-2 text-left font-semibold">{{ col_username }}</th>
-                        <th class="px-4 py-2 text-left font-semibold">{{ col_role }}</th>
-                        <th class="px-4 py-2 text-left font-semibold">{{ col_status }}</th>
-                        <th class="px-4 py-2 text-left font-semibold">{{ col_created }}</th>
-                        <th class="px-4 py-2 text-left font-semibold">{{ col_last_login }}</th>
-                        <th class="px-4 py-2 text-left font-semibold">{{ col_actions }}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for user in users %}
-                        <tr id="admin-users-row-{{ user.id }}" class="border-b border-stone-300 hover:bg-stone-50 dark:hover:bg-stone-900">
-                            <td class="px-4 py-2 font-mono">{{ user.username|e }}</td>
-                            <td class="px-4 py-2">{% if user.role == "admin" %}{{ role_admin }}{% else %}{{ role_librarian }}{% endif %}</td>
-                            <td class="px-4 py-2">
-                                {% if user.deleted_at.is_none() %}
-                                    <span class="px-2 py-1 bg-emerald-100 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-100 rounded text-xs">{{ status_active }}</span>
-                                {% else %}
-                                    <span class="px-2 py-1 bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 rounded text-xs">{{ status_deactivated }}</span>
-                                {% endif %}
-                            </td>
-                            <td class="px-4 py-2 text-xs">{{ user.created_at.format("%Y-%m-%d") }}</td>
-                            <td class="px-4 py-2 text-xs">
-                                {% if let Some(login_time) = user.last_login %}
-                                    {{ login_time.format("%Y-%m-%d") }}
-                                {% else %}
-                                    {{ last_login_never }}
-                                {% endif %}
-                            </td>
-                            <td class="px-4 py-2 space-x-1">
-                                <button hx-get="/admin/users/{{ user.id }}/edit" hx-target="#admin-users-row-{{ user.id }}" hx-swap="outerHTML" class="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">{{ btn_edit }}</button>
-                                {% if user.deleted_at.is_none() && user.id != acting_admin_id %}
-                                    <form method="POST" action="/admin/users/{{ user.id }}/deactivate" class="inline" hx-post="/admin/users/{{ user.id }}/deactivate" hx-confirm="Deactivate {{ user.username|e }}? They'll be signed out immediately." hx-target="#admin-users-row-{{ user.id }}" hx-swap="outerHTML">
-                                        <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
-                                        <input type="hidden" name="version" value="{{ user.version }}">
-                                        <button type="submit" class="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">{{ btn_deactivate }}</button>
-                                    </form>
-                                {% endif %}
-                                {% if user.deleted_at.is_some() %}
-                                    <form method="POST" action="/admin/users/{{ user.id }}/reactivate" class="inline" hx-post="/admin/users/{{ user.id }}/reactivate" hx-target="#admin-users-row-{{ user.id }}" hx-swap="outerHTML">
-                                        <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
-                                        <input type="hidden" name="version" value="{{ user.version }}">
-                                        <button type="submit" class="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">{{ btn_reactivate }}</button>
-                                    </form>
-                                {% endif %}
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% endif %}
+        {% include "fragments/admin_users_table.html" %}
     </div>
 
     {% if total_pages > 1 %}

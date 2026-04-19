@@ -275,7 +275,6 @@ struct AdminUsersRow {
     btn_edit: String,
     btn_deactivate: String,
     btn_reactivate: String,
-    confirm_deactivate: String,
     acting_admin_id: u64,
 }
 
@@ -908,8 +907,6 @@ async fn render_user_row(
         btn_edit: rust_i18n::t!("admin.users.btn_edit", locale = loc).to_string(),
         btn_deactivate: rust_i18n::t!("admin.users.btn_deactivate", locale = loc).to_string(),
         btn_reactivate: rust_i18n::t!("admin.users.btn_reactivate", locale = loc).to_string(),
-        confirm_deactivate: rust_i18n::t!("admin.users.confirm_deactivate", locale = loc, username = &user.username)
-            .to_string(),
         acting_admin_id: session.user_id.unwrap_or(0),
     };
 
