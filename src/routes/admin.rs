@@ -236,13 +236,11 @@ struct AdminUsersPanel {
     btn_deactivate: String,
     btn_reactivate: String,
     users: Vec<crate::models::user::UserRow>,
-    filter_role: Option<String>,
+    filter_role: String,
     filter_status: String,
     page: u32,
     total_pages: u32,
-    total_items: u64,
     acting_admin_id: u64,
-    confirm_deactivate: String,
 }
 
 #[derive(Template)]
@@ -546,7 +544,7 @@ pub async fn admin_users_update(
         if let Err(e) = UserModel::demote_guard(&state.pool, id, &form.role, acting_admin_id).await {
             return match e {
                 AppError::Conflict(ref msg) if msg == "last_admin_demote_blocked" => {
-                    Err(AppError::BadRequest(
+                    Err(AppError::Conflict(
                         rust_i18n::t!("error.user.last_admin_demote", locale = loc).to_string(),
                     ))
                 }
@@ -568,7 +566,7 @@ pub async fn admin_users_update(
     {
         return match e {
             AppError::Conflict(ref msg) if msg.contains("username_taken") => {
-                Err(AppError::BadRequest(
+                Err(AppError::Conflict(
                     rust_i18n::t!("error.user.username_taken", locale = loc, username = &username).to_string(),
                 ))
             }
@@ -607,14 +605,14 @@ pub async fn admin_users_deactivate(
     })?;
 
     // Deactivate the user (guards handled by UserModel::deactivate)
-    UserModel::deactivate(&state.pool, id, form.version, acting_admin_id).await?;
+    let sessions_killed = UserModel::deactivate(&state.pool, id, form.version, acting_admin_id).await?;
 
     // Fetch updated user and render row
     let user = UserModel::find_by_id(&state.pool, id)
         .await?
         .ok_or(AppError::NotFound("User not found".to_string()))?;
 
-    let success_msg = rust_i18n::t!("admin.users.success_deactivated", locale = loc, username = &user.username, count = 1)
+    let success_msg = rust_i18n::t!("admin.users.success_deactivated", locale = loc, username = &user.username, count = sessions_killed)
         .to_string();
     let feedback = feedback_html_pub("success", &success_msg, "");
 
@@ -800,6 +798,10 @@ async fn render_users_panel(
     let pool = &state.pool;
     let current_page = page.unwrap_or(1).max(1);
 
+    // TODO(8-3): These should come from query parameters; hardcoded for now
+    let filter_role_query: Option<String> = None;
+    let filter_status_query: Option<String> = None;
+
     let users = crate::models::user::UserModel::list_page(
         pool,
         None,
@@ -852,18 +854,11 @@ async fn render_users_panel(
         btn_deactivate: rust_i18n::t!("admin.users.btn_deactivate", locale = loc).to_string(),
         btn_reactivate: rust_i18n::t!("admin.users.btn_reactivate", locale = loc).to_string(),
         users,
-        filter_role: None,
-        filter_status: "active".to_string(),
+        filter_role: filter_role_query.unwrap_or_default(),
+        filter_status: filter_status_query.unwrap_or_else(|| "active".to_string()),
         page: current_page,
         total_pages,
-        total_items: total as u64,
         acting_admin_id: session.user_id.unwrap_or(0),
-        confirm_deactivate: rust_i18n::t!(
-            "admin.users.confirm_deactivate",
-            locale = loc,
-            username = ""
-        )
-        .to_string(),
     };
 
     panel

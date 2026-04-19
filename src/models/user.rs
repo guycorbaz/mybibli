@@ -4,6 +4,13 @@ use sqlx::Row;
 use crate::db::DbPool;
 use crate::error::AppError;
 
+fn validate_role(role: &str) -> Result<(), AppError> {
+    if !matches!(role, "librarian" | "admin" | "all" | "") {
+        return Err(AppError::BadRequest(format!("invalid role: {}", role)));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserStatus {
     Active,
@@ -48,6 +55,10 @@ impl UserModel {
         offset: u32,
         limit: u32,
     ) -> Result<Vec<UserRow>, AppError> {
+        if let Some(role) = filter_role {
+            validate_role(role)?;
+        }
+
         let mut query_str = String::from(
             "SELECT u.id, u.username, u.role, u.preferred_language, u.created_at, u.deleted_at, u.version, \
                     (SELECT MAX(s.created_at) FROM sessions s WHERE s.user_id = u.id) AS last_login \
@@ -93,6 +104,10 @@ impl UserModel {
         filter_role: Option<&str>,
         filter_status: UserStatus,
     ) -> Result<i64, AppError> {
+        if let Some(role) = filter_role {
+            validate_role(role)?;
+        }
+
         let mut query_str = String::from("SELECT COUNT(*) FROM users WHERE 1=1");
 
         match filter_status {
@@ -252,12 +267,13 @@ impl UserModel {
     /// Deactivate a user (soft-delete) in a single transaction.
     /// Also invalidates all live sessions for that user immediately.
     /// Guards: self-deactivate + last-admin.
+    /// Returns the number of sessions that were invalidated.
     pub async fn deactivate(
         pool: &DbPool,
         id: u64,
         version: i32,
         acting_admin_id: u64,
-    ) -> Result<(), AppError> {
+    ) -> Result<u64, AppError> {
         let mut tx = pool.begin().await?;
 
         // Row lock the target user to prevent race conditions on the admin-count check.
@@ -313,7 +329,7 @@ impl UserModel {
         tx.commit().await?;
 
         tracing::info!(user_id = id, sessions_killed = sessions_killed_count, "User deactivated and sessions invalidated");
-        Ok(())
+        Ok(sessions_killed_count)
     }
 
     /// Reactivate a user (clear deleted_at).
@@ -336,44 +352,43 @@ impl UserModel {
 
     /// Guard: check if demoting a user's role would leave no active admins.
     /// Called before update() when the role is changing.
+    /// Only applies if changing FROM admin TO non-admin.
     pub async fn demote_guard(
         pool: &DbPool,
         target_id: u64,
         new_role: &str,
-        acting_admin_id: u64,
+        _acting_admin_id: u64,
     ) -> Result<(), AppError> {
-        // Only check if the target is the acting admin and the new role is not admin
-        if target_id == acting_admin_id && new_role != "admin" {
-            let mut tx = pool.begin().await?;
-
-            // Row lock the target user to prevent race conditions on the admin-count check.
-            let target: Option<(String,)> = sqlx::query_as(
-                "SELECT role FROM users WHERE id = ? AND deleted_at IS NULL FOR UPDATE"
-            )
-            .bind(target_id)
-            .fetch_optional(&mut *tx)
-            .await?;
-
-            let (target_role,) = target.ok_or_else(|| AppError::NotFound("user".to_string()))?;
-
-            // Recheck: ensure we're still demoting an admin
-            if target_role == "admin" {
-                let remaining: (i64,) = sqlx::query_as(
-                    "SELECT COUNT(*) FROM users WHERE role = 'admin' AND deleted_at IS NULL AND id != ?"
-                )
-                .bind(target_id)
-                .fetch_one(&mut *tx)
-                .await?;
-
-                if remaining.0 == 0 {
-                    tracing::warn!(user_id = target_id, "Role demote blocked: last active admin");
-                    return Err(AppError::Conflict("last_admin_demote_blocked".to_string()));
-                }
-            }
-
-            tx.commit().await?;
+        if new_role == "admin" {
+            return Ok(());
         }
 
+        let mut tx = pool.begin().await?;
+
+        let target: Option<(String,)> = sqlx::query_as(
+            "SELECT role FROM users WHERE id = ? AND deleted_at IS NULL FOR UPDATE"
+        )
+        .bind(target_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let (target_role,) = target.ok_or_else(|| AppError::NotFound("user".to_string()))?;
+
+        if target_role == "admin" {
+            let remaining: (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND deleted_at IS NULL AND id != ?"
+            )
+            .bind(target_id)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            if remaining.0 == 0 {
+                tracing::warn!(user_id = target_id, "Role demote blocked: would leave no active admins");
+                return Err(AppError::Conflict("last_admin_demote_blocked".to_string()));
+            }
+        }
+
+        tx.commit().await?;
         Ok(())
     }
 }
