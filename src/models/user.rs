@@ -359,12 +359,6 @@ impl UserModel {
             return Ok(());
         }
 
-        // Prevent self-demotion
-        if target_id == acting_admin_id {
-            tracing::warn!(user_id = target_id, "Self-demotion blocked");
-            return Err(AppError::Conflict("last_admin_demote_blocked".to_string()));
-        }
-
         let mut tx = pool.begin().await?;
 
         let target: Option<(String,)> = sqlx::query_as(
@@ -385,8 +379,13 @@ impl UserModel {
             .await?;
 
             if remaining.0 == 0 {
-                tracing::warn!(user_id = target_id, "Role demote blocked: would leave no active admins");
-                return Err(AppError::Conflict("last_admin_demote_blocked".to_string()));
+                if target_id == acting_admin_id {
+                    tracing::warn!(user_id = target_id, "Self-demotion blocked: last active admin");
+                    return Err(AppError::Conflict("last_admin_demote_blocked".to_string()));
+                } else {
+                    tracing::warn!(user_id = target_id, "Role demote blocked: would leave no active admins");
+                    return Err(AppError::Conflict("last_admin_demote_blocked".to_string()));
+                }
             }
         }
 
