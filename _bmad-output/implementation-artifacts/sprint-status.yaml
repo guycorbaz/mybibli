@@ -148,7 +148,7 @@ development_status:
   epic-8: in-progress
   8-1-admin-shell-and-health-tab: done
   8-2-csrf-middleware-and-form-token-injection: done
-  8-3-user-administration: done
+  8-3-user-administration: in-progress
   8-4-reference-data-management: backlog
   8-5-system-settings: backlog
   8-6-trash-view-and-restore: backlog

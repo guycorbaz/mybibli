@@ -1,6 +1,6 @@
 # Story 8.3: User administration
 
-Status: done
+Status: ready-for-dev
 
 Epic: 8 — Administration & Configuration
 Requirements mapping: FR68 (admin user CRUD + role assignment), NFR13 (role isolation), NFR39 (25 items/page), AR9 (settings cache not applicable — user state is per-row, no cache), UX-DR7 (Users tab content), Foundation Rules #1–#7
@@ -524,7 +524,7 @@ This story's Deactivate button is a legitimate destructive-confirm. Two options:
 
 ---
 
-## Review Findings (Code Review Pass 3 — 2026-04-20 Adversarial + Edge Case + Acceptance Audit)
+## Review Findings (Code Review Pass 2 — 2026-04-20 Comprehensive Triage)
 
 **Review Scope:** Full parallel review with 3 independent layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor). 37 total findings identified and triaged.
 
@@ -614,47 +614,6 @@ This story's Deactivate button is a legitimate destructive-confirm. Two options:
 ---
 
 **Consolidated Summary:** 37 findings (13 Blind + 12 Edge Case + 12 Auditor) → 33 patches + 4 deferred. **14 blocking issues** (4 CRITICAL + 10 HIGH) prevent merge. All are actionable patches with unambiguous fixes.
-
----
-
-### Review Findings (Code Review Pass 3 — Independent Adversarial + Edge Case + Acceptance Audit)
-
-**Summary:** 3 Critical, 1 High, 2 Medium patches identified. All ACs satisfied per Acceptance Auditor. 3 false positives dismissed (hx-confirm allowlist already fixed, routes already registered, SQL injection adequately protected).
-
-**CRITICAL Patches:**
-
-- [ ] [Review][Patch] Race condition: demote_guard + update non-atomic [src/routes/admin.rs:1744,1757]
-  - Between `demote_guard()` check and `UserModel::update()`, another admin could be deactivated, leaving zero admins. Fix: Wrap both in single transaction or move guard logic into `update()`.
-  - **Status:** Deferred — requires architectural refactoring to make operations atomic.
-
-- [x] [Review][Patch] Unused `_acting_admin_id` parameter in demote_guard [src/models/user.rs:882]
-  - Parameter is now used to check for self-demotion: `if target_id == acting_admin_id → Conflict("last_admin_demote_blocked")`. Fix applied in commit 24d7ee3.
-
-- [ ] [Review][Patch] Version mismatch not validated before demote_guard lock [src/models/user.rs:878-915]
-  - Guard acquires row lock but doesn't check version. Stale version passes guard but fails in update with confusing error message. Fix: Check version matches in demote_guard transaction, fail early.
-  - **Status:** Deferred — requires sqlx offline cache update for new query signature.
-
-**HIGH Patches:**
-
-- [x] [Review][Patch] Empty password allows whitespace-only submission [src/routes/admin.rs:1722-1736]
-  - Password field now trimmed before `is_empty()` check. Whitespace-only input is treated as empty (no password change). Fix applied in commit 24d7ee3.
-
-**MEDIUM Patches:**
-
-- [ ] [Review][Patch] Invalid pagination silently clamped with no feedback [src/routes/admin.rs:2007-2043]
-  - Page 999 silently becomes page 3. No feedback to user. Contradicts CLAUDE.md UX principle. Fix: Show feedback "Requested page not found; showing last page" or clamp to [1, total_pages].
-  - **Status:** Deferred — requires template context and feedback rendering changes.
-
-- [x] [Review][Patch] Session kill count not traced/logged [src/routes/admin.rs:1815]
-  - Added `tracing::info!(user_id = id, sessions_killed, "user deactivated")` call after deactivation. Fix applied in commit 24d7ee3.
-
-**Dismissed (False Positives):**
-
-- [x] [Review][Dismiss] hx-confirm allowlist entry — already in code (templates_audit.rs line 40, allowlist has 5 entries)
-- [x] [Review][Dismiss] Missing route registrations — routes ARE in diff (src/routes/mod.rs:223-228)
-- [x] [Review][Dismiss] SQL injection risk — adequately protected by validate_role() check
-
----
 
 ## Dev Notes
 
@@ -848,49 +807,8 @@ _Populated by dev-story run._
 
 ### Completion Notes List
 
-✅ **Code Review Pass 2 Patches Applied (2026-04-20)**
-- ✅ Pagination `?page=` parameter now correctly used to calculate offset
-- ✅ `hx-confirm` allowlist extended from 4 → 5 (admin_users_row.html Deactivate button)
-- ✅ `demote_guard` function includes `FOR UPDATE` row-lock for race-safety
-- ✅ `demote_guard` is properly called in `admin_users_update` with error handling
-- ✅ Success OOB swaps added for deactivate/reactivate handlers
-- ✅ Error mapping for `username_taken` included in update handler
-- ✅ Upper bound pagination clamp applied (`current_page.min(total_pages)`)
-- ✅ Template scope verified; variables properly passed to partials
-- ✅ Filter validation applied; invalid status falls back to "active"
-- ✅ Password validation (8-72 bytes) enforced across create/update handlers
-- ✅ All 510 unit tests pass (17 user model tests + 493 regression tests)
-- ✅ All template audits pass (CSRF forms, hx-confirm allowlist, CSP)
-- ✅ `cargo clippy` reports zero warnings
-
-**Ready for code review. All acceptance criteria satisfied. E2E tests deferred to next Epic 8 story per test capacity.**
+_Populated by dev-story run._
 
 ### File List
 
-**New files:**
-- `src/models/user.rs` — User CRUD model with soft-delete deactivation semantics
-- `src/services/password.rs` — DRY password hashing extraction (Argon2)
-- `templates/fragments/admin_users_panel.html` — Main Users panel (replaces stub)
-- `templates/fragments/admin_users_table.html` — Table shell with row loop
-- `templates/fragments/admin_users_row.html` — Single user row with status-dependent actions
-- `templates/fragments/admin_users_form_create.html` — Create user inline form
-- `templates/fragments/admin_users_form_edit.html` — Edit user inline form
-
-**Modified files:**
-- `src/models/mod.rs` — Registered `pub mod user`
-- `src/services/mod.rs` — Registered `pub mod password`
-- `src/services/password.rs` — Created with `hash_password` and `verify_password`
-- `src/routes/admin.rs` — 6 new handlers + form structs + render helpers
-- `src/routes/auth.rs` — Updated to use `services::password::verify_password`
-- `src/routes/mod.rs` — 6 new routes under `/admin/users/*`
-- `src/templates_audit.rs` — Allowlist extended: 4 → 5 entries
-- `locales/en.yml` + `locales/fr.yml` — Added admin.users.* and error.user.* keys
-- `CLAUDE.md` — Updated: hx-confirm allowlist now 5, user-admin deactivate semantics documented
-- `docs/route-role-matrix.md` — Added 6 new rows (Admin role, CSRF-protected)
-- `_bmad-output/planning-artifacts/architecture.md` — Auth & Security section updated
-
-**NOT modified (as designed):**
-- `migrations/` — No schema changes required; `users.deleted_at` used for soft-delete
-- `src/middleware/csrf.rs` — Exempt routes frozen at `[("POST", "/login")]`
-- `src/services/soft_delete.rs` — Users deliberately NOT added to ALLOWED_TABLES
-- `Cargo.toml` — No new dependencies; argon2 already present
+_Populated by dev-story run._
