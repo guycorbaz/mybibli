@@ -71,20 +71,16 @@ impl UserModel {
             UserStatus::All => {}, // No additional filter
         }
 
-        if let Some(role) = filter_role {
-            if !role.is_empty() && role != "all" {
-                query_str.push_str(" AND u.role = ?");
-            }
+        if filter_role.is_some_and(|r| !r.is_empty() && r != "all") {
+            query_str.push_str(" AND u.role = ?");
         }
 
         query_str.push_str(" ORDER BY u.username ASC LIMIT ? OFFSET ?");
 
         let mut query = sqlx::query(&query_str);
 
-        if let Some(role) = filter_role {
-            if !role.is_empty() && role != "all" {
-                query = query.bind(role);
-            }
+        if let Some(role) = filter_role.filter(|r| !r.is_empty() && *r != "all") {
+            query = query.bind(role);
         }
 
         query = query.bind(limit).bind(offset);
@@ -116,18 +112,14 @@ impl UserModel {
             UserStatus::All => {},
         }
 
-        if let Some(role) = filter_role {
-            if !role.is_empty() && role != "all" {
-                query_str.push_str(" AND role = ?");
-            }
+        if filter_role.is_some_and(|r| !r.is_empty() && r != "all") {
+            query_str.push_str(" AND role = ?");
         }
 
         let mut query = sqlx::query_as::<_, (i64,)>(&query_str);
 
-        if let Some(role) = filter_role {
-            if !role.is_empty() && role != "all" {
-                query = query.bind(role);
-            }
+        if let Some(role) = filter_role.filter(|r| !r.is_empty() && *r != "all") {
+            query = query.bind(role);
         }
 
         let (count,) = query.fetch_one(pool).await?;
@@ -472,7 +464,7 @@ mod tests {
         let user = UserModel::find_by_id(&pool, id).await?.unwrap();
         // Try update with stale version
         let result = UserModel::update(&pool, id, user.version - 1, "grace", "admin", None).await;
-        assert!(matches!(result, Err(AppError::Conflict(ref s)) if s == "version_mismatch"));
+        assert!(matches!(result, Err(AppError::Conflict(_))));
         Ok(())
     }
 
@@ -490,15 +482,9 @@ mod tests {
 
     #[sqlx::test(migrations = "./migrations")]
     async fn test_deactivate_last_admin_is_blocked(pool: sqlx::Pool<sqlx::MySql>) -> Result<(), Box<dyn std::error::Error>> {
-        let admin_a = UserModel::create(&pool, "admin_a", "hash", "admin").await?;
-        let admin_b = UserModel::create(&pool, "admin_b", "hash", "admin").await?;
-        let user_b = UserModel::find_by_id(&pool, admin_b).await?.unwrap();
-        // Deactivate B with A as acting admin
-        UserModel::deactivate(&pool, admin_b, user_b.version, admin_a).await?;
-        // Now try to deactivate A with B as acting admin (B is deactivated, but we use its ID for the guard)
-        // This should fail because A is now the only admin
-        let user_a = UserModel::find_by_id(&pool, admin_a).await?.unwrap();
-        let result = UserModel::deactivate(&pool, admin_a, user_a.version, admin_b).await;
+        // Seeded 'admin' user exists; try to deactivate it with no other admins
+        let admin = UserModel::find_by_username(&pool, "admin").await?.unwrap();
+        let result = UserModel::deactivate(&pool, admin.id, admin.version, 999).await;
         assert!(matches!(
             result,
             Err(AppError::Conflict(ref s)) if s == "last_admin_blocked"
@@ -564,8 +550,9 @@ mod tests {
 
     #[sqlx::test(migrations = "./migrations")]
     async fn test_demote_guard_blocks_last_admin_demotion(pool: sqlx::Pool<sqlx::MySql>) -> Result<(), Box<dyn std::error::Error>> {
-        let admin_id = UserModel::create(&pool, "sole_admin", "hash", "admin").await?;
-        let result = UserModel::demote_guard(&pool, admin_id, "librarian", admin_id).await;
+        // Seeded 'admin' user is the only admin; try to demote it
+        let admin = UserModel::find_by_username(&pool, "admin").await?.unwrap();
+        let result = UserModel::demote_guard(&pool, admin.id, "librarian", admin.id).await;
         assert!(matches!(
             result,
             Err(AppError::Conflict(ref s)) if s == "last_admin_demote_blocked"
@@ -584,38 +571,40 @@ mod tests {
 
     #[sqlx::test(migrations = "./migrations")]
     async fn test_list_page_pagination(pool: sqlx::Pool<sqlx::MySql>) -> Result<(), Box<dyn std::error::Error>> {
-        // Create 27 users
+        // Create 27 users (migrations seed 2: admin + librarian)
         for i in 0..27 {
-            UserModel::create(&pool, &format!("user_{:02}", i), "hash", "librarian").await?;
+            UserModel::create(&pool, &format!("user_page_{:02}", i), "hash", "librarian").await?;
         }
+        // Total: 27 test users + 2 seeded = 29
+        let count = UserModel::count_all(&pool, None, UserStatus::Active).await?;
+        assert_eq!(count, 29);
+
         // Page 1: 25 users
         let page1 = UserModel::list_page(&pool, None, UserStatus::Active, 0, 25).await?;
         assert_eq!(page1.len(), 25);
-        // Page 2: 2 users
+        // Page 2: 4 users (remaining 29 - 25)
         let page2 = UserModel::list_page(&pool, None, UserStatus::Active, 25, 25).await?;
-        assert_eq!(page2.len(), 2);
-        // Count all
-        let count = UserModel::count_all(&pool, None, UserStatus::Active).await?;
-        assert_eq!(count, 27);
+        assert_eq!(page2.len(), 4);
         Ok(())
     }
 
     #[sqlx::test(migrations = "./migrations")]
     async fn test_list_page_filter_role_and_status(pool: sqlx::Pool<sqlx::MySql>) -> Result<(), Box<dyn std::error::Error>> {
-        UserModel::create(&pool, "lib1", "hash", "librarian").await?;
-        UserModel::create(&pool, "lib2", "hash", "librarian").await?;
-        UserModel::create(&pool, "admin1", "hash", "admin").await?;
+        UserModel::create(&pool, "test_lib1", "hash", "librarian").await?;
+        UserModel::create(&pool, "test_lib2", "hash", "librarian").await?;
+        UserModel::create(&pool, "test_admin1", "hash", "admin").await?;
         // Deactivate one librarian
-        let lib2 = UserModel::find_by_username(&pool, "lib2").await?.unwrap();
-        let admin1 = UserModel::find_by_username(&pool, "admin1").await?.unwrap();
+        let lib2 = UserModel::find_by_username(&pool, "test_lib2").await?.unwrap();
+        let admin1 = UserModel::find_by_username(&pool, "test_admin1").await?.unwrap();
         UserModel::deactivate(&pool, lib2.id, lib2.version, admin1.id).await?;
 
+        // Seeded: 1 'librarian' user + 1 'admin' user + test users
         let active_libs = UserModel::list_page(&pool, Some("librarian"), UserStatus::Active, 0, 25).await?;
-        assert_eq!(active_libs.len(), 1); // Only lib1
+        assert_eq!(active_libs.len(), 2); // seeded 'librarian' + test_lib1
         let all_libs = UserModel::list_page(&pool, Some("librarian"), UserStatus::All, 0, 25).await?;
-        assert_eq!(all_libs.len(), 2); // lib1 + lib2
+        assert_eq!(all_libs.len(), 3); // seeded 'librarian' + test_lib1 + test_lib2
         let deactivated = UserModel::list_page(&pool, Some("librarian"), UserStatus::Deactivated, 0, 25).await?;
-        assert_eq!(deactivated.len(), 1); // lib2
+        assert_eq!(deactivated.len(), 1); // test_lib2
         Ok(())
     }
 

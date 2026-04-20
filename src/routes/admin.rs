@@ -213,6 +213,11 @@ struct ProviderHealthRow {
     last_checked_label: String,
 }
 
+struct UserWithConfirm {
+    user: crate::models::user::UserRow,
+    confirm_deactivate: String,
+}
+
 #[derive(Template)]
 #[template(path = "fragments/admin_users_panel.html")]
 struct AdminUsersPanel {
@@ -241,7 +246,7 @@ struct AdminUsersPanel {
     btn_edit: String,
     btn_deactivate: String,
     btn_reactivate: String,
-    users: Vec<crate::models::user::UserRow>,
+    users: Vec<UserWithConfirm>,
     filter_role: String,
     filter_status: String,
     page: u32,
@@ -275,6 +280,7 @@ struct AdminUsersRow {
     btn_edit: String,
     btn_deactivate: String,
     btn_reactivate: String,
+    confirm_deactivate: String,
     acting_admin_id: u64,
 }
 
@@ -827,7 +833,7 @@ async fn render_users_panel(
         _ => crate::models::user::UserStatus::Active,
     };
 
-    let users = crate::models::user::UserModel::list_page(
+    let users_raw = crate::models::user::UserModel::list_page(
         pool,
         role_filter,
         status_filter,
@@ -835,6 +841,13 @@ async fn render_users_panel(
         25,
     )
     .await?;
+
+    // Wrap users with their confirm messages
+    let users: Vec<UserWithConfirm> = users_raw.into_iter().map(|user| {
+        let confirm_deactivate = rust_i18n::t!("admin.users.confirm_deactivate", locale = loc, username = &user.username)
+            .to_string();
+        UserWithConfirm { user, confirm_deactivate }
+    }).collect();
 
     let total = crate::models::user::UserModel::count_all(
         pool,
@@ -896,6 +909,9 @@ async fn render_user_row(
     session: &Session,
     user: &crate::models::user::UserRow,
 ) -> Result<String, AppError> {
+    let confirm_deactivate = rust_i18n::t!("admin.users.confirm_deactivate", locale = loc, username = &user.username)
+        .to_string();
+
     let row = AdminUsersRow {
         user: user.clone(),
         csrf_token: session.csrf_token.clone(),
@@ -907,6 +923,7 @@ async fn render_user_row(
         btn_edit: rust_i18n::t!("admin.users.btn_edit", locale = loc).to_string(),
         btn_deactivate: rust_i18n::t!("admin.users.btn_deactivate", locale = loc).to_string(),
         btn_reactivate: rust_i18n::t!("admin.users.btn_reactivate", locale = loc).to_string(),
+        confirm_deactivate,
         acting_admin_id: session.user_id.unwrap_or(0),
     };
 
