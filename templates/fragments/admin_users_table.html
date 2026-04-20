@@ -1,0 +1,24 @@
+{# Admin → Users table (story 8-3, HIGH #13: template separation). #}
+{% if users.is_empty() %}
+    <p class="text-stone-500 italic">{{ empty_state }}</p>
+{% else %}
+    <table class="w-full border-collapse text-sm">
+        <thead>
+            <tr class="bg-stone-100 dark:bg-stone-800 border-b border-stone-300">
+                <th class="px-4 py-2 text-left font-semibold">{{ col_username }}</th>
+                <th class="px-4 py-2 text-left font-semibold">{{ col_role }}</th>
+                <th class="px-4 py-2 text-left font-semibold">{{ col_status }}</th>
+                <th class="px-4 py-2 text-left font-semibold">{{ col_created }}</th>
+                <th class="px-4 py-2 text-left font-semibold">{{ col_last_login }}</th>
+                <th class="px-4 py-2 text-left font-semibold">{{ col_actions }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in users %}
+                {% let user = item.user %}
+                {% let confirm_deactivate = item.confirm_deactivate %}
+                {% include "fragments/admin_users_row.html" %}
+            {% endfor %}
+        </tbody>
+    </table>
+{% endif %}

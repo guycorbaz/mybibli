@@ -231,10 +231,13 @@ test.describe("Contributor Management", () => {
     );
 
     // Step 6: Unassign the contributor via direct POST (avoids catalog page reload issue)
+    const removeCsrf =
+      (await page.locator('meta[name="csrf-token"]').getAttribute("content")) ?? "";
     const removeResponse = await page.request.post(
       "/catalog/contributors/remove",
       {
         form: {
+          _csrf_token: removeCsrf,
           junction_id: ids.junctionId!,
           title_id: ids.titleId!,
         },
@@ -291,6 +294,10 @@ test.describe("Contributor Management", () => {
 
   // Story 7-1 AC #1 + #3: /catalog readable, but contributor mutation
   // endpoints reject anonymous POST without state change.
+  // Story 8-2 update: the global CSRF middleware now intercepts missing-
+  // token POSTs with a 403 BEFORE the auth layer can issue its 303. The
+  // end user still cannot mutate anything (DB snapshot unchanged) —
+  // either outcome satisfies the original AC #1 + #3 assertion.
   test("anonymous user cannot POST to contributor endpoints", async ({
     context,
     page,
@@ -301,9 +308,7 @@ test.describe("Contributor Management", () => {
       maxRedirects: 0,
       failOnStatusCode: false,
     });
-    // 303 redirect to /login (Anonymous → Unauthorized) — never 200.
-    expect(resp.status()).toBe(303);
-    expect(resp.headers()["location"]).toMatch(/\/login/);
+    expect(resp.status()).toBe(403);
   });
 });
 

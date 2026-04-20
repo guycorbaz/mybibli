@@ -53,6 +53,14 @@ pub trait MetadataProvider: Send + Sync {
     fn rate_limiter(&self) -> Option<Arc<RateLimiter>> {
         None // Default: no rate limiting
     }
+
+    /// Canonical homepage URL used by the background provider-health task
+    /// (story 8-1). Pings hit a cheap HEAD-able endpoint that does NOT count
+    /// against API quotas. Providers without a reachable public URL return
+    /// `None` and render as "n/a" in the Admin → Health tab.
+    fn health_check_url(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// Errors that can occur during metadata lookup.

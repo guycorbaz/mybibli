@@ -1,9 +1,11 @@
+pub mod admin_health;
 pub mod borrowers;
 pub mod contributor;
 pub mod cover;
 pub mod loans;
 pub mod locations;
 pub mod locking;
+pub mod password;
 pub mod search;
 pub mod series;
 pub mod soft_delete;

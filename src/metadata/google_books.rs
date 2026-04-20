@@ -130,6 +130,10 @@ impl MetadataProvider for GoogleBooksProvider {
 
         Ok(Self::parse_response(&json))
     }
+
+    fn health_check_url(&self) -> Option<&str> {
+        Some("https://www.googleapis.com/books/v1/")
+    }
 }
 
 #[cfg(test)]

@@ -184,6 +184,10 @@ error:
   forbidden:
     title: Accès refusé
     body: Votre compte ne dispose pas des droits nécessaires pour cette action. Contactez un administrateur si vous avez besoin d'un accès.
+  csrf_rejected_title: Session expirée
+  csrf_rejected_message: Votre jeton CSRF est manquant ou expiré. Actualisez la page et réessayez.
+  csrf_payload_too_large_title: Requête trop volumineuse
+  csrf_payload_too_large_message: Le formulaire envoyé dépasse la limite de taille du serveur. Raccourcissez votre saisie et réessayez.
   title:
     creation_failed: La création du titre a échoué
     required: Le titre est obligatoire
@@ -200,6 +204,17 @@ error:
   delete_has_references: "Suppression impossible : l'élément est référencé par des enregistrements actifs."
   contributor:
     has_titles: "Impossible de supprimer %{name}. Ce contributeur est associé à %{count} titre(s). Retirez d'abord le contributeur de tous les titres."
+  user:
+    username_empty: "Le nom d'utilisateur est requis"
+    username_taken: "Le nom d'utilisateur « %{username} » est déjà pris"
+    password_too_short: "Le mot de passe doit contenir au moins 8 caractères"
+    password_too_long: "Le mot de passe ne peut dépasser 72 caractères"
+    role_invalid: "Le rôle doit être Bibliothécaire ou Admin"
+    self_deactivate: "Vous ne pouvez pas désactiver votre propre compte"
+    last_admin: "Au moins un administrateur actif doit rester"
+    last_admin_demote: "Vous êtes le seul administrateur actif — créez-en un autre avant de changer votre rôle"
+    not_found: "Utilisateur introuvable"
+    version_mismatch: "L'utilisateur a été modifié par un autre administrateur — rechargez et réessayez"
   code:
     unsupported_type: Type de code non pris en charge
 guide:
@@ -368,3 +383,73 @@ session:
   expiry_in_minutes: "Votre session expirera dans %{minutes} min."
   stay_connected: Rester connecté
   dismiss_aria: Fermer
+admin:
+  page_title: Administration
+  tabs_aria: "Onglets d'administration"
+  tabs:
+    health: "Santé"
+    users: Utilisateurs
+    reference_data: "Données de référence"
+    trash: Corbeille
+    system: "Système"
+  trash:
+    badge_aria: "Corbeille, %{count} éléments"
+  health:
+    versions_heading: Versions
+    app_version: "Version de l'application"
+    db_version: "Version de la base de données"
+    disk_usage: "Espace disque"
+    disk_usage_format: "%{used} / %{total} utilisés (%{pct} %)"
+    disk_usage_unknown: Inconnu
+    counts_heading: "Compteurs d'entités"
+    count_titles: Titres
+    count_volumes: Volumes
+    count_contributors: Contributeurs
+    count_borrowers: Emprunteurs
+    count_active_loans: "Prêts actifs"
+    providers_heading: "Fournisseurs de métadonnées"
+    provider_status_up: Accessible
+    provider_status_down: Inaccessible
+    provider_status_unknown: Inconnu
+    provider_status_na: "n/a"
+    last_checked: "Dernier contrôle : %{when}"
+    last_checked_never: Jamais
+  users:
+    heading: "Comptes utilisateurs"
+    empty_state: "Vous êtes seul·e ! Créez un compte Bibliothécaire pour les membres du foyer."
+    pagination_aria: "Pagination de la liste des utilisateurs"
+    filter_role_label: "Filtrer par rôle"
+    filter_status_label: "Filtrer par statut"
+    filter_role_all: "Tous les rôles"
+    filter_status_active: "Actifs"
+    filter_status_deactivated: "Désactivés"
+    filter_status_all: "Tous"
+    col_username: "Nom d'utilisateur"
+    col_role: "Rôle"
+    col_status: "Statut"
+    col_created: "Créé le"
+    col_last_login: "Dernière connexion"
+    col_actions: "Actions"
+    role_librarian: "Bibliothécaire"
+    role_admin: "Admin"
+    status_active: "Actif"
+    status_deactivated: "Désactivé"
+    last_login_never: "Jamais"
+    btn_new: "Nouvel utilisateur"
+    btn_edit: "Modifier"
+    btn_deactivate: "Désactiver"
+    btn_reactivate: "Réactiver"
+    btn_save: "Enregistrer"
+    btn_cancel: "Annuler"
+    form_label_username: "Nom d'utilisateur"
+    form_label_password: "Mot de passe"
+    form_label_password_edit: "Mot de passe (laisser vide pour conserver l'actuel)"
+    form_label_role: "Rôle"
+    confirm_deactivate: "Désactiver %{username} ? La personne sera déconnectée immédiatement et ne pourra plus se connecter jusqu'à réactivation."
+    success_created: "Utilisateur %{username} créé"
+    success_updated: "Utilisateur %{username} mis à jour"
+    success_deactivated: "Utilisateur %{username} désactivé (%{count} session(s) terminée(s))"
+    success_reactivated: "Utilisateur %{username} réactivé"
+  placeholder:
+    coming_in_story: "À venir dans la story %{story}"
+    trash_preview: "Aperçu des éléments supprimés — liste complète et restauration dans la story 8-5."

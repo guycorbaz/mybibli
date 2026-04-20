@@ -22,6 +22,7 @@ pub struct LoginTemplate {
     pub current_page: &'static str,
     pub skip_label: String,
     pub session_timeout_secs: u64,
+    pub csrf_token: String,
     pub nav_catalog: String,
     pub nav_loans: String,
     pub nav_locations: String,
@@ -42,7 +43,13 @@ pub struct LoginTemplate {
 }
 
 impl LoginTemplate {
-    fn new(error_message: &str, next: &str, loc: &str, current_url_value: String) -> Self {
+    fn new(
+        error_message: &str,
+        next: &str,
+        loc: &str,
+        current_url_value: String,
+        csrf_token: String,
+    ) -> Self {
         let next = if is_safe_next(next) {
             next.to_string()
         } else {
@@ -55,6 +62,7 @@ impl LoginTemplate {
             skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
             // Login page is anonymous — value is not rendered (guarded in base.html).
             session_timeout_secs: 0,
+            csrf_token,
             nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
             nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
             nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
@@ -101,7 +109,13 @@ pub async fn login_page(
         return Ok(Redirect::to(target).into_response());
     }
 
-    let template = LoginTemplate::new("", &query.next, locale.0, current_url(&uri));
+    let template = LoginTemplate::new(
+        "",
+        &query.next,
+        locale.0,
+        current_url(&uri),
+        session.csrf_token.clone(),
+    );
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
         Err(e) => {
@@ -125,6 +139,7 @@ pub async fn login(
     State(state): State<AppState>,
     Extension(locale): Extension<Locale>,
     OriginalUri(uri): OriginalUri,
+    session: Session,
     jar: CookieJar,
     axum::Form(form): axum::Form<LoginRequest>,
 ) -> Result<(CookieJar, impl IntoResponse), AppError> {
@@ -144,28 +159,57 @@ pub async fn login(
 
     let Some((user_id, password_hash, role, preferred_language)) = user_row else {
         tracing::info!(username = %username, "Login failed: user not found");
-        return render_login_error(jar, &form.next, locale.0, url_for_toggle);
+        return render_login_error(
+            jar,
+            &form.next,
+            locale.0,
+            url_for_toggle,
+            session.csrf_token.clone(),
+        );
     };
 
     // Verify password with Argon2
-    if !verify_password(password, &password_hash) {
+    if !crate::services::password::verify_password(password, &password_hash) {
         tracing::info!(username = %username, "Login failed: invalid password");
-        return render_login_error(jar, &form.next, locale.0, url_for_toggle);
+        return render_login_error(
+            jar,
+            &form.next,
+            locale.0,
+            url_for_toggle,
+            session.csrf_token.clone(),
+        );
     }
 
-    // Generate session token
+    // Generate session + CSRF tokens. Story 8-2: CSRF token rotates on
+    // every login so a pre-login anonymous token cannot be replayed
+    // against the authenticated session.
     let token = generate_session_token();
+    let csrf_token = crate::middleware::csrf::generate_csrf_token();
 
     // Insert session into database. Explicitly UTC_TIMESTAMP so the
     // expiry check (Rust-side `Utc::now()`) cannot drift vs a server
     // `time_zone` that is not UTC.
     sqlx::query(
-        "INSERT INTO sessions (token, user_id, data, last_activity) VALUES (?, ?, '{}', UTC_TIMESTAMP())",
+        "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
+         VALUES (?, ?, ?, '{}', UTC_TIMESTAMP())",
     )
     .bind(&token)
     .bind(user_id)
+    .bind(&csrf_token)
     .execute(pool)
     .await?;
+
+    // Soft-delete the anonymous-session row the resolver middleware
+    // created for this browser on its first hit (if any). The cookie
+    // we are about to set on the response replaces it anyway, so the
+    // row becomes orphaned — the daily anonymous-session purge would
+    // collect it eventually, but deleting it now keeps the `sessions`
+    // table tight immediately after login.
+    if let Some(old_token) = &session.token
+        && old_token != &token
+    {
+        let _ = crate::models::session::SessionModel::soft_delete(pool, old_token).await;
+    }
 
     tracing::info!(username = %username, role = %role, "Login successful");
 
@@ -209,9 +253,10 @@ fn render_login_error(
     next: &str,
     loc: &str,
     current_url_value: String,
+    csrf_token: String,
 ) -> Result<(CookieJar, axum::response::Response), AppError> {
     let error_msg = rust_i18n::t!("login.error_invalid", locale = loc).to_string();
-    let template = LoginTemplate::new(&error_msg, next, loc, current_url_value);
+    let template = LoginTemplate::new(&error_msg, next, loc, current_url_value, csrf_token);
     match template.render() {
         Ok(html) => Ok((jar, Html(html).into_response())),
         Err(e) => {
@@ -244,10 +289,9 @@ pub struct LanguageForm {
 /// - Same-locale no-op: if the current request already resolved to the
 ///   requested lang, skip the cookie/DB write (AC 9).
 ///
-/// No CSRF token: same-origin form POST with `SameSite=Lax` on the session
-/// cookie matches the `/login` and `/logout` handler pattern. JS cannot
-/// submit this cross-site, and a same-site page posting `<form method=post
-/// action=/language>` has no auth state to hijack.
+/// CSRF: protected by the global `csrf_middleware` (story 8-2); the form
+/// in `templates/components/nav_bar.html` carries the hidden
+/// `_csrf_token` input bound to the session's synchronizer token.
 pub async fn change_language(
     State(state): State<AppState>,
     session: Session,
@@ -391,17 +435,6 @@ pub async fn logout(
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
-fn verify_password(password: &str, hash: &str) -> bool {
-    use argon2::{Argon2, PasswordHash, PasswordVerifier};
-    let Ok(parsed_hash) = PasswordHash::new(hash) else {
-        tracing::warn!("Invalid password hash format in database");
-        return false;
-    };
-    Argon2::default()
-        .verify_password(password.as_bytes(), &parsed_hash)
-        .is_ok()
-}
-
 pub fn generate_session_token() -> String {
     use base64::Engine;
     let bytes: [u8; 32] = rand::random();
@@ -446,38 +479,19 @@ mod tests {
 
     #[test]
     fn test_verify_password_valid() {
-        // Generate a hash for "testpass" and verify it
-        use argon2::password_hash::SaltString;
-        use argon2::{Argon2, PasswordHasher};
-        use rand::rngs::OsRng;
-
-        let salt = SaltString::generate(OsRng);
-        let hash = Argon2::default()
-            .hash_password(b"testpass", &salt)
-            .unwrap()
-            .to_string();
-
-        assert!(verify_password("testpass", &hash));
+        let hash = crate::services::password::hash_password("testpass").unwrap();
+        assert!(crate::services::password::verify_password("testpass", &hash));
     }
 
     #[test]
     fn test_verify_password_invalid() {
-        use argon2::password_hash::SaltString;
-        use argon2::{Argon2, PasswordHasher};
-        use rand::rngs::OsRng;
-
-        let salt = SaltString::generate(OsRng);
-        let hash = Argon2::default()
-            .hash_password(b"testpass", &salt)
-            .unwrap()
-            .to_string();
-
-        assert!(!verify_password("wrongpass", &hash));
+        let hash = crate::services::password::hash_password("testpass").unwrap();
+        assert!(!crate::services::password::verify_password("wrongpass", &hash));
     }
 
     #[test]
     fn test_verify_password_invalid_hash_format() {
-        assert!(!verify_password("anything", "not-a-valid-hash"));
+        assert!(!crate::services::password::verify_password("anything", "not-a-valid-hash"));
     }
 
     // Story 6-2: guard against seed-hash drift. If the migration hash is regenerated
@@ -487,13 +501,13 @@ mod tests {
 
     #[test]
     fn test_librarian_seed_hash_verifies() {
-        assert!(verify_password("librarian", LIBRARIAN_SEED_HASH));
-        assert!(!verify_password("wrongpass", LIBRARIAN_SEED_HASH));
+        assert!(crate::services::password::verify_password("librarian", LIBRARIAN_SEED_HASH));
+        assert!(!crate::services::password::verify_password("wrongpass", LIBRARIAN_SEED_HASH));
     }
 
     #[test]
     fn test_login_template_renders() {
-        let template = LoginTemplate::new("", "", "en", "/login".to_string());
+        let template = LoginTemplate::new("", "", "en", "/login".to_string(), "tok".to_string());
         let result = template.render();
         assert!(result.is_ok());
         let html = result.unwrap();
@@ -504,14 +518,20 @@ mod tests {
 
     #[test]
     fn test_login_template_with_error() {
-        let template = LoginTemplate::new("Invalid credentials", "", "en", "/login".to_string());
+        let template = LoginTemplate::new(
+            "Invalid credentials",
+            "",
+            "en",
+            "/login".to_string(),
+            "tok".to_string(),
+        );
         let html = template.render().unwrap();
         assert!(html.contains("Invalid credentials"));
     }
 
     #[test]
     fn test_login_template_renders_next_hidden_field() {
-        let template = LoginTemplate::new("", "/loans", "en", "/login".to_string());
+        let template = LoginTemplate::new("", "/loans", "en", "/login".to_string(), "tok".to_string());
         let html = template.render().unwrap();
         assert!(html.contains(r#"name="next""#));
         assert!(html.contains(r#"value="/loans""#));
@@ -520,7 +540,13 @@ mod tests {
     #[test]
     fn test_login_template_drops_unsafe_next() {
         let template =
-            LoginTemplate::new("", "https://evil.example.com/", "en", "/login".to_string());
+            LoginTemplate::new(
+                "",
+                "https://evil.example.com/",
+                "en",
+                "/login".to_string(),
+                "tok".to_string(),
+            );
         let html = template.render().unwrap();
         // The unsafe value must be gone…
         assert!(!html.contains("evil.example.com"));
@@ -553,6 +579,8 @@ mod language_tests {
             http_client: reqwest::Client::new(),
             registry: Arc::new(crate::metadata::registry::ProviderRegistry::new()),
             covers_dir: std::path::PathBuf::from("/tmp"),
+            provider_health: crate::tasks::provider_health::new_provider_health_map(),
+            mariadb_version_cache: crate::services::admin_health::new_mariadb_version_cache(),
         };
         Router::new()
             .route("/language", axum::routing::post(change_language))
@@ -791,6 +819,8 @@ mod language_tests {
             http_client: reqwest::Client::new(),
             registry: Arc::new(crate::metadata::registry::ProviderRegistry::new()),
             covers_dir: std::path::PathBuf::from("/tmp"),
+            provider_health: crate::tasks::provider_health::new_provider_health_map(),
+            mariadb_version_cache: crate::services::admin_health::new_mariadb_version_cache(),
         };
         let app = axum::Router::new()
             .route("/login", axum::routing::post(login))

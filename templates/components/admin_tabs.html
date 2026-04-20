@@ -1,0 +1,46 @@
+{# Admin tab bar + panel wrapper (story 8-1). Rendered Rust-side via
+   `AdminShellTemplate` and returned verbatim on HTMX swaps into #admin-shell. #}
+<div role="tablist" aria-label="{{ tabs_aria }}" class="border-b border-stone-200 dark:border-stone-700 flex flex-wrap gap-2 mb-6">
+{% for tab in tabs %}
+    {% if tab.aria_selected %}
+    <a role="tab"
+       id="tab-{{ tab.name }}"
+       href="/admin?tab={{ tab.name }}"
+       hx-get="/admin/{{ tab.hx_path }}"
+       hx-target="#admin-shell"
+       hx-swap="innerHTML"
+       hx-push-url="/admin?tab={{ tab.name }}"
+       aria-selected="true"
+       aria-current="page"
+       aria-controls="panel-{{ tab.name }}"
+       class="px-4 py-2 border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 font-semibold inline-flex items-center gap-2">
+        <span>{{ tab.label }}</span>
+        {% if tab.badge_count > 0 %}
+        <span aria-label="{{ tab.badge_aria }}" class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-xs font-semibold">{{ tab.badge_count }}</span>
+        {% endif %}
+    </a>
+    {% else %}
+    <a role="tab"
+       id="tab-{{ tab.name }}"
+       href="/admin?tab={{ tab.name }}"
+       hx-get="/admin/{{ tab.hx_path }}"
+       hx-target="#admin-shell"
+       hx-swap="innerHTML"
+       hx-push-url="/admin?tab={{ tab.name }}"
+       aria-selected="false"
+       aria-controls="panel-{{ tab.name }}"
+       class="px-4 py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 inline-flex items-center gap-2">
+        <span>{{ tab.label }}</span>
+        {% if tab.badge_count > 0 %}
+        <span aria-label="{{ tab.badge_aria }}" class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-xs font-semibold">{{ tab.badge_count }}</span>
+        {% endif %}
+    </a>
+    {% endif %}
+{% endfor %}
+</div>
+<div role="tabpanel"
+     id="panel-{{ active_tab_name }}"
+     aria-labelledby="tab-{{ active_tab_name }}"
+     class="bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg p-6">
+    {{ panel_html|safe }}
+</div>

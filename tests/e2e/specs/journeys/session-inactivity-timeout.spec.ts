@@ -24,9 +24,13 @@ async function setTimeout_(
   secs: number,
 ) {
   // The debug endpoint is role-gated to Admin. Drive it via `page.request`
-  // so the logged-in admin cookie is sent.
+  // so the logged-in admin cookie is sent. Story 8-2 — include the CSRF
+  // token; the caller must have navigated to an authenticated page first
+  // so the meta tag is present.
+  const csrf =
+    (await page.locator('meta[name="csrf-token"]').getAttribute("content")) ?? "";
   const res = await page.request.post("/debug/session-timeout", {
-    form: { secs: String(secs) },
+    form: { _csrf_token: csrf, secs: String(secs) },
   });
   if (!res.ok()) {
     throw new Error(
@@ -44,8 +48,11 @@ test.describe("Story 7-2 — session inactivity timeout", () => {
     const page = await ctx.newPage();
     try {
       await loginAs(page, "admin");
+      await page.goto("/catalog");
+      const csrf =
+        (await page.locator('meta[name="csrf-token"]').getAttribute("content")) ?? "";
       await page.request.post("/debug/session-timeout", {
-        form: { secs: String(14400) },
+        form: { _csrf_token: csrf, secs: String(14400) },
       });
     } catch {
       // Best effort — tearDown must not throw.
@@ -99,7 +106,12 @@ test.describe("Story 7-2 — session inactivity timeout", () => {
     page,
   }) => {
     await loginAs(page, "admin");
-    const resp = await page.request.post("/session/keepalive");
+    // Story 8-2 — POST /session/keepalive requires the CSRF token.
+    const csrf =
+      (await page.locator('meta[name="csrf-token"]').getAttribute("content")) ?? "";
+    const resp = await page.request.post("/session/keepalive", {
+      headers: { "X-CSRF-Token": csrf },
+    });
     expect(resp.status()).toBe(200);
   });
 });

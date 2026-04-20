@@ -184,6 +184,10 @@ error:
   forbidden:
     title: Access denied
     body: Your account does not have permission to perform this action. Ask an administrator if you need access.
+  csrf_rejected_title: Session expired
+  csrf_rejected_message: Your CSRF token is missing or expired. Please refresh the page and retry your action.
+  csrf_payload_too_large_title: Request too large
+  csrf_payload_too_large_message: The submitted form exceeded the server's size limit. Please shorten your input and retry.
   title:
     creation_failed: Title creation failed
     required: Title is required
@@ -200,6 +204,17 @@ error:
   delete_has_references: "Cannot delete: item is referenced by active records."
   contributor:
     has_titles: "Cannot delete %{name}. This contributor is associated with %{count} title(s). Remove the contributor from all titles first."
+  user:
+    username_empty: Username is required
+    username_taken: "Username '%{username}' is already taken"
+    password_too_short: Password must be at least 8 characters
+    password_too_long: Password must be at most 72 characters
+    role_invalid: Role must be Librarian or Admin
+    self_deactivate: You cannot deactivate your own account
+    last_admin: At least one active admin must remain
+    last_admin_demote: "You are the only active admin — create another before changing your role"
+    not_found: User not found
+    version_mismatch: "User was modified by another admin — reload and retry"
   code:
     unsupported_type: Unsupported code type
 guide:
@@ -368,3 +383,73 @@ session:
   expiry_in_minutes: "Your session will expire in %{minutes} min."
   stay_connected: Stay connected
   dismiss_aria: Dismiss
+admin:
+  page_title: Administration
+  tabs_aria: Administration tabs
+  tabs:
+    health: Health
+    users: Users
+    reference_data: Reference data
+    trash: Trash
+    system: System
+  trash:
+    badge_aria: "Trash, %{count} items"
+  health:
+    versions_heading: Versions
+    app_version: Application version
+    db_version: Database version
+    disk_usage: Disk usage
+    disk_usage_format: "%{used} / %{total} used (%{pct}%)"
+    disk_usage_unknown: Unknown
+    counts_heading: Entity counts
+    count_titles: Titles
+    count_volumes: Volumes
+    count_contributors: Contributors
+    count_borrowers: Borrowers
+    count_active_loans: Active loans
+    providers_heading: Metadata providers
+    provider_status_up: Reachable
+    provider_status_down: Unreachable
+    provider_status_unknown: Unknown
+    provider_status_na: n/a
+    last_checked: "Last checked: %{when}"
+    last_checked_never: Never
+  users:
+    heading: User accounts
+    empty_state: "Only you here! Create a Librarian account for household members."
+    pagination_aria: User list pagination
+    filter_role_label: Filter by role
+    filter_status_label: Filter by status
+    filter_role_all: All roles
+    filter_status_active: Active
+    filter_status_deactivated: Deactivated
+    filter_status_all: All
+    col_username: Username
+    col_role: Role
+    col_status: Status
+    col_created: Created
+    col_last_login: Last login
+    col_actions: Actions
+    role_librarian: Librarian
+    role_admin: Admin
+    status_active: Active
+    status_deactivated: Deactivated
+    last_login_never: Never
+    btn_new: New user
+    btn_edit: Edit
+    btn_deactivate: Deactivate
+    btn_reactivate: Reactivate
+    btn_save: Save
+    btn_cancel: Cancel
+    form_label_username: Username
+    form_label_password: Password
+    form_label_password_edit: "Password (leave blank to keep current)"
+    form_label_role: Role
+    confirm_deactivate: "Deactivate %{username}? They'll be signed out immediately and cannot log back in until reactivated."
+    success_created: "User %{username} created"
+    success_updated: "User %{username} updated"
+    success_deactivated: "User %{username} deactivated (%{count} session(s) ended)"
+    success_reactivated: "User %{username} reactivated"
+  placeholder:
+    coming_in_story: "Coming in story %{story}"
+    trash_preview: "Preview of soft-deleted items — full list and restore UI shipping in story 8-5."

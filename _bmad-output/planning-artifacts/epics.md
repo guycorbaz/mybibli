@@ -1025,12 +1025,177 @@ Anonymous users can browse and search without login. Librarian and Admin roles e
 - E2E: open a confirmation modal (e.g., delete volume confirmation), simulate a barcode scan via keyboard events, verify the scan is consumed by the modal or dropped — never leaks to background `#scan-field`; close modal, perform scan, verify normal flow resumes
 
 ### Epic 8: Administration & Configuration
-The admin can manage users, configure reference data (genres, states, roles), manage the storage hierarchy, view system health, and manage the Trash (soft-deleted items). The setup wizard guides first-time configuration.
+The admin can manage users, configure reference data (genres, states, roles, location node types), manage system settings and metadata provider API keys, view system health, and manage the Trash (soft-deleted items including restore and permanent delete). The setup wizard guides first-time configuration.
 
 **FRs:** FR68, FR70-FR76, FR87, FR91, FR100, FR110-FR113, FR120-FR121
 **NFRs:** NFR37, NFR39, NFR41
 **ARs:** AR9
 **UX-DRs:** UX-DR7, UX-DR20, UX-DR21
+
+**Scope note — cross-cutting constraints (2026-04-17, revised 2026-04-18):** NFR37 (no telemetry, all data local) and NFR39 (25 items per page, not user-configurable) are global constraints of the project, not Epic 8 inventions — they surface here because the new admin list views (users, reference data, trash) must comply. NFR41 (reference data not translated in v1) is specific to Epic 8 story 8-4. The original Epic 8 wording "storage hierarchy" was ambiguous: location **node types** (FR73) are configured here (admin sub-table), while the location **tree** itself was delivered by Epic 2. FR91 seeds initial reference data on first boot; the setup wizard (8-8) uses this seed plus admin-specified provider keys. **Story 8-2 (CSRF middleware + form-token injection) was inserted 2026-04-18 to close Epic 7 retro Action 1 — all admin-mutation surfaces (user admin, ref data, settings, trash, setup wizard) depend on it and are renumbered 8-3..8-8.**
+
+**Stories:**
+
+#### Story 8.1: Admin page shell + Health tab
+**As an** admin, **I want** a single `/admin` entry point organized as tabs with a Health dashboard as the landing tab, **so that** I can reach all admin operations without nested menus and see at a glance whether the system is healthy.
+
+**FRs:** FR76, FR120
+**UX-DRs:** UX-DR7
+
+**Acceptance Criteria:**
+- Given an admin-role user, when they navigate to `/admin`, then the page renders with a horizontal tab bar showing 5 tabs: Health (default), Users, Reference Data, Trash, System
+- Given a librarian-role user, when they access `/admin` or any `/admin/*` route, then the server returns 403 Forbidden rendered via AppError → FeedbackEntry; anonymous users get the existing 303 redirect to `/login`
+- Given the tab bar, when a tab is clicked, then HTMX swaps only the tab panel content (not full page reload), the URL updates with a `?tab=users` query parameter (via `hx-push-url`), and browser Back/Forward navigation restores the correct tab
+- Given a deep-link to `/admin?tab=trash`, when the page loads fresh, then the Trash tab is pre-selected and its panel is server-rendered (not fetched via HTMX after load) so JS-disabled users still see content
+- Given the Health tab is active, when it renders, then it displays: application version (from build metadata), MariaDB version (from `SELECT VERSION()`), disk usage on the data volume (free/total bytes), entity counts (titles, volumes, contributors, borrowers, active loans — all excluding `deleted_at IS NOT NULL`), and per-provider status (BnF, Google Books — HTTP reachability check with color indicator + last-check timestamp)
+- Given the Trash tab label, when rendered, then it shows a badge with the count of soft-deleted items (hidden if 0, red pill with count if > 0) — badge refreshes when tab content is re-fetched
+- Given the AdminTabs component, when factored, then it lives at `components/admin_tabs.html` with a `{% block panel %}` slot and is reused by every admin tab (no duplication across 5 handlers)
+- Accessibility: tab bar uses `role="tablist"`, each tab has `role="tab"` + `aria-selected`, each panel has `role="tabpanel"` + `aria-labelledby`
+- CSP compliance (story 7-4): zero inline styles/scripts in the tab panels or Health rendering — all interactivity via `data-*` attributes routed through existing JS modules
+- i18n: EN + FR keys for all 5 tab labels (Santé / Utilisateurs / Données de référence / Corbeille / Système) and all Health labels
+- Unit tests: admin-middleware 403 for librarian, 303 for anonymous; tab parameter resolution defaults to `health` when missing or invalid; Health counts exclude soft-deleted
+- E2E smoke (Foundation Rule #7): blank browser → login admin → navigate `/admin` → verify 5 tabs visible, Health selected by default, version + MariaDB + counts populated → click each tab → verify URL `?tab=` updates + panel content swaps → attempt `/admin` as librarian → verify 403 feedback entry
+
+#### Story 8.2: CSRF middleware and form-token injection
+**As the** project maintainer, **I want** every state-changing request to require a session-bound CSRF token (synchronizer pattern), **so that** cross-site requests from hostile pages cannot trigger logout, language toggle, or any future admin mutation against an authenticated browser — closing the fifth-deferred security commitment before Epic 8's admin-mutation stories land.
+
+**NFRs:** NFR13, NFR15 (defense-in-depth alongside CSP)
+**Epic 7 retro Action 1:** This story is the concrete closure option picked over the alternative ("write `docs/auth-threat-model.md` formally accepting the risk"). Four prior deferrals (stories 1-2, 6-x, 7-1, 7-3, 7-4 reviews); the Epic 7 retro flagged a fifth deferral as unacceptable now that admin-mutation surfaces begin in Epic 8.
+
+**Acceptance Criteria:**
+- Given a migrated DB, when the migration runs, then `sessions` gets a `csrf_token VARCHAR(64) NOT NULL` column; the login handler generates a 32-byte random base64url token alongside the session token and persists both atomically; a backfill updates any existing session rows with a fresh token so no deployed session breaks
+- Given an anonymous visitor (no session row yet), when they first GET any page, then a lazy anonymous session is created with its own `csrf_token` so `/login` and `/language` posts from anonymous users carry a token just like authenticated posts (no "pre-session" special case)
+- Given any Askama page template, when rendered, then `BaseContext` (or equivalent common template context) receives a `csrf_token: String` field; `layouts/base.html` emits `<meta name="csrf-token" content="{{ csrf_token|escape }}">` so both form-hidden-input and HTMX-header paths can read it
+- Given any `<form method="POST">` template, when rendered, then it includes a hidden `<input type="hidden" name="_csrf_token" value="{{ csrf_token|escape }}">` — this is enforced by `src/templates_audit.rs` which scans `templates/` for `method="post"` / `method="POST"` forms lacking the hidden input and fails `cargo test`
+- Given any HTMX request (`hx-post` / `hx-put` / `hx-patch` / `hx-delete`), when submitted, then `static/js/csrf.js` (new module, loaded from `layouts/base.html`) listens for `htmx:configRequest` and sets the `X-CSRF-Token` header from the `<meta name="csrf-token">` element — no inline script, CSP-compliant
+- Given a POST / PUT / PATCH / DELETE request, when the CSRF middleware runs, then it validates the token with constant-time comparison against `sessions.csrf_token` from one of: (a) `X-CSRF-Token` header, (b) `_csrf_token` form field — if both are present the header wins; if neither is present or values mismatch the middleware returns 403 Forbidden rendered via `AppError::Forbidden` → existing FeedbackEntry pipeline
+- Given the CSRF middleware, when it decides to validate, then GET / HEAD / OPTIONS requests are never validated; only state-changing methods are; all `/static/*` and `/covers/*` requests pass through untouched
+- Given a carved-out endpoint, when the routing table declares it, then the CSRF check is skipped via explicit route-level opt-out (central allowlist in `src/middleware/csrf.rs::CSRF_EXEMPT_ROUTES`) — initial allowlist: `POST /login` only (unauthenticated token cannot be obtained before the session exists; SameSite=Lax on the session cookie is the login-CSRF mitigation, documented in the middleware doc). No other route is exempt; adding one requires editing the allowlist (review signal).
+- Given `GET /logout`, when the template renders the nav bar, then the `<a href="/logout">` becomes `<form method="POST" action="/logout">` with the hidden token input; the route table drops the GET-method variant so a bare `<img src="/logout">` attack is no longer viable (closes Epic 7 deferred finding)
+- Given the middleware wiring in `src/routes/mod.rs::build_router`, when CSRF is added, then the layer order becomes `Logging → Auth (Session extractor) → CSRF → [Handler] → PendingUpdates → CSP` so the CSRF layer runs AFTER Session extraction (it needs `sessions.csrf_token`) but BEFORE handlers (so handlers never see invalid requests); wired via `axum::middleware::from_fn_with_state`
+- Given a token lifecycle, when a user logs in / logs out, then the CSRF token rotates (new token on login, old session row soft-deleted on logout so its token is dead); within a logged-in session the token stays stable (no per-request rotation — minimizes HTMX complexity)
+- Given a 403 CSRF rejection on HTMX, when returned, then the response includes `HX-Trigger: csrf-rejected` so client-side JS (new listener in `static/js/mybibli.js`) shows a FeedbackEntry "Please refresh the page and retry" — recovers from stale tokens after long idle without a page reload panic
+- Unit tests: token generation is 32 bytes base64url (same entropy as session token); middleware accepts matching header, accepts matching form field, rejects missing, rejects mismatch (constant-time); exempt-route list (`/login`) bypasses validation; non-state-changing methods (GET/HEAD/OPTIONS) bypass; `src/templates_audit.rs` integration test adds a form without the hidden input to a test fixture and fails
+- Integration tests (`#[sqlx::test]`): login persists `csrf_token`; logout POST invalidates it; language-toggle POST requires it; a second /login from the same browser rotates the token and the old token no longer validates
+- E2E smoke: login → navigate to a page with a form → submit with valid token succeeds → tamper the token in DevTools / via `page.evaluate` to a wrong value → resubmit → verify 403 + the "refresh and retry" feedback; GET /logout returns 405 Method Not Allowed (or 404); hitting `/admin` routes with a valid admin session but a stripped token returns 403 (not 500)
+- Documentation: `CLAUDE.md` "Key Patterns" section gains a "CSRF token (story 8-2)" bullet describing the token source-of-truth (`sessions.csrf_token`), the template contract (`BaseContext.csrf_token` + base.html meta + form input), the HTMX header contract (`X-CSRF-Token` via csrf.js), and the exempt-route allowlist (`/login` only); architecture Authentication & Security section gets the synchronizer-token diagram
+
+**Out of scope (explicit):**
+- Token rotation per-request (stays stable within a session — we would burn HTMX UX for minimal threat-model benefit on a single-user NAS)
+- Double-submit cookie pattern (the synchronizer-token pattern is simpler given we already persist sessions server-side)
+- CSRF protection for `GET` side-effects that are known to exist (there are none; `GET /logout` is being removed by this story; any future GET-with-side-effect is a separate bug)
+
+#### Story 8.3: User administration
+**As an** admin, **I want** to create, edit, deactivate, and reactivate user accounts and assign roles (Librarian, Admin), **so that** I control who can access the app and at what privilege level.
+
+**FRs:** FR68
+
+**Acceptance Criteria:**
+- Given the Users tab, when it renders, then it shows a paginated list (25 / page per NFR39) of users with columns: username, role, status (active / deactivated), created date, last login — sorted by username ascending, with filters for role and status
+- Given the Users tab, when "New user" is clicked, then a modal (UX-DR8 guard, inherits scanner-guard from story 7-5) opens with fields: username (required, unique, validated server-side), password (required, min 8 chars), role (select: Librarian / Admin), optional full name
+- Given an existing user row, when "Edit" is clicked, then a modal opens with fields pre-filled; the password field is blank and is only updated if a new value is submitted (empty input leaves the stored hash untouched)
+- Given an existing user, when "Deactivate" is clicked and confirmed, then `users.deleted_at` is set (soft-delete — no hard delete), all of that user's active sessions are invalidated immediately, and the row disappears from the default list; a "Show deactivated" filter restores visibility
+- Given a deactivated user, when "Reactivate" is clicked, then `deleted_at` is cleared and the user can log in again on the next attempt
+- Given an admin tries to deactivate their own account, when the confirm is submitted, then the server returns 409 Conflict ("Cannot deactivate your own account") rendered via AppError → FeedbackEntry
+- Given the last remaining active admin tries to deactivate themselves OR demote their role to Librarian, when submitted, then the server returns 409 Conflict ("At least one active admin must remain") — counted via `COUNT(*) WHERE role='admin' AND deleted_at IS NULL`
+- Given a password change, when submitted, then it is hashed through the same argon2 chain established by story 1-9 (minimal-login) — no custom hashing in this story
+- Given the form, when it validates, then username uniqueness is checked against active AND deactivated users (reactivating a deactivated username is allowed; creating a new user with a deactivated username is blocked to avoid audit confusion)
+- i18n: EN + FR for all field labels, validation errors, and confirm-modal copy
+- Unit tests: uniqueness constraint across active + deactivated; last-admin guard (deactivate + demote); self-deactivate guard; password-hash round-trip on edit (empty input leaves hash unchanged); session invalidation on deactivate
+- E2E: admin logged in → Users tab → create librarian (verify 25/page list) → log out → log in as new librarian → verify librarian access scope → log back as admin → deactivate librarian → attempt librarian login → verify rejected → reactivate → verify login works; attempt self-deactivate → verify 409 feedback
+
+#### Story 8.4: Reference data management
+**As an** admin, **I want** to configure the lists of genres, volume states, contributor roles, and location node types used across the catalog, **so that** the taxonomy matches my library's needs and I can evolve it over time.
+
+**FRs:** FR70, FR71, FR72, FR73, FR91, FR100
+**NFRs:** NFR41
+**UX-DRs:** UX-DR21
+
+**Acceptance Criteria:**
+- Given a fresh install (or migration run on an empty DB), when the app starts for the first time, then default reference data is seeded via migration: genres (fiction, essai, BD, manga, jeunesse, documentaire, poésie, théâtre), volume states (neuf, très bon, bon, moyen, mauvais — with `loanable` flag true/true/true/true/false), contributor roles (auteur, illustrateur, traducteur, préfacier, éditeur scientifique), location node types (bibliothèque, étagère, rayon, case) — seed is idempotent (re-running the migration does not duplicate rows)
+- Given the Reference Data tab, when it renders, then it shows 4 sub-sections (one per entity type) each using the `InlineForm` component (UX-DR21): list of current entries, add-new input (Enter to save, Escape to cancel), rename (click-to-edit), delete (icon button) — all sub-sections follow the same keyboard + HTMX behavior
+- Given the Volume States sub-section, when a row renders, then it additionally shows a "Loanable" checkbox; toggling it persists immediately via HTMX POST; if the admin disables `loanable` on a state that currently covers at least one volume on an active loan, then a confirm modal lists the affected loans before applying — confirming applies the change AND does NOT auto-return active loans (state change is forward-only)
+- Given a user attempts to delete a reference entry that is currently assigned to at least one entity (e.g., genre "fiction" assigned to 42 titles), when the delete is submitted, then the server returns 409 Conflict with a message showing the usage count ("Cannot delete: assigned to 42 titles") and a link to the filtered list filtered by that reference value; the entry remains
+- Given a rename, when submitted, then the rename is applied in-place on the reference table row (these tables use surrogate integer keys, so dependent rows keep their FK — no cascading update required)
+- Given reference data text (genre names, role names, etc.), when rendered in any template or dropdown, then values are shown as-is in the language of entry regardless of UI language — NFR41 explicitly: v1 does not localize reference data
+- Given the InlineForm component, when factored, then it lives at `components/inline_form.html` parameterized by: entity label (singular + plural), list endpoint, save endpoint, delete endpoint — reusable outside Epic 8 for future reference tables
+- Given the HTMX save/delete endpoints, when called, then they return only the updated row fragment (not the full list), matching existing patterns (`HtmxResponse` + OOB swap for counters)
+- CSP compliance: all checkboxes + inline edit UI use `data-action="..."` delegated handlers — no `onclick=`, no `<style>` inline
+- Unit tests: seed idempotency (run seed migration twice, expect same row count); delete guard with usage count per entity type (4 cases); loanable toggle with active-loan detection; rename round-trip (FK referential integrity preserved)
+- E2E: admin → Reference Data → add a genre "science-fiction" → verify it appears in the title edit dropdown (EN and FR UI both show "science-fiction" unchanged) → assign genre to a title → attempt to delete "science-fiction" → verify 409 + usage count + link → remove from title → delete genre → verify gone; toggle a volume state from loanable to not-loanable with an active loan → verify warning modal → confirm → verify change applied
+
+#### Story 8.5: System settings
+**As an** admin, **I want** to configure application-wide settings (overdue loan threshold, metadata provider API keys, default language), **so that** I can tune behavior without redeploying and updates take effect without restart.
+
+**FRs:** FR74, FR75
+**ARs:** AR9
+
+**Acceptance Criteria:**
+- Given the System tab, when it renders, then it shows a form with: overdue loan threshold (integer, days, default 30), per-provider API key fields (one row per provider enumerated by `metadata/` — currently BnF, Google Books), default app language (FR / EN per story 7-3), and a "Save" button per logical group
+- Given a setting is saved, when the handler completes, then the `settings` table row is updated (optimistic locking via `version` per services/locking.rs) AND the `Arc<RwLock<AppSettings>>` cache held by `AppState` is invalidated + reloaded so the new value takes effect on the next request without restart — AR9 is the load-bearing requirement here
+- Given API key fields on read, when rendered, then existing values are shown masked (e.g., `••••••••ab12` — last 4 chars only); the unmasked value is never sent to the browser; on submit, an unchanged field (masked value returned verbatim) is detected server-side and skipped (no re-write, no re-hash)
+- Given an invalid value (e.g., negative overdue threshold, or `0`), when saved, then the server returns 400 BadRequest with a field-level error rendered via FeedbackEntry, the stored value stays, and the form re-renders with the invalid input preserved for correction
+- Given concurrent admin edits on the same setting row, when optimistic locking detects a conflict (`WHERE version = ?` affected-rows = 0), then the second save returns 409 Conflict with a message "Settings were modified by another admin — reload and retry" (reuses services/locking.rs error path)
+- Given the overdue threshold is changed from 30 to 14, when the next `/loans` render runs, then loans with age > 14 days are flagged overdue (threshold is computed at query time, not stored denormalized — no migration, no background recalc)
+- Given API keys, when stored in `settings`, then they are stored in plaintext (no encryption at rest — this is documented as an accepted trade-off in the architecture because of NFR37: single-host local deployment, no network egress except metadata fetches)
+- Given the language default change, when saved, then it affects only new anonymous sessions with no `lang=` cookie (per story 7-3 locale resolution chain) — existing users' preferences are untouched
+- Unit tests: save → subsequent `AppSettings` read returns new value without process restart; optimistic-locking conflict path; API key masking on read; masked-value-unchanged detection on write
+- E2E: admin → System → change overdue threshold from 30 to 14 → save → navigate to `/loans` → verify a loan aged 20 days is now flagged overdue (was not before) → change back to 30 → verify no longer flagged; enter a fake BnF key → save → reload → verify masked → clear input and re-save → verify cleared; trigger concurrent save via two browser tabs → verify second returns 409 feedback
+
+#### Story 8.6: Trash view and restore
+**As an** admin, **I want** to see all soft-deleted items across the app and restore any of them within the 30-day retention window, **so that** accidental deletions are recoverable without restoring from a DB backup.
+
+**FRs:** FR110, FR111
+
+**Acceptance Criteria:**
+- Given the Trash tab, when it renders, then it shows a paginated list (25 / page per NFR39) of all soft-deleted items across entity types with columns: item name (title / volume / contributor / borrower / location / series / genre / etc.), entity type, deletion date, days remaining before purge (`30 - DATEDIFF(NOW(), deleted_at)`, floored at 0) — sorted by most-recently-deleted first
+- Given the Trash query, when it runs, then it UNIONs SELECTs across all tables enumerated in the `services/soft_delete.rs` whitelist — no table is queried that is not whitelisted (the query is generated from the whitelist to keep them in sync)
+- Given the Trash filter bar, when the admin filters by entity type (dropdown) or searches by name (debounced HTMX input), then only matching rows are shown; filters combine (type AND name)
+- Given an item row, when "Restore" is clicked, then the server clears `deleted_at`, bumps `version`, and returns a FeedbackEntry "Restored: {name}" — the row is removed from the Trash list via OOB swap; the Trash badge count in the tab bar decrements via OOB swap too
+- Given a restore request, when the entity has associations that changed during the item's soft-delete (e.g., a volume's series position was reassigned to a different volume, a title's genre was renamed or deleted, a contributor was merged), when processed, then the server detects the conflict and returns a conflict-resolution modal listing: which associations cannot be re-established verbatim, and an explicit choice — "Restore with conflicts cleared" (nullifies the conflicting FKs and restores the entity) or "Cancel"
+- Given a restore is attempted on an item whose parent was hard-purged (e.g., a volume whose parent title was permanent-deleted — scenario only possible after story 8-7 ships), when processed, then the server returns 409 Conflict ("Parent no longer exists — cannot restore") rendered via FeedbackEntry
+- Given concurrent admin sessions, when admin A restores an item that admin B has open in their Trash, then admin B's list refresh (on next OOB sweep or manual reload) no longer shows the restored item
+- CSP compliance: conflict modal uses the UX-DR8 modal component (inherits scanner-guard from 7-5), no inline handlers
+- Unit tests: UNION query covers every whitelisted table and only whitelisted tables; series-position conflict detection; reference-data rename/delete conflict detection; parent-hard-purge detection; `version` bump on restore
+- E2E: admin → catalog → soft-delete a title → Trash tab → verify title appears with correct days-remaining + type badge → click Restore → verify title back in catalog, gone from Trash, Trash badge decremented; delete a series with 3 titles → reassign 1 title to another series → attempt restore of original series → verify conflict modal lists the reassigned title → "Restore with conflicts cleared" → verify original series restored with 2 titles (the 3rd stays on the new series)
+
+#### Story 8.7: Permanent delete and auto-purge
+**As an** admin, **I want** soft-deleted items to be hard-purged automatically after 30 days and to be able to force permanent deletion sooner from the Trash, **so that** storage stays bounded and items I am certain about are definitively gone.
+
+**FRs:** FR112, FR113
+
+**Acceptance Criteria:**
+- Given a Trash row, when "Delete permanently" is clicked, then a confirmation modal opens (UX-DR8 guard + scanner-guard 7-5) with the item name, an explicit warning ("This cannot be undone"), and an input requiring the admin to **type the item name verbatim** to enable the Confirm button (friction pattern matching destructive-action UX)
+- Given confirmation, when submitted, then the row is hard-deleted from its table (`DELETE FROM ... WHERE id = ? AND version = ?`), dependent rows are handled according to each table's FK policy (documented in architecture per table — some cascade, some RESTRICT), a row is appended to the `admin_audit` table (who, what entity + id, when — migration creates this table in this story), and the Trash list OOB-swaps the row out
+- Given the app boots, when the startup task runs (synchronous, blocking `/admin` + `/catalog` render until it completes — bounded by count), then any row with `deleted_at < NOW() - INTERVAL 30 DAY` across every whitelisted table is hard-purged — results are logged at info level with per-table counts, and the `admin_audit` table records a single "auto-purge" entry per run
+- Given a daily scheduled task (`tokio::spawn` + `tokio::time::interval(24h)` started from `main.rs`), when it fires (first run 24h after boot, configurable via `settings.auto_purge_interval_seconds` default 86400), then the same 30-day purge runs — same audit log
+- Given a hard-purge runs, when it processes a table, then it respects FK dependencies by deleting in the order defined by the whitelist's declared dependency graph (children first, then parents) and uses a single transaction per entity family so partial failures don't leave orphans; on FK violation it rolls back, logs the error, and continues to the next family
+- Given the auto-purge encounters an error (FK violation, DB unavailable, lock timeout), when it fails, then it logs an error but does NOT abort app startup and does NOT crash the daily interval task; the next scheduled run retries
+- Given permanent delete is attempted on an item that no longer exists in Trash (e.g., already permanent-deleted by another admin, or auto-purged), when submitted, then the server returns 404 NotFound ("Item already gone") rendered via FeedbackEntry
+- Guards: admin cannot permanent-delete themselves, cannot permanent-delete the last active admin user (same rules as story 8-3 but enforced here too); cannot permanent-delete a non-soft-deleted item (hitting this endpoint bypasses the Trash should return 400)
+- Unit tests: 30-day boundary (row at 29d stays, row at 31d purged); FK dependency ordering generates correct DELETE sequence; idempotency (running purge twice on empty Trash does not error); last-admin guard on permanent delete; `admin_audit` row shape
+- E2E: admin → Trash → a soft-deleted title → "Delete permanently" → verify friction modal requires typing the title name → confirm → verify gone from Trash AND not recoverable (no DB row); boot app with a seeded 31-day-old soft-deleted fixture → verify auto-purge removed it AND `admin_audit` has a row AND logs show the count
+
+#### Story 8.8: First-launch setup wizard
+**As a** first-time user installing mybibli, **I want** a setup wizard that guides me through creating the admin account and initial configuration, **so that** I can start using the app without editing migrations or seed files by hand, and resuming after an interruption does not destroy what I already entered.
+
+**FRs:** FR87, FR121
+**UX-DRs:** UX-DR20
+
+**Acceptance Criteria:**
+- Given a fresh install (no user with role `admin` exists AND `settings.setup_completed_at` IS NULL), when any route is requested, then the setup middleware intercepts and redirects to `/setup` — the wizard takes over the entire session until completion (except `/static/*` assets and `/healthz`)
+- Given `/setup`, when it renders, then it shows a 4-dot progress indicator (Admin → Providers → Preferences → Done), Previous / Next buttons, and one panel per step; the current step is determined server-side (not client-side) from the resume-detection logic below
+- Step 1 — Admin account: Given step 1, when the admin submits username + password (min 8 chars) + optional full name, then an admin user is created, the session is authenticated as this user, and the wizard advances to step 2
+- Step 2 — Providers: Given step 2, when rendered, then it lists each provider enumerated by `metadata/` with an optional API key input and a "Skip" checkbox per provider — submitting writes the keys to `settings` (plaintext per 8-5 trade-off) and advances; no key is mandatory (the app works without any key, using anonymous provider access)
+- Step 3 — Preferences: Given step 3, when rendered, then it shows default language (FR / EN radio) and overdue threshold (integer input, default 30) — submitting writes to `settings` and advances
+- Step 4 — Done: Given step 4, when rendered, then it shows a read-only recap of the choices made (admin username, providers with keys set — masked, language, threshold) and a "Complete setup" button — clicking writes `settings.setup_completed_at = NOW()` and redirects to `/catalog`
+- Idempotent resume (FR121): Given the admin interrupts the wizard after step 2 (closes the browser), when they restart the app and hit any route, then the setup middleware detects: admin user exists AND `setup_completed_at` IS NULL AND at least one provider key set → resumes at step 3, showing the partially-entered state in editable form (not a blank form); step 1 resume re-uses the existing admin row in edit mode rather than creating a duplicate
+- Given the wizard has completed once (`setup_completed_at` IS NOT NULL), when any user later navigates to `/setup`, then the server returns 404 NotFound (the wizard is first-launch-only; ongoing config happens via `/admin`)
+- Given the E2E / dev environment needs to bypass the wizard to test other features, when `MYBIBLI_SKIP_SETUP=true` env var is set, then the setup middleware is bypassed and routes render normally — documented in CLAUDE.md, used by the Playwright seed chain
+- CSP compliance: the wizard's step transitions and progress-dot highlighting use `data-*` attributes + delegated handlers — no inline scripts or styles
+- i18n: every label, button, validation error, and recap in EN + FR; the wizard respects `Accept-Language` on first load (before the user picks a language in step 3)
+- Unit tests: resume-detection decides the correct landing step for every partial state (no admin, admin-only, admin + providers, admin + providers + prefs); `setup_completed_at` gates the 404 path; `MYBIBLI_SKIP_SETUP` bypass
+- E2E smoke (Foundation Rule #7): start the app with a clean DB (no admin, no `setup_completed_at`) → navigate to `/catalog` → verify redirect to `/setup` step 1 → complete steps 1-4 → verify redirect to `/catalog` → verify `/setup` now returns 404 → verify the new admin can log out and log back in; second test: start at step 3 partial state, close browser, restart app → verify resumes at step 3 with admin username + providers shown in edit mode (not blank)
 
 ### Epic 9: Polish UX & Accessibilité
 The dashboard shows actionable indicators with counts. Every page has encouraging empty states. Contextual help and keyboard shortcuts are complete. Responsive layouts are optimized per page. The home page scanner state machine handles dual detection. Modals guard destructive actions. WCAG 2.2 AA compliance is verified end-to-end.

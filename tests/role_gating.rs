@@ -26,6 +26,8 @@ use mybibli::AppState;
 use mybibli::config::AppSettings;
 use mybibli::metadata::registry::ProviderRegistry;
 use mybibli::routes::build_router;
+use mybibli::services::admin_health::new_mariadb_version_cache;
+use mybibli::tasks::provider_health::new_provider_health_map;
 
 fn build_state(pool: MySqlPool) -> AppState {
     AppState {
@@ -34,8 +36,15 @@ fn build_state(pool: MySqlPool) -> AppState {
         http_client: reqwest::Client::new(),
         registry: Arc::new(ProviderRegistry::new()),
         covers_dir: PathBuf::from("/tmp/mybibli-test-covers"),
+        provider_health: new_provider_health_map(),
+        mariadb_version_cache: new_mariadb_version_cache(),
     }
 }
+
+/// Shared CSRF token used by every seeded session in this test file.
+/// Tests that POST/PUT/PATCH/DELETE must echo it via the
+/// `X-CSRF-Token` header — see `req(...)`.
+const TEST_CSRF_TOKEN: &str = "role_gating_fixture_csrf_token_abcdef1234567890ab";
 
 /// Seed a session for a given user and return the cookie value.
 async fn seed_session(pool: &MySqlPool, username: &str) -> String {
@@ -47,9 +56,10 @@ async fn seed_session(pool: &MySqlPool, username: &str) -> String {
             .await
             .expect("user exists");
 
-    sqlx::query("INSERT INTO sessions (token, user_id, data) VALUES (?, ?, '{}')")
+    sqlx::query("INSERT INTO sessions (token, user_id, csrf_token, data) VALUES (?, ?, ?, '{}')")
         .bind(&token)
         .bind(user_id)
+        .bind(TEST_CSRF_TOKEN)
         .execute(pool)
         .await
         .expect("insert session");
@@ -67,6 +77,11 @@ fn req(method: Method, uri: &str, session_cookie: Option<&str>) -> Request<Body>
     let mut b = Request::builder().method(method).uri(uri);
     if let Some(token) = session_cookie {
         b = b.header(header::COOKIE, format!("session={token}"));
+        // Story 8-2: the global CSRF middleware rejects state-changing
+        // requests without a matching token. Inject the fixture token
+        // alongside every cookied request so tests that exercise the
+        // role gate (not CSRF) keep working.
+        b = b.header("X-CSRF-Token", TEST_CSRF_TOKEN);
     }
     b.body(Body::empty()).unwrap()
 }
@@ -161,10 +176,20 @@ async fn anonymous_post_locations_rejected_and_db_snapshot_unchanged(pool: MySql
         .unwrap();
     let resp = app.oneshot(request).await.unwrap();
 
-    assert_eq!(
-        resp.status(),
-        StatusCode::SEE_OTHER,
-        "AC #3: anonymous POST → redirect to login"
+    // Story 8-2: the global CSRF middleware rejects any state-changing
+    // request without a matching token BEFORE the auth layer gets a
+    // chance to redirect. The rejection shape depends on the request
+    // flavor: HTMX form-post → 403 with HX-envelope; plain-browser form
+    // post (no `hx-request` header) → 303 to /login. AC #3 only requires
+    // "rejected AND DB snapshot unchanged" — either status satisfies it.
+    assert!(
+        matches!(
+            resp.status(),
+            StatusCode::FORBIDDEN | StatusCode::SEE_OTHER
+        ),
+        "AC #3: anonymous POST without CSRF must be rejected \
+         (got {:?}, expected 403 or 303)",
+        resp.status()
     );
 
     let (after,): (i64,) =
@@ -229,6 +254,91 @@ async fn librarian_delete_borrower_returns_403_forbidden(pool: MySqlPool) {
     assert_eq!(
         before, after,
         "AC #4: DB snapshot unchanged after Forbidden"
+    );
+}
+
+// ─── Story 8-1: /admin role gating (adds handler-level coverage
+// that the co-located unit tests in src/routes/admin.rs
+// intentionally do not provide — see the module's test comment). ───
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anonymous_admin_redirects_to_login_with_next(pool: MySqlPool) {
+    let app = build_router(build_state(pool));
+    let resp = app.oneshot(req(Method::GET, "/admin", None)).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::SEE_OTHER,
+        "anonymous /admin → 303 redirect"
+    );
+    let loc = resp
+        .headers()
+        .get(header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert_eq!(
+        loc, "/login?next=%2Fadmin",
+        "anonymous /admin preserves the return path"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anonymous_admin_with_tab_preserves_full_query(pool: MySqlPool) {
+    // Deep-link regression guard (story 8-1 review P3): the `?tab=<name>`
+    // part of the URL must survive the `next=` round-trip, so a post-login
+    // bounce lands the user on the tab they originally asked for rather
+    // than on Health.
+    let app = build_router(build_state(pool));
+    let resp = app
+        .oneshot(req(Method::GET, "/admin?tab=trash", None))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let loc = resp
+        .headers()
+        .get(header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert_eq!(
+        loc, "/login?next=%2Fadmin%3Ftab%3Dtrash",
+        "the ?tab= query must be preserved through the login redirect"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn librarian_admin_returns_403_forbidden(pool: MySqlPool) {
+    let librarian_cookie = seed_session(&pool, "librarian").await;
+    let app = build_router(build_state(pool));
+    let resp = app
+        .oneshot(req(Method::GET, "/admin", Some(&librarian_cookie)))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "librarian /admin → 403 (not a redirect)"
+    );
+    assert!(
+        resp.headers().get(header::LOCATION).is_none(),
+        "403 must not carry a Location header"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn librarian_admin_health_subpath_returns_403_forbidden(pool: MySqlPool) {
+    // Every sub-handler must enforce the same guard as the parent route —
+    // deep-linking to /admin/health must not bypass the role check.
+    let librarian_cookie = seed_session(&pool, "librarian").await;
+    let app = build_router(build_state(pool));
+    let resp = app
+        .oneshot(req(Method::GET, "/admin/health", Some(&librarian_cookie)))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "librarian /admin/health → 403"
     );
 }
 

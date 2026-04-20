@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "UPDATE sessions SET deleted_at = UTC_TIMESTAMP() WHERE token = ? AND deleted_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "2b9745c757448a941b93e4cc6fa0d4728dec8e5e6773a714a21d565d42d5ca95"
+}

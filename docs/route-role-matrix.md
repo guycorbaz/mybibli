@@ -1,7 +1,21 @@
 # Route Role Matrix
 
 **Status:** authoritative reference for Story 7-1 (anonymous browsing + role gating).
-**Last updated:** 2026-04-15.
+**Last updated:** 2026-04-19 (story 8-3 — 6 user-admin routes + deactivate/reactivate actions added).
+
+## CSRF exemption (story 8-2)
+
+Every state-changing method (POST / PUT / PATCH / DELETE) on every route in
+this matrix requires a matching `X-CSRF-Token` header or `_csrf_token` form
+field — see `src/middleware/csrf.rs`. The sole exempt route is:
+
+| method | path | rationale |
+|---|---|---|
+| POST | `/login` | No authenticated session exists at request time. `SameSite=Lax` on the session cookie is the login-CSRF mitigation (a cross-site top-level POST does not carry the cookie). |
+
+Frozen by `src/templates_audit.rs::csrf_exempt_routes_frozen` — adding a new
+exempt route requires a visible edit to `CSRF_EXEMPT_ROUTES` in
+`src/middleware/csrf.rs` AND an update to the audit assertion in the same PR.
 
 ## Role model
 
@@ -21,123 +35,143 @@ Ordering: `Anonymous < Librarian < Admin`. A route requiring `Librarian` is also
 
 ## Matrix
 
-Columns: `method | path | current_role | target_role | note`. Rows where `current ≠ target` are the Task 2 worklist.
+Columns: `method | path | current_role | target_role | csrf_exempt | note`. Rows where `current ≠ target` are the Task 2 worklist. `csrf_exempt` is `yes` only for `POST /login` (per top section) and `—` for non-mutating methods (GET / HEAD / OPTIONS bypass CSRF at the middleware level); all other mutating rows are implicitly `no`.
 
 ### Root / infrastructure
 
-| method | path | current | target | note |
-|---|---|---|---|---|
-| GET | `/` | Anonymous | Anonymous | Homepage with search. Librarian-only metadata-error badge is template-gated. |
-| GET | `/health` | Anonymous | Anonymous | Liveness probe. |
-| POST | `/session/keepalive` | Anonymous | Anonymous | Ping; updates `last_activity`. Anonymous sessions noop. |
+| method | path | current | target | csrf_exempt | note |
+|---|---|---|---|---|---|
+| GET | `/` | Anonymous | Anonymous | — | Homepage with search. Librarian-only metadata-error badge is template-gated. |
+| GET | `/health` | Anonymous | Anonymous | — | Liveness probe. |
+| POST | `/session/keepalive` | Anonymous | Anonymous | no | Ping; updates `last_activity`. Anonymous sessions noop. |
 
 ### Auth (`src/routes/auth.rs`)
 
-| method | path | current | target | note |
-|---|---|---|---|---|
-| GET | `/login` | Anonymous | Anonymous | Accepts `?next=` (Task 3). Redirects Librarian+ to `/catalog`. |
-| POST | `/login` | Anonymous | Anonymous | On success: redirect to same-origin `next` if present, else `/`. |
-| GET | `/logout` | Anonymous | Anonymous | Idempotent; soft-deletes session row. |
-| POST | `/logout` | Anonymous | Anonymous | Same as GET. |
+| method | path | current | target | csrf_exempt | note |
+|---|---|---|---|---|---|
+| GET | `/login` | Anonymous | Anonymous | — | Accepts `?next=` (Task 3). Redirects Librarian+ to `/catalog`. |
+| POST | `/login` | Anonymous | Anonymous | **yes** | No authenticated session at request time; `SameSite=Lax` mitigates login-CSRF. Frozen in `CSRF_EXEMPT_ROUTES`. |
+| GET | `/logout` | — | **405** | — | **CHANGE (story 8-2)** — GET `/logout` removed; the router only exposes POST so a cross-origin `<img src="/logout">` or mistyped anchor cannot end a session. |
+| POST | `/logout` | Anonymous | Anonymous | no | Requires CSRF token. The nav-bar logout is a POST form (story 8-2). |
+| POST | `/language` | Anonymous | Anonymous | no | Language toggle (story 7-3). Requires CSRF token (story 8-2 added hidden `_csrf_token` to the nav-bar form). Anonymous visitors carry a CSRF token via the lazy-anonymous session row. |
 
 ### Catalog (`src/routes/catalog.rs`)
 
-| method | path | current | target | note |
-|---|---|---|---|---|
-| GET | `/catalog` | Librarian | **Anonymous** | **CHANGE** — AC #1. Scan-field + edit affordances template-gated. |
-| POST | `/catalog/scan` | Librarian | Librarian | — |
-| POST | `/catalog/scan-with-type` | Librarian | Librarian | — |
-| GET | `/catalog/title/new` | Librarian | Librarian | — |
-| POST | `/catalog/title` | Librarian | Librarian | — |
-| GET | `/catalog/title/fields/{media_type}` | Librarian | Librarian | HTMX fragment. |
-| GET | `/catalog/contributors/form` | Librarian | Librarian | — |
-| GET | `/catalog/contributors/search` | Librarian | Librarian | — |
-| POST | `/catalog/contributors/add` | Librarian | Librarian | — |
-| POST | `/catalog/contributors/remove` | Librarian | Librarian | — |
-| POST | `/catalog/contributors/update` | Librarian | Librarian | — |
-| DELETE | `/catalog/contributors/{id}` | Librarian | Librarian | — |
-| DELETE | `/catalog/title/{id}` | Librarian | Librarian | — |
-| DELETE | `/catalog/volume/{id}` | Librarian | Librarian | — |
+| method | path | current | target | csrf_exempt | note |
+|---|---|---|---|---|---|
+| GET | `/catalog` | Librarian | **Anonymous** | — | **CHANGE** — AC #1. Scan-field + edit affordances template-gated. |
+| POST | `/catalog/scan` | Librarian | Librarian | no | — |
+| POST | `/catalog/scan-with-type` | Librarian | Librarian | no | — |
+| GET | `/catalog/title/new` | Librarian | Librarian | — | — |
+| POST | `/catalog/title` | Librarian | Librarian | no | — |
+| GET | `/catalog/title/fields/{media_type}` | Librarian | Librarian | — | HTMX fragment. |
+| GET | `/catalog/contributors/form` | Librarian | Librarian | — | — |
+| GET | `/catalog/contributors/search` | Librarian | Librarian | — | — |
+| POST | `/catalog/contributors/add` | Librarian | Librarian | no | — |
+| POST | `/catalog/contributors/remove` | Librarian | Librarian | no | — |
+| POST | `/catalog/contributors/update` | Librarian | Librarian | no | — |
+| DELETE | `/catalog/contributors/{id}` | Librarian | Librarian | no | — |
+| DELETE | `/catalog/title/{id}` | Librarian | Librarian | no | — |
+| DELETE | `/catalog/volume/{id}` | Librarian | Librarian | no | — |
 
 ### Titles (`src/routes/titles.rs`)
 
-| method | path | current | target | note |
-|---|---|---|---|---|
-| GET | `/title/{id}` | Anonymous | Anonymous | — |
-| GET | `/title/{id}/metadata` | Anonymous | Anonymous | Embeds Librarian-only edit/redownload buttons; template-gated. |
-| GET | `/title/{id}/edit` | Librarian | Librarian | — |
-| POST | `/title/{id}` | Librarian | Librarian | — |
-| POST | `/title/{id}/redownload` | Librarian | Librarian | — |
-| POST | `/title/{id}/confirm-metadata` | Librarian | Librarian | — |
-| POST | `/title/{id}/series` | Librarian | Librarian | — |
-| POST | `/title/{id}/series/{assignment_id}/remove` | Librarian | Librarian | — |
-| POST | `/title/{id}/series-remove` | Librarian | Librarian | — |
+| method | path | current | target | csrf_exempt | note |
+|---|---|---|---|---|---|
+| GET | `/title/{id}` | Anonymous | Anonymous | — | — |
+| GET | `/title/{id}/metadata` | Anonymous | Anonymous | — | Embeds Librarian-only edit/redownload buttons; template-gated. |
+| GET | `/title/{id}/edit` | Librarian | Librarian | — | — |
+| POST | `/title/{id}` | Librarian | Librarian | no | — |
+| POST | `/title/{id}/redownload` | Librarian | Librarian | no | — |
+| POST | `/title/{id}/confirm-metadata` | Librarian | Librarian | no | — |
+| POST | `/title/{id}/series` | Librarian | Librarian | no | — |
+| POST | `/title/{id}/series/{assignment_id}/remove` | Librarian | Librarian | no | — |
+| POST | `/title/{id}/series-remove` | Librarian | Librarian | no | — |
 
 ### Volumes (handled in `catalog.rs`)
 
-| method | path | current | target | note |
-|---|---|---|---|---|
-| GET | `/volume/{id}` | Anonymous | Anonymous | — |
-| GET | `/volume/{id}/edit` | Librarian | Librarian | — |
-| POST | `/volume/{id}/update` | Librarian | Librarian | — |
+| method | path | current | target | csrf_exempt | note |
+|---|---|---|---|---|---|
+| GET | `/volume/{id}` | Anonymous | Anonymous | — | — |
+| GET | `/volume/{id}/edit` | Librarian | Librarian | — | — |
+| POST | `/volume/{id}/update` | Librarian | Librarian | no | — |
 
 ### Contributors (`src/routes/contributors.rs`)
 
-| method | path | current | target | note |
-|---|---|---|---|---|
-| GET | `/contributor/{id}` | Anonymous | Anonymous | — |
+| method | path | current | target | csrf_exempt | note |
+|---|---|---|---|---|---|
+| GET | `/contributor/{id}` | Anonymous | Anonymous | — | — |
 
 ### Series (`src/routes/series.rs`)
 
-| method | path | current | target | note |
-|---|---|---|---|---|
-| GET | `/series` | Anonymous | Anonymous | — |
-| GET | `/series/{id}` | Anonymous | Anonymous | — |
-| GET | `/series/new` | Librarian | Librarian | — |
-| POST | `/series` | Librarian | Librarian | — |
-| GET | `/series/{id}/edit` | Librarian | Librarian | — |
-| POST | `/series/{id}` | Librarian | Librarian | — |
-| DELETE | `/series/{id}` | Librarian | Librarian | — |
+| method | path | current | target | csrf_exempt | note |
+|---|---|---|---|---|---|
+| GET | `/series` | Anonymous | Anonymous | — | — |
+| GET | `/series/{id}` | Anonymous | Anonymous | — | — |
+| GET | `/series/new` | Librarian | Librarian | — | — |
+| POST | `/series` | Librarian | Librarian | no | — |
+| GET | `/series/{id}/edit` | Librarian | Librarian | — | — |
+| POST | `/series/{id}` | Librarian | Librarian | no | — |
+| DELETE | `/series/{id}` | Librarian | Librarian | no | — |
 
 ### Locations (`src/routes/locations.rs`)
 
-| method | path | current | target | note |
-|---|---|---|---|---|
-| GET | `/location/{id}` | Anonymous | Anonymous | — |
-| GET | `/locations` | Librarian | **Anonymous** | **CHANGE** — AC #1 "location browse page". |
-| GET | `/locations/next-lcode` | Admin | **Librarian** | **CHANGE** — decision 1a. Used by create form. |
-| GET | `/locations/{id}/edit` | Admin | **Librarian** | **CHANGE** — decision 1a. |
-| POST | `/locations` | Admin | **Librarian** | **CHANGE** — decision 1a. |
-| POST | `/locations/{id}` | Admin | **Librarian** | **CHANGE** — decision 1a. |
-| DELETE | `/locations/{id}` | Admin | Admin | Destructive; stays Admin (decision 1a exception). Used as smoke-test 403 candidate. |
+| method | path | current | target | csrf_exempt | note |
+|---|---|---|---|---|---|
+| GET | `/location/{id}` | Anonymous | Anonymous | — | — |
+| GET | `/locations` | Librarian | **Anonymous** | — | **CHANGE** — AC #1 "location browse page". |
+| GET | `/locations/next-lcode` | Admin | **Librarian** | — | **CHANGE** — decision 1a. Used by create form. |
+| GET | `/locations/{id}/edit` | Admin | **Librarian** | — | **CHANGE** — decision 1a. |
+| POST | `/locations` | Admin | **Librarian** | no | **CHANGE** — decision 1a. |
+| POST | `/locations/{id}` | Admin | **Librarian** | no | **CHANGE** — decision 1a. |
+| DELETE | `/locations/{id}` | Admin | Admin | no | Destructive; stays Admin (decision 1a exception). Used as smoke-test 403 candidate. |
 
 ### Borrowers (`src/routes/borrowers.rs`)
 
-| method | path | current | target | note |
-|---|---|---|---|---|
-| GET | `/borrowers` | Librarian | Librarian | — |
-| POST | `/borrowers` | Librarian | Librarian | — |
-| GET | `/borrowers/search` | Librarian | Librarian | — |
-| GET | `/borrower/{id}` | Librarian | Librarian | — |
-| GET | `/borrower/{id}/edit` | Admin | **Librarian** | **CHANGE** — decision 2a. |
-| POST | `/borrower/{id}` | Admin | **Librarian** | **CHANGE** — decision 2a. |
-| DELETE | `/borrower/{id}` | Admin | Admin | **Smoke-test 403 target (AC #9).** Destructive; stays Admin (decision 2a exception). |
+| method | path | current | target | csrf_exempt | note |
+|---|---|---|---|---|---|
+| GET | `/borrowers` | Librarian | Librarian | — | — |
+| POST | `/borrowers` | Librarian | Librarian | no | — |
+| GET | `/borrowers/search` | Librarian | Librarian | — | — |
+| GET | `/borrower/{id}` | Librarian | Librarian | — | — |
+| GET | `/borrower/{id}/edit` | Admin | **Librarian** | — | **CHANGE** — decision 2a. |
+| POST | `/borrower/{id}` | Admin | **Librarian** | no | **CHANGE** — decision 2a. |
+| DELETE | `/borrower/{id}` | Admin | Admin | no | **Smoke-test 403 target (AC #9).** Destructive; stays Admin (decision 2a exception). |
 
 ### Loans (`src/routes/loans.rs`)
 
-| method | path | current | target | note |
-|---|---|---|---|---|
-| GET | `/loans` | Librarian | Librarian | — |
-| POST | `/loans` | Librarian | Librarian | — |
-| GET | `/loans/scan` | Librarian | Librarian | — |
-| POST | `/loans/{id}/return` | Librarian | Librarian | — |
+| method | path | current | target | csrf_exempt | note |
+|---|---|---|---|---|---|
+| GET | `/loans` | Librarian | Librarian | — | — |
+| POST | `/loans` | Librarian | Librarian | no | — |
+| GET | `/loans/scan` | Librarian | Librarian | — | — |
+| POST | `/loans/{id}/return` | Librarian | Librarian | no | — |
+
+### Admin (`src/routes/admin.rs`)
+
+Story 8-1 introduced the `/admin` surface. Every handler's first line is `session.require_role_with_return(Role::Admin, …)?` — Librarian → 403 FeedbackEntry body; Anonymous → 303 → `/login?next=%2Fadmin`. All read-only in 8-1; mutations land in 8-2+.
+
+| method | path                     | current | target | csrf_exempt | note                                                        |
+|--------|--------------------------|---------|--------|-------------|-------------------------------------------------------------|
+| GET    | `/admin`                 | —       | Admin  | —           | New (8-1). 5-tab shell; Librarian → 403, Anonymous → 303 /login. |
+| GET    | `/admin/health`          | —       | Admin  | —           | New (8-1). Health panel fragment (HTMX + direct).                 |
+| GET    | `/admin/users`           | —       | Admin  | —           | New (8-1). List + form container (story 8-3 implements).           |
+| GET    | `/admin/users/new`       | —       | Admin  | —           | New (8-3). Create user form fragment (HTMX).                       |
+| POST   | `/admin/users`           | —       | Admin  | no          | New (8-3). Create user; validates; hashes password Argon2.        |
+| GET    | `/admin/users/{id}/edit` | —       | Admin  | —           | New (8-3). Edit user form fragment (HTMX, pre-filled).             |
+| POST   | `/admin/users/{id}`      | —       | Admin  | no          | New (8-3). Update user (role, username, optional password).        |
+| POST   | `/admin/users/{id}/deactivate` | — | Admin | no | New (8-3). Soft-delete user + invalidate sessions (atomic tx). |
+| POST   | `/admin/users/{id}/reactivate` | — | Admin | no | New (8-3). Clear `deleted_at`; user can log in again.              |
+| GET    | `/admin/reference-data`  | —       | Admin  | —           | New (8-1). Stub panel — story 8-3 fills in (reference data).      |
+| GET    | `/admin/trash`           | —       | Admin  | —           | New (8-1). Stub panel — story 8-5 fills in.                       |
+| GET    | `/admin/system`          | —       | Admin  | —           | New (8-1). Stub panel — story 8-4 fills in.                       |
 
 ### Static
 
-| method | path | current | target | note |
-|---|---|---|---|---|
-| GET | `/static/*` | Anonymous | Anonymous | ServeDir; CSS/JS/favicon. |
-| GET | `/covers/*` | Anonymous | Anonymous | ServeDir; cover images. |
+| method | path | current | target | csrf_exempt | note |
+|---|---|---|---|---|---|
+| GET | `/static/*` | Anonymous | Anonymous | — | ServeDir; CSS/JS/favicon. |
+| GET | `/covers/*` | Anonymous | Anonymous | — | ServeDir; cover images. |
 
 ## Task 2 worklist (`current ≠ target`)
 

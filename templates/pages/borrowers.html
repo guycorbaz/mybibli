@@ -17,6 +17,7 @@
     {% if role == "librarian" || role == "admin" %}
     <div id="add-form" class="hidden mb-6 p-4 bg-stone-50 dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700">
         <form method="POST" action="/borrowers" class="space-y-3">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
             <div>
                 <label for="new-name" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ name_label }} *</label>
                 <input type="text" id="new-name" name="name" required

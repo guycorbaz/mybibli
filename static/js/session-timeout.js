@@ -95,9 +95,24 @@
 
     function keepAlive() {
         if (typeof htmx !== "undefined") {
+            // csrf.js's htmx:configRequest listener injects X-CSRF-Token.
             htmx.ajax("POST", "/session/keepalive", { swap: "none" });
         } else {
-            fetch("/session/keepalive", { method: "POST" });
+            // Bare fetch() fallback — no HTMX event fires, so we must read
+            // the token off the meta tag ourselves. Optional chaining +
+            // nullish coalescing: if the meta tag is missing the server
+            // returns a clean 403 instead of the browser throwing.
+            // Mirror csrf.js's meta-read convention — use getAttribute()
+            // and trim so a null or whitespace-only content becomes the
+            // empty string (clean 403 instead of a whitespace-token that
+            // never matches the stored token).
+            var meta = document.querySelector('meta[name="csrf-token"]');
+            var raw = meta ? meta.getAttribute("content") : "";
+            var token = raw ? raw.trim() : "";
+            fetch("/session/keepalive", {
+                method: "POST",
+                headers: { "X-CSRF-Token": token },
+            });
         }
         hideWarning();
         resetTimer();

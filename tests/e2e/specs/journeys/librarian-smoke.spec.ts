@@ -17,8 +17,12 @@ test.describe("Librarian login smoke (story 6-2)", () => {
     await expect(page).toHaveURL(/\/locations/);
     await expect(page.locator("h1").first()).toBeVisible({ timeout: 5000 });
 
-    // Session resolves to librarian role server-side: logout link must exist.
-    await expect(page.locator('a[href="/logout"]')).toBeVisible();
+    // Session resolves to librarian role server-side: logout control must
+    // exist. Story 8-2 converted the nav-bar logout from an anchor
+    // (`<a href="/logout">`) to a POST form + button.
+    await expect(
+      page.locator('form[action="/logout"] button[type="submit"]').first(),
+    ).toBeVisible();
 
     // Role-specific assertion — proves the session is NOT admin.
     // Creating a location is Admin-only (src/routes/locations.rs); a librarian

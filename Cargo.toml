@@ -26,8 +26,18 @@ time = "0.3"
 async-trait = "0.1"
 base64 = "0.22"
 percent-encoding = "2"
+# Admin Health tab (story 8-1) — disk-usage via statvfs(2). Linux-only.
+# The `fs` feature is enough; avoids pulling in `sysinfo`'s CPU/memory/network surface.
+nix = { version = "0.29", features = ["fs"] }
+# CSRF middleware (story 8-2) — constant-time byte comparison for token
+# validation. Token length is small; `==` is not constant-time.
+subtle = "2.6"
+serde_urlencoded = "0.7"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 serde_yaml = "0.9"
 regex = "1"
+# Captures tracing events emitted during a test so we can assert on
+# security-audit warnings (story 8-2 §Ships 16 — CSRF-rejection warn log).
+tracing-test = "0.2"

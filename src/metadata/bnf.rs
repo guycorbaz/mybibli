@@ -220,6 +220,10 @@ impl MetadataProvider for BnfProvider {
 
         Ok(Self::parse_sru_response(&body))
     }
+
+    fn health_check_url(&self) -> Option<&str> {
+        Some("https://catalogue.bnf.fr/")
+    }
 }
 
 #[cfg(test)]

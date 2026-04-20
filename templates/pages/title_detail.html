@@ -95,12 +95,14 @@
                         {% if role == "librarian" || role == "admin" %}
                         {% if sa.is_omnibus %}
                         <form method="POST" action="/title/{{ title.id }}/series-remove" class="inline">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
                             <input type="hidden" name="series_id" value="{{ sa.series_id }}">
                             <button type="submit"
                                     class="text-red-400 hover:text-red-600 text-xs" aria-label="{{ label_unassign }} {{ sa.series_name }}">&times;</button>
                         </form>
                         {% else %}
                         <form method="POST" action="/title/{{ title.id }}/series/{{ sa.id }}/remove" class="inline">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
                             <button type="submit"
                                     class="text-red-400 hover:text-red-600 text-xs" aria-label="{{ label_unassign }} {{ sa.series_name }}">&times;</button>
                         </form>
@@ -114,6 +116,7 @@
                 {% if role == "librarian" || role == "admin" %}
                 {% if !all_series.is_empty() %}
                 <form method="POST" action="/title/{{ title.id }}/series" class="mt-3 flex items-end gap-2 flex-wrap">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
                     <div>
                         <label for="assign-series" class="block text-xs text-stone-600 dark:text-stone-400">{{ label_series }}</label>
                         <select id="assign-series" name="series_id" required

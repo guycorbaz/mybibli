@@ -37,6 +37,7 @@ const ALLOWED_HX_CONFIRM_SITES: &[(&str, usize)] = &[
     ("templates/pages/borrower_detail.html", 2),
     ("templates/pages/contributor_detail.html", 1),
     ("templates/pages/series_detail.html", 1),
+    ("templates/fragments/admin_users_row.html", 1),
 ];
 
 #[test]
@@ -285,4 +286,135 @@ fn hx_confirm_matches_allowlist() {
         let report = format!("{}{}", header, violations.join("\n"));
         panic!("{report}");
     }
+}
+
+// ─── Story 8-2 — CSRF audit guards ─────────────────────────────────
+//
+// Two gates, one per audit target:
+//   - `forms_include_csrf_token`: every `<form method="POST">` in
+//     `templates/` must have `<input … name="_csrf_token" …>` as one of
+//     its first inputs.
+//   - `csrf_exempt_routes_frozen`: the only `CSRF_EXEMPT_ROUTES` entry
+//     is `("POST", "/login")`. Adding a new exempt route requires a
+//     visible edit to this constant — the PR cannot sneak past review.
+
+#[test]
+fn forms_include_csrf_token() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let templates = root.join("templates");
+
+    // Match the opening <form> tag together with the text following it so
+    // we can inspect the first few inputs inline. `(?s)` enables dot-matches-newline.
+    // Accept `method="POST"`, `method='POST'`, or unquoted `method=POST`.
+    // Strict bare-word form `method=post\b` avoids matching `method=post-junk`.
+    let form_open = Regex::new(
+        r#"(?is)<form\b[^>]*\bmethod\s*=\s*(?:["']post["']|post\b)[^>]*>"#,
+    )
+    .unwrap();
+    // Must match BOTH `name="_csrf_token"` AND a `value="{{ csrf_token …"`
+    // binding. Without the value check, a template regression that ships
+    // `<input name="_csrf_token" value="">` or a hardcoded literal would
+    // pass the audit while leaving every POST 403'd at runtime.
+    //
+    // Accepts either attribute order (`name` before `value` or vice
+    // versa) and either `{{` or `{{-` (whitespace-control) template
+    // delimiters.
+    let csrf_token_input = Regex::new(
+        r#"(?is)<input\b(?:[^>]*\bname\s*=\s*["']_csrf_token["'][^>]*\bvalue\s*=\s*["']\{\{-?\s*csrf_token\b|[^>]*\bvalue\s*=\s*["']\{\{-?\s*csrf_token\b[^>]*\bname\s*=\s*["']_csrf_token["'])"#,
+    )
+    .unwrap();
+    let any_input = Regex::new(r#"(?is)<input\b"#).unwrap();
+    let form_close = Regex::new(r#"(?is)</form>"#).unwrap();
+
+    let mut violations: Vec<String> = Vec::new();
+    visit(&templates, &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let raw = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let content = strip_html_comments(&raw);
+
+        for open in form_open.find_iter(&content) {
+            let after = &content[open.end()..];
+            // Form body = everything up to the closing </form>. If no
+            // close tag is found, fall back to the whole tail — that
+            // still exercises the CSRF-input presence check.
+            let body_end = form_close
+                .find(after)
+                .map(|m| m.start())
+                .unwrap_or(after.len());
+            let body = &after[..body_end];
+
+            let has_csrf = csrf_token_input.is_match(body);
+            if !has_csrf {
+                let line = 1 + content[..open.start()].matches('\n').count();
+                let rel = path.strip_prefix(&root).unwrap_or(path);
+                let rel_str = rel
+                    .to_string_lossy()
+                    .replace(std::path::MAIN_SEPARATOR, "/");
+                violations.push(format!("  {}:{} — POST form without `_csrf_token` hidden input", rel_str, line));
+                continue;
+            }
+            // Bonus: make sure _csrf_token is near the top of the
+            // form (within the first ~5 inputs) so the audit stays
+            // strict. Walk at most ~500 chars / 5 inputs of body.
+            let mut seen_inputs = 0usize;
+            let mut found_at: Option<usize> = None;
+            let mut cursor = 0usize;
+            while cursor < body.len().min(2000) && seen_inputs < 5 {
+                let rest = &body[cursor..];
+                let Some(m) = any_input.find(rest) else { break };
+                seen_inputs += 1;
+                let abs_start = cursor + m.start();
+                let abs_end = cursor + m.end();
+                // Read to the next `>` to inspect this input's attrs.
+                let tag_end_rel = body[abs_end..].find('>').unwrap_or(0);
+                let attrs = &body[abs_start..abs_end + tag_end_rel];
+                if csrf_token_input.is_match(attrs) {
+                    found_at = Some(seen_inputs);
+                    break;
+                }
+                cursor = abs_end + tag_end_rel + 1;
+            }
+            if found_at.is_none() {
+                let line = 1 + content[..open.start()].matches('\n').count();
+                let rel = path.strip_prefix(&root).unwrap_or(path);
+                let rel_str = rel
+                    .to_string_lossy()
+                    .replace(std::path::MAIN_SEPARATOR, "/");
+                violations.push(format!(
+                    "  {}:{} — `_csrf_token` input not among the first 5 inputs of this POST form",
+                    rel_str, line
+                ));
+            }
+        }
+    });
+
+    if !violations.is_empty() {
+        let header = "CSRF form-input audit failed (Story 8-2):\n\
+                      Every `<form method=\"POST\">` in templates/ must include \
+                      `<input type=\"hidden\" name=\"_csrf_token\" value=\"{{ csrf_token|e }}\">` \
+                      as one of its first children. Without it, the global CSRF \
+                      middleware rejects the submission with 403.\n";
+        let report = format!("{}{}", header, violations.join("\n"));
+        panic!("{report}");
+    }
+}
+
+#[test]
+fn csrf_exempt_routes_frozen() {
+    use crate::middleware::csrf::CSRF_EXEMPT_ROUTES;
+    // Full-slice equality: any addition, removal, reorder, or edit of an
+    // exempt entry fails the assertion. Len-only + index-0 checks let a
+    // second entry sneak in with a one-line len update.
+    let expected: &[(&str, &str)] = &[("POST", "/login")];
+    assert_eq!(
+        CSRF_EXEMPT_ROUTES, expected,
+        "CSRF exempt-route allowlist changed — this is a review signal. \
+         If adding a new exempt route is genuinely required, update this \
+         expected list in the same PR and justify in the review description."
+    );
 }

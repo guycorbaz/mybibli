@@ -1,0 +1,42 @@
+{# Admin Users → Edit form (story 8-3). #}
+<tr id="admin-users-row-{{ user.id }}" class="border-b border-stone-300">
+    <td colspan="5">
+        <form id="admin-users-form-edit" hx-post="/admin/users/{{ user.id }}" hx-target="#admin-users-row-{{ user.id }}" hx-swap="outerHTML" class="space-y-4 p-4">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <input type="hidden" name="version" value="{{ user.version }}">
+
+            <div>
+                <label for="edit-username" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ form_label_username }} *</label>
+                <input type="text" id="edit-username" name="username" value="{{ user.username|e }}" required autocomplete="username"
+                       class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            </div>
+
+            <div>
+                <label for="edit-password" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ form_label_password_edit }} *</label>
+                <input type="password" id="edit-password" name="password" autocomplete="new-password"
+                       class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            </div>
+
+            <div>
+                <label for="edit-role" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ form_label_role }} *</label>
+                <select id="edit-role" name="role" required
+                        class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <option value="librarian" {% if user.role == "librarian" %}selected{% endif %}>{{ role_librarian }}</option>
+                    <option value="admin" {% if user.role == "admin" %}selected{% endif %}>{{ role_admin }}</option>
+                </select>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4">
+                <button type="button" id="cancel-edit"
+                        hx-get="/admin/users/{{ user.id }}" hx-target="#admin-users-row-{{ user.id }}" hx-swap="outerHTML"
+                        class="px-4 py-2 text-sm font-medium text-stone-700 dark:text-stone-300 bg-stone-100 dark:bg-stone-700 rounded-md hover:bg-stone-200 dark:hover:bg-stone-600">
+                    {{ btn_cancel }}
+                </button>
+                <button type="submit" id="edit-user-submit"
+                        class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50">
+                    {{ btn_save }}
+                </button>
+            </div>
+        </form>
+    </td>
+</tr>

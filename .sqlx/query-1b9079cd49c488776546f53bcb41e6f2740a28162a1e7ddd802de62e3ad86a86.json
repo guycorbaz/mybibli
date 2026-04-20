@@ -1,0 +1,74 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT s.token,\n                      s.user_id,\n                      s.csrf_token,\n                      u.role as `role?: String`,\n                      u.preferred_language as `preferred_language?: String`,\n                      s.last_activity\n               FROM sessions s\n               LEFT JOIN users u ON s.user_id = u.id AND u.deleted_at IS NULL\n               WHERE s.token = ?\n                 AND s.deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "token",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | PRIMARY_KEY | NO_DEFAULT_VALUE",
+          "max_size": 176
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "MULTIPLE_KEY | UNSIGNED",
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "csrf_token",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL",
+          "max_size": 256
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "role?: String",
+        "type_info": {
+          "type": "String",
+          "flags": "ENUM",
+          "max_size": 36
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "preferred_language?: String",
+        "type_info": {
+          "type": "String",
+          "flags": "ENUM",
+          "max_size": 8
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "last_activity",
+        "type_info": {
+          "type": "Timestamp",
+          "flags": "NOT_NULL | MULTIPLE_KEY | UNSIGNED | BINARY | TIMESTAMP | ON_UPDATE_NOW",
+          "max_size": 19
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "1b9079cd49c488776546f53bcb41e6f2740a28162a1e7ddd802de62e3ad86a86"
+}
