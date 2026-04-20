@@ -222,10 +222,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/admin/health", axum::routing::get(admin::admin_health_panel))
         .route("/admin/users", axum::routing::get(admin::admin_users_panel).post(admin::admin_users_create))
         .route("/admin/users/new", axum::routing::get(admin::admin_users_create_form))
-        .route("/admin/users/:id/edit", axum::routing::get(admin::admin_users_edit_form))
-        .route("/admin/users/:id", axum::routing::get(admin::admin_users_row_view).post(admin::admin_users_update))
-        .route("/admin/users/:id/deactivate", axum::routing::post(admin::admin_users_deactivate))
-        .route("/admin/users/:id/reactivate", axum::routing::post(admin::admin_users_reactivate))
+        .route("/admin/users/{id}/edit", axum::routing::get(admin::admin_users_edit_form))
+        .route("/admin/users/{id}", axum::routing::post(admin::admin_users_update))
+        .route("/admin/users/{id}/deactivate", axum::routing::post(admin::admin_users_deactivate))
+        .route("/admin/users/{id}/reactivate", axum::routing::post(admin::admin_users_reactivate))
         .route(
             "/admin/reference-data",
             axum::routing::get(admin::admin_reference_data_panel),
