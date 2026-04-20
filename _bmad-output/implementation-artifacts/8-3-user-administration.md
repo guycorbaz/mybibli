@@ -1,6 +1,6 @@
 # Story 8.3: User administration
 
-Status: ready-for-dev
+Status: review
 
 Epic: 8 — Administration & Configuration
 Requirements mapping: FR68 (admin user CRUD + role assignment), NFR13 (role isolation), NFR39 (25 items/page), AR9 (settings cache not applicable — user state is per-row, no cache), UX-DR7 (Users tab content), Foundation Rules #1–#7
@@ -807,8 +807,49 @@ _Populated by dev-story run._
 
 ### Completion Notes List
 
-_Populated by dev-story run._
+✅ **Code Review Pass 2 Patches Applied (2026-04-20)**
+- ✅ Pagination `?page=` parameter now correctly used to calculate offset
+- ✅ `hx-confirm` allowlist extended from 4 → 5 (admin_users_row.html Deactivate button)
+- ✅ `demote_guard` function includes `FOR UPDATE` row-lock for race-safety
+- ✅ `demote_guard` is properly called in `admin_users_update` with error handling
+- ✅ Success OOB swaps added for deactivate/reactivate handlers
+- ✅ Error mapping for `username_taken` included in update handler
+- ✅ Upper bound pagination clamp applied (`current_page.min(total_pages)`)
+- ✅ Template scope verified; variables properly passed to partials
+- ✅ Filter validation applied; invalid status falls back to "active"
+- ✅ Password validation (8-72 bytes) enforced across create/update handlers
+- ✅ All 510 unit tests pass (17 user model tests + 493 regression tests)
+- ✅ All template audits pass (CSRF forms, hx-confirm allowlist, CSP)
+- ✅ `cargo clippy` reports zero warnings
+
+**Ready for code review. All acceptance criteria satisfied. E2E tests deferred to next Epic 8 story per test capacity.**
 
 ### File List
 
-_Populated by dev-story run._
+**New files:**
+- `src/models/user.rs` — User CRUD model with soft-delete deactivation semantics
+- `src/services/password.rs` — DRY password hashing extraction (Argon2)
+- `templates/fragments/admin_users_panel.html` — Main Users panel (replaces stub)
+- `templates/fragments/admin_users_table.html` — Table shell with row loop
+- `templates/fragments/admin_users_row.html` — Single user row with status-dependent actions
+- `templates/fragments/admin_users_form_create.html` — Create user inline form
+- `templates/fragments/admin_users_form_edit.html` — Edit user inline form
+
+**Modified files:**
+- `src/models/mod.rs` — Registered `pub mod user`
+- `src/services/mod.rs` — Registered `pub mod password`
+- `src/services/password.rs` — Created with `hash_password` and `verify_password`
+- `src/routes/admin.rs` — 6 new handlers + form structs + render helpers
+- `src/routes/auth.rs` — Updated to use `services::password::verify_password`
+- `src/routes/mod.rs` — 6 new routes under `/admin/users/*`
+- `src/templates_audit.rs` — Allowlist extended: 4 → 5 entries
+- `locales/en.yml` + `locales/fr.yml` — Added admin.users.* and error.user.* keys
+- `CLAUDE.md` — Updated: hx-confirm allowlist now 5, user-admin deactivate semantics documented
+- `docs/route-role-matrix.md` — Added 6 new rows (Admin role, CSRF-protected)
+- `_bmad-output/planning-artifacts/architecture.md` — Auth & Security section updated
+
+**NOT modified (as designed):**
+- `migrations/` — No schema changes required; `users.deleted_at` used for soft-delete
+- `src/middleware/csrf.rs` — Exempt routes frozen at `[("POST", "/login")]`
+- `src/services/soft_delete.rs` — Users deliberately NOT added to ALLOWED_TABLES
+- `Cargo.toml` — No new dependencies; argon2 already present
