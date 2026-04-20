@@ -353,7 +353,7 @@ impl UserModel {
         pool: &DbPool,
         target_id: u64,
         new_role: &str,
-        _acting_admin_id: u64,
+        acting_admin_id: u64,
     ) -> Result<(), AppError> {
         if new_role == "admin" {
             return Ok(());
@@ -379,8 +379,13 @@ impl UserModel {
             .await?;
 
             if remaining.0 == 0 {
-                tracing::warn!(user_id = target_id, "Role demote blocked: would leave no active admins");
-                return Err(AppError::Conflict("last_admin_demote_blocked".to_string()));
+                if target_id == acting_admin_id {
+                    tracing::warn!(user_id = target_id, "Self-demotion blocked: last active admin");
+                    return Err(AppError::Conflict("last_admin_demote_blocked".to_string()));
+                } else {
+                    tracing::warn!(user_id = target_id, "Role demote blocked: would leave no active admins");
+                    return Err(AppError::Conflict("last_admin_demote_blocked".to_string()));
+                }
             }
         }
 
