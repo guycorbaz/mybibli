@@ -522,6 +522,99 @@ This story's Deactivate button is a legitimate destructive-confirm. Two options:
 
 **Summary:** 9 issues identified (5 CRITICAL, 4 HIGH, 0 MEDIUM at implementation level). All are actionable patches with clear fixes. Implementation is ~80% feature-complete but requires these corrections before merge.
 
+---
+
+## Review Findings (Code Review Pass 2 — 2026-04-20 Comprehensive Triage)
+
+**Review Scope:** Full parallel review with 3 independent layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor). 37 total findings identified and triaged.
+
+### CRITICAL Issues (Block merge — must fix)
+
+- [ ] [Review][Patch] Pagination `?page=` parameter read but never used [admin.rs:823-827]
+  - **AC Violation:** AC#1 — pagination does not work. The handler extracts `page` parameter but never uses it to calculate SQL offset. All page requests render page 1 only. **Fix:** Use `page` to calculate offset = (page - 1) * 25 and pass to `list_page()`.
+
+- [ ] [Review][Patch] `hx-confirm` allowlist not extended from 4 to 5 [templates_audit.rs]
+  - **AC Violation:** CSP audit will fail. Story adds deactivate button with `hx-confirm=` but the frozen allowlist is not updated. **Fix:** Extend `ALLOWED_HX_CONFIRM_SITES` from 4 entries to 5 and update length assertion.
+
+- [ ] [Review][Patch] Version mismatch test assertion weakened [user.rs:467]
+  - **AC Violation:** Test no longer checks error specificity. Changed from `if s == "version_mismatch"` to wildcard `_`, making test accept ANY conflict error. **Fix:** Restore `if s == "version_mismatch"` guard.
+
+- [ ] [Review][Patch] `demote_guard` may not be called in update handler [admin.rs:975-1000]
+  - **AC Violation:** AC#3 guard can be bypassed. Guard is called after form validation but should run in transaction with FOR UPDATE. Race condition possible. **Fix:** (1) Call demote_guard before update, (2) wrap in transaction with SELECT...FOR UPDATE, (3) ensure it runs even on validation failure.
+
+### HIGH Priority Issues (Major gaps — must fix)
+
+- [ ] [Review][Patch] Filter predicate logic mismatch (roles `is_some_and` vs `.filter`) [user.rs:74-84]
+  - The condition `|r| !r.is_empty() && r != "all"` appears twice (SQL fragment + bind logic). If they diverge, parameter count mismatch causes SQLx bind error. **Fix:** Deduplicate condition or extract to helper function.
+
+- [ ] [Review][Patch] Template variable scope propagation failure [admin_users_table.html:17-21]
+  - Askama `{% include %}` does NOT auto-propagate outer scope. `admin_users_row.html` expects ~10 variables from `admin_users_panel.html` context. Template will fail with undefined variable errors. **Fix:** Verify scope inheritance in Askama or explicitly pass/bind all required variables.
+
+- [ ] [Review][Patch] Two sources of pagination truth (page param + filters.page) [admin.rs:823,826]
+  - Function has both `page: Option<u32>` AND `filters.page` field. Code uses `page` for current_page, ignores `filters.page`. Inconsistency suggests incomplete refactoring. **Fix:** Remove one source of truth; consolidate pagination state.
+
+- [ ] [Review][Patch] No upper bound clamp on pagination [admin.rs:823]
+  - `current_page` is checked >= 1 but not <= total_pages. User can request `?page=999` which exceeds result set. **Fix:** Clamp `current_page` to range [1, total_pages].
+
+- [ ] [Review][Patch] Missing success OOB swap for deactivate/reactivate [admin.rs:1020-1040]
+  - **AC Violation:** AC#4 (deactivate), AC#6 (reactivate) require success feedback. Both handlers return updated row but no success message. Users see no confirmation. **Fix:** Add OOB success FeedbackEntry like `admin_users_create` does.
+
+- [ ] [Review][Patch] Error mapping for `username_taken` missing in update handler [admin.rs:995]
+  - Create handler maps `Conflict("username_taken")` to i18n feedback. Update handler does NOT. If user renames to existing username, error is raw 409, not localized. **Fix:** Add same error mapping to update handler.
+
+- [ ] [Review][Patch] Hard-coded actor ID (999) in test [user.rs:484-485]
+  - Test passes `999` as `acting_admin_id`. This fake ID doesn't exist. If `deactivate()` checks actor validity, test may not exercise real code path. **Fix:** Use real admin user ID from seeded or test-created data.
+
+- [ ] [Review][Patch] Filter parameter lost after user creation [admin_users_panel.html:10-28]
+  - Filter form doesn't include page number as hidden input. User on page 2 who creates user sees page 1 after refresh. **Fix:** Add `<input type="hidden" name="page" value="{{ page }}">` to preserve pagination context.
+
+- [ ] [Review][Patch] Filter validation error handling missing [admin.rs:875-885]
+  - No validation that `status` query param is one of {"active", "deactivated", "all"}. Invalid values silently become "active". **Fix:** Validate filter values; return 400 for invalid filters.
+
+- [ ] [Review][Patch] `demote_guard` missing FOR UPDATE row-lock [user.rs:~165]
+  - Unlike `deactivate`, `demote_guard` doesn't acquire row-lock. Race: two sessions could each see "one other admin" and both demote. **Fix:** Wrap in transaction with SELECT...FOR UPDATE on target user.
+
+### MEDIUM Priority Issues (Nice to fix, may cause issues)
+
+- [ ] [Review][Patch] Redundant string cloning in filter rendering [admin.rs:894-895]
+  - Code uses `.clone().unwrap_or_default()` on owned `filters`, adding unnecessary heap allocation. **Fix:** Remove `.clone()`.
+
+- [ ] [Review][Patch] Inconsistent dereference in filter logic [user.rs:74,82]
+  - Line 74: implicit deref in `is_some_and(|r| r != "all")`. Line 82: explicit deref in `.filter(|r| *r != "all")`. Inconsistency suggests author uncertainty. **Fix:** Standardize to consistent dereference style.
+
+- [ ] [Review][Patch] Potential XSS in hx-confirm with username [admin.rs:926, admin_users_row.html:23]
+  - Confirmation text built with `rust_i18n::t!(..., username = &user.username)`. If i18n key has unsafe interpolation, could be XSS in hx-confirm attribute (JS-evaluated, not HTML-parsed). **Fix:** Verify i18n key uses safe escaping for username parameter.
+
+- [ ] [Review][Patch] Dead code: `render_user_row` function defined but never called [admin.rs:909]
+  - Function exists but is never invoked. Either delete dead code or integrate if it should be called. **Fix:** Remove function or identify and call it.
+
+- [ ] [Review][Patch] Race condition in deactivate transaction scope [user.rs:~140-165]
+  - `deactivate` locks target user but checks for "last admin" without full transaction scope. Another request could deactivate a different admin during check. **Fix:** Extend transaction locks to cover all admin-count checks.
+
+- [ ] [Review][Patch] Weak last_admin_blocked assertion in test [user.rs:~477-495]
+  - Test asserts `Err(AppError::Conflict(_))` without checking message is "last_admin_blocked". Should verify specific error. **Fix:** Strengthen assertion: `if s == "last_admin_blocked"`.
+
+- [ ] [Review][Patch] Test data isolation with hard-coded actor ID [user.rs:484-485]
+  - (Duplicate of H7 in detail) Using fake actor ID masks test isolation issues. **Fix:** Use real admin IDs.
+
+### DEFERRED Issues (Not blocking, address later)
+
+- [x] [Review][Defer] Pagination test brittleness (depends on seeded data) [user.rs:600-612]
+  - Tests depend on migration seed state (`admin` + `librarian` users). Refactoring to isolate test data is an improvement but not blocking. Current code works with existing seeds. **Defer to:** Epic 9 test infrastructure refactor.
+
+- [x] [Review][Defer] Seeded user dependency in filter test [user.rs:625-635]
+  - Filter test asserts on count expecting seeded librarian. No guard if seeds fail. Same brittleness issue as pagination test. **Defer to:** Epic 9 test infrastructure refactor.
+
+- [x] [Review][Defer] Filter persistence UX (not a bug, acceptable) [admin_users_panel.html:40-44]
+  - Pagination buttons embed filter values in href. Correct behavior but could be UX-polished. Low priority. **Defer to:** Future UX iteration.
+
+- [x] [Review][Defer] SQLx offline cache staleness risk [.sqlx/]
+  - Pre-commit gate: `cargo sqlx prepare --check` verifies cache matches source. Load-bearing but not a code issue. **Defer to:** Pre-merge validation.
+
+---
+
+**Consolidated Summary:** 37 findings (13 Blind + 12 Edge Case + 12 Auditor) → 33 patches + 4 deferred. **14 blocking issues** (4 CRITICAL + 10 HIGH) prevent merge. All are actionable patches with unambiguous fixes.
+
 ## Dev Notes
 
 ### Deactivation semantics clarification (`deleted_at` vs `active`)

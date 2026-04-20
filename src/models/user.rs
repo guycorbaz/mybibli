@@ -71,7 +71,9 @@ impl UserModel {
             UserStatus::All => {}, // No additional filter
         }
 
-        if filter_role.is_some_and(|r| !r.is_empty() && r != "all") {
+        // Apply role filter if specified and valid (not empty, not "all")
+        let apply_role_filter = filter_role.is_some_and(|r| !r.is_empty() && r != "all");
+        if apply_role_filter {
             query_str.push_str(" AND u.role = ?");
         }
 
@@ -79,8 +81,8 @@ impl UserModel {
 
         let mut query = sqlx::query(&query_str);
 
-        if let Some(role) = filter_role.filter(|r| !r.is_empty() && *r != "all") {
-            query = query.bind(role);
+        if apply_role_filter {
+            query = query.bind(filter_role.unwrap());
         }
 
         query = query.bind(limit).bind(offset);
@@ -112,14 +114,16 @@ impl UserModel {
             UserStatus::All => {},
         }
 
-        if filter_role.is_some_and(|r| !r.is_empty() && r != "all") {
+        // Apply role filter if specified and valid (not empty, not "all")
+        let apply_role_filter = filter_role.is_some_and(|r| !r.is_empty() && r != "all");
+        if apply_role_filter {
             query_str.push_str(" AND role = ?");
         }
 
         let mut query = sqlx::query_as::<_, (i64,)>(&query_str);
 
-        if let Some(role) = filter_role.filter(|r| !r.is_empty() && *r != "all") {
-            query = query.bind(role);
+        if apply_role_filter {
+            query = query.bind(filter_role.unwrap());
         }
 
         let (count,) = query.fetch_one(pool).await?;
@@ -462,7 +466,7 @@ mod tests {
     async fn test_update_applies_optimistic_locking(pool: sqlx::Pool<sqlx::MySql>) -> Result<(), Box<dyn std::error::Error>> {
         let id = UserModel::create(&pool, "grace", "hash", "librarian").await?;
         let user = UserModel::find_by_id(&pool, id).await?.unwrap();
-        // Try update with stale version
+        // Try update with stale version - should fail with conflict
         let result = UserModel::update(&pool, id, user.version - 1, "grace", "admin", None).await;
         assert!(matches!(result, Err(AppError::Conflict(_))));
         Ok(())
@@ -484,7 +488,9 @@ mod tests {
     async fn test_deactivate_last_admin_is_blocked(pool: sqlx::Pool<sqlx::MySql>) -> Result<(), Box<dyn std::error::Error>> {
         // Seeded 'admin' user exists; try to deactivate it with no other admins
         let admin = UserModel::find_by_username(&pool, "admin").await?.unwrap();
-        let result = UserModel::deactivate(&pool, admin.id, admin.version, 999).await;
+        // Create a librarian to be the acting admin (to avoid self-deactivate guard)
+        let librarian_id = UserModel::create(&pool, "test_librarian", "hash", "librarian").await?;
+        let result = UserModel::deactivate(&pool, admin.id, admin.version, librarian_id).await;
         assert!(matches!(
             result,
             Err(AppError::Conflict(ref s)) if s == "last_admin_blocked"

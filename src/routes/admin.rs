@@ -26,7 +26,7 @@ use crate::AppState;
 use crate::error::AppError;
 use crate::metadata::registry::ProviderRegistry;
 use crate::middleware::auth::{Role, Session};
-use crate::middleware::htmx::{HtmxResponse, HxRequest};
+use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
 use crate::middleware::locale::Locale;
 use crate::models::user::UserModel;
 use crate::routes::catalog::feedback_html_pub;
@@ -641,8 +641,11 @@ pub async fn admin_users_deactivate(
 
     let row_html = render_user_row(&state, loc, &session, &user).await?;
     Ok(HtmxResponse {
-        main: format!("{}{}", feedback, row_html),
-        oob: vec![],
+        main: row_html,
+        oob: vec![OobUpdate {
+            target: "feedback-list".to_string(),
+            content: feedback,
+        }],
     })
 }
 
@@ -670,8 +673,11 @@ pub async fn admin_users_reactivate(
 
     let row_html = render_user_row(&state, loc, &session, &user).await?;
     Ok(HtmxResponse {
-        main: format!("{}{}", feedback, row_html),
-        oob: vec![],
+        main: row_html,
+        oob: vec![OobUpdate {
+            target: "feedback-list".to_string(),
+            content: feedback,
+        }],
     })
 }
 
@@ -857,6 +863,7 @@ async fn render_users_panel(
     .await?;
 
     let total_pages = if total == 0 { 1 } else { ((total as f64) / 25.0).ceil() as u32 };
+    let current_page = current_page.min(total_pages).max(1);
 
     let empty_state = if users.is_empty() && total == 0 {
         rust_i18n::t!("admin.users.empty_state", locale = loc).to_string()
