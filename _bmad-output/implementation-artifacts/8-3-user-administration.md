@@ -524,7 +524,7 @@ This story's Deactivate button is a legitimate destructive-confirm. Two options:
 
 ---
 
-## Review Findings (Code Review Pass 2 — 2026-04-20 Comprehensive Triage)
+## Review Findings (Code Review Pass 3 — 2026-04-20 Adversarial + Edge Case + Acceptance Audit)
 
 **Review Scope:** Full parallel review with 3 independent layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor). 37 total findings identified and triaged.
 
@@ -614,6 +614,44 @@ This story's Deactivate button is a legitimate destructive-confirm. Two options:
 ---
 
 **Consolidated Summary:** 37 findings (13 Blind + 12 Edge Case + 12 Auditor) → 33 patches + 4 deferred. **14 blocking issues** (4 CRITICAL + 10 HIGH) prevent merge. All are actionable patches with unambiguous fixes.
+
+---
+
+### Review Findings (Code Review Pass 3 — Independent Adversarial + Edge Case + Acceptance Audit)
+
+**Summary:** 3 Critical, 1 High, 2 Medium patches identified. All ACs satisfied per Acceptance Auditor. 3 false positives dismissed (hx-confirm allowlist already fixed, routes already registered, SQL injection adequately protected).
+
+**CRITICAL Patches (Must Fix):**
+
+- [ ] [Review][Patch] Race condition: demote_guard + update non-atomic [src/routes/admin.rs:1744,1757]
+  - Between `demote_guard()` check and `UserModel::update()`, another admin could be deactivated, leaving zero admins. Fix: Wrap both in single transaction or move guard logic into `update()`.
+
+- [ ] [Review][Patch] Unused `_acting_admin_id` parameter in demote_guard [src/models/user.rs:882]
+  - Parameter is unused (underscore prefix), suggesting incomplete self-demotion guard. Should prevent `target_id == acting_admin_id AND new_role != Admin`. Fix: Implement check.
+
+- [ ] [Review][Patch] Version mismatch not validated before demote_guard lock [src/models/user.rs:878-915]
+  - Guard acquires row lock but doesn't check version. Stale version passes guard but fails in update with confusing error message. Fix: Check version matches in demote_guard transaction, fail early.
+
+**HIGH Patches (Should Fix):**
+
+- [ ] [Review][Patch] Empty password allows whitespace-only submission [src/routes/admin.rs:1722-1736]
+  - `is_empty()` returns false for whitespace. User submits `" "` → passes `is_empty()` → fails "too short" validation with confusing error. Fix: Trim password before `is_empty()` check.
+
+**MEDIUM Patches (Nice to Fix):**
+
+- [ ] [Review][Patch] Invalid pagination silently clamped with no feedback [src/routes/admin.rs:2007-2043]
+  - Page 999 silently becomes page 3. No feedback to user. Contradicts CLAUDE.md UX principle. Fix: Show feedback "Requested page not found; showing last page" or clamp to [1, total_pages].
+
+- [ ] [Review][Patch] Session kill count not traced/logged [src/routes/admin.rs:1815]
+  - `sessions_killed` count rendered but not logged. If concurrent delete fails, count=0 looks normal but masks real problem. Fix: Add `tracing::info!()` call with session kill count.
+
+**Dismissed (False Positives):**
+
+- [x] [Review][Dismiss] hx-confirm allowlist entry — already in code (templates_audit.rs line 40, allowlist has 5 entries)
+- [x] [Review][Dismiss] Missing route registrations — routes ARE in diff (src/routes/mod.rs:223-228)
+- [x] [Review][Dismiss] SQL injection risk — adequately protected by validate_role() check
+
+---
 
 ## Dev Notes
 

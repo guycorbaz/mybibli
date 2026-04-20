@@ -353,10 +353,16 @@ impl UserModel {
         pool: &DbPool,
         target_id: u64,
         new_role: &str,
-        _acting_admin_id: u64,
+        acting_admin_id: u64,
     ) -> Result<(), AppError> {
         if new_role == "admin" {
             return Ok(());
+        }
+
+        // Prevent self-demotion
+        if target_id == acting_admin_id {
+            tracing::warn!(user_id = target_id, "Self-demotion blocked");
+            return Err(AppError::Conflict("last_admin_demote_blocked".to_string()));
         }
 
         let mut tx = pool.begin().await?;

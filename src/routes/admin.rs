@@ -542,20 +542,21 @@ pub async fn admin_users_update(
     }
 
     // Validate and hash password (optional)
-    let password_hash = if form.password.is_empty() {
+    let password_trimmed = form.password.trim().to_string();
+    let password_hash = if password_trimmed.is_empty() {
         None
     } else {
-        if form.password.len() < 8 {
+        if password_trimmed.len() < 8 {
             return Err(AppError::BadRequest(
                 rust_i18n::t!("error.user.password_too_short", locale = loc).to_string(),
             ));
         }
-        if form.password.len() > 72 {
+        if password_trimmed.len() > 72 {
             return Err(AppError::BadRequest(
                 rust_i18n::t!("error.user.password_too_long", locale = loc).to_string(),
             ));
         }
-        Some(password::hash_password(&form.password)?)
+        Some(password::hash_password(&password_trimmed)?)
     };
 
     // Check last-admin demote guard if role is changing
@@ -629,6 +630,7 @@ pub async fn admin_users_deactivate(
 
     // Deactivate the user (guards handled by UserModel::deactivate)
     let sessions_killed = UserModel::deactivate(&state.pool, id, form.version, acting_admin_id).await?;
+    tracing::info!(user_id = id, sessions_killed, "user deactivated");
 
     // Fetch updated user and render row
     let user = UserModel::find_by_id(&state.pool, id)
