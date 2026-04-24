@@ -1,0 +1,43 @@
+{# Permanent Delete Confirmation Modal (story 8-7) #}
+<dialog open aria-modal="true" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 rounded-lg">
+    <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-md w-full mx-4 border border-stone-200 dark:border-stone-700">
+        <div class="p-6">
+            <h3 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ modal_title }}</h3>
+            <p class="text-red-600 dark:text-red-400 font-semibold mb-4">⚠️ {{ modal_warning }}</p>
+
+            <div class="bg-stone-50 dark:bg-stone-800 p-4 rounded-lg mb-4 border border-stone-200 dark:border-stone-700">
+                <p class="text-sm text-stone-600 dark:text-stone-400 mb-2">{{ modal_confirmation_label }}</p>
+                <p class="font-mono font-bold text-stone-900 dark:text-white break-all">{{ item_name }}</p>
+            </div>
+
+            <form hx-post="/admin/trash/{{ table_name }}/{{ item_id }}/permanent-delete" hx-target="#admin-trash-panel" hx-swap="outerHTML" class="space-y-4">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="version" value="{{ version }}">
+
+                <div>
+                    <label for="confirm-name-input" class="text-sm font-semibold mb-1 block">{{ modal_confirm_label }}</label>
+                    <input type="text" id="confirm-name-input" name="confirmed_name" placeholder="{{ item_name }}" class="w-full px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-red-600" autocomplete="off" autofocus>
+                    <p class="text-xs text-stone-500 dark:text-stone-400 mt-1">{{ modal_confirmation_instruction }}</p>
+                </div>
+
+                <div class="flex gap-2">
+                    <button type="submit" id="confirm-delete-btn" disabled class="flex-1 px-4 py-2 bg-red-600 text-white rounded-md font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-700">
+                        {{ modal_confirm_button }}
+                    </button>
+                    <button type="button" hx-delete="{{ modal_close_target }}" hx-swap="delete" class="flex-1 px-4 py-2 bg-stone-300 dark:bg-stone-700 rounded-md font-semibold hover:bg-stone-400 dark:hover:bg-stone-600">
+                        {{ modal_cancel }}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</dialog>
+
+<script>
+{# Enable confirm button only when user types the correct item name #}
+document.getElementById('confirm-name-input').addEventListener('input', function() {
+    const confirmBtn = document.getElementById('confirm-delete-btn');
+    const itemName = '{{ item_name|escape }}';
+    confirmBtn.disabled = this.value !== itemName;
+});
+</script>
