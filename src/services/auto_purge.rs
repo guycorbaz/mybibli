@@ -119,6 +119,7 @@ impl AutoPurgeService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlx::Row;
 
     #[sqlx::test(migrations = "./migrations")]
     async fn test_purge_stats_empty_when_no_old_rows(
