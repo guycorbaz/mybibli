@@ -420,6 +420,7 @@ admin:
     delete_permanent_modal_title: "Delete permanently?"
     delete_permanent_modal_warning: "This cannot be undone."
     delete_permanent_modal_confirm_label: "Type item name to confirm:"
+    modal_confirmation_instruction: "Type the item name shown above to confirm permanent deletion."
     delete_permanent_modal_confirm_button: "Delete permanently"
     delete_permanent_modal_cancel: "Cancel"
     delete_permanent_error_not_found: "Item already gone"

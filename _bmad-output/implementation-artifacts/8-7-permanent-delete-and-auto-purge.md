@@ -321,5 +321,6 @@ Some FK policies may cascade automatically; cross-check with schema before imple
 
 ## Status
 
-**Current:** ready-for-dev  
-**Next:** dev-story (launch implementation)
+**Current:** code-review-complete  
+**Next:** Fix E2E tests or merge to main  
+**Last Updated:** 2026-04-24 (code review patches applied and committed)

@@ -16,7 +16,7 @@
 
                 <div>
                     <label for="confirm-name-input" class="text-sm font-semibold mb-1 block">{{ modal_confirm_label }}</label>
-                    <input type="text" id="confirm-name-input" name="confirmed_name" placeholder="{{ item_name|escape }}" class="w-full px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-red-600" autocomplete="off" autofocus>
+                    <input type="text" id="confirm-name-input" name="confirmed_name" placeholder="{{ item_name|escape }}" data-confirm-name="{{ item_name|escape }}" data-confirm-btn="confirm-delete-btn" class="w-full px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-red-600" autocomplete="off" autofocus>
                     <p class="text-xs text-stone-500 dark:text-stone-400 mt-1">{{ modal_confirmation_instruction }}</p>
                 </div>
 
@@ -33,11 +33,3 @@
     </div>
 </dialog>
 
-<script>
-{# Enable confirm button only when user types the correct item name #}
-document.getElementById('confirm-name-input').addEventListener('input', function() {
-    const confirmBtn = document.getElementById('confirm-delete-btn');
-    const itemName = '{{ item_name|escape }}';
-    confirmBtn.disabled = this.value !== itemName;
-});
-</script>

@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use sqlx::Row;
 use crate::db::DbPool;
 use crate::error::AppError;
@@ -52,9 +53,32 @@ impl TrashService {
         }
 
         // Fetch restored row
-        let entry = TrashModel::get_trash_entry(pool, table, id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Restored item not found".to_string()))?;
+        let item_col = match table {
+            "titles" => "title",
+            "volumes" => "label",
+            "contributors" => "name",
+            "storage_locations" => "name",
+            "borrowers" => "name",
+            "series" => "name",
+            _ => "name",
+        };
+
+        let row = sqlx::query(&format!(
+            "SELECT CAST(id AS SIGNED) as id, '{}' as table_name, {} as item_name, CAST(deleted_at AS DATETIME) as deleted_at, version FROM {} WHERE id = ?",
+            table, item_col, table
+        ))
+        .bind(id as i64)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Restored item not found".to_string()))?;
+
+        let entry = TrashEntry {
+            id: row.get::<i64, _>("id") as u64,
+            table_name: row.get::<String, _>("table_name"),
+            item_name: row.get::<String, _>("item_name"),
+            deleted_at: row.get::<Option<NaiveDateTime>, _>("deleted_at"),
+            version: row.get::<i32, _>("version"),
+        };
 
         Ok(entry)
     }
@@ -218,7 +242,7 @@ impl TrashService {
         // Fetch the entry before deletion for audit trail
         let entry = TrashModel::get_trash_entry(pool, table, id)
             .await?
-            .ok_or_else(|| AppError::NotFound("Item not found in trash".to_string()))?;
+            .ok_or_else(|| AppError::NotFound("Item already gone".to_string()))?;
 
         // Hard delete with optimistic locking
         let result = sqlx::query(&format!("DELETE FROM {} WHERE id = ? AND version = ?", table))
@@ -253,7 +277,7 @@ mod tests {
     async fn test_restore_clears_deleted_at_and_bumps_version(
         pool: sqlx::Pool<sqlx::MySql>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        sqlx::query("INSERT INTO titles (title, version, deleted_at) VALUES (?, 1, NOW())")
+        sqlx::query("INSERT INTO titles (title, media_type, genre_id, version, deleted_at) VALUES (?, 'book', 1, 1, NOW())")
             .bind("Deleted Title")
             .execute(&pool)
             .await?;
@@ -274,7 +298,7 @@ mod tests {
     async fn test_restore_with_stale_version_returns_409(
         pool: sqlx::Pool<sqlx::MySql>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        sqlx::query("INSERT INTO titles (title, version, deleted_at) VALUES (?, 2, NOW())")
+        sqlx::query("INSERT INTO titles (title, media_type, genre_id, version, deleted_at) VALUES (?, 'book', 1, 2, NOW())")
             .bind("Deleted Title")
             .execute(&pool)
             .await?;
@@ -305,7 +329,7 @@ mod tests {
     async fn test_permanent_delete_hard_deletes_row(
         pool: sqlx::Pool<sqlx::MySql>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        sqlx::query("INSERT INTO titles (title, version, deleted_at) VALUES (?, 1, NOW())")
+        sqlx::query("INSERT INTO titles (title, media_type, genre_id, version, deleted_at) VALUES (?, 'book', 1, 1, NOW())")
             .bind("To Delete")
             .execute(&pool)
             .await?;
@@ -325,7 +349,7 @@ mod tests {
     async fn test_permanent_delete_with_version_mismatch(
         pool: sqlx::Pool<sqlx::MySql>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        sqlx::query("INSERT INTO titles (title, version, deleted_at) VALUES (?, 2, NOW())")
+        sqlx::query("INSERT INTO titles (title, media_type, genre_id, version, deleted_at) VALUES (?, 'book', 1, 2, NOW())")
             .bind("To Delete")
             .execute(&pool)
             .await?;

@@ -58,7 +58,7 @@ impl AdminAuditModel {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<AdminAuditEntry>, AppError> {
-        let mut query_builder = String::from("SELECT id, user_id, action, entity_type, entity_id, timestamp, details FROM admin_audit WHERE 1=1");
+        let mut query_builder = String::from("SELECT CAST(id AS SIGNED) as id, CAST(user_id AS SIGNED) as user_id, action, entity_type, CAST(entity_id AS SIGNED) as entity_id, CAST(timestamp AS DATETIME) as timestamp, details FROM admin_audit WHERE 1=1");
 
         let mut bindings: Vec<String> = vec![];
 
@@ -96,7 +96,7 @@ impl AdminAuditModel {
                 action: r.get::<String, _>("action"),
                 entity_type: r.get::<Option<String>, _>("entity_type"),
                 entity_id: r.get::<Option<i64>, _>("entity_id").map(|id| id as u64),
-                timestamp: r.get::<NaiveDateTime, _>("timestamp"),
+                timestamp: r.get::<Option<NaiveDateTime>, _>("timestamp").unwrap_or_else(|| chrono::NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
                 details: r.get::<Option<String>, _>("details").and_then(|s| serde_json::from_str(&s).ok()),
             })
             .collect())

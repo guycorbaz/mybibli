@@ -154,7 +154,7 @@ mod tests {
     async fn test_purge_stats_empty_when_no_old_rows(
         pool: sqlx::Pool<sqlx::MySql>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        sqlx::query("INSERT INTO titles (title, deleted_at) VALUES (?, NOW())")
+        sqlx::query("INSERT INTO titles (title, media_type, genre_id, deleted_at) VALUES (?, 'book', 1, NOW())")
             .bind("Recent Delete")
             .execute(&pool)
             .await?;
@@ -170,7 +170,7 @@ mod tests {
     async fn test_purge_deletes_31_day_old_rows(
         pool: sqlx::Pool<sqlx::MySql>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        sqlx::query("INSERT INTO titles (title, deleted_at) VALUES (?, NOW() - INTERVAL 31 DAY)")
+        sqlx::query("INSERT INTO titles (title, media_type, genre_id, deleted_at) VALUES (?, 'book', 1, NOW() - INTERVAL 31 DAY)")
             .bind("Old Delete")
             .execute(&pool)
             .await?;
@@ -192,12 +192,12 @@ mod tests {
     async fn test_purge_respects_30_day_boundary(
         pool: sqlx::Pool<sqlx::MySql>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        sqlx::query("INSERT INTO titles (title, deleted_at) VALUES (?, NOW() - INTERVAL 29 DAY)")
+        sqlx::query("INSERT INTO titles (title, media_type, genre_id, deleted_at) VALUES (?, 'book', 1, NOW() - INTERVAL 29 DAY)")
             .bind("29 Day Delete")
             .execute(&pool)
             .await?;
 
-        sqlx::query("INSERT INTO titles (title, deleted_at) VALUES (?, NOW() - INTERVAL 31 DAY)")
+        sqlx::query("INSERT INTO titles (title, media_type, genre_id, deleted_at) VALUES (?, 'book', 1, NOW() - INTERVAL 31 DAY)")
             .bind("31 Day Delete")
             .execute(&pool)
             .await?;
