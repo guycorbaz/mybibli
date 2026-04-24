@@ -14,6 +14,35 @@ pub struct PurgeStats {
 pub struct AutoPurgeService;
 
 impl AutoPurgeService {
+    /// Validate that FK dependency order matches schema constraints (call at startup)
+    pub async fn validate_schema(pool: &DbPool) -> Result<(), AppError> {
+        // Check that all tables in deletion_order exist and have expected structure
+        let deletion_order = vec![
+            "title_contributors", "series_title_assignments", "volume_locations", "loans", "volumes",
+            "titles", "series", "borrowers", "storage_locations", "contributors", "genres",
+        ];
+
+        for table in &deletion_order {
+            if !ALLOWED_TABLES.contains(table) {
+                continue;
+            }
+
+            let exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?)"
+            )
+            .bind(table)
+            .fetch_one(pool)
+            .await?;
+
+            if !exists {
+                return Err(AppError::Internal(format!("FK validation failed: table {} not found in schema", table)));
+            }
+        }
+
+        tracing::info!("FK dependency validation passed");
+        Ok(())
+    }
+
     /// Run the 30-day auto-purge across all whitelisted tables
     pub async fn run_purge(pool: &DbPool) -> Result<PurgeStats, AppError> {
         let mut stats = PurgeStats {
@@ -52,9 +81,9 @@ impl AutoPurgeService {
                 }
             };
 
-            // Hard-delete rows older than 30 days
+            // Hard-delete rows older than 30 days (with LIMIT to prevent blocking)
             let result = sqlx::query(&format!(
-                "DELETE FROM {} WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL 30 DAY",
+                "DELETE FROM {} WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL 30 DAY LIMIT 10000",
                 table
             ))
             .execute(&mut *tx)

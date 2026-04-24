@@ -424,6 +424,7 @@ admin:
     delete_permanent_modal_cancel: "Cancel"
     delete_permanent_error_not_found: "Item already gone"
     delete_permanent_error_version: "Item was modified"
+    delete_permanent_error_name_mismatch: "Item name does not match. Try again."
     restore_modal_title: "Restore conflicts"
     restore_modal_explanation: "Some relationships changed while this item was deleted."
     restore_modal_conflicts: "Conflicts:"
@@ -485,6 +486,8 @@ admin:
     success_updated: "User %{username} updated"
     success_deactivated: "User %{username} deactivated (%{count} session(s) ended)"
     success_reactivated: "User %{username} reactivated"
+    error_cannot_delete_self: "Cannot delete yourself. Ask another admin to delete your account."
+    error_cannot_delete_last_admin: "Cannot delete the last active admin. Create another admin first."
   placeholder:
     coming_in_story: "Coming in story %{story}"
     trash_preview: "Preview of soft-deleted items — full list and restore UI shipping in story 8-5."

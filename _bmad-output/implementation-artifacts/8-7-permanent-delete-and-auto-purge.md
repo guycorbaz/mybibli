@@ -284,6 +284,31 @@ Some FK policies may cascade automatically; cross-check with schema before imple
 |------|--------|
 | 2026-04-24 | Story created from epic 8 requirements. Status: ready-for-dev. Dependencies: story 8-6. |
 
+## Review Findings
+
+### Decision Needed
+
+- [ ] [Review][Decision] FK Dependency Order Validation Strategy — Code uses hardcoded deletion order; must validate against actual schema constraints. Options: (A) validate at startup, (B) accept with caveat, (C) dynamic discovery. Recommend: Option A with test-skip flag.
+
+### Patch Required
+
+- [ ] [Review][Patch] SQL injection in trash search — src/models/trash.rs:754 uses manual quote escaping. Fix: Use parameterized binding in UNION query.
+- [ ] [Review][Patch] Potential XSS in modal template — templates/fragments/admin_trash_permanent_delete_modal.html:2050. Fix: Verify Askama |escape filter; consider data-attribute approach for item_name binding.
+- [ ] [Review][Patch] Missing admin guards on permanent delete — src/routes/admin.rs:1054-1077 missing self-delete & last-admin checks. Fix: Add guards matching story 8-3 deactivation pattern.
+- [ ] [Review][Patch] Startup purge blocking without timeout — src/services/auto_purge.rs:310-313. Fix: Add `LIMIT N` to each DELETE to bound query time.
+- [ ] [Review][Patch] Incorrect i18n key in error path — src/routes/admin.rs:1074 uses modal title key for error. Fix: Use error message key or new key like `delete_permanent_error_name_mismatch`.
+- [ ] [Review][Patch] Days remaining timing inconsistency — src/routes/admin.rs:1188 uses `Local::now()` vs DB `NOW()`. Fix: Fetch timestamp from DB.
+- [ ] [Review][Patch] Name comparison lacks normalization — src/routes/admin.rs:1073 case/whitespace-sensitive. Fix: Add `.trim()` to both sides and document or normalize case.
+
+### Deferred
+
+- [x] [Review][Defer] Race condition on permanent delete — Item deleted between confirm modal and submit. Acceptable edge case; already returns 404.
+- [x] [Review][Defer] Modal close selector CSS :has() compatibility — templates/fragments/admin_trash_permanent_delete_modal.html:2037. Modern CSS, acceptable per CLAUDE.md constraints.
+
+### Additional Finding (Pre-existing)
+
+- Auto-purge hardcoded user_id=1 (src/services/auto_purge.rs:1361) — defer to story 8-8 for system user abstraction.
+
 ## Dev Agent Record
 
 ### Debug Log

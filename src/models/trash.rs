@@ -29,15 +29,14 @@ impl TrashModel {
         let mut query_builder = String::new();
 
         // Build UNION query based on filters
-        if let Some(filter) = entity_type_filter {
-            if !filter.is_empty() && ALLOWED_TABLES.contains(&filter) {
-                // Single table filter
-                let item_col = Self::get_item_name_column(filter);
-                query_builder = format!(
-                    "SELECT id, '{}' as table_name, {} as item_name, deleted_at, version FROM {} WHERE deleted_at IS NOT NULL",
-                    filter, item_col, filter
-                );
-            }
+        if let Some(filter) = entity_type_filter
+            && !filter.is_empty() && ALLOWED_TABLES.contains(&filter) {
+            // Single table filter
+            let item_col = Self::get_item_name_column(filter);
+            query_builder = format!(
+                "SELECT id, '{}' as table_name, {} as item_name, deleted_at, version FROM {} WHERE deleted_at IS NOT NULL",
+                filter, item_col, filter
+            );
         }
 
         if query_builder.is_empty() {
@@ -54,15 +53,34 @@ impl TrashModel {
             query_builder = union_parts.join(" UNION ALL ");
         }
 
-        // Add name search filter if provided
-        if let Some(search) = name_search && !search.is_empty() {
-            query_builder = format!("({}) WHERE item_name LIKE '%{}%'", query_builder, search.replace("'", "''"));
-        }
+        // Add name search filter if provided (using parameterized LIKE binding via subquery)
+        let (final_query, search_term) = if let Some(search) = name_search {
+            if !search.is_empty() {
+                let subquery = format!("({}) AS trash WHERE item_name LIKE ? ORDER BY deleted_at DESC LIMIT ? OFFSET ?", query_builder);
+                (subquery, Some(format!("%{}%", search)))
+            } else {
+                query_builder.push_str(" ORDER BY deleted_at DESC LIMIT ? OFFSET ?");
+                (query_builder, None)
+            }
+        } else {
+            query_builder.push_str(" ORDER BY deleted_at DESC LIMIT ? OFFSET ?");
+            (query_builder, None)
+        };
 
-        // Add pagination
-        query_builder.push_str(&format!(" ORDER BY deleted_at DESC LIMIT {} OFFSET {}", per_page, offset));
-
-        let rows = sqlx::query(&query_builder).fetch_all(pool).await?;
+        let rows = if let Some(term) = search_term {
+            sqlx::query(&final_query)
+                .bind(&term)
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(pool)
+                .await?
+        } else {
+            sqlx::query(&final_query)
+                .bind(per_page)
+                .bind(offset)
+                .fetch_all(pool)
+                .await?
+        };
 
         Ok(rows
             .iter()
