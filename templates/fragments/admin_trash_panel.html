@@ -1,5 +1,95 @@
-{# Admin → Trash stub panel (story 8-1). Replaced by story 8-5 (list + restore). #}
-<div class="text-stone-600 dark:text-stone-400 space-y-2">
-    <p class="text-sm">{{ stub_message }}</p>
-    <p class="text-xs">{{ preview_message }}</p>
-</div>
+{# Admin → Trash panel (story 8-6 & 8-7). List soft-deleted items with restore and permanent delete. #}
+<section id="admin-trash-panel" aria-labelledby="admin-trash-heading">
+    <h2 id="admin-trash-heading" class="sr-only">{{ heading }}</h2>
+
+    {# Filters & Search #}
+    <form method="GET" action="/admin/trash" hx-get="/admin/trash" hx-target="#admin-trash-panel" hx-swap="outerHTML" hx-push-url="true" class="mb-4 flex flex-col gap-4 border border-stone-200 dark:border-stone-700 rounded-lg p-4 bg-stone-50 dark:bg-stone-900">
+        <div class="flex gap-4 items-end flex-wrap">
+            <div class="flex flex-col">
+                <label for="filter-entity-type" class="text-sm font-semibold mb-1">{{ filter_entity_label }}</label>
+                <select id="filter-entity-type" name="entity_type" class="px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800" hx-trigger="change" hx-get="/admin/trash" hx-target="#admin-trash-panel" hx-swap="outerHTML" hx-push-url="true">
+                    <option value="">{{ filter_entity_all }}</option>
+                    <option value="titles" {% if entity_type_filter == "titles" %}selected{% endif %}>{{ filter_entity_titles }}</option>
+                    <option value="volumes" {% if entity_type_filter == "volumes" %}selected{% endif %}>{{ filter_entity_volumes }}</option>
+                    <option value="contributors" {% if entity_type_filter == "contributors" %}selected{% endif %}>{{ filter_entity_contributors }}</option>
+                    <option value="borrowers" {% if entity_type_filter == "borrowers" %}selected{% endif %}>{{ filter_entity_borrowers }}</option>
+                    <option value="series" {% if entity_type_filter == "series" %}selected{% endif %}>{{ filter_entity_series }}</option>
+                    <option value="storage_locations" {% if entity_type_filter == "storage_locations" %}selected{% endif %}>{{ filter_entity_storage_locations }}</option>
+                </select>
+            </div>
+
+            <div class="flex flex-col flex-1 min-w-[200px]">
+                <label for="search-trash" class="text-sm font-semibold mb-1">{{ search_placeholder }}</label>
+                <input type="text" id="search-trash" name="search" placeholder="{{ search_placeholder }}" value="{{ search_query }}" class="px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800" hx-trigger="keyup changed from:#search-trash delay:500ms" hx-get="/admin/trash" hx-target="#admin-trash-panel" hx-swap="outerHTML" hx-push-url="true">
+            </div>
+
+            <input type="hidden" name="page" value="1">
+        </div>
+    </form>
+
+    {# Empty state #}
+    {% if items.is_empty() %}
+        <div class="p-6 text-center text-stone-600 dark:text-stone-400">
+            <p class="text-sm">{{ empty_state }}</p>
+        </div>
+    {% else %}
+        {# Trash list table #}
+        <div class="overflow-x-auto rounded-lg border border-stone-200 dark:border-stone-700">
+            <table class="w-full text-sm border-collapse">
+                <thead>
+                    <tr class="bg-stone-100 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700">
+                        <th class="px-4 py-3 text-left font-semibold">{{ col_item_name }}</th>
+                        <th class="px-4 py-3 text-left font-semibold">{{ col_type }}</th>
+                        <th class="px-4 py-3 text-left font-semibold">{{ col_deleted_at }}</th>
+                        <th class="px-4 py-3 text-center font-semibold">{{ col_days_remaining }}</th>
+                        <th class="px-4 py-3 text-right font-semibold">{{ col_actions }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in items %}
+                        <tr class="border-b border-stone-200 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-900">
+                            <td class="px-4 py-3">{{ entry.item_name }}</td>
+                            <td class="px-4 py-3">
+                                <span class="inline-block px-2 py-1 text-xs font-semibold rounded-full
+                                    {% if entry.table_name == "titles" %}bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200
+                                    {% elif entry.table_name == "volumes" %}bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200
+                                    {% elif entry.table_name == "contributors" %}bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200
+                                    {% elif entry.table_name == "borrowers" %}bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200
+                                    {% elif entry.table_name == "series" %}bg-pink-100 dark:bg-pink-900 text-pink-800 dark:text-pink-200
+                                    {% elif entry.table_name == "storage_locations" %}bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200
+                                    {% else %}bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200{% endif %}">
+                                    {% if entry.table_name == "titles" %}{{ filter_entity_titles }}
+                                    {% elif entry.table_name == "volumes" %}{{ filter_entity_volumes }}
+                                    {% elif entry.table_name == "contributors" %}{{ filter_entity_contributors }}
+                                    {% elif entry.table_name == "borrowers" %}{{ filter_entity_borrowers }}
+                                    {% elif entry.table_name == "series" %}{{ filter_entity_series }}
+                                    {% elif entry.table_name == "storage_locations" %}{{ filter_entity_storage_locations }}
+                                    {% else %}{{ entry.table_name }}{% endif %}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-xs text-stone-600 dark:text-stone-400">{{ entry.deleted_at.format("%Y-%m-%d %H:%M") }}</td>
+                            <td class="px-4 py-3 text-center font-semibold {% if entry.days_remaining <= 7 %}text-red-600 dark:text-red-400{% endif %}">{{ entry.days_remaining }}</td>
+                            <td class="px-4 py-3 text-right space-x-2">
+                                <button hx-get="/admin/trash/{{ entry.table_name }}/{{ entry.id }}/restore?version={{ entry.version }}" hx-target="#admin-trash-panel" hx-swap="outerHTML" class="px-2 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded-md">{{ btn_restore }}</button>
+                                <button hx-get="/admin/trash/{{ entry.table_name }}/{{ entry.id }}/permanent-delete?version={{ entry.version }}" hx-target="body" hx-swap="beforeend" class="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded-md">{{ btn_delete_permanently }}</button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# Pagination #}
+        {% if total_pages > 1 %}
+            <nav id="admin-trash-pagination" aria-label="{{ pagination_aria }}" class="mt-4 flex items-center justify-center gap-2">
+                {% if current_page > 1 %}
+                    <button hx-get="/admin/trash?entity_type={{ entity_type_filter }}&search={{ search_query }}&page={{ current_page - 1 }}" hx-target="#admin-trash-panel" hx-swap="outerHTML" hx-push-url="true" class="px-3 py-1 bg-stone-300 dark:bg-stone-700 rounded">«</button>
+                {% endif %}
+                <span class="text-sm">{{ current_page }} / {{ total_pages }}</span>
+                {% if current_page < total_pages %}
+                    <button hx-get="/admin/trash?entity_type={{ entity_type_filter }}&search={{ search_query }}&page={{ current_page + 1 }}" hx-target="#admin-trash-panel" hx-swap="outerHTML" hx-push-url="true" class="px-3 py-1 bg-stone-300 dark:bg-stone-700 rounded">»</button>
+                {% endif %}
+            </nav>
+        {% endif %}
+    {% endif %}
+</section>
