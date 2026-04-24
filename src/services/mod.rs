@@ -1,4 +1,5 @@
 pub mod admin_health;
+pub mod auto_purge;
 pub mod borrowers;
 pub mod contributor;
 pub mod cover;
@@ -10,4 +11,5 @@ pub mod search;
 pub mod series;
 pub mod soft_delete;
 pub mod title;
+pub mod trash;
 pub mod volume;

@@ -1,3 +1,4 @@
+pub mod admin_audit;
 pub mod borrower;
 pub mod contributor;
 pub mod genre;
@@ -8,6 +9,7 @@ pub mod metadata_cache;
 pub mod series;
 pub mod session;
 pub mod title;
+pub mod trash;
 pub mod user;
 pub mod volume;
 pub mod volume_state;
