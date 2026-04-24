@@ -96,7 +96,7 @@ impl AdminAuditModel {
                 action: r.get::<String, _>("action"),
                 entity_type: r.get::<Option<String>, _>("entity_type"),
                 entity_id: r.get::<Option<i64>, _>("entity_id").map(|id| id as u64),
-                timestamp: r.get::<Option<NaiveDateTime>, _>("timestamp").unwrap_or_else(|| chrono::NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
+                timestamp: r.get::<NaiveDateTime, _>("timestamp"),
                 details: r.get::<Option<String>, _>("details").and_then(|s| serde_json::from_str(&s).ok()),
             })
             .collect())
