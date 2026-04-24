@@ -1204,17 +1204,19 @@ async fn render_trash_panel(
     // Calculate days_remaining for each entry
     let items: Vec<TrashEntryDisplay> = entries
         .into_iter()
-        .map(|e| {
-            let age = (now - e.deleted_at).num_days();
-            let days_remaining = (30 - age) as i32;
-            TrashEntryDisplay {
-                id: e.id,
-                table_name: e.table_name,
-                item_name: e.item_name,
-                deleted_at: e.deleted_at,
-                version: e.version,
-                days_remaining: days_remaining.max(0),
-            }
+        .filter_map(|e| {
+            e.deleted_at.map(|deleted_at| {
+                let age = (now - deleted_at).num_days();
+                let days_remaining = (30 - age) as i32;
+                TrashEntryDisplay {
+                    id: e.id,
+                    table_name: e.table_name,
+                    item_name: e.item_name,
+                    deleted_at,
+                    version: e.version,
+                    days_remaining: days_remaining.max(0),
+                }
+            })
         })
         .collect();
 

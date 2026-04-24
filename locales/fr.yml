@@ -420,6 +420,7 @@ admin:
     delete_permanent_modal_title: "Supprimer définitivement ?"
     delete_permanent_modal_warning: "Ceci ne peut pas être annulé."
     delete_permanent_modal_confirm_label: "Tapez le nom de l'élément pour confirmer :"
+    modal_confirmation_instruction: "Tapez le nom de l'élément affiché ci-dessus pour confirmer la suppression définitive."
     delete_permanent_modal_confirm_button: "Supprimer définitivement"
     delete_permanent_modal_cancel: "Annuler"
     delete_permanent_error_not_found: "Élément déjà supprimé"
