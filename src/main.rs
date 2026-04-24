@@ -15,8 +15,8 @@ use mybibli::metadata::registry::ProviderRegistry;
 use mybibli::metadata::tmdb::TmdbProvider;
 use mybibli::middleware::logging;
 use mybibli::routes;
-use mybibli::services::admin_health;
-use mybibli::tasks::{anonymous_session_purge, provider_health};
+use mybibli::services::{admin_health, auto_purge};
+use mybibli::tasks::{anonymous_session_purge, auto_purge_scheduler, provider_health};
 
 use tokio::net::TcpListener;
 
@@ -46,6 +46,24 @@ async fn main() {
         .expect("Failed to run database migrations");
 
     tracing::info!("Database migrations completed");
+
+    // Run startup auto-purge (blocking, bounded by item count)
+    match auto_purge::AutoPurgeService::run_purge(&pool).await {
+        Ok(stats) => {
+            tracing::info!(
+                tables_processed = stats.tables_processed,
+                rows_deleted = stats.rows_deleted,
+                errors = stats.errors.len(),
+                "Startup auto-purge completed"
+            );
+            if !stats.errors.is_empty() {
+                tracing::warn!(errors = ?stats.errors, "Startup auto-purge encountered errors");
+            }
+        }
+        Err(e) => {
+            tracing::error!("Startup auto-purge failed: {} (non-fatal, continuing)", e);
+        }
+    }
 
     // Load application settings from database
     let app_settings = AppSettings::load_from_db(&pool)
@@ -143,6 +161,10 @@ async fn main() {
     // Bounded accumulation — unauthenticated visitors now get a DB row
     // on first hit so their CSRF token survives across requests.
     anonymous_session_purge::spawn(state.pool.clone());
+
+    // Story 8-7: daily auto-purge of soft-deleted items older than 30 days.
+    // Runs on a 24-hour cadence with a 1-minute delay after startup.
+    auto_purge_scheduler::spawn(state.pool.clone());
 
     let app = routes::build_router(state).layer(logging::trace_layer());
 
