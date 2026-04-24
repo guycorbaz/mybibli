@@ -231,6 +231,7 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::get(admin::admin_reference_data_panel),
         )
         .route("/admin/trash", axum::routing::get(admin::admin_trash_panel))
+        .route("/admin/trash/{table}/{id}/permanent-delete", axum::routing::get(admin::admin_trash_permanent_delete_confirm).post(admin::admin_trash_permanent_delete))
         .route("/admin/system", axum::routing::get(admin::admin_system_panel))
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
