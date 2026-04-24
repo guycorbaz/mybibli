@@ -47,6 +47,11 @@ async fn main() {
 
     tracing::info!("Database migrations completed");
 
+    // Validate FK dependency order against schema
+    auto_purge::AutoPurgeService::validate_schema(&pool)
+        .await
+        .expect("FK schema validation failed");
+
     // Run startup auto-purge (blocking, bounded by item count)
     match auto_purge::AutoPurgeService::run_purge(&pool).await {
         Ok(stats) => {

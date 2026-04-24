@@ -7,16 +7,16 @@
 
             <div class="bg-stone-50 dark:bg-stone-800 p-4 rounded-lg mb-4 border border-stone-200 dark:border-stone-700">
                 <p class="text-sm text-stone-600 dark:text-stone-400 mb-2">{{ modal_confirmation_label }}</p>
-                <p class="font-mono font-bold text-stone-900 dark:text-white break-all">{{ item_name }}</p>
+                <p class="font-mono font-bold text-stone-900 dark:text-white break-all">{{ item_name|escape }}</p>
             </div>
 
-            <form hx-post="/admin/trash/{{ table_name }}/{{ item_id }}/permanent-delete" hx-target="#admin-trash-panel" hx-swap="outerHTML" class="space-y-4">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+            <form hx-post="/admin/trash/{{ table_name|escape }}/{{ item_id }}/permanent-delete" hx-target="#admin-trash-panel" hx-swap="outerHTML" class="space-y-4">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token|escape }}">
                 <input type="hidden" name="version" value="{{ version }}">
 
                 <div>
                     <label for="confirm-name-input" class="text-sm font-semibold mb-1 block">{{ modal_confirm_label }}</label>
-                    <input type="text" id="confirm-name-input" name="confirmed_name" placeholder="{{ item_name }}" class="w-full px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-red-600" autocomplete="off" autofocus>
+                    <input type="text" id="confirm-name-input" name="confirmed_name" placeholder="{{ item_name|escape }}" class="w-full px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-red-600" autocomplete="off" autofocus>
                     <p class="text-xs text-stone-500 dark:text-stone-400 mt-1">{{ modal_confirmation_instruction }}</p>
                 </div>
 

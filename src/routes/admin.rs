@@ -17,7 +17,6 @@ use std::sync::Arc;
 
 use askama::Template;
 use axum::Extension;
-use chrono::Local;
 use axum::extract::{Form, OriginalUri, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
@@ -798,6 +797,7 @@ pub async fn admin_trash_permanent_delete(
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=trash")?;
     let loc = locale.0;
+    let user_id = session.user_id.unwrap_or(0);
 
     // Load the trash entry to verify the name matches
     let entry = crate::models::trash::TrashModel::get_trash_entry(&state.pool, &table, id)
@@ -807,9 +807,31 @@ pub async fn admin_trash_permanent_delete(
             AppError::NotFound(msg)
         })?;
 
-    // Verify user typed the correct item name
-    if form.confirmed_name != entry.item_name {
-        let msg = rust_i18n::t!("admin.trash.delete_permanent_modal_title", locale = loc).to_string();
+    // Guard: prevent self-deletion of users
+    if table == "users" && id == user_id {
+        let msg = rust_i18n::t!("admin.users.error_cannot_delete_self", locale = loc).to_string();
+        let feedback = feedback_html_pub("error", &msg, "");
+        return Ok((StatusCode::FORBIDDEN, Html(feedback)).into_response());
+    }
+
+    // Guard: prevent deletion of last active admin (if deleting users)
+    if table == "users" {
+        let active_admin_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM users WHERE role = 'admin' AND deleted_at IS NULL AND active = TRUE"
+        )
+        .fetch_one(&state.pool)
+        .await?;
+
+        if active_admin_count <= 1 {
+            let msg = rust_i18n::t!("admin.users.error_cannot_delete_last_admin", locale = loc).to_string();
+            let feedback = feedback_html_pub("error", &msg, "");
+            return Ok((StatusCode::FORBIDDEN, Html(feedback)).into_response());
+        }
+    }
+
+    // Verify user typed the correct item name (with trim for whitespace normalization)
+    if form.confirmed_name.trim() != entry.item_name.trim() {
+        let msg = rust_i18n::t!("admin.trash.delete_permanent_error_name_mismatch", locale = loc).to_string();
         let feedback = feedback_html_pub("error", &msg, "");
         return Ok((StatusCode::BAD_REQUEST, Html(feedback)).into_response());
     }
@@ -1174,11 +1196,15 @@ async fn render_trash_panel(
     let per_page = 25i64;
     let total_pages = if total == 0 { 1 } else { ((total as f64) / (per_page as f64)).ceil() as u32 };
 
+    // Fetch current time from DB for consistent calculation with purge logic
+    let now: chrono::NaiveDateTime = sqlx::query_scalar("SELECT NOW()")
+        .fetch_one(pool)
+        .await?;
+
     // Calculate days_remaining for each entry
     let items: Vec<TrashEntryDisplay> = entries
         .into_iter()
         .map(|e| {
-            let now = Local::now().naive_local();
             let age = (now - e.deleted_at).num_days();
             let days_remaining = (30 - age) as i32;
             TrashEntryDisplay {

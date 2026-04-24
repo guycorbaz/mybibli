@@ -424,6 +424,7 @@ admin:
     delete_permanent_modal_cancel: "Annuler"
     delete_permanent_error_not_found: "Élément déjà supprimé"
     delete_permanent_error_version: "L'élément a été modifié"
+    delete_permanent_error_name_mismatch: "Le nom de l'élément ne correspond pas. Réessayez."
     restore_modal_title: "Conflits de restauration"
     restore_modal_explanation: "Certaines relations ont changé pendant que cet élément était supprimé."
     restore_modal_conflicts: "Conflits :"
@@ -485,6 +486,8 @@ admin:
     success_updated: "Utilisateur %{username} mis à jour"
     success_deactivated: "Utilisateur %{username} désactivé (%{count} session(s) terminée(s))"
     success_reactivated: "Utilisateur %{username} réactivé"
+    error_cannot_delete_self: "Vous ne pouvez pas vous supprimer. Demandez à un autre administrateur de supprimer votre compte."
+    error_cannot_delete_last_admin: "Impossible de supprimer le dernier administrateur actif. Créez d'abord un autre administrateur."
   placeholder:
     coming_in_story: "À venir dans la story %{story}"
     trash_preview: "Aperçu des éléments supprimés — liste complète et restauration dans la story 8-5."
