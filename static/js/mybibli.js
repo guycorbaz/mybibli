@@ -284,6 +284,21 @@
         });
     }
 
+    // Permanent delete modal: enable confirm button only when user types the correct item name.
+    // Uses data-confirm-name and data-confirm-btn attributes instead of inline script.
+    function initConfirmationNameValidation() {
+        document.addEventListener("input", function (e) {
+            var input = e.target.closest && e.target.closest("[data-confirm-name]");
+            if (!input) return;
+            var expectedName = input.dataset.confirmName;
+            var btnId = input.dataset.confirmBtn;
+            if (!expectedName || !btnId) return;
+            var btn = document.getElementById(btnId);
+            if (!btn) return;
+            btn.disabled = input.value !== expectedName;
+        });
+    }
+
     function init() {
         initKeyboardShortcuts();
         initFeedbackAutoDismiss();
@@ -297,6 +312,7 @@
         initOmnibusToggle();
         initSeriesTypeToggle();
         initLocationsTreeToggle();
+        initConfirmationNameValidation();
         initOpacityResetCleanup();
     }
 

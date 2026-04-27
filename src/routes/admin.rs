@@ -298,6 +298,54 @@ struct AdminUsersFormEdit {
     btn_save: String,
 }
 
+// Trash panel (story 8-6 & 8-7)
+
+#[derive(Debug, Deserialize)]
+pub struct TrashQuery {
+    pub entity_type: Option<String>,
+    pub search: Option<String>,
+    pub page: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PermanentDeleteForm {
+    pub version: i32,
+    pub confirmed_name: String,
+    pub _csrf_token: String,
+}
+
+struct TrashEntryDisplay {
+    id: u64,
+    table_name: String,
+    item_name: String,
+    deleted_at: chrono::NaiveDateTime,
+    version: i32,
+    days_remaining: i32,
+}
+
+#[derive(Template)]
+#[template(path = "fragments/admin_trash_permanent_delete_modal.html")]
+struct AdminTrashPermanentDeleteModal {
+    modal_title: String,
+    modal_warning: String,
+    modal_confirmation_label: String,
+    modal_confirm_label: String,
+    modal_confirmation_instruction: String,
+    modal_confirm_button: String,
+    modal_cancel: String,
+    modal_close_target: String,
+    csrf_token: String,
+    item_name: String,
+    table_name: String,
+    item_id: u64,
+    version: i32,
+    /// R3-N1: filters carried through to the POST URL so the post-delete
+    /// re-render lands on the same panel view.
+    entity_type_filter: String,
+    search_query: String,
+    current_page: u32,
+}
+
 #[derive(Template)]
 #[template(path = "fragments/admin_reference_data_panel.html")]
 struct AdminReferenceDataPanel {
@@ -307,8 +355,30 @@ struct AdminReferenceDataPanel {
 #[derive(Template)]
 #[template(path = "fragments/admin_trash_panel.html")]
 struct AdminTrashPanel {
-    stub_message: String,
-    preview_message: String,
+    heading: String,
+    pagination_aria: String,
+    empty_state: String,
+    filter_entity_label: String,
+    filter_entity_all: String,
+    filter_entity_titles: String,
+    filter_entity_volumes: String,
+    filter_entity_contributors: String,
+    filter_entity_borrowers: String,
+    filter_entity_series: String,
+    filter_entity_storage_locations: String,
+    search_placeholder: String,
+    col_item_name: String,
+    col_type: String,
+    col_deleted_at: String,
+    col_days_remaining: String,
+    col_actions: String,
+    btn_restore: String,
+    btn_delete_permanently: String,
+    items: Vec<TrashEntryDisplay>,
+    entity_type_filter: String,
+    search_query: String,
+    current_page: u32,
+    total_pages: u32,
 }
 
 #[derive(Template)]
@@ -683,6 +753,152 @@ pub async fn admin_users_reactivate(
     })
 }
 
+/// Query for the confirm-modal: `version` is required (drives optimistic
+/// locking on POST); the rest are the panel filters threaded through so the
+/// post-delete re-render lands on the same view (R3-N1).
+#[derive(Debug, Deserialize)]
+pub struct PermanentDeleteConfirmQuery {
+    pub version: Option<i32>,
+    pub entity_type: Option<String>,
+    pub search: Option<String>,
+    pub page: Option<u32>,
+}
+
+pub async fn admin_trash_permanent_delete_confirm(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    axum::extract::Path((table, id)): axum::extract::Path<(String, u64)>,
+    Query(params): Query<PermanentDeleteConfirmQuery>,
+) -> Result<Html<String>, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=trash")?;
+    let loc = locale.0;
+
+    let version = params
+        .version
+        .ok_or(AppError::BadRequest("Missing or invalid version".to_string()))?;
+
+    // Fetch the trash entry to get the item name
+    let entry = crate::models::trash::TrashModel::get_trash_entry(&state.pool, &table, id)
+        .await?
+        .ok_or(AppError::NotFound("Item not found in trash".to_string()))?;
+
+    let modal = AdminTrashPermanentDeleteModal {
+        modal_title: rust_i18n::t!("admin.trash.delete_permanent_modal_title", locale = loc).to_string(),
+        modal_warning: rust_i18n::t!("admin.trash.delete_permanent_modal_warning", locale = loc).to_string(),
+        modal_confirmation_label: rust_i18n::t!("admin.trash.delete_permanent_modal_confirm_label", locale = loc).to_string(),
+        modal_confirm_label: rust_i18n::t!("admin.trash.delete_permanent_modal_confirm_label", locale = loc).to_string(),
+        modal_confirmation_instruction: rust_i18n::t!("admin.trash.modal_confirmation_instruction", locale = loc, item_name = &entry.item_name).to_string(),
+        modal_confirm_button: rust_i18n::t!("admin.trash.delete_permanent_modal_confirm_button", locale = loc).to_string(),
+        modal_cancel: rust_i18n::t!("admin.trash.delete_permanent_modal_cancel", locale = loc).to_string(),
+        modal_close_target: format!("dialog:has(form[hx-post*='/{}/'])", table),
+        csrf_token: session.csrf_token.clone(),
+        item_name: entry.item_name.clone(),
+        table_name: table.clone(),
+        item_id: id,
+        version,
+        // R3-N1: thread filters straight through to the POST URL.
+        entity_type_filter: params.entity_type.unwrap_or_default(),
+        search_query: params.search.unwrap_or_default(),
+        current_page: params.page.unwrap_or(1).max(1),
+    };
+
+    modal.render()
+        .map(Html)
+        .map_err(|_| AppError::Internal("Modal render failed".to_string()))
+}
+
+pub async fn admin_trash_permanent_delete(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    axum::extract::Path((table, id)): axum::extract::Path<(String, u64)>,
+    Query(filters): Query<TrashQuery>,
+    Form(form): Form<PermanentDeleteForm>,
+) -> Result<Response, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=trash")?;
+    let loc = locale.0;
+
+    // Patch P20: consolidate user_id resolution. The handler is admin-gated
+    // (session.require_role_with_return above) so user_id should always be
+    // Some — failing with Unauthorized if the invariant somehow breaks is
+    // strictly correct.
+    let user_id = session.user_id.ok_or(AppError::Unauthorized)?;
+
+    // Load the trash entry to verify the name matches
+    let entry = crate::models::trash::TrashModel::get_trash_entry(&state.pool, &table, id)
+        .await?
+        .ok_or_else(|| {
+            let msg = rust_i18n::t!("admin.trash.delete_permanent_error_not_found", locale = loc).to_string();
+            AppError::NotFound(msg)
+        })?;
+
+    // Guard: prevent self-deletion of users
+    if table == "users" && id == user_id {
+        let msg = rust_i18n::t!("admin.users.error_cannot_delete_self", locale = loc).to_string();
+        let feedback = feedback_html_pub("error", &msg, "");
+        return Ok((StatusCode::FORBIDDEN, Html(feedback)).into_response());
+    }
+
+    // Guard: prevent deletion of last active admin (if deleting users)
+    if table == "users" {
+        let active_admin_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM users WHERE role = 'admin' AND deleted_at IS NULL AND active = TRUE"
+        )
+        .fetch_one(&state.pool)
+        .await?;
+
+        if active_admin_count <= 1 {
+            let msg = rust_i18n::t!("admin.users.error_cannot_delete_last_admin", locale = loc).to_string();
+            let feedback = feedback_html_pub("error", &msg, "");
+            return Ok((StatusCode::FORBIDDEN, Html(feedback)).into_response());
+        }
+    }
+
+    // Verify user typed the correct item name (with trim for whitespace normalization)
+    if form.confirmed_name.trim() != entry.item_name.trim() {
+        let msg = rust_i18n::t!("admin.trash.delete_permanent_error_name_mismatch", locale = loc).to_string();
+        let feedback = feedback_html_pub("error", &msg, "");
+        return Ok((StatusCode::BAD_REQUEST, Html(feedback)).into_response());
+    }
+
+    // Perform the permanent delete
+    let deleted = crate::services::trash::TrashService::permanent_delete(
+        &state.pool,
+        &table,
+        id,
+        form.version,
+    ).await?;
+
+    // Record in admin audit (uses the consolidated `user_id` from above).
+    crate::models::admin_audit::AdminAuditModel::create(
+        &state.pool,
+        user_id,
+        "permanent_delete_from_trash",
+        Some(&table),
+        Some(id),
+        Some(serde_json::json!({"item_name": deleted.item_name})),
+    )
+    .await?;
+
+    let success_msg = rust_i18n::t!("admin.trash.delete_permanent_success", locale = loc, name = &entry.item_name)
+        .to_string();
+    let feedback = feedback_html_pub("success", &success_msg, "");
+
+    // Patch P12: re-render the panel with the SAME filters/pagination the
+    // admin was viewing — previously this hard-reset to page 1 with no
+    // filters, dumping the admin out of context after every delete.
+    let panel_html = render_trash_panel(&state, loc, &filters).await?;
+
+    Ok(HtmxResponse {
+        main: panel_html,
+        oob: vec![OobUpdate {
+            target: "feedback-list".to_string(),
+            content: feedback,
+        }],
+    }.into_response())
+}
+
 pub async fn admin_reference_data_panel(
     State(state): State<AppState>,
     session: Session,
@@ -700,9 +916,17 @@ pub async fn admin_trash_panel(
     Extension(locale): Extension<Locale>,
     OriginalUri(uri): OriginalUri,
     HxRequest(is_htmx): HxRequest,
+    Query(query): Query<TrashQuery>,
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=trash")?;
-    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::Trash, None).await
+
+    // For HTMX requests, just render the panel; for direct navigation, render full page
+    if is_htmx {
+        let panel_html = render_trash_panel(&state, locale.0, &query).await?;
+        Ok((StatusCode::OK, Html(panel_html)).into_response())
+    } else {
+        render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::Trash, None).await
+    }
 }
 
 pub async fn admin_system_panel(
@@ -961,18 +1185,10 @@ async fn render_panel(
         }
         .render()
         .map_err(|_| AppError::Internal("admin reference-data panel render failed".to_string())),
-        AdminTab::Trash => AdminTrashPanel {
-            stub_message: rust_i18n::t!(
-                "admin.placeholder.coming_in_story",
-                locale = loc,
-                story = "8-5"
-            )
-            .to_string(),
-            preview_message: rust_i18n::t!("admin.placeholder.trash_preview", locale = loc)
-                .to_string(),
+        AdminTab::Trash => {
+            let trash_query = TrashQuery { entity_type: None, search: None, page: None };
+            render_trash_panel(state, loc, &trash_query).await
         }
-        .render()
-        .map_err(|_| AppError::Internal("admin trash panel render failed".to_string())),
         AdminTab::System => AdminSystemPanel {
             stub_message: rust_i18n::t!(
                 "admin.placeholder.coming_in_story",
@@ -984,6 +1200,130 @@ async fn render_panel(
         .render()
         .map_err(|_| AppError::Internal("admin system panel render failed".to_string())),
     }
+}
+
+async fn render_trash_panel(
+    state: &AppState,
+    loc: &'static str,
+    query: &TrashQuery,
+) -> Result<String, AppError> {
+    let pool = &state.pool;
+    let requested_page = query.page.unwrap_or(1).max(1);
+
+    // R3-N14: a non-empty entity_type filter that isn't whitelisted is
+    // rejected by the model layer with `AppError::BadRequest`. Catch it
+    // here and re-render with the filter cleared — the user sees the full
+    // list rather than a hard 400 page (which they couldn't recover from
+    // without manually editing the URL).
+    let effective_filter = match query.entity_type.as_deref() {
+        Some(s) if !s.is_empty()
+            && !crate::services::soft_delete::ALLOWED_TABLES.contains(&s) =>
+        {
+            tracing::warn!(filter = s, "trash panel: invalid entity_type filter cleared");
+            None
+        }
+        other => other,
+    };
+
+    let entries = crate::models::trash::TrashModel::list_trash(
+        pool,
+        requested_page,
+        effective_filter,
+        query.search.as_deref(),
+    )
+    .await?;
+
+    // Patch P23: scope the count to the same filters as the entries so the
+    // paginator says "page 1 / 1" on a filtered empty result instead of
+    // "page 1 / 47" (which then linked to empty pages).
+    let total = crate::models::trash::TrashModel::trash_count(
+        pool,
+        effective_filter,
+        query.search.as_deref(),
+    )
+    .await?;
+    let per_page = 25i64;
+    let total_pages = if total == 0 { 1 } else { ((total as f64) / (per_page as f64)).ceil() as u32 };
+
+    // R3-N8: if the requested page is now beyond `total_pages` (e.g.,
+    // admin just deleted the last item on page 5 of 5), re-fetch the last
+    // valid page so the panel doesn't render an empty pagination island
+    // beyond the end. `total_pages` is at least 1 from the formula above.
+    let page = requested_page.min(total_pages);
+    let entries = if page == requested_page {
+        entries
+    } else {
+        crate::models::trash::TrashModel::list_trash(
+            pool,
+            page,
+            effective_filter,
+            query.search.as_deref(),
+        )
+        .await?
+    };
+
+    // Patch P22: drop the per-render `SELECT NOW()` round-trip — the DB
+    // stores `deleted_at` as `TIMESTAMP` (UTC under the hood), so comparing
+    // against `Utc::now().naive_utc()` is consistent with the auto-purge
+    // service's `NOW() - INTERVAL 30 DAY` semantics. (`session.rs` uses the
+    // same convention.)
+    let now = chrono::Utc::now().naive_utc();
+
+    // Patch P21: ceiling-based days_remaining so a row deleted 29d23h ago is
+    // shown as 0 days (about to be purged) rather than truncating to 1 and
+    // then surprising the admin when it disappears within the hour.
+    let items: Vec<TrashEntryDisplay> = entries
+        .into_iter()
+        .filter_map(|e| {
+            e.deleted_at.map(|deleted_at| {
+                let elapsed_secs = (now - deleted_at).num_seconds().max(0);
+                // Ceiling division: any partial day rounds up to the next full day elapsed.
+                let elapsed_days = (elapsed_secs + 86399) / 86400;
+                let days_remaining = (30 - elapsed_days as i32).max(0);
+                TrashEntryDisplay {
+                    id: e.id,
+                    table_name: e.table_name,
+                    item_name: e.item_name,
+                    deleted_at,
+                    version: e.version,
+                    days_remaining,
+                }
+            })
+        })
+        .collect();
+
+    let panel = AdminTrashPanel {
+        heading: rust_i18n::t!("admin.trash.heading", locale = loc).to_string(),
+        pagination_aria: rust_i18n::t!("admin.trash.pagination_aria", locale = loc).to_string(),
+        empty_state: rust_i18n::t!("admin.trash.empty_state", locale = loc).to_string(),
+        filter_entity_label: rust_i18n::t!("admin.trash.filter_entity_label", locale = loc).to_string(),
+        filter_entity_all: rust_i18n::t!("admin.trash.filter_entity_all", locale = loc).to_string(),
+        filter_entity_titles: rust_i18n::t!("admin.trash.filter_entity_titles", locale = loc).to_string(),
+        filter_entity_volumes: rust_i18n::t!("admin.trash.filter_entity_volumes", locale = loc).to_string(),
+        filter_entity_contributors: rust_i18n::t!("admin.trash.filter_entity_contributors", locale = loc).to_string(),
+        filter_entity_borrowers: rust_i18n::t!("admin.trash.filter_entity_borrowers", locale = loc).to_string(),
+        filter_entity_series: rust_i18n::t!("admin.trash.filter_entity_series", locale = loc).to_string(),
+        filter_entity_storage_locations: rust_i18n::t!("admin.trash.filter_entity_storage_locations", locale = loc).to_string(),
+        search_placeholder: rust_i18n::t!("admin.trash.search_placeholder", locale = loc).to_string(),
+        col_item_name: rust_i18n::t!("admin.trash.col_item_name", locale = loc).to_string(),
+        col_type: rust_i18n::t!("admin.trash.col_type", locale = loc).to_string(),
+        col_deleted_at: rust_i18n::t!("admin.trash.col_deleted_at", locale = loc).to_string(),
+        col_days_remaining: rust_i18n::t!("admin.trash.col_days_remaining", locale = loc).to_string(),
+        col_actions: rust_i18n::t!("admin.trash.col_actions", locale = loc).to_string(),
+        btn_restore: rust_i18n::t!("admin.trash.btn_restore", locale = loc).to_string(),
+        btn_delete_permanently: rust_i18n::t!("admin.trash.btn_delete_permanently", locale = loc).to_string(),
+        items,
+        // R3-N14: render with the *effective* filter so URL-based pagination
+        // links don't propagate an unknown filter value.
+        entity_type_filter: effective_filter.unwrap_or("").to_string(),
+        search_query: query.search.clone().unwrap_or_default(),
+        current_page: page,
+        total_pages,
+    };
+
+    panel
+        .render()
+        .map_err(|_| AppError::Internal("admin trash panel render failed".to_string()))
 }
 
 async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<String, AppError> {

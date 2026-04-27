@@ -163,7 +163,9 @@ Story 8-1 introduced the `/admin` surface. Every handler's first line is `sessio
 | POST   | `/admin/users/{id}/deactivate` | — | Admin | no | New (8-3). Soft-delete user + invalidate sessions (atomic tx). |
 | POST   | `/admin/users/{id}/reactivate` | — | Admin | no | New (8-3). Clear `deleted_at`; user can log in again.              |
 | GET    | `/admin/reference-data`  | —       | Admin  | —           | New (8-1). Stub panel — story 8-3 fills in (reference data).      |
-| GET    | `/admin/trash`           | —       | Admin  | —           | New (8-1). Stub panel — story 8-5 fills in.                       |
+| GET    | `/admin/trash`           | —       | Admin  | —           | New (8-1, filled by 8-6 & 8-7). List soft-deleted items; filter by type, search by name; paginated (25/page). |
+| GET    | `/admin/trash/{table}/{id}/permanent-delete` | — | Admin | — | New (8-7). Show confirmation modal with friction (type name to enable button). |
+| POST   | `/admin/trash/{table}/{id}/permanent-delete` | — | Admin | no | New (8-7). Hard-delete soft-deleted item; create audit entry; return feedback + OOB swap. |
 | GET    | `/admin/system`          | —       | Admin  | —           | New (8-1). Stub panel — story 8-4 fills in.                       |
 
 ### Static
