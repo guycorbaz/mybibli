@@ -181,12 +181,15 @@
         }
     }, false);
 
-    // Some users prefer pressing Enter while focused on the row name span.
+    // Story 8-4 P22: WAI-ARIA contract for `role="button"` requires BOTH
+    // Enter AND Space to activate. Without Space, the row span is keyboard-
+    // unreachable for users following the standard "tab to focus, Space to
+    // activate" pattern.
     document.body.addEventListener("keydown", function (evt) {
         var t = evt.target;
         if (!t || !t.getAttribute) return;
         var action = t.getAttribute("data-action");
-        if (action === "inline-form-edit" && evt.key === "Enter") {
+        if (action === "inline-form-edit" && (evt.key === "Enter" || evt.key === " ")) {
             evt.preventDefault();
             startInlineEdit(t);
         }

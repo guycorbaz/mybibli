@@ -350,6 +350,60 @@ mod tests {
         Ok(())
     }
 
+    /// Story 8-4 P30 (spec Task 7.2): assert
+    /// `count_active_loans_for_state` returns the number of currently-open
+    /// loans on volumes in the given state. Builds the full title → volume →
+    /// borrower → loan chain via direct INSERTs (the model layer doesn't
+    /// expose a single helper for the whole chain, and the test scope is
+    /// exactly the count query).
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_volume_state_count_active_loans_returns_count_with_active_loan(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Volume state in scope.
+        let state_id = VolumeStateModel::create(&pool, "Z-state-active-loans", true)
+            .await?
+            .id();
+        // Genre fixture (titles.genre_id is NOT NULL with FK).
+        let genre_id: u64 = sqlx::query("INSERT INTO genres (name) VALUES ('Z-genre-loans')")
+            .execute(&pool)
+            .await?
+            .last_insert_id();
+        // Title.
+        let title_id: u64 = sqlx::query(
+            "INSERT INTO titles (title, media_type, genre_id) VALUES ('Z-title-loans', 'book', ?)",
+        )
+        .bind(genre_id)
+        .execute(&pool)
+        .await?
+        .last_insert_id();
+        // Volume in this state. `label` is CHAR(5) UNIQUE.
+        let volume_id: u64 = sqlx::query(
+            "INSERT INTO volumes (title_id, label, condition_state_id) VALUES (?, 'V0L01', ?)",
+        )
+        .bind(title_id)
+        .bind(state_id)
+        .execute(&pool)
+        .await?
+        .last_insert_id();
+        // Borrower.
+        let borrower_id: u64 =
+            sqlx::query("INSERT INTO borrowers (name) VALUES ('Z-borrower-loans')")
+                .execute(&pool)
+                .await?
+                .last_insert_id();
+        // Active loan (returned_at NULL).
+        sqlx::query("INSERT INTO loans (volume_id, borrower_id) VALUES (?, ?)")
+            .bind(volume_id)
+            .bind(borrower_id)
+            .execute(&pool)
+            .await?;
+
+        let count = VolumeStateModel::count_active_loans_for_state(&pool, state_id).await?;
+        assert_eq!(count, 1, "active loan on volume in this state must be counted");
+        Ok(())
+    }
+
     #[sqlx::test(migrations = "./migrations")]
     async fn test_volume_state_rename_roundtrip(
         pool: sqlx::Pool<sqlx::MySql>,
