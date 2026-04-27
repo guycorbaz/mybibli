@@ -53,11 +53,20 @@ impl TrashModel {
             query_builder = union_parts.join(" UNION ALL ");
         }
 
-        // Add name search filter if provided (using parameterized LIKE binding via subquery)
+        // Add name search filter if provided (using parameterized LIKE binding
+        // via subquery). Patch P24: escape `%`, `_`, and `\` in the user-
+        // supplied search term so a query like `100%` doesn't widen the LIKE
+        // pattern to a wildcard match. The `ESCAPE '\\'` clause makes the
+        // backslash the literal escape character; the literal pair "\\\\"
+        // in Rust source is a single backslash inside the SQL string.
         let (final_query, search_term) = if let Some(search) = name_search {
             if !search.is_empty() {
-                let subquery = format!("({}) AS trash WHERE item_name LIKE ? ORDER BY deleted_at DESC LIMIT ? OFFSET ?", query_builder);
-                (subquery, Some(format!("%{}%", search)))
+                let escaped = escape_like_pattern(search);
+                let subquery = format!(
+                    "({}) AS trash WHERE item_name LIKE ? ESCAPE '\\\\' ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
+                    query_builder
+                );
+                (subquery, Some(format!("%{}%", escaped)))
             } else {
                 query_builder.push_str(" ORDER BY deleted_at DESC LIMIT ? OFFSET ?");
                 (query_builder, None)
@@ -94,10 +103,61 @@ impl TrashModel {
             .collect())
     }
 
-    /// Get the total count of soft-deleted items (for badge)
-    pub async fn trash_count(pool: &DbPool) -> Result<u64, AppError> {
-        let query = Self::build_trash_count_query();
-        let row = sqlx::query(&query).fetch_one(pool).await?;
+    /// Get the total count of soft-deleted items, filter-scoped.
+    ///
+    /// Pass `entity_type_filter = None, name_search = None` for the global
+    /// badge total; pass them through unchanged when paginating a filtered
+    /// view so "page X / Y" reflects the actual filtered result-set
+    /// (Patch P23).
+    pub async fn trash_count(
+        pool: &DbPool,
+        entity_type_filter: Option<&str>,
+        name_search: Option<&str>,
+    ) -> Result<u64, AppError> {
+        let mut union_parts: Vec<String> = vec![];
+
+        let single = entity_type_filter
+            .filter(|f| !f.is_empty() && ALLOWED_TABLES.contains(f));
+
+        if let Some(filter) = single {
+            let item_col = Self::get_item_name_column(filter);
+            union_parts.push(format!(
+                "SELECT '{}' as table_name, {} as item_name FROM {} WHERE deleted_at IS NOT NULL",
+                filter, item_col, filter
+            ));
+        } else {
+            for table in ALLOWED_TABLES {
+                let item_col = Self::get_item_name_column(table);
+                union_parts.push(format!(
+                    "SELECT '{}' as table_name, {} as item_name FROM {} WHERE deleted_at IS NOT NULL",
+                    table, item_col, table
+                ));
+            }
+        }
+        let union_sql = union_parts.join(" UNION ALL ");
+
+        // Optional name-search filter applied to the same UNION used by
+        // `list_trash` so count and page slice always agree.
+        let (final_query, search_term) = match name_search {
+            Some(s) if !s.is_empty() => (
+                format!(
+                    "SELECT CAST(COUNT(*) AS SIGNED) as count FROM ({}) AS trash WHERE item_name LIKE ? ESCAPE '\\\\'",
+                    union_sql
+                ),
+                Some(format!("%{}%", escape_like_pattern(s))),
+            ),
+            _ => (
+                format!("SELECT CAST(COUNT(*) AS SIGNED) as count FROM ({}) AS trash", union_sql),
+                None,
+            ),
+        };
+
+        let row = if let Some(term) = search_term {
+            sqlx::query(&final_query).bind(term).fetch_one(pool).await?
+        } else {
+            sqlx::query(&final_query).fetch_one(pool).await?
+        };
+
         Ok(row.get::<i64, _>("count") as u64)
     }
 
@@ -129,21 +189,6 @@ impl TrashModel {
         }))
     }
 
-    /// Build COUNT query for trash badge
-    fn build_trash_count_query() -> String {
-        let mut union_parts = vec![];
-
-        for table in ALLOWED_TABLES {
-            let part = format!(
-                "SELECT COUNT(*) as count FROM {} WHERE deleted_at IS NOT NULL",
-                table
-            );
-            union_parts.push(part);
-        }
-
-        format!("SELECT CAST(SUM(count) AS SIGNED) as count FROM ({}) as combined", union_parts.join(" UNION ALL "))
-    }
-
     /// Get the appropriate column name for item_name by table
     fn get_item_name_column(table: &str) -> &'static str {
         match table {
@@ -158,9 +203,41 @@ impl TrashModel {
     }
 }
 
+/// Escape MySQL/MariaDB LIKE-pattern metacharacters so a user-supplied search
+/// term is treated as a literal substring instead of a wildcard. Requires the
+/// query to specify `ESCAPE '\\'` so the backslash is treated as the literal
+/// escape character. Patch P24.
+fn escape_like_pattern(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '\\' | '%' | '_' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_escape_like_pattern_passthrough() {
+        assert_eq!(escape_like_pattern("hello"), "hello");
+    }
+
+    #[test]
+    fn test_escape_like_pattern_escapes_metachars() {
+        // % and _ are SQL LIKE wildcards; \ is the escape itself.
+        assert_eq!(escape_like_pattern("100%"), "100\\%");
+        assert_eq!(escape_like_pattern("a_b"), "a\\_b");
+        assert_eq!(escape_like_pattern("path\\name"), "path\\\\name");
+        assert_eq!(escape_like_pattern("50% off_today"), "50\\% off\\_today");
+    }
 
     #[sqlx::test(migrations = "./migrations")]
     async fn test_list_trash_union_covers_all_tables(
@@ -215,8 +292,39 @@ mod tests {
             .execute(&pool)
             .await?;
 
-        let count = TrashModel::trash_count(&pool).await?;
+        let count = TrashModel::trash_count(&pool, None, None).await?;
         assert!(count > 0, "Expected count > 0, got {}", count);
+
+        Ok(())
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_trash_count_with_filters(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        sqlx::query("INSERT INTO titles (title, media_type, genre_id, deleted_at) VALUES (?, 'book', 1, NOW())")
+            .bind("Apple")
+            .execute(&pool)
+            .await?;
+        sqlx::query("INSERT INTO titles (title, media_type, genre_id, deleted_at) VALUES (?, 'book', 1, NOW())")
+            .bind("Banana")
+            .execute(&pool)
+            .await?;
+        sqlx::query("INSERT INTO volumes (title_id, label, deleted_at) VALUES (1, 'V0001', NOW())")
+            .execute(&pool)
+            .await?;
+
+        // Global count includes all UNION rows.
+        let global = TrashModel::trash_count(&pool, None, None).await?;
+        assert!(global >= 3, "expected >= 3, got {}", global);
+
+        // Entity-type filter narrows to one table.
+        let titles_only = TrashModel::trash_count(&pool, Some("titles"), None).await?;
+        assert_eq!(titles_only, 2);
+
+        // Search narrows to a single match (case-insensitive substring).
+        let apple = TrashModel::trash_count(&pool, None, Some("Apple")).await?;
+        assert_eq!(apple, 1);
 
         Ok(())
     }

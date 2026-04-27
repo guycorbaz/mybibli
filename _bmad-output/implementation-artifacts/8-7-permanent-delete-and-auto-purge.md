@@ -3,9 +3,9 @@ story_key: 8-7
 epic: 8
 story: 7
 title: Permanent delete and auto-purge
-status: ready-for-dev
+status: review
 created: 2026-04-24
-last_updated: 2026-04-24
+last_updated: 2026-04-27
 estimated_effort: large
 dependencies: [8-6-trash-view-and-restore]
 ---
@@ -204,6 +204,85 @@ dependencies: [8-6-trash-view-and-restore]
   - [ ] Add rows for new routes: `GET /admin/trash/{table}/{id}/permanent-delete-confirm`, `POST /admin/trash/{table}/{id}/permanent-delete`
 - [ ] Update architecture.md:
   - [ ] Add section on "Permanent Delete & Auto-Purge": 30-day window, FK handling, audit trail
+
+### Review Findings
+
+Round 2 code review (2026-04-27, post code-review-fixes commit `1a379cf`). Sources: blind+edge+auditor.
+
+**Decision-needed (resolved 2026-04-27 — all converted to patches P29/P30/P31):**
+
+- [x] [Review][Decision→Patch] D1 → option (a): create dedicated SYSTEM user via migration; introduce `SYSTEM_USER_ID` constant; replace hardcoded `user_id=1` in auto_purge audit. → see P29
+- [x] [Review][Decision→Patch] D2 → option (a): add `users` to `ALLOWED_TABLES` so deactivated admins surface in Trash and the existing self-delete + last-active-admin guards become reachable per Task 8 Scenario 3. → see P30
+- [x] [Review][Decision→Patch] D3 → option (a): migration to switch `admin_audit.user_id` FK from `CASCADE` to `SET NULL`; capture `user_email` snapshot in audit `details` JSON at action time to preserve forensics. → see P31
+
+**Patch (unambiguous fixes):**
+
+- [x] [Review][Patch] P1: AC4 violated — startup purge writes no `admin_audit` row; only scheduler does. [src/services/auto_purge.rs:1393, src/main.rs:521]
+- [x] [Review][Patch] P2: AC5 violated — daily cadence hardcoded `Duration::from_secs(86400)`, not from `settings.auto_purge_interval_seconds`. [src/tasks/auto_purge_scheduler.rs:2002]
+- [ ] [Review][Patch] P3: AC6 violated — `deletion_order` lists child tables (`title_contributors`, `series_title_assignments`, `volume_locations`, `loans`) but `if !ALLOWED_TABLES.contains(table) { continue; }` skips them all. Children-first FK ordering is a no-op; parent DELETEs hit FK violations and roll back silently → auto-purge effectively non-functional. [src/services/auto_purge.rs:1366-1416 vs src/services/soft_delete.rs:12]
+- [x] [Review][Patch] P4: Task 4 missing — `MYBIBLI_SKIP_STARTUP_PURGE` env-var feature flag not implemented. [src/main.rs]
+- [x] [Review][Patch] P5: NFR violated — `validate_schema(...).expect("FK schema validation failed")` panics on any missing whitelisted table; turns schema evolution into a hard crash. [src/main.rs:516-518]
+- [ ] [Review][Patch] P6: AC1 violated — modal Cancel button `hx-delete="{{ modal_close_target }}"` issues HTTP DELETE to a CSS selector string → 405/404, modal never closes. [templates/fragments/admin_trash_permanent_delete_modal.html:2216, src/routes/admin.rs:1104]
+- [x] [Review][Patch] P7: `LIMIT 10000` per DELETE with no drain loop → if >10k stale rows accumulate they're never purged. [src/services/auto_purge.rs:1432]
+- [x] [Review][Patch] P8: CI gate violation — 3× `waitForTimeout(3000)` in E2E tests; will fail the `e2e` job grep gate. [tests/e2e/specs/journeys/admin-permanent-delete.spec.ts:2246,2287,2333]
+- [ ] [Review][Patch] P9: E2E tests are conditional smoke (`if (tableExists) { if (btnExists) {...} }`); pass silently when no trash items exist. Spec scenarios 1, 2, 3 are uncovered. Foundation Rules #3 + #7 violated. [tests/e2e/specs/journeys/admin-permanent-delete.spec.ts]
+- [x] [Review][Patch] P10: AC3 partial — audit `details` JSON omits per-table counts (only `tables_processed`, `rows_deleted`, `errors_count`). Spec example shows `titles=5, volumes=12, contributors=2`. [src/services/auto_purge.rs:1471]
+- [x] [Review][Patch] P11: Task 9 missing — `docs/architecture.md` "Permanent Delete & Auto-Purge" section not added. [docs/architecture.md]
+- [x] [Review][Patch] P12: Permanent delete handler resets `entity_type=None, search=None, page=1` — admin loses pagination/filter context after every delete. [src/routes/admin.rs:1190-1191]
+- [x] [Review][Patch] P13: `AdminAuditModel::create` returns `timestamp: chrono::Local::now().naive_local()` instead of DB-assigned `NOW()`; in-memory struct drifts from stored row. [src/models/admin_audit.rs:599-607]
+- [x] [Review][Patch] P14: `AdminAuditModel::list()` builds a dead `Vec<String>` of bindings (never used) + reads `details` JSON column without `CAST(... AS CHAR)` per CLAUDE.md MariaDB JSON-as-BLOB rule → decode error possible. [src/models/admin_audit.rs:618-660]
+- [ ] [Review][Patch] P15: `deletion_order` is hand-curated separately from `ALLOWED_TABLES` — drift is inevitable; any new whitelisted table is silently skipped from auto-purge. Need single source of truth. [src/services/auto_purge.rs:1366]
+- [ ] [Review][Patch] P16: After delete, panel re-render targets `#admin-trash-panel` but the open `<dialog>` is left in the DOM (panel isn't its parent). User sees the panel update behind a still-open modal. [src/routes/admin.rs:1190, modal hx-target]
+- [ ] [Review][Patch] P17: Modal `<dialog open>` injected via `hx-swap="beforeend"` is never opened via JS `showModal()` → no top-layer / no inert backdrop / no Esc-to-close. Scanner-guard MutationObserver may not pick it up. [templates/fragments/admin_trash_permanent_delete_modal.html:2191]
+- [ ] [Review][Patch] P18: Series restore SQL invalid — `UPDATE series_title_assignments SET series_id = NULL` violates a NOT NULL constraint, and the correlated subquery referencing alias `sta` in SET is rejected by MariaDB ("can't specify target table for update"). Will throw on any actual restore conflict. [src/services/trash.rs:1761-1773] — *belongs to 8-6 carryover, see DF1 below*
+- [x] [Review][Patch] P19: `tokio::time::interval(86400)` uses default `MissedTickBehavior::Burst` → rapid-fire purges if system clock jumps forward (NTP, suspend/resume). Use `Skip` or `Delay`. [src/tasks/auto_purge_scheduler.rs:2002]
+- [x] [Review][Patch] P20: `user_id` shadowed inconsistently in same handler: `unwrap_or(0)` for self-delete check, `unwrap_or(1)` for audit attribution. [src/routes/admin.rs:1126,1174]
+- [x] [Review][Patch] P21: `days_remaining = (now - deleted_at).num_days()` truncates toward zero — row deleted 29d23h ago shows "1 day remaining" then is purged within the hour. Use ceiling or surface hours when <1d. [src/routes/admin.rs:1281]
+- [x] [Review][Patch] P22: `SELECT NOW()` fired on every trash-panel render to compute `days_remaining` — unnecessary roundtrip. [src/routes/admin.rs:1271]
+- [x] [Review][Patch] P23: Pagination uses global `total` count but `entries` is filter-scoped → "page 1 / 47" on filtered empty result; "next page" leads to empty pages. [src/routes/admin.rs:1268]
+- [x] [Review][Patch] P24: LIKE wildcards (`%`, `_`, `\`) inside `search` not escaped before `format!("%{}%", search)` → search for `100%` matches everything. [src/models/trash.rs:807]
+- [x] [Review][Patch] P25: Pagination URLs in template emit `entity_type=...&search=...` without URL-encoding → search containing `&`, `#`, space, or `+` produces broken pagination links. [templates/fragments/admin_trash_panel.html:2174]
+- [x] [Review][Patch] P26: CLAUDE.md auto-purge bullet overstates behavior — claims "Both auto-purge and admin delete block self-deletion and preserve the last active admin"; auto-purge has no such guard (deletes any row >30d regardless of role). Fix the doc OR add the guard. [CLAUDE.md]
+- [ ] [Review][Patch] P27: Modal duplicates if "Delete permanently" clicked multiple times — no cleanup of prior `<dialog>` before injecting next one. [admin_trash_panel.html / modal hx-swap]
+- [x] [Review][Patch] P28: Hardcoded `⚠️` emoji in modal template violates CLAUDE.md "Avoid emojis... unless asked"; also bypasses i18n. [templates/fragments/admin_trash_permanent_delete_modal.html:2195]
+- [ ] [Review][Patch] P29 (from D1): create migration adding a `SYSTEM` user (role=system, cannot login, deterministic id reserved e.g. `SYSTEM_USER_ID = 0` or `i64::MAX`); introduce `pub const SYSTEM_USER_ID` in `src/services/auto_purge.rs` (or shared constants); replace hardcoded `1` in `record_purge_audit`. Verify FK still satisfied. [src/services/auto_purge.rs:1483, new migration]
+- [ ] [Review][Patch] P30 (from D2): add `"users"` to `ALLOWED_TABLES` in `src/services/soft_delete.rs:12-19`; verify trash UNION list includes deactivated users (already supported by story 8-3 deletion_at semantics); ensure self-delete + last-active-admin guards in `src/routes/admin.rs:1136-1156` now activate; add E2E coverage for Task 8 Scenario 3 (admin attempts to permanent-delete the only remaining admin → blocked with FeedbackEntry). [src/services/soft_delete.rs:12, src/routes/admin.rs:1136-1156]
+- [ ] [Review][Patch] P31 (from D3): new migration altering `admin_audit.user_id` FK from `ON DELETE CASCADE` to `ON DELETE SET NULL`; modify `record_purge_audit` and `permanent_delete` audit insertion to capture `user_email` (and `user_role` for completeness) inside `details` JSON at action time so attribution survives even if the user row is later purged. [migrations/<new>, src/services/auto_purge.rs:1467-1491, src/routes/admin.rs:1175-1183]
+
+**Deferred (out of scope for 8-7 — track via GitHub Issues per Foundation Rule #11):**
+
+- [x] [Review][Defer] DF1: Story 8-6 code (trash list, restore, restore_with_conflicts_cleared, verify_parent_exists) is included in the 8-7 diff because 8-6 wasn't shipped separately. PR-strategy question, not a code defect — discuss whether to split the PR. [src/services/trash.rs, src/models/trash.rs, src/routes/admin.rs trash-list handler]
+- [x] [Review][Defer] DF2: `AdminAuditModel::list()` (160+ lines, no AC requires it) — pre-built audit log lister with no consumer in this story. Either remove or leave for 8-8 / future audit-log UI. [src/models/admin_audit.rs:618-660]
+- [x] [Review][Defer] DF3: Restore TOCTOU between UPDATE-returning-zero and follow-up SELECT for 409 vs 404 distinction — story 8-6 issue, not 8-7. [src/services/trash.rs:1645-1656]
+
+**Note on `deferred-work.md`:** Per Foundation Rule #11, defer items should be tracked as GitHub Issues with label `type:code-review-finding`, NOT in a local markdown doc. The skill's default `deferred-work.md` write was skipped accordingly.
+
+### GitHub Issues for un-applied findings (created 2026-04-27)
+
+The 11 skipped patches and 3 deferred items are tracked as separate GitHub issues (label `type:code-review-finding`):
+
+| Finding | Issue | Title (short) |
+|---|---|---|
+| P3  | [#60](https://github.com/guycorbaz/mybibli/issues/60) | Auto-purge FK ordering broken (children skipped) |
+| P6  | [#61](https://github.com/guycorbaz/mybibli/issues/61) | Modal Cancel button uses hx-delete with CSS selector |
+| P9  | [#62](https://github.com/guycorbaz/mybibli/issues/62) | E2E tests are conditional smoke (no real assertions) |
+| P15 | [#63](https://github.com/guycorbaz/mybibli/issues/63) | deletion_order vs ALLOWED_TABLES drift |
+| P16 | [#64](https://github.com/guycorbaz/mybibli/issues/64) | Modal stays in DOM after delete |
+| P17 | [#65](https://github.com/guycorbaz/mybibli/issues/65) | `<dialog>` rendered without showModal() |
+| P18 | [#66](https://github.com/guycorbaz/mybibli/issues/66) | Series restore SQL invalid (NULL on NOT NULL) |
+| P27 | [#67](https://github.com/guycorbaz/mybibli/issues/67) | Modal duplicates on rapid double-click |
+| P29 | [#68](https://github.com/guycorbaz/mybibli/issues/68) | Create dedicated SYSTEM user (D1) |
+| P30 | [#69](https://github.com/guycorbaz/mybibli/issues/69) | Add `users` to ALLOWED_TABLES (D2) |
+| P31 | [#70](https://github.com/guycorbaz/mybibli/issues/70) | FK CASCADE → SET NULL + capture user_email (D3) |
+| DF1 | [#71](https://github.com/guycorbaz/mybibli/issues/71) | 8-6 code in 8-7 diff (PR strategy) |
+| DF2 | [#72](https://github.com/guycorbaz/mybibli/issues/72) | AdminAuditModel::list out of scope |
+| DF3 | [#73](https://github.com/guycorbaz/mybibli/issues/73) | Restore TOCTOU 409 vs 404 (8-6 issue) |
+
+### Patch batch outcome (2026-04-27)
+
+20 patches applied automatically by sub-agent: P1, P2, P4, P5, P7, P8, P10–P14, P19–P26, P28.
+Build status: `cargo check` + `cargo clippy --all-targets -- -D warnings` clean. `cargo test --lib` 531 passed against the rust-test docker DB on port 3307.
+Cross-cutting refactors introduced (see commit pending): `PurgeStats.per_table` field, `AppSettings.auto_purge_interval_seconds` setting, `auto_purge_scheduler::spawn(pool, settings)` signature change, `TrashModel::trash_count(pool, filter, search)` signature change, `Cargo.toml` askama urlencode feature, new `docs/architecture.md`.
 
 ## Dev Notes
 
