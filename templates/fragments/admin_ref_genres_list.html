@@ -1,0 +1,10 @@
+{# Genres section list (story 8-4). HTMX target for create/delete updates. #}
+<ul id="admin-ref-genres-list" role="list" class="divide-y divide-stone-200 dark:divide-stone-700">
+    {% if entries.is_empty() %}
+        <li class="py-3 text-stone-500 dark:text-stone-400">{{ empty_state }}</li>
+    {% else %}
+        {% for entry in entries %}
+            {% include "fragments/admin_ref_genre_row.html" %}
+        {% endfor %}
+    {% endif %}
+</ul>

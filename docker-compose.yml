@@ -1,12 +1,47 @@
+# Full local stack: app + persistent MariaDB.
+#
+# To use an external database instead:
+#   1. Comment out (or delete) the `db` service and the `volumes:` block.
+#   2. Remove the `depends_on:` block from the `mybibli` service.
+#   3. Set MYSQL_HOST / MYSQL_PORT / MYSQL_PASSWORD in your .env or shell
+#      to point at the external DB (defaults below target the bundled `db`).
+
 services:
   mybibli:
     build: .
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: mysql://mybibli:${MYSQL_PASSWORD}@${MYSQL_HOST}:${MYSQL_PORT}/mybibli?charset=utf8mb4
+      DATABASE_URL: mysql://mybibli:${MYSQL_PASSWORD:-mybibli_password}@${MYSQL_HOST:-db}:${MYSQL_PORT:-3306}/mybibli?charset=utf8mb4
       HOST: "0.0.0.0"
       PORT: "8080"
       RUST_LOG: mybibli=info
       APP_LANGUAGE: ${APP_LANGUAGE:-en}
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
+
+  db:
+    image: mariadb:10.11
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE: mybibli
+      MYSQL_USER: mybibli
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-mybibli_password}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mybibli_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  mybibli_db_data:

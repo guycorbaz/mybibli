@@ -2,12 +2,15 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
+use crate::models::CreateOutcome;
+use crate::services::locking::check_update_result;
 
 #[derive(Debug, Clone)]
 pub struct VolumeStateModel {
     pub id: u64,
     pub name: String,
     pub is_loanable: bool,
+    pub version: i32,
 }
 
 impl std::fmt::Display for VolumeStateModel {
@@ -18,10 +21,13 @@ impl std::fmt::Display for VolumeStateModel {
 
 impl VolumeStateModel {
     pub async fn list_active(pool: &DbPool) -> Result<Vec<VolumeStateModel>, AppError> {
-        tracing::debug!("Listing active volume states");
+        Self::list_all(pool).await
+    }
 
+    pub async fn list_all(pool: &DbPool) -> Result<Vec<VolumeStateModel>, AppError> {
         let rows = sqlx::query(
-            "SELECT id, name, is_loanable FROM volume_states WHERE deleted_at IS NULL ORDER BY name",
+            "SELECT id, name, is_loanable, version FROM volume_states \
+             WHERE deleted_at IS NULL ORDER BY name",
         )
         .fetch_all(pool)
         .await?;
@@ -32,9 +38,30 @@ impl VolumeStateModel {
                 id: r.try_get("id")?,
                 name: r.try_get("name")?,
                 is_loanable: r.try_get("is_loanable")?,
+                version: r.try_get("version")?,
             });
         }
         Ok(states)
+    }
+
+    pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<Option<VolumeStateModel>, AppError> {
+        let row = sqlx::query(
+            "SELECT id, name, is_loanable, version FROM volume_states \
+             WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+
+        match row {
+            Some(r) => Ok(Some(VolumeStateModel {
+                id: r.try_get("id")?,
+                name: r.try_get("name")?,
+                is_loanable: r.try_get("is_loanable")?,
+                version: r.try_get("version")?,
+            })),
+            None => Ok(None),
+        }
     }
 
     /// Check if a volume is loanable based on its condition state.
@@ -52,8 +79,142 @@ impl VolumeStateModel {
 
         match row {
             Some(r) => Ok(r.try_get("is_loanable")?),
-            None => Ok(true), // No condition state assigned → loanable by default
+            None => Ok(true),
         }
+    }
+
+    pub async fn create(
+        pool: &DbPool,
+        name: &str,
+        is_loanable: bool,
+    ) -> Result<CreateOutcome, AppError> {
+        match sqlx::query("INSERT INTO volume_states (name, is_loanable) VALUES (?, ?)")
+            .bind(name)
+            .bind(is_loanable)
+            .execute(pool)
+            .await
+        {
+            Ok(res) => Ok(CreateOutcome::Created(res.last_insert_id())),
+            Err(sqlx::Error::Database(db_err))
+                if db_err.code().as_deref() == Some("23000") =>
+            {
+                let existing: Option<(u64, i32)> = sqlx::query_as(
+                    "SELECT id, version FROM volume_states \
+                     WHERE name = ? AND deleted_at IS NOT NULL LIMIT 1",
+                )
+                .bind(name)
+                .fetch_optional(pool)
+                .await?;
+                match existing {
+                    Some((id, version)) => {
+                        let res = sqlx::query(
+                            "UPDATE volume_states SET deleted_at = NULL, is_loanable = ?, \
+                             version = version + 1 WHERE id = ? AND version = ?",
+                        )
+                        .bind(is_loanable)
+                        .bind(id)
+                        .bind(version)
+                        .execute(pool)
+                        .await?;
+                        if res.rows_affected() == 1 {
+                            Ok(CreateOutcome::Reactivated(id))
+                        } else {
+                            Err(AppError::Conflict("name_taken".to_string()))
+                        }
+                    }
+                    None => Err(AppError::Conflict("name_taken".to_string())),
+                }
+            }
+            Err(other) => Err(AppError::from(other)),
+        }
+    }
+
+    pub async fn rename(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+        new_name: &str,
+    ) -> Result<(), AppError> {
+        let res = sqlx::query(
+            "UPDATE volume_states SET name = ?, version = version + 1 \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(new_name)
+        .bind(id)
+        .bind(version)
+        .execute(pool)
+        .await
+        .map_err(|err| match &err {
+            sqlx::Error::Database(db_err) if db_err.code().as_deref() == Some("23000") => {
+                AppError::Conflict("name_taken".to_string())
+            }
+            _ => AppError::from(err),
+        })?;
+        check_update_result(res.rows_affected(), "volume_state")
+    }
+
+    pub async fn soft_delete(pool: &DbPool, id: u64, version: i32) -> Result<(), AppError> {
+        let res = sqlx::query(
+            "UPDATE volume_states SET deleted_at = NOW(), version = version + 1 \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(version)
+        .execute(pool)
+        .await?;
+        check_update_result(res.rows_affected(), "volume_state")
+    }
+
+    /// Count active volumes attached to this state (story 8-4 AC#4).
+    pub async fn count_usage(pool: &DbPool, id: u64) -> Result<i64, AppError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM volumes WHERE condition_state_id = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+        Ok(row.0)
+    }
+
+    /// Toggle `is_loanable` on this state (story 8-4 AC#5). Forward-only —
+    /// existing active loans are NOT auto-returned; the transition only
+    /// gates new loan creation through `is_loanable_by_volume`.
+    pub async fn set_loanable(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+        is_loanable: bool,
+    ) -> Result<(), AppError> {
+        let res = sqlx::query(
+            "UPDATE volume_states SET is_loanable = ?, version = version + 1 \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(is_loanable)
+        .bind(id)
+        .bind(version)
+        .execute(pool)
+        .await?;
+        check_update_result(res.rows_affected(), "volume_state")
+    }
+
+    /// Count currently-open loans whose volume is in this state. Drives
+    /// the loanable-toggle warning modal — story 8-4 AC#5.
+    pub async fn count_active_loans_for_state(
+        pool: &DbPool,
+        state_id: u64,
+    ) -> Result<i64, AppError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM loans l \
+               JOIN volumes v ON l.volume_id = v.id \
+              WHERE v.condition_state_id = ? \
+                AND l.returned_at IS NULL \
+                AND l.deleted_at IS NULL \
+                AND v.deleted_at IS NULL",
+        )
+        .bind(state_id)
+        .fetch_one(pool)
+        .await?;
+        Ok(row.0)
     }
 }
 
@@ -67,6 +228,7 @@ mod tests {
             id: 1,
             name: "Neuf".to_string(),
             is_loanable: true,
+            version: 1,
         };
         assert_eq!(state.to_string(), "Neuf");
     }
@@ -77,11 +239,13 @@ mod tests {
             id: 3,
             name: "Usé".to_string(),
             is_loanable: true,
+            version: 2,
         };
         let cloned = state.clone();
         assert_eq!(cloned.id, 3);
         assert_eq!(cloned.name, "Usé");
         assert!(cloned.is_loanable);
+        assert_eq!(cloned.version, 2);
     }
 
     #[test]
@@ -90,7 +254,77 @@ mod tests {
             id: 5,
             name: "Détruit".to_string(),
             is_loanable: false,
+            version: 1,
         };
         assert!(!state.is_loanable);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_volume_state_create_and_find(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id = VolumeStateModel::create(&pool, "Z-state-test", true).await?.id();
+        let row = VolumeStateModel::find_by_id(&pool, id).await?.unwrap();
+        assert_eq!(row.name, "Z-state-test");
+        assert!(row.is_loanable);
+        Ok(())
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_volume_state_set_loanable_off_and_on(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id = VolumeStateModel::create(&pool, "Z-state-toggle", true).await?.id();
+        let row = VolumeStateModel::find_by_id(&pool, id).await?.unwrap();
+        VolumeStateModel::set_loanable(&pool, id, row.version, false).await?;
+        let updated = VolumeStateModel::find_by_id(&pool, id).await?.unwrap();
+        assert!(!updated.is_loanable);
+        VolumeStateModel::set_loanable(&pool, id, updated.version, true).await?;
+        let toggled_back = VolumeStateModel::find_by_id(&pool, id).await?.unwrap();
+        assert!(toggled_back.is_loanable);
+        Ok(())
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_volume_state_count_active_loans_zero_on_unused_state(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id = VolumeStateModel::create(&pool, "Z-state-loans-zero", true).await?.id();
+        let count = VolumeStateModel::count_active_loans_for_state(&pool, id).await?;
+        assert_eq!(count, 0);
+        Ok(())
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_volume_state_rename_roundtrip(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id = VolumeStateModel::create(&pool, "Z-state-old", true).await?.id();
+        let row = VolumeStateModel::find_by_id(&pool, id).await?.unwrap();
+        VolumeStateModel::rename(&pool, id, row.version, "Z-state-new").await?;
+        let renamed = VolumeStateModel::find_by_id(&pool, id).await?.unwrap();
+        assert_eq!(renamed.name, "Z-state-new");
+        Ok(())
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_volume_state_soft_delete_then_reactivate(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id = VolumeStateModel::create(&pool, "Z-state-recycle", true).await?.id();
+        let row = VolumeStateModel::find_by_id(&pool, id).await?.unwrap();
+        VolumeStateModel::soft_delete(&pool, id, row.version).await?;
+        assert!(VolumeStateModel::find_by_id(&pool, id).await?.is_none());
+
+        let outcome = VolumeStateModel::create(&pool, "Z-state-recycle", false).await?;
+        match outcome {
+            CreateOutcome::Reactivated(reactivated_id) => {
+                assert_eq!(reactivated_id, id);
+                let restored = VolumeStateModel::find_by_id(&pool, id).await?.unwrap();
+                assert!(!restored.is_loanable, "is_loanable should reflect new value");
+            }
+            CreateOutcome::Created(_) => panic!("expected Reactivated, got Created"),
+        }
+        Ok(())
     }
 }

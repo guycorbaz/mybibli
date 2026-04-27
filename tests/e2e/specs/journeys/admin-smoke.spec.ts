@@ -65,23 +65,25 @@ test.describe("Epic 8 smoke — admin page shell + Health tab", () => {
     await expect(healthTab).toHaveAttribute("aria-selected", "false");
     await expect(page.locator("#panel-users")).toContainText("8-2");
 
-    // Reference data.
+    // Reference data — story 8-4 ships the four sub-sections.
     await refTab.click();
     await expect(page).toHaveURL(/\/admin\?tab=reference_data$/);
     await expect(refTab).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator("#panel-reference_data")).toContainText("8-3");
+    await expect(
+      page.getByRole("button", { name: /Add genre|Ajouter un genre/i }),
+    ).toBeVisible();
 
-    // Trash — stub points to story 8-5 (view + restore).
+    // Trash — story 8-7 ships the trash list.
     await trashTab.click();
     await expect(page).toHaveURL(/\/admin\?tab=trash$/);
     await expect(trashTab).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator("#panel-trash")).toContainText("8-5");
+    await expect(page.locator("#panel-trash")).toBeVisible();
 
-    // System.
+    // System — stub points to a future story.
     await systemTab.click();
     await expect(page).toHaveURL(/\/admin\?tab=system$/);
     await expect(systemTab).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator("#panel-system")).toContainText("8-4");
+    await expect(page.locator("#panel-system")).toBeVisible();
 
     // Browser Back → previous tab (Trash). The popstate re-fetches /admin?tab=trash
     // as a full page render, so the Trash panel is selected again.

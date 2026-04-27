@@ -347,12 +347,6 @@ struct AdminTrashPermanentDeleteModal {
 }
 
 #[derive(Template)]
-#[template(path = "fragments/admin_reference_data_panel.html")]
-struct AdminReferenceDataPanel {
-    stub_message: String,
-}
-
-#[derive(Template)]
 #[template(path = "fragments/admin_trash_panel.html")]
 struct AdminTrashPanel {
     heading: String,
@@ -899,15 +893,18 @@ pub async fn admin_trash_permanent_delete(
     }.into_response())
 }
 
-pub async fn admin_reference_data_panel(
-    State(state): State<AppState>,
-    session: Session,
-    Extension(locale): Extension<Locale>,
-    OriginalUri(uri): OriginalUri,
-    HxRequest(is_htmx): HxRequest,
+/// Wrapper used by `admin_reference_data::admin_reference_data_panel`
+/// when the request is a direct navigation (not HTMX) — renders the full
+/// page with the shell wrapping the new module's panel HTML. Story 8-4
+/// keeps the panel-fetching logic out of `admin.rs` (Foundation Rule #12)
+/// while reusing the shell infrastructure.
+pub(crate) async fn render_admin_for_reference_data(
+    state: &AppState,
+    session: &Session,
+    loc: &'static str,
+    uri: &axum::http::Uri,
 ) -> Result<Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
-    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::ReferenceData, None).await
+    render_admin(state, session, loc, uri, false, AdminTab::ReferenceData, None).await
 }
 
 pub async fn admin_trash_panel(
@@ -1175,16 +1172,9 @@ async fn render_panel(
     match tab {
         AdminTab::Health => render_health_panel(state, loc).await,
         AdminTab::Users => render_users_panel(state, loc, session, page, filters).await,
-        AdminTab::ReferenceData => AdminReferenceDataPanel {
-            stub_message: rust_i18n::t!(
-                "admin.placeholder.coming_in_story",
-                locale = loc,
-                story = "8-3"
-            )
-            .to_string(),
+        AdminTab::ReferenceData => {
+            crate::routes::admin_reference_data::render_panel_html(state, loc, session).await
         }
-        .render()
-        .map_err(|_| AppError::Internal("admin reference-data panel render failed".to_string())),
         AdminTab::Trash => {
             let trash_query = TrashQuery { entity_type: None, search: None, page: None };
             render_trash_panel(state, loc, &trash_query).await

@@ -21,6 +21,9 @@
     <main id="main-content">
         {% block content %}{% endblock %}
     </main>
+    {# Story 8-4: stable mount point for admin modals (delete-confirm, loanable warning).
+       Decoupled from the panel so modal lifecycle is independent of the panel re-render. #}
+    <div id="admin-modal-slot"></div>
     <script src="/static/js/scan-field.js"></script>
     <script src="/static/js/search.js"></script>
     <script src="/static/js/browse-mode.js"></script>
@@ -33,6 +36,7 @@
     <script src="/static/js/loan-borrower-search.js"></script>
     <script src="/static/js/scanner-guard.js"></script>
     <script src="/static/js/csrf.js"></script>
+    <script src="/static/js/inline-form.js"></script>
     <script src="/static/js/mybibli.js" defer></script>
     {% block scripts %}{% endblock %}
 </body>

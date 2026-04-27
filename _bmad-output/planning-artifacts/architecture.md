@@ -1226,6 +1226,19 @@ CREATE TABLE storage_locations (
 
 Rationale: 20-50 locations, modifications rare (setup then occasionally), reads frequent (breadcrumb on every volume display). Adjacency list is the simplest pattern. Full path (breadcrumb) computed via CTE recursive query or cached in application memory. MariaDB 10.2+ supports `WITH RECURSIVE`. Moving a node = `UPDATE parent_id`. Recursive volume count = CTE summing descendants.
 
+**Loose VARCHAR reference: `storage_locations.node_type` → `location_node_types.name` (story 8-4)**
+
+`storage_locations.node_type` is `VARCHAR(50)` and stores the *name* of the node type (e.g. `"Room"`), NOT a foreign-key id pointing at `location_node_types.id`. This predates Story 8-4 — the schema shipped in `migrations/20260329000000_initial_schema.sql` and the dependent column was already deployed with seeded production data when Story 8-4 introduced reference-data CRUD.
+
+Migrating to an integer FK would require: a column add (`node_type_id BIGINT UNSIGNED NULL`), a backfill JOIN by name with the existing seeds, a DROP of the VARCHAR, and template/handler updates everywhere the breadcrumb is rendered (the breadcrumb today is a string; with an FK it becomes a JOIN). That's a story by itself.
+
+Story 8-4 instead pays the cost in two places, owned by `LocationNodeTypeModel`:
+
+1. **Rename cascades:** `LocationNodeTypeModel::rename` is transactional — `BEGIN`, UPDATE the `location_node_types` row, UPDATE every `storage_locations` row whose `node_type = <old_name>` to the new name (bumping its `version`), `COMMIT`. On any failure the entire rename rolls back.
+2. **Delete refuses if any references:** `LocationNodeTypeModel::count_usage` runs a sub-query matching `storage_locations.node_type` against the live name; the admin handler returns 409 with the count if `> 0`.
+
+The asymmetry — rename cascades because the link is by name; delete refuses because the link is by name — is the cleanest pair given the existing schema. Future stories can migrate to an integer FK if it ever becomes a pain point.
+
 **ISBN/Code Storage: Normalized, Without Formatting**
 
 ```sql

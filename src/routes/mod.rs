@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod admin_reference_data;
 pub mod auth;
 pub mod borrowers;
 pub mod catalog;
@@ -226,9 +227,96 @@ pub fn build_router(state: AppState) -> Router {
         .route("/admin/users/{id}", axum::routing::post(admin::admin_users_update))
         .route("/admin/users/{id}/deactivate", axum::routing::post(admin::admin_users_deactivate))
         .route("/admin/users/{id}/reactivate", axum::routing::post(admin::admin_users_reactivate))
+        // Admin → Reference data CRUD (story 8-4). 25 endpoints across 4
+        // sub-sections (genres, volume_states, contributor_roles, node_types).
+        // All Admin-gated, all CSRF-protected via the 8-2 middleware.
         .route(
             "/admin/reference-data",
-            axum::routing::get(admin::admin_reference_data_panel),
+            axum::routing::get(admin_reference_data::admin_reference_data_panel),
+        )
+        // Genres
+        .route(
+            "/admin/reference-data/genres",
+            axum::routing::get(admin_reference_data::genres_section)
+                .post(admin_reference_data::genres_create),
+        )
+        .route(
+            "/admin/reference-data/genres/{id}/rename",
+            axum::routing::post(admin_reference_data::genres_rename),
+        )
+        .route(
+            "/admin/reference-data/genres/{id}/delete-modal",
+            axum::routing::get(admin_reference_data::genres_delete_modal),
+        )
+        .route(
+            "/admin/reference-data/genres/{id}/delete",
+            axum::routing::post(admin_reference_data::genres_delete),
+        )
+        // Volume States
+        .route(
+            "/admin/reference-data/volume-states",
+            axum::routing::get(admin_reference_data::volume_states_section)
+                .post(admin_reference_data::volume_states_create),
+        )
+        .route(
+            "/admin/reference-data/volume-states/{id}/rename",
+            axum::routing::post(admin_reference_data::volume_states_rename),
+        )
+        .route(
+            "/admin/reference-data/volume-states/{id}/delete-modal",
+            axum::routing::get(admin_reference_data::volume_states_delete_modal),
+        )
+        .route(
+            "/admin/reference-data/volume-states/{id}/delete",
+            axum::routing::post(admin_reference_data::volume_states_delete),
+        )
+        .route(
+            "/admin/reference-data/volume-states/{id}/loanable",
+            axum::routing::post(admin_reference_data::volume_states_loanable_toggle),
+        )
+        .route(
+            "/admin/reference-data/volume-states/{id}/loanable/confirm",
+            axum::routing::post(admin_reference_data::volume_states_loanable_confirm),
+        )
+        .route(
+            "/admin/reference-data/volume-states/{id}/row",
+            axum::routing::get(admin_reference_data::volume_states_row_view),
+        )
+        // Contributor Roles
+        .route(
+            "/admin/reference-data/contributor-roles",
+            axum::routing::get(admin_reference_data::roles_section)
+                .post(admin_reference_data::roles_create),
+        )
+        .route(
+            "/admin/reference-data/contributor-roles/{id}/rename",
+            axum::routing::post(admin_reference_data::roles_rename),
+        )
+        .route(
+            "/admin/reference-data/contributor-roles/{id}/delete-modal",
+            axum::routing::get(admin_reference_data::roles_delete_modal),
+        )
+        .route(
+            "/admin/reference-data/contributor-roles/{id}/delete",
+            axum::routing::post(admin_reference_data::roles_delete),
+        )
+        // Location Node Types
+        .route(
+            "/admin/reference-data/node-types",
+            axum::routing::get(admin_reference_data::node_types_section)
+                .post(admin_reference_data::node_types_create),
+        )
+        .route(
+            "/admin/reference-data/node-types/{id}/rename",
+            axum::routing::post(admin_reference_data::node_types_rename),
+        )
+        .route(
+            "/admin/reference-data/node-types/{id}/delete-modal",
+            axum::routing::get(admin_reference_data::node_types_delete_modal),
+        )
+        .route(
+            "/admin/reference-data/node-types/{id}/delete",
+            axum::routing::post(admin_reference_data::node_types_delete),
         )
         .route("/admin/trash", axum::routing::get(admin::admin_trash_panel))
         .route("/admin/trash/{table}/{id}/permanent-delete", axum::routing::get(admin::admin_trash_permanent_delete_confirm).post(admin::admin_trash_permanent_delete))

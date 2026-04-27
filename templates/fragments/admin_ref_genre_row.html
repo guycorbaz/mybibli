@@ -1,0 +1,20 @@
+{# Single Genre row (story 8-4). Stable id used as HTMX target. #}
+<li id="admin-ref-genres-row-{{ entry.id }}" data-entry-id="{{ entry.id }}" class="flex items-center gap-3 py-2">
+    <span tabindex="0"
+          role="button"
+          data-action="inline-form-edit"
+          data-row-id="admin-ref-genres-row-{{ entry.id }}"
+          data-rename-endpoint="/admin/reference-data/genres/{{ entry.id }}/rename"
+          data-version="{{ entry.version }}"
+          aria-label="{{ entry.edit_aria }}"
+          class="flex-1 cursor-text hover:underline">{{ entry.name|e }}</span>
+    {% if entry.usage_count > 0 %}
+        <span class="text-xs px-2 py-0.5 bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 rounded">{{ entry.usage_chip }}</span>
+    {% endif %}
+    <button type="button"
+            hx-get="/admin/reference-data/genres/{{ entry.id }}/delete-modal?version={{ entry.version }}"
+            hx-target="#admin-modal-slot"
+            hx-swap="innerHTML"
+            aria-label="{{ entry.delete_aria }}"
+            class="px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900 rounded text-sm">×</button>
+</li>

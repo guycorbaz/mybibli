@@ -159,14 +159,12 @@ impl LocationModel {
             .collect())
     }
 
-    /// Load all active node types from the reference table.
+    /// Load all active node types from the reference table. Story 8-4
+    /// extracted the underlying CRUD into `LocationNodeTypeModel`; this
+    /// shim keeps the legacy `(u64, String)` shape used by location
+    /// dropdowns.
     pub async fn find_node_types(pool: &DbPool) -> Result<Vec<(u64, String)>, AppError> {
-        let rows: Vec<(u64, String)> = sqlx::query_as(
-            "SELECT id, name FROM location_node_types WHERE deleted_at IS NULL ORDER BY name",
-        )
-        .fetch_all(pool)
-        .await?;
-        Ok(rows)
+        crate::models::location_node_type::LocationNodeTypeModel::list_active_pairs(pool).await
     }
 
     /// Create a new location.
