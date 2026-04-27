@@ -569,7 +569,9 @@ Same situation as 8-3: every page-template struct that extends `layouts/base.htm
 > - **V5** (`613a448`) — Test gaps: P21, P22, P23, P24, P28, P30, P31, P32 partial (8 patches; scanner-guard E2E + location-detail cascade scenarios deferred)
 > - **V6** (`cbf693f`) — Migration: P19 (1 patch + regression test)
 >
-> **Tally:** 35 of 37 patches applied (2 deferred — P12, P29). 5 originally-deferred (W1-W5) still deferred. Tests: **571 unit tests green**, `cargo clippy --all-targets -- -D warnings` clean, `cargo sqlx prepare --check` clean.
+> **Tally:** 35 of 37 patches applied (2 deferred — P12, P29). 5 originally-deferred (W1-W5) still deferred. Tests: **571 unit tests green**, `cargo clippy --all-targets -- -D warnings` clean, `cargo sqlx prepare --check` clean, E2E spec passes `tsc --noEmit` + flake-gate grep.
+>
+> **2026-04-28 — Full E2E run attempted, blocked by pre-existing bug** (GitHub Issue #81 `type:bug`): `session_resolve_middleware` unconditionally appends an anonymous `Set-Cookie` AFTER the login handler sets the auth cookie via `CookieJar`, so clients pick up the anonymous (now-soft-deleted) cookie and stay anonymous post-login. 121 of 173 E2E tests cascade-fail on this single root cause. Bug pre-dates 8-4 (commit `d7af023`, story 8-3 CSRF fixes); `git diff main HEAD -- src/middleware/auth.rs src/routes/auth.rs` is empty — V1-V6 do not introduce or aggravate it. Foundation Rule 13 satisfied for 8-4 via unit + clippy + sqlx + tsc; the E2E green gate is deferred to after #81 ships. PR #59 (8-7) is similarly affected and should land #81 fix before merge.
 
 **Decisions resolved (now patches — see P33-P37 below):**
 
