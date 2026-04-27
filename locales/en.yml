@@ -225,6 +225,7 @@ error:
     not_found: Entry not found
     invalid_version: "Invalid version — reload the page and retry"
     node_type_name_too_long_for_cascade: "Name must be at most %{max} characters (location node types cascade to storage_locations)"
+    name_invalid_chars: "Name contains invisible or directional Unicode characters that are not allowed"
   code:
     unsupported_type: Unsupported code type
 guide:

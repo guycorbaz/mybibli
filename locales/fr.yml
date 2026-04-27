@@ -225,6 +225,7 @@ error:
     not_found: "Entrée introuvable"
     invalid_version: "Version invalide — rechargez la page et réessayez"
     node_type_name_too_long_for_cascade: "Le nom ne peut dépasser %{max} caractères (les types de nœud sont propagés vers storage_locations)"
+    name_invalid_chars: "Le nom contient des caractères Unicode invisibles ou directionnels non autorisés"
   code:
     unsupported_type: Type de code non pris en charge
 guide:
