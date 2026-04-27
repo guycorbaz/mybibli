@@ -13,16 +13,25 @@
  *   - AC #4 — delete via Modal; usage-count guard refuses if in use.
  *   - AC #5 — Volume States `is_loanable` toggle exists per row.
  *   - AC #7 — reference-data text NOT translated (NFR41).
- *   - AC #8 — Anonymous → 303, Librarian → 403.
+ *   - AC #8 — Anonymous → 303 (P23 strict), Librarian → 403.
  *   - AC #10 — no `hx-confirm=` attribute on the new destructive
  *     buttons (every delete goes through a Modal).
+ *   - P32 — reactivate-on-collision feedback (D3-a behavior).
+ *   - P32 — CSRF tampering surfaces 403.
+ *
+ * Story 8-4 P28: per-test unique slugs via `crypto.randomUUID()` so
+ * sharded / retried runs never collide on a `Date.now().toString(36)`
+ * collision window. Generate inside each test, not module-scope.
  *
  * No `waitForTimeout` — uses DOM-state assertions only.
  */
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 
-const RUN_ID = `RD${Date.now().toString(36)}`;
+function uniqueSlug(prefix: string): string {
+  // 8 hex chars from a UUID — collision-free across parallel & retried runs.
+  return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+}
 
 test.describe("Story 8-4 — Admin Reference Data", () => {
   test.beforeEach(async ({ page }) => {
@@ -50,7 +59,7 @@ test.describe("Story 8-4 — Admin Reference Data", () => {
     ).toBeVisible();
 
     // AC #2 — add a genre via the inline form.
-    const newGenre = `${RUN_ID}-Genre`;
+    const newGenre = uniqueSlug("RD-Genre");
     await page
       .getByRole("button", { name: /Add genre|Ajouter un genre/i })
       .click();
@@ -90,8 +99,8 @@ test.describe("Story 8-4 — Admin Reference Data", () => {
     await page.goto("/admin?tab=reference_data");
 
     // Add a fresh node type.
-    const oldName = `${RUN_ID}-NT`;
-    const newName = `${RUN_ID}-NT-Renamed`;
+    const oldName = uniqueSlug("RD-NT");
+    const newName = `${oldName}-Renamed`;
     await page
       .getByRole("button", { name: /Add node type|Ajouter un type/i })
       .click();
@@ -125,15 +134,18 @@ test.describe("Story 8-4 — Admin Reference Data", () => {
     expect(resp?.status()).toBe(403);
   });
 
-  test("anonymous → 303 redirect to /login?next=...", async ({ page }) => {
-    const resp = await page.goto("/admin?tab=reference_data", {
-      waitUntil: "domcontentloaded",
+  test("anonymous → strict 303 redirect with ?next= return URL (P23)", async ({
+    request,
+  }) => {
+    // Story 8-4 P23: assert the literal 303 status, not just `< 400`. Use
+    // page.request with redirect=manual so the 303 surfaces (page.goto auto-
+    // follows redirects and turns the chain into a 200 from /login).
+    const resp = await request.get("/admin?tab=reference_data", {
+      maxRedirects: 0,
     });
-    // Either Playwright followed the 303 to /login, or the response is the
-    // login page itself; accept any URL that ended on /login with the next
-    // query carrying the original request.
-    await expect(page).toHaveURL(/\/login\?next=/, { timeout: 5000 });
-    expect(resp?.status() ?? 200).toBeLessThan(400);
+    expect(resp.status()).toBe(303);
+    const location = resp.headers()["location"];
+    expect(location).toMatch(/^\/login\?next=/);
   });
 
   test("reference-data values are NOT translated (NFR41)", async ({ page }) => {
@@ -146,5 +158,87 @@ test.describe("Story 8-4 — Admin Reference Data", () => {
     await expect(list.getByText("BD", { exact: true })).toBeVisible({
       timeout: 10000,
     });
+  });
+
+  test("reactivate-on-collision: re-creating a deleted genre surfaces Reactivated feedback (P32 / D3-a)", async ({
+    page,
+  }) => {
+    await loginAs(page, "admin");
+    await page.goto("/admin?tab=reference_data");
+
+    const name = uniqueSlug("RD-Reactivate");
+
+    // Create.
+    await page
+      .getByRole("button", { name: /Add genre|Ajouter un genre/i })
+      .click();
+    let addSlot = page.locator("#admin-ref-genres-add");
+    await addSlot.locator('input[name="name"]').fill(name);
+    await addSlot.getByRole("button", { name: /Save|Enregistrer/i }).click();
+    await expect(
+      page.locator("#admin-ref-genres-list").getByText(name, { exact: true }),
+    ).toBeVisible({ timeout: 10000 });
+
+    // Delete.
+    const row = page
+      .locator("#admin-ref-genres-list li")
+      .filter({ hasText: name });
+    await row.getByRole("button", { name: /Delete|Supprimer/i }).click();
+    const modal = page.locator("#admin-modal-slot dialog[open]");
+    await expect(modal).toBeVisible({ timeout: 5000 });
+    await modal.getByRole("button", { name: /^(Delete|Supprimer)$/i }).click();
+    await expect(
+      page.locator("#admin-ref-genres-list").getByText(name, { exact: true }),
+    ).toHaveCount(0, { timeout: 10000 });
+
+    // Re-create with the same name → Reactivated feedback (NOT Created).
+    await page
+      .getByRole("button", { name: /Add genre|Ajouter un genre/i })
+      .click();
+    addSlot = page.locator("#admin-ref-genres-add");
+    await addSlot.locator('input[name="name"]').fill(name);
+    await addSlot.getByRole("button", { name: /Save|Enregistrer/i }).click();
+
+    // The "Reactivated" feedback distinguishes the path from a fresh create.
+    await expect(
+      page
+        .locator("#feedback-list")
+        .getByText(/Reactivated|Réactivé/i),
+    ).toBeVisible({ timeout: 10000 });
+    // Row is back in the list.
+    await expect(
+      page.locator("#admin-ref-genres-list").getByText(name, { exact: true }),
+    ).toBeVisible({ timeout: 10000 });
+  });
+
+  test("CSRF tampering: POST with bad token returns 403 (P32)", async ({
+    page,
+    request,
+  }) => {
+    await loginAs(page, "admin");
+    // Pull the real CSRF token off the admin page so the request is
+    // authenticated — but we tamper with it before sending so the CSRF
+    // middleware rejects.
+    await page.goto("/admin?tab=reference_data");
+    const realToken = await page.locator('meta[name="csrf-token"]').getAttribute("content");
+    expect(realToken, "expected csrf-token meta tag to be present").toBeTruthy();
+
+    // Carry session cookies from the page context onto the API request.
+    const cookies = await page.context().cookies();
+    const cookieHeader = cookies
+      .map((c) => `${c.name}=${c.value}`)
+      .join("; ");
+
+    const tamperedToken = "x".repeat((realToken ?? "").length);
+    const resp = await request.post("/admin/reference-data/genres", {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Cookie": cookieHeader,
+      },
+      data: `name=${encodeURIComponent(uniqueSlug("RD-CSRF"))}&_csrf_token=${encodeURIComponent(tamperedToken)}`,
+      maxRedirects: 0,
+    });
+    // CSRF middleware emits 403 + HX-Trigger: csrf-rejected (story 8-2).
+    expect(resp.status()).toBe(403);
   });
 });

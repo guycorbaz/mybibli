@@ -303,12 +303,17 @@ mod tests {
         Ok(())
     }
 
+    /// Story 8-4 P21: don't rely on the seeded "Room" name. Future seed
+    /// migrations could rename or remove it, silently regressing this test
+    /// to a false-positive against the wrong row. Insert our own
+    /// `Z-Fixture-Type` (Z-prefix matches the convention used by the rest
+    /// of this module's tests) and assert the collision against THAT row.
     #[sqlx::test(migrations = "./migrations")]
     async fn test_node_type_create_collision_with_active(
         pool: sqlx::Pool<sqlx::MySql>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // "Room" is seeded by 20260401000001_seed_location_node_types.sql.
-        let res = LocationNodeTypeModel::create(&pool, "Room").await;
+        let _id = LocationNodeTypeModel::create(&pool, "Z-Fixture-Type").await?.id();
+        let res = LocationNodeTypeModel::create(&pool, "Z-Fixture-Type").await;
         assert!(matches!(res, Err(AppError::Conflict(msg)) if msg == "name_taken"));
         Ok(())
     }
@@ -400,6 +405,76 @@ mod tests {
         .fetch_one(&pool)
         .await?;
         assert_eq!(still_old.0, 1);
+        Ok(())
+    }
+
+    /// Story 8-4 P31 (spec Task 7.4): exercise the transactional rollback
+    /// from a UNIQUE-name conflict on the FIRST update — the type-row UPDATE
+    /// fails because another type already carries the target name. Asserts
+    /// (a) the rename returns Conflict, (b) the source type-row name is
+    /// unchanged, (c) the cascade did NOT touch storage_locations matching
+    /// the source name. Together with the version-mismatch test above this
+    /// covers both rollback entry points the cascade contract relies on.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_node_type_rename_unique_conflict_rolls_back_with_storage_locations(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let id_a = LocationNodeTypeModel::create(&pool, "Z-NT-Conflict-A")
+            .await?
+            .id();
+        let _id_b = LocationNodeTypeModel::create(&pool, "Z-NT-Conflict-B")
+            .await?
+            .id();
+        let row_a = LocationNodeTypeModel::find_by_id(&pool, id_a)
+            .await?
+            .unwrap();
+
+        // A storage_location keyed to A so the cascade has work to do (or
+        // would, if the rename succeeded).
+        sqlx::query(
+            "INSERT INTO storage_locations (name, node_type, parent_id, label) \
+             VALUES (?, ?, NULL, ?)",
+        )
+        .bind("Z-Loc-Conflict")
+        .bind("Z-NT-Conflict-A")
+        .bind("L9994")
+        .execute(&pool)
+        .await?;
+
+        // Rename A → B should fail on UNIQUE(location_node_types.name).
+        let res = LocationNodeTypeModel::rename(&pool, id_a, row_a.version, "Z-NT-Conflict-B")
+            .await;
+        assert!(
+            matches!(&res, Err(AppError::Conflict(msg)) if msg == "name_taken"),
+            "expected Conflict(\"name_taken\"), got {res:?}"
+        );
+
+        // Type-row name unchanged.
+        let row_after = LocationNodeTypeModel::find_by_id(&pool, id_a)
+            .await?
+            .unwrap();
+        assert_eq!(row_after.name, "Z-NT-Conflict-A");
+        assert_eq!(
+            row_after.version, row_a.version,
+            "version must NOT have advanced — rollback discarded any UPDATE"
+        );
+
+        // No cascade: storage_locations still has node_type = "Z-NT-Conflict-A".
+        let still_a: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM storage_locations WHERE node_type = ?",
+        )
+        .bind("Z-NT-Conflict-A")
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(still_a.0, 1);
+        // ... and none accidentally cascaded to B.
+        let cascaded: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM storage_locations WHERE node_type = ?",
+        )
+        .bind("Z-NT-Conflict-B")
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(cascaded.0, 0);
         Ok(())
     }
 }
