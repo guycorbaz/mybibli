@@ -559,6 +559,17 @@ Same situation as 8-3: every page-template struct that extends `layouts/base.htm
 ### Review Findings
 
 > Code review run on 2026-04-27 — 3 layers (Blind Hunter / Edge Case Hunter / Acceptance Auditor). 48 findings → triage: 37 patch + 0 decision-needed + 5 defer + 6 dismissed. Decisions D1-D6 resolved 2026-04-27 (D1 dismissed after verification of `feedback_html`'s `html_escape(message)` at src/routes/catalog.rs:96; D2/D3/D4/D5/D6 promoted to patches with chosen approach noted below).
+>
+> **2026-04-27 — Patches applied in 6 waves on `story/8-4-reference-data-management`:**
+>
+> - **V1** (`04b6038`) — Security & corruption: P1, P2, P3, P4, P5, P6, P11, P33, P34, P35, P37 (11 patches; 567 tests, clippy, sqlx green)
+> - **V2** (`afb1528`) — Spec compliance: P18, P36 (2 patches; P12+P29 deferred to follow-up issue — link rendering needs feedback infra refactor)
+> - **V3** (`a7b0173`) — Runtime robustness: P7, P8, P9, P14, P15, P17 (6 patches)
+> - **V4** (`fb5b4dd`) — Quality cleanup: P10, P13, P16, P20, P25, P26, P27 (7 patches)
+> - **V5** (`613a448`) — Test gaps: P21, P22, P23, P24, P28, P30, P31, P32 partial (8 patches; scanner-guard E2E + location-detail cascade scenarios deferred)
+> - **V6** (`cbf693f`) — Migration: P19 (1 patch + regression test)
+>
+> **Tally:** 35 of 37 patches applied (2 deferred — P12, P29). 5 originally-deferred (W1-W5) still deferred. Tests: **571 unit tests green**, `cargo clippy --all-targets -- -D warnings` clean, `cargo sqlx prepare --check` clean.
 
 **Decisions resolved (now patches — see P33-P37 below):**
 
