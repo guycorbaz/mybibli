@@ -2,7 +2,7 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::CreateOutcome;
+use crate::models::{CreateOutcome, DeleteOutcome};
 use crate::services::locking::check_update_result;
 
 #[derive(Debug, Clone)]
@@ -158,6 +158,57 @@ impl GenreModel {
         .fetch_one(pool)
         .await?;
         Ok(row.0)
+    }
+
+    /// Atomic count-and-delete. `SELECT … FOR UPDATE` locks the genre row,
+    /// `COUNT(*)` runs in the same transaction (so a concurrent `INSERT INTO
+    /// titles (genre_id = this)` blocks on FK lookup until commit), then
+    /// the soft-delete UPDATE applies — closing the TOCTOU window the old
+    /// `count_usage` + `soft_delete` pair left open (story 8-4 P1).
+    pub async fn delete_if_unused(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+    ) -> Result<DeleteOutcome, AppError> {
+        let mut tx = pool.begin().await?;
+
+        let locked = sqlx::query(
+            "SELECT id FROM genres WHERE id = ? AND version = ? AND deleted_at IS NULL FOR UPDATE",
+        )
+        .bind(id)
+        .bind(version)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if locked.is_none() {
+            tx.rollback().await?;
+            return Err(AppError::Conflict(
+                rust_i18n::t!("error.conflict", entity = "genre").to_string(),
+            ));
+        }
+
+        let count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM titles WHERE genre_id = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if count.0 > 0 {
+            tx.rollback().await?;
+            return Ok(DeleteOutcome::InUse(count.0));
+        }
+
+        let res = sqlx::query(
+            "UPDATE genres SET deleted_at = NOW(), version = version + 1 \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(version)
+        .execute(&mut *tx)
+        .await?;
+        check_update_result(res.rows_affected(), "genre")?;
+
+        tx.commit().await?;
+        Ok(DeleteOutcome::Deleted)
     }
 }
 

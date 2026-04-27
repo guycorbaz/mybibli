@@ -21,6 +21,48 @@
     if (window.__mybibliInlineFormWired) return;
     window.__mybibliInlineFormWired = true;
 
+    // Story 8-4 P37 (D6-b): refuse concurrent modal opens. The
+    // `#admin-modal-slot` is a single global slot; opening modal B while A
+    // is open silently destroyed A's state (incl. typed delete-confirmation
+    // text). We block the second request at htmx:beforeRequest level and
+    // surface a localized feedback message. Localized strings follow the
+    // CLAUDE.md "read <html lang> and use embedded string map" idiom.
+    var MODAL_BUSY_MESSAGES = {
+        en: "Please close the current dialog before opening another.",
+        fr: "Veuillez fermer la fenêtre en cours avant d'en ouvrir une autre.",
+    };
+    function getModalBusyMessage() {
+        var lang = (document.documentElement.lang || "en").toLowerCase();
+        return MODAL_BUSY_MESSAGES[lang] || MODAL_BUSY_MESSAGES.en;
+    }
+    function modalSlotIsOccupied() {
+        var slot = document.getElementById("admin-modal-slot");
+        if (!slot) return false;
+        // A `<dialog open>` element in the slot indicates an active modal.
+        return !!slot.querySelector("dialog[open]");
+    }
+    document.body.addEventListener("htmx:beforeRequest", function (evt) {
+        var elt = evt.detail && evt.detail.elt;
+        if (!elt || !elt.getAttribute) return;
+        if (elt.getAttribute("hx-target") !== "#admin-modal-slot") return;
+        if (!modalSlotIsOccupied()) return;
+        evt.preventDefault();
+        var fbList = document.getElementById("feedback-list");
+        if (!fbList) return;
+        var entry = document.createElement("div");
+        entry.className = "feedback-entry p-3 border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-900/20 rounded-r";
+        entry.setAttribute("role", "status");
+        entry.setAttribute("data-feedback-variant", "warning");
+        var msg = document.createElement("p");
+        msg.className = "text-stone-700 dark:text-stone-300";
+        msg.textContent = getModalBusyMessage();
+        entry.appendChild(msg);
+        fbList.appendChild(entry);
+        setTimeout(function () {
+            if (entry.parentNode) entry.parentNode.removeChild(entry);
+        }, 5000);
+    }, false);
+
     document.body.addEventListener("click", function (evt) {
         var target = evt.target;
         if (!target) return;

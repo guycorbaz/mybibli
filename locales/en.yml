@@ -223,6 +223,8 @@ error:
     in_use_no_link: "Cannot delete: %{count} %{plural} use this %{singular}."
     version_mismatch: "Entry was modified by another admin — reload and retry"
     not_found: Entry not found
+    invalid_version: "Invalid version — reload the page and retry"
+    node_type_name_too_long_for_cascade: "Name must be at most %{max} characters (location node types cascade to storage_locations)"
   code:
     unsupported_type: Unsupported code type
 guide:

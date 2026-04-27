@@ -2,7 +2,7 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::CreateOutcome;
+use crate::models::{CreateOutcome, DeleteOutcome};
 use crate::services::locking::check_update_result;
 
 #[derive(Debug, Clone)]
@@ -107,11 +107,19 @@ impl VolumeStateModel {
                 .await?;
                 match existing {
                     Some((id, version)) => {
+                        // Story 8-4 P34 (D3-a): preserve the previous `is_loanable`
+                        // on reactivation. The form's `is_loanable` is intentionally
+                        // ignored — admins must use the explicit toggle to flip it,
+                        // so reactivating "Endommagé" (originally NOT loanable) does
+                        // NOT silently re-enable loans for the rows still keyed to
+                        // it. The `is_loanable` parameter is kept in the signature
+                        // for future use (e.g., explicit "override on reactivate"
+                        // path) but is otherwise unused on this branch.
+                        let _ = is_loanable;
                         let res = sqlx::query(
-                            "UPDATE volume_states SET deleted_at = NULL, is_loanable = ?, \
+                            "UPDATE volume_states SET deleted_at = NULL, \
                              version = version + 1 WHERE id = ? AND version = ?",
                         )
-                        .bind(is_loanable)
                         .bind(id)
                         .bind(version)
                         .execute(pool)
@@ -174,6 +182,53 @@ impl VolumeStateModel {
         .fetch_one(pool)
         .await?;
         Ok(row.0)
+    }
+
+    /// Atomic count-and-delete (story 8-4 P1) — see GenreModel::delete_if_unused.
+    pub async fn delete_if_unused(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+    ) -> Result<DeleteOutcome, AppError> {
+        let mut tx = pool.begin().await?;
+
+        let locked = sqlx::query(
+            "SELECT id FROM volume_states WHERE id = ? AND version = ? AND deleted_at IS NULL FOR UPDATE",
+        )
+        .bind(id)
+        .bind(version)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if locked.is_none() {
+            tx.rollback().await?;
+            return Err(AppError::Conflict(
+                rust_i18n::t!("error.conflict", entity = "volume_state").to_string(),
+            ));
+        }
+
+        let count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM volumes WHERE condition_state_id = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if count.0 > 0 {
+            tx.rollback().await?;
+            return Ok(DeleteOutcome::InUse(count.0));
+        }
+
+        let res = sqlx::query(
+            "UPDATE volume_states SET deleted_at = NOW(), version = version + 1 \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(version)
+        .execute(&mut *tx)
+        .await?;
+        check_update_result(res.rows_affected(), "volume_state")?;
+
+        tx.commit().await?;
+        Ok(DeleteOutcome::Deleted)
     }
 
     /// Toggle `is_loanable` on this state (story 8-4 AC#5). Forward-only —
@@ -307,21 +362,36 @@ mod tests {
         Ok(())
     }
 
+    /// Story 8-4 P34 (D3-a): reactivation PRESERVES the prior `is_loanable`
+    /// value. The form's `is_loanable` is intentionally ignored on this path
+    /// — admins must use the explicit toggle to flip it. This prevents the
+    /// silent UX regression where re-creating a previously-deleted state
+    /// (e.g., "Endommagé", originally is_loanable=false) would silently
+    /// re-enable loans because the Add form's checkbox defaults to checked.
     #[sqlx::test(migrations = "./migrations")]
-    async fn test_volume_state_soft_delete_then_reactivate(
+    async fn test_volume_state_soft_delete_then_reactivate_preserves_loanable(
         pool: sqlx::Pool<sqlx::MySql>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let id = VolumeStateModel::create(&pool, "Z-state-recycle", true).await?.id();
+        // Original creation with is_loanable=false (e.g., "damaged" state).
+        let id = VolumeStateModel::create(&pool, "Z-state-recycle", false)
+            .await?
+            .id();
         let row = VolumeStateModel::find_by_id(&pool, id).await?.unwrap();
+        assert!(!row.is_loanable);
         VolumeStateModel::soft_delete(&pool, id, row.version).await?;
         assert!(VolumeStateModel::find_by_id(&pool, id).await?.is_none());
 
-        let outcome = VolumeStateModel::create(&pool, "Z-state-recycle", false).await?;
+        // Reactivation: form's is_loanable=true is IGNORED — prior false wins.
+        let outcome = VolumeStateModel::create(&pool, "Z-state-recycle", true).await?;
         match outcome {
             CreateOutcome::Reactivated(reactivated_id) => {
                 assert_eq!(reactivated_id, id);
                 let restored = VolumeStateModel::find_by_id(&pool, id).await?.unwrap();
-                assert!(!restored.is_loanable, "is_loanable should reflect new value");
+                assert!(
+                    !restored.is_loanable,
+                    "is_loanable should be PRESERVED from prior soft-deleted state, \
+                     not overwritten by the form's value (story 8-4 P34 / D3-a)"
+                );
             }
             CreateOutcome::Created(_) => panic!("expected Reactivated, got Created"),
         }

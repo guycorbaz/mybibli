@@ -2,7 +2,7 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::CreateOutcome;
+use crate::models::{CreateOutcome, DeleteOutcome};
 use crate::services::locking::check_update_result;
 
 /// Reference taxonomy for `storage_locations.node_type`. The link from
@@ -168,9 +168,22 @@ impl LocationNodeTypeModel {
             ));
         }
 
+        // Story 8-4 P35 (D4-a): cascade across soft-deleted rows too. A
+        // location restored from the trash (story 8-7) keeps its `node_type`
+        // VARCHAR — if we excluded `deleted_at IS NOT NULL` rows here, that
+        // restored row would carry the OLD name and break joins/dropdowns.
+        //
+        // Story 8-4 P4 (intentional version bump): incrementing
+        // `storage_locations.version` here means an admin currently editing
+        // one of those rows in another tab will get a 409 on save. That is
+        // the correct optimistic-lock signal — the row WAS modified (its
+        // `node_type` changed). The user reloads, sees the new node_type,
+        // and re-applies their edit. The alternative (skip the bump to
+        // preserve in-flight edits) silently overwrites the cascade and is
+        // strictly worse.
         let cascade = sqlx::query(
             "UPDATE storage_locations SET node_type = ?, version = version + 1 \
-             WHERE node_type = ? AND deleted_at IS NULL",
+             WHERE node_type = ?",
         )
         .bind(new_name)
         .bind(&old_name)
@@ -209,6 +222,60 @@ impl LocationNodeTypeModel {
         .fetch_one(pool)
         .await?;
         Ok(row.0)
+    }
+
+    /// Atomic count-and-delete (story 8-4 P1). The count uses the by-name
+    /// semantic (matching the cascade contract); the lock is on the ref row
+    /// itself, so a concurrent rename of the same node_type is serialized.
+    pub async fn delete_if_unused(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+    ) -> Result<DeleteOutcome, AppError> {
+        let mut tx = pool.begin().await?;
+
+        let locked = sqlx::query(
+            "SELECT name FROM location_node_types \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL FOR UPDATE",
+        )
+        .bind(id)
+        .bind(version)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let name: String = match locked {
+            Some(r) => r.try_get("name")?,
+            None => {
+                tx.rollback().await?;
+                return Err(AppError::Conflict(
+                    rust_i18n::t!("error.conflict", entity = "location_node_type").to_string(),
+                ));
+            }
+        };
+
+        let count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM storage_locations \
+             WHERE node_type = ? AND deleted_at IS NULL",
+        )
+        .bind(&name)
+        .fetch_one(&mut *tx)
+        .await?;
+        if count.0 > 0 {
+            tx.rollback().await?;
+            return Ok(DeleteOutcome::InUse(count.0));
+        }
+
+        let res = sqlx::query(
+            "UPDATE location_node_types SET deleted_at = NOW(), version = version + 1 \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(version)
+        .execute(&mut *tx)
+        .await?;
+        check_update_result(res.rows_affected(), "location_node_type")?;
+
+        tx.commit().await?;
+        Ok(DeleteOutcome::Deleted)
     }
 }
 

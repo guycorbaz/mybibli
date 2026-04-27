@@ -36,6 +36,19 @@ impl CreateOutcome {
     }
 }
 
+/// Outcome of a guarded soft-delete attempt (story 8-4 P1).
+///
+/// `Deleted` — the row was soft-deleted atomically (count + UPDATE in one tx
+/// with `SELECT … FOR UPDATE` on the ref row, closing the TOCTOU window where
+/// a concurrent INSERT could attach to a row that was just counted as zero).
+/// `InUse(count)` — the row is referenced by `count` active rows; soft-delete
+/// was rolled back. The handler renders a localized 409 with the count.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeleteOutcome {
+    Deleted,
+    InUse(i64),
+}
+
 /// Fixed page size for all paginated list views.
 pub const DEFAULT_PAGE_SIZE: u32 = 25;
 

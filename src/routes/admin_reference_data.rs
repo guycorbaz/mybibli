@@ -21,12 +21,33 @@ use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
 use crate::middleware::locale::Locale;
-use crate::models::CreateOutcome;
 use crate::models::contributor_role::ContributorRoleModel;
 use crate::models::genre::GenreModel;
 use crate::models::location_node_type::LocationNodeTypeModel;
 use crate::models::volume_state::VolumeStateModel;
+use crate::models::{CreateOutcome, DeleteOutcome};
 use crate::routes::catalog::feedback_html_pub;
+
+/// Storage_locations.node_type column is VARCHAR(50). Renaming a node type
+/// to a longer name would fail the cascade UPDATE with a Data-too-long DB
+/// error after the type-row UPDATE succeeded — opaque to the admin and
+/// rolled back via transaction. Story 8-4 P3 validates the length up-front
+/// in the handler so the rename cannot start.
+const NODE_TYPE_CASCADE_NAME_MAX_LEN: usize = 50;
+
+/// Lower bound for any URL `?version=` query string. The DB default for the
+/// shared `version` column is `1` and only ever increments — values below 1
+/// indicate a malformed/spoofed request. Story 8-4 P5.
+const MIN_VALID_VERSION: i32 = 1;
+
+fn require_valid_version(version: i32, loc: &'static str) -> Result<(), AppError> {
+    if version < MIN_VALID_VERSION {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.reference_data.invalid_version", locale = loc).to_string(),
+        ));
+    }
+    Ok(())
+}
 
 // ─── Form structs ──────────────────────────────────────────────────
 
@@ -593,6 +614,7 @@ pub async fn genres_delete_modal(
 ) -> Result<Html<String>, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
+    require_valid_version(q.version, loc)?;
     let row = GenreModel::find_by_id(&state.pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound("genre".to_string()))?;
@@ -619,11 +641,12 @@ pub async fn genres_delete(
     let row = GenreModel::find_by_id(&state.pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound("genre".to_string()))?;
-    let usage = GenreModel::count_usage(&state.pool, id).await?;
-    if usage > 0 {
-        return Err(in_use_conflict(loc, Section::Genres, usage));
+    match GenreModel::delete_if_unused(&state.pool, id, form.version).await? {
+        DeleteOutcome::InUse(usage) => {
+            return Err(in_use_conflict(loc, Section::Genres, usage));
+        }
+        DeleteOutcome::Deleted => {}
     }
-    GenreModel::soft_delete(&state.pool, id, form.version).await?;
 
     // Render fresh list + close modal via OOB (admin-modal-slot cleared).
     let entries = build_genre_rows(&state.pool, loc).await?;
@@ -731,6 +754,7 @@ pub async fn volume_states_delete_modal(
 ) -> Result<Html<String>, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
+    require_valid_version(q.version, loc)?;
     let row = VolumeStateModel::find_by_id(&state.pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound("volume_state".to_string()))?;
@@ -757,11 +781,12 @@ pub async fn volume_states_delete(
     let row = VolumeStateModel::find_by_id(&state.pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound("volume_state".to_string()))?;
-    let usage = VolumeStateModel::count_usage(&state.pool, id).await?;
-    if usage > 0 {
-        return Err(in_use_conflict(loc, Section::VolumeStates, usage));
+    match VolumeStateModel::delete_if_unused(&state.pool, id, form.version).await? {
+        DeleteOutcome::InUse(usage) => {
+            return Err(in_use_conflict(loc, Section::VolumeStates, usage));
+        }
+        DeleteOutcome::Deleted => {}
     }
-    VolumeStateModel::soft_delete(&state.pool, id, form.version).await?;
     let entries = build_volume_state_rows(&state.pool, loc).await?;
     let list_html = render_volume_states_list(entries, &session.csrf_token, loc)?;
     let feedback = success_feedback(loc, "success.reference_data.deleted", &row.name);
@@ -790,29 +815,47 @@ pub async fn volume_states_loanable_toggle(
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
     let new_loanable = checkbox_to_bool(&form.is_loanable);
-    let force = checkbox_to_bool(&form.force);
+    // Story 8-4 P33 (D2-b): the `force` field on the toggle form is intentionally
+    // ignored. Server-side enforcement: when T→F + active>0, the ONLY way to
+    // proceed is via the dedicated `/loanable/confirm` endpoint, which re-queries
+    // the DB. A spoofed `force=true` here can no longer bypass the active-loan
+    // check.
+    let _ = form.force;
 
     let row = VolumeStateModel::find_by_id(&state.pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound("volume_state".to_string()))?;
 
-    // Toggle-OFF that drops loanable from `true → false` may need confirmation.
-    if !force && row.is_loanable && !new_loanable {
+    if row.is_loanable && !new_loanable {
         let active = VolumeStateModel::count_active_loans_for_state(&state.pool, id).await?;
         if active > 0 {
-            // Surface the warning modal — server inspects DB so the client
-            // cannot bypass the check by lying about `force=true`.
             let samples = sample_active_loans(&state.pool, id, 5).await?;
+            // Story 8-4 P2: pass `row.version` (DB-authoritative) so the
+            // modal carries the current version even if the form's was
+            // somehow racing with another edit.
             let modal_html = render_loanable_warning_modal(
                 loc,
                 &session.csrf_token,
                 id,
                 &row.name,
-                form.version,
+                row.version,
                 active,
                 samples,
             )?;
-            return Ok((StatusCode::OK, Html(modal_html)).into_response());
+            // Story 8-4 P6: retarget the modal to `#admin-modal-slot` so it
+            // mounts in the global slot rather than overwriting the row's
+            // HTML in `#admin-ref-volume-states-row-{id}`.
+            let mut response = (StatusCode::OK, Html(modal_html)).into_response();
+            let headers = response.headers_mut();
+            headers.insert(
+                "HX-Retarget",
+                axum::http::HeaderValue::from_static("#admin-modal-slot"),
+            );
+            headers.insert(
+                "HX-Reswap",
+                axum::http::HeaderValue::from_static("innerHTML"),
+            );
+            return Ok(response);
         }
     }
 
@@ -838,6 +881,22 @@ pub async fn volume_states_loanable_confirm(
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
     let new_loanable = checkbox_to_bool(&form.is_loanable);
+
+    // Story 8-4 P11: re-query active loans at apply time. The warning the
+    // admin saw may have been stale (loans returned / new loans created
+    // between the warning render and this confirm). Log the divergence for
+    // forensics; don't block the apply since the admin's intent is explicit.
+    if !new_loanable {
+        let active_now =
+            VolumeStateModel::count_active_loans_for_state(&state.pool, id).await?;
+        tracing::info!(
+            state_id = id,
+            active_loans_at_apply = active_now,
+            new_loanable = new_loanable,
+            "loanable toggle confirmed"
+        );
+    }
+
     apply_loanable_toggle(
         &state.pool,
         &session,
@@ -999,6 +1058,7 @@ pub async fn roles_delete_modal(
 ) -> Result<Html<String>, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
+    require_valid_version(q.version, loc)?;
     let row = ContributorRoleModel::get(&state.pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound("contributor_role".to_string()))?;
@@ -1025,11 +1085,12 @@ pub async fn roles_delete(
     let row = ContributorRoleModel::get(&state.pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound("contributor_role".to_string()))?;
-    let usage = ContributorRoleModel::count_usage(&state.pool, id).await?;
-    if usage > 0 {
-        return Err(in_use_conflict(loc, Section::ContributorRoles, usage));
+    match ContributorRoleModel::delete_if_unused(&state.pool, id, form.version).await? {
+        DeleteOutcome::InUse(usage) => {
+            return Err(in_use_conflict(loc, Section::ContributorRoles, usage));
+        }
+        DeleteOutcome::Deleted => {}
     }
-    ContributorRoleModel::soft_delete(&state.pool, id, form.version).await?;
     let entries = build_role_rows(&state.pool, loc).await?;
     let list_html = render_roles_list(entries, &session.csrf_token, loc)?;
     let feedback = success_feedback(loc, "success.reference_data.deleted", &row.name);
@@ -1101,6 +1162,19 @@ pub async fn node_types_rename(
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
     let name = validate_name(&form.name, loc)?;
+    // Story 8-4 P3: storage_locations.node_type is VARCHAR(50). Reject
+    // longer names up-front so the cascade can never fail mid-transaction
+    // with an opaque "Data too long for column" DB error.
+    if name.chars().count() > NODE_TYPE_CASCADE_NAME_MAX_LEN {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!(
+                "error.reference_data.node_type_name_too_long_for_cascade",
+                locale = loc,
+                max = NODE_TYPE_CASCADE_NAME_MAX_LEN
+            )
+            .to_string(),
+        ));
+    }
 
     let cascade_rows = LocationNodeTypeModel::rename(&state.pool, id, form.version, &name)
         .await
@@ -1151,6 +1225,7 @@ pub async fn node_types_delete_modal(
 ) -> Result<Html<String>, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
+    require_valid_version(q.version, loc)?;
     let row = LocationNodeTypeModel::find_by_id(&state.pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound("location_node_type".to_string()))?;
@@ -1177,11 +1252,12 @@ pub async fn node_types_delete(
     let row = LocationNodeTypeModel::find_by_id(&state.pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound("location_node_type".to_string()))?;
-    let usage = LocationNodeTypeModel::count_usage(&state.pool, id).await?;
-    if usage > 0 {
-        return Err(in_use_conflict(loc, Section::NodeTypes, usage));
+    match LocationNodeTypeModel::delete_if_unused(&state.pool, id, form.version).await? {
+        DeleteOutcome::InUse(usage) => {
+            return Err(in_use_conflict(loc, Section::NodeTypes, usage));
+        }
+        DeleteOutcome::Deleted => {}
     }
-    LocationNodeTypeModel::soft_delete(&state.pool, id, form.version).await?;
     let entries = build_node_type_rows(&state.pool, loc).await?;
     let list_html = render_node_types_list(entries, &session.csrf_token, loc)?;
     let feedback = success_feedback(loc, "success.reference_data.deleted", &row.name);

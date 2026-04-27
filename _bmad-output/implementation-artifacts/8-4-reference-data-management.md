@@ -556,6 +556,75 @@ Same situation as 8-3: every page-template struct that extends `layouts/base.htm
   - [x] 10.4 `./scripts/e2e-reset.sh` then `cd tests/e2e && npm test` — 3 clean cycles.
   - [x] 10.5 Manual smoke: `cargo run` → navigate `/admin?tab=reference_data` → exercise each sub-section's Add / Rename / Delete + the loanable toggle warning path. Catches anything `cargo test` and Playwright miss.
 
+### Review Findings
+
+> Code review run on 2026-04-27 — 3 layers (Blind Hunter / Edge Case Hunter / Acceptance Auditor). 48 findings → triage: 37 patch + 0 decision-needed + 5 defer + 6 dismissed. Decisions D1-D6 resolved 2026-04-27 (D1 dismissed after verification of `feedback_html`'s `html_escape(message)` at src/routes/catalog.rs:96; D2/D3/D4/D5/D6 promoted to patches with chosen approach noted below).
+
+**Decisions resolved (now patches — see P33-P37 below):**
+
+- ✅ **D1 — XSS concern** — VERIFIED SAFE: `feedback_html` calls `html_escape(message)` at `src/routes/catalog.rs:96`. Substituted `name` is escaped on output. **Dismissed.**
+- ✅ **D2 → P33** — Chose (b) server enforcement: remove the `force` shortcut from the toggle endpoint; require the `confirm` endpoint as the only apply path when `T→F + active>0`. Rationale: avoid risk in audit/accountability.
+- ✅ **D3 → P34** — Chose (a) preserve old `is_loanable` on reactivation. Reactivation reads existing value, ignores form, requires separate toggle to change.
+- ✅ **D4 → P35** — Chose (a) cascade also soft-deleted rows: drop the `AND deleted_at IS NULL` filter from the storage_locations cascade UPDATE.
+- ✅ **D5 → P36** — Chose (b) follow spec: create `templates/components/inline_form.html` shared component and refactor the 4 panel sections to use `{% include %}`. Avoids carrying technical debt.
+- ✅ **D6 → P37** — Chose (b) detect & refuse concurrent modal opens in `inline-form.js`. ~30 lines JS + e2e test.
+
+**Patch (32 — fixable without further input):**
+
+- [ ] [Review][Patch] **P1 — TOCTOU race in delete-guard pattern** [src/routes/admin_reference_data.rs:3920-3955 + 3 sibling handlers]
+- [ ] [Review][Patch] **P2 — Loanable toggle uses `form.version` (client) but `row.is_loanable` (DB) — race window** [src/routes/admin_reference_data.rs:4093-4127]
+- [ ] [Review][Patch] **P3 — Rename to >50 chars fails cascade with cryptic 500** [src/models/location_node_type.rs:2674-2729 + handler validation]
+- [ ] [Review][Patch] **P4 — Cascade silently bumps `storage_locations.version` for unrelated active editors** [src/models/location_node_type.rs:2717-2724]
+- [ ] [Review][Patch] **P5 — Negative `version` accepted in URL query string for delete modals** [src/routes/admin_reference_data.rs:3897-3918 + 3 siblings]
+- [ ] [Review][Patch] **P6 — Loanable warning modal HTML returned to row's slot, destroying row** [src/routes/admin_reference_data.rs:4115-4125 + admin_ref_volume_state_row.html:5239-5251]
+- [ ] [Review][Patch] **P7 — `cssEscape` custom impl — replace with `CSS.escape`** [static/js/inline-form.js:5024-5029]
+- [ ] [Review][Patch] **P8 — `startInlineEdit` doesn't guard `span.parentNode` null/detached** [static/js/inline-form.js:4931-4990]
+- [ ] [Review][Patch] **P9 — `sample_active_loans` swallows decode errors via `unwrap_or_default`** [src/routes/admin_reference_data.rs:4634-4646]
+- [ ] [Review][Patch] **P10 — Vestigial `is_loanable: false` on non-volume rows in `RefRowDisplay`** [src/routes/admin_reference_data.rs:3595-3680]
+- [ ] [Review][Patch] **P11 — `volume_states_loanable_confirm` doesn't re-query active loans** [src/routes/admin_reference_data.rs:4141-4161]
+- [ ] [Review][Patch] **P12 — AC #4 link to filtered list NEVER emitted (always `_no_link` variant)** [src/routes/admin_reference_data.rs:4595-4607]
+- [ ] [Review][Patch] **P13 — `name_taken` magic-string match — typed `AppError` variant** [src/routes/admin_reference_data.rs:3583-3591]
+- [ ] [Review][Patch] **P14 — Loanable Cancel modal closes before revert HTMX completes** [static/js/inline-form.js:4903-4917]
+- [ ] [Review][Patch] **P15 — Dialog `open` no Escape handler** [templates/fragments/admin_ref_delete_modal.html:5041-5052]
+- [ ] [Review][Patch] **P16 — Awkward `(s)` plural in cascade success message** [locales/en.yml + fr.yml]
+- [ ] [Review][Patch] **P17 — `validate_name` doesn't reject zero-width / RTL / control chars** [src/routes/admin_reference_data.rs:3561-3574]
+- [ ] [Review][Patch] **P18 — `Conflict` response after submit destroys list (no `HX-Retarget`)** [src/error/mod.rs IntoResponse + handlers]
+- [ ] [Review][Patch] **P19 — Reference table case-sensitivity collation not pinned** [migrations/20260329000000_initial_schema.sql + new migration]
+- [ ] [Review][Patch] **P20 — Vestigial `csrf` parameter on `render_*_list` functions** [src/routes/admin_reference_data.rs:3684,3703,3712]
+- [ ] [Review][Patch] **P21 — Test relies on seed "Room" — use Z-prefixed fixture** [src/models/location_node_type.rs:2786-2793]
+- [ ] [Review][Patch] **P22 — Inline-form Spacebar a11y missing for role="button"** [static/js/inline-form.js:4920-4929]
+- [ ] [Review][Patch] **P23 — Anonymous test asserts `<400` instead of strict 303** [tests/e2e/specs/journeys/admin-reference-data.spec.ts:5541-5550]
+- [ ] [Review][Patch] **P24 — `OobUpdate` empty content may not actually clear `#admin-modal-slot`** [src/routes/admin_reference_data.rs:3949-3953]
+- [ ] [Review][Patch] **P25 — "25 endpoints" doc comment off-by-six** [src/routes/mod.rs:4717]
+- [ ] [Review][Patch] **P26 — `sample_active_loans` ORDER BY missing tiebreaker** [src/routes/admin_reference_data.rs:4609-4647]
+- [ ] [Review][Patch] **P27 — `ContributorRoleModel::find_by_id` (legacy bool) → rename to `exists`** [src/models/contributor_role.rs]
+- [ ] [Review][Patch] **P28 — E2E spec uses module-scoped `RUN_ID` instead of `specIsbn` pattern** [tests/e2e/specs/journeys/admin-reference-data.spec.ts:5438]
+- [ ] [Review][Patch] **P29 — Dead i18n key `error.reference_data.in_use_with_link`** (will be wired by P12) [locales/en.yml + fr.yml]
+- [ ] [Review][Patch] **P30 — Missing test `set_loanable_with_active_loans_returns_count`** [src/models/volume_state.rs tests]
+- [ ] [Review][Patch] **P31 — `rename_rollback` test should exercise mid-cascade failure not version-mismatch** [src/models/location_node_type.rs tests]
+- [ ] [Review][Patch] **P32 — E2E spec gaps: reactivate-on-collision, scanner-guard, CSRF tampering, location-detail cascade** [tests/e2e/specs/journeys/admin-reference-data.spec.ts]
+- [ ] [Review][Patch] **P33 — Server-enforce loanable warning** (from D2-b) — drop the `force` shortcut from `volume_states_loanable_toggle`; route `T→F + active>0` exclusively through `volume_states_loanable_confirm` [src/routes/admin_reference_data.rs:4093-4161]
+- [ ] [Review][Patch] **P34 — Preserve `is_loanable` on reactivation** (from D3-a) — `VolumeStateModel::create` reactivation arm reads existing `is_loanable`, ignores form value [src/models/volume_state.rs:3030-3038]
+- [ ] [Review][Patch] **P35 — Cascade across soft-deleted storage_locations** (from D4-a) — drop `AND deleted_at IS NULL` filter from cascade UPDATE [src/models/location_node_type.rs:2717-2724]
+- [ ] [Review][Patch] **P36 — Create shared `inline_form.html` component** (from D5-b) — new `templates/components/inline_form.html` parametrized by section ; refactor 4 sections in `admin_reference_data_panel.html` to use `{% include "components/inline_form.html" with ... %}`
+- [ ] [Review][Patch] **P37 — Detect & refuse concurrent modal opens** (from D6-b) — `inline-form.js` checks `#admin-modal-slot` non-empty before allowing a new HTMX modal-trigger; surfaces "Close current dialog first" feedback. E2E test for the conflict path.
+
+**Defer (5 — pre-existing or out-of-scope; per Foundation Rule 11 these belong as GitHub Issues with `type:code-review-finding`):**
+
+- [x] [Review][Defer] **W1 — `version i32` overflow theoretical** [Edge M11] — deferred, no realistic trigger.
+- [x] [Review][Defer] **W2 — Inline-edit / modal coordination loses unsaved changes** [Edge L18] — deferred, niche flow.
+- [x] [Review][Defer] **W3 — Tests INSERT `storage_locations` directly bypassing model** [Edge L22] — deferred, test brittleness only.
+- [x] [Review][Defer] **W4 — Seed idempotency tests not present** [Auditor L10] — deferred, infrastructure-level test.
+- [x] [Review][Defer] **W5 — N+1 queries on panel render** [Blind M6] — deferred, perf optimization for later.
+
+**Dismissed (5 — noise / handled / false positive):**
+
+- R1 — Checkbox HTMX flicker [Blind H3] — covered by P6.
+- R2 — `validate_name` chars vs bytes [Blind M2 / Edge M11] — VARCHAR(255) in MariaDB is char-count.
+- R3 — `checkbox_to_bool`/`force` flag ambiguity [Blind M3 / Edge M12] — works correctly, doc only.
+- R4 — `is_loanable` Add-form check-then-type ordering [Blind M5] — HTML behavior is well-defined.
+- R5 — `admin_reference_data_panel` passes `is_htmx=false` blindly [Blind L2] — no current behavioral consequence.
+
 ## Dev Notes
 
 ### Generic helpers vs four near-identical handlers — pick by readability
