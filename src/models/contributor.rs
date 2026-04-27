@@ -350,30 +350,12 @@ impl TitleContributorModel {
 }
 
 // ─── Contributor role helper ──────────────────────────────────────
-
-pub struct ContributorRoleModel;
-
-impl ContributorRoleModel {
-    pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<bool, AppError> {
-        let row: Option<(u64,)> =
-            sqlx::query_as("SELECT id FROM contributor_roles WHERE id = ? AND deleted_at IS NULL")
-                .bind(id)
-                .fetch_optional(pool)
-                .await?;
-
-        Ok(row.is_some())
-    }
-
-    pub async fn find_all(pool: &DbPool) -> Result<Vec<(u64, String)>, AppError> {
-        let rows: Vec<(u64, String)> = sqlx::query_as(
-            "SELECT id, name FROM contributor_roles WHERE deleted_at IS NULL ORDER BY name",
-        )
-        .fetch_all(pool)
-        .await?;
-
-        Ok(rows)
-    }
-}
+//
+// Story 8-4: extracted to `crate::models::contributor_role`. Re-exported
+// here so the legacy import paths in `services/contributor.rs` and
+// `routes/catalog.rs` (which load the model alongside `ContributorModel`)
+// keep compiling without churn.
+pub use crate::models::contributor_role::ContributorRoleModel;
 
 #[cfg(test)]
 mod tests {

@@ -69,11 +69,13 @@ test.describe("Epic 8 smoke — admin page shell + Health tab", () => {
       /User accounts|Comptes utilisateurs/i,
     );
 
-    // Reference data.
+    // Reference data — story 8-4 ships the four sub-sections.
     await refTab.click();
     await expect(page).toHaveURL(/\/admin\?tab=reference_data$/);
     await expect(refTab).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator("#panel-reference_data")).toContainText("8-3");
+    await expect(
+      page.getByRole("button", { name: /Add genre|Ajouter un genre/i }),
+    ).toBeVisible();
 
     // Trash — story 8-7 ships real UI (heading "Trash bin (soft-deleted
     // items)" / "Corbeille (éléments supprimés)") replacing the old stub.
@@ -84,11 +86,11 @@ test.describe("Epic 8 smoke — admin page shell + Health tab", () => {
       /Trash bin|Corbeille/i,
     );
 
-    // System.
+    // System — stub points to a future story.
     await systemTab.click();
     await expect(page).toHaveURL(/\/admin\?tab=system$/);
     await expect(systemTab).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator("#panel-system")).toContainText("8-4");
+    await expect(page.locator("#panel-system")).toBeVisible();
 
     // Browser Back → previous tab (Trash). The popstate re-fetches /admin?tab=trash
     // as a full page render, so the Trash panel is selected again.

@@ -1,7 +1,7 @@
 # Route Role Matrix
 
 **Status:** authoritative reference for Story 7-1 (anonymous browsing + role gating).
-**Last updated:** 2026-04-19 (story 8-3 — 6 user-admin routes + deactivate/reactivate actions added).
+**Last updated:** 2026-04-27 (story 8-4 — 19 reference-data CRUD routes added under `/admin/reference-data/*`).
 
 ## CSRF exemption (story 8-2)
 
@@ -162,7 +162,30 @@ Story 8-1 introduced the `/admin` surface. Every handler's first line is `sessio
 | POST   | `/admin/users/{id}`      | —       | Admin  | no          | New (8-3). Update user (role, username, optional password).        |
 | POST   | `/admin/users/{id}/deactivate` | — | Admin | no | New (8-3). Soft-delete user + invalidate sessions (atomic tx). |
 | POST   | `/admin/users/{id}/reactivate` | — | Admin | no | New (8-3). Clear `deleted_at`; user can log in again.              |
-| GET    | `/admin/reference-data`  | —       | Admin  | —           | New (8-1). Stub panel — story 8-3 fills in (reference data).      |
+| GET    | `/admin/reference-data`  | —       | Admin  | —           | New (8-1, filled by 8-4). Reference Data panel (4 sub-sections).  |
+| GET    | `/admin/reference-data/genres` | — | Admin | — | New (8-4). Genres section list fragment. |
+| POST   | `/admin/reference-data/genres` | — | Admin | no | New (8-4). Create genre (reactivates soft-deleted on name match). |
+| POST   | `/admin/reference-data/genres/{id}/rename` | — | Admin | no | New (8-4). Rename with optimistic locking. |
+| GET    | `/admin/reference-data/genres/{id}/delete-modal` | — | Admin | — | New (8-4). Delete-confirm modal fragment. |
+| POST   | `/admin/reference-data/genres/{id}/delete` | — | Admin | no | New (8-4). Soft-delete; refused with 409 if `count_usage > 0`. |
+| GET    | `/admin/reference-data/volume-states` | — | Admin | — | New (8-4). Volume states section list fragment. |
+| POST   | `/admin/reference-data/volume-states` | — | Admin | no | New (8-4). Create volume state with `is_loanable` flag. |
+| POST   | `/admin/reference-data/volume-states/{id}/rename` | — | Admin | no | New (8-4). Rename with optimistic locking. |
+| GET    | `/admin/reference-data/volume-states/{id}/delete-modal` | — | Admin | — | New (8-4). Delete-confirm modal fragment. |
+| POST   | `/admin/reference-data/volume-states/{id}/delete` | — | Admin | no | New (8-4). Soft-delete with usage guard. |
+| POST   | `/admin/reference-data/volume-states/{id}/loanable` | — | Admin | no | New (8-4). Toggle `is_loanable`; surfaces warning modal if active loans exist. |
+| POST   | `/admin/reference-data/volume-states/{id}/loanable/confirm` | — | Admin | no | New (8-4). Apply loanable toggle force=true (forward-only). |
+| GET    | `/admin/reference-data/volume-states/{id}/row` | — | Admin | — | New (8-4). Re-render row partial — used by Cancel-on-warning to revert checkbox visual state. |
+| GET    | `/admin/reference-data/contributor-roles` | — | Admin | — | New (8-4). Contributor roles section list fragment. |
+| POST   | `/admin/reference-data/contributor-roles` | — | Admin | no | New (8-4). Create role (reactivates on collision). |
+| POST   | `/admin/reference-data/contributor-roles/{id}/rename` | — | Admin | no | New (8-4). Rename role with optimistic locking. |
+| GET    | `/admin/reference-data/contributor-roles/{id}/delete-modal` | — | Admin | — | New (8-4). Delete-confirm modal fragment. |
+| POST   | `/admin/reference-data/contributor-roles/{id}/delete` | — | Admin | no | New (8-4). Soft-delete role with usage guard. |
+| GET    | `/admin/reference-data/node-types` | — | Admin | — | New (8-4). Location node types section list fragment. |
+| POST   | `/admin/reference-data/node-types` | — | Admin | no | New (8-4). Create node type. |
+| POST   | `/admin/reference-data/node-types/{id}/rename` | — | Admin | no | New (8-4). Transactional rename — cascades to `storage_locations.node_type` (loose VARCHAR FK). |
+| GET    | `/admin/reference-data/node-types/{id}/delete-modal` | — | Admin | — | New (8-4). Delete-confirm modal fragment. |
+| POST   | `/admin/reference-data/node-types/{id}/delete` | — | Admin | no | New (8-4). Soft-delete node type; usage guard matches by name. |
 | GET    | `/admin/trash`           | —       | Admin  | —           | New (8-1, filled by 8-6 & 8-7). List soft-deleted items; filter by type, search by name; paginated (25/page). |
 | GET    | `/admin/trash/{table}/{id}/permanent-delete` | — | Admin | — | New (8-7). Show confirmation modal with friction (type name to enable button). |
 | POST   | `/admin/trash/{table}/{id}/permanent-delete` | — | Admin | no | New (8-7). Hard-delete soft-deleted item; create audit entry; return feedback + OOB swap. |

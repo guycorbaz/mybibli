@@ -215,6 +215,14 @@ error:
     last_admin_demote: "Vous êtes le seul administrateur actif — créez-en un autre avant de changer votre rôle"
     not_found: "Utilisateur introuvable"
     version_mismatch: "L'utilisateur a été modifié par un autre administrateur — rechargez et réessayez"
+  reference_data:
+    name_empty: "Le nom est requis"
+    name_too_long: "Le nom ne peut dépasser 255 caractères"
+    name_taken: "« %{name} » existe déjà"
+    in_use_with_link: "Suppression impossible : %{count} %{plural} utilisent ce %{singular}. %{link_html}"
+    in_use_no_link: "Suppression impossible : %{count} %{plural} utilisent ce %{singular}."
+    version_mismatch: "Entrée modifiée par un autre administrateur — rechargez et réessayez"
+    not_found: "Entrée introuvable"
   code:
     unsupported_type: Type de code non pris en charge
 guide:
@@ -492,3 +500,45 @@ admin:
   placeholder:
     coming_in_story: "À venir dans la story %{story}"
     trash_preview: "Aperçu des éléments supprimés — liste complète et restauration dans la story 8-5."
+  reference_data:
+    panel_heading: "Données de référence"
+    section_genres: Genres
+    section_volume_states: "États du volume"
+    section_contributor_roles: "Rôles de contributeur"
+    section_node_types: "Types d'emplacement"
+    btn_add_genre: "Ajouter un genre"
+    btn_add_state: "Ajouter un état"
+    btn_add_role: "Ajouter un rôle"
+    btn_add_node_type: "Ajouter un type"
+    btn_save: Enregistrer
+    btn_cancel: Annuler
+    btn_delete: Supprimer
+    btn_apply_anyway: "Appliquer quand même"
+    loanable_label: Empruntable
+    usage_count_chip: "%{count} utilisé(s)"
+    delete_modal_heading: "Supprimer ce %{entity} ?"
+    delete_modal_body: "Supprimer « %{name} » ? Vous pourrez le recréer plus tard."
+    loanable_warning_heading: "%{count} prêt(s) actif(s)"
+    loanable_warning_body: "Les volumes avec l'état « %{name} » ont %{count} prêt(s) actif(s). Les prêts en cours se terminent normalement ; les nouveaux prêts seront bloqués."
+    loanable_warning_sample_heading: "Prêts concernés"
+    empty_state: "Aucune entrée."
+    entity_genre: genre
+    entity_state: "état du volume"
+    entity_role: "rôle de contributeur"
+    entity_node_type: "type d'emplacement"
+    plural_genre: "titres"
+    plural_state: "volumes"
+    plural_role: "contributions"
+    plural_node_type: "emplacements"
+    edit_aria: "Renommer %{name}"
+    delete_aria: "Supprimer %{name}"
+    in_use_link_label: "Voir la liste"
+success:
+  reference_data:
+    created: "Ajout de %{name}"
+    reactivated: "Réactivation de %{name}"
+    renamed: "Renommé en %{name}"
+    deleted: "Suppression de %{name}"
+    loanable_on: "%{name} est désormais empruntable"
+    loanable_off: "%{name} n'est plus empruntable. Les prêts en cours se terminent normalement."
+    node_type_renamed_cascaded: "Renommé en %{name} — %{count} emplacement(s) mis à jour"

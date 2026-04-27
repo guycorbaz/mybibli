@@ -1,0 +1,10 @@
+{# Contributor roles section list (story 8-4). #}
+<ul id="admin-ref-roles-list" role="list" class="divide-y divide-stone-200 dark:divide-stone-700">
+    {% if entries.is_empty() %}
+        <li class="py-3 text-stone-500 dark:text-stone-400">{{ empty_state }}</li>
+    {% else %}
+        {% for entry in entries %}
+            {% include "fragments/admin_ref_role_row.html" %}
+        {% endfor %}
+    {% endif %}
+</ul>

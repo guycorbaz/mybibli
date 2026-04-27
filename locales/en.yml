@@ -215,6 +215,14 @@ error:
     last_admin_demote: "You are the only active admin — create another before changing your role"
     not_found: User not found
     version_mismatch: "User was modified by another admin — reload and retry"
+  reference_data:
+    name_empty: Name is required
+    name_too_long: Name must be at most 255 characters
+    name_taken: "'%{name}' already exists"
+    in_use_with_link: "Cannot delete: %{count} %{plural} use this %{singular}. %{link_html}"
+    in_use_no_link: "Cannot delete: %{count} %{plural} use this %{singular}."
+    version_mismatch: "Entry was modified by another admin — reload and retry"
+    not_found: Entry not found
   code:
     unsupported_type: Unsupported code type
 guide:
@@ -492,3 +500,45 @@ admin:
   placeholder:
     coming_in_story: "Coming in story %{story}"
     trash_preview: "Preview of soft-deleted items — full list and restore UI shipping in story 8-5."
+  reference_data:
+    panel_heading: Reference data
+    section_genres: Genres
+    section_volume_states: Volume states
+    section_contributor_roles: Contributor roles
+    section_node_types: Location node types
+    btn_add_genre: Add genre
+    btn_add_state: Add state
+    btn_add_role: Add role
+    btn_add_node_type: Add node type
+    btn_save: Save
+    btn_cancel: Cancel
+    btn_delete: Delete
+    btn_apply_anyway: Apply anyway
+    loanable_label: Loanable
+    usage_count_chip: "%{count} in use"
+    delete_modal_heading: "Delete %{entity}?"
+    delete_modal_body: "Delete '%{name}'? This can be undone by re-creating the entry."
+    loanable_warning_heading: "%{count} active loan(s)"
+    loanable_warning_body: "Volumes with state '%{name}' have %{count} active loan(s). Existing loans continue normally; new loans of this state will be blocked."
+    loanable_warning_sample_heading: "Affected loans"
+    empty_state: "No entries yet."
+    entity_genre: genre
+    entity_state: volume state
+    entity_role: contributor role
+    entity_node_type: location node type
+    plural_genre: titles
+    plural_state: volumes
+    plural_role: title contributors
+    plural_node_type: locations
+    edit_aria: "Edit %{name}"
+    delete_aria: "Delete %{name}"
+    in_use_link_label: View list
+success:
+  reference_data:
+    created: "Added %{name}"
+    reactivated: "Reactivated %{name}"
+    renamed: "Renamed to %{name}"
+    deleted: "Deleted %{name}"
+    loanable_on: "%{name} is now loanable"
+    loanable_off: "%{name} is now non-loanable. Existing loans continue."
+    node_type_renamed_cascaded: "Renamed to %{name} — %{count} location(s) updated"

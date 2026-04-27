@@ -1,9 +1,11 @@
 pub mod admin_audit;
 pub mod borrower;
 pub mod contributor;
+pub mod contributor_role;
 pub mod genre;
 pub mod loan;
 pub mod location;
+pub mod location_node_type;
 pub mod media_type;
 pub mod metadata_cache;
 pub mod series;
@@ -13,6 +15,26 @@ pub mod trash;
 pub mod user;
 pub mod volume;
 pub mod volume_state;
+
+/// Outcome of inserting a reference-data row (story 8-4). When the unique
+/// `name` constraint collides with a soft-deleted row, the model layer
+/// transparently reactivates the row (clears `deleted_at`) so admins can
+/// recreate a previously deleted entry without surfacing a "name taken"
+/// error. The handler picks the user-facing FeedbackEntry copy based on
+/// which variant comes back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CreateOutcome {
+    Created(u64),
+    Reactivated(u64),
+}
+
+impl CreateOutcome {
+    pub fn id(&self) -> u64 {
+        match self {
+            CreateOutcome::Created(id) | CreateOutcome::Reactivated(id) => *id,
+        }
+    }
+}
 
 /// Fixed page size for all paginated list views.
 pub const DEFAULT_PAGE_SIZE: u32 = 25;
