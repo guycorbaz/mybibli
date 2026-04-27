@@ -284,6 +284,52 @@ The 11 skipped patches and 3 deferred items are tracked as separate GitHub issue
 Build status: `cargo check` + `cargo clippy --all-targets -- -D warnings` clean. `cargo test --lib` 531 passed against the rust-test docker DB on port 3307.
 Cross-cutting refactors introduced (see commit pending): `PurgeStats.per_table` field, `AppSettings.auto_purge_interval_seconds` setting, `auto_purge_scheduler::spawn(pool, settings)` signature change, `TrashModel::trash_count(pool, filter, search)` signature change, `Cargo.toml` askama urlencode feature, new `docs/architecture.md`.
 
+### Round 3 Review (commit 7788577 verification, 2026-04-27)
+
+Re-review of the round 2 commit alone (`git diff 7788577~1..7788577`, 1233 lines, 15 files). Three reviewers (blind+edge+auditor). Verifies the round 2 fixes don't introduce new regressions. **Foundation Rule #6 status: ❌ NOT clean** — 14 new patch findings + 1 decision-needed surfaced.
+
+**Decision-needed (resolved 2026-04-27 — converted to patch R3-N15):**
+
+- [x] [Review][Decision→Patch] R3-D1 → option (a): add an sqlx `after_connect` hook to the pool that executes `SET time_zone = '+00:00'` on every new connection. Eliminates the entire class of UTC-vs-session-timezone drift bugs. → see R3-N15 below.
+
+**Patch (NEW findings introduced by round 2 — unambiguous fixes):**
+
+- [x] [Review][Patch] R3-N1 (HIGH, regression vs P12 claim): Modal `hx-post="/admin/trash/{{ table_name }}/{{ item_id }}/permanent-delete"` does NOT carry filter query string. Handler extracts `Query<TrashQuery>` but it's always empty → P12 fix is dead code. Need to thread `entity_type`/`search`/`page` from the row's "Delete permanently" button → confirm modal route → modal template → POST URL. [templates/fragments/admin_trash_panel.html, admin_trash_permanent_delete_modal.html, src/routes/admin.rs]
+- [x] [Review][Patch] R3-N2 (MEDIUM): `tables_processed` counter logic flaw — increments on partially-erroring tables that did delete some rows, conflating success vs error. `if !errored || table_total > 0` covers too much. [src/services/auto_purge.rs:~970]
+- [x] [Review][Patch] R3-N3 (HIGH): Scheduler interval re-arm logic causes period+period delay. New `interval` is created then `interval.tick().await` immediately consumes the first tick which is the OLD-cycle remainder; outer loop's `interval.tick()` then waits a full new period. Settings change applies after roughly 2× period, not the next cycle. [src/tasks/auto_purge_scheduler.rs:~84]
+- [x] [Review][Patch] R3-N4 (HIGH): `AdminAuditModel::create` INSERT then separate SELECT by id. With pool, the SELECT may run on a DIFFERENT connection than the INSERT — `LAST_INSERT_ID()` returns 0 on different connection. Use `pool.acquire()` to pin both queries to one connection, or wrap in a tx. [src/models/admin_audit.rs:~49-65]
+- [x] [Review][Patch] R3-N5 (MEDIUM): `ESCAPE '\\\\'` literal in format string produces SQL `ESCAPE '\\'` — broken if MariaDB `sql_mode` includes `NO_BACKSLASH_ESCAPES`. Use a non-backslash escape char (e.g., `|`) and the search pre-processing accordingly. [src/models/trash.rs:~57]
+- [x] [Review][Patch] R3-N6 (MEDIUM): `MYBIBLI_SKIP_STARTUP_PURGE` checked with `.is_ok()` accepts ANY value, including `MYBIBLI_SKIP_STARTUP_PURGE=` (empty) or `=0`. Match on `"1" | "true"` only. [src/main.rs:~62]
+- [x] [Review][Patch] R3-N7 (LOW-MEDIUM, weakened AC3): `per_table` HashMap omits zero-deletion tables. Forensic reconstruction can't distinguish "processed but empty" vs "skipped due to error." Insert all whitelisted tables even with `0` count. [src/services/auto_purge.rs:~170-172]
+- [x] [Review][Patch] R3-N8 (MEDIUM): After deleting last item on page N, panel re-renders with `page=N` but total drops below N → admin lands on empty page beyond `total_pages`. Clamp `page` to `min(page, total_pages)` after refresh. [src/routes/admin.rs:~793, render_trash_panel]
+- [x] [Review][Patch] R3-N9 (LOW-MEDIUM): Settings `RwLock` poisoning silently falls back to default 86400 with no log emit — hides repeated state corruption. Add `tracing::warn!("settings lock poisoned, using default")`. [src/tasks/auto_purge_scheduler.rs:~75]
+- [x] [Review][Patch] R3-N10 (LOW-MEDIUM): `auto_purge_interval_seconds` clamped to ≥60s but no upper bound. Massive value (e.g., `u64::MAX`) silently disables the scheduler. Clamp to e.g. 7×86400 max. [src/config.rs]
+- [x] [Review][Patch] R3-N11 (MEDIUM): `errored && table_total == 0` table is still counted as "processed" via `!errored || table_total > 0` — wait, this is the inverse of N2. Actually: a table where the FIRST batch errors (no rows committed) leaves `table_total = 0` and `errored = true` → `!errored || table_total > 0` is `false || false = false` → NOT counted. So a table fully visited but failing on first batch is silently dropped from `tables_processed`. Per-batch tx commit succeeds but next batch begin fails mid-drain → unreported partial drain. Track `tables_attempted` separately from `tables_processed`. [src/services/auto_purge.rs:~970, ~108-181]
+- [x] [Review][Patch] R3-N12 (MEDIUM): Drain loop hits `MAX_DRAIN_ITERATIONS = 100` cap → only logged via `tracing::warn`, not surfaced in `stats.errors[]` or audit `details.errors_count`. Operator monitoring audit-log will not see the cap was hit. Push to `stats.errors` when capped. [src/services/auto_purge.rs:~108-181]
+- [x] [Review][Patch] R3-N13 (LOW): `serde_json::from_str(...).ok()` silently drops parse errors when reading `admin_audit.details`. Log a warning on parse failure rather than returning `None`. [src/models/admin_audit.rs:~121]
+- [x] [Review][Patch] R3-N14 (MEDIUM): `entity_type_filter` validation gap — non-empty filter not in `ALLOWED_TABLES` falls through to global UNION instead of returning `BadRequest`. Pagination URL propagates the invalid filter. UI badge (count) and list_trash diverge. [src/models/trash.rs:~108-122, templates/fragments/admin_trash_panel.html]
+- [x] [Review][Patch] R3-N15 (from R3-D1): add sqlx `after_connect` hook on the MySQL pool that executes `SET time_zone = '+00:00'` on every new connection. Eliminates the UTC-vs-session-tz drift between `deleted_at TIMESTAMP` reads and `chrono::Utc::now().naive_utc()`/`NOW()` comparisons. [pool init — likely `src/db.rs` or wherever `MySqlPoolOptions` is constructed]
+
+**Echoes of already-tracked issues (not new — already in GitHub issues from round 2):**
+
+- Hardcoded `user_id=1` in `record_purge_audit` — already #68 (D1/P29)
+- FK ordering broken (children skipped) — already #60 (P3) + #63 (P15)
+- E2E tests still conditional smoke — already #62 (P9)
+- `AdminAuditModel::list` dead code — already #72 (DF2)
+- `record_purge_audit` comment claims "system action, no user_id" but code passes `1` — symptom of #68
+- CLAUDE.md doc walk-back vs older claim — addressed by P26 in this commit; reviewer noted potential consistency gap with story spec
+
+**Dismissed (false positives or noise):**
+
+- Ceiling division "off-by-one at exact day boundary" — algo is correct: `(86400 + 86399) / 86400 = 1` (integer trunc), not 2. Blind reviewer's analysis was wrong.
+- `i32` cast wraparound on days_remaining — practically irrelevant (68-year row).
+- Final batch == `DELETE_BATCH_SIZE` triggers extra empty round — efficiency nit, ignored.
+- Inline SVG vs reusable icon component — design quality, not a defect.
+
+**Deferred (pre-existing, not introduced by round 2):**
+
+- [x] [Review][Defer] R3-DF1: `get_item_name_column` falls through to `"id"` for unknown tables — `LIKE` semantics break on numeric column. Pre-existing in `trash.rs` before round 2; surfaced now because P23 made `trash_count` use the same UNION-build pattern. Track in #63 (P15 single-source-of-truth refactor) since the right fix is the enum-based reform.
+
 ## Dev Notes
 
 ### Architecture Patterns to Follow

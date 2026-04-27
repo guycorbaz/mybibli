@@ -71,7 +71,9 @@
                             <td class="px-4 py-3 text-center font-semibold {% if entry.days_remaining <= 7 %}text-red-600 dark:text-red-400{% endif %}">{{ entry.days_remaining }}</td>
                             <td class="px-4 py-3 text-right space-x-2">
                                 <button hx-get="/admin/trash/{{ entry.table_name }}/{{ entry.id }}/restore?version={{ entry.version }}" hx-target="#admin-trash-panel" hx-swap="outerHTML" class="px-2 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded-md">{{ btn_restore }}</button>
-                                <button hx-get="/admin/trash/{{ entry.table_name }}/{{ entry.id }}/permanent-delete?version={{ entry.version }}" hx-target="body" hx-swap="beforeend" class="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded-md">{{ btn_delete_permanently }}</button>
+                                {# R3-N1: thread current filters / page through the confirm-modal URL so
+                                   the post-delete re-render lands the admin back on the same view. #}
+                                <button hx-get="/admin/trash/{{ entry.table_name }}/{{ entry.id }}/permanent-delete?version={{ entry.version }}&entity_type={{ entity_type_filter|urlencode }}&search={{ search_query|urlencode }}&page={{ current_page }}" hx-target="body" hx-swap="beforeend" class="px-2 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded-md">{{ btn_delete_permanently }}</button>
                             </td>
                         </tr>
                     {% endfor %}

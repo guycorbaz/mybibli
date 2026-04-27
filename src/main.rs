@@ -59,14 +59,24 @@ async fn main() {
 
     // Story 8-7 P4: opt-out for fast-iteration dev/test loops where the
     // startup-purge cost is not worth paying on every restart.
-    if std::env::var("MYBIBLI_SKIP_STARTUP_PURGE").is_ok() {
+    //
+    // R3-N6: only `1` / `true` / `TRUE` count as "enable". Previously
+    // `.is_ok()` accepted ANY value (including empty string and `0` /
+    // `false`), which silently disabled the purge whenever the env var
+    // was set in shell history with a stale value.
+    let skip_startup_purge = std::env::var("MYBIBLI_SKIP_STARTUP_PURGE")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE"))
+        .unwrap_or(false);
+    if skip_startup_purge {
         tracing::info!("Startup purge skipped (MYBIBLI_SKIP_STARTUP_PURGE set)");
     } else {
         // Run startup auto-purge (blocking, bounded by item count).
         match auto_purge::AutoPurgeService::run_purge(&pool).await {
             Ok(stats) => {
                 tracing::info!(
-                    tables_processed = stats.tables_processed,
+                    tables_attempted = stats.tables_attempted,
+                    tables_succeeded = stats.tables_succeeded,
+                    tables_errored = stats.tables_errored,
                     rows_deleted = stats.rows_deleted,
                     errors = stats.errors.len(),
                     "Startup auto-purge completed"

@@ -20,13 +20,39 @@ const DELETE_BATCH_SIZE: u64 = 10_000;
 
 #[derive(Clone, Debug, Default)]
 pub struct PurgeStats {
-    pub tables_processed: usize,
+    /// Total whitelisted tables visited (incremented once per iteration of
+    /// the outer deletion-order loop). Renamed from `tables_processed`
+    /// (R3-N2) so the success/error split is unambiguous.
+    pub tables_attempted: usize,
+    /// Tables that completed their drain without erroring (whether or not
+    /// any rows were actually deleted). Forensic-grade: 0 vs N here is the
+    /// signal that distinguishes "DB went down mid-purge" from "nothing to
+    /// do."
+    pub tables_succeeded: usize,
+    /// Tables where any batch failed (transaction begin/commit, FK
+    /// violation, lock timeout, …). Such a table may still have committed
+    /// some rows (mid-drain failure) — see `errors` for the per-table
+    /// detail string. (R3-N2 + R3-N11.)
+    pub tables_errored: usize,
     pub rows_deleted: u64,
-    /// Per-table deletion counts, keyed by table name. Recorded into the
-    /// `admin_audit.details` JSON for forensic reconstruction (per Story 8-7
-    /// AC3 + Patch P10).
+    /// Per-table deletion counts, keyed by table name. Every whitelisted
+    /// table that was attempted appears here (R3-N7) — value is `0` if
+    /// nothing was deleted (or the first batch errored). Forensic
+    /// reconstruction can then distinguish "processed but empty" from
+    /// "skipped due to error" by cross-referencing the `errors` list.
+    /// Recorded into `admin_audit.details` per Story 8-7 AC3 + Patch P10.
     pub per_table: HashMap<String, u64>,
     pub errors: Vec<String>,
+}
+
+impl PurgeStats {
+    /// Backward-compat alias retained for external callers (tests, logs)
+    /// that still refer to the old name. Maps to `tables_succeeded`
+    /// because that's the closest match for the "successfully processed"
+    /// semantics the old field implied.
+    pub fn tables_processed(&self) -> usize {
+        self.tables_succeeded
+    }
 }
 
 pub struct AutoPurgeService;
@@ -108,6 +134,11 @@ impl AutoPurgeService {
             let mut table_total: u64 = 0;
             let mut iterations: usize = 0;
             let mut errored = false;
+            let mut drain_capped = false;
+
+            // R3-N2 + R3-N11: every whitelisted table we visit counts as
+            // attempted, even if the very first batch errors out.
+            stats.tables_attempted += 1;
 
             loop {
                 iterations += 1;
@@ -115,7 +146,7 @@ impl AutoPurgeService {
                 let mut tx = match pool.begin().await {
                     Ok(tx) => tx,
                     Err(e) => {
-                        let msg = format!("Failed to begin transaction for {}: {}", table, e);
+                        let msg = format!("Failed to begin transaction for {} (after {} batch(es), {} rows committed): {}", table, iterations - 1, table_total, e);
                         tracing::error!("{}", msg);
                         stats.errors.push(msg);
                         errored = true;
@@ -135,7 +166,7 @@ impl AutoPurgeService {
                 let rows_affected = match result {
                     Ok(r) => r.rows_affected(),
                     Err(e) => {
-                        let msg = format!("FK violation or error in {}: {}", table, e);
+                        let msg = format!("FK violation or error in {} (batch {}, {} rows already committed): {}", table, iterations, table_total, e);
                         tracing::error!("{}", msg);
                         stats.errors.push(msg);
                         if let Err(re) = tx.rollback().await {
@@ -147,7 +178,7 @@ impl AutoPurgeService {
                 };
 
                 if let Err(e) = tx.commit().await {
-                    let msg = format!("Failed to commit transaction for {}: {}", table, e);
+                    let msg = format!("Failed to commit transaction for {} (batch {}, {} rows already committed): {}", table, iterations, table_total, e);
                     tracing::error!("{}", msg);
                     stats.errors.push(msg);
                     errored = true;
@@ -177,17 +208,29 @@ impl AutoPurgeService {
                         deleted = table_total,
                         "Auto-purge drain iteration cap reached; remaining rows deferred to next run"
                     );
+                    // R3-N12: surface the cap event in the stats so it
+                    // shows up in admin_audit.details.errors_count rather
+                    // than only in the log stream.
+                    drain_capped = true;
                     break;
                 }
             }
 
             stats.rows_deleted += table_total;
-            if !errored || table_total > 0 {
-                stats.tables_processed += 1;
+            if errored {
+                stats.tables_errored += 1;
+            } else {
+                stats.tables_succeeded += 1;
             }
-            if table_total > 0 {
-                stats.per_table.insert((*table).to_string(), table_total);
+            if drain_capped {
+                stats.errors.push(format!(
+                    "{} drain capped at {} iterations ({} rows deleted, more remain — will retry next run)",
+                    table, MAX_DRAIN_ITERATIONS, table_total
+                ));
             }
+            // R3-N7: every attempted table appears in `per_table`, even
+            // with `0` when nothing was deleted or the first batch errored.
+            stats.per_table.insert((*table).to_string(), table_total);
         }
 
         // Audit the run — startup and scheduler both use this path so the
@@ -212,7 +255,16 @@ impl AutoPurgeService {
             .unwrap_or(serde_json::Value::Null);
 
         let details = json!({
-            "tables_processed": stats.tables_processed,
+            // R3-N2 + R3-N11: split the conflated `tables_processed`
+            // counter into attempted/succeeded/errored so forensic readers
+            // can tell "everything ran clean" from "12 tables visited but
+            // 3 of them errored mid-drain". `tables_processed` is kept as
+            // an alias of `tables_succeeded` to preserve the field shape
+            // for any downstream parser that still depends on it.
+            "tables_attempted": stats.tables_attempted,
+            "tables_succeeded": stats.tables_succeeded,
+            "tables_errored": stats.tables_errored,
+            "tables_processed": stats.tables_succeeded,
             "rows_deleted": stats.rows_deleted,
             "errors_count": stats.errors.len(),
             "per_table": per_table_json,
@@ -311,7 +363,9 @@ mod tests {
         per_table.insert("volumes".to_string(), 5);
 
         let stats = PurgeStats {
-            tables_processed: 5,
+            tables_attempted: 5,
+            tables_succeeded: 5,
+            tables_errored: 0,
             rows_deleted: 10,
             per_table,
             errors: vec![],
@@ -349,7 +403,64 @@ mod tests {
         let details_str: String = row.get("details");
         assert!(details_str.contains("\"per_table\""), "details should include per_table key, got {}", details_str);
         assert!(details_str.contains("\"titles\""), "details should mention titles, got {}", details_str);
+        // R3-N2 + R3-N11: the audit row exposes the new split counters.
+        assert!(details_str.contains("\"tables_attempted\""), "details should include tables_attempted, got {}", details_str);
+        assert!(details_str.contains("\"tables_succeeded\""), "details should include tables_succeeded, got {}", details_str);
+        assert!(details_str.contains("\"tables_errored\""), "details should include tables_errored, got {}", details_str);
 
+        Ok(())
+    }
+
+    /// R3-N7: every whitelisted table that was visited shows up in
+    /// `per_table`, even when zero rows were deleted. Forensic readers can
+    /// then tell "table was processed but had nothing stale" from "table
+    /// was skipped due to error".
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_per_table_includes_zero_count_entries(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Run with no stale rows anywhere — every whitelisted table should
+        // still appear in per_table with a count of 0.
+        let stats = AutoPurgeService::run_purge(&pool).await?;
+        assert_eq!(stats.rows_deleted, 0);
+        for table in ALLOWED_TABLES {
+            // Only tables that the runner visits via `deletion_order`
+            // should show up. Cross-check: the deletion_order list above
+            // contains every entity-data table; settings/sessions/users
+            // are deliberately not in ALLOWED_TABLES at all.
+            if matches!(*table, "titles" | "volumes" | "contributors" | "storage_locations"
+                              | "borrowers" | "series" | "genres" | "loans"
+                              | "title_contributors" | "series_title_assignments"
+                              | "volume_locations") {
+                assert!(
+                    stats.per_table.contains_key(*table),
+                    "per_table should include zero-count entry for {}, got keys {:?}",
+                    table,
+                    stats.per_table.keys().collect::<Vec<_>>()
+                );
+                assert_eq!(stats.per_table[*table], 0);
+            }
+        }
+        // Stats counters: every visited table is "attempted" and (since
+        // there are no errors) also "succeeded", with zero errored.
+        assert!(stats.tables_attempted > 0);
+        assert_eq!(stats.tables_attempted, stats.tables_succeeded);
+        assert_eq!(stats.tables_errored, 0);
+        Ok(())
+    }
+
+    /// R3-N2 + R3-N11: a clean run (no errors) gives `tables_attempted ==
+    /// tables_succeeded` and `tables_errored == 0`. Counters are mutually
+    /// exclusive per table.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_stats_counters_clean_run(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let stats = AutoPurgeService::run_purge(&pool).await?;
+        assert_eq!(stats.tables_succeeded + stats.tables_errored, stats.tables_attempted);
+        assert_eq!(stats.tables_errored, 0);
+        // Backward-compat alias still resolves.
+        assert_eq!(stats.tables_processed(), stats.tables_succeeded);
         Ok(())
     }
 }

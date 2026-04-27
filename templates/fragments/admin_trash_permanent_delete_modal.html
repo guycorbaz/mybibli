@@ -15,7 +15,9 @@
                 <p class="font-mono font-bold text-stone-900 dark:text-white break-all">{{ item_name|escape }}</p>
             </div>
 
-            <form hx-post="/admin/trash/{{ table_name|escape }}/{{ item_id }}/permanent-delete" hx-target="#admin-trash-panel" hx-swap="outerHTML" class="space-y-4">
+            {# R3-N1: thread filters / page through the POST URL so the panel
+               re-renders into the same filtered view the admin came from. #}
+            <form hx-post="/admin/trash/{{ table_name|escape }}/{{ item_id }}/permanent-delete?version={{ version }}&entity_type={{ entity_type_filter|urlencode }}&search={{ search_query|urlencode }}&page={{ current_page }}" hx-target="#admin-trash-panel" hx-swap="outerHTML" class="space-y-4">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token|escape }}">
                 <input type="hidden" name="version" value="{{ version }}">
 
