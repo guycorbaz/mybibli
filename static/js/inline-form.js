@@ -128,18 +128,56 @@
 
         if (action === "admin-modal-close-revert-row") {
             evt.preventDefault();
+            // Story 8-4 P14: close modal AFTER the revert HTMX call resolves
+            // (or rejects) so the user does not see the row in its flicker
+            // state during the refetch. Disable the button while in-flight to
+            // prevent double-clicks. If the revert fails, still close the
+            // modal so the user is not stranded.
             var revertTarget = target.getAttribute("data-row-revert-target");
             var revertEndpoint = target.getAttribute("data-row-revert-endpoint");
             var slot2 = document.getElementById("admin-modal-slot");
-            if (slot2) slot2.innerHTML = "";
+            var closeModal = function () {
+                if (slot2) slot2.innerHTML = "";
+            };
             if (revertEndpoint && revertTarget && window.htmx) {
-                // Refetch the row so the checkbox bounces back to its persisted state.
-                window.htmx.ajax("GET", revertEndpoint, {
+                target.disabled = true;
+                var p = window.htmx.ajax("GET", revertEndpoint, {
                     target: revertTarget,
                     swap: "outerHTML",
                 });
+                if (p && typeof p.then === "function") {
+                    p.then(closeModal, closeModal);
+                } else {
+                    closeModal();
+                }
+            } else {
+                closeModal();
             }
             return;
+        }
+    }, false);
+
+    // Story 8-4 P15: <dialog open aria-modal="true"> does NOT trap Escape
+    // automatically (only <dialog>.showModal() does). Add a document-level
+    // listener so Escape closes the active admin modal — and, when the
+    // close button carries a `revert-row` data-action, triggers the
+    // associated revert by synthesizing a click instead of duplicating the
+    // close-with-revert logic here.
+    document.body.addEventListener("keydown", function (evt) {
+        if (evt.key !== "Escape") return;
+        var slot = document.getElementById("admin-modal-slot");
+        if (!slot) return;
+        var dialog = slot.querySelector("dialog[open]");
+        if (!dialog) return;
+        var closeBtn = dialog.querySelector(
+            '[data-action="admin-modal-close-revert-row"], [data-action="admin-modal-close"]'
+        );
+        if (closeBtn) {
+            evt.preventDefault();
+            closeBtn.click();
+        } else {
+            evt.preventDefault();
+            slot.innerHTML = "";
         }
     }, false);
 
@@ -157,6 +195,12 @@
     function startInlineEdit(span) {
         if (!span) return;
         if (span.dataset.editing === "1") return;
+        // Story 8-4 P8: guard against detached / re-swapped DOM. If the row
+        // was OOB-replaced (e.g., after a successful rename) but our click
+        // handler still has a stale reference to the old span, calling
+        // span.parentNode.insertBefore() below would throw. Bail out
+        // silently — the user can click again on the new row.
+        if (!span.parentNode || !span.isConnected) return;
         var rowId = span.getAttribute("data-row-id");
         var endpoint = span.getAttribute("data-rename-endpoint");
         var version = span.getAttribute("data-version");
@@ -246,9 +290,16 @@
         delete span.dataset.editing;
     }
 
-    // Minimal selector escape (avoids depending on CSS.escape on older browsers).
+    // Story 8-4 P7: prefer the standard CSS.escape (widely supported since
+    // 2017 — Chrome 46, Firefox 31, Safari 10). Falls back to a hand-rolled
+    // escape only on legacy browsers where CSS.escape is missing. The old
+    // hand-rolled escape produced invalid backslash sequences for hyphens
+    // and was a foot-gun for any future ID scheme drift.
     function cssEscape(value) {
         if (!value) return "";
+        if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+            return CSS.escape(value);
+        }
         return String(value).replace(/[^a-zA-Z0-9_-]/g, function (ch) {
             return "\\" + ch;
         });

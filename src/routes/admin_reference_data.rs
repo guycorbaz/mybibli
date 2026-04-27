@@ -269,6 +269,27 @@ impl Section {
 
 // ─── Validation helpers ────────────────────────────────────────────
 
+/// Story 8-4 P17: reject names that consist of (or contain) invisible /
+/// directional Unicode codepoints. Without this check, two reference rows
+/// with visually identical names but different invisible content can
+/// coexist, defeating the UNIQUE constraint UX.
+///
+/// Blocklist focuses on the well-known troublemakers:
+/// * U+200B-200D, U+2060, U+FEFF — zero-width joiners / no-break spaces
+/// * U+202A-202E, U+2066-2069  — bidirectional control / overrides (RTL/LTR)
+fn contains_invisible_unicode(s: &str) -> bool {
+    s.chars().any(|c| {
+        matches!(
+            c,
+            '\u{200B}'..='\u{200D}'
+                | '\u{2060}'
+                | '\u{FEFF}'
+                | '\u{202A}'..='\u{202E}'
+                | '\u{2066}'..='\u{2069}'
+        ) || c.is_control()
+    })
+}
+
 fn validate_name(name: &str, loc: &'static str) -> Result<String, AppError> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -279,6 +300,11 @@ fn validate_name(name: &str, loc: &'static str) -> Result<String, AppError> {
     if trimmed.chars().count() > 255 {
         return Err(AppError::BadRequest(
             rust_i18n::t!("error.reference_data.name_too_long", locale = loc).to_string(),
+        ));
+    }
+    if contains_invisible_unicode(trimmed) {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.reference_data.name_invalid_chars", locale = loc).to_string(),
         ));
     }
     Ok(trimmed.to_string())
@@ -1398,11 +1424,14 @@ async fn sample_active_loans(
     use sqlx::Row;
     let mut samples = Vec::with_capacity(rows.len());
     for r in &rows {
-        let label: String = r.try_get("volume_label").unwrap_or_default();
-        let borrower: String = r.try_get("borrower_name").unwrap_or_default();
-        let loaned_at: chrono::NaiveDateTime = r
-            .try_get("loaned_at")
-            .unwrap_or_else(|_| chrono::NaiveDateTime::default());
+        // Story 8-4 P9: propagate decode errors instead of papering over
+        // them with `unwrap_or_default()`. `volumes.label`, `borrowers.name`
+        // and `loans.loaned_at` are NOT NULL per migrations 20260329000000,
+        // so a try_get failure here means the schema actually drifted —
+        // surfacing it as 500 is correct.
+        let label: String = r.try_get("volume_label")?;
+        let borrower: String = r.try_get("borrower_name")?;
+        let loaned_at: chrono::NaiveDateTime = r.try_get("loaned_at")?;
         samples.push(LoanSampleDisplay {
             label,
             borrower_name: borrower,
