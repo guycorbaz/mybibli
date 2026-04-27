@@ -277,6 +277,13 @@ The 11 skipped patches and 3 deferred items are tracked as separate GitHub issue
 | DF1 | [#71](https://github.com/guycorbaz/mybibli/issues/71) | 8-6 code in 8-7 diff (PR strategy) |
 | DF2 | [#72](https://github.com/guycorbaz/mybibli/issues/72) | AdminAuditModel::list out of scope |
 | DF3 | [#73](https://github.com/guycorbaz/mybibli/issues/73) | Restore TOCTOU 409 vs 404 (8-6 issue) |
+| R4-N1 | [#74](https://github.com/guycorbaz/mybibli/issues/74) | `db::create_pool` after_connect hook fail-hard → app outage |
+| R4-N2 | [#75](https://github.com/guycorbaz/mybibli/issues/75) | scheduler `read_interval_seconds` doesn't clamp upper bound |
+| R4-N3 | [#76](https://github.com/guycorbaz/mybibli/issues/76) | `permanent_delete_confirm` doesn't validate entity_type (3rd entry point) |
+| R4-N4 | [#77](https://github.com/guycorbaz/mybibli/issues/77) | drain-cap classified as succeeded but inflates errors_count |
+| R4-N5 | [#78](https://github.com/guycorbaz/mybibli/issues/78) | Modal POST URL has duplicate `version` parameter |
+| R4-N6 | [#79](https://github.com/guycorbaz/mybibli/issues/79) | `name_search` whitespace-only bypasses `is_empty()` check |
+| R4-N7 | [#80](https://github.com/guycorbaz/mybibli/issues/80) | `AdminAuditModel::create` INSERT-OK/SELECT-fail race returns 500 |
 
 ### Patch batch outcome (2026-04-27)
 
@@ -329,6 +336,44 @@ Re-review of the round 2 commit alone (`git diff 7788577~1..7788577`, 1233 lines
 **Deferred (pre-existing, not introduced by round 2):**
 
 - [x] [Review][Defer] R3-DF1: `get_item_name_column` falls through to `"id"` for unknown tables — `LIKE` semantics break on numeric column. Pre-existing in `trash.rs` before round 2; surfaced now because P23 made `trash_count` use the same UNION-build pattern. Track in #63 (P15 single-source-of-truth refactor) since the right fix is the enum-based reform.
+
+### Round 4 Review (commit 82b9872 verification, 2026-04-27)
+
+Re-review of the round 3 commit alone (`git diff 82b9872~1..82b9872`, 966 lines, 12 files). Three reviewers (blind+edge+auditor). **Convergence confirmed**: Acceptance Auditor declares **ALL-MET** for the 15 round-3 patches; no AC weakened. Remaining findings are MEDIUM polish + a handful of LOW nits — much smaller surface than round 2 (14 NEW) or round 3 (15 patches required).
+
+**Patch (NEW polish-level findings introduced or surfaced by round 3 — all MEDIUM):**
+
+- [ ] [Review][Patch] R4-N1 (MEDIUM, real safety risk): `db::create_pool` `after_connect` hook will FAIL HARD if `SET time_zone = '+00:00'` errors (e.g., misconfigured `init_connect`, MariaDB variant). Net effect: ALL connections fail to acquire → app unable to serve. Should log `tracing::warn!` and continue rather than return Err. [src/db.rs:18-22]
+- [ ] [Review][Patch] R4-N2 (MEDIUM): `read_interval_seconds` in scheduler only does `.max(60)` — if a settings row holds a value > `AUTO_PURGE_INTERVAL_MAX_SECS` (set via direct SQL or before the upper-clamp patch), the scheduler uses it unclamped. Apply the same `.clamp(MIN, MAX)` at read time. [src/tasks/auto_purge_scheduler.rs:93-108]
+- [ ] [Review][Patch] R4-N3 (MEDIUM, symmetric with R3-N14): `admin_trash_permanent_delete_confirm` GET handler does NOT validate `entity_type` against `ALLOWED_TABLES` before threading through to the modal template — garbage filter ends up in the POST URL. R3-N14 fixed `render_trash_panel` and the model layer; this confirm handler is a third entry point that needs the same gate. Add the same `effective_filter` strip with FeedbackEntry warning. [src/routes/admin.rs:786-803]
+- [ ] [Review][Patch] R4-N4 (MEDIUM, semantic inconsistency): drain-cap event pushed to `stats.errors` (R3-N12) causes a capped-but-not-errored table to be counted as `tables_succeeded` AND inflate `errors_count`. Operator monitoring `errors_count > 0` sees false alarms for purely successful (just-not-fully-completed) runs. Fix: introduce a separate `tables_capped` counter, don't push to `stats.errors` for cap events (rely on `tracing::warn!` already logged + the new counter exposed in audit details). [src/services/auto_purge.rs:204, 212, 225-230]
+- [ ] [Review][Patch] R4-N5 (MEDIUM, fragility): Modal POST URL has DUPLICATE `version` parameter — URL query `?version={{ version }}` AND hidden form input `<input name="version">`. Currently safe (axum's `Form<...>` reads body, `Query<TrashQuery>` doesn't include version), but mixing query+body state on POST is fragile. Remove `version` from the URL query string (keep only in form body). [templates/fragments/admin_trash_permanent_delete_modal.html:20]
+- [ ] [Review][Patch] R4-N6 (LOW-MEDIUM): `name_search` containing only whitespace passes `!s.is_empty()` check and gets escaped to `'% %'` LIKE pattern → matches every row containing a space. Add `.trim()` before the empty check. [src/models/trash.rs:78-93]
+- [ ] [Review][Patch] R4-N7 (MEDIUM, race window): `AdminAuditModel::create` — INSERT succeeds, SELECT fails (server reset, connection dropped between queries even though pinned to single conn) → caller sees 500 error even though audit row was committed. Fall back to `chrono::Utc::now().naive_utc()` (or re-fetch on retry) instead of erroring. [src/models/admin_audit.rs:62-67]
+
+**Dismissed (design choices or pre-existing patterns, not regressions):**
+
+- R3-N3 "immediate purge after settings change" — deliberate documented design choice (immediate-tick semantics of `tokio::time::interval`), commit message + inline comment both acknowledge.
+- R3-N4 `pool.acquire()` "addresses a non-bug" — defensive pinning, even if the original SELECT-by-id pattern was technically safe, eliminates a future-bug class.
+- 7-day upper clamp "too generous" — design choice, operator-tunable.
+- Tautological asserts in tests, hardcoded table lists in tests, env-var not accepting "True"/"yes" — minor test maintenance / UX nits.
+- URL empty-string params (`&entity_type=&search=&page=1`) — cosmetic, axum handles cleanly.
+- `after_connect` test doesn't actually verify the hook executed — limited DB-less test ability; integration tests cover this implicitly.
+
+**Deferred to existing tracked issue:**
+
+- [x] [Review][Defer] R4-DF1: `get_item_name_column` fallback to `"id"` for ALLOWED_TABLES entries not in the match arms (`loans`, `genres`, `title_contributors`, `series_title_assignments`, `volume_locations`) — `LIKE` against numeric column. Belongs to issue [#63](https://github.com/guycorbaz/mybibli/issues/63) (P15 single-source-of-truth refactor for whitelist + deletion order + name-column resolution).
+
+### Convergence summary
+
+| Round | Severity profile | Decision |
+|---|---|---|
+| Round 1 (initial review) | 31 findings: 3 decisions + 11 deferred + 11 patches + ~6 dismissed | Apply 20, file 14 issues |
+| Round 2 (patches applied) | — | Commit 7788577 |
+| Round 3 (re-review of round 2) | 14 NEW findings + 1 decision (3 HIGH, ~8 MEDIUM, rest LOW) | Apply all 15 in batch |
+| Round 4 (re-review of round 3) | 7 NEW patches + 0 decisions (0 HIGH-real, all MEDIUM polish, ~10 LOW dismissed) | **Path choice needed** |
+
+**Foundation Rule #6 status:** Strictly NOT clean (7 MEDIUM remain), but the trajectory is clearly converging — round 4 has half as many findings as round 3, and all are MEDIUM (no HIGH, no CRITICAL). Diminishing returns from further rounds.
 
 ## Dev Notes
 
