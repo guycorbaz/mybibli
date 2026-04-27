@@ -17,7 +17,17 @@ pub struct AdminAuditEntry {
 pub struct AdminAuditModel;
 
 impl AdminAuditModel {
-    /// Create an admin audit record (append-only)
+    /// Create an admin audit record (append-only).
+    ///
+    /// The returned `timestamp` is the actual DB-assigned value (read back via
+    /// `LAST_INSERT_ID()` since MariaDB doesn't reliably support `INSERT ...
+    /// RETURNING`) — Patch P13. Previously this returned a Rust-side
+    /// `chrono::Local::now()` which drifted from the stored row whenever the
+    /// process clock and DB clock disagreed.
+    ///
+    /// `CAST(timestamp AS DATETIME)` is needed because dynamic-query SQLx
+    /// can't decode raw `TIMESTAMP` columns into `NaiveDateTime` (CLAUDE.md
+    /// MariaDB type gotcha #4).
     pub async fn create(
         pool: &DbPool,
         user_id: u64,
@@ -39,18 +49,32 @@ impl AdminAuditModel {
 
         let id = result.last_insert_id();
 
+        // Read back the DB-assigned timestamp so the in-memory struct matches
+        // the persisted row exactly.
+        let row = sqlx::query(
+            "SELECT CAST(timestamp AS DATETIME) AS ts FROM admin_audit WHERE id = ?"
+        )
+        .bind(id as i64)
+        .fetch_one(pool)
+        .await?;
+        let timestamp: NaiveDateTime = row.get("ts");
+
         Ok(AdminAuditEntry {
             id,
             user_id,
             action: action.to_string(),
             entity_type: entity_type.map(|s| s.to_string()),
             entity_id,
-            timestamp: chrono::Local::now().naive_local(),
+            timestamp,
             details,
         })
     }
 
-    /// Fetch audit entries with optional filtering
+    /// Fetch audit entries with optional filtering.
+    ///
+    /// `details` is read with `CAST(... AS CHAR)` because MariaDB stores JSON
+    /// columns as `BLOB` underneath; without the cast SQLx can't decode it
+    /// into a `String` (CLAUDE.md MariaDB type gotcha #1) — Patch P14.
     pub async fn list(
         pool: &DbPool,
         user_id: Option<u64>,
@@ -58,23 +82,20 @@ impl AdminAuditModel {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<AdminAuditEntry>, AppError> {
-        let mut query_builder = String::from("SELECT CAST(id AS SIGNED) as id, CAST(user_id AS SIGNED) as user_id, action, entity_type, CAST(entity_id AS SIGNED) as entity_id, CAST(timestamp AS DATETIME) as timestamp, details FROM admin_audit WHERE 1=1");
+        let mut query_builder = String::from(
+            "SELECT CAST(id AS SIGNED) as id, CAST(user_id AS SIGNED) as user_id, action, \
+             entity_type, CAST(entity_id AS SIGNED) as entity_id, \
+             CAST(timestamp AS DATETIME) as timestamp, CAST(details AS CHAR) as details \
+             FROM admin_audit WHERE 1=1",
+        );
 
-        let mut bindings: Vec<String> = vec![];
-
-        if let Some(uid) = user_id {
+        if user_id.is_some() {
             query_builder.push_str(" AND user_id = ?");
-            bindings.push(uid.to_string());
         }
-
-        if let Some(act) = action {
+        if action.is_some() {
             query_builder.push_str(" AND action = ?");
-            bindings.push(act.to_string());
         }
-
         query_builder.push_str(" ORDER BY timestamp DESC LIMIT ? OFFSET ?");
-        bindings.push(limit.to_string());
-        bindings.push(offset.to_string());
 
         let mut query = sqlx::query(&query_builder);
 

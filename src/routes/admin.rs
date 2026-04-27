@@ -793,11 +793,17 @@ pub async fn admin_trash_permanent_delete(
     session: Session,
     Extension(locale): Extension<Locale>,
     axum::extract::Path((table, id)): axum::extract::Path<(String, u64)>,
+    Query(filters): Query<TrashQuery>,
     Form(form): Form<PermanentDeleteForm>,
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=trash")?;
     let loc = locale.0;
-    let user_id = session.user_id.unwrap_or(0);
+
+    // Patch P20: consolidate user_id resolution. The handler is admin-gated
+    // (session.require_role_with_return above) so user_id should always be
+    // Some — failing with Unauthorized if the invariant somehow breaks is
+    // strictly correct.
+    let user_id = session.user_id.ok_or(AppError::Unauthorized)?;
 
     // Load the trash entry to verify the name matches
     let entry = crate::models::trash::TrashModel::get_trash_entry(&state.pool, &table, id)
@@ -844,8 +850,7 @@ pub async fn admin_trash_permanent_delete(
         form.version,
     ).await?;
 
-    // Record in admin audit
-    let user_id = session.user_id.unwrap_or(1); // Admin should always have user_id
+    // Record in admin audit (uses the consolidated `user_id` from above).
     crate::models::admin_audit::AdminAuditModel::create(
         &state.pool,
         user_id,
@@ -860,9 +865,10 @@ pub async fn admin_trash_permanent_delete(
         .to_string();
     let feedback = feedback_html_pub("success", &success_msg, "");
 
-    // Reload the trash panel
-    let trash_query = TrashQuery { entity_type: None, search: None, page: Some(1) };
-    let panel_html = render_trash_panel(&state, loc, &trash_query).await?;
+    // Patch P12: re-render the panel with the SAME filters/pagination the
+    // admin was viewing — previously this hard-reset to page 1 with no
+    // filters, dumping the admin out of context after every delete.
+    let panel_html = render_trash_panel(&state, loc, &filters).await?;
 
     Ok(HtmxResponse {
         main: panel_html,
@@ -1192,29 +1198,43 @@ async fn render_trash_panel(
     )
     .await?;
 
-    let total = crate::models::trash::TrashModel::trash_count(pool).await?;
+    // Patch P23: scope the count to the same filters as the entries so the
+    // paginator says "page 1 / 1" on a filtered empty result instead of
+    // "page 1 / 47" (which then linked to empty pages).
+    let total = crate::models::trash::TrashModel::trash_count(
+        pool,
+        query.entity_type.as_deref(),
+        query.search.as_deref(),
+    )
+    .await?;
     let per_page = 25i64;
     let total_pages = if total == 0 { 1 } else { ((total as f64) / (per_page as f64)).ceil() as u32 };
 
-    // Fetch current time from DB for consistent calculation with purge logic
-    let now: chrono::NaiveDateTime = sqlx::query_scalar("SELECT NOW()")
-        .fetch_one(pool)
-        .await?;
+    // Patch P22: drop the per-render `SELECT NOW()` round-trip — the DB
+    // stores `deleted_at` as `TIMESTAMP` (UTC under the hood), so comparing
+    // against `Utc::now().naive_utc()` is consistent with the auto-purge
+    // service's `NOW() - INTERVAL 30 DAY` semantics. (`session.rs` uses the
+    // same convention.)
+    let now = chrono::Utc::now().naive_utc();
 
-    // Calculate days_remaining for each entry
+    // Patch P21: ceiling-based days_remaining so a row deleted 29d23h ago is
+    // shown as 0 days (about to be purged) rather than truncating to 1 and
+    // then surprising the admin when it disappears within the hour.
     let items: Vec<TrashEntryDisplay> = entries
         .into_iter()
         .filter_map(|e| {
             e.deleted_at.map(|deleted_at| {
-                let age = (now - deleted_at).num_days();
-                let days_remaining = (30 - age) as i32;
+                let elapsed_secs = (now - deleted_at).num_seconds().max(0);
+                // Ceiling division: any partial day rounds up to the next full day elapsed.
+                let elapsed_days = (elapsed_secs + 86399) / 86400;
+                let days_remaining = (30 - elapsed_days as i32).max(0);
                 TrashEntryDisplay {
                     id: e.id,
                     table_name: e.table_name,
                     item_name: e.item_name,
                     deleted_at,
                     version: e.version,
-                    days_remaining: days_remaining.max(0),
+                    days_remaining,
                 }
             })
         })

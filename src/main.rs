@@ -47,26 +47,37 @@ async fn main() {
 
     tracing::info!("Database migrations completed");
 
-    // Validate FK dependency order against schema
-    auto_purge::AutoPurgeService::validate_schema(&pool)
-        .await
-        .expect("FK schema validation failed");
+    // Validate FK dependency order against schema. Story 8-7 P5: never panic
+    // here — schema evolution (adding/removing whitelisted tables) MUST NOT
+    // be a hard crash; surface a warning and let the app come up.
+    if let Err(e) = auto_purge::AutoPurgeService::validate_schema(&pool).await {
+        tracing::warn!(
+            error = %e,
+            "FK schema validation failed; continuing startup (auto-purge may skip mismatched tables)"
+        );
+    }
 
-    // Run startup auto-purge (blocking, bounded by item count)
-    match auto_purge::AutoPurgeService::run_purge(&pool).await {
-        Ok(stats) => {
-            tracing::info!(
-                tables_processed = stats.tables_processed,
-                rows_deleted = stats.rows_deleted,
-                errors = stats.errors.len(),
-                "Startup auto-purge completed"
-            );
-            if !stats.errors.is_empty() {
-                tracing::warn!(errors = ?stats.errors, "Startup auto-purge encountered errors");
+    // Story 8-7 P4: opt-out for fast-iteration dev/test loops where the
+    // startup-purge cost is not worth paying on every restart.
+    if std::env::var("MYBIBLI_SKIP_STARTUP_PURGE").is_ok() {
+        tracing::info!("Startup purge skipped (MYBIBLI_SKIP_STARTUP_PURGE set)");
+    } else {
+        // Run startup auto-purge (blocking, bounded by item count).
+        match auto_purge::AutoPurgeService::run_purge(&pool).await {
+            Ok(stats) => {
+                tracing::info!(
+                    tables_processed = stats.tables_processed,
+                    rows_deleted = stats.rows_deleted,
+                    errors = stats.errors.len(),
+                    "Startup auto-purge completed"
+                );
+                if !stats.errors.is_empty() {
+                    tracing::warn!(errors = ?stats.errors, "Startup auto-purge encountered errors");
+                }
             }
-        }
-        Err(e) => {
-            tracing::error!("Startup auto-purge failed: {} (non-fatal, continuing)", e);
+            Err(e) => {
+                tracing::error!("Startup auto-purge failed: {} (non-fatal, continuing)", e);
+            }
         }
     }
 
@@ -168,8 +179,9 @@ async fn main() {
     anonymous_session_purge::spawn(state.pool.clone());
 
     // Story 8-7: daily auto-purge of soft-deleted items older than 30 days.
-    // Runs on a 24-hour cadence with a 1-minute delay after startup.
-    auto_purge_scheduler::spawn(state.pool.clone());
+    // Cadence is read from `AppSettings::auto_purge_interval_seconds`
+    // (default 86400 = 24h) with a 1-minute delay after startup.
+    auto_purge_scheduler::spawn(state.pool.clone(), state.settings.clone());
 
     let app = routes::build_router(state).layer(logging::trace_layer());
 

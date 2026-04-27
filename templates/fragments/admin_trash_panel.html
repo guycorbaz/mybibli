@@ -79,15 +79,17 @@
             </table>
         </div>
 
-        {# Pagination #}
+        {# Pagination — Patch P25: URL-encode `entity_type_filter` and
+           `search_query` so values containing `&`, `#`, space, `+`, etc.
+           don't break the resulting query string. #}
         {% if total_pages > 1 %}
             <nav id="admin-trash-pagination" aria-label="{{ pagination_aria }}" class="mt-4 flex items-center justify-center gap-2">
                 {% if current_page > 1 %}
-                    <button hx-get="/admin/trash?entity_type={{ entity_type_filter }}&search={{ search_query }}&page={{ current_page - 1 }}" hx-target="#admin-trash-panel" hx-swap="outerHTML" hx-push-url="true" class="px-3 py-1 bg-stone-300 dark:bg-stone-700 rounded">«</button>
+                    <button hx-get="/admin/trash?entity_type={{ entity_type_filter|urlencode }}&search={{ search_query|urlencode }}&page={{ current_page - 1 }}" hx-target="#admin-trash-panel" hx-swap="outerHTML" hx-push-url="true" class="px-3 py-1 bg-stone-300 dark:bg-stone-700 rounded">«</button>
                 {% endif %}
                 <span class="text-sm">{{ current_page }} / {{ total_pages }}</span>
                 {% if current_page < total_pages %}
-                    <button hx-get="/admin/trash?entity_type={{ entity_type_filter }}&search={{ search_query }}&page={{ current_page + 1 }}" hx-target="#admin-trash-panel" hx-swap="outerHTML" hx-push-url="true" class="px-3 py-1 bg-stone-300 dark:bg-stone-700 rounded">»</button>
+                    <button hx-get="/admin/trash?entity_type={{ entity_type_filter|urlencode }}&search={{ search_query|urlencode }}&page={{ current_page + 1 }}" hx-target="#admin-trash-panel" hx-swap="outerHTML" hx-push-url="true" class="px-3 py-1 bg-stone-300 dark:bg-stone-700 rounded">»</button>
                 {% endif %}
             </nav>
         {% endif %}

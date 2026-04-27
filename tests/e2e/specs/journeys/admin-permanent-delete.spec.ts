@@ -13,7 +13,10 @@ test.describe('Story 8-7: Permanent Delete & Auto-Purge', () => {
   }) => {
     // Navigate directly to trash (assuming pre-existing soft-deleted items from other tests)
     await page.goto('/admin?tab=trash', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3000); // Wait for trash panel to load
+    // Wait for the trash panel section to land — replaces an arbitrary 3s sleep.
+    await expect(
+      page.locator('section[aria-labelledby="admin-trash-heading"]'),
+    ).toBeVisible({ timeout: 10000 });
 
     // If there are items in trash, test the permanent delete modal
     const trashTable = page.locator('table');
@@ -54,7 +57,9 @@ test.describe('Story 8-7: Permanent Delete & Auto-Purge', () => {
   }) => {
     // Navigate to trash
     await page.goto('/admin?tab=trash', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3000);
+    await expect(
+      page.locator('section[aria-labelledby="admin-trash-heading"]'),
+    ).toBeVisible({ timeout: 10000 });
 
     // If there are items in trash, test name validation
     const trashTable = page.locator('table');
@@ -100,9 +105,9 @@ test.describe('Story 8-7: Permanent Delete & Auto-Purge', () => {
   }) => {
     // Navigate to trash panel
     await page.goto('/admin?tab=trash', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3000); // Wait for panel to load
 
-    // Verify the trash panel exists
+    // Verify the trash panel exists — `toBeVisible` with timeout replaces the
+    // arbitrary 3s sleep (CI grep gate forbids `waitForTimeout`).
     const trashPanel = page.locator('section[aria-labelledby="admin-trash-heading"]');
     await expect(trashPanel).toBeVisible({ timeout: 10000 });
 
