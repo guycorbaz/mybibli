@@ -2,7 +2,7 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::CreateOutcome;
+use crate::models::{CreateOutcome, DeleteOutcome};
 use crate::services::locking::check_update_result;
 
 #[derive(Debug, Clone)]
@@ -166,6 +166,55 @@ impl ContributorRoleModel {
         .fetch_one(pool)
         .await?;
         Ok(row.0)
+    }
+
+    /// Atomic count-and-delete (story 8-4 P1) — see GenreModel::delete_if_unused.
+    pub async fn delete_if_unused(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+    ) -> Result<DeleteOutcome, AppError> {
+        let mut tx = pool.begin().await?;
+
+        let locked = sqlx::query(
+            "SELECT id FROM contributor_roles \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL FOR UPDATE",
+        )
+        .bind(id)
+        .bind(version)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if locked.is_none() {
+            tx.rollback().await?;
+            return Err(AppError::Conflict(
+                rust_i18n::t!("error.conflict", entity = "contributor_role").to_string(),
+            ));
+        }
+
+        let count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM title_contributors \
+             WHERE role_id = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if count.0 > 0 {
+            tx.rollback().await?;
+            return Ok(DeleteOutcome::InUse(count.0));
+        }
+
+        let res = sqlx::query(
+            "UPDATE contributor_roles SET deleted_at = NOW(), version = version + 1 \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(version)
+        .execute(&mut *tx)
+        .await?;
+        check_update_result(res.rows_affected(), "contributor_role")?;
+
+        tx.commit().await?;
+        Ok(DeleteOutcome::Deleted)
     }
 }
 

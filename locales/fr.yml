@@ -223,6 +223,8 @@ error:
     in_use_no_link: "Suppression impossible : %{count} %{plural} utilisent ce %{singular}."
     version_mismatch: "Entrée modifiée par un autre administrateur — rechargez et réessayez"
     not_found: "Entrée introuvable"
+    invalid_version: "Version invalide — rechargez la page et réessayez"
+    node_type_name_too_long_for_cascade: "Le nom ne peut dépasser %{max} caractères (les types de nœud sont propagés vers storage_locations)"
   code:
     unsupported_type: Type de code non pris en charge
 guide:
