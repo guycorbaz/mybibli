@@ -25,7 +25,7 @@ use crate::models::contributor_role::ContributorRoleModel;
 use crate::models::genre::GenreModel;
 use crate::models::location_node_type::LocationNodeTypeModel;
 use crate::models::volume_state::VolumeStateModel;
-use crate::models::{CreateOutcome, DeleteOutcome};
+use crate::models::{CONFLICT_NAME_TAKEN, CreateOutcome, DeleteOutcome};
 use crate::routes::catalog::feedback_html_pub;
 
 /// Storage_locations.node_type column is VARCHAR(50). Renaming a node type
@@ -314,12 +314,15 @@ fn checkbox_to_bool(v: &Option<String>) -> bool {
     matches!(v.as_deref(), Some(s) if !s.is_empty() && s != "off" && s != "false")
 }
 
-/// Translate the `Conflict("name_taken")` literal returned by the model
-/// layer into a user-facing localized message. Other AppErrors pass
-/// through unchanged.
+/// Translate the `Conflict(CONFLICT_NAME_TAKEN)` marker returned by the
+/// model layer into a user-facing localized message. Other AppErrors pass
+/// through unchanged. Story 8-4 P13 — checks against the typed
+/// `CONFLICT_NAME_TAKEN` constant from `models::mod` so a future model that
+/// drops or reworks the marker is caught at compile time (the constant has
+/// a single point of definition).
 fn map_create_or_rename_conflict(err: AppError, loc: &'static str, name: &str) -> AppError {
     match err {
-        AppError::Conflict(msg) if msg == "name_taken" => AppError::Conflict(
+        AppError::Conflict(msg) if msg == CONFLICT_NAME_TAKEN => AppError::Conflict(
             rust_i18n::t!("error.reference_data.name_taken", locale = loc, name = name)
                 .to_string(),
         ),
@@ -336,14 +339,23 @@ fn make_row(
     is_loanable: bool,
     usage_count: i64,
     loc: &'static str,
+    with_loanable_label: bool,
 ) -> RefRowDisplay {
+    // Story 8-4 P10: only compute the localized "Loanable" label when the
+    // row's section actually uses it (volume_states_row.html). Genres,
+    // roles and node_types rows ignore the field — saving one i18n lookup
+    // per row for those three sections.
+    let loanable_label = if with_loanable_label {
+        rust_i18n::t!("admin.reference_data.loanable_label", locale = loc).to_string()
+    } else {
+        String::new()
+    };
     RefRowDisplay {
         id,
         name: name.to_string(),
         version,
         is_loanable,
-        loanable_label: rust_i18n::t!("admin.reference_data.loanable_label", locale = loc)
-            .to_string(),
+        loanable_label,
         usage_count,
         usage_chip: rust_i18n::t!(
             "admin.reference_data.usage_count_chip",
@@ -374,7 +386,7 @@ async fn build_genre_rows(
     let mut rows = Vec::with_capacity(entries.len());
     for e in entries {
         let usage = GenreModel::count_usage(pool, e.id).await?;
-        rows.push(make_row(e.id, &e.name, e.version, false, usage, loc));
+        rows.push(make_row(e.id, &e.name, e.version, false, usage, loc, false));
     }
     Ok(rows)
 }
@@ -387,7 +399,7 @@ async fn build_volume_state_rows(
     let mut rows = Vec::with_capacity(entries.len());
     for e in entries {
         let usage = VolumeStateModel::count_usage(pool, e.id).await?;
-        rows.push(make_row(e.id, &e.name, e.version, e.is_loanable, usage, loc));
+        rows.push(make_row(e.id, &e.name, e.version, e.is_loanable, usage, loc, true));
     }
     Ok(rows)
 }
@@ -400,7 +412,7 @@ async fn build_role_rows(
     let mut rows = Vec::with_capacity(entries.len());
     for e in entries {
         let usage = ContributorRoleModel::count_usage(pool, e.id).await?;
-        rows.push(make_row(e.id, &e.name, e.version, false, usage, loc));
+        rows.push(make_row(e.id, &e.name, e.version, false, usage, loc, false));
     }
     Ok(rows)
 }
@@ -413,12 +425,12 @@ async fn build_node_type_rows(
     let mut rows = Vec::with_capacity(entries.len());
     for e in entries {
         let usage = LocationNodeTypeModel::count_usage(pool, e.id).await?;
-        rows.push(make_row(e.id, &e.name, e.version, false, usage, loc));
+        rows.push(make_row(e.id, &e.name, e.version, false, usage, loc, false));
     }
     Ok(rows)
 }
 
-fn render_genres_list(entries: Vec<RefRowDisplay>, _csrf: &str, loc: &'static str) -> Result<String, AppError> {
+fn render_genres_list(entries: Vec<RefRowDisplay>, loc: &'static str) -> Result<String, AppError> {
     AdminRefGenresList {
         entries,
         empty_state: rust_i18n::t!("admin.reference_data.empty_state", locale = loc).to_string(),
@@ -437,7 +449,7 @@ fn render_volume_states_list(entries: Vec<RefRowDisplay>, csrf: &str, loc: &'sta
     .map_err(|_| AppError::Internal("volume states list render failed".to_string()))
 }
 
-fn render_roles_list(entries: Vec<RefRowDisplay>, _csrf: &str, loc: &'static str) -> Result<String, AppError> {
+fn render_roles_list(entries: Vec<RefRowDisplay>, loc: &'static str) -> Result<String, AppError> {
     AdminRefRolesList {
         entries,
         empty_state: rust_i18n::t!("admin.reference_data.empty_state", locale = loc).to_string(),
@@ -446,7 +458,7 @@ fn render_roles_list(entries: Vec<RefRowDisplay>, _csrf: &str, loc: &'static str
     .map_err(|_| AppError::Internal("roles list render failed".to_string()))
 }
 
-fn render_node_types_list(entries: Vec<RefRowDisplay>, _csrf: &str, loc: &'static str) -> Result<String, AppError> {
+fn render_node_types_list(entries: Vec<RefRowDisplay>, loc: &'static str) -> Result<String, AppError> {
     AdminRefNodeTypesList {
         entries,
         empty_state: rust_i18n::t!("admin.reference_data.empty_state", locale = loc).to_string(),
@@ -470,10 +482,10 @@ pub async fn render_panel_html(
     let role_rows = build_role_rows(pool, loc).await?;
     let node_type_rows = build_node_type_rows(pool, loc).await?;
 
-    let genres_list_html = render_genres_list(genre_rows, &csrf, loc)?;
+    let genres_list_html = render_genres_list(genre_rows, loc)?;
     let volume_states_list_html = render_volume_states_list(volume_state_rows, &csrf, loc)?;
-    let roles_list_html = render_roles_list(role_rows, &csrf, loc)?;
-    let node_types_list_html = render_node_types_list(node_type_rows, &csrf, loc)?;
+    let roles_list_html = render_roles_list(role_rows, loc)?;
+    let node_types_list_html = render_node_types_list(node_type_rows, loc)?;
 
     let panel = AdminReferenceDataPanel {
         csrf_token: csrf,
@@ -567,7 +579,7 @@ pub async fn genres_section(
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
     let entries = build_genre_rows(&state.pool, loc).await?;
-    let html = render_genres_list(entries, &session.csrf_token, loc)?;
+    let html = render_genres_list(entries, loc)?;
     Ok(Html(html))
 }
 
@@ -590,7 +602,7 @@ pub async fn genres_create(
         }
     };
     let entries = build_genre_rows(&state.pool, loc).await?;
-    let list_html = render_genres_list(entries, &session.csrf_token, loc)?;
+    let list_html = render_genres_list(entries, loc)?;
     Ok(HtmxResponse {
         main: list_html,
         oob: vec![OobUpdate {
@@ -617,7 +629,7 @@ pub async fn genres_rename(
         .await?
         .ok_or_else(|| AppError::NotFound("genre".to_string()))?;
     let usage = GenreModel::count_usage(&state.pool, id).await?;
-    let entry = make_row(row.id, &row.name, row.version, false, usage, loc);
+    let entry = make_row(row.id, &row.name, row.version, false, usage, loc, false);
     let row_html = AdminRefGenreRow { entry }
         .render()
         .map_err(|_| AppError::Internal("genre row render failed".to_string()))?;
@@ -676,7 +688,7 @@ pub async fn genres_delete(
 
     // Render fresh list + close modal via OOB (admin-modal-slot cleared).
     let entries = build_genre_rows(&state.pool, loc).await?;
-    let list_html = render_genres_list(entries, &session.csrf_token, loc)?;
+    let list_html = render_genres_list(entries, loc)?;
     let feedback = success_feedback(loc, "success.reference_data.deleted", &row.name);
     Ok(HtmxResponse {
         main: list_html,
@@ -754,7 +766,7 @@ pub async fn volume_states_rename(
         .await?
         .ok_or_else(|| AppError::NotFound("volume_state".to_string()))?;
     let usage = VolumeStateModel::count_usage(&state.pool, id).await?;
-    let entry = make_row(row.id, &row.name, row.version, row.is_loanable, usage, loc);
+    let entry = make_row(row.id, &row.name, row.version, row.is_loanable, usage, loc, true);
     let row_html = AdminRefVolumeStateRow {
         entry,
         csrf_token: session.csrf_token.clone(),
@@ -949,7 +961,7 @@ async fn apply_loanable_toggle(
         .await?
         .ok_or_else(|| AppError::NotFound("volume_state".to_string()))?;
     let usage = VolumeStateModel::count_usage(pool, id).await?;
-    let entry = make_row(row.id, &row.name, row.version, row.is_loanable, usage, loc);
+    let entry = make_row(row.id, &row.name, row.version, row.is_loanable, usage, loc, true);
     let row_html = AdminRefVolumeStateRow {
         entry,
         csrf_token: session.csrf_token.clone(),
@@ -991,7 +1003,7 @@ pub async fn volume_states_row_view(
         .await?
         .ok_or_else(|| AppError::NotFound("volume_state".to_string()))?;
     let usage = VolumeStateModel::count_usage(&state.pool, id).await?;
-    let entry = make_row(row.id, &row.name, row.version, row.is_loanable, usage, loc);
+    let entry = make_row(row.id, &row.name, row.version, row.is_loanable, usage, loc, true);
     let html = AdminRefVolumeStateRow {
         entry,
         csrf_token: session.csrf_token.clone(),
@@ -1011,7 +1023,7 @@ pub async fn roles_section(
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
     let entries = build_role_rows(&state.pool, loc).await?;
-    let html = render_roles_list(entries, &session.csrf_token, loc)?;
+    let html = render_roles_list(entries, loc)?;
     Ok(Html(html))
 }
 
@@ -1034,7 +1046,7 @@ pub async fn roles_create(
         }
     };
     let entries = build_role_rows(&state.pool, loc).await?;
-    let list_html = render_roles_list(entries, &session.csrf_token, loc)?;
+    let list_html = render_roles_list(entries, loc)?;
     Ok(HtmxResponse {
         main: list_html,
         oob: vec![OobUpdate {
@@ -1061,7 +1073,7 @@ pub async fn roles_rename(
         .await?
         .ok_or_else(|| AppError::NotFound("contributor_role".to_string()))?;
     let usage = ContributorRoleModel::count_usage(&state.pool, id).await?;
-    let entry = make_row(row.id, &row.name, row.version, false, usage, loc);
+    let entry = make_row(row.id, &row.name, row.version, false, usage, loc, false);
     let row_html = AdminRefRoleRow { entry }
         .render()
         .map_err(|_| AppError::Internal("role row render failed".to_string()))?;
@@ -1118,7 +1130,7 @@ pub async fn roles_delete(
         DeleteOutcome::Deleted => {}
     }
     let entries = build_role_rows(&state.pool, loc).await?;
-    let list_html = render_roles_list(entries, &session.csrf_token, loc)?;
+    let list_html = render_roles_list(entries, loc)?;
     let feedback = success_feedback(loc, "success.reference_data.deleted", &row.name);
     Ok(HtmxResponse {
         main: list_html,
@@ -1145,7 +1157,7 @@ pub async fn node_types_section(
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
     let entries = build_node_type_rows(&state.pool, loc).await?;
-    let html = render_node_types_list(entries, &session.csrf_token, loc)?;
+    let html = render_node_types_list(entries, loc)?;
     Ok(Html(html))
 }
 
@@ -1168,7 +1180,7 @@ pub async fn node_types_create(
         }
     };
     let entries = build_node_type_rows(&state.pool, loc).await?;
-    let list_html = render_node_types_list(entries, &session.csrf_token, loc)?;
+    let list_html = render_node_types_list(entries, loc)?;
     Ok(HtmxResponse {
         main: list_html,
         oob: vec![OobUpdate {
@@ -1217,20 +1229,29 @@ pub async fn node_types_rename(
         .await?
         .ok_or_else(|| AppError::NotFound("location_node_type".to_string()))?;
     let usage = LocationNodeTypeModel::count_usage(&state.pool, id).await?;
-    let entry = make_row(row.id, &row.name, row.version, false, usage, loc);
+    let entry = make_row(row.id, &row.name, row.version, false, usage, loc, false);
     let row_html = AdminRefNodeTypeRow { entry }
         .render()
         .map_err(|_| AppError::Internal("node type row render failed".to_string()))?;
 
-    let feedback = if cascade_rows > 0 {
-        success_feedback_with_count(
+    // Story 8-4 P16: split singular/plural i18n keys instead of carrying
+    // the awkward "(s)" parenthetical. `_one` reads "1 location updated";
+    // `_other` reads "N locations updated"; cascade=0 falls through to the
+    // plain "renamed" message (no cascade count).
+    let feedback = match cascade_rows {
+        0 => success_feedback(loc, "success.reference_data.renamed", &name),
+        1 => success_feedback_with_count(
             loc,
-            "success.reference_data.node_type_renamed_cascaded",
+            "success.reference_data.node_type_renamed_cascaded_one",
+            &name,
+            1,
+        ),
+        _ => success_feedback_with_count(
+            loc,
+            "success.reference_data.node_type_renamed_cascaded_other",
             &name,
             cascade_rows,
-        )
-    } else {
-        success_feedback(loc, "success.reference_data.renamed", &name)
+        ),
     };
 
     Ok(HtmxResponse {
@@ -1285,7 +1306,7 @@ pub async fn node_types_delete(
         DeleteOutcome::Deleted => {}
     }
     let entries = build_node_type_rows(&state.pool, loc).await?;
-    let list_html = render_node_types_list(entries, &session.csrf_token, loc)?;
+    let list_html = render_node_types_list(entries, loc)?;
     let feedback = success_feedback(loc, "success.reference_data.deleted", &row.name);
     Ok(HtmxResponse {
         main: list_html,
@@ -1403,6 +1424,8 @@ async fn sample_active_loans(
     state_id: u64,
     limit: i64,
 ) -> Result<Vec<LoanSampleDisplay>, AppError> {
+    // Story 8-4 P26: deterministic tiebreaker (`l.id DESC`) so two loans
+    // sharing the same `loaned_at` timestamp don't shuffle between renders.
     let rows = sqlx::query(
         "SELECT v.label AS volume_label, b.name AS borrower_name, l.loaned_at \
            FROM loans l \
@@ -1413,7 +1436,7 @@ async fn sample_active_loans(
             AND l.deleted_at IS NULL \
             AND v.deleted_at IS NULL \
             AND b.deleted_at IS NULL \
-          ORDER BY l.loaned_at DESC \
+          ORDER BY l.loaned_at DESC, l.id DESC \
           LIMIT ?",
     )
     .bind(state_id)

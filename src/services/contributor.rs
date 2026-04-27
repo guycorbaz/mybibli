@@ -50,7 +50,7 @@ impl ContributorService {
         }
 
         // Validate role exists
-        if !ContributorRoleModel::find_by_id(pool, role_id).await? {
+        if !ContributorRoleModel::exists(pool, role_id).await? {
             return Err(AppError::BadRequest(
                 rust_i18n::t!("contributor.error.role_not_found").to_string(),
             ));
