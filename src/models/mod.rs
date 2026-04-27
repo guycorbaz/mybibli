@@ -36,6 +36,15 @@ impl CreateOutcome {
     }
 }
 
+/// String marker carried by `AppError::Conflict` from a reference-data
+/// model's `create()` or `rename()` when a UNIQUE-name collision against an
+/// active (non-soft-deleted) row is detected. The reference-data handler's
+/// `map_create_or_rename_conflict` translates this marker into the localized
+/// `error.reference_data.name_taken` message. Story 8-4 P13 — replaces the
+/// scattered `"name_taken"` literal so a future model can't silently deviate
+/// (which would leak the internal token into the user-facing feedback).
+pub const CONFLICT_NAME_TAKEN: &str = "name_taken";
+
 /// Outcome of a guarded soft-delete attempt (story 8-4 P1).
 ///
 /// `Deleted` — the row was soft-deleted atomically (count + UPDATE in one tx

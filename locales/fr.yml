@@ -544,4 +544,5 @@ success:
     deleted: "Suppression de %{name}"
     loanable_on: "%{name} est désormais empruntable"
     loanable_off: "%{name} n'est plus empruntable. Les prêts en cours se terminent normalement."
-    node_type_renamed_cascaded: "Renommé en %{name} — %{count} emplacement(s) mis à jour"
+    node_type_renamed_cascaded_one: "Renommé en %{name} — 1 emplacement mis à jour"
+    node_type_renamed_cascaded_other: "Renommé en %{name} — %{count} emplacements mis à jour"

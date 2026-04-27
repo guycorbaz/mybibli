@@ -2,7 +2,7 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::{CreateOutcome, DeleteOutcome};
+use crate::models::{CONFLICT_NAME_TAKEN, CreateOutcome, DeleteOutcome};
 use crate::services::locking::check_update_result;
 
 /// Reference taxonomy for `storage_locations.node_type`. The link from
@@ -107,10 +107,10 @@ impl LocationNodeTypeModel {
                         if res.rows_affected() == 1 {
                             Ok(CreateOutcome::Reactivated(id))
                         } else {
-                            Err(AppError::Conflict("name_taken".to_string()))
+                            Err(AppError::Conflict(CONFLICT_NAME_TAKEN.to_string()))
                         }
                     }
-                    None => Err(AppError::Conflict("name_taken".to_string())),
+                    None => Err(AppError::Conflict(CONFLICT_NAME_TAKEN.to_string())),
                 }
             }
             Err(other) => Err(AppError::from(other)),
@@ -156,7 +156,7 @@ impl LocationNodeTypeModel {
         .await
         .map_err(|err| match &err {
             sqlx::Error::Database(db_err) if db_err.code().as_deref() == Some("23000") => {
-                AppError::Conflict("name_taken".to_string())
+                AppError::Conflict(CONFLICT_NAME_TAKEN.to_string())
             }
             _ => AppError::from(err),
         })?;

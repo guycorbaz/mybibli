@@ -544,4 +544,5 @@ success:
     deleted: "Deleted %{name}"
     loanable_on: "%{name} is now loanable"
     loanable_off: "%{name} is now non-loanable. Existing loans continue."
-    node_type_renamed_cascaded: "Renamed to %{name} — %{count} location(s) updated"
+    node_type_renamed_cascaded_one: "Renamed to %{name} — 1 location updated"
+    node_type_renamed_cascaded_other: "Renamed to %{name} — %{count} locations updated"

@@ -2,7 +2,7 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::{CreateOutcome, DeleteOutcome};
+use crate::models::{CONFLICT_NAME_TAKEN, CreateOutcome, DeleteOutcome};
 use crate::services::locking::check_update_result;
 
 #[derive(Debug, Clone)]
@@ -19,10 +19,12 @@ impl std::fmt::Display for ContributorRoleModel {
 }
 
 impl ContributorRoleModel {
-    /// Legacy boolean existence check kept compatible with story 1-5
-    /// callers (`services/contributor.rs`, `routes/catalog.rs`). Returns
-    /// true if a non-deleted row with this id exists.
-    pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<bool, AppError> {
+    /// Existence check (story 8-4 P27 — renamed from `find_by_id` so the
+    /// legacy boolean variant cannot be confused with the struct-returning
+    /// `get` added by 8-4). Returns true if a non-deleted row with this id
+    /// exists. Callers: `services/contributor.rs` validates incoming
+    /// `role_id` against this when creating title-contributor links.
+    pub async fn exists(pool: &DbPool, id: u64) -> Result<bool, AppError> {
         let row: Option<(u64,)> =
             sqlx::query_as("SELECT id FROM contributor_roles WHERE id = ? AND deleted_at IS NULL")
                 .bind(id)
@@ -110,10 +112,10 @@ impl ContributorRoleModel {
                         if res.rows_affected() == 1 {
                             Ok(CreateOutcome::Reactivated(id))
                         } else {
-                            Err(AppError::Conflict("name_taken".to_string()))
+                            Err(AppError::Conflict(CONFLICT_NAME_TAKEN.to_string()))
                         }
                     }
-                    None => Err(AppError::Conflict("name_taken".to_string())),
+                    None => Err(AppError::Conflict(CONFLICT_NAME_TAKEN.to_string())),
                 }
             }
             Err(other) => Err(AppError::from(other)),
@@ -137,7 +139,7 @@ impl ContributorRoleModel {
         .await
         .map_err(|err| match &err {
             sqlx::Error::Database(db_err) if db_err.code().as_deref() == Some("23000") => {
-                AppError::Conflict("name_taken".to_string())
+                AppError::Conflict(CONFLICT_NAME_TAKEN.to_string())
             }
             _ => AppError::from(err),
         })?;
@@ -239,7 +241,7 @@ mod tests {
         let id = ContributorRoleModel::create(&pool, "Z-role-test").await?.id();
         let role = ContributorRoleModel::get(&pool, id).await?.unwrap();
         assert_eq!(role.name, "Z-role-test");
-        assert!(ContributorRoleModel::find_by_id(&pool, id).await?);
+        assert!(ContributorRoleModel::exists(&pool, id).await?);
         Ok(())
     }
 

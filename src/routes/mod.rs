@@ -227,8 +227,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/admin/users/{id}", axum::routing::post(admin::admin_users_update))
         .route("/admin/users/{id}/deactivate", axum::routing::post(admin::admin_users_deactivate))
         .route("/admin/users/{id}/reactivate", axum::routing::post(admin::admin_users_reactivate))
-        // Admin → Reference data CRUD (story 8-4). 25 endpoints across 4
-        // sub-sections (genres, volume_states, contributor_roles, node_types).
+        // Admin → Reference data CRUD (story 8-4). 20 routes across 4
+        // sub-sections (genres, volume_states, contributor_roles, node_types):
+        // 1 panel + 4 sections × (list / create / rename / delete-modal /
+        // delete) + volume_states extras (loanable / loanable-confirm / row).
         // All Admin-gated, all CSRF-protected via the 8-2 middleware.
         .route(
             "/admin/reference-data",
