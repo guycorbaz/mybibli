@@ -215,6 +215,7 @@ impl GenreModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::CONFLICT_NAME_TAKEN;
 
     #[test]
     fn test_genre_display() {
@@ -290,6 +291,24 @@ mod tests {
         }
         let restored = GenreModel::find_by_id(&pool, id).await?.unwrap();
         assert_eq!(restored.name, "Z-reactivate-test");
+        Ok(())
+    }
+
+    /// Story 8-4 P19: collation pin (`utf8mb4_unicode_ci`) makes the UNIQUE
+    /// `name` index case-insensitive, so creating "Z-Roman" and "z-roman"
+    /// collides. Without the pinned collation, deployments inheriting a
+    /// binary or case-sensitive default would silently allow both rows to
+    /// coexist as visual duplicates.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_genre_create_case_insensitive_collision(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let _id = GenreModel::create(&pool, "Z-CaseTest").await?.id();
+        let res = GenreModel::create(&pool, "z-casetest").await;
+        assert!(
+            matches!(&res, Err(AppError::Conflict(msg)) if msg == CONFLICT_NAME_TAKEN),
+            "expected case-insensitive UNIQUE collision, got {res:?}"
+        );
         Ok(())
     }
 
