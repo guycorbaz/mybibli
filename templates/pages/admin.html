@@ -5,6 +5,10 @@
 {% block content %}
 <div class="max-w-6xl mx-auto px-4 py-8">
     <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100 mb-6">{{ admin_page_title }}</h1>
+    {# Story 8-4 P18 / V2: feedback target for AppError::Conflict and admin
+       OOB swaps. Without this slot, server-side conflict feedback on /admin
+       routes silently drops because HTMX has no #feedback-list to swap into. #}
+    <div id="feedback-list" aria-live="polite" aria-relevant="additions" class="space-y-2 mb-4"></div>
     <div id="admin-shell">{{ shell_html|safe }}</div>
 </div>
 {% endblock %}

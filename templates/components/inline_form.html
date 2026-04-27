@@ -1,0 +1,55 @@
+{# UX-DR21 InlineForm component (story 8-4 P36 / D5-b).
+
+   Shared "section heading + Add button + hidden Add form" block used by
+   the four reference-data sub-sections (Genres, Volume States, Contributor
+   Roles, Location Node Types). Replaces the 4 near-identical copies that
+   used to live inline in admin_reference_data_panel.html.
+
+   Args:
+   - section_id: stable slug, e.g. "admin-ref-genres" — drives the Add slot's
+     id (`<section_id>-add`) which both the toggle button and the cancel
+     button reference. Must be unique across the page.
+   - heading_id: id of the <h3> for aria-labelledby on the parent <section>.
+   - section_label: localized section heading text.
+   - btn_add_label: localized "Add <entity>" button text.
+   - action_url: POST target for the Add form (HTMX hx-post).
+   - list_target: CSS selector for the list block to swap (e.g. "#admin-ref-genres-list").
+   - csrf_token: opaque session CSRF token.
+   - btn_save / btn_cancel: localized button labels.
+   - with_loanable_field: if true, render the `is_loanable` checkbox alongside
+     the name input (Volume States only).
+   - loanable_label: localized "Loanable" label (ignored when `with_loanable_field` is false).
+#}
+{% macro inline_form(
+    section_id,
+    heading_id,
+    section_label,
+    btn_add_label,
+    action_url,
+    list_target,
+    csrf_token,
+    btn_save,
+    btn_cancel,
+    with_loanable_field,
+    loanable_label
+) %}
+<div class="flex items-center justify-between mb-2">
+    <h3 id="{{ heading_id }}" class="text-lg font-semibold">{{ section_label }}</h3>
+    <button type="button" data-action="inline-form-add-toggle" data-slot="{{ section_id }}-add" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">{{ btn_add_label }}</button>
+</div>
+
+<div id="{{ section_id }}-add" class="hidden mb-3" aria-live="polite">
+    <form method="POST" action="{{ action_url }}" hx-post="{{ action_url }}" hx-target="{{ list_target }}" hx-swap="outerHTML" class="flex gap-2 items-center flex-wrap">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+        <input type="text" name="name" maxlength="255" required autocomplete="off" class="flex-1 px-2 py-1 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800">
+        {% if with_loanable_field %}
+        <label class="flex items-center gap-1 text-sm">
+            <input type="checkbox" name="is_loanable" value="on" checked class="rounded">
+            {{ loanable_label }}
+        </label>
+        {% endif %}
+        <button type="submit" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">{{ btn_save }}</button>
+        <button type="button" data-action="inline-form-add-cancel" data-slot="{{ section_id }}-add" class="px-3 py-1 bg-stone-300 dark:bg-stone-700 text-sm rounded-md">{{ btn_cancel }}</button>
+    </form>
+</div>
+{% endmacro %}
