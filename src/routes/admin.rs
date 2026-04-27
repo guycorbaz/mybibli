@@ -339,6 +339,11 @@ struct AdminTrashPermanentDeleteModal {
     table_name: String,
     item_id: u64,
     version: i32,
+    /// R3-N1: filters carried through to the POST URL so the post-delete
+    /// re-render lands on the same panel view.
+    entity_type_filter: String,
+    search_query: String,
+    current_page: u32,
 }
 
 #[derive(Template)]
@@ -748,18 +753,29 @@ pub async fn admin_users_reactivate(
     })
 }
 
+/// Query for the confirm-modal: `version` is required (drives optimistic
+/// locking on POST); the rest are the panel filters threaded through so the
+/// post-delete re-render lands on the same view (R3-N1).
+#[derive(Debug, Deserialize)]
+pub struct PermanentDeleteConfirmQuery {
+    pub version: Option<i32>,
+    pub entity_type: Option<String>,
+    pub search: Option<String>,
+    pub page: Option<u32>,
+}
+
 pub async fn admin_trash_permanent_delete_confirm(
     State(state): State<AppState>,
     session: Session,
     Extension(locale): Extension<Locale>,
     axum::extract::Path((table, id)): axum::extract::Path<(String, u64)>,
-    Query(params): Query<std::collections::HashMap<String, String>>,
+    Query(params): Query<PermanentDeleteConfirmQuery>,
 ) -> Result<Html<String>, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=trash")?;
     let loc = locale.0;
 
-    let version = params.get("version")
-        .and_then(|v| v.parse::<i32>().ok())
+    let version = params
+        .version
         .ok_or(AppError::BadRequest("Missing or invalid version".to_string()))?;
 
     // Fetch the trash entry to get the item name
@@ -781,6 +797,10 @@ pub async fn admin_trash_permanent_delete_confirm(
         table_name: table.clone(),
         item_id: id,
         version,
+        // R3-N1: thread filters straight through to the POST URL.
+        entity_type_filter: params.entity_type.unwrap_or_default(),
+        search_query: params.search.unwrap_or_default(),
+        current_page: params.page.unwrap_or(1).max(1),
     };
 
     modal.render()
@@ -1188,12 +1208,27 @@ async fn render_trash_panel(
     query: &TrashQuery,
 ) -> Result<String, AppError> {
     let pool = &state.pool;
-    let page = query.page.unwrap_or(1).max(1);
+    let requested_page = query.page.unwrap_or(1).max(1);
+
+    // R3-N14: a non-empty entity_type filter that isn't whitelisted is
+    // rejected by the model layer with `AppError::BadRequest`. Catch it
+    // here and re-render with the filter cleared — the user sees the full
+    // list rather than a hard 400 page (which they couldn't recover from
+    // without manually editing the URL).
+    let effective_filter = match query.entity_type.as_deref() {
+        Some(s) if !s.is_empty()
+            && !crate::services::soft_delete::ALLOWED_TABLES.contains(&s) =>
+        {
+            tracing::warn!(filter = s, "trash panel: invalid entity_type filter cleared");
+            None
+        }
+        other => other,
+    };
 
     let entries = crate::models::trash::TrashModel::list_trash(
         pool,
-        page,
-        query.entity_type.as_deref(),
+        requested_page,
+        effective_filter,
         query.search.as_deref(),
     )
     .await?;
@@ -1203,12 +1238,29 @@ async fn render_trash_panel(
     // "page 1 / 47" (which then linked to empty pages).
     let total = crate::models::trash::TrashModel::trash_count(
         pool,
-        query.entity_type.as_deref(),
+        effective_filter,
         query.search.as_deref(),
     )
     .await?;
     let per_page = 25i64;
     let total_pages = if total == 0 { 1 } else { ((total as f64) / (per_page as f64)).ceil() as u32 };
+
+    // R3-N8: if the requested page is now beyond `total_pages` (e.g.,
+    // admin just deleted the last item on page 5 of 5), re-fetch the last
+    // valid page so the panel doesn't render an empty pagination island
+    // beyond the end. `total_pages` is at least 1 from the formula above.
+    let page = requested_page.min(total_pages);
+    let entries = if page == requested_page {
+        entries
+    } else {
+        crate::models::trash::TrashModel::list_trash(
+            pool,
+            page,
+            effective_filter,
+            query.search.as_deref(),
+        )
+        .await?
+    };
 
     // Patch P22: drop the per-render `SELECT NOW()` round-trip — the DB
     // stores `deleted_at` as `TIMESTAMP` (UTC under the hood), so comparing
@@ -1261,7 +1313,9 @@ async fn render_trash_panel(
         btn_restore: rust_i18n::t!("admin.trash.btn_restore", locale = loc).to_string(),
         btn_delete_permanently: rust_i18n::t!("admin.trash.btn_delete_permanently", locale = loc).to_string(),
         items,
-        entity_type_filter: query.entity_type.clone().unwrap_or_default(),
+        // R3-N14: render with the *effective* filter so URL-based pagination
+        // links don't propagate an unknown filter value.
+        entity_type_filter: effective_filter.unwrap_or("").to_string(),
         search_query: query.search.clone().unwrap_or_default(),
         current_page: page,
         total_pages,

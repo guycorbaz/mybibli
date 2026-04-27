@@ -39,7 +39,9 @@ pub fn spawn(pool: DbPool, settings: Arc<RwLock<AppSettings>>) {
             match AutoPurgeService::run_purge(&pool).await {
                 Ok(stats) => {
                     tracing::info!(
-                        tables_processed = stats.tables_processed,
+                        tables_attempted = stats.tables_attempted,
+                        tables_succeeded = stats.tables_succeeded,
+                        tables_errored = stats.tables_errored,
                         rows_deleted = stats.rows_deleted,
                         errors = stats.errors.len(),
                         "Auto-purge completed"
@@ -61,13 +63,21 @@ pub fn spawn(pool: DbPool, settings: Arc<RwLock<AppSettings>>) {
             // Pick up live settings changes for next cycle. `interval()` does
             // not expose a setter, so we just re-create it when the value
             // diverges. Cheap — `interval()` is a thin wrapper around `sleep`.
+            //
+            // R3-N3: do NOT call `interval.tick().await` after re-creation.
+            // tokio's `interval()` first tick fires immediately, and we
+            // intentionally let that immediate tick drive the next loop
+            // iteration (which has just finished a purge). If we consumed
+            // the immediate tick here, the loop would then wait an
+            // additional full period — producing a 2× period delay after
+            // every settings change. The current structure means a settings
+            // change triggers the next purge "soon" (on the next loop
+            // iteration's `tick().await`, which resolves immediately), then
+            // subsequent iterations honor the new period.
             let next_secs = read_interval_seconds(&settings);
             if next_secs != interval.period().as_secs() {
                 interval = tokio::time::interval(Duration::from_secs(next_secs));
                 interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
-                // First tick of a fresh interval fires immediately; consume
-                // it so the loop respects the configured period.
-                interval.tick().await;
             }
         }
     });
@@ -76,10 +86,23 @@ pub fn spawn(pool: DbPool, settings: Arc<RwLock<AppSettings>>) {
 /// Read the auto-purge interval (seconds) from settings, falling back to the
 /// default if the lock is poisoned. Clamped at >= 60s so a misconfigured row
 /// can't put us in a hot loop.
+///
+/// R3-N9: a poisoned `std::sync::RwLock` indicates that some other writer
+/// panicked while holding the lock — that's a serious failure mode and
+/// should be logged loudly rather than silently absorbed.
 fn read_interval_seconds(settings: &Arc<RwLock<AppSettings>>) -> u64 {
-    let raw = settings
-        .read()
-        .map(|s| s.auto_purge_interval_seconds)
-        .unwrap_or_else(|_| AppSettings::default().auto_purge_interval_seconds);
+    let default_secs = AppSettings::default().auto_purge_interval_seconds;
+    let raw = match settings.read() {
+        Ok(s) => s.auto_purge_interval_seconds,
+        Err(poisoned) => {
+            tracing::warn!(
+                default_seconds = default_secs,
+                "auto-purge settings RwLock is poisoned (a writer panicked while holding it); falling back to default interval"
+            );
+            // Recover the inner value so we still observe whatever was last
+            // written (rather than silently flipping to default).
+            poisoned.into_inner().auto_purge_interval_seconds
+        }
+    };
     raw.max(60)
 }

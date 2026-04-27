@@ -36,6 +36,14 @@ impl AdminAuditModel {
         entity_id: Option<u64>,
         details: Option<serde_json::Value>,
     ) -> Result<AdminAuditEntry, AppError> {
+        // R3-N4: pin the INSERT and the follow-up SELECT to the SAME
+        // pooled connection. The id we read is captured from the INSERT's
+        // result, so the SELECT-by-id is correct on either connection —
+        // but pinning protects us from any future refactor that reaches
+        // for `LAST_INSERT_ID()`-like session state, and avoids a
+        // gratuitous round-trip through pool acquisition for the SELECT.
+        let mut conn = pool.acquire().await?;
+
         let result = sqlx::query(
             "INSERT INTO admin_audit (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)"
         )
@@ -44,7 +52,7 @@ impl AdminAuditModel {
         .bind(entity_type)
         .bind(entity_id.map(|id| id as i64))
         .bind(details.clone())
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
 
         let id = result.last_insert_id();
@@ -55,7 +63,7 @@ impl AdminAuditModel {
             "SELECT CAST(timestamp AS DATETIME) AS ts FROM admin_audit WHERE id = ?"
         )
         .bind(id as i64)
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await?;
         let timestamp: NaiveDateTime = row.get("ts");
 
@@ -111,14 +119,33 @@ impl AdminAuditModel {
 
         Ok(rows
             .iter()
-            .map(|r| AdminAuditEntry {
-                id: r.get::<i64, _>("id") as u64,
-                user_id: r.get::<i64, _>("user_id") as u64,
-                action: r.get::<String, _>("action"),
-                entity_type: r.get::<Option<String>, _>("entity_type"),
-                entity_id: r.get::<Option<i64>, _>("entity_id").map(|id| id as u64),
-                timestamp: r.get::<NaiveDateTime, _>("timestamp"),
-                details: r.get::<Option<String>, _>("details").and_then(|s| serde_json::from_str(&s).ok()),
+            .map(|r| {
+                let id = r.get::<i64, _>("id") as u64;
+                AdminAuditEntry {
+                    id,
+                    user_id: r.get::<i64, _>("user_id") as u64,
+                    action: r.get::<String, _>("action"),
+                    entity_type: r.get::<Option<String>, _>("entity_type"),
+                    entity_id: r.get::<Option<i64>, _>("entity_id").map(|id| id as u64),
+                    timestamp: r.get::<NaiveDateTime, _>("timestamp"),
+                    // R3-N13: log parse failures instead of swallowing them.
+                    // A NULL `details` column is a normal None; invalid JSON
+                    // (which "shouldn't happen" because INSERTs only ever go
+                    // through `create()`) deserves visibility.
+                    details: r.get::<Option<String>, _>("details").and_then(|s| {
+                        match serde_json::from_str(&s) {
+                            Ok(v) => Some(v),
+                            Err(e) => {
+                                tracing::warn!(
+                                    audit_id = id,
+                                    error = %e,
+                                    "admin_audit.details JSON parse failed; row will surface with details = None"
+                                );
+                                None
+                            }
+                        }
+                    }),
+                }
             })
             .collect())
     }

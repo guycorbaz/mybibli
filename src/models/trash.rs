@@ -26,6 +26,20 @@ impl TrashModel {
         let per_page = 25i64;
         let offset = ((page as i64).saturating_sub(1)) * per_page;
 
+        // R3-N14: a non-empty `entity_type_filter` that isn't whitelisted
+        // is a client error (probably a bad URL or a dropped option) — do
+        // NOT silently fall through to the global UNION, that would mask
+        // the bug AND inflate the row count vs. what the UI displays.
+        if let Some(filter) = entity_type_filter
+            && !filter.is_empty()
+            && !ALLOWED_TABLES.contains(&filter)
+        {
+            return Err(AppError::BadRequest(format!(
+                "invalid entity_type filter: {}",
+                filter
+            )));
+        }
+
         let mut query_builder = String::new();
 
         // Build UNION query based on filters
@@ -54,16 +68,18 @@ impl TrashModel {
         }
 
         // Add name search filter if provided (using parameterized LIKE binding
-        // via subquery). Patch P24: escape `%`, `_`, and `\` in the user-
-        // supplied search term so a query like `100%` doesn't widen the LIKE
-        // pattern to a wildcard match. The `ESCAPE '\\'` clause makes the
-        // backslash the literal escape character; the literal pair "\\\\"
-        // in Rust source is a single backslash inside the SQL string.
+        // via subquery). Patch P24: escape LIKE metachars so a query like
+        // `100%` doesn't widen the pattern to a wildcard match.
+        //
+        // R3-N5: use `|` as the escape character (not `\`). MariaDB's
+        // `NO_BACKSLASH_ESCAPES` sql_mode (sometimes enabled in
+        // production) makes the backslash a literal character, breaking
+        // backslash-based escapes silently. The `|` is mode-independent.
         let (final_query, search_term) = if let Some(search) = name_search {
             if !search.is_empty() {
                 let escaped = escape_like_pattern(search);
                 let subquery = format!(
-                    "({}) AS trash WHERE item_name LIKE ? ESCAPE '\\\\' ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
+                    "({}) AS trash WHERE item_name LIKE ? ESCAPE '|' ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
                     query_builder
                 );
                 (subquery, Some(format!("%{}%", escaped)))
@@ -114,6 +130,18 @@ impl TrashModel {
         entity_type_filter: Option<&str>,
         name_search: Option<&str>,
     ) -> Result<u64, AppError> {
+        // R3-N14: reject unknown entity-type filters loudly so the badge
+        // count never quietly drifts from the panel's filtered list.
+        if let Some(filter) = entity_type_filter
+            && !filter.is_empty()
+            && !ALLOWED_TABLES.contains(&filter)
+        {
+            return Err(AppError::BadRequest(format!(
+                "invalid entity_type filter: {}",
+                filter
+            )));
+        }
+
         let mut union_parts: Vec<String> = vec![];
 
         let single = entity_type_filter
@@ -138,10 +166,11 @@ impl TrashModel {
 
         // Optional name-search filter applied to the same UNION used by
         // `list_trash` so count and page slice always agree.
+        // R3-N5: `|` escape char (NO_BACKSLASH_ESCAPES safe).
         let (final_query, search_term) = match name_search {
             Some(s) if !s.is_empty() => (
                 format!(
-                    "SELECT CAST(COUNT(*) AS SIGNED) as count FROM ({}) AS trash WHERE item_name LIKE ? ESCAPE '\\\\'",
+                    "SELECT CAST(COUNT(*) AS SIGNED) as count FROM ({}) AS trash WHERE item_name LIKE ? ESCAPE '|'",
                     union_sql
                 ),
                 Some(format!("%{}%", escape_like_pattern(s))),
@@ -204,16 +233,27 @@ impl TrashModel {
 }
 
 /// Escape MySQL/MariaDB LIKE-pattern metacharacters so a user-supplied search
-/// term is treated as a literal substring instead of a wildcard. Requires the
-/// query to specify `ESCAPE '\\'` so the backslash is treated as the literal
-/// escape character. Patch P24.
+/// term is treated as a literal substring instead of a wildcard. Patch P24.
+///
+/// R3-N5: the chosen escape character is `|` (pipe), NOT `\`. Backslash is
+/// fragile under MariaDB's `NO_BACKSLASH_ESCAPES` sql_mode where backslash
+/// becomes a literal character; `|` works in every mode. The corresponding
+/// SQL clause must specify `ESCAPE '|'`.
+const LIKE_ESCAPE_CHAR: char = '|';
+
 fn escape_like_pattern(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         match ch {
-            '\\' | '%' | '_' => {
-                out.push('\\');
+            '%' | '_' => {
+                out.push(LIKE_ESCAPE_CHAR);
                 out.push(ch);
+            }
+            // The escape char itself must be doubled so a literal `|` in
+            // the user's input survives the LIKE comparison.
+            c if c == LIKE_ESCAPE_CHAR => {
+                out.push(LIKE_ESCAPE_CHAR);
+                out.push(c);
             }
             other => out.push(other),
         }
@@ -228,15 +268,19 @@ mod tests {
     #[test]
     fn test_escape_like_pattern_passthrough() {
         assert_eq!(escape_like_pattern("hello"), "hello");
+        // Backslashes are now LITERAL — the escape char is `|`, not `\`,
+        // so backslashes in user input pass through unchanged.
+        assert_eq!(escape_like_pattern("path\\name"), "path\\name");
     }
 
     #[test]
     fn test_escape_like_pattern_escapes_metachars() {
-        // % and _ are SQL LIKE wildcards; \ is the escape itself.
-        assert_eq!(escape_like_pattern("100%"), "100\\%");
-        assert_eq!(escape_like_pattern("a_b"), "a\\_b");
-        assert_eq!(escape_like_pattern("path\\name"), "path\\\\name");
-        assert_eq!(escape_like_pattern("50% off_today"), "50\\% off\\_today");
+        // % and _ are SQL LIKE wildcards; `|` is the escape character itself
+        // (R3-N5) and must therefore be doubled in user input.
+        assert_eq!(escape_like_pattern("100%"), "100|%");
+        assert_eq!(escape_like_pattern("a_b"), "a|_b");
+        assert_eq!(escape_like_pattern("a|b"), "a||b");
+        assert_eq!(escape_like_pattern("50% off_today"), "50|% off|_today");
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -326,6 +370,36 @@ mod tests {
         let apple = TrashModel::trash_count(&pool, None, Some("Apple")).await?;
         assert_eq!(apple, 1);
 
+        Ok(())
+    }
+
+    /// R3-N14: an unknown entity-type filter must surface a `BadRequest`
+    /// instead of silently treating it as "no filter" (which would inflate
+    /// the count vs. the rendered list and mask buggy URLs).
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_invalid_entity_type_filter_rejected(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let list_err = TrashModel::list_trash(&pool, 1, Some("nonexistent_table"), None).await;
+        assert!(
+            matches!(list_err, Err(AppError::BadRequest(_))),
+            "expected BadRequest, got {:?}",
+            list_err
+        );
+
+        let count_err = TrashModel::trash_count(&pool, Some("nonexistent_table"), None).await;
+        assert!(
+            matches!(count_err, Err(AppError::BadRequest(_))),
+            "expected BadRequest, got {:?}",
+            count_err
+        );
+
+        // Empty string is still treated as "no filter" for back-compat
+        // with existing front-end forms that submit an empty `entity_type`.
+        let list_empty = TrashModel::list_trash(&pool, 1, Some(""), None).await?;
+        assert!(list_empty.is_empty() || !list_empty.is_empty()); // type only — no error
+        let count_empty = TrashModel::trash_count(&pool, Some(""), None).await?;
+        let _ = count_empty;
         Ok(())
     }
 
