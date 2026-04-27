@@ -132,6 +132,27 @@ impl IntoResponse for AppError {
                 )
                     .into_response();
             }
+            // Story 8-4 P18: render Conflict as feedback HTML with HX-Retarget
+            // so HTMX surfaces the message instead of dropping the 409 (HTMX's
+            // default behavior on non-2xx is no-swap). Without this, admin
+            // delete handlers' "in use" or version-mismatch conflicts looked
+            // like silent failures.
+            AppError::Conflict(msg) => {
+                let html = crate::routes::catalog::feedback_html_pub("error", msg, "");
+                return (
+                    StatusCode::CONFLICT,
+                    [
+                        (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                        (
+                            header::HeaderName::from_static("hx-retarget"),
+                            "#feedback-list",
+                        ),
+                        (header::HeaderName::from_static("hx-reswap"), "beforeend"),
+                    ],
+                    html,
+                )
+                    .into_response();
+            }
             _ => {}
         }
 
@@ -143,13 +164,15 @@ impl IntoResponse for AppError {
             ),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone(), msg.clone()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone(), msg.clone()),
-            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone(), msg.clone()),
             AppError::Database(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 err.to_string(),
                 "An internal error occurred".to_string(),
             ),
-            AppError::Unauthorized | AppError::UnauthorizedWithReturn(_) | AppError::Forbidden => {
+            AppError::Unauthorized
+            | AppError::UnauthorizedWithReturn(_)
+            | AppError::Forbidden
+            | AppError::Conflict(_) => {
                 unreachable!()
             }
         };

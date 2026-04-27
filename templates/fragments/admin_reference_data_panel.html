@@ -1,8 +1,9 @@
 {# Admin → Reference data panel (story 8-4). Replaces the 8-1 stub.
    Four sub-sections (Genres, Volume States, Contributor Roles, Location Node Types)
-   share the InlineForm UX-DR21 pattern: list, click-name to rename, add form,
-   delete via confirm modal. Volume States additionally surface an `is_loanable`
-   per-row checkbox.
+   share the InlineForm UX-DR21 pattern via the `inline_form` macro from
+   `components/inline_form.html` (story 8-4 P36 / D5-b). The macro renders the
+   "section heading + Add button + hidden Add form" block; the per-section list
+   HTML is pre-rendered handler-side and embedded via `|safe`.
 
    No `hx-confirm=` attributes (frozen at 5 grandfathered sites). All destructive
    actions go through the Modal pattern (delete-confirm + loanable-warning) which
@@ -13,86 +14,79 @@
    The four `<ul>` lists are pre-rendered as strings (`genres_list_html`, etc.) by
    the handler so the same Askama list-fragment templates can be reused for OOB
    updates without duplicating the iteration scaffolding here. #}
+{% import "components/inline_form.html" as inline %}
 <section id="admin-reference-data-panel" aria-labelledby="admin-reference-data-heading" class="space-y-8">
     <h2 id="admin-reference-data-heading" class="sr-only">{{ panel_heading }}</h2>
 
     {# ─── Genres ─────────────────────────────────────────────────── #}
     <section aria-labelledby="admin-ref-genres-heading">
-        <div class="flex items-center justify-between mb-2">
-            <h3 id="admin-ref-genres-heading" class="text-lg font-semibold">{{ section_genres }}</h3>
-            <button type="button" data-action="inline-form-add-toggle" data-slot="admin-ref-genres-add" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">{{ btn_add_genre }}</button>
-        </div>
-
-        <div id="admin-ref-genres-add" class="hidden mb-3" aria-live="polite">
-            <form method="POST" action="/admin/reference-data/genres" hx-post="/admin/reference-data/genres" hx-target="#admin-ref-genres-list" hx-swap="outerHTML" class="flex gap-2 items-center">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
-                <input type="text" name="name" maxlength="255" required autocomplete="off" class="flex-1 px-2 py-1 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800">
-                <button type="submit" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">{{ btn_save }}</button>
-                <button type="button" data-action="inline-form-add-cancel" data-slot="admin-ref-genres-add" class="px-3 py-1 bg-stone-300 dark:bg-stone-700 text-sm rounded-md">{{ btn_cancel }}</button>
-            </form>
-        </div>
-
+        {% call inline::inline_form(
+            "admin-ref-genres",
+            "admin-ref-genres-heading",
+            section_genres,
+            btn_add_genre,
+            "/admin/reference-data/genres",
+            "#admin-ref-genres-list",
+            csrf_token,
+            btn_save,
+            btn_cancel,
+            false,
+            loanable_label
+        ) %}{% endcall %}
         {{ genres_list_html|safe }}
     </section>
 
     {# ─── Volume States ──────────────────────────────────────────── #}
     <section aria-labelledby="admin-ref-volume-states-heading">
-        <div class="flex items-center justify-between mb-2">
-            <h3 id="admin-ref-volume-states-heading" class="text-lg font-semibold">{{ section_volume_states }}</h3>
-            <button type="button" data-action="inline-form-add-toggle" data-slot="admin-ref-volume-states-add" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">{{ btn_add_state }}</button>
-        </div>
-
-        <div id="admin-ref-volume-states-add" class="hidden mb-3" aria-live="polite">
-            <form method="POST" action="/admin/reference-data/volume-states" hx-post="/admin/reference-data/volume-states" hx-target="#admin-ref-volume-states-list" hx-swap="outerHTML" class="flex gap-2 items-center flex-wrap">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
-                <input type="text" name="name" maxlength="255" required autocomplete="off" class="flex-1 px-2 py-1 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800">
-                <label class="flex items-center gap-1 text-sm">
-                    <input type="checkbox" name="is_loanable" value="on" checked class="rounded">
-                    {{ loanable_label }}
-                </label>
-                <button type="submit" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">{{ btn_save }}</button>
-                <button type="button" data-action="inline-form-add-cancel" data-slot="admin-ref-volume-states-add" class="px-3 py-1 bg-stone-300 dark:bg-stone-700 text-sm rounded-md">{{ btn_cancel }}</button>
-            </form>
-        </div>
-
+        {% call inline::inline_form(
+            "admin-ref-volume-states",
+            "admin-ref-volume-states-heading",
+            section_volume_states,
+            btn_add_state,
+            "/admin/reference-data/volume-states",
+            "#admin-ref-volume-states-list",
+            csrf_token,
+            btn_save,
+            btn_cancel,
+            true,
+            loanable_label
+        ) %}{% endcall %}
         {{ volume_states_list_html|safe }}
     </section>
 
     {# ─── Contributor Roles ──────────────────────────────────────── #}
     <section aria-labelledby="admin-ref-roles-heading">
-        <div class="flex items-center justify-between mb-2">
-            <h3 id="admin-ref-roles-heading" class="text-lg font-semibold">{{ section_contributor_roles }}</h3>
-            <button type="button" data-action="inline-form-add-toggle" data-slot="admin-ref-roles-add" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">{{ btn_add_role }}</button>
-        </div>
-
-        <div id="admin-ref-roles-add" class="hidden mb-3" aria-live="polite">
-            <form method="POST" action="/admin/reference-data/contributor-roles" hx-post="/admin/reference-data/contributor-roles" hx-target="#admin-ref-roles-list" hx-swap="outerHTML" class="flex gap-2 items-center">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
-                <input type="text" name="name" maxlength="255" required autocomplete="off" class="flex-1 px-2 py-1 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800">
-                <button type="submit" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">{{ btn_save }}</button>
-                <button type="button" data-action="inline-form-add-cancel" data-slot="admin-ref-roles-add" class="px-3 py-1 bg-stone-300 dark:bg-stone-700 text-sm rounded-md">{{ btn_cancel }}</button>
-            </form>
-        </div>
-
+        {% call inline::inline_form(
+            "admin-ref-roles",
+            "admin-ref-roles-heading",
+            section_contributor_roles,
+            btn_add_role,
+            "/admin/reference-data/contributor-roles",
+            "#admin-ref-roles-list",
+            csrf_token,
+            btn_save,
+            btn_cancel,
+            false,
+            loanable_label
+        ) %}{% endcall %}
         {{ roles_list_html|safe }}
     </section>
 
     {# ─── Location Node Types ────────────────────────────────────── #}
     <section aria-labelledby="admin-ref-node-types-heading">
-        <div class="flex items-center justify-between mb-2">
-            <h3 id="admin-ref-node-types-heading" class="text-lg font-semibold">{{ section_node_types }}</h3>
-            <button type="button" data-action="inline-form-add-toggle" data-slot="admin-ref-node-types-add" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">{{ btn_add_node_type }}</button>
-        </div>
-
-        <div id="admin-ref-node-types-add" class="hidden mb-3" aria-live="polite">
-            <form method="POST" action="/admin/reference-data/node-types" hx-post="/admin/reference-data/node-types" hx-target="#admin-ref-node-types-list" hx-swap="outerHTML" class="flex gap-2 items-center">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
-                <input type="text" name="name" maxlength="255" required autocomplete="off" class="flex-1 px-2 py-1 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800">
-                <button type="submit" class="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">{{ btn_save }}</button>
-                <button type="button" data-action="inline-form-add-cancel" data-slot="admin-ref-node-types-add" class="px-3 py-1 bg-stone-300 dark:bg-stone-700 text-sm rounded-md">{{ btn_cancel }}</button>
-            </form>
-        </div>
-
+        {% call inline::inline_form(
+            "admin-ref-node-types",
+            "admin-ref-node-types-heading",
+            section_node_types,
+            btn_add_node_type,
+            "/admin/reference-data/node-types",
+            "#admin-ref-node-types-list",
+            csrf_token,
+            btn_save,
+            btn_cancel,
+            false,
+            loanable_label
+        ) %}{% endcall %}
         {{ node_types_list_html|safe }}
     </section>
 </section>

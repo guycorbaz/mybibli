@@ -582,7 +582,7 @@ Same situation as 8-3: every page-template struct that extends `layouts/base.htm
 - [ ] [Review][Patch] **P9 — `sample_active_loans` swallows decode errors via `unwrap_or_default`** [src/routes/admin_reference_data.rs:4634-4646]
 - [ ] [Review][Patch] **P10 — Vestigial `is_loanable: false` on non-volume rows in `RefRowDisplay`** [src/routes/admin_reference_data.rs:3595-3680]
 - [ ] [Review][Patch] **P11 — `volume_states_loanable_confirm` doesn't re-query active loans** [src/routes/admin_reference_data.rs:4141-4161]
-- [ ] [Review][Patch] **P12 — AC #4 link to filtered list NEVER emitted (always `_no_link` variant)** [src/routes/admin_reference_data.rs:4595-4607]
+- [x] [Review][Defer] **P12 — AC #4 link to filtered list NEVER emitted (always `_no_link` variant)** [src/routes/admin_reference_data.rs:4595-4607] — deferred V2: requires AppError variant carrying structured link or feedback_html signature change to support trusted-anchor markup. Plain-text fallback is acceptable per spec ("or plain-text count if no such filter route exists"). Track as GitHub Issue `type:code-review-finding`.
 - [ ] [Review][Patch] **P13 — `name_taken` magic-string match — typed `AppError` variant** [src/routes/admin_reference_data.rs:3583-3591]
 - [ ] [Review][Patch] **P14 — Loanable Cancel modal closes before revert HTMX completes** [static/js/inline-form.js:4903-4917]
 - [ ] [Review][Patch] **P15 — Dialog `open` no Escape handler** [templates/fragments/admin_ref_delete_modal.html:5041-5052]
@@ -599,7 +599,7 @@ Same situation as 8-3: every page-template struct that extends `layouts/base.htm
 - [ ] [Review][Patch] **P26 — `sample_active_loans` ORDER BY missing tiebreaker** [src/routes/admin_reference_data.rs:4609-4647]
 - [ ] [Review][Patch] **P27 — `ContributorRoleModel::find_by_id` (legacy bool) → rename to `exists`** [src/models/contributor_role.rs]
 - [ ] [Review][Patch] **P28 — E2E spec uses module-scoped `RUN_ID` instead of `specIsbn` pattern** [tests/e2e/specs/journeys/admin-reference-data.spec.ts:5438]
-- [ ] [Review][Patch] **P29 — Dead i18n key `error.reference_data.in_use_with_link`** (will be wired by P12) [locales/en.yml + fr.yml]
+- [x] [Review][Defer] **P29 — Dead i18n key `error.reference_data.in_use_with_link`** [locales/en.yml + fr.yml] — deferred V2: bundled with P12 (the link variant cannot be wired until the feedback infrastructure supports trusted-anchor rendering). Key kept in place for the eventual wiring.
 - [ ] [Review][Patch] **P30 — Missing test `set_loanable_with_active_loans_returns_count`** [src/models/volume_state.rs tests]
 - [ ] [Review][Patch] **P31 — `rename_rollback` test should exercise mid-cascade failure not version-mismatch** [src/models/location_node_type.rs tests]
 - [ ] [Review][Patch] **P32 — E2E spec gaps: reactivate-on-collision, scanner-guard, CSRF tampering, location-detail cascade** [tests/e2e/specs/journeys/admin-reference-data.spec.ts]
