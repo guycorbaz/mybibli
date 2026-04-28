@@ -916,15 +916,35 @@ pub async fn admin_trash_panel(
     Extension(locale): Extension<Locale>,
     OriginalUri(uri): OriginalUri,
     HxRequest(is_htmx): HxRequest,
+    headers: axum::http::HeaderMap,
     Query(query): Query<TrashQuery>,
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=trash")?;
 
-    // For HTMX requests, just render the panel; for direct navigation, render full page
-    if is_htmx {
+    // The same /admin/trash URL serves two HTMX swap targets:
+    //   * `#admin-shell` — emitted by the admin tab bar when the user
+    //     clicks the Trash tab. Must return the full shell (tabs + panel)
+    //     or the tab bar disappears on swap.
+    //   * `#admin-trash-panel` — emitted by the in-panel filter form,
+    //     pagination buttons, and restore actions. Must return ONLY the
+    //     panel HTML so the swap doesn't end up with shell-in-panel.
+    // Detect via the `HX-Target` request header.
+    let hx_target = headers
+        .get("hx-target")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let panel_only_swap = hx_target == "admin-trash-panel";
+
+    if is_htmx && panel_only_swap {
         let panel_html = render_trash_panel(&state, locale.0, &query).await?;
         Ok((StatusCode::OK, Html(panel_html)).into_response())
     } else {
+        // Tab click (HTMX targeting #admin-shell) OR direct page navigation:
+        // both render through `render_admin` which wraps the panel in the
+        // shell. Filter query parameters are dropped on this path — the
+        // tab-click intent is "go to trash with default view" and direct
+        // nav `/admin?tab=trash` already lands on a default panel render
+        // (admin_page → render_admin), so this matches.
         render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::Trash, None).await
     }
 }
