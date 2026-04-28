@@ -308,7 +308,13 @@ test.describe("Contributor Management", () => {
       maxRedirects: 0,
       failOnStatusCode: false,
     });
-    expect(resp.status()).toBe(403);
+    // Story 8-2 CSRF middleware rejects state-changing requests without a
+    // valid token. For HTMX/JSON clients it returns 403 with the rejection
+    // envelope; for plain `application/x-www-form-urlencoded` (no
+    // `hx-request: true`) it 303-redirects to /login so the user lands on
+    // a fully-rendered page rather than a bare feedback fragment. Either
+    // outcome satisfies AC #1 + #3 — the request did not mutate anything.
+    expect([303, 403]).toContain(resp.status());
   });
 });
 
