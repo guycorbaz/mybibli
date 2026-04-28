@@ -1,9 +1,11 @@
 pub mod admin_audit;
 pub mod borrower;
 pub mod contributor;
+pub mod contributor_role;
 pub mod genre;
 pub mod loan;
 pub mod location;
+pub mod location_node_type;
 pub mod media_type;
 pub mod metadata_cache;
 pub mod series;
@@ -13,6 +15,48 @@ pub mod trash;
 pub mod user;
 pub mod volume;
 pub mod volume_state;
+
+/// Outcome of inserting a reference-data row (story 8-4). When the unique
+/// `name` constraint collides with a soft-deleted row, the model layer
+/// transparently reactivates the row (clears `deleted_at`) so admins can
+/// recreate a previously deleted entry without surfacing a "name taken"
+/// error. The handler picks the user-facing FeedbackEntry copy based on
+/// which variant comes back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CreateOutcome {
+    Created(u64),
+    Reactivated(u64),
+}
+
+impl CreateOutcome {
+    pub fn id(&self) -> u64 {
+        match self {
+            CreateOutcome::Created(id) | CreateOutcome::Reactivated(id) => *id,
+        }
+    }
+}
+
+/// String marker carried by `AppError::Conflict` from a reference-data
+/// model's `create()` or `rename()` when a UNIQUE-name collision against an
+/// active (non-soft-deleted) row is detected. The reference-data handler's
+/// `map_create_or_rename_conflict` translates this marker into the localized
+/// `error.reference_data.name_taken` message. Story 8-4 P13 — replaces the
+/// scattered `"name_taken"` literal so a future model can't silently deviate
+/// (which would leak the internal token into the user-facing feedback).
+pub const CONFLICT_NAME_TAKEN: &str = "name_taken";
+
+/// Outcome of a guarded soft-delete attempt (story 8-4 P1).
+///
+/// `Deleted` — the row was soft-deleted atomically (count + UPDATE in one tx
+/// with `SELECT … FOR UPDATE` on the ref row, closing the TOCTOU window where
+/// a concurrent INSERT could attach to a row that was just counted as zero).
+/// `InUse(count)` — the row is referenced by `count` active rows; soft-delete
+/// was rolled back. The handler renders a localized 409 with the count.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeleteOutcome {
+    Deleted,
+    InUse(i64),
+}
 
 /// Fixed page size for all paginated list views.
 pub const DEFAULT_PAGE_SIZE: u32 = 25;

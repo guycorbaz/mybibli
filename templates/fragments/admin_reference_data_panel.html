@@ -1,4 +1,92 @@
-{# Admin → Reference data stub panel (story 8-1). Replaced by story 8-3. #}
-<div class="text-stone-600 dark:text-stone-400">
-    <p class="text-sm">{{ stub_message }}</p>
-</div>
+{# Admin → Reference data panel (story 8-4). Replaces the 8-1 stub.
+   Four sub-sections (Genres, Volume States, Contributor Roles, Location Node Types)
+   share the InlineForm UX-DR21 pattern via the `inline_form` macro from
+   `components/inline_form.html` (story 8-4 P36 / D5-b). The macro renders the
+   "section heading + Add button + hidden Add form" block; the per-section list
+   HTML is pre-rendered handler-side and embedded via `|safe`.
+
+   No `hx-confirm=` attributes (frozen at 5 grandfathered sites). All destructive
+   actions go through the Modal pattern (delete-confirm + loanable-warning) which
+   inherits scanner-guard 7-5 protection automatically via `<dialog open aria-modal="true">`.
+
+   No inline scripts, no inline style attributes, no inline event handlers — CSP from story 7-4 enforces it.
+
+   The four `<ul>` lists are pre-rendered as strings (`genres_list_html`, etc.) by
+   the handler so the same Askama list-fragment templates can be reused for OOB
+   updates without duplicating the iteration scaffolding here. #}
+{% import "components/inline_form.html" as inline %}
+<section id="admin-reference-data-panel" aria-labelledby="admin-reference-data-heading" class="space-y-8">
+    <h2 id="admin-reference-data-heading" class="sr-only">{{ panel_heading }}</h2>
+
+    {# ─── Genres ─────────────────────────────────────────────────── #}
+    <section aria-labelledby="admin-ref-genres-heading">
+        {% call inline::inline_form(
+            "admin-ref-genres",
+            "admin-ref-genres-heading",
+            section_genres,
+            btn_add_genre,
+            "/admin/reference-data/genres",
+            "#admin-ref-genres-list",
+            csrf_token,
+            btn_save,
+            btn_cancel,
+            false,
+            loanable_label
+        ) %}{% endcall %}
+        {{ genres_list_html|safe }}
+    </section>
+
+    {# ─── Volume States ──────────────────────────────────────────── #}
+    <section aria-labelledby="admin-ref-volume-states-heading">
+        {% call inline::inline_form(
+            "admin-ref-volume-states",
+            "admin-ref-volume-states-heading",
+            section_volume_states,
+            btn_add_state,
+            "/admin/reference-data/volume-states",
+            "#admin-ref-volume-states-list",
+            csrf_token,
+            btn_save,
+            btn_cancel,
+            true,
+            loanable_label
+        ) %}{% endcall %}
+        {{ volume_states_list_html|safe }}
+    </section>
+
+    {# ─── Contributor Roles ──────────────────────────────────────── #}
+    <section aria-labelledby="admin-ref-roles-heading">
+        {% call inline::inline_form(
+            "admin-ref-roles",
+            "admin-ref-roles-heading",
+            section_contributor_roles,
+            btn_add_role,
+            "/admin/reference-data/contributor-roles",
+            "#admin-ref-roles-list",
+            csrf_token,
+            btn_save,
+            btn_cancel,
+            false,
+            loanable_label
+        ) %}{% endcall %}
+        {{ roles_list_html|safe }}
+    </section>
+
+    {# ─── Location Node Types ────────────────────────────────────── #}
+    <section aria-labelledby="admin-ref-node-types-heading">
+        {% call inline::inline_form(
+            "admin-ref-node-types",
+            "admin-ref-node-types-heading",
+            section_node_types,
+            btn_add_node_type,
+            "/admin/reference-data/node-types",
+            "#admin-ref-node-types-list",
+            csrf_token,
+            btn_save,
+            btn_cancel,
+            false,
+            loanable_label
+        ) %}{% endcall %}
+        {{ node_types_list_html|safe }}
+    </section>
+</section>

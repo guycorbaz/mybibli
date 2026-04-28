@@ -80,4 +80,29 @@ mod tests {
         let response = resp.into_response();
         assert_eq!(response.status(), 200);
     }
+
+    /// Story 8-4 P24: empty-content OOB swaps must still produce a valid
+    /// `<div id="..." hx-swap-oob="true"></div>` marker so HTMX
+    /// outerHTML-swaps the matching element to an empty container — the
+    /// idiom the admin delete handlers use to dismiss the modal slot. A
+    /// regression that drops the marker (e.g., skipping zero-length
+    /// content) would silently leave the modal on screen after delete.
+    #[tokio::test]
+    async fn test_oob_empty_content_renders_clear_marker() {
+        use axum::body::to_bytes;
+        let resp = HtmxResponse {
+            main: "<p>Main</p>".to_string(),
+            oob: vec![OobUpdate {
+                target: "admin-modal-slot".to_string(),
+                content: String::new(),
+            }],
+        };
+        let response = resp.into_response();
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            body.contains(r#"<div id="admin-modal-slot" hx-swap-oob="true"></div>"#),
+            "expected the empty-content clear marker to be present in body, got: {body}"
+        );
+    }
 }
