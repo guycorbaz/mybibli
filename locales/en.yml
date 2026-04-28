@@ -394,6 +394,43 @@ admin:
     system: System
   trash:
     badge_aria: "Trash, %{count} items"
+    heading: Trash bin (soft-deleted items)
+    empty_state: "No deleted items."
+    filter_entity_label: "Filter by type"
+    filter_entity_all: "All types"
+    filter_entity_titles: "Titles"
+    filter_entity_volumes: "Volumes"
+    filter_entity_contributors: "Contributors"
+    filter_entity_borrowers: "Borrowers"
+    filter_entity_series: "Series"
+    filter_entity_storage_locations: "Locations"
+    search_placeholder: "Search by name..."
+    pagination_aria: "Trash list pagination"
+    col_item_name: Item
+    col_type: Type
+    col_deleted_at: Deleted
+    col_days_remaining: Days left
+    col_actions: Actions
+    btn_restore: Restore
+    btn_delete_permanently: Delete permanently
+    days_remaining_warning: "%{days} day"
+    days_remaining_critical: "<7 days"
+    restore_success: "Restored: %{name}"
+    delete_permanent_success: "Deleted permanently: %{name}"
+    delete_permanent_modal_title: "Delete permanently?"
+    delete_permanent_modal_warning: "This cannot be undone."
+    delete_permanent_modal_confirm_label: "Type item name to confirm:"
+    modal_confirmation_instruction: "Type the item name shown above to confirm permanent deletion."
+    delete_permanent_modal_confirm_button: "Delete permanently"
+    delete_permanent_modal_cancel: "Cancel"
+    delete_permanent_error_not_found: "Item already gone"
+    delete_permanent_error_version: "Item was modified"
+    delete_permanent_error_name_mismatch: "Item name does not match. Try again."
+    restore_modal_title: "Restore conflicts"
+    restore_modal_explanation: "Some relationships changed while this item was deleted."
+    restore_modal_conflicts: "Conflicts:"
+    restore_modal_clear_conflicts: "Restore (clear conflicting relationships)"
+    restore_modal_cancel: "Keep deleted"
   health:
     versions_heading: Versions
     app_version: Application version
@@ -450,6 +487,8 @@ admin:
     success_updated: "User %{username} updated"
     success_deactivated: "User %{username} deactivated (%{count} session(s) ended)"
     success_reactivated: "User %{username} reactivated"
+    error_cannot_delete_self: "Cannot delete yourself. Ask another admin to delete your account."
+    error_cannot_delete_last_admin: "Cannot delete the last active admin. Create another admin first."
   placeholder:
     coming_in_story: "Coming in story %{story}"
     trash_preview: "Preview of soft-deleted items — full list and restore UI shipping in story 8-5."

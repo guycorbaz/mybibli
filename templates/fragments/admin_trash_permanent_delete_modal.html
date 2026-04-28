@@ -1,0 +1,42 @@
+{# Permanent Delete Confirmation Modal (story 8-7) #}
+<dialog open aria-modal="true" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 rounded-lg">
+    <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-md w-full mx-4 border border-stone-200 dark:border-stone-700">
+        <div class="p-6">
+            <h3 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ modal_title }}</h3>
+            <p class="text-red-600 dark:text-red-400 font-semibold mb-4 flex items-start gap-2">
+                <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                </svg>
+                <span>{{ modal_warning }}</span>
+            </p>
+
+            <div class="bg-stone-50 dark:bg-stone-800 p-4 rounded-lg mb-4 border border-stone-200 dark:border-stone-700">
+                <p class="text-sm text-stone-600 dark:text-stone-400 mb-2">{{ modal_confirmation_label }}</p>
+                <p class="font-mono font-bold text-stone-900 dark:text-white break-all">{{ item_name|escape }}</p>
+            </div>
+
+            {# R3-N1: thread filters / page through the POST URL so the panel
+               re-renders into the same filtered view the admin came from. #}
+            <form hx-post="/admin/trash/{{ table_name|escape }}/{{ item_id }}/permanent-delete?version={{ version }}&entity_type={{ entity_type_filter|urlencode }}&search={{ search_query|urlencode }}&page={{ current_page }}" hx-target="#admin-trash-panel" hx-swap="outerHTML" class="space-y-4">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token|escape }}">
+                <input type="hidden" name="version" value="{{ version }}">
+
+                <div>
+                    <label for="confirm-name-input" class="text-sm font-semibold mb-1 block">{{ modal_confirm_label }}</label>
+                    <input type="text" id="confirm-name-input" name="confirmed_name" placeholder="{{ item_name|escape }}" data-confirm-name="{{ item_name|escape }}" data-confirm-btn="confirm-delete-btn" class="w-full px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-red-600" autocomplete="off" autofocus>
+                    <p class="text-xs text-stone-500 dark:text-stone-400 mt-1">{{ modal_confirmation_instruction }}</p>
+                </div>
+
+                <div class="flex gap-2">
+                    <button type="submit" id="confirm-delete-btn" disabled class="flex-1 px-4 py-2 bg-red-600 text-white rounded-md font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-700">
+                        {{ modal_confirm_button }}
+                    </button>
+                    <button type="button" hx-delete="{{ modal_close_target }}" hx-swap="delete" class="flex-1 px-4 py-2 bg-stone-300 dark:bg-stone-700 rounded-md font-semibold hover:bg-stone-400 dark:hover:bg-stone-600">
+                        {{ modal_cancel }}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</dialog>
+

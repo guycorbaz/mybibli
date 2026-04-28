@@ -141,6 +141,14 @@ mod csp_report_only_tests {
 
 use crate::db::DbPool;
 
+/// Minimum cadence for the auto-purge scheduler — anything below this would
+/// just hot-spin the DELETE query.
+pub const AUTO_PURGE_INTERVAL_MIN_SECS: u64 = 60;
+/// Maximum cadence for the auto-purge scheduler (R3-N10). Anything bigger
+/// than one week effectively disables purging because it pushes the next
+/// run past any plausible operator-attention window.
+pub const AUTO_PURGE_INTERVAL_MAX_SECS: u64 = 7 * 86_400;
+
 /// Runtime application settings loaded from the `settings` table.
 /// Stored in `AppState` as `Arc<RwLock<AppSettings>>` for thread-safe reads.
 #[derive(Debug, Clone)]
@@ -150,6 +158,11 @@ pub struct AppSettings {
     pub search_debounce_delay_ms: u64,
     pub session_timeout_secs: u64,
     pub metadata_fetch_timeout_secs: u64,
+    /// Cadence (seconds) for the daily auto-purge scheduler (story 8-7).
+    /// Default 86400 = 24h. Read from the `settings` table key
+    /// `auto_purge_interval_seconds`; values below 60s are clamped up to 60s
+    /// (a hot-loop on the purge query would just waste IO).
+    pub auto_purge_interval_seconds: u64,
 }
 
 impl Default for AppSettings {
@@ -160,6 +173,7 @@ impl Default for AppSettings {
             search_debounce_delay_ms: 300,
             session_timeout_secs: 14400, // 4 hours in seconds
             metadata_fetch_timeout_secs: 30,
+            auto_purge_interval_seconds: 86400, // 24 hours
         }
     }
 }
@@ -225,6 +239,29 @@ impl AppSettings {
                     Ok(v) if v >= 1 => settings.metadata_fetch_timeout_secs = v,
                     Ok(_) => {
                         tracing::warn!(key = %key, value = %value, "Timeout must be >= 1s, using default")
+                    }
+                    Err(_) => {
+                        tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
+                    }
+                },
+                "auto_purge_interval_seconds" => match value.parse::<u64>() {
+                    Ok(v) => {
+                        // R3-N10: also clamp at the upper bound. A massive
+                        // value (e.g. `u64::MAX`) silently disables the
+                        // scheduler — refuse and clamp at 7 days, which is
+                        // the largest "still recognizable as a real
+                        // schedule" cadence.
+                        let clamped = v.clamp(AUTO_PURGE_INTERVAL_MIN_SECS, AUTO_PURGE_INTERVAL_MAX_SECS);
+                        if clamped != v {
+                            tracing::warn!(
+                                key = %key,
+                                value = %value,
+                                requested = v,
+                                clamped = clamped,
+                                "auto_purge_interval_seconds clamped to allowed range [60, 604800]"
+                            );
+                        }
+                        settings.auto_purge_interval_seconds = clamped;
                     }
                     Err(_) => {
                         tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
@@ -337,6 +374,7 @@ mod tests {
         assert_eq!(settings.search_debounce_delay_ms, 300);
         assert_eq!(settings.session_timeout_secs, 14400);
         assert_eq!(settings.metadata_fetch_timeout_secs, 30);
+        assert_eq!(settings.auto_purge_interval_seconds, 86400);
     }
 
     #[test]
@@ -347,6 +385,7 @@ mod tests {
             search_debounce_delay_ms: 500,
             session_timeout_secs: 7200,
             metadata_fetch_timeout_secs: 45,
+            auto_purge_interval_seconds: 3600,
         };
         let cloned = settings.clone();
         assert_eq!(cloned.overdue_threshold_days, 60);
@@ -354,5 +393,24 @@ mod tests {
         assert_eq!(cloned.search_debounce_delay_ms, 500);
         assert_eq!(cloned.session_timeout_secs, 7200);
         assert_eq!(cloned.metadata_fetch_timeout_secs, 45);
+        assert_eq!(cloned.auto_purge_interval_seconds, 3600);
+    }
+
+    /// R3-N10: the auto_purge_interval_seconds clamp range.
+    #[test]
+    fn test_auto_purge_interval_clamp_constants() {
+        assert_eq!(AUTO_PURGE_INTERVAL_MIN_SECS, 60);
+        assert_eq!(AUTO_PURGE_INTERVAL_MAX_SECS, 7 * 86_400);
+
+        // The default sits comfortably within the allowed range.
+        let default_val = AppSettings::default().auto_purge_interval_seconds;
+        assert!(default_val >= AUTO_PURGE_INTERVAL_MIN_SECS);
+        assert!(default_val <= AUTO_PURGE_INTERVAL_MAX_SECS);
+
+        // Spot-check the clamp behavior at boundaries.
+        let too_low = 30u64.clamp(AUTO_PURGE_INTERVAL_MIN_SECS, AUTO_PURGE_INTERVAL_MAX_SECS);
+        assert_eq!(too_low, AUTO_PURGE_INTERVAL_MIN_SECS);
+        let too_high = u64::MAX.clamp(AUTO_PURGE_INTERVAL_MIN_SECS, AUTO_PURGE_INTERVAL_MAX_SECS);
+        assert_eq!(too_high, AUTO_PURGE_INTERVAL_MAX_SECS);
     }
 }

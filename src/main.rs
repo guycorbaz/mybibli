@@ -15,8 +15,8 @@ use mybibli::metadata::registry::ProviderRegistry;
 use mybibli::metadata::tmdb::TmdbProvider;
 use mybibli::middleware::logging;
 use mybibli::routes;
-use mybibli::services::admin_health;
-use mybibli::tasks::{anonymous_session_purge, provider_health};
+use mybibli::services::{admin_health, auto_purge};
+use mybibli::tasks::{anonymous_session_purge, auto_purge_scheduler, provider_health};
 
 use tokio::net::TcpListener;
 
@@ -46,6 +46,50 @@ async fn main() {
         .expect("Failed to run database migrations");
 
     tracing::info!("Database migrations completed");
+
+    // Validate FK dependency order against schema. Story 8-7 P5: never panic
+    // here — schema evolution (adding/removing whitelisted tables) MUST NOT
+    // be a hard crash; surface a warning and let the app come up.
+    if let Err(e) = auto_purge::AutoPurgeService::validate_schema(&pool).await {
+        tracing::warn!(
+            error = %e,
+            "FK schema validation failed; continuing startup (auto-purge may skip mismatched tables)"
+        );
+    }
+
+    // Story 8-7 P4: opt-out for fast-iteration dev/test loops where the
+    // startup-purge cost is not worth paying on every restart.
+    //
+    // R3-N6: only `1` / `true` / `TRUE` count as "enable". Previously
+    // `.is_ok()` accepted ANY value (including empty string and `0` /
+    // `false`), which silently disabled the purge whenever the env var
+    // was set in shell history with a stale value.
+    let skip_startup_purge = std::env::var("MYBIBLI_SKIP_STARTUP_PURGE")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE"))
+        .unwrap_or(false);
+    if skip_startup_purge {
+        tracing::info!("Startup purge skipped (MYBIBLI_SKIP_STARTUP_PURGE set)");
+    } else {
+        // Run startup auto-purge (blocking, bounded by item count).
+        match auto_purge::AutoPurgeService::run_purge(&pool).await {
+            Ok(stats) => {
+                tracing::info!(
+                    tables_attempted = stats.tables_attempted,
+                    tables_succeeded = stats.tables_succeeded,
+                    tables_errored = stats.tables_errored,
+                    rows_deleted = stats.rows_deleted,
+                    errors = stats.errors.len(),
+                    "Startup auto-purge completed"
+                );
+                if !stats.errors.is_empty() {
+                    tracing::warn!(errors = ?stats.errors, "Startup auto-purge encountered errors");
+                }
+            }
+            Err(e) => {
+                tracing::error!("Startup auto-purge failed: {} (non-fatal, continuing)", e);
+            }
+        }
+    }
 
     // Load application settings from database
     let app_settings = AppSettings::load_from_db(&pool)
@@ -143,6 +187,11 @@ async fn main() {
     // Bounded accumulation — unauthenticated visitors now get a DB row
     // on first hit so their CSRF token survives across requests.
     anonymous_session_purge::spawn(state.pool.clone());
+
+    // Story 8-7: daily auto-purge of soft-deleted items older than 30 days.
+    // Cadence is read from `AppSettings::auto_purge_interval_seconds`
+    // (default 86400 = 24h) with a 1-minute delay after startup.
+    auto_purge_scheduler::spawn(state.pool.clone(), state.settings.clone());
 
     let app = routes::build_router(state).layer(logging::trace_layer());
 
