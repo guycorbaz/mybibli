@@ -150,7 +150,7 @@ development_status:
   8-2-csrf-middleware-and-form-token-injection: done
   8-3-user-administration: done
   8-4-reference-data-management: done
-  8-5-system-settings: in-progress
+  8-5-system-settings: review
   8-6-trash-view-and-restore: done # folded into 8-7 PR (consolidated trash panel + restore handlers + permanent delete + auto-purge shipped as one unit, PR #59)
   8-7-permanent-delete-and-auto-purge: done
   8-8-first-launch-setup-wizard: backlog
