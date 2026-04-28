@@ -138,21 +138,43 @@ pub async fn session_resolve_middleware(
     let mut response = next.run(request).await;
 
     if let Some(new_token) = new_cookie_token {
-        // Match cookie lifetime to the 7-day anonymous-purge window so the
-        // browser discards a cookie whose DB row the purge task will have
-        // deleted. Without Max-Age the cookie persists until browser close
-        // and a week-old tab can submit a form against a purged session
-        // row — a 403 the user has no signal to recover from.
-        let cookie = Cookie::build(("session", new_token))
-            .http_only(true)
-            .path("/")
-            .same_site(SameSite::Lax)
-            .max_age(time::Duration::days(7))
-            .build();
-        if let Ok(value) = cookie.to_string().parse() {
-            response
-                .headers_mut()
-                .append(axum::http::header::SET_COOKIE, value);
+        // Issue #81 fix: skip the anonymous cookie append if the handler
+        // already emitted a `session=` Set-Cookie via its own CookieJar
+        // (login, logout, etc.). Without this guard the middleware's anon
+        // cookie lands AFTER the handler's auth cookie in the response,
+        // and clients (browsers + curl, per RFC 6265 §5.4 "later cookie
+        // wins for same name/domain/path") pick up the anon one — pointing
+        // at a session row the login handler just soft-deleted, so every
+        // subsequent request resolves as anonymous and authentication
+        // appears to silently fail.
+        let handler_already_set_session_cookie = response
+            .headers()
+            .get_all(axum::http::header::SET_COOKIE)
+            .iter()
+            .any(|v| {
+                v.to_str()
+                    .map(|s| s.starts_with("session=") || s.starts_with("session ="))
+                    .unwrap_or(false)
+            });
+
+        if !handler_already_set_session_cookie {
+            // Match cookie lifetime to the 7-day anonymous-purge window so
+            // the browser discards a cookie whose DB row the purge task
+            // will have deleted. Without Max-Age the cookie persists until
+            // browser close and a week-old tab can submit a form against a
+            // purged session row — a 403 the user has no signal to recover
+            // from.
+            let cookie = Cookie::build(("session", new_token))
+                .http_only(true)
+                .path("/")
+                .same_site(SameSite::Lax)
+                .max_age(time::Duration::days(7))
+                .build();
+            if let Ok(value) = cookie.to_string().parse() {
+                response
+                    .headers_mut()
+                    .append(axum::http::header::SET_COOKIE, value);
+            }
         }
     }
 
@@ -248,6 +270,15 @@ fn extract_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
     // outright so the resolver mints a fresh anonymous row instead of
     // promoting the attacker's value. Also unquotes RFC6265 quoted
     // values (`session="abc"`) and trims inner whitespace.
+    //
+    // Issue #81 follow-up: percent-decode the cookie value. `axum_extra`'s
+    // `Cookie::encoded()` URL-encodes base64 special chars (`/` → `%2F`,
+    // `+` → `%2B`, `=` → `%3D`) when serializing the Set-Cookie header.
+    // Browsers store the encoded form and send it back verbatim in the
+    // Cookie header. The session token in the DB is the raw base64, so
+    // without decoding here the lookup misses and every authenticated
+    // request lands as anonymous. (The pre-fix #81 cookie collision
+    // masked this with a second cookie that happened to be raw.)
     let mut matches: Vec<String> = Vec::new();
     for raw in headers
         .get_all("cookie")
@@ -263,7 +294,10 @@ fn extract_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
                     .unwrap_or(raw_value)
                     .trim();
                 if !unquoted.is_empty() {
-                    matches.push(unquoted.to_string());
+                    let decoded = percent_encoding::percent_decode_str(unquoted)
+                        .decode_utf8_lossy()
+                        .into_owned();
+                    matches.push(decoded);
                 }
             }
         }
@@ -622,5 +656,32 @@ mod tests {
         let mut h = axum::http::HeaderMap::new();
         h.insert("cookie", "session=\"abc123\"".parse().unwrap());
         assert_eq!(extract_session_cookie(&h), Some("abc123".to_string()));
+    }
+
+    /// Issue #81 follow-up: `axum_extra`'s `Cookie::encoded()` URL-encodes
+    /// base64 chars (`/` → `%2F`, `+` → `%2B`, `=` → `%3D`) when serializing
+    /// Set-Cookie. Browsers store and replay the encoded form. The session
+    /// token in the DB is the raw base64, so the cookie value MUST be
+    /// percent-decoded before lookup or every authenticated request hits a
+    /// missing-row → anonymous path.
+    #[test]
+    fn test_extract_session_cookie_percent_decodes_value() {
+        let mut h = axum::http::HeaderMap::new();
+        // Real-world example: a base64 token containing `/`, `+`, `=`.
+        h.insert(
+            "cookie",
+            "session=ppIIvusnO9b017C7r9dLM2nOl0Yp9uqZMpFuhrNdbG8%3D".parse().unwrap(),
+        );
+        assert_eq!(
+            extract_session_cookie(&h),
+            Some("ppIIvusnO9b017C7r9dLM2nOl0Yp9uqZMpFuhrNdbG8=".to_string())
+        );
+
+        let mut h2 = axum::http::HeaderMap::new();
+        h2.insert(
+            "cookie",
+            "session=a%2Fb%2Bc%3D".parse().unwrap(),
+        );
+        assert_eq!(extract_session_cookie(&h2), Some("a/b+c=".to_string()));
     }
 }
