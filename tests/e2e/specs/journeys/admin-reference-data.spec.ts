@@ -111,13 +111,20 @@ test.describe("Story 8-4 — Admin Reference Data", () => {
       page.locator("#admin-ref-node-types-list").getByText(oldName, { exact: true }),
     ).toBeVisible({ timeout: 10000 });
 
-    // Click the row's name span → inline-edit form appears.
+    // Click the row's name span → inline-edit form appears. Locate the
+    // input by the form's data-inline-edit-form attribute (set by
+    // startInlineEdit in inline-form.js) rather than by the input's
+    // `value` attribute — `input.value = ...` in JS sets the DOM property
+    // but does not always reflect to the HTML attribute, so a
+    // `[value="..."]` selector is a flaky match across browsers.
     const nameSpan = page
       .locator("#admin-ref-node-types-list li")
       .filter({ hasText: oldName })
       .locator('[data-action="inline-form-edit"]');
     await nameSpan.click();
-    const editInput = page.locator('input[name="name"][value="' + oldName + '"]');
+    const editInput = page.locator(
+      'form[data-inline-edit-form] input[name="name"]',
+    );
     await expect(editInput).toBeVisible({ timeout: 5000 });
     await editInput.fill(newName);
     await editInput.press("Enter");
@@ -234,6 +241,11 @@ test.describe("Story 8-4 — Admin Reference Data", () => {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         "Cookie": cookieHeader,
+        // Add the HTMX hint so CSRF returns the JSON/HTMX rejection
+        // envelope (403) rather than the plain-form fallback (303 →
+        // /login). This story 8-4 admin endpoint is HTMX-driven in
+        // production, so this matches real-world usage.
+        "HX-Request": "true",
       },
       data: `name=${encodeURIComponent(uniqueSlug("RD-CSRF"))}&_csrf_token=${encodeURIComponent(tamperedToken)}`,
       maxRedirects: 0,

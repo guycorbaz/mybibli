@@ -41,6 +41,29 @@
         // A `<dialog open>` element in the slot indicates an active modal.
         return !!slot.querySelector("dialog[open]");
     }
+    // After a successful Add-form submission, auto-close the slot. Without
+    // this, the slot stays visible carrying the just-saved name, and a
+    // subsequent click on the same "Add ..." toggle button TOGGLES it back
+    // to hidden — surprising the admin who expected a fresh open. Listen
+    // on the form, not the slot, so we only close on actual successful
+    // form submissions (not arbitrary HTMX traffic from the row buttons).
+    document.body.addEventListener("htmx:afterRequest", function (evt) {
+        var detail = evt.detail || {};
+        var elt = detail.elt;
+        if (!elt) return;
+        // Only react to form elements that target a list inside an Add slot.
+        if (elt.tagName !== "FORM") return;
+        var requestSucceeded = !detail.failed && detail.successful !== false;
+        if (!requestSucceeded) return;
+        // The form lives INSIDE the Add slot div. Walk up to find it.
+        var slot = elt.closest('[id$="-add"]');
+        if (!slot) return;
+        if (slot.id.indexOf("admin-ref-") !== 0) return;
+        slot.classList.add("hidden");
+        var nameInput = slot.querySelector('input[name="name"]');
+        if (nameInput) nameInput.value = "";
+    }, false);
+
     document.body.addEventListener("htmx:beforeRequest", function (evt) {
         var elt = evt.detail && evt.detail.elt;
         if (!elt || !elt.getAttribute) return;
