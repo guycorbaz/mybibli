@@ -81,7 +81,7 @@ test.describe("Story 8-2 smoke — CSRF", () => {
     await page.goto("/catalog");
 
     // The logout UI is now a button inside a POST form (i18n-aware).
-    const logoutButton = page.getByRole("button", { name: /Log out|Se déconnecter/i });
+    const logoutButton = page.getByRole("button", { name: /Log out|Déconnexion/i });
     await expect(logoutButton).toBeVisible();
 
     const [response] = await Promise.all([

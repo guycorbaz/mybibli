@@ -63,7 +63,11 @@ test.describe("Epic 8 smoke — admin page shell + Health tab", () => {
     await expect(page).toHaveURL(/\/admin\?tab=users$/);
     await expect(usersTab).toHaveAttribute("aria-selected", "true");
     await expect(healthTab).toHaveAttribute("aria-selected", "false");
-    await expect(page.locator("#panel-users")).toContainText("8-2");
+    // Story 8-3 shipped the Users panel — assert on the localized heading
+    // (not the old "8-2" stub literal that the panel no longer renders).
+    await expect(page.locator("#panel-users")).toContainText(
+      /User accounts|Comptes utilisateurs/i,
+    );
 
     // Reference data.
     await refTab.click();
