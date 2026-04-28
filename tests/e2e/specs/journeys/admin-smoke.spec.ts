@@ -75,11 +75,14 @@ test.describe("Epic 8 smoke — admin page shell + Health tab", () => {
     await expect(refTab).toHaveAttribute("aria-selected", "true");
     await expect(page.locator("#panel-reference_data")).toContainText("8-3");
 
-    // Trash — stub points to story 8-5 (view + restore).
+    // Trash — story 8-7 ships real UI (heading "Trash bin (soft-deleted
+    // items)" / "Corbeille (éléments supprimés)") replacing the old stub.
     await trashTab.click();
     await expect(page).toHaveURL(/\/admin\?tab=trash$/);
     await expect(trashTab).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator("#panel-trash")).toContainText("8-5");
+    await expect(page.locator("#panel-trash")).toContainText(
+      /Trash bin|Corbeille/i,
+    );
 
     // System.
     await systemTab.click();
