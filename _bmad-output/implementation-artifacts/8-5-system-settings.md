@@ -1,6 +1,6 @@
 # Story 8.5: System settings
 
-Status: ready-for-dev
+Status: in-progress
 
 Epic: 8 — Administration & Configuration
 Requirements mapping: FR74 (overdue threshold configurable), FR75 (per-provider API keys configurable), AR9 (`Arc<RwLock<AppSettings>>` reload on save — load-bearing for "no restart needed"), NFR37 (single-host local — accepted plaintext API key storage), Story 7-3 locale resolution chain (default-language is fallback level 5 — last-resort default behind cookie / user pref / Accept-Language), Foundation Rules #1–#7

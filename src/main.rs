@@ -91,6 +91,19 @@ async fn main() {
         }
     }
 
+    // Story 8-5: one-shot env-var migration. Copies legacy
+    // GOOGLE_BOOKS_API_KEY / OMDB_API_KEY / TMDB_API_KEY env vars into the
+    // matching `settings` rows when those rows are empty. Runs exactly once
+    // per boot, AFTER migrations and BEFORE the first settings load so the
+    // load picks up the migrated values. NOT inlined into load_from_db —
+    // that would re-run on every save and silently un-Clear admin actions.
+    if let Err(e) = mybibli::config::migrate_legacy_env_vars(&pool).await {
+        tracing::warn!(
+            error = ?e,
+            "Legacy env-var migration failed — continuing with current row values"
+        );
+    }
+
     // Load application settings from database
     let app_settings = AppSettings::load_from_db(&pool)
         .await
@@ -103,6 +116,13 @@ async fn main() {
 
     // Set i18n locale
     rust_i18n::set_locale(&config.app_language);
+
+    // Story 8-5: wrap AppSettings in Arc<RwLock> EARLY so the three keyed
+    // metadata providers can hold a handle and read their key per-fetch.
+    // This replaces the env-var-at-construction pattern — keys now live in
+    // the DB and the admin can change them via /admin?tab=system without
+    // restarting the process.
+    let settings_arc = Arc::new(RwLock::new(app_settings));
 
     // Create shared HTTP client
     let http_client = reqwest::Client::builder()
@@ -120,10 +140,9 @@ async fn main() {
     // Magazine chain: BnF → Google Books
     registry.register(Box::new(BdgestProvider::new()));
     registry.register(Box::new(BnfProvider::new(http_client.clone())));
-    let gb_key = std::env::var("GOOGLE_BOOKS_API_KEY").ok();
     registry.register(Box::new(GoogleBooksProvider::new(
         http_client.clone(),
-        gb_key,
+        settings_arc.clone(),
     )));
     registry.register(Box::new(OpenLibraryProvider::new(http_client.clone())));
 
@@ -134,17 +153,19 @@ async fn main() {
         mb_limiter,
     )));
 
-    // DVD chain: OMDb → TMDb (OMDb first per architecture)
-    if let Ok(omdb_key) = std::env::var("OMDB_API_KEY") {
-        registry.register(Box::new(OmdbProvider::new(http_client.clone(), omdb_key)));
-    } else {
-        tracing::warn!("OMDB_API_KEY not set — OMDb provider disabled");
-    }
-    if let Ok(tmdb_key) = std::env::var("TMDB_API_KEY") {
-        registry.register(Box::new(TmdbProvider::new(http_client.clone(), tmdb_key)));
-    } else {
-        tracing::warn!("TMDB_API_KEY not set — TMDb provider disabled");
-    }
+    // DVD chain: OMDb → TMDb (OMDb first per architecture).
+    // Story 8-5: registered unconditionally now — keys live in AppSettings
+    // and the providers' fetch methods short-circuit on empty key without
+    // making an HTTP call. This supports the "admin sets key via UI on a
+    // previously-keyless deploy" flow without process restart.
+    registry.register(Box::new(OmdbProvider::new(
+        http_client.clone(),
+        settings_arc.clone(),
+    )));
+    registry.register(Box::new(TmdbProvider::new(
+        http_client.clone(),
+        settings_arc.clone(),
+    )));
 
     // Comic Vine: implemented but NOT registered per architecture (future use)
     // let cv_key = std::env::var("COMIC_VINE_API_KEY").ok();
@@ -170,7 +191,7 @@ async fn main() {
     // Build application
     let state = AppState {
         pool,
-        settings: Arc::new(RwLock::new(app_settings)),
+        settings: settings_arc.clone(),
         http_client: http_client.clone(),
         registry: registry.clone(),
         covers_dir,

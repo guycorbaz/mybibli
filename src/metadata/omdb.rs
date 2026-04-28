@@ -1,27 +1,46 @@
 use async_trait::async_trait;
 use reqwest::Client;
+use std::sync::{Arc, RwLock};
 
+use crate::config::AppSettings;
 use crate::models::media_type::MediaType;
 
 use super::provider::{MetadataError, MetadataProvider, MetadataResult};
 
 /// OMDb metadata provider for DVD media type (primary).
 /// Searches by UPC as query text, then fetches details by imdbID.
+///
+/// Story 8-5: holds an `Arc<RwLock<AppSettings>>` and reads the API key
+/// per fetch from `omdb_api_key`. Empty key → returns `Ok(None)` without
+/// making an HTTP call (the provider is registered unconditionally now,
+/// so the "no key" check moved from registration time to fetch time).
 pub struct OmdbProvider {
     client: Client,
-    api_key: String,
+    settings: Arc<RwLock<AppSettings>>,
     base_url: String,
 }
 
 impl OmdbProvider {
-    pub fn new(client: Client, api_key: String) -> Self {
+    pub fn new(client: Client, settings: Arc<RwLock<AppSettings>>) -> Self {
         let base_url = std::env::var("OMDB_API_BASE_URL")
             .unwrap_or_else(|_| "https://www.omdbapi.com".to_string());
         Self {
             client,
-            api_key,
+            settings,
             base_url,
         }
+    }
+
+    /// Read the OMDb API key from the settings cache. `None` for empty
+    /// (not configured). Caller short-circuits the lookup on `None`.
+    fn current_api_key(&self) -> Option<String> {
+        self.settings.read().ok().and_then(|s| {
+            if s.omdb_api_key.is_empty() {
+                None
+            } else {
+                Some(s.omdb_api_key.clone())
+            }
+        })
     }
 }
 
@@ -40,11 +59,17 @@ impl MetadataProvider for OmdbProvider {
     }
 
     async fn lookup_by_upc(&self, upc: &str) -> Result<Option<MetadataResult>, MetadataError> {
+        // Story 8-5: read API key per fetch. Empty key → no HTTP call.
+        let api_key = match self.current_api_key() {
+            Some(k) => k,
+            None => return Ok(None),
+        };
+
         // Search by UPC as query text
         let response = self
             .client
             .get(format!("{}/", self.base_url))
-            .query(&[("s", upc), ("type", "movie"), ("apikey", &self.api_key)])
+            .query(&[("s", upc), ("type", "movie"), ("apikey", &api_key)])
             .send()
             .await
             .map_err(|e| MetadataError::Network(e.to_string()))?;
@@ -81,7 +106,7 @@ impl MetadataProvider for OmdbProvider {
         let detail_response = self
             .client
             .get(format!("{}/", self.base_url))
-            .query(&[("i", imdb_id.as_str()), ("apikey", &self.api_key)])
+            .query(&[("i", imdb_id.as_str()), ("apikey", &api_key)])
             .send()
             .await
             .map_err(|e| MetadataError::Network(e.to_string()))?;
@@ -155,7 +180,13 @@ mod tests {
 
     #[test]
     fn test_supports_media_types() {
-        let provider = OmdbProvider::new(Client::new(), "test".to_string());
+        let provider = OmdbProvider::new(
+            Client::new(),
+            Arc::new(RwLock::new(AppSettings {
+                omdb_api_key: "test".to_string(),
+                ..AppSettings::default()
+            })),
+        );
         assert!(provider.supports_media_type(&MediaType::Dvd));
         assert!(!provider.supports_media_type(&MediaType::Book));
         assert!(!provider.supports_media_type(&MediaType::Cd));
@@ -163,7 +194,13 @@ mod tests {
 
     #[test]
     fn test_provider_name() {
-        let provider = OmdbProvider::new(Client::new(), "test".to_string());
+        let provider = OmdbProvider::new(
+            Client::new(),
+            Arc::new(RwLock::new(AppSettings {
+                omdb_api_key: "test".to_string(),
+                ..AppSettings::default()
+            })),
+        );
         assert_eq!(provider.name(), "omdb");
     }
 

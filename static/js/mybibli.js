@@ -201,6 +201,30 @@
         });
     }
 
+    // Story 8-5: System Settings → Metadata Providers form. Each row has a
+    // text input and a "Clear this key on save" checkbox. When the checkbox
+    // is checked, the sibling text input is disabled (and its value cleared)
+    // so the admin sees that the field is intentionally being wiped.
+    // CSP-clean — `data-action` delegated handler.
+    function initProviderKeyClearToggle() {
+        document.addEventListener("change", function (e) {
+            var box = e.target.closest && e.target.closest("[data-action='provider-key-clear-toggle']");
+            if (!box) return;
+            var inputName = box.getAttribute("data-target-input");
+            if (!inputName) return;
+            var form = box.closest("form");
+            if (!form) return;
+            var input = form.querySelector("input[name='" + inputName + "']");
+            if (!input) return;
+            if (box.checked) {
+                input.value = "";
+                input.disabled = true;
+            } else {
+                input.disabled = false;
+            }
+        });
+    }
+
     // Borrower-detail page: after a successful loan-return POST, reload so
     // the active-loans table reflects the change. The 1500ms delay leaves
     // time for the in-line success feedback to be seen before the reload.
@@ -307,6 +331,7 @@
         initHtmxErrorRecovery();
         initMobileMenuToggle();
         initFeedbackDismiss();
+        initProviderKeyClearToggle();
         initBorrowerDetailReload();
         initTitleEditFormEscape();
         initOmnibusToggle();
