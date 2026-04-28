@@ -898,13 +898,19 @@ pub async fn admin_trash_permanent_delete(
 /// page with the shell wrapping the new module's panel HTML. Story 8-4
 /// keeps the panel-fetching logic out of `admin.rs` (Foundation Rule #12)
 /// while reusing the shell infrastructure.
+/// Render the Reference Data tab — either as shell-fragment (HTMX tab
+/// click into #admin-shell) or as full page (direct nav). The 8-4 panel
+/// handler is in `routes/admin_reference_data.rs`; this helper keeps the
+/// shell-rendering logic in `admin.rs` so that module remains the single
+/// owner of the admin layout (Foundation Rule #12 split).
 pub(crate) async fn render_admin_for_reference_data(
     state: &AppState,
     session: &Session,
     loc: &'static str,
     uri: &axum::http::Uri,
+    is_htmx: bool,
 ) -> Result<Response, AppError> {
-    render_admin(state, session, loc, uri, false, AdminTab::ReferenceData, None).await
+    render_admin(state, session, loc, uri, is_htmx, AdminTab::ReferenceData, None).await
 }
 
 pub async fn admin_trash_panel(

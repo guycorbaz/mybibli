@@ -546,15 +546,17 @@ pub async fn admin_reference_data_panel(
         .unwrap_or_else(|| "/admin?tab=reference_data".to_string());
     session.require_role_with_return(Role::Admin, &return_path)?;
 
-    if is_htmx {
-        let panel_html = render_panel_html(&state, locale.0, &session).await?;
-        Ok((StatusCode::OK, Html(panel_html)).into_response())
-    } else {
-        crate::routes::admin::render_admin_for_reference_data(
-            &state, &session, locale.0, &uri,
-        )
-        .await
-    }
+    // The /admin/reference-data URL is hit by the admin tab bar (HTMX swap
+    // into #admin-shell) and direct page navigation. Sub-section forms POST
+    // to /admin/reference-data/<segment> instead, so there's no panel-only
+    // HTMX swap on this URL. Route both paths through `render_admin` —
+    // is_htmx=true returns just the shell HTML (tabs + panel), is_htmx=false
+    // returns the full page wrapping the shell. Same root cause as story
+    // 8-7 hit on /admin/trash.
+    crate::routes::admin::render_admin_for_reference_data(
+        &state, &session, locale.0, &uri, is_htmx,
+    )
+    .await
 }
 
 // ─── Helpers — render row + feedback as HtmxResponse ───────────────
