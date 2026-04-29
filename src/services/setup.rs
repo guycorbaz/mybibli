@@ -68,34 +68,27 @@ pub struct SetupPredicateInputs {
 /// the user is on `step`.
 ///
 /// Resolution order (first match wins):
-///   1. `setup_completed_at IS SOME` ⇒ inactive.
-///   2. `active_admin_count > 0` ⇒ inactive (upgrade-from-pre-Epic-8 path).
-///   3. `active_admin_count == 0` ⇒ Step 1 (Admin).
-///   4. Admin exists, no provider key set, `step_3_done == false` ⇒ Step 2.
-///   5. Admin exists, `step_3_done == false` ⇒ Step 3 (provider step was visited).
-///   6. Admin exists, `step_3_done == true` ⇒ Step 4 (Done — recap).
+///   1. `setup_completed_at IS SOME` ⇒ inactive (single-use property).
+///   2. `active_admin_count == 0` ⇒ Step 1 (Admin).
+///   3. Admin exists, narrow via [`resolve_step_with_admin`] (Step 2/3/4).
+///
+/// **Note:** `active_admin_count > 0` alone is NOT enough to deactivate
+/// the wizard — Step 1 commits an admin row mid-flow, so the user must
+/// remain inside the wizard until Step 4 stamps `setup_completed_at`.
+/// The "upgrade-from-pre-Epic-8" path (admin seeded by a prior install
+/// with no `setup_completed_at`) is handled by the gate middleware,
+/// which checks the same predicate but uses the cached startup snapshot.
 pub fn resolve_step(inputs: &SetupPredicateInputs) -> Option<SetupStep> {
     // Rule 1: completed → inactive.
     if inputs.setup_completed_at.is_some() {
         return None;
     }
-    // Rule 2: admin already exists from a pre-Epic-8 install → inactive.
-    // The wizard is a one-shot first-launch flow; once an admin row
-    // exists we trust the operator to have configured the rest.
-    if inputs.active_admin_count > 0 {
-        return None;
-    }
-
-    // From here, no admin and not completed.
-    // Rule 3: pristine state ⇒ Step 1.
-    if inputs.active_admin_count == 0 && !inputs.any_provider_key_set && !inputs.setup_step_3_done {
+    // Rule 2: pristine state ⇒ Step 1.
+    if inputs.active_admin_count == 0 {
         return Some(SetupStep::Admin);
     }
-
-    // Defensive impossible-state guard: if there's somehow no admin but
-    // step_3_done is set, the resolver still funnels back to Step 1 so
-    // the user can recover.
-    Some(SetupStep::Admin)
+    // Rule 3: admin exists, not completed ⇒ narrow to 2/3/4.
+    Some(resolve_step_with_admin(inputs))
 }
 
 /// Resolver variant for the case where an admin DOES exist (e.g. just
@@ -206,7 +199,8 @@ pub async fn create_or_update_admin(
     if username.is_empty() {
         return Err(AppError::BadRequest("username_required".to_string()));
     }
-    if password.len() < 8 {
+    // chars().count() not len() — story 8-8 review P11.
+    if password.chars().count() < 8 {
         return Err(AppError::BadRequest("password_too_short".to_string()));
     }
 
@@ -304,9 +298,17 @@ pub struct WizardProviderKeys {
     pub tmdb: Option<String>,
 }
 
-/// Save the three provider keys to the K/V `settings` table. Each key
-/// is its own row with its own `version`, so the writes are independent.
-/// A `None` value means "user did not provide one — leave the row alone".
+/// Save the three provider keys to the K/V `settings` table in a
+/// single transaction (story 8-8 review P19). Each key is its own row
+/// with its own `version`; the transaction wraps all three so a
+/// failure on the second/third write rolls back the first — partial
+/// state never persists.
+///
+/// A `None` value means "user did not provide one — leave the row
+/// alone". An empty/whitespace-only string is treated the same. A row
+/// missing from the DB (manual intervention scrubbed the migration
+/// seed) is upserted via `INSERT ... ON DUPLICATE KEY UPDATE` instead
+/// of skipped.
 ///
 /// Returns the number of rows actually changed (informational; the
 /// caller does not need to act on it).
@@ -314,6 +316,7 @@ pub async fn save_provider_keys(
     state: &AppState,
     keys: &WizardProviderKeys,
 ) -> Result<usize, AppError> {
+    let mut tx = state.pool.begin().await?;
     let mut changes = 0usize;
 
     for (key_name, value_opt) in [
@@ -326,24 +329,24 @@ pub async fn save_provider_keys(
         if trimmed.is_empty() {
             continue;
         }
-        let Some((current_value, current_version)) =
-            fetch_setting_value_and_version(&state.pool, key_name).await?
-        else {
-            // Row missing — the migration seeds it, so this is a real
-            // problem. Log + skip rather than crash the wizard.
-            tracing::warn!(
-                key = %key_name,
-                "wizard: settings row missing, expected from migration"
-            );
-            continue;
-        };
-        if current_value == trimmed {
-            // Idempotent re-submit of an already-saved value.
-            continue;
-        }
-        save_setting(&state.pool, key_name, trimmed, current_version).await?;
+        // Race-safe upsert inside the tx. The optimistic-lock chain
+        // doesn't help here because we want ALL writes to land or none;
+        // ON DUPLICATE KEY UPDATE bumps the version atomically, and the
+        // tx scope is the rollback boundary.
+        sqlx::query(
+            "INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) \
+             ON DUPLICATE KEY UPDATE \
+             setting_value = VALUES(setting_value), \
+             version = version + 1",
+        )
+        .bind(key_name)
+        .bind(trimmed)
+        .execute(&mut *tx)
+        .await?;
         changes += 1;
     }
+
+    tx.commit().await?;
 
     if changes > 0 {
         reload_settings_cache(state).await?;
@@ -356,6 +359,12 @@ pub async fn save_provider_keys(
 /// Save Step 3's two preferences. Validation is the caller's
 /// responsibility — see `services::admin_system::validate_default_language`
 /// and `validate_overdue_threshold`.
+///
+/// Each setting goes through `upsert_setting` (story 8-8 review P9) so a
+/// missing row is INSERTed rather than silently skipped — the previous
+/// `if let Some(...)` paths would no-op-and-continue if the migration
+/// seed was wiped by a manual DB intervention, leaving the
+/// `setup_step_3_done` sentinel un-set and trapping the user on Step 3.
 pub async fn save_preferences(
     state: &AppState,
     default_language: &str,
@@ -363,36 +372,39 @@ pub async fn save_preferences(
 ) -> Result<(), AppError> {
     use crate::services::admin_system::KEY_OVERDUE_THRESHOLD;
 
-    // language
-    if let Some((current, version)) =
-        fetch_setting_value_and_version(&state.pool, KEY_DEFAULT_LANGUAGE).await?
-        && current != default_language
-    {
-        save_setting(&state.pool, KEY_DEFAULT_LANGUAGE, default_language, version).await?;
-    }
-
-    // overdue threshold
-    if let Some((current, version)) =
-        fetch_setting_value_and_version(&state.pool, KEY_OVERDUE_THRESHOLD).await?
-    {
-        let new_value = overdue_threshold_days.to_string();
-        if current != new_value {
-            save_setting(&state.pool, KEY_OVERDUE_THRESHOLD, &new_value, version).await?;
-        }
-    }
-
-    // Always flip the sentinel even when the values matched the
-    // existing rows — the sentinel is what the resolver uses to
-    // distinguish "user explicitly chose defaults" from "user has not
-    // visited Step 3".
-    if let Some((current, version)) =
-        fetch_setting_value_and_version(&state.pool, KEY_SETUP_STEP_3_DONE).await?
-        && current != "1"
-    {
-        save_setting(&state.pool, KEY_SETUP_STEP_3_DONE, "1", version).await?;
-    }
+    upsert_setting(&state.pool, KEY_DEFAULT_LANGUAGE, default_language).await?;
+    upsert_setting(
+        &state.pool,
+        KEY_OVERDUE_THRESHOLD,
+        &overdue_threshold_days.to_string(),
+    )
+    .await?;
+    // Always flip the sentinel — the resolver uses it to distinguish
+    // "user explicitly chose defaults" from "user has not visited
+    // Step 3".
+    upsert_setting(&state.pool, KEY_SETUP_STEP_3_DONE, "1").await?;
 
     reload_settings_cache(state).await?;
+    Ok(())
+}
+
+/// Race-safe single-key upsert: `INSERT ... ON DUPLICATE KEY UPDATE`,
+/// so the call works whether the row already exists or not, and two
+/// concurrent callers cannot collide on 23000. Story 8-8 review P9.
+async fn upsert_setting(
+    pool: &DbPool,
+    key: &str,
+    value: &str,
+) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) \
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), \
+         version = version + 1",
+    )
+    .bind(key)
+    .bind(value)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -402,6 +414,13 @@ pub async fn save_preferences(
 /// format and reload the AppSettings cache. Idempotent: a re-submit
 /// after the wizard already completed will succeed (no-op-ish — the
 /// row gets a new timestamp and version bump).
+///
+/// Uses `INSERT ... ON DUPLICATE KEY UPDATE` so two concurrent
+/// `POST /setup/complete` calls cannot collide on a 23000 duplicate-key
+/// error; the existing-row branch goes through `save_setting` (which
+/// does the optimistic-lock UPDATE) when we already know the version,
+/// avoiding the version-bump churn from a no-op DUPLICATE-KEY-UPDATE.
+/// Story 8-8 review P8.
 pub async fn complete_setup(state: &AppState) -> Result<(), AppError> {
     let now = Utc::now();
     let value = now.to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -411,11 +430,13 @@ pub async fn complete_setup(state: &AppState) -> Result<(), AppError> {
     {
         save_setting(&state.pool, KEY_SETUP_COMPLETED_AT, &value, version).await?;
     } else {
-        // Defense-in-depth: row missing — INSERT it (the migration
-        // should have seeded it, but a manual DB intervention could
-        // remove it).
+        // Row missing — the migration normally seeds it, but a manual
+        // DB intervention could remove it. Race-safe upsert via
+        // ON DUPLICATE KEY UPDATE so a concurrent INSERT does not 500.
         sqlx::query(
-            "INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)",
+            "INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) \
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), \
+             version = version + 1",
         )
         .bind(KEY_SETUP_COMPLETED_AT)
         .bind(&value)
@@ -470,13 +491,38 @@ mod tests {
     }
 
     #[test]
-    fn resolve_step_admin_exists_returns_none() {
-        // Pre-Epic-8 deployment: admin already seeded, completed unset.
+    fn resolve_step_admin_exists_narrows_to_providers() {
+        // Step 1 just committed: admin exists, no provider keys yet,
+        // step_3_done is false. Resolver MUST narrow to Step 2 so the
+        // user can advance through the wizard. The pre-Epic-8 "admin
+        // already seeded → wizard inactive" path is handled by the gate
+        // middleware (boot-time predicate snapshot), not the route
+        // resolver — see story 8-8 review finding P1.
         let inputs = SetupPredicateInputs {
             active_admin_count: 1,
             ..empty_inputs()
         };
-        assert_eq!(resolve_step(&inputs), None);
+        assert_eq!(resolve_step(&inputs), Some(SetupStep::Providers));
+    }
+
+    #[test]
+    fn resolve_step_admin_exists_with_keys_narrows_to_preferences() {
+        let inputs = SetupPredicateInputs {
+            active_admin_count: 1,
+            any_provider_key_set: true,
+            ..empty_inputs()
+        };
+        assert_eq!(resolve_step(&inputs), Some(SetupStep::Preferences));
+    }
+
+    #[test]
+    fn resolve_step_admin_exists_step_3_done_narrows_to_done() {
+        let inputs = SetupPredicateInputs {
+            active_admin_count: 1,
+            setup_step_3_done: true,
+            ..empty_inputs()
+        };
+        assert_eq!(resolve_step(&inputs), Some(SetupStep::Done));
     }
 
     #[test]

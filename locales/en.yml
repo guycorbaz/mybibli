@@ -598,6 +598,7 @@ setup:
   step_1_admin_exists_hint: "An admin account is already configured. Leave the password blank to keep it unchanged, or enter a new one to update."
   step_2_intro: "Optional API keys for external metadata providers. You can add or change them later from Admin → System."
   step_2_skip_label: "Leave any field blank to skip a provider — its lookups will simply return no result."
+  step_2_skip_row_label: "Skip this provider"
   step_2_label_google_books: "Google Books API key"
   step_2_label_omdb: "OMDb API key"
   step_2_label_tmdb: "TMDb API key"
@@ -628,3 +629,4 @@ setup:
     invalid_language: "Pick FR or EN."
     overdue_must_be_positive: "Overdue threshold must be a positive integer."
     admin_already_created: "An admin account was created by another browser. Please reload."
+    admin_already_created_by_other_browser: "Another browser already created the administrator account. We've moved you on to the next step — you can return to update the admin details from the previous step if needed."

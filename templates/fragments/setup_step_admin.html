@@ -1,6 +1,16 @@
-{# Step 1: create the initial admin account.
+{# Step 1: create or update the initial admin account.
    Form posts to /setup/step-1. _csrf_token is the first input.
-   Two submit buttons (Previous disabled on Step 1, Next = primary). #}
+   Single Next/submit button — Step 1 has no Previous on the first
+   render (it IS the first step). When `admin_already_exists` is true
+   the panel is in update-mode (story 8-8 review P16): username
+   pre-filled, hint text changed by the handler, submit label flipped
+   to "Update admin". `flash_message` (story 8-8 P20) renders a
+   one-shot localized banner above the form. #}
+{% if let Some(msg) = flash_message %}
+    <div class="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-600 dark:bg-amber-900/40 dark:text-amber-100" role="status">
+        {{ msg }}
+    </div>
+{% endif %}
 <form method="POST" action="/setup/step-1" autocomplete="off">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
 
@@ -29,7 +39,7 @@
                 type="password"
                 id="setup-password"
                 name="password"
-                required
+                {% if !admin_already_exists %}required{% endif %}
                 autocomplete="new-password"
                 minlength="8"
                 class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-stone-900 dark:text-stone-100 focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"

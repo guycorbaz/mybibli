@@ -283,6 +283,233 @@ async fn setup_returns_404_after_completion(pool: DbPool) {
     );
 }
 
+/// AC14 — full happy path: anonymous browser → Step 1 → Step 2 →
+/// Step 3 → Step 4 → /setup is 404 → POST /login with the new admin
+/// works.
+///
+/// Story 8-8 review P14. Before this test, `tests/setup_wizard.rs`
+/// only validated Step 1's 303 (it never re-GETted /setup to confirm
+/// the wizard advanced); review finding P1 (the resolver short-
+/// circuited on `admin_count > 0`) was therefore invisible in CI.
+#[sqlx::test(migrations = "./migrations")]
+async fn full_happy_path_step_1_through_login(pool: DbPool) {
+    ensure_no_admin(&pool).await;
+    let router = app(state_with_pool(pool.clone()));
+
+    // ── Step 1 ────────────────────────────────────────────────────
+    let (anon_cookie, anon_csrf) = anonymous_session(&router).await;
+    let body = format!(
+        "_csrf_token={anon_csrf}&username=happy_admin&password=happy_pass_42&_back=0"
+    );
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/setup/step-1")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", &anon_cookie)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER, "Step 1 should 303");
+
+    // Capture the new authenticated session cookie minted by Step 1.
+    let new_cookie = res
+        .headers()
+        .get_all(axum::http::header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|s| s.starts_with("session="))
+        .expect("Step 1 must mint a session cookie")
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+    let session_token_raw = new_cookie.trim_start_matches("session=");
+    let session_token = percent_encoding::percent_decode_str(session_token_raw)
+        .decode_utf8_lossy()
+        .into_owned();
+    let new_csrf: (String,) =
+        sqlx::query_as("SELECT csrf_token FROM sessions WHERE token = ?")
+            .bind(&session_token)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let new_csrf = new_csrf.0;
+
+    // ── GET /setup → Step 2 (provider keys) ──────────────────────
+    let res = router
+        .clone()
+        .oneshot(
+            Request::get("/setup")
+                .header("cookie", &new_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "GET /setup after Step 1 must render the next step (P1 regression gate)"
+    );
+    let html = String::from_utf8_lossy(
+        &axum::body::to_bytes(res.into_body(), 64 * 1024).await.unwrap(),
+    )
+    .into_owned();
+    assert!(
+        html.contains("name=\"google_books_api_key\""),
+        "GET /setup after Step 1 must render Step 2 (provider keys form), not Step 1 — got: {}",
+        &html[..html.len().min(400)]
+    );
+
+    // ── Step 2 ────────────────────────────────────────────────────
+    let body = format!(
+        "_csrf_token={new_csrf}&google_books_api_key=test_gb_key&\
+         omdb_api_key=&tmdb_api_key=&\
+         skip_omdb=1&skip_tmdb=1&_back=0"
+    );
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/setup/step-2")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", &new_cookie)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER, "Step 2 should 303");
+
+    let res = router
+        .clone()
+        .oneshot(
+            Request::get("/setup")
+                .header("cookie", &new_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let html = String::from_utf8_lossy(
+        &axum::body::to_bytes(res.into_body(), 64 * 1024).await.unwrap(),
+    )
+    .into_owned();
+    assert!(
+        html.contains("name=\"default_language\"")
+            && html.contains("name=\"overdue_threshold_days\""),
+        "GET /setup after Step 2 must render Step 3 (preferences)"
+    );
+
+    // ── Step 3 ────────────────────────────────────────────────────
+    let body = format!(
+        "_csrf_token={new_csrf}&default_language=en&overdue_threshold_days=21&_back=0"
+    );
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/setup/step-3")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", &new_cookie)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER, "Step 3 should 303");
+
+    let res = router
+        .clone()
+        .oneshot(
+            Request::get("/setup")
+                .header("cookie", &new_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let html = String::from_utf8_lossy(
+        &axum::body::to_bytes(res.into_body(), 64 * 1024).await.unwrap(),
+    )
+    .into_owned();
+    assert!(
+        html.contains("happy_admin"),
+        "GET /setup after Step 3 must render Step 4 (recap with admin username)"
+    );
+
+    // ── Step 4 / Complete ────────────────────────────────────────
+    let body = format!("_csrf_token={new_csrf}&_back=0");
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/setup/complete")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", &new_cookie)
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER, "complete should 303");
+    assert_eq!(res.headers().get("location").unwrap(), "/catalog");
+
+    // ── Post-completion: GET /setup must 404 ─────────────────────
+    let res = router
+        .clone()
+        .oneshot(
+            Request::get("/setup")
+                .header("cookie", &new_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::NOT_FOUND,
+        "GET /setup must 404 after the wizard completes"
+    );
+
+    // ── Verify settings persisted what Step 2/3 wrote ────────────
+    let row: (String,) = sqlx::query_as(
+        "SELECT setting_value FROM settings WHERE setting_key = 'google_books_api_key'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "test_gb_key");
+    let row: (String,) = sqlx::query_as(
+        "SELECT setting_value FROM settings WHERE setting_key = 'default_language'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "en");
+    let row: (String,) = sqlx::query_as(
+        "SELECT setting_value FROM settings WHERE setting_key = 'overdue_loan_threshold_days'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "21");
+
+    // ── Verify the admin row exists with the right credentials ───
+    let row: (String, String) = sqlx::query_as(
+        "SELECT username, role FROM users \
+         WHERE active = TRUE AND deleted_at IS NULL AND role = 'admin' \
+         ORDER BY id ASC LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "happy_admin");
+    assert_eq!(row.1, "admin");
+}
+
 /// `force_set_active(false)` keeps the gate inactive on subsequent
 /// requests (regression for the in-test cache flip).
 #[sqlx::test(migrations = "./migrations")]

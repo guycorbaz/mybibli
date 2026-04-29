@@ -1,0 +1,23 @@
+# Story 8-8 review P2 — wizard E2E override.
+#
+# The base compose at `tests/e2e/docker-compose.test.yml` bakes in
+# `MYBIBLI_SKIP_SETUP=1` so existing specs reach seeded routes
+# directly. The wizard's own smoke spec needs the OPPOSITE: a fresh
+# install where the gate fires and `/setup` is reachable. This file
+# overrides only the env var; everything else (DB, mock providers)
+# is reused from the base compose.
+#
+# Usage (host runner — see `.github/workflows/_gates.yml::e2e-wizard`):
+#
+#   docker compose \
+#       -f tests/e2e/docker-compose.test.yml \
+#       -f tests/e2e/docker-compose.wizard.yml \
+#       up -d --build --wait
+#   # then: wipe `users` so the gate predicate evaluates to "active"
+#   #       restart mybibli to pick up the empty `users` table
+#   #       run `npx playwright test specs/journeys/setup-wizard.spec.ts`
+#       with MYBIBLI_SETUP_E2E=1
+services:
+  mybibli:
+    environment:
+      MYBIBLI_SKIP_SETUP: ""

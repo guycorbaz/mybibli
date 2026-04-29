@@ -21,10 +21,14 @@ use crate::error::AppError;
 use crate::middleware::auth::generate_csrf_token;
 use crate::models::session::SessionModel;
 
-/// 32-byte URL-safe base64 token (44 chars w/ padding, matches the
-/// existing `routes/auth.rs::generate_session_token` format). Kept here
+/// 32-byte STANDARD base64 token (44 chars w/ padding, matches the
+/// existing `routes/auth.rs::generate_session_token` and the project
+/// convention for session tokens — CSRF tokens use `URL_SAFE_NO_PAD`,
+/// session tokens use `STANDARD`; the `+/=` chars get percent-encoded
+/// in cookie values and decoded by the session resolver). Kept here
 /// (rather than re-exporting from `routes/auth.rs`) so the `services`
-/// layer never depends on `routes`.
+/// layer never depends on `routes`. Story 8-8 review P15 corrected the
+/// previous "URL-safe" doc-comment.
 fn generate_session_token() -> String {
     use base64::Engine;
     let bytes: [u8; 32] = rand::random();

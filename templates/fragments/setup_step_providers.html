@@ -1,6 +1,11 @@
 {# Step 2: optional API keys for the three keyed metadata providers.
    Form posts to /setup/step-2. _csrf_token first.
-   Pre-filled with masked values when keys are already set. #}
+   Pre-filled with masked values when keys are already set.
+   Per AC5 (story 8-8 review P17): each row carries a per-provider
+   "Skip" checkbox. Skip + empty row ⇒ no-op. Skip + existing key ⇒
+   leave the key alone (do NOT clear). The handler enforces the
+   contract; the checkbox is a UX hint to the user that they can move
+   on without typing. #}
 <form method="POST" action="/setup/step-2" autocomplete="off">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
 
@@ -18,6 +23,10 @@
                 placeholder="{{ placeholder|e }}"
                 class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-stone-900 dark:text-stone-100 focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"
             >
+            <label class="mt-2 inline-flex items-center text-sm text-stone-600 dark:text-stone-300">
+                <input type="checkbox" name="skip_google_books" value="1" class="rounded border-stone-400 dark:border-stone-600 mr-2">
+                {{ skip_row_label }}
+            </label>
             <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">
                 {% if gb_masked.is_empty() %}{{ helper_not_set }}{% else %}{{ helper_set }}{% endif %}
             </p>
@@ -33,6 +42,10 @@
                 placeholder="{{ placeholder|e }}"
                 class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-stone-900 dark:text-stone-100 focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"
             >
+            <label class="mt-2 inline-flex items-center text-sm text-stone-600 dark:text-stone-300">
+                <input type="checkbox" name="skip_omdb" value="1" class="rounded border-stone-400 dark:border-stone-600 mr-2">
+                {{ skip_row_label }}
+            </label>
             <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">
                 {% if omdb_masked.is_empty() %}{{ helper_not_set }}{% else %}{{ helper_set }}{% endif %}
             </p>
@@ -48,6 +61,10 @@
                 placeholder="{{ placeholder|e }}"
                 class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-stone-900 dark:text-stone-100 focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"
             >
+            <label class="mt-2 inline-flex items-center text-sm text-stone-600 dark:text-stone-300">
+                <input type="checkbox" name="skip_tmdb" value="1" class="rounded border-stone-400 dark:border-stone-600 mr-2">
+                {{ skip_row_label }}
+            </label>
             <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">
                 {% if tmdb_masked.is_empty() %}{{ helper_not_set }}{% else %}{{ helper_set }}{% endif %}
             </p>

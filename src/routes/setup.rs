@@ -48,10 +48,12 @@ use crate::services::setup::{
 
 // ─── Constants ───────────────────────────────────────────────────
 
-/// Single source of truth for which providers expose an API key field
-/// in the wizard. Mirrored from `metadata::KEYED_PROVIDERS` (declared
-/// in the same PR as story 8-8 — Task 1 / Files to create).
-pub const KEYED_PROVIDERS: &[&str] = &["google_books", "omdb", "tmdb"];
+/// Re-export of `metadata::KEYED_PROVIDERS` for the wizard's Step 2 row
+/// rendering. The const lives in `src/metadata/mod.rs` (story 8-8
+/// review P3) so the keyed-provider list stays next to the providers
+/// themselves; both `routes/setup.rs` and `routes/admin_system.rs`
+/// import from there.
+pub use crate::metadata::KEYED_PROVIDERS;
 
 const PASSWORD_MIN_LEN: usize = 8;
 const USERNAME_MAX_LEN: usize = 100;
@@ -120,6 +122,18 @@ struct StepAdmin {
     submit_label: String,
     err_username: Option<String>,
     err_password: Option<String>,
+    /// Story 8-8 review P16 / D1: when an admin row already exists
+    /// (idempotent re-submit reachable via the Step 2 Previous button —
+    /// see P18), the panel renders in update-mode: pre-fill username,
+    /// show the "leave password blank to keep it" hint, label the
+    /// submit button "Update admin" instead of "Create admin account".
+    admin_already_exists: bool,
+    /// One-shot localized banner (story 8-8 review P20). Populated by
+    /// `setup_page` when a flash cookie carries a localized message
+    /// from the previous request — currently only the
+    /// `admin_already_created_by_other_browser` race notice. `None`
+    /// hides the banner.
+    flash_message: Option<String>,
 }
 
 #[derive(Template)]
@@ -139,6 +153,9 @@ struct StepProviders {
     previous_label: String,
     next_label: String,
     skip_label: String,
+    /// Per-row skip checkbox label (story 8-8 review P17). Same string
+    /// for all three rows.
+    skip_row_label: String,
 }
 
 #[derive(Template)]
@@ -231,6 +248,8 @@ fn render_step_admin(
     lang: &'static str,
     values: &StepFormValues,
     errors: &FieldErrors,
+    admin_already_exists: bool,
+    flash_message: Option<String>,
 ) -> Result<String, AppError> {
     let err_username = errors
         .get("username")
@@ -238,15 +257,27 @@ fn render_step_admin(
     let err_password = errors
         .get("password")
         .map(|&k| rust_i18n::t!(k, locale = lang).to_string());
+    let password_hint = if admin_already_exists {
+        rust_i18n::t!("setup.step_1_admin_exists_hint", locale = lang).to_string()
+    } else {
+        rust_i18n::t!("setup.step_1_password_hint", locale = lang).to_string()
+    };
+    let submit_label = if admin_already_exists {
+        rust_i18n::t!("setup.step_1_update_button", locale = lang).to_string()
+    } else {
+        rust_i18n::t!("setup.step_1_create_button", locale = lang).to_string()
+    };
     StepAdmin {
         csrf_token: csrf.to_string(),
         username_label: rust_i18n::t!("setup.step_1_username_label", locale = lang).to_string(),
         username_value: values.username.clone(),
         password_label: rust_i18n::t!("setup.step_1_password_label", locale = lang).to_string(),
-        password_hint: rust_i18n::t!("setup.step_1_password_hint", locale = lang).to_string(),
-        submit_label: rust_i18n::t!("setup.step_1_create_button", locale = lang).to_string(),
+        password_hint,
+        submit_label,
         err_username,
         err_password,
+        admin_already_exists,
+        flash_message,
     }
     .render()
     .map_err(|_| AppError::Internal("setup step 1 render failed".to_string()))
@@ -273,6 +304,7 @@ fn render_step_providers(
         previous_label: rust_i18n::t!("setup.previous_button", locale = lang).to_string(),
         next_label: rust_i18n::t!("setup.next_button", locale = lang).to_string(),
         skip_label: rust_i18n::t!("setup.step_2_skip_label", locale = lang).to_string(),
+        skip_row_label: rust_i18n::t!("setup.step_2_skip_row_label", locale = lang).to_string(),
     }
     .render()
     .map_err(|_| AppError::Internal("setup step 2 render failed".to_string()))
@@ -369,38 +401,11 @@ fn render_step_done(
 }
 
 /// Wrap a panel HTML string in the full `setup.html` page (extends
-/// `layouts/bare.html`). Adds the progress dots above the panel.
+/// `layouts/bare.html`). Adds the progress dots above the panel and
+/// stamps the response with `status` (default 200; callers pass 400 /
+/// 409 for validation re-renders). Story 8-8 review P12 collapsed the
+/// previous `render_page` / `render_page_with_status` duplicate pair.
 fn render_page(
-    csrf: &str,
-    lang: &'static str,
-    step: SetupStep,
-    panel_html: String,
-) -> Result<Response, AppError> {
-    let progress = render_progress(step, lang)?;
-    let title = rust_i18n::t!(step_title_key(step), locale = lang).to_string();
-    let _ = step; // Step number is reflected in the progress dots, not the page wrapper.
-    let html = SetupPage {
-        lang,
-        role: "anonymous",
-        csrf_token: csrf.to_string(),
-        title,
-        progress_dots_html: progress,
-        panel_html,
-    }
-    .render()
-    .map_err(|_| AppError::Internal("setup page render failed".to_string()))?;
-
-    let mut response: Response = (StatusCode::OK, html).into_response();
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("text/html; charset=utf-8"),
-    );
-    Ok(response)
-}
-
-/// Same as `render_page` but with a custom HTTP status (e.g. 400 for
-/// field-validation re-renders).
-fn render_page_with_status(
     csrf: &str,
     lang: &'static str,
     step: SetupStep,
@@ -409,7 +414,6 @@ fn render_page_with_status(
 ) -> Result<Response, AppError> {
     let progress = render_progress(step, lang)?;
     let title = rust_i18n::t!(step_title_key(step), locale = lang).to_string();
-    let _ = step; // Step number is reflected in the progress dots, not the page wrapper.
     let html = SetupPage {
         lang,
         role: "anonymous",
@@ -435,20 +439,47 @@ async fn resolve_active_step(
     state: &AppState,
 ) -> Result<(SetupStep, SetupPredicateInputs), AppError> {
     let inputs = setup::fetch_predicate_inputs(&state.pool).await?;
-    let step = match setup::resolve_step(&inputs) {
-        Some(s) => s,
-        None => {
-            // Wizard inactive → caller should 404.
-            return Err(AppError::NotFound("setup".to_string()));
-        }
-    };
-    // Step 1 = no admin yet. Otherwise, narrow to Step 2/3/4.
-    let resolved = if step == SetupStep::Admin {
-        SetupStep::Admin
-    } else {
-        setup::resolve_step_with_admin(&inputs)
-    };
-    Ok((resolved, inputs))
+    // `resolve_step` now narrows to Step 2/3/4 internally when an admin
+    // exists (post-P1 — see story 8-8 review). `None` ⇒ wizard inactive.
+    let step = setup::resolve_step(&inputs)
+        .ok_or_else(|| AppError::NotFound("setup".to_string()))?;
+    Ok((step, inputs))
+}
+
+/// Look up the active admin row (id, username, version). Returns
+/// `Ok(None)` if no admin exists yet — used by the Step 1 panel to
+/// decide between create and update mode (story 8-8 review P16 / D1).
+async fn fetch_active_admin(
+    pool: &crate::db::DbPool,
+) -> Result<Option<(u64, String, i32)>, AppError> {
+    let row: Option<(u64, String, i32)> = sqlx::query_as(
+        "SELECT id, username, version FROM users \
+         WHERE role = 'admin' AND active = TRUE AND deleted_at IS NULL \
+         ORDER BY id ASC LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+/// Cookie name carrying the "force a specific step on the next GET
+/// /setup" hint. Set by Step 2 Previous (story 8-8 review P18) so the
+/// resolver can be over-ridden once to render Step 1 in update-mode.
+const COOKIE_BACK_TARGET: &str = "setup_back_target";
+
+/// Cookie name carrying a one-shot flash message i18n key. Set by
+/// Step 1's `admin_already_created` race branch (story 8-8 review
+/// P20) so the losing browser sees a localized banner explaining the
+/// 303 instead of the silent re-resolution it used to get.
+const COOKIE_FLASH_KEY: &str = "setup_flash";
+
+/// Build a `Set-Cookie` value that clears a one-shot cookie. Used after
+/// `setup_page` reads + consumes the back-target / flash cookies.
+fn clear_cookie(name: &str) -> Cookie<'static> {
+    Cookie::build((name.to_string(), String::new()))
+        .path("/")
+        .max_age(time::Duration::seconds(0))
+        .build()
 }
 
 /// Pre-fill Step 2 form values from the current `settings` row contents.
@@ -543,12 +574,55 @@ pub async fn setup_page(
     State(state): State<AppState>,
     session: Session,
     Extension(locale): Extension<Locale>,
-) -> Result<Response, AppError> {
-    let (step, _inputs) = resolve_active_step(&state).await?;
+    jar: CookieJar,
+) -> Result<(CookieJar, Response), AppError> {
+    let (resolved_step, _inputs) = resolve_active_step(&state).await?;
+
+    // Story 8-8 review P18: Step 2's Previous button drops a
+    // `setup_back_target=admin` cookie before 303-ing. The next
+    // GET /setup picks Step 1 even though `resolve_step` would
+    // normally narrow to Step 2 (because admin exists). The cookie
+    // is consumed (cleared) after one render — single-use semantics.
+    let force_admin = jar
+        .get(COOKIE_BACK_TARGET)
+        .map(|c| c.value() == "admin")
+        .unwrap_or(false);
+    let step = if force_admin { SetupStep::Admin } else { resolved_step };
+
+    // Story 8-8 review P20: pop the one-shot flash cookie, resolve
+    // its i18n key to a localized message, render at the top of the
+    // panel.
+    let flash_key = jar
+        .get(COOKIE_FLASH_KEY)
+        .map(|c| c.value().to_string())
+        .filter(|v| !v.is_empty());
+    let flash_message = flash_key
+        .as_deref()
+        .map(|k| rust_i18n::t!(k, locale = locale.0).to_string());
+
     let csrf = &session.csrf_token;
     let panel_html = match step {
         SetupStep::Admin => {
-            render_step_admin(csrf, locale.0, &StepFormValues::default(), &FieldErrors::new())?
+            // Story 8-8 review P16: pre-fill the form with the existing
+            // admin row's username (if any) and flip the panel into
+            // update-mode by setting `admin_already_exists`.
+            let admin_row = fetch_active_admin(&state.pool).await?;
+            let admin_already_exists = admin_row.is_some();
+            let values = StepFormValues {
+                username: admin_row
+                    .as_ref()
+                    .map(|(_, u, _)| u.clone())
+                    .unwrap_or_default(),
+                ..Default::default()
+            };
+            render_step_admin(
+                csrf,
+                locale.0,
+                &values,
+                &FieldErrors::new(),
+                admin_already_exists,
+                flash_message.clone(),
+            )?
         }
         SetupStep::Providers => {
             let values = step2_values(&state).await?;
@@ -563,7 +637,18 @@ pub async fn setup_page(
             render_step_done(csrf, locale.0, &recap)?
         }
     };
-    render_page(csrf, locale.0, step, panel_html)
+
+    // Consume the one-shot cookies after the render reads them.
+    let mut jar = jar;
+    if force_admin {
+        jar = jar.add(clear_cookie(COOKIE_BACK_TARGET));
+    }
+    if flash_key.is_some() {
+        jar = jar.add(clear_cookie(COOKIE_FLASH_KEY));
+    }
+
+    let response = render_page(csrf, locale.0, step, panel_html, StatusCode::OK)?;
+    Ok((jar, response))
 }
 
 // ─── POST /setup/step-1 ──────────────────────────────────────────
@@ -599,13 +684,33 @@ pub async fn step_1_submit(
     let username = form.username.trim();
     let password = form.password.as_str();
 
+    // Story 8-8 review P16 / D1: detect whether an admin row already
+    // exists at submit time. If so, this is the idempotent re-submit
+    // path (reachable only via the Step 2 Previous flash cookie —
+    // see P18) and we route to `update_existing_admin` instead of
+    // `create_or_update_admin`. In update mode the password field is
+    // optional ("leave blank to keep current"); the helper accepts
+    // `Option<&str>` and skips re-hashing when `None`.
+    let existing_admin = fetch_active_admin(&state.pool).await?;
+    let admin_already_exists = existing_admin.is_some();
+
     let mut errors: FieldErrors = HashMap::new();
     if username.is_empty() {
         errors.insert("username", "setup.errors.username_required");
-    } else if username.len() > USERNAME_MAX_LEN {
+    } else if username.chars().count() > USERNAME_MAX_LEN {
+        // chars().count(), not len() — HTML maxlength counts chars,
+        // not UTF-8 bytes. Story 8-8 review P11.
         errors.insert("username", "setup.errors.username_too_long");
     }
-    if password.len() < PASSWORD_MIN_LEN {
+    // Password is required ONLY in create-mode. Update-mode allows an
+    // empty password to mean "keep the current one" (per AC3 idempotent
+    // semantics + P16); a non-empty new password still has to clear
+    // the 8-char minimum.
+    if admin_already_exists {
+        if !password.is_empty() && password.chars().count() < PASSWORD_MIN_LEN {
+            errors.insert("password", "setup.errors.password_too_short");
+        }
+    } else if password.chars().count() < PASSWORD_MIN_LEN {
         errors.insert("password", "setup.errors.password_too_short");
     }
 
@@ -614,8 +719,15 @@ pub async fn step_1_submit(
             username: username.to_string(),
             ..Default::default()
         };
-        let panel = render_step_admin(&session.csrf_token, lang, &values, &errors)?;
-        let resp = render_page_with_status(
+        let panel = render_step_admin(
+            &session.csrf_token,
+            lang,
+            &values,
+            &errors,
+            admin_already_exists,
+            None,
+        )?;
+        let resp = render_page(
             &session.csrf_token,
             lang,
             SetupStep::Admin,
@@ -625,7 +737,54 @@ pub async fn step_1_submit(
         return Ok((jar, resp));
     }
 
-    // Try to create the admin row in a single-flight transaction.
+    // Branch: create vs update. The two paths diverge after this point —
+    // create needs to mint an authenticated session + rotate the cookie;
+    // update just bumps the existing row's `password_hash` / `username`.
+    if let Some((existing_id, _existing_username, existing_version)) = existing_admin {
+        let new_password = (!password.is_empty()).then_some(password);
+        match setup::update_existing_admin(
+            &state.pool,
+            existing_id,
+            existing_version,
+            username,
+            new_password,
+        )
+        .await
+        {
+            Ok(()) => {}
+            Err(AppError::Conflict(ref code)) if code == "username_taken" => {
+                errors.insert("username", "setup.errors.username_taken");
+                let values = StepFormValues {
+                    username: username.to_string(),
+                    ..Default::default()
+                };
+                let panel = render_step_admin(
+                    &session.csrf_token,
+                    lang,
+                    &values,
+                    &errors,
+                    true,
+                    None,
+                )?;
+                let resp = render_page(
+                    &session.csrf_token,
+                    lang,
+                    SetupStep::Admin,
+                    panel,
+                    StatusCode::CONFLICT,
+                )?;
+                return Ok((jar, resp));
+            }
+            Err(e) => return Err(e),
+        }
+        // No session rotation in update-mode — the user is still
+        // authenticated under the existing admin's session (or
+        // anonymous; either way the cookie does not change). The
+        // gate cache also stays the same (admin_count stays 1).
+        return Ok((jar, Redirect::to("/setup").into_response()));
+    }
+
+    // Create-path: try to insert the admin row in the single-flight tx.
     let create_result = setup::create_or_update_admin(&state.pool, username, password).await;
     let new_user_id = match create_result {
         Ok(created) => created.user_id,
@@ -635,9 +794,15 @@ pub async fn step_1_submit(
                 username: username.to_string(),
                 ..Default::default()
             };
-            let panel =
-                render_step_admin(&session.csrf_token, lang, &values, &errors)?;
-            let resp = render_page_with_status(
+            let panel = render_step_admin(
+                &session.csrf_token,
+                lang,
+                &values,
+                &errors,
+                false,
+                None,
+            )?;
+            let resp = render_page(
                 &session.csrf_token,
                 lang,
                 SetupStep::Admin,
@@ -647,8 +812,18 @@ pub async fn step_1_submit(
             return Ok((jar, resp));
         }
         Err(AppError::Conflict(ref code)) if code == "admin_already_created" => {
-            // Another browser raced us. Refresh the gate cache and 303
-            // to /setup — the resolver will land on Step 2.
+            // Another browser raced us. Drop a one-shot flash cookie
+            // (story 8-8 review P20) so the next GET /setup renders a
+            // localized banner explaining the silent step transition;
+            // refresh the gate cache and 303.
+            let flash = Cookie::build((
+                COOKIE_FLASH_KEY.to_string(),
+                "setup.errors.admin_already_created_by_other_browser".to_string(),
+            ))
+            .path("/")
+            .http_only(true)
+            .build();
+            let jar = jar.add(flash);
             refresh_gate(&state.setup_gate, &state.pool).await;
             return Ok((jar, Redirect::to("/setup").into_response()));
         }
@@ -661,11 +836,15 @@ pub async fn step_1_submit(
     let prev = session.token.as_deref();
     let (new_token, _csrf) = authenticate_session(&state.pool, new_user_id, prev).await?;
 
+    // Match the login flow's authenticated-session cookie semantics
+    // (`routes/auth.rs::login`): no Max-Age ⇒ session cookie that expires
+    // when the browser closes. Anonymous-session cookies get 7 days
+    // (`session_resolve_middleware`); authenticated sessions do NOT.
+    // Story 8-8 review P5.
     let cookie = Cookie::build(("session", new_token))
         .http_only(true)
         .path("/")
         .same_site(SameSite::Lax)
-        .max_age(time::Duration::days(7))
         .build();
     let jar = jar.add(cookie);
 
@@ -683,38 +862,77 @@ pub struct Step2Form {
     pub omdb_api_key: String,
     #[serde(default)]
     pub tmdb_api_key: String,
+    /// Per-row "Skip" checkboxes (story 8-8 review P17 / AC5). HTML
+    /// checkboxes only submit when checked, so the absent-field case
+    /// must default to false. `serde` deserializes the urlencoded
+    /// `skip_<provider>=1` value via `deserialize_with` because plain
+    /// `bool` doesn't accept "1" / "on" / "true" interchangeably; the
+    /// wrapper accepts any non-empty string as `true`.
+    #[serde(default, deserialize_with = "deserialize_checkbox")]
+    pub skip_google_books: bool,
+    #[serde(default, deserialize_with = "deserialize_checkbox")]
+    pub skip_omdb: bool,
+    #[serde(default, deserialize_with = "deserialize_checkbox")]
+    pub skip_tmdb: bool,
     #[serde(default, rename = "_back")]
     pub back: bool,
     pub _csrf_token: String,
+}
+
+/// HTML checkbox values come through as the configured `value=` attribute
+/// (we use `value="1"`); an unchecked box is absent from the form body
+/// entirely (defaults to `false` via `#[serde(default)]`). Any non-empty
+/// string is treated as `true`. Story 8-8 review P17.
+fn deserialize_checkbox<'de, D>(de: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let s: Option<String> = Option::deserialize(de)?;
+    Ok(s.map(|v| !v.is_empty()).unwrap_or(false))
 }
 
 pub async fn step_2_submit(
     State(state): State<AppState>,
     _session: Session,
     Extension(_locale): Extension<Locale>,
+    jar: CookieJar,
     Form(form): Form<Step2Form>,
-) -> Result<Response, AppError> {
+) -> Result<(CookieJar, Response), AppError> {
     let _ = resolve_active_step(&state).await?;
 
     if form.back {
-        // Step 2 → Step 1: 303; resolver re-renders Step 1 in
-        // idempotent-update mode. The current implementation lands on
-        // Step 1 only if the admin row was somehow removed; otherwise
-        // `resolve_step_with_admin` lands back on Step 2. UX-acceptable.
-        return Ok(Redirect::to("/setup").into_response());
+        // Story 8-8 review P18 / D3: drop a one-shot back-target
+        // cookie. The next GET /setup reads it, forces Step 1 (in
+        // update-mode because admin already exists), and clears the
+        // cookie. The resolver alone would narrow to Step 2 again;
+        // the cookie is the override hint for "Previous was clicked".
+        let cookie = Cookie::build((COOKIE_BACK_TARGET.to_string(), "admin".to_string()))
+            .path("/")
+            .http_only(true)
+            .build();
+        let jar = jar.add(cookie);
+        return Ok((jar, Redirect::to("/setup").into_response()));
     }
 
-    // Helper: a value that exactly equals the masked display means
-    // "user did not change it" — skip the save to avoid persisting
-    // bullets as a key.
-    let strip_masked = |raw: &str| -> Option<String> {
+    // Per-row payload assembly — story 8-8 review P17 / AC5:
+    //
+    // Skip + empty-row  ⇒ no-op (None).
+    // Skip + existing key (masked display submitted back) ⇒ no-op
+    //                      (we never clear via the wizard; clearing
+    //                      requires the admin/system `_clear_<key>`
+    //                      explicit form field).
+    // !Skip + new value ⇒ save the new value.
+    // !Skip + masked-only value ⇒ no-op (user did not change it).
+    let resolve = |raw: &str, skip: bool| -> Option<String> {
+        if skip {
+            return None;
+        }
         let trimmed = raw.trim();
         if trimmed.is_empty() {
             return None;
         }
-        // Reject values that consist entirely of bullets + alphanumeric
-        // tail (the masked-display format) — the user submitted the
-        // pre-filled value unchanged.
+        // Submitting the masked display back unchanged ⇒ no save.
         if trimmed.starts_with("••••") {
             return None;
         }
@@ -722,13 +940,13 @@ pub async fn step_2_submit(
     };
 
     let payload = WizardProviderKeys {
-        google_books: strip_masked(&form.google_books_api_key),
-        omdb: strip_masked(&form.omdb_api_key),
-        tmdb: strip_masked(&form.tmdb_api_key),
+        google_books: resolve(&form.google_books_api_key, form.skip_google_books),
+        omdb: resolve(&form.omdb_api_key, form.skip_omdb),
+        tmdb: resolve(&form.tmdb_api_key, form.skip_tmdb),
     };
 
     setup::save_provider_keys(&state, &payload).await?;
-    Ok(Redirect::to("/setup").into_response())
+    Ok((jar, Redirect::to("/setup").into_response()))
 }
 
 // ─── POST /setup/step-3 ──────────────────────────────────────────
@@ -783,7 +1001,7 @@ pub async fn step_3_submit(
             ..Default::default()
         };
         let panel = render_step_preferences(&session.csrf_token, lang, &values, &errors)?;
-        return render_page_with_status(
+        return render_page(
             &session.csrf_token,
             lang,
             SetupStep::Preferences,
@@ -822,9 +1040,10 @@ pub async fn complete_submit(
     setup::complete_setup(&state).await?;
     refresh_gate(&state.setup_gate, &state.pool).await;
 
-    // HTMX-aware redirect to the catalog. The wizard form is a plain
-    // `<form method="POST">`, so 303 + Location is the dominant path;
-    // the HTMX branch is for paranoia.
+    // The wizard form is a plain `<form method="POST">` — no HTMX
+    // submit path exists. A 303 + Location: /catalog is the only
+    // redirect mode the browser follows for this form. Story 8-8
+    // review P13 dropped the misleading "HTMX-aware" comment.
     Ok(Redirect::to("/catalog").into_response())
 }
 

@@ -195,7 +195,17 @@ async fn main() {
     // live DB. Cached in `Arc<RwLock<>>` so the middleware can read it
     // per request without a round-trip; Step 1 / Step 4 handlers refresh
     // it via `middleware::setup_gate::refresh`.
-    let setup_gate = Arc::new(RwLock::new(SetupGateState::initialize(&pool).await));
+    // Fail-closed (story 8-8 review P21): if the boot-time DB query
+    // fails, panic so the operator sees the failure before any traffic
+    // hits a half-broken install. The previous fail-open behaviour
+    // silently disabled the wizard on a flaky DB and let the user
+    // reach an empty catalog — wrong fail-safe direction for a
+    // fresh-install flow.
+    let setup_gate = Arc::new(RwLock::new(
+        SetupGateState::initialize(&pool)
+            .await
+            .expect("setup-gate: cannot determine wizard state from DB at boot"),
+    ));
 
     // Build application
     let state = AppState {

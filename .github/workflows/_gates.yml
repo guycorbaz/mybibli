@@ -205,3 +205,106 @@ jobs:
           path: /tmp/compose-logs.txt
           retention-days: 7
           if-no-files-found: ignore
+
+  # Story 8-8 review P2 — wizard E2E lane.
+  # The base e2e job above runs against the seeded stack with
+  # `MYBIBLI_SKIP_SETUP=1`, so the wizard spec is dead in CI. This job
+  # spawns the same stack with the env var unset and an empty `users`
+  # table, then runs ONLY the wizard spec (gated behind
+  # MYBIBLI_SETUP_E2E=1 in the spec itself). Foundation Rule #7:
+  # every epic must have a smoke test running on every CI build.
+  e2e-wizard:
+    name: Playwright wizard E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: tests/e2e/package-lock.json
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
+
+      - name: Build and start E2E stack with wizard override
+        run: |
+          docker compose \
+            -f tests/e2e/docker-compose.test.yml \
+            -f tests/e2e/docker-compose.wizard.yml \
+            up -d --build --wait
+
+      - name: Wipe seeded users so the wizard predicate fires
+        run: |
+          docker compose \
+            -f tests/e2e/docker-compose.test.yml \
+            -f tests/e2e/docker-compose.wizard.yml \
+            exec -T db mariadb -uroot -proot_test mybibli_test \
+              -e "DELETE FROM users;"
+
+      - name: Restart mybibli so it re-reads MYBIBLI_SKIP_SETUP="" and the empty users table
+        run: |
+          docker compose \
+            -f tests/e2e/docker-compose.test.yml \
+            -f tests/e2e/docker-compose.wizard.yml \
+            restart mybibli
+          # Boot is fast — give the listener a moment to bind before
+          # Playwright connects. Cargo's debug-build container starts in
+          # ~2 s on warm CI; the 5-s sleep here is generous.
+          sleep 5
+
+      - name: Install E2E deps
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run wizard spec
+        working-directory: tests/e2e
+        env:
+          MYBIBLI_SETUP_E2E: "1"
+        run: npx playwright test specs/journeys/setup-wizard.spec.ts
+
+      - name: Collect compose logs
+        if: always()
+        run: |
+          docker compose \
+            -f tests/e2e/docker-compose.test.yml \
+            -f tests/e2e/docker-compose.wizard.yml \
+            logs --no-color > /tmp/wizard-compose-logs.txt || true
+
+      - name: Stop E2E stack
+        if: always()
+        run: |
+          docker compose \
+            -f tests/e2e/docker-compose.test.yml \
+            -f tests/e2e/docker-compose.wizard.yml \
+            down -v || true
+
+      - name: Upload Playwright report on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-wizard-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tests/e2e/playwright-report/
+            tests/e2e/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload compose logs on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wizard-compose-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/wizard-compose-logs.txt
+          retention-days: 7
+          if-no-files-found: ignore

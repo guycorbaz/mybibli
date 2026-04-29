@@ -65,22 +65,18 @@ impl Default for SetupGateState {
 
 impl SetupGateState {
     /// Build the initial state at process startup. Reads the bypass env
-    /// var and queries the DB for the predicate inputs. If the DB query
-    /// fails, we conservatively mark the wizard as inactive (no
-    /// redirect-loop on a flaky DB at boot time) and log a warning —
-    /// the next handler call will get the real error.
-    pub async fn initialize(pool: &DbPool) -> Self {
+    /// var and queries the DB for the predicate inputs.
+    ///
+    /// **Fails closed (story 8-8 review P21):** if the DB query errors,
+    /// the function returns `Err`. `main.rs` propagates the error and
+    /// the process aborts before binding the listener, so the operator
+    /// notices and fixes the DB before any traffic hits a half-broken
+    /// install. The previous fail-open behaviour silently disabled the
+    /// wizard on a flaky boot DB and let the user reach an empty
+    /// catalog — bad fail-safe direction for a fresh-install flow.
+    pub async fn initialize(pool: &DbPool) -> Result<Self, AppError> {
         let bypass_via_env = read_skip_env();
-        let active = match fetch_active(pool).await {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    "setup-gate: failed to compute initial active state; assuming inactive"
-                );
-                false
-            }
-        };
+        let active = fetch_active(pool).await?;
         if bypass_via_env {
             tracing::info!("setup-gate: MYBIBLI_SKIP_SETUP set — wizard middleware disabled");
         } else if active {
@@ -88,10 +84,10 @@ impl SetupGateState {
         } else {
             tracing::info!("setup-gate: wizard inactive");
         }
-        Self {
+        Ok(Self {
             active,
             bypass_via_env,
-        }
+        })
     }
 }
 
@@ -122,9 +118,15 @@ async fn fetch_active(pool: &DbPool) -> Result<bool, AppError> {
     .fetch_optional(pool)
     .await?;
 
+    // Strict RFC3339 parse — matches `services::setup::fetch_predicate_inputs`.
+    // A garbage / malformed timestamp value is treated as "wizard NOT yet
+    // completed" so the gate keeps firing and `/setup` stays reachable.
+    // Story 8-8 review P10 aligned this with the resolver's parser.
     let setup_completed = match completed_row {
-        Some((v,)) => !v.is_empty(),
-        None => false,
+        Some((v,)) if !v.is_empty() => {
+            chrono::DateTime::parse_from_rfc3339(&v).is_ok()
+        }
+        _ => false,
     };
 
     Ok(admin_count.0 == 0 && !setup_completed)
@@ -158,6 +160,13 @@ pub async fn refresh(state_arc: &Arc<RwLock<SetupGateState>>, pool: &DbPool) {
 /// by integration tests (which seed DB state manually and need the
 /// cache to match). Production code paths must go through `refresh`
 /// so the cache stays a faithful mirror of the DB predicate.
+///
+/// Gated behind `cfg(any(test, debug_assertions))` so the helper is
+/// reachable from unit tests, integration tests, and `cargo run`
+/// development builds, but compiled out of `--release` artifacts —
+/// production code cannot flip the cache without going through
+/// `refresh`. Story 8-8 review P7.
+#[cfg(any(test, debug_assertions))]
 pub fn force_set_active(state_arc: &Arc<RwLock<SetupGateState>>, active: bool) {
     let mut guard = state_arc.write().expect("setup_gate lock poisoned");
     guard.active = active;
