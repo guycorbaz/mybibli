@@ -1,6 +1,6 @@
 # Story 8.5: System settings
 
-Status: review
+Status: done
 
 Epic: 8 — Administration & Configuration
 Requirements mapping: FR74 (overdue threshold configurable), FR75 (per-provider API keys configurable), AR9 (`Arc<RwLock<AppSettings>>` reload on save — load-bearing for "no restart needed"), NFR37 (single-host local — accepted plaintext API key storage), Story 7-3 locale resolution chain (default-language is fallback level 5 — last-resort default behind cookie / user pref / Accept-Language), Foundation Rules #1–#7
@@ -722,6 +722,8 @@ Round 1 — adversarial code review (2026-04-29). Three reviewers: Blind Hunter 
 - [x] [Review][Patch] `migrate_legacy_env_vars`: whitespace and control characters passed through. **Fix applied:** `.trim()` then `is_control()` reject with warn-log; empty-after-trim is also skipped.
 - [x] [Review][Patch] `migrate_legacy_env_vars` tests parallelism risk. **Fix applied:** introduced a process-wide `static ENV_VAR_TEST_LOCK: std::sync::Mutex<()>`; merged the two tests into one (`migrate_legacy_env_vars_writes_when_empty_skips_when_set`) so the lock is acquired once for both branches. `#[allow(clippy::await_holding_lock)]` documented as intentional.
 - [x] [Review][Patch][Skipped → Defer] Validation error path returns bare 400 with no form fragment re-render — skipped from round-1 batch-apply because the fix requires HX-Reswap header threading or a JSON config change to swap on a 4xx. Tracked as **GitHub issue #91** (`type:code-review-finding`).
+
+**Round 2 (2026-04-29):** focused adversarial re-review of the round-1 fix diff (commit `d086880`, 457 lines). Walked all 8 patches against the live codebase. Result: **clean — no Medium+ regressions introduced**. Notes on intentional design choices (LOW, not findings): `MIN_MASK_REVEAL_LEN=8` exactly matches OMDb's 8-char key length (50% reveal — borderline but explicit and documented); `validate_default_language` stays case-strict on the form input while `load_from_db` accepts case-insensitive — intentional asymmetry (form is the controlled path, manual SQL edits are the unforeseen path). Foundation Rule #6 satisfied; story may close.
 - [x] [Review][Patch] Missing role-gating tests on `/admin/system/providers`, `/admin/system/language`, and anonymous on all three POSTs. **Fix applied:** added 5 integration tests — 2 librarian (`librarian_gets_403_on_save_providers`, `librarian_gets_403_on_save_language`) + 3 anonymous (`anonymous_gets_303_on_save_loans`, `_providers`, `_language`, all assert 303 → `/login`). NOTE: the spec's "303 on all 4 routes" expectation IS correct, but for an unexpected reason — anonymous fails the CSRF middleware (no `_csrf_token` in body, fresh anon session has its own minted token), which detects `is_form && !is_htmx` and responds with 303 → `/login` rather than the HTMX 403 envelope (see `src/middleware/csrf.rs::build_rejection_response`).
 - [x] [Review][Patch] `default_language` case-insensitive normalization. **Fix applied:** `value.to_lowercase()` before match, so `'FR'`/`'EN'` from a direct SQL edit are accepted.
 - [x] [Review][Patch] Overdue threshold input lacked `step="1"`. **Fix applied:** added `step="1"` to the existing `min="1" max="365" required`.
