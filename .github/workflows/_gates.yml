@@ -110,7 +110,8 @@ jobs:
             --test find_by_location_dewey \
             --test metadata_fetch_dewey \
             --test metadata_fetch_race \
-            --test seeded_users
+            --test seeded_users \
+            --test setup_wizard
 
       - name: Collect MariaDB logs on failure
         if: failure() || cancelled()

@@ -659,7 +659,7 @@ pub struct Step1Form {
     pub username: String,
     #[serde(default)]
     pub password: String,
-    #[serde(default, rename = "_back")]
+    #[serde(default, rename = "_back", deserialize_with = "deserialize_bool_form")]
     pub back: bool,
     pub _csrf_token: String,
 }
@@ -868,28 +868,36 @@ pub struct Step2Form {
     /// `skip_<provider>=1` value via `deserialize_with` because plain
     /// `bool` doesn't accept "1" / "on" / "true" interchangeably; the
     /// wrapper accepts any non-empty string as `true`.
-    #[serde(default, deserialize_with = "deserialize_checkbox")]
+    #[serde(default, deserialize_with = "deserialize_bool_form")]
     pub skip_google_books: bool,
-    #[serde(default, deserialize_with = "deserialize_checkbox")]
+    #[serde(default, deserialize_with = "deserialize_bool_form")]
     pub skip_omdb: bool,
-    #[serde(default, deserialize_with = "deserialize_checkbox")]
+    #[serde(default, deserialize_with = "deserialize_bool_form")]
     pub skip_tmdb: bool,
-    #[serde(default, rename = "_back")]
+    #[serde(default, rename = "_back", deserialize_with = "deserialize_bool_form")]
     pub back: bool,
     pub _csrf_token: String,
 }
 
-/// HTML checkbox values come through as the configured `value=` attribute
-/// (we use `value="1"`); an unchecked box is absent from the form body
-/// entirely (defaults to `false` via `#[serde(default)]`). Any non-empty
-/// string is treated as `true`. Story 8-8 review P17.
-fn deserialize_checkbox<'de, D>(de: D) -> Result<bool, D::Error>
+/// Deserialize an HTML form bool field that can carry `"0"` / `"1"` /
+/// `"true"` / `"false"` / `"TRUE"` (or be absent entirely). Plain
+/// `bool` deserialization in `serde_urlencoded` only accepts the exact
+/// strings `"true"` / `"false"` and otherwise 422s — but HTML form
+/// buttons typically send the literal `value=` attribute, which is
+/// `"0"` or `"1"` for the wizard's Next/Previous pair. Story 8-8
+/// review P17 + post-merge CI fix: this helper accepts both shapes
+/// and is shared by the `_back` field on every step form plus the
+/// per-row `skip_*` checkboxes on Step 2.
+fn deserialize_bool_form<'de, D>(de: D) -> Result<bool, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     use serde::Deserialize;
     let s: Option<String> = Option::deserialize(de)?;
-    Ok(s.map(|v| !v.is_empty()).unwrap_or(false))
+    Ok(matches!(
+        s.as_deref(),
+        Some("1") | Some("true") | Some("TRUE") | Some("on")
+    ))
 }
 
 pub async fn step_2_submit(
@@ -957,7 +965,7 @@ pub struct Step3Form {
     pub default_language: String,
     #[serde(default)]
     pub overdue_threshold_days: String,
-    #[serde(default, rename = "_back")]
+    #[serde(default, rename = "_back", deserialize_with = "deserialize_bool_form")]
     pub back: bool,
     pub _csrf_token: String,
 }
@@ -1018,7 +1026,7 @@ pub async fn step_3_submit(
 
 #[derive(Deserialize)]
 pub struct CompleteForm {
-    #[serde(default, rename = "_back")]
+    #[serde(default, rename = "_back", deserialize_with = "deserialize_bool_form")]
     pub back: bool,
     pub _csrf_token: String,
 }
