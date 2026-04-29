@@ -39,7 +39,7 @@
 # The epics document contains FR/NFR/AR/UX-DR assignments per epic.
 
 generated: 2026-03-29
-last_updated: 2026-04-29 # Story 8-8 development started — status ready-for-dev → in-progress (bmad-dev-story).
+last_updated: 2026-04-29 # Story 8-8 implementation complete — status in-progress → review. Gate middleware, services, routes, templates, i18n, audit gates, MYBIBLI_SKIP_SETUP env var, sqlx + E2E specs all wired.
 project: mybibli
 project_key: NOKEY
 tracking_system: file-system
@@ -153,7 +153,7 @@ development_status:
   8-5-system-settings: done
   8-6-trash-view-and-restore: done # folded into 8-7 PR (consolidated trash panel + restore handlers + permanent delete + auto-purge shipped as one unit, PR #59)
   8-7-permanent-delete-and-auto-purge: done
-  8-8-first-launch-setup-wizard: in-progress
+  8-8-first-launch-setup-wizard: review
   epic-8-retrospective: optional
 
   # Epic 9: Polish UX & Accessibilité

@@ -3,9 +3,9 @@ story_key: 8-8-first-launch-setup-wizard
 epic: 8
 story: 8
 title: First-launch setup wizard
-status: ready-for-dev
+status: review
 created: 2026-04-29
-last_updated: 2026-04-29 (validation pass — applied 19 findings)
+last_updated: 2026-04-29 (implementation complete — handed off to code review)
 estimated_effort: large
 dependencies:
   - 8-1-admin-shell-and-health-tab          # AdminTab handlers must already exist (`/admin?tab=system`) so post-wizard redirect works
@@ -491,16 +491,66 @@ Recent merged work (relevant for this story):
 
 ### Agent Model Used
 
-(To be populated)
+Claude Opus 4.7 (1M context) via Claude Code (`bmad-dev-story` workflow).
 
 ### Debug Log References
 
-(To be populated)
+- `cargo check --all-targets` — green (final).
+- `cargo clippy --all-targets -- -D warnings` — green (final).
+- `cargo test --lib` — 523 unit tests pass, 96 `#[sqlx::test]`-gated tests skipped locally (no DB on host); the new wizard suites (`config`, `middleware::setup_gate`, `services::setup`, `services::admin_system`, `services::auth`, `routes::setup`) contribute 26 newly-passing unit tests.
+- `cargo test --lib templates_audit::` — 4/4 green (CSP `no_inline_markup_in_templates`, `forms_include_csrf_token`, `csrf_exempt_routes_frozen`, `hx_confirm_matches_allowlist`).
+- The wizard's sqlx integration tests (`tests/setup_wizard.rs`) and the Playwright spec (`tests/e2e/specs/journeys/setup-wizard.spec.ts`) are wired but require a live DB / a sibling docker-compose without `MYBIBLI_SKIP_SETUP`; CI will exercise the rust integration tests, the E2E spec is gated by `MYBIBLI_SETUP_E2E=1` per its header runbook.
 
 ### Completion Notes List
 
-(To be populated)
+- **Layer order at request time** is now `CSP → SetupGate → SessionResolve → Locale → CSRF → handler` (Task 2 in `routes/mod.rs`).
+- **`SetupGateState` cache** is `Arc<RwLock<>>` in `AppState` (`src/lib.rs`); refreshed by `middleware::setup_gate::refresh` after Step 1 + Step 4 only. `force_set_active` is exposed (no `#[cfg(test)]` gate) so external integration tests can flip the cache without the DB.
+- **`MYBIBLI_SKIP_SETUP`** is read once at startup with the strict `matches!("1" | "true" | "TRUE")` accept-set (R3-N6). Added to `.env.example`, `tests/e2e/docker-compose.test.yml`, `docker-compose.dev.yml`, and documented in CLAUDE.md.
+- **Step resolution** is split into `services::setup::fetch_predicate_inputs` (DB) + pure `resolve_step` / `resolve_step_with_admin` (16-state truth table covered by the unit tests — no DB needed).
+- **Step 1 single-flight** is implemented in `services::setup::create_or_update_admin` via `BEGIN → SELECT COUNT → INSERT → COMMIT`; UNIQUE collisions surface as `Conflict("username_taken")`, the existing-admin race surfaces as `Conflict("admin_already_created")`.
+- **Session rotation** is shared via `services::auth::authenticate_session` (extracted from `routes/auth.rs::login`) — call sites: login + Step 1.
+- **K/V settings writes** are shared via `services::admin_system::{save_setting, reload_settings_cache, validate_*}` (rule of three: admin/system + wizard). The complex provider-key action machinery (`action_for`, `apply_provider_action`) stays in `routes/admin_system.rs` because only the admin form's clear-checkbox UI needs it; the wizard uses a simpler "set if non-empty and not the masked display" pass.
+- **Templates** are CSP-clean (`templates_audit::no_inline_markup_in_templates` is green): pure form submits with two submit buttons (`name="_back" value="0|1"`) for Next/Previous; progress dots use Tailwind `animate-pulse`. `bare.html` now carries `<meta name="csrf-token">` matching `base.html`.
+- **i18n keys** added under the `setup:` and `error.system:`/`error.csrf*` umbrellas in both `locales/en.yml` and `locales/fr.yml`.
+- **Architecture & docs** updated: domain map row in `architecture.md` lists every wizard surface; CLAUDE.md gains a "First-launch setup wizard (story 8-8)" bullet and a `MYBIBLI_SKIP_SETUP=` entry in the build-commands block.
 
 ### File List
 
-(To be populated)
+**New files:**
+- `src/middleware/setup_gate.rs` (gate middleware + cache state + tests)
+- `src/routes/setup.rs` (5 handlers + form structs + render helpers + tests)
+- `src/services/setup.rs` (`SetupStep`, predicate, resolver, writers, tests)
+- `src/services/auth.rs` (`authenticate_session` shared with `routes/auth.rs::login`)
+- `src/services/admin_system.rs` (settings save/reload helpers shared with `routes/admin_system.rs`)
+- `migrations/20260429000000_add_setup_wizard_settings_keys.sql`
+- `templates/pages/setup.html`
+- `templates/components/setup_progress.html`
+- `templates/fragments/setup_step_admin.html`
+- `templates/fragments/setup_step_providers.html`
+- `templates/fragments/setup_step_preferences.html`
+- `templates/fragments/setup_step_done.html`
+- `tests/setup_wizard.rs` (sqlx integration tests)
+- `tests/e2e/specs/journeys/setup-wizard.spec.ts` (smoke + resume — gated by `MYBIBLI_SETUP_E2E=1`)
+
+**Modified files:**
+- `src/lib.rs` (`AppState.setup_gate`)
+- `src/main.rs` (`SetupGateState::initialize` + AppState wiring)
+- `src/middleware/mod.rs` (`pub mod setup_gate;`)
+- `src/routes/mod.rs` (5 wizard routes + `setup_gate_middleware` layer)
+- `src/services/mod.rs` (`pub mod admin_system; pub mod auth; pub mod setup;`)
+- `src/config.rs` (`AppSettings.setup_completed_at` + `setup_step_3_done` + parse arms + tests)
+- `src/middleware/csrf.rs` (test fixture: `setup_gate` field)
+- `src/middleware/locale.rs` (test fixture: `setup_gate` field)
+- `src/routes/auth.rs` (test fixture: `setup_gate` field — both fixtures)
+- `tests/admin_system_integration.rs`, `tests/csrf_integration.rs`, `tests/role_gating.rs`, `tests/session_cookie_collision.rs` (test fixtures: `setup_gate` field)
+- `templates/layouts/bare.html` (`<meta name="csrf-token">`)
+- `locales/en.yml` + `locales/fr.yml` (`setup:` and error keys)
+- `tests/e2e/docker-compose.test.yml` + `docker-compose.dev.yml` (`MYBIBLI_SKIP_SETUP: "1"`)
+- `.env.example` (`MYBIBLI_SKIP_SETUP=` + `MYBIBLI_SKIP_STARTUP_PURGE=` documentation)
+- `CLAUDE.md` (env-var entry + "First-launch setup wizard" bullet under Key Patterns)
+- `_bmad-output/planning-artifacts/architecture.md` (domain-map row for Wizard)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (`8-8-first-launch-setup-wizard: in-progress → review`)
+
+### Change Log
+
+- 2026-04-29 — initial implementation across Tasks 1-12: schema migration, gate middleware, wizard routes + handlers + templates, i18n EN/FR, CSP/CSRF audit-clean, env-var bypass, doc updates, integration + E2E spec.

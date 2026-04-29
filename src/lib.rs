@@ -20,6 +20,7 @@ use std::sync::{Arc, RwLock};
 use config::AppSettings;
 use db::DbPool;
 use metadata::registry::ProviderRegistry;
+use middleware::setup_gate::SetupGateState;
 use services::admin_health::MariadbVersionCache;
 use tasks::provider_health::ProviderHealthMap;
 
@@ -38,6 +39,12 @@ pub struct AppState {
     /// `services::admin_health` for the MariaDB version cache.
     pub provider_health: ProviderHealthMap,
     pub mariadb_version_cache: MariadbVersionCache,
+    /// Story 8-8: cached gate predicate for the first-launch setup wizard.
+    /// `(admin_count == 0) AND (setup_completed_at IS NONE)` ⇒ wizard
+    /// active ⇒ middleware redirects every non-whitelisted request to
+    /// `/setup`. Refreshed by Step 1 (admin row created) and Step 4
+    /// (`setup_completed_at` written) inside the wizard handlers.
+    pub setup_gate: Arc<RwLock<SetupGateState>>,
 }
 
 impl AppState {

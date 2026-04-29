@@ -1,0 +1,71 @@
+{# Step 2: optional API keys for the three keyed metadata providers.
+   Form posts to /setup/step-2. _csrf_token first.
+   Pre-filled with masked values when keys are already set. #}
+<form method="POST" action="/setup/step-2" autocomplete="off">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+
+    <p class="text-sm text-stone-600 dark:text-stone-300 mb-4">{{ intro }}</p>
+    <p class="text-sm text-stone-500 dark:text-stone-400 mb-6">{{ skip_label }}</p>
+
+    <div class="space-y-4">
+        <div>
+            <label for="setup-gb" class="block text-sm font-medium text-stone-700 dark:text-stone-200">{{ label_google_books }}</label>
+            <input
+                type="text"
+                id="setup-gb"
+                name="google_books_api_key"
+                value="{{ gb_masked|e }}"
+                placeholder="{{ placeholder|e }}"
+                class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-stone-900 dark:text-stone-100 focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"
+            >
+            <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">
+                {% if gb_masked.is_empty() %}{{ helper_not_set }}{% else %}{{ helper_set }}{% endif %}
+            </p>
+        </div>
+
+        <div>
+            <label for="setup-omdb" class="block text-sm font-medium text-stone-700 dark:text-stone-200">{{ label_omdb }}</label>
+            <input
+                type="text"
+                id="setup-omdb"
+                name="omdb_api_key"
+                value="{{ omdb_masked|e }}"
+                placeholder="{{ placeholder|e }}"
+                class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-stone-900 dark:text-stone-100 focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"
+            >
+            <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">
+                {% if omdb_masked.is_empty() %}{{ helper_not_set }}{% else %}{{ helper_set }}{% endif %}
+            </p>
+        </div>
+
+        <div>
+            <label for="setup-tmdb" class="block text-sm font-medium text-stone-700 dark:text-stone-200">{{ label_tmdb }}</label>
+            <input
+                type="text"
+                id="setup-tmdb"
+                name="tmdb_api_key"
+                value="{{ tmdb_masked|e }}"
+                placeholder="{{ placeholder|e }}"
+                class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-stone-900 dark:text-stone-100 focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"
+            >
+            <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">
+                {% if tmdb_masked.is_empty() %}{{ helper_not_set }}{% else %}{{ helper_set }}{% endif %}
+            </p>
+        </div>
+    </div>
+
+    <div class="mt-6 flex items-center justify-between gap-3">
+        <button
+            type="submit"
+            name="_back"
+            value="1"
+            class="inline-flex items-center px-4 py-2 rounded-md bg-stone-200 text-stone-900 dark:bg-stone-700 dark:text-stone-100 font-medium hover:bg-stone-300 dark:hover:bg-stone-600 focus:outline-none focus:ring-2 focus:ring-stone-500"
+        >{{ previous_label }}</button>
+        <button
+            type="submit"
+            name="_back"
+            value="0"
+            class="inline-flex items-center px-4 py-2 rounded-md bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 font-medium hover:bg-stone-700 dark:hover:bg-stone-300 focus:outline-none focus:ring-2 focus:ring-stone-500"
+        >{{ next_label }}</button>
+    </div>
+</form>

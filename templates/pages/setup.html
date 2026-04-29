@@ -1,0 +1,21 @@
+{% extends "layouts/bare.html" %}
+
+{% block title %}{{ title }} — mybibli{% endblock %}
+
+{% block body_class %}bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 min-h-full{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex flex-col items-center justify-start py-10 px-4">
+    <div class="w-full max-w-2xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold tracking-tight">{{ title }}</h1>
+        </header>
+
+        {{ progress_dots_html|safe }}
+
+        <section class="mt-8 bg-white dark:bg-stone-800 rounded-lg shadow-sm border border-stone-200 dark:border-stone-700 p-6">
+            {{ panel_html|safe }}
+        </section>
+    </div>
+</div>
+{% endblock %}

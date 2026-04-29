@@ -24,6 +24,11 @@ services:
       TMDB_API_KEY: "test-tmdb-key"
       COVERS_DIR: "/tmp/test-covers"
       TEST_MODE: "1"
+      # Story 8-8: skip the first-launch setup wizard middleware so existing
+      # specs (which inject seeded sessions) reach their target routes.
+      # Accepts only "1" / "true" / "TRUE". The wizard's own E2E spec
+      # spawns a sibling stack WITHOUT this flag (see setup-wizard.spec.ts).
+      MYBIBLI_SKIP_SETUP: "1"
     depends_on:
       db:
         condition: service_healthy

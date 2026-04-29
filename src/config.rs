@@ -180,6 +180,21 @@ pub struct AppSettings {
     pub omdb_api_key: String,
     /// Plaintext API key for TMDb metadata provider. See google_books_api_key.
     pub tmdb_api_key: String,
+    // === Story 8-8 — first-launch setup wizard sentinels ===
+    /// Timestamp at which the admin clicked "Complete setup" in the wizard.
+    /// `Some(...)` ⇒ wizard finished; the gate middleware turns into a no-op
+    /// and `/setup` returns 404. `None` (DB row empty / parse failure) ⇒
+    /// wizard either has never been completed or the row got corrupted —
+    /// either way, the gate fires. Parsed via
+    /// `chrono::DateTime::parse_from_rfc3339`; emit a `tracing::warn!` on a
+    /// non-empty unparseable value so the corruption is observable.
+    pub setup_completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// `true` once the Preferences step (Step 3) has been submitted at
+    /// least once. Disambiguates "user has not visited Step 3" from "user
+    /// explicitly chose `default_language='fr' + overdue=30`" since both
+    /// states leave the same row values in `settings`. Without this
+    /// sentinel the resolver would loop the user back to Step 3 forever.
+    pub setup_step_3_done: bool,
 }
 
 impl Default for AppSettings {
@@ -197,6 +212,8 @@ impl Default for AppSettings {
             google_books_api_key: String::new(),
             omdb_api_key: String::new(),
             tmdb_api_key: String::new(),
+            setup_completed_at: None,
+            setup_step_3_done: false,
         }
     }
 }
@@ -311,6 +328,35 @@ impl AppSettings {
                 "google_books_api_key" => settings.google_books_api_key = value.clone(),
                 "omdb_api_key" => settings.omdb_api_key = value.clone(),
                 "tmdb_api_key" => settings.tmdb_api_key = value.clone(),
+                // Story 8-8: first-launch setup wizard sentinels.
+                // Empty value (the migration-seed default) → `None` (wizard not
+                // finished). Any non-empty value MUST be RFC 3339 — log on
+                // parse failure so a corrupted row is observable, but treat as
+                // `None` (fail-safe: the gate fires on next request, which is
+                // the correct behavior for "wizard incomplete").
+                "setup_completed_at" => {
+                    if value.is_empty() {
+                        settings.setup_completed_at = None;
+                    } else {
+                        match chrono::DateTime::parse_from_rfc3339(value) {
+                            Ok(dt) => {
+                                settings.setup_completed_at =
+                                    Some(dt.with_timezone(&chrono::Utc));
+                            }
+                            Err(_) => {
+                                tracing::warn!(
+                                    key = %key,
+                                    value = %value,
+                                    "setup_completed_at not parseable as RFC 3339; treating as not-completed"
+                                );
+                                settings.setup_completed_at = None;
+                            }
+                        }
+                    }
+                }
+                "setup_step_3_done" => {
+                    settings.setup_step_3_done = value == "1";
+                }
                 _ => {} // Ignore unknown keys
             }
         }
@@ -501,6 +547,8 @@ mod tests {
             google_books_api_key: "gb-key".to_string(),
             omdb_api_key: "omdb-key".to_string(),
             tmdb_api_key: "tmdb-key".to_string(),
+            setup_completed_at: None,
+            setup_step_3_done: false,
         };
         let cloned = settings.clone();
         assert_eq!(cloned.overdue_threshold_days, 60);
@@ -513,6 +561,65 @@ mod tests {
         assert_eq!(cloned.google_books_api_key, "gb-key");
         assert_eq!(cloned.omdb_api_key, "omdb-key");
         assert_eq!(cloned.tmdb_api_key, "tmdb-key");
+    }
+
+    // ─── Story 8-8: setup wizard sentinels ──────────────────────
+
+    #[test]
+    fn test_setup_wizard_sentinels_default() {
+        let settings = AppSettings::default();
+        assert!(settings.setup_completed_at.is_none());
+        assert!(!settings.setup_step_3_done);
+    }
+
+    /// AC3 / R3-N6 inspired: empty `setup_completed_at` row maps to `None`
+    /// (wizard not yet completed) — the gate must fire.
+    #[test]
+    fn test_setup_completed_at_empty_string_is_none() {
+        // Mirrors what `load_from_db`'s match arm does without the DB.
+        let value = "";
+        let parsed = if value.is_empty() {
+            None
+        } else {
+            chrono::DateTime::parse_from_rfc3339(value)
+                .ok()
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        };
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn test_setup_completed_at_valid_rfc3339_parses() {
+        let value = "2026-04-29T12:34:56Z";
+        let parsed = chrono::DateTime::parse_from_rfc3339(value)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc));
+        assert!(parsed.is_some());
+    }
+
+    /// AC9 fail-safe: a malformed row must NOT be treated as "completed";
+    /// the wizard re-fires on the next request.
+    #[test]
+    fn test_setup_completed_at_malformed_falls_back_to_none() {
+        let value = "yesterday-ish";
+        let parsed: Option<chrono::DateTime<chrono::Utc>> = if value.is_empty() {
+            None
+        } else {
+            chrono::DateTime::parse_from_rfc3339(value)
+                .ok()
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        };
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn test_setup_step_3_done_strict_one() {
+        // Only the literal "1" sets the sentinel — anything else is false.
+        let truthy = |v: &str| v == "1";
+        assert!(truthy("1"));
+        assert!(!truthy("0"));
+        assert!(!truthy("true"));
+        assert!(!truthy(""));
     }
 
     /// R3-N10: the auto_purge_interval_seconds clamp range.

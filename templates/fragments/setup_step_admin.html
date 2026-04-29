@@ -1,0 +1,52 @@
+{# Step 1: create the initial admin account.
+   Form posts to /setup/step-1. _csrf_token is the first input.
+   Two submit buttons (Previous disabled on Step 1, Next = primary). #}
+<form method="POST" action="/setup/step-1" autocomplete="off">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+
+    <div class="space-y-4">
+        <div>
+            <label for="setup-username" class="block text-sm font-medium text-stone-700 dark:text-stone-200">{{ username_label }}</label>
+            <input
+                type="text"
+                id="setup-username"
+                name="username"
+                value="{{ username_value|e }}"
+                required
+                autocomplete="username"
+                autofocus
+                maxlength="100"
+                class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-stone-900 dark:text-stone-100 focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"
+            >
+            {% if let Some(msg) = err_username %}
+                <p class="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">{{ msg }}</p>
+            {% endif %}
+        </div>
+
+        <div>
+            <label for="setup-password" class="block text-sm font-medium text-stone-700 dark:text-stone-200">{{ password_label }}</label>
+            <input
+                type="password"
+                id="setup-password"
+                name="password"
+                required
+                autocomplete="new-password"
+                minlength="8"
+                class="mt-1 block w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 px-3 py-2 text-stone-900 dark:text-stone-100 focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"
+            >
+            <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">{{ password_hint }}</p>
+            {% if let Some(msg) = err_password %}
+                <p class="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">{{ msg }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="mt-6 flex items-center justify-end gap-3">
+        <button
+            type="submit"
+            name="_back"
+            value="0"
+            class="inline-flex items-center px-4 py-2 rounded-md bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 font-medium hover:bg-stone-700 dark:hover:bg-stone-300 focus:outline-none focus:ring-2 focus:ring-stone-500"
+        >{{ submit_label }}</button>
+    </div>
+</form>
