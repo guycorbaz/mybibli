@@ -54,13 +54,21 @@ pub struct LoansSettingsForm {
 
 #[derive(Deserialize)]
 pub struct ProviderKeysForm {
-    pub google_books_api_key: String,
+    // The three `*_api_key` fields are `Option<String>` because the JS
+    // clear-toggle handler disables the matching input when the user
+    // checks the "Clear" box; HTML disabled inputs are NOT submitted
+    // at all (per the spec), so the form body would be missing the
+    // field entirely and `Form<T>` deserialization would 422.
+    #[serde(default)]
+    pub google_books_api_key: Option<String>,
     pub google_books_version: i32,
     pub _clear_google_books: Option<String>,
-    pub omdb_api_key: String,
+    #[serde(default)]
+    pub omdb_api_key: Option<String>,
     pub omdb_version: i32,
     pub _clear_omdb: Option<String>,
-    pub tmdb_api_key: String,
+    #[serde(default)]
+    pub tmdb_api_key: Option<String>,
     pub tmdb_version: i32,
     pub _clear_tmdb: Option<String>,
     pub _csrf_token: String,
@@ -479,12 +487,20 @@ pub async fn save_provider_keys(
     let mut any_change = false;
 
     let google_action = action_for(
-        &form.google_books_api_key,
+        form.google_books_api_key.as_deref().unwrap_or(""),
         form.google_books_version,
         &form._clear_google_books,
     );
-    let omdb_action = action_for(&form.omdb_api_key, form.omdb_version, &form._clear_omdb);
-    let tmdb_action = action_for(&form.tmdb_api_key, form.tmdb_version, &form._clear_tmdb);
+    let omdb_action = action_for(
+        form.omdb_api_key.as_deref().unwrap_or(""),
+        form.omdb_version,
+        &form._clear_omdb,
+    );
+    let tmdb_action = action_for(
+        form.tmdb_api_key.as_deref().unwrap_or(""),
+        form.tmdb_version,
+        &form._clear_tmdb,
+    );
 
     apply_provider_action(
         &mut tx,
