@@ -1,35 +1,62 @@
 use async_trait::async_trait;
+use std::sync::{Arc, RwLock};
 
+use crate::config::AppSettings;
 use crate::models::media_type::MediaType;
 
 use super::provider::{MetadataError, MetadataProvider, MetadataResult};
 
 /// Google Books API metadata provider.
 /// Works without API key at lower rate limits; optional key enables higher quota.
+///
+/// Story 8-5: holds an `Arc<RwLock<AppSettings>>` rather than a key snapshot
+/// taken at construction time. Each `lookup_by_isbn` call reads the current
+/// `google_books_api_key` from the settings cache, so an admin who sets or
+/// rotates the key via `/admin?tab=system` sees the new value on the very
+/// next fetch — no process restart needed.
 pub struct GoogleBooksProvider {
     client: reqwest::Client,
-    api_key: Option<String>,
+    settings: Arc<RwLock<AppSettings>>,
     base_url: String,
 }
 
 impl GoogleBooksProvider {
-    pub fn new(client: reqwest::Client, api_key: Option<String>) -> Self {
+    pub fn new(client: reqwest::Client, settings: Arc<RwLock<AppSettings>>) -> Self {
         let base_url = std::env::var("GOOGLE_BOOKS_API_BASE_URL")
             .unwrap_or_else(|_| "https://www.googleapis.com".to_string());
         GoogleBooksProvider {
             client,
-            api_key,
+            settings,
             base_url,
         }
     }
 
     /// Create with a custom base URL (for testing with mock server).
-    pub fn with_base_url(client: reqwest::Client, api_key: Option<String>, base_url: &str) -> Self {
+    pub fn with_base_url(
+        client: reqwest::Client,
+        settings: Arc<RwLock<AppSettings>>,
+        base_url: &str,
+    ) -> Self {
         GoogleBooksProvider {
             client,
-            api_key,
+            settings,
             base_url: base_url.to_string(),
         }
+    }
+
+    /// Read the current API key from the settings cache. Returns `None` for
+    /// "not configured" (empty string) — Google Books works without a key
+    /// at lower rate limits, so the caller skips the `&key=` query param
+    /// rather than aborting the lookup. The read is sync-bounded; never
+    /// hold the guard across `.await`.
+    fn current_api_key(&self) -> Option<String> {
+        self.settings.read().ok().and_then(|s| {
+            if s.google_books_api_key.is_empty() {
+                None
+            } else {
+                Some(s.google_books_api_key.clone())
+            }
+        })
     }
 
     /// Parse Google Books API JSON response into MetadataResult.
@@ -99,8 +126,11 @@ impl MetadataProvider for GoogleBooksProvider {
         let encoded_isbn: String = isbn.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
 
         let mut url = format!("{}/books/v1/volumes?q=isbn:{}", self.base_url, encoded_isbn);
-        if let Some(ref key) = self.api_key {
-            let encoded_key = crate::utils::url_encode(key);
+        // Story 8-5: read API key per fetch from AppSettings. Empty key →
+        // unauthenticated request (still allowed by Google Books, lower
+        // rate limit).
+        if let Some(key) = self.current_api_key() {
+            let encoded_key = crate::utils::url_encode(&key);
             url.push_str(&format!("&key={encoded_key}"));
         }
 
@@ -231,7 +261,10 @@ mod tests {
 
     #[test]
     fn test_supports_media_types() {
-        let provider = GoogleBooksProvider::new(reqwest::Client::new(), None);
+        let provider = GoogleBooksProvider::new(
+            reqwest::Client::new(),
+            Arc::new(RwLock::new(AppSettings::default())),
+        );
         assert!(provider.supports_media_type(&MediaType::Book));
         assert!(provider.supports_media_type(&MediaType::Bd));
         assert!(!provider.supports_media_type(&MediaType::Cd));
@@ -241,7 +274,10 @@ mod tests {
 
     #[test]
     fn test_provider_name() {
-        let provider = GoogleBooksProvider::new(reqwest::Client::new(), None);
+        let provider = GoogleBooksProvider::new(
+            reqwest::Client::new(),
+            Arc::new(RwLock::new(AppSettings::default())),
+        );
         assert_eq!(provider.name(), "google_books");
     }
 }

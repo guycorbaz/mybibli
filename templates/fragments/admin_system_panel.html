@@ -1,4 +1,22 @@
-{# Admin → System stub panel (story 8-1). Replaced by story 8-4. #}
-<div class="text-stone-600 dark:text-stone-400">
-    <p class="text-sm">{{ stub_message }}</p>
-</div>
+{# Admin → System settings panel (story 8-5). Replaces the 8-1 stub.
+   Three sections — Loans, Metadata Providers, Language — each with its
+   own form and Save button. The form HTMLs are pre-rendered handler-side
+   and embedded via `|safe`. No `hx-confirm=`, no inline scripts/styles. #}
+<section id="admin-system-panel" aria-labelledby="admin-system-heading" class="space-y-8">
+    <h2 id="admin-system-heading" class="sr-only">{{ panel_heading }}</h2>
+
+    <section aria-labelledby="admin-system-loans-heading">
+        <h3 id="admin-system-loans-heading" class="text-lg font-semibold mb-3">{{ section_loans }}</h3>
+        {{ loans_form_html|safe }}
+    </section>
+
+    <section aria-labelledby="admin-system-providers-heading">
+        <h3 id="admin-system-providers-heading" class="text-lg font-semibold mb-3">{{ section_providers }}</h3>
+        {{ providers_form_html|safe }}
+    </section>
+
+    <section aria-labelledby="admin-system-language-heading">
+        <h3 id="admin-system-language-heading" class="text-lg font-semibold mb-3">{{ section_language }}</h3>
+        {{ language_form_html|safe }}
+    </section>
+</section>

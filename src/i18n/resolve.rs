@@ -21,7 +21,7 @@ pub fn resolve_locale(
     cookie: Option<&str>,
     user_pref: Option<&str>,
     accept_language: Option<&str>,
-    default: &'static str,
+    default: &str,
 ) -> &'static str {
     if let Some(loc) = normalize_exact(query) {
         return loc;

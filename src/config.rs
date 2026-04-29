@@ -163,6 +163,23 @@ pub struct AppSettings {
     /// `auto_purge_interval_seconds`; values below 60s are clamped up to 60s
     /// (a hot-loop on the purge query would just waste IO).
     pub auto_purge_interval_seconds: u64,
+    // === Story 8-5 — admin-editable system settings ===
+    /// Last-resort fallback in the locale-resolution chain (story 7-3).
+    /// Set by the admin via `/admin?tab=system`. Constrained to `"fr"` or
+    /// `"en"`; an invalid value in the DB row warn-logs and falls back to
+    /// the Default impl ("fr"). Affects only fresh anonymous visitors with
+    /// no `lang=` cookie and no Accept-Language match.
+    pub default_language: String,
+    /// Plaintext API key for Google Books metadata provider. Empty string
+    /// = "not configured" — the provider's fetch returns the no-result
+    /// path without making an HTTP call. Stored plaintext per NFR37
+    /// (single-host home-NAS context — encryption-at-rest provides
+    /// marginal defense given the threat model).
+    pub google_books_api_key: String,
+    /// Plaintext API key for OMDb metadata provider. See google_books_api_key.
+    pub omdb_api_key: String,
+    /// Plaintext API key for TMDb metadata provider. See google_books_api_key.
+    pub tmdb_api_key: String,
 }
 
 impl Default for AppSettings {
@@ -174,6 +191,12 @@ impl Default for AppSettings {
             session_timeout_secs: 14400, // 4 hours in seconds
             metadata_fetch_timeout_secs: 30,
             auto_purge_interval_seconds: 86400, // 24 hours
+            // Story 8-5: matches the existing hardcoded "fr" in
+            // src/middleware/locale.rs so a fresh DB has no behavior change.
+            default_language: "fr".to_string(),
+            google_books_api_key: String::new(),
+            omdb_api_key: String::new(),
+            tmdb_api_key: String::new(),
         }
     }
 }
@@ -267,6 +290,27 @@ impl AppSettings {
                         tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
                     }
                 },
+                // Story 8-5: admin-editable language fallback. Normalize to
+                // lowercase so a manual SQL edit of `'FR'` or `'EN'` is
+                // accepted instead of silently falling back to default.
+                "default_language" => match value.to_lowercase().as_str() {
+                    "fr" => settings.default_language = "fr".to_string(),
+                    "en" => settings.default_language = "en".to_string(),
+                    _ => {
+                        tracing::warn!(
+                            key = %key,
+                            value = %value,
+                            "Invalid default_language (must be fr or en), using default"
+                        );
+                    }
+                },
+                // Story 8-5: API keys for the three keyed metadata providers.
+                // Stored plaintext (NFR37). Empty value = "not configured" —
+                // the provider's fetch returns the no-result path without
+                // making an HTTP call.
+                "google_books_api_key" => settings.google_books_api_key = value.clone(),
+                "omdb_api_key" => settings.omdb_api_key = value.clone(),
+                "tmdb_api_key" => settings.tmdb_api_key = value.clone(),
                 _ => {} // Ignore unknown keys
             }
         }
@@ -278,6 +322,73 @@ impl AppSettings {
 
         Ok(settings)
     }
+}
+
+/// Story 8-5 (Task 1.4) — one-shot env-var migration. Copies values from
+/// legacy environment variables (`GOOGLE_BOOKS_API_KEY`, `OMDB_API_KEY`,
+/// `TMDB_API_KEY`) into the corresponding `settings` rows IF the row's
+/// current value is empty. Designed to be called exactly once per process
+/// boot, AFTER migrations run and BEFORE the first `AppSettings::load_from_db`
+/// call.
+///
+/// Why a separate function rather than inlining at the bottom of
+/// `load_from_db`: every settings save reloads the cache via `load_from_db`.
+/// Inlining the migration there would mean every save re-runs the env-var
+/// copy — silently re-populating any row the admin just Cleared from the UI.
+/// Keeping the migration as a one-shot boot step makes Clear durable for
+/// the process lifetime.
+///
+/// Re-migration on next boot is the documented design choice
+/// ("operator's deployment-time intent wins on boot"); making Clear durable
+/// across reboots requires also removing the env var from `docker-compose.yml`.
+pub async fn migrate_legacy_env_vars(pool: &DbPool) -> Result<(), sqlx::Error> {
+    for (env_var, key) in &[
+        ("GOOGLE_BOOKS_API_KEY", "google_books_api_key"),
+        ("OMDB_API_KEY", "omdb_api_key"),
+        ("TMDB_API_KEY", "tmdb_api_key"),
+    ] {
+        let raw = match std::env::var(env_var) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        // Trim outer whitespace and reject control characters — an env var
+        // with embedded `\n` or NUL would otherwise reach reqwest's query
+        // builder as a malformed query parameter.
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.chars().any(|c| c.is_control()) {
+            tracing::warn!(
+                env_var = %env_var,
+                "Legacy env-var contains control characters; ignoring"
+            );
+            continue;
+        }
+        // Only migrate when the row's current value is empty.
+        let current: Option<(String,)> = sqlx::query_as(
+            "SELECT setting_value FROM settings WHERE setting_key = ? AND deleted_at IS NULL",
+        )
+        .bind(key)
+        .fetch_optional(pool)
+        .await?;
+        if matches!(current, Some((ref v,)) if v.is_empty()) {
+            sqlx::query(
+                "UPDATE settings SET setting_value = ?, version = version + 1 \
+                 WHERE setting_key = ? AND deleted_at IS NULL",
+            )
+            .bind(trimmed)
+            .bind(key)
+            .execute(pool)
+            .await?;
+            tracing::info!(
+                env_var = %env_var,
+                setting_key = %key,
+                "Migrated legacy env-var API key into settings table"
+            );
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -386,6 +497,10 @@ mod tests {
             session_timeout_secs: 7200,
             metadata_fetch_timeout_secs: 45,
             auto_purge_interval_seconds: 3600,
+            default_language: "en".to_string(),
+            google_books_api_key: "gb-key".to_string(),
+            omdb_api_key: "omdb-key".to_string(),
+            tmdb_api_key: "tmdb-key".to_string(),
         };
         let cloned = settings.clone();
         assert_eq!(cloned.overdue_threshold_days, 60);
@@ -394,6 +509,10 @@ mod tests {
         assert_eq!(cloned.session_timeout_secs, 7200);
         assert_eq!(cloned.metadata_fetch_timeout_secs, 45);
         assert_eq!(cloned.auto_purge_interval_seconds, 3600);
+        assert_eq!(cloned.default_language, "en");
+        assert_eq!(cloned.google_books_api_key, "gb-key");
+        assert_eq!(cloned.omdb_api_key, "omdb-key");
+        assert_eq!(cloned.tmdb_api_key, "tmdb-key");
     }
 
     /// R3-N10: the auto_purge_interval_seconds clamp range.

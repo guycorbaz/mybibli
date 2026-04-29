@@ -226,6 +226,12 @@ error:
     invalid_version: "Invalid version — reload the page and retry"
     node_type_name_too_long_for_cascade: "Name must be at most %{max} characters (location node types cascade to storage_locations)"
     name_invalid_chars: "Name contains invisible or directional Unicode characters that are not allowed"
+  system:
+    overdue_threshold_invalid: "Threshold must be ≥ 1 day"
+    overdue_threshold_too_large: "Threshold must be ≤ 365 days"
+    default_language_invalid: "Language must be FR or EN"
+    version_mismatch: "Settings were modified by another admin — reload and retry"
+    provider_version_mismatch: "%{provider} was modified by another admin — reload and retry"
   code:
     unsupported_type: Unsupported code type
 guide:
@@ -536,6 +542,24 @@ admin:
     edit_aria: "Edit %{name}"
     delete_aria: "Delete %{name}"
     in_use_link_label: View list
+  system:
+    panel_heading: System settings
+    section_loans: Loans
+    section_providers: Metadata providers
+    section_language: Language
+    overdue_threshold_label: "Overdue loan threshold (days)"
+    overdue_threshold_help: "A loan is flagged overdue when its age exceeds this number of days."
+    provider_key_label_google_books: "Google Books API key"
+    provider_key_label_omdb: "OMDb API key"
+    provider_key_label_tmdb: "TMDb API key"
+    provider_key_set: "Set: %{mask}"
+    provider_key_not_set: "Not set"
+    provider_key_clear_label: "Clear this key on save"
+    default_language_label: "Default language"
+    default_language_help: "Used for new anonymous visitors with no cookie and no Accept-Language match."
+    btn_save_loans: "Save loans settings"
+    btn_save_providers: "Save provider keys"
+    btn_save_language: "Save language settings"
 success:
   reference_data:
     created: "Added %{name}"
@@ -546,3 +570,10 @@ success:
     loanable_off: "%{name} is now non-loanable. Existing loans continue."
     node_type_renamed_cascaded_one: "Renamed to %{name} — 1 location updated"
     node_type_renamed_cascaded_other: "Renamed to %{name} — %{count} locations updated"
+  system:
+    loans_saved: "Loans settings saved"
+    providers_saved: "Provider keys saved"
+    language_saved: "Default language saved"
+    no_changes: "No changes"
+    provider_set: "%{provider} key saved"
+    provider_cleared: "%{provider} key cleared"

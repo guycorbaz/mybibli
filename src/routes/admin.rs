@@ -375,11 +375,9 @@ struct AdminTrashPanel {
     total_pages: u32,
 }
 
-#[derive(Template)]
-#[template(path = "fragments/admin_system_panel.html")]
-struct AdminSystemPanel {
-    stub_message: String,
-}
+// Story 8-5: AdminSystemPanel struct moved to src/routes/admin_system.rs
+// (Foundation Rule #12 — admin.rs split). The replacement template carries
+// real per-section data, not a stub_message.
 
 // ─── Handlers ───────────────────────────────────────────────────
 
@@ -952,15 +950,20 @@ pub async fn admin_trash_panel(
     }
 }
 
-pub async fn admin_system_panel(
-    State(state): State<AppState>,
-    session: Session,
-    Extension(locale): Extension<Locale>,
-    OriginalUri(uri): OriginalUri,
-    HxRequest(is_htmx): HxRequest,
+// Story 8-5: admin_system_panel handler moved to src/routes/admin_system.rs.
+
+/// Story 8-5: render the System Settings tab — either the shell-fragment
+/// (HTMX tab swap into #admin-shell) or the full page (direct navigation).
+/// Mirrors `render_admin_for_reference_data` (story 8-4) so the tab bar
+/// survives the swap.
+pub(crate) async fn render_admin_for_system(
+    state: &AppState,
+    session: &Session,
+    loc: &'static str,
+    uri: &axum::http::Uri,
+    is_htmx: bool,
 ) -> Result<Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=system")?;
-    render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::System, None).await
+    render_admin(state, session, loc, uri, is_htmx, AdminTab::System, None).await
 }
 
 // ─── Rendering ──────────────────────────────────────────────────
@@ -1205,16 +1208,9 @@ async fn render_panel(
             let trash_query = TrashQuery { entity_type: None, search: None, page: None };
             render_trash_panel(state, loc, &trash_query).await
         }
-        AdminTab::System => AdminSystemPanel {
-            stub_message: rust_i18n::t!(
-                "admin.placeholder.coming_in_story",
-                locale = loc,
-                story = "8-4"
-            )
-            .to_string(),
+        AdminTab::System => {
+            crate::routes::admin_system::render_panel_html(state, loc, session).await
         }
-        .render()
-        .map_err(|_| AppError::Internal("admin system panel render failed".to_string())),
     }
 }
 

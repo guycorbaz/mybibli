@@ -50,4 +50,48 @@ impl AppState {
             .map(|s| s.session_timeout_secs)
             .unwrap_or_else(|_| AppSettings::default().session_timeout_secs)
     }
+
+    /// Story 8-5: last-resort default-language fallback in story 7-3's locale
+    /// chain. Clones the owned String out of the lock.
+    pub fn default_language(&self) -> String {
+        self.settings
+            .read()
+            .map(|s| s.default_language.clone())
+            .unwrap_or_else(|_| AppSettings::default().default_language)
+    }
+
+    /// Story 8-5: Google Books API key — `None` if the setting is empty
+    /// (not configured), `Some(key)` otherwise. Provider fetches read this
+    /// per-call and short-circuit on `None` without making an HTTP request.
+    pub fn google_books_api_key(&self) -> Option<String> {
+        self.settings.read().ok().and_then(|s| {
+            if s.google_books_api_key.is_empty() {
+                None
+            } else {
+                Some(s.google_books_api_key.clone())
+            }
+        })
+    }
+
+    /// Story 8-5: OMDb API key — see google_books_api_key.
+    pub fn omdb_api_key(&self) -> Option<String> {
+        self.settings.read().ok().and_then(|s| {
+            if s.omdb_api_key.is_empty() {
+                None
+            } else {
+                Some(s.omdb_api_key.clone())
+            }
+        })
+    }
+
+    /// Story 8-5: TMDb API key — see google_books_api_key.
+    pub fn tmdb_api_key(&self) -> Option<String> {
+        self.settings.read().ok().and_then(|s| {
+            if s.tmdb_api_key.is_empty() {
+                None
+            } else {
+                Some(s.tmdb_api_key.clone())
+            }
+        })
+    }
 }

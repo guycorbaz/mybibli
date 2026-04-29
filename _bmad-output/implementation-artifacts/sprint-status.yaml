@@ -39,7 +39,7 @@
 # The epics document contains FR/NFR/AR/UX-DR assignments per epic.
 
 generated: 2026-03-29
-last_updated: 2026-04-28 # Post-merge sweep (Foundation Rule 17 epic close checklist): 8-4 + 8-6 + 8-7 → done after PRs #59 + #84 + #83 merged into main. 8-5 stays ready-for-dev (impl pending), 8-8 stays backlog.
+last_updated: 2026-04-29 # 8-5-system-settings → done after round 2 of code review confirmed no Medium+ regressions (Foundation Rule #6 satisfied). 4 follow-up GH issues filed: #87 (OOB swap convention change-request), #88 (cross-row concurrency E2E backfill), #89 (multi-branch language E2E backfill), #90 (save_setting DRY consolidation), #91 (form re-render on validation 400).
 project: mybibli
 project_key: NOKEY
 tracking_system: file-system
@@ -150,7 +150,7 @@ development_status:
   8-2-csrf-middleware-and-form-token-injection: done
   8-3-user-administration: done
   8-4-reference-data-management: done
-  8-5-system-settings: ready-for-dev
+  8-5-system-settings: done
   8-6-trash-view-and-restore: done # folded into 8-7 PR (consolidated trash panel + restore handlers + permanent delete + auto-purge shipped as one unit, PR #59)
   8-7-permanent-delete-and-auto-purge: done
   8-8-first-launch-setup-wizard: backlog

@@ -226,6 +226,12 @@ error:
     invalid_version: "Version invalide — rechargez la page et réessayez"
     node_type_name_too_long_for_cascade: "Le nom ne peut dépasser %{max} caractères (les types de nœud sont propagés vers storage_locations)"
     name_invalid_chars: "Le nom contient des caractères Unicode invisibles ou directionnels non autorisés"
+  system:
+    overdue_threshold_invalid: "Le seuil doit être ≥ 1 jour"
+    overdue_threshold_too_large: "Le seuil ne peut dépasser 365 jours"
+    default_language_invalid: "La langue doit être FR ou EN"
+    version_mismatch: "Les paramètres ont été modifiés par un autre administrateur — rechargez et réessayez"
+    provider_version_mismatch: "%{provider} a été modifié par un autre administrateur — rechargez et réessayez"
   code:
     unsupported_type: Type de code non pris en charge
 guide:
@@ -536,6 +542,24 @@ admin:
     edit_aria: "Renommer %{name}"
     delete_aria: "Supprimer %{name}"
     in_use_link_label: "Voir la liste"
+  system:
+    panel_heading: "Paramètres système"
+    section_loans: "Prêts"
+    section_providers: "Fournisseurs de métadonnées"
+    section_language: "Langue"
+    overdue_threshold_label: "Seuil de retard de prêt (jours)"
+    overdue_threshold_help: "Un prêt est signalé en retard quand son âge dépasse ce nombre de jours."
+    provider_key_label_google_books: "Clé d'API Google Books"
+    provider_key_label_omdb: "Clé d'API OMDb"
+    provider_key_label_tmdb: "Clé d'API TMDb"
+    provider_key_set: "Définie : %{mask}"
+    provider_key_not_set: "Non définie"
+    provider_key_clear_label: "Effacer cette clé à l'enregistrement"
+    default_language_label: "Langue par défaut"
+    default_language_help: "Utilisée pour les nouveaux visiteurs anonymes sans cookie ni Accept-Language correspondant."
+    btn_save_loans: "Enregistrer les prêts"
+    btn_save_providers: "Enregistrer les clés"
+    btn_save_language: "Enregistrer la langue"
 success:
   reference_data:
     created: "Ajout de %{name}"
@@ -546,3 +570,10 @@ success:
     loanable_off: "%{name} n'est plus empruntable. Les prêts en cours se terminent normalement."
     node_type_renamed_cascaded_one: "Renommé en %{name} — 1 emplacement mis à jour"
     node_type_renamed_cascaded_other: "Renommé en %{name} — %{count} emplacements mis à jour"
+  system:
+    loans_saved: "Préférences de prêt enregistrées"
+    providers_saved: "Clés de fournisseur enregistrées"
+    language_saved: "Langue par défaut enregistrée"
+    no_changes: "Aucune modification"
+    provider_set: "Clé %{provider} enregistrée"
+    provider_cleared: "Clé %{provider} effacée"

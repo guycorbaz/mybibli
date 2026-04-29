@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod admin_reference_data;
+pub mod admin_system;
 pub mod auth;
 pub mod borrowers;
 pub mod catalog;
@@ -322,7 +323,22 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/admin/trash", axum::routing::get(admin::admin_trash_panel))
         .route("/admin/trash/{table}/{id}/permanent-delete", axum::routing::get(admin::admin_trash_permanent_delete_confirm).post(admin::admin_trash_permanent_delete))
-        .route("/admin/system", axum::routing::get(admin::admin_system_panel))
+        // Admin → System settings (story 8-5). 4 routes — 1 GET panel + 3
+        // POST per-form saves. All Admin-gated, all CSRF-protected via the
+        // 8-2 middleware (none added to CSRF_EXEMPT_ROUTES).
+        .route("/admin/system", axum::routing::get(admin_system::admin_system_panel))
+        .route(
+            "/admin/system/loans",
+            axum::routing::post(admin_system::save_loans_settings),
+        )
+        .route(
+            "/admin/system/providers",
+            axum::routing::post(admin_system::save_provider_keys),
+        )
+        .route(
+            "/admin/system/language",
+            axum::routing::post(admin_system::save_language_settings),
+        )
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
         .nest_service("/covers", ServeDir::new(&state.covers_dir))

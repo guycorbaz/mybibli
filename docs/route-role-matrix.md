@@ -1,7 +1,7 @@
 # Route Role Matrix
 
 **Status:** authoritative reference for Story 7-1 (anonymous browsing + role gating).
-**Last updated:** 2026-04-27 (story 8-4 — 19 reference-data CRUD routes added under `/admin/reference-data/*`).
+**Last updated:** 2026-04-28 (story 8-5 — 3 system-settings save routes added under `/admin/system/*`).
 
 ## CSRF exemption (story 8-2)
 
@@ -189,7 +189,10 @@ Story 8-1 introduced the `/admin` surface. Every handler's first line is `sessio
 | GET    | `/admin/trash`           | —       | Admin  | —           | New (8-1, filled by 8-6 & 8-7). List soft-deleted items; filter by type, search by name; paginated (25/page). |
 | GET    | `/admin/trash/{table}/{id}/permanent-delete` | — | Admin | — | New (8-7). Show confirmation modal with friction (type name to enable button). |
 | POST   | `/admin/trash/{table}/{id}/permanent-delete` | — | Admin | no | New (8-7). Hard-delete soft-deleted item; create audit entry; return feedback + OOB swap. |
-| GET    | `/admin/system`          | —       | Admin  | —           | New (8-1). Stub panel — story 8-4 fills in.                       |
+| GET    | `/admin/system`          | —       | Admin  | —           | New (8-1, filled by 8-5). System settings panel (3 forms: Loans, Providers, Language). |
+| POST   | `/admin/system/loans`    | —       | Admin  | no          | New (8-5). Save overdue threshold; reloads `AppSettings` cache.    |
+| POST   | `/admin/system/providers` | —      | Admin  | no          | New (8-5). Save 3 provider API keys (Google Books / OMDb / TMDb) in one transaction; NoChange/Clear/Set state machine; reloads cache. |
+| POST   | `/admin/system/language` | —       | Admin  | no          | New (8-5). Save default language (FR / EN); reloads cache; takes effect on next anonymous fresh-visitor request. |
 
 ### Static
 

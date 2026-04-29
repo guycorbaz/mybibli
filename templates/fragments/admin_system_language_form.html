@@ -1,0 +1,34 @@
+{# Admin → System → Language form (story 8-5). Two-radio group (FR / EN).
+   CSRF first. The selected radio matches the current default_language. #}
+<form id="admin-system-language-form"
+      method="POST"
+      action="/admin/system/language"
+      hx-post="/admin/system/language"
+      hx-target="#admin-system-language-form"
+      hx-swap="outerHTML"
+      class="border border-stone-200 dark:border-stone-700 rounded-lg p-4 bg-stone-50 dark:bg-stone-900">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+    <input type="hidden" name="default_language_version" value="{{ default_language_version }}">
+    <fieldset>
+        <legend class="text-sm font-medium mb-2">{{ default_language_label }}</legend>
+        <span class="block text-xs text-stone-500 dark:text-stone-400 mb-2">{{ default_language_help }}</span>
+        <label class="inline-flex items-center gap-2 mr-4">
+            <input type="radio"
+                   name="default_language"
+                   value="fr"
+                   {% if default_language_value == "fr" %}checked{% endif %}>
+            <span>FR</span>
+        </label>
+        <label class="inline-flex items-center gap-2">
+            <input type="radio"
+                   name="default_language"
+                   value="en"
+                   {% if default_language_value == "en" %}checked{% endif %}>
+            <span>EN</span>
+        </label>
+    </fieldset>
+    <div class="mt-3">
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm">{{ btn_save }}</button>
+    </div>
+</form>

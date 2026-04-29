@@ -72,12 +72,17 @@ pub async fn locale_resolve_middleware(
         .next()
         .map(str::to_string);
 
+    // Story 8-5: last-resort fallback now reads the admin-configurable
+    // default-language from AppSettings (was hardcoded "fr" pre-8-5).
+    // Affects only fresh anonymous visitors with no cookie, no user pref,
+    // and no Accept-Language match.
+    let default_lang = state.default_language();
     let locale = resolve_locale(
         query_lang.as_deref(),
         cookie_lang.as_deref(),
         user_pref.as_deref(),
         accept_language.as_deref(),
-        "fr",
+        &default_lang,
     );
 
     request.extensions_mut().insert(Locale(locale));
