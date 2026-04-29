@@ -407,12 +407,167 @@ async fn anonymous_gets_303_on_panel(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn migrate_legacy_env_vars_writes_when_row_empty(pool: DbPool) {
-    // SAFETY: env-var manipulation is per-process. Use a uniquely-named
-    // env var (TMDB) to avoid contaminating sibling tests' state.
-    // SAFETY: setting an env var in a multi-threaded test runner is unsafe
-    // by Rust 2024 std signature — wrap in unsafe block. The migration
-    // function only reads, never writes env vars.
+async fn librarian_gets_403_on_save_providers(pool: DbPool) {
+    let username = seed_librarian(&pool).await;
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+    let (cookie, csrf) = login_and_extract(&router, &username, "librarian").await;
+
+    let body = format!(
+        "google_books_api_key=stolen&google_books_version=1\
+         &omdb_api_key=&omdb_version=1\
+         &tmdb_api_key=&tmdb_version=1\
+         &_csrf_token={csrf}"
+    );
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/admin/system/providers")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", format!("session={}", cookie))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // DB unchanged.
+    let row: (String,) = sqlx::query_as(
+        "SELECT setting_value FROM settings WHERE setting_key = 'google_books_api_key'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn librarian_gets_403_on_save_language(pool: DbPool) {
+    let username = seed_librarian(&pool).await;
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+    let (cookie, csrf) = login_and_extract(&router, &username, "librarian").await;
+
+    let body = format!("default_language=en&default_language_version=1&_csrf_token={csrf}");
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/admin/system/language")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", format!("session={}", cookie))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    // DB unchanged.
+    let row: (String,) =
+        sqlx::query_as("SELECT setting_value FROM settings WHERE setting_key = 'default_language'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(row.0, "fr");
+}
+
+/// Anonymous plain-form POST to a state-changing route fails the CSRF
+/// check (no `_csrf_token` field, fresh anonymous session minted by
+/// `session_resolve_middleware` with its own token). The CSRF middleware
+/// detects the plain-form case (`is_form && !is_htmx`) and responds 303 →
+/// `/login` rather than the HTMX 403 envelope — see
+/// `src/middleware/csrf.rs::build_rejection_response`. HTMX-driven POSTs
+/// from the same browser would still 403 with the feedback fragment.
+#[sqlx::test(migrations = "./migrations")]
+async fn anonymous_gets_303_on_save_loans(pool: DbPool) {
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/admin/system/loans")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from("overdue_threshold_days=42&overdue_threshold_version=1"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let location = res.headers().get("location").unwrap().to_str().unwrap();
+    assert_eq!(location, "/login");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anonymous_gets_303_on_save_providers(pool: DbPool) {
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/admin/system/providers")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(
+                    "google_books_api_key=stolen&google_books_version=1\
+                     &omdb_api_key=&omdb_version=1\
+                     &tmdb_api_key=&tmdb_version=1",
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let location = res.headers().get("location").unwrap().to_str().unwrap();
+    assert_eq!(location, "/login");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anonymous_gets_303_on_save_language(pool: DbPool) {
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/admin/system/language")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from("default_language=en&default_language_version=1"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let location = res.headers().get("location").unwrap().to_str().unwrap();
+    assert_eq!(location, "/login");
+}
+
+/// Process-wide guard for tests that manipulate env vars. `std::env::set_var`
+/// is unsynchronized; without this lock two tests touching different env vars
+/// can still race because `migrate_legacy_env_vars` iterates over all three
+/// keys at once and would observe a sibling test's transient state.
+static ENV_VAR_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+// The std::sync::Mutex guard is intentionally held across `.await` to
+// serialize env-var manipulation across parallel `#[sqlx::test]` bodies.
+// The lock is contended only between env-var tests; no other async code
+// in this test binary needs it, so the await_holding_lock lint is a
+// false positive here.
+#[allow(clippy::await_holding_lock)]
+#[sqlx::test(migrations = "./migrations")]
+async fn migrate_legacy_env_vars_writes_when_empty_skips_when_set(pool: DbPool) {
+    // Serialize all env-var-touching tests in this binary. We hold the guard
+    // for the whole test body so a concurrent sibling test sees a consistent
+    // env-var snapshot.
+    let _guard = ENV_VAR_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+
+    // ── Branch 1: row empty + env var set → migration writes ──
+    // SAFETY: setting an env var is unsafe under Rust 2024's std signature
+    // because the runtime is multi-threaded. The lock above serializes all
+    // tests in this binary that touch env vars.
     unsafe {
         std::env::set_var("TMDB_API_KEY", "migrated-from-env");
     }
@@ -429,11 +584,8 @@ async fn migrate_legacy_env_vars_writes_when_row_empty(pool: DbPool) {
     unsafe {
         std::env::remove_var("TMDB_API_KEY");
     }
-}
 
-#[sqlx::test(migrations = "./migrations")]
-async fn migrate_legacy_env_vars_no_op_when_row_already_set(pool: DbPool) {
-    // Pre-populate the row with an existing value.
+    // ── Branch 2: row pre-populated + env var set → migration skips ──
     sqlx::query(
         "UPDATE settings SET setting_value = 'admin-set-key' WHERE setting_key = 'omdb_api_key'",
     )

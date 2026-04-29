@@ -290,9 +290,12 @@ impl AppSettings {
                         tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
                     }
                 },
-                // Story 8-5: admin-editable language fallback.
-                "default_language" => match value.as_str() {
-                    "fr" | "en" => settings.default_language = value.clone(),
+                // Story 8-5: admin-editable language fallback. Normalize to
+                // lowercase so a manual SQL edit of `'FR'` or `'EN'` is
+                // accepted instead of silently falling back to default.
+                "default_language" => match value.to_lowercase().as_str() {
+                    "fr" => settings.default_language = "fr".to_string(),
+                    "en" => settings.default_language = "en".to_string(),
                     _ => {
                         tracing::warn!(
                             key = %key,
@@ -344,10 +347,24 @@ pub async fn migrate_legacy_env_vars(pool: &DbPool) -> Result<(), sqlx::Error> {
         ("OMDB_API_KEY", "omdb_api_key"),
         ("TMDB_API_KEY", "tmdb_api_key"),
     ] {
-        let env_value = match std::env::var(env_var) {
-            Ok(v) if !v.is_empty() => v,
-            _ => continue,
+        let raw = match std::env::var(env_var) {
+            Ok(v) => v,
+            Err(_) => continue,
         };
+        // Trim outer whitespace and reject control characters — an env var
+        // with embedded `\n` or NUL would otherwise reach reqwest's query
+        // builder as a malformed query parameter.
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.chars().any(|c| c.is_control()) {
+            tracing::warn!(
+                env_var = %env_var,
+                "Legacy env-var contains control characters; ignoring"
+            );
+            continue;
+        }
         // Only migrate when the row's current value is empty.
         let current: Option<(String,)> = sqlx::query_as(
             "SELECT setting_value FROM settings WHERE setting_key = ? AND deleted_at IS NULL",
@@ -360,7 +377,7 @@ pub async fn migrate_legacy_env_vars(pool: &DbPool) -> Result<(), sqlx::Error> {
                 "UPDATE settings SET setting_value = ?, version = version + 1 \
                  WHERE setting_key = ? AND deleted_at IS NULL",
             )
-            .bind(&env_value)
+            .bind(trimmed)
             .bind(key)
             .execute(pool)
             .await?;

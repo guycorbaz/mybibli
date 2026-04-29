@@ -128,13 +128,19 @@ struct AdminSystemLanguageForm {
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
-/// Return the last-4-character mask of a non-empty key, or `None` for empty.
-/// Caller composes the user-facing string via the i18n keys
-/// `admin.system.provider_key_set` (`Set: %{mask}`) or
-/// `admin.system.provider_key_not_set` (`Not set`).
+/// Mask a non-empty key for the helper text. Returns `None` for empty.
+/// Real provider keys are always longer than the `MIN_MASK_REVEAL_LEN`
+/// threshold (Google Books = 39 chars, OMDb = 8, TMDb = 32); for any key
+/// shorter than the threshold we hide everything to avoid the short-key
+/// leak (a 4-char key would otherwise render `••••<full-key>`).
+const MIN_MASK_REVEAL_LEN: usize = 8;
+
 fn mask_key(value: &str) -> Option<String> {
     if value.is_empty() {
         return None;
+    }
+    if value.chars().count() < MIN_MASK_REVEAL_LEN {
+        return Some("••••".to_string());
     }
     let last4: String = value.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
     Some(format!("••••{last4}"))
@@ -198,13 +204,19 @@ where
 
 /// Re-SELECT all settings rows and swap the `Arc<RwLock<AppSettings>>`
 /// cache. The `.await` happens BEFORE the write lock is taken; the lock
-/// is held for one move-assignment then dropped.
+/// is held for one move-assignment then dropped. On lock poisoning, log
+/// at error level and recover via `into_inner` rather than silently
+/// leaving the cache stale.
 async fn reload_settings_cache(state: &AppState) -> Result<(), AppError> {
     let new_settings = AppSettings::load_from_db(&state.pool)
         .await
         .map_err(|e| AppError::Internal(format!("settings reload failed: {e}")))?;
-    if let Ok(mut guard) = state.settings.write() {
-        *guard = new_settings;
+    match state.settings.write() {
+        Ok(mut guard) => *guard = new_settings,
+        Err(poisoned) => {
+            tracing::error!("settings RwLock poisoned during reload; recovering");
+            *poisoned.into_inner() = new_settings;
+        }
     }
     Ok(())
 }
@@ -331,15 +343,17 @@ fn render_language_form(
 
 /// Public panel renderer — called by `admin.rs::render_panel` on the
 /// `AdminTab::System` branch. Pulls the 5 setting rows and assembles the
-/// three sections.
+/// three sections. The session's `csrf_token` is threaded into every form
+/// fragment so that direct (non-HTMX) navigation produces forms with a
+/// working `_csrf_token` field — mirrors the `admin_reference_data`
+/// pattern (story 8-4).
 pub async fn render_panel_html(
     state: &AppState,
     loc: &'static str,
+    session: &Session,
 ) -> Result<String, AppError> {
-    // Pull the 5 rows (values + per-row versions) in one SELECT.
     let rows = fetch_setting_rows(&state.pool).await?;
 
-    // Loans threshold from cache (fast); version from DB (needs the row).
     let threshold = state
         .settings
         .read()
@@ -356,75 +370,11 @@ pub async fn render_panel_html(
         .cloned()
         .unwrap_or_else(|| (default_lang.clone(), 1));
 
-    // CSRF token comes from the session — but render_panel_html doesn't have
-    // a Session arg. Pass the empty string; the panel template's csrf_token
-    // is a defensive fallback. Each FORM template gets its own session-CSRF
-    // via the section render functions called below — actually no, those
-    // also receive csrf via this path. We need the session token here.
-    // Workaround: defer CSRF down to the form fragments — read from request
-    // context via the wrapper. For now, fetch_setting_rows + bare templates
-    // need the token threaded through. The admin_system_panel HANDLER
-    // (which DOES have a session) is the public entry point for HTMX swaps;
-    // for the render_panel→shell path, csrf is injected into the panel by
-    // the AdminPageTemplate.
-    //
-    // Practical compromise: render the section fragments WITHOUT the
-    // session token here (placeholder); the panel template renders inside
-    // the AdminShell which carries the session.csrf_token at the page
-    // level. The forms reference `csrf_token` from the fragment context,
-    // which we set by passing the cache-side empty here. The HANDLER
-    // (`admin_system_panel`) re-renders with the real token for HTMX.
-    // For the non-HTMX direct-nav path, the page-level `csrf_token`
-    // (in AdminPageTemplate) is the source of truth.
-    //
-    // To keep the contract clean, accept that this entry point is called
-    // only by `render_panel` which is itself called from `render_admin`
-    // which has session context. Pass the token down by adding a session
-    // argument here too.
-    let csrf = ""; // placeholder — see render_panel_html_with_csrf
+    let csrf = session.csrf_token.as_str();
     let loans_form_html = render_loans_form(csrf, loc, threshold, threshold_version)?;
     let providers_form_html = render_providers_form(csrf, loc, &rows)?;
     let language_form_html = render_language_form(csrf, loc, &default_lang, lang_version)?;
 
-    AdminSystemPanel {
-        panel_heading: rust_i18n::t!("admin.system.panel_heading", locale = loc).to_string(),
-        section_loans: rust_i18n::t!("admin.system.section_loans", locale = loc).to_string(),
-        section_providers: rust_i18n::t!("admin.system.section_providers", locale = loc)
-            .to_string(),
-        section_language: rust_i18n::t!("admin.system.section_language", locale = loc).to_string(),
-        loans_form_html,
-        providers_form_html,
-        language_form_html,
-    }
-    .render()
-    .map_err(|_| AppError::Internal("admin system panel render failed".to_string()))
-}
-
-/// Variant that takes the session CSRF token explicitly — used by
-/// the HTMX panel handler so the forms render with a working token.
-pub async fn render_panel_html_with_csrf(
-    state: &AppState,
-    loc: &'static str,
-    csrf: &str,
-) -> Result<String, AppError> {
-    let rows = fetch_setting_rows(&state.pool).await?;
-    let threshold = state
-        .settings
-        .read()
-        .map(|s| s.overdue_threshold_days)
-        .unwrap_or(30);
-    let (_, threshold_version) = rows
-        .get(KEY_OVERDUE_THRESHOLD)
-        .cloned()
-        .unwrap_or_else(|| (threshold.to_string(), 1));
-    let default_lang = state.default_language();
-    let (_, lang_version) = rows
-        .get(KEY_DEFAULT_LANGUAGE)
-        .cloned()
-        .unwrap_or_else(|| (default_lang.clone(), 1));
-    let loans_form_html = render_loans_form(csrf, loc, threshold, threshold_version)?;
-    let providers_form_html = render_providers_form(csrf, loc, &rows)?;
-    let language_form_html = render_language_form(csrf, loc, &default_lang, lang_version)?;
     AdminSystemPanel {
         panel_heading: rust_i18n::t!("admin.system.panel_heading", locale = loc).to_string(),
         section_loans: rust_i18n::t!("admin.system.section_loans", locale = loc).to_string(),
@@ -740,19 +690,19 @@ mod tests {
     }
 
     #[test]
-    fn mask_key_returns_last4_for_short_key() {
-        assert_eq!(mask_key("abcd"), Some("••••abcd".to_string()));
+    fn mask_key_hides_keys_below_min_reveal_threshold() {
+        // Anything shorter than MIN_MASK_REVEAL_LEN renders as opaque mask
+        // — never leaks any character of the key.
+        assert_eq!(mask_key("ab"), Some("••••".to_string()));
+        assert_eq!(mask_key("abcd"), Some("••••".to_string()));
+        assert_eq!(mask_key("abcdefg"), Some("••••".to_string()));
     }
 
     #[test]
-    fn mask_key_returns_last4_for_long_key() {
+    fn mask_key_reveals_last4_for_long_key() {
+        // At/above the threshold, last-4 characters are revealed.
+        assert_eq!(mask_key("abcdefgh"), Some("••••efgh".to_string()));
         assert_eq!(mask_key("abcdefghijkl1234"), Some("••••1234".to_string()));
-    }
-
-    #[test]
-    fn mask_key_under_4_chars() {
-        // Last <4 chars: just take what's there.
-        assert_eq!(mask_key("ab"), Some("••••ab".to_string()));
     }
 
     #[test]

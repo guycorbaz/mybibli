@@ -1209,7 +1209,7 @@ async fn render_panel(
             render_trash_panel(state, loc, &trash_query).await
         }
         AdminTab::System => {
-            crate::routes::admin_system::render_panel_html(state, loc).await
+            crate::routes::admin_system::render_panel_html(state, loc, session).await
         }
     }
 }
