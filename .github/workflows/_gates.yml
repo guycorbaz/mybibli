@@ -241,12 +241,17 @@ jobs:
             up -d --build --wait
 
       - name: Wipe seeded users so the wizard predicate fires
+        # `sessions.user_id` carries an FK to `users.id` with no CASCADE
+        # (`fk_sessions_user`, story 1 initial schema), so a bare
+        # `DELETE FROM users` aborts with 23000. Drop the dependent
+        # session rows first; `admin_audit` cascades on user delete so
+        # we don't have to touch it explicitly.
         run: |
           docker compose \
             -f tests/e2e/docker-compose.test.yml \
             -f tests/e2e/docker-compose.wizard.yml \
             exec -T db mariadb -uroot -proot_test mybibli_test \
-              -e "DELETE FROM users;"
+              -e "DELETE FROM sessions; DELETE FROM users;"
 
       - name: Restart mybibli so it re-reads MYBIBLI_SKIP_SETUP="" and the empty users table
         run: |
