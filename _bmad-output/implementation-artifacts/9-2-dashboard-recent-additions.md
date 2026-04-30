@@ -1,6 +1,6 @@
 # Story 9.2: Dashboard — recent additions
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -28,25 +28,25 @@ so that I can quickly browse what is new without launching a search.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Add `list_recent_active` to `TitleModel` (AC: 1, 3, 6, 10a–c)**
-  - [ ] In `src/models/title.rs`, add `pub async fn list_recent_active(pool: &DbPool, limit: u32) -> Result<Vec<SearchResult>, AppError>` after the existing `active_search` function (around line 810).
-  - [ ] The SQL is a SINGLE SELECT shaped like `active_search`'s data query but simpler — no FULLTEXT, no LIKE, no genre/state filter, just `WHERE t.deleted_at IS NULL ORDER BY t.created_at DESC LIMIT ?`. Reuse the same JOINs (genres, primary contributor subquery, volume_count subquery) so the returned `SearchResult` shape matches. Use `sqlx::query` (dynamic) per project convention (see Story 9-1 anti-pattern: no `sqlx::query!` macro to avoid `.sqlx/` cache regeneration).
-  - [ ] **Duplication policy:** the projection in `active_search` (SELECT clause + JOINs) is **17 lines** (verified at `src/models/title.rs:763-779`). That is well under the rule-of-three threshold for extraction. **Duplicate the projection inline in `list_recent_active`; do NOT extract a shared `SQL_SEARCH_RESULT_PROJECTION: &str` constant in this story.** A future story that adds a third caller can revisit.
-- [ ] **Task 2 — Wire the handler (AC: 1, 4, 5, 6, 7)**
-  - [ ] In `src/routes/home.rs::home` (after the `glance = ...` block from story 9-1), call `TitleModel::list_recent_active(pool, 10).await` with the **soft-degrade pattern** established by story 9-1 (match on the result, log `tracing::warn!` and use an empty `Vec` on error so the home page doesn't 500 on a transient DB issue).
-  - [ ] Extend `HomeTemplate` (`src/routes/home.rs:31-81`, struct of 50 fields post-9-1) with **THREE new fields**:
+- [x] **Task 1 — Add `list_recent_active` to `TitleModel` (AC: 1, 3, 6, 10a–c)**
+  - [x] In `src/models/title.rs`, add `pub async fn list_recent_active(pool: &DbPool, limit: u32) -> Result<Vec<SearchResult>, AppError>` after the existing `active_search` function (around line 810).
+  - [x] The SQL is a SINGLE SELECT shaped like `active_search`'s data query but simpler — no FULLTEXT, no LIKE, no genre/state filter, just `WHERE t.deleted_at IS NULL ORDER BY t.created_at DESC LIMIT ?`. Reuse the same JOINs (genres, primary contributor subquery, volume_count subquery) so the returned `SearchResult` shape matches. Use `sqlx::query` (dynamic) per project convention (see Story 9-1 anti-pattern: no `sqlx::query!` macro to avoid `.sqlx/` cache regeneration).
+  - [x] **Duplication policy:** the projection in `active_search` (SELECT clause + JOINs) is **17 lines** (verified at `src/models/title.rs:763-779`). That is well under the rule-of-three threshold for extraction. **Duplicate the projection inline in `list_recent_active`; do NOT extract a shared `SQL_SEARCH_RESULT_PROJECTION: &str` constant in this story.** A future story that adds a third caller can revisit.
+- [x] **Task 2 — Wire the handler (AC: 1, 4, 5, 6, 7)**
+  - [x] In `src/routes/home.rs::home` (after the `glance = ...` block from story 9-1), call `TitleModel::list_recent_active(pool, 10).await` with the **soft-degrade pattern** established by story 9-1 (match on the result, log `tracing::warn!` and use an empty `Vec` on error so the home page doesn't 500 on a transient DB issue).
+  - [x] Extend `HomeTemplate` (`src/routes/home.rs:31-81`, struct of 50 fields post-9-1) with **THREE new fields**:
     - `recent_additions: Vec<SearchResult>` (the data — pulled from `crate::models::title::SearchResult`)
     - `recent_additions_heading: String` (pre-translated label)
     - `recent_additions_empty: String` (pre-translated label for the empty-state)
-  - [ ] Translate `dashboard.recent_additions.heading` and `dashboard.recent_additions.empty_state` in the handler via `rust_i18n::t!(...).to_string()`, per project convention (see Story 9-1 Dev Notes "Library/framework requirements" and `src/routes/home.rs:207-212` canonical example).
-  - [ ] Pass them from the handler. Do NOT add a new route.
-- [ ] **Task 3 — Add i18n keys (AC: 9)**
-  - [ ] In `locales/en.yml` under `dashboard:` (after the `glance:` sub-block), add a `recent_additions:` sub-block with `heading: "Recent additions"` and `empty_state: "No recent additions yet — start cataloging!"`.
-  - [ ] In `locales/fr.yml` under the same path: `heading: "Ajouts récents"` and `empty_state: "Pas encore d'ajouts récents — commencez à cataloguer !"`.
-  - [ ] **CRITICAL:** locale files have NO top-level `en:`/`fr:` wrapper. After editing, `touch src/lib.rs && cargo build`.
-- [ ] **Task 4 — Render the section in the template (AC: 1, 2, 5, 7, 8)**
-  - [ ] In `templates/pages/home.html`, insert the new section AFTER the `</section>` closing the glance card (line ~104) and BEFORE the `<!-- Browse toggle + sort -->` block (line ~106).
-  - [ ] Markup outline (Tailwind utility classes only). The inner `<article>...</article>` block is a **VERBATIM** copy of `templates/pages/home.html:148-165` — not a paraphrase. Reproduce exactly to avoid drift in `aria-label` interpolation, the `cover::cover` macro call, the icon path, and the `group` class on the article wrapper:
+  - [x] Translate `dashboard.recent_additions.heading` and `dashboard.recent_additions.empty_state` in the handler via `rust_i18n::t!(...).to_string()`, per project convention (see Story 9-1 Dev Notes "Library/framework requirements" and `src/routes/home.rs:207-212` canonical example).
+  - [x] Pass them from the handler. Do NOT add a new route.
+- [x] **Task 3 — Add i18n keys (AC: 9)**
+  - [x] In `locales/en.yml` under `dashboard:` (after the `glance:` sub-block), add a `recent_additions:` sub-block with `heading: "Recent additions"` and `empty_state: "No recent additions yet — start cataloging!"`.
+  - [x] In `locales/fr.yml` under the same path: `heading: "Ajouts récents"` and `empty_state: "Pas encore d'ajouts récents — commencez à cataloguer !"`.
+  - [x] **CRITICAL:** locale files have NO top-level `en:`/`fr:` wrapper. After editing, `touch src/lib.rs && cargo build`.
+- [x] **Task 4 — Render the section in the template (AC: 1, 2, 5, 7, 8)**
+  - [x] In `templates/pages/home.html`, insert the new section AFTER the `</section>` closing the glance card (line ~104) and BEFORE the `<!-- Browse toggle + sort -->` block (line ~106).
+  - [x] Markup outline (Tailwind utility classes only). The inner `<article>...</article>` block is a **VERBATIM** copy of `templates/pages/home.html:148-165` — not a paraphrase. Reproduce exactly to avoid drift in `aria-label` interpolation, the `cover::cover` macro call, the icon path, and the `group` class on the article wrapper:
     ```jinja
     {# Recent additions section (story 9-2). Sits between #collection-glance
        and #browse-results so it survives HTMX search swaps. The inner
@@ -82,11 +82,11 @@ so that I can quickly browse what is new without launching a search.
         {% endif %}
     </section>
     ```
-  - [ ] CSP: zero `style="..."`, zero `onclick=`, zero inline `<script>`. Tailwind classes + the existing `.title-card-*` classes from `static/css/browse.css` only.
-  - [ ] **Markup duplication note (deliberate):** the `<article class="title-card">` block now exists in 3 places: (1) `templates/pages/home.html` lines ~148-165 (browse-results loop), (2) the new recent-additions section (this story), (3) `src/routes/home.rs::render_search_row` lines ~363-410 (HTMX fragment, Rust-side HTML builder). Extracting to an Askama partial would require coordinating with `render_search_row` (which builds HTML in Rust, not Jinja) — out of scope. File a follow-up GH Issue (`type:change-request`) at story close to extract a `components/title_card.html` partial + a Rust function that serializes a `SearchResult` to that partial's expected context (e.g., via `Template::render_into_string` on a tiny `TitleCardTemplate` struct).
-- [ ] **Task 5 — Unit tests (AC: 10)**
-  - [ ] Create a sibling file `tests/dashboard_recent_additions.rs` (NOT a `mod` inside `tests/dashboard_glance.rs`) — clarity and discoverability over co-location, since glance and recent-additions are independent services.
-  - [ ] **Critical: `created_at` determinism.** The existing helper `tests/dashboard_glance.rs::insert_title` does NOT set `created_at` (it falls back to `DEFAULT CURRENT_TIMESTAMP`). 12 rows inserted in a tight loop will share the same second-precision timestamp, breaking the ORDER-BY assertion. Introduce a NEW helper in `tests/dashboard_recent_additions.rs`:
+  - [x] CSP: zero `style="..."`, zero `onclick=`, zero inline `<script>`. Tailwind classes + the existing `.title-card-*` classes from `static/css/browse.css` only.
+  - [x] **Markup duplication note (deliberate):** the `<article class="title-card">` block now exists in 3 places: (1) `templates/pages/home.html` lines ~148-165 (browse-results loop), (2) the new recent-additions section (this story), (3) `src/routes/home.rs::render_search_row` lines ~363-410 (HTMX fragment, Rust-side HTML builder). Extracting to an Askama partial would require coordinating with `render_search_row` (which builds HTML in Rust, not Jinja) — out of scope. File a follow-up GH Issue (`type:change-request`) at story close to extract a `components/title_card.html` partial + a Rust function that serializes a `SearchResult` to that partial's expected context (e.g., via `Template::render_into_string` on a tiny `TitleCardTemplate` struct).
+- [x] **Task 5 — Unit tests (AC: 10)**
+  - [x] Create a sibling file `tests/dashboard_recent_additions.rs` (NOT a `mod` inside `tests/dashboard_glance.rs`) — clarity and discoverability over co-location, since glance and recent-additions are independent services.
+  - [x] **Critical: `created_at` determinism.** The existing helper `tests/dashboard_glance.rs::insert_title` does NOT set `created_at` (it falls back to `DEFAULT CURRENT_TIMESTAMP`). 12 rows inserted in a tight loop will share the same second-precision timestamp, breaking the ORDER-BY assertion. Introduce a NEW helper in `tests/dashboard_recent_additions.rs`:
     ```rust
     async fn insert_title_with_created_at(
         pool: &MySqlPool,
@@ -108,25 +108,25 @@ so that I can quickly browse what is new without launching a search.
     }
     ```
     Each seeded row gets a distinct `minutes_ago` (e.g. 0, 1, 2, …, 11) so ORDER BY `created_at DESC` yields a deterministic sequence.
-  - [ ] Three `#[sqlx::test(migrations = "./migrations")]` cases:
+  - [x] Three `#[sqlx::test(migrations = "./migrations")]` cases:
     - `list_recent_active_returns_empty_vec_on_empty_db`
     - `list_recent_active_orders_by_created_at_desc_with_limit` — seed 12 active titles via `insert_title_with_created_at` with `minutes_ago` 0..=11, call `list_recent_active(pool, 10)`, assert exactly 10 results AND the IDs are in the expected order (most-recent first).
     - `list_recent_active_excludes_soft_deleted` — seed 5 active + 3 soft-deleted, call with limit 10, assert only the 5 active are returned.
-  - [ ] Add 2 handler render tests in `src/routes/home.rs::mod tests`:
+  - [x] Add 2 handler render tests in `src/routes/home.rs::mod tests`:
     - `home_renders_recent_additions_with_three_items` — build a HomeTemplate via `make_test_home_template_with_recent(role, vec_of_3_search_results)`, render, scope assertion to `#recent-additions` slice (reuse the `glance_card_slice` helper pattern; create a sibling `recent_additions_slice` if needed), assert: 3 `<article class="title-card">` present in input order, the title text of each item appears.
     - `home_renders_recent_additions_empty_state` — same but with `vec![]`, assert: NO `<article>` inside `#recent-additions`, the empty-state `<div>` IS present with the i18n text.
-- [ ] **Task 6 — E2E spec (AC: 11)**
-  - [ ] Extend `tests/e2e/specs/journeys/home.spec.ts` with one new `test.describe("Home page — Recent additions section", ...)` block. **Place it AFTER the existing `test.describe("Home page — Collection at a glance card", ...)` block (story 9-1)** — i.e., immediately after that block's closing `});` so the file stays organized chronologically by story.
+- [x] **Task 6 — E2E spec (AC: 11)**
+  - [x] Extend `tests/e2e/specs/journeys/home.spec.ts` with one new `test.describe("Home page — Recent additions section", ...)` block. **Place it AFTER the existing `test.describe("Home page — Collection at a glance card", ...)` block (story 9-1)** — i.e., immediately after that block's closing `});` so the file stays organized chronologically by story.
     - `anonymous: section visible, first card navigates to /title/:id` — load `/`, verify `#recent-additions` is visible, verify heading matches `/Recent additions|Ajouts récents/i`. Then conditionally: if `recentCards.count() > 0`, click the first → `waitForURL(/\/title\/\d+/)`. If 0 (fresh DB scenario), verify the empty-state `<div>` text matches `/start cataloging|commencez à cataloguer/i`.
-  - [ ] Use i18n-aware regex matchers consistently. Do NOT add `waitForTimeout` (CI grep gate).
-  - [ ] Reuse the `loginAs` import already present in `home.spec.ts` if a librarian-role test variant is added (optional — AC9 says role-agnostic, so a single anonymous test is sufficient).
-- [ ] **Task 7 — Verify and document (AC: 1–11)**
-  - [ ] `cargo check && cargo clippy --all-targets -- -D warnings`
-  - [ ] `cargo test --lib` (full unit + co-located integration suite — must stay zero-fail; expect ~628 + 4 new = 632)
-  - [ ] `SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' cargo test --test dashboard_recent_additions` (or whatever filename is chosen) — 3 new integration tests pass.
-  - [ ] `cargo sqlx prepare --check --workspace -- --all-targets` — expected no diff (Task 1 uses dynamic `query`).
-  - [ ] Manual smoke: `curl http://localhost:8080/` and grep for `id="recent-additions"`, `Ajouts récents`, and `article class="title-card"` to confirm the section renders.
-  - [ ] Update Dev Agent Record at the bottom of this file: list of files touched, decision on `mod recent_additions` vs sibling test file, anything surprising.
+  - [x] Use i18n-aware regex matchers consistently. Do NOT add `waitForTimeout` (CI grep gate).
+  - [x] Reuse the `loginAs` import already present in `home.spec.ts` if a librarian-role test variant is added (optional — AC9 says role-agnostic, so a single anonymous test is sufficient).
+- [x] **Task 7 — Verify and document (AC: 1–11)**
+  - [x] `cargo check && cargo clippy --all-targets -- -D warnings`
+  - [x] `cargo test --lib` (full unit + co-located integration suite — must stay zero-fail; expect ~628 + 4 new = 632)
+  - [x] `SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' cargo test --test dashboard_recent_additions` (or whatever filename is chosen) — 3 new integration tests pass.
+  - [x] `cargo sqlx prepare --check --workspace -- --all-targets` — expected no diff (Task 1 uses dynamic `query`).
+  - [x] Manual smoke: `curl http://localhost:8080/` and grep for `id="recent-additions"`, `Ajouts récents`, and `article class="title-card"` to confirm the section renders.
+  - [x] Update Dev Agent Record at the bottom of this file: list of files touched, decision on `mod recent_additions` vs sibling test file, anything surprising.
 
 ## Dev Notes
 
@@ -221,20 +221,40 @@ This story aligns cleanly with the existing structure. Two intentional deviation
 
 ### Agent Model Used
 
-_To be filled by dev agent (e.g., `claude-opus-4-7`)._
+`claude-opus-4-7` (1M context).
 
 ### Debug Log References
 
-_To be filled during implementation._
+- `cargo test --lib` — 630 passed, 0 failed (628 pre-9-2 + 2 new render tests = `home_renders_recent_additions_with_three_items`, `home_renders_recent_additions_empty_state`).
+- `cargo test --test dashboard_recent_additions` — 3 passed (empty DB → empty Vec; 12 seeded → 10 in DESC order; 5 active + 3 soft-deleted → 5 returned).
+- `cargo clippy --all-targets -- -D warnings` — clean.
+- `cargo sqlx prepare --check --workspace -- --all-targets` — no diff (Task 1 uses dynamic `sqlx::query`).
+- E2E validation deferred to CI (local `tests/e2e/test-results/` still owned by root from earlier Docker runs — same blocker as Story 9-1; documented as a permission cleanup task in the deferred-findings tracker, GH issue tba).
 
 ### Completion Notes List
 
-_To be filled during implementation. Document at minimum:_
-- _Decision on test file location (sibling `tests/dashboard_recent_additions.rs` vs `mod` inside `tests/dashboard_glance.rs`)._
-- _Whether the SELECT projection was duplicated inline or extracted to a shared SQL constant (Task 1 sub-bullet)._
-- _Confirmation that the section sits OUTSIDE `#browse-results` and survives an HTMX search swap._
-- _Anything surprising encountered (existing helper found, schema quirk, i18n key collision, etc.)._
+- **Test file location**: sibling `tests/dashboard_recent_additions.rs` (not `mod` inside `dashboard_glance.rs`) — confirmed per spec, two services functionally independent.
+- **Projection inlined, not extracted**: the `list_recent_active` SELECT duplicates the projection from `active_search` (genre + primary contributor subquery + volume_count subquery + cover/publication fields) inline. ~17 lines, well under the rule-of-three threshold. No shared `SQL_SEARCH_RESULT_PROJECTION` constant introduced; a future story with a third caller can revisit.
+- **HTMX swap survival**: the `<section id="recent-additions">` is placed directly after the closing `</section>` of `#collection-glance` (line ~138) and before the `<!-- Browse toggle + sort -->` block (line ~140). Both sections sit OUTSIDE `#browse-results` (line ~177) so they survive HTMX search-swap targets. Manual smoke confirmed via `curl http://localhost:8080/` that both `id="collection-glance"` and `id="recent-additions"` appear in the rendered HTML, in that order.
+- **Slice helper generalized**: instead of cloning `glance_card_slice`, refactored both into a single `slice_section(html, id)` helper. The original `glance_card_slice` becomes a 1-line shim for backward compatibility with story 9-1's render tests, and `recent_additions_slice` is the symmetric new helper. Better than duplication.
+- **`fake_search_result` test factory**: introduced in `mod tests` to seed the new render tests with deterministic `SearchResult` instances without touching the DB. Reused by both `home_renders_recent_additions_with_three_items` (3 items in input order) and `home_renders_recent_additions_empty_state` (empty Vec).
+- **AC1 ordering bug caught + fixed**: the initial template draft placed `#recent-additions` BEFORE `#collection-glance`. AC1 explicitly requires "Recent additions directly below Collection at a glance". Re-ordered before manual smoke.
+- **Empty-state padding `py-12`**: matches the project convention used by browse-results empty (home.html), `locations.html`, and `series_list.html`. Validation pass had caught `py-8` as a divergence; fix applied per the validation refinements.
 
 ### File List
 
-_To be filled by dev agent — exhaustive list of files touched, including the sprint-status.yaml line update._
+| File | Action |
+|---|---|
+| `src/models/title.rs` | edit (added `list_recent_active()` after `active_search`, ~50 lines) |
+| `src/routes/home.rs` | edit (extended `HomeTemplate` with 3 fields, populated in handler with soft-degrade, refactored `glance_card_slice` into shared `slice_section` helper, added `recent_additions_slice`, added `make_test_home_template_with_recent`, added `fake_search_result` factory, added 2 new render tests) |
+| `templates/pages/home.html` | edit (inserted `#recent-additions` section between `#collection-glance` and the browse toggle, with verbatim TitleCard markup duplicated from the browse-results loop) |
+| `locales/en.yml` | edit (`dashboard.recent_additions.heading` + `empty_state`) |
+| `locales/fr.yml` | edit (FR equivalents) |
+| `tests/dashboard_recent_additions.rs` | create (3 `#[sqlx::test]` cases + `insert_title_with_created_at` helper) |
+| `tests/e2e/specs/journeys/home.spec.ts` | edit (new `describe` block placed after the glance-card describe, single anonymous test that handles both populated and empty-DB cases) |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | edit (9-2 in-progress → review on completion; only this line + `last_updated` per CLAUDE.md rule 16) |
+| `_bmad-output/implementation-artifacts/9-2-dashboard-recent-additions.md` | edit (Status → review, all 7 tasks checked, Dev Agent Record filled) |
+
+### Change Log
+
+- **2026-04-30** — Initial implementation. All 7 tasks complete; 630 lib tests + 3 dashboard_recent_additions integration tests pass; clippy clean; sqlx cache unchanged. Followed Story 9-1 patterns (handler-side i18n, soft-degrade on DB error, scoped HTML assertions). One spec drift caught in template draft (AC1 ordering — `#recent-additions` was placed BEFORE `#collection-glance` in the first pass; re-ordered). E2E run deferred to CI per Story 9-1 precedent.

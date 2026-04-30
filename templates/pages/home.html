@@ -103,6 +103,40 @@
         </ul>
     </section>
 
+    {# Recent additions section (story 9-2). Sits directly below #collection-glance
+       and above #browse-results so it survives HTMX search swaps. The inner
+       <article> block is duplicated VERBATIM from the browse-results loop
+       (lines ~148-165 of this file) — known follow-up to extract into a partial. #}
+    <section id="recent-additions" aria-labelledby="recent-additions-heading" class="w-full max-w-4xl mt-6">
+        <h2 id="recent-additions-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ recent_additions_heading }}</h2>
+        {% if recent_additions.is_empty() %}
+            <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ recent_additions_empty }}</div>
+        {% else %}
+            <div class="recent-additions-list mt-3 space-y-2">
+                {% for item in recent_additions %}
+                <article class="title-card group">
+                    <a href="/title/{{ item.id }}" class="title-card-link"
+                       aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
+                        <div class="title-card-cover">
+                            {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
+                            <div class="title-card-overlay">
+                                <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
+                                <span class="text-xs">{{ item.volume_count }} vol</span>
+                            </div>
+                        </div>
+                        <div class="title-card-info">
+                            <p class="title-card-title">{{ item.title }}</p>
+                            <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
+                            <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
+                            <p class="title-card-volumes">{{ item.volume_count }} vol</p>
+                        </div>
+                    </a>
+                </article>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </section>
+
     <!-- Browse toggle + sort -->
     <div class="w-full max-w-4xl mt-6 flex items-center justify-between">
         <div class="flex items-center gap-2">
