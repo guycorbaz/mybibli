@@ -1202,3 +1202,415 @@ The dashboard shows actionable indicators with counts. Every page has encouragin
 
 **FRs:** FR55-FR59, FR83-FR84
 **UX-DRs:** UX-DR4, UX-DR6 (complete — roles, hamburger, scanner auto-close), UX-DR8, UX-DR13, UX-DR26, UX-DR28
+
+**Scope note — split philosophy (2026-04-30):** Epic 9 is decomposed into 22 small, independently shippable stories rather than the original 9. The two patterns that drive the count are (a) **incremental indicator delivery** — story 9.4 lands the FilterTag component end-to-end with the first indicator (unshelved volumes); stories 9.5/9.6/9.7 add the remaining four indicators on the same plumbing as small follow-ups; and (b) **one PR per `hx-confirm=` migration** — story 9.10 lands the Modal component foundation with the first migration (delete borrower); stories 9.11–9.14 each migrate one of the four remaining grandfathered sites, emptying `ALLOWED_HX_CONFIRM_SITES` to `&[]` at 9.14 close. Choosing many small stories over fewer large ones trades retro/review overhead for tighter blast-radius and clearer per-story acceptance — appropriate for an Epic that is fundamentally polish + completion of partial patterns rather than new feature surface.
+
+**Stories:**
+
+#### Story 9.1: Dashboard — global stats card
+**As any** user (anonymous or authenticated), **I want** to see global collection stats on the home page, **so that** I get an immediate sense of the catalog's size at a glance.
+
+**FRs:** FR55
+
+**Acceptance Criteria:**
+- Given the home page (`/`), when it renders for any role, then a "Collection at a glance" card displays three counts: total active titles, total active volumes, total active loans — each excluding `deleted_at IS NOT NULL` rows
+- Given the counts, when computed, then they come from a single SQL round-trip (one query with three sub-counts via UNION ALL or three SELECTs in a single transaction) — no N+1, no per-entity lookup
+- Given a fresh DB, when the counts are zero, then the card still renders with "0 titles", "0 volumes", "0 loans" — no empty-state hiding (the card is always present; the StatusMessage empty-state for an empty catalog is a separate concern handled by 9.15)
+- Given the card, when rendered, then each count line is a clickable link: title count → `/catalog`, volume count → `/catalog?view=volumes` (or equivalent existing route), loan count → `/loans` for librarian/admin, and rendered as plain text with a tooltip "Sign in to view loans" for anonymous users (since `/loans` is gated)
+- Given the role-aware link generation, when tested, then anonymous users never receive a link to `/loans` in the rendered HTML (regression guard against accidental over-rendering)
+- CSP compliance: card uses Tailwind classes only, no inline styles
+- i18n: EN + FR labels ("Collection at a glance" / "Aperçu de la collection", "titles" / "titres", "volumes", "active loans" / "prêts en cours")
+- Unit tests: count query returns correct values across scenarios (empty DB, mixed soft-deleted/active); role-aware link generation; soft-delete exclusion
+- E2E smoke: anonymous → `/` → verify card with three counts, loan count is plain text; login as librarian → `/` → verify loan count becomes a link → click → `/loans` opens
+
+#### Story 9.2: Dashboard — recent additions
+**As any** user, **I want** to see the most recent titles added to the catalog on the home page, **so that** I can quickly browse what is new.
+
+**FRs:** FR56
+
+**Acceptance Criteria:**
+- Given the home page, when it renders, then a "Recent additions" section shows the 10 most recently created active titles (sorted by `created_at DESC`, excluding soft-deleted), each displayed via the existing TitleCard component (UX-DR17, list-mode by default)
+- Given the section, when fewer than 10 titles exist, then only the existing titles are shown (no padding); if zero titles exist, the section reuses the StatusMessage empty-state (story 9.15) instead of disappearing entirely
+- Given a TitleCard, when clicked, then it navigates to `/title/:id` (existing route)
+- Given the query, when computed, then it runs as a single SELECT with `LIMIT 10` and joins what is needed for TitleCard rendering (primary contributor, cover URL) — no per-row N+1 metadata fetch; missing covers fall back to UX-DR10 placeholder
+- Given the section is visible to anonymous users, when rendered, then no role-gated information leaks (the query SELECTs only public columns)
+- CSP compliance: TitleCard is already CSP-clean from Epic 1, no new inline markup
+- i18n: EN + FR for section heading ("Recent additions" / "Ajouts récents")
+- Unit tests: query returns correct LIMIT and ORDER, soft-deleted titles excluded; query is role-agnostic (no SQL branch on role)
+- E2E: anonymous → `/` → verify Recent additions section with up to 10 cards → click first card → verify `/title/:id` opens; create a new title → reload `/` → verify it appears at the top
+
+#### Story 9.3: Dashboard — stats by genre
+**As any** user, **I want** to see the catalog distribution by genre, **so that** I can understand the composition of the library.
+
+**FRs:** FR57
+
+**Acceptance Criteria:**
+- Given the home page, when it renders, then a "By genre" section displays a list of all genres assigned to at least one active title, with: genre name, title count for that genre, percentage of total active titles with at least one genre (rounded to 1 decimal) — sorted by count descending
+- Given the query, when computed, then it joins `titles` with `genres` (or the title↔genre association table) and aggregates with `COUNT(*) GROUP BY genres.id WHERE titles.deleted_at IS NULL AND genres.deleted_at IS NULL` — single round-trip, no N+1
+- Given a row, when clicked, then it navigates to `/catalog?genre=<id>` showing only titles of that genre (filter route established by Epic 1 search)
+- Given the section, when no genres are assigned anywhere (fresh install), then the section is hidden entirely; the broader empty-catalog UX is handled by StatusMessage in 9.15
+- Given a title with no genre, when counts are computed, then it is NOT counted (we count active title-genre assignments, not active titles); the percentage denominator is "active titles with at least one genre" so percentages always sum to 100% across the displayed list
+- Given dark mode, when rendered, then the bar/visual uses tokens from UX-DR24 (no hardcoded colors)
+- CSP compliance: bar visualization uses predefined Tailwind width classes (e.g., `w-1/4`, `w-1/3`, or arbitrary-value classes via Tailwind v4 — class-based not `style="width: ..."`)
+- i18n: EN + FR for section heading ("By genre" / "Par genre"); count + percentage formatting respects locale (FR uses comma decimal separator)
+- Unit tests: aggregation query (group + count + percent rounding); soft-delete exclusion; genre with 0 active titles excluded from results
+- E2E: seed catalog with mixed genres → `/` → verify By genre section sorted by count desc → click a genre row → verify `/catalog?genre=<id>` filter applies
+
+#### Story 9.4: FilterTag component + first actionable indicator (unshelved volumes)
+**As a** librarian, **I want** to see the count of unshelved volumes as a clickable tag on the home page, **so that** I can immediately jump to the list of volumes that need shelving.
+
+**FRs:** FR58 (partial — unshelved indicator)
+**UX-DRs:** UX-DR4
+
+**Acceptance Criteria:**
+- Given the home page seen by a librarian or admin, when it renders, then a "What needs attention" section displays one or more FilterTag pills; this story delivers the first one — "Unshelved volumes — N" where N is the count of active volumes whose `storage_location_id IS NULL`
+- Given the count is zero, when computed, then the tag is hidden entirely (UX-DR4 zero-count rule); the section heading also hides if all tags are zero
+- Given the tag is clicked, when activated, then the URL becomes `/?filter=unshelved` and the home page swaps the Recent additions section for a filtered list of the unshelved volumes; the tag morphs into the active filter badge (pill with ✕) per UX-DR4 dual-state
+- Given the active filter badge, when its ✕ is clicked, then the URL returns to `/` and the home page restores the default sections (stats card, recent additions, by genre) — HTMX swap only, no full page reload
+- Given the FilterTag component, when factored, then it lives at `components/filter_tag.html` parameterized by: label, count, target URL, active-state flag — reusable for the 4 remaining indicators (9.5/9.6/9.7) without modification
+- Given URL filter parsing, when handled server-side, then `?filter=<name>` is a closed enum (case-sensitive); unknown values fall back to no-filter (no 400, just ignored) and a warning is logged
+- Given the single-active-filter constraint, when one filter is active and another is clicked, then the new filter replaces the old (no AND/OR composition in v1) — matches UX-DR4
+- Given an anonymous user crafts `/?filter=unshelved`, when handled, then the filter is ignored (no role-gated leak) and default sections render — anonymous users do not see the "What needs attention" section at all
+- CSP compliance: FilterTag is class-driven, no inline styles; clickable behavior is via plain `<a href>` links (HTMX boost-style for partial swap, full-page navigation as JS-disabled fallback)
+- i18n: EN + FR for "What needs attention" / "À traiter", "Unshelved volumes" / "Volumes à ranger"
+- Unit tests: FilterTag rendering (default + active states); zero-count hiding; unshelved query (active volumes WHERE `storage_location_id IS NULL AND deleted_at IS NULL`); URL filter enum parsing
+- E2E smoke (Foundation Rule #7, librarian role): blank browser → login → `/` → verify Unshelved tag with non-zero count → click → verify URL `/?filter=unshelved` and list shows only unshelved → click ✕ → verify default home; create a volume without location → reload → verify count incremented
+
+#### Story 9.5: Indicator — overdue loans
+**As a** librarian, **I want** an overdue loans tag on the home page, **so that** I can quickly see and address late returns.
+
+**FRs:** FR58 (partial — overdue indicator)
+**UX-DRs:** UX-DR4 (reuses FilterTag from 9.4)
+
+**Acceptance Criteria:**
+- Given the home page seen by a librarian or admin, when it renders, then the "What needs attention" section additionally displays an "Overdue loans — N" FilterTag where N is the count of active loans whose age in days exceeds the configured `overdue_threshold` (from `AppSettings`, default 30)
+- Given the count is zero, when computed, then the tag is hidden (UX-DR4 zero-count rule)
+- Given the tag is clicked, when activated, then the URL becomes `/?filter=overdue` and the home page swaps the default sections for a list of overdue loans — each row uses the LoanRow variant of UX-DR5 with its existing duration color coding
+- Given the overdue threshold is changed via `/admin/system` (story 8-5), when the home page is reloaded, then the count reflects the new threshold immediately (read-from-cache pattern via `state.overdue_threshold_days()`)
+- Given the query, when computed, then it filters `loans WHERE returned_at IS NULL AND DATEDIFF(NOW(), borrowed_at) > <threshold>` — single round-trip, indexed on `(returned_at, borrowed_at)` if not already
+- Given an anonymous user crafts `/?filter=overdue`, when handled, then the filter is ignored (loans are Librarian-gated content)
+- Given the StatusMessage empty-state when filter is applied but list is empty, when rendered, then it reuses the StatusMessage component from 9.15 with copy "No overdue loans — well done!" / "Aucun prêt en retard — bien joué !"
+- CSP compliance: reuses FilterTag from 9.4, no new inline markup
+- i18n: EN + FR for "Overdue loans" / "Prêts en retard"
+- Unit tests: query with threshold parameterization; threshold change reflected without restart (uses live `AppSettings`); zero-count hiding
+- E2E (librarian): login → `/` → verify Overdue tag with count → click → verify URL `/?filter=overdue` and only overdue loans listed → adjust threshold via `/admin?tab=system` → reload `/` → verify count updated
+
+#### Story 9.6: Indicator — series with gaps
+**As a** librarian, **I want** a series-with-gaps tag on the home page, **so that** I can see at a glance how many series are incomplete and plan acquisitions.
+
+**FRs:** FR58 (partial — gaps indicator)
+**UX-DRs:** UX-DR4 (reuses FilterTag from 9.4)
+
+**Acceptance Criteria:**
+- Given the home page seen by a librarian or admin, when it renders, then the "What needs attention" section additionally displays a "Series with gaps — N" FilterTag where N is the count of active series for which the gap detection logic (Epic 5 story 5-4) reports at least one missing position
+- Given the count is zero, when computed, then the tag is hidden (zero-count rule)
+- Given the tag is clicked, when activated, then the URL becomes `/?filter=gaps` and the home page swaps the default sections for the list of series with gaps — each row is a SeriesCard (existing component from Epic 5) showing the gap count and a SeriesGapGrid preview (UX-DR16)
+- Given the gap-count query, when computed, then it reuses the existing series-with-gaps service function from `src/services/series.rs` (extracted in Epic 5) — no SQL duplication; if the function is private, it is made `pub(crate)` in this story
+- Given series of type "open" (no declared total), when evaluated, then they are NEVER counted as having gaps (open series have no defined "completeness")
+- Given series of type "closed" with declared total N, when evaluated, then a gap exists if any position 1..N is unowned
+- Given an anonymous user crafts `/?filter=gaps`, when handled, then the filter is allowed (series browsing is anonymous-permitted per FR65) — but the FilterTag itself is hidden from anonymous on `/`
+- CSP compliance: reuses FilterTag, no new inline markup
+- i18n: EN + FR for "Series with gaps" / "Séries incomplètes"
+- Unit tests: gap-count query (open vs closed series); zero-count hiding; reuse of existing service function (not a re-implementation)
+- E2E (librarian): seed a closed series of 5 with positions 1, 2, 4 owned → login → `/` → verify Series-with-gaps count = 1 → click → verify list shows that series with gap markers at positions 3 and 5
+
+#### Story 9.7: Indicators — recent cataloged + recent returns
+**As a** librarian, **I want** to see how many titles I have just cataloged and loans I have just returned, **so that** I can review the most recent activity in one click.
+
+**FRs:** FR58 (partial — recent cataloged + recent returns)
+**UX-DRs:** UX-DR4 (reuses FilterTag from 9.4)
+
+**Acceptance Criteria:**
+- Given the home page seen by a librarian or admin, when it renders, then the "What needs attention" section displays two additional FilterTags: "Recent cataloged — N" (active titles `created_at >= NOW() - INTERVAL 7 DAY`) and "Recent returns — N" (loans `returned_at >= NOW() - INTERVAL 7 DAY`)
+- Given the 7-day window, when computed, then the cutoff is hardcoded in v1 (not admin-configurable per scope freeze) — documented in CLAUDE.md as a known constant; if the user later requests configurability, it becomes a settings story
+- Given a count is zero, when computed, then that tag is hidden (zero-count rule)
+- Given "Recent cataloged" is clicked, when activated, then the URL becomes `/?filter=recent-cataloged` and the home page swaps to a TitleCard list ordered by `created_at DESC` within the 7-day window
+- Given "Recent returns" is clicked, when activated, then the URL becomes `/?filter=recent-returns` and the home page swaps to a list of loans (LoanRow) ordered by `returned_at DESC` within the 7-day window
+- Given anonymous users craft these URLs, when handled, then the filter is ignored (recent activity is Librarian-gated)
+- Given the section ordering, when all 5 tags are rendered together, then the visual order is: Unshelved → Overdue → Series with gaps → Recent cataloged → Recent returns (priority by actionability — "needs action" before "review")
+- CSP compliance: no new inline markup
+- i18n: EN + FR for "Recent cataloged" / "Catalogués récemment", "Recent returns" / "Retours récents"
+- Unit tests: 7-day cutoff query for both indicators; zero-count hiding; tag ordering across all 5 indicators
+- E2E (librarian): seed a title created today + a loan returned today → login → `/` → verify both tags present → click each → verify the respective filtered list
+
+#### Story 9.8: Loan status role-aware on volume detail
+**As an** anonymous user, **I want** to see whether a volume is on loan without seeing the borrower's name, **so that** privacy is preserved while I can still tell whether the item is currently available.
+
+**FRs:** FR59
+
+**Acceptance Criteria:**
+- Given the volume row on `/title/:id` (or any volume-detail rendering), when an anonymous user views it, then the loan status displays as "On loan" / "En prêt" with no borrower name, no borrower link, and no return-date hint
+- Given the same view, when a librarian or admin views it, then the loan status displays "On loan to {borrower name} since {date}" / "En prêt à {nom} depuis le {date}" with the borrower name as a clickable link to `/borrower/:id`
+- Given a volume that is not on loan, when rendered, then the same field shows the existing VolumeBadge (UX-DR15) for shelved / unshelved — unchanged behavior for any role
+- Given the templating, when factored, then the role-aware split lives in a single shared partial (`components/loan_status_badge.html`) parameterized by `role` so any caller (volume row, title detail, search result) renders consistently — no duplicated role check across templates
+- Given the SQL that drives volume detail, when fetching loan info, then for an anonymous request the query SELECTs only the existence of an active loan + `borrowed_at` (no JOIN to `borrowers`); for librarian/admin the JOIN is added — minimizes data leak surface
+- Given the role split, when tested, then the rendered HTML for an anonymous request is byte-asserted to NOT contain the borrower's name (regression guard against accidental over-rendering)
+- CSP compliance: no inline markup
+- i18n: EN + FR for both role paths
+- Unit tests: anonymous query path returns no borrower data; librarian query path returns borrower data; component parameterization renders correct variant per role; HTML-name-leak regression guard
+- E2E: seed a volume with an active loan to "Alice" → anonymous → `/title/<id>` → verify "On loan" without "Alice" appearing anywhere in the HTML → login as librarian → reload → verify "On loan to Alice" with borrower link
+
+#### Story 9.9: Home page scanner detection state machine
+**As a** librarian on the home page, **I want** the search field to distinguish between human typing (search) and a barcode-scanner burst (scan with intent to navigate), **so that** I can scan from the home page and land on the right page without manually navigating to `/catalog` first.
+
+**UX-DRs:** UX-DR26
+
+**Acceptance Criteria:**
+- Given the home page search field, when it receives input, then a 4-state machine governs behavior: IDLE (no recent input), DETECTING (input started, deciding scanner-vs-typing), SEARCH_MODE (typing pace confirmed, debounced search active), SCAN_PENDING (scanner burst detected, awaiting submit)
+- Given two independent timers, when the state machine runs, then `scanner_burst_threshold` (default 50ms inter-keypress, hardcoded in v1) classifies a burst, and `search_debounce_delay` (default 150ms after last keypress) triggers as-you-type search; both are JS-side constants documented in `static/js/home-scanner.js` (new module) or the existing `scan-field.js` (extension)
+- Given DETECTING is entered on the first keypress, when subsequent keypresses arrive within the burst threshold, then the state advances to SCAN_PENDING; if instead the gap between keypresses exceeds the burst threshold, then the state advances to SEARCH_MODE
+- Given SCAN_PENDING is reached and an Enter or final keypress lands within the burst window, when handled, then the input is submitted to the server scan-handler which decides the destination based on prefix detection: ISBN known → `/title/:id`, V-code known → `/volume/:id` (or volume detail), L-code known → `/location/:id`, unknown → redirect to `/catalog?code=<value>` so the cataloging workflow takes over (no creation logic on `/`)
+- Given SEARCH_MODE is reached, when input continues, then debounced HTMX as-you-type search runs against the existing catalog search endpoint (Epic 1) and renders results inline below the search field
+- Given the user clears the input or blurs the field, when the state machine resets, then it returns to IDLE; the next keypress restarts at DETECTING
+- Given the state machine and the existing focus dual mechanism (UX-DR25 `focus.js`), when modeled, then they coexist without cycle (focus.js maintains focus, scanner state machine classifies input — orthogonal concerns)
+- Given prefers-reduced-motion or screen-reader users, when interacting, then the state machine still works (it is purely keystroke-timing based, not animated); visual hints are aria-live polite announcements
+- CSP compliance: state machine logic ships in an external JS module — no inline scripts
+- i18n: EN + FR for any user-facing copy ("Searching..." / "Recherche...", "Scanning..." / "Scan détecté...")
+- Unit tests (JS via the existing testing harness): timer thresholds; state transitions for each input pattern (slow typing, scanner burst, mixed); reset on clear/blur
+- E2E: home page → simulate scanner burst (helper `simulateScan` from `tests/e2e/helpers/scanner.ts`) of an unknown ISBN → verify redirect to `/catalog?code=...` → home page again → simulate human typing → verify SEARCH_MODE results appear inline → clear input → verify reset
+
+#### Story 9.10: Modal component foundation + migration #1 (delete borrower)
+**As the** project maintainer, **I want** a CSP-clean Modal component with focus trap, scanner-guard integration, and 4 destructive variants, plus the first concrete migration (delete borrower) to prove it in production, **so that** subsequent migrations are mechanical and the UX-DR8 contract is exercised end-to-end.
+
+**UX-DRs:** UX-DR8 (foundation + 1st migration)
+
+**Acceptance Criteria:**
+- Given the Modal component, when factored, then it lives at `components/modal.html` with parameters: variant (`delete` / `delete-forever` / `remove` / `warning`), title, body (HTML-escaped), confirm-label, cancel-label, action-url, action-method (`DELETE` / `POST`); rendered as a `<dialog>` element with `aria-modal="true"`
+- Given the Modal opens, when triggered (via an HTMX `hx-get` that swaps the modal slot, or a click on a `data-modal-trigger` button), then keyboard focus moves to the Cancel button (UX-DR8 default — Cancel never destroys), Tab cycles within the modal only (focus trap), Escape closes the modal restoring focus to the trigger
+- Given the scanner-guard from story 7-5 is in effect, when the modal is open (`dialog[open]`, `aria-modal="true"`), then printable keystrokes are routed to the modal's focused text input (if any) or are blocked — never leaking to a background scan field
+- Given the modal background, when the modal is open, then background interactive elements get `tabindex="-1"` and `aria-hidden="true"` (focus + AT exclusion) and page scroll is locked
+- Given the Confirm button, when activated, then it submits the action via HTMX (`hx-{method}` on the button), the modal closes on success, and a FeedbackEntry is rendered via the standard pipeline (`HtmxResponse` with OOB swaps)
+- Given `templates/pages/borrower_detail.html` line 27 (delete borrower), when migrated, then the existing `<button hx-delete=".." hx-confirm="..">` is replaced by a `<button data-modal-trigger=".." data-variant="delete">` that opens a Modal of variant `delete` with copy "Delete borrower {name}? This will move the record to Trash." / "Supprimer l'emprunteur {nom} ? L'enregistrement sera déplacé vers la corbeille." — the `hx-confirm` attribute is removed from this template
+- Given the audit allowlist `ALLOWED_HX_CONFIRM_SITES` in `src/templates_audit.rs`, when this story commits, then the entry `("templates/pages/borrower_detail.html", 2)` becomes `("templates/pages/borrower_detail.html", 1)` (the second `hx-confirm=` is the return-loan one, migrated by 9.11) — total grandfathered count goes from 6 to 5
+- Given the Modal component, when reusable across all 4 variants, then a smoke unit test validates the rendering of each variant; a JS unit test asserts the focus-trap behavior (Tab cycles, Shift+Tab cycles backwards, focus does not escape)
+- Given the existing E2E for borrower deletion (Epic 4), when re-run after migration, then it passes with at most a selector update (server contract DELETE `/borrower/:id` is unchanged)
+- CSP compliance: Modal uses `<dialog>` + `data-*` attributes for triggering, no `onclick=`, no inline `style`; CSS-only animations
+- i18n: EN + FR for default cancel/confirm labels and the borrower-delete copy
+- Unit tests: variant rendering (4 variants); focus trap; Escape closes; scanner-guard integration (a printable burst while modal is open does not reach `#scan-field`)
+- E2E: librarian → `/borrower/:id` → click "Delete" → verify Modal opens with focus on Cancel → press Escape → verify closes → click "Delete" again → click Confirm → verify borrower soft-deleted, FeedbackEntry rendered, redirect to /borrowers list; verify the audit test (`cargo test hx_confirm_matches_allowlist`) passes after the migration
+
+#### Story 9.11: Migrate hx-confirm — return loan (loans.html + borrower_detail.html)
+**As the** project maintainer, **I want** the two "return loan" confirmation flows (on `/loans` and on borrower detail) migrated from `hx-confirm=` to the Modal component, **so that** the return-loan UX is consistent with the destructive-action pattern and two grandfathered sites are removed in lockstep.
+
+**UX-DRs:** UX-DR8 (migration #2)
+
+**Acceptance Criteria:**
+- Given `templates/pages/loans.html` line 123 (`hx-confirm="{{ confirm_label }}"`), when migrated, then it becomes a `data-modal-trigger` button using Modal variant `warning` (return is reversible — the volume can be re-loaned — so this is `warning`, not `delete`); the action remains the existing POST that closes the loan
+- Given `templates/pages/borrower_detail.html` line 72 (the second "return loan" confirmation), when migrated, then the same Modal variant `warning` is applied with identical copy
+- Given the two migrations share identical copy, when factored, then the Modal trigger pattern is the same (no copy-pasted HTML); the variant + i18n keys are identical across both files
+- Given `ALLOWED_HX_CONFIRM_SITES`, when updated, then `("templates/pages/loans.html", 1)` is removed entirely (count → 0, allowlist entry deleted) and `("templates/pages/borrower_detail.html", 1)` is removed (the only remaining occurrence — delete-borrower — was already removed by 9.10, so `borrower_detail.html` exits the allowlist completely); remaining grandfathered sites: 3 (`contributor_detail.html`, `series_detail.html`, `admin_users_row.html`)
+- Given the Modal copy for return, when rendered, then EN copy is "Mark loan as returned? The volume will be available again." / FR "Marquer le prêt comme retourné ? Le volume redevient disponible."
+- Given the existing E2E for loan-return on `/loans`, when re-run, then it passes (server contract unchanged); same for borrower-detail return flow
+- CSP compliance: no new inline markup, reuses 9.10 component
+- i18n: EN + FR for return-loan modal copy
+- Unit tests: audit test passes with updated allowlist; Modal variant-warning rendering
+- E2E: librarian → `/loans` → click "Return" on a loan → verify Modal opens with `warning` variant → confirm → verify loan returned and feedback rendered; same flow from `/borrower/:id` → verify identical behavior
+
+#### Story 9.12: Migrate hx-confirm — delete contributor
+**As the** project maintainer, **I want** the delete-contributor flow migrated from `hx-confirm=` to the Modal component, **so that** the destructive-action pattern is enforced and one more grandfathered site is removed.
+
+**UX-DRs:** UX-DR8 (migration #3)
+
+**Acceptance Criteria:**
+- Given `templates/pages/contributor_detail.html` line 15 (`<button hx-delete="..." hx-confirm="..." ...>`), when migrated, then it becomes a `data-modal-trigger` button using Modal variant `delete`; the existing FR54 protection (cannot delete a contributor with active title references) remains server-side and still returns 409 Conflict on attempt
+- Given the Modal copy, when rendered, then EN copy is "Delete contributor {name}? Linked titles will lose this contributor unless re-assigned." / FR "Supprimer le contributeur {nom} ? Les titres liés perdront ce contributeur sauf s'il est réassigné."
+- Given `ALLOWED_HX_CONFIRM_SITES`, when updated, then `("templates/pages/contributor_detail.html", 1)` is removed (count → 0); remaining grandfathered sites: 2 (`series_detail.html`, `admin_users_row.html`)
+- Given the existing E2E for contributor delete, when re-run, then it passes (server contract unchanged)
+- CSP compliance: no new inline markup
+- i18n: EN + FR for delete-contributor modal copy
+- Unit tests: audit test passes with updated allowlist
+- E2E: librarian → `/contributor/:id` (no title references) → click "Delete" → Modal opens → confirm → verify soft-deleted, redirect; same with active references → verify 409 feedback (no Modal regression on the conflict path)
+
+#### Story 9.13: Migrate hx-confirm — delete series
+**As the** project maintainer, **I want** the delete-series flow migrated from `hx-confirm=` to the Modal component, **so that** the destructive-action pattern is enforced and one more grandfathered site is removed.
+
+**UX-DRs:** UX-DR8 (migration #4)
+
+**Acceptance Criteria:**
+- Given `templates/pages/series_detail.html` line 35, when migrated, then it becomes a `data-modal-trigger` button using Modal variant `delete`; existing protections (cannot delete a series with assigned titles, or whatever Epic 5 enforces) remain server-side
+- Given the Modal copy, when rendered, then EN copy is "Delete series {name}? Assigned titles must be re-attached or detached first." / FR "Supprimer la série {nom} ? Les titres associés doivent être détachés ou réaffectés au préalable."
+- Given `ALLOWED_HX_CONFIRM_SITES`, when updated, then `("templates/pages/series_detail.html", 1)` is removed (count → 0); remaining grandfathered sites: 1 (`admin_users_row.html`)
+- Given the existing E2E for series delete, when re-run, then it passes
+- CSP compliance: no new inline markup
+- i18n: EN + FR for delete-series modal copy
+- Unit tests: audit test passes with updated allowlist
+- E2E: librarian → `/series/:id` (empty series) → "Delete" → Modal → confirm → verify soft-deleted; with assigned titles → verify 409 feedback
+
+#### Story 9.14: Migrate hx-confirm — admin user deactivation (final cleanup)
+**As the** project maintainer, **I want** the admin-user-deactivate flow migrated from `hx-confirm=` to the Modal component, **so that** UX-DR8 is fully implemented and the grandfathered allowlist is empty — the constraint becomes "no `hx-confirm=` anywhere in templates."
+
+**UX-DRs:** UX-DR8 (final migration)
+
+**Acceptance Criteria:**
+- Given `templates/fragments/admin_users_row.html` line 23, when migrated, then the deactivation button becomes a `data-modal-trigger` using Modal variant `delete`; the existing self-deactivate guard + last-active-admin guard logic (story 8-3) is preserved server-side
+- Given the Modal copy, when rendered, then EN copy is "Deactivate user {username}? They will be logged out immediately and cannot log back in until reactivated." / FR "Désactiver l'utilisateur {nom} ? Sa session sera fermée immédiatement et il ne pourra plus se reconnecter avant réactivation."
+- Given `ALLOWED_HX_CONFIRM_SITES`, when updated, then `("templates/fragments/admin_users_row.html", 1)` is removed and the constant becomes an empty slice `&[]`; the test continues to fail on any new `hx-confirm=` in templates (the allowlist mechanism stays as a safety net for the future, just empty in steady state)
+- Given the audit doc-comment in `src/templates_audit.rs`, when updated, then it reflects the new state ("All destructive actions use the UX-DR8 Modal component — no `hx-confirm=` anywhere"), removing the "five grandfathered sites" wording introduced in story 7-5
+- Given the CLAUDE.md "Modal scanner-guard invariant" section, when updated, then the line "the allowlist is frozen at 5 grandfathered sites … and only changes through explicit review" becomes "the allowlist is empty post Epic 9 — any new `hx-confirm=` is BLOCKED outright by `templates_audit.rs`"
+- Given the existing 8-3 E2E for admin user deactivation, when re-run, then it passes (server contract + guards unchanged)
+- CSP compliance: no new inline markup
+- i18n: EN + FR for deactivate-user modal copy
+- Unit tests: audit test passes with empty allowlist; `ALLOWED_HX_CONFIRM_SITES` is `&[]`
+- E2E: admin → `/admin?tab=users` → "Deactivate" on a librarian → Modal → confirm → verify user deactivated and session killed; attempt self-deactivate → verify 409 (Modal closed, FeedbackEntry shown — no regression of the 8-3 guards)
+
+**Out of scope (explicit):** removing the `hx-confirm` audit infrastructure itself — the test stays in place as a permanent CSP-discipline guard; only the allowlist contents are emptied.
+
+#### Story 9.15: StatusMessage — empty states (encouraging, role-aware)
+**As any** user, **I want** clear, encouraging empty-state messages on every list / search / dashboard view, **so that** an empty result feels like a starting point, not a dead end.
+
+**UX-DRs:** UX-DR13 (empty states)
+
+**Acceptance Criteria:**
+- Given the StatusMessage component, when factored, then it lives at `components/status_message.html` parameterized by: variant (`empty` / `info`), heading, body (HTML-escaped), CTA label (optional), CTA URL (optional), CTA role-gate (optional: `librarian` / `admin` to suppress for anonymous)
+- Given a list view that has zero items, when rendered, then it shows a StatusMessage with copy tailored per surface: empty catalog → "No titles yet — start by scanning a barcode." / "Aucun titre pour l'instant — commencez par scanner un code-barres."; empty loans (librarian) → "No active loans" / "Aucun prêt en cours"; empty borrowers → "No borrowers yet" / "Aucun emprunteur"; empty series → "No series yet" / "Aucune série"
+- Given the empty state has a CTA, when rendered, then the CTA shows only if the user has the role to act (librarian/admin can "Start cataloging" → `/catalog`; anonymous sees only the message, no CTA)
+- Given the encouraging tone, when copy is written, then no negative phrasing ("nothing found", "no data", "no results") — instead inviting verbs ("Start", "Add", "Scan", "Try a different search")
+- Given a search returns zero results, when rendered, then the StatusMessage adapts: "No matches for '{query}' — try a broader term or scan a barcode." / "Aucun résultat pour « {query} » — essayez un terme plus large ou scannez un code-barres."
+- Given the StatusMessage variant `empty`, when styled, then it uses the calm, non-alarming visual treatment from UX-DR24 (warm stone neutral, illustrative icon if any — no red, no warning amber)
+- Given anonymous + librarian role-aware CTA paths, when tested, then anonymous never sees a CTA that would link to a Librarian-gated route
+- Given pages covered, when audited, then the following surfaces emit StatusMessage on empty (this is the contract): `/catalog` (zero titles), `/loans` (zero active), `/borrowers`, `/series`, `/contributors`, `/title/:id` no volumes, `/borrower/:id` no loan history, `/?filter=...` filtered home page with zero matches, search-no-results
+- CSP compliance: component uses CSS classes only
+- i18n: EN + FR for every copy variant emitted; i18n key naming follows `empty.<surface>` (e.g., `empty.catalog`, `empty.loans`)
+- Unit tests: component rendering across variants; role-gating of CTA; HTML escaping of body
+- E2E: anonymous → `/catalog` with empty DB → verify StatusMessage with no CTA; login as librarian → `/catalog` (still empty) → verify StatusMessage with "Start cataloging" CTA → click → verify navigates to `/catalog` with focused scan field
+
+#### Story 9.16: StatusMessage — connection-lost overlay
+**As any** user, **I want** a clear overlay when the server connection is lost, **so that** I know my actions are not being saved and can recover when connectivity returns.
+
+**UX-DRs:** UX-DR13 (connection-lost overlay)
+
+**Acceptance Criteria:**
+- Given the application loads its base layout, when included, then a hidden `<div id="connection-lost-overlay" role="alert" aria-live="assertive" aria-atomic="true">` is present in `layouts/base.html`, with a "Connection lost" / "Connexion perdue" heading, body copy "Trying to reconnect..." / "Tentative de reconnexion en cours...", and a "Retry now" / "Réessayer" button
+- Given an HTMX request fails with a network error (`htmx:sendError` event — server unreachable, NOT a 4xx/5xx), when caught by `static/js/connection-monitor.js` (new module), then the overlay is shown by toggling its open/hidden state — visually a fixed full-viewport semi-transparent overlay
+- Given the overlay is shown, when a periodic health-check timer (5s interval) issues a `GET /health` (existing endpoint, exempt from CSRF / auth / setup-gate), then on success the overlay is dismissed automatically with a brief "Connection restored" / "Connexion rétablie" toast
+- Given the user clicks "Retry now", when handled, then the health check is fired immediately (resets the timer); on success the overlay closes; on failure the overlay stays
+- Given a 4xx / 5xx response (server reachable but errored), when received, then the overlay is NOT shown (these are application errors, handled by FeedbackEntry); the overlay is strictly for `htmx:sendError` (network failure) per UX-DR27 contract
+- Given an aria-live assertive surface, when the overlay shows, then screen readers announce immediately (assertive priority)
+- Given the connection is lost during a scan loop, when the overlay is shown, then the scan field is disabled (`disabled` attribute) so subsequent scans don't queue blind, and dismissal restores focus + enabled state
+- Given the prefers-reduced-motion media query, when honored, then the overlay appears/disappears without transition; otherwise a 200ms fade is allowed
+- CSP compliance: overlay markup is in `base.html`, JS is in an external module, no inline handlers
+- i18n: EN + FR for all overlay copy and toast
+- Unit tests (JS): overlay show/hide on simulated `htmx:sendError`; health-check polling; retry button; scan field disable/enable
+- E2E: load app → simulate network drop (Playwright `--offline` or `page.context().setOffline(true)`) → trigger an HTMX action → verify overlay appears with assertive aria-live → restore network → verify overlay auto-dismisses within 5s + "Connection restored" toast
+
+#### Story 9.17: NavBar — hamburger menu + scanner auto-close
+**As a** user on a tablet or mobile device, **I want** the navigation bar to collapse into a hamburger menu, and any open menu to auto-close when a scanner burst arrives, **so that** the menu does not interfere with cataloging on small screens.
+
+**UX-DRs:** UX-DR6 (partial — hamburger + scanner auto-close)
+
+**Acceptance Criteria:**
+- Given a viewport width below the desktop breakpoint (per UX-DR24: < 1024px), when the navbar renders, then the inline link list collapses into a hamburger button (☰ icon, `aria-label="Open menu"` / "Ouvrir le menu") at the right of the brand
+- Given the hamburger is clicked or activated via Enter/Space, when toggled, then a `<dialog>` or accessible disclosure panel opens listing the navigation links vertically; `aria-expanded` toggles on the trigger
+- Given the panel is open, when the user clicks outside it OR presses Escape OR clicks a link, then the panel closes; focus returns to the hamburger trigger
+- Given the panel is open and the user starts a scanner burst (multiple keystrokes within `scanner_burst_threshold` from 9.9), when detected by an extension to `scanner-guard.js`, then the panel auto-closes immediately and the keystrokes are routed to the scan field if any (or just dismissed if no scan target on the current page)
+- Given the desktop breakpoint (≥ 1024px), when the navbar renders, then the hamburger is hidden and the inline link list is shown — same links, same active-page indicator (existing Epic 1 nav bar)
+- Given the panel uses a `<dialog>` element, when implemented, then focus is trapped inside it (reuse the same focus-trap helper as Modal from 9.10); Escape closes
+- Given a route change (HTMX `hx-push-url` or full page nav), when the URL changes, then the panel closes if open
+- Given the role-based link visibility logic, when applied (already in the existing nav), then it still works inside the hamburger panel — no role-logic regression
+- CSP compliance: hamburger logic in `static/js/nav.js` (new) or `mybibli.js` extension, no inline handlers; visual states use Tailwind responsive classes (`md:hidden`, `lg:flex`, etc.)
+- i18n: EN + FR for hamburger label and panel heading (if any)
+- Unit tests (JS): toggle on click; close on outside click; close on Escape; close on link click; close on scanner burst (mock burst, verify `[open]` removed)
+- E2E: tablet viewport → load app → verify hamburger visible, links collapsed → click hamburger → verify panel opens, focus inside → click a link → verify navigates and panel closed; tablet → open panel → simulate scanner burst → verify panel closes; desktop viewport → verify hamburger hidden, links inline
+
+#### Story 9.18: NavBar — role-based visibility polish
+**As any** user, **I want** the navigation links to reflect exactly what my role can do, **so that** the navigation is honest about what is accessible and the UI does not show dead-end links.
+
+**UX-DRs:** UX-DR6 (role visibility polish — completion of Epic 1's basic nav)
+
+**Acceptance Criteria:**
+- Given the nav bar (desktop or hamburger), when rendered for an anonymous user, then the visible links are exactly: Home (/), Catalog (read-only — clicking takes them to `/login` per existing gate), Sign in (/login), Theme toggle, Language toggle — NO Loans, NO Borrowers, NO Admin, NO Sign out
+- Given the nav bar, when rendered for a librarian, then the visible links are: Home, Catalog, Loans, Borrowers, Theme, Language, Sign out — NO Admin
+- Given the nav bar, when rendered for an admin, then the visible links are: Home, Catalog, Loans, Borrowers, Admin, Theme, Language, Sign out (all links)
+- Given a role downgrade (e.g., admin demoted to librarian by another admin via 8-3), when the next page is rendered, then the nav reflects the new role on the very next request — no stale "Admin" link from a cached template
+- Given the existing nav-bar template (`components/nav_bar.html`) with role conditionals, when audited in this story, then any inconsistencies (e.g., a link visible to librarian but routing to a 403) are corrected; the audit is documented in the story spec
+- Given the active-page indicator from Epic 1, when rendered, then it works inside the hamburger panel (9.17) too — the same `current_page` value drives both desktop and mobile presentations
+- Given accessibility, when the nav renders, then it uses `<nav aria-label="Main navigation">`, links are real `<a href>` elements (no JS-only navigation), and the active page link has `aria-current="page"`
+- Given Sign out, when present, then it's the POST form variant from story 8-2 (CSRF-protected) — no GET `/logout` link; this is a re-verification not a change
+- CSP compliance: nav already CSP-clean from Epic 1, no new inline markup
+- i18n: EN + FR for every nav label (already largely in place — this story verifies completeness across all 3 roles)
+- Unit tests: render nav bar HTML for each role and assert exact link list; active-page rendering; `aria-current` on the matched link
+- E2E: anonymous → load any page → verify exact nav link list; login as librarian → verify exact list; promote a user to admin → verify Admin link appears; demote → verify Admin link gone
+
+#### Story 9.19: Contextual help — tooltips, help icons, aria-describedby
+**As any** user encountering a non-obvious form field or interactive element, **I want** a discoverable tooltip or help icon that explains it, **so that** I do not have to consult docs or guess.
+
+**FRs:** FR83
+
+**Acceptance Criteria:**
+- Given the Tooltip component, when factored, then it lives at `components/tooltip.html` and renders a small `<button type="button" class="help-icon" aria-describedby="tip-{id}" aria-label="Help: {summary}">?</button>` plus a hidden `<span role="tooltip" id="tip-{id}">{full text}</span>`; show on hover, focus, or tap (touch); Escape dismisses if focus-shown
+- Given the help-icon-trigger pattern, when extended for placeholder-only hints, then a parallel `placeholder=` + `aria-describedby` pattern is documented for inputs that don't need a clickable icon (e.g., the scan field placeholder is sufficient — no help icon there)
+- Given the form fields enumerated in this story, when rendered, then each has either a tooltip icon or aria-describedby pointing to inline help text. Coverage list (this is the contract for "complete" — anything else is a follow-up):
+  - **/catalog scan field**: aria-describedby explaining accepted prefixes (ISBN/V-code/L-code) — placeholder + tooltip-on-focus, no icon
+  - **Volume condition state** (loan + edit forms): tooltip explaining the configured states and the `loanable` flag impact
+  - **Series type (open / closed)**: tooltip explaining gap detection only applies to closed series with declared total
+  - **Overdue threshold** (`/admin?tab=system`): tooltip explaining computation cutoff behavior
+  - **Provider API keys** (`/admin?tab=system`): tooltip explaining "leave blank to skip provider"
+  - **First-launch wizard** (each step input): tooltip explaining what's being asked and what happens if skipped
+  - **Search field on `/`**: aria-describedby explaining "Type to search, scan a barcode to navigate"
+  - **Borrower contact fields**: tooltip on phone/email explaining optional, no validation beyond format
+- Given Tooltip on touch devices, when tapped, then it toggles open and stays open until tapped outside or another tooltip is opened
+- Given prefers-reduced-motion, when honored, then no fade-in transitions; tooltip appears/disappears instantly
+- CSP compliance: tooltip toggle in `static/js/tooltip.js` (new), no inline handlers; visual styles via Tailwind classes
+- i18n: EN + FR for every help-text string emitted; the i18n key naming follows the convention `help.<surface>.<field>` (e.g., `help.catalog.scan-field`, `help.admin.system.overdue-threshold`) for traceability
+- Unit tests (JS): toggle on click; close on outside click; close on Escape; aria-describedby linkage
+- E2E: navigate each surface in the coverage list → hover/focus the help icon → verify tooltip text appears in the correct language → press Escape → verify dismissed; tablet → tap help icon → verify toggle behavior
+
+#### Story 9.20: Keyboard shortcuts complete + cheat-sheet dialog
+**As a** keyboard-driven librarian, **I want** consistent keyboard shortcuts during the scan workflow plus a discoverable "?" cheat sheet, **so that** I can move at speed without reaching for the mouse.
+
+**FRs:** FR84
+
+**Acceptance Criteria:**
+- Given the existing global shortcut Ctrl+K / Cmd+K (Epic 1 — focus scan field on `/catalog`), when this story extends shortcuts, then the following are added globally (ignored when typing in non-scan inputs unless explicitly Esc-aware): `?` (open cheat-sheet dialog), `Esc` (close any open modal / cheat-sheet / focused dropdown), `g` then `c` (go to catalog), `g` then `l` (go to loans, librarian only), `g` then `h` (go to home), `g` then `b` (go to borrowers, librarian only), `g` then `a` (go to admin, admin only) — chord pattern with 800ms timeout
+- Given the cheat-sheet dialog, when opened via `?`, then it lists every active shortcut grouped by category (Navigation / Catalog / Modal / Search) — only shortcuts the user has access to (no admin shortcuts for librarian)
+- Given the dialog uses `<dialog>` + focus trap (reusing Modal infrastructure from 9.10), when opened, then Escape closes; clicking outside closes
+- Given the user is typing in a text input, when a shortcut key is pressed, then the global shortcut does NOT fire (e.g., `?` typed in a search box stays as text); the only exception is Esc (always handled, since it's the universal "escape from this context" key)
+- Given the chord pattern (`g` then `c`), when implemented, then the first key starts a 800ms window during which the second key triggers the action; if the window expires or any other key is pressed, the chord is cancelled
+- Given prefers-reduced-motion, when honored, then no animated dialog open; instant reveal
+- Given the cheat-sheet dialog has a "?" affordance, when discoverable, then a small footer link on every page reads "Press `?` for shortcuts" / "Appuyez sur `?` pour les raccourcis"
+- CSP compliance: shortcut handler in `static/js/shortcuts.js` (new), no inline handlers; uses delegated `keydown` listener on `document`
+- i18n: EN + FR for cheat-sheet content and footer link
+- Unit tests (JS): each shortcut fires when not in input; ignored when in input; chord timeout cancels; role-gated shortcuts respect role; cheat-sheet renders correct subset per role
+- E2E: anonymous → press `?` → verify cheat-sheet limited to anonymous shortcuts (no `g l`, no `g a`); login as librarian → press `?` → verify additional shortcuts; type `g` then `c` → verify navigates to `/catalog`; press Esc → verify dialog closes; focus a search input, type `?` → verify dialog does NOT open
+
+#### Story 9.21: Responsive per-page layouts
+**As a** user on a tablet or mobile device, **I want** each page to adapt its layout to the viewport, **so that** the most important elements are reachable and usable without horizontal scrolling.
+
+**UX-DRs:** UX-DR28
+
+**Acceptance Criteria:**
+- Given the breakpoints from UX-DR24 (mobile < 768, tablet 768–1023, desktop ≥ 1024), when each surface adapts, then the following per-page rules apply:
+  - `/catalog`: tablet — feedback list moves above the scan field (so virtual keyboard does not obscure it); mobile — feedback list is collapsible (latest entry visible, "show more" expands)
+  - `/loans`: tablet — DataTable hides "Created date" + "Borrowed_at" columns, shows only Volume, Borrower, Duration, Action; mobile — DataTable becomes a card list (one card per loan with full info stacked)
+  - `/borrowers`: similar DataTable → card transformation on mobile
+  - `/title/:id`: tablet — volumes table responsive column hiding; mobile — volumes become a card list
+  - `/`: tablet — dashboard sections stack vertically; mobile — same with reduced padding
+  - `/admin`: tablet — tabs wrap to two rows if needed; mobile — tabs become a select dropdown (single visible tab name + chevron)
+- Given the responsive transformations, when implemented, then they use Tailwind responsive prefixes (`md:hidden`, `lg:table-cell`, etc.) only — no JavaScript layout switching, so the layout is correct on initial server render (no flash of wrong layout)
+- Given the DataTable card-on-mobile transformation, when implemented, then the existing DataTable component (UX-DR5) gains a `mobile-cards` variant prop (or a sibling rendering) that emits `<dl>`-based card markup; the same data, the same sorting, the same pagination work in card mode
+- Given orientation changes (landscape → portrait on tablet), when triggered, then the layout updates without a page reload (CSS-driven); no JS event listener required
+- Given the print stylesheet from UX-DR19, when honored, then it remains compatible — printable views are not affected by mobile layouts
+- Given prefers-reduced-motion + reduced-data, when honored, then no entrance animations on layout transitions
+- CSP compliance: pure CSS transformations, no inline styles
+- i18n: every label that adapts (e.g., "Show more" on mobile catalog feedback collapse) has EN + FR keys
+- Unit tests: snapshot rendering of each surface at 3 viewport widths (mobile / tablet / desktop) — snapshots assert the presence of expected responsive class hints
+- E2E: each viewport (mobile 375px, tablet 768px, desktop 1280px) → load each surface in the coverage list → verify the expected layout transformation applies (key elements visible, no horizontal scroll, columns collapsed/expanded correctly)
+
+#### Story 9.22: WCAG 2.2 AA — final audit + axe-core full coverage
+**As the** project maintainer, **I want** every page in the app to pass WCAG 2.2 AA via automated axe-core checks in CI plus verified manual contrast/keyboard audits, **so that** the accessibility commitment from the project brief is closed end-to-end and regressions are caught on every PR.
+
+**UX-DRs:** UX-DR29 (finalization)
+
+**Acceptance Criteria:**
+- Given the existing axe-core helper in `tests/e2e/helpers/accessibility.ts`, when extended, then a new spec `tests/e2e/specs/accessibility-full.spec.ts` iterates over every URL in a list (`/`, `/catalog`, `/loans`, `/borrowers`, `/title/:id`, `/borrower/:id`, `/contributor/:id`, `/series/:id`, `/setup`, `/login`, `/admin?tab=health`, `/admin?tab=users`, `/admin?tab=reference_data`, `/admin?tab=trash`, `/admin?tab=system`) and runs axe-core's `runOnly: ['wcag2a', 'wcag2aa', 'wcag22aa']` configuration, asserting zero violations
+- Given a violation is found, when it surfaces, then the test fails with the violation rule id, target selector, and the failing element's accessible name — the developer can copy-paste the failing nodes from the CI log
+- Given keyboard-only navigation is verified, when audited, then a manual checklist is added to `docs/accessibility-audit.md` covering: skip-link presence on every page, focus visible on every focusable element (UX-DR24 token), focus order matches visual order, all interactive elements reachable, modal/dialog focus traps work, scan field stays focused after submit
+- Given color contrast is verified, when audited, then the audit produces a section in the same doc with: every text/background pairing measured (foreground/background hex + computed ratio), every pairing ≥ 4.5:1 for normal text and ≥ 3:1 for large text — both light and dark themes; flagged failures are filed as separate GitHub Issues (label `type:bug`) if found
+- Given screen reader smoke-tests are documented, when audited, then a section walks through one critical journey (cataloging a title) with VoiceOver / NVDA notes — what each landmark is announced as, what each scan-feedback entry sounds like with aria-live polite, what the modal sounds like with `aria-modal`
+- Given the CI integration, when the new axe-core spec runs, then it is added to the `e2e` job; it must pass for the PR to merge (gate); existing axe-core spot tests are kept (no regression in coverage)
+- Given the audit doc is signed, when complete, then the project README's Accessibility section links to `docs/accessibility-audit.md` and states "WCAG 2.2 AA verified at Epic 9 close — see audit doc for evidence"
+- Given the future contract, when established, then any new page added after Epic 9 must include itself in the axe-core URL list — this is enforced by a `templates_audit.rs` test that walks `src/routes/` for handlers returning HTML and asserts they are in the URL list (or explicitly opted out with a doc-commented reason)
+- CSP compliance: no template changes in this story (verification-only); any failing surface gets a follow-up issue rather than an in-story fix unless it is < 30min trivial
+- i18n: EN + FR for any new copy in the audit doc + README
+- Unit tests: the URL list is loaded from a single source of truth (no duplicated lists between the spec and a registry); the `templates_audit.rs` regression test detects a new handler not in the URL list
+- E2E smoke (Foundation Rule #7, Epic 9 closure): the new accessibility-full spec runs in CI on PR; the run passes locally + in CI; manual sign-off doc is committed to the repo
