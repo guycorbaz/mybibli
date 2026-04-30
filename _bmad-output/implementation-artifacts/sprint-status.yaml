@@ -39,7 +39,7 @@
 # The epics document contains FR/NFR/AR/UX-DR assignments per epic.
 
 generated: 2026-03-29
-last_updated: 2026-04-29 # Story 8-8 code-review pass 1 batch-applied — 21 patches landed (P1 critical resolver fix unblocking Steps 2-4, P16 idempotent admin update, P17 per-row Skip checkboxes, P18 Step 2 Previous → Step 1, P19 transactional save_provider_keys, P20 admin-race flash banner, P21 fail-closed gate init, P14 AC14 multi-step integration test, P2 dedicated CI E2E lane, plus 12 mechanical fixes). Status review → done; awaiting CI green.
+last_updated: 2026-04-30 # Epic 8 close: story 8-8 PR #92 merged to main after 5-iteration CI recovery (P1 resolver fix + 6 latent bug fixes); Epic 8 retro complete (`epic-8-retro-2026-04-30.md`); 5 deferred review findings filed as GH issues #93–#97; per-story-commit action item retired via decision record GH #98. Epic 8: in-progress → done. Epic-8-retrospective: optional → done.
 project: mybibli
 project_key: NOKEY
 tracking_system: file-system
@@ -145,7 +145,7 @@ development_status:
   # UX-DRs: UX-DR7, UX-DR20, UX-DR21
   # Stories decomposed 2026-04-17 (7 stories — split trash into view/restore vs permanent-delete/auto-purge).
   # 2026-04-18: inserted 8-2 CSRF middleware (closes Epic 7 retro Action 1); renumbered 8-2..8-7 → 8-3..8-8.
-  epic-8: in-progress
+  epic-8: done
   8-1-admin-shell-and-health-tab: done
   8-2-csrf-middleware-and-form-token-injection: done
   8-3-user-administration: done
@@ -154,7 +154,7 @@ development_status:
   8-6-trash-view-and-restore: done # folded into 8-7 PR (consolidated trash panel + restore handlers + permanent delete + auto-purge shipped as one unit, PR #59)
   8-7-permanent-delete-and-auto-purge: done
   8-8-first-launch-setup-wizard: done
-  epic-8-retrospective: optional
+  epic-8-retrospective: done
 
   # Epic 9: Polish UX & Accessibilité
   # FRs: FR55-FR59, FR83-FR84
