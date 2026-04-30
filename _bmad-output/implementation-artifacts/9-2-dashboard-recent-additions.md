@@ -14,7 +14,7 @@ so that I can quickly browse what is new without launching a search.
 2. **AC2 — TitleCard markup parity.** Each title in the section is rendered using the SAME visual template as the search-result browse list — `<article class="title-card">` with the `.title-card-cover`, `.title-card-info`, `.title-card-title`, `.title-card-contributor`, `.title-card-meta`, `.title-card-volumes` substructure as established by Epic 1 / UX-DR17 (list mode by default). The card is wrapped in an `<a href="/title/:id" class="title-card-link">` so a click navigates to the title detail page.
 3. **AC3 — Single round-trip enriched query.** The query that drives the section is a single `SELECT` round-trip including the JOINs needed for TitleCard rendering: primary contributor (via `title_contributors` + `contributors` + `contributor_roles`, ordered by "Auteur" first), genre name, volume count (subquery on `volumes`), cover URL — all in one statement, no per-row N+1. New function lives at `src/models/title.rs::list_recent_active(pool, limit) -> Result<Vec<SearchResult>, AppError>` reusing the existing `SearchResult` struct (its 9 fields are exactly what TitleCard renders).
 4. **AC4 — Fewer than 10 titles.** Given the active catalog has fewer than 10 titles, when the section renders, then it shows ALL existing active titles in the same order (no padding, no truncation downward to a smaller multiple).
-5. **AC5 — Zero titles (interim empty-state).** Given the active catalog is empty (0 titles), when the section renders, then it displays a temporary inline empty-state (`<div class="text-center text-stone-500 dark:text-stone-400 py-8">` with the i18n text "No recent additions yet — start cataloging!" / "Pas encore d'ajouts récents — commencez à cataloguer !"). The full StatusMessage component arrives in story 9-15 and will be migrated then; for now, the inline fallback satisfies the spec's "instead of disappearing entirely" intent. Do NOT hide the section.
+5. **AC5 — Zero titles (interim empty-state).** Given the active catalog is empty (0 titles), when the section renders, then it displays a temporary inline empty-state (`<div class="text-center py-12 text-stone-500 dark:text-stone-400">` with the i18n text "No recent additions yet — start cataloging!" / "Pas encore d'ajouts récents — commencez à cataloguer !"). The `py-12` matches the established empty-state convention used by `templates/pages/home.html` (browse-results empty), `locations.html`, and `series_list.html` — do NOT use `py-8`. The full StatusMessage component arrives in story 9-15 and will be migrated then; for now, the inline fallback satisfies the spec's "instead of disappearing entirely" intent. Do NOT hide the section.
 6. **AC6 — Anonymous data leak guard.** Given the section is visible to anonymous users, when the query runs, then it SELECTs only public columns (id, title, subtitle, media_type, genre_name, primary_contributor, volume_count, cover_image_url, publication_date) — no role-gated columns are joined. The query is role-agnostic (no `if session.role …` branch in the SQL) and the rendered HTML for an anonymous request never differs from the librarian/admin HTML for this section.
 7. **AC7 — HTMX swap survival.** The "Recent additions" section sits OUTSIDE the `#browse-results` HTMX swap target (per story 9-1's same invariant for the glance card). When the user types in the search field and the HTMX search fragment is swapped into `#browse-results`, the recent additions section MUST remain visible above. Verify the placement empirically.
 8. **AC8 — CSP compliance.** No `style="..."`, no `<style>`, no `<script>`, no `onclick=`, no inline event handlers. Tailwind utility classes only. The audit test `src/templates_audit.rs::no_inline_markup_in_templates` must continue to pass.
@@ -31,10 +31,14 @@ so that I can quickly browse what is new without launching a search.
 - [ ] **Task 1 — Add `list_recent_active` to `TitleModel` (AC: 1, 3, 6, 10a–c)**
   - [ ] In `src/models/title.rs`, add `pub async fn list_recent_active(pool: &DbPool, limit: u32) -> Result<Vec<SearchResult>, AppError>` after the existing `active_search` function (around line 810).
   - [ ] The SQL is a SINGLE SELECT shaped like `active_search`'s data query but simpler — no FULLTEXT, no LIKE, no genre/state filter, just `WHERE t.deleted_at IS NULL ORDER BY t.created_at DESC LIMIT ?`. Reuse the same JOINs (genres, primary contributor subquery, volume_count subquery) so the returned `SearchResult` shape matches. Use `sqlx::query` (dynamic) per project convention (see Story 9-1 anti-pattern: no `sqlx::query!` macro to avoid `.sqlx/` cache regeneration).
-  - [ ] Note: `active_search`'s SQL fragment with the contributor + volume_count subqueries is large. Consider extracting the SELECT projection + JOINs into a shared `SQL_SEARCH_RESULT_PROJECTION: &str` constant if and only if duplication exceeds ~40 lines; otherwise duplicate inline (Foundation Rule #1 DRY allows three similar lines over a premature abstraction).
+  - [ ] **Duplication policy:** the projection in `active_search` (SELECT clause + JOINs) is **17 lines** (verified at `src/models/title.rs:763-779`). That is well under the rule-of-three threshold for extraction. **Duplicate the projection inline in `list_recent_active`; do NOT extract a shared `SQL_SEARCH_RESULT_PROJECTION: &str` constant in this story.** A future story that adds a third caller can revisit.
 - [ ] **Task 2 — Wire the handler (AC: 1, 4, 5, 6, 7)**
   - [ ] In `src/routes/home.rs::home` (after the `glance = ...` block from story 9-1), call `TitleModel::list_recent_active(pool, 10).await` with the **soft-degrade pattern** established by story 9-1 (match on the result, log `tracing::warn!` and use an empty `Vec` on error so the home page doesn't 500 on a transient DB issue).
-  - [ ] Extend `HomeTemplate` (`src/routes/home.rs:32`) with TWO new fields: `recent_additions: Vec<SearchResult>` (the data) and `recent_additions_heading: String` + `recent_additions_empty: String` (pre-translated labels — handler-side translation per project convention, see story 9-1 Dev Notes "Library/framework requirements").
+  - [ ] Extend `HomeTemplate` (`src/routes/home.rs:31-81`, struct of 50 fields post-9-1) with **THREE new fields**:
+    - `recent_additions: Vec<SearchResult>` (the data — pulled from `crate::models::title::SearchResult`)
+    - `recent_additions_heading: String` (pre-translated label)
+    - `recent_additions_empty: String` (pre-translated label for the empty-state)
+  - [ ] Translate `dashboard.recent_additions.heading` and `dashboard.recent_additions.empty_state` in the handler via `rust_i18n::t!(...).to_string()`, per project convention (see Story 9-1 Dev Notes "Library/framework requirements" and `src/routes/home.rs:207-212` canonical example).
   - [ ] Pass them from the handler. Do NOT add a new route.
 - [ ] **Task 3 — Add i18n keys (AC: 9)**
   - [ ] In `locales/en.yml` under `dashboard:` (after the `glance:` sub-block), add a `recent_additions:` sub-block with `heading: "Recent additions"` and `empty_state: "No recent additions yet — start cataloging!"`.
@@ -42,44 +46,77 @@ so that I can quickly browse what is new without launching a search.
   - [ ] **CRITICAL:** locale files have NO top-level `en:`/`fr:` wrapper. After editing, `touch src/lib.rs && cargo build`.
 - [ ] **Task 4 — Render the section in the template (AC: 1, 2, 5, 7, 8)**
   - [ ] In `templates/pages/home.html`, insert the new section AFTER the `</section>` closing the glance card (line ~104) and BEFORE the `<!-- Browse toggle + sort -->` block (line ~106).
-  - [ ] Markup outline (Tailwind utility classes only):
+  - [ ] Markup outline (Tailwind utility classes only). The inner `<article>...</article>` block is a **VERBATIM** copy of `templates/pages/home.html:148-165` — not a paraphrase. Reproduce exactly to avoid drift in `aria-label` interpolation, the `cover::cover` macro call, the icon path, and the `group` class on the article wrapper:
     ```jinja
     {# Recent additions section (story 9-2). Sits between #collection-glance
-       and #browse-results so it survives HTMX search swaps. #}
+       and #browse-results so it survives HTMX search swaps. The inner
+       <article> block is duplicated VERBATIM from home.html:148-165 (the
+       browse-results loop) — known follow-up to extract into a partial. #}
     <section id="recent-additions" aria-labelledby="recent-additions-heading" class="w-full max-w-4xl mt-6">
         <h2 id="recent-additions-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ recent_additions_heading }}</h2>
         {% if recent_additions.is_empty() %}
-            <div class="text-center text-stone-500 dark:text-stone-400 py-8">{{ recent_additions_empty }}</div>
+            <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ recent_additions_empty }}</div>
         {% else %}
             <div class="recent-additions-list mt-3 space-y-2">
                 {% for item in recent_additions %}
-                    {# TitleCard markup — duplicated from the browse-results loop
-                       (lines ~148-165). Out-of-scope for this story to extract
-                       into an Askama partial; tracked for follow-up — see Dev Notes. #}
-                    <article class="title-card">
-                        <a href="/title/{{ item.id }}" class="title-card-link">
-                            ... (mirror lines ~148-165 of home.html exactly,
-                            same Tailwind classes, same icon/cover fallback) ...
-                        </a>
-                    </article>
+                <article class="title-card group">
+                    <a href="/title/{{ item.id }}" class="title-card-link"
+                       aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
+                        <div class="title-card-cover">
+                            {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
+                            <div class="title-card-overlay">
+                                <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
+                                <span class="text-xs">{{ item.volume_count }} vol</span>
+                            </div>
+                        </div>
+                        <div class="title-card-info">
+                            <p class="title-card-title">{{ item.title }}</p>
+                            <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
+                            <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
+                            <p class="title-card-volumes">{{ item.volume_count }} vol</p>
+                        </div>
+                    </a>
+                </article>
                 {% endfor %}
             </div>
         {% endif %}
     </section>
     ```
   - [ ] CSP: zero `style="..."`, zero `onclick=`, zero inline `<script>`. Tailwind classes + the existing `.title-card-*` classes from `static/css/browse.css` only.
-  - [ ] **Markup duplication note (deliberate):** the `<article class="title-card">` block exists in 3 places after this story: (1) `templates/pages/home.html` lines ~148-165 (browse-results loop), (2) the new recent-additions section (this story), (3) `src/routes/home.rs::render_search_row` lines ~363-410 (HTMX fragment). Extracting to an Askama partial would require coordinating with `render_search_row` (which builds HTML in Rust, not Jinja) — out of scope. File a follow-up GH Issue (`type:change-request`) at story close to extract a `components/title_card.html` partial + a Rust function that serializes a `SearchResult` to that partial's expected context (e.g., via `Template::render_into_string` on a tiny `TitleCardTemplate` struct).
+  - [ ] **Markup duplication note (deliberate):** the `<article class="title-card">` block now exists in 3 places: (1) `templates/pages/home.html` lines ~148-165 (browse-results loop), (2) the new recent-additions section (this story), (3) `src/routes/home.rs::render_search_row` lines ~363-410 (HTMX fragment, Rust-side HTML builder). Extracting to an Askama partial would require coordinating with `render_search_row` (which builds HTML in Rust, not Jinja) — out of scope. File a follow-up GH Issue (`type:change-request`) at story close to extract a `components/title_card.html` partial + a Rust function that serializes a `SearchResult` to that partial's expected context (e.g., via `Template::render_into_string` on a tiny `TitleCardTemplate` struct).
 - [ ] **Task 5 — Unit tests (AC: 10)**
-  - [ ] Extend `tests/dashboard_glance.rs` with a new test module `mod recent_additions { ... }` OR create a sibling file `tests/dashboard_recent_additions.rs`. Choice: **sibling file** for clarity — the two services (glance vs recent-additions) are independent and tests are easier to discover by name.
+  - [ ] Create a sibling file `tests/dashboard_recent_additions.rs` (NOT a `mod` inside `tests/dashboard_glance.rs`) — clarity and discoverability over co-location, since glance and recent-additions are independent services.
+  - [ ] **Critical: `created_at` determinism.** The existing helper `tests/dashboard_glance.rs::insert_title` does NOT set `created_at` (it falls back to `DEFAULT CURRENT_TIMESTAMP`). 12 rows inserted in a tight loop will share the same second-precision timestamp, breaking the ORDER-BY assertion. Introduce a NEW helper in `tests/dashboard_recent_additions.rs`:
+    ```rust
+    async fn insert_title_with_created_at(
+        pool: &MySqlPool,
+        title: &str,
+        genre_id: u64,
+        minutes_ago: i32,
+    ) -> u64 {
+        let r = sqlx::query(
+            "INSERT INTO titles (title, language, media_type, genre_id, created_at) \
+             VALUES (?, 'fr', 'book', ?, NOW() - INTERVAL ? MINUTE)",
+        )
+        .bind(title)
+        .bind(genre_id)
+        .bind(minutes_ago)
+        .execute(pool)
+        .await
+        .expect("insert title");
+        r.last_insert_id()
+    }
+    ```
+    Each seeded row gets a distinct `minutes_ago` (e.g. 0, 1, 2, …, 11) so ORDER BY `created_at DESC` yields a deterministic sequence.
   - [ ] Three `#[sqlx::test(migrations = "./migrations")]` cases:
     - `list_recent_active_returns_empty_vec_on_empty_db`
-    - `list_recent_active_orders_by_created_at_desc_with_limit` — seed 12 active titles with deterministic timestamps (use `INSERT ... VALUES (..., NOW() - INTERVAL N MINUTE)` so order is stable), call with limit 10, assert exactly 10 results in the expected order. Hand-rolled SQL inserts following the `tests/dashboard_glance.rs` pattern.
+    - `list_recent_active_orders_by_created_at_desc_with_limit` — seed 12 active titles via `insert_title_with_created_at` with `minutes_ago` 0..=11, call `list_recent_active(pool, 10)`, assert exactly 10 results AND the IDs are in the expected order (most-recent first).
     - `list_recent_active_excludes_soft_deleted` — seed 5 active + 3 soft-deleted, call with limit 10, assert only the 5 active are returned.
   - [ ] Add 2 handler render tests in `src/routes/home.rs::mod tests`:
     - `home_renders_recent_additions_with_three_items` — build a HomeTemplate via `make_test_home_template_with_recent(role, vec_of_3_search_results)`, render, scope assertion to `#recent-additions` slice (reuse the `glance_card_slice` helper pattern; create a sibling `recent_additions_slice` if needed), assert: 3 `<article class="title-card">` present in input order, the title text of each item appears.
     - `home_renders_recent_additions_empty_state` — same but with `vec![]`, assert: NO `<article>` inside `#recent-additions`, the empty-state `<div>` IS present with the i18n text.
 - [ ] **Task 6 — E2E spec (AC: 11)**
-  - [ ] Extend `tests/e2e/specs/journeys/home.spec.ts` with one new `test.describe("Home page — Recent additions section", ...)` block:
+  - [ ] Extend `tests/e2e/specs/journeys/home.spec.ts` with one new `test.describe("Home page — Recent additions section", ...)` block. **Place it AFTER the existing `test.describe("Home page — Collection at a glance card", ...)` block (story 9-1)** — i.e., immediately after that block's closing `});` so the file stays organized chronologically by story.
     - `anonymous: section visible, first card navigates to /title/:id` — load `/`, verify `#recent-additions` is visible, verify heading matches `/Recent additions|Ajouts récents/i`. Then conditionally: if `recentCards.count() > 0`, click the first → `waitForURL(/\/title\/\d+/)`. If 0 (fresh DB scenario), verify the empty-state `<div>` text matches `/start cataloging|commencez à cataloguer/i`.
   - [ ] Use i18n-aware regex matchers consistently. Do NOT add `waitForTimeout` (CI grep gate).
   - [ ] Reuse the `loginAs` import already present in `home.spec.ts` if a librarian-role test variant is added (optional — AC9 says role-agnostic, so a single anonymous test is sufficient).
@@ -100,9 +137,10 @@ so that I can quickly browse what is new without launching a search.
 | Home route + handler | `src/routes/mod.rs` (route reg) + `src/routes/home.rs` (handler) | extend the existing handler; do NOT create a parallel route |
 | Existing TitleCard markup (browse) | `templates/pages/home.html:148-165` | the `<article class="title-card">` shape — DUPLICATE this into the new section (see Task 4 markup-duplication note) |
 | Existing TitleCard markup (HTMX fragment) | `src/routes/home.rs::render_search_row:363-410` | Rust-side HTML builder; informs the eventual partial extraction (out of scope for 9-2) |
-| `SearchResult` struct (9 fields) | `src/models/title.rs:615-627` | reuse as-is; schema is complete for TitleCard rendering |
+| `SearchResult` struct (9 fields) | `src/models/title.rs:615-627` | reuse as-is; the 9 fields are sufficient for TitleCard rendering. **Note**: `subtitle: Option<String>` is in the struct but is NOT rendered by the current TitleCard markup (verified at `home.html:148-165` and `home.rs::render_search_row`). Keep `subtitle` in the projection for shape parity; do NOT add a render path for it in this story (a future story can extend the card). |
 | `SearchService::enrich_title` (per-title enricher) | `src/services/search.rs:40-61` | OK to reference for shape, but DO NOT call per-row from the handler — Task 1 emits one enriched SELECT instead |
-| `active_search` query template (FULLTEXT + filters + projection) | `src/models/title.rs:752-810` | the projection (lines 752-768) is the canonical TitleCard-shaped SELECT — Task 1 mirrors it without the FULLTEXT/filter/sort/pagination layers |
+| `active_search` SELECT projection (canonical TitleCard-shaped SELECT) | `src/models/title.rs:763-779` | the SQL string — 17 lines including SELECT clause + JOINs + the contributor + volume_count subqueries; Task 1 mirrors this without the FULLTEXT/filter/sort/pagination layers |
+| `active_search` row-mapping closure | `src/models/title.rs:795-810` | maps a `MySqlRow` into a `SearchResult`; mirror this exactly in `list_recent_active` so the two functions stay shape-compatible |
 | HomeTemplate struct | `src/routes/home.rs:31-83` (post-9-1) | extend with 3 new fields per Task 2 |
 | Story 9-1 glance card placement (reference for placement invariant) | `templates/pages/home.html:76-104` (the `<section id="collection-glance">`) | the new `#recent-additions` sits IMMEDIATELY after this, peer-level, both outside `#browse-results` |
 | HomeTemplate test factory | `src/routes/home.rs::make_test_home_template_with_counts` | extend or sibling: introduce `make_test_home_template_with_recent(role, link, recent: Vec<SearchResult>)` that delegates to the glance factory + sets the new fields |
