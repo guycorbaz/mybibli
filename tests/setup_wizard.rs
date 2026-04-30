@@ -238,11 +238,17 @@ async fn step_1_rejects_short_password(pool: DbPool) {
         .unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 
-    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE role = 'admin'")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(count.0, 0, "no admin row after rejected Step 1");
+    // `ensure_no_admin` soft-deletes the seeded admin (sets `deleted_at`)
+    // rather than hard-deleting, so the count must filter on
+    // `deleted_at IS NULL` — otherwise the seed admin row makes this
+    // count 1 even though the wizard's predicate sees zero ACTIVE admins.
+    let count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM users WHERE role = 'admin' AND deleted_at IS NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count.0, 0, "no active admin row after rejected Step 1");
 }
 
 /// AC8 — once `setup_completed_at` is written, GET /setup returns 404.

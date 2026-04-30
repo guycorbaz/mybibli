@@ -23,8 +23,8 @@ use crate::middleware::auth::generate_csrf_token;
 use crate::models::user::UserModel;
 use crate::services::admin_system::{
     KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_OMDB, KEY_SETUP_COMPLETED_AT,
-    KEY_SETUP_STEP_3_DONE, KEY_TMDB, fetch_setting_value_and_version, reload_settings_cache,
-    save_setting,
+    KEY_SETUP_STEP_2_DONE, KEY_SETUP_STEP_3_DONE, KEY_TMDB, fetch_setting_value_and_version,
+    reload_settings_cache, save_setting,
 };
 use crate::services::password::hash_password;
 
@@ -60,6 +60,12 @@ pub struct SetupPredicateInputs {
     pub active_admin_count: i64,
     pub setup_completed_at: Option<DateTime<Utc>>,
     pub any_provider_key_set: bool,
+    /// Story 8-8 review post-merge fix: Step 2 visited sentinel.
+    /// Skipping every provider produces empty-key state which is
+    /// indistinguishable from "user has not yet seen Step 2", so the
+    /// `any_provider_key_set` signal alone would trap the user there.
+    /// Mirrors `setup_step_3_done`.
+    pub setup_step_2_done: bool,
     pub setup_step_3_done: bool,
 }
 
@@ -97,10 +103,19 @@ pub fn resolve_step(inputs: &SetupPredicateInputs) -> Option<SetupStep> {
 /// next GET /setup lands on the right step. Keeping this split out of
 /// `resolve_step` makes the "wizard inactive" path (the common-case
 /// no-op) a single comparison.
+///
+/// Resolution order:
+///   1. `setup_step_3_done` ⇒ Step 4 (Done — recap).
+///   2. `setup_step_2_done` OR any provider key set ⇒ Step 3 (Preferences).
+///   3. Otherwise ⇒ Step 2 (Providers).
+///
+/// The `setup_step_2_done` sentinel exists because skipping all
+/// providers leaves no observable trace in the DB; without it the
+/// resolver would loop the user back to Step 2 forever.
 pub fn resolve_step_with_admin(inputs: &SetupPredicateInputs) -> SetupStep {
     if inputs.setup_step_3_done {
         SetupStep::Done
-    } else if inputs.any_provider_key_set {
+    } else if inputs.setup_step_2_done || inputs.any_provider_key_set {
         SetupStep::Preferences
     } else {
         SetupStep::Providers
@@ -122,18 +137,20 @@ pub async fn fetch_predicate_inputs(pool: &DbPool) -> Result<SetupPredicateInput
     // Pull every setting key relevant to the resolver in one round-trip.
     let rows: Vec<(String, String)> = sqlx::query_as(
         "SELECT setting_key, setting_value FROM settings \
-         WHERE setting_key IN (?, ?, ?, ?, ?) AND deleted_at IS NULL",
+         WHERE setting_key IN (?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
     )
     .bind(KEY_GOOGLE_BOOKS)
     .bind(KEY_OMDB)
     .bind(KEY_TMDB)
     .bind(KEY_SETUP_COMPLETED_AT)
+    .bind(KEY_SETUP_STEP_2_DONE)
     .bind(KEY_SETUP_STEP_3_DONE)
     .fetch_all(pool)
     .await?;
 
     let mut any_provider_key_set = false;
     let mut completed_value = String::new();
+    let mut step_2_done = false;
     let mut step_3_done = false;
 
     for (key, value) in &rows {
@@ -145,6 +162,9 @@ pub async fn fetch_predicate_inputs(pool: &DbPool) -> Result<SetupPredicateInput
             }
             k if k == KEY_SETUP_COMPLETED_AT => {
                 completed_value = value.clone();
+            }
+            k if k == KEY_SETUP_STEP_2_DONE => {
+                step_2_done = value == "1";
             }
             k if k == KEY_SETUP_STEP_3_DONE => {
                 step_3_done = value == "1";
@@ -165,6 +185,7 @@ pub async fn fetch_predicate_inputs(pool: &DbPool) -> Result<SetupPredicateInput
         active_admin_count: admin_count.0,
         setup_completed_at,
         any_provider_key_set,
+        setup_step_2_done: step_2_done,
         setup_step_3_done: step_3_done,
     })
 }
@@ -346,11 +367,26 @@ pub async fn save_provider_keys(
         changes += 1;
     }
 
+    // ALWAYS flip the Step 2 visited sentinel inside the same tx, even
+    // when the user skipped every provider — without this signal the
+    // resolver loops the user back to Step 2 forever (the
+    // `any_provider_key_set` predicate alone is empty-state-blind).
+    // Story 8-8 review post-merge fix.
+    sqlx::query(
+        "INSERT INTO settings (setting_key, setting_value) VALUES (?, '1') \
+         ON DUPLICATE KEY UPDATE \
+         setting_value = VALUES(setting_value), \
+         version = version + 1",
+    )
+    .bind(KEY_SETUP_STEP_2_DONE)
+    .execute(&mut *tx)
+    .await?;
+
     tx.commit().await?;
 
-    if changes > 0 {
-        reload_settings_cache(state).await?;
-    }
+    // Cache reload is needed whether or not provider keys changed —
+    // the Step 2 sentinel always flips so AppSettings should re-read.
+    reload_settings_cache(state).await?;
     Ok(changes)
 }
 
@@ -467,6 +503,7 @@ mod tests {
             active_admin_count: 0,
             setup_completed_at: None,
             any_provider_key_set: false,
+            setup_step_2_done: false,
             setup_step_3_done: false,
         }
     }
@@ -536,17 +573,17 @@ mod tests {
     }
 
     /// `resolve_step_with_admin` is only called when admin DOES exist.
-    /// Its job is to pick Step 2/3/4. Walks the 4-state truth table.
+    /// Its job is to pick Step 2/3/4. Walks the 8-state truth table.
     #[test]
     fn resolve_step_with_admin_truth_table() {
-        // No keys, step_3_done == false ⇒ Step 2 (Providers).
+        // No keys, step_2_done = false, step_3_done = false ⇒ Step 2.
         let inputs = SetupPredicateInputs {
             active_admin_count: 1,
             ..empty_inputs()
         };
         assert_eq!(resolve_step_with_admin(&inputs), SetupStep::Providers);
 
-        // ≥1 key set, step_3_done == false ⇒ Step 3 (Preferences).
+        // ≥1 key set, step_3_done == false ⇒ Step 3.
         let inputs = SetupPredicateInputs {
             active_admin_count: 1,
             any_provider_key_set: true,
@@ -554,15 +591,28 @@ mod tests {
         };
         assert_eq!(resolve_step_with_admin(&inputs), SetupStep::Preferences);
 
-        // step_3_done == true ⇒ Step 4 (Done) — regardless of keys.
+        // No keys but step_2_done == true ⇒ Step 3 (closes the
+        // skip-all-providers infinite-loop bug — see post-merge fix).
+        let inputs = SetupPredicateInputs {
+            active_admin_count: 1,
+            setup_step_2_done: true,
+            ..empty_inputs()
+        };
+        assert_eq!(resolve_step_with_admin(&inputs), SetupStep::Preferences);
+
+        // step_3_done == true ⇒ Step 4 (Done) — regardless of keys
+        // and regardless of step_2_done.
         for any_key in [true, false] {
-            let inputs = SetupPredicateInputs {
-                active_admin_count: 1,
-                any_provider_key_set: any_key,
-                setup_step_3_done: true,
-                ..empty_inputs()
-            };
-            assert_eq!(resolve_step_with_admin(&inputs), SetupStep::Done);
+            for step_2 in [true, false] {
+                let inputs = SetupPredicateInputs {
+                    active_admin_count: 1,
+                    any_provider_key_set: any_key,
+                    setup_step_2_done: step_2,
+                    setup_step_3_done: true,
+                    ..empty_inputs()
+                };
+                assert_eq!(resolve_step_with_admin(&inputs), SetupStep::Done);
+            }
         }
     }
 

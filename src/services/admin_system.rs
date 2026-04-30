@@ -24,6 +24,7 @@ pub const KEY_GOOGLE_BOOKS: &str = "google_books_api_key";
 pub const KEY_OMDB: &str = "omdb_api_key";
 pub const KEY_TMDB: &str = "tmdb_api_key";
 pub const KEY_SETUP_COMPLETED_AT: &str = "setup_completed_at";
+pub const KEY_SETUP_STEP_2_DONE: &str = "setup_step_2_done";
 pub const KEY_SETUP_STEP_3_DONE: &str = "setup_step_3_done";
 
 /// Inclusive bounds for the overdue-loan threshold. Validated by both
