@@ -4,22 +4,33 @@
 
 > Personal library cataloging for home collectors.
 
-**Status:** active development — pre-v1 (current version: `0.1.0`). First release targeted after Epic 8 (admin page) lands.
+**Status:** active development — pre-v1 (current version: `0.1.0`). Epics 1–8 done; Epic 9 (Polish UX & Accessibilité) is next. First public release targeted after Epic 9.
 
 ## What it is
 
 `mybibli` is a self-hosted web app to catalog, locate, and loan your personal library. It is designed for a single household, running on your own hardware (typically a NAS or home server). No cloud sync, no telemetry — all data stays on your local network.
 
-Built for collectors who want more than a spreadsheet: barcode-first cataloging workflow, multi-provider metadata resolution (BnF, Google Books, Open Library, MusicBrainz, OMDb, TMDB, BDGest), series gap detection, storage-location tracking, and loan management.
+Built for collectors who want more than a spreadsheet:
+
+- **Barcode-first cataloging.** Scan an ISBN / EAN-13 and the title resolves asynchronously through a metadata provider chain (BnF, Google Books, Open Library, MusicBrainz, OMDb, TMDB, BDGest), with cover-image download and similar-title detection.
+- **Multi-media support.** Books, BD/comics (with multi-position omnibus volumes), audio releases, films/series — each typed correctly and with the right metadata provider chosen automatically.
+- **Series + collection awareness.** Gap detection on series volumes, Dewey-based browsing, similar-titles section.
+- **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow.
+- **Loan management.** Borrower CRUD, loan registration with automatic location restoration on return, overdue threshold (admin-configurable), per-borrower history.
+- **Multi-role auth.** Anonymous (read-only), Librarian (catalog + loans), Admin (everything). Session inactivity timeout with keep-alive toast. FR/EN language toggle with per-user preference.
+- **Hardened by construction.** Strict Content Security Policy (no `unsafe-inline`/`unsafe-eval`), CSRF synchronizer-token middleware on every state-changing request, scanner-guard against burst-keyboard input leaking into modals.
+- **Admin panel.** Health dashboard (entity counts, MariaDB version, disk usage, provider reachability), user management with last-active-admin guard, editable reference data (genres, volume states, contributor roles, location node types), system settings (overdue threshold, provider API keys, default language), trash view + restore + permanent delete, configurable auto-purge after 30 days.
+- **First-launch setup wizard.** Fresh installs walk through Admin → Providers → Preferences → Done; the gate middleware redirects every route to `/setup` until completion. Idempotent — interruptions resume at the right step server-side.
 
 ## Tech stack
 
 - **Backend:** Rust 2024 edition + [Axum](https://github.com/tokio-rs/axum) 0.8
-- **Database:** MariaDB via [SQLx](https://github.com/launchbadge/sqlx) 0.8 (offline query cache)
+- **Database:** MariaDB via [SQLx](https://github.com/launchbadge/sqlx) 0.8 (offline query cache committed in `.sqlx/`)
 - **Templates:** [Askama](https://github.com/djc/askama) 0.15 (compile-time type-checked)
-- **Frontend:** [HTMX](https://htmx.org/) 2.0 + [Tailwind CSS](https://tailwindcss.com/) v4 — no SPA framework
+- **Frontend:** [HTMX](https://htmx.org/) 2.0 + [Tailwind CSS](https://tailwindcss.com/) v4 — no SPA framework, zero inline scripts/styles (CSP `script-src 'self'`, `style-src 'self'`)
 - **i18n:** [rust-i18n](https://github.com/longbridgeapp/rust-i18n) — French + English
-- **Testing:** `cargo test` (353 unit), `#[sqlx::test]` (25 DB integration), [Playwright](https://playwright.dev/) (~135 E2E)
+- **Auth:** session cookie (`HttpOnly`, `SameSite=Lax`) + per-session CSRF synchronizer token; argon2 password hashing
+- **Testing:** `cargo test` (~525 lib unit), `#[sqlx::test]` (~95 DB integration tests across 10+ files), [Playwright](https://playwright.dev/) (~160 E2E specs across two CI lanes — the seeded-stack suite and a dedicated wizard-E2E lane that runs on a fresh empty database)
 
 ## Quick start (end users)
 
@@ -36,12 +47,17 @@ Pre-built images are published to Docker Hub once v1 ships. Until then, see **De
 ### Run the app locally
 
 ```bash
-# Start the full stack (app + MariaDB + mock metadata providers)
+# Start the full stack (app + MariaDB + mock metadata providers).
+# `MYBIBLI_SKIP_SETUP=1` is baked into the test compose so existing
+# seeded specs reach their target routes without going through the
+# first-launch wizard.
 cd tests/e2e
 docker compose -f docker-compose.test.yml up --build
 ```
 
-The app listens on `http://localhost:8080`. Default admin credentials are seeded by `migrations/20260331000004_fix_dev_user_hash.sql` (username `admin`, password `admin` — dev only).
+The app listens on `http://localhost:8080`. The seed migrations create a dev admin (username `admin`, password `admin` — dev only) and a librarian (username `librarian`, password `librarian` — dev only).
+
+**Fresh-install wizard.** Running `cargo run` against an empty database without `MYBIBLI_SKIP_SETUP=1` triggers the first-launch wizard at `/setup` (see story 8-8). Set `MYBIBLI_SKIP_SETUP=1` (strict accept-set: `1` / `true` / `TRUE`) to bypass it — typically only useful when the seed migrations have already created an admin.
 
 ### Build & check (native)
 
@@ -54,7 +70,7 @@ cargo clippy -- -D warnings          # Lint (zero-warnings policy)
 ### Unit tests
 
 ```bash
-cargo test                           # All unit tests (353)
+SQLX_OFFLINE=true cargo test --lib   # ~525 unit tests, ~5 s
 cargo test config::                  # Module-scoped
 cargo test <name> -- --nocapture     # Single test with output
 ```
@@ -66,20 +82,42 @@ docker compose -f tests/docker-compose.rust-test.yml up -d
 SQLX_OFFLINE=true \
 DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 cargo test --test find_similar \
+           --test find_by_location_dewey \
            --test metadata_fetch_dewey \
-           --test find_by_location_dewey
+           --test metadata_fetch_race \
+           --test seeded_users \
+           --test setup_wizard
 ```
 
-Each test gets a fresh DB via `#[sqlx::test(migrations = "./migrations")]`.
+Each test gets a fresh DB via `#[sqlx::test(migrations = "./migrations")]`. The CI `db-integration` job runs the same allowlist — when adding a new `tests/*.rs` file, append `--test <name>` to both this command and `.github/workflows/_gates.yml::db-integration`.
 
 ### E2E tests
 
+The Playwright suite has **two CI lanes**:
+
 ```bash
 cd tests/e2e
+
+# Lane 1 — seeded-stack (most specs). MYBIBLI_SKIP_SETUP=1 baked in.
 docker compose -f docker-compose.test.yml up --build -d
-npm test                             # Full suite (~135 tests, parallel mode)
-npx playwright test specs/journeys/<spec>.spec.ts  # Single spec
+npm test                             # Full suite, parallel mode
+
+# Lane 2 — wizard E2E (story 8-8). Fresh DB, MYBIBLI_SKIP_SETUP unset.
+docker compose -f docker-compose.test.yml -f docker-compose.wizard.yml up -d --build --wait
+docker compose -f docker-compose.test.yml -f docker-compose.wizard.yml exec -T db \
+    mariadb -uroot -proot_test mybibli_test -e "DELETE FROM sessions; DELETE FROM users;"
+docker compose -f docker-compose.test.yml -f docker-compose.wizard.yml restart mybibli
+MYBIBLI_SETUP_E2E=1 npx playwright test specs/journeys/setup-wizard.spec.ts
+
+# Single spec from the seeded suite
+npx playwright test specs/journeys/<spec>.spec.ts
 ```
+
+A `waitForTimeout(...)` grep gate (`tests/e2e` only) blocks any new arbitrary-sleep call — use DOM-state assertions instead. Enforced both locally and in the CI `e2e` job.
+
+### Stack reset
+
+`./scripts/e2e-reset.sh` does a single-command teardown + rebuild + wait-for-ready when local DB state is polluted. Use after long-running dev sessions where E2E specs see stale rows from prior runs.
 
 ### Database migrations
 
@@ -103,24 +141,65 @@ touch src/lib.rs && cargo build      # Force proc-macro rebuild (rust-i18n)
 ```
 src/
 ├── routes/          # HTTP handlers — thin, delegate to services
+│   ├── admin.rs            # Admin shell + tab routing + user management (8-1, 8-3)
+│   ├── admin_reference_data.rs  # Genres / states / roles / node types CRUD (8-4)
+│   ├── admin_system.rs     # System settings forms (8-5)
+│   ├── auth.rs             # Login / logout
+│   ├── catalog.rs          # Cataloging routes
+│   ├── locations.rs        # Storage location tree
+│   ├── loans.rs            # Loans + borrowers
+│   ├── setup.rs            # First-launch setup wizard (8-8)
+│   └── …
 ├── services/        # Business logic, domain rules
+│   ├── admin_health.rs     # Health-tab data builders (8-1)
+│   ├── admin_system.rs     # K/V settings save + cache reload (8-5/8-8)
+│   ├── auth.rs             # Shared session-rotation chain (8-8)
+│   ├── auto_purge.rs       # 30-day soft-delete hard-purge (8-7)
+│   ├── locking.rs          # Optimistic-lock check helpers
+│   ├── password.rs         # argon2 hashing
+│   ├── setup.rs            # Setup wizard step resolution + writers (8-8)
+│   ├── soft_delete.rs      # Soft-delete with table whitelist
+│   └── …
+├── middleware/      # Axum middleware
+│   ├── auth.rs             # Session extractor + role gating
+│   ├── csp.rs              # Content-Security-Policy + hardening headers (7-4)
+│   ├── csrf.rs             # CSRF synchronizer-token middleware (8-2)
+│   ├── htmx.rs             # HTMX request/response helpers
+│   ├── locale.rs           # Locale resolution chain (7-3)
+│   ├── logging.rs          # tracing layer
+│   ├── pending_updates.rs  # OOB metadata-update delivery
+│   └── setup_gate.rs       # First-launch wizard gate (8-8)
 ├── models/          # DB models + queries (SQLx)
-├── metadata/        # External metadata providers (BnF, Google Books, etc.)
-├── tasks/           # Background tokio tasks (async metadata fetch)
-├── middleware/      # Axum middleware (auth, HTMX, logging)
+├── metadata/        # External metadata providers + KEYED_PROVIDERS const
+├── tasks/           # Background tokio tasks
+│   ├── anonymous_session_purge.rs  # Daily purge of stale anon sessions (8-2)
+│   ├── auto_purge_scheduler.rs     # Daily soft-delete hard-purge (8-7)
+│   ├── metadata_fetch.rs           # Async ISBN→metadata resolution
+│   └── provider_health.rs          # 5-min provider reachability pings (8-1)
+├── config.rs        # Env vars + `AppSettings` (DB-backed K/V cache)
+├── lib.rs           # `AppState` definition
+├── main.rs          # Startup chain (migrations → settings → registry → routes)
+├── templates_audit.rs  # Architectural-invariant tests (CSP / CSRF / hx-confirm)
 └── error/           # AppError enum + IntoResponse
 
 templates/
-├── layouts/         # base.html
-├── pages/           # Full-page templates
-├── components/      # Reusable Askama macros (cover, similar_titles, etc.)
-└── fragments/       # HTMX partial responses
+├── layouts/         # base.html (admin + library) and bare.html (login + setup)
+├── pages/           # Full-page templates (catalog, admin, setup, …)
+├── components/      # Reusable Askama macros (cover, similar_titles, setup_progress, …)
+└── fragments/       # HTMX partial responses + admin form fragments
+
+static/
+├── css/             # Tailwind output
+└── js/              # ES modules (csrf.js, scanner-guard.js, inline-form.js, …)
 
 migrations/          # SQLx migrations (timestamped)
-locales/             # rust-i18n YAML files
+locales/             # rust-i18n YAML files (en.yml, fr.yml — keys at root, no language wrapper)
+docs/                # Coding conventions + architectural references
 tests/
 ├── *.rs             # DB integration tests (#[sqlx::test])
-└── e2e/             # Playwright specs + Docker test stack
+└── e2e/             # Playwright specs + Docker test stacks
+    ├── docker-compose.test.yml     # Seeded-stack lane (MYBIBLI_SKIP_SETUP=1)
+    └── docker-compose.wizard.yml   # Wizard-E2E override (MYBIBLI_SKIP_SETUP="")
 ```
 
 ## Documentation
@@ -147,11 +226,11 @@ Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](
 | 4 | Je gère mes prêts | ✅ done |
 | 5 | Mes séries et ma collection | ✅ done |
 | 6 | Pipeline CI/CD et fiabilité | ✅ done |
-| 7 | Accès multi-rôle & Sécurité | 🚧 in progress (story 7-1 done) |
-| 8 | Administration & Configuration | ⏳ backlog |
-| 9 | Polish UX & Accessibilité | ⏳ backlog |
+| 7 | Accès multi-rôle & Sécurité | ✅ done |
+| 8 | Administration & Configuration | ✅ done |
+| 9 | Polish UX & Accessibilité | 🚧 next (decomposition pending) |
 
-v1 release will ship after Epic 8. See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the full breakdown.
+v1 release will ship after Epic 9. See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the full breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the live story-by-story state.
 
 ## License
 
