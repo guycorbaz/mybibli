@@ -341,6 +341,15 @@ audio:
   disable: Disable scan sounds
 dashboard:
   metadata_errors: "%{count} title(s) with metadata errors"
+  glance:
+    heading: Collection at a glance
+    titles_one: "%{count} title"
+    titles_other: "%{count} titles"
+    volumes_one: "%{count} volume"
+    volumes_other: "%{count} volumes"
+    active_loans_one: "%{count} active loan"
+    active_loans_other: "%{count} active loans"
+    signin_to_view_loans: Sign in to view loans
 borrower:
   list_title: Borrowers
   add: Add borrower

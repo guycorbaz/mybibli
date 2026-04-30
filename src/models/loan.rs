@@ -289,6 +289,19 @@ impl LoanModel {
 
         Ok(items)
     }
+
+    /// Count of active loans (not returned, not soft-deleted) across the entire catalog.
+    /// "Active" = `returned_at IS NULL AND deleted_at IS NULL`. Used by
+    /// `services::dashboard::collection_glance` for the home-page "Collection at a glance"
+    /// card and reusable by other dashboard surfaces.
+    pub async fn count_active(pool: &DbPool) -> Result<i64, AppError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM loans WHERE returned_at IS NULL AND deleted_at IS NULL",
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(row.0)
+    }
 }
 
 #[cfg(test)]

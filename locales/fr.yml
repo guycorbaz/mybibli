@@ -341,6 +341,15 @@ audio:
   disable: "Désactiver les sons de scan"
 dashboard:
   metadata_errors: "%{count} titre(s) avec erreurs de métadonnées"
+  glance:
+    heading: Aperçu de la collection
+    titles_one: "%{count} titre"
+    titles_other: "%{count} titres"
+    volumes_one: "%{count} volume"
+    volumes_other: "%{count} volumes"
+    active_loans_one: "%{count} prêt en cours"
+    active_loans_other: "%{count} prêts en cours"
+    signin_to_view_loans: Connectez-vous pour voir les prêts
 borrower:
   list_title: Emprunteurs
   add: Ajouter un emprunteur
