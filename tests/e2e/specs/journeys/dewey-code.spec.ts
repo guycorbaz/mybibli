@@ -19,9 +19,11 @@ test.describe("Dewey Code Management (Story 5-8)", () => {
       timeout: 10000,
     });
 
-    // Navigate to title detail via search
+    // Navigate to title detail via search. Scope to #browse-results so the
+    // selector doesn't pick up the Story 9-2 #recent-additions section, which
+    // also renders <a href="/title/N"> blocks ABOVE the search results.
     await page.goto(`/?q=${ISBN}`);
-    await page.locator('a[href^="/title/"]').first().click();
+    await page.locator('#browse-results a[href^="/title/"]').first().click();
     await expect(page.locator("h1")).toBeVisible({ timeout: 5000 });
 
     // Click Edit metadata
@@ -89,7 +91,9 @@ test.describe("Dewey Code Management (Story 5-8)", () => {
     // Helper: open title detail from search and set its Dewey code
     async function setDeweyViaEdit(isbn: string, dewey: string) {
       await page.goto(`/?q=${isbn}`);
-      await page.locator('a[href^="/title/"]').first().click();
+      // Scope to #browse-results — Story 9-2 introduced #recent-additions
+      // ABOVE the search results, which also contains <a href="/title/N">.
+      await page.locator('#browse-results a[href^="/title/"]').first().click();
       await expect(page.locator("h1")).toBeVisible({ timeout: 5000 });
       await page
         .getByRole("button", {

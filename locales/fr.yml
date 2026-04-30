@@ -350,6 +350,9 @@ dashboard:
     active_loans_one: "%{count} prêt en cours"
     active_loans_other: "%{count} prêts en cours"
     signin_to_view_loans: Connectez-vous pour voir les prêts
+  recent_additions:
+    heading: Ajouts récents
+    empty_state: "Pas encore d'ajouts récents — commencez à cataloguer !"
 borrower:
   list_title: Emprunteurs
   add: Ajouter un emprunteur

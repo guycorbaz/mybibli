@@ -350,6 +350,9 @@ dashboard:
     active_loans_one: "%{count} active loan"
     active_loans_other: "%{count} active loans"
     signin_to_view_loans: Sign in to view loans
+  recent_additions:
+    heading: Recent additions
+    empty_state: "No recent additions yet — start cataloging!"
 borrower:
   list_title: Borrowers
   add: Add borrower

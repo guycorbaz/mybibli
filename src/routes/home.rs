@@ -78,6 +78,10 @@ pub struct HomeTemplate {
     pub glance_active_loans_label: String,
     pub glance_signin_hint: String,
     pub loans_link_visible: bool,
+    // "Recent additions" section (story 9-2)
+    pub recent_additions: Vec<crate::models::title::SearchResult>,
+    pub recent_additions_heading: String,
+    pub recent_additions_empty: String,
 }
 
 pub async fn home(
@@ -168,6 +172,18 @@ pub async fn home(
         }
     };
     let loans_link_visible = session.role >= Role::Librarian;
+
+    // "Recent additions" section — up to 10 most recent active titles in a
+    // single enriched round-trip (story 9-2). Soft-degrade on DB error
+    // mirrors the glance pattern above: warn and fall back to an empty list
+    // so the home page never 500s on a transient query failure.
+    let recent_additions = match crate::models::title::TitleModel::list_recent_active(pool, 10).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "list_recent_active failed; rendering empty section");
+            Vec::new()
+        }
+    };
 
     // Choose `_one` vs `_other` for each count. Inline if/else so the macro receives
     // a literal key (matching the project's i18n audit at `src/i18n/audit.rs`),
@@ -291,6 +307,17 @@ pub async fn home(
         glance_signin_hint: rust_i18n::t!("dashboard.glance.signin_to_view_loans", locale = loc)
             .to_string(),
         loans_link_visible,
+        recent_additions,
+        recent_additions_heading: rust_i18n::t!(
+            "dashboard.recent_additions.heading",
+            locale = loc
+        )
+        .to_string(),
+        recent_additions_empty: rust_i18n::t!(
+            "dashboard.recent_additions.empty_state",
+            locale = loc
+        )
+        .to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -593,24 +620,34 @@ mod tests {
         assert!(!html.contains("/catalog/title/new"));
     }
 
-    /// Extract the substring of `html` that lies between the opening tag of the
-    /// `<section id="collection-glance">` and its first matching `</section>`.
-    /// Used by the librarian/anonymous render tests to scope assertions to
-    /// the glance card and avoid false positives from the nav-bar `/loans` link
-    /// (which is rendered for librarian/admin roles by `nav_bar.html`).
-    fn glance_card_slice(html: &str) -> &str {
-        let start_tag = r#"id="collection-glance""#;
+    /// Extract the substring of `html` between the opening tag of the section
+    /// with `id="<section_id>"` and its first matching `</section>`. Used by
+    /// render tests to scope assertions to a specific section and avoid false
+    /// positives from same-string occurrences elsewhere on the page (e.g.,
+    /// the nav-bar `/loans` link for the glance card).
+    fn slice_section<'a>(html: &'a str, section_id: &str) -> &'a str {
+        let start_tag = format!(r#"id="{section_id}""#);
         let start = html
-            .find(start_tag)
-            .unwrap_or_else(|| panic!("glance card section not found in rendered HTML"));
+            .find(&start_tag)
+            .unwrap_or_else(|| panic!("section id={section_id:?} not found in rendered HTML"));
         let after_open = html[start..]
             .find('>')
             .map(|i| start + i + 1)
             .expect("section opening tag must close");
         let end_rel = html[after_open..]
             .find("</section>")
-            .expect("glance card must have a closing </section>");
+            .unwrap_or_else(|| panic!("section id={section_id:?} must have a closing </section>"));
         &html[after_open..after_open + end_rel]
+    }
+
+    /// Backward-compatible shim used by the story 9-1 render tests.
+    fn glance_card_slice(html: &str) -> &str {
+        slice_section(html, "collection-glance")
+    }
+
+    /// Story 9-2 helper — scope assertions to the recent-additions section.
+    fn recent_additions_slice(html: &str) -> &str {
+        slice_section(html, "recent-additions")
     }
 
     fn make_test_home_template_with_counts(
@@ -672,11 +709,39 @@ mod tests {
             glance_active_loans_label: active_loans_label,
             glance_signin_hint: "Sign in to view loans".to_string(),
             loans_link_visible,
+            recent_additions: Vec::new(),
+            recent_additions_heading: "Recent additions".to_string(),
+            recent_additions_empty: "No recent additions yet — start cataloging!".to_string(),
         }
     }
 
     fn make_test_home_template(role: &str, loans_link_visible: bool) -> HomeTemplate {
         make_test_home_template_with_counts(role, loans_link_visible, 5, 8, 2)
+    }
+
+    /// Story 9-2 — build a template with a populated `recent_additions` list.
+    /// Reuses the counts factory so glance-card assertions stay possible too.
+    fn make_test_home_template_with_recent(
+        role: &str,
+        recent: Vec<crate::models::title::SearchResult>,
+    ) -> HomeTemplate {
+        let mut t = make_test_home_template_with_counts(role, false, 5, 8, 2);
+        t.recent_additions = recent;
+        t
+    }
+
+    fn fake_search_result(id: u64, title: &str) -> crate::models::title::SearchResult {
+        crate::models::title::SearchResult {
+            id,
+            title: title.to_string(),
+            subtitle: None,
+            media_type: "book".to_string(),
+            genre_name: "Roman".to_string(),
+            primary_contributor: Some("Test Author".to_string()),
+            volume_count: 1,
+            cover_image_url: None,
+            publication_date: None,
+        }
     }
 
     #[test]
@@ -800,6 +865,115 @@ mod tests {
         assert!(
             card.contains("aria-describedby=\"glance-loans-hint\""),
             "anonymous + zero loans still emits the sign-in hint reference"
+        );
+    }
+
+    /// Story 9-2 — Recent additions section renders one `<article>` per item
+    /// in input order, scoped to the section to avoid false positives from
+    /// the browse-results loop that may render the same markup.
+    #[test]
+    fn home_renders_recent_additions_with_three_items() {
+        let recent = vec![
+            fake_search_result(1, "Title One"),
+            fake_search_result(2, "Title Two"),
+            fake_search_result(3, "Title Three"),
+        ];
+        let template = make_test_home_template_with_recent("anonymous", recent);
+        let html = template.render().expect("render");
+        let section = recent_additions_slice(&html);
+
+        // Exactly 3 article cards inside the section.
+        let card_count = section.matches("class=\"title-card group\"").count();
+        assert_eq!(
+            card_count, 3,
+            "expected 3 <article class=\"title-card group\"> blocks inside #recent-additions, got {card_count}"
+        );
+
+        // Each title appears in input order.
+        let pos_one = section.find("Title One").expect("Title One missing");
+        let pos_two = section.find("Title Two").expect("Title Two missing");
+        let pos_three = section.find("Title Three").expect("Title Three missing");
+        assert!(
+            pos_one < pos_two && pos_two < pos_three,
+            "items must appear in input order; got positions {pos_one}, {pos_two}, {pos_three}"
+        );
+
+        // Each card links to /title/:id with the right ID.
+        assert!(section.contains("href=\"/title/1\""));
+        assert!(section.contains("href=\"/title/2\""));
+        assert!(section.contains("href=\"/title/3\""));
+
+        // Empty-state text must NOT appear when items are present.
+        assert!(
+            !section.contains("No recent additions yet"),
+            "empty-state text leaked into a populated section"
+        );
+    }
+
+    /// Story 9-2 — the section MUST render even when the catalog is empty.
+    /// AC5 mandates an inline empty-state instead of hiding the section.
+    ///
+    /// Assertions are scoped to the section slice wherever possible — only
+    /// the `id="recent-additions"` substring lives in the opening tag (which
+    /// is OUTSIDE the slice) and must be checked on the whole HTML.
+    #[test]
+    fn home_renders_recent_additions_empty_state() {
+        let template = make_test_home_template_with_recent("anonymous", Vec::new());
+        let html = template.render().expect("render");
+        let section = recent_additions_slice(&html);
+
+        // Opening tag — only assertion that legitimately runs on the whole HTML
+        // (the slice helper returns content INSIDE the section).
+        assert!(html.contains("id=\"recent-additions\""), "section is rendered");
+
+        // Heading lives inside the section — assert ON the slice so a structural
+        // break (early-closed section) would fail this test.
+        assert!(
+            section.contains("Recent additions"),
+            "section heading must be inside #recent-additions"
+        );
+
+        // No <article> elements inside the section.
+        assert!(
+            !section.contains("class=\"title-card group\""),
+            "empty list must not emit any article cards"
+        );
+
+        // The empty-state copy is present with the convention's `py-12` padding
+        // (matches home.html browse-results empty, locations.html, series_list.html).
+        assert!(
+            section.contains("No recent additions yet"),
+            "empty-state copy missing"
+        );
+        assert!(
+            section.contains("py-12"),
+            "empty-state must use py-12 padding (project convention)"
+        );
+    }
+
+    /// Story 9-2 AC1 regression guard — `#collection-glance` (story 9-1) must
+    /// render BEFORE `#recent-additions` (story 9-2) in document order. This
+    /// invariant was violated in the first implementation pass and caught
+    /// in manual smoke testing; this test prevents the same regression
+    /// recurring silently.
+    #[test]
+    fn home_renders_glance_above_recent_additions() {
+        let template = make_test_home_template_with_recent(
+            "anonymous",
+            vec![fake_search_result(1, "Test Title")],
+        );
+        let html = template.render().expect("render");
+
+        let glance_pos = html
+            .find("id=\"collection-glance\"")
+            .expect("collection-glance section must be rendered");
+        let recent_pos = html
+            .find("id=\"recent-additions\"")
+            .expect("recent-additions section must be rendered");
+
+        assert!(
+            glance_pos < recent_pos,
+            "AC1: collection-glance ({glance_pos}) must appear before recent-additions ({recent_pos}) in document order"
         );
     }
 

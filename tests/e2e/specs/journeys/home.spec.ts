@@ -85,3 +85,33 @@ test.describe("Home page — Collection at a glance card", () => {
     await page.waitForURL(/\/loans/);
   });
 });
+
+// Story 9-2 — "Recent additions" section.
+test.describe("Home page — Recent additions section", () => {
+  test("anonymous: section visible, first card navigates to /title/:id (or empty-state shown)", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    const section = page.locator("#recent-additions");
+    await expect(section).toBeVisible();
+    await expect(section.getByRole("heading", { level: 2 })).toContainText(
+      /Recent additions|Ajouts récents/i,
+    );
+
+    const cards = section.locator("article.title-card");
+    const count = await cards.count();
+
+    if (count > 0) {
+      // Populated catalog → click first card and verify navigation.
+      await cards.first().click();
+      await page.waitForURL(/\/title\/\d+/);
+    } else {
+      // Empty catalog → the inline empty-state is shown instead of hiding
+      // the section (AC5).
+      await expect(section).toContainText(
+        /start cataloging|commencez à cataloguer/i,
+      );
+    }
+  });
+});

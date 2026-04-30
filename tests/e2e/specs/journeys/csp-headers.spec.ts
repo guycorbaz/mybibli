@@ -150,7 +150,13 @@ test.describe("Story 7-4 — CSP headers", () => {
     // downloads them locally. /catalog itself is a scan surface and does
     // not list title links — use the home search like other specs do.
     await page.goto(`/?q=${isbn}`);
-    const titleLink = page.locator('a[href^="/title/"]').first();
+    // Scope to #browse-results — Story 9-2 introduced #recent-additions
+    // ABOVE the search results on the home page, which also renders
+    // <a href="/title/N"> blocks. A bare `a[href^="/title/"].first()` would
+    // pick whatever title happens to be most recent in the test stack.
+    const titleLink = page
+      .locator('#browse-results a[href^="/title/"]')
+      .first();
     await expect(titleLink).toBeVisible({ timeout: 10000 });
     const titleHref = await titleLink.getAttribute("href");
     expect(titleHref).toMatch(/\/title\/\d+/);
