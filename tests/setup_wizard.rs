@@ -57,7 +57,16 @@ async fn ensure_no_admin(pool: &DbPool) {
 
 /// Return the (cookie, csrf_token) tuple for an anonymous browser. The
 /// session-resolve middleware mints both on the first request hit.
-async fn anonymous_session(router: &axum::Router) -> (String, String) {
+///
+/// The caller passes its `&DbPool` explicitly because the
+/// `#[sqlx::test]` macro provisions a throwaway database per test
+/// (e.g. `_sqlx_test_<random>`), and we need to query THAT database
+/// for the session row — NOT the base `DATABASE_URL` schema. The
+/// previous `pool_from_router_state(router)` helper short-circuited
+/// to `DATABASE_URL`, which has no `sessions` table after sqlx-cli
+/// drops it post-prepare; it 1146'd as soon as the wizard tests
+/// landed in the CI db-integration allowlist.
+async fn anonymous_session(router: &axum::Router, pool: &DbPool) -> (String, String) {
     let res = router
         .clone()
         .oneshot(Request::get("/setup").body(Body::empty()).unwrap())
@@ -83,22 +92,10 @@ async fn anonymous_session(router: &axum::Router) -> (String, String) {
     let csrf_token: (String,) =
         sqlx::query_as("SELECT csrf_token FROM sessions WHERE token = ?")
             .bind(&session_token)
-            .fetch_one(&pool_from_router_state(router).await)
+            .fetch_one(pool)
             .await
             .unwrap();
     (cookie, csrf_token.0)
-}
-
-// Hack: the router doesn't expose its AppState. Re-construct a pool
-// from the env var the test framework uses. Cleaner than threading the
-// pool through every helper.
-async fn pool_from_router_state(_router: &axum::Router) -> DbPool {
-    let url = std::env::var("DATABASE_URL").expect("DATABASE_URL set by sqlx::test");
-    sqlx::mysql::MySqlPoolOptions::new()
-        .max_connections(2)
-        .connect(&url)
-        .await
-        .unwrap()
 }
 
 /// AC1 — gate middleware redirects every non-whitelisted route to
@@ -182,7 +179,7 @@ async fn step_1_creates_admin_and_resolver_advances(pool: DbPool) {
     ensure_no_admin(&pool).await;
     let router = app(state_with_pool(pool.clone()));
 
-    let (cookie, csrf) = anonymous_session(&router).await;
+    let (cookie, csrf) = anonymous_session(&router, &pool).await;
     let body = format!(
         "_csrf_token={csrf}&username=wizard_admin&password=wizard_pass_8chars&_back=0"
     );
@@ -226,7 +223,7 @@ async fn step_1_rejects_short_password(pool: DbPool) {
     ensure_no_admin(&pool).await;
     let router = app(state_with_pool(pool.clone()));
 
-    let (cookie, csrf) = anonymous_session(&router).await;
+    let (cookie, csrf) = anonymous_session(&router, &pool).await;
     let body = format!("_csrf_token={csrf}&username=wizard_admin&password=short&_back=0");
     let res = router
         .clone()
@@ -297,7 +294,7 @@ async fn full_happy_path_step_1_through_login(pool: DbPool) {
     let router = app(state_with_pool(pool.clone()));
 
     // ── Step 1 ────────────────────────────────────────────────────
-    let (anon_cookie, anon_csrf) = anonymous_session(&router).await;
+    let (anon_cookie, anon_csrf) = anonymous_session(&router, &pool).await;
     let body = format!(
         "_csrf_token={anon_csrf}&username=happy_admin&password=happy_pass_42&_back=0"
     );

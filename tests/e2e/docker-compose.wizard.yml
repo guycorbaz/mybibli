@@ -21,3 +21,12 @@ services:
   mybibli:
     environment:
       MYBIBLI_SKIP_SETUP: ""
+      # The base compose injects OMDB_API_KEY / TMDB_API_KEY for the
+      # seeded-stack E2E suite. `config::migrate_legacy_env_vars` writes
+      # them into `settings` on boot, so the wizard's resolver would see
+      # `any_provider_key_set == true` after Step 1 and skip directly to
+      # Step 3 — breaking the wizard smoke spec which expects the
+      # Admin → Providers → Preferences → Done sequence. Empty-string the
+      # legacy env vars here so the wizard starts genuinely blank.
+      OMDB_API_KEY: ""
+      TMDB_API_KEY: ""
