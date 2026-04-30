@@ -141,3 +141,34 @@ async fn glance_excludes_soft_deleted_and_returned(pool: MySqlPool) {
     assert_eq!(g.volumes, 5, "5 active + 2 soft-deleted");
     assert_eq!(g.active_loans, 2, "2 active + 1 returned + 1 soft-deleted");
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn glance_excludes_orphan_loans_on_soft_deleted_volume_or_borrower(pool: MySqlPool) {
+    // Story 9-1 review finding: the active_loans subquery JOINs volumes + borrowers
+    // with deleted_at IS NULL so the count never diverges from /loans (which uses
+    // the same JOIN semantics in LoanModel::list_active). This test pins that
+    // contract: a loan whose volume OR borrower is soft-deleted is excluded.
+    let genre = first_genre_id(&pool).await;
+    let state = first_volume_state_id(&pool).await;
+
+    let title = insert_title(&pool, "T", genre).await;
+    let v_live = insert_volume(&pool, "V0001", title, state).await;
+    let v_dead = insert_volume(&pool, "V0002", title, state).await;
+    let b_live = insert_borrower(&pool, "Alive Borrower").await;
+    let b_dead = insert_borrower(&pool, "Soft-deleted Borrower").await;
+
+    // 3 active loans: one fully alive, one whose volume gets soft-deleted, one
+    // whose borrower gets soft-deleted. Only the fully-alive one must count.
+    let _l_live = insert_active_loan(&pool, v_live, b_live).await;
+    let _l_orphan_volume = insert_active_loan(&pool, v_dead, b_live).await;
+    let _l_orphan_borrower = insert_active_loan(&pool, v_live, b_dead).await;
+
+    soft_delete(&pool, "volumes", v_dead).await;
+    soft_delete(&pool, "borrowers", b_dead).await;
+
+    let g = collection_glance(&pool).await.expect("glance fetch");
+    assert_eq!(
+        g.active_loans, 1,
+        "only the loan whose volume AND borrower are alive should count; orphans are excluded"
+    );
+}

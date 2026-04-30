@@ -1,6 +1,6 @@
 # Story 9.1: Dashboard — global stats card
 
-Status: review
+Status: done
 
 ## Story
 
@@ -92,6 +92,38 @@ so that I get an immediate sense of the catalog's size at a glance.
   - [x] Use `loginAs(page, "librarian")` from `tests/e2e/helpers/auth.ts`. Do NOT inject `DEV_SESSION_COOKIE` (per `CLAUDE.md` Foundation Rule #7 + the parallel-safety hard rule).
   - [x] Use i18n-aware regex matchers — both EN + FR strings.
   - [x] No `waitForTimeout` calls — the CI grep gate enforced by the `e2e` job will fail the PR.
+### Review Findings (2026-04-30)
+
+Consolidated from three reviewers (Blind Hunter / Edge Case Hunter / Acceptance Auditor). Triage: 1 decision-needed, 7 patch, 3 defer, 5 dismissed.
+
+**Patch (Medium):**
+
+- [x] [Review][Patch] **Active-loan count cascade scope** [`src/services/dashboard.rs:34-39`] — tighten the loan subquery to JOIN `volumes` and `borrowers` with `deleted_at IS NULL` filters, matching `LoanModel::list_active` semantics. Decided 2026-04-30 (option a) — coherence with the `/loans` page that the count points to outweighs the trivial perf cost of two PK-indexed JOINs in a single round-trip. Add a regression test in `tests/dashboard_glance.rs` that seeds an orphan loan (loan whose volume is soft-deleted) and asserts it is NOT counted.
+
+- [x] [Review][Patch] **Home page 500 on dashboard SQL failure** [`src/routes/home.rs:164`] — `collection_glance(pool).await?` propagates errors with `?`, so any transient DB issue takes down the whole `/` page (including anonymous landing). Mirror the existing `metadata_error_count` pattern (`.unwrap_or_default()` — `CollectionGlance` already derives `Default`) so the card silently shows 0/0/0 instead of returning 500.
+- [x] [Review][Patch] **Librarian unit test false-positive** [`src/routes/home.rs:home_librarian_renders_glance_with_loans_link`] — `assert!(html.contains("href=\"/loans\""))` is satisfied by the nav-bar link (`templates/components/nav_bar.html` renders one for librarian/admin), independently of the glance card. The test would still pass if `loans_link_visible = false`. Scope the assertion to a slice between `id="collection-glance"` and the closing `</section>`.
+- [x] [Review][Patch] **AC3 zero-count rendering not directly tested** [`src/routes/home.rs::mod tests`] — both render tests (`make_test_home_template`) use 5/8/2; nothing locks in the no-hide invariant for 0/0/0. A future regression that adds `{% if glance_titles_count > 0 %}` would slip past CI. Add a third render test with all-zero counts asserting `id="collection-glance"` is present and the labels match the `_other` / FR-CLDR-corrected form.
+- [x] [Review][Patch] **E2E count regex too permissive** [`tests/e2e/specs/journeys/home.spec.ts:32-37`] — `\d+\s+(titles?|titres?)/i` accepts `0` and doesn't enforce per-row scope; if title and volume labels were swapped in the template, the test would still pass. Tighten with `card.locator("li:nth-child(N)")` per row, or seed the DB to known counts and assert exact strings.
+
+**Patch (Low):**
+
+- [x] [Review][Patch] **Dead `glance_*_count` HomeTemplate fields** [`src/routes/home.rs:81-83` and `:283-285`] — three `i64` fields populated but never read by the template (counts are already baked into the `_label` strings via `%{count}`). Remove the fields and the corresponding handler assignments, or wire them into `aria-label` attributes for unambiguous screen-reader announcement.
+- [x] [Review][Patch] **French CLDR zero-pluralization bug** [`src/routes/home.rs:170,181,196`] — French CLDR rule: `0` and `1` both map to `one` ("0 titre", not "0 titres"). Current code routes `0 → _other`, rendering "0 titres" / "0 prêts en cours" — actively wrong for an empty FR catalog. Either branch on locale (`if loc == "fr" && (count == 0 || count == 1)` → `_one`), or use a third key `_zero` per locale.
+- [x] [Review][Patch] **Librarian E2E missing i18n text match** [`tests/e2e/specs/journeys/home.spec.ts:52-67`] — anonymous test uses `/Active loans|Prêts en cours/i` for the user-visible text; librarian test only checks link presence + URL navigation. Add the same regex to the librarian test for consistency with AC9.
+
+**Defer (pre-existing or out of scope — file as GH Issues per CLAUDE.md rule 11):**
+
+- [x] [Review][Defer] **HTMX search swap renders full page into `#browse-results` on empty query + cleared filter** [`src/routes/home.rs:148`] — pre-existing duplicate-ID DOM bug (the new card amplifies it but doesn't cause it). Pre-existing, file as `type:bug` GH Issue.
+- [x] [Review][Defer] **`metadata_error_count` `.unwrap_or(0)` swallows DB errors silently** [`src/routes/home.rs:218-221`] — pre-existing inconsistency, adjacent to new code but not introduced by it. File as `type:code-review-finding` GH Issue.
+- [x] [Review][Defer] **Local E2E run skipped despite Task 8 [x]** [Dev Agent Record] — `tests/e2e/test-results/` owned by root from earlier Docker runs; `sudo chown` cleanup deferred. Honestly noted in DAR; CI validates the E2E.
+
+**Dismissed (5):**
+- Hand-rolled SQL in test inserts — matches the project pattern in `tests/search_filter_browse.rs`.
+- Unused `count_active` model methods — deliberately added for stories 9-4/9-5 reuse per Task 1 sub-bullet.
+- Anonymous loan card visual confusion (looks clickable) — deferred to Story 9-19 Tooltip per spec.
+- Concurrent count drift between subqueries — acknowledged by reviewer as not actionable.
+- Sprint-status `epic-9: backlog → in-progress` transition — rule 16 spirit preserved (first story of the epic naturally moves the parent forward).
+
 - [x] **Task 8 — Verify and document (AC: 1–9)**
   - [x] Run locally before push (per `CLAUDE.md` Foundation Rule #13):
     - `cargo check && cargo clippy -- -D warnings`
@@ -241,3 +273,4 @@ This story aligns cleanly with the existing structure — no variances. The new 
 ### Change Log
 
 - **2026-04-30** — Initial implementation. All 8 tasks complete; 624 lib tests + 2 dashboard_glance integration tests pass; clippy clean; sqlx cache unchanged. E2E validation deferred to CI (local `tests/e2e/test-results/` directory owned by root from earlier Docker runs blocks Playwright reporter writes).
+- **2026-04-30** — Code review pass: 1 decision-needed resolved (option a — JOIN cascade), 7 patches applied, 3 deferred (pre-existing or out of scope, to be filed as GH Issues per rule 11), 5 dismissed. Active-loan count now JOINs `volumes`/`borrowers` to match `LoanModel::list_active`. Home page soft-degrades to 0/0/0 on DB error. French CLDR fixed (0 → singular). Librarian unit test scoped to the card slice. Zero-count render test added. E2E uses per-row locators. Final test counts: 628 lib tests + 3 integration tests + 4 new (zero-count render, 3 `is_singular` cases) — all green. Status: review → done.

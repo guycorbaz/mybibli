@@ -29,12 +29,20 @@ pub struct CollectionGlance {
 /// (`deleted_at`, `returned_at`). Story 9-1 AC2 mandates this single-
 /// round-trip shape; verified by inspection of the SQL below at code-
 /// review time.
+///
+/// `active_loans` JOINs `volumes` and `borrowers` with `deleted_at IS NULL`
+/// filters so an orphan loan whose volume or borrower has been soft-deleted
+/// is NOT counted — matching `LoanModel::list_active` semantics so the
+/// home-page count never diverges from what the user sees on `/loans`.
 pub async fn collection_glance(pool: &DbPool) -> Result<CollectionGlance, AppError> {
     let glance: CollectionGlance = sqlx::query_as(
         "SELECT \
             (SELECT COUNT(*) FROM titles WHERE deleted_at IS NULL)  AS titles, \
             (SELECT COUNT(*) FROM volumes WHERE deleted_at IS NULL) AS volumes, \
-            (SELECT COUNT(*) FROM loans WHERE returned_at IS NULL AND deleted_at IS NULL) AS active_loans",
+            (SELECT COUNT(*) FROM loans l \
+               JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL \
+               JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL \
+              WHERE l.returned_at IS NULL AND l.deleted_at IS NULL) AS active_loans",
     )
     .fetch_one(pool)
     .await?;

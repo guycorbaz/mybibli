@@ -77,9 +77,6 @@ pub struct HomeTemplate {
     pub glance_volumes_label: String,
     pub glance_active_loans_label: String,
     pub glance_signin_hint: String,
-    pub glance_titles_count: i64,
-    pub glance_volumes_count: i64,
-    pub glance_active_loans_count: i64,
     pub loans_link_visible: bool,
 }
 
@@ -160,14 +157,26 @@ pub async fn home(
         return Ok(Html(html).into_response());
     }
 
-    // "Collection at a glance" card — three counts in a single SQL round-trip (story 9-1)
-    let glance = crate::services::dashboard::collection_glance(pool).await?;
+    // "Collection at a glance" card — three counts in a single SQL round-trip (story 9-1).
+    // Soft-degrade on DB error: a transient lock or timeout MUST NOT take down the
+    // public landing page. Mirrors the existing `metadata_error_count` pattern below.
+    let glance = match crate::services::dashboard::collection_glance(pool).await {
+        Ok(g) => g,
+        Err(e) => {
+            tracing::warn!(error = %e, "collection_glance failed; rendering 0/0/0 card");
+            crate::services::dashboard::CollectionGlance::default()
+        }
+    };
     let loans_link_visible = session.role >= Role::Librarian;
 
     // Choose `_one` vs `_other` for each count. Inline if/else so the macro receives
     // a literal key (matching the project's i18n audit at `src/i18n/audit.rs`),
-    // while preserving correct EN/FR plural grammar (NFR41-aware).
-    let glance_titles_label = if glance.titles == 1 {
+    // while preserving correct EN/FR plural grammar.
+    //
+    // CLDR rule for French: counts of 0 AND 1 both map to the singular form
+    // ("0 titre", not "0 titres"). English: only 1 → singular. The `is_singular`
+    // helper encodes this locale-conditional behavior.
+    let glance_titles_label = if is_singular(loc, glance.titles) {
         rust_i18n::t!("dashboard.glance.titles_one", locale = loc, count = glance.titles)
             .to_string()
     } else {
@@ -178,7 +187,7 @@ pub async fn home(
         )
         .to_string()
     };
-    let glance_volumes_label = if glance.volumes == 1 {
+    let glance_volumes_label = if is_singular(loc, glance.volumes) {
         rust_i18n::t!(
             "dashboard.glance.volumes_one",
             locale = loc,
@@ -193,7 +202,7 @@ pub async fn home(
         )
         .to_string()
     };
-    let glance_active_loans_label = if glance.active_loans == 1 {
+    let glance_active_loans_label = if is_singular(loc, glance.active_loans) {
         rust_i18n::t!(
             "dashboard.glance.active_loans_one",
             locale = loc,
@@ -281,14 +290,23 @@ pub async fn home(
         glance_active_loans_label,
         glance_signin_hint: rust_i18n::t!("dashboard.glance.signin_to_view_loans", locale = loc)
             .to_string(),
-        glance_titles_count: glance.titles,
-        glance_volumes_count: glance.volumes,
-        glance_active_loans_count: glance.active_loans,
         loans_link_visible,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
         Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+    }
+}
+
+/// Locale-aware singular/plural selector for the glance card labels (story 9-1).
+///
+/// CLDR rule: French treats 0 as singular ("0 titre", not "0 titres"); English
+/// uses singular only for 1. Centralized here so future locales (German, Spanish,
+/// …) can extend the match arms without touching the three call sites.
+fn is_singular(locale: &str, count: i64) -> bool {
+    match locale {
+        "fr" => count == 0 || count == 1,
+        _ => count == 1,
     }
 }
 
@@ -575,7 +593,36 @@ mod tests {
         assert!(!html.contains("/catalog/title/new"));
     }
 
-    fn make_test_home_template(role: &str, loans_link_visible: bool) -> HomeTemplate {
+    /// Extract the substring of `html` that lies between the opening tag of the
+    /// `<section id="collection-glance">` and its first matching `</section>`.
+    /// Used by the librarian/anonymous render tests to scope assertions to
+    /// the glance card and avoid false positives from the nav-bar `/loans` link
+    /// (which is rendered for librarian/admin roles by `nav_bar.html`).
+    fn glance_card_slice(html: &str) -> &str {
+        let start_tag = r#"id="collection-glance""#;
+        let start = html
+            .find(start_tag)
+            .unwrap_or_else(|| panic!("glance card section not found in rendered HTML"));
+        let after_open = html[start..]
+            .find('>')
+            .map(|i| start + i + 1)
+            .expect("section opening tag must close");
+        let end_rel = html[after_open..]
+            .find("</section>")
+            .expect("glance card must have a closing </section>");
+        &html[after_open..after_open + end_rel]
+    }
+
+    fn make_test_home_template_with_counts(
+        role: &str,
+        loans_link_visible: bool,
+        titles: i64,
+        volumes: i64,
+        active_loans: i64,
+    ) -> HomeTemplate {
+        let titles_label = format!("{titles} titles");
+        let volumes_label = format!("{volumes} volumes");
+        let active_loans_label = format!("{active_loans} active loans");
         HomeTemplate {
             lang: "en".to_string(),
             role: role.to_string(),
@@ -620,15 +667,16 @@ mod tests {
             current_url: "/".to_string(),
             lang_toggle_aria: "Change language".to_string(),
             glance_heading: "Collection at a glance".to_string(),
-            glance_titles_label: "5 titles".to_string(),
-            glance_volumes_label: "8 volumes".to_string(),
-            glance_active_loans_label: "2 active loans".to_string(),
+            glance_titles_label: titles_label,
+            glance_volumes_label: volumes_label,
+            glance_active_loans_label: active_loans_label,
             glance_signin_hint: "Sign in to view loans".to_string(),
-            glance_titles_count: 5,
-            glance_volumes_count: 8,
-            glance_active_loans_count: 2,
             loans_link_visible,
         }
+    }
+
+    fn make_test_home_template(role: &str, loans_link_visible: bool) -> HomeTemplate {
+        make_test_home_template_with_counts(role, loans_link_visible, 5, 8, 2)
     }
 
     #[test]
@@ -690,24 +738,90 @@ mod tests {
 
     /// Story 9-1 AC8d: librarian render exposes the /loans link AND
     /// does NOT contain the orphan aria-describedby reference.
+    ///
+    /// Assertions are scoped to the glance card slice — the nav bar also
+    /// renders `href="/loans"` for librarian/admin roles, so a global
+    /// `html.contains` would silently pass even if the card itself regressed.
     #[test]
     fn home_librarian_renders_glance_with_loans_link() {
         let template = make_test_home_template("librarian", true);
         let html = template.render().expect("render");
+        let card = glance_card_slice(&html);
 
-        assert!(html.contains("id=\"collection-glance\""), "card section is present");
-        assert!(html.contains("href=\"/loans\""), "librarian render must link to /loans");
-        assert!(html.contains("2 active loans"), "loan label still rendered inside the link");
+        assert!(
+            card.contains("href=\"/loans\""),
+            "librarian render must link the glance loan count to /loans (scoped to the card slice, not the nav bar)"
+        );
+        assert!(
+            card.contains("2 active loans"),
+            "loan label still rendered inside the card link"
+        );
 
         // No orphan aria-describedby reference (the hint span is only emitted
         // for anonymous users; emitting it for librarian would be dead markup).
         assert!(
-            !html.contains("aria-describedby=\"glance-loans-hint\""),
+            !card.contains("aria-describedby=\"glance-loans-hint\""),
             "librarian render must not carry the anonymous-only aria-describedby reference"
         );
         assert!(
-            !html.contains("id=\"glance-loans-hint\""),
+            !card.contains("id=\"glance-loans-hint\""),
             "librarian render must not emit the orphan hint span"
         );
+    }
+
+    /// Story 9-1 AC3 regression guard: the card MUST render even when every
+    /// count is zero. A future regression that adds `{% if count > 0 %}`
+    /// inside the template would slip past the other render tests (which
+    /// hardcode 5/8/2). This test pins the no-hide invariant.
+    #[test]
+    fn home_renders_glance_with_all_zero_counts() {
+        let template =
+            make_test_home_template_with_counts("anonymous", false, 0, 0, 0);
+        let html = template.render().expect("render");
+        let card = glance_card_slice(&html);
+
+        // The card structure is intact even with zeros.
+        assert!(html.contains("id=\"collection-glance\""), "card section present");
+        assert!(html.contains("Collection at a glance"), "heading rendered");
+
+        // Each zero-count label still appears inside the card. We assert on
+        // the card slice (not the whole HTML) so a stray "0 titles" elsewhere
+        // wouldn't mask a missing card.
+        assert!(card.contains("0 titles"), "0-titles label rendered inside the card");
+        assert!(card.contains("0 volumes"), "0-volumes label rendered inside the card");
+        assert!(
+            card.contains("0 active loans"),
+            "0-active-loans label rendered inside the card"
+        );
+
+        // Anonymous + zero loans still produces the aria-describedby hint
+        // (the no-link path) — verifies the {% if loans_link_visible %} branch
+        // is evaluated on visibility, not on count.
+        assert!(
+            card.contains("aria-describedby=\"glance-loans-hint\""),
+            "anonymous + zero loans still emits the sign-in hint reference"
+        );
+    }
+
+    #[test]
+    fn is_singular_french_treats_zero_and_one_as_singular() {
+        // CLDR: French maps 0 and 1 to the singular form.
+        assert!(is_singular("fr", 0), "FR: 0 → singular");
+        assert!(is_singular("fr", 1), "FR: 1 → singular");
+        assert!(!is_singular("fr", 2), "FR: 2 → plural");
+        assert!(!is_singular("fr", 100), "FR: 100 → plural");
+    }
+
+    #[test]
+    fn is_singular_english_treats_only_one_as_singular() {
+        assert!(!is_singular("en", 0), "EN: 0 → plural");
+        assert!(is_singular("en", 1), "EN: 1 → singular");
+        assert!(!is_singular("en", 2), "EN: 2 → plural");
+    }
+
+    #[test]
+    fn is_singular_unknown_locale_falls_back_to_english_rule() {
+        assert!(!is_singular("de", 0), "unknown locale: 0 → plural (EN fallback)");
+        assert!(is_singular("de", 1), "unknown locale: 1 → singular");
     }
 }
