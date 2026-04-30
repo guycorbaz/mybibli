@@ -71,6 +71,16 @@ pub struct HomeTemplate {
     pub browse_sort_label: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
+    // "Collection at a glance" card (story 9-1)
+    pub glance_heading: String,
+    pub glance_titles_label: String,
+    pub glance_volumes_label: String,
+    pub glance_active_loans_label: String,
+    pub glance_signin_hint: String,
+    pub glance_titles_count: i64,
+    pub glance_volumes_count: i64,
+    pub glance_active_loans_count: i64,
+    pub loans_link_visible: bool,
 }
 
 pub async fn home(
@@ -150,6 +160,55 @@ pub async fn home(
         return Ok(Html(html).into_response());
     }
 
+    // "Collection at a glance" card — three counts in a single SQL round-trip (story 9-1)
+    let glance = crate::services::dashboard::collection_glance(pool).await?;
+    let loans_link_visible = session.role >= Role::Librarian;
+
+    // Choose `_one` vs `_other` for each count. Inline if/else so the macro receives
+    // a literal key (matching the project's i18n audit at `src/i18n/audit.rs`),
+    // while preserving correct EN/FR plural grammar (NFR41-aware).
+    let glance_titles_label = if glance.titles == 1 {
+        rust_i18n::t!("dashboard.glance.titles_one", locale = loc, count = glance.titles)
+            .to_string()
+    } else {
+        rust_i18n::t!(
+            "dashboard.glance.titles_other",
+            locale = loc,
+            count = glance.titles
+        )
+        .to_string()
+    };
+    let glance_volumes_label = if glance.volumes == 1 {
+        rust_i18n::t!(
+            "dashboard.glance.volumes_one",
+            locale = loc,
+            count = glance.volumes
+        )
+        .to_string()
+    } else {
+        rust_i18n::t!(
+            "dashboard.glance.volumes_other",
+            locale = loc,
+            count = glance.volumes
+        )
+        .to_string()
+    };
+    let glance_active_loans_label = if glance.active_loans == 1 {
+        rust_i18n::t!(
+            "dashboard.glance.active_loans_one",
+            locale = loc,
+            count = glance.active_loans
+        )
+        .to_string()
+    } else {
+        rust_i18n::t!(
+            "dashboard.glance.active_loans_other",
+            locale = loc,
+            count = glance.active_loans
+        )
+        .to_string()
+    };
+
     // Count titles with failed metadata (for librarian dashboard badge)
     let metadata_error_count: u64 = if session.role == Role::Librarian {
         sqlx::query_scalar::<_, i64>(
@@ -216,6 +275,16 @@ pub async fn home(
         browse_sort_label: rust_i18n::t!("browse.sort_by", locale = loc).to_string(),
         current_url: current_url(&uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        glance_heading: rust_i18n::t!("dashboard.glance.heading", locale = loc).to_string(),
+        glance_titles_label,
+        glance_volumes_label,
+        glance_active_loans_label,
+        glance_signin_hint: rust_i18n::t!("dashboard.glance.signin_to_view_loans", locale = loc)
+            .to_string(),
+        glance_titles_count: glance.titles,
+        glance_volumes_count: glance.volumes,
+        glance_active_loans_count: glance.active_loans,
+        loans_link_visible,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -506,11 +575,10 @@ mod tests {
         assert!(!html.contains("/catalog/title/new"));
     }
 
-    #[test]
-    fn test_home_template_renders() {
-        let template = HomeTemplate {
+    fn make_test_home_template(role: &str, loans_link_visible: bool) -> HomeTemplate {
+        HomeTemplate {
             lang: "en".to_string(),
-            role: "anonymous".to_string(),
+            role: role.to_string(),
             current_page: "home",
             skip_label: "Skip to main content".to_string(),
             session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
@@ -551,10 +619,95 @@ mod tests {
             browse_sort_label: "Sort by".to_string(),
             current_url: "/".to_string(),
             lang_toggle_aria: "Change language".to_string(),
-        };
+            glance_heading: "Collection at a glance".to_string(),
+            glance_titles_label: "5 titles".to_string(),
+            glance_volumes_label: "8 volumes".to_string(),
+            glance_active_loans_label: "2 active loans".to_string(),
+            glance_signin_hint: "Sign in to view loans".to_string(),
+            glance_titles_count: 5,
+            glance_volumes_count: 8,
+            glance_active_loans_count: 2,
+            loans_link_visible,
+        }
+    }
+
+    #[test]
+    fn test_home_template_renders() {
+        let template = make_test_home_template("anonymous", false);
         let rendered = template.render().unwrap();
         assert!(rendered.contains("mybibli"));
         assert!(rendered.contains("search-field"));
         assert!(rendered.contains("browse-results"));
+    }
+
+    /// Story 9-1 AC5 + AC8c: anonymous render contains the glance card,
+    /// shows the three counts, NEVER leaks `href="/loans"`, and the
+    /// aria-describedby + sr-only sign-in hint coexist (linkage check).
+    #[test]
+    fn home_anonymous_renders_glance_no_loans_link() {
+        let template = make_test_home_template("anonymous", false);
+        let html = template.render().expect("render");
+
+        // Card header
+        assert!(html.contains("id=\"collection-glance\""), "card section is present");
+        assert!(html.contains("Collection at a glance"), "heading rendered");
+        assert!(html.contains("aria-labelledby=\"glance-heading\""), "section labelledby set");
+        assert!(html.contains("id=\"glance-heading\""), "heading id present (labelledby target)");
+
+        // Three counts visible
+        assert!(html.contains("5 titles"), "titles label rendered");
+        assert!(html.contains("8 volumes"), "volumes label rendered");
+        assert!(html.contains("2 active loans"), "active loans label rendered");
+
+        // CRITICAL: no anonymous loan link leak
+        assert!(
+            !html.contains("href=\"/loans\""),
+            "anonymous render must not contain href=\"/loans\" — got:\n{}",
+            // Trim noise to keep the failure message readable when something regresses
+            html.lines()
+                .filter(|l| l.contains("loan"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+
+        // Aria linkage (AC8c iii): the aria-describedby reference and the
+        // span carrying its target id BOTH exist, AND the target carries
+        // the sr-only class and the sign-in hint text.
+        assert!(
+            html.contains("aria-describedby=\"glance-loans-hint\""),
+            "anonymous render must wire aria-describedby on the loan-count span"
+        );
+        assert!(
+            html.contains("id=\"glance-loans-hint\""),
+            "anonymous render must include the aria-describedby target span"
+        );
+        assert!(html.contains("sr-only"), "hint span must be screen-reader-only");
+        assert!(
+            html.contains("Sign in to view loans"),
+            "hint span must carry the sign-in i18n text"
+        );
+    }
+
+    /// Story 9-1 AC8d: librarian render exposes the /loans link AND
+    /// does NOT contain the orphan aria-describedby reference.
+    #[test]
+    fn home_librarian_renders_glance_with_loans_link() {
+        let template = make_test_home_template("librarian", true);
+        let html = template.render().expect("render");
+
+        assert!(html.contains("id=\"collection-glance\""), "card section is present");
+        assert!(html.contains("href=\"/loans\""), "librarian render must link to /loans");
+        assert!(html.contains("2 active loans"), "loan label still rendered inside the link");
+
+        // No orphan aria-describedby reference (the hint span is only emitted
+        // for anonymous users; emitting it for librarian would be dead markup).
+        assert!(
+            !html.contains("aria-describedby=\"glance-loans-hint\""),
+            "librarian render must not carry the anonymous-only aria-describedby reference"
+        );
+        assert!(
+            !html.contains("id=\"glance-loans-hint\""),
+            "librarian render must not emit the orphan hint span"
+        );
     }
 }

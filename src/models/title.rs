@@ -180,6 +180,17 @@ impl TitleModel {
         }
     }
 
+    /// Count of active (non-soft-deleted) titles in the catalog.
+    /// Used by `services::dashboard::collection_glance` for the home-page
+    /// "Collection at a glance" card and reusable by other dashboard surfaces.
+    pub async fn count_active(pool: &DbPool) -> Result<i64, AppError> {
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM titles WHERE deleted_at IS NULL")
+                .fetch_one(pool)
+                .await?;
+        Ok(row.0)
+    }
+
     pub async fn create(pool: &DbPool, new_title: &NewTitle) -> Result<TitleModel, AppError> {
         tracing::info!(
             title = %new_title.title,

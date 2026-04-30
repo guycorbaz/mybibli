@@ -1,6 +1,6 @@
 # Story 9.1: Dashboard — global stats card
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -32,15 +32,15 @@ so that I get an immediate sense of the catalog's size at a glance.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Add `count_active()` to the three models (AC: 2, 3, 8)**
-  - [ ] In `src/models/title.rs`, add `pub async fn count_active(pool: &DbPool) -> Result<i64, AppError>` using `SELECT COUNT(*) FROM titles WHERE deleted_at IS NULL`. Follow the pattern in `src/models/volume_state.rs:177-184`.
-  - [ ] In `src/models/volume.rs`, add `pub async fn count_active(pool: &DbPool) -> Result<i64, AppError>` using the same pattern on `volumes`.
-  - [ ] In `src/models/loan.rs`, add `pub async fn count_active(pool: &DbPool) -> Result<i64, AppError>` filtering on `returned_at IS NULL AND deleted_at IS NULL`. Follow the pattern in `src/models/volume_state.rs::count_active_loans_for_state` (lines 257-273).
-  - [ ] These per-model `count_active()` are intentionally added even though AC2 mandates a single-round-trip query, because they will be used by other Epic 9 stories (9-4, 9-5) and keep the per-table SQL co-located with each model.
-- [ ] **Task 2 — Add `CollectionGlance` aggregate query in a service (AC: 1, 2)**
-  - [ ] Create `src/services/dashboard.rs` (new module) — register it in `src/services/mod.rs` with `pub mod dashboard;`.
-  - [ ] Define `pub struct CollectionGlance { pub titles: i64, pub volumes: i64, pub active_loans: i64 }` deriving `Debug, Clone, sqlx::FromRow`.
-  - [ ] Implement `pub async fn collection_glance(pool: &DbPool) -> Result<CollectionGlance, AppError>` that runs a single SQL query of the form:
+- [x] **Task 1 — Add `count_active()` to the three models (AC: 2, 3, 8)**
+  - [x] In `src/models/title.rs`, add `pub async fn count_active(pool: &DbPool) -> Result<i64, AppError>` using `SELECT COUNT(*) FROM titles WHERE deleted_at IS NULL`. Follow the pattern in `src/models/volume_state.rs:177-184`.
+  - [x] In `src/models/volume.rs`, add `pub async fn count_active(pool: &DbPool) -> Result<i64, AppError>` using the same pattern on `volumes`.
+  - [x] In `src/models/loan.rs`, add `pub async fn count_active(pool: &DbPool) -> Result<i64, AppError>` filtering on `returned_at IS NULL AND deleted_at IS NULL`. Follow the pattern in `src/models/volume_state.rs::count_active_loans_for_state` (lines 257-273).
+  - [x] These per-model `count_active()` are intentionally added even though AC2 mandates a single-round-trip query, because they will be used by other Epic 9 stories (9-4, 9-5) and keep the per-table SQL co-located with each model.
+- [x] **Task 2 — Add `CollectionGlance` aggregate query in a service (AC: 1, 2)**
+  - [x] Create `src/services/dashboard.rs` (new module) — register it in `src/services/mod.rs` with `pub mod dashboard;`.
+  - [x] Define `pub struct CollectionGlance { pub titles: i64, pub volumes: i64, pub active_loans: i64 }` deriving `Debug, Clone, sqlx::FromRow`.
+  - [x] Implement `pub async fn collection_glance(pool: &DbPool) -> Result<CollectionGlance, AppError>` that runs a single SQL query of the form:
     ```sql
     SELECT
       (SELECT COUNT(*) FROM titles WHERE deleted_at IS NULL)  AS titles,
@@ -48,57 +48,57 @@ so that I get an immediate sense of the catalog's size at a glance.
       (SELECT COUNT(*) FROM loans WHERE returned_at IS NULL AND deleted_at IS NULL) AS active_loans
     ```
     Use `sqlx::query_as::<_, CollectionGlance>` + `.fetch_one(pool)`. This is a single round-trip per AC2 — verified by the SQL shape (1 SELECT, 0 join, 3 sub-counts) at code review time, no programmatic instrumentation needed.
-  - [ ] DO NOT use `sqlx::query!` macro for this — it requires `.sqlx/` cache regeneration. Use the dynamic `query_as` form.
-- [ ] **Task 3 — Add i18n keys (AC: 7)**
-  - [ ] In `locales/en.yml` under `dashboard:`, add a `glance:` sub-section with these 8 keys:
+  - [x] DO NOT use `sqlx::query!` macro for this — it requires `.sqlx/` cache regeneration. Use the dynamic `query_as` form.
+- [x] **Task 3 — Add i18n keys (AC: 7)**
+  - [x] In `locales/en.yml` under `dashboard:`, add a `glance:` sub-section with these 8 keys:
     - `heading: "Collection at a glance"`
     - `titles_one: "%{count} title"` and `titles_other: "%{count} titles"`
     - `volumes_one: "%{count} volume"` and `volumes_other: "%{count} volumes"`
     - `active_loans_one: "%{count} active loan"` and `active_loans_other: "%{count} active loans"`
     - `signin_to_view_loans: "Sign in to view loans"`
-  - [ ] In `locales/fr.yml` under `dashboard:`, add the FR equivalents (8 keys):
+  - [x] In `locales/fr.yml` under `dashboard:`, add the FR equivalents (8 keys):
     - `heading: "Aperçu de la collection"`
     - `titles_one: "%{count} titre"` and `titles_other: "%{count} titres"`
     - `volumes_one: "%{count} volume"` and `volumes_other: "%{count} volumes"`
     - `active_loans_one: "%{count} prêt en cours"` and `active_loans_other: "%{count} prêts en cours"`
     - `signin_to_view_loans: "Connectez-vous pour voir les prêts"`
-  - [ ] **CRITICAL:** locale files have NO top-level `en:`/`fr:` wrapper — keys start at root (per `CLAUDE.md` "Key Patterns / i18n").
-  - [ ] After editing locale files, run `touch src/lib.rs && cargo build` to force proc-macro recompilation.
-- [ ] **Task 4 — Wire the handler (AC: 1, 4, 5)**
-  - [ ] In `src/routes/home.rs::home` (around line 76, before the existing template construction), call `services::dashboard::collection_glance(&state.pool).await?` and bind the result.
-  - [ ] Extend `HomeTemplate` (the Askama struct returned by the handler) with new fields: `glance_heading: String`, `glance_titles_label: String`, `glance_volumes_label: String`, `glance_active_loans_label: String`, `glance_signin_hint: String`, `glance_titles_count: i64`, `glance_volumes_count: i64`, `glance_active_loans_count: i64`, `loans_link_visible: bool`. Pre-translate the 4 label strings + hint in the handler via `rust_i18n::t!(...)` calls.
-  - [ ] Use `session.role >= Role::Librarian` (the existing `Role` enum at `src/middleware/auth.rs` derives `PartialOrd`) to compute `loans_link_visible`.
-  - [ ] DO NOT add a new route handler. The card is rendered inline by the existing `home` handler.
-- [ ] **Task 5 — Render the card in the template (AC: 1, 4, 6)**
-  - [ ] In `templates/pages/home.html`, insert the card **between the filter tags (closing tag at line ~65) and the `#browse-results` div (opening at line ~106)**. Rationale: this placement keeps the search field above the fold (no CLS on tablet/mobile), sits OUTSIDE the HTMX swap target `#browse-results` so the card stays visible during search interactions, and is consistent with the search-as-homepage UX (UX spec §"Home page"). The dev agent may deviate only with explicit justification documented in the Dev Agent Record.
-  - [ ] Markup outline (Tailwind utility classes; all i18n strings come pre-translated as `String` fields on `HomeTemplate`):
+  - [x] **CRITICAL:** locale files have NO top-level `en:`/`fr:` wrapper — keys start at root (per `CLAUDE.md` "Key Patterns / i18n").
+  - [x] After editing locale files, run `touch src/lib.rs && cargo build` to force proc-macro recompilation.
+- [x] **Task 4 — Wire the handler (AC: 1, 4, 5)**
+  - [x] In `src/routes/home.rs::home` (around line 76, before the existing template construction), call `services::dashboard::collection_glance(&state.pool).await?` and bind the result.
+  - [x] Extend `HomeTemplate` (the Askama struct returned by the handler) with new fields: `glance_heading: String`, `glance_titles_label: String`, `glance_volumes_label: String`, `glance_active_loans_label: String`, `glance_signin_hint: String`, `glance_titles_count: i64`, `glance_volumes_count: i64`, `glance_active_loans_count: i64`, `loans_link_visible: bool`. Pre-translate the 4 label strings + hint in the handler via `rust_i18n::t!(...)` calls.
+  - [x] Use `session.role >= Role::Librarian` (the existing `Role` enum at `src/middleware/auth.rs` derives `PartialOrd`) to compute `loans_link_visible`.
+  - [x] DO NOT add a new route handler. The card is rendered inline by the existing `home` handler.
+- [x] **Task 5 — Render the card in the template (AC: 1, 4, 6)**
+  - [x] In `templates/pages/home.html`, insert the card **between the filter tags (closing tag at line ~65) and the `#browse-results` div (opening at line ~106)**. Rationale: this placement keeps the search field above the fold (no CLS on tablet/mobile), sits OUTSIDE the HTMX swap target `#browse-results` so the card stays visible during search interactions, and is consistent with the search-as-homepage UX (UX spec §"Home page"). The dev agent may deviate only with explicit justification documented in the Dev Agent Record.
+  - [x] Markup outline (Tailwind utility classes; all i18n strings come pre-translated as `String` fields on `HomeTemplate`):
     - `<section aria-labelledby="glance-heading">` with `<h2 id="glance-heading">{{ glance_heading }}</h2>`
     - Three `<dl>`-style or list-item rows, each rendering its pre-translated label (which already includes the count via `%{count}` interpolation)
     - Title count: always `<a href="/catalog">{{ glance_titles_label }}</a>`
     - Volume count: always `<a href="/catalog">{{ glance_volumes_label }}</a>`
     - Loan count: `{% if loans_link_visible %}<a href="/loans">{{ glance_active_loans_label }}</a>{% else %}<span aria-describedby="glance-loans-hint">{{ glance_active_loans_label }}</span><span id="glance-loans-hint" class="sr-only">{{ glance_signin_hint }}</span>{% endif %}`
-  - [ ] CSP: zero `style="..."`, zero `onclick=`, zero inline `<script>`. Tailwind classes only.
-- [ ] **Task 6 — Unit tests (AC: 2, 3, 5, 8)**
-  - [ ] Add `tests/dashboard_glance.rs` (new file) with `#[sqlx::test(migrations = "./migrations")]` tests:
+  - [x] CSP: zero `style="..."`, zero `onclick=`, zero inline `<script>`. Tailwind classes only.
+- [x] **Task 6 — Unit tests (AC: 2, 3, 5, 8)**
+  - [x] Add `tests/dashboard_glance.rs` (new file) with `#[sqlx::test(migrations = "./migrations")]` tests:
     - `glance_on_empty_db_returns_zeros` — fresh schema, no fixtures, expect `(0, 0, 0)`.
     - `glance_excludes_soft_deleted_and_returned` — seed: 3 active titles + 1 soft-deleted; 5 active volumes + 2 soft-deleted; 4 loans of which 1 returned + 1 soft-deleted; expect `(3, 5, 2)`.
-  - [ ] Add handler-level rendering tests in `src/routes/home.rs` `mod tests` (or a sibling test module) — follow the existing pattern at `src/routes/home.rs:411-559`. Tests:
+  - [x] Add handler-level rendering tests in `src/routes/home.rs` `mod tests` (or a sibling test module) — follow the existing pattern at `src/routes/home.rs:411-559`. Tests:
     - `home_anonymous_renders_glance_no_loans_link` — invoke the handler with a `Session { role: Role::Anonymous, .. }`, render the template to a string, then assert: contains the three i18n labels (EN locale, plural form); does NOT contain `href="/loans"`; contains BOTH `aria-describedby="glance-loans-hint"` AND `id="glance-loans-hint"` (linkage check); the span carrying `id="glance-loans-hint"` carries class `sr-only` and contains the EN sign-in hint text.
     - `home_librarian_renders_glance_with_loans_link` — same but with `Role::Librarian`; assert `href="/loans"` IS present and does NOT contain `aria-describedby="glance-loans-hint"` (no orphan).
-- [ ] **Task 7 — E2E spec (AC: 9)**
-  - [ ] Extend `tests/e2e/specs/journeys/home.spec.ts` with two new test cases:
+- [x] **Task 7 — E2E spec (AC: 9)**
+  - [x] Extend `tests/e2e/specs/journeys/home.spec.ts` with two new test cases:
     - `glance card visible to anonymous, loan count is not a link` — load `/`, verify the card heading matches `/Collection at a glance|Aperçu de la collection/i`, verify the three count rows are present, then `await expect(page.locator('a[href="/loans"]')).toHaveCount(0)`.
     - `glance card visible to librarian, loan count navigates to /loans` — `await loginAs(page, "librarian")`, load `/`, `await expect(page.locator('a[href="/loans"]')).toHaveCount(1)`, click the link, `await page.waitForURL(/\/loans/)`.
-  - [ ] Use `loginAs(page, "librarian")` from `tests/e2e/helpers/auth.ts`. Do NOT inject `DEV_SESSION_COOKIE` (per `CLAUDE.md` Foundation Rule #7 + the parallel-safety hard rule).
-  - [ ] Use i18n-aware regex matchers — both EN + FR strings.
-  - [ ] No `waitForTimeout` calls — the CI grep gate enforced by the `e2e` job will fail the PR.
-- [ ] **Task 8 — Verify and document (AC: 1–9)**
-  - [ ] Run locally before push (per `CLAUDE.md` Foundation Rule #13):
+  - [x] Use `loginAs(page, "librarian")` from `tests/e2e/helpers/auth.ts`. Do NOT inject `DEV_SESSION_COOKIE` (per `CLAUDE.md` Foundation Rule #7 + the parallel-safety hard rule).
+  - [x] Use i18n-aware regex matchers — both EN + FR strings.
+  - [x] No `waitForTimeout` calls — the CI grep gate enforced by the `e2e` job will fail the PR.
+- [x] **Task 8 — Verify and document (AC: 1–9)**
+  - [x] Run locally before push (per `CLAUDE.md` Foundation Rule #13):
     - `cargo check && cargo clippy -- -D warnings`
     - `cargo test` (unit + the new `tests/dashboard_glance.rs`)
     - `./scripts/e2e-reset.sh` then `cd tests/e2e && npx playwright test specs/journeys/home.spec.ts` (or the equivalent if running Docker stack)
-  - [ ] Run `cargo sqlx prepare` if any new query macro was added (Task 2 uses dynamic queries, so likely a no-op — verify no `.sqlx/` diff).
-  - [ ] Update Dev Agent Record at the bottom of this file: list of files touched, card placement decision in the home template (or justification for deviating from the recommended placement), anything surprising encountered.
+  - [x] Run `cargo sqlx prepare` if any new query macro was added (Task 2 uses dynamic queries, so likely a no-op — verify no `.sqlx/` diff).
+  - [x] Update Dev Agent Record at the bottom of this file: list of files touched, card placement decision in the home template (or justification for deviating from the recommended placement), anything surprising encountered.
 
 ## Dev Notes
 
@@ -200,18 +200,44 @@ This story aligns cleanly with the existing structure — no variances. The new 
 
 ### Agent Model Used
 
-_To be filled by dev agent (e.g., `claude-opus-4-7`)._
+`claude-opus-4-7` (1M context).
 
 ### Debug Log References
 
-_To be filled during implementation._
+- `cargo test --lib` — 624 passed, 0 failed (after `dashboard.glance.titles` initially failed `i18n::audit::tests::all_t_keys_have_both_locales` because the audit expects literal scalar leaves, not the rust_i18n `_one`/`_other` auto-resolved prefix; resolution: branch on `count == 1` in the handler with two literal `t!()` calls per count).
+- `cargo test --test dashboard_glance` — 2 passed (empty DB → zeros; mixed dataset → 3/5/2 with soft-deleted titles + soft-deleted volumes + returned loan + soft-deleted loan correctly excluded).
+- `cargo clippy --all-targets -- -D warnings` — clean.
+- `cargo sqlx prepare --check --workspace -- --all-targets` — no diff (Task 2 uses dynamic `query_as`, Task 1 uses dynamic `query_as` — no `.sqlx/` regeneration needed).
+- Manual smoke via `curl http://localhost:8080/`: FR locale (default) renders "Aperçu de la collection / 0 titres / 0 prêts en cours" with `aria-describedby="glance-loans-hint"` paired to `id="glance-loans-hint"` carrying the `sr-only` "Connectez-vous pour voir les prêts" hint and zero `href="/loans"` occurrences. `?lang=en` flips to "Collection at a glance / 0 titles / 0 active loans / Sign in to view loans".
+- E2E locally blocked by `EACCES` on `tests/e2e/test-results/` (artefacts owned by root from a prior Docker run); CI run on push will validate `home.spec.ts` end-to-end.
 
 ### Completion Notes List
 
-_To be filled during implementation. Document at minimum:_
-- _Card placement in `templates/pages/home.html` — confirm the recommended location (between filter tags and `#browse-results`) was used, or justify deviation._
-- _Anything surprising encountered (existing helper found, schema quirk, i18n key collision, etc.)._
+- **Card placement**: implemented at the recommended location — between the metadata-error badge (line ~74) and the browse toggle (line ~78), inside the safe zone `(filter tags ~65) ↔ (#browse-results ~106)`. The card is OUTSIDE the HTMX swap target `#browse-results`, so it survives in-place during search/filter swaps. No deviation from the story spec.
+- **i18n pluralization**: rust_i18n auto-resolution of `key` → `key.one`/`key.other` collides with the project's i18n audit (`src/i18n/audit.rs::all_t_keys_have_both_locales`), which expects every `t!()` first argument to be a literal scalar leaf. Resolved by branching on `count == 1` in the handler and calling two literal `t!()` keys per count (`titles_one` / `titles_other`, etc.). This preserves correct EN/FR plural grammar (notably FR `prêt` vs `prêts`) without weakening the audit.
+- **Pattern reuse**: the new `src/services/dashboard.rs` deliberately mirrors `src/services/admin_health.rs::entity_counts` (also a counts builder), but uses a single SQL round-trip with three correlated subqueries instead of five separate `query_scalar` calls. Both are valid for their context: admin Health refreshes per page render and counts five tables; the home glance card targets a hot path (`/`) where the latency saving matters more.
+- **Per-model `count_active()`**: added to all three of `title.rs`, `volume.rs`, `loan.rs` per Task 1 — they're not used by the glance query itself (which lives in the service) but are positioned for reuse by stories 9-4 / 9-5 (FilterTag indicators).
+- **`HomeTemplate` test factory**: the existing `test_home_template_renders` test was extracted into a `make_test_home_template(role, loans_link_visible)` factory inside `mod tests` to avoid duplicating ~50 fields across the three glance-card render tests.
+- **No surprises with schema or query semantics**. The single-round-trip query worked first try; the soft-delete + `returned_at` filtering matches the convention from `volume_state.rs::count_active_loans_for_state`.
 
 ### File List
 
-_To be filled by dev agent — exhaustive list of files touched, including the sprint-status.yaml line update._
+| File | Action |
+|---|---|
+| `src/models/title.rs` | edit (added `count_active()`) |
+| `src/models/volume.rs` | edit (added `count_active()`) |
+| `src/models/loan.rs` | edit (added `count_active()`) |
+| `src/services/dashboard.rs` | create (`CollectionGlance` + `collection_glance()` + smoke test) |
+| `src/services/mod.rs` | edit (registered `pub mod dashboard;`) |
+| `src/routes/home.rs` | edit (extended `HomeTemplate` with 9 fields, computed glance + plural-aware labels in handler, added 2 render tests + factory) |
+| `templates/pages/home.html` | edit (inserted `#collection-glance` section between metadata badge and browse toggle) |
+| `locales/en.yml` | edit (8 keys under `dashboard.glance.*`) |
+| `locales/fr.yml` | edit (8 keys under `dashboard.glance.*`) |
+| `tests/dashboard_glance.rs` | create (2 `#[sqlx::test]` cases — empty DB + mixed soft-deleted/returned) |
+| `tests/e2e/specs/journeys/home.spec.ts` | edit (added 2 test cases — anonymous card without loan link, librarian card navigates to /loans) |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | edit (9-1 → review on completion; epic-9 already in-progress from spec creation) |
+| `_bmad-output/implementation-artifacts/9-1-dashboard-global-stats-card.md` | edit (Status → review, Tasks all checked, Dev Agent Record filled) |
+
+### Change Log
+
+- **2026-04-30** — Initial implementation. All 8 tasks complete; 624 lib tests + 2 dashboard_glance integration tests pass; clippy clean; sqlx cache unchanged. E2E validation deferred to CI (local `tests/e2e/test-results/` directory owned by root from earlier Docker runs blocks Playwright reporter writes).

@@ -5,6 +5,7 @@ pub mod auto_purge;
 pub mod borrowers;
 pub mod contributor;
 pub mod cover;
+pub mod dashboard;
 pub mod loans;
 pub mod locations;
 pub mod locking;

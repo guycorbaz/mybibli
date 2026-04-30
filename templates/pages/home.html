@@ -73,6 +73,36 @@
     </div>
     {% endif %}
 
+    {# Collection at a glance card (story 9-1). Sits between filter tags and #browse-results
+       so it stays visible during HTMX search swaps that target #browse-results. #}
+    <section id="collection-glance" aria-labelledby="glance-heading" class="w-full max-w-4xl mt-6">
+        <h2 id="glance-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ glance_heading }}</h2>
+        <ul class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+            <li>
+                <a href="/catalog" class="block px-4 py-3 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-700 transition-colors">
+                    <span class="text-base font-medium text-stone-900 dark:text-stone-100">{{ glance_titles_label }}</span>
+                </a>
+            </li>
+            <li>
+                <a href="/catalog" class="block px-4 py-3 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-700 transition-colors">
+                    <span class="text-base font-medium text-stone-900 dark:text-stone-100">{{ glance_volumes_label }}</span>
+                </a>
+            </li>
+            <li>
+                {% if loans_link_visible %}
+                <a href="/loans" class="block px-4 py-3 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-700 transition-colors">
+                    <span class="text-base font-medium text-stone-900 dark:text-stone-100">{{ glance_active_loans_label }}</span>
+                </a>
+                {% else %}
+                <div class="block px-4 py-3 bg-stone-50 dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700">
+                    <span aria-describedby="glance-loans-hint" class="text-base font-medium text-stone-900 dark:text-stone-100">{{ glance_active_loans_label }}</span>
+                    <span id="glance-loans-hint" class="sr-only">{{ glance_signin_hint }}</span>
+                </div>
+                {% endif %}
+            </li>
+        </ul>
+    </section>
+
     <!-- Browse toggle + sort -->
     <div class="w-full max-w-4xl mt-6 flex items-center justify-between">
         <div class="flex items-center gap-2">
