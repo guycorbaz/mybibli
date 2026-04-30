@@ -1,4 +1,6 @@
 pub mod admin_health;
+pub mod admin_system;
+pub mod auth;
 pub mod auto_purge;
 pub mod borrowers;
 pub mod contributor;
@@ -9,6 +11,7 @@ pub mod locking;
 pub mod password;
 pub mod search;
 pub mod series;
+pub mod setup;
 pub mod soft_delete;
 pub mod title;
 pub mod trash;

@@ -32,6 +32,9 @@ fn state_with_pool(pool: DbPool) -> mybibli::AppState {
         covers_dir: std::path::PathBuf::from("/tmp"),
         provider_health: mybibli::tasks::provider_health::new_provider_health_map(),
         mariadb_version_cache: mybibli::services::admin_health::new_mariadb_version_cache(),
+        setup_gate: Arc::new(RwLock::new(
+            mybibli::middleware::setup_gate::SetupGateState::default(),
+        )),
     }
 }
 

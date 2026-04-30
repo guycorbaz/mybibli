@@ -9,6 +9,7 @@ pub mod home;
 pub mod loans;
 pub mod locations;
 pub mod series;
+pub mod setup;
 pub mod titles;
 
 use axum::Router;
@@ -20,6 +21,7 @@ use crate::middleware::csp::apply_csp_layer;
 use crate::middleware::csrf::csrf_middleware;
 use crate::middleware::locale::locale_resolve_middleware;
 use crate::middleware::pending_updates::pending_updates_middleware;
+use crate::middleware::setup_gate::setup_gate_middleware;
 
 pub fn build_router(state: AppState) -> Router {
     let pool = state.pool.clone();
@@ -339,6 +341,16 @@ pub fn build_router(state: AppState) -> Router {
             "/admin/system/language",
             axum::routing::post(admin_system::save_language_settings),
         )
+        // Story 8-8 — first-launch setup wizard. Whitelisted by the
+        // setup-gate middleware (so this is reachable on a fresh install
+        // even though every other route 303s to /setup); each handler
+        // self-gates on the wizard predicate so a stale / hostile POST
+        // can't mutate `users` or `settings` once the wizard is done.
+        .route("/setup", axum::routing::get(setup::setup_page))
+        .route("/setup/step-1", axum::routing::post(setup::step_1_submit))
+        .route("/setup/step-2", axum::routing::post(setup::step_2_submit))
+        .route("/setup/step-3", axum::routing::post(setup::step_3_submit))
+        .route("/setup/complete", axum::routing::post(setup::complete_submit))
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
         .nest_service("/covers", ServeDir::new(&state.covers_dir))
@@ -370,6 +382,22 @@ pub fn build_router(state: AppState) -> Router {
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             session_resolve_middleware,
+        ))
+        // Story 8-8: setup-wizard gate. Sits OUTERMOST among the
+        // application middlewares (only CSP — applied below — wraps
+        // around it). Layer order at request time is therefore:
+        //
+        //   CSP → SetupGate → SessionResolve → Locale → CSRF → handler
+        //
+        // SetupGate runs before SessionResolve because the gate doesn't
+        // need a populated `Session` extension — it only reads the cached
+        // `(admin_count == 0) AND (setup_completed_at IS NONE)` boolean.
+        // Whitelisted paths (`/static/*`, `/covers/*`, `/health`,
+        // `/setup*`) flow straight through; everything else 303s to
+        // `/setup` while the wizard is active.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            setup_gate_middleware,
         ))
         .with_state(state);
 

@@ -581,6 +581,9 @@ mod language_tests {
             covers_dir: std::path::PathBuf::from("/tmp"),
             provider_health: crate::tasks::provider_health::new_provider_health_map(),
             mariadb_version_cache: crate::services::admin_health::new_mariadb_version_cache(),
+            setup_gate: std::sync::Arc::new(std::sync::RwLock::new(
+                crate::middleware::setup_gate::SetupGateState::default(),
+            )),
         };
         Router::new()
             .route("/language", axum::routing::post(change_language))
@@ -821,6 +824,9 @@ mod language_tests {
             covers_dir: std::path::PathBuf::from("/tmp"),
             provider_health: crate::tasks::provider_health::new_provider_health_map(),
             mariadb_version_cache: crate::services::admin_health::new_mariadb_version_cache(),
+            setup_gate: std::sync::Arc::new(std::sync::RwLock::new(
+                crate::middleware::setup_gate::SetupGateState::default(),
+            )),
         };
         let app = axum::Router::new()
             .route("/login", axum::routing::post(login))

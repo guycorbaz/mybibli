@@ -14,6 +14,7 @@ use mybibli::metadata::rate_limiter::RateLimiter;
 use mybibli::metadata::registry::ProviderRegistry;
 use mybibli::metadata::tmdb::TmdbProvider;
 use mybibli::middleware::logging;
+use mybibli::middleware::setup_gate::SetupGateState;
 use mybibli::routes;
 use mybibli::services::{admin_health, auto_purge};
 use mybibli::tasks::{anonymous_session_purge, auto_purge_scheduler, provider_health};
@@ -188,6 +189,24 @@ async fn main() {
 
     let registry = Arc::new(registry);
 
+    // Story 8-8: initialize the first-launch setup-wizard gate state.
+    // Reads MYBIBLI_SKIP_SETUP once and computes the predicate
+    // `(admin_count == 0) AND (setup_completed_at IS NONE)` against the
+    // live DB. Cached in `Arc<RwLock<>>` so the middleware can read it
+    // per request without a round-trip; Step 1 / Step 4 handlers refresh
+    // it via `middleware::setup_gate::refresh`.
+    // Fail-closed (story 8-8 review P21): if the boot-time DB query
+    // fails, panic so the operator sees the failure before any traffic
+    // hits a half-broken install. The previous fail-open behaviour
+    // silently disabled the wizard on a flaky DB and let the user
+    // reach an empty catalog — wrong fail-safe direction for a
+    // fresh-install flow.
+    let setup_gate = Arc::new(RwLock::new(
+        SetupGateState::initialize(&pool)
+            .await
+            .expect("setup-gate: cannot determine wizard state from DB at boot"),
+    ));
+
     // Build application
     let state = AppState {
         pool,
@@ -197,6 +216,7 @@ async fn main() {
         covers_dir,
         provider_health: provider_health_map.clone(),
         mariadb_version_cache,
+        setup_gate,
     };
 
     // Spawn provider-health background task AFTER AppState is built so we

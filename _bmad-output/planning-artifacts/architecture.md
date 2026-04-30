@@ -1075,7 +1075,7 @@ The complete project tree is defined in the Starter Template Evaluation section 
 | Theme (FR78-FR79) | — (client-side) | — | — | `layouts/base.html`, `static/js/theme.js` | `specs/themes/` |
 | Soft Delete (FR80, FR109-FR113) | `routes/admin.rs` (Trash tab) | `services/soft_delete.rs` | All models (`deleted_at`) | `pages/admin.html` (Trash tab) | `specs/edge-cases/soft_deleted_*.spec.ts` |
 | Browse (FR114-FR115) | `routes/titles.rs` | `services/search.rs` | `models/title.rs` | `components/title_card.html`, `components/browse_toggle.html` | `specs/journeys/j10_*.spec.ts` |
-| Wizard (FR86-FR87, FR91, FR121) | `routes/setup.rs` | `services/setup.rs` | `models/user.rs` | `pages/setup.html`, `components/setup_wizard.html` | `specs/journeys/j05_*.spec.ts` |
+| Wizard (FR86-FR87, FR91, FR121) | `routes/setup.rs` | `services/setup.rs`, `services/auth.rs` (session rotation), `services/admin_system.rs` (settings writers), `middleware/setup_gate.rs` | `models/user.rs` | `pages/setup.html`, `components/setup_progress.html`, `fragments/setup_step_admin.html`, `fragments/setup_step_providers.html`, `fragments/setup_step_preferences.html`, `fragments/setup_step_done.html` | `specs/journeys/setup-wizard.spec.ts` |
 | Dewey (FR118) | `routes/titles.rs` | — | `models/title.rs` | `pages/title_detail.html` | Covered by title tests |
 
 ### Architectural Boundaries

@@ -38,6 +38,9 @@ fn build_state(pool: MySqlPool) -> AppState {
         covers_dir: PathBuf::from("/tmp/mybibli-test-covers"),
         provider_health: new_provider_health_map(),
         mariadb_version_cache: new_mariadb_version_cache(),
+        setup_gate: Arc::new(RwLock::new(
+            mybibli::middleware::setup_gate::SetupGateState::default(),
+        )),
     }
 }
 

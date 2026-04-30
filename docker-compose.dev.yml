@@ -9,6 +9,10 @@ services:
       PORT: "8080"
       RUST_LOG: mybibli=debug,tower_http=debug
       APP_LANGUAGE: "en"
+      # Story 8-8: skip the first-launch setup wizard for the integrated
+      # dev stack — the seed migrations already create admin + librarian.
+      # To exercise the wizard locally, run `cargo run` against an empty DB.
+      MYBIBLI_SKIP_SETUP: "1"
     depends_on:
       db:
         condition: service_healthy

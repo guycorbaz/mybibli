@@ -5,3 +5,4 @@ pub mod htmx;
 pub mod locale;
 pub mod logging;
 pub mod pending_updates;
+pub mod setup_gate;

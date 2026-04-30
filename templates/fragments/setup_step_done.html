@@ -1,0 +1,48 @@
+{# Step 4: Read-only recap + "Complete setup" button.
+   Form posts to /setup/complete. No Previous button on this step. #}
+<form method="POST" action="/setup/complete" autocomplete="off">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+
+    <p class="text-sm text-stone-600 dark:text-stone-300 mb-6">{{ intro }}</p>
+
+    <dl class="space-y-3">
+        <div class="flex items-baseline justify-between gap-4 border-b border-stone-200 dark:border-stone-700 pb-2">
+            <dt class="text-sm font-medium text-stone-700 dark:text-stone-200">{{ recap_admin_label }}</dt>
+            <dd class="text-sm text-stone-900 dark:text-stone-100 font-mono">{{ admin_username|e }}</dd>
+        </div>
+        <div class="border-b border-stone-200 dark:border-stone-700 pb-2">
+            <dt class="text-sm font-medium text-stone-700 dark:text-stone-200">{{ recap_providers_label }}</dt>
+            <dd class="mt-1 text-sm text-stone-900 dark:text-stone-100 space-y-1">
+                <div class="flex items-baseline justify-between gap-4">
+                    <span>{{ gb_label }}</span>
+                    <span class="text-stone-600 dark:text-stone-400">{{ gb_state }}</span>
+                </div>
+                <div class="flex items-baseline justify-between gap-4">
+                    <span>{{ omdb_label }}</span>
+                    <span class="text-stone-600 dark:text-stone-400">{{ omdb_state }}</span>
+                </div>
+                <div class="flex items-baseline justify-between gap-4">
+                    <span>{{ tmdb_label }}</span>
+                    <span class="text-stone-600 dark:text-stone-400">{{ tmdb_state }}</span>
+                </div>
+            </dd>
+        </div>
+        <div class="flex items-baseline justify-between gap-4 border-b border-stone-200 dark:border-stone-700 pb-2">
+            <dt class="text-sm font-medium text-stone-700 dark:text-stone-200">{{ recap_language_label }}</dt>
+            <dd class="text-sm text-stone-900 dark:text-stone-100">{{ language_value_display }}</dd>
+        </div>
+        <div class="flex items-baseline justify-between gap-4 border-b border-stone-200 dark:border-stone-700 pb-2">
+            <dt class="text-sm font-medium text-stone-700 dark:text-stone-200">{{ recap_overdue_label }}</dt>
+            <dd class="text-sm text-stone-900 dark:text-stone-100">{{ overdue_value }} {{ overdue_unit }}</dd>
+        </div>
+    </dl>
+
+    <div class="mt-6 flex items-center justify-end">
+        <button
+            type="submit"
+            name="_back"
+            value="0"
+            class="inline-flex items-center px-4 py-2 rounded-md bg-emerald-700 text-white dark:bg-emerald-600 font-medium hover:bg-emerald-800 dark:hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        >{{ complete_label }}</button>
+    </div>
+</form>

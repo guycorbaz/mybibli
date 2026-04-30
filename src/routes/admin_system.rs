@@ -23,25 +23,20 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::AppState;
-use crate::config::AppSettings;
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
 use crate::middleware::locale::Locale;
 use crate::routes::catalog::feedback_html_pub;
-use crate::services::locking::check_update_result;
-
-// ─── Setting keys ─────────────────────────────────────────────────
-
-const KEY_OVERDUE_THRESHOLD: &str = "overdue_loan_threshold_days";
-const KEY_DEFAULT_LANGUAGE: &str = "default_language";
-const KEY_GOOGLE_BOOKS: &str = "google_books_api_key";
-const KEY_OMDB: &str = "omdb_api_key";
-const KEY_TMDB: &str = "tmdb_api_key";
-
-const OVERDUE_THRESHOLD_MIN: i32 = 1;
-const OVERDUE_THRESHOLD_MAX: i32 = 365;
+// Story 8-8 review P4: use the shared K/V helpers from `services::admin_system`
+// instead of the in-route duplicates that this file used to carry. The local
+// `save_setting` / `reload_settings_cache` / `validate_*` definitions have
+// been deleted in favour of the canonical implementations.
+use crate::services::admin_system::{
+    KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_OMDB, KEY_OVERDUE_THRESHOLD, KEY_TMDB,
+    reload_settings_cache, save_setting, validate_default_language, validate_overdue_threshold,
+};
 
 // ─── Form structs ─────────────────────────────────────────────────
 
@@ -163,71 +158,11 @@ fn helper_text_for(value: &str, loc: &'static str) -> String {
     }
 }
 
-fn validate_overdue_threshold(days: i32, loc: &'static str) -> Result<(), AppError> {
-    if days < OVERDUE_THRESHOLD_MIN {
-        return Err(AppError::BadRequest(
-            rust_i18n::t!("error.system.overdue_threshold_invalid", locale = loc).to_string(),
-        ));
-    }
-    if days > OVERDUE_THRESHOLD_MAX {
-        return Err(AppError::BadRequest(
-            rust_i18n::t!("error.system.overdue_threshold_too_large", locale = loc).to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_default_language(value: &str, loc: &'static str) -> Result<(), AppError> {
-    if value == "fr" || value == "en" {
-        Ok(())
-    } else {
-        Err(AppError::BadRequest(
-            rust_i18n::t!("error.system.default_language_invalid", locale = loc).to_string(),
-        ))
-    }
-}
-
-/// Optimistic-lock UPDATE for a single setting row. Returns `Conflict` on
-/// `rows_affected = 0` (stale version or row missing).
-async fn save_setting<E>(
-    executor: E,
-    key: &str,
-    new_value: &str,
-    expected_version: i32,
-) -> Result<(), AppError>
-where
-    E: sqlx::Executor<'static, Database = sqlx::MySql>,
-{
-    let result = sqlx::query(
-        "UPDATE settings SET setting_value = ?, version = version + 1 \
-         WHERE setting_key = ? AND version = ? AND deleted_at IS NULL",
-    )
-    .bind(new_value)
-    .bind(key)
-    .bind(expected_version)
-    .execute(executor)
-    .await?;
-    check_update_result(result.rows_affected(), &format!("setting:{key}"))
-}
-
-/// Re-SELECT all settings rows and swap the `Arc<RwLock<AppSettings>>`
-/// cache. The `.await` happens BEFORE the write lock is taken; the lock
-/// is held for one move-assignment then dropped. On lock poisoning, log
-/// at error level and recover via `into_inner` rather than silently
-/// leaving the cache stale.
-async fn reload_settings_cache(state: &AppState) -> Result<(), AppError> {
-    let new_settings = AppSettings::load_from_db(&state.pool)
-        .await
-        .map_err(|e| AppError::Internal(format!("settings reload failed: {e}")))?;
-    match state.settings.write() {
-        Ok(mut guard) => *guard = new_settings,
-        Err(poisoned) => {
-            tracing::error!("settings RwLock poisoned during reload; recovering");
-            *poisoned.into_inner() = new_settings;
-        }
-    }
-    Ok(())
-}
+// Story 8-8 review P4: `validate_overdue_threshold`, `validate_default_language`,
+// `save_setting`, and `reload_settings_cache` previously lived here as
+// in-route duplicates of the same helpers in `services/admin_system.rs`.
+// They have been removed; this file now imports the canonical
+// implementations at the top of the module.
 
 /// Collect the 5 setting rows we render in the panel. Versions come from the
 /// DB (the `AppSettings` cache doesn't carry per-row versions); values can

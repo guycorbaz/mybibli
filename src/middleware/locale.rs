@@ -261,6 +261,9 @@ mod middleware_integration_tests {
             covers_dir: std::path::PathBuf::from("/tmp"),
             provider_health: crate::tasks::provider_health::new_provider_health_map(),
             mariadb_version_cache: crate::services::admin_health::new_mariadb_version_cache(),
+            setup_gate: Arc::new(RwLock::new(
+                crate::middleware::setup_gate::SetupGateState::default(),
+            )),
         }
     }
 
