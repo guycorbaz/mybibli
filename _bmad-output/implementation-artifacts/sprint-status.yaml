@@ -39,7 +39,7 @@
 # The epics document contains FR/NFR/AR/UX-DR assignments per epic.
 
 generated: 2026-03-29
-last_updated: 2026-04-30 # Story 9-2 implementation complete — in-progress → review. 630 lib tests + 3 dashboard_recent_additions integration tests pass; clippy + sqlx-prepare clean; manual smoke confirms FR/EN render + correct ordering (#collection-glance above #recent-additions). E2E deferred to CI. Earlier 2026-04-30: Story 9-2 spec + validation refinements (PR #105), Story 9-1 done + 2 GH issues filed (#103/#104), Epic 9 sprint planning (PR #101), Epic 8 close.
+last_updated: 2026-04-30 # Story 9-2 review complete — review → done. Code review: 1 High (unstyled cards — `recent-additions-list` parent class didn't trigger `.browse-list .title-card-*` rules; fixed to `browse-list mt-3`) + 3 Medium patches (empty-state test scoping, AC1 ordering test) applied; 4 deferred (GH Issues to be filed); 4 dismissed. Final 631 lib tests + 3 dashboard_recent_additions integration tests, all green. Earlier 2026-04-30: Story 9-2 implementation + selector-regression fix (PR #105), Story 9-1 done + 2 GH issues filed (#103/#104), Epic 9 sprint planning (PR #101), Epic 8 close.
 project: mybibli
 project_key: NOKEY
 tracking_system: file-system
@@ -164,7 +164,7 @@ development_status:
   # closure of UX-DR29 in 9-22 with full axe-core coverage in CI).
   epic-9: in-progress
   9-1-dashboard-global-stats-card: done
-  9-2-dashboard-recent-additions: review
+  9-2-dashboard-recent-additions: done
   9-3-dashboard-stats-by-genre: backlog
   9-4-filtertag-and-unshelved-indicator: backlog
   9-5-overdue-loans-indicator: backlog

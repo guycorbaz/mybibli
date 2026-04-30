@@ -112,7 +112,10 @@
         {% if recent_additions.is_empty() %}
             <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ recent_additions_empty }}</div>
         {% else %}
-            <div class="recent-additions-list mt-3 space-y-2">
+            {# Use the existing `.browse-list` parent so the `.title-card-*` rules in
+               static/css/browse.css apply (cover layout, padding, hover, dark-mode).
+               The class isn't decorative — it's load-bearing for AC2 visual parity. #}
+            <div class="browse-list mt-3">
                 {% for item in recent_additions %}
                 <article class="title-card group">
                     <a href="/title/{{ item.id }}" class="title-card-link"

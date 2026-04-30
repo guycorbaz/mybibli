@@ -1,6 +1,6 @@
 # Story 9.2: Dashboard — recent additions
 
-Status: review
+Status: done
 
 ## Story
 
@@ -259,3 +259,10 @@ This story aligns cleanly with the existing structure. Two intentional deviation
 
 - **2026-04-30** — Initial implementation. All 7 tasks complete; 630 lib tests + 3 dashboard_recent_additions integration tests pass; clippy clean; sqlx cache unchanged. Followed Story 9-1 patterns (handler-side i18n, soft-degrade on DB error, scoped HTML assertions). One spec drift caught in template draft (AC1 ordering — `#recent-additions` was placed BEFORE `#collection-glance` in the first pass; re-ordered). E2E run deferred to CI per Story 9-1 precedent.
 - **2026-04-30** — CI surfaced a regression in pre-existing tests: `dewey-code.spec.ts` (lines 24, 92) and `csp-headers.spec.ts` (line 153) used a bare `page.locator('a[href^="/title/"]').first()` selector after `goto('/?q=...')`. Before Story 9-2, the only `<a href="/title/N">` on the home page lived inside `#browse-results`. Story 9-2 added `#recent-additions` ABOVE `#browse-results` (which also renders `<a href="/title/N">` blocks), so `.first()` started picking a card from recent-additions instead of from the search results. Fix: scope all three sites to `'#browse-results a[href^="/title/"]'`. Pattern to remember for future stories that add entity-link sections to existing pages: **a global selector across the home page is now ambiguous; always scope to a section id**. The `similar-titles.spec.ts` pattern (`section.locator(...)`) was already correct and unaffected; `csp-headers.spec.ts:116` is on `/catalog` (no `#recent-additions`) and is unaffected.
+- **2026-04-30** — Code review pass: 1 High + 3 Medium patches applied, 4 deferred (will be filed as GH Issues per CLAUDE.md rule 11), 4 dismissed.
+  - **High — unstyled cards**: the wrapper `<div class="recent-additions-list mt-3 space-y-2">` did NOT trigger any of the `.title-card-*` rules in `static/css/browse.css` (all scoped under `.browse-list .` or `.browse-grid .`). Cards rendered as an unstyled text stack. Fixed by changing the wrapper class to `browse-list mt-3` so the existing `.browse-list .title-card-*` rules apply. Visual parity with the search-result browse list (AC2) is now preserved.
+  - **Medium — empty-state test scoping**: 2 of 5 assertions in `home_renders_recent_additions_empty_state` searched the whole HTML; the heading assertion now runs on the section slice so a structural break would fail the test.
+  - **Medium — AC1 ordering test**: added `home_renders_glance_above_recent_additions` to lock in document-order between `#collection-glance` and `#recent-additions`. The first implementation draft had them inverted; the new test prevents recurrence.
+  - **Deferred** (file as GH Issues): CI grep gate for unscoped `a[href^="/title/"]` selectors; soft-deleted-genre silently hides title (pre-existing in `active_search` too); TitleCard partial extraction + `vol` literal i18n + count rendered twice (bundled — already on the books); `fake_search_result` factory missing `Some(d)`/`Some(c)` template-branch coverage.
+  - **Dismissed**: `unwrap_or` swallowing decode errors (false positive — consistent with `active_search`); N+1 single-round-trip programmatic guard (intentionally not testable per Story 9-1 precedent — verified at code review); E2E "either way" branch (matches AC11 spec intent explicitly); cosmetic margin-spacing complaints.
+  - Final test counts: 631 lib tests + 3 dashboard_recent_additions integration tests (632 lib previously; +1 = the new ordering test). Status: review → done.

@@ -912,15 +912,26 @@ mod tests {
 
     /// Story 9-2 — the section MUST render even when the catalog is empty.
     /// AC5 mandates an inline empty-state instead of hiding the section.
+    ///
+    /// Assertions are scoped to the section slice wherever possible — only
+    /// the `id="recent-additions"` substring lives in the opening tag (which
+    /// is OUTSIDE the slice) and must be checked on the whole HTML.
     #[test]
     fn home_renders_recent_additions_empty_state() {
         let template = make_test_home_template_with_recent("anonymous", Vec::new());
         let html = template.render().expect("render");
         let section = recent_additions_slice(&html);
 
-        // Section heading is present.
+        // Opening tag — only assertion that legitimately runs on the whole HTML
+        // (the slice helper returns content INSIDE the section).
         assert!(html.contains("id=\"recent-additions\""), "section is rendered");
-        assert!(html.contains("Recent additions"), "section heading is rendered");
+
+        // Heading lives inside the section — assert ON the slice so a structural
+        // break (early-closed section) would fail this test.
+        assert!(
+            section.contains("Recent additions"),
+            "section heading must be inside #recent-additions"
+        );
 
         // No <article> elements inside the section.
         assert!(
@@ -937,6 +948,32 @@ mod tests {
         assert!(
             section.contains("py-12"),
             "empty-state must use py-12 padding (project convention)"
+        );
+    }
+
+    /// Story 9-2 AC1 regression guard — `#collection-glance` (story 9-1) must
+    /// render BEFORE `#recent-additions` (story 9-2) in document order. This
+    /// invariant was violated in the first implementation pass and caught
+    /// in manual smoke testing; this test prevents the same regression
+    /// recurring silently.
+    #[test]
+    fn home_renders_glance_above_recent_additions() {
+        let template = make_test_home_template_with_recent(
+            "anonymous",
+            vec![fake_search_result(1, "Test Title")],
+        );
+        let html = template.render().expect("render");
+
+        let glance_pos = html
+            .find("id=\"collection-glance\"")
+            .expect("collection-glance section must be rendered");
+        let recent_pos = html
+            .find("id=\"recent-additions\"")
+            .expect("recent-additions section must be rendered");
+
+        assert!(
+            glance_pos < recent_pos,
+            "AC1: collection-glance ({glance_pos}) must appear before recent-additions ({recent_pos}) in document order"
         );
     }
 
