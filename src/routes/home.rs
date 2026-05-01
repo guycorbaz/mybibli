@@ -1281,4 +1281,124 @@ mod tests {
             "EN-style '60.0%' must not appear when FR labels are passed"
         );
     }
+
+    // ─── Story 9-3 — `build_stats_by_genre_rows` direct unit tests
+    // (added during code-review follow-up — the render tests above use
+    // `fake_genre_stat_row` which bypasses the helper entirely, so the
+    // i18n-branching + percent-rounding + total=0 branches were never
+    // exercised. These tests close that coverage gap.)
+
+    fn make_genre_stat(id: u64, name: &str, count: i64) -> crate::services::dashboard::GenreStat {
+        crate::services::dashboard::GenreStat {
+            id,
+            name: name.to_string(),
+            title_count: count,
+        }
+    }
+
+    /// Helper output for `count == 1` → `_one` key in EN ("1 title", not "1 titles").
+    /// Locks the EN singular branch in `is_singular`.
+    #[test]
+    fn build_stats_by_genre_rows_en_singular_for_count_one() {
+        let rows = vec![make_genre_stat(1, "Roman", 1)];
+        let out = build_stats_by_genre_rows(rows, "en");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].count_label, "1 title");
+    }
+
+    /// EN plural branch — `count == 2` must use `_other` key ("2 titles").
+    /// A swap of the two `t!()` keys would surface as "2 title".
+    #[test]
+    fn build_stats_by_genre_rows_en_plural_for_count_two() {
+        let rows = vec![make_genre_stat(1, "Roman", 2)];
+        let out = build_stats_by_genre_rows(rows, "en");
+        assert_eq!(out[0].count_label, "2 titles");
+    }
+
+    /// FR CLDR rule — count of 0 maps to the singular form ("0 titre",
+    /// not "0 titres"). Encoded by `is_singular` (`fr` arm includes 0).
+    /// Note: this case isn't reachable through the SQL pipeline (INNER
+    /// JOIN excludes zero-count genres) but the helper API is public
+    /// and a future caller could pass it.
+    #[test]
+    fn build_stats_by_genre_rows_fr_singular_for_count_zero() {
+        let rows = vec![make_genre_stat(1, "Roman", 0)];
+        let out = build_stats_by_genre_rows(rows, "fr");
+        assert_eq!(out[0].count_label, "0 titre");
+    }
+
+    /// FR singular for count == 1.
+    #[test]
+    fn build_stats_by_genre_rows_fr_singular_for_count_one() {
+        let rows = vec![make_genre_stat(1, "Roman", 1)];
+        let out = build_stats_by_genre_rows(rows, "fr");
+        assert_eq!(out[0].count_label, "1 titre");
+    }
+
+    /// FR plural for count >= 2.
+    #[test]
+    fn build_stats_by_genre_rows_fr_plural_for_count_many() {
+        let rows = vec![make_genre_stat(1, "Roman", 12)];
+        let out = build_stats_by_genre_rows(rows, "fr");
+        assert_eq!(out[0].count_label, "12 titres");
+    }
+
+    /// Percent computation — three rows with counts 3/2/1 (total 6) must
+    /// round to 50.0% / 33.3% / 16.7% (1 decimal). Bakes in the AC9
+    /// rounding contract end-to-end through the helper.
+    #[test]
+    fn build_stats_by_genre_rows_computes_percent_to_one_decimal() {
+        let rows = vec![
+            make_genre_stat(1, "A", 3),
+            make_genre_stat(2, "B", 2),
+            make_genre_stat(3, "C", 1),
+        ];
+        let out = build_stats_by_genre_rows(rows, "en");
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0].percent_label, "50.0%");
+        assert_eq!(out[1].percent_label, "33.3%");
+        assert_eq!(out[2].percent_label, "16.7%");
+        // Each row's `value`/`max` mirrors the count and the global total —
+        // the <progress> bar drives off these.
+        assert_eq!(out[0].value, 3);
+        assert_eq!(out[0].max, 6);
+        assert_eq!(out[2].max, 6);
+    }
+
+    /// FR percent uses comma + NBSP — round-trip through the helper.
+    #[test]
+    fn build_stats_by_genre_rows_fr_percent_uses_comma_and_nbsp() {
+        let rows = vec![
+            make_genre_stat(1, "A", 3),
+            make_genre_stat(2, "B", 2),
+            make_genre_stat(3, "C", 1),
+        ];
+        let out = build_stats_by_genre_rows(rows, "fr");
+        assert_eq!(out[0].percent_label, "50,0\u{00A0}%");
+        assert_eq!(out[1].percent_label, "33,3\u{00A0}%");
+    }
+
+    /// Empty input → empty output. The defensive `total > 0` branch in
+    /// the helper exists for this scenario; we lock it in.
+    #[test]
+    fn build_stats_by_genre_rows_empty_input_yields_empty_output() {
+        let out = build_stats_by_genre_rows(vec![], "en");
+        assert!(out.is_empty());
+    }
+
+    /// `aria-label` carries genre name + percent for screen readers
+    /// reading the `<progress>` in isolation (review patch P2). Without
+    /// this test, a regression to bare `aria-label="{{ percent_label }}"`
+    /// would slip past CI.
+    #[test]
+    fn home_progress_bar_aria_label_includes_genre_name() {
+        let stats = vec![fake_genre_stat_row(7, "Roman", "12 titles", "60.0%", 12, 20)];
+        let template = make_test_home_template_with_stats("anonymous", stats);
+        let html = template.render().expect("render");
+        let slice = stats_by_genre_slice(&html);
+        assert!(
+            slice.contains("aria-label=\"Roman: 60.0%\""),
+            "<progress> aria-label must include genre name + percent; got slice:\n{slice}"
+        );
+    }
 }

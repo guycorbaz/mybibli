@@ -159,7 +159,7 @@
                         <span class="font-medium text-stone-900 dark:text-stone-100 truncate">{{ row.name }}</span>
                         <span class="text-sm text-stone-600 dark:text-stone-400 whitespace-nowrap"><span class="tabular-nums">{{ row.count_label }}</span> · <span class="tabular-nums">{{ row.percent_label }}</span></span>
                     </div>
-                    <progress class="genre-bar mt-2 w-full" value="{{ row.value }}" max="{{ row.max }}" aria-label="{{ row.percent_label }}">{{ row.percent_label }}</progress>
+                    <progress class="genre-bar mt-2 w-full" value="{{ row.value }}" max="{{ row.max }}" aria-label="{{ row.name }}: {{ row.percent_label }}">{{ row.percent_label }}</progress>
                 </a>
             </li>
             {% endfor %}

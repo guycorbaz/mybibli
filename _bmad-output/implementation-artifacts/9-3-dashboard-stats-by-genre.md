@@ -1,6 +1,6 @@
 # Story 9.3: Dashboard — stats by genre
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -427,4 +427,38 @@ The deferred TitleCard partial extraction (filed by 9-2) is **NOT** revisited he
 
 ### Change Log
 
-- **2026-05-01** — Initial implementation. All 7 tasks complete; 643 lib tests + 3 dashboard_stats_by_genre integration tests pass; clippy clean; sqlx cache unchanged. Followed Story 9-1 / 9-2 patterns (handler-side i18n, soft-degrade on DB error, single round-trip query, scoped HTML assertions, sibling integration test file). One spec drift caught in template draft (AC1 ordering — `#stats-by-genre` was placed BEFORE `#recent-additions` in the first pass; re-ordered to satisfy AC1's "directly below recent-additions" placement). E2E run deferred to CI per story 9-1 / 9-2 precedent (`tests/e2e/test-results/` ownership blocker).
+- **2026-05-01** — Initial implementation. All 7 tasks complete; 643 lib tests + 3 dashboard_stats_by_genre integration tests pass; clippy clean; sqlx cache unchanged. Followed Story 9-1 / 9-2 patterns (handler-side i18n, soft-degrade on DB error, single round-trip query, scoped HTML assertions, sibling integration test file). One spec drift caught in template draft (AC1 ordering — `#stats-by-genre` was placed BEFORE `#recent-additions` in the first pass; re-ordered to satisfy AC1's "directly below recent-additions" placement). E2E run deferred to CI per story 9-1 / 9-2 precedent (`tests/e2e/test-results/` ownership blocker). PR #110 squash-merged into `main` as commit 6cf7af5.
+
+- **2026-05-01** — Code review pass (3 parallel reviewers: Blind Hunter, Edge Case Hunter, Acceptance Auditor). 0 decision-needed, 2 patches applied, 2 deferred (filed as GH Issues per CLAUDE.md rule 11), 15+ dismissed. Final test counts: 652 lib tests + 3 integration tests, all green; clippy clean. Patches landed via PR `chore/9-3-code-review-followups`.
+
+### Review Findings
+
+**Code review pass — 2026-05-01** (post-merge of PR #110). 3 parallel reviewers (Blind / Edge Case / Acceptance Auditor) raised ~21 findings; triaged into 2 patch + 2 defer + 15+ dismiss.
+
+**Patch (Medium):**
+
+- [x] [Review][Patch] **`build_stats_by_genre_rows` had no direct unit tests** [`src/routes/home.rs:565-602`] — the helper does the i18n `_one`/`_other` branching + percent computation + total=0 defensive branch, but the existing render tests use `fake_genre_stat_row` which bypasses the helper entirely. A swap of the two `t!()` keys would not have been caught. Fix: 8 new unit tests covering EN/FR singular-vs-plural for counts 0/1/2/many, percent computation for `[3,2,1]→[50.0%, 33.3%, 16.7%]`, FR comma+NBSP through the helper, and empty-input → empty-output.
+- [x] [Review][Patch] **`<progress>` aria-label only carried the percent, not the genre name** [`templates/pages/home.html:162`] — a screen-reader user landing on the bar in isolation would hear "60.0%" with no indication of which genre. Fix: changed to `aria-label="{{ row.name }}: {{ row.percent_label }}"` so the bar carries full context. New regression test `home_progress_bar_aria_label_includes_genre_name` locks in the format.
+
+**Defer (filed as GH Issues per CLAUDE.md rule 11):**
+
+- [x] [Review][Defer] **Stats-by-genre denominator distorted by orphan-FK active titles** [`src/services/dashboard.rs::stats_by_genre` + `src/routes/home.rs::build_stats_by_genre_rows`] — when a genre is soft-deleted but still has active titles pointing at it (FK orphan), those titles vanish from the displayed denominator: per-row percentages still sum to 100% but represent a smaller subset of the catalog than the user assumes. Currently prevented by Story 8-4's `GenreModel::delete_if_unused` deletion guard (refuses to delete genres with active titles), but a future migration / manual SQL / removed guard would silently distort the dashboard. → [GH #111](https://github.com/guycorbaz/mybibli/issues/111).
+- [x] [Review][Defer] **Stale genre-filter link → silent empty results** [cross-cutting: `parse_filter` + `SearchService::search`] — when an admin soft-deletes a genre between link render and click (or the user clicks an old browser tab), the filter URL points at a non-existent genre id; the search returns empty results with no "this genre no longer exists" feedback. Pre-existing class of issue affecting all `/?filter=genre:<id>` producers (the existing filter pills on `/` have the same property), surfaced by 9-3's review but not introduced by 9-3. Cross-cutting fix belongs in `services::search`. → [GH #112](https://github.com/guycorbaz/mybibli/issues/112).
+
+**Dismissed (high-level rationale):**
+
+- **HTML5 `<progress>` inside `<a>`** — `<progress>` is NOT in HTML5's interactive content category (per spec); the nesting is valid. (Both Blind Hunter and Edge Case Hunter raised this as a Medium concern.)
+- **HTML escape on attributes** — Askama 0.15's default `html` escaper covers `<>"'&` for both element-content AND attribute-value contexts. (Blind #1)
+- **Test schema fragility (`INSERT INTO genres` omits version/timestamps)** — schema defaults exist (`version DEFAULT 1`, timestamps `DEFAULT CURRENT_TIMESTAMP`); tests run cleanly. (Blind #2)
+- **f64 banker's rounding edge cases** — consistent with project; no specific failing case named. (Blind #8)
+- **`DELETE FROM titles` FK ordering risk** — `#[sqlx::test]` provides per-test DB isolation; the deletes order respects FK. (Blind #9)
+- **`total == 0` branch unreachable** — defensive code; costs nothing. (Blind #10)
+- **`StatsByGenreRow` `pub` vs `pub(crate)`** — consistent with `HomeTemplate` pattern (Askama-required visibility). (Blind #11)
+- **Document-order test uses count=1 hand-crafted label** — covered by P1's new unit tests for the helper. (Blind #4)
+- **E2E URL regex superset (accepts URL-encoded form)** — defensive, harmless. (Blind #7 + Auditor A1)
+- **rust_i18n migration footgun** — consistent with the 9-1 pattern; the `is_singular` + literal `_one/_other` keys idiom is project-standard. (Edge E3)
+- **`format_percent` accepts negative inputs** — current call site clamps via `total > 0`; adding hypothetical guards contradicts CLAUDE.md "Don't add error handling, fallbacks, or validation for scenarios that can't happen". (Edge E5)
+- **`<progress value > max>` future-refactor hazard** — currently safe; speculative. (Edge E6)
+- **E2E test passes vacuously when section is hidden** — same conditional pattern as story 9-2's E2E (already passed review). (Edge E7)
+- **`format_percent_zero` test name absent (folded into `_one_decimal_kept_en`)** — coverage exists, naming is cosmetic. (Auditor A2)
+- **Spec said "5 vs 6" render tests** — internal spec inconsistency; coverage matches the enumerated bullets. (Auditor A3)
