@@ -353,6 +353,10 @@ dashboard:
   recent_additions:
     heading: Ajouts récents
     empty_state: "Pas encore d'ajouts récents — commencez à cataloguer !"
+  stats_by_genre:
+    heading: Par genre
+    titles_one: "%{count} titre"
+    titles_other: "%{count} titres"
 borrower:
   list_title: Emprunteurs
   add: Ajouter un emprunteur

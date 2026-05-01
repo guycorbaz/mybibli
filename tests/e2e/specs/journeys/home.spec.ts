@@ -115,3 +115,39 @@ test.describe("Home page — Recent additions section", () => {
     }
   });
 });
+
+// Story 9-3 — "Stats by genre" section.
+test.describe("Home page — Stats by genre section", () => {
+  test("anonymous: section visible (or hidden), first row navigates to /?filter=genre:<id>", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    const section = page.locator("#stats-by-genre");
+    const sectionCount = await section.count();
+    if (sectionCount === 0) {
+      // AC4 — fresh catalog (zero genre assignments) hides the section
+      // entirely. Nothing more to verify; the broader empty-catalog UX
+      // belongs to story 9-15 (StatusMessage).
+      return;
+    }
+
+    await expect(section).toBeVisible();
+    await expect(section.getByRole("heading", { level: 2 })).toContainText(
+      /By genre|Par genre/i,
+    );
+
+    // The first row must show a percentage in either EN (33.3%) or FR
+    // (33,3 %) format. Combined regex accepts both.
+    const rows = section.locator("li");
+    await expect(rows.first()).toContainText(/\d+([.,]\d+)?\s*%/);
+
+    // Scoped selector — explicitly avoids the unscoped-selector flake
+    // class flagged by 9-2's review (a global a[href^="/?filter=genre:"]
+    // would also match the genre-filter pills above #browse-results).
+    const firstLink = section.locator('a[href^="/?filter=genre:"]').first();
+    await expect(firstLink).toBeVisible();
+    await firstLink.click();
+    await page.waitForURL(/\/\?filter=genre%3A\d+|\/\?filter=genre:\d+/);
+  });
+});

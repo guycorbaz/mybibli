@@ -82,6 +82,24 @@ pub struct HomeTemplate {
     pub recent_additions: Vec<crate::models::title::SearchResult>,
     pub recent_additions_heading: String,
     pub recent_additions_empty: String,
+    // "By genre" section (story 9-3) — empty Vec → section hidden entirely (AC4).
+    pub stats_by_genre: Vec<StatsByGenreRow>,
+    pub stats_by_genre_heading: String,
+}
+
+/// One row of the "By genre" dashboard section (story 9-3).
+///
+/// Pairs the SQL-emitted `GenreStat` with the pre-translated, locale-
+/// formatted labels that the Askama template renders verbatim. The
+/// `value`/`max` pair drives the `<progress>` bar's HTML attributes —
+/// CSP-clean variable-width visualization without inline `style=`.
+pub struct StatsByGenreRow {
+    pub id: u64,
+    pub name: String,
+    pub count_label: String,   // pre-translated, e.g. "12 titles" / "12 titres"
+    pub percent_label: String, // locale-formatted, e.g. "33.3%" / "33,3 %"
+    pub value: i64,            // <progress value="...">
+    pub max: i64,              // <progress max="...">
 }
 
 pub async fn home(
@@ -184,6 +202,18 @@ pub async fn home(
             Vec::new()
         }
     };
+
+    // "By genre" section — single GROUP BY round-trip (story 9-3). Same
+    // soft-degrade pattern: a transient DB hiccup yields an empty Vec,
+    // which the template renders as a hidden section per AC4.
+    let stats_rows = match crate::services::dashboard::stats_by_genre(pool).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(error = %e, "stats_by_genre failed; rendering empty section");
+            Vec::new()
+        }
+    };
+    let stats_by_genre = build_stats_by_genre_rows(stats_rows, loc);
 
     // Choose `_one` vs `_other` for each count. Inline if/else so the macro receives
     // a literal key (matching the project's i18n audit at `src/i18n/audit.rs`),
@@ -318,6 +348,9 @@ pub async fn home(
             locale = loc
         )
         .to_string(),
+        stats_by_genre,
+        stats_by_genre_heading: rust_i18n::t!("dashboard.stats_by_genre.heading", locale = loc)
+            .to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -335,6 +368,59 @@ fn is_singular(locale: &str, count: i64) -> bool {
         "fr" => count == 0 || count == 1,
         _ => count == 1,
     }
+}
+
+/// Transform raw `GenreStat` rows into presentation-ready dashboard rows
+/// (story 9-3). The total denominator is the row sum — single SQL
+/// round-trip per AC3, no extra SELECT.
+///
+/// Per-row computation:
+/// - `percent` is `(count / total) * 100` rounded to one decimal place.
+///   When `total == 0` (defensive — shouldn't happen since INNER JOIN
+///   excludes empty genres) we fall back to `0.0` rather than risk a
+///   `NaN` from division.
+/// - `count_label` and `percent_label` are pre-translated locale-aware
+///   strings; the Askama template renders them verbatim. This stays
+///   consistent with the project pattern (see 9-1's `is_singular` +
+///   literal `t!()` keys; canonical example at `src/routes/home.rs`'s
+///   glance-label construction).
+fn build_stats_by_genre_rows(
+    rows: Vec<crate::services::dashboard::GenreStat>,
+    loc: &str,
+) -> Vec<StatsByGenreRow> {
+    let total: i64 = rows.iter().map(|r| r.title_count).sum();
+    rows.into_iter()
+        .map(|r| {
+            let percent = if total > 0 {
+                ((r.title_count as f64 / total as f64) * 1000.0).round() / 10.0
+            } else {
+                0.0
+            };
+            let count_label = if is_singular(loc, r.title_count) {
+                rust_i18n::t!(
+                    "dashboard.stats_by_genre.titles_one",
+                    locale = loc,
+                    count = r.title_count
+                )
+                .to_string()
+            } else {
+                rust_i18n::t!(
+                    "dashboard.stats_by_genre.titles_other",
+                    locale = loc,
+                    count = r.title_count
+                )
+                .to_string()
+            };
+            StatsByGenreRow {
+                id: r.id,
+                name: r.name,
+                count_label,
+                percent_label: crate::utils::format_percent(percent, loc),
+                value: r.title_count,
+                max: total,
+            }
+        })
+        .collect()
 }
 
 fn parse_filter(filter: &Option<String>) -> (Option<u64>, Option<String>) {
@@ -650,6 +736,11 @@ mod tests {
         slice_section(html, "recent-additions")
     }
 
+    /// Story 9-3 helper — scope assertions to the stats-by-genre section.
+    fn stats_by_genre_slice(html: &str) -> &str {
+        slice_section(html, "stats-by-genre")
+    }
+
     fn make_test_home_template_with_counts(
         role: &str,
         loans_link_visible: bool,
@@ -712,6 +803,8 @@ mod tests {
             recent_additions: Vec::new(),
             recent_additions_heading: "Recent additions".to_string(),
             recent_additions_empty: "No recent additions yet — start cataloging!".to_string(),
+            stats_by_genre: Vec::new(),
+            stats_by_genre_heading: "By genre".to_string(),
         }
     }
 
@@ -741,6 +834,41 @@ mod tests {
             volume_count: 1,
             cover_image_url: None,
             publication_date: None,
+        }
+    }
+
+    /// Story 9-3 — build a HomeTemplate with a populated `stats_by_genre`
+    /// list. Reuses the counts factory so glance / recent-additions
+    /// assertions remain possible. The `lang` field can be flipped after
+    /// construction for FR-formatting tests.
+    fn make_test_home_template_with_stats(
+        role: &str,
+        stats: Vec<StatsByGenreRow>,
+    ) -> HomeTemplate {
+        let mut t = make_test_home_template_with_counts(role, false, 5, 8, 2);
+        t.stats_by_genre = stats;
+        t.stats_by_genre_heading = "By genre".to_string();
+        t
+    }
+
+    /// Story 9-3 — deterministic row factory for handler render tests.
+    /// Caller controls every visible field so assertions can pin exact
+    /// strings without running the locale formatter.
+    fn fake_genre_stat_row(
+        id: u64,
+        name: &str,
+        count_label: &str,
+        percent_label: &str,
+        value: i64,
+        max: i64,
+    ) -> StatsByGenreRow {
+        StatsByGenreRow {
+            id,
+            name: name.to_string(),
+            count_label: count_label.to_string(),
+            percent_label: percent_label.to_string(),
+            value,
+            max,
         }
     }
 
@@ -997,5 +1125,160 @@ mod tests {
     fn is_singular_unknown_locale_falls_back_to_english_rule() {
         assert!(!is_singular("de", 0), "unknown locale: 0 → plural (EN fallback)");
         assert!(is_singular("de", 1), "unknown locale: 1 → singular");
+    }
+
+    // ─── Story 9-3 — Stats by genre render tests ──────────────────────
+
+    /// AC10d — populated case. Section appears with three rows in input
+    /// order; each row carries the genre name, count label, and EN
+    /// percentage label. Assertions are scoped to the `#stats-by-genre`
+    /// slice so a same-string match elsewhere on the page (e.g., a genre
+    /// name in the filter pills) cannot mask a regression.
+    #[test]
+    fn home_renders_stats_by_genre_with_three_rows() {
+        let stats = vec![
+            fake_genre_stat_row(1, "Roman", "12 titles", "60.0%", 12, 20),
+            fake_genre_stat_row(2, "BD", "5 titles", "25.0%", 5, 20),
+            fake_genre_stat_row(3, "Essai", "3 titles", "15.0%", 3, 20),
+        ];
+        let template = make_test_home_template_with_stats("anonymous", stats);
+        let html = template.render().expect("render");
+        let slice = stats_by_genre_slice(&html);
+
+        // Section + heading visible.
+        assert!(slice.contains("id=\"stats-by-genre-heading\""));
+        assert!(slice.contains("By genre"));
+
+        // Each row contributes its name, count, and percentage to the slice.
+        for (name, count, pct, link) in [
+            ("Roman", "12 titles", "60.0%", "/?filter=genre:1"),
+            ("BD", "5 titles", "25.0%", "/?filter=genre:2"),
+            ("Essai", "3 titles", "15.0%", "/?filter=genre:3"),
+        ] {
+            assert!(slice.contains(name), "row for {name} must appear in slice");
+            assert!(slice.contains(count), "count {count} for {name} must appear");
+            assert!(slice.contains(pct), "percent {pct} for {name} must appear");
+            assert!(
+                slice.contains(&format!("href=\"{link}\"")),
+                "row link {link} for {name} must point at /?filter=genre:<id>"
+            );
+        }
+
+        // <progress> bar carries semantic value/max attributes (CSP-clean
+        // alternative to inline width=...; AC8).
+        assert!(slice.contains("<progress"));
+        assert!(slice.contains("value=\"12\""));
+        assert!(slice.contains("max=\"20\""));
+
+        // Document order inside the slice — Roman before BD before Essai.
+        let pos_roman = slice.find("Roman").expect("Roman row position");
+        let pos_bd = slice.find("BD").expect("BD row position");
+        let pos_essai = slice.find("Essai").expect("Essai row position");
+        assert!(pos_roman < pos_bd && pos_bd < pos_essai);
+    }
+
+    /// AC4 — empty Vec means the entire `<section id="stats-by-genre">` is
+    /// NOT emitted. A future regression that wraps the section in
+    /// `{% if true %}` would slip past the populated test; only this one
+    /// catches it.
+    #[test]
+    fn home_renders_stats_by_genre_empty_section_hidden() {
+        let template = make_test_home_template_with_stats("anonymous", vec![]);
+        let html = template.render().expect("render");
+
+        assert!(
+            !html.contains("id=\"stats-by-genre\""),
+            "empty stats_by_genre Vec must hide the section entirely (AC4)"
+        );
+        assert!(
+            !html.contains("id=\"stats-by-genre-heading\""),
+            "empty stats_by_genre Vec must not emit the heading either"
+        );
+    }
+
+    /// AC10f — `#recent-additions` (story 9-2) must render BEFORE
+    /// `#stats-by-genre` (story 9-3) in document order. Mirrors the 9-2
+    /// review-fix `home_renders_glance_above_recent_additions` invariant
+    /// and prevents the same kind of silent template re-ordering.
+    #[test]
+    fn home_renders_recent_additions_above_stats_by_genre() {
+        let mut template = make_test_home_template_with_stats(
+            "anonymous",
+            vec![fake_genre_stat_row(1, "Roman", "1 title", "100.0%", 1, 1)],
+        );
+        // Force `recent_additions` to be non-empty so the section renders.
+        template.recent_additions = vec![fake_search_result(42, "Sample Title")];
+        let html = template.render().expect("render");
+
+        let recent_pos = html
+            .find("id=\"recent-additions\"")
+            .expect("recent-additions section must be rendered");
+        let stats_pos = html
+            .find("id=\"stats-by-genre\"")
+            .expect("stats-by-genre section must be rendered");
+        assert!(
+            recent_pos < stats_pos,
+            "AC1: recent-additions ({recent_pos}) must appear before stats-by-genre ({stats_pos})"
+        );
+    }
+
+    /// AC7 — the rendered `#stats-by-genre` slice is byte-identical for
+    /// anonymous and librarian roles. No role-gated columns, no
+    /// conditional markup. If a future story adds e.g. an admin-only
+    /// "delete genre" affordance to a row, this test will fail and force
+    /// the dev to either lift it out of the section or branch in the
+    /// handler (not in SQL — keeping the model role-agnostic per AC7).
+    #[test]
+    fn home_stats_by_genre_byte_identical_for_anonymous_and_librarian() {
+        let stats = || {
+            vec![
+                fake_genre_stat_row(1, "Roman", "12 titles", "60.0%", 12, 20),
+                fake_genre_stat_row(2, "BD", "5 titles", "25.0%", 5, 20),
+            ]
+        };
+        let html_anon = make_test_home_template_with_stats("anonymous", stats())
+            .render()
+            .expect("render anon");
+        let html_lib = make_test_home_template_with_stats("librarian", stats())
+            .render()
+            .expect("render librarian");
+
+        assert_eq!(
+            stats_by_genre_slice(&html_anon),
+            stats_by_genre_slice(&html_lib),
+            "AC7: stats-by-genre slice must be identical across roles"
+        );
+    }
+
+    /// AC9 — French formatting uses comma decimal separator + NBSP before
+    /// `%`. The test feeds pre-formatted FR labels through the template;
+    /// `format_percent` itself is unit-tested in `src/utils.rs`. The
+    /// invariants checked here: (a) the FR percent string makes it into
+    /// the rendered HTML unaltered, (b) the EN-style `33.3%` does NOT
+    /// leak (catches a future "let's strip diacritics for safety"
+    /// refactor that would silently break FR typography).
+    #[test]
+    fn home_renders_stats_by_genre_french_uses_nbsp_and_comma() {
+        let stats = vec![
+            fake_genre_stat_row(1, "Roman", "12 titres", "60,0\u{00A0}%", 12, 20),
+            fake_genre_stat_row(2, "BD", "8 titres", "40,0\u{00A0}%", 8, 20),
+        ];
+        let mut template = make_test_home_template_with_stats("anonymous", stats);
+        template.lang = "fr".to_string();
+        template.stats_by_genre_heading = "Par genre".to_string();
+        let html = template.render().expect("render");
+        let slice = stats_by_genre_slice(&html);
+
+        // FR percentages with comma + NBSP appear verbatim.
+        assert!(
+            slice.contains("60,0\u{00A0}%"),
+            "expected FR percent '60,0 %' (comma + NBSP) in slice; got:\n{slice}"
+        );
+        assert!(slice.contains("40,0\u{00A0}%"));
+        // EN form must not leak.
+        assert!(
+            !slice.contains("60.0%"),
+            "EN-style '60.0%' must not appear when FR labels are passed"
+        );
     }
 }

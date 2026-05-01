@@ -140,6 +140,33 @@
         {% endif %}
     </section>
 
+    {# Stats by genre section (story 9-3). Sits between #recent-additions and
+       the browse controls so it survives HTMX search swaps. Hidden entirely
+       when the catalog has zero genre assignments (AC4) — broader empty-
+       catalog UX moves to StatusMessage in story 9-15. The row link targets
+       /?filter=genre:<id> (existing genre-filter route via parse_filter),
+       NOT /catalog?genre=<id> (the spec text refers to a v1 route that
+       doesn't exist — same convention as 9-1's /catalog?view=volumes
+       deviation). #}
+    {% if !stats_by_genre.is_empty() %}
+    <section id="stats-by-genre" aria-labelledby="stats-by-genre-heading" class="w-full max-w-4xl mt-6">
+        <h2 id="stats-by-genre-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ stats_by_genre_heading }}</h2>
+        <ul class="mt-3 space-y-2">
+            {% for row in stats_by_genre %}
+            <li>
+                <a href="/?filter=genre:{{ row.id }}" class="block px-4 py-3 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-700 transition-colors">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="font-medium text-stone-900 dark:text-stone-100 truncate">{{ row.name }}</span>
+                        <span class="text-sm text-stone-600 dark:text-stone-400 whitespace-nowrap"><span class="tabular-nums">{{ row.count_label }}</span> · <span class="tabular-nums">{{ row.percent_label }}</span></span>
+                    </div>
+                    <progress class="genre-bar mt-2 w-full" value="{{ row.value }}" max="{{ row.max }}" aria-label="{{ row.percent_label }}">{{ row.percent_label }}</progress>
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
     <!-- Browse toggle + sort -->
     <div class="w-full max-w-4xl mt-6 flex items-center justify-between">
         <div class="flex items-center gap-2">
