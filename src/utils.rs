@@ -38,6 +38,25 @@ pub fn html_escape(s: &str) -> String {
         .replace('\'', "&#x27;")
 }
 
+/// Locale-aware percentage formatter (story 9-3).
+///
+/// EN: `"33.3%"` — period decimal, no space before `%`.
+/// FR: `"33,3 %"` with a non-breaking space (`U+00A0`) before the `%` —
+/// French typography requires NBSP between a number and any unit, not a
+/// regular space (which would allow a line break between the number and
+/// the unit). The `_uses_nbsp` test guards against that silent regression.
+///
+/// One decimal is always emitted (`100.0%`, never `100%`) for visual row
+/// alignment; the dashboard rows scan more cleanly when the decimals line
+/// up. Other locales fall back to the EN format until v2 broadens i18n.
+pub fn format_percent(value: f64, locale: &str) -> String {
+    let s = format!("{:.1}", value);
+    match locale {
+        "fr" => format!("{}\u{00A0}%", s.replace('.', ",")),
+        _ => format!("{}%", s),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -115,5 +134,69 @@ mod tests {
     #[test]
     fn test_html_escape_empty() {
         assert_eq!(html_escape(""), "");
+    }
+
+    #[test]
+    fn format_percent_en_basic() {
+        assert_eq!(format_percent(33.3, "en"), "33.3%");
+    }
+
+    #[test]
+    fn format_percent_fr_basic() {
+        assert_eq!(format_percent(33.3, "fr"), "33,3\u{00A0}%");
+    }
+
+    /// AC9 NBSP invariant: French typography requires `U+00A0` between the
+    /// digit run and the `%` sign (not a regular U+0020 space). A future
+    /// "simplification" that swaps `\u{00A0}` for a regular space would
+    /// allow visual line-wrap between the number and the unit — wrong.
+    #[test]
+    fn format_percent_fr_uses_nbsp() {
+        let s = format_percent(50.0, "fr");
+        let bytes = s.as_bytes();
+        // The character before the trailing '%' must be NBSP (U+00A0,
+        // encoded as 2 bytes 0xC2 0xA0 in UTF-8), NOT a regular space.
+        let pct_pos = s.rfind('%').expect("percent sign present");
+        // pct_pos is a byte index pointing at '%'; the two preceding bytes
+        // are the UTF-8 encoding of NBSP.
+        assert!(
+            pct_pos >= 2,
+            "string too short to carry NBSP before '%': {s:?}"
+        );
+        assert_eq!(
+            &bytes[pct_pos - 2..pct_pos],
+            &[0xC2, 0xA0],
+            "expected NBSP (0xC2 0xA0) immediately before '%' in {s:?}"
+        );
+        // Negative assertion: the byte right before '%' must NOT be a
+        // regular ASCII space (0x20) — proves the previous assertion is
+        // not satisfied accidentally by some other 2-byte sequence.
+        assert_ne!(bytes[pct_pos - 1], 0x20);
+    }
+
+    #[test]
+    fn format_percent_one_decimal_kept_en() {
+        assert_eq!(format_percent(100.0, "en"), "100.0%");
+        assert_eq!(format_percent(0.0, "en"), "0.0%");
+    }
+
+    #[test]
+    fn format_percent_one_decimal_kept_fr() {
+        assert_eq!(format_percent(100.0, "fr"), "100,0\u{00A0}%");
+    }
+
+    #[test]
+    fn format_percent_rounds_to_one_decimal() {
+        // 1/3 → 33.333... → 33.3
+        assert_eq!(format_percent((1.0 / 3.0) * 100.0, "en"), "33.3%");
+        // 2/3 → 66.666... → 66.7
+        assert_eq!(format_percent((2.0 / 3.0) * 100.0, "en"), "66.7%");
+        assert_eq!(format_percent((2.0 / 3.0) * 100.0, "fr"), "66,7\u{00A0}%");
+    }
+
+    #[test]
+    fn format_percent_unknown_locale_falls_back_to_en() {
+        assert_eq!(format_percent(42.5, "de"), "42.5%");
+        assert_eq!(format_percent(42.5, ""), "42.5%");
     }
 }

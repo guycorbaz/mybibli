@@ -49,6 +49,49 @@ pub async fn collection_glance(pool: &DbPool) -> Result<CollectionGlance, AppErr
     Ok(glance)
 }
 
+/// One row of the home-page "By genre" section (story 9-3).
+///
+/// Carries only the SQL-emitted fields (id, name, count). The percentage
+/// and locale-formatted labels are computed in the route handler — keeping
+/// the model layer free of presentation concerns means a future caller
+/// (e.g., an admin stats panel) can reuse the raw counts without ripping
+/// out FR/EN formatting.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct GenreStat {
+    pub id: u64,
+    pub name: String,
+    pub title_count: i64,
+}
+
+/// Aggregate active title counts per genre, sorted for display.
+///
+/// Single SQL round-trip with `INNER JOIN`: a genre with zero active
+/// titles is naturally excluded (no `LEFT JOIN`-induced 0-count rows),
+/// so AC4's "no genres assigned → section hidden" falls out of the query
+/// shape — an empty DB returns `Vec::new()`. Both halves of the soft-
+/// delete invariant (AC5) are load-bearing: `t.deleted_at IS NULL`
+/// excludes trashed titles, `g.deleted_at IS NULL` keeps an orphan FK
+/// (titles still pointing at a soft-deleted genre) from leaking.
+///
+/// Ordering: `title_count DESC` puts the biggest genres on top
+/// (presentation goal); the secondary `g.name ASC` tiebreak keeps the
+/// row order deterministic across runs (and across deployments where
+/// MariaDB's default ordering of equal `COUNT(*)` would otherwise be
+/// implementation-defined).
+pub async fn stats_by_genre(pool: &DbPool) -> Result<Vec<GenreStat>, AppError> {
+    let rows: Vec<GenreStat> = sqlx::query_as(
+        "SELECT g.id, g.name, COUNT(t.id) AS title_count \
+           FROM titles t \
+           JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
+          WHERE t.deleted_at IS NULL \
+          GROUP BY g.id, g.name \
+          ORDER BY title_count DESC, g.name ASC",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

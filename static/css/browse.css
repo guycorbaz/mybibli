@@ -150,3 +150,36 @@
 .tree-margin-7 { margin-left: 224px; }
 .tree-margin-8,
 .tree-margin-cap { margin-left: 256px; }
+
+/* Story 9-3 — Stats-by-genre horizontal bar.
+   <progress> uses cross-browser pseudo-elements; values come from the
+   @theme tokens in static/css/input.css (UX-DR24 — no hardcoded colors). */
+progress.genre-bar {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 6px;
+    border: none;
+    border-radius: 3px;
+    background-color: var(--color-stone-200);
+    overflow: hidden;
+}
+progress.genre-bar::-webkit-progress-bar {
+    background-color: var(--color-stone-200);
+    border-radius: 3px;
+}
+progress.genre-bar::-webkit-progress-value {
+    background-color: var(--color-indigo-500);
+    border-radius: 3px;
+}
+progress.genre-bar::-moz-progress-bar {
+    background-color: var(--color-indigo-500);
+    border-radius: 3px;
+}
+.dark progress.genre-bar,
+.dark progress.genre-bar::-webkit-progress-bar {
+    background-color: var(--color-stone-700);
+}
+.dark progress.genre-bar::-webkit-progress-value,
+.dark progress.genre-bar::-moz-progress-bar {
+    background-color: var(--color-indigo-400);
+}
