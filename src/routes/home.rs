@@ -556,21 +556,30 @@ pub struct IndicatorTag {
 ///
 /// Story 9-4 ships the unshelved indicator only. Stories 9-5/9-6/9-7
 /// extend this helper with additional `IndicatorTag` entries; the shape
-/// is forward-compatible. Zero-count tags are filtered out so the
-/// template can simply check `if !indicator_tags.is_empty()` for the
-/// section-hide invariant (AC3 zero-count rule).
+/// is forward-compatible.
+///
+/// Zero-count rule (AC3): a tag with `count == 0` is omitted in the
+/// DEFAULT state so the section can hide entirely (`{% if
+/// !indicator_tags.is_empty() %}`). Code-review follow-up: when the
+/// tag's filter is currently active, the tag is ALWAYS emitted (in
+/// active state) regardless of count — otherwise a librarian who is
+/// viewing `/?filter=unshelved` and just shelved the last unshelved
+/// volume gets stranded with no visible ✕ to clear the filter. The
+/// macro renders the active-state pill (label + ×, href "/") so the
+/// user always has a visible escape hatch.
 fn build_indicator_tags(
     unshelved_count: i64,
     active: Option<IndicatorFilter>,
     loc: &str,
 ) -> Vec<IndicatorTag> {
     let mut tags = Vec::new();
-    if unshelved_count > 0 {
+    let unshelved_is_active = active == Some(IndicatorFilter::Unshelved);
+    if unshelved_count > 0 || unshelved_is_active {
         tags.push(IndicatorTag {
             label: rust_i18n::t!("dashboard.attention.unshelved_label", locale = loc).to_string(),
-            count: unshelved_count as u64,
+            count: unshelved_count.max(0) as u64,
             filter_name: "unshelved".to_string(),
-            is_active: active == Some(IndicatorFilter::Unshelved),
+            is_active: unshelved_is_active,
             clear_aria_label: rust_i18n::t!(
                 "dashboard.attention.unshelved_clear_aria",
                 locale = loc
@@ -1865,18 +1874,18 @@ mod tests {
         assert!(!html.contains("id=\"recent-additions\""));
     }
 
-    /// AC11e: FilterTag macro's internal `count > 0` guard. Build a
+    /// AC11e: FilterTag macro's internal default-state guard. Build a
     /// template where the section is FORCED to render (non-empty
-    /// `indicator_tags` Vec containing exactly one tag with count=0)
-    /// and verify the pill itself does NOT appear in the output —
-    /// the macro hides it via `{% if count > 0 %}` even though the
-    /// surrounding section emits the heading.
+    /// `indicator_tags` Vec containing exactly one tag with count=0
+    /// AND is_active=false) and verify the pill itself does NOT
+    /// appear — the macro hides it under the "default state with no
+    /// items to show" rule (UX-DR4 zero-count).
     ///
     /// Rationale: `build_indicator_tags` already filters zero-count
-    /// tags out of the Vec, but the macro's internal guard is a
-    /// second defensive layer. A future helper that skips the filter
-    /// would still benefit from the macro's guard. This test locks
-    /// that contract independently of the helper.
+    /// tags out of the Vec in the default-state path, but the macro's
+    /// internal guard is a second defensive layer. A future helper
+    /// that skips the filter would still benefit from the macro's
+    /// guard. This test locks that contract independently of the helper.
     #[test]
     fn filter_tag_macro_hides_zero_count_pill_even_when_section_renders() {
         let tags = vec![fake_indicator_tag("Unshelved volumes", 0, "unshelved", false)];
@@ -1896,7 +1905,83 @@ mod tests {
         );
         assert!(
             !html.contains("id=\"filter-tag-unshelved\""),
-            "macro must hide zero-count pill: AC3 zero-count rule"
+            "macro must hide zero-count default-state pill: AC3 zero-count rule"
+        );
+    }
+
+    // ─── Code-review follow-ups (2026-05-02) ──────────────────────────
+
+    /// P4 — FilterTag 4-state matrix corner: count=0 × is_active=true.
+    /// Per the post-merge UX fix (P1), this state DOES render — the
+    /// active-state pill is the user's only visible escape hatch when
+    /// they're on `/?filter=unshelved` and the count just dropped to 0.
+    /// Without this rendering, a librarian who shelves the last
+    /// unshelved volume gets stranded with no ✕ to clear the filter.
+    /// This test locks the new contract.
+    #[test]
+    fn filter_tag_macro_renders_active_pill_even_when_count_is_zero() {
+        let tags = vec![fake_indicator_tag("Unshelved volumes", 0, "unshelved", true)];
+        let template = make_test_home_template_with_indicators(
+            "librarian",
+            tags,
+            true,
+            Vec::new(),
+        );
+        let html = template.render().expect("render");
+        let slice = attention_section_slice(&html);
+
+        // Active pill IS present — even though count is 0.
+        assert!(
+            slice.contains("id=\"filter-tag-unshelved\""),
+            "active-state pill must render even at count=0; got slice:\n{slice}"
+        );
+        assert!(
+            slice.contains("href=\"/\""),
+            "active-state pill clears the filter (returns to /); slice:\n{slice}"
+        );
+        assert!(
+            slice.contains("&times;"),
+            "active-state pill shows × to escape the filter"
+        );
+    }
+
+    /// P1 — `build_indicator_tags` emits the active pill at count=0
+    /// when its filter is the active one. Counterpart to the macro
+    /// test above, locks the helper-side contract.
+    #[test]
+    fn build_indicator_tags_zero_count_with_active_filter_still_emits_active_tag() {
+        let tags = build_indicator_tags(0, Some(IndicatorFilter::Unshelved), "en");
+        assert_eq!(
+            tags.len(),
+            1,
+            "active filter at count=0 must still produce a tag (escape hatch)"
+        );
+        assert!(tags[0].is_active);
+        assert_eq!(tags[0].count, 0);
+        assert_eq!(tags[0].filter_name, "unshelved");
+    }
+
+    /// P2 — AC1 placement regression guard. `#what-needs-attention`
+    /// MUST appear BEFORE `#collection-glance` in document order
+    /// (actionable indicators outrank informational stats for a
+    /// librarian). Mirrors the 9-2 review-fix
+    /// `home_renders_glance_above_recent_additions` pattern.
+    #[test]
+    fn home_renders_what_needs_attention_above_collection_glance() {
+        let tags = vec![fake_indicator_tag("Unshelved volumes", 3, "unshelved", false)];
+        let template =
+            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
+        let html = template.render().expect("render");
+
+        let attention_pos = html
+            .find("id=\"what-needs-attention\"")
+            .expect("attention section must be rendered");
+        let glance_pos = html
+            .find("id=\"collection-glance\"")
+            .expect("collection-glance section must be rendered");
+        assert!(
+            attention_pos < glance_pos,
+            "AC1: what-needs-attention ({attention_pos}) must appear before collection-glance ({glance_pos})"
         );
     }
 }

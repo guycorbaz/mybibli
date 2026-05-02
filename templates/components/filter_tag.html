@@ -13,17 +13,22 @@
    event handlers. Plain <a href> works without JS; the page handler
    renders the right state based on the URL filter param. #}
 {%- macro tag(label, count, filter_name, is_active, clear_aria_label) -%}
-{%- if count > 0 -%}
 {%- if is_active -%}
+{# Active state — always rendered when its filter is active, regardless
+   of count. This is the user's only visible escape hatch from the
+   filter; hiding it on count=0 (which can happen mid-session if the
+   last matching item is removed) would strand them. #}
 <a href="/" id="filter-tag-{{ filter_name }}" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-600 text-white dark:bg-indigo-500 text-sm hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors" aria-label="{{ clear_aria_label }}">
     <span>{{ label }}</span>
     <span aria-hidden="true">&times;</span>
 </a>
-{%- else -%}
+{%- else if count > 0 -%}
+{# Default state — pill with count. Hidden when count=0 (UX-DR4
+   zero-count rule) so the "What needs attention" section disappears
+   entirely when there's nothing to act on. #}
 <a href="/?filter={{ filter_name }}" id="filter-tag-{{ filter_name }}" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 text-sm hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors" aria-label="{{ label }}: {{ count }}">
     <span>{{ label }}</span>
     <span class="font-semibold tabular-nums">{{ count }}</span>
 </a>
-{%- endif -%}
 {%- endif -%}
 {%- endmacro -%}
