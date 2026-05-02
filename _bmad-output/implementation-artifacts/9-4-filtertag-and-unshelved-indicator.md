@@ -1,6 +1,6 @@
 # Story 9.4: FilterTag component + first actionable indicator (unshelved volumes)
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -70,9 +70,9 @@ so that I can immediately jump to the list of volumes that need shelving.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Schema-aware `volume::count_unshelved` + `list_unshelved` (AC: 4, 6, 11a, 11b)**
-  - [ ] In `src/models/volume.rs`, add `pub async fn count_unshelved(pool: &DbPool) -> Result<i64, AppError>` using `SELECT COUNT(*) FROM volumes WHERE location_id IS NULL AND deleted_at IS NULL`. Pattern: mirror `count_active` (story 9-1) — `sqlx::query_scalar::<_, i64>` + `.fetch_one(pool)`. Dynamic `query`, NOT the macro form.
-  - [ ] Add `pub async fn list_unshelved(pool: &DbPool, limit: u32) -> Result<Vec<UnshelvedVolumeRow>, AppError>` returning a new struct:
+- [x] **Task 1 — Schema-aware `volume::count_unshelved` + `list_unshelved` (AC: 4, 6, 11a, 11b)**
+  - [x] In `src/models/volume.rs`, add `pub async fn count_unshelved(pool: &DbPool) -> Result<i64, AppError>` using `SELECT COUNT(*) FROM volumes WHERE location_id IS NULL AND deleted_at IS NULL`. Pattern: mirror `count_active` (story 9-1) — `sqlx::query_scalar::<_, i64>` + `.fetch_one(pool)`. Dynamic `query`, NOT the macro form.
+  - [x] Add `pub async fn list_unshelved(pool: &DbPool, limit: u32) -> Result<Vec<UnshelvedVolumeRow>, AppError>` returning a new struct:
     ```rust
     pub struct UnshelvedVolumeRow {
         pub id: u64,                          // volume id
@@ -84,9 +84,9 @@ so that I can immediately jump to the list of volumes that need shelving.
     }
     ```
     Single SQL round-trip JOINing `volumes` → `titles` → primary `title_contributors` (filtered to "Auteur" first via `ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC LIMIT 1` subquery, mirroring `title.rs::list_recent_active` lines 837-855). All JOINed entity tables filtered with `deleted_at IS NULL`. Sort: `ORDER BY v.created_at DESC, v.id DESC LIMIT ?`. Dynamic `query` (consistent with project convention; see Story 9-2 anti-pattern note).
-  - [ ] Place the struct definition near the existing `Volume` struct in `src/models/volume.rs`. Make it `pub struct` because the route handler / `HomeTemplate` needs it.
-- [ ] **Task 2 — `IndicatorFilter` enum + `parse_indicator_filter` (AC: 5, 7, 11c)**
-  - [ ] In `src/routes/home.rs`, add the enum + parser at module scope (above the existing `parse_filter`):
+  - [x] Place the struct definition near the existing `Volume` struct in `src/models/volume.rs`. Make it `pub struct` because the route handler / `HomeTemplate` needs it.
+- [x] **Task 2 — `IndicatorFilter` enum + `parse_indicator_filter` (AC: 5, 7, 11c)**
+  - [x] In `src/routes/home.rs`, add the enum + parser at module scope (above the existing `parse_filter`):
     ```rust
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum IndicatorFilter {
@@ -105,9 +105,9 @@ so that I can immediately jump to the list of volumes that need shelving.
     }
     ```
     Reasoning for the `!v.contains(':')` guard: the existing `?filter=genre:5` and `?filter=state:foo` patterns must NOT trigger the unknown-bare-name warning. The presence of `:` is the heuristic that disambiguates "namespaced legacy filter" from "indicator filter".
-  - [ ] **6 unit tests** in `mod tests` covering the AC11c matrix (5 input → expected output cases + 1 log-emission case). For the log-emission case: if no log-capture helper exists in the project (likely — none observed in stories 9-1/9-2/9-3), assert via `tracing_subscriber::fmt::TestWriter` OR document the manual verification path in a comment and skip the assertion. Pragmatic option: add an assertion comment + ship without the runtime log capture; the warning is observable in `cargo run` smoke tests.
-- [ ] **Task 3 — `IndicatorTag` view-model + `build_indicator_tags` helper (AC: 1, 3, 6, 7, 11d)**
-  - [ ] In `src/routes/home.rs`, add a small view-model struct (mirroring 9-3's `StatsByGenreRow` pattern):
+  - [x] **6 unit tests** in `mod tests` covering the AC11c matrix (5 input → expected output cases + 1 log-emission case). For the log-emission case: if no log-capture helper exists in the project (likely — none observed in stories 9-1/9-2/9-3), assert via `tracing_subscriber::fmt::TestWriter` OR document the manual verification path in a comment and skip the assertion. Pragmatic option: add an assertion comment + ship without the runtime log capture; the warning is observable in `cargo run` smoke tests.
+- [x] **Task 3 — `IndicatorTag` view-model + `build_indicator_tags` helper (AC: 1, 3, 6, 7, 11d)**
+  - [x] In `src/routes/home.rs`, add a small view-model struct (mirroring 9-3's `StatsByGenreRow` pattern):
     ```rust
     pub struct IndicatorTag {
         pub label: String,        // pre-translated, e.g., "Unshelved volumes"
@@ -117,31 +117,31 @@ so that I can immediately jump to the list of volumes that need shelving.
         pub clear_aria_label: String, // pre-translated active-state aria-label
     }
     ```
-  - [ ] Add `fn build_indicator_tags(unshelved_count: i64, active: Option<IndicatorFilter>, loc: &str) -> Vec<IndicatorTag>` that:
+  - [x] Add `fn build_indicator_tags(unshelved_count: i64, active: Option<IndicatorFilter>, loc: &str) -> Vec<IndicatorTag>` that:
     - Returns `Vec::new()` when `unshelved_count == 0` (zero-count rule for the only tag in v1).
     - Returns `vec![IndicatorTag { label: t!("dashboard.attention.unshelved_label"), count: unshelved_count as u64, filter_name: "unshelved".to_string(), is_active: active == Some(IndicatorFilter::Unshelved), clear_aria_label: t!("dashboard.attention.unshelved_clear_aria") }]` when count > 0.
     - For stories 9-5/9-6/9-7, this helper extends with additional `IndicatorTag` entries — the function shape is forward-compatible.
-  - [ ] Unit tests in `mod tests`:
+  - [x] Unit tests in `mod tests`:
     - `build_indicator_tags_zero_returns_empty_vec`
     - `build_indicator_tags_nonzero_returns_unshelved_tag_in_default_state`
     - `build_indicator_tags_nonzero_with_active_filter_marks_unshelved_active`
-- [ ] **Task 4 — Wire the home handler (AC: 1, 2, 4, 6, 7, 8)**
-  - [ ] In `src/routes/home.rs::home`, before the existing `let glance = …` block (around line 167):
+- [x] **Task 4 — Wire the home handler (AC: 1, 2, 4, 6, 7, 8)**
+  - [x] In `src/routes/home.rs::home`, before the existing `let glance = …` block (around line 167):
     - **Anon role** → `let unshelved_count = 0i64; let unshelved_volumes: Option<Vec<UnshelvedVolumeRow>> = None; let active_indicator_filter = None;`. Skip the DB queries entirely.
     - **Librarian/Admin** → call `parse_indicator_filter(&params.filter)` → `active_indicator_filter`. Issue `volume::count_unshelved` with the soft-degrade pattern (warn + 0 on error, mirroring 9-1/9-2/9-3). If `active_indicator_filter == Some(Unshelved)`, ALSO issue `volume::list_unshelved(pool, 100)` with the same soft-degrade.
-  - [ ] Build `indicator_tags = build_indicator_tags(unshelved_count, active_indicator_filter, loc)`.
-  - [ ] Extend `HomeTemplate` (currently 55+ fields post-9-3) with FOUR new fields:
+  - [x] Build `indicator_tags = build_indicator_tags(unshelved_count, active_indicator_filter, loc)`.
+  - [x] Extend `HomeTemplate` (currently 55+ fields post-9-3) with FOUR new fields:
     - `attention_heading: String` (pre-translated)
     - `indicator_tags: Vec<IndicatorTag>` (empty Vec → section hidden; non-empty → section shown)
     - `unshelved_filter_active: bool` (drives the AC6 swap between `#recent-additions` and `#unshelved-list`)
     - `unshelved_volumes: Vec<UnshelvedVolumeRow>` (empty Vec when `unshelved_filter_active=false`; populated when active)
     - `unshelved_heading: String` (pre-translated, e.g., "Unshelved volumes" — used as the section heading when active)
     - `unshelved_empty_label: String` (pre-translated, for the AC6 race-empty defensive copy)
-  - [ ] Pre-translate all labels via `rust_i18n::t!(…).to_string()` per project convention (canonical example: `src/routes/home.rs:303-320`).
-  - [ ] **AC7 single-active-filter:** if `active_indicator_filter.is_some()`, the existing `parse_filter` result should be ignored AND the `query` field treated as empty (with a `tracing::warn!` if either was non-default). Easiest: short-circuit by setting `let query = String::new(); let (genre_id, volume_state) = (None, None);` when an indicator filter is active. The `#browse-results` section will render its empty state.
-  - [ ] **HTMX coexistence:** the existing HTMX search-fragment branch (`if is_htmx && (!query.trim().is_empty() || has_filter)`) must NOT fire when `active_indicator_filter.is_some()` — same short-circuit logic (no query, no `has_filter` for the legacy filter parser → fragment branch naturally doesn't fire). Verify by inspection.
-- [ ] **Task 5 — FilterTag macro template (AC: 3, 8, 9)**
-  - [ ] Create `templates/components/filter_tag.html`. Pattern: mirror `templates/components/cover.html`'s macro shape. Single macro, no extends:
+  - [x] Pre-translate all labels via `rust_i18n::t!(…).to_string()` per project convention (canonical example: `src/routes/home.rs:303-320`).
+  - [x] **AC7 single-active-filter:** if `active_indicator_filter.is_some()`, the existing `parse_filter` result should be ignored AND the `query` field treated as empty (with a `tracing::warn!` if either was non-default). Easiest: short-circuit by setting `let query = String::new(); let (genre_id, volume_state) = (None, None);` when an indicator filter is active. The `#browse-results` section will render its empty state.
+  - [x] **HTMX coexistence:** the existing HTMX search-fragment branch (`if is_htmx && (!query.trim().is_empty() || has_filter)`) must NOT fire when `active_indicator_filter.is_some()` — same short-circuit logic (no query, no `has_filter` for the legacy filter parser → fragment branch naturally doesn't fire). Verify by inspection.
+- [x] **Task 5 — FilterTag macro template (AC: 3, 8, 9)**
+  - [x] Create `templates/components/filter_tag.html`. Pattern: mirror `templates/components/cover.html`'s macro shape. Single macro, no extends:
     ```jinja
     {%- macro tag(label, count, filter_name, is_active, clear_aria_label) -%}
     {%- if count > 0 -%}
@@ -159,14 +159,14 @@ so that I can immediately jump to the list of volumes that need shelving.
     {%- endif -%}
     {%- endmacro -%}
     ```
-  - [ ] In `templates/pages/home.html`, import the macro at the top (next to the existing `{% import "components/cover.html" as cover %}`) as `{% import "components/filter_tag.html" as filter_tag %}`.
-- [ ] **Task 6 — Render `#what-needs-attention` + `#unshelved-list` sections in home.html (AC: 1, 2, 6, 9)**
-  - [ ] Insert `#what-needs-attention` AT THE TOP of the dashboard sections — BEFORE `#collection-glance` (which currently sits at template line ~78). The section is wrapped in `{% if !indicator_tags.is_empty() %}` (AC2 + AC3 zero-count rule). Inside: heading + a flex-wrap container of `{% call filter_tag::tag(...) %}{% endcall %}` calls, one per item in `indicator_tags`.
-  - [ ] In the `#recent-additions` block (currently at template lines ~106-141), wrap the entire section in `{% if !unshelved_filter_active %}…{% else %}<section id="unshelved-list">…</section>{% endif %}`. The two sections occupy the same DOM position; only one renders at a time (AC6).
-  - [ ] The `#unshelved-list` section: heading (`{{ unshelved_heading }}`), then either (a) the empty-state inline div with `{{ unshelved_empty_label }}` if `unshelved_volumes.is_empty()`, OR (b) `<ul class="mt-3 space-y-2">` with one `<li>` per row. Each `<li>` is a full-row `<a href="/title/{{ row.title_id }}">` showing V-code + title + author. Tailwind utility classes only — no new CSS file needed (text + flex layout suffices).
-  - [ ] CSP: zero `style="..."`, zero `<script>`, zero `onclick=`. The `src/templates_audit.rs::no_inline_markup_in_templates` test must continue to pass after this change.
-- [ ] **Task 7 — i18n keys (AC: 10)**
-  - [ ] In `locales/en.yml`, under the existing `dashboard:` block (after `stats_by_genre:`), add:
+  - [x] In `templates/pages/home.html`, import the macro at the top (next to the existing `{% import "components/cover.html" as cover %}`) as `{% import "components/filter_tag.html" as filter_tag %}`.
+- [x] **Task 6 — Render `#what-needs-attention` + `#unshelved-list` sections in home.html (AC: 1, 2, 6, 9)**
+  - [x] Insert `#what-needs-attention` AT THE TOP of the dashboard sections — BEFORE `#collection-glance` (which currently sits at template line ~78). The section is wrapped in `{% if !indicator_tags.is_empty() %}` (AC2 + AC3 zero-count rule). Inside: heading + a flex-wrap container of `{% call filter_tag::tag(...) %}{% endcall %}` calls, one per item in `indicator_tags`.
+  - [x] In the `#recent-additions` block (currently at template lines ~106-141), wrap the entire section in `{% if !unshelved_filter_active %}…{% else %}<section id="unshelved-list">…</section>{% endif %}`. The two sections occupy the same DOM position; only one renders at a time (AC6).
+  - [x] The `#unshelved-list` section: heading (`{{ unshelved_heading }}`), then either (a) the empty-state inline div with `{{ unshelved_empty_label }}` if `unshelved_volumes.is_empty()`, OR (b) `<ul class="mt-3 space-y-2">` with one `<li>` per row. Each `<li>` is a full-row `<a href="/title/{{ row.title_id }}">` showing V-code + title + author. Tailwind utility classes only — no new CSS file needed (text + flex layout suffices).
+  - [x] CSP: zero `style="..."`, zero `<script>`, zero `onclick=`. The `src/templates_audit.rs::no_inline_markup_in_templates` test must continue to pass after this change.
+- [x] **Task 7 — i18n keys (AC: 10)**
+  - [x] In `locales/en.yml`, under the existing `dashboard:` block (after `stats_by_genre:`), add:
     ```yaml
       attention:
         heading: What needs attention
@@ -174,7 +174,7 @@ so that I can immediately jump to the list of volumes that need shelving.
         unshelved_clear_aria: "Clear filter: Unshelved volumes"
         unshelved_empty: No unshelved volumes
     ```
-  - [ ] In `locales/fr.yml`, mirror under the same path:
+  - [x] In `locales/fr.yml`, mirror under the same path:
     ```yaml
       attention:
         heading: À traiter
@@ -182,31 +182,31 @@ so that I can immediately jump to the list of volumes that need shelving.
         unshelved_clear_aria: "Retirer le filtre : Volumes à ranger"
         unshelved_empty: Aucun volume à ranger
     ```
-  - [ ] **CRITICAL:** locale files have NO top-level `en:`/`fr:` wrapper — keys start at root. After editing, `touch src/lib.rs && cargo build`. The `i18n::audit::tests::all_t_keys_have_both_locales` test enforces EN/FR mirror — keep them aligned exactly.
-- [ ] **Task 8 — Tests (AC: 11, 12)**
-  - [ ] **`tests/dashboard_unshelved.rs`** (new sibling file, mirror of `tests/dashboard_stats_by_genre.rs` from 9-3):
+  - [x] **CRITICAL:** locale files have NO top-level `en:`/`fr:` wrapper — keys start at root. After editing, `touch src/lib.rs && cargo build`. The `i18n::audit::tests::all_t_keys_have_both_locales` test enforces EN/FR mirror — keep them aligned exactly.
+- [x] **Task 8 — Tests (AC: 11, 12)**
+  - [x] **`tests/dashboard_unshelved.rs`** (new sibling file, mirror of `tests/dashboard_stats_by_genre.rs` from 9-3):
     - `count_unshelved_on_empty_db_returns_zero` — fresh schema, no fixtures, expect `0`.
     - `count_unshelved_excludes_shelved_and_soft_deleted` — seed: 3 unshelved active, 2 shelved active (with `location_id`), 1 unshelved soft-deleted, 1 shelved soft-deleted; expect `3`.
     - `list_unshelved_returns_in_created_at_desc_order_with_limit` — seed 5 unshelved with distinct `created_at`; call `list_unshelved(pool, 3)`; assert exactly 3 rows in newest-first order.
     - Use `wipe_seeded_genres` + new helpers `insert_volume_unshelved` and `insert_volume_at_location` patterned after the existing `dashboard_stats_by_genre.rs` test helpers. **Critical:** `created_at` determinism — use `INSERT INTO volumes (..., created_at) VALUES (..., NOW() - INTERVAL ? MINUTE)` per the same pattern as `tests/dashboard_recent_additions.rs::insert_title_with_created_at`.
-  - [ ] **`src/routes/home.rs::mod tests`** — extend the existing test module (currently at lines 612+ post-9-3 follow-ups):
+  - [x] **`src/routes/home.rs::mod tests`** — extend the existing test module (currently at lines 612+ post-9-3 follow-ups):
     - 5 handler render tests (AC11d) — extend `make_test_home_template_with_counts` factory to accept `indicator_tags` + `unshelved_filter_active` + `unshelved_volumes` parameters, OR create a new factory `make_test_home_template_with_indicators(role, indicator_tags, unshelved_filter_active, unshelved_volumes)`. Reuse `slice_section`. Add a new `attention_section_slice` helper.
     - `parse_indicator_filter` 6 unit tests (AC11c).
     - `build_indicator_tags` 3 unit tests (Task 3).
     - FilterTag macro test (AC11e) — render a tiny fixture template that imports + calls the macro four times (count=0×default, count=0×active, count=N×default, count=N×active); assert HTML shape per case.
-  - [ ] **`tests/e2e/specs/journeys/home.spec.ts`** — append a new `test.describe("Home page — What needs attention / Unshelved indicator", …)` block AFTER the 9-3 stats-by-genre describe block. Two tests (anonymous + librarian) per AC12 with conditional empty-DB short-circuit on the librarian path.
-- [ ] **Task 9 — Verify and document (AC: 1–12)**
-  - [ ] `SQLX_OFFLINE=true cargo check && cargo clippy --all-targets -- -D warnings` — clean (zero warnings).
-  - [ ] `SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' cargo test` — full suite green. Expected count: ~660 lib (post-follow-ups was 652) + ~14 new tests = ~666 lib; +3 new integration tests in `tests/dashboard_unshelved.rs`.
-  - [ ] `cargo sqlx prepare --check --workspace` — expected no diff (Tasks 1+2 use dynamic `query` / `query_scalar`).
-  - [ ] Tailwind rebuild — `npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify`. Verify any new utility classes used (`tabular-nums` was added in 9-3, `inline-flex` is widespread; nothing new expected).
-  - [ ] Manual smoke from a running dev instance (`MYBIBLI_SKIP_SETUP=1 cargo run`):
+  - [x] **`tests/e2e/specs/journeys/home.spec.ts`** — append a new `test.describe("Home page — What needs attention / Unshelved indicator", …)` block AFTER the 9-3 stats-by-genre describe block. Two tests (anonymous + librarian) per AC12 with conditional empty-DB short-circuit on the librarian path.
+- [x] **Task 9 — Verify and document (AC: 1–12)**
+  - [x] `SQLX_OFFLINE=true cargo check && cargo clippy --all-targets -- -D warnings` — clean (zero warnings).
+  - [x] `SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' cargo test` — full suite green. Expected count: ~660 lib (post-follow-ups was 652) + ~14 new tests = ~666 lib; +3 new integration tests in `tests/dashboard_unshelved.rs`.
+  - [x] `cargo sqlx prepare --check --workspace` — expected no diff (Tasks 1+2 use dynamic `query` / `query_scalar`).
+  - [x] Tailwind rebuild — `npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify`. Verify any new utility classes used (`tabular-nums` was added in 9-3, `inline-flex` is widespread; nothing new expected).
+  - [x] Manual smoke from a running dev instance (`MYBIBLI_SKIP_SETUP=1 cargo run`):
     - As anonymous: `curl http://localhost:8080/` and grep — `id="what-needs-attention"` MUST NOT appear; `id="filter-tag-unshelved"` MUST NOT appear.
     - As librarian (login first): `curl` with the session cookie → grep — `id="what-needs-attention"` appears IFF unshelved count > 0; `id="filter-tag-unshelved"` appears.
     - Click the tag in a browser → URL changes to `/?filter=unshelved` → `#unshelved-list` replaces `#recent-additions` → click ✕ → URL returns to `/` → recent-additions back.
-  - [ ] **E2E** (Foundation Rule #13) — `./scripts/e2e-reset.sh && cd tests/e2e && npx playwright test specs/journeys/home.spec.ts`. If local `tests/e2e/test-results/` ownership blocker persists from 9-1/9-2/9-3, document the skip in Dev Agent Record and rely on CI.
-  - [ ] Update Dev Agent Record at the bottom of this file: list of files touched, decisions on placement (top vs between sections), anything surprising.
-  - [ ] Update `_bmad-output/implementation-artifacts/sprint-status.yaml`: `9-4-filtertag-and-unshelved-indicator: ready-for-dev → in-progress` at start, `→ review` at end (only this line + `last_updated`, per CLAUDE.md rule 16).
+  - [x] **E2E** (Foundation Rule #13) — `./scripts/e2e-reset.sh && cd tests/e2e && npx playwright test specs/journeys/home.spec.ts`. If local `tests/e2e/test-results/` ownership blocker persists from 9-1/9-2/9-3, document the skip in Dev Agent Record and rely on CI.
+  - [x] Update Dev Agent Record at the bottom of this file: list of files touched, decisions on placement (top vs between sections), anything surprising.
+  - [x] Update `_bmad-output/implementation-artifacts/sprint-status.yaml`: `9-4-filtertag-and-unshelved-indicator: ready-for-dev → in-progress` at start, `→ review` at end (only this line + `last_updated`, per CLAUDE.md rule 16).
 
 ## Dev Notes
 
@@ -323,10 +323,50 @@ The `cover.html` macro precedent is the model for `filter_tag.html` — a single
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+`claude-opus-4-7` (1M context).
 
 ### Debug Log References
 
+- `SQLX_OFFLINE=true cargo check --all-targets` — clean.
+- `SQLX_OFFLINE=true cargo clippy --all-targets -- -D warnings` — clean (zero warnings).
+- `SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' cargo test` — full suite green:
+  - **668 lib tests** (was 652 post-9-3 follow-ups, +16 new: 6 `parse_indicator_filter` + 3 `build_indicator_tags` + 6 handler render + 1 FilterTag macro guard).
+  - `tests/dashboard_unshelved.rs` — 3/3 integration tests passing (empty DB, count excludes shelved + soft-deleted, list ordering + LIMIT).
+  - All other integration suites (dashboard_glance 9-1, dashboard_recent_additions 9-2, dashboard_stats_by_genre 9-3) unchanged.
+- `cargo sqlx prepare --check` — `.sqlx/` cache shows zero diff (Tasks 1+2 use dynamic `query_as` / `query_scalar`, no macro form).
+- Tailwind rebuild not needed — all utility classes used (`tabular-nums`, `inline-flex`, `font-mono`, `transition-colors`, etc.) already present in `output.css` from prior stories. Verified by grep.
+- `templates_audit::no_inline_markup_in_templates` — green. The `&times;` in the FilterTag macro is an HTML entity (decimal-encoded), not an inline event handler or style attribute.
+- Manual `grep -rE 'waitForTimeout\(' tests/e2e/specs/ tests/e2e/helpers/` — clean (no new violations of the CI grep gate).
+- E2E run not executed locally (same `tests/e2e/test-results/` root-ownership blocker as 9-1/9-2/9-3 documented). CI on the story branch validates `home.spec.ts`'s new "What needs attention" describe block.
+
 ### Completion Notes List
 
+- **Schema column was `volumes.location_id`** (not `storage_location_id` as the spec text said). The integration test `count_unshelved_excludes_shelved_and_soft_deleted` would have failed at SQL parse time if the wrong column name was used — built-in regression guard.
+- **`storage_locations.label` is `CHAR(5)`** — the integration test helper for inserting a location had to use a 5-char label (e.g., `L9401`), not a longer descriptive string. Caught at first test run; documented inline in `insert_location` helper.
+- **`storage_locations.name` is `NOT NULL` with no default** — needed to be explicitly bound in the helper. Same first-run discovery; helper now binds `label` to both `label` and `name` columns for simplicity.
+- **`parse_indicator_filter` adds a `!v.is_empty()` guard** beyond the spec's `!v.contains(':')` heuristic — an empty `?filter=` query string would otherwise emit a `tracing::warn!` for nothing on every legitimate request that just clears the filter. Covered by the `parse_indicator_filter_none_and_empty_return_none` test.
+- **Single-active-filter precedence (AC7)** is enforced in the handler by reordering: indicator parser runs FIRST, and if it returns `Some(...)`, the handler clears `query` to empty AND skips legacy `parse_filter` AND sets `has_filter = false`. This makes the existing search-fragment HTMX branch naturally not fire (its predicate becomes false). Logged at `tracing::warn!` if both an indicator filter and a non-default `?q=`/`?sort=` were provided.
+- **Anonymous role short-circuits BEFORE both queries** (`count_unshelved` and `list_unshelved`) — handler-side guard at the role check, defensive guard at `unshelved_filter_active = session.role >= Librarian && active_indicator_filter == Some(Unshelved)`. Two-layer defense; covered by `home_anonymous_does_not_render_attention_section`.
+- **FilterTag macro defensive guard** — beyond the section-level `{% if !indicator_tags.is_empty() %}` and the helper-side filter, the macro itself emits nothing when `count == 0`. Covered by `filter_tag_macro_hides_zero_count_pill_even_when_section_renders` — exercises a forced-non-empty Vec containing a zero-count tag, which would slip past the section guard but still hit the macro guard.
+- **Initial template-placement bug** caught in dev: first `#what-needs-attention` insertion landed BEFORE the metadata-error badge block (line ~67) instead of AFTER it (between metadata-error and `#collection-glance`). Re-positioned to correct location. The `home_renders_glance_above_recent_additions` test (story 9-2) keeps glance above recent-additions; no equivalent invariant exists for "metadata-error before what-needs-attention" yet — manual smoke verified.
+- **Plain `<a href>` over HTMX boost decision** stood up well — clicking the tag and the ✕ both produce predictable URL changes (`/?filter=unshelved` and `/`) that the handler renders correctly. The full-page reload is fast on the dev machine; deferred HTMX polish remains a future-story option without architectural debt.
+- **No new GH Issues filed.** No deferred findings; the cross-cutting genre-filter UX issue (#112) from 9-3 is the closest-related deferred item — the unshelved filter follows the same `?filter=` pattern but doesn't suffer from stale-link issues since "unshelved" is not an entity id that can be deleted.
+
 ### File List
+
+| File | Action |
+|---|---|
+| `src/models/volume.rs` | edit — added `count_unshelved` + `list_unshelved` async fns + `UnshelvedVolumeRow` pub struct |
+| `src/routes/home.rs` | edit — added `IndicatorFilter` enum + `parse_indicator_filter` + `IndicatorTag` view-model + `build_indicator_tags` helper + handler block (anonymous short-circuit + soft-degrade + role-gated list query) + `unshelved_filter_active`/`unshelved_volumes` short-circuit logic for AC7 + 6 new HomeTemplate fields + `attention_section_slice` helper + `make_test_home_template_with_indicators`/`fake_indicator_tag`/`fake_unshelved_row` factories + 6 parser tests + 3 build_indicator_tags tests + 6 handler render tests + 1 FilterTag macro guard test |
+| `templates/components/filter_tag.html` | create — single `tag(...)` macro, default + active state branches, CSP-clean Tailwind classes only |
+| `templates/pages/home.html` | edit — added `{% import filter_tag %}`, inserted `#what-needs-attention` section between metadata-error block and `#collection-glance`, wrapped `#recent-additions` in `{% if unshelved_filter_active %}<section id="unshelved-list">…</section>{% else %}<section id="recent-additions">…</section>{% endif %}` for AC6 mutual exclusion |
+| `locales/en.yml` | edit — `dashboard.attention.{heading, unshelved_label, unshelved_clear_aria, unshelved_empty}` |
+| `locales/fr.yml` | edit — same path, FR variants ("À traiter" / "Volumes à ranger" / "Retirer le filtre : Volumes à ranger" / "Aucun volume à ranger") |
+| `tests/dashboard_unshelved.rs` | create — 3 `#[sqlx::test]` cases + helpers (`first_genre_id`, `first_volume_state_id`, `insert_title`, `insert_location`, `insert_volume_unshelved`, `insert_volume_at_location`, `insert_volume_unshelved_with_age`, `soft_delete`) |
+| `tests/e2e/specs/journeys/home.spec.ts` | edit — appended `test.describe("Home page — What needs attention / Unshelved indicator", …)` block with 2 tests (anonymous AC2 + librarian smoke with empty-DB short-circuit) |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | edit — `9-4-filtertag-and-unshelved-indicator: ready-for-dev → in-progress → review` (per CLAUDE.md rule 16) |
+| `_bmad-output/implementation-artifacts/9-4-filtertag-and-unshelved-indicator.md` | edit — Status `ready-for-dev → review`, all Tasks checked, Dev Agent Record filled |
+
+### Change Log
+
+- **2026-05-02** — Initial implementation. All 9 tasks complete; 668 lib tests + 3 dashboard_unshelved integration tests pass; clippy clean; sqlx cache unchanged; templates audit green. Followed Story 9-1/9-2/9-3 patterns (handler-side i18n, soft-degrade on DB error, single round-trip queries, scoped HTML assertions, sibling integration test file). Three drift discoveries during dev: `storage_locations.label` is `CHAR(5)` (test helper used a 5-char label `L9401`); `storage_locations.name` is `NOT NULL` no default (helper binds the label to both columns); template placement of `#what-needs-attention` corrected to land between metadata-error block and `#collection-glance`. Plain `<a href>` decision (deviation from spec's "HTMX swap only") held up cleanly — full-page reload is fast and predictable; HTMX polish remains a future option. E2E run deferred to CI per 9-1/9-2/9-3 precedent.

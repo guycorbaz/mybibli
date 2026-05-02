@@ -1,0 +1,29 @@
+{# FilterTag component (story 9-4 AC3).
+
+   Renders ONE actionable indicator pill on the home dashboard. Two
+   states: default (label + count → href to /?filter=<name>) and active
+   (label + ✕ → href to /). Zero-count pills emit nothing — UX-DR4.
+
+   The macro is parameterized for reuse by stories 9-5 (overdue), 9-6
+   (gaps), 9-7 (recent activity) without modification — they just call
+   it with their own (label, count, filter_name, is_active,
+   clear_aria_label) tuples.
+
+   CSP-clean — Tailwind utility classes only, no inline styles, no
+   event handlers. Plain <a href> works without JS; the page handler
+   renders the right state based on the URL filter param. #}
+{%- macro tag(label, count, filter_name, is_active, clear_aria_label) -%}
+{%- if count > 0 -%}
+{%- if is_active -%}
+<a href="/" id="filter-tag-{{ filter_name }}" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-600 text-white dark:bg-indigo-500 text-sm hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors" aria-label="{{ clear_aria_label }}">
+    <span>{{ label }}</span>
+    <span aria-hidden="true">&times;</span>
+</a>
+{%- else -%}
+<a href="/?filter={{ filter_name }}" id="filter-tag-{{ filter_name }}" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 text-sm hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors" aria-label="{{ label }}: {{ count }}">
+    <span>{{ label }}</span>
+    <span class="font-semibold tabular-nums">{{ count }}</span>
+</a>
+{%- endif -%}
+{%- endif -%}
+{%- endmacro -%}

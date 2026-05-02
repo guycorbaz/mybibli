@@ -357,6 +357,11 @@ dashboard:
     heading: Par genre
     titles_one: "%{count} titre"
     titles_other: "%{count} titres"
+  attention:
+    heading: À traiter
+    unshelved_label: Volumes à ranger
+    unshelved_clear_aria: "Retirer le filtre : Volumes à ranger"
+    unshelved_empty: Aucun volume à ranger
 borrower:
   list_title: Emprunteurs
   add: Ajouter un emprunteur
