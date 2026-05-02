@@ -39,7 +39,7 @@
 # The epics document contains FR/NFR/AR/UX-DR assignments per epic.
 
 generated: 2026-03-29
-last_updated: 2026-05-01 # Story 9-3 dev-story complete (in-progress → review). 7 tasks shipped: services::dashboard::stats_by_genre + GenreStat (1 INNER JOIN GROUP BY round-trip), src/utils.rs::format_percent helper with 7 unit tests (incl. byte-level NBSP guard for FR typography), HomeTemplate extension + build_stats_by_genre_rows helper + soft-degrade on DB error, AC4 hide-entirely template gating, <progress class="genre-bar"> CSS in browse.css using @theme tokens (UX-DR24, no hardcoded hex), EN+FR i18n, 3 sqlx integration tests (empty DB, ordering+soft-delete-both-halves, single-genre full share) + 5 handler render tests (incl. document-order lock + AC7 anonymous-byte-identity + FR-NBSP), 1 E2E test scoped to #stats-by-genre. 643 lib tests, all green; clippy clean; sqlx cache unchanged. Spec creation earlier today: single round-trip GROUP BY, INNER JOIN naturally excludes empty/soft-deleted genres (AC4/AC5), `<progress>` element for CSP-clean variable-width bar (UX-DR24 tokens via @theme vars), locale-aware percentage formatting (FR uses NBSP + comma decimal), row-link targets `/?filter=genre:<id>` (existing route, NOT the spec's `/catalog?genre=` which doesn't exist — same convention as 9-1's volume-link deviation), 5 handler render tests including document-order + anonymous/librarian byte-identity locks, format_percent helper in src/utils.rs with NBSP regression test. Earlier 2026-04-30: Story 9-2 review complete — review → done; Story 9-1 done + 2 GH issues filed (#103/#104), Epic 9 sprint planning (PR #101), Epic 8 close.
+last_updated: 2026-05-01 # Story 9-3 done — code review complete (post-merge of PR #110). 3 parallel reviewers (Blind/Edge/Auditor), ~21 findings: 0 decision-needed, 2 patches applied (build_stats_by_genre_rows direct unit tests + <progress> aria-label includes genre name), 2 deferred as GH Issues #111 (denominator distortion under orphan-FK) and #112 (stale genre-filter link UX, cross-cutting), 15+ dismissed. Final 652 lib tests + 3 integration tests, all green; clippy clean. Earlier today: Story 9-3 dev-story (in-progress → review); spec creation: single round-trip GROUP BY, INNER JOIN naturally excludes empty/soft-deleted genres (AC4/AC5), `<progress>` element for CSP-clean variable-width bar (UX-DR24 tokens via @theme vars), locale-aware percentage formatting (FR uses NBSP + comma decimal), row-link targets `/?filter=genre:<id>` (existing route, NOT the spec's `/catalog?genre=` which doesn't exist — same convention as 9-1's volume-link deviation), 5 handler render tests including document-order + anonymous/librarian byte-identity locks, format_percent helper in src/utils.rs with NBSP regression test. Earlier 2026-04-30: Story 9-2 review complete — review → done; Story 9-1 done + 2 GH issues filed (#103/#104), Epic 9 sprint planning (PR #101), Epic 8 close.
 project: mybibli
 project_key: NOKEY
 tracking_system: file-system
@@ -165,7 +165,7 @@ development_status:
   epic-9: in-progress
   9-1-dashboard-global-stats-card: done
   9-2-dashboard-recent-additions: done
-  9-3-dashboard-stats-by-genre: review
+  9-3-dashboard-stats-by-genre: done
   9-4-filtertag-and-unshelved-indicator: backlog
   9-5-overdue-loans-indicator: backlog
   9-6-series-with-gaps-indicator: backlog
