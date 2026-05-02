@@ -1,5 +1,6 @@
 {% extends "layouts/base.html" %}
 {% import "components/cover.html" as cover %}
+{% import "components/filter_tag.html" as filter_tag %}
 
 {% block title %}mybibli{% endblock %}
 
@@ -73,6 +74,23 @@
     </div>
     {% endif %}
 
+    {# "What needs attention" indicator section (story 9-4). Top of the
+       dashboard — actionable indicators outrank informational stats for
+       a librarian. Hidden entirely for anonymous users (handler emits
+       empty `indicator_tags` Vec) AND when ALL tags are zero-count
+       (UX-DR4 zero-count rule). The FilterTag component is reusable
+       across 9-5/9-6/9-7 indicator stories. #}
+    {% if !indicator_tags.is_empty() %}
+    <section id="what-needs-attention" aria-labelledby="attention-heading" class="w-full max-w-4xl mt-4">
+        <h2 id="attention-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ attention_heading }}</h2>
+        <div class="flex flex-wrap gap-2 mt-2">
+            {% for tag in indicator_tags %}
+            {% call filter_tag::tag(tag.label, tag.count, tag.filter_name, tag.is_active, tag.clear_aria_label) %}{% endcall %}
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
     {# Collection at a glance card (story 9-1). Sits between filter tags and #browse-results
        so it stays visible during HTMX search swaps that target #browse-results. #}
     <section id="collection-glance" aria-labelledby="glance-heading" class="w-full max-w-4xl mt-6">
@@ -103,6 +121,33 @@
         </ul>
     </section>
 
+    {# Story 9-4 AC6: when the unshelved indicator filter is active,
+       #recent-additions is REPLACED by #unshelved-list in the SAME DOM
+       position. Mutually exclusive — never both at once. #}
+    {% if unshelved_filter_active %}
+    <section id="unshelved-list" aria-labelledby="unshelved-list-heading" class="w-full max-w-4xl mt-6">
+        <h2 id="unshelved-list-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ unshelved_heading }}</h2>
+        {% if unshelved_volumes.is_empty() %}
+            <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ unshelved_empty_label }}</div>
+        {% else %}
+            <ul class="mt-3 space-y-2">
+                {% for vol in unshelved_volumes %}
+                <li>
+                    <a href="/title/{{ vol.title_id }}" class="block px-4 py-3 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-700 transition-colors">
+                        <div class="flex items-baseline gap-3">
+                            <span class="font-mono text-sm font-semibold text-indigo-600 dark:text-indigo-400 tabular-nums">{{ vol.label }}</span>
+                            <span class="font-medium text-stone-900 dark:text-stone-100 truncate">{{ vol.title }}</span>
+                        </div>
+                        {% if let Some(c) = vol.primary_contributor %}
+                        <p class="mt-1 text-sm text-stone-600 dark:text-stone-400">{{ c }}</p>
+                        {% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
+    {% else %}
     {# Recent additions section (story 9-2). Sits directly below #collection-glance
        and above #browse-results so it survives HTMX search swaps. The inner
        <article> block is duplicated VERBATIM from the browse-results loop
@@ -139,6 +184,7 @@
             </div>
         {% endif %}
     </section>
+    {% endif %}{# /unshelved_filter_active #}
 
     {# Stats by genre section (story 9-3). Sits between #recent-additions and
        the browse controls so it survives HTMX search swaps. Hidden entirely

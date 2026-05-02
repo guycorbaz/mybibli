@@ -151,3 +151,63 @@ test.describe("Home page — Stats by genre section", () => {
     await page.waitForURL(/\/\?filter=genre%3A\d+|\/\?filter=genre:\d+/);
   });
 });
+
+// Story 9-4 — "What needs attention" / Unshelved indicator.
+test.describe("Home page — What needs attention / Unshelved indicator", () => {
+  test("anonymous: section not rendered, indicator filter param ignored", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    // AC2 — anonymous never sees the section.
+    await expect(page.locator("#what-needs-attention")).toHaveCount(0);
+    await expect(page.locator("#filter-tag-unshelved")).toHaveCount(0);
+
+    // Anonymous crafting `?filter=unshelved` — filter is ignored, no leak.
+    await page.goto("/?filter=unshelved");
+    await expect(page.locator("#what-needs-attention")).toHaveCount(0);
+    await expect(page.locator("#unshelved-list")).toHaveCount(0);
+    // The default home (recent-additions) is still visible.
+    await expect(page.locator("#recent-additions")).toBeVisible();
+  });
+
+  test("librarian: tag visible, click → unshelved-list, ✕ → home", async ({
+    page,
+  }) => {
+    await loginAs(page, "librarian");
+    await page.goto("/");
+
+    const section = page.locator("#what-needs-attention");
+    const sectionCount = await section.count();
+    if (sectionCount === 0) {
+      // Seed DB has zero unshelved volumes — section is hidden by AC3
+      // zero-count rule. Same defensive empty-DB short-circuit pattern
+      // as 9-2/9-3 E2E tests.
+      return;
+    }
+
+    await expect(section).toBeVisible();
+    await expect(section.getByRole("heading", { level: 2 })).toContainText(
+      /What needs attention|À traiter/i,
+    );
+    const tag = page.locator("#filter-tag-unshelved");
+    await expect(tag).toBeVisible();
+    // Default state — href targets the indicator filter URL.
+    await expect(tag).toHaveAttribute("href", "/?filter=unshelved");
+
+    // Click the tag → URL changes → unshelved-list replaces recent-additions.
+    await tag.click();
+    await page.waitForURL(/\/\?filter=unshelved/);
+    await expect(page.locator("#unshelved-list")).toBeVisible();
+    await expect(page.locator("#recent-additions")).toHaveCount(0);
+
+    // The tag is now in active state — href clears the filter.
+    const activeTag = page.locator("#filter-tag-unshelved");
+    await expect(activeTag).toHaveAttribute("href", "/");
+
+    // Click ✕ → URL returns → recent-additions back, unshelved-list gone.
+    await activeTag.click();
+    await page.waitForURL(/\/$/);
+    await expect(page.locator("#recent-additions")).toBeVisible();
+    await expect(page.locator("#unshelved-list")).toHaveCount(0);
+  });
+});

@@ -357,6 +357,11 @@ dashboard:
     heading: By genre
     titles_one: "%{count} title"
     titles_other: "%{count} titles"
+  attention:
+    heading: What needs attention
+    unshelved_label: Unshelved volumes
+    unshelved_clear_aria: "Clear filter: Unshelved volumes"
+    unshelved_empty: No unshelved volumes
 borrower:
   list_title: Borrowers
   add: Add borrower

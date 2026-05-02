@@ -85,6 +85,16 @@ pub struct HomeTemplate {
     // "By genre" section (story 9-3) — empty Vec → section hidden entirely (AC4).
     pub stats_by_genre: Vec<StatsByGenreRow>,
     pub stats_by_genre_heading: String,
+    // "What needs attention" section (story 9-4). Anonymous users get
+    // an empty Vec and the section is hidden by `{% if %}`.
+    pub attention_heading: String,
+    pub indicator_tags: Vec<IndicatorTag>,
+    // When true, the home page swaps `#recent-additions` for
+    // `#unshelved-list` in the same DOM position (AC6 mutual exclusion).
+    pub unshelved_filter_active: bool,
+    pub unshelved_volumes: Vec<crate::models::volume::UnshelvedVolumeRow>,
+    pub unshelved_heading: String,
+    pub unshelved_empty_label: String,
 }
 
 /// One row of the "By genre" dashboard section (story 9-3).
@@ -112,17 +122,44 @@ pub async fn home(
 ) -> Result<impl IntoResponse, AppError> {
     let loc = locale.0;
     let pool = &state.pool;
-    let query = params.q.unwrap_or_default();
+    let mut query = params.q.unwrap_or_default();
     let page = params.page.unwrap_or(1).max(1);
 
-    // Parse filter to extract genre_id
-    let (genre_id, volume_state) = parse_filter(&params.filter);
+    // Story 9-4 — indicator filter takes precedence over search + legacy
+    // filter (AC7 single-active-filter). Role-gated: anonymous users never
+    // see indicator filters even if they craft `?filter=unshelved`
+    // (AC2 anonymous-no-leak).
+    let active_indicator_filter = if session.role >= Role::Librarian {
+        parse_indicator_filter(&params.filter)
+    } else {
+        None
+    };
+    if active_indicator_filter.is_some() && (!query.is_empty() || params.sort.is_some()) {
+        tracing::warn!(
+            filter = ?params.filter,
+            query = %query,
+            "Indicator filter is active; ignoring concurrent ?q= / ?sort= per single-active-filter contract"
+        );
+    }
+
+    // Parse legacy filter (genre:N / state:foo) — but skip when an
+    // indicator filter is active so it doesn't double-fire downstream.
+    let (genre_id, volume_state) = if active_indicator_filter.is_some() {
+        (None, None)
+    } else {
+        parse_filter(&params.filter)
+    };
 
     // Perform search/browse when either a query is typed OR a filter pill is active.
     // Filter-only requests (e.g. clicking the "BD" genre pill with empty query) must
     // still populate results — without this, HTMX would swap an empty results block
     // and render the full layout into `#browse-results`, duplicating the page.
-    let has_filter = params.filter.is_some();
+    // When an indicator filter is active, the search/legacy-filter path is skipped
+    // entirely (AC7); the dashboard surfaces drive the response instead.
+    if active_indicator_filter.is_some() {
+        query = String::new();
+    }
+    let has_filter = params.filter.is_some() && active_indicator_filter.is_none();
     let (results, redirect) = if !query.trim().is_empty() || has_filter {
         let outcome = SearchService::search(
             pool,
@@ -178,6 +215,38 @@ pub async fn home(
         );
         return Ok(Html(html).into_response());
     }
+
+    // "What needs attention" indicator data (story 9-4). Anonymous role
+    // skips the count query entirely — both for security (AC2 no leak) and
+    // efficiency (no DB load on a surface the user won't see). The list
+    // query runs only when an indicator filter is active, gated again by
+    // role for defense in depth.
+    let unshelved_count: i64 = if session.role >= Role::Librarian {
+        match crate::models::volume::VolumeModel::count_unshelved(pool).await {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!(error = %e, "count_unshelved failed; rendering 0 (tag hidden)");
+                0
+            }
+        }
+    } else {
+        0
+    };
+    let indicator_tags = build_indicator_tags(unshelved_count, active_indicator_filter, loc);
+    let unshelved_filter_active =
+        session.role >= Role::Librarian && active_indicator_filter == Some(IndicatorFilter::Unshelved);
+    let unshelved_volumes: Vec<crate::models::volume::UnshelvedVolumeRow> =
+        if unshelved_filter_active {
+            match crate::models::volume::VolumeModel::list_unshelved(pool, 100).await {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(error = %e, "list_unshelved failed; rendering empty list");
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
 
     // "Collection at a glance" card — three counts in a single SQL round-trip (story 9-1).
     // Soft-degrade on DB error: a transient lock or timeout MUST NOT take down the
@@ -351,6 +420,14 @@ pub async fn home(
         stats_by_genre,
         stats_by_genre_heading: rust_i18n::t!("dashboard.stats_by_genre.heading", locale = loc)
             .to_string(),
+        attention_heading: rust_i18n::t!("dashboard.attention.heading", locale = loc).to_string(),
+        indicator_tags,
+        unshelved_filter_active,
+        unshelved_volumes,
+        unshelved_heading: rust_i18n::t!("dashboard.attention.unshelved_label", locale = loc)
+            .to_string(),
+        unshelved_empty_label: rust_i18n::t!("dashboard.attention.unshelved_empty", locale = loc)
+            .to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -434,6 +511,93 @@ fn parse_filter(filter: &Option<String>) -> (Option<u64>, Option<String>) {
             (None, Some(state))
         }
         _ => (None, None),
+    }
+}
+
+/// Closed enum of dashboard "indicator" filters (story 9-4 AC5).
+///
+/// Distinct from the legacy `parse_filter` which handles `genre:N` and
+/// `state:foo`. Indicator filters drive the home-page dashboard swap
+/// (replacing `#recent-additions` with the filtered result, e.g. the
+/// unshelved-volume list); legacy filters drive the `#browse-results`
+/// swap. The two parsers are siblings; the indicator parser runs first
+/// in the handler chain so AC7's single-active-filter contract holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndicatorFilter {
+    /// Filter to active volumes with `location_id IS NULL` (story 9-4).
+    Unshelved,
+    // Reserved for follow-up Epic 9 stories: Overdue (9-5), Gaps (9-6),
+    // RecentCataloged (9-7), RecentReturns (9-7).
+}
+
+/// One pill in the home-page "What needs attention" section (story
+/// 9-4 AC1 + AC3). All textual fields are pre-translated by the
+/// handler; the FilterTag macro renders them verbatim. The macro
+/// itself decides whether to emit anything based on `count` and
+/// `is_active`.
+pub struct IndicatorTag {
+    /// Pre-translated label, e.g. "Unshelved volumes" / "Volumes à ranger".
+    pub label: String,
+    /// Non-zero count — the macro hides the pill when 0; the helper
+    /// filters zero-count tags out before populating this Vec, so this
+    /// is always > 0 in practice.
+    pub count: u64,
+    /// The bare-name `?filter=<name>` enum value matching the
+    /// `IndicatorFilter` variant. Used to compose the href.
+    pub filter_name: String,
+    /// True when this filter matches the currently active URL filter.
+    /// Drives the macro's pill-vs-active-badge rendering.
+    pub is_active: bool,
+    /// Pre-translated aria-label for the active-state ✕ link.
+    pub clear_aria_label: String,
+}
+
+/// Build the `Vec<IndicatorTag>` for the "What needs attention" section.
+///
+/// Story 9-4 ships the unshelved indicator only. Stories 9-5/9-6/9-7
+/// extend this helper with additional `IndicatorTag` entries; the shape
+/// is forward-compatible. Zero-count tags are filtered out so the
+/// template can simply check `if !indicator_tags.is_empty()` for the
+/// section-hide invariant (AC3 zero-count rule).
+fn build_indicator_tags(
+    unshelved_count: i64,
+    active: Option<IndicatorFilter>,
+    loc: &str,
+) -> Vec<IndicatorTag> {
+    let mut tags = Vec::new();
+    if unshelved_count > 0 {
+        tags.push(IndicatorTag {
+            label: rust_i18n::t!("dashboard.attention.unshelved_label", locale = loc).to_string(),
+            count: unshelved_count as u64,
+            filter_name: "unshelved".to_string(),
+            is_active: active == Some(IndicatorFilter::Unshelved),
+            clear_aria_label: rust_i18n::t!(
+                "dashboard.attention.unshelved_clear_aria",
+                locale = loc
+            )
+            .to_string(),
+        });
+    }
+    tags
+}
+
+/// Parse the bare-name closed-enum indicator filter from `?filter=…`.
+///
+/// Returns `None` for legacy `genre:` / `state:` namespaced patterns
+/// (those route through `parse_filter`) and for anything else. The
+/// `':'` heuristic is the disambiguator: any value containing a colon
+/// is treated as a legacy-namespace filter and ignored here without
+/// noise. Bare-name values that don't match the closed enum are
+/// logged at WARN and ignored — surfaces a typo or a stale link
+/// without breaking the page.
+fn parse_indicator_filter(filter: &Option<String>) -> Option<IndicatorFilter> {
+    match filter.as_deref() {
+        Some("unshelved") => Some(IndicatorFilter::Unshelved),
+        Some(v) if !v.contains(':') && !v.is_empty() => {
+            tracing::warn!(filter = %v, "Unknown indicator filter, ignoring");
+            None
+        }
+        _ => None,
     }
 }
 
@@ -640,6 +804,77 @@ mod tests {
         assert!(s.is_none());
     }
 
+    // ─── Story 9-4 — `parse_indicator_filter` (AC11c) ────────────────
+
+    #[test]
+    fn parse_indicator_filter_unshelved_recognized() {
+        assert_eq!(
+            parse_indicator_filter(&Some("unshelved".to_string())),
+            Some(IndicatorFilter::Unshelved)
+        );
+    }
+
+    /// AC5: closed enum is case-sensitive. "UNSHELVED" must NOT match.
+    #[test]
+    fn parse_indicator_filter_case_sensitive() {
+        assert_eq!(
+            parse_indicator_filter(&Some("UNSHELVED".to_string())),
+            None
+        );
+        assert_eq!(
+            parse_indicator_filter(&Some("Unshelved".to_string())),
+            None
+        );
+    }
+
+    /// AC5 + AC7: legacy `genre:N` patterns must NOT log a warning here
+    /// (they go through `parse_filter` instead). Unfortunately we can't
+    /// assert "no log emitted" easily without a tracing subscriber test
+    /// setup, but we CAN assert the parser returns None — which is the
+    /// observable contract.
+    #[test]
+    fn parse_indicator_filter_genre_namespace_ignored() {
+        assert_eq!(parse_indicator_filter(&Some("genre:5".to_string())), None);
+        assert_eq!(
+            parse_indicator_filter(&Some("genre:99".to_string())),
+            None
+        );
+    }
+
+    #[test]
+    fn parse_indicator_filter_state_namespace_ignored() {
+        assert_eq!(
+            parse_indicator_filter(&Some("state:unshelved".to_string())),
+            None
+        );
+        assert_eq!(
+            parse_indicator_filter(&Some("state:lost".to_string())),
+            None
+        );
+    }
+
+    /// AC5 unknown bare-name values return None and log a WARN. The
+    /// `!contains(':')` guard means the warning fires only for genuine
+    /// typos, not for legacy patterns.
+    #[test]
+    fn parse_indicator_filter_unknown_bare_name_returns_none() {
+        assert_eq!(
+            parse_indicator_filter(&Some("nonsense".to_string())),
+            None
+        );
+        assert_eq!(
+            parse_indicator_filter(&Some("overdue".to_string())),
+            None,
+            "overdue is reserved for story 9-5 — not yet recognized"
+        );
+    }
+
+    #[test]
+    fn parse_indicator_filter_none_and_empty_return_none() {
+        assert_eq!(parse_indicator_filter(&None), None);
+        assert_eq!(parse_indicator_filter(&Some(String::new())), None);
+    }
+
     #[test]
     fn test_render_search_row() {
         let item = SearchResult {
@@ -741,6 +976,12 @@ mod tests {
         slice_section(html, "stats-by-genre")
     }
 
+    /// Story 9-4 helper — scope assertions to the "What needs attention"
+    /// indicator section.
+    fn attention_section_slice(html: &str) -> &str {
+        slice_section(html, "what-needs-attention")
+    }
+
     fn make_test_home_template_with_counts(
         role: &str,
         loans_link_visible: bool,
@@ -805,6 +1046,12 @@ mod tests {
             recent_additions_empty: "No recent additions yet — start cataloging!".to_string(),
             stats_by_genre: Vec::new(),
             stats_by_genre_heading: "By genre".to_string(),
+            attention_heading: "What needs attention".to_string(),
+            indicator_tags: Vec::new(),
+            unshelved_filter_active: false,
+            unshelved_volumes: Vec::new(),
+            unshelved_heading: "Unshelved volumes".to_string(),
+            unshelved_empty_label: "No unshelved volumes".to_string(),
         }
     }
 
@@ -869,6 +1116,44 @@ mod tests {
             percent_label: percent_label.to_string(),
             value,
             max,
+        }
+    }
+
+    /// Story 9-4 — build a HomeTemplate with populated indicator data.
+    /// Reuses the counts factory so glance + recent-additions assertions
+    /// remain possible. Caller controls all 9-4 surfaces directly so
+    /// tests don't have to coordinate with the SQL → handler pipeline.
+    fn make_test_home_template_with_indicators(
+        role: &str,
+        indicator_tags: Vec<IndicatorTag>,
+        unshelved_filter_active: bool,
+        unshelved_volumes: Vec<crate::models::volume::UnshelvedVolumeRow>,
+    ) -> HomeTemplate {
+        let mut t = make_test_home_template_with_counts(role, false, 5, 8, 2);
+        t.indicator_tags = indicator_tags;
+        t.unshelved_filter_active = unshelved_filter_active;
+        t.unshelved_volumes = unshelved_volumes;
+        t
+    }
+
+    fn fake_indicator_tag(label: &str, count: u64, filter_name: &str, is_active: bool) -> IndicatorTag {
+        IndicatorTag {
+            label: label.to_string(),
+            count,
+            filter_name: filter_name.to_string(),
+            is_active,
+            clear_aria_label: format!("Clear filter: {label}"),
+        }
+    }
+
+    fn fake_unshelved_row(volume_id: u64, label: &str, title_id: u64, title: &str, author: &str) -> crate::models::volume::UnshelvedVolumeRow {
+        crate::models::volume::UnshelvedVolumeRow {
+            id: volume_id,
+            label: label.to_string(),
+            title_id,
+            title: title.to_string(),
+            primary_contributor: Some(author.to_string()),
+            media_type: "book".to_string(),
         }
     }
 
@@ -1399,6 +1684,219 @@ mod tests {
         assert!(
             slice.contains("aria-label=\"Roman: 60.0%\""),
             "<progress> aria-label must include genre name + percent; got slice:\n{slice}"
+        );
+    }
+
+    // ─── Story 9-4 — `build_indicator_tags` direct unit tests ─────────
+
+    /// AC3 zero-count rule: zero count → empty Vec → section hides.
+    #[test]
+    fn build_indicator_tags_zero_returns_empty_vec() {
+        let tags = build_indicator_tags(0, None, "en");
+        assert!(tags.is_empty());
+    }
+
+    /// Default state: count > 0, no active filter → unshelved tag with
+    /// `is_active=false`, label translated.
+    #[test]
+    fn build_indicator_tags_nonzero_returns_unshelved_tag_in_default_state() {
+        let tags = build_indicator_tags(5, None, "en");
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].count, 5);
+        assert_eq!(tags[0].filter_name, "unshelved");
+        assert!(!tags[0].is_active, "no filter active → tag in default state");
+        assert_eq!(tags[0].label, "Unshelved volumes");
+    }
+
+    /// Active state: count > 0, active filter is Unshelved → tag in
+    /// active state. The clear_aria_label must carry the FR/EN copy.
+    #[test]
+    fn build_indicator_tags_nonzero_with_active_filter_marks_unshelved_active() {
+        let tags = build_indicator_tags(5, Some(IndicatorFilter::Unshelved), "fr");
+        assert_eq!(tags.len(), 1);
+        assert!(tags[0].is_active, "filter=unshelved → tag is_active=true");
+        assert_eq!(tags[0].label, "Volumes à ranger");
+        assert!(
+            tags[0].clear_aria_label.contains("Volumes à ranger"),
+            "FR clear_aria_label must include the label; got {:?}",
+            tags[0].clear_aria_label
+        );
+    }
+
+    // ─── Story 9-4 — Handler render tests (AC11d) ─────────────────────
+
+    /// AC2 anonymous-no-leak: `#what-needs-attention` section + the
+    /// per-tag id MUST NOT appear in anonymous-rendered HTML. The
+    /// handler-side guard zeros out indicator data for anonymous; this
+    /// test locks the template-side invariant: empty Vec → section
+    /// hidden by `{% if !indicator_tags.is_empty() %}`.
+    #[test]
+    fn home_anonymous_does_not_render_attention_section() {
+        let template = make_test_home_template_with_indicators(
+            "anonymous",
+            Vec::new(),
+            false,
+            Vec::new(),
+        );
+        let html = template.render().expect("render");
+        assert!(
+            !html.contains("id=\"what-needs-attention\""),
+            "anonymous render must not include the indicator section; got HTML containing it"
+        );
+        assert!(
+            !html.contains("id=\"filter-tag-unshelved\""),
+            "anonymous render must not include any filter-tag pill"
+        );
+    }
+
+    /// AC1 + AC3 default-state: librarian sees the section + the
+    /// unshelved pill in default (count) state with the correct href.
+    #[test]
+    fn home_librarian_renders_attention_section_with_unshelved_tag() {
+        let tags = vec![fake_indicator_tag("Unshelved volumes", 7, "unshelved", false)];
+        let template = make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
+        let html = template.render().expect("render");
+        let slice = attention_section_slice(&html);
+
+        assert!(slice.contains("id=\"attention-heading\""));
+        assert!(slice.contains("id=\"filter-tag-unshelved\""));
+        assert!(
+            slice.contains("href=\"/?filter=unshelved\""),
+            "default state href must navigate to /?filter=unshelved; slice:\n{slice}"
+        );
+        assert!(
+            slice.contains("aria-label=\"Unshelved volumes: 7\""),
+            "default state aria-label carries label + count; slice:\n{slice}"
+        );
+        assert!(slice.contains(">7<"), "count badge value must be visible");
+    }
+
+    /// AC3 active-state: when the unshelved filter is active, the pill
+    /// renders with `href="/"`, the visible "×" character, and the
+    /// clear-action aria-label (NOT the count aria-label).
+    #[test]
+    fn home_librarian_renders_unshelved_tag_in_active_state_when_filter_active() {
+        let tags = vec![fake_indicator_tag("Unshelved volumes", 7, "unshelved", true)];
+        let template = make_test_home_template_with_indicators("librarian", tags, true, vec![
+            fake_unshelved_row(101, "V8001", 1, "Sample Title", "Sample Author"),
+        ]);
+        let html = template.render().expect("render");
+        let slice = attention_section_slice(&html);
+
+        assert!(slice.contains("id=\"filter-tag-unshelved\""));
+        assert!(
+            slice.contains("href=\"/\""),
+            "active state href must clear the filter (return to /); slice:\n{slice}"
+        );
+        assert!(slice.contains("&times;"), "active state must show ×");
+        assert!(
+            slice.contains("aria-label=\"Clear filter: Unshelved volumes\""),
+            "active state aria-label must carry the clear-action copy; slice:\n{slice}"
+        );
+        // And the default-state aria-label must NOT leak.
+        assert!(!slice.contains("aria-label=\"Unshelved volumes: 7\""));
+    }
+
+    /// AC3 zero-count rule from the template side: empty
+    /// `indicator_tags` Vec hides the section even for librarian role.
+    /// This is the regression guard a future template edit that drops
+    /// the `{% if %}` would trip.
+    #[test]
+    fn home_librarian_zero_count_hides_attention_section() {
+        let template =
+            make_test_home_template_with_indicators("librarian", Vec::new(), false, Vec::new());
+        let html = template.render().expect("render");
+        assert!(
+            !html.contains("id=\"what-needs-attention\""),
+            "empty indicator_tags Vec must hide the section even for librarian"
+        );
+    }
+
+    /// AC6 mutual exclusion: when `unshelved_filter_active=true`, the
+    /// `#unshelved-list` section appears AND `#recent-additions` MUST
+    /// be absent. Mirrors story 9-3's render-time invariant pattern.
+    #[test]
+    fn home_librarian_unshelved_filter_active_renders_unshelved_list_not_recent_additions() {
+        let tags = vec![fake_indicator_tag("Unshelved volumes", 3, "unshelved", true)];
+        let template = make_test_home_template_with_indicators(
+            "librarian",
+            tags,
+            true,
+            vec![
+                fake_unshelved_row(201, "V8101", 1, "Title One", "Author One"),
+                fake_unshelved_row(202, "V8102", 2, "Title Two", "Author Two"),
+                fake_unshelved_row(203, "V8103", 3, "Title Three", "Author Three"),
+            ],
+        );
+        let html = template.render().expect("render");
+
+        assert!(
+            html.contains("id=\"unshelved-list\""),
+            "AC6: unshelved-list must be present when filter is active"
+        );
+        assert!(
+            !html.contains("id=\"recent-additions\""),
+            "AC6: recent-additions MUST NOT coexist with unshelved-list"
+        );
+        // Each row carries the V-code, title, and a link to /title/<id>.
+        assert!(html.contains("V8101"));
+        assert!(html.contains("V8102"));
+        assert!(html.contains("Title One"));
+        assert!(html.contains("href=\"/title/1\""));
+        assert!(html.contains("href=\"/title/2\""));
+    }
+
+    /// AC6 defensive empty-state: `unshelved_filter_active=true` AND
+    /// `unshelved_volumes.is_empty()` (count > 0 but a race emptied the
+    /// list) renders the inline empty-state copy inside `#unshelved-list`,
+    /// NOT a hidden section.
+    #[test]
+    fn home_librarian_unshelved_list_empty_renders_inline_empty_state() {
+        let tags = vec![fake_indicator_tag("Unshelved volumes", 1, "unshelved", true)];
+        let template =
+            make_test_home_template_with_indicators("librarian", tags, true, Vec::new());
+        let html = template.render().expect("render");
+
+        assert!(html.contains("id=\"unshelved-list\""));
+        assert!(
+            html.contains("No unshelved volumes"),
+            "empty list must show the inline empty-state copy"
+        );
+        assert!(!html.contains("id=\"recent-additions\""));
+    }
+
+    /// AC11e: FilterTag macro's internal `count > 0` guard. Build a
+    /// template where the section is FORCED to render (non-empty
+    /// `indicator_tags` Vec containing exactly one tag with count=0)
+    /// and verify the pill itself does NOT appear in the output —
+    /// the macro hides it via `{% if count > 0 %}` even though the
+    /// surrounding section emits the heading.
+    ///
+    /// Rationale: `build_indicator_tags` already filters zero-count
+    /// tags out of the Vec, but the macro's internal guard is a
+    /// second defensive layer. A future helper that skips the filter
+    /// would still benefit from the macro's guard. This test locks
+    /// that contract independently of the helper.
+    #[test]
+    fn filter_tag_macro_hides_zero_count_pill_even_when_section_renders() {
+        let tags = vec![fake_indicator_tag("Unshelved volumes", 0, "unshelved", false)];
+        let template = make_test_home_template_with_indicators(
+            "librarian",
+            tags,
+            false,
+            Vec::new(),
+        );
+        let html = template.render().expect("render");
+
+        // Section heading IS rendered (Vec is non-empty, section gate
+        // passes), but the pill itself is hidden by the macro guard.
+        assert!(
+            html.contains("id=\"what-needs-attention\""),
+            "section gate is open (Vec non-empty); should render"
+        );
+        assert!(
+            !html.contains("id=\"filter-tag-unshelved\""),
+            "macro must hide zero-count pill: AC3 zero-count rule"
         );
     }
 }

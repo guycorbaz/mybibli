@@ -223,6 +223,87 @@ impl VolumeModel {
                 .await?;
         Ok(row.0)
     }
+
+    /// Count of active volumes that have NOT been shelved
+    /// (`location_id IS NULL`). Drives the "Unshelved volumes" indicator
+    /// on the home dashboard (story 9-4 AC4).
+    ///
+    /// Schema note: the column is `volumes.location_id` (FK to
+    /// `storage_locations`), NOT `storage_location_id` as the spec text
+    /// in `epics.md:1266` says. The literal column name is verified at
+    /// `migrations/20260329000000_initial_schema.sql` (`CREATE TABLE
+    /// volumes` block + `INDEX idx_volumes_location`).
+    pub async fn count_unshelved(pool: &DbPool) -> Result<i64, AppError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM volumes \
+             WHERE location_id IS NULL AND deleted_at IS NULL",
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(row.0)
+    }
+
+    /// List active volumes that are unshelved, enriched with the parent
+    /// title and primary contributor in a single SQL round-trip (story
+    /// 9-4 AC6 + AC11b). Sorted newest-first by `created_at DESC, id
+    /// DESC` (stable tiebreak — adjacent inserts within the same second
+    /// stay deterministic across runs). Soft-deleted titles, contributors,
+    /// and contributor_roles are all excluded by the JOIN's
+    /// `deleted_at IS NULL` clauses.
+    ///
+    /// The primary-contributor subquery mirrors `title.rs::list_recent_active`
+    /// (story 9-2): "Auteur" role wins; fallback to other roles in
+    /// insertion order if no Auteur is registered.
+    pub async fn list_unshelved(
+        pool: &DbPool,
+        limit: u32,
+    ) -> Result<Vec<UnshelvedVolumeRow>, AppError> {
+        let rows = sqlx::query(
+            "SELECT v.id AS volume_id, v.label, v.title_id, \
+                    t.title, t.media_type, \
+                    (SELECT c.name FROM title_contributors tc \
+                     JOIN contributors c ON tc.contributor_id = c.id \
+                     JOIN contributor_roles cr ON tc.role_id = cr.id \
+                     WHERE tc.title_id = t.id AND tc.deleted_at IS NULL \
+                       AND c.deleted_at IS NULL AND cr.deleted_at IS NULL \
+                     ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC \
+                     LIMIT 1) AS primary_contributor \
+             FROM volumes v \
+             JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL \
+             WHERE v.location_id IS NULL AND v.deleted_at IS NULL \
+             ORDER BY v.created_at DESC, v.id DESC \
+             LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        let items: Vec<UnshelvedVolumeRow> = rows
+            .iter()
+            .map(|r| UnshelvedVolumeRow {
+                id: r.try_get("volume_id").unwrap_or(0),
+                label: r.try_get("label").unwrap_or_default(),
+                title_id: r.try_get("title_id").unwrap_or(0),
+                title: r.try_get("title").unwrap_or_default(),
+                primary_contributor: r.try_get("primary_contributor").unwrap_or(None),
+                media_type: r.try_get("media_type").unwrap_or_default(),
+            })
+            .collect();
+        Ok(items)
+    }
+}
+
+/// One unshelved-volume row as rendered on the home-page indicator
+/// filter result section (story 9-4 AC6). Volume-centric (id = volume id);
+/// `title_id` is provided so each row links to `/title/<title_id>`.
+#[derive(Debug, Clone)]
+pub struct UnshelvedVolumeRow {
+    pub id: u64,
+    pub label: String,
+    pub title_id: u64,
+    pub title: String,
+    pub primary_contributor: Option<String>,
+    pub media_type: String,
 }
 
 /// A volume with its title metadata, for location contents display.
