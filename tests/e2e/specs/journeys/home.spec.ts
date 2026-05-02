@@ -211,3 +211,61 @@ test.describe("Home page — What needs attention / Unshelved indicator", () => 
     await expect(page.locator("#unshelved-list")).toHaveCount(0);
   });
 });
+
+// Story 9-5 — "What needs attention" / Overdue loans indicator.
+test.describe("Home page — Overdue loans indicator", () => {
+  test("anonymous: tag not rendered, indicator filter param ignored", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    // AC2 — anonymous never sees the overdue tag or list.
+    await expect(page.locator("#filter-tag-overdue")).toHaveCount(0);
+    await expect(page.locator("#overdue-list")).toHaveCount(0);
+
+    // Anonymous crafting `?filter=overdue` — filter is ignored, no leak.
+    await page.goto("/?filter=overdue");
+    await expect(page.locator("#filter-tag-overdue")).toHaveCount(0);
+    await expect(page.locator("#overdue-list")).toHaveCount(0);
+    // The default home (recent-additions) is still visible.
+    await expect(page.locator("#recent-additions")).toBeVisible();
+  });
+
+  test("librarian: tag visible iff count > 0; click → overdue-list, ✕ → home", async ({
+    page,
+  }) => {
+    await loginAs(page, "librarian");
+    await page.goto("/");
+
+    // Conditional empty-DB short-circuit — same defensive pattern as
+    // the 9-4 unshelved smoke test. Seed DB may or may not contain
+    // overdue loans depending on fixture freshness.
+    const tag = page.locator("#filter-tag-overdue");
+    const tagCount = await tag.count();
+    if (tagCount === 0) {
+      // No overdue loans seeded — AC3 zero-count rule hides the tag.
+      return;
+    }
+
+    await expect(tag).toBeVisible();
+    // Default state — href targets the indicator filter URL.
+    await expect(tag).toHaveAttribute("href", "/?filter=overdue");
+
+    // Click the tag → URL changes → overdue-list replaces recent-additions.
+    await tag.click();
+    await page.waitForURL(/\/\?filter=overdue/);
+    await expect(page.locator("#overdue-list")).toBeVisible();
+    // 3-way mutual exclusion (AC6).
+    await expect(page.locator("#recent-additions")).toHaveCount(0);
+    await expect(page.locator("#unshelved-list")).toHaveCount(0);
+
+    // The tag is now in active state — href clears the filter.
+    const activeTag = page.locator("#filter-tag-overdue");
+    await expect(activeTag).toHaveAttribute("href", "/");
+
+    // Click ✕ → URL returns → recent-additions back, overdue-list gone.
+    await activeTag.click();
+    await page.waitForURL(/\/$/);
+    await expect(page.locator("#recent-additions")).toBeVisible();
+    await expect(page.locator("#overdue-list")).toHaveCount(0);
+  });
+});
