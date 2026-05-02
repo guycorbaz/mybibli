@@ -302,6 +302,72 @@ impl LoanModel {
         .await?;
         Ok(row.0)
     }
+
+    /// Count of overdue active loans (story 9-5 AC8). Strict `>` on
+    /// `DATEDIFF(NOW(), loaned_at)`: a loan whose age exactly equals
+    /// the threshold is NOT overdue per FR48 ("exceeds this number of
+    /// days"). The boundary is locked by
+    /// `count_overdue_threshold_boundary` in `tests/dashboard_overdue.rs`.
+    pub async fn count_overdue(pool: &DbPool, threshold_days: i32) -> Result<i64, AppError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM loans \
+             WHERE returned_at IS NULL AND deleted_at IS NULL \
+             AND DATEDIFF(NOW(), loaned_at) > ?",
+        )
+        .bind(threshold_days)
+        .fetch_one(pool)
+        .await?;
+        Ok(row.0)
+    }
+
+    /// List of overdue active loans (story 9-5 AC8) ordered oldest-first
+    /// (most overdue first). Mirrors the `list_active_by_borrower` JOIN
+    /// shape; reuses `LoanWithDetails` so the row template can stay
+    /// uniform with the loans-page row partial.
+    pub async fn list_overdue(
+        pool: &DbPool,
+        threshold_days: i32,
+        limit: u32,
+    ) -> Result<Vec<LoanWithDetails>, AppError> {
+        let rows = sqlx::query(
+            r#"SELECT l.id, l.volume_id, l.borrower_id,
+                      CAST(l.loaned_at AS DATETIME) AS loaned_at,
+                      b.name AS borrower_name,
+                      v.label AS volume_label,
+                      t.title AS title_name,
+                      DATEDIFF(NOW(), l.loaned_at) AS duration_days
+               FROM loans l
+               JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL
+               JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL
+               JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL
+               WHERE l.returned_at IS NULL AND l.deleted_at IS NULL
+               AND DATEDIFF(NOW(), l.loaned_at) > ?
+               ORDER BY l.loaned_at ASC
+               LIMIT ?"#,
+        )
+        .bind(threshold_days)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        let items: Vec<LoanWithDetails> = rows
+            .iter()
+            .map(|r| {
+                Ok(LoanWithDetails {
+                    id: r.try_get("id")?,
+                    volume_id: r.try_get("volume_id")?,
+                    borrower_id: r.try_get("borrower_id")?,
+                    borrower_name: r.try_get("borrower_name")?,
+                    volume_label: r.try_get("volume_label")?,
+                    title_name: r.try_get("title_name")?,
+                    loaned_at: r.try_get("loaned_at")?,
+                    duration_days: r.try_get::<i64, _>("duration_days").unwrap_or(0),
+                })
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+        Ok(items)
+    }
 }
 
 #[cfg(test)]
