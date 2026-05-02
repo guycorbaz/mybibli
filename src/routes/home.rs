@@ -235,7 +235,8 @@ pub async fn home(
     } else {
         0
     };
-    let indicator_tags = build_indicator_tags(unshelved_count, active_indicator_filter, loc);
+    // overdue_count + overdue_filter_active wired in below (Task 6).
+    let indicator_tags = build_indicator_tags(unshelved_count, 0, active_indicator_filter, loc);
     let unshelved_filter_active =
         session.role >= Role::Librarian && active_indicator_filter == Some(IndicatorFilter::Unshelved);
     let unshelved_volumes: Vec<crate::models::volume::UnshelvedVolumeRow> =
