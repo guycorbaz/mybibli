@@ -179,6 +179,48 @@ async fn count_unshelved_excludes_shelved_and_soft_deleted(pool: MySqlPool) {
     );
 }
 
+/// AC11b — `id DESC` is the stable tiebreak when two volumes share
+/// the same `created_at` (e.g., bulk insert in a single second). The
+/// query orders `created_at DESC, id DESC`; this test seeds two
+/// volumes with an identical age and asserts the higher id surfaces
+/// first. Without this, a parallel-insert scenario would produce a
+/// non-deterministic row order, surprising operators and breaking
+/// any UI test that relies on the order.
+#[sqlx::test(migrations = "./migrations")]
+async fn list_unshelved_id_desc_tiebreak_when_created_at_matches(pool: MySqlPool) {
+    let g = first_genre_id(&pool).await;
+    let s = first_volume_state_id(&pool).await;
+    let t = insert_title(&pool, "Z-9-4-Tiebreak", g).await;
+
+    // Two volumes with identical `created_at` (both 0 minutes ago).
+    // Inserts within a single test second will share a TIMESTAMP value
+    // exactly because `NOW() - INTERVAL 0 MINUTE` is computed against
+    // the same query timestamp at execution time.
+    let id_low = insert_volume_unshelved_with_age(&pool, "V8201", t, s, 0).await;
+    let id_high = insert_volume_unshelved_with_age(&pool, "V8202", t, s, 0).await;
+    assert!(
+        id_high > id_low,
+        "test precondition: AUTO_INCREMENT must produce id_high > id_low"
+    );
+
+    let rows = VolumeModel::list_unshelved(&pool, 10)
+        .await
+        .expect("query ok");
+    let positions: Vec<u64> = rows.iter().map(|r| r.id).collect();
+    let pos_high = positions
+        .iter()
+        .position(|&id| id == id_high)
+        .expect("id_high must appear");
+    let pos_low = positions
+        .iter()
+        .position(|&id| id == id_low)
+        .expect("id_low must appear");
+    assert!(
+        pos_high < pos_low,
+        "AC11b tiebreak: id_high ({id_high} at pos {pos_high}) must come before id_low ({id_low} at pos {pos_low}) when created_at is equal"
+    );
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn list_unshelved_returns_in_created_at_desc_order_with_limit(pool: MySqlPool) {
     let g = first_genre_id(&pool).await;

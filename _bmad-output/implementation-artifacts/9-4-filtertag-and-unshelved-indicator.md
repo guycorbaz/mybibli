@@ -1,6 +1,6 @@
 # Story 9.4: FilterTag component + first actionable indicator (unshelved volumes)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -369,4 +369,40 @@ The `cover.html` macro precedent is the model for `filter_tag.html` — a single
 
 ### Change Log
 
-- **2026-05-02** — Initial implementation. All 9 tasks complete; 668 lib tests + 3 dashboard_unshelved integration tests pass; clippy clean; sqlx cache unchanged; templates audit green. Followed Story 9-1/9-2/9-3 patterns (handler-side i18n, soft-degrade on DB error, single round-trip queries, scoped HTML assertions, sibling integration test file). Three drift discoveries during dev: `storage_locations.label` is `CHAR(5)` (test helper used a 5-char label `L9401`); `storage_locations.name` is `NOT NULL` no default (helper binds the label to both columns); template placement of `#what-needs-attention` corrected to land between metadata-error block and `#collection-glance`. Plain `<a href>` decision (deviation from spec's "HTMX swap only") held up cleanly — full-page reload is fast and predictable; HTMX polish remains a future option. E2E run deferred to CI per 9-1/9-2/9-3 precedent.
+- **2026-05-02** — Initial implementation. All 9 tasks complete; 668 lib tests + 3 dashboard_unshelved integration tests pass; clippy clean; sqlx cache unchanged; templates audit green. Followed Story 9-1/9-2/9-3 patterns (handler-side i18n, soft-degrade on DB error, single round-trip queries, scoped HTML assertions, sibling integration test file). Three drift discoveries during dev: `storage_locations.label` is `CHAR(5)` (test helper used a 5-char label `L9401`); `storage_locations.name` is `NOT NULL` no default (helper binds the label to both columns); template placement of `#what-needs-attention` corrected to land between metadata-error block and `#collection-glance`. Plain `<a href>` decision (deviation from spec's "HTMX swap only") held up cleanly — full-page reload is fast and predictable; HTMX polish remains a future option. E2E run deferred to CI per 9-1/9-2/9-3 precedent. PR #114 squash-merged into `main` as commit 3204d4d.
+
+- **2026-05-02** — Code review pass (3 parallel reviewers: Blind Hunter, Edge Case Hunter, Acceptance Auditor). 0 decision-needed, **4 patches applied** (1 Medium UX + 3 Low coverage gaps), 0 deferred, 16+ dismissed. Final test counts: 671 lib tests + 4 integration tests, all green. Patches landed via PR `chore/9-4-code-review-followups`.
+
+### Review Findings
+
+**Code review pass — 2026-05-02** (post-merge of PR #114). 3 parallel reviewers raised ~27 findings; triaged into 4 patch + 0 defer + 16+ dismiss.
+
+**Patch (Medium):**
+
+- [x] [Review][Patch] **Active filter at zero count strands the user — no visible escape hatch** [`src/routes/home.rs::build_indicator_tags` + `templates/components/filter_tag.html`] — when a librarian was on `/?filter=unshelved` and the count dropped to 0 (e.g., last unshelved volume just got shelved), `build_indicator_tags` returned an empty Vec → `#what-needs-attention` section hidden → no visible ✕ to clear the filter; user had to edit the URL or use Back. Fix: (a) helper now emits the unshelved tag in active state regardless of count when its filter is the active URL filter, (b) FilterTag macro flipped to render the active-state pill unconditionally and the default-state pill only when count > 0. New tests `filter_tag_macro_renders_active_pill_even_when_count_is_zero` and `build_indicator_tags_zero_count_with_active_filter_still_emits_active_tag` lock the contract.
+
+**Patch (Low):**
+
+- [x] [Review][Patch] **AC1 placement regression guard absent** [`src/routes/home.rs::mod tests`] — no test pinned `#what-needs-attention` ABOVE `#collection-glance` in document order. A future template edit re-ordering the dashboard sections would slip past CI. Fix: added `home_renders_what_needs_attention_above_collection_glance` mirroring 9-2's review-fix `home_renders_glance_above_recent_additions` pattern.
+- [x] [Review][Patch] **`id DESC` tiebreak unverified** [`tests/dashboard_unshelved.rs::list_unshelved_returns_in_created_at_desc_order_with_limit`] — the SQL ORDER BY clause includes `created_at DESC, id DESC` but no test seeded two volumes with an identical `created_at`. Fix: new `list_unshelved_id_desc_tiebreak_when_created_at_matches` inserts two volumes with `INTERVAL 0 MINUTE` (identical timestamp via single-query NOW()) and asserts the higher id comes first.
+- [x] [Review][Patch] **FilterTag 4-state matrix coverage 3/4** [`src/routes/home.rs::filter_tag_macro_*`] — count=0×is_active=true was the missing matrix corner. Fix folded into the P1 patch above (`filter_tag_macro_renders_active_pill_even_when_count_is_zero` covers exactly this corner with the new behavior).
+
+**Defer:** none this round.
+
+**Dismissed (high-level rationale):**
+
+- **Blind: `list_unshelved` `unwrap_or_default` swallows decode errors** — pattern is consistent with `models::title::list_recent_active` from story 9-2 (already shipped). Dismissed in 9-2's review for the same reason ("consistent with `active_search`"). Cross-cutting refactor would be its own story.
+- **Blind: anonymous WARN spam** — reviewer misread the predicate; anonymous role short-circuits BEFORE the parser, never logs.
+- **Blind/Edge: `bind(limit)` u32 type concern** — consistent with 9-2's `list_recent_active`; 668 tests pass.
+- **Blind/Edge: `count as u64` cast unguarded** — `COUNT(*)` always returns ≥ 0; CLAUDE.md "Don't add error handling, fallbacks, or validation for scenarios that can't happen". (Note: P1 patch separately added `.max(0)` defensively while restructuring the helper, but the original concern is dismissed as a hypothetical.)
+- **Blind: E2E `#recent-additions` toBeVisible** — 9-2's invariant: section is always present (with inline empty-state on zero titles). Test assertion is correct.
+- **Blind: `>7<` whitespace fragility in render test** — passes today; failure would be loud.
+- **Blind: `media_type` field unused** — kept for forward-compat with 9-7 (recent activity indicators); cost negligible.
+- **Blind/Auditor: log emission test absent** — spec's "or an inspection comment" allowance honored; comment present in the tests.
+- **Blind: `LIMIT 100` magic number** — cosmetic; would extract to constant only if a per_page param appears.
+- **Blind: WARN logs `query=""` when only sort set** — cosmetic noise.
+- **Auditor: AC7 sort-param scope creep** — defensive tightening, documented in completion notes.
+- **Auditor: AC5 `!is_empty()` guard broader than spec** — documented in completion notes; suppresses spurious WARN on empty filter clear.
+- **Edge: `slice_section` panics on hidden section** — informative panic message, not a runtime bug.
+- **Edge: whitespace-only / NUL byte filter triggers WARN** — probe-traffic noise; closed enum protects from injection.
+- **Edge: E2E session-sharing race** — Playwright's auto-wait on `toBeVisible` handles the post-navigation DOM update.
