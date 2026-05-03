@@ -168,7 +168,7 @@ development_status:
   9-3-dashboard-stats-by-genre: done
   9-4-filtertag-and-unshelved-indicator: done
   9-5-overdue-loans-indicator: review
-  9-6-series-with-gaps-indicator: ready-for-dev
+  9-6-series-with-gaps-indicator: in-progress
   9-7-recent-activity-indicators: backlog
   9-8-loan-status-role-aware: backlog
   9-9-home-scanner-state-machine: backlog

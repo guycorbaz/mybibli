@@ -225,6 +225,92 @@ impl SeriesModel {
 
         Ok(row.0 as u64)
     }
+
+    /// Story 9-6 — count active closed series whose distinct filled
+    /// positions count is strictly less than `total_volume_count`. Open
+    /// series and closed-with-NULL/zero-total are excluded.
+    ///
+    /// Single-round-trip correlated subquery; `COUNT(DISTINCT
+    /// position_number)` de-dupes the same-position-different-titles
+    /// edge case AND collapses BD omnibus rows (multiple title_series
+    /// rows for the same title_id at distinct positions still count as
+    /// distinct slots).
+    pub async fn count_with_gaps(pool: &DbPool) -> Result<i64, AppError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM series s \
+             WHERE s.deleted_at IS NULL \
+               AND s.series_type = 'closed' \
+               AND s.total_volume_count IS NOT NULL \
+               AND s.total_volume_count > 0 \
+               AND s.total_volume_count > ( \
+                 SELECT COUNT(DISTINCT ts.position_number) \
+                 FROM title_series ts \
+                 WHERE ts.series_id = s.id AND ts.deleted_at IS NULL \
+               )",
+        )
+        .fetch_one(pool)
+        .await?;
+
+        Ok(row.0)
+    }
+
+    /// Story 9-6 — list active closed series with at least one gap,
+    /// ordered by gap_count DESC then name ASC. LIMIT bound by caller.
+    /// Same exclusion rules as `count_with_gaps`. Uses a LEFT JOIN
+    /// against a derived table that aggregates `COUNT(DISTINCT
+    /// position_number)` once per series — single round-trip, no N+1.
+    pub async fn list_with_gaps(
+        pool: &DbPool,
+        limit: u32,
+    ) -> Result<Vec<SeriesWithGap>, AppError> {
+        let rows: Vec<SeriesWithGap> = sqlx::query_as(
+            "SELECT \
+               s.id, s.name, s.total_volume_count, \
+               COALESCE(filled.owned_count, 0) AS owned_count \
+             FROM series s \
+             LEFT JOIN ( \
+               SELECT series_id, COUNT(DISTINCT position_number) AS owned_count \
+               FROM title_series \
+               WHERE deleted_at IS NULL \
+               GROUP BY series_id \
+             ) filled ON filled.series_id = s.id \
+             WHERE s.deleted_at IS NULL \
+               AND s.series_type = 'closed' \
+               AND s.total_volume_count IS NOT NULL \
+               AND s.total_volume_count > 0 \
+               AND s.total_volume_count > COALESCE(filled.owned_count, 0) \
+             ORDER BY (s.total_volume_count - COALESCE(filled.owned_count, 0)) DESC, s.name ASC \
+             LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(rows)
+    }
+}
+
+/// Story 9-6 — narrow projection for the home-page "Series with gaps"
+/// indicator list (`#gaps-list`). Embeds only the columns the dashboard
+/// row template needs (`id`, `name`, `total_volume_count`, `owned_count`)
+/// — strictly less than `SeriesListRow` (which embeds the full
+/// `SeriesModel` for the series-list table page) or the full
+/// `SeriesModel` itself. `gap_count()` is computed in Rust from the
+/// projected fields; the SQL query's WHERE clause guarantees it is
+/// always > 0 in practice, but the saturating math keeps the helper
+/// robust for callers that don't pre-filter.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct SeriesWithGap {
+    pub id: u64,
+    pub name: String,
+    pub total_volume_count: i32,
+    pub owned_count: i64,
+}
+
+impl SeriesWithGap {
+    pub fn gap_count(&self) -> u64 {
+        (self.total_volume_count as i64 - self.owned_count).max(0) as u64
+    }
 }
 
 // ─── Title-Series Assignment ────────────────────────────
