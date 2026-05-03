@@ -235,6 +235,15 @@ impl SeriesModel {
     /// edge case AND collapses BD omnibus rows (multiple title_series
     /// rows for the same title_id at distinct positions still count as
     /// distinct slots).
+    ///
+    /// Code-review patches (2026-05-03):
+    /// - **P2:** `INNER JOIN titles t ON ts.title_id = t.id AND
+    ///   t.deleted_at IS NULL` so a position whose title is soft-deleted
+    ///   no longer counts as filled — locks symmetry with
+    ///   `active_count_titles`.
+    /// - **P4:** `AND ts.position_number > 0` excludes data-error rows
+    ///   at position 0 / negative from silently filling slot 0 (the
+    ///   slot-numbering convention is positions 1..total).
     pub async fn count_with_gaps(pool: &DbPool) -> Result<i64, AppError> {
         let row: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM series s \
@@ -245,7 +254,10 @@ impl SeriesModel {
                AND s.total_volume_count > ( \
                  SELECT COUNT(DISTINCT ts.position_number) \
                  FROM title_series ts \
-                 WHERE ts.series_id = s.id AND ts.deleted_at IS NULL \
+                 INNER JOIN titles t ON ts.title_id = t.id AND t.deleted_at IS NULL \
+                 WHERE ts.series_id = s.id \
+                   AND ts.deleted_at IS NULL \
+                   AND ts.position_number > 0 \
                )",
         )
         .fetch_one(pool)
@@ -256,9 +268,10 @@ impl SeriesModel {
 
     /// Story 9-6 — list active closed series with at least one gap,
     /// ordered by gap_count DESC then name ASC. LIMIT bound by caller.
-    /// Same exclusion rules as `count_with_gaps`. Uses a LEFT JOIN
-    /// against a derived table that aggregates `COUNT(DISTINCT
-    /// position_number)` once per series — single round-trip, no N+1.
+    /// Same exclusion rules as `count_with_gaps` (including the P2 +
+    /// P4 code-review patches). Uses a LEFT JOIN against a derived
+    /// table that aggregates `COUNT(DISTINCT position_number)` once per
+    /// series — single round-trip, no N+1.
     pub async fn list_with_gaps(
         pool: &DbPool,
         limit: u32,
@@ -269,10 +282,12 @@ impl SeriesModel {
                COALESCE(filled.owned_count, 0) AS owned_count \
              FROM series s \
              LEFT JOIN ( \
-               SELECT series_id, COUNT(DISTINCT position_number) AS owned_count \
-               FROM title_series \
-               WHERE deleted_at IS NULL \
-               GROUP BY series_id \
+               SELECT ts.series_id, COUNT(DISTINCT ts.position_number) AS owned_count \
+               FROM title_series ts \
+               INNER JOIN titles t ON ts.title_id = t.id AND t.deleted_at IS NULL \
+               WHERE ts.deleted_at IS NULL \
+                 AND ts.position_number > 0 \
+               GROUP BY ts.series_id \
              ) filled ON filled.series_id = s.id \
              WHERE s.deleted_at IS NULL \
                AND s.series_type = 'closed' \

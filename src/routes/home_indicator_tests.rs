@@ -165,6 +165,30 @@ mod tests {
         assert!(!html.contains("id=\"recent-additions\""));
     }
 
+    /// Code-review patch P1 (2026-05-03): single-active-filter
+    /// precedence (AC5/AC6) MUST be role-blind. For Anonymous +
+    /// `?filter=gaps` the search/legacy-filter path is skipped — only
+    /// `#gaps-list` populates the list-section slot. Without the
+    /// role-blind precedence clear at `home.rs:179-210`, the search
+    /// path would co-render `#browse-results` cards alongside
+    /// `#gaps-list`. This test exercises the post-handler template
+    /// state: `results = None` (search skipped) → no populated
+    /// title-card articles in the rendered HTML.
+    #[test]
+    fn home_anonymous_with_filter_gaps_does_not_co_render_browse_results() {
+        let mut t =
+            make_test_home_template_with_indicators("anonymous", Vec::new(), false, Vec::new());
+        t.gaps_filter_active = true;
+        t.gaps_series = vec![fake_series_with_gap(42, "Tintin", 24, 18)];
+        let html = t.render().expect("render");
+        assert!(html.contains("id=\"gaps-list\""));
+        assert!(
+            !html.contains("class=\"title-card group\""),
+            "Anonymous + ?filter=gaps must NOT trigger the search/browse path; \
+             populated title-card articles indicate co-rendered #browse-results"
+        );
+    }
+
     /// AC1 + AC3 default state — librarian sees gaps pill with count
     /// href + aria-label; no active-state markers leak.
     #[test]
@@ -250,7 +274,10 @@ mod tests {
         assert!(overdue_pos < gaps_pos);
     }
 
-    /// AC9: row link target + ratio + gap-badge content.
+    /// AC9: row link target + ratio + gap-badge content. Assertions
+    /// are content-only (no whitespace coupling) per code-review patch
+    /// 2026-05-03 — a Tailwind reflow or IDE re-indent of home.html
+    /// must not break this test.
     #[test]
     fn home_librarian_gaps_row_links_to_series_detail() {
         let tags = vec![fake_indicator_tag("Series with gaps", 1, "gaps", true)];
@@ -260,6 +287,9 @@ mod tests {
         let html = t.render().expect("render");
         assert!(html.contains("href=\"/series/42\""));
         assert!(html.contains("18/24"));
-        assert!(html.contains(">\n                                6 Missing\n"));
+        assert!(html.contains("6 Missing"));
+        // Badge palette present (locks the red-on-red treatment from
+        // series_list.html:51 without coupling to surrounding markup).
+        assert!(html.contains("bg-red-100 dark:bg-red-900/30"));
     }
 }

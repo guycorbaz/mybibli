@@ -1,6 +1,6 @@
 # Story 9.6: Indicator — series with gaps
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -443,6 +443,44 @@ so that I can see at a glance how many series are missing volumes and plan acqui
   - [ ] Update Dev Agent Record at the bottom of this file: list of files touched, decisions on placement, anything surprising (drift discoveries — particularly the absence of an existing series-with-gaps service function despite the spec text claim).
   - [ ] Update `_bmad-output/implementation-artifacts/sprint-status.yaml`: `9-6-series-with-gaps-indicator: ready-for-dev → in-progress` at start, `→ review` at end (only this line + `last_updated`, per CLAUDE.md rule 16).
   - [ ] Open draft PR at first commit (Foundation Rule #15). Title: `Story 9-6: Series with gaps indicator (#NN)`.
+
+### Review Findings
+
+_Code review run on 2026-05-03 against PR #121 (`origin/main...HEAD`, 12 files / +1891 / −140 / 2364 LOC). Three parallel reviewers (Blind Hunter, Edge Case Hunter, Acceptance Auditor) raised findings. **Acceptance Auditor reported 15/15 ACs MET, zero anti-pattern violations, zero Foundation Rule violations.** Triage: 0 decision-needed, 4 patches, 5 deferred (to GitHub Issues per Foundation Rule #11), 12 dismissed._
+
+#### Decision-needed
+
+_None._
+
+#### Patch (actionable in this story)
+
+- [x] **[Review][Patch] Anonymous + `?filter=gaps&q=foo` renders BOTH `#gaps-list` AND search results** [`src/routes/home.rs:175-204`] — Blind Hunter M1 + Edge Case Hunter corroboration. The single-active-filter precedence-clearing block at lines 197-203 (`if active_indicator_filter.is_some() { query = String::new(); }`) and the `has_filter` derivation at line 204 both key on `active_indicator_filter`, which is `None` for Anonymous (role-stripped via `role_gated_indicator_filter`). For Anonymous + `?filter=gaps&q=foo`, `gaps_filter_active = true` swaps in `#gaps-list` AND `has_filter = true` triggers the search path simultaneously — both `#gaps-list` AND `#browse-results` render. Violates AC5 / AC6 single-active-filter intent for Anonymous. Fix: change the precedence clearing AND the `has_filter` derivation to also account for `parsed_indicator.is_some()` regardless of role (or equivalently, derive `gaps_filter_active`-aware `has_filter` to exclude the search path when any indicator filter is parsed). Add a render test `home_anonymous_with_filter_gaps_and_query_does_not_render_browse_results` to lock the contract.
+- [x] **[Review][Patch] `count_with_gaps` + `list_with_gaps` don't filter `titles.deleted_at IS NULL`** [`src/models/series.rs:222-291`] — Edge Case Hunter. The dashboard queries join `series` + `title_series` only, never follow to `titles`. A series whose owned-volume rows reference soft-deleted titles is reported as "filled" by the dashboard, but the per-series `series::active_count_titles` (lines 216-227) DOES filter `t.deleted_at IS NULL` — same series shows different "owned" counts in `/series/<id>` vs the dashboard `#gaps-list`. Fix: add `AND ts.title_id IN (SELECT id FROM titles WHERE deleted_at IS NULL)` (or an explicit JOIN with the same predicate) to both queries. Add a `count_with_gaps_excludes_titles_with_soft_deleted_parent` integration test to lock the symmetry.
+- [x] **[Review][Patch] Whitespace-fragile assertion in `home_librarian_gaps_row_links_to_series_detail`** [`src/routes/home_indicator_tests.rs:255`] — Blind Hunter M5 + Edge Case Hunter LOW. The assertion `html.contains(">\n                                6 Missing\n")` is hard-coded to 32-space indentation. Any reformat of `templates/pages/home.html` (Tailwind reflow, IDE auto-indent, attribute reorder) breaks the test for no semantic reason. Fix: replace with a content-only assertion such as `assert!(html.contains("6 Missing"))` AND a separate assertion that the badge class palette is present in the rendered HTML — both checks together still lock the AC9 contract without coupling to whitespace.
+- [x] **[Review][Patch] `position_number = 0` (or negative) silently fills slots in count/list queries** [`src/models/series.rs:222-291`] — Edge Case Hunter LOW. Schema (`migrations/20260329000000_initial_schema.sql:194`) has `position_number INT NOT NULL` with no CHECK > 0. A bad row at position 0 contributes a distinct value to `COUNT(DISTINCT position_number)`, falsely inflating the filled-position count and masking a real gap at position N. Fix: add `AND ts.position_number > 0` to both queries to lock the slot-numbering convention (positions are 1..total). Add a `count_with_gaps_position_zero_does_not_fill_slot` test seeding a position=0 row alongside positions 1..(N-1), expecting the series to still register as gappy.
+
+#### Defer — file as GitHub Issues per Foundation Rule #11
+
+- [x] **[Review][Defer] Cross-method invariant test `count_with_gaps == list_with_gaps(.., very_high).len()`** [`src/models/series.rs`] — Blind Hunter L2. Two distinct SQL strategies (correlated subquery for count, LEFT JOIN derived table for list) are not pinned by an invariant test asserting they return the same set. A future SQL drift could silently decouple them. File as `type:code-review-finding` for cross-method symmetry test (broader scope than 9-6 — applies to all `count_*`/`list_*` pairs in models).
+- [x] **[Review][Defer] E2E librarian smoke conditional empty-DB short-circuit** [`tests/e2e/specs/journeys/home.spec.ts:298-302`] — Blind Hunter L3 + Edge Case Hunter corroboration + cross-story (already filed in 9-5's review per Dev Agent Record). The `if (tagCount === 0) return;` pattern lets the test silently pass when the seed DB has no gappy series — Foundation Rule #7 wants smoke tests to perform the journey end-to-end. Same pattern in 9-4 unshelved + 9-5 overdue. File a coordinated `type:code-review-finding` covering all three indicator E2E smoke tests; fix is a deterministic seed migration in dev/test mode.
+- [x] **[Review][Defer] `Role: PartialOrd` ordering assertion sanity test** [`src/middleware/auth.rs`] — Blind Hunter L4. The `*role >= Role::Librarian` comparison in `role_gated_indicator_filter` (and many other call sites across the codebase) silently relies on the derived `PartialOrd` ordering `Anonymous < Librarian < Admin`. If `Role` is later refactored or a new variant is inserted, the ordering breaks silently with no test failing. File as `type:code-review-finding` to add a single sanity test in `auth.rs::tests` asserting the variant ordering.
+- [x] **[Review][Defer] Sprint-status YAML `last_updated` one-line bloat** [`_bmad-output/implementation-artifacts/sprint-status.yaml`] — Blind Hunter L7. Each story's `last_updated` field has accumulated multi-paragraph text (5KB+ on a single YAML line). Real bugs could hide in a trailing comment line and never get reviewed. Pre-existing pattern (every story does this). File as `type:chore` to refactor the format (multi-line scalar or external `CHANGELOG.md` per story).
+- [x] **[Review][Defer] Tracing-log capture in `parse_indicator_filter_unknown_bare_name_returns_none`** [`src/routes/home_indicators.rs::tests`] — Blind Hunter L9. Test asserts the return value but doesn't capture the `tracing::warn!` to verify the log actually fires for genuine typos. The whole `!is_empty() && !contains(':')` guard exists to fire WARN on typos but not legacy patterns; without log capture, a refactor could silently drop the warn. File as `type:code-review-finding` for a testing-strategy improvement (covers the whole codebase, not just this site).
+
+#### Dismissed (12)
+
+- **`gap_count` cast defensive nit** (Blind H1) — saturating math `.max(0)` already handles negative inputs; SQL filter `total_volume_count > 0` excludes negatives upstream. No actual bug.
+- **Anonymous escape hatch UX gap** (Blind M2) — spec explicitly acknowledges "for them the escape hatch is the browser back button". Accepted design.
+- **`u32` LIMIT type concern** (Blind M3) — caller hardcodes `100`; `u32::MAX` fits in MariaDB `BIGINT UNSIGNED`. Defensive only.
+- **Double `cfg(test)` gating** (Blind M4) — inner `cfg(test)` is redundant when outer is gated; cosmetic, no harm.
+- **`gap_count` returns `i64` saturating to `u64`** (Blind L1) — SQL `COUNT(*)` is non-negative; defense-in-depth without an actual bug path.
+- **INT vs BIGINT comparison in correlated subquery** (Blind L6) — MariaDB promotes INT to BIGINT safely; informational only.
+- **`pub(crate)` exposure of test factories** (Blind L5) — items are inside `#[cfg(test)] mod tests`, only compile in test builds; `pub(in crate::routes)` would be tighter but doesn't change the security/contract surface.
+- **`gaps_label` and `gaps_heading` byte-identical** (Blind L8) — spec acknowledges "kept separate so future copy can diverge". Accepted design.
+- **MariaDB version-pin assertion in tests** (Blind L10) — version drift is a CI/infra concern (docker-compose pinned), not a per-test concern.
+- **`LIMIT 100` truncation no UI signal** (Edge LOW) — spec explicitly says LIMIT 100 (AC6) with no truncation hint; matches 9-5's same accepted v1 trade-off.
+- **Race between `count_with_gaps` and `list_with_gaps` under concurrent soft-delete** (Edge LOW) — cosmetic mismatch (tag shows N, list shows N-1), recoverable on next page load. Acceptable v1.
+- **`count_with_gaps` swallows DB errors at WARN not ERROR** (Edge LOW) — established pattern across 9-1/9-2/9-3/9-4/9-5; per CLAUDE.md AppError convention, accepted soft-degrade pattern.
 
 ## Dev Notes
 

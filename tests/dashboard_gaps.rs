@@ -102,6 +102,23 @@ async fn soft_delete_title_series_assignment(pool: &MySqlPool, assignment_id: u6
         .expect("soft delete title_series");
 }
 
+async fn soft_delete_title(pool: &MySqlPool, title_id: u64) {
+    sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+        .bind(title_id)
+        .execute(pool)
+        .await
+        .expect("soft delete title");
+}
+
+async fn insert_title_series_assignment_for_title(
+    pool: &MySqlPool,
+    title_id: u64,
+    series_id: u64,
+    position: i32,
+) -> u64 {
+    insert_title_series_assignment(pool, title_id, series_id, position, false).await
+}
+
 /// Insert a fresh title and assign it to `series_id` at `position`.
 /// Returns the assignment id (so callers can soft-delete it).
 async fn insert_filled_position(
@@ -352,4 +369,124 @@ async fn list_with_gaps_excludes_soft_deleted_series(pool: MySqlPool) {
         .expect("query ok");
     assert_eq!(rows.len(), 1, "soft-deleted series excluded from list too");
     assert_eq!(rows[0].name, "Alive");
+}
+
+// ─── Code-review patch P2 (2026-05-03) — titles.deleted_at filter ───
+
+/// Code-review patch P2: a `title_series` row whose parent `title` is
+/// soft-deleted MUST NOT count as a filled position. Locks symmetry
+/// with `series::active_count_titles` (which already filters
+/// `t.deleted_at IS NULL`).
+///
+/// Fixture: closed series total=5 with 5 distinct positions filled,
+/// then soft-delete 2 of the 5 parent titles. The dashboard must
+/// register the series as gappy (3 effective filled positions < 5
+/// total), even though the `title_series` rows themselves are still
+/// active.
+#[sqlx::test(migrations = "./migrations")]
+async fn count_with_gaps_excludes_titles_with_soft_deleted_parent(pool: MySqlPool) {
+    let s = insert_series(&pool, "Closed-WithDeletedTitles", "closed", Some(5)).await;
+    let g = first_genre_id(&pool).await;
+
+    // 5 distinct positions, 5 distinct titles — series is full (no gap)
+    // before soft-delete.
+    let titles: Vec<u64> = {
+        let mut ids = Vec::with_capacity(5);
+        for pos in 1..=5 {
+            let t = insert_title(&pool, &format!("Z-P2-Title-{pos}"), g).await;
+            insert_title_series_assignment_for_title(&pool, t, s, pos).await;
+            ids.push(t);
+        }
+        ids
+    };
+
+    let n_before = SeriesModel::count_with_gaps(&pool)
+        .await
+        .expect("query ok");
+    assert_eq!(n_before, 0, "5/5 distinct positions before soft-delete = no gap");
+
+    // Soft-delete 2 titles (positions 3 and 4 effectively become empty).
+    soft_delete_title(&pool, titles[2]).await;
+    soft_delete_title(&pool, titles[3]).await;
+
+    let n_after = SeriesModel::count_with_gaps(&pool)
+        .await
+        .expect("query ok");
+    assert_eq!(
+        n_after, 1,
+        "after soft-deleting parent titles, distinct effective filled = 3 < 5 = gappy"
+    );
+
+    // list_with_gaps surfaces it with the correct effective owned_count.
+    let rows = SeriesModel::list_with_gaps(&pool, 100)
+        .await
+        .expect("query ok");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].name, "Closed-WithDeletedTitles");
+    assert_eq!(rows[0].total_volume_count, 5);
+    assert_eq!(rows[0].owned_count, 3, "owned_count reflects active titles only");
+    assert_eq!(rows[0].gap_count(), 2);
+}
+
+// ─── Code-review patch P4 (2026-05-03) — position_number > 0 guard ──
+
+/// Code-review patch P4: `title_series.position_number INT NOT NULL`
+/// has no schema CHECK > 0, so a data-error row at position 0 (or
+/// negative) could silently fill a slot in `COUNT(DISTINCT
+/// position_number)`. Slot-numbering convention is 1..total. Fix:
+/// `AND ts.position_number > 0` in both queries.
+///
+/// Fixture: closed series total=5 with positions 1, 2, 3, 4, AND a
+/// rogue row at position 0. Without the guard, COUNT(DISTINCT) = 5 →
+/// not gappy (false negative). With the guard, only positions 1-4
+/// count → 4 < 5 → gappy.
+#[sqlx::test(migrations = "./migrations")]
+async fn count_with_gaps_position_zero_does_not_fill_slot(pool: MySqlPool) {
+    let s = insert_series(&pool, "Closed-WithPosZero", "closed", Some(5)).await;
+    let g = first_genre_id(&pool).await;
+
+    // Positions 1..4 filled — 4 distinct valid positions.
+    for pos in 1..=4 {
+        let t = insert_title(&pool, &format!("Z-P4-Title-{pos}"), g).await;
+        insert_title_series_assignment_for_title(&pool, t, s, pos).await;
+    }
+
+    // Rogue row at position 0 — must NOT count toward filled slots.
+    let rogue = insert_title(&pool, "Z-P4-Title-rogue-pos0", g).await;
+    insert_title_series_assignment_for_title(&pool, rogue, s, 0).await;
+
+    let n = SeriesModel::count_with_gaps(&pool).await.expect("query ok");
+    assert_eq!(
+        n, 1,
+        "position 0 row excluded; 4 distinct valid positions < 5 total = gappy"
+    );
+
+    let rows = SeriesModel::list_with_gaps(&pool, 100)
+        .await
+        .expect("query ok");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].owned_count, 4,
+        "owned_count reflects positions 1-4 only, NOT the rogue position 0 row"
+    );
+    assert_eq!(rows[0].gap_count(), 1);
+}
+
+/// Counterpart: a negative position_number is also excluded.
+#[sqlx::test(migrations = "./migrations")]
+async fn count_with_gaps_negative_position_does_not_fill_slot(pool: MySqlPool) {
+    let s = insert_series(&pool, "Closed-WithNegPos", "closed", Some(3)).await;
+    let g = first_genre_id(&pool).await;
+
+    // Position 1 + 2 filled.
+    for pos in 1..=2 {
+        let t = insert_title(&pool, &format!("Z-P4N-Title-{pos}"), g).await;
+        insert_title_series_assignment_for_title(&pool, t, s, pos).await;
+    }
+    // Rogue row at position -1 — excluded.
+    let rogue = insert_title(&pool, "Z-P4N-Title-rogue-neg", g).await;
+    insert_title_series_assignment_for_title(&pool, rogue, s, -1).await;
+
+    let n = SeriesModel::count_with_gaps(&pool).await.expect("query ok");
+    assert_eq!(n, 1, "negative position excluded; 2 < 3 = gappy");
 }

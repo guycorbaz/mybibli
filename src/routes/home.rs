@@ -176,17 +176,29 @@ pub async fn home(
     let parsed_indicator = parse_indicator_filter(&params.filter);
     let active_indicator_filter =
         crate::routes::home_indicators::role_gated_indicator_filter(parsed_indicator, &session.role);
-    if active_indicator_filter.is_some() && (!query.is_empty() || params.sort.is_some()) {
+    // Code-review patch (2026-05-03): the precedence-clearing path
+    // below MUST key on `parsed_indicator.is_some()` (role-blind), NOT
+    // `active_indicator_filter.is_some()` (role-gated). For Anonymous
+    // users navigating `/?filter=gaps&q=foo`, the role-gate strips
+    // `active_indicator_filter` to `None`, but the AC2 anonymous-allowed
+    // section swap still happens via `gaps_filter_active`. Without the
+    // role-blind precedence clear, the search/legacy-filter path
+    // co-renders `#browse-results` alongside `#gaps-list` — a real
+    // single-active-filter (AC5/AC6) violation. The role gate only
+    // affects what gets RENDERED in the tag area; it MUST NOT affect
+    // what other surfaces compete for the same DOM slot.
+    if parsed_indicator.is_some() && (!query.is_empty() || params.sort.is_some()) {
         tracing::warn!(
             filter = ?params.filter,
             query = %query,
-            "Indicator filter is active; ignoring concurrent ?q= / ?sort= per single-active-filter contract"
+            "Indicator filter is parsed; ignoring concurrent ?q= / ?sort= per single-active-filter contract"
         );
     }
 
     // Parse legacy filter (genre:N / state:foo) — but skip when an
-    // indicator filter is active so it doesn't double-fire downstream.
-    let (genre_id, volume_state) = if active_indicator_filter.is_some() {
+    // indicator filter is parsed (any role) so it doesn't double-fire
+    // downstream.
+    let (genre_id, volume_state) = if parsed_indicator.is_some() {
         (None, None)
     } else {
         parse_filter(&params.filter)
@@ -196,12 +208,13 @@ pub async fn home(
     // Filter-only requests (e.g. clicking the "BD" genre pill with empty query) must
     // still populate results — without this, HTMX would swap an empty results block
     // and render the full layout into `#browse-results`, duplicating the page.
-    // When an indicator filter is active, the search/legacy-filter path is skipped
-    // entirely (AC7); the dashboard surfaces drive the response instead.
-    if active_indicator_filter.is_some() {
+    // When an indicator filter is PARSED (any role, including Anonymous + Gaps),
+    // the search/legacy-filter path is skipped entirely (AC7); the dashboard
+    // surfaces drive the response instead.
+    if parsed_indicator.is_some() {
         query = String::new();
     }
-    let has_filter = params.filter.is_some() && active_indicator_filter.is_none();
+    let has_filter = params.filter.is_some() && parsed_indicator.is_none();
     let (results, redirect) = if !query.trim().is_empty() || has_filter {
         let outcome = SearchService::search(
             pool,
