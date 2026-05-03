@@ -119,6 +119,18 @@ pub struct HomeTemplate {
     pub gaps_heading: String,
     pub gaps_empty_label: String,
     pub gaps_missing_label: String,
+    // "Recent cataloged" + "Recent returns" indicators (story 9-7).
+    // 6-way mutual exclusion with the 4 other list-section slots.
+    // Both are Librarian-only — symmetric role gating (NOT the 9-6
+    // Gaps anonymous-allowed asymmetry).
+    pub recent_cataloged_filter_active: bool,
+    pub recent_cataloged_titles: Vec<crate::models::title::SearchResult>,
+    pub recent_cataloged_heading: String,
+    pub recent_cataloged_empty_label: String,
+    pub recent_returns_filter_active: bool,
+    pub recent_returns: Vec<crate::models::loan::LoanWithDetails>,
+    pub recent_returns_heading: String,
+    pub recent_returns_empty_label: String,
 }
 
 /// One row of the "By genre" dashboard section (story 9-3).
@@ -149,44 +161,21 @@ pub async fn home(
     let mut query = params.q.unwrap_or_default();
     let page = params.page.unwrap_or(1).max(1);
 
-    // Story 9-4 / 9-5 / 9-6 — indicator filter takes precedence over
-    // search + legacy filter (AC7 single-active-filter). The 9-6 AC2
-    // asymmetry — Gaps is anonymous-allowed (FR65 + FR95: series
-    // browsing is anonymous-permitted) — lives in `gaps_filter_active`
-    // below, NOT here.
-    //
-    // `active_indicator_filter` drives the TAG (`build_indicator_tags`)
-    // and the `unshelved/overdue_filter_active` derived booleans. The
-    // TAG must NEVER render for Anonymous, regardless of variant —
-    // the `#what-needs-attention` section is Librarian-only. So this
-    // match role-gates ALL variants. Anonymous always gets None here.
-    //
-    // The Gaps SECTION SWAP for anonymous flows through a separate
-    // boolean (`gaps_filter_active`) computed below from the raw
-    // parsed value, NOT this role-gated one. That keeps the asymmetry
-    // explicit: tag → role-gated, section → role-blind.
-    //
-    // CI regression caught (2026-05-03): the original `match` had a
-    // `Some(IndicatorFilter::Gaps) => Some(IndicatorFilter::Gaps)` arm
-    // BEFORE the role-gated arm, leaking the Gaps variant to Anonymous
-    // and triggering the AC3 escape-hatch rule in build_indicator_tags
-    // (count=0 + active=Some(Gaps) emits the active-state pill). The
-    // E2E test `home.spec.ts::anonymous: ... AC2 asymmetry` is the
-    // regression guard.
+    // Indicator filter precedence (stories 9-4..9-7, AC7 single-active-
+    // filter). `active_indicator_filter` drives the TAG (Librarian-only
+    // for ALL variants — see `role_gated_indicator_filter` doc-comment +
+    // CI catch 2026-05-03 PR #121). The 9-6 Gaps anonymous-allowed
+    // asymmetry lives in `gaps_filter_active` below (computed from
+    // raw `parsed_indicator`, NOT role-gated).
     let parsed_indicator = parse_indicator_filter(&params.filter);
     let active_indicator_filter =
         crate::routes::home_indicators::role_gated_indicator_filter(parsed_indicator, &session.role);
-    // Code-review patch (2026-05-03): the precedence-clearing path
-    // below MUST key on `parsed_indicator.is_some()` (role-blind), NOT
-    // `active_indicator_filter.is_some()` (role-gated). For Anonymous
-    // users navigating `/?filter=gaps&q=foo`, the role-gate strips
-    // `active_indicator_filter` to `None`, but the AC2 anonymous-allowed
-    // section swap still happens via `gaps_filter_active`. Without the
-    // role-blind precedence clear, the search/legacy-filter path
-    // co-renders `#browse-results` alongside `#gaps-list` — a real
-    // single-active-filter (AC5/AC6) violation. The role gate only
-    // affects what gets RENDERED in the tag area; it MUST NOT affect
-    // what other surfaces compete for the same DOM slot.
+    // Precedence clearing keys on parsed_indicator (role-blind, NOT
+    // active_indicator_filter). For Anonymous + ?filter=gaps&q=foo the
+    // role-gate strips active to None, but gaps_filter_active still
+    // swaps in #gaps-list — without the role-blind clear the search
+    // path co-renders #browse-results alongside (AC5/AC6 violation,
+    // CI catch 2026-05-03 PR #121).
     if parsed_indicator.is_some() && (!query.is_empty() || params.sort.is_some()) {
         tracing::warn!(
             filter = ?params.filter,
@@ -271,19 +260,19 @@ pub async fn home(
         return Ok(Html(html).into_response());
     }
 
-    // "What needs attention" indicator data (story 9-4). Anonymous role
-    // skips the count query entirely — both for security (AC2 no leak) and
-    // efficiency (no DB load on a surface the user won't see). The list
-    // query runs only when an indicator filter is active, gated again by
-    // role for defense in depth.
+    // "What needs attention" indicator data (stories 9-4..9-7).
+    // Anonymous skips count queries (AC2 no-leak); list queries run
+    // only when the indicator filter is active. Soft-degrade with
+    // tracing::warn! on DB failure — page MUST NOT 500. Story 9-7
+    // uniformized the soft-degrade pattern with `.unwrap_or_else`
+    // across all 5 indicators.
     let unshelved_count: i64 = if session.role >= Role::Librarian {
-        match crate::models::volume::VolumeModel::count_unshelved(pool).await {
-            Ok(n) => n,
-            Err(e) => {
+        crate::models::volume::VolumeModel::count_unshelved(pool)
+            .await
+            .unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "count_unshelved failed; rendering 0 (tag hidden)");
                 0
-            }
-        }
+            })
     } else {
         0
     };
@@ -291,75 +280,116 @@ pub async fn home(
         session.role >= Role::Librarian && active_indicator_filter == Some(IndicatorFilter::Unshelved);
     let unshelved_volumes: Vec<crate::models::volume::UnshelvedVolumeRow> =
         if unshelved_filter_active {
-            match crate::models::volume::VolumeModel::list_unshelved(pool, 100).await {
-                Ok(v) => v,
-                Err(e) => {
+            crate::models::volume::VolumeModel::list_unshelved(pool, 100)
+                .await
+                .unwrap_or_else(|e| {
                     tracing::warn!(error = %e, "list_unshelved failed; rendering empty list");
                     Vec::new()
-                }
-            }
+                })
         } else {
             Vec::new()
         };
 
-    // Story 9-5 — Overdue loans indicator. Same anonymous-skip + soft-degrade
-    // pattern as unshelved (AC2 no-leak, AC7 threshold-from-cache). Threshold
-    // read once per request via the AppState accessor (clones the i32 out of
-    // the read-guard, no .await held inside the lock).
+    // Story 9-5 — Overdue loans indicator. Threshold read once via the
+    // AppState accessor (lock-and-clone, no guard held across .await).
     let overdue_threshold = state.overdue_threshold_days();
     let overdue_count: i64 = if session.role >= Role::Librarian {
-        match crate::models::loan::LoanModel::count_overdue(pool, overdue_threshold).await {
-            Ok(n) => n,
-            Err(e) => {
+        crate::models::loan::LoanModel::count_overdue(pool, overdue_threshold)
+            .await
+            .unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "count_overdue failed; rendering 0 (tag hidden)");
                 0
-            }
-        }
+            })
     } else {
         0
     };
     let overdue_filter_active =
         session.role >= Role::Librarian && active_indicator_filter == Some(IndicatorFilter::Overdue);
     let overdue_loans: Vec<crate::models::loan::LoanWithDetails> = if overdue_filter_active {
-        match crate::models::loan::LoanModel::list_overdue(pool, overdue_threshold, 100).await {
-            Ok(v) => v,
-            Err(e) => {
+        crate::models::loan::LoanModel::list_overdue(pool, overdue_threshold, 100)
+            .await
+            .unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "list_overdue failed; rendering empty list");
                 Vec::new()
-            }
-        }
+            })
     } else {
         Vec::new()
     };
 
-    // Story 9-6 — Series with gaps indicator. Anonymous-allowed
-    // ASYMMETRY (AC2): the gaps_filter_active boolean is computed from
-    // the RAW parser result (`parsed_indicator`), NOT the role-gated
-    // `active_indicator_filter`. So an anonymous user navigating to
-    // `/?filter=gaps` triggers the section swap, but the count query
-    // still skips for them (no DB load on a surface they won't see —
-    // the tag lives in #what-needs-attention which hides on empty
-    // indicator_tags for anonymous).
+    // Story 9-6 — Series with gaps. AC2 ASYMMETRY: gaps_filter_active
+    // computed from raw parsed_indicator (NOT role-gated) so Anonymous
+    // can hit /?filter=gaps. The tag still hides for Anonymous because
+    // count is forced to 0 + #what-needs-attention is Librarian-only.
     let gaps_count: i64 = if session.role >= Role::Librarian {
-        match crate::models::series::SeriesModel::count_with_gaps(pool).await {
-            Ok(n) => n,
-            Err(e) => {
+        crate::models::series::SeriesModel::count_with_gaps(pool)
+            .await
+            .unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "count_with_gaps failed; rendering 0 (tag hidden)");
                 0
-            }
-        }
+            })
     } else {
         0
     };
     let gaps_filter_active = parsed_indicator == Some(IndicatorFilter::Gaps);
     let gaps_series: Vec<crate::models::series::SeriesWithGap> = if gaps_filter_active {
-        match crate::models::series::SeriesModel::list_with_gaps(pool, 100).await {
-            Ok(v) => v,
-            Err(e) => {
+        crate::models::series::SeriesModel::list_with_gaps(pool, 100)
+            .await
+            .unwrap_or_else(|e| {
                 tracing::warn!(error = %e, "list_with_gaps failed; rendering empty list");
                 Vec::new()
-            }
-        }
+            })
+    } else {
+        Vec::new()
+    };
+
+    // Story 9-7 — Recent cataloged + Recent returns. Symmetric
+    // Librarian-only role gating + soft-degrade. Hardcoded window
+    // (AC7 spec freeze). 6-way mutual exclusion in home.html.
+    let recent_days = crate::routes::home_indicators::RECENT_ACTIVITY_DAYS;
+    let recent_cataloged_count: i64 = if session.role >= Role::Librarian {
+        crate::models::title::TitleModel::count_recent_cataloged(pool, recent_days)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "count_recent_cataloged failed; rendering 0 (tag hidden)");
+                0
+            })
+    } else {
+        0
+    };
+    let recent_cataloged_filter_active = session.role >= Role::Librarian
+        && active_indicator_filter == Some(IndicatorFilter::RecentCataloged);
+    let recent_cataloged_titles: Vec<crate::models::title::SearchResult> =
+        if recent_cataloged_filter_active {
+            crate::models::title::TitleModel::list_recent_cataloged(pool, recent_days, 100)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(error = %e, "list_recent_cataloged failed; rendering empty list");
+                    Vec::new()
+                })
+        } else {
+            Vec::new()
+        };
+
+    let recent_returns_count: i64 = if session.role >= Role::Librarian {
+        crate::models::loan::LoanModel::count_recent_returns(pool, recent_days)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "count_recent_returns failed; rendering 0 (tag hidden)");
+                0
+            })
+    } else {
+        0
+    };
+    let recent_returns_filter_active = session.role >= Role::Librarian
+        && active_indicator_filter == Some(IndicatorFilter::RecentReturns);
+    let recent_returns: Vec<crate::models::loan::LoanWithDetails> = if recent_returns_filter_active
+    {
+        crate::models::loan::LoanModel::list_recent_returns(pool, recent_days, 100)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "list_recent_returns failed; rendering empty list");
+                Vec::new()
+            })
     } else {
         Vec::new()
     };
@@ -368,6 +398,8 @@ pub async fn home(
         unshelved_count,
         overdue_count,
         gaps_count,
+        recent_cataloged_count,
+        recent_returns_count,
         active_indicator_filter,
         loc,
     );
@@ -566,6 +598,14 @@ pub async fn home(
         gaps_heading: rust_i18n::t!("dashboard.attention.gaps_heading", locale = loc).to_string(),
         gaps_empty_label: rust_i18n::t!("dashboard.attention.gaps_empty", locale = loc).to_string(),
         gaps_missing_label: rust_i18n::t!("series.gap_count", locale = loc).to_string(),
+        recent_cataloged_filter_active,
+        recent_cataloged_titles,
+        recent_cataloged_heading: rust_i18n::t!("dashboard.attention.recent_cataloged_heading", locale = loc).to_string(),
+        recent_cataloged_empty_label: rust_i18n::t!("dashboard.attention.recent_cataloged_empty", locale = loc).to_string(),
+        recent_returns_filter_active,
+        recent_returns,
+        recent_returns_heading: rust_i18n::t!("dashboard.attention.recent_returns_heading", locale = loc).to_string(),
+        recent_returns_empty_label: rust_i18n::t!("dashboard.attention.recent_returns_empty", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -1044,6 +1084,14 @@ pub(crate) mod tests {
             gaps_heading: "Series with gaps".to_string(),
             gaps_empty_label: "No incomplete series — your collection is whole!".to_string(),
             gaps_missing_label: "Missing".to_string(),
+            recent_cataloged_filter_active: false,
+            recent_cataloged_titles: Vec::new(),
+            recent_cataloged_heading: "Recently cataloged (last 7 days)".to_string(),
+            recent_cataloged_empty_label: "No recent additions in the last 7 days — nothing new to catalog yet".to_string(),
+            recent_returns_filter_active: false,
+            recent_returns: Vec::new(),
+            recent_returns_heading: "Recently returned (last 7 days)".to_string(),
+            recent_returns_empty_label: "No recent returns in the last 7 days — quiet week!".to_string(),
         }
     }
 

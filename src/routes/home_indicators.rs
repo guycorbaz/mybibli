@@ -5,13 +5,34 @@
 //! cohesive home for the closed enum + parser + view-model + helper
 //! that the dashboard "What needs attention" section relies on.
 //!
-//! Stories 9-5/9-6/9-7 each add a new `IndicatorFilter` variant + a
-//! `parse_indicator_filter` arm + a new `if … { tags.push(...) }` block
-//! inside `build_indicator_tags`. The shape is intentionally
-//! forward-compatible so each story is a focused additive diff.
+//! Stories 9-4/9-5/9-6/9-7 incrementally added the 5 indicators that
+//! make up the closed `IndicatorFilter` enum. Story 9-7 closes the
+//! indicator-subsystem chapter (5/5 indicators delivered per Epic 9
+//! scope freeze; FR58 fully satisfied). Subsequent Epic 9 stories
+//! move to different surfaces.
+
+/// Story 9-7 — hardcoded v1 cutoff for the "Recent cataloged" and
+/// "Recent returns" indicators (AC7 spec freeze per `epics.md:1325`).
+///
+/// Lives here (not in `config.rs`) precisely to signal "v1 hardcoded;
+/// extract to `AppSettings` if a user requests configurability". The
+/// 4 model methods (`title::count_recent_cataloged`,
+/// `title::list_recent_cataloged`, `loan::count_recent_returns`,
+/// `loan::list_recent_returns`) all take `days: i32` as a parameter
+/// — NOT a hardcoded inline literal — so the future migration path
+/// is a focused 4-line diff: extract this constant to
+/// `AppSettings.recent_activity_days`, add `state.recent_activity_days()`
+/// accessor (mirror of `state.overdue_threshold_days()`), replace the
+/// 2 references at `home.rs::home`. The unit test
+/// `recent_activity_window_constant_is_seven_days` locks the v1 value;
+/// if a future story extracts this to settings, that test fails
+/// loudly and the migration path becomes obvious.
+pub(crate) const RECENT_ACTIVITY_DAYS: i32 = 7;
 
 /// Closed enum of dashboard "indicator" filters (story 9-4 AC5,
-/// extended in 9-5 with `Overdue`).
+/// extended in 9-5 with `Overdue`, 9-6 with `Gaps`, 9-7 with
+/// `RecentCataloged` + `RecentReturns`). Story 9-7 closes the
+/// chapter — no more reservations after this.
 ///
 /// Distinct from the legacy `parse_filter` which handles `genre:N` and
 /// `state:foo`. Indicator filters drive the home-page dashboard swap
@@ -31,8 +52,12 @@ pub(crate) enum IndicatorFilter {
     /// First indicator that is anonymous-allowed (FR65 + FR95) — see
     /// the per-variant role gate at `home.rs::home`.
     Gaps,
-    // Reserved for follow-up Epic 9 story: RecentCataloged (9-7),
-    // RecentReturns (9-7).
+    /// Filter to active titles created in the last `RECENT_ACTIVITY_DAYS`
+    /// days (story 9-7). Symmetric Librarian-only role gating.
+    RecentCataloged,
+    /// Filter to loans returned in the last `RECENT_ACTIVITY_DAYS`
+    /// days (story 9-7). Symmetric Librarian-only role gating.
+    RecentReturns,
 }
 
 /// One pill in the home-page "What needs attention" section (story
@@ -77,6 +102,8 @@ pub(crate) fn build_indicator_tags(
     unshelved_count: i64,
     overdue_count: i64,
     gaps_count: i64,
+    recent_cataloged_count: i64,
+    recent_returns_count: i64,
     active: Option<IndicatorFilter>,
     loc: &str,
 ) -> Vec<IndicatorTag> {
@@ -123,6 +150,42 @@ pub(crate) fn build_indicator_tags(
             .to_string(),
         });
     }
+    let recent_cataloged_is_active = active == Some(IndicatorFilter::RecentCataloged);
+    if recent_cataloged_count > 0 || recent_cataloged_is_active {
+        tags.push(IndicatorTag {
+            label: rust_i18n::t!(
+                "dashboard.attention.recent_cataloged_label",
+                locale = loc
+            )
+            .to_string(),
+            count: recent_cataloged_count.max(0) as u64,
+            filter_name: "recent-cataloged".to_string(),
+            is_active: recent_cataloged_is_active,
+            clear_aria_label: rust_i18n::t!(
+                "dashboard.attention.recent_cataloged_clear_aria",
+                locale = loc
+            )
+            .to_string(),
+        });
+    }
+    let recent_returns_is_active = active == Some(IndicatorFilter::RecentReturns);
+    if recent_returns_count > 0 || recent_returns_is_active {
+        tags.push(IndicatorTag {
+            label: rust_i18n::t!(
+                "dashboard.attention.recent_returns_label",
+                locale = loc
+            )
+            .to_string(),
+            count: recent_returns_count.max(0) as u64,
+            filter_name: "recent-returns".to_string(),
+            is_active: recent_returns_is_active,
+            clear_aria_label: rust_i18n::t!(
+                "dashboard.attention.recent_returns_clear_aria",
+                locale = loc
+            )
+            .to_string(),
+        });
+    }
     tags
 }
 
@@ -163,6 +226,8 @@ pub(crate) fn parse_indicator_filter(filter: &Option<String>) -> Option<Indicato
         Some("unshelved") => Some(IndicatorFilter::Unshelved),
         Some("overdue") => Some(IndicatorFilter::Overdue),
         Some("gaps") => Some(IndicatorFilter::Gaps),
+        Some("recent-cataloged") => Some(IndicatorFilter::RecentCataloged),
+        Some("recent-returns") => Some(IndicatorFilter::RecentReturns),
         Some(v) if !v.contains(':') && !v.is_empty() => {
             tracing::warn!(filter = %v, "Unknown indicator filter, ignoring");
             None
@@ -204,8 +269,26 @@ mod tests {
         );
     }
 
+    /// Story 9-7 AC4: the new `RecentCataloged` variant must be recognized.
+    #[test]
+    fn parse_indicator_filter_recent_cataloged_recognized() {
+        assert_eq!(
+            parse_indicator_filter(&Some("recent-cataloged".to_string())),
+            Some(IndicatorFilter::RecentCataloged)
+        );
+    }
+
+    /// Story 9-7 AC4: the new `RecentReturns` variant must be recognized.
+    #[test]
+    fn parse_indicator_filter_recent_returns_recognized() {
+        assert_eq!(
+            parse_indicator_filter(&Some("recent-returns".to_string())),
+            Some(IndicatorFilter::RecentReturns)
+        );
+    }
+
     /// AC5: closed enum is case-sensitive. Uppercase + title-cased
-    /// variants must NOT match — for Unshelved, Overdue, or Gaps.
+    /// variants must NOT match — for ANY of the 5 variants.
     #[test]
     fn parse_indicator_filter_case_sensitive() {
         assert_eq!(
@@ -226,6 +309,22 @@ mod tests {
         );
         assert_eq!(parse_indicator_filter(&Some("GAPS".to_string())), None);
         assert_eq!(parse_indicator_filter(&Some("Gaps".to_string())), None);
+        assert_eq!(
+            parse_indicator_filter(&Some("RECENT-CATALOGED".to_string())),
+            None
+        );
+        assert_eq!(
+            parse_indicator_filter(&Some("Recent-Cataloged".to_string())),
+            None
+        );
+        assert_eq!(
+            parse_indicator_filter(&Some("RECENT-RETURNS".to_string())),
+            None
+        );
+        assert_eq!(
+            parse_indicator_filter(&Some("Recent-Returns".to_string())),
+            None
+        );
     }
 
     /// AC5 + AC7: legacy `genre:N` patterns must NOT log a warning here
@@ -256,20 +355,26 @@ mod tests {
 
     /// AC5 unknown bare-name values return None and log a WARN. The
     /// `!contains(':')` guard means the warning fires only for genuine
-    /// typos, not for legacy patterns. Story 9-6 removed the `"gaps"`
-    /// reservation (now recognized) and added `"recent-cataloged"` as
-    /// the next-up reservation for story 9-7.
+    /// typos, not for legacy patterns. Story 9-7 removed the
+    /// `"recent-cataloged"` reservation (now recognized) and CLOSES
+    /// the reservation chain — 9-7 is the last indicator story in
+    /// Epic 9 (per `epics.md:1206` scope freeze). Future indicator
+    /// additions are out-of-scope and would be a new story.
     #[test]
     fn parse_indicator_filter_unknown_bare_name_returns_none() {
         assert_eq!(
             parse_indicator_filter(&Some("nonsense".to_string())),
             None
         );
-        assert_eq!(
-            parse_indicator_filter(&Some("recent-cataloged".to_string())),
-            None,
-            "recent-cataloged is reserved for story 9-7 — not yet recognized"
-        );
+    }
+
+    /// Story 9-7 AC7: the v1 hardcoded window cutoff. If a future
+    /// story extracts this to `AppSettings`, this test fails loudly
+    /// and the migration path becomes obvious — see the const
+    /// doc-comment in the parent module.
+    #[test]
+    fn recent_activity_window_constant_is_seven_days() {
+        assert_eq!(RECENT_ACTIVITY_DAYS, 7);
     }
 
     #[test]
@@ -284,7 +389,7 @@ mod tests {
     /// Updated in 9-6 to pass `gaps_count = 0`.
     #[test]
     fn build_indicator_tags_zero_returns_empty_vec() {
-        let tags = build_indicator_tags(0, 0, 0, None, "en");
+        let tags = build_indicator_tags(0, 0, 0, 0, 0, None, "en");
         assert!(tags.is_empty());
     }
 
@@ -292,7 +397,7 @@ mod tests {
     /// `is_active=false`, label translated.
     #[test]
     fn build_indicator_tags_nonzero_returns_unshelved_tag_in_default_state() {
-        let tags = build_indicator_tags(5, 0, 0, None, "en");
+        let tags = build_indicator_tags(5, 0, 0, 0, 0, None, "en");
         assert_eq!(tags.len(), 1);
         assert_eq!(tags[0].count, 5);
         assert_eq!(tags[0].filter_name, "unshelved");
@@ -304,7 +409,7 @@ mod tests {
     /// active state. The clear_aria_label must carry the FR/EN copy.
     #[test]
     fn build_indicator_tags_nonzero_with_active_filter_marks_unshelved_active() {
-        let tags = build_indicator_tags(5, 0, 0, Some(IndicatorFilter::Unshelved), "fr");
+        let tags = build_indicator_tags(5, 0, 0, 0, 0, Some(IndicatorFilter::Unshelved), "fr");
         assert_eq!(tags.len(), 1);
         assert!(tags[0].is_active, "filter=unshelved → tag is_active=true");
         assert_eq!(tags[0].label, "Volumes à ranger");
@@ -321,7 +426,7 @@ mod tests {
     /// helper-side contract for the escape-hatch UX.
     #[test]
     fn build_indicator_tags_zero_count_with_active_filter_still_emits_active_tag() {
-        let tags = build_indicator_tags(0, 0, 0, Some(IndicatorFilter::Unshelved), "en");
+        let tags = build_indicator_tags(0, 0, 0, 0, 0, Some(IndicatorFilter::Unshelved), "en");
         assert_eq!(
             tags.len(),
             1,
@@ -338,7 +443,7 @@ mod tests {
     /// overdue tag in default state with the EN label resolved.
     #[test]
     fn build_indicator_tags_overdue_nonzero_unshelved_zero_returns_overdue_only() {
-        let tags = build_indicator_tags(0, 5, 0, None, "en");
+        let tags = build_indicator_tags(0, 5, 0, 0, 0, None, "en");
         assert_eq!(tags.len(), 1);
         assert_eq!(tags[0].count, 5);
         assert_eq!(tags[0].filter_name, "overdue");
@@ -352,7 +457,7 @@ mod tests {
     /// would silently break the priority ordering.
     #[test]
     fn build_indicator_tags_emits_unshelved_before_overdue_when_both_present() {
-        let tags = build_indicator_tags(3, 5, 0, None, "en");
+        let tags = build_indicator_tags(3, 5, 0, 0, 0, None, "en");
         assert_eq!(tags.len(), 2);
         assert_eq!(tags[0].filter_name, "unshelved", "unshelved first");
         assert_eq!(tags[1].filter_name, "overdue", "overdue second");
@@ -363,7 +468,7 @@ mod tests {
     /// contract locked by `build_indicator_tags_zero_count_with_active_filter_still_emits_active_tag`.
     #[test]
     fn build_indicator_tags_overdue_zero_count_with_active_filter_still_emits_active_tag() {
-        let tags = build_indicator_tags(0, 0, 0, Some(IndicatorFilter::Overdue), "en");
+        let tags = build_indicator_tags(0, 0, 0, 0, 0, Some(IndicatorFilter::Overdue), "en");
         assert_eq!(
             tags.len(),
             1,
@@ -379,7 +484,7 @@ mod tests {
     /// expected order; only the active one carries `is_active=true`.
     #[test]
     fn build_indicator_tags_unshelved_active_emits_overdue_in_default_state_when_count_nonzero() {
-        let tags = build_indicator_tags(0, 5, 0, Some(IndicatorFilter::Unshelved), "en");
+        let tags = build_indicator_tags(0, 5, 0, 0, 0, Some(IndicatorFilter::Unshelved), "en");
         assert_eq!(tags.len(), 2);
         assert_eq!(tags[0].filter_name, "unshelved");
         assert!(tags[0].is_active, "unshelved is the active filter");
@@ -394,7 +499,7 @@ mod tests {
     /// AC10: only gaps non-zero → single gaps tag in default state.
     #[test]
     fn build_indicator_tags_gaps_nonzero_unshelved_zero_overdue_zero_returns_gaps_only() {
-        let tags = build_indicator_tags(0, 0, 5, None, "en");
+        let tags = build_indicator_tags(0, 0, 5, 0, 0, None, "en");
         assert_eq!(tags.len(), 1);
         assert_eq!(tags[0].count, 5);
         assert_eq!(tags[0].filter_name, "gaps");
@@ -408,7 +513,7 @@ mod tests {
     /// priority ordering finalized in story 9.7.
     #[test]
     fn build_indicator_tags_emits_unshelved_then_overdue_then_gaps_when_all_present() {
-        let tags = build_indicator_tags(3, 5, 7, None, "en");
+        let tags = build_indicator_tags(3, 5, 7, 0, 0, None, "en");
         assert_eq!(tags.len(), 3);
         assert_eq!(tags[0].filter_name, "unshelved", "unshelved first");
         assert_eq!(tags[1].filter_name, "overdue", "overdue second");
@@ -420,7 +525,7 @@ mod tests {
     /// overdue contracts.
     #[test]
     fn build_indicator_tags_gaps_zero_count_with_active_filter_still_emits_active_tag() {
-        let tags = build_indicator_tags(0, 0, 0, Some(IndicatorFilter::Gaps), "en");
+        let tags = build_indicator_tags(0, 0, 0, 0, 0, Some(IndicatorFilter::Gaps), "en");
         assert_eq!(
             tags.len(),
             1,
@@ -437,7 +542,7 @@ mod tests {
     /// (c) the active tag carries its real count (not zero).
     #[test]
     fn build_indicator_tags_gaps_active_keeps_others_in_default_state_when_counts_nonzero() {
-        let tags = build_indicator_tags(3, 5, 7, Some(IndicatorFilter::Gaps), "en");
+        let tags = build_indicator_tags(3, 5, 7, 0, 0, Some(IndicatorFilter::Gaps), "en");
         assert_eq!(tags.len(), 3);
         assert_eq!(tags[0].filter_name, "unshelved");
         assert!(!tags[0].is_active, "unshelved is in default state");
@@ -448,6 +553,92 @@ mod tests {
         assert_eq!(tags[2].filter_name, "gaps");
         assert!(tags[2].is_active, "gaps is the active filter");
         assert_eq!(tags[2].count, 7);
+    }
+
+    // ─── Story 9-7 — recent-cataloged + recent-returns helper tests ───
+
+    /// AC9: only recent_cataloged non-zero → single tag in default
+    /// state with the EN label resolved.
+    #[test]
+    fn build_indicator_tags_recent_cataloged_only_returns_recent_cataloged_tag_in_default_state() {
+        let tags = build_indicator_tags(0, 0, 0, 5, 0, None, "en");
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].count, 5);
+        assert_eq!(tags[0].filter_name, "recent-cataloged");
+        assert!(!tags[0].is_active);
+        assert_eq!(tags[0].label, "Recent cataloged");
+    }
+
+    /// AC9 symmetric: only recent_returns non-zero.
+    #[test]
+    fn build_indicator_tags_recent_returns_only_returns_recent_returns_tag_in_default_state() {
+        let tags = build_indicator_tags(0, 0, 0, 0, 7, None, "en");
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].count, 7);
+        assert_eq!(tags[0].filter_name, "recent-returns");
+        assert!(!tags[0].is_active);
+        assert_eq!(tags[0].label, "Recent returns");
+    }
+
+    /// AC1 + AC9 — emit-order at the helper level: ALL 5 indicators
+    /// non-zero → order is Unshelved → Overdue → Gaps → RecentCataloged
+    /// → RecentReturns. Closes the indicator-subsystem chapter at the
+    /// helper level. Without this test, a future "alphabetize" refactor
+    /// would silently break the priority ordering.
+    #[test]
+    fn build_indicator_tags_emits_all_five_tags_in_priority_order_when_all_present() {
+        let tags = build_indicator_tags(3, 5, 7, 9, 11, None, "en");
+        assert_eq!(tags.len(), 5);
+        assert_eq!(tags[0].filter_name, "unshelved");
+        assert_eq!(tags[1].filter_name, "overdue");
+        assert_eq!(tags[2].filter_name, "gaps");
+        assert_eq!(tags[3].filter_name, "recent-cataloged");
+        assert_eq!(tags[4].filter_name, "recent-returns");
+        // Counts also sanity-checked.
+        assert_eq!(tags[0].count, 3);
+        assert_eq!(tags[1].count, 5);
+        assert_eq!(tags[2].count, 7);
+        assert_eq!(tags[3].count, 9);
+        assert_eq!(tags[4].count, 11);
+    }
+
+    /// AC3 escape hatch (recent_cataloged): count=0 + active filter →
+    /// tag still emitted in active state. Mirrors the unshelved +
+    /// overdue + gaps escape-hatch contracts.
+    #[test]
+    fn build_indicator_tags_recent_cataloged_zero_count_with_active_filter_still_emits_active_tag()
+    {
+        let tags = build_indicator_tags(
+            0,
+            0,
+            0,
+            0,
+            0,
+            Some(IndicatorFilter::RecentCataloged),
+            "en",
+        );
+        assert_eq!(tags.len(), 1, "active filter at count=0 must still produce a tag (escape hatch)");
+        assert!(tags[0].is_active);
+        assert_eq!(tags[0].count, 0);
+        assert_eq!(tags[0].filter_name, "recent-cataloged");
+    }
+
+    /// AC3 escape hatch (recent_returns) — symmetric.
+    #[test]
+    fn build_indicator_tags_recent_returns_zero_count_with_active_filter_still_emits_active_tag() {
+        let tags = build_indicator_tags(
+            0,
+            0,
+            0,
+            0,
+            0,
+            Some(IndicatorFilter::RecentReturns),
+            "en",
+        );
+        assert_eq!(tags.len(), 1);
+        assert!(tags[0].is_active);
+        assert_eq!(tags[0].count, 0);
+        assert_eq!(tags[0].filter_name, "recent-returns");
     }
 
     // ─── Story 9-6 — role-gating regression guards (CI catch 2026-05-03)

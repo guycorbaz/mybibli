@@ -333,3 +333,97 @@ test.describe("Home page — Series with gaps indicator", () => {
     await expect(page.locator("#gaps-list")).toHaveCount(0);
   });
 });
+
+// Story 9-7 — "What needs attention" / Recent activity indicators
+// (recent_cataloged + recent_returns). Closes the indicator-subsystem
+// chapter at 5/5 indicators. Symmetric Librarian-only role gating
+// (NOT 9-6's Gaps anonymous-allowed asymmetry).
+test.describe("Home page — Recent activity indicators", () => {
+  test("anonymous: tags + lists never rendered (symmetric Librarian-gated)", async ({
+    page,
+  }) => {
+    // Default home: no tags, no list sections.
+    await page.goto("/");
+    await expect(page.locator("#filter-tag-recent-cataloged")).toHaveCount(0);
+    await expect(page.locator("#filter-tag-recent-returns")).toHaveCount(0);
+    await expect(page.locator("#recent-cataloged-list")).toHaveCount(0);
+    await expect(page.locator("#recent-returns-list")).toHaveCount(0);
+
+    // Anonymous + ?filter=recent-cataloged → ignored, default home renders.
+    await page.goto("/?filter=recent-cataloged");
+    await expect(page.locator("#filter-tag-recent-cataloged")).toHaveCount(0);
+    await expect(page.locator("#recent-cataloged-list")).toHaveCount(0);
+    await expect(page.locator("#recent-additions")).toBeVisible();
+
+    // Anonymous + ?filter=recent-returns → same.
+    await page.goto("/?filter=recent-returns");
+    await expect(page.locator("#filter-tag-recent-returns")).toHaveCount(0);
+    await expect(page.locator("#recent-returns-list")).toHaveCount(0);
+    await expect(page.locator("#recent-additions")).toBeVisible();
+  });
+
+  test("librarian: each tag visible iff count > 0; click → list, ✕ → home (covers BOTH indicators)", async ({
+    page,
+  }) => {
+    await loginAs(page, "librarian");
+    await page.goto("/");
+
+    // Conditional empty-DB short-circuit. If BOTH counts are 0, return
+    // green pass — same defensive pattern as 9-4/9-5/9-6 librarian smokes.
+    const cataloged = page.locator("#filter-tag-recent-cataloged");
+    const returns = page.locator("#filter-tag-recent-returns");
+    const catalogedCount = await cataloged.count();
+    const returnsCount = await returns.count();
+    if (catalogedCount === 0 && returnsCount === 0) {
+      // No recent activity in seed DB.
+      return;
+    }
+
+    // Exercise recent-cataloged tag if present.
+    if (catalogedCount === 1) {
+      await expect(cataloged).toBeVisible();
+      await expect(cataloged).toHaveAttribute("href", "/?filter=recent-cataloged");
+
+      await cataloged.click();
+      await page.waitForURL(/\/\?filter=recent-cataloged/);
+      await expect(page.locator("#recent-cataloged-list")).toBeVisible();
+      // 6-way mutual exclusion.
+      await expect(page.locator("#recent-additions")).toHaveCount(0);
+      await expect(page.locator("#unshelved-list")).toHaveCount(0);
+      await expect(page.locator("#overdue-list")).toHaveCount(0);
+      await expect(page.locator("#gaps-list")).toHaveCount(0);
+      await expect(page.locator("#recent-returns-list")).toHaveCount(0);
+
+      // Active state ✕ → URL returns → recent-additions back.
+      const activeTag = page.locator("#filter-tag-recent-cataloged");
+      await expect(activeTag).toHaveAttribute("href", "/");
+      await activeTag.click();
+      await page.waitForURL(/\/$/);
+      await expect(page.locator("#recent-additions")).toBeVisible();
+      await expect(page.locator("#recent-cataloged-list")).toHaveCount(0);
+    }
+
+    // Exercise recent-returns tag if present.
+    if (returnsCount === 1) {
+      await expect(returns).toBeVisible();
+      await expect(returns).toHaveAttribute("href", "/?filter=recent-returns");
+
+      await returns.click();
+      await page.waitForURL(/\/\?filter=recent-returns/);
+      await expect(page.locator("#recent-returns-list")).toBeVisible();
+      // 6-way mutual exclusion.
+      await expect(page.locator("#recent-additions")).toHaveCount(0);
+      await expect(page.locator("#unshelved-list")).toHaveCount(0);
+      await expect(page.locator("#overdue-list")).toHaveCount(0);
+      await expect(page.locator("#gaps-list")).toHaveCount(0);
+      await expect(page.locator("#recent-cataloged-list")).toHaveCount(0);
+
+      const activeTag = page.locator("#filter-tag-recent-returns");
+      await expect(activeTag).toHaveAttribute("href", "/");
+      await activeTag.click();
+      await page.waitForURL(/\/$/);
+      await expect(page.locator("#recent-additions")).toBeVisible();
+      await expect(page.locator("#recent-returns-list")).toHaveCount(0);
+    }
+  });
+});

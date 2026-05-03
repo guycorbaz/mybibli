@@ -212,6 +212,71 @@
             </ul>
         {% endif %}
     </section>
+    {% else if recent_cataloged_filter_active %}
+    {# Story 9-7 AC6: Recent cataloged list (active titles created in
+       the last RECENT_ACTIVITY_DAYS days). Reuses the TitleCard
+       <article> markup verbatim from #recent-additions below. Row
+       link target /title/<id> matches the TitleCard convention. #}
+    <section id="recent-cataloged-list" aria-labelledby="recent-cataloged-heading" class="w-full max-w-4xl mt-6">
+        <h2 id="recent-cataloged-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ recent_cataloged_heading }}</h2>
+        {% if recent_cataloged_titles.is_empty() %}
+            <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ recent_cataloged_empty_label }}</div>
+        {% else %}
+            <div class="browse-list mt-3">
+                {% for item in recent_cataloged_titles %}
+                <article class="title-card group">
+                    <a href="/title/{{ item.id }}" class="title-card-link"
+                       aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
+                        <div class="title-card-cover">
+                            {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
+                            <div class="title-card-overlay">
+                                <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
+                                <span class="text-xs">{{ item.volume_count }} vol</span>
+                            </div>
+                        </div>
+                        <div class="title-card-info">
+                            <p class="title-card-title">{{ item.title }}</p>
+                            <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
+                            <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
+                            <p class="title-card-volumes">{{ item.volume_count }} vol</p>
+                        </div>
+                    </a>
+                </article>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </section>
+    {% else if recent_returns_filter_active %}
+    {# Story 9-7 AC6: Recent returns list (loans returned in the last
+       RECENT_ACTIVITY_DAYS days). Reuses the LoanRow markup from
+       #overdue-list verbatim BUT without the red overdue badge —
+       recent returns are by definition NOT overdue. duration_days
+       semantically reads as "days since return" here (semantic
+       overload of LoanWithDetails.duration_days documented in
+       LoanModel::list_recent_returns). #}
+    <section id="recent-returns-list" aria-labelledby="recent-returns-heading" class="w-full max-w-4xl mt-6">
+        <h2 id="recent-returns-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ recent_returns_heading }}</h2>
+        {% if recent_returns.is_empty() %}
+            <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ recent_returns_empty_label }}</div>
+        {% else %}
+            <ul class="mt-3 space-y-2">
+                {% for loan in recent_returns %}
+                <li>
+                    <a href="/borrower/{{ loan.borrower_id }}" class="block px-4 py-3 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-700 transition-colors">
+                        <div class="flex items-baseline gap-3 flex-wrap">
+                            <span class="font-mono text-sm font-semibold text-indigo-600 dark:text-indigo-400 tabular-nums">{{ loan.volume_label }}</span>
+                            <span class="font-medium text-stone-900 dark:text-stone-100 truncate">{{ loan.title_name }}</span>
+                            <span class="text-sm text-stone-600 dark:text-stone-400">— {{ loan.borrower_name }}</span>
+                        </div>
+                        <p class="mt-1 text-sm text-stone-600 dark:text-stone-400">
+                            {{ loan.duration_days }} {{ days_label }}
+                        </p>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
     {% else %}
     {# Recent additions section (story 9-2). Sits directly below #collection-glance
        and above #browse-results so it survives HTMX search swaps. The inner
@@ -249,7 +314,7 @@
             </div>
         {% endif %}
     </section>
-    {% endif %}{# /unshelved_filter_active or overdue_filter_active or gaps_filter_active #}
+    {% endif %}{# /unshelved_filter_active or overdue_filter_active or gaps_filter_active or recent_cataloged_filter_active or recent_returns_filter_active #}
 
     {# Stats by genre section (story 9-3). Sits between #recent-additions and
        the browse controls so it survives HTMX search swaps. Hidden entirely

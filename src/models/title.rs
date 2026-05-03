@@ -191,6 +191,90 @@ impl TitleModel {
         Ok(row.0)
     }
 
+    /// Story 9-7 — count active titles created in the last `days` days.
+    /// Drives the "Recent cataloged" dashboard indicator.
+    ///
+    /// Boundary semantics: **inclusive** `>= NOW() - INTERVAL ? DAY` per
+    /// FR wording "last 7 days" (the 7-day boundary IS counted). This
+    /// is INTENTIONALLY ASYMMETRIC with `loan::count_overdue`'s strict
+    /// `> threshold` — the spec's "exceeds N days" wording dictates the
+    /// strict boundary there. Do NOT "harmonize" the boundary in a
+    /// drive-by refactor; the asymmetry is locked by the
+    /// `count_recent_cataloged_window_boundary` integration test.
+    pub async fn count_recent_cataloged(
+        pool: &DbPool,
+        days: i32,
+    ) -> Result<i64, AppError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM titles \
+             WHERE deleted_at IS NULL AND created_at >= NOW() - INTERVAL ? DAY",
+        )
+        .bind(days)
+        .fetch_one(pool)
+        .await?;
+        Ok(row.0)
+    }
+
+    /// Story 9-7 — list active titles created in the last `days` days,
+    /// ordered by `created_at DESC` (newest first), bounded by `limit`.
+    ///
+    /// Mirrors `list_recent_active`'s projection (genre + primary
+    /// contributor subquery + volume_count subquery) verbatim — the
+    /// ONLY difference is the additional WHERE clause `AND
+    /// t.created_at >= NOW() - INTERVAL ? DAY`. Returns
+    /// `Vec<SearchResult>` (existing struct from story 9-2 — no new
+    /// projection).
+    pub async fn list_recent_cataloged(
+        pool: &DbPool,
+        days: i32,
+        limit: u32,
+    ) -> Result<Vec<SearchResult>, AppError> {
+        let rows = sqlx::query(
+            "SELECT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, \
+                    CAST(t.publication_date AS DATE) AS publication_date, \
+                    g.name AS genre_name, \
+                    (SELECT c.name FROM title_contributors tc \
+                     JOIN contributors c ON tc.contributor_id = c.id \
+                     JOIN contributor_roles cr ON tc.role_id = cr.id \
+                     WHERE tc.title_id = t.id AND tc.deleted_at IS NULL \
+                       AND c.deleted_at IS NULL AND cr.deleted_at IS NULL \
+                     ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC \
+                     LIMIT 1) AS primary_contributor, \
+                    (SELECT COUNT(*) FROM volumes v WHERE v.title_id = t.id \
+                       AND v.deleted_at IS NULL) AS volume_count \
+             FROM titles t \
+             JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
+             WHERE t.deleted_at IS NULL \
+               AND t.created_at >= NOW() - INTERVAL ? DAY \
+             ORDER BY t.created_at DESC, t.id DESC \
+             LIMIT ?",
+        )
+        .bind(days)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        let items: Vec<SearchResult> = rows
+            .iter()
+            .map(|r| SearchResult {
+                id: r.try_get("id").unwrap_or(0),
+                title: r.try_get("title").unwrap_or_default(),
+                subtitle: r.try_get("subtitle").unwrap_or(None),
+                media_type: r.try_get("media_type").unwrap_or_default(),
+                genre_name: r.try_get("genre_name").unwrap_or_default(),
+                primary_contributor: r.try_get("primary_contributor").unwrap_or(None),
+                volume_count: r
+                    .try_get::<i64, _>("volume_count")
+                    .map(|v| v as u64)
+                    .unwrap_or(0),
+                cover_image_url: r.try_get("cover_image_url").unwrap_or(None),
+                publication_date: r.try_get("publication_date").unwrap_or(None),
+            })
+            .collect();
+
+        Ok(items)
+    }
+
     pub async fn create(pool: &DbPool, new_title: &NewTitle) -> Result<TitleModel, AppError> {
         tracing::info!(
             title = %new_title.title,
