@@ -108,6 +108,17 @@ pub struct HomeTemplate {
     pub overdue_threshold_days: i64,
     pub days_label: String,
     pub overdue_badge_label: String,
+    // "Series with gaps" indicator (story 9-6). 4-way mutual exclusion
+    // with #recent-additions, #unshelved-list, #overdue-list. Unlike
+    // unshelved + overdue, the gaps filter is anonymous-allowed (FR65 +
+    // FR95 — series browsing is anonymous-permitted), so
+    // `gaps_filter_active` is NOT role-gated. The TAG itself is still
+    // hidden from anonymous via the count-zero rule.
+    pub gaps_filter_active: bool,
+    pub gaps_series: Vec<crate::models::series::SeriesWithGap>,
+    pub gaps_heading: String,
+    pub gaps_empty_label: String,
+    pub gaps_missing_label: String,
 }
 
 /// One row of the "By genre" dashboard section (story 9-3).
@@ -138,14 +149,27 @@ pub async fn home(
     let mut query = params.q.unwrap_or_default();
     let page = params.page.unwrap_or(1).max(1);
 
-    // Story 9-4 — indicator filter takes precedence over search + legacy
-    // filter (AC7 single-active-filter). Role-gated: anonymous users never
-    // see indicator filters even if they craft `?filter=unshelved`
-    // (AC2 anonymous-no-leak).
-    let active_indicator_filter = if session.role >= Role::Librarian {
-        parse_indicator_filter(&params.filter)
-    } else {
-        None
+    // Story 9-4 / 9-5 / 9-6 — indicator filter takes precedence over
+    // search + legacy filter (AC7 single-active-filter). Role gating is
+    // PER-VARIANT (story 9-6 AC2 asymmetry): Unshelved + Overdue stay
+    // Librarian-only (anonymous-no-leak), but Gaps is anonymous-allowed
+    // (FR65 + FR95 — series browsing is anonymous-permitted; the
+    // existing `/series` route requires no auth).
+    //
+    // The handler computes TWO things from the parsed value:
+    //   1. `active_indicator_filter` (role-gated for Unshelved + Overdue)
+    //      → drives `build_indicator_tags` and the unshelved/overdue
+    //      `*_filter_active` slot booleans. Anonymous always gets `None`
+    //      from this path so no tag ever emits in `#what-needs-attention`.
+    //   2. `gaps_filter_active: bool` (NOT role-gated) → drives the
+    //      `#gaps-list` section swap. Computed below from the raw parse
+    //      result so anonymous users CAN navigate to `/?filter=gaps` and
+    //      see the list, even though no tag is shown on the default home.
+    let parsed_indicator = parse_indicator_filter(&params.filter);
+    let active_indicator_filter = match parsed_indicator {
+        Some(IndicatorFilter::Gaps) => Some(IndicatorFilter::Gaps),
+        Some(other) if session.role >= Role::Librarian => Some(other),
+        _ => None,
     };
     if active_indicator_filter.is_some() && (!query.is_empty() || params.sort.is_some()) {
         tracing::warn!(
@@ -290,13 +314,42 @@ pub async fn home(
         Vec::new()
     };
 
-    // Story 9-6 — gaps_count is wired in Task 5 of this story. For
-    // now the placeholder `0` keeps the call type-correct; Task 5
-    // replaces it with the real `gaps_count` from `count_with_gaps`.
+    // Story 9-6 — Series with gaps indicator. Anonymous-allowed
+    // ASYMMETRY (AC2): the gaps_filter_active boolean is computed from
+    // the RAW parser result (`parsed_indicator`), NOT the role-gated
+    // `active_indicator_filter`. So an anonymous user navigating to
+    // `/?filter=gaps` triggers the section swap, but the count query
+    // still skips for them (no DB load on a surface they won't see —
+    // the tag lives in #what-needs-attention which hides on empty
+    // indicator_tags for anonymous).
+    let gaps_count: i64 = if session.role >= Role::Librarian {
+        match crate::models::series::SeriesModel::count_with_gaps(pool).await {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!(error = %e, "count_with_gaps failed; rendering 0 (tag hidden)");
+                0
+            }
+        }
+    } else {
+        0
+    };
+    let gaps_filter_active = parsed_indicator == Some(IndicatorFilter::Gaps);
+    let gaps_series: Vec<crate::models::series::SeriesWithGap> = if gaps_filter_active {
+        match crate::models::series::SeriesModel::list_with_gaps(pool, 100).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "list_with_gaps failed; rendering empty list");
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
     let indicator_tags = build_indicator_tags(
         unshelved_count,
         overdue_count,
-        0,
+        gaps_count,
         active_indicator_filter,
         loc,
     );
@@ -490,6 +543,11 @@ pub async fn home(
         overdue_threshold_days: overdue_threshold as i64,
         days_label: rust_i18n::t!("loan.days", locale = loc).to_string(),
         overdue_badge_label: rust_i18n::t!("loan.overdue", locale = loc).to_string(),
+        gaps_filter_active,
+        gaps_series,
+        gaps_heading: rust_i18n::t!("dashboard.attention.gaps_heading", locale = loc).to_string(),
+        gaps_empty_label: rust_i18n::t!("dashboard.attention.gaps_empty", locale = loc).to_string(),
+        gaps_missing_label: rust_i18n::t!("series.gap_count", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -963,6 +1021,11 @@ mod tests {
             overdue_threshold_days: 30,
             days_label: "days".to_string(),
             overdue_badge_label: "Overdue".to_string(),
+            gaps_filter_active: false,
+            gaps_series: Vec::new(),
+            gaps_heading: "Series with gaps".to_string(),
+            gaps_empty_label: "No incomplete series — your collection is whole!".to_string(),
+            gaps_missing_label: "Missing".to_string(),
         }
     }
 

@@ -307,7 +307,7 @@ so that I can see at a glance how many series are missing volumes and plan acqui
   - [ ] **CRITICAL:** locale files have NO top-level `en:`/`fr:` wrapper — keys start at root. After editing, run `touch src/lib.rs && cargo build`. The `i18n::audit::tests::all_t_keys_have_both_locales` test enforces EN/FR mirror — keep them aligned exactly.
   - [ ] **REUSED keys** (no new add): `series.gap_count` at `locales/{en,fr}.yml:145` ("Missing" / "Manquants") for the per-row badge (plumbed via `gaps_missing_label` HomeTemplate field).
 
-- [ ] **Task 5 — Wire the home handler (AC: 1, 2, 5, 6)**
+- [x] **Task 5 — Wire the home handler (AC: 1, 2, 5, 6)**
   - [ ] In `src/routes/home.rs::home`, the existing role gate at lines 145-149:
     ```rust
     let active_indicator_filter = if session.role >= Role::Librarian {
@@ -375,7 +375,7 @@ so that I can see at a glance how many series are missing volumes and plan acqui
   - [ ] Update the test factory `make_test_home_template` (default constructor at lines 891+) to populate the 5 new fields with sensible defaults (`gaps_filter_active: false`, `gaps_series: Vec::new()`, the three Strings as `String::new()` or short defaults so existing tests keep passing).
   - [ ] **AC5 4-way mutual exclusion** falls out for free: `unshelved_filter_active`, `overdue_filter_active`, and `gaps_filter_active` cannot all be true (the URL has one `?filter=` value; the parser returns one variant). The template's `{% if %}{% else if %}{% else if %}{% else %}` chain (Task 6) enforces it visually. No new handler logic needed.
 
-- [ ] **Task 6 — Render `#gaps-list` section in `home.html` (AC: 6, 9, 14)**
+- [x] **Task 6 — Render `#gaps-list` section in `home.html` (AC: 6, 9, 14)**
   - [ ] Edit `templates/pages/home.html` lines 124-222 (the existing 3-branch `{% if unshelved_filter_active %}{% else if overdue_filter_active %}{% else %}` block). Convert to a 4-branch `{% if %}{% else if %}{% else if %}{% else %}` chain by adding a new `{% else if gaps_filter_active %}` branch BETWEEN the overdue branch (currently ends at line 184) and the recent-additions `{% else %}` branch (currently starts at line 185):
     ```jinja
     {% else if gaps_filter_active %}
