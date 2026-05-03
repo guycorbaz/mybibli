@@ -119,6 +119,18 @@ pub struct HomeTemplate {
     pub gaps_heading: String,
     pub gaps_empty_label: String,
     pub gaps_missing_label: String,
+    // "Recent cataloged" + "Recent returns" indicators (story 9-7).
+    // 6-way mutual exclusion with the 4 other list-section slots.
+    // Both are Librarian-only — symmetric role gating (NOT the 9-6
+    // Gaps anonymous-allowed asymmetry).
+    pub recent_cataloged_filter_active: bool,
+    pub recent_cataloged_titles: Vec<crate::models::title::SearchResult>,
+    pub recent_cataloged_heading: String,
+    pub recent_cataloged_empty_label: String,
+    pub recent_returns_filter_active: bool,
+    pub recent_returns: Vec<crate::models::loan::LoanWithDetails>,
+    pub recent_returns_heading: String,
+    pub recent_returns_empty_label: String,
 }
 
 /// One row of the "By genre" dashboard section (story 9-3).
@@ -364,16 +376,92 @@ pub async fn home(
         Vec::new()
     };
 
-    // Story 9-7 — recent_cataloged_count + recent_returns_count are
-    // wired in Task 5. For now placeholders `0, 0` keep the call
-    // type-correct; Task 5 replaces them with the real counts from
-    // `count_recent_cataloged` + `count_recent_returns`.
+    // Story 9-7 — Recent cataloged + Recent returns indicators. Same
+    // anonymous-skip + soft-degrade pattern as unshelved/overdue
+    // (symmetric Librarian-only role gating; the 9-6 Gaps asymmetry
+    // does NOT apply here — recent activity is Librarian-gated content).
+    // Window cutoff is the hardcoded `RECENT_ACTIVITY_DAYS` const per
+    // AC7 spec freeze.
+    let recent_cataloged_count: i64 = if session.role >= Role::Librarian {
+        match crate::models::title::TitleModel::count_recent_cataloged(
+            pool,
+            crate::routes::home_indicators::RECENT_ACTIVITY_DAYS,
+        )
+        .await
+        {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!(error = %e, "count_recent_cataloged failed; rendering 0 (tag hidden)");
+                0
+            }
+        }
+    } else {
+        0
+    };
+    let recent_cataloged_filter_active = session.role >= Role::Librarian
+        && active_indicator_filter == Some(IndicatorFilter::RecentCataloged);
+    let recent_cataloged_titles: Vec<crate::models::title::SearchResult> =
+        if recent_cataloged_filter_active {
+            match crate::models::title::TitleModel::list_recent_cataloged(
+                pool,
+                crate::routes::home_indicators::RECENT_ACTIVITY_DAYS,
+                100,
+            )
+            .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(error = %e, "list_recent_cataloged failed; rendering empty list");
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
+    let recent_returns_count: i64 = if session.role >= Role::Librarian {
+        match crate::models::loan::LoanModel::count_recent_returns(
+            pool,
+            crate::routes::home_indicators::RECENT_ACTIVITY_DAYS,
+        )
+        .await
+        {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!(error = %e, "count_recent_returns failed; rendering 0 (tag hidden)");
+                0
+            }
+        }
+    } else {
+        0
+    };
+    let recent_returns_filter_active = session.role >= Role::Librarian
+        && active_indicator_filter == Some(IndicatorFilter::RecentReturns);
+    let recent_returns: Vec<crate::models::loan::LoanWithDetails> = if recent_returns_filter_active
+    {
+        match crate::models::loan::LoanModel::list_recent_returns(
+            pool,
+            crate::routes::home_indicators::RECENT_ACTIVITY_DAYS,
+            100,
+        )
+        .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "list_recent_returns failed; rendering empty list");
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
     let indicator_tags = build_indicator_tags(
         unshelved_count,
         overdue_count,
         gaps_count,
-        0,
-        0,
+        recent_cataloged_count,
+        recent_returns_count,
         active_indicator_filter,
         loc,
     );
@@ -572,6 +660,30 @@ pub async fn home(
         gaps_heading: rust_i18n::t!("dashboard.attention.gaps_heading", locale = loc).to_string(),
         gaps_empty_label: rust_i18n::t!("dashboard.attention.gaps_empty", locale = loc).to_string(),
         gaps_missing_label: rust_i18n::t!("series.gap_count", locale = loc).to_string(),
+        recent_cataloged_filter_active,
+        recent_cataloged_titles,
+        recent_cataloged_heading: rust_i18n::t!(
+            "dashboard.attention.recent_cataloged_heading",
+            locale = loc
+        )
+        .to_string(),
+        recent_cataloged_empty_label: rust_i18n::t!(
+            "dashboard.attention.recent_cataloged_empty",
+            locale = loc
+        )
+        .to_string(),
+        recent_returns_filter_active,
+        recent_returns,
+        recent_returns_heading: rust_i18n::t!(
+            "dashboard.attention.recent_returns_heading",
+            locale = loc
+        )
+        .to_string(),
+        recent_returns_empty_label: rust_i18n::t!(
+            "dashboard.attention.recent_returns_empty",
+            locale = loc
+        )
+        .to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -1050,6 +1162,16 @@ pub(crate) mod tests {
             gaps_heading: "Series with gaps".to_string(),
             gaps_empty_label: "No incomplete series — your collection is whole!".to_string(),
             gaps_missing_label: "Missing".to_string(),
+            recent_cataloged_filter_active: false,
+            recent_cataloged_titles: Vec::new(),
+            recent_cataloged_heading: "Recently cataloged (last 7 days)".to_string(),
+            recent_cataloged_empty_label:
+                "No recent additions in the last 7 days — nothing new to catalog yet".to_string(),
+            recent_returns_filter_active: false,
+            recent_returns: Vec::new(),
+            recent_returns_heading: "Recently returned (last 7 days)".to_string(),
+            recent_returns_empty_label:
+                "No recent returns in the last 7 days — quiet week!".to_string(),
         }
     }
 

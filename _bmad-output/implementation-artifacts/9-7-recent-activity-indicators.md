@@ -181,7 +181,7 @@ so that I can review the most recent activity in one click without scrolling thr
   - [ ] In `locales/fr.yml`, mirror the 8 keys at the same path.
   - [ ] **CRITICAL:** locale files have NO top-level `en:`/`fr:` wrapper. After editing, run `touch src/lib.rs && cargo build`. The `i18n::audit::tests::all_t_keys_have_both_locales` test enforces EN/FR mirror.
 
-- [ ] **Task 5 — Wire the home handler (AC: 1, 2, 5, 6)**
+- [x] **Task 5 — Wire the home handler (AC: 1, 2, 5, 6)**
   - [ ] In `src/routes/home.rs::home`, immediately after the existing `gaps_series` block (post-9-6, ~line 351), add the recent-cataloged data fetching:
     ```rust
     // Story 9-7 — Recent cataloged indicator. Same anonymous-skip + soft-degrade
@@ -240,7 +240,7 @@ so that I can review the most recent activity in one click without scrolling thr
   - [ ] Update the `make_test_home_template_with_counts` factory (`home.rs::tests` post-9-6) to populate the 8 new fields with sensible defaults so existing tests keep passing.
   - [ ] **AC5 6-way mutual exclusion** falls out for free: `unshelved_filter_active`, `overdue_filter_active`, `gaps_filter_active`, `recent_cataloged_filter_active`, `recent_returns_filter_active` cannot ALL be true at once (the URL has one `?filter=` value; the parser returns one variant). Template's `{% if %}{% elif %}{% elif %}{% elif %}{% elif %}{% else %}` chain enforces it visually.
 
-- [ ] **Task 6 — Render `#recent-cataloged-list` + `#recent-returns-list` sections in `home.html` (AC: 6, 13)**
+- [x] **Task 6 — Render `#recent-cataloged-list` + `#recent-returns-list` sections in `home.html` (AC: 6, 13)**
   - [ ] Edit `templates/pages/home.html` lines 124-220ish (the existing 4-branch `{% if %}{% else if %}{% else if %}{% else %}` chain post-9-6). Convert to a 6-branch chain by inserting two new `{% else if %}` branches BETWEEN the gaps branch (currently ends ~line 219) and the recent-additions `{% else %}` branch:
     - `{% else if recent_cataloged_filter_active %}` → `<section id="recent-cataloged-list">` with TitleCard markup verbatim from `#recent-additions` (lines 200-218 post-9-6) bound to `recent_cataloged_titles`. Heading: `{{ recent_cataloged_heading }}`. Empty-state: `{{ recent_cataloged_empty_label }}`.
     - `{% else if recent_returns_filter_active %}` → `<section id="recent-returns-list">` with LoanRow markup verbatim from `#overdue-list` (lines 165-181 post-9-6) bound to `recent_returns`. Row link target: `/borrower/{{ loan.borrower_id }}` (matches #overdue-list intent — "who returned it"). NO red overdue badge in the row template (recent returns are by definition NOT overdue). Heading: `{{ recent_returns_heading }}`. Empty-state: `{{ recent_returns_empty_label }}`.
