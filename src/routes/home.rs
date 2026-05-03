@@ -108,6 +108,17 @@ pub struct HomeTemplate {
     pub overdue_threshold_days: i64,
     pub days_label: String,
     pub overdue_badge_label: String,
+    // "Series with gaps" indicator (story 9-6). 4-way mutual exclusion
+    // with #recent-additions, #unshelved-list, #overdue-list. Unlike
+    // unshelved + overdue, the gaps filter is anonymous-allowed (FR65 +
+    // FR95 — series browsing is anonymous-permitted), so
+    // `gaps_filter_active` is NOT role-gated. The TAG itself is still
+    // hidden from anonymous via the count-zero rule.
+    pub gaps_filter_active: bool,
+    pub gaps_series: Vec<crate::models::series::SeriesWithGap>,
+    pub gaps_heading: String,
+    pub gaps_empty_label: String,
+    pub gaps_missing_label: String,
 }
 
 /// One row of the "By genre" dashboard section (story 9-3).
@@ -138,26 +149,56 @@ pub async fn home(
     let mut query = params.q.unwrap_or_default();
     let page = params.page.unwrap_or(1).max(1);
 
-    // Story 9-4 — indicator filter takes precedence over search + legacy
-    // filter (AC7 single-active-filter). Role-gated: anonymous users never
-    // see indicator filters even if they craft `?filter=unshelved`
-    // (AC2 anonymous-no-leak).
-    let active_indicator_filter = if session.role >= Role::Librarian {
-        parse_indicator_filter(&params.filter)
-    } else {
-        None
-    };
-    if active_indicator_filter.is_some() && (!query.is_empty() || params.sort.is_some()) {
+    // Story 9-4 / 9-5 / 9-6 — indicator filter takes precedence over
+    // search + legacy filter (AC7 single-active-filter). The 9-6 AC2
+    // asymmetry — Gaps is anonymous-allowed (FR65 + FR95: series
+    // browsing is anonymous-permitted) — lives in `gaps_filter_active`
+    // below, NOT here.
+    //
+    // `active_indicator_filter` drives the TAG (`build_indicator_tags`)
+    // and the `unshelved/overdue_filter_active` derived booleans. The
+    // TAG must NEVER render for Anonymous, regardless of variant —
+    // the `#what-needs-attention` section is Librarian-only. So this
+    // match role-gates ALL variants. Anonymous always gets None here.
+    //
+    // The Gaps SECTION SWAP for anonymous flows through a separate
+    // boolean (`gaps_filter_active`) computed below from the raw
+    // parsed value, NOT this role-gated one. That keeps the asymmetry
+    // explicit: tag → role-gated, section → role-blind.
+    //
+    // CI regression caught (2026-05-03): the original `match` had a
+    // `Some(IndicatorFilter::Gaps) => Some(IndicatorFilter::Gaps)` arm
+    // BEFORE the role-gated arm, leaking the Gaps variant to Anonymous
+    // and triggering the AC3 escape-hatch rule in build_indicator_tags
+    // (count=0 + active=Some(Gaps) emits the active-state pill). The
+    // E2E test `home.spec.ts::anonymous: ... AC2 asymmetry` is the
+    // regression guard.
+    let parsed_indicator = parse_indicator_filter(&params.filter);
+    let active_indicator_filter =
+        crate::routes::home_indicators::role_gated_indicator_filter(parsed_indicator, &session.role);
+    // Code-review patch (2026-05-03): the precedence-clearing path
+    // below MUST key on `parsed_indicator.is_some()` (role-blind), NOT
+    // `active_indicator_filter.is_some()` (role-gated). For Anonymous
+    // users navigating `/?filter=gaps&q=foo`, the role-gate strips
+    // `active_indicator_filter` to `None`, but the AC2 anonymous-allowed
+    // section swap still happens via `gaps_filter_active`. Without the
+    // role-blind precedence clear, the search/legacy-filter path
+    // co-renders `#browse-results` alongside `#gaps-list` — a real
+    // single-active-filter (AC5/AC6) violation. The role gate only
+    // affects what gets RENDERED in the tag area; it MUST NOT affect
+    // what other surfaces compete for the same DOM slot.
+    if parsed_indicator.is_some() && (!query.is_empty() || params.sort.is_some()) {
         tracing::warn!(
             filter = ?params.filter,
             query = %query,
-            "Indicator filter is active; ignoring concurrent ?q= / ?sort= per single-active-filter contract"
+            "Indicator filter is parsed; ignoring concurrent ?q= / ?sort= per single-active-filter contract"
         );
     }
 
     // Parse legacy filter (genre:N / state:foo) — but skip when an
-    // indicator filter is active so it doesn't double-fire downstream.
-    let (genre_id, volume_state) = if active_indicator_filter.is_some() {
+    // indicator filter is parsed (any role) so it doesn't double-fire
+    // downstream.
+    let (genre_id, volume_state) = if parsed_indicator.is_some() {
         (None, None)
     } else {
         parse_filter(&params.filter)
@@ -167,12 +208,13 @@ pub async fn home(
     // Filter-only requests (e.g. clicking the "BD" genre pill with empty query) must
     // still populate results — without this, HTMX would swap an empty results block
     // and render the full layout into `#browse-results`, duplicating the page.
-    // When an indicator filter is active, the search/legacy-filter path is skipped
-    // entirely (AC7); the dashboard surfaces drive the response instead.
-    if active_indicator_filter.is_some() {
+    // When an indicator filter is PARSED (any role, including Anonymous + Gaps),
+    // the search/legacy-filter path is skipped entirely (AC7); the dashboard
+    // surfaces drive the response instead.
+    if parsed_indicator.is_some() {
         query = String::new();
     }
-    let has_filter = params.filter.is_some() && active_indicator_filter.is_none();
+    let has_filter = params.filter.is_some() && parsed_indicator.is_none();
     let (results, redirect) = if !query.trim().is_empty() || has_filter {
         let outcome = SearchService::search(
             pool,
@@ -290,9 +332,42 @@ pub async fn home(
         Vec::new()
     };
 
+    // Story 9-6 — Series with gaps indicator. Anonymous-allowed
+    // ASYMMETRY (AC2): the gaps_filter_active boolean is computed from
+    // the RAW parser result (`parsed_indicator`), NOT the role-gated
+    // `active_indicator_filter`. So an anonymous user navigating to
+    // `/?filter=gaps` triggers the section swap, but the count query
+    // still skips for them (no DB load on a surface they won't see —
+    // the tag lives in #what-needs-attention which hides on empty
+    // indicator_tags for anonymous).
+    let gaps_count: i64 = if session.role >= Role::Librarian {
+        match crate::models::series::SeriesModel::count_with_gaps(pool).await {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!(error = %e, "count_with_gaps failed; rendering 0 (tag hidden)");
+                0
+            }
+        }
+    } else {
+        0
+    };
+    let gaps_filter_active = parsed_indicator == Some(IndicatorFilter::Gaps);
+    let gaps_series: Vec<crate::models::series::SeriesWithGap> = if gaps_filter_active {
+        match crate::models::series::SeriesModel::list_with_gaps(pool, 100).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "list_with_gaps failed; rendering empty list");
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
     let indicator_tags = build_indicator_tags(
         unshelved_count,
         overdue_count,
+        gaps_count,
         active_indicator_filter,
         loc,
     );
@@ -486,6 +561,11 @@ pub async fn home(
         overdue_threshold_days: overdue_threshold as i64,
         days_label: rust_i18n::t!("loan.days", locale = loc).to_string(),
         overdue_badge_label: rust_i18n::t!("loan.overdue", locale = loc).to_string(),
+        gaps_filter_active,
+        gaps_series,
+        gaps_heading: rust_i18n::t!("dashboard.attention.gaps_heading", locale = loc).to_string(),
+        gaps_empty_label: rust_i18n::t!("dashboard.attention.gaps_empty", locale = loc).to_string(),
+        gaps_missing_label: rust_i18n::t!("series.gap_count", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -744,7 +824,7 @@ fn render_empty_state(query: &str, is_librarian: bool, loc: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -846,7 +926,7 @@ mod tests {
     /// render tests to scope assertions to a specific section and avoid false
     /// positives from same-string occurrences elsewhere on the page (e.g.,
     /// the nav-bar `/loans` link for the glance card).
-    fn slice_section<'a>(html: &'a str, section_id: &str) -> &'a str {
+    pub(crate) fn slice_section<'a>(html: &'a str, section_id: &str) -> &'a str {
         let start_tag = format!(r#"id="{section_id}""#);
         let start = html
             .find(&start_tag)
@@ -878,11 +958,11 @@ mod tests {
 
     /// Story 9-4 helper — scope assertions to the "What needs attention"
     /// indicator section.
-    fn attention_section_slice(html: &str) -> &str {
+    pub(crate) fn attention_section_slice(html: &str) -> &str {
         slice_section(html, "what-needs-attention")
     }
 
-    fn make_test_home_template_with_counts(
+    pub(crate) fn make_test_home_template_with_counts(
         role: &str,
         loans_link_visible: bool,
         titles: i64,
@@ -959,6 +1039,11 @@ mod tests {
             overdue_threshold_days: 30,
             days_label: "days".to_string(),
             overdue_badge_label: "Overdue".to_string(),
+            gaps_filter_active: false,
+            gaps_series: Vec::new(),
+            gaps_heading: "Series with gaps".to_string(),
+            gaps_empty_label: "No incomplete series — your collection is whole!".to_string(),
+            gaps_missing_label: "Missing".to_string(),
         }
     }
 
@@ -1030,7 +1115,7 @@ mod tests {
     /// Reuses the counts factory so glance + recent-additions assertions
     /// remain possible. Caller controls all 9-4 surfaces directly so
     /// tests don't have to coordinate with the SQL → handler pipeline.
-    fn make_test_home_template_with_indicators(
+    pub(crate) fn make_test_home_template_with_indicators(
         role: &str,
         indicator_tags: Vec<IndicatorTag>,
         unshelved_filter_active: bool,
@@ -1043,7 +1128,7 @@ mod tests {
         t
     }
 
-    fn fake_indicator_tag(label: &str, count: u64, filter_name: &str, is_active: bool) -> IndicatorTag {
+    pub(crate) fn fake_indicator_tag(label: &str, count: u64, filter_name: &str, is_active: bool) -> IndicatorTag {
         IndicatorTag {
             label: label.to_string(),
             count,
@@ -1053,7 +1138,7 @@ mod tests {
         }
     }
 
-    fn fake_unshelved_row(volume_id: u64, label: &str, title_id: u64, title: &str, author: &str) -> crate::models::volume::UnshelvedVolumeRow {
+    pub(crate) fn fake_unshelved_row(volume_id: u64, label: &str, title_id: u64, title: &str, author: &str) -> crate::models::volume::UnshelvedVolumeRow {
         crate::models::volume::UnshelvedVolumeRow {
             id: volume_id,
             label: label.to_string(),
@@ -1067,7 +1152,7 @@ mod tests {
     /// Story 9-5 — deterministic LoanWithDetails factory for handler
     /// render tests. Sentinel `loaned_at` is never surfaced; only
     /// duration_days drives the row coloring.
-    fn fake_loan_with_details(
+    pub(crate) fn fake_loan_with_details(
         borrower_id: u64,
         borrower_name: &str,
         volume_label: &str,
@@ -1856,107 +1941,8 @@ mod tests {
         );
     }
 
-    // ─── Story 9-5 — Handler render tests (AC12e) ─────────────────────
-
-    /// AC2 anonymous-no-leak (overdue counterpart): empty Vec → no tag
-    /// + no list section.
-    #[test]
-    fn home_anonymous_does_not_render_overdue_tag() {
-        let template =
-            make_test_home_template_with_indicators("anonymous", Vec::new(), false, Vec::new());
-        let html = template.render().expect("render");
-        assert!(!html.contains("id=\"filter-tag-overdue\""));
-        assert!(!html.contains("id=\"overdue-list\""));
-    }
-
-    /// AC1 + AC3 default state — librarian sees the overdue pill with
-    /// the count href + aria-label.
-    #[test]
-    fn home_librarian_renders_overdue_tag_in_default_state_when_count_positive() {
-        let tags = vec![fake_indicator_tag("Overdue loans", 5, "overdue", false)];
-        let template =
-            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
-        let html = template.render().expect("render");
-        let slice = attention_section_slice(&html);
-
-        assert!(slice.contains("id=\"filter-tag-overdue\""));
-        assert!(slice.contains("href=\"/?filter=overdue\""));
-        assert!(slice.contains("aria-label=\"Overdue loans: 5\""));
-        assert!(slice.contains(">5<"));
-    }
-
-    /// AC3 active state: `href="/"`, "×", clear-action aria-label.
-    #[test]
-    fn home_librarian_overdue_tag_active_state_when_filter_applied() {
-        let tags = vec![fake_indicator_tag("Overdue loans", 5, "overdue", true)];
-        let mut t =
-            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
-        t.overdue_filter_active = true;
-        t.overdue_loans = vec![fake_loan_with_details(10, "Borrower One", "V0042", "Title One", 40)];
-        let html = t.render().expect("render");
-        let slice = attention_section_slice(&html);
-
-        assert!(slice.contains("id=\"filter-tag-overdue\""));
-        assert!(slice.contains("href=\"/\""));
-        assert!(slice.contains("&times;"));
-        assert!(slice.contains("aria-label=\"Clear filter: Overdue loans\""));
-        assert!(!slice.contains("aria-label=\"Overdue loans: 5\""));
-    }
-
-    /// AC6 mutual exclusion (3-way) + row-link target = /borrower/<id>.
-    #[test]
-    fn home_librarian_overdue_filter_active_renders_overdue_list_not_unshelved_list_nor_recent_additions(
-    ) {
-        let tags = vec![fake_indicator_tag("Overdue loans", 3, "overdue", true)];
-        let loans = vec![
-            fake_loan_with_details(10, "Borrower One", "V0001", "Title One", 35),
-            fake_loan_with_details(11, "Borrower Two", "V0002", "Title Two", 45),
-        ];
-        let mut t =
-            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
-        t.overdue_filter_active = true;
-        t.overdue_loans = loans;
-        let html = t.render().expect("render");
-
-        assert!(html.contains("id=\"overdue-list\""));
-        assert!(!html.contains("id=\"unshelved-list\""));
-        assert!(!html.contains("id=\"recent-additions\""));
-        assert!(html.contains("V0001"));
-        assert!(html.contains("Title One"));
-        assert!(html.contains("Borrower One"));
-        assert!(html.contains("href=\"/borrower/10\""));
-        assert!(html.contains("href=\"/borrower/11\""));
-    }
-
-    /// AC6 defensive empty-state inside the #overdue-list section.
-    #[test]
-    fn home_librarian_overdue_filter_empty_renders_empty_label() {
-        let tags = vec![fake_indicator_tag("Overdue loans", 1, "overdue", true)];
-        let mut t =
-            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
-        t.overdue_filter_active = true;
-        let html = t.render().expect("render");
-
-        assert!(html.contains("id=\"overdue-list\""));
-        assert!(html.contains("No overdue loans"));
-        assert!(!html.contains("id=\"recent-additions\""));
-        assert!(!html.contains("id=\"unshelved-list\""));
-    }
-
-    /// AC1 emit-order at rendered-HTML level: unshelved tag before
-    /// overdue tag in document order.
-    #[test]
-    fn home_renders_overdue_tag_after_unshelved_in_attention_section() {
-        let tags = vec![
-            fake_indicator_tag("Unshelved volumes", 3, "unshelved", false),
-            fake_indicator_tag("Overdue loans", 5, "overdue", false),
-        ];
-        let template =
-            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
-        let html = template.render().expect("render");
-        let slice = attention_section_slice(&html);
-        let unshelved_pos = slice.find("id=\"filter-tag-unshelved\"").expect("unshelved");
-        let overdue_pos = slice.find("id=\"filter-tag-overdue\"").expect("overdue");
-        assert!(unshelved_pos < overdue_pos);
-    }
+    // Story 9-5 + 9-6 indicator render tests extracted to
+    // `src/routes/home_indicator_tests.rs` per Foundation Rule #12 LOC
+    // budget (story 9-6 AC15). Test factory + fake helpers above are
+    // marked `pub(crate)` so the sibling module can import them.
 }

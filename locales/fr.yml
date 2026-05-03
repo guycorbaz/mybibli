@@ -366,6 +366,10 @@ dashboard:
     overdue_clear_aria: "Retirer le filtre : Prêts en retard"
     overdue_heading: Prêts en retard
     overdue_empty: "Aucun prêt en retard — bien joué !"
+    gaps_label: Séries incomplètes
+    gaps_clear_aria: "Retirer le filtre : Séries incomplètes"
+    gaps_heading: Séries incomplètes
+    gaps_empty: "Aucune série incomplète — votre collection est complète !"
 borrower:
   list_title: Emprunteurs
   add: Ajouter un emprunteur

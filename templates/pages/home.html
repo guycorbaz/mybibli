@@ -182,6 +182,36 @@
             </ul>
         {% endif %}
     </section>
+    {% else if gaps_filter_active %}
+    {# Story 9-6 AC6: Series with gaps list. Each row links to
+       /series/{id} where the user sees the full SeriesGapGrid
+       (UX-DR16). Anonymous-allowed per AC2 — series browsing is
+       anonymous-permitted (FR65 + FR95). Color treatment for the
+       gap-count badge mirrors templates/pages/series_list.html
+       line 51 (red text on red background). Tailwind utility
+       classes only, zero inline styles. #}
+    <section id="gaps-list" aria-labelledby="gaps-list-heading" class="w-full max-w-4xl mt-6">
+        <h2 id="gaps-list-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ gaps_heading }}</h2>
+        {% if gaps_series.is_empty() %}
+            <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ gaps_empty_label }}</div>
+        {% else %}
+            <ul class="mt-3 space-y-2">
+                {% for row in gaps_series %}
+                <li>
+                    <a href="/series/{{ row.id }}" class="block px-4 py-3 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-700 transition-colors">
+                        <div class="flex items-baseline gap-3 flex-wrap">
+                            <span class="font-medium text-stone-900 dark:text-stone-100 truncate">{{ row.name }}</span>
+                            <span class="text-sm text-stone-600 dark:text-stone-400 tabular-nums">{{ row.owned_count }}/{{ row.total_volume_count }}</span>
+                            <span class="ml-auto inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">
+                                {{ row.gap_count() }} {{ gaps_missing_label }}
+                            </span>
+                        </div>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
     {% else %}
     {# Recent additions section (story 9-2). Sits directly below #collection-glance
        and above #browse-results so it survives HTMX search swaps. The inner
@@ -219,7 +249,7 @@
             </div>
         {% endif %}
     </section>
-    {% endif %}{# /unshelved_filter_active or overdue_filter_active #}
+    {% endif %}{# /unshelved_filter_active or overdue_filter_active or gaps_filter_active #}
 
     {# Stats by genre section (story 9-3). Sits between #recent-additions and
        the browse controls so it survives HTMX search swaps. Hidden entirely

@@ -7,6 +7,8 @@ pub mod catalog;
 pub mod contributors;
 pub mod home;
 pub mod home_indicators;
+#[cfg(test)]
+mod home_indicator_tests;
 pub mod loans;
 pub mod locations;
 pub mod series;

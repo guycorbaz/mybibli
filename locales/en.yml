@@ -366,6 +366,10 @@ dashboard:
     overdue_clear_aria: "Clear filter: Overdue loans"
     overdue_heading: Overdue loans
     overdue_empty: "No overdue loans — well done!"
+    gaps_label: Series with gaps
+    gaps_clear_aria: "Clear filter: Series with gaps"
+    gaps_heading: Series with gaps
+    gaps_empty: "No incomplete series — your collection is whole!"
 borrower:
   list_title: Borrowers
   add: Add borrower
