@@ -143,7 +143,7 @@ so that I can review the most recent activity in one click without scrolling thr
     - 5 `#[sqlx::test]` cases per AC11b (5).
   - [ ] Verify: `SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' cargo test --test dashboard_recent_activity` — all 10 green; lock as Commit 1 of the story branch.
 
-- [ ] **Task 2 — `RECENT_ACTIVITY_DAYS` constant + 2 new `IndicatorFilter` variants + parser update (AC: 4, 7, 11c, 11f)**
+- [x] **Task 2 — `RECENT_ACTIVITY_DAYS` constant + 2 new `IndicatorFilter` variants + parser update (AC: 4, 7, 11c, 11f)**
   - [ ] In `src/routes/home_indicators.rs`, add a `pub(crate) const RECENT_ACTIVITY_DAYS: i32 = 7;` near the top of the file (above the `IndicatorFilter` enum). Add a doc comment per AC7: hardcoded v1 cutoff; configurable iff a future story extracts it to AppSettings.
   - [ ] Add `RecentCataloged` and `RecentReturns` variants to the `IndicatorFilter` enum (currently 3 variants post-9-6). Remove the `// Reserved for follow-up Epic 9 story: RecentCataloged (9-7), RecentReturns (9-7)` comment — they're now landed.
   - [ ] Update `parse_indicator_filter`:
@@ -169,14 +169,14 @@ so that I can review the most recent activity in one click without scrolling thr
   - [ ] **NEW** `recent_activity_window_constant_is_seven_days` test in `home_indicators.rs::tests`: `assert_eq!(RECENT_ACTIVITY_DAYS, 7);`.
   - [ ] `cargo test routes::home_indicators` — all parser + constant tests green; lock as Commit 2.
 
-- [ ] **Task 3 — `build_indicator_tags` extension + 5 new helper unit tests (AC: 9, 11d)**
+- [x] **Task 3 — `build_indicator_tags` extension + 5 new helper unit tests (AC: 9, 11d)**
   - [ ] In `src/routes/home_indicators.rs`, extend `build_indicator_tags` to take `recent_cataloged_count: i64` as the 4th parameter and `recent_returns_count: i64` as the 5th parameter (between `gaps_count` and `active`). Add 2 new push blocks at the END of the function, after the existing gaps push block, in the order recent-cataloged → recent-returns (per AC1 priority ordering).
   - [ ] **UPDATE** ALL existing `build_indicator_tags_*` tests in `home_indicators.rs::tests` (currently ~12 cases after 9-6 batch) to pass `0, 0` as the new 4th + 5th args. They keep the same assertions.
   - [ ] **NEW** unit tests per AC11d (5 cases): `build_indicator_tags_recent_cataloged_only_…`, `build_indicator_tags_recent_returns_only_…`, `build_indicator_tags_emits_all_five_tags_in_priority_order_when_all_present`, `build_indicator_tags_recent_cataloged_zero_count_with_active_filter_still_emits_active_tag`, `build_indicator_tags_recent_returns_zero_count_with_active_filter_still_emits_active_tag`.
   - [ ] Update the `home::home` handler's `build_indicator_tags` call site (post-9-6 location, ~`home.rs:354-360`) to pass the new args. Use placeholders `0, 0` initially; Task 5 wires the real counts.
   - [ ] `cargo test routes::home_indicators` — all green; lock as Commit 3.
 
-- [ ] **Task 4 — i18n keys (AC: 10)**
+- [x] **Task 4 — i18n keys (AC: 10)**
   - [ ] In `locales/en.yml`, append 8 new keys to the existing `dashboard.attention:` block (after `gaps_empty:` at line 372 post-9-6). See AC10 for exact text.
   - [ ] In `locales/fr.yml`, mirror the 8 keys at the same path.
   - [ ] **CRITICAL:** locale files have NO top-level `en:`/`fr:` wrapper. After editing, run `touch src/lib.rs && cargo build`. The `i18n::audit::tests::all_t_keys_have_both_locales` test enforces EN/FR mirror.

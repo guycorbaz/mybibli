@@ -364,10 +364,16 @@ pub async fn home(
         Vec::new()
     };
 
+    // Story 9-7 — recent_cataloged_count + recent_returns_count are
+    // wired in Task 5. For now placeholders `0, 0` keep the call
+    // type-correct; Task 5 replaces them with the real counts from
+    // `count_recent_cataloged` + `count_recent_returns`.
     let indicator_tags = build_indicator_tags(
         unshelved_count,
         overdue_count,
         gaps_count,
+        0,
+        0,
         active_indicator_filter,
         loc,
     );

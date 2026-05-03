@@ -370,6 +370,14 @@ dashboard:
     gaps_clear_aria: "Clear filter: Series with gaps"
     gaps_heading: Series with gaps
     gaps_empty: "No incomplete series — your collection is whole!"
+    recent_cataloged_label: Recent cataloged
+    recent_cataloged_clear_aria: "Clear filter: Recent cataloged"
+    recent_cataloged_heading: "Recently cataloged (last 7 days)"
+    recent_cataloged_empty: "No recent additions in the last 7 days — nothing new to catalog yet"
+    recent_returns_label: Recent returns
+    recent_returns_clear_aria: "Clear filter: Recent returns"
+    recent_returns_heading: "Recently returned (last 7 days)"
+    recent_returns_empty: "No recent returns in the last 7 days — quiet week!"
 borrower:
   list_title: Borrowers
   add: Add borrower

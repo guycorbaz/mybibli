@@ -370,6 +370,14 @@ dashboard:
     gaps_clear_aria: "Retirer le filtre : Séries incomplètes"
     gaps_heading: Séries incomplètes
     gaps_empty: "Aucune série incomplète — votre collection est complète !"
+    recent_cataloged_label: Catalogués récemment
+    recent_cataloged_clear_aria: "Retirer le filtre : Catalogués récemment"
+    recent_cataloged_heading: "Catalogués récemment (7 derniers jours)"
+    recent_cataloged_empty: "Aucun ajout récent ces 7 derniers jours — rien de nouveau à cataloguer encore"
+    recent_returns_label: Retours récents
+    recent_returns_clear_aria: "Retirer le filtre : Retours récents"
+    recent_returns_heading: "Retours récents (7 derniers jours)"
+    recent_returns_empty: "Aucun retour récent ces 7 derniers jours — semaine calme !"
 borrower:
   list_title: Emprunteurs
   add: Ajouter un emprunteur
