@@ -58,6 +58,16 @@ impl AppState {
             .unwrap_or_else(|_| AppSettings::default().session_timeout_secs)
     }
 
+    /// Story 9-5: read the currently-configured overdue-loan threshold (days).
+    /// Clones the scalar out of the `RwLock` so callers never hold the guard
+    /// across `.await` points.
+    pub fn overdue_threshold_days(&self) -> i32 {
+        self.settings
+            .read()
+            .map(|s| s.overdue_threshold_days)
+            .unwrap_or_else(|_| AppSettings::default().overdue_threshold_days)
+    }
+
     /// Story 8-5: last-resort default-language fallback in story 7-3's locale
     /// chain. Clones the owned String out of the lock.
     pub fn default_language(&self) -> String {

@@ -362,6 +362,10 @@ dashboard:
     unshelved_label: Volumes à ranger
     unshelved_clear_aria: "Retirer le filtre : Volumes à ranger"
     unshelved_empty: Aucun volume à ranger
+    overdue_label: Prêts en retard
+    overdue_clear_aria: "Retirer le filtre : Prêts en retard"
+    overdue_heading: Prêts en retard
+    overdue_empty: "Aucun prêt en retard — bien joué !"
 borrower:
   list_title: Emprunteurs
   add: Ajouter un emprunteur

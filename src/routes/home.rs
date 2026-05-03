@@ -14,6 +14,9 @@ use crate::models::PaginatedList;
 use crate::models::genre::GenreModel;
 use crate::models::title::SearchResult;
 use crate::models::volume_state::VolumeStateModel;
+use crate::routes::home_indicators::{
+    IndicatorFilter, IndicatorTag, build_indicator_tags, parse_indicator_filter,
+};
 use crate::services::search::{SearchOutcome, SearchService};
 use crate::utils::{current_url, html_escape, url_encode};
 
@@ -95,6 +98,16 @@ pub struct HomeTemplate {
     pub unshelved_volumes: Vec<crate::models::volume::UnshelvedVolumeRow>,
     pub unshelved_heading: String,
     pub unshelved_empty_label: String,
+    // "Overdue loans" indicator (story 9-5). 3-way mutual exclusion
+    // with #recent-additions and #unshelved-list — at most one slot
+    // renders at a time.
+    pub overdue_filter_active: bool,
+    pub overdue_loans: Vec<crate::models::loan::LoanWithDetails>,
+    pub overdue_heading: String,
+    pub overdue_empty_label: String,
+    pub overdue_threshold_days: i64,
+    pub days_label: String,
+    pub overdue_badge_label: String,
 }
 
 /// One row of the "By genre" dashboard section (story 9-3).
@@ -232,7 +245,6 @@ pub async fn home(
     } else {
         0
     };
-    let indicator_tags = build_indicator_tags(unshelved_count, active_indicator_filter, loc);
     let unshelved_filter_active =
         session.role >= Role::Librarian && active_indicator_filter == Some(IndicatorFilter::Unshelved);
     let unshelved_volumes: Vec<crate::models::volume::UnshelvedVolumeRow> =
@@ -247,6 +259,43 @@ pub async fn home(
         } else {
             Vec::new()
         };
+
+    // Story 9-5 — Overdue loans indicator. Same anonymous-skip + soft-degrade
+    // pattern as unshelved (AC2 no-leak, AC7 threshold-from-cache). Threshold
+    // read once per request via the AppState accessor (clones the i32 out of
+    // the read-guard, no .await held inside the lock).
+    let overdue_threshold = state.overdue_threshold_days();
+    let overdue_count: i64 = if session.role >= Role::Librarian {
+        match crate::models::loan::LoanModel::count_overdue(pool, overdue_threshold).await {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!(error = %e, "count_overdue failed; rendering 0 (tag hidden)");
+                0
+            }
+        }
+    } else {
+        0
+    };
+    let overdue_filter_active =
+        session.role >= Role::Librarian && active_indicator_filter == Some(IndicatorFilter::Overdue);
+    let overdue_loans: Vec<crate::models::loan::LoanWithDetails> = if overdue_filter_active {
+        match crate::models::loan::LoanModel::list_overdue(pool, overdue_threshold, 100).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "list_overdue failed; rendering empty list");
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
+    let indicator_tags = build_indicator_tags(
+        unshelved_count,
+        overdue_count,
+        active_indicator_filter,
+        loc,
+    );
 
     // "Collection at a glance" card — three counts in a single SQL round-trip (story 9-1).
     // Soft-degrade on DB error: a transient lock or timeout MUST NOT take down the
@@ -428,6 +477,15 @@ pub async fn home(
             .to_string(),
         unshelved_empty_label: rust_i18n::t!("dashboard.attention.unshelved_empty", locale = loc)
             .to_string(),
+        overdue_filter_active,
+        overdue_loans,
+        overdue_heading: rust_i18n::t!("dashboard.attention.overdue_heading", locale = loc)
+            .to_string(),
+        overdue_empty_label: rust_i18n::t!("dashboard.attention.overdue_empty", locale = loc)
+            .to_string(),
+        overdue_threshold_days: overdue_threshold as i64,
+        days_label: rust_i18n::t!("loan.days", locale = loc).to_string(),
+        overdue_badge_label: rust_i18n::t!("loan.overdue", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -511,102 +569,6 @@ fn parse_filter(filter: &Option<String>) -> (Option<u64>, Option<String>) {
             (None, Some(state))
         }
         _ => (None, None),
-    }
-}
-
-/// Closed enum of dashboard "indicator" filters (story 9-4 AC5).
-///
-/// Distinct from the legacy `parse_filter` which handles `genre:N` and
-/// `state:foo`. Indicator filters drive the home-page dashboard swap
-/// (replacing `#recent-additions` with the filtered result, e.g. the
-/// unshelved-volume list); legacy filters drive the `#browse-results`
-/// swap. The two parsers are siblings; the indicator parser runs first
-/// in the handler chain so AC7's single-active-filter contract holds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IndicatorFilter {
-    /// Filter to active volumes with `location_id IS NULL` (story 9-4).
-    Unshelved,
-    // Reserved for follow-up Epic 9 stories: Overdue (9-5), Gaps (9-6),
-    // RecentCataloged (9-7), RecentReturns (9-7).
-}
-
-/// One pill in the home-page "What needs attention" section (story
-/// 9-4 AC1 + AC3). All textual fields are pre-translated by the
-/// handler; the FilterTag macro renders them verbatim. The macro
-/// itself decides whether to emit anything based on `count` and
-/// `is_active`.
-pub struct IndicatorTag {
-    /// Pre-translated label, e.g. "Unshelved volumes" / "Volumes à ranger".
-    pub label: String,
-    /// Non-zero count — the macro hides the pill when 0; the helper
-    /// filters zero-count tags out before populating this Vec, so this
-    /// is always > 0 in practice.
-    pub count: u64,
-    /// The bare-name `?filter=<name>` enum value matching the
-    /// `IndicatorFilter` variant. Used to compose the href.
-    pub filter_name: String,
-    /// True when this filter matches the currently active URL filter.
-    /// Drives the macro's pill-vs-active-badge rendering.
-    pub is_active: bool,
-    /// Pre-translated aria-label for the active-state ✕ link.
-    pub clear_aria_label: String,
-}
-
-/// Build the `Vec<IndicatorTag>` for the "What needs attention" section.
-///
-/// Story 9-4 ships the unshelved indicator only. Stories 9-5/9-6/9-7
-/// extend this helper with additional `IndicatorTag` entries; the shape
-/// is forward-compatible.
-///
-/// Zero-count rule (AC3): a tag with `count == 0` is omitted in the
-/// DEFAULT state so the section can hide entirely (`{% if
-/// !indicator_tags.is_empty() %}`). Code-review follow-up: when the
-/// tag's filter is currently active, the tag is ALWAYS emitted (in
-/// active state) regardless of count — otherwise a librarian who is
-/// viewing `/?filter=unshelved` and just shelved the last unshelved
-/// volume gets stranded with no visible ✕ to clear the filter. The
-/// macro renders the active-state pill (label + ×, href "/") so the
-/// user always has a visible escape hatch.
-fn build_indicator_tags(
-    unshelved_count: i64,
-    active: Option<IndicatorFilter>,
-    loc: &str,
-) -> Vec<IndicatorTag> {
-    let mut tags = Vec::new();
-    let unshelved_is_active = active == Some(IndicatorFilter::Unshelved);
-    if unshelved_count > 0 || unshelved_is_active {
-        tags.push(IndicatorTag {
-            label: rust_i18n::t!("dashboard.attention.unshelved_label", locale = loc).to_string(),
-            count: unshelved_count.max(0) as u64,
-            filter_name: "unshelved".to_string(),
-            is_active: unshelved_is_active,
-            clear_aria_label: rust_i18n::t!(
-                "dashboard.attention.unshelved_clear_aria",
-                locale = loc
-            )
-            .to_string(),
-        });
-    }
-    tags
-}
-
-/// Parse the bare-name closed-enum indicator filter from `?filter=…`.
-///
-/// Returns `None` for legacy `genre:` / `state:` namespaced patterns
-/// (those route through `parse_filter`) and for anything else. The
-/// `':'` heuristic is the disambiguator: any value containing a colon
-/// is treated as a legacy-namespace filter and ignored here without
-/// noise. Bare-name values that don't match the closed enum are
-/// logged at WARN and ignored — surfaces a typo or a stale link
-/// without breaking the page.
-fn parse_indicator_filter(filter: &Option<String>) -> Option<IndicatorFilter> {
-    match filter.as_deref() {
-        Some("unshelved") => Some(IndicatorFilter::Unshelved),
-        Some(v) if !v.contains(':') && !v.is_empty() => {
-            tracing::warn!(filter = %v, "Unknown indicator filter, ignoring");
-            None
-        }
-        _ => None,
     }
 }
 
@@ -813,77 +775,6 @@ mod tests {
         assert!(s.is_none());
     }
 
-    // ─── Story 9-4 — `parse_indicator_filter` (AC11c) ────────────────
-
-    #[test]
-    fn parse_indicator_filter_unshelved_recognized() {
-        assert_eq!(
-            parse_indicator_filter(&Some("unshelved".to_string())),
-            Some(IndicatorFilter::Unshelved)
-        );
-    }
-
-    /// AC5: closed enum is case-sensitive. "UNSHELVED" must NOT match.
-    #[test]
-    fn parse_indicator_filter_case_sensitive() {
-        assert_eq!(
-            parse_indicator_filter(&Some("UNSHELVED".to_string())),
-            None
-        );
-        assert_eq!(
-            parse_indicator_filter(&Some("Unshelved".to_string())),
-            None
-        );
-    }
-
-    /// AC5 + AC7: legacy `genre:N` patterns must NOT log a warning here
-    /// (they go through `parse_filter` instead). Unfortunately we can't
-    /// assert "no log emitted" easily without a tracing subscriber test
-    /// setup, but we CAN assert the parser returns None — which is the
-    /// observable contract.
-    #[test]
-    fn parse_indicator_filter_genre_namespace_ignored() {
-        assert_eq!(parse_indicator_filter(&Some("genre:5".to_string())), None);
-        assert_eq!(
-            parse_indicator_filter(&Some("genre:99".to_string())),
-            None
-        );
-    }
-
-    #[test]
-    fn parse_indicator_filter_state_namespace_ignored() {
-        assert_eq!(
-            parse_indicator_filter(&Some("state:unshelved".to_string())),
-            None
-        );
-        assert_eq!(
-            parse_indicator_filter(&Some("state:lost".to_string())),
-            None
-        );
-    }
-
-    /// AC5 unknown bare-name values return None and log a WARN. The
-    /// `!contains(':')` guard means the warning fires only for genuine
-    /// typos, not for legacy patterns.
-    #[test]
-    fn parse_indicator_filter_unknown_bare_name_returns_none() {
-        assert_eq!(
-            parse_indicator_filter(&Some("nonsense".to_string())),
-            None
-        );
-        assert_eq!(
-            parse_indicator_filter(&Some("overdue".to_string())),
-            None,
-            "overdue is reserved for story 9-5 — not yet recognized"
-        );
-    }
-
-    #[test]
-    fn parse_indicator_filter_none_and_empty_return_none() {
-        assert_eq!(parse_indicator_filter(&None), None);
-        assert_eq!(parse_indicator_filter(&Some(String::new())), None);
-    }
-
     #[test]
     fn test_render_search_row() {
         let item = SearchResult {
@@ -1061,6 +952,13 @@ mod tests {
             unshelved_volumes: Vec::new(),
             unshelved_heading: "Unshelved volumes".to_string(),
             unshelved_empty_label: "No unshelved volumes".to_string(),
+            overdue_filter_active: false,
+            overdue_loans: Vec::new(),
+            overdue_heading: "Overdue loans".to_string(),
+            overdue_empty_label: "No overdue loans — well done!".to_string(),
+            overdue_threshold_days: 30,
+            days_label: "days".to_string(),
+            overdue_badge_label: "Overdue".to_string(),
         }
     }
 
@@ -1163,6 +1061,31 @@ mod tests {
             title: title.to_string(),
             primary_contributor: Some(author.to_string()),
             media_type: "book".to_string(),
+        }
+    }
+
+    /// Story 9-5 — deterministic LoanWithDetails factory for handler
+    /// render tests. Sentinel `loaned_at` is never surfaced; only
+    /// duration_days drives the row coloring.
+    fn fake_loan_with_details(
+        borrower_id: u64,
+        borrower_name: &str,
+        volume_label: &str,
+        title_name: &str,
+        duration_days: i64,
+    ) -> crate::models::loan::LoanWithDetails {
+        crate::models::loan::LoanWithDetails {
+            id: 1,
+            volume_id: 1,
+            borrower_id,
+            borrower_name: borrower_name.to_string(),
+            volume_label: volume_label.to_string(),
+            title_name: title_name.to_string(),
+            loaned_at: chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+            duration_days,
         }
     }
 
@@ -1696,42 +1619,6 @@ mod tests {
         );
     }
 
-    // ─── Story 9-4 — `build_indicator_tags` direct unit tests ─────────
-
-    /// AC3 zero-count rule: zero count → empty Vec → section hides.
-    #[test]
-    fn build_indicator_tags_zero_returns_empty_vec() {
-        let tags = build_indicator_tags(0, None, "en");
-        assert!(tags.is_empty());
-    }
-
-    /// Default state: count > 0, no active filter → unshelved tag with
-    /// `is_active=false`, label translated.
-    #[test]
-    fn build_indicator_tags_nonzero_returns_unshelved_tag_in_default_state() {
-        let tags = build_indicator_tags(5, None, "en");
-        assert_eq!(tags.len(), 1);
-        assert_eq!(tags[0].count, 5);
-        assert_eq!(tags[0].filter_name, "unshelved");
-        assert!(!tags[0].is_active, "no filter active → tag in default state");
-        assert_eq!(tags[0].label, "Unshelved volumes");
-    }
-
-    /// Active state: count > 0, active filter is Unshelved → tag in
-    /// active state. The clear_aria_label must carry the FR/EN copy.
-    #[test]
-    fn build_indicator_tags_nonzero_with_active_filter_marks_unshelved_active() {
-        let tags = build_indicator_tags(5, Some(IndicatorFilter::Unshelved), "fr");
-        assert_eq!(tags.len(), 1);
-        assert!(tags[0].is_active, "filter=unshelved → tag is_active=true");
-        assert_eq!(tags[0].label, "Volumes à ranger");
-        assert!(
-            tags[0].clear_aria_label.contains("Volumes à ranger"),
-            "FR clear_aria_label must include the label; got {:?}",
-            tags[0].clear_aria_label
-        );
-    }
-
     // ─── Story 9-4 — Handler render tests (AC11d) ─────────────────────
 
     /// AC2 anonymous-no-leak: `#what-needs-attention` section + the
@@ -1945,22 +1832,6 @@ mod tests {
         );
     }
 
-    /// P1 — `build_indicator_tags` emits the active pill at count=0
-    /// when its filter is the active one. Counterpart to the macro
-    /// test above, locks the helper-side contract.
-    #[test]
-    fn build_indicator_tags_zero_count_with_active_filter_still_emits_active_tag() {
-        let tags = build_indicator_tags(0, Some(IndicatorFilter::Unshelved), "en");
-        assert_eq!(
-            tags.len(),
-            1,
-            "active filter at count=0 must still produce a tag (escape hatch)"
-        );
-        assert!(tags[0].is_active);
-        assert_eq!(tags[0].count, 0);
-        assert_eq!(tags[0].filter_name, "unshelved");
-    }
-
     /// P2 — AC1 placement regression guard. `#what-needs-attention`
     /// MUST appear BEFORE `#collection-glance` in document order
     /// (actionable indicators outrank informational stats for a
@@ -1983,5 +1854,109 @@ mod tests {
             attention_pos < glance_pos,
             "AC1: what-needs-attention ({attention_pos}) must appear before collection-glance ({glance_pos})"
         );
+    }
+
+    // ─── Story 9-5 — Handler render tests (AC12e) ─────────────────────
+
+    /// AC2 anonymous-no-leak (overdue counterpart): empty Vec → no tag
+    /// + no list section.
+    #[test]
+    fn home_anonymous_does_not_render_overdue_tag() {
+        let template =
+            make_test_home_template_with_indicators("anonymous", Vec::new(), false, Vec::new());
+        let html = template.render().expect("render");
+        assert!(!html.contains("id=\"filter-tag-overdue\""));
+        assert!(!html.contains("id=\"overdue-list\""));
+    }
+
+    /// AC1 + AC3 default state — librarian sees the overdue pill with
+    /// the count href + aria-label.
+    #[test]
+    fn home_librarian_renders_overdue_tag_in_default_state_when_count_positive() {
+        let tags = vec![fake_indicator_tag("Overdue loans", 5, "overdue", false)];
+        let template =
+            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
+        let html = template.render().expect("render");
+        let slice = attention_section_slice(&html);
+
+        assert!(slice.contains("id=\"filter-tag-overdue\""));
+        assert!(slice.contains("href=\"/?filter=overdue\""));
+        assert!(slice.contains("aria-label=\"Overdue loans: 5\""));
+        assert!(slice.contains(">5<"));
+    }
+
+    /// AC3 active state: `href="/"`, "×", clear-action aria-label.
+    #[test]
+    fn home_librarian_overdue_tag_active_state_when_filter_applied() {
+        let tags = vec![fake_indicator_tag("Overdue loans", 5, "overdue", true)];
+        let mut t =
+            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
+        t.overdue_filter_active = true;
+        t.overdue_loans = vec![fake_loan_with_details(10, "Borrower One", "V0042", "Title One", 40)];
+        let html = t.render().expect("render");
+        let slice = attention_section_slice(&html);
+
+        assert!(slice.contains("id=\"filter-tag-overdue\""));
+        assert!(slice.contains("href=\"/\""));
+        assert!(slice.contains("&times;"));
+        assert!(slice.contains("aria-label=\"Clear filter: Overdue loans\""));
+        assert!(!slice.contains("aria-label=\"Overdue loans: 5\""));
+    }
+
+    /// AC6 mutual exclusion (3-way) + row-link target = /borrower/<id>.
+    #[test]
+    fn home_librarian_overdue_filter_active_renders_overdue_list_not_unshelved_list_nor_recent_additions(
+    ) {
+        let tags = vec![fake_indicator_tag("Overdue loans", 3, "overdue", true)];
+        let loans = vec![
+            fake_loan_with_details(10, "Borrower One", "V0001", "Title One", 35),
+            fake_loan_with_details(11, "Borrower Two", "V0002", "Title Two", 45),
+        ];
+        let mut t =
+            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
+        t.overdue_filter_active = true;
+        t.overdue_loans = loans;
+        let html = t.render().expect("render");
+
+        assert!(html.contains("id=\"overdue-list\""));
+        assert!(!html.contains("id=\"unshelved-list\""));
+        assert!(!html.contains("id=\"recent-additions\""));
+        assert!(html.contains("V0001"));
+        assert!(html.contains("Title One"));
+        assert!(html.contains("Borrower One"));
+        assert!(html.contains("href=\"/borrower/10\""));
+        assert!(html.contains("href=\"/borrower/11\""));
+    }
+
+    /// AC6 defensive empty-state inside the #overdue-list section.
+    #[test]
+    fn home_librarian_overdue_filter_empty_renders_empty_label() {
+        let tags = vec![fake_indicator_tag("Overdue loans", 1, "overdue", true)];
+        let mut t =
+            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
+        t.overdue_filter_active = true;
+        let html = t.render().expect("render");
+
+        assert!(html.contains("id=\"overdue-list\""));
+        assert!(html.contains("No overdue loans"));
+        assert!(!html.contains("id=\"recent-additions\""));
+        assert!(!html.contains("id=\"unshelved-list\""));
+    }
+
+    /// AC1 emit-order at rendered-HTML level: unshelved tag before
+    /// overdue tag in document order.
+    #[test]
+    fn home_renders_overdue_tag_after_unshelved_in_attention_section() {
+        let tags = vec![
+            fake_indicator_tag("Unshelved volumes", 3, "unshelved", false),
+            fake_indicator_tag("Overdue loans", 5, "overdue", false),
+        ];
+        let template =
+            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
+        let html = template.render().expect("render");
+        let slice = attention_section_slice(&html);
+        let unshelved_pos = slice.find("id=\"filter-tag-unshelved\"").expect("unshelved");
+        let overdue_pos = slice.find("id=\"filter-tag-overdue\"").expect("overdue");
+        assert!(unshelved_pos < overdue_pos);
     }
 }

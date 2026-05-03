@@ -6,6 +6,7 @@ pub mod borrowers;
 pub mod catalog;
 pub mod contributors;
 pub mod home;
+pub mod home_indicators;
 pub mod loans;
 pub mod locations;
 pub mod series;

@@ -121,9 +121,12 @@
         </ul>
     </section>
 
-    {# Story 9-4 AC6: when the unshelved indicator filter is active,
-       #recent-additions is REPLACED by #unshelved-list in the SAME DOM
-       position. Mutually exclusive — never both at once. #}
+    {# Story 9-4 AC6 + 9-5 AC6: 3-way mutual exclusion in the same DOM
+       position. When the unshelved indicator filter is active, render
+       #unshelved-list; when the overdue indicator filter is active,
+       render #overdue-list; otherwise render the default
+       #recent-additions section. Only ONE of the three appears in the
+       rendered HTML at any time. #}
     {% if unshelved_filter_active %}
     <section id="unshelved-list" aria-labelledby="unshelved-list-heading" class="w-full max-w-4xl mt-6">
         <h2 id="unshelved-list-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ unshelved_heading }}</h2>
@@ -141,6 +144,38 @@
                         {% if let Some(c) = vol.primary_contributor %}
                         <p class="mt-1 text-sm text-stone-600 dark:text-stone-400">{{ c }}</p>
                         {% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </section>
+    {% else if overdue_filter_active %}
+    {# Story 9-5 AC6: Overdue loans list. Each row links to the
+       borrower (intent: "who has it, contact them" — AC6 row link
+       target). Color treatment mirrors templates/pages/loans.html
+       lines 107-132 verbatim — Tailwind utility classes, zero inline
+       styles. #}
+    <section id="overdue-list" aria-labelledby="overdue-list-heading" class="w-full max-w-4xl mt-6">
+        <h2 id="overdue-list-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ overdue_heading }}</h2>
+        {% if overdue_loans.is_empty() %}
+            <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ overdue_empty_label }}</div>
+        {% else %}
+            <ul class="mt-3 space-y-2">
+                {% for loan in overdue_loans %}
+                <li>
+                    <a href="/borrower/{{ loan.borrower_id }}" class="block px-4 py-3 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-700 transition-colors">
+                        <div class="flex items-baseline gap-3 flex-wrap">
+                            <span class="font-mono text-sm font-semibold text-indigo-600 dark:text-indigo-400 tabular-nums">{{ loan.volume_label }}</span>
+                            <span class="font-medium text-stone-900 dark:text-stone-100 truncate">{{ loan.title_name }}</span>
+                            <span class="text-sm text-stone-600 dark:text-stone-400">— {{ loan.borrower_name }}</span>
+                        </div>
+                        <p class="mt-1 text-sm {% if loan.duration_days >= overdue_threshold_days %}text-red-600 dark:text-red-400 font-semibold{% else if loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% endif %}">
+                            {{ loan.duration_days }} {{ days_label }}
+                            {% if loan.duration_days >= overdue_threshold_days %}
+                            <span class="ml-1 inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">{{ overdue_badge_label }}</span>
+                            {% endif %}
+                        </p>
                     </a>
                 </li>
                 {% endfor %}
@@ -184,7 +219,7 @@
             </div>
         {% endif %}
     </section>
-    {% endif %}{# /unshelved_filter_active #}
+    {% endif %}{# /unshelved_filter_active or overdue_filter_active #}
 
     {# Stats by genre section (story 9-3). Sits between #recent-additions and
        the browse controls so it survives HTMX search swaps. Hidden entirely

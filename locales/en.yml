@@ -362,6 +362,10 @@ dashboard:
     unshelved_label: Unshelved volumes
     unshelved_clear_aria: "Clear filter: Unshelved volumes"
     unshelved_empty: No unshelved volumes
+    overdue_label: Overdue loans
+    overdue_clear_aria: "Clear filter: Overdue loans"
+    overdue_heading: Overdue loans
+    overdue_empty: "No overdue loans — well done!"
 borrower:
   list_title: Borrowers
   add: Add borrower
