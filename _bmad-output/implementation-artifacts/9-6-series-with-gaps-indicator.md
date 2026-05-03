@@ -1,6 +1,6 @@
 # Story 9.6: Indicator — series with gaps
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -203,7 +203,7 @@ so that I can see at a glance how many series are missing volumes and plan acqui
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — `series::count_with_gaps` + `series::list_with_gaps` model methods + `SeriesWithGap` projection (AC: 7, 8, 12a, 12b)**
+- [x] **Task 1 — `series::count_with_gaps` + `series::list_with_gaps` model methods + `SeriesWithGap` projection (AC: 7, 8, 12a, 12b)**
   - [ ] In `src/models/series.rs`, add the `SeriesWithGap` projection struct + `gap_count()` `&self` accessor per AC8. Place AFTER the existing `SeriesModel` impl block (around line 213) and BEFORE the `TitleSeriesRow` definition at line 234. Mark as `pub` (the dashboard handler + Askama template both need it; field reachability from `HomeTemplate.gaps_series: Vec<SeriesWithGap>` requires `pub`).
   - [ ] Add `pub async fn count_with_gaps(pool: &DbPool) -> Result<i64, AppError>` on `SeriesModel`. Pattern: `sqlx::query_as::<_, (i64,)>(<sql>).fetch_one(pool).await?` returning `row.0`. SQL per AC8 (correlated subquery with COUNT DISTINCT + total > distinct-positions filter). Place AFTER `active_count_titles` (line 216) for thematic locality.
   - [ ] Add `pub async fn list_with_gaps(pool: &DbPool, limit: u32) -> Result<Vec<SeriesWithGap>, AppError>`. SQL per AC8 (single round-trip with `LEFT JOIN` derived table). Use `sqlx::query_as::<_, SeriesWithGap>(...)` (the `#[derive(sqlx::FromRow)]` on `SeriesWithGap` enables this). Bind `limit`. Project: `id`, `name`, `total_volume_count`, `owned_count` (no `created_at`, `updated_at`, `version`, `description` — narrow projection).
@@ -214,7 +214,7 @@ so that I can see at a glance how many series are missing volumes and plan acqui
     - 11 `#[sqlx::test(migrations = "./migrations")]` cases per AC12a (9) + AC12b (3 — but the limit + soft-delete-series + sort-order tests overlap; use 3 cases that cover all assertions).
   - [ ] Verify: `SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' cargo test --test dashboard_gaps` — all green; lock as Commit 1 of the story branch.
 
-- [ ] **Task 2 — `IndicatorFilter::Gaps` variant + parser update (AC: 4, 12c)**
+- [x] **Task 2 — `IndicatorFilter::Gaps` variant + parser update (AC: 4, 12c)**
   - [ ] In `src/routes/home_indicators.rs`, add `Gaps` variant to the `IndicatorFilter` enum (currently at lines 22-31):
     ```rust
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -254,7 +254,7 @@ so that I can see at a glance how many series are missing volumes and plan acqui
   - [ ] **EXTEND** the existing `parse_indicator_filter_case_sensitive` test (lines 157-174): add assertions `parse_indicator_filter(&Some("GAPS".to_string())) == None` and `parse_indicator_filter(&Some("Gaps".to_string())) == None`.
   - [ ] `cargo test home_indicators` — all parser tests green; lock as Commit 2.
 
-- [ ] **Task 3 — `build_indicator_tags` extension (AC: 10, 12d)**
+- [x] **Task 3 — `build_indicator_tags` extension (AC: 10, 12d)**
   - [ ] In `src/routes/home_indicators.rs`, extend `build_indicator_tags` (lines 71-107) to accept `gaps_count: i64` as the 3rd parameter (between `overdue_count` and `active`):
     ```rust
     pub(crate) fn build_indicator_tags(
@@ -289,7 +289,7 @@ so that I can see at a glance how many series are missing volumes and plan acqui
   - [ ] Update the `home::home` handler's `build_indicator_tags` call site (`home.rs:293-298`) to pass `gaps_count` as the new 3rd arg.
   - [ ] `cargo test home_indicators` — all green; lock as Commit 3 (combined with Task 4 if cohesive).
 
-- [ ] **Task 4 — i18n keys (AC: 11)**
+- [x] **Task 4 — i18n keys (AC: 11)**
   - [ ] In `locales/en.yml`, append to the existing `dashboard.attention:` block (after `overdue_empty:` at line 368):
     ```yaml
         gaps_label: Series with gaps

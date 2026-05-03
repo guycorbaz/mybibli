@@ -26,8 +26,13 @@ pub(crate) enum IndicatorFilter {
     /// Filter to active loans whose age exceeds the configured overdue
     /// threshold (story 9-5).
     Overdue,
-    // Reserved for follow-up Epic 9 stories: Gaps (9-6),
-    // RecentCataloged (9-7), RecentReturns (9-7).
+    /// Filter to active closed series whose distinct filled positions
+    /// count is strictly less than `total_volume_count` (story 9-6).
+    /// First indicator that is anonymous-allowed (FR65 + FR95) — see
+    /// the per-variant role gate at `home.rs::home`.
+    Gaps,
+    // Reserved for follow-up Epic 9 story: RecentCataloged (9-7),
+    // RecentReturns (9-7).
 }
 
 /// One pill in the home-page "What needs attention" section (story
@@ -71,6 +76,7 @@ pub struct IndicatorTag {
 pub(crate) fn build_indicator_tags(
     unshelved_count: i64,
     overdue_count: i64,
+    gaps_count: i64,
     active: Option<IndicatorFilter>,
     loc: &str,
 ) -> Vec<IndicatorTag> {
@@ -103,6 +109,20 @@ pub(crate) fn build_indicator_tags(
             .to_string(),
         });
     }
+    let gaps_is_active = active == Some(IndicatorFilter::Gaps);
+    if gaps_count > 0 || gaps_is_active {
+        tags.push(IndicatorTag {
+            label: rust_i18n::t!("dashboard.attention.gaps_label", locale = loc).to_string(),
+            count: gaps_count.max(0) as u64,
+            filter_name: "gaps".to_string(),
+            is_active: gaps_is_active,
+            clear_aria_label: rust_i18n::t!(
+                "dashboard.attention.gaps_clear_aria",
+                locale = loc
+            )
+            .to_string(),
+        });
+    }
     tags
 }
 
@@ -119,6 +139,7 @@ pub(crate) fn parse_indicator_filter(filter: &Option<String>) -> Option<Indicato
     match filter.as_deref() {
         Some("unshelved") => Some(IndicatorFilter::Unshelved),
         Some("overdue") => Some(IndicatorFilter::Overdue),
+        Some("gaps") => Some(IndicatorFilter::Gaps),
         Some(v) if !v.contains(':') && !v.is_empty() => {
             tracing::warn!(filter = %v, "Unknown indicator filter, ignoring");
             None
@@ -151,8 +172,17 @@ mod tests {
         );
     }
 
+    /// Story 9-6 AC4: the new `Gaps` variant must be recognized.
+    #[test]
+    fn parse_indicator_filter_gaps_recognized() {
+        assert_eq!(
+            parse_indicator_filter(&Some("gaps".to_string())),
+            Some(IndicatorFilter::Gaps)
+        );
+    }
+
     /// AC5: closed enum is case-sensitive. Uppercase + title-cased
-    /// variants must NOT match — for either Unshelved or Overdue.
+    /// variants must NOT match — for Unshelved, Overdue, or Gaps.
     #[test]
     fn parse_indicator_filter_case_sensitive() {
         assert_eq!(
@@ -171,6 +201,8 @@ mod tests {
             parse_indicator_filter(&Some("Overdue".to_string())),
             None
         );
+        assert_eq!(parse_indicator_filter(&Some("GAPS".to_string())), None);
+        assert_eq!(parse_indicator_filter(&Some("Gaps".to_string())), None);
     }
 
     /// AC5 + AC7: legacy `genre:N` patterns must NOT log a warning here
@@ -201,9 +233,9 @@ mod tests {
 
     /// AC5 unknown bare-name values return None and log a WARN. The
     /// `!contains(':')` guard means the warning fires only for genuine
-    /// typos, not for legacy patterns. Story 9-5 removed the
-    /// `"overdue"` reservation (now recognized) and added `"gaps"` as
-    /// the next-up reservation for story 9-6.
+    /// typos, not for legacy patterns. Story 9-6 removed the `"gaps"`
+    /// reservation (now recognized) and added `"recent-cataloged"` as
+    /// the next-up reservation for story 9-7.
     #[test]
     fn parse_indicator_filter_unknown_bare_name_returns_none() {
         assert_eq!(
@@ -211,9 +243,9 @@ mod tests {
             None
         );
         assert_eq!(
-            parse_indicator_filter(&Some("gaps".to_string())),
+            parse_indicator_filter(&Some("recent-cataloged".to_string())),
             None,
-            "gaps is reserved for story 9-6 — not yet recognized"
+            "recent-cataloged is reserved for story 9-7 — not yet recognized"
         );
     }
 
@@ -226,10 +258,10 @@ mod tests {
     // ─── Story 9-4 — `build_indicator_tags` direct unit tests ─────────
 
     /// AC3 zero-count rule: zero counts → empty Vec → section hides.
-    /// Updated in 9-5 to pass `overdue_count = 0`.
+    /// Updated in 9-6 to pass `gaps_count = 0`.
     #[test]
     fn build_indicator_tags_zero_returns_empty_vec() {
-        let tags = build_indicator_tags(0, 0, None, "en");
+        let tags = build_indicator_tags(0, 0, 0, None, "en");
         assert!(tags.is_empty());
     }
 
@@ -237,7 +269,7 @@ mod tests {
     /// `is_active=false`, label translated.
     #[test]
     fn build_indicator_tags_nonzero_returns_unshelved_tag_in_default_state() {
-        let tags = build_indicator_tags(5, 0, None, "en");
+        let tags = build_indicator_tags(5, 0, 0, None, "en");
         assert_eq!(tags.len(), 1);
         assert_eq!(tags[0].count, 5);
         assert_eq!(tags[0].filter_name, "unshelved");
@@ -249,7 +281,7 @@ mod tests {
     /// active state. The clear_aria_label must carry the FR/EN copy.
     #[test]
     fn build_indicator_tags_nonzero_with_active_filter_marks_unshelved_active() {
-        let tags = build_indicator_tags(5, 0, Some(IndicatorFilter::Unshelved), "fr");
+        let tags = build_indicator_tags(5, 0, 0, Some(IndicatorFilter::Unshelved), "fr");
         assert_eq!(tags.len(), 1);
         assert!(tags[0].is_active, "filter=unshelved → tag is_active=true");
         assert_eq!(tags[0].label, "Volumes à ranger");
@@ -266,7 +298,7 @@ mod tests {
     /// helper-side contract for the escape-hatch UX.
     #[test]
     fn build_indicator_tags_zero_count_with_active_filter_still_emits_active_tag() {
-        let tags = build_indicator_tags(0, 0, Some(IndicatorFilter::Unshelved), "en");
+        let tags = build_indicator_tags(0, 0, 0, Some(IndicatorFilter::Unshelved), "en");
         assert_eq!(
             tags.len(),
             1,
@@ -283,7 +315,7 @@ mod tests {
     /// overdue tag in default state with the EN label resolved.
     #[test]
     fn build_indicator_tags_overdue_nonzero_unshelved_zero_returns_overdue_only() {
-        let tags = build_indicator_tags(0, 5, None, "en");
+        let tags = build_indicator_tags(0, 5, 0, None, "en");
         assert_eq!(tags.len(), 1);
         assert_eq!(tags[0].count, 5);
         assert_eq!(tags[0].filter_name, "overdue");
@@ -297,7 +329,7 @@ mod tests {
     /// would silently break the priority ordering.
     #[test]
     fn build_indicator_tags_emits_unshelved_before_overdue_when_both_present() {
-        let tags = build_indicator_tags(3, 5, None, "en");
+        let tags = build_indicator_tags(3, 5, 0, None, "en");
         assert_eq!(tags.len(), 2);
         assert_eq!(tags[0].filter_name, "unshelved", "unshelved first");
         assert_eq!(tags[1].filter_name, "overdue", "overdue second");
@@ -308,7 +340,7 @@ mod tests {
     /// contract locked by `build_indicator_tags_zero_count_with_active_filter_still_emits_active_tag`.
     #[test]
     fn build_indicator_tags_overdue_zero_count_with_active_filter_still_emits_active_tag() {
-        let tags = build_indicator_tags(0, 0, Some(IndicatorFilter::Overdue), "en");
+        let tags = build_indicator_tags(0, 0, 0, Some(IndicatorFilter::Overdue), "en");
         assert_eq!(
             tags.len(),
             1,
@@ -324,7 +356,7 @@ mod tests {
     /// expected order; only the active one carries `is_active=true`.
     #[test]
     fn build_indicator_tags_unshelved_active_emits_overdue_in_default_state_when_count_nonzero() {
-        let tags = build_indicator_tags(0, 5, Some(IndicatorFilter::Unshelved), "en");
+        let tags = build_indicator_tags(0, 5, 0, Some(IndicatorFilter::Unshelved), "en");
         assert_eq!(tags.len(), 2);
         assert_eq!(tags[0].filter_name, "unshelved");
         assert!(tags[0].is_active, "unshelved is the active filter");
@@ -332,5 +364,66 @@ mod tests {
         assert_eq!(tags[1].filter_name, "overdue");
         assert!(!tags[1].is_active, "overdue is in default state");
         assert_eq!(tags[1].count, 5);
+    }
+
+    // ─── Story 9-6 — gaps indicator unit tests (AC12d) ────────────────
+
+    /// AC10: only gaps non-zero → single gaps tag in default state.
+    #[test]
+    fn build_indicator_tags_gaps_nonzero_unshelved_zero_overdue_zero_returns_gaps_only() {
+        let tags = build_indicator_tags(0, 0, 5, None, "en");
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].count, 5);
+        assert_eq!(tags[0].filter_name, "gaps");
+        assert!(!tags[0].is_active, "no filter active → tag in default state");
+        assert_eq!(tags[0].label, "Series with gaps");
+    }
+
+    /// AC10 emit-order regression guard: all three indicators non-zero
+    /// → order MUST be Unshelved → Overdue → Gaps. Without this, a
+    /// future refactor swapping the if-blocks would silently break the
+    /// priority ordering finalized in story 9.7.
+    #[test]
+    fn build_indicator_tags_emits_unshelved_then_overdue_then_gaps_when_all_present() {
+        let tags = build_indicator_tags(3, 5, 7, None, "en");
+        assert_eq!(tags.len(), 3);
+        assert_eq!(tags[0].filter_name, "unshelved", "unshelved first");
+        assert_eq!(tags[1].filter_name, "overdue", "overdue second");
+        assert_eq!(tags[2].filter_name, "gaps", "gaps third");
+    }
+
+    /// AC3 escape hatch (gaps counterpart): count=0 + active filter
+    /// → tag still emitted in active state. Mirrors the unshelved +
+    /// overdue contracts.
+    #[test]
+    fn build_indicator_tags_gaps_zero_count_with_active_filter_still_emits_active_tag() {
+        let tags = build_indicator_tags(0, 0, 0, Some(IndicatorFilter::Gaps), "en");
+        assert_eq!(
+            tags.len(),
+            1,
+            "active gaps filter at count=0 must still produce a tag (escape hatch)"
+        );
+        assert!(tags[0].is_active);
+        assert_eq!(tags[0].count, 0);
+        assert_eq!(tags[0].filter_name, "gaps");
+    }
+
+    /// Day-1 librarian session: all three indicators non-zero with gaps
+    /// active. Locks down (a) order stays Unshelved → Overdue → Gaps,
+    /// (b) only the active filter's tag carries `is_active=true`,
+    /// (c) the active tag carries its real count (not zero).
+    #[test]
+    fn build_indicator_tags_gaps_active_keeps_others_in_default_state_when_counts_nonzero() {
+        let tags = build_indicator_tags(3, 5, 7, Some(IndicatorFilter::Gaps), "en");
+        assert_eq!(tags.len(), 3);
+        assert_eq!(tags[0].filter_name, "unshelved");
+        assert!(!tags[0].is_active, "unshelved is in default state");
+        assert_eq!(tags[0].count, 3);
+        assert_eq!(tags[1].filter_name, "overdue");
+        assert!(!tags[1].is_active, "overdue is in default state");
+        assert_eq!(tags[1].count, 5);
+        assert_eq!(tags[2].filter_name, "gaps");
+        assert!(tags[2].is_active, "gaps is the active filter");
+        assert_eq!(tags[2].count, 7);
     }
 }

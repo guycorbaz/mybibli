@@ -290,9 +290,13 @@ pub async fn home(
         Vec::new()
     };
 
+    // Story 9-6 — gaps_count is wired in Task 5 of this story. For
+    // now the placeholder `0` keeps the call type-correct; Task 5
+    // replaces it with the real `gaps_count` from `count_with_gaps`.
     let indicator_tags = build_indicator_tags(
         unshelved_count,
         overdue_count,
+        0,
         active_indicator_filter,
         loc,
     );
