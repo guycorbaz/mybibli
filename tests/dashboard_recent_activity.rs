@@ -122,11 +122,19 @@ async fn insert_loan(pool: &MySqlPool, volume_id: u64, borrower_id: u64) -> u64 
 }
 
 /// Mark a loan as returned, with `returned_at` deterministically
-/// backdated `days_ago` days. UPDATEs both `returned_at` (for the
-/// recent-returns window) and resets `loaned_at` to ensure
-/// `loaned_at <= returned_at` (else MariaDB CHECK / FK semantics could
-/// flag it). Used to deterministically populate the recent-returns
-/// fixture window.
+/// backdated `days_ago` days. UPDATEs ONLY `returned_at` (the
+/// `loaned_at` default from `insert_loan` stays at `NOW()`).
+///
+/// **Temporal note:** with `days_ago > 0` this produces `loaned_at >
+/// returned_at` (the loan returned BEFORE it was made — temporally
+/// impossible). Today's schema has NO CHECK constraint enforcing
+/// `loaned_at <= returned_at`, so the fixture works for the recent-
+/// returns count/list query (which cares only about `returned_at`).
+/// If a future migration adds such a CHECK, this helper must also
+/// reset `loaned_at` (or use a single 2-statement INSERT-then-UPDATE
+/// pattern like `insert_title_with_created_at`). Code-review patch
+/// 2026-05-04 corrected the original doc-comment which falsely
+/// claimed both columns were updated.
 async fn mark_loan_returned_at(pool: &MySqlPool, loan_id: u64, days_ago: i32) {
     sqlx::query(
         "UPDATE loans SET returned_at = NOW() - INTERVAL ? DAY \

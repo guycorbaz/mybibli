@@ -530,20 +530,27 @@ mod tests {
         assert!(html.contains("3 days"));
     }
 
-    /// AC9 negative: recent_returns row template MUST NOT render the
-    /// red overdue badge — recent returns are by definition NOT
-    /// overdue. Locks the spec contract that the row template
-    /// SKIPS the overdue badge for #recent-returns-list (unlike
-    /// #overdue-list which includes it).
+    /// AC9 negative regression guard (renamed 2026-05-04 per code-
+    /// review patch): the recent-returns row template currently has
+    /// NO badge code path — there's nothing to "skip". This test is
+    /// the regression guard against a future template edit that adds
+    /// a `{% if duration_days >= … %}` block emitting the overdue
+    /// badge palette (`bg-red-100` etc.) to the recent-returns row.
+    /// If anyone ever "harmonizes" the recent-returns row template
+    /// with #overdue-list to include the badge, this test fails AND
+    /// the spec contract ("recent returns are by definition NOT
+    /// overdue") gets surfaced as a deliberate change-or-revert
+    /// decision. Fixture uses a 60-day duration to prove the badge
+    /// stays absent EVEN IF the template's threshold check would
+    /// otherwise trigger it.
     #[test]
-    fn home_librarian_recent_returns_row_does_not_render_overdue_badge() {
+    fn home_librarian_recent_returns_row_omits_overdue_badge_palette() {
         let tags = vec![fake_indicator_tag("Recent returns", 1, "recent-returns", true)];
         let mut t =
             make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
         t.recent_returns_filter_active = true;
-        // Even with a high duration_days that would trigger the overdue
-        // badge in #overdue-list (30+), the recent-returns template
-        // skips the badge entirely.
+        // 60-day duration would trigger the overdue badge in any
+        // template that copied the #overdue-list `>= 30` threshold.
         t.recent_returns = vec![fake_loan_with_details(10, "Alice", "V0042", "Tintin", 60)];
         let html = t.render().expect("render");
         assert!(html.contains("id=\"recent-returns-list\""));

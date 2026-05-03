@@ -1,6 +1,6 @@
 # Story 9.7: Indicators — recent cataloged + recent returns
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -278,6 +278,42 @@ so that I can review the most recent activity in one click without scrolling thr
   - [ ] Update Dev Agent Record at the bottom of this file: list of files touched, decisions on placement, anything surprising. **Special: mark the indicator subsystem chapter closed** — call out the cumulative test counts (per-story totals + grand total across 9-4/9-5/9-6/9-7).
   - [ ] Update `_bmad-output/implementation-artifacts/sprint-status.yaml`: `9-7-recent-activity-indicators: ready-for-dev → in-progress` at start, `→ review` at end (only this line + `last_updated`, per CLAUDE.md rule 16).
   - [ ] Open draft PR at first commit (Foundation Rule #15). Title: `Story 9-7: Recent activity indicators (#NN)`.
+
+### Review Findings
+
+_Code review run on 2026-05-04 against PR #122 (`origin/main...HEAD`, 13 files / +1868 / −113 / 2352 LOC). Three parallel reviewers (Blind Hunter, Edge Case Hunter, Acceptance Auditor). **Acceptance Auditor reported 15/15 ACs MET, zero anti-pattern violations, zero Foundation Rule violations.** Triage: 0 decision-needed, 2 patches, 5 deferred (to GitHub Issues per Foundation Rule #11), 12 dismissed._
+
+#### Decision-needed
+
+_None._
+
+#### Patch (actionable in this story)
+
+- [x] **[Review][Patch] `mark_loan_returned_at` doc-comment lies about updating `loaned_at`** [`tests/dashboard_recent_activity.rs:91-104`] — Blind Hunter LOW + Edge Case Hunter MEDIUM. The doc-comment claims "UPDATEs both `returned_at` (for the recent-returns window) and resets `loaned_at` to ensure `loaned_at <= returned_at` (else MariaDB CHECK / FK semantics could flag it)" — but the implementation only updates `returned_at`. No CHECK constraint exists today, so tests pass; the doc is just misleading. Fix: trim the doc-comment to reflect actual behavior (only updates `returned_at`); add a one-line note that the resulting `loaned_at > returned_at` ordering is acceptable today (no schema CHECK enforces the ordering) but flagged here so a future schema migration can revisit the helper.
+- [x] **[Review][Patch] `home_librarian_recent_returns_row_does_not_render_overdue_badge` test name overstates what it asserts** [`src/routes/home_indicator_tests.rs:546-572`] — Blind Hunter LOW + Edge Case Hunter MEDIUM. The test name implies the row template ACTIVELY skips the badge (i.e., has conditional logic that opts out). Reality: the recent-returns row template has NO badge code at all — there's nothing to "skip". The assertion `!html.contains("bg-red-100")` IS still a valid regression guard (any future addition of the red badge palette to the recent-returns row breaks the test), but the name is semantically misleading. Fix: rename to `home_librarian_recent_returns_row_omits_overdue_badge_palette` AND add an inline comment explaining the regression guard contract ("if any future template edit adds a `{% if %}` block emitting `bg-red-100` to the recent-returns row, this test fails — the row template MUST stay badge-free because recent returns are by definition NOT overdue").
+
+#### Defer — file as GitHub Issues per Foundation Rule #11
+
+- [x] **[Review][Defer] `LoanWithDetails` struct lacks `returned_at` field — future "Returned on …" UI would silently mis-display** [`src/models/loan.rs:21-30`] — Blind Hunter MEDIUM. `list_recent_returns` ships `loaned_at: NaiveDateTime` to the caller (correct field meaning), with `duration_days` computed from `returned_at` (semantic overload documented in fn doc-comment). Today's row template displays only `duration_days` + `volume_label` + `title_name` + `borrower_name` so the absence of `returned_at` doesn't bite. But a future "Returned on {date}" column would either need to (a) add `returned_at: Option<NaiveDateTime>` to the struct (touching all callers), or (b) fetch a second query just for the date. File as `type:code-review-finding` for a focused struct review when a UI change requires the field.
+- [x] **[Review][Defer] Row-mapping consistency drift across `list_*` methods (`unwrap_or_default` vs `?` style)** [`src/models/title.rs:228-244` vs `src/models/loan.rs:438-456`] — Blind Hunter MEDIUM + Edge Case Hunter MEDIUM. `list_recent_cataloged` mirrors `list_recent_active`'s style (`r.try_get("col").unwrap_or_default()` per column) — silently swallows row-mapping errors and returns `id=0` / empty string. Sibling `list_recent_returns` mirrors `list_overdue`'s style (`r.try_get("col")?`) — propagates errors. Asymmetric failure modes within the same diff: a corrupted title row appears in the UI as a `/title/0` 404 link; a corrupted loan row hides the entire list via the soft-degrade `unwrap_or_else` in the handler. File as `type:code-review-finding` for a cross-method harmonization (preferred direction: `?` propagation across all `list_*` methods including the existing `list_recent_active` from 9-2).
+- [x] **[Review][Defer] `days: i32` parameter on the 4 new model methods is unvalidated** [`src/models/title.rs:209,228`, `src/models/loan.rs:387,420`] — Blind Hunter LOW + Edge Case Hunter LOW (L1+L2). Negative `days` produces `NOW() - INTERVAL -7 DAY = NOW() + 7 DAY` (future window — empty result). `i32::MAX` produces `INTERVAL 2147483647 DAY` ≈ 5.8M years (MariaDB silent truncation or overflow error). Today the constant is `RECENT_ACTIVITY_DAYS = 7` so unreachable; the AC14 future migration path (extract const → `AppSettings.recent_activity_days`) would need to clamp. File as `type:code-review-finding` to document the validation requirement at migration time.
+- [x] **[Review][Defer] Hardcoded `LIMIT 100` vs unbounded count: tag pill says N, list shows max 100, no truncation UI affordance** [`src/routes/home.rs:362,394` + 4 other call sites for unshelved/overdue/gaps] — Blind Hunter LOW + Edge Case Hunter LOW. Cross-story pattern (all 5 indicators truncate at 100). User clicks "Recent cataloged: 350" tag, sees 100 rows with no signal. Pre-existing trade-off but worth surfacing as the indicator chapter closes. File as `type:code-review-finding` for a "showing first N of M" UI affordance OR pagination on the indicator list sections (cross-story scope; affects all 5).
+- [x] **[Review][Defer] Update spec playbook: formalize "uniformize fallback patterns" as a documented LOC-trim lever** [`_bmad/skills/bmad-create-story/template.md` (or AC14-equivalent in future indicator stories)] — Blind Hunter MEDIUM (process smell) + Acceptance Auditor borderline observation. Story 9-7's mid-flight `.unwrap_or_else` refactor across all 6 pre-existing indicator fetches saved ~30 LOC and avoided the heavier AC14 fallback (`home_data.rs` extraction). The refactor was semantically null and well-documented, but NOT explicitly authorized by the AC14 spec text (which mentions only "trim doc-comments" + "fallback extraction"). File as `type:chore` to update the LOC-budget trim playbook for future indicator-style stories so this lever is authorized in advance, not invented mid-flight.
+
+#### Dismissed (12)
+
+- **`count.max(0) as u64` cast hides invariant violation** (Blind #7) — `COUNT(*)` is non-negative; defensive math is established pattern across all 5 indicators. Pre-existing and dismissed in 9-6 review too.
+- **`IS NOT NULL` guard not test-locked** (Blind #10 + Edge M2) — the doc-comment correctly notes the guard is "for clarity" not load-bearing. Removing it would still produce correct results in MariaDB three-valued logic. The Edge concern about cross-RDBMS portability is theoretical (single-deployment-target).
+- **count/list race scenario** (Edge L3) — pre-existing pattern across all 5 indicators; cosmetic mismatch on rare concurrent soft-deletes; accepted for v1.
+- **Zero-days test timing-fragile under DST** (Edge L4) — extremely narrow window; project uses UTC TIMESTAMP storage; defensive concern only.
+- **Window boundary microsecond-fragile** (Edge L5) — passes today with second-precision TIMESTAMP; latent under future schema change to `TIMESTAMP(3)`. Not a current bug.
+- **`LoanWithDetails.duration_days` semantic overload not type-enforced** (Edge L6) — documented in 4 doc-comments. Type-system enforcement (newtype wrapper) would be a cross-cutting refactor.
+- **6-way mutual exclusion: behavior when 2 booleans true** (Edge L9) — defensive only; no current handler path can set 2 booleans simultaneously (single `?filter=` value, single `IndicatorFilter` variant).
+- **Test asserts "3 days" without locale setup** (Blind #3) — factory defaults to "en"; if the factory ever defaults to "fr" the assertion breaks (a single-line fix). Not a bug today.
+- **`make_loan_fixture` `seq < 10_000` assumption unverified from diff alone** (Blind #6) — schema constraint `volumes.label CHAR(5)` exists; diff just doesn't show it. Verified out-of-diff.
+- **AC8 spec text contradicts itself on `IS NOT NULL` guard rationale** (Blind #10) — doc-only contradiction; the actual implementation is correct. Spec is a write-once artifact for the dev agent and won't mislead future readers (the model's doc-comment is clear).
+- **E2E `waitForURL` regex `/\/$/` matches any URL ending in `/`** (Blind #11) — practical risk negligible since the test starts from `/?filter=…` and clicks ✕ which redirects to `/`. The regex would match `/admin/` too but no path in the test could land there.
+- **`.unwrap_or_else` refactor is process smell** (Blind #2) — Acceptance Auditor verdict: "Not a blocker. Semantically null, well-documented." Already authorized in-flight; the recommendation to formalize the lever is captured as defer D5.
 
 ## Dev Notes
 
