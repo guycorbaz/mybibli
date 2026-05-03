@@ -150,27 +150,32 @@ pub async fn home(
     let page = params.page.unwrap_or(1).max(1);
 
     // Story 9-4 / 9-5 / 9-6 — indicator filter takes precedence over
-    // search + legacy filter (AC7 single-active-filter). Role gating is
-    // PER-VARIANT (story 9-6 AC2 asymmetry): Unshelved + Overdue stay
-    // Librarian-only (anonymous-no-leak), but Gaps is anonymous-allowed
-    // (FR65 + FR95 — series browsing is anonymous-permitted; the
-    // existing `/series` route requires no auth).
+    // search + legacy filter (AC7 single-active-filter). The 9-6 AC2
+    // asymmetry — Gaps is anonymous-allowed (FR65 + FR95: series
+    // browsing is anonymous-permitted) — lives in `gaps_filter_active`
+    // below, NOT here.
     //
-    // The handler computes TWO things from the parsed value:
-    //   1. `active_indicator_filter` (role-gated for Unshelved + Overdue)
-    //      → drives `build_indicator_tags` and the unshelved/overdue
-    //      `*_filter_active` slot booleans. Anonymous always gets `None`
-    //      from this path so no tag ever emits in `#what-needs-attention`.
-    //   2. `gaps_filter_active: bool` (NOT role-gated) → drives the
-    //      `#gaps-list` section swap. Computed below from the raw parse
-    //      result so anonymous users CAN navigate to `/?filter=gaps` and
-    //      see the list, even though no tag is shown on the default home.
+    // `active_indicator_filter` drives the TAG (`build_indicator_tags`)
+    // and the `unshelved/overdue_filter_active` derived booleans. The
+    // TAG must NEVER render for Anonymous, regardless of variant —
+    // the `#what-needs-attention` section is Librarian-only. So this
+    // match role-gates ALL variants. Anonymous always gets None here.
+    //
+    // The Gaps SECTION SWAP for anonymous flows through a separate
+    // boolean (`gaps_filter_active`) computed below from the raw
+    // parsed value, NOT this role-gated one. That keeps the asymmetry
+    // explicit: tag → role-gated, section → role-blind.
+    //
+    // CI regression caught (2026-05-03): the original `match` had a
+    // `Some(IndicatorFilter::Gaps) => Some(IndicatorFilter::Gaps)` arm
+    // BEFORE the role-gated arm, leaking the Gaps variant to Anonymous
+    // and triggering the AC3 escape-hatch rule in build_indicator_tags
+    // (count=0 + active=Some(Gaps) emits the active-state pill). The
+    // E2E test `home.spec.ts::anonymous: ... AC2 asymmetry` is the
+    // regression guard.
     let parsed_indicator = parse_indicator_filter(&params.filter);
-    let active_indicator_filter = match parsed_indicator {
-        Some(IndicatorFilter::Gaps) => Some(IndicatorFilter::Gaps),
-        Some(other) if session.role >= Role::Librarian => Some(other),
-        _ => None,
-    };
+    let active_indicator_filter =
+        crate::routes::home_indicators::role_gated_indicator_filter(parsed_indicator, &session.role);
     if active_indicator_filter.is_some() && (!query.is_empty() || params.sort.is_some()) {
         tracing::warn!(
             filter = ?params.filter,

@@ -126,6 +126,29 @@ pub(crate) fn build_indicator_tags(
     tags
 }
 
+/// Story 9-6 — role-gate the parsed indicator filter for the TAG.
+///
+/// This is the canonical role-gating shape for `active_indicator_filter`
+/// (the value flowing into `build_indicator_tags`). Anonymous always
+/// gets `None` regardless of variant — the `#what-needs-attention`
+/// section is Librarian-only and the AC3 escape-hatch rule would
+/// otherwise emit an active-state pill at count=0 (CI catch
+/// 2026-05-03).
+///
+/// The Gaps section swap for Anonymous flows through a SEPARATE
+/// boolean computed from the raw parser result (`gaps_filter_active`
+/// in `home::home`), NOT this role-gated one. That keeps the
+/// asymmetry explicit: tag → role-gated, section → role-blind.
+pub(crate) fn role_gated_indicator_filter(
+    parsed: Option<IndicatorFilter>,
+    role: &crate::middleware::auth::Role,
+) -> Option<IndicatorFilter> {
+    match parsed {
+        Some(filter) if *role >= crate::middleware::auth::Role::Librarian => Some(filter),
+        _ => None,
+    }
+}
+
 /// Parse the bare-name closed-enum indicator filter from `?filter=…`.
 ///
 /// Returns `None` for legacy `genre:` / `state:` namespaced patterns
@@ -425,5 +448,53 @@ mod tests {
         assert_eq!(tags[2].filter_name, "gaps");
         assert!(tags[2].is_active, "gaps is the active filter");
         assert_eq!(tags[2].count, 7);
+    }
+
+    // ─── Story 9-6 — role-gating regression guards (CI catch 2026-05-03)
+
+    use crate::middleware::auth::Role;
+
+    /// AC2 LOAD-BEARING regression guard: Anonymous MUST NEVER receive a
+    /// non-None `active_indicator_filter` — the `#what-needs-attention`
+    /// section is Librarian-only and the AC3 escape-hatch rule
+    /// would otherwise emit an active-state pill at count=0 (CI catch
+    /// 2026-05-03 on PR #121: the original handler match passed
+    /// Some(Gaps) for Anonymous, leaking the tag).
+    #[test]
+    fn role_gated_indicator_filter_anonymous_strips_all_variants() {
+        assert_eq!(role_gated_indicator_filter(None, &Role::Anonymous), None);
+        assert_eq!(
+            role_gated_indicator_filter(Some(IndicatorFilter::Unshelved), &Role::Anonymous),
+            None
+        );
+        assert_eq!(
+            role_gated_indicator_filter(Some(IndicatorFilter::Overdue), &Role::Anonymous),
+            None
+        );
+        assert_eq!(
+            role_gated_indicator_filter(Some(IndicatorFilter::Gaps), &Role::Anonymous),
+            None,
+            "Gaps section is anonymous-allowed via gaps_filter_active, but the TAG must NEVER render for Anonymous"
+        );
+    }
+
+    /// Counterpart: Librarian + Admin pass through all variants.
+    #[test]
+    fn role_gated_indicator_filter_librarian_and_admin_pass_through_all_variants() {
+        for role in &[Role::Librarian, Role::Admin] {
+            assert_eq!(
+                role_gated_indicator_filter(Some(IndicatorFilter::Unshelved), role),
+                Some(IndicatorFilter::Unshelved)
+            );
+            assert_eq!(
+                role_gated_indicator_filter(Some(IndicatorFilter::Overdue), role),
+                Some(IndicatorFilter::Overdue)
+            );
+            assert_eq!(
+                role_gated_indicator_filter(Some(IndicatorFilter::Gaps), role),
+                Some(IndicatorFilter::Gaps)
+            );
+            assert_eq!(role_gated_indicator_filter(None, role), None);
+        }
     }
 }
