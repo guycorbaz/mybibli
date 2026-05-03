@@ -1,6 +1,6 @@
 # Story 9.7: Indicators — recent cataloged + recent returns
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -129,7 +129,7 @@ so that I can review the most recent activity in one click without scrolling thr
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Four NEW model methods + `tests/dashboard_recent_activity.rs` (AC: 7, 8, 11a, 11b)**
+- [x] **Task 1 — Four NEW model methods + `tests/dashboard_recent_activity.rs` (AC: 7, 8, 11a, 11b)**
   - [ ] In `src/models/title.rs`, add `pub async fn count_recent_cataloged(pool: &DbPool, days: i32) -> Result<i64, AppError>` directly after `count_active` (line 186-189). Pattern: `sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM titles WHERE deleted_at IS NULL AND created_at >= NOW() - INTERVAL ? DAY").bind(days).fetch_one(pool).await?` — return `row.0`.
   - [ ] In `src/models/title.rs`, add `pub async fn list_recent_cataloged(pool: &DbPool, days: i32, limit: u32) -> Result<Vec<SearchResult>, AppError>` mirroring `list_recent_active` (lines 833-879). SQL projection identical (genres JOIN + primary_contributor subquery + volume_count subquery). WHERE clause: `WHERE t.deleted_at IS NULL AND t.created_at >= NOW() - INTERVAL ? DAY`. ORDER BY `t.created_at DESC, t.id DESC`. LIMIT bound. Bind `(days, limit)`.
   - [ ] In `src/models/loan.rs`, add `pub async fn count_recent_returns(pool: &DbPool, days: i32) -> Result<i64, AppError>` directly after `count_overdue` (lines 297-318 post-9-5). SQL: `SELECT COUNT(*) FROM loans WHERE deleted_at IS NULL AND returned_at IS NOT NULL AND returned_at >= NOW() - INTERVAL ? DAY`. Bind `days`.

@@ -368,6 +368,94 @@ impl LoanModel {
 
         Ok(items)
     }
+
+    /// Story 9-7 — count loans returned in the last `days` days.
+    /// Drives the "Recent returns" dashboard indicator.
+    ///
+    /// The `returned_at IS NOT NULL` guard is essential for clarity —
+    /// without it, `returned_at >= NOW() - INTERVAL ? DAY` would still
+    /// be safe (MariaDB three-valued logic: `NULL >= X` evaluates to
+    /// NULL → falsy), but the explicit guard locks intent and makes
+    /// the test contract obvious.
+    ///
+    /// Boundary semantics: **inclusive** `>= NOW() - INTERVAL ? DAY`
+    /// per FR wording "last 7 days". This is INTENTIONALLY ASYMMETRIC
+    /// with `count_overdue`'s strict `> threshold` boundary — see
+    /// `count_overdue` doc-comment + `count_recent_returns_window_boundary`
+    /// integration test.
+    pub async fn count_recent_returns(
+        pool: &DbPool,
+        days: i32,
+    ) -> Result<i64, AppError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM loans \
+             WHERE deleted_at IS NULL \
+               AND returned_at IS NOT NULL \
+               AND returned_at >= NOW() - INTERVAL ? DAY",
+        )
+        .bind(days)
+        .fetch_one(pool)
+        .await?;
+        Ok(row.0)
+    }
+
+    /// Story 9-7 — list loans returned in the last `days` days, ordered
+    /// by `returned_at DESC` (most-recently-returned first), bounded by
+    /// `limit`.
+    ///
+    /// REUSES `LoanWithDetails` (story 9-5) — same field shape, but
+    /// `duration_days` is computed against `returned_at` instead of
+    /// `loaned_at`. This is a deliberate semantic overload: in the
+    /// `#overdue-list` context the row reads "X days [overdue]"; in
+    /// `#recent-returns-list` the same row template reads "X days
+    /// [since return]". Both contexts use the same display markup +
+    /// the same locale key (`loan.days`), so the row partial stays
+    /// uniform across surfaces.
+    pub async fn list_recent_returns(
+        pool: &DbPool,
+        days: i32,
+        limit: u32,
+    ) -> Result<Vec<LoanWithDetails>, AppError> {
+        let rows = sqlx::query(
+            r#"SELECT l.id, l.volume_id, l.borrower_id,
+                      CAST(l.loaned_at AS DATETIME) AS loaned_at,
+                      b.name AS borrower_name,
+                      v.label AS volume_label,
+                      t.title AS title_name,
+                      DATEDIFF(NOW(), l.returned_at) AS duration_days
+               FROM loans l
+               JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL
+               JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL
+               JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL
+               WHERE l.deleted_at IS NULL
+                 AND l.returned_at IS NOT NULL
+                 AND l.returned_at >= NOW() - INTERVAL ? DAY
+               ORDER BY l.returned_at DESC
+               LIMIT ?"#,
+        )
+        .bind(days)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+
+        let items: Vec<LoanWithDetails> = rows
+            .iter()
+            .map(|r| {
+                Ok(LoanWithDetails {
+                    id: r.try_get("id")?,
+                    volume_id: r.try_get("volume_id")?,
+                    borrower_id: r.try_get("borrower_id")?,
+                    borrower_name: r.try_get("borrower_name")?,
+                    volume_label: r.try_get("volume_label")?,
+                    title_name: r.try_get("title_name")?,
+                    loaned_at: r.try_get("loaned_at")?,
+                    duration_days: r.try_get::<i64, _>("duration_days").unwrap_or(0),
+                })
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+        Ok(items)
+    }
 }
 
 #[cfg(test)]
