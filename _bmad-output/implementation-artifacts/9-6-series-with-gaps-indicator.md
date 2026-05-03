@@ -1,6 +1,6 @@
 # Story 9.6: Indicator — series with gaps
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -428,7 +428,7 @@ so that I can see at a glance how many series are missing volumes and plan acqui
   - [ ] If x > 2050 OR trimming alone doesn't get under 2000: extract `make_test_home_template_with_indicators` (lines 1029-1044), `fake_indicator_tag` (lines 1046-1054), `fake_loan_with_details` (lines 1067-1090), AND the new `fake_series_with_gap` helper (Task 7) into a new `pub(crate) mod test_factories;` submodule inside `src/routes/home_indicators.rs::tests` (or a sibling `src/routes/home_test_helpers.rs` if visibility math gets ugly). All four are conceptually about indicator-rendering machinery and have ZERO callers outside the indicator render tests; the move is mechanical.
   - [ ] Re-run `cargo test` after the move to verify no test name collisions and all imports resolve.
 
-- [ ] **Task 10 — Verify and document (AC: 1–15)**
+- [x] **Task 10 — Verify and document (AC: 1–15)**
   - [ ] `wc -l src/routes/home.rs` — verify ≤ 2000 LOC. Foundation Rule #12 must hold.
   - [ ] `SQLX_OFFLINE=true cargo check && cargo clippy --all-targets -- -D warnings` — clean (zero warnings).
   - [ ] `SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' cargo test` — full suite green. Expected: ~682 lib tests baseline + ~13 new (8 render + 4 helper + 1 model) = ~695 lib; +11 new integration tests in `tests/dashboard_gaps.rs`. All 9-1/9-2/9-3/9-4/9-5 dashboard_* + indicator unit tests unchanged.
@@ -629,16 +629,176 @@ If a fresh schema drift is discovered during dev, document inline in the test he
 
 ### Debug Log References
 
-_(to be filled by dev agent)_
+- **2026-05-03 — Task 5/6 LOC overshoot.** After Tasks 5 + 6 landed
+  (handler wiring + 5 new HomeTemplate fields + the `#gaps-list`
+  template branch), `wc -l src/routes/home.rs` returned **2029 LOC** —
+  29 over the 2000 ceiling, *before* Task 7's 8 render tests added
+  another ~140 LOC. Triggered AC15 fallback extraction earlier than
+  planned.
+- **2026-05-03 — Task 7/9 extraction.** After Task 7's 8 render tests +
+  `fake_series_with_gap` helper landed, `wc -l src/routes/home.rs`
+  returned **2172 LOC** (172 over). AC15's fallback path executed:
+  created `src/routes/home_indicator_tests.rs` and moved the 6
+  9-5 + 8 9-6 indicator render tests + helper into it. Cross-module
+  test imports required `pub(crate) mod tests` on `home::tests` plus
+  `pub(crate)` visibility on 4 fakes (`fake_indicator_tag`,
+  `fake_unshelved_row`, `fake_loan_with_details`,
+  `make_test_home_template_with_indicators`), 1 factory
+  (`make_test_home_template_with_counts`), and 2 slice helpers
+  (`slice_section`, `attention_section_slice`). Net: home.rs back to
+  **1930 LOC** (70 below ceiling).
+- **2026-05-03 — Askama Template trait import.** First compile of
+  `home_indicator_tests.rs` failed with "no method named `render` found
+  for struct `home::HomeTemplate`" — Askama's `Template` trait must be
+  in scope via `use askama::Template;`. Added at the top of the new
+  module. (In `home::tests`, `use super::*;` already brought the trait
+  in via the parent's `use askama::Template;`.)
 
 ### Completion Notes List
 
-_(to be filled by dev agent)_
+- ✅ All 10 tasks complete with all 15 ACs satisfied.
+- ✅ `home.rs` LOC: **1930** (under the 2000-LOC Foundation Rule #12
+  ceiling). Net change vs pre-9-6: −37 LOC (Task 9 extraction freed
+  243 LOC of room; 9-6 substance + tests added 206 LOC).
+- ✅ `home_indicators.rs`: 429 LOC (was 388 pre-9-6; +41 LOC from the
+  new variant + parser arm + helper if-block + 4 new helper unit tests).
+- ✅ `home_indicator_tests.rs`: NEW file, 265 LOC (the 9-5 6 + 9-6 8
+  render tests + `fake_series_with_gap` helper + Askama Template
+  import). Pure code move for the 9-5 tests; new code for the 9-6 tests.
+- ✅ Lib tests: **695 passing** (was 687 pre-9-6; +4 new helper tests
+  in `home_indicators::tests` + +4 new test names due to the gaps
+  variant matrix; the 8 9-6 render tests live in
+  `home_indicator_tests::tests`).
+- ✅ Integration tests: 109 passing across all `tests/*.rs` binaries —
+  including the **13 new `dashboard_gaps.rs` cases** (10 count + 3 list,
+  per AC12a/AC12b — the spec said 11; 13 reflects the actual coverage
+  after writing tighter cases).
+- ✅ E2E: 1 new `test.describe("Home page — Series with gaps
+  indicator", ...)` block in `home.spec.ts` with 2 tests
+  (anonymous-allowed asymmetry + librarian smoke with conditional
+  empty-DB short-circuit).
+- ✅ Clippy: clean with `-D warnings` across `--all-targets`.
+- ✅ Templates audit (`no_inline_markup_in_templates`, CSP allowlist,
+  CSRF coverage): all green.
+- ✅ TypeScript check on `tests/e2e/`: clean.
+- ✅ CI flake gate: no `waitForTimeout` calls added.
+
+**Drift discoveries (recorded for future stories):**
+- **NO existing aggregate gap-detection function** in `services/series.rs`,
+  contrary to the epics.md AC text. Only per-single-series helpers
+  (`get_series_positions` builds the grid for the detail page;
+  `compute_gap` is private to `routes/series.rs` and computes per-series
+  `total - owned`). Story 9-6 wrote new aggregate model fns
+  (`count_with_gaps` + `list_with_gaps`) directly in `models/series.rs`
+  with single-round-trip queries (correlated subquery for count, LEFT
+  JOIN derived table for list). Documented prominently in spec.
+- **`SeriesCard` template component does NOT exist** — spec text said
+  "each row is a SeriesCard (existing component from Epic 5)" but
+  `templates/components/` has no such file. Existing series-list page
+  inlines its row markup. The 9-6 dashboard rows follow the same
+  inline-markup pattern as 9-4/9-5.
+- **No new `gap_count` clippy/wc warnings.** The `SeriesWithGap::
+  gap_count(&self) -> u64` method is a `&self` accessor that Askama
+  invokes successfully via `{{ row.gap_count() }}` — verified at
+  template compile time.
+- **Per-variant role gate works as designed.** The handler's `match`
+  on `parsed_indicator` cleanly separates Gaps (anonymous-allowed)
+  from Unshelved + Overdue (Librarian-only). Two derived booleans
+  drive different surfaces: `active_indicator_filter` (role-gated,
+  flows to `build_indicator_tags` so anonymous never sees a tag) and
+  `gaps_filter_active` (raw, drives the section swap for any role).
+  The render test
+  `home_anonymous_with_filter_gaps_renders_gaps_list_but_no_tag` and
+  the E2E "anonymous: tag never rendered, BUT /?filter=gaps shows the
+  list" test together lock the asymmetric contract end-to-end.
+
+**Key design decisions (mostly inherited from 9-4/9-5 + spec):**
+1. `SeriesWithGap` NEW projection struct (NOT `SeriesListRow` reuse —
+  that struct embeds the full `SeriesModel`; dashboard needs only
+  id+name+total+owned). Mirror of the `UnshelvedVolumeRow` decision in
+  9-4 (NEW struct vs `SearchResult` reuse).
+2. Aggregate SQL with `COUNT(DISTINCT position_number)` to handle BD
+  omnibus + same-position-different-titles edge cases. Pinned by 2
+  load-bearing tests (`count_with_gaps_distinct_positions` +
+  `count_with_gaps_omnibus_fills_each_position`).
+3. Strict `>` boundary on `total > distinct_filled` — only series
+  where filled-count is STRICTLY less than total are gappy. Boundary
+  test `count_with_gaps_closed_full_not_counted` (5/5 = no gap) +
+  `count_with_gaps_closed_partial_counted` (3/5 = gap) lock it.
+4. Per-variant role gate (NEW pattern — first asymmetric role-gating
+  in the indicator subsystem). Documented inline in `home.rs:145-149`
+  comment + spec's "Anonymous-allowed-filter asymmetry" section.
+5. Row link target is `/series/{id}` (NOT `/title/<id>`) — the
+  destination is the series-detail page where the user sees the full
+  SeriesGapGrid (UX-DR16) one click away. NOT inlining the grid in
+  dashboard rows (heavy + couples templates).
+6. 4-way mutual exclusion (`#recent-additions` / `#unshelved-list` /
+  `#overdue-list` / `#gaps-list`) implemented as a single `{% if %}
+  {% else if %}{% else if %}{% else %}` chain in `home.html`.
+7. Test factory: NO new sibling `make_test_home_template_with_gaps`
+  — used post-construction field assignment to keep LOC budget
+  headroom (matches 9-5 LOC trim pattern).
+8. AC15 LOC budget: extraction landed mid-flight as the proper fallback
+  (vs trimming doc-comments) because Tasks 5+6 alone pushed home.rs
+  over 2000. The extraction pattern (`pub(crate) mod tests` + sibling
+  test file importing helpers) is now a precedent for stories 9-7+.
 
 ### File List
 
-_(to be filled by dev agent)_
+**Created:**
+- `src/routes/home_indicator_tests.rs` (Task 9 LOC extraction — holds
+  the 6 9-5 + 8 9-6 indicator render tests + `fake_series_with_gap`
+  helper + Askama Template import; 265 LOC)
+- `tests/dashboard_gaps.rs` (Task 1 — 13 `#[sqlx::test]` cases + 5
+  helpers including `insert_series` + `insert_title_series_assignment`
+  + soft-delete helpers; 326 LOC)
+
+**Modified:**
+- `src/models/series.rs` (Task 1: +`SeriesWithGap` projection struct +
+  `count_with_gaps` + `list_with_gaps` async fns)
+- `src/routes/home_indicators.rs` (Task 2 + Task 3: +`Gaps` enum
+  variant + parser arm; +`gaps_count` 3rd param on
+  `build_indicator_tags`; +4 new gaps helper unit tests; updated 8
+  existing tests with new arg; updated parser tests for the
+  `gaps`/`recent-cataloged` reservation rotation)
+- `src/routes/home.rs` (Task 5: per-variant role gate rewrite at
+  lines 145-167; +gaps fetching block; HomeTemplate +5 fields; test
+  factory updated. Task 7: 8 new render tests added then moved out by
+  Task 9. Task 9: extraction — `pub(crate) mod tests` + 7 helper
+  visibility lifts; 14 indicator render tests deleted from this file)
+- `src/routes/mod.rs` (Task 9: +`#[cfg(test)] mod home_indicator_tests;`)
+- `templates/pages/home.html` (Task 6: 3-branch chain → 4-branch
+  chain; +`{% else if gaps_filter_active %}` branch with `#gaps-list`
+  section)
+- `locales/en.yml` (Task 4: +4 keys under `dashboard.attention`)
+- `locales/fr.yml` (Task 4: +4 keys under `dashboard.attention`)
+- `tests/e2e/specs/journeys/home.spec.ts` (Task 8: +1 describe block,
+  2 tests)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (Rule 16:
+  9-6 line backlog → ready-for-dev → in-progress → review)
+- `_bmad-output/implementation-artifacts/9-6-series-with-gaps-indicator.md`
+  (Status, Tasks checked, Dev Agent Record)
 
 ### Change Log
 
-_(to be filled by dev agent)_
+- **2026-05-03** — Story 9-6 dev-story: 6 commits across the 10 tasks.
+  - Commit 1 (Task 1): `count_with_gaps` + `list_with_gaps` model
+    methods + `SeriesWithGap` projection + 13 `#[sqlx::test]` cases in
+    `tests/dashboard_gaps.rs`. Spec drift discovery documented.
+  - Commit 2 (Tasks 2 + 3 + 4): `IndicatorFilter::Gaps` variant +
+    parser arm + extended `build_indicator_tags` (gaps_count param) +
+    4 new helper unit tests + EN/FR i18n keys.
+  - Commit 3 (Tasks 5 + 6): home handler per-variant role gate (AC2
+    asymmetry) + gaps wiring + soft-degrade pattern; HomeTemplate +5
+    fields; 4-branch mutual-exclusion chain in `home.html` with
+    `#gaps-list` section.
+  - Commit 4 (Tasks 7 + 9): 8 new render tests added then extracted to
+    `src/routes/home_indicator_tests.rs` + 6 9-5 indicator render
+    tests moved alongside (LOC budget — Foundation Rule #12). Cross-
+    module test imports required `pub(crate)` lifts on factory + 4
+    fakes + 2 slice helpers + `mod tests` itself.
+  - Commit 5 (Task 8): E2E `test.describe("Home page — Series with
+    gaps indicator")` block with 2 tests (anonymous AC2 asymmetry +
+    librarian smoke).
+  - Commit 6 (Task 10 — this commit): Dev Agent Record + Status
+    `in-progress` → `review` + sprint-status flip.
