@@ -415,7 +415,7 @@ so that I can see at a glance how many series are missing volumes and plan acqui
   - [ ] Add a small helper `fn fake_series_with_gap(id: u64, name: &str, total: i32, owned: i64) -> SeriesWithGap` next to `fake_indicator_tag` and `fake_loan_with_details` (lines 1046-1090). ~8 LOC.
   - [ ] **Tighten doc-comments** on the new render tests — one short sentence each (mirroring 9-5's "Task 9 LOC trim" mitigation).
 
-- [ ] **Task 8 — E2E spec (AC: 13)**
+- [x] **Task 8 — E2E spec (AC: 13)**
   - [ ] In `tests/e2e/specs/journeys/home.spec.ts`, append a new `test.describe("Home page — Series with gaps indicator", ...)` block AFTER the 9-5 "Overdue loans indicator" describe (line 275ish — verify against the live file at task start). 2 tests per AC13.
   - [ ] **Test 1** (anonymous) is the load-bearing AC2 contract — no `loginAs()` call, just `await page.goto("/?filter=gaps")` and assert the dual contract: `#filter-tag-gaps` count == 0 AND `#gaps-list` count == 1.
   - [ ] **Test 2** (librarian smoke) follows the 9-5 conditional empty-DB short-circuit pattern verbatim — copy the structure, change selectors and i18n regex.

@@ -269,3 +269,67 @@ test.describe("Home page — Overdue loans indicator", () => {
     await expect(page.locator("#overdue-list")).toHaveCount(0);
   });
 });
+
+// Story 9-6 — "What needs attention" / Series with gaps indicator.
+// AC2 LOAD-BEARING asymmetry vs 9-4/9-5: anonymous CAN navigate to
+// /?filter=gaps and see the list (series browsing is anonymous-allowed
+// per FR65 + FR95) — but the TAG itself is still hidden from anonymous
+// on the default home (where #what-needs-attention requires Librarian).
+test.describe("Home page — Series with gaps indicator", () => {
+  test("anonymous: tag never rendered, BUT /?filter=gaps shows the list (AC2 asymmetry)", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    // Default home: no tag (Librarian-only section), no list.
+    await expect(page.locator("#filter-tag-gaps")).toHaveCount(0);
+    await expect(page.locator("#gaps-list")).toHaveCount(0);
+
+    // Load-bearing AC2: anonymous + ?filter=gaps → #gaps-list IS rendered
+    // (anonymous-allowed asymmetry vs unshelved/overdue) AND
+    // #filter-tag-gaps is NOT (no tag for anonymous on /).
+    await page.goto("/?filter=gaps");
+    await expect(page.locator("#filter-tag-gaps")).toHaveCount(0);
+    await expect(page.locator("#gaps-list")).toHaveCount(1);
+    // Mutual exclusion: gaps-list replaces recent-additions for anonymous too.
+    await expect(page.locator("#recent-additions")).toHaveCount(0);
+  });
+
+  test("librarian: tag visible iff count > 0; click → gaps-list, ✕ → home", async ({
+    page,
+  }) => {
+    await loginAs(page, "librarian");
+    await page.goto("/");
+
+    // Conditional empty-DB short-circuit — same defensive pattern as the
+    // 9-4 unshelved + 9-5 overdue smoke tests. Seed DB may or may not
+    // contain gappy series depending on fixture freshness.
+    const tag = page.locator("#filter-tag-gaps");
+    const tagCount = await tag.count();
+    if (tagCount === 0) {
+      // No gappy closed series seeded — AC3 zero-count rule hides the tag.
+      return;
+    }
+
+    await expect(tag).toBeVisible();
+    await expect(tag).toHaveAttribute("href", "/?filter=gaps");
+
+    // Click the tag → URL changes → gaps-list replaces recent-additions.
+    await tag.click();
+    await page.waitForURL(/\/\?filter=gaps/);
+    await expect(page.locator("#gaps-list")).toBeVisible();
+    // AC6 4-way mutual exclusion.
+    await expect(page.locator("#recent-additions")).toHaveCount(0);
+    await expect(page.locator("#unshelved-list")).toHaveCount(0);
+    await expect(page.locator("#overdue-list")).toHaveCount(0);
+
+    // The tag is now in active state — href clears the filter.
+    const activeTag = page.locator("#filter-tag-gaps");
+    await expect(activeTag).toHaveAttribute("href", "/");
+
+    // Click ✕ → URL returns → recent-additions back, gaps-list gone.
+    await activeTag.click();
+    await page.waitForURL(/\/$/);
+    await expect(page.locator("#recent-additions")).toBeVisible();
+    await expect(page.locator("#gaps-list")).toHaveCount(0);
+  });
+});
