@@ -410,7 +410,7 @@ so that I can see at a glance how many series are missing volumes and plan acqui
     Update the trailing comment at line 222 from `{# /unshelved_filter_active or overdue_filter_active #}` to `{# /unshelved_filter_active or overdue_filter_active or gaps_filter_active #}`.
   - [ ] CSP: zero `style="..."`, zero `<script>`, zero `onclick=`. The badge color treatment is class-driven (`bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300`), matching the established gap-badge palette from `series_list.html:51`. The `templates_audit::no_inline_markup_in_templates` test (line 44) MUST stay green after this change.
 
-- [ ] **Task 7 — Render tests in `src/routes/home.rs::mod tests` (AC: 12e)**
+- [x] **Task 7 — Render tests in `src/routes/home.rs::mod tests` (AC: 12e)**
   - [ ] Add the 8 new render tests per AC12e. Use **post-construction field assignment** (`let mut t = make_test_home_template_with_indicators(...); t.gaps_filter_active = true; t.gaps_series = vec![...]; t.gaps_heading = "Series with gaps".to_string(); t.gaps_empty_label = "...".to_string(); t.gaps_missing_label = "Missing".to_string();`) — DO NOT add a new sibling factory variant `make_test_home_template_with_gaps_indicator`. This keeps `home.rs` LOC budget headroom per AC15 and matches the 9-5 LOC-trim playbook.
   - [ ] Add a small helper `fn fake_series_with_gap(id: u64, name: &str, total: i32, owned: i64) -> SeriesWithGap` next to `fake_indicator_tag` and `fake_loan_with_details` (lines 1046-1090). ~8 LOC.
   - [ ] **Tighten doc-comments** on the new render tests — one short sentence each (mirroring 9-5's "Task 9 LOC trim" mitigation).
@@ -422,7 +422,7 @@ so that I can see at a glance how many series are missing volumes and plan acqui
   - [ ] Use scoped selectors: `page.locator('#what-needs-attention #filter-tag-gaps')` not `page.locator('#filter-tag-gaps')`. Mirrors the 9-2/9-3 unscoped-selector flake fix.
   - [ ] No `waitForTimeout`. CI grep gate enforces this; the `_gates.yml::e2e` job rejects PRs that violate.
 
-- [ ] **Task 9 — LOC budget enforcement (AC: 15)**
+- [x] **Task 9 — LOC budget enforcement (AC: 15)**
   - [ ] After Tasks 5-7 land, run `wc -l src/routes/home.rs`. Target: ≤ 2000 LOC (Foundation Rule #12).
   - [ ] If 2000 < x ≤ 2050: trim doc-comments on the new render tests + handler block, follow the 9-5 "Task 9 LOC trim" pattern (one-line doc-comments instead of multi-line; remove redundant explanatory comments; combine adjacent tests if they share fixtures).
   - [ ] If x > 2050 OR trimming alone doesn't get under 2000: extract `make_test_home_template_with_indicators` (lines 1029-1044), `fake_indicator_tag` (lines 1046-1054), `fake_loan_with_details` (lines 1067-1090), AND the new `fake_series_with_gap` helper (Task 7) into a new `pub(crate) mod test_factories;` submodule inside `src/routes/home_indicators.rs::tests` (or a sibling `src/routes/home_test_helpers.rs` if visibility math gets ugly). All four are conceptually about indicator-rendering machinery and have ZERO callers outside the indicator render tests; the move is mechanical.

@@ -806,7 +806,7 @@ fn render_empty_state(query: &str, is_librarian: bool, loc: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -908,7 +908,7 @@ mod tests {
     /// render tests to scope assertions to a specific section and avoid false
     /// positives from same-string occurrences elsewhere on the page (e.g.,
     /// the nav-bar `/loans` link for the glance card).
-    fn slice_section<'a>(html: &'a str, section_id: &str) -> &'a str {
+    pub(crate) fn slice_section<'a>(html: &'a str, section_id: &str) -> &'a str {
         let start_tag = format!(r#"id="{section_id}""#);
         let start = html
             .find(&start_tag)
@@ -940,11 +940,11 @@ mod tests {
 
     /// Story 9-4 helper — scope assertions to the "What needs attention"
     /// indicator section.
-    fn attention_section_slice(html: &str) -> &str {
+    pub(crate) fn attention_section_slice(html: &str) -> &str {
         slice_section(html, "what-needs-attention")
     }
 
-    fn make_test_home_template_with_counts(
+    pub(crate) fn make_test_home_template_with_counts(
         role: &str,
         loans_link_visible: bool,
         titles: i64,
@@ -1097,7 +1097,7 @@ mod tests {
     /// Reuses the counts factory so glance + recent-additions assertions
     /// remain possible. Caller controls all 9-4 surfaces directly so
     /// tests don't have to coordinate with the SQL → handler pipeline.
-    fn make_test_home_template_with_indicators(
+    pub(crate) fn make_test_home_template_with_indicators(
         role: &str,
         indicator_tags: Vec<IndicatorTag>,
         unshelved_filter_active: bool,
@@ -1110,7 +1110,7 @@ mod tests {
         t
     }
 
-    fn fake_indicator_tag(label: &str, count: u64, filter_name: &str, is_active: bool) -> IndicatorTag {
+    pub(crate) fn fake_indicator_tag(label: &str, count: u64, filter_name: &str, is_active: bool) -> IndicatorTag {
         IndicatorTag {
             label: label.to_string(),
             count,
@@ -1120,7 +1120,7 @@ mod tests {
         }
     }
 
-    fn fake_unshelved_row(volume_id: u64, label: &str, title_id: u64, title: &str, author: &str) -> crate::models::volume::UnshelvedVolumeRow {
+    pub(crate) fn fake_unshelved_row(volume_id: u64, label: &str, title_id: u64, title: &str, author: &str) -> crate::models::volume::UnshelvedVolumeRow {
         crate::models::volume::UnshelvedVolumeRow {
             id: volume_id,
             label: label.to_string(),
@@ -1134,7 +1134,7 @@ mod tests {
     /// Story 9-5 — deterministic LoanWithDetails factory for handler
     /// render tests. Sentinel `loaned_at` is never surfaced; only
     /// duration_days drives the row coloring.
-    fn fake_loan_with_details(
+    pub(crate) fn fake_loan_with_details(
         borrower_id: u64,
         borrower_name: &str,
         volume_label: &str,
@@ -1923,107 +1923,8 @@ mod tests {
         );
     }
 
-    // ─── Story 9-5 — Handler render tests (AC12e) ─────────────────────
-
-    /// AC2 anonymous-no-leak (overdue counterpart): empty Vec → no tag
-    /// + no list section.
-    #[test]
-    fn home_anonymous_does_not_render_overdue_tag() {
-        let template =
-            make_test_home_template_with_indicators("anonymous", Vec::new(), false, Vec::new());
-        let html = template.render().expect("render");
-        assert!(!html.contains("id=\"filter-tag-overdue\""));
-        assert!(!html.contains("id=\"overdue-list\""));
-    }
-
-    /// AC1 + AC3 default state — librarian sees the overdue pill with
-    /// the count href + aria-label.
-    #[test]
-    fn home_librarian_renders_overdue_tag_in_default_state_when_count_positive() {
-        let tags = vec![fake_indicator_tag("Overdue loans", 5, "overdue", false)];
-        let template =
-            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
-        let html = template.render().expect("render");
-        let slice = attention_section_slice(&html);
-
-        assert!(slice.contains("id=\"filter-tag-overdue\""));
-        assert!(slice.contains("href=\"/?filter=overdue\""));
-        assert!(slice.contains("aria-label=\"Overdue loans: 5\""));
-        assert!(slice.contains(">5<"));
-    }
-
-    /// AC3 active state: `href="/"`, "×", clear-action aria-label.
-    #[test]
-    fn home_librarian_overdue_tag_active_state_when_filter_applied() {
-        let tags = vec![fake_indicator_tag("Overdue loans", 5, "overdue", true)];
-        let mut t =
-            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
-        t.overdue_filter_active = true;
-        t.overdue_loans = vec![fake_loan_with_details(10, "Borrower One", "V0042", "Title One", 40)];
-        let html = t.render().expect("render");
-        let slice = attention_section_slice(&html);
-
-        assert!(slice.contains("id=\"filter-tag-overdue\""));
-        assert!(slice.contains("href=\"/\""));
-        assert!(slice.contains("&times;"));
-        assert!(slice.contains("aria-label=\"Clear filter: Overdue loans\""));
-        assert!(!slice.contains("aria-label=\"Overdue loans: 5\""));
-    }
-
-    /// AC6 mutual exclusion (3-way) + row-link target = /borrower/<id>.
-    #[test]
-    fn home_librarian_overdue_filter_active_renders_overdue_list_not_unshelved_list_nor_recent_additions(
-    ) {
-        let tags = vec![fake_indicator_tag("Overdue loans", 3, "overdue", true)];
-        let loans = vec![
-            fake_loan_with_details(10, "Borrower One", "V0001", "Title One", 35),
-            fake_loan_with_details(11, "Borrower Two", "V0002", "Title Two", 45),
-        ];
-        let mut t =
-            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
-        t.overdue_filter_active = true;
-        t.overdue_loans = loans;
-        let html = t.render().expect("render");
-
-        assert!(html.contains("id=\"overdue-list\""));
-        assert!(!html.contains("id=\"unshelved-list\""));
-        assert!(!html.contains("id=\"recent-additions\""));
-        assert!(html.contains("V0001"));
-        assert!(html.contains("Title One"));
-        assert!(html.contains("Borrower One"));
-        assert!(html.contains("href=\"/borrower/10\""));
-        assert!(html.contains("href=\"/borrower/11\""));
-    }
-
-    /// AC6 defensive empty-state inside the #overdue-list section.
-    #[test]
-    fn home_librarian_overdue_filter_empty_renders_empty_label() {
-        let tags = vec![fake_indicator_tag("Overdue loans", 1, "overdue", true)];
-        let mut t =
-            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
-        t.overdue_filter_active = true;
-        let html = t.render().expect("render");
-
-        assert!(html.contains("id=\"overdue-list\""));
-        assert!(html.contains("No overdue loans"));
-        assert!(!html.contains("id=\"recent-additions\""));
-        assert!(!html.contains("id=\"unshelved-list\""));
-    }
-
-    /// AC1 emit-order at rendered-HTML level: unshelved tag before
-    /// overdue tag in document order.
-    #[test]
-    fn home_renders_overdue_tag_after_unshelved_in_attention_section() {
-        let tags = vec![
-            fake_indicator_tag("Unshelved volumes", 3, "unshelved", false),
-            fake_indicator_tag("Overdue loans", 5, "overdue", false),
-        ];
-        let template =
-            make_test_home_template_with_indicators("librarian", tags, false, Vec::new());
-        let html = template.render().expect("render");
-        let slice = attention_section_slice(&html);
-        let unshelved_pos = slice.find("id=\"filter-tag-unshelved\"").expect("unshelved");
-        let overdue_pos = slice.find("id=\"filter-tag-overdue\"").expect("overdue");
-        assert!(unshelved_pos < overdue_pos);
-    }
+    // Story 9-5 + 9-6 indicator render tests extracted to
+    // `src/routes/home_indicator_tests.rs` per Foundation Rule #12 LOC
+    // budget (story 9-6 AC15). Test factory + fake helpers above are
+    // marked `pub(crate)` so the sibling module can import them.
 }
