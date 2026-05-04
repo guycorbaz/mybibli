@@ -35,8 +35,8 @@ pub struct LoanWithDetails {
 /// Fetched ONLY when `session.role >= Role::Librarian` (the handler
 /// branches between `active_loan_summary_for_volume` for Anonymous
 /// (no borrower data) and `active_loan_with_borrower_for_volume` for
-/// Librarian/Admin). The two-layer defense (SQL projection narrowing
-/// + handler call-site role gate) means borrower PII never travels
+/// Librarian/Admin). The two-layer defense — SQL projection narrowing
+/// plus handler call-site role gate — means borrower PII never travels
 /// through application memory when the user can't see it.
 ///
 /// NEW struct (NOT a `LoanWithDetails` REUSE) because the dashboard

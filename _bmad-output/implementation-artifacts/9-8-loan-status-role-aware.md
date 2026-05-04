@@ -1,6 +1,6 @@
 # Story 9.8: Loan status role-aware on volume detail
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -183,7 +183,7 @@ so that privacy is preserved while I can still tell whether the item is currentl
     - `view_borrower_aria: "Voir le profil de l'emprunteur"`
   - [ ] **CRITICAL:** locale files have NO top-level `en:`/`fr:` wrapper. After editing, run `touch src/lib.rs && cargo build`. The `i18n::audit::tests::all_t_keys_have_both_locales` test enforces EN/FR mirror.
 
-- [ ] **Task 5 — Macro tests (4-cell matrix) (AC: 10a)**
+- [x] **Task 5 — Macro tests (4-cell matrix) (AC: 10a)**
   - [ ] Add macro tests in the same location as 9-4's FilterTag macro tests — search `templates/components/filter_tag.html` usages in the codebase to find the canonical test placement. Likely candidates: `src/routes/home.rs::tests` (for `filter_tag` macro) OR a dedicated `src/templates_audit.rs` block. Use the SAME pattern to keep the precedent uniform.
   - [ ] 4 tests covering the AC10a matrix:
     - `loan_status_badge_macro_anonymous_on_loan_renders_date_only_no_borrower`
@@ -192,7 +192,7 @@ so that privacy is preserved while I can still tell whether the item is currentl
     - `loan_status_badge_macro_librarian_not_on_loan_renders_nothing`
   - [ ] Each test instantiates a minimal Askama struct that calls the macro, renders it, and byte-asserts the expected output (presence/absence of `bname`, `href="/borrower/`, the amber palette classes, etc.).
 
-- [ ] **Task 6 — `volume_detail` handler render tests (AC: 8, 10b)**
+- [x] **Task 6 — `volume_detail` handler render tests (AC: 8, 10b)**
   - [ ] In `src/routes/catalog.rs::tests` (or wherever the existing `volume_detail` tests live — search first), add:
     - `volume_detail_anonymous_does_not_leak_borrower_name` — **AC8 LOAD-BEARING SECURITY GUARD.** Build a `VolumeDetailTemplate` with `role = "anonymous"` and `loan_status = Some(LoanStatusView { loaned_at_label: "2026-04-15", borrower_id: None, borrower_name: None })`. Render. Assert `!html.contains("Alice")` AND `!html.contains("Tremblay")` AND `!html.contains("/borrower/")`. Then build the SAME template with `role = "librarian"` + populated `borrower_id: Some(42)` + `borrower_name: Some("Alice Tremblay".to_string())` — render and assert `html.contains("Alice")` AND `html.contains("href=\"/borrower/42\"")`. The librarian-render assertion proves the test fixture WOULD catch a leak (i.e., the absence in the anonymous render is meaningful, not a tautology).
     - `volume_detail_librarian_renders_borrower_link` — assert `href="/borrower/{id}"` is present + the borrower name appears + the date appears.
@@ -200,13 +200,13 @@ so that privacy is preserved while I can still tell whether the item is currentl
     - `volume_detail_anonymous_with_loan_renders_amber_palette` — assert `bg-amber-100` is present in the badge wrapper.
   - [ ] Existing `volume_detail` tests (if any — search first) need their factory extended with the 4 new fields populated to sensible defaults so they keep passing.
 
-- [ ] **Task 7 — E2E spec block (AC: 11)**
+- [x] **Task 7 — E2E spec block (AC: 11)**
   - [ ] In `tests/e2e/specs/journeys/loans-stack.spec.ts` (or whatever the existing loans E2E spec file is — verify by listing `tests/e2e/specs/journeys/` first), append `test.describe("Volume detail — loan status role-aware (FR59)", ...)` block with 1 smoke test per AC11.
   - [ ] Use the existing `tests/e2e/helpers/loans.ts::createLoan` helper to seed the fixture.
   - [ ] Use stable ID selectors / role queries; NO `waitForTimeout` (CI grep gate).
   - [ ] Use i18n-aware regex matchers for visible text: `/On loan|En prêt/i` etc.
 
-- [ ] **Task 8 — Verify and document (AC: 1–15)**
+- [x] **Task 8 — Verify and document (AC: 1–15)**
   - [ ] `wc -l src/routes/catalog.rs` — verify the file did not grow significantly. AC13 is informational only (no hard ceiling set in CLAUDE.md for catalog.rs); document the final LOC in the Dev Agent Record.
   - [ ] `SQLX_OFFLINE=true cargo check && cargo clippy --all-targets -- -D warnings` — clean (zero warnings).
   - [ ] `SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' cargo test` — full suite green. Expected: ~720 lib tests baseline + ~8 new (4 macro + 4 render) = ~728; +7 new integration tests in `tests/volume_detail_loan_status.rs`.
@@ -371,16 +371,62 @@ If a fresh schema drift is discovered during dev (e.g., `loans` has a new column
 
 ### Debug Log References
 
-_(to be filled by dev agent)_
+- **2026-05-04 — Clippy 2024 lint on doc-comment.** First clippy run after Task 6 failed with `doc list item without indentation` on `src/models/loan.rs:40` — Rust 2024's clippy interprets the `+ handler call-site role gate` continuation in the `ActiveLoanWithBorrower` doc-comment as a malformed list item. Fix: rewrote the prose to use em-dashes (`— SQL projection narrowing plus handler call-site role gate —`) instead of a `+`-led continuation. Same lint also flagged `unused import: chrono::NaiveDate` in `catalog.rs::tests` (added speculatively for date fixtures but never used in the final tests since `loaned_at_label` is a String, not a `NaiveDateTime`). Removed the unused import.
+- **2026-05-04 — Default `loaned_at_for_label` flows even when no loan.** The handler builds `loaned_at_for_label` as `loan_status.as_ref().map(|l| l.loaned_at_label.as_str()).unwrap_or("")`, then passes it to `rust_i18n::t!("volume.on_loan_since", date = ...)` regardless of whether a loan exists. This means even when `loan_status = None`, the i18n strings are still computed (with an empty date). They're never displayed (the `{% if let Some(loan) = loan_status %}` template gate ensures the macro never invokes them), so the wasted work is harmless. A future cleanup could conditionally build the labels only when needed; flagged as a potential code-review-finding optimization but not addressed in this PR (refactor-during-feature anti-pattern).
 
 ### Completion Notes List
 
-_(to be filled by dev agent)_
+- ✅ All 8 tasks complete with all 15 ACs satisfied.
+- ✅ **AC8 LOAD-BEARING SECURITY GUARD locked**: `volume_detail_anonymous_does_not_leak_borrower_name` test renders the SAME template twice (once anonymous + once librarian with the same borrower data) — the librarian-render assertion proves the test fixture WOULD catch a leak if one existed (i.e., the absence in the anonymous render is meaningful, not a tautology).
+- ✅ **TWO-LAYER role-gating defense implemented per AC5**:
+  - Layer 1 (SQL projection narrowing): `LoanModel::active_loan_summary_for_volume` returns ONLY `Option<NaiveDateTime>` — NO JOIN to `borrowers`, NO borrower fields projected. Borrower PII never travels through application memory when role < Librarian.
+  - Layer 2 (handler call-site role gate): `volume_detail` handler branches on `session.role >= Role::Librarian` to call ONE of the 2 model methods. Strictly no double-fetch.
+- ✅ **Defense-in-depth in the macro** (AC4): a `role = "librarian"` call with `borrower_id: None` or `borrower_name: None` falls through to the anonymous variant rather than panicking on a None unwrap. Locked by `volume_detail_librarian_with_no_borrower_data_falls_back_to_anonymous_variant` test.
+- ✅ **`b.deleted_at IS NULL` JOIN guard locked** (AC9c): `active_loan_with_borrower_for_volume_excludes_soft_deleted_borrower` integration test asserts soft-deleted borrowers MUST NOT leak via the volume-detail page.
+- ✅ Lib tests: **728 passing** (was 720 pre-9-8; +8 new render tests in `catalog.rs::tests`).
+- ✅ Integration tests: 119 passing across all `tests/*.rs` binaries — including the **7 new `volume_detail_loan_status.rs` cases** (4 for `_summary_`, 3 for `_with_borrower_`).
+- ✅ E2E: 1 new test in `tests/e2e/specs/journeys/loans.spec.ts` (anonymous-vs-librarian transition smoke test, covers the AC11 contract end-to-end).
+- ✅ Clippy: clean with `-D warnings` across `--all-targets` (after fixing 2 lints during Task 8).
+- ✅ `.sqlx/` cache: unchanged — Task 1 uses dynamic `query` / `query_as` per project convention.
+- ✅ Templates audit (`no_inline_markup_in_templates`): green — Tailwind utility classes only, no inline styles/scripts/handlers.
+- ✅ TypeScript check on `tests/e2e/`: clean.
+- ✅ CI flake gate: no `waitForTimeout` calls added.
+- ✅ i18n EN/FR mirror (`all_t_keys_have_both_locales`): green — 5 new keys present in both files at the same nesting under `volume:`.
+
+**Drift discoveries documented (per spec text claims):**
+- `volume_detail.html` had NO loan-status display pre-9-8. Story 9-8 ADDED the row from scratch despite spec text implying "the existing field" — confirmed and noted in spec.
+- `title_detail.html` does NOT list individual volumes today — the macro's "shared across surfaces" intent is forward-looking only.
+- No `VolumeBadge` template component exists for shelved/unshelved (badge inlined in `volume_detail.html:46-49`). Extracting it is out-of-scope for 9-8.
+
+**Key design decisions:**
+1. **NEW `ActiveLoanWithBorrower`** narrow projection (3 fields) — NOT `LoanWithDetails` REUSE. Mirror of 9-6's `SeriesWithGap` decision (NEW narrow struct when shape doesn't match).
+2. **TWO-LAYER role-gating defense** (stricter than indicator subsystem 9-4..9-7's call-site-only role gate). FR59 is privacy-sensitive — borrower data MUST NOT be fetched when user can't see it.
+3. **3-field i18n shape** (anonymous label + prefix + suffix) avoids template-side string-splitting on an interpolated label and keeps the macro CSP-clean. The borrower-name link is rendered by the macro between the prefix and suffix from a separate `borrower_name` field.
+4. **Defense-in-depth fallback in the macro**: a future caller bug that passes `role = "librarian"` without populating borrower fields falls through to the anonymous variant rather than panicking.
+5. **Amber palette reuse**: the loan-status badge uses the same `bg-amber-100 dark:bg-amber-900/30` palette as the existing `not_shelved` badge — locks the "consistent unavailability cue" UX contract.
+6. **AC8 2-render assertion shape**: the test renders the SAME template twice with different roles to PROVE the absence in the anonymous render is meaningful (not a tautology).
+7. **NEW shared partial `loan_status_badge.html`** is forward-compatible across surfaces but only `volume_detail.html` is wired in 9-8 (refactor-during-feature anti-pattern).
 
 ### File List
 
-_(to be filled by dev agent)_
+**Created:**
+- `templates/components/loan_status_badge.html` (Task 3 — NEW Askama macro, 51 LOC)
+- `tests/volume_detail_loan_status.rs` (Task 1 — 7 `#[sqlx::test]` cases + 9 helpers, 235 LOC)
+
+**Modified:**
+- `src/models/loan.rs` (Task 1: +`ActiveLoanWithBorrower` projection + `active_loan_summary_for_volume` + `active_loan_with_borrower_for_volume` async fns + Task 8 doc-comment lint fix)
+- `src/routes/catalog.rs` (Task 2: +`LoanStatusView` struct + `VolumeDetailTemplate` +6 fields + handler wiring with role-branched fetch + soft-degrade. Task 6: +8 new render tests including AC8 LOAD-BEARING anonymous-no-leak guard)
+- `templates/components/loan_status_badge.html` (NEW — Task 3)
+- `templates/pages/volume_detail.html` (Task 3: +1 line macro import, +5 lines macro call wrapped in `{% if let Some(loan) = loan_status %}`)
+- `locales/en.yml` (Task 4: +5 keys under `volume:` block)
+- `locales/fr.yml` (Task 4: +5 keys under `volume:` block)
+- `tests/e2e/specs/journeys/loans.spec.ts` (Task 7: +1 describe block, 1 test covering anonymous-vs-librarian transition for FR59)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (Rule 16: 9-8 line ready-for-dev → in-progress → review)
+- `_bmad-output/implementation-artifacts/9-8-loan-status-role-aware.md` (Status, Tasks checked, Dev Agent Record)
 
 ### Change Log
 
-_(to be filled by dev agent)_
+- **2026-05-04** — Story 9-8 dev-story: 3 commits across the 8 tasks.
+  - Commit 1 (Task 1): `ActiveLoanWithBorrower` narrow projection + 2 new `LoanModel` methods + 7 sqlx integration tests in `tests/volume_detail_loan_status.rs`. Two-layer defense locked at the model layer.
+  - Commit 2 (Tasks 2 + 3 + 4): `LoanStatusView` view-model + `VolumeDetailTemplate` +6 fields + handler wiring with role-branched fetch + soft-degrade; NEW `loan_status_badge.html` Askama macro + integration into `volume_detail.html`; 5 new EN/FR i18n keys.
+  - Commit 3 (Tasks 5 + 6 + 7 + 8): 8 new render tests in `catalog.rs::tests` (incl. AC8 LOAD-BEARING anonymous-no-leak guard with 2-render assertion shape); E2E describe block in `loans.spec.ts` covering anonymous-vs-librarian transition; 2 clippy lint fixes (unused chrono::NaiveDate import + doc-comment list-item-without-indentation); Dev Agent Record + Status `in-progress` → `review` + sprint-status flip.

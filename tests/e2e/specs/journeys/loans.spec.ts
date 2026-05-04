@@ -226,3 +226,54 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     await expect(page.locator("#loans-table-body")).toContainText(/\d+ days|\d+ jours/i);
   });
 });
+
+// Story 9-8 — Volume detail page loan-status row, role-aware (FR59).
+// Anonymous sees "On loan since {date}" without borrower name;
+// librarian sees "On loan to {borrower} since {date}" with a clickable
+// link to /borrower/:id. AC8 LOAD-BEARING SECURITY contract: the
+// borrower's name MUST NOT appear ANYWHERE in the anonymous render.
+test.describe("Volume detail — loan status role-aware (FR59)", () => {
+  test("anonymous sees 'On loan' without borrower name; librarian sees borrower link", async ({
+    context,
+    page,
+  }) => {
+    await context.clearCookies();
+    await loginAs(page);
+
+    // Seed: title + volume + borrower + active loan.
+    const ANON_ISBN = specIsbn("LN", 8);
+    await scanTitleAndVolume(page, ANON_ISBN, "V0098");
+    await createBorrower(page, "LN-9-8 Alice Tremblay");
+    await createLoan(page, "V0098", "LN-9-8 Alice Tremblay");
+
+    // Get the volume id by clicking the V-code in the loans table
+    // (it links to /volume/<id>). The href gives us the canonical URL.
+    await page.goto("/loans");
+    const volumeLink = page.locator('#loans-table-body a').filter({ hasText: "V0098" }).first();
+    await expect(volumeLink).toBeVisible();
+    const volumeHref = await volumeLink.getAttribute("href");
+    expect(volumeHref).toMatch(/^\/volume\/\d+$/);
+
+    // 1. Anonymous render — borrower name MUST NOT appear anywhere.
+    await context.clearCookies();
+    await page.goto(volumeHref!);
+    const anonContent = await page.content();
+    expect(anonContent).not.toContain("Alice Tremblay");
+    expect(anonContent).not.toContain("LN-9-8 Alice Tremblay");
+    expect(anonContent).not.toContain("/borrower/");
+    // Anonymous still sees the badge text.
+    await expect(page.locator("body")).toContainText(/On loan since|En prêt depuis/i);
+
+    // 2. Librarian render — borrower name + clickable link to /borrower/<id>.
+    await loginAs(page);
+    await page.goto(volumeHref!);
+    await expect(page.locator("body")).toContainText("LN-9-8 Alice Tremblay");
+    const borrowerLink = page.getByRole("link", { name: /LN-9-8 Alice Tremblay/ });
+    await expect(borrowerLink).toBeVisible();
+    const borrowerHref = await borrowerLink.getAttribute("href");
+    expect(borrowerHref).toMatch(/^\/borrower\/\d+$/);
+    // Click the link → should land on /borrower/<id>.
+    await borrowerLink.click();
+    await page.waitForURL(/\/borrower\/\d+/);
+  });
+});
