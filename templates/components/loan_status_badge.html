@@ -26,6 +26,14 @@
    "not_shelved" badge in volume_detail.html — locks the "consistent
    unavailability cue" UX contract. #}
 {%- macro badge(role, label_field, label_anonymous, label_prefix, label_suffix, borrower_id, borrower_name, view_borrower_aria) -%}
+{# `view_borrower_aria` parameter retained for API stability — currently
+   unused because the link's visible text (the borrower's name) is
+   already a meaningful accessible name; adding an `aria-label` would
+   hijack that for screen readers AND break Playwright's role-by-name
+   lookup (CI catch on PR #124 — `getByRole("link", { name: borrower })`
+   found zero matches when `aria-label="View borrower profile"` was
+   present). The parameter stays so future callers can opt back in
+   with a per-call accessible-name override if needed. #}
 <div class="flex items-center gap-3">
     <span class="text-sm font-medium text-stone-500 dark:text-stone-400 w-32">{{ label_field }}</span>
     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-medium">
@@ -33,7 +41,7 @@
             {%- if let Some(bid) = borrower_id -%}
                 {%- if let Some(bname) = borrower_name -%}
 {# Librarian/Admin variant — borrower name as link between prefix + suffix. #}
-                    <span>{{ label_prefix }}</span><a href="/borrower/{{ bid }}" class="text-indigo-600 dark:text-indigo-400 hover:underline" aria-label="{{ view_borrower_aria }}">{{ bname }}</a><span>{{ label_suffix }}</span>
+                    <span>{{ label_prefix }}</span><a href="/borrower/{{ bid }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ bname }}</a><span>{{ label_suffix }}</span>
                 {%- else -%}
 {# Defense-in-depth: librarian role but no borrower_name — fall back to anonymous variant. #}
                     {{ label_anonymous }}

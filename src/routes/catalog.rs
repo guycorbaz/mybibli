@@ -2562,9 +2562,16 @@ mod tests {
         assert!(html.contains("Bob Builder"));
         assert!(html.contains("On loan to "));
         assert!(html.contains(" since 2026-04-15"));
+        // The link's accessible name MUST be the borrower's visible
+        // text (no aria-label override). Code-review patch 2026-05-04
+        // (PR #124 CI catch): an `aria-label="View borrower profile"`
+        // override hijacked the accessible name and broke screen-reader
+        // context AND `getByRole("link", { name: borrower })` lookup
+        // in E2E tests. The visible text is now the canonical accessible
+        // name.
         assert!(
-            html.contains("aria-label=\"View borrower profile\""),
-            "borrower link MUST carry the localized aria-label"
+            !html.contains("aria-label=\"View borrower profile\""),
+            "the borrower link MUST NOT carry an aria-label that hijacks the accessible name"
         );
     }
 

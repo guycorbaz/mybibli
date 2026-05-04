@@ -241,12 +241,15 @@ test.describe("Volume detail — loan status role-aware (FR59)", () => {
     await loginAs(page);
 
     // Per-invocation unique suffix protects against Playwright retry-
-    // induced borrower-name collisions (`createBorrower` asserts the
-    // /borrower link is visible after creation; a duplicate name from
-    // a prior retry would trigger strict-mode "resolved to 2 elements").
+    // induced collisions:
+    // - borrowerName: a duplicate name would trigger strict-mode
+    //   "resolved to N elements" in createBorrower's link assertion.
+    // - volumeLabel: V-codes are CHAR(5) UNIQUE; a re-run after a
+    //   first-attempt loan creation would fail with "already on loan".
+    //   Use V + last-4-digits-of-Date.now() to stay within CHAR(5).
     const uniq = Date.now();
     const borrowerName = `LN-9-8 Alice Tremblay ${uniq}`;
-    const volumeLabel = "V0098";
+    const volumeLabel = `V${("0000" + (uniq % 10000)).slice(-4)}`;
     const ANON_ISBN = specIsbn("LN", 8);
 
     // Seed: title + volume + borrower + active loan.
