@@ -204,7 +204,6 @@ test.describe("Home page scanner detection — scan to navigate", () => {
     page,
   }) => {
     await page.goto("/");
-    const homeUrl = page.url();
 
     // Slow typing (100 ms inter-key) → SEARCH_MODE → search-fire (NOT scan-fire).
     await simulateTyping(page, "#search-field", "test");
@@ -216,7 +215,12 @@ test.describe("Home page scanner detection — scan to navigate", () => {
       tbody.locator("article.title-card, .text-center").first(),
     ).toBeVisible({ timeout: 5000 });
 
-    // Critical: still on home, NOT on /title/, /volume/, /location/, or /catalog.
-    expect(page.url()).toBe(homeUrl.replace(/\?.*$/, "") + "?q=test");
+    // Critical: still on home (not /title/, /volume/, /location/, /catalog).
+    // Path-and-param assertion (NOT byte equality) — hx-include on the
+    // search field appends filter=, sort=, dir= to the pushed URL, so we
+    // can't pin the full querystring.
+    const pageUrl = new URL(page.url());
+    expect(pageUrl.pathname).toBe("/");
+    expect(pageUrl.searchParams.get("q")).toBe("test");
   });
 });
