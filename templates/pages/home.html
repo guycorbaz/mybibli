@@ -30,7 +30,27 @@
                hx-include="[name='filter'],[name='sort'],[name='dir']"
                data-debounce="100"
                data-scanner-threshold="100"
-               data-connection-lost="{{ connection_lost }}">
+               data-connection-lost="{{ connection_lost }}"
+               data-announce-searching="{{ searching_announcement }}"
+               data-announce-scanning="{{ scanning_announcement }}">
+
+        <!-- Story 9-9: aria-live region for state-machine announcements
+             ("Searching", "Scanning"). Screen-readers only (sr-only). -->
+        <span id="search-state-announcement"
+              class="sr-only"
+              aria-live="polite"
+              aria-atomic="true"></span>
+
+        <!-- Story 9-9: hidden sibling fires GET /scan when search.js
+             classifies a fast burst + Enter as a scanner scan. The
+             handler returns HX-Redirect (or 303) to /title|volume|location|catalog. -->
+        <a id="scan-trigger"
+           hx-get="/scan"
+           hx-trigger="scan-fire from:#search-field"
+           hx-include="#search-field"
+           class="hidden"
+           aria-hidden="true"
+           tabindex="-1"></a>
     </div>
 
     <!-- Filter tags -->
