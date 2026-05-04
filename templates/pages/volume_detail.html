@@ -1,4 +1,5 @@
 {% extends "layouts/base.html" %}
+{% import "components/loan_status_badge.html" as loan_status_badge %}
 
 {% block title %}{{ volume.label }} — mybibli{% endblock %}
 
@@ -48,6 +49,14 @@
             </span>
             {% endmatch %}
         </div>
+
+        {# Story 9-8 — loan-status row, role-aware (FR59). Renders only
+           when the volume has an active loan; the macro itself is
+           role-aware (anonymous: date only; librarian: borrower name
+           link + date). #}
+        {% if let Some(loan) = loan_status %}
+        {% call loan_status_badge::badge(role, loan_status_field_label, loan_status_label_anonymous, loan_status_label_prefix, loan_status_label_suffix, loan.borrower_id, loan.borrower_name.as_deref(), view_borrower_aria) %}{% endcall %}
+        {% endif %}
     </div>
 
     {% if role == "librarian" || role == "admin" %}

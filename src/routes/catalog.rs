@@ -1854,6 +1854,20 @@ pub async fn delete_volume(
 
 // ─── Volume detail & edit ────────────────────────────────────────
 
+/// Story 9-8 — view-model for the volume-detail page's loan-status row.
+///
+/// Built by the handler from EITHER `LoanModel::active_loan_summary_for_volume`
+/// (Anonymous — no borrower fields populated) OR
+/// `LoanModel::active_loan_with_borrower_for_volume` (Librarian/Admin —
+/// both `borrower_id` + `borrower_name` populated). The 2 model methods
+/// implement the two-layer role-gating defense (SQL projection
+/// narrowing + handler call-site role gate).
+pub struct LoanStatusView {
+    pub loaned_at_label: String,
+    pub borrower_id: Option<u64>,
+    pub borrower_name: Option<String>,
+}
+
 #[derive(Template)]
 #[template(path = "pages/volume_detail.html")]
 pub struct VolumeDetailTemplate {
@@ -1879,6 +1893,13 @@ pub struct VolumeDetailTemplate {
     pub detail_title: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
+    // Story 9-8 — loan-status row (FR59 role-aware visibility).
+    pub loan_status: Option<LoanStatusView>,
+    pub loan_status_field_label: String,
+    pub loan_status_label_anonymous: String,
+    pub loan_status_label_prefix: String,
+    pub loan_status_label_suffix: String,
+    pub view_borrower_aria: String,
 }
 
 pub async fn volume_detail(
@@ -1917,6 +1938,63 @@ pub async fn volume_detail(
         None
     };
 
+    // Story 9-8 — role-branched loan-status fetch (FR59 two-layer
+    // defense: SQL projection narrowed for Anonymous + handler call
+    // picks the right method based on role). Soft-degrade on DB
+    // error: warn + render without the badge rather than 500 the
+    // page. NEVER log borrower PII (AC15).
+    let loan_status: Option<LoanStatusView> = if session.role >= Role::Librarian {
+        match crate::models::loan::LoanModel::active_loan_with_borrower_for_volume(pool, id).await {
+            Ok(Some(row)) => Some(LoanStatusView {
+                loaned_at_label: row.loaned_at.format("%Y-%m-%d").to_string(),
+                borrower_id: Some(row.borrower_id),
+                borrower_name: Some(row.borrower_name),
+            }),
+            Ok(None) => None,
+            Err(e) => {
+                tracing::warn!(volume_id = id, error = %e, "active_loan_with_borrower_for_volume failed; rendering without loan-status badge");
+                None
+            }
+        }
+    } else {
+        match crate::models::loan::LoanModel::active_loan_summary_for_volume(pool, id).await {
+            Ok(Some(loaned_at)) => Some(LoanStatusView {
+                loaned_at_label: loaned_at.format("%Y-%m-%d").to_string(),
+                borrower_id: None,
+                borrower_name: None,
+            }),
+            Ok(None) => None,
+            Err(e) => {
+                tracing::warn!(volume_id = id, error = %e, "active_loan_summary_for_volume failed; rendering without loan-status badge");
+                None
+            }
+        }
+    };
+
+    // Pre-translate loan-status labels (project convention — pre-
+    // translate in handler, pass as Strings to template). The
+    // anonymous label gets the date interpolated; the with-borrower
+    // path uses prefix + suffix (see loan_status_badge.html macro
+    // doc-comment for why we split the label).
+    let loaned_at_for_label = loan_status
+        .as_ref()
+        .map(|l| l.loaned_at_label.as_str())
+        .unwrap_or("");
+    let loan_status_label_anonymous = rust_i18n::t!(
+        "volume.on_loan_since",
+        locale = loc,
+        date = loaned_at_for_label
+    )
+    .to_string();
+    let loan_status_label_prefix =
+        rust_i18n::t!("volume.on_loan_to_prefix", locale = loc).to_string();
+    let loan_status_label_suffix = rust_i18n::t!(
+        "volume.on_loan_to_since_suffix",
+        locale = loc,
+        date = loaned_at_for_label
+    )
+    .to_string();
+
     let template = VolumeDetailTemplate {
         lang: loc.to_string(),
         role: session.role.to_string(),
@@ -1940,6 +2018,12 @@ pub async fn volume_detail(
         location_path,
         current_url: crate::utils::current_url(&uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        loan_status,
+        loan_status_field_label: rust_i18n::t!("volume.loan_status_field", locale = loc).to_string(),
+        loan_status_label_anonymous,
+        loan_status_label_prefix,
+        loan_status_label_suffix,
+        view_borrower_aria: rust_i18n::t!("volume.view_borrower_aria", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),

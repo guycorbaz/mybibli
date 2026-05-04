@@ -112,7 +112,7 @@ so that privacy is preserved while I can still tell whether the item is currentl
     - 7 `#[sqlx::test(migrations = "./migrations")]` cases per AC9 (4 for `_summary_`, 3 for `_with_borrower_`).
   - [ ] Verify: `SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' cargo test --test volume_detail_loan_status` — all 7 green; lock as Commit 1.
 
-- [ ] **Task 2 — `LoanStatusView` view-model + extend `VolumeDetailTemplate` + handler wiring (AC: 1, 2, 3, 5, 6)**
+- [x] **Task 2 — `LoanStatusView` view-model + extend `VolumeDetailTemplate` + handler wiring (AC: 1, 2, 3, 5, 6)**
   - [ ] In `src/routes/catalog.rs`, add `pub struct LoanStatusView { pub loaned_at_label: String, pub borrower_id: Option<u64>, pub borrower_name: Option<String> }` near `VolumeDetailTemplate` (line 1859).
   - [ ] Extend `VolumeDetailTemplate` (line 1859-1882) with 3 new fields:
     - `pub loan_status: Option<LoanStatusView>` — `Some` iff active loan exists (any role); `None` otherwise.
@@ -122,7 +122,7 @@ so that privacy is preserved while I can still tell whether the item is currentl
   - [ ] Soft-degrade pattern: if EITHER model method errors, `tracing::warn!(error = %e, "active_loan_*_for_volume failed; rendering volume detail without loan status")` + `loan_status = None`. Mirrors the 9-7 `.unwrap_or_else` soft-degrade idiom.
   - [ ] Date formatting: use the existing project date helper (search `templates/pages/loans.html` for the format string — likely `format!("%Y-%m-%d")` or `chrono::NaiveDateTime::format`). If no shared helper exists, format inline as `loaned_at.date().to_string()` (ISO 8601 — locale-neutral; date-locale formatting is out of scope for this story per refactor-during-feature anti-pattern).
 
-- [ ] **Task 3 — `loan_status_badge.html` macro + integration into `volume_detail.html` (AC: 1, 2, 3, 4)**
+- [x] **Task 3 — `loan_status_badge.html` macro + integration into `volume_detail.html` (AC: 1, 2, 3, 4)**
   - [ ] Create `templates/components/loan_status_badge.html` per AC4 macro signature. Body:
     ```jinja
     {% macro badge(role, loaned_at_label, borrower_id, borrower_name, label_anonymous, label_with_borrower) %}
@@ -168,7 +168,7 @@ so that privacy is preserved while I can still tell whether the item is currentl
     ```
   - [ ] Add `label_loan_status_field: String` field to `VolumeDetailTemplate` and pre-translate via `rust_i18n::t!("volume.loan_status_field", locale = loc).to_string()` (e.g., "Loan status:" / "Statut du prêt :").
 
-- [ ] **Task 4 — i18n EN + FR (5 new keys per Task 3 reshape) (AC: 7)**
+- [x] **Task 4 — i18n EN + FR (5 new keys per Task 3 reshape) (AC: 7)**
   - [ ] In `locales/en.yml`, append to the existing `volume:` block:
     - `loan_status_field: "Loan status:"` (the left-side label in the definition list row)
     - `on_loan_since: "On loan since %{date}"` (anonymous variant)
