@@ -1,6 +1,6 @@
 # Story 9.9: Home page scanner detection state machine
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -130,7 +130,7 @@ The original epics.md spec text mentioning "JS module: new home-scanner.js" is O
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Three NEW narrow `find_id_by_*` model methods + co-located unit tests (AC: 3, 11b)**
+- [x] **Task 1 — Three NEW narrow `find_id_by_*` model methods + co-located unit tests (AC: 3, 11b)**
   - [ ] In `src/models/title.rs`, add `pub async fn find_id_by_isbn(pool: &DbPool, isbn: &str) -> Result<Option<u64>, AppError>` near `count_active` / `find_by_isbn` (verify what exists first via grep). Use `sqlx::query_scalar::<_, u64>("SELECT id FROM titles WHERE isbn = ? AND deleted_at IS NULL LIMIT 1").bind(isbn).fetch_optional(pool).await?`.
   - [ ] In `src/models/volume.rs`, add `pub async fn find_id_by_label(pool: &DbPool, label: &str) -> Result<Option<u64>, AppError>`. Same pattern. Verify via grep first that no `find_by_label` exists already; if a wider variant exists, the new narrow `find_id_by_label` is a focused sibling (do NOT consolidate — refactor-during-feature).
   - [ ] In `src/models/location.rs`, add `pub async fn find_id_by_label(pool: &DbPool, label: &str) -> Result<Option<u64>, AppError>`. Same pattern. Same verification step.
@@ -138,7 +138,7 @@ The original epics.md spec text mentioning "JS module: new home-scanner.js" is O
   - [ ] Add unit tests at the bottom of each model file (per project convention — `#[cfg(test)] mod tests { ... }`). Each model gets 3 cases: returns `Some(id)` for active match; `None` for soft-deleted; `None` for non-existent. Total: 9 unit tests across the 3 model files.
   - [ ] Verify: `SQLX_OFFLINE=true cargo test models::title::tests::find_id_by_isbn_ models::volume::tests::find_id_by_label_ models::location::tests::find_id_by_label_` — all 9 green; lock as Commit 1.
 
-- [ ] **Task 2 — NEW `handle_home_scan` handler + route registration + integration tests (AC: 1, 2, 3, 6, 11a, 13)**
+- [x] **Task 2 — NEW `handle_home_scan` handler + route registration + integration tests (AC: 1, 2, 3, 6, 11a, 13)**
   - [ ] Decide handler placement: extend `src/routes/catalog.rs` (already 2675 LOC) OR create NEW `src/routes/home_scan.rs` (cleaner separation; new module). **Recommendation:** new module — `catalog.rs` is already large; the home-scan endpoint is logically separate from the cataloging workflow even though they share the `detect_code_type` helper. Document the decision in the Dev Agent Record at story close.
   - [ ] Add the handler signature:
     ```rust

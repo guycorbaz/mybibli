@@ -171,7 +171,7 @@ development_status:
   9-6-series-with-gaps-indicator: done
   9-7-recent-activity-indicators: done
   9-8-loan-status-role-aware: review
-  9-9-home-scanner-state-machine: ready-for-dev
+  9-9-home-scanner-state-machine: in-progress
   9-10-modal-foundation-and-borrower-migration: backlog
   9-11-migrate-return-loan-to-modal: backlog
   9-12-migrate-delete-contributor-to-modal: backlog

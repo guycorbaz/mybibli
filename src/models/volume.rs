@@ -22,6 +22,23 @@ impl std::fmt::Display for VolumeModel {
 }
 
 impl VolumeModel {
+    /// Story 9-9 — narrow lookup returning ONLY the volume id for a
+    /// given label. Used by the home-page scan-to-navigate handler
+    /// (`/scan?code=…`) which only needs to redirect to `/volume/:id`.
+    /// Sibling of `find_by_label` (which fetches the full VolumeModel).
+    pub async fn find_id_by_label(
+        pool: &DbPool,
+        label: &str,
+    ) -> Result<Option<u64>, AppError> {
+        let id = sqlx::query_scalar::<_, u64>(
+            "SELECT id FROM volumes WHERE label = ? AND deleted_at IS NULL LIMIT 1",
+        )
+        .bind(label)
+        .fetch_optional(pool)
+        .await?;
+        Ok(id)
+    }
+
     pub async fn find_by_label(
         pool: &DbPool,
         label: &str,
