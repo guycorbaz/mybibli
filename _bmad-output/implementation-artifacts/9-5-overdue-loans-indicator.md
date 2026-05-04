@@ -1,6 +1,6 @@
 # Story 9.5: Indicator — overdue loans
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
