@@ -48,6 +48,8 @@ pub struct HomeTemplate {
     pub nav_logout: String,
     pub subtitle: String,
     pub search_placeholder: String,
+    pub searching_announcement: String,
+    pub scanning_announcement: String,
     pub query: String,
     pub query_encoded: String,
     pub active_filter: String,
@@ -518,6 +520,8 @@ pub async fn home(
         nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
         subtitle: rust_i18n::t!("home.subtitle", locale = loc).to_string(),
         search_placeholder: rust_i18n::t!("home.search_placeholder", locale = loc).to_string(),
+        searching_announcement: rust_i18n::t!("home.searching_announcement", locale = loc).to_string(),
+        scanning_announcement: rust_i18n::t!("home.scanning_announcement", locale = loc).to_string(),
         query_encoded: url_encode(&query),
         query,
         active_filter: params.filter.clone().unwrap_or_default(),
@@ -1029,6 +1033,8 @@ pub(crate) mod tests {
             nav_logout: "Log out".to_string(),
             subtitle: "Your personal media library".to_string(),
             search_placeholder: "Search...".to_string(),
+            searching_announcement: "Searching".to_string(),
+            scanning_announcement: "Scanning".to_string(),
             query: String::new(),
             query_encoded: String::new(),
             active_filter: String::new(),
@@ -1124,10 +1130,8 @@ pub(crate) mod tests {
         }
     }
 
-    /// Story 9-3 — build a HomeTemplate with a populated `stats_by_genre`
-    /// list. Reuses the counts factory so glance / recent-additions
-    /// assertions remain possible. The `lang` field can be flipped after
-    /// construction for FR-formatting tests.
+    /// Story 9-3 — build a HomeTemplate with `stats_by_genre`. Caller
+    /// can flip `lang` post-construction for FR-formatting tests.
     fn make_test_home_template_with_stats(
         role: &str,
         stats: Vec<StatsByGenreRow>,
@@ -1159,10 +1163,9 @@ pub(crate) mod tests {
         }
     }
 
-    /// Story 9-4 — build a HomeTemplate with populated indicator data.
-    /// Reuses the counts factory so glance + recent-additions assertions
-    /// remain possible. Caller controls all 9-4 surfaces directly so
-    /// tests don't have to coordinate with the SQL → handler pipeline.
+    /// Story 9-4 — build a HomeTemplate with indicator data. Caller
+    /// controls all 9-4 surfaces directly so tests don't coordinate
+    /// with the SQL → handler pipeline.
     pub(crate) fn make_test_home_template_with_indicators(
         role: &str,
         indicator_tags: Vec<IndicatorTag>,

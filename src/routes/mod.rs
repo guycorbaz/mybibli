@@ -7,6 +7,7 @@ pub mod catalog;
 pub mod contributors;
 pub mod home;
 pub mod home_indicators;
+pub mod home_scan;
 #[cfg(test)]
 mod home_indicator_tests;
 pub mod loans;
@@ -88,6 +89,7 @@ pub fn build_router(state: AppState) -> Router {
     let report_only = crate::config::csp_report_only();
     let app = Router::new()
         .route("/", axum::routing::get(home::home))
+        .route("/scan", axum::routing::get(home_scan::handle_home_scan))
         .route(
             "/login",
             axum::routing::get(auth::login_page).post(auth::login),

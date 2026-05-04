@@ -363,7 +363,7 @@ fn validate_issn_from_ean(code: &str) -> bool {
     check_digit == digits[12]
 }
 
-fn detect_code_type(code: &str) -> CodeDetection {
+pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
     use crate::models::media_type::{CodeType, MediaType};
 
     if code.starts_with('V') && code.len() == 5 {

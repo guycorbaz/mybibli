@@ -9,6 +9,8 @@ home:
   title: mybibli
   subtitle: Your personal media library
   search_placeholder: "Search titles, authors, series..."
+  searching_announcement: "Searching"
+  scanning_announcement: "Scanning"
 catalog:
   title: Catalog
   scan_placeholder: "Scan or type: ISBN, V-code, L-code, or search..."

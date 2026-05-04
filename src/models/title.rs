@@ -109,6 +109,23 @@ impl TitleModel {
         }
     }
 
+    /// Story 9-9 — narrow lookup returning ONLY the title id for a
+    /// given ISBN. Used by the home-page scan-to-navigate handler
+    /// (`/scan?code=…`) which only needs to redirect to `/title/:id`.
+    /// Sibling of `find_by_isbn` (which fetches the full TitleModel).
+    pub async fn find_id_by_isbn(
+        pool: &DbPool,
+        isbn: &str,
+    ) -> Result<Option<u64>, AppError> {
+        let id = sqlx::query_scalar::<_, u64>(
+            "SELECT id FROM titles WHERE isbn = ? AND deleted_at IS NULL LIMIT 1",
+        )
+        .bind(isbn)
+        .fetch_optional(pool)
+        .await?;
+        Ok(id)
+    }
+
     pub async fn find_by_upc(pool: &DbPool, upc: &str) -> Result<Option<TitleModel>, AppError> {
         tracing::debug!(upc = %upc, "Looking up title by UPC");
 

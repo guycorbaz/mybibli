@@ -3,7 +3,12 @@
  * Distinguishes barcode scanner bursts from human typing.
  *
  * States: IDLE → DETECTING → SEARCH_MODE → SCAN_PENDING
- * Dispatches custom "search-fire" event to trigger HTMX requests.
+ *
+ * Dispatched events (both bubble from #search-field):
+ * - "search-fire" — debounced/Enter input fired in SEARCH_MODE; triggers
+ *   the inline browse HTMX request rendering #browse-results.
+ * - "scan-fire"  — scanner burst + Enter classified as SCAN_PENDING;
+ *   triggers the GET /scan handler which redirects to /title|volume|location|catalog.
  */
 (function () {
     "use strict";
@@ -35,6 +40,7 @@
                 field.value = "";
                 state = IDLE;
                 clearTimeout(debounceTimer);
+                announce(field, "");
                 return;
             }
 
@@ -43,13 +49,15 @@
                 clearTimeout(debounceTimer);
 
                 if (state === DETECTING && interKey < scannerThreshold) {
-                    // Fast burst + Enter = scanner scan
+                    // Fast burst + Enter = scanner scan → /scan handler
                     fieldContentAtScan = field.value;
                     state = SCAN_PENDING;
-                    fireSearch(field);
+                    announce(field, "scanning");
+                    fireScan(field);
                 } else {
                     // Normal Enter = final search
                     if (field.value.trim().length >= minChars) {
+                        announce(field, "searching");
                         fireSearch(field);
                     }
                     state = IDLE;
@@ -69,6 +77,7 @@
                     if (interKey > scannerThreshold) {
                         // Slow typing → search mode
                         state = SEARCH_MODE;
+                        announce(field, "searching");
                         startDebounce(field, debounceDelay, minChars);
                     }
                     // Else: still accumulating fast keystrokes
@@ -82,6 +91,7 @@
                 case SCAN_PENDING:
                     // User typing during fetch — transition to search mode
                     state = SEARCH_MODE;
+                    announce(field, "searching");
                     startDebounce(field, debounceDelay, minChars);
                     break;
             }
@@ -92,20 +102,31 @@
             if (field.value === "") {
                 state = IDLE;
                 clearTimeout(debounceTimer);
+                announce(field, "");
                 // Clear results by firing empty search
                 fireSearch(field);
             }
         });
 
-        // HTMX response handling for SCAN_PENDING state
+        // HTMX response handling for SCAN_PENDING state.
+        // For a successful scan → /scan returns HX-Redirect and HTMX
+        // navigates away before this fires (page unloads). This branch
+        // only runs if a swap actually landed (e.g., a search-fire result
+        // overlapped a SCAN_PENDING). Reset to IDLE / SEARCH_MODE based
+        // on whether the user kept typing while the request was in flight.
         document.body.addEventListener("htmx:afterSwap", function (e) {
             if (state === SCAN_PENDING) {
                 if (field.value === fieldContentAtScan) {
                     field.value = "";
                     state = IDLE;
+                    announce(field, "");
                 } else {
                     state = SEARCH_MODE;
+                    announce(field, "searching");
                 }
+            } else if (state === SEARCH_MODE) {
+                // Results landed — clear "Searching" announcement.
+                announce(field, "");
             }
         });
 
@@ -138,6 +159,27 @@
 
     function fireSearch(field) {
         field.dispatchEvent(new Event("search-fire", { bubbles: true }));
+    }
+
+    function fireScan(field) {
+        field.dispatchEvent(new Event("scan-fire", { bubbles: true }));
+    }
+
+    /**
+     * Story 9-9 — write a localized state label into the polite aria-live
+     * region. `key` is one of "searching" / "scanning" / "" (empty = clear).
+     * Labels are pre-translated server-side and exposed as data-announce-*
+     * attributes on #search-field (CSP-clean — no t!() in JS).
+     */
+    function announce(field, key) {
+        var region = document.getElementById("search-state-announcement");
+        if (!region) return;
+        if (!key) {
+            region.textContent = "";
+            return;
+        }
+        var attr = "announce" + key.charAt(0).toUpperCase() + key.slice(1);
+        region.textContent = field.dataset[attr] || "";
     }
 
     // Global keyboard shortcut: "/" focuses search field
