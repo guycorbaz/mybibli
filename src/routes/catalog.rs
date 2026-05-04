@@ -1854,6 +1854,20 @@ pub async fn delete_volume(
 
 // ─── Volume detail & edit ────────────────────────────────────────
 
+/// Story 9-8 — view-model for the volume-detail page's loan-status row.
+///
+/// Built by the handler from EITHER `LoanModel::active_loan_summary_for_volume`
+/// (Anonymous — no borrower fields populated) OR
+/// `LoanModel::active_loan_with_borrower_for_volume` (Librarian/Admin —
+/// both `borrower_id` + `borrower_name` populated). The 2 model methods
+/// implement the two-layer role-gating defense (SQL projection
+/// narrowing + handler call-site role gate).
+pub struct LoanStatusView {
+    pub loaned_at_label: String,
+    pub borrower_id: Option<u64>,
+    pub borrower_name: Option<String>,
+}
+
 #[derive(Template)]
 #[template(path = "pages/volume_detail.html")]
 pub struct VolumeDetailTemplate {
@@ -1879,6 +1893,13 @@ pub struct VolumeDetailTemplate {
     pub detail_title: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
+    // Story 9-8 — loan-status row (FR59 role-aware visibility).
+    pub loan_status: Option<LoanStatusView>,
+    pub loan_status_field_label: String,
+    pub loan_status_label_anonymous: String,
+    pub loan_status_label_prefix: String,
+    pub loan_status_label_suffix: String,
+    pub view_borrower_aria: String,
 }
 
 pub async fn volume_detail(
@@ -1917,6 +1938,63 @@ pub async fn volume_detail(
         None
     };
 
+    // Story 9-8 — role-branched loan-status fetch (FR59 two-layer
+    // defense: SQL projection narrowed for Anonymous + handler call
+    // picks the right method based on role). Soft-degrade on DB
+    // error: warn + render without the badge rather than 500 the
+    // page. NEVER log borrower PII (AC15).
+    let loan_status: Option<LoanStatusView> = if session.role >= Role::Librarian {
+        match crate::models::loan::LoanModel::active_loan_with_borrower_for_volume(pool, id).await {
+            Ok(Some(row)) => Some(LoanStatusView {
+                loaned_at_label: row.loaned_at.format("%Y-%m-%d").to_string(),
+                borrower_id: Some(row.borrower_id),
+                borrower_name: Some(row.borrower_name),
+            }),
+            Ok(None) => None,
+            Err(e) => {
+                tracing::warn!(volume_id = id, error = %e, "active_loan_with_borrower_for_volume failed; rendering without loan-status badge");
+                None
+            }
+        }
+    } else {
+        match crate::models::loan::LoanModel::active_loan_summary_for_volume(pool, id).await {
+            Ok(Some(loaned_at)) => Some(LoanStatusView {
+                loaned_at_label: loaned_at.format("%Y-%m-%d").to_string(),
+                borrower_id: None,
+                borrower_name: None,
+            }),
+            Ok(None) => None,
+            Err(e) => {
+                tracing::warn!(volume_id = id, error = %e, "active_loan_summary_for_volume failed; rendering without loan-status badge");
+                None
+            }
+        }
+    };
+
+    // Pre-translate loan-status labels (project convention — pre-
+    // translate in handler, pass as Strings to template). The
+    // anonymous label gets the date interpolated; the with-borrower
+    // path uses prefix + suffix (see loan_status_badge.html macro
+    // doc-comment for why we split the label).
+    let loaned_at_for_label = loan_status
+        .as_ref()
+        .map(|l| l.loaned_at_label.as_str())
+        .unwrap_or("");
+    let loan_status_label_anonymous = rust_i18n::t!(
+        "volume.on_loan_since",
+        locale = loc,
+        date = loaned_at_for_label
+    )
+    .to_string();
+    let loan_status_label_prefix =
+        rust_i18n::t!("volume.on_loan_to_prefix", locale = loc).to_string();
+    let loan_status_label_suffix = rust_i18n::t!(
+        "volume.on_loan_to_since_suffix",
+        locale = loc,
+        date = loaned_at_for_label
+    )
+    .to_string();
+
     let template = VolumeDetailTemplate {
         lang: loc.to_string(),
         role: session.role.to_string(),
@@ -1940,6 +2018,12 @@ pub async fn volume_detail(
         location_path,
         current_url: crate::utils::current_url(&uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        loan_status,
+        loan_status_field_label: rust_i18n::t!("volume.loan_status_field", locale = loc).to_string(),
+        loan_status_label_anonymous,
+        loan_status_label_prefix,
+        loan_status_label_suffix,
+        view_borrower_aria: rust_i18n::t!("volume.view_borrower_aria", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -2354,5 +2438,244 @@ mod tests {
         let html = session_counter_html(5);
         assert!(html.contains("5"));
         assert!(html.contains("aria-label"));
+    }
+
+    // ─── Story 9-8 — Volume detail loan-status row render tests ───────
+
+    use askama::Template;
+
+    fn make_test_volume_detail_template(
+        role: &str,
+        loan_status: Option<LoanStatusView>,
+    ) -> VolumeDetailTemplate {
+        VolumeDetailTemplate {
+            lang: "en".to_string(),
+            role: role.to_string(),
+            current_page: "catalog",
+            skip_label: "Skip to main content".to_string(),
+            session_timeout_secs: 14400,
+            csrf_token: "tok".to_string(),
+            nav_catalog: "Catalog".to_string(),
+            nav_loans: "Loans".to_string(),
+            nav_locations: "Locations".to_string(),
+            nav_series: "Series".to_string(),
+            nav_borrowers: "Borrowers".to_string(),
+            nav_admin: "Admin".to_string(),
+            nav_login: "Log in".to_string(),
+            nav_logout: "Log out".to_string(),
+            volume: VolumeModel {
+                id: 1,
+                label: "V0001".to_string(),
+                title_id: 10,
+                location_id: None,
+                condition_state_id: None,
+                edition_comment: None,
+                version: 1,
+            },
+            title_name: "Test Title".to_string(),
+            condition_name: None,
+            location_path: None,
+            not_shelved_label: "Not shelved".to_string(),
+            detail_title: "Volume details".to_string(),
+            current_url: "/volume/1".to_string(),
+            lang_toggle_aria: "Change language".to_string(),
+            loan_status,
+            loan_status_field_label: "Loan status:".to_string(),
+            loan_status_label_anonymous: "On loan since 2026-04-15".to_string(),
+            loan_status_label_prefix: "On loan to ".to_string(),
+            loan_status_label_suffix: " since 2026-04-15".to_string(),
+            view_borrower_aria: "View borrower profile".to_string(),
+        }
+    }
+
+    fn fake_loan_status_anonymous() -> LoanStatusView {
+        LoanStatusView {
+            loaned_at_label: "2026-04-15".to_string(),
+            borrower_id: None,
+            borrower_name: None,
+        }
+    }
+
+    fn fake_loan_status_with_borrower(borrower_id: u64, borrower_name: &str) -> LoanStatusView {
+        LoanStatusView {
+            loaned_at_label: "2026-04-15".to_string(),
+            borrower_id: Some(borrower_id),
+            borrower_name: Some(borrower_name.to_string()),
+        }
+    }
+
+    /// AC8 LOAD-BEARING SECURITY GUARD: the rendered HTML for an
+    /// Anonymous request on a volume with an active loan to a
+    /// borrower named "Alice Tremblay" MUST NOT contain "Alice"
+    /// anywhere — not in the visible text, not in a `data-*`
+    /// attribute, not in a hidden field, not in an aria-label.
+    ///
+    /// The 2-render assertion shape proves the test fixture WOULD
+    /// catch a leak: the librarian render IS expected to contain
+    /// "Alice", so the absence in the anonymous render is meaningful
+    /// (not a tautology where the name was never present in either).
+    #[test]
+    fn volume_detail_anonymous_does_not_leak_borrower_name() {
+        // 1. Anonymous render — borrower data MUST NOT leak.
+        let anonymous_template =
+            make_test_volume_detail_template("anonymous", Some(fake_loan_status_anonymous()));
+        let html = anonymous_template.render().expect("render");
+        assert!(
+            !html.contains("Alice"),
+            "anonymous render MUST NOT contain borrower name 'Alice'"
+        );
+        assert!(
+            !html.contains("Tremblay"),
+            "anonymous render MUST NOT contain borrower last name 'Tremblay'"
+        );
+        assert!(
+            !html.contains("/borrower/"),
+            "anonymous render MUST NOT contain any /borrower/ link"
+        );
+
+        // 2. Librarian render with the SAME borrower data — proves the
+        //    test fixture would catch a leak if one existed.
+        let librarian_template = make_test_volume_detail_template(
+            "librarian",
+            Some(fake_loan_status_with_borrower(42, "Alice Tremblay")),
+        );
+        let html_lib = librarian_template.render().expect("render");
+        assert!(
+            html_lib.contains("Alice Tremblay"),
+            "librarian render MUST contain borrower name (proves leak guard is meaningful)"
+        );
+        assert!(
+            html_lib.contains("href=\"/borrower/42\""),
+            "librarian render MUST contain /borrower/42 link"
+        );
+    }
+
+    /// AC10b: librarian sees the borrower name as a link to /borrower/{id}.
+    #[test]
+    fn volume_detail_librarian_renders_borrower_link() {
+        let template = make_test_volume_detail_template(
+            "librarian",
+            Some(fake_loan_status_with_borrower(99, "Bob Builder")),
+        );
+        let html = template.render().expect("render");
+        assert!(html.contains("href=\"/borrower/99\""));
+        assert!(html.contains("Bob Builder"));
+        assert!(html.contains("On loan to "));
+        assert!(html.contains(" since 2026-04-15"));
+        // The link's accessible name MUST be the borrower's visible
+        // text (no aria-label override). Code-review patch 2026-05-04
+        // (PR #124 CI catch): an `aria-label="View borrower profile"`
+        // override hijacked the accessible name and broke screen-reader
+        // context AND `getByRole("link", { name: borrower })` lookup
+        // in E2E tests. The visible text is now the canonical accessible
+        // name.
+        assert!(
+            !html.contains("aria-label=\"View borrower profile\""),
+            "the borrower link MUST NOT carry an aria-label that hijacks the accessible name"
+        );
+    }
+
+    /// AC10b: admin sees the same render as librarian (role gate is
+    /// `>= Librarian` — Admin satisfies it).
+    #[test]
+    fn volume_detail_admin_renders_borrower_link() {
+        let template = make_test_volume_detail_template(
+            "admin",
+            Some(fake_loan_status_with_borrower(77, "Charlie Curator")),
+        );
+        let html = template.render().expect("render");
+        assert!(html.contains("href=\"/borrower/77\""));
+        assert!(html.contains("Charlie Curator"));
+    }
+
+    /// AC3: when the volume is NOT on loan (`loan_status: None`), no
+    /// loan-status badge appears at all — the entire row is omitted
+    /// via `{% if let Some(loan) = loan_status %}` so the rendered
+    /// HTML byte-stream is identical to the pre-9-8 baseline.
+    #[test]
+    fn volume_detail_no_active_loan_renders_no_badge() {
+        let template = make_test_volume_detail_template("librarian", None);
+        let html = template.render().expect("render");
+        assert!(
+            !html.contains("On loan since"),
+            "no loan_status → no anonymous-variant text"
+        );
+        assert!(
+            !html.contains("On loan to"),
+            "no loan_status → no librarian-variant text"
+        );
+        assert!(
+            !html.contains("Loan status:"),
+            "no loan_status → the field label itself is absent (whole row omitted)"
+        );
+        // Anonymous variant — same expectation.
+        let template_anon = make_test_volume_detail_template("anonymous", None);
+        let html_anon = template_anon.render().expect("render");
+        assert!(!html_anon.contains("On loan since"));
+        assert!(!html_anon.contains("Loan status:"));
+    }
+
+    /// AC1 amber palette: the "consistent unavailability cue" UX
+    /// contract — the loan-status badge wrapper uses the same amber
+    /// palette as the existing "not shelved" location badge.
+    #[test]
+    fn volume_detail_anonymous_with_loan_renders_amber_palette() {
+        let template =
+            make_test_volume_detail_template("anonymous", Some(fake_loan_status_anonymous()));
+        let html = template.render().expect("render");
+        assert!(
+            html.contains("bg-amber-100 dark:bg-amber-900/30"),
+            "loan-status badge MUST use the amber palette (matches not-shelved badge)"
+        );
+        assert!(html.contains("On loan since 2026-04-15"));
+    }
+
+    /// AC4 macro defense-in-depth: a `role = "librarian"` call with
+    /// borrower fields set to `None` MUST fall back to the
+    /// anonymous variant rather than panic. This locks the macro's
+    /// `if let Some` chain — even if a future caller bug populates
+    /// the role but not the borrower data, the page renders safely.
+    #[test]
+    fn volume_detail_librarian_with_no_borrower_data_falls_back_to_anonymous_variant() {
+        let template = make_test_volume_detail_template(
+            "librarian",
+            Some(LoanStatusView {
+                loaned_at_label: "2026-04-15".to_string(),
+                borrower_id: None,
+                borrower_name: None,
+            }),
+        );
+        let html = template.render().expect("render");
+        // Falls back to anonymous variant — date-only, no link, no name.
+        assert!(html.contains("On loan since 2026-04-15"));
+        assert!(!html.contains("/borrower/"));
+        assert!(!html.contains("On loan to "));
+    }
+
+    /// AC11 unused-but-still-meaningful check: the variable date
+    /// substitution actually flows through. With a different
+    /// loaned_at_label, the rendered HTML contains the new date.
+    #[test]
+    fn volume_detail_loan_status_label_anonymous_interpolates_date() {
+        let mut template =
+            make_test_volume_detail_template("anonymous", Some(fake_loan_status_anonymous()));
+        template.loan_status_label_anonymous = "On loan since 2025-12-31".to_string();
+        let html = template.render().expect("render");
+        assert!(html.contains("On loan since 2025-12-31"));
+    }
+
+    /// AC4 Anonymous variant explicitly passes through the date-only
+    /// path even when borrower fields are None for an anonymous role.
+    /// (Different from the librarian-no-borrower fallback — this is
+    /// the normal-path test for anonymous.)
+    #[test]
+    fn volume_detail_anonymous_with_loan_renders_date_only_no_borrower_marker() {
+        let template =
+            make_test_volume_detail_template("anonymous", Some(fake_loan_status_anonymous()));
+        let html = template.render().expect("render");
+        assert!(html.contains("On loan since"));
+        // No borrower link or prefix should appear.
+        assert!(!html.contains("/borrower/"));
+        assert!(!html.contains("On loan to "));
     }
 }

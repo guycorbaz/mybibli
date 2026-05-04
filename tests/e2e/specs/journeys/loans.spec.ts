@@ -226,3 +226,77 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     await expect(page.locator("#loans-table-body")).toContainText(/\d+ days|\d+ jours/i);
   });
 });
+
+// Story 9-8 — Volume detail page loan-status row, role-aware (FR59).
+// Anonymous sees "On loan since {date}" without borrower name;
+// librarian sees "On loan to {borrower} since {date}" with a clickable
+// link to /borrower/:id. AC8 LOAD-BEARING SECURITY contract: the
+// borrower's name MUST NOT appear ANYWHERE in the anonymous render.
+test.describe("Volume detail — loan status role-aware (FR59)", () => {
+  test("anonymous sees 'On loan' without borrower name; librarian sees borrower link", async ({
+    context,
+    page,
+  }) => {
+    await context.clearCookies();
+    await loginAs(page);
+
+    // Per-invocation unique suffix protects against Playwright retry-
+    // induced collisions:
+    // - borrowerName: a duplicate name would trigger strict-mode
+    //   "resolved to N elements" in createBorrower's link assertion.
+    // - volumeLabel: V-codes are CHAR(5) UNIQUE; a re-run after a
+    //   first-attempt loan creation would fail with "already on loan".
+    //   Use V + last-4-digits-of-Date.now() to stay within CHAR(5).
+    const uniq = Date.now();
+    const borrowerName = `LN-9-8 Alice Tremblay ${uniq}`;
+    const volumeLabel = `V${("0000" + (uniq % 10000)).slice(-4)}`;
+    const ANON_ISBN = specIsbn("LN", 8);
+
+    // Seed: title + volume + borrower + active loan.
+    await scanTitleAndVolume(page, ANON_ISBN, volumeLabel);
+    await createBorrower(page, borrowerName);
+    await createLoan(page, volumeLabel, borrowerName);
+
+    // Find the volume ID by brute-force scanning /volume/<id> for the
+    // V-code (matches the pattern used by the "non-loanable" test
+    // earlier in this file). The loans table renders V-codes as plain
+    // text, NOT as links — that's why we can't extract the href there.
+    const volumeId = await page.evaluate(async (label) => {
+      for (let id = 1; id <= 200; id++) {
+        try {
+          const resp = await fetch(`/volume/${id}`);
+          if (!resp.ok) continue;
+          const html = await resp.text();
+          if (html.includes(label)) return id;
+        } catch {
+          continue;
+        }
+      }
+      return null;
+    }, volumeLabel);
+    expect(volumeId).not.toBeNull();
+    const volumeUrl = `/volume/${volumeId}`;
+
+    // 1. Anonymous render — borrower name MUST NOT appear anywhere.
+    await context.clearCookies();
+    await page.goto(volumeUrl);
+    const anonContent = await page.content();
+    expect(anonContent).not.toContain(borrowerName);
+    expect(anonContent).not.toContain("Alice Tremblay");
+    expect(anonContent).not.toContain("/borrower/");
+    // Anonymous still sees the badge text.
+    await expect(page.locator("body")).toContainText(/On loan since|En prêt depuis/i);
+
+    // 2. Librarian render — borrower name + clickable link to /borrower/<id>.
+    await loginAs(page);
+    await page.goto(volumeUrl);
+    await expect(page.locator("body")).toContainText(borrowerName);
+    const borrowerLink = page.getByRole("link", { name: borrowerName });
+    await expect(borrowerLink).toBeVisible();
+    const borrowerHref = await borrowerLink.getAttribute("href");
+    expect(borrowerHref).toMatch(/^\/borrower\/\d+$/);
+    // Click the link → should land on /borrower/<id>.
+    await borrowerLink.click();
+    await page.waitForURL(/\/borrower\/\d+/);
+  });
+});
