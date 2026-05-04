@@ -29,6 +29,27 @@ pub struct LoanWithDetails {
     pub duration_days: i64,
 }
 
+/// Story 9-8 — narrow projection for the volume-detail page's
+/// loan-status row, librarian/admin variant only.
+///
+/// Fetched ONLY when `session.role >= Role::Librarian` (the handler
+/// branches between `active_loan_summary_for_volume` for Anonymous
+/// (no borrower data) and `active_loan_with_borrower_for_volume` for
+/// Librarian/Admin). The two-layer defense (SQL projection narrowing
+/// + handler call-site role gate) means borrower PII never travels
+/// through application memory when the user can't see it.
+///
+/// NEW struct (NOT a `LoanWithDetails` REUSE) because the dashboard
+/// struct carries `volume_label`, `title_name`, `id`, `duration_days`
+/// — fields the volume-detail surface either already knows or doesn't
+/// need. Mirror of 9-6's `SeriesWithGap` decision.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ActiveLoanWithBorrower {
+    pub borrower_id: u64,
+    pub borrower_name: String,
+    pub loaned_at: NaiveDateTime,
+}
+
 /// Sort column whitelist for loan list.
 const LOAN_SORT_COLUMNS: &[&str] = &["borrower", "title", "date", "duration"];
 const SORT_DIRS: &[&str] = &["asc", "desc"];
@@ -455,6 +476,62 @@ impl LoanModel {
             .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
         Ok(items)
+    }
+
+    /// Story 9-8 — anonymous-safe active-loan query for the volume-
+    /// detail page. Returns just the `loaned_at` timestamp if the
+    /// volume currently has an active loan, else `None`.
+    ///
+    /// **AC5 SQL projection narrowing (load-bearing):** NO JOIN to
+    /// `borrowers`, NO `borrower_name` projected, NO `borrower_id`
+    /// projected. The query returns ONLY `loaned_at` so borrower PII
+    /// never travels through application memory when the user is
+    /// anonymous (FR59). This is the privacy-sensitive counterpart of
+    /// `active_loan_with_borrower_for_volume` (librarian/admin path).
+    /// `LIMIT 1` is defensive against a hypothetical
+    /// data-integrity bug where two active loans exist for the same
+    /// volume (no UNIQUE constraint at the schema layer enforces
+    /// "one active loan per volume").
+    pub async fn active_loan_summary_for_volume(
+        pool: &DbPool,
+        volume_id: u64,
+    ) -> Result<Option<NaiveDateTime>, AppError> {
+        let row: Option<(NaiveDateTime,)> = sqlx::query_as(
+            "SELECT CAST(loaned_at AS DATETIME) AS loaned_at FROM loans \
+             WHERE volume_id = ? AND returned_at IS NULL AND deleted_at IS NULL \
+             LIMIT 1",
+        )
+        .bind(volume_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(row.map(|r| r.0))
+    }
+
+    /// Story 9-8 — librarian/admin active-loan query for the volume-
+    /// detail page. Returns the borrower name + id + `loaned_at`
+    /// timestamp if the volume currently has an active loan, else
+    /// `None`.
+    ///
+    /// JOINs `borrowers b ON l.borrower_id = b.id AND b.deleted_at IS
+    /// NULL` — soft-deleted borrowers are treated as "no active loan
+    /// for this volume" (locks AC9c safety invariant). The
+    /// `LIMIT 1` matches `active_loan_summary_for_volume`.
+    pub async fn active_loan_with_borrower_for_volume(
+        pool: &DbPool,
+        volume_id: u64,
+    ) -> Result<Option<ActiveLoanWithBorrower>, AppError> {
+        let row: Option<ActiveLoanWithBorrower> = sqlx::query_as(
+            "SELECT l.borrower_id, b.name AS borrower_name, \
+                    CAST(l.loaned_at AS DATETIME) AS loaned_at \
+             FROM loans l \
+             JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL \
+             WHERE l.volume_id = ? AND l.returned_at IS NULL AND l.deleted_at IS NULL \
+             LIMIT 1",
+        )
+        .bind(volume_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(row)
     }
 }
 

@@ -1,6 +1,6 @@
 # Story 9.8: Loan status role-aware on volume detail
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -93,7 +93,7 @@ so that privacy is preserved while I can still tell whether the item is currentl
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Two NEW `LoanModel` methods + `ActiveLoanWithBorrower` projection + `tests/volume_detail_loan_status.rs` (AC: 5, 9)**
+- [x] **Task 1 — Two NEW `LoanModel` methods + `ActiveLoanWithBorrower` projection + `tests/volume_detail_loan_status.rs` (AC: 5, 9)**
   - [ ] In `src/models/loan.rs`, add the `ActiveLoanWithBorrower` projection struct near `LoanWithDetails` (lines 21-30). Fields: `borrower_id: u64`, `borrower_name: String`, `loaned_at: NaiveDateTime`. Mark `pub` (the catalog handler + tests need it).
   - [ ] Add `pub async fn active_loan_summary_for_volume(pool: &DbPool, volume_id: u64) -> Result<Option<NaiveDateTime>, AppError>`. SQL: `SELECT CAST(loaned_at AS DATETIME) FROM loans WHERE volume_id = ? AND returned_at IS NULL AND deleted_at IS NULL LIMIT 1`. Use `sqlx::query_scalar::<_, NaiveDateTime>` with `.fetch_optional(pool).await?`. Return `Ok(opt)`. The `LIMIT 1` is defensive (only 1 active loan per volume per business rule, but the constraint isn't enforced at the schema level — verify by reading `migrations/20260329000000_initial_schema.sql:158-175`; if no UNIQUE constraint, the LIMIT 1 prevents a future data-integrity bug from blowing up this query). Place AFTER `count_recent_returns` (post-9-7 location).
   - [ ] Add `pub async fn active_loan_with_borrower_for_volume(pool: &DbPool, volume_id: u64) -> Result<Option<ActiveLoanWithBorrower>, AppError>`. SQL:

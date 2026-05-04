@@ -170,7 +170,7 @@ development_status:
   9-5-overdue-loans-indicator: done
   9-6-series-with-gaps-indicator: done
   9-7-recent-activity-indicators: done
-  9-8-loan-status-role-aware: ready-for-dev
+  9-8-loan-status-role-aware: in-progress
   9-9-home-scanner-state-machine: backlog
   9-10-modal-foundation-and-borrower-migration: backlog
   9-11-migrate-return-loan-to-modal: backlog
