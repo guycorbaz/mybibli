@@ -55,7 +55,7 @@
            role-aware (anonymous: date only; librarian: borrower name
            link + date). #}
         {% if let Some(loan) = loan_status %}
-        {% call loan_status_badge::badge(role, loan_status_field_label, loan_status_label_anonymous, loan_status_label_prefix, loan_status_label_suffix, loan.borrower_id, loan.borrower_name.as_deref(), view_borrower_aria) %}{% endcall %}
+        {% call loan_status_badge::badge(role, loan_status_field_label, loan_status_label_anonymous, loan_status_label_prefix, loan_status_label_suffix, loan.borrower_id, loan.borrower_name.as_deref()) %}{% endcall %}
         {% endif %}
     </div>
 

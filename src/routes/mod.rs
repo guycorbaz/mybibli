@@ -10,6 +10,8 @@ pub mod home_indicators;
 pub mod home_scan;
 #[cfg(test)]
 mod home_indicator_tests;
+#[cfg(test)]
+mod volume_detail_tests;
 pub mod loans;
 pub mod locations;
 pub mod series;

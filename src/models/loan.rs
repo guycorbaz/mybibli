@@ -488,23 +488,34 @@ impl LoanModel {
     /// never travels through application memory when the user is
     /// anonymous (FR59). This is the privacy-sensitive counterpart of
     /// `active_loan_with_borrower_for_volume` (librarian/admin path).
-    /// `LIMIT 1` is defensive against a hypothetical
-    /// data-integrity bug where two active loans exist for the same
-    /// volume (no UNIQUE constraint at the schema layer enforces
-    /// "one active loan per volume").
+    ///
+    /// `ORDER BY loaned_at DESC, id DESC LIMIT 1` defensively pins the
+    /// row choice to "most recent active loan" if a hypothetical
+    /// data-integrity bug ever produces two active loans for the same
+    /// volume (no UNIQUE constraint at the schema layer enforces "one
+    /// active loan per volume"). Without ORDER BY, MariaDB's choice is
+    /// implementation-defined — anonymous and librarian renders could
+    /// disagree on the date shown. Story 9-8 review fix.
     pub async fn active_loan_summary_for_volume(
         pool: &DbPool,
         volume_id: u64,
     ) -> Result<Option<NaiveDateTime>, AppError> {
-        let row: Option<(NaiveDateTime,)> = sqlx::query_as(
-            "SELECT CAST(loaned_at AS DATETIME) AS loaned_at FROM loans \
+        // query_scalar (not query_as tuple) per spec Task 1. The
+        // `CAST(loaned_at AS DATETIME)` is REQUIRED — sqlx 0.8 does
+        // NOT auto-decode MariaDB TIMESTAMP into NaiveDateTime in
+        // dynamic queries (only typed `query!` macros handle that).
+        // Documented in CLAUDE.md ("TIMESTAMP columns in dynamic
+        // queries — use CAST(col AS DATETIME)").
+        let loaned_at = sqlx::query_scalar::<_, NaiveDateTime>(
+            "SELECT CAST(loaned_at AS DATETIME) FROM loans \
              WHERE volume_id = ? AND returned_at IS NULL AND deleted_at IS NULL \
+             ORDER BY loaned_at DESC, id DESC \
              LIMIT 1",
         )
         .bind(volume_id)
         .fetch_optional(pool)
         .await?;
-        Ok(row.map(|r| r.0))
+        Ok(loaned_at)
     }
 
     /// Story 9-8 — librarian/admin active-loan query for the volume-
@@ -514,8 +525,9 @@ impl LoanModel {
     ///
     /// JOINs `borrowers b ON l.borrower_id = b.id AND b.deleted_at IS
     /// NULL` — soft-deleted borrowers are treated as "no active loan
-    /// for this volume" (locks AC9c safety invariant). The
-    /// `LIMIT 1` matches `active_loan_summary_for_volume`.
+    /// for this volume" (locks AC9c safety invariant).
+    /// `ORDER BY l.loaned_at DESC, l.id DESC LIMIT 1` matches
+    /// `active_loan_summary_for_volume`'s deterministic row choice.
     pub async fn active_loan_with_borrower_for_volume(
         pool: &DbPool,
         volume_id: u64,
@@ -526,6 +538,7 @@ impl LoanModel {
              FROM loans l \
              JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL \
              WHERE l.volume_id = ? AND l.returned_at IS NULL AND l.deleted_at IS NULL \
+             ORDER BY l.loaned_at DESC, l.id DESC \
              LIMIT 1",
         )
         .bind(volume_id)

@@ -1,6 +1,6 @@
 # Story 9.8: Loan status role-aware on volume detail
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -430,3 +430,48 @@ If a fresh schema drift is discovered during dev (e.g., `loans` has a new column
   - Commit 1 (Task 1): `ActiveLoanWithBorrower` narrow projection + 2 new `LoanModel` methods + 7 sqlx integration tests in `tests/volume_detail_loan_status.rs`. Two-layer defense locked at the model layer.
   - Commit 2 (Tasks 2 + 3 + 4): `LoanStatusView` view-model + `VolumeDetailTemplate` +6 fields + handler wiring with role-branched fetch + soft-degrade; NEW `loan_status_badge.html` Askama macro + integration into `volume_detail.html`; 5 new EN/FR i18n keys.
   - Commit 3 (Tasks 5 + 6 + 7 + 8): 8 new render tests in `catalog.rs::tests` (incl. AC8 LOAD-BEARING anonymous-no-leak guard with 2-render assertion shape); E2E describe block in `loans.spec.ts` covering anonymous-vs-librarian transition; 2 clippy lint fixes (unused chrono::NaiveDate import + doc-comment list-item-without-indentation); Dev Agent Record + Status `in-progress` → `review` + sprint-status flip.
+
+### Review Findings
+
+#### Patch (to be fixed before review re-pass per Foundation Rule #6)
+
+- [x] [Review][Patch] **AC8 anonymous-no-leak test is tautological — fixture's borrower fields are None for the anonymous render** [`src/routes/catalog.rs::tests::volume_detail_anonymous_does_not_leak_borrower_name`] — Edge H. The anonymous-render arm passes `borrower_id: None, borrower_name: None`, so `!html.contains("Alice")` is trivially true. Add an inverted-fixture render: anonymous role + populated borrower data — assert macro's role gate prevents the leak (locks defense-in-depth).
+- [x] [Review][Patch] **AC10 4-cell macro matrix missing the security-relevant cell** [`src/routes/catalog.rs::tests`] — Edge H. The "anonymous role + populated borrower data" cell is asserted nowhere. Same fixture as the previous patch covers this.
+- [x] [Review][Patch] **Macro role gate `role != "anonymous"` fails OPEN on unknown roles** [`templates/components/loan_status_badge.html:40`] — Edge H. Project convention elsewhere is positive whitelist (`role == "librarian" || role == "admin"` — see loans.html, series_detail.html, borrower_detail.html). Negative compare = unknown role string (typo, future role) hits the librarian path with leaked PII. Switch to positive whitelist.
+- [x] [Review][Patch] **`LIMIT 1` without `ORDER BY` — non-deterministic if data-integrity bug exists** [`src/models/loan.rs:551,577`] — Blind H + Edge M. Both new methods say "defensive against hypothetical bug where two active loans exist". MariaDB's choice without ORDER BY is implementation-defined — under different optimizer states, the user could see a different loan on each refresh. Add `ORDER BY loaned_at DESC, id DESC LIMIT 1`.
+- [x] [Review][Patch] **AC4 macro file 59 LOC vs spec ceiling "< 30 LOC"** [`templates/components/loan_status_badge.html`] — Auditor BLOCKER. Either trim doc-comments to fit ≤ 30 LOC OR document the deviation in Dev Agent Record with rationale.
+- [x] [Review][Patch] **AC13 / Foundation Rule #12 — `catalog.rs` at 2681 LOC; spec required strict-minimum growth + GH issue if extraction warranted** [`src/routes/catalog.rs`] — Auditor BLOCKER. 230 LOC of inline render tests violates "strict minimum needed" interpretation. Per 9-6 precedent (`home_indicator_tests.rs`), extract render tests to a sibling `src/routes/volume_detail_tests.rs`. Pre-existing pre-9-8 over-ceiling state should be filed as a separate `type:code-review-finding` GH Issue.
+- [x] [Review][Patch] **Anonymous query uses `(NaiveDateTime,)` tuple destructure — drift from spec (Task 1 said `query_scalar`)** [`src/models/loan.rs:548`] — Blind M + Edge M. Switch to `sqlx::query_scalar::<_, NaiveDateTime>(...)` with `SELECT loaned_at FROM ...` (no CAST needed — query_scalar handles TIMESTAMP→NaiveDateTime).
+- [x] [Review][Patch] **`view_borrower_aria` is dead plumbing — i18n key, struct field, macro param all unused** [`src/routes/catalog.rs:1902,2026,2487` + `templates/components/loan_status_badge.html:28-36`] — Blind M + Edge M. Drop the i18n key + the `view_borrower_aria` field + the macro param. Cleanup dead code.
+- [x] [Review][Patch] **E2E V-code generation `Date.now() % 10000` — collision risk under parallel runs** [`tests/e2e/specs/journeys/loans.spec.ts:251`] — Edge M. Same fix as 9-9: use a `uniqueLabel(prefix)` helper combining a per-test counter + Date.now()%100.
+- [x] [Review][Patch] **E2E `clearCookies()` on same context — HTMX cache risk** [`tests/e2e/specs/journeys/loans.spec.ts`] — Blind H. Use a fresh `browser.newContext()` for the anonymous nav phase so a librarian-cached HTML response can't satisfy the assertion.
+
+#### Defer (file as GitHub Issues per Foundation Rule #11)
+
+- [x] [Review][Defer] **Date format hardcoded ISO `%Y-%m-%d`, ignores locale (FR users expect 15/04/2026)** [`src/routes/catalog.rs:1949,1962`] — Blind M + Edge L. Cross-cutting drift — `routes/loans.rs:327` has the same pattern. Project lacks a locale-aware date helper.
+- [x] [Review][Defer] **Soft-degrade returns None on DB error — silently hides the loan from users + admins** [`src/routes/catalog.rs:1954-1957,1967-1970`] — Edge M. For an availability/privacy indicator, ambiguity is risky. Consider rendering an "info unavailable" placeholder badge so the absence is visible.
+- [x] [Review][Defer] **FR label width may overflow `w-32` left column** [`templates/pages/volume_detail.html`] — Edge M. Pre-existing template inconsistency: other left-column labels (Title:, Label:, Condition:) are HARDCODED English even in FR locale. Loan status: is the only localized one — visible width drift.
+- [x] [Review][Defer] **E2E volume-ID brute-force scan capped at 200 — fragile under parallel + retry load** [`tests/e2e/specs/journeys/loans.spec.ts:265`] — Edge M. Pre-existing pattern across multiple specs; cross-cutting fix needed.
+- [x] [Review][Defer] **`ActiveLoanWithBorrower` struct contract enforced by convention only** [`src/models/loan.rs`] — Blind M. "Fetched ONLY when role >= Librarian" is not enforced by the type system; nothing prevents a future caller from constructing it for any role.
+- [x] [Review][Defer] **Macro signature has 8 positional parameters — call site error-prone** [`templates/pages/volume_detail.html:58`] — Edge L. `borrower_id` and `borrower_name` adjacent (both Option<u64>/Option<&str>); a swap would compile silently.
+- [x] [Review][Defer] **Anonymous /volume/{id} adds 1 extra DB roundtrip per page-view** [`src/routes/catalog.rs:1946-1972`] — Edge L. No partial index on `loans.volume_id WHERE returned_at IS NULL`. Worth profiling under public-catalog browse load.
+- [x] [Review][Defer] **`catalog.rs` is over the 2000 LOC ceiling pre-9-8 (was ~2440)** [`src/routes/catalog.rs`] — File `type:code-review-finding` GH Issue for follow-up extraction (Foundation Rule #11). After 9-8 review patches extract the 230 LOC of render tests, file is still ~2451 LOC.
+
+### Code-review fixes — 2026-05-05
+
+10 patches applied per Foundation Rule #6 (Medium+ findings re-pass):
+
+1. **AC4 macro LOC** — rewrote `loan_status_badge.html` from 59 → 23 LOC; trimmed verbose doc-comments while preserving the role-gate logic. (Auditor BLOCKER)
+2. **AC13 / Rule #12 catalog.rs** — extracted 240 LOC of `volume_detail_*` render tests to NEW `src/routes/volume_detail_tests.rs` per the 9-6 `home_indicator_tests.rs` precedent; catalog.rs back to 2440 LOC. The pre-9-8 over-2000 condition deferred as GH issue per Foundation Rule #11. (Auditor BLOCKER)
+3. **AC8 anonymous-leak test was tautological** — added NEW `volume_detail_anonymous_with_populated_borrower_data_does_not_leak` that renders the anonymous variant with FULLY POPULATED borrower fields (the same data as the librarian render). Locks the macro's role gate as the layer-2 defense the SQL projection narrowing alone can't catch in unit tests. (Edge Hunter HIGH)
+4. **Macro role gate fail-OPEN** — switched `role != "anonymous"` (fails open on unknown role string) to POSITIVE whitelist `role == "librarian" || role == "admin"` (fails closed). Added NEW `volume_detail_unknown_role_falls_back_to_anonymous_variant` regression guard simulating a `Display` impl rename to "Anonymous" (capital A). (Edge Hunter HIGH)
+5. **AC10 4-cell macro matrix complete** — the missing security-relevant cell (anonymous role + populated borrower data) is now covered by the new defense-in-depth test (also satisfies #3 above). (Edge Hunter HIGH)
+6. **`LIMIT 1` without `ORDER BY` non-deterministic** — added `ORDER BY loaned_at DESC, id DESC LIMIT 1` to both new `LoanModel` methods so anonymous + librarian renders agree on the row choice if the data-integrity defense ever triggers. (Blind Hunter HIGH + Edge Medium)
+7. **Anonymous query `(NaiveDateTime,)` tuple drift** — switched to `query_scalar::<_, NaiveDateTime>` per spec Task 1 wording. CAST(loaned_at AS DATETIME) RETAINED (mid-fix CI catch — sqlx 0.8 dynamic queries don't auto-decode TIMESTAMP per CLAUDE.md gotcha; initial removal of CAST tripped the type-mismatch test, rolled back). (Blind + Edge Medium)
+8. **`view_borrower_aria` dead plumbing** — dropped the i18n key + struct field + macro param + handler `t!()` call. 6 lines of dead code removed across 5 files. (Blind + Edge Medium)
+9. **E2E V-code `Date.now() % 10000` collision risk** — introduced local `uniqueVcode()` helper combining per-test counter + Date.now()%100 (same pattern as 9-9 review fix). (Edge Medium)
+10. **E2E `clearCookies()` on same context — HTMX cache risk** — switched to `browser.newContext()` for the anonymous nav phase so a librarian-cached HTML response can't satisfy the assertion. (Blind HIGH)
+
+Final 890/890 tests green (734 lib + 156 integration — +2 NEW defense-in-depth render tests + 1 unknown-role test vs the original 7 render tests + extracted 9-6-style sibling module). Clippy clean. catalog.rs at 2440 LOC; macro file 23 LOC; new volume_detail_tests.rs 321 LOC. Status: `review` → `done`. Sprint-status flipped.
+
+8 findings deferred to GH Issues per Foundation Rule #11 (see Review Findings → Defer section above).
