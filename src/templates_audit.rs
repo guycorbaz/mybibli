@@ -34,7 +34,7 @@ use std::path::{Path, PathBuf};
 /// point of the audit: a reviewer is always in the loop.
 const ALLOWED_HX_CONFIRM_SITES: &[(&str, usize)] = &[
     ("templates/pages/loans.html", 1),
-    ("templates/pages/borrower_detail.html", 2),
+    ("templates/pages/borrower_detail.html", 1),
     ("templates/pages/contributor_detail.html", 1),
     ("templates/pages/series_detail.html", 1),
     ("templates/fragments/admin_users_row.html", 1),

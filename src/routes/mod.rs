@@ -11,6 +11,8 @@ pub mod home_scan;
 #[cfg(test)]
 mod home_indicator_tests;
 #[cfg(test)]
+mod modal_tests;
+#[cfg(test)]
 mod volume_detail_tests;
 pub mod loans;
 pub mod locations;
@@ -193,6 +195,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/borrower/{id}/edit",
             axum::routing::get(borrowers::edit_borrower_page),
+        )
+        .route(
+            "/borrower/{id}/delete-modal",
+            axum::routing::get(borrowers::delete_modal),
         )
         // Loan routes
         .route(
