@@ -27,7 +27,6 @@
 use axum::extract::{Query, State};
 use axum::http::{HeaderName, StatusCode, header};
 use axum::response::IntoResponse;
-use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::Deserialize;
 
 use crate::AppState;
@@ -37,6 +36,7 @@ use crate::models::location::LocationModel;
 use crate::models::title::TitleModel;
 use crate::models::volume::VolumeModel;
 use crate::routes::catalog::detect_code_type;
+use crate::utils::url_encode;
 
 /// Query string for `GET /scan`. Accepts EITHER `code` (canonical) or
 /// `q` (when called via HTMX `hx-include="#search-field"` which sends
@@ -48,9 +48,16 @@ pub struct ScanQuery {
 }
 
 impl ScanQuery {
+    /// Pick the effective code from the two query-string aliases.
+    /// `code` wins when present AND non-empty; otherwise fall back to `q`.
+    /// The empty-filter step is load-bearing: HTMX `hx-include` may still
+    /// emit `?code=&q=V0042` if a future caller adds a `name="code"` input,
+    /// in which case the user's actual scan in `q` MUST not be shadowed
+    /// by an explicit empty `code=`.
     fn effective_code(&self) -> &str {
         self.code
             .as_deref()
+            .filter(|s| !s.is_empty())
             .or(self.q.as_deref())
             .unwrap_or("")
             .trim()
@@ -71,7 +78,10 @@ pub async fn handle_home_scan(
     }
 
     let detection = detect_code_type(code);
-    tracing::info!(
+    // debug! (not info!) — anonymous endpoint hit on every scan; the raw
+    // code carries the user's search/scan input. Avoid leaking it into
+    // the default INFO log stream.
+    tracing::debug!(
         code = %code,
         code_type = detection.code_type,
         "Home scan classified"
@@ -110,8 +120,7 @@ pub async fn handle_home_scan(
 }
 
 fn fallback_url(code: &str) -> String {
-    let encoded: String = utf8_percent_encode(code, NON_ALPHANUMERIC).to_string();
-    format!("/catalog?code={encoded}")
+    format!("/catalog?code={}", url_encode(code))
 }
 
 fn redirect_response(is_htmx: bool, url: &str) -> axum::response::Response {
@@ -153,6 +162,18 @@ mod tests {
     }
 
     #[test]
+    fn scan_query_effective_code_empty_code_falls_back_to_q() {
+        // Story 9-9 review fix: an explicitly empty `code=` MUST NOT
+        // shadow a populated `q=` (regression guard against the
+        // `Option::or()` pitfall on `Some("")`).
+        let q = ScanQuery {
+            code: Some("".to_string()),
+            q: Some("V0042".to_string()),
+        };
+        assert_eq!(q.effective_code(), "V0042");
+    }
+
+    #[test]
     fn scan_query_effective_code_trims_whitespace() {
         let q = ScanQuery {
             code: Some("  V0042  ".to_string()),
@@ -182,6 +203,17 @@ mod tests {
             url.contains("foo%26bar%20baz%3Dqux"),
             "expected percent-encoded special chars, got {url}"
         );
+    }
+
+    #[test]
+    fn fallback_url_preserves_rfc3986_unreserved_chars() {
+        // After the DRY refactor to crate::utils::url_encode, the
+        // unreserved set `-`, `_`, `.`, `~` MUST round-trip cleanly
+        // (was over-encoded by NON_ALPHANUMERIC). A typed ISBN
+        // `978-2-07-036024-6` MUST NOT have its hyphens turned into
+        // `%2D` in the fallback URL.
+        let url = fallback_url("978-2-07-036024-6");
+        assert_eq!(url, "/catalog?code=978-2-07-036024-6");
     }
 
     #[test]

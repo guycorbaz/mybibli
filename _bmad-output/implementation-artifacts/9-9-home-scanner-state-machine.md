@@ -1,6 +1,6 @@
 # Story 9.9: Home page scanner detection state machine
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -108,7 +108,7 @@ The original epics.md spec text mentioning "JS module: new home-scanner.js" is O
       - `home_scan_anonymous_isbn_redirects_to_title_detail` — Anonymous request (no session cookie). Assert behaves identically to Librarian (FR65 + AC6). Locks the role-blind contract.
       - `home_scan_non_htmx_returns_303_with_location_header` — Non-HTMX request (no `HX-Request` header). Assert 303 status + `Location: /title/<id>` header.
       - `home_scan_url_encodes_special_chars_in_catalog_fallback` — Hit `GET /scan?code=foo bar%26baz`. Assert `HX-Redirect: /catalog?code=foo%20bar%26baz` (proper URL encoding of the fallback target).
-      - `home_scan_empty_code_returns_400_or_redirects_to_home` — Hit `GET /scan?code=` (empty). Assert: pick one — return 400 with i18n error, OR silently redirect to `/`. Decision in Task 1; document in spec at story close.
+      - `home_scan_empty_code_redirects_to_home` — Hit `GET /scan?code=` (empty). Assert: silent redirect to `/` (200 + `HX-Redirect: /` for HTMX, 303 + `Location: /` for direct nav). **DECISION LOCKED at code-review time (story 9-9 review):** redirect-to-home wins over a 400 because (a) blank submits via the home search field are common (user clears the field and re-presses Enter), (b) a 400 + i18n error would surface a feedback entry the user did not actually request, (c) the home page is the safest "nothing went wrong, just nothing happened" landing.
     - **(b) `find_id_by_*` model-method unit tests** — co-located with the existing model tests:
       - `TitleModel::find_id_by_isbn` returns `Some(id)` for active match; `None` for soft-deleted; `None` for non-existent.
       - `VolumeModel::find_id_by_label` — same matrix.
@@ -150,7 +150,7 @@ The original epics.md spec text mentioning "JS module: new home-scanner.js" is O
         axum::extract::Query(params): axum::extract::Query<ScanQuery>,
     ) -> Result<impl IntoResponse, AppError>
     ```
-    where `ScanQuery { code: String }` is a NEW deserialization struct. Trim the `code`; if empty, decide per AC11a (return 400 with i18n message OR redirect to `/`) — pick one and document.
+    where `ScanQuery { code: String }` is a NEW deserialization struct. Trim the `code`; if empty, redirect to `/` (decision locked at story 9-9 review — see AC11a).
   - [ ] Implementation flow:
     1. Call `crate::routes::catalog::detect_code_type(&code)` — REUSE the existing classifier.
     2. Branch on `detection.code_type`:
@@ -221,6 +221,36 @@ The original epics.md spec text mentioning "JS module: new home-scanner.js" is O
   - [ ] Update Dev Agent Record at the bottom of this file: list of files touched, decisions on placement (handler in `catalog.rs` vs new `home_scan.rs`; HTMX wiring Pattern A/B/C), drift discoveries (the 4-state machine was already shipped in `search.js`), JS unit tests deferred per AC15.
   - [ ] Update `_bmad-output/implementation-artifacts/sprint-status.yaml`: `9-9-home-scanner-state-machine: ready-for-dev → in-progress` at start, `→ review` at end (only this line + `last_updated`, per CLAUDE.md rule 16).
   - [ ] Open draft PR at first commit (Foundation Rule #15). Title: `Story 9-9: Home page scanner detection state machine (#NN)`.
+
+### Review Findings
+
+#### Patch (to be fixed before review re-pass per Foundation Rule #6)
+
+- [x] [Review][Patch] **AC7 PARTIAL — `scan_failed_fallback` i18n key missing (EN+FR)** [`locales/en.yml:13`, `locales/fr.yml:13`] — Auditor BLOCKER + Edge M. Spec required 3 keys; only 2 shipped. Add `scan_failed_fallback` under `home:` block, wire into JS `htmx:responseError` / `htmx:sendError` for `/scan` requests via `announce()`.
+- [x] [Review][Patch] **AC11b NOT MET — 9 model unit tests for `find_id_by_*` missing (Foundation Rule #2 violation)** [`src/models/title.rs`, `src/models/volume.rs`, `src/models/location.rs`] — Auditor BLOCKER + Edge M. Add 3 unit tests per model file (active match → `Some(id)`, soft-deleted → `None`, non-existent → `None`).
+- [x] [Review][Patch] **AC12 PARTIAL — Escape-reset E2E test (spec Test 4) missing** [`tests/e2e/specs/journeys/home-search.spec.ts:215`] — Auditor BLOCKER. Substituted by L-code test (good extra coverage but doesn't satisfy Test 4). Add the missing test: type → press Escape → field empty + state machine reset.
+- [x] [Review][Patch] **`ScanQuery::effective_code` precedence bug — empty `code=` shadows present `q=`** [`src/routes/home_scan.rs:51-57`] — Blind H + Edge M. `?code=&q=V0042` → `Some("")` → `or()` keeps the empty → redirects to `/`. Fix: `.filter(|s| !s.is_empty())` after first `as_deref()`.
+- [x] [Review][Patch] **`tracing::info!` logs raw user input on every scan** [`src/routes/home_scan.rs:74-78`] — Blind H + Edge M. Anonymous endpoint, INFO-level, leaks borrower-search habits via `?q=` path. Downgrade to `tracing::debug!`.
+- [x] [Review][Patch] **Test ISBN `9999999999990` may classify as `unknown` not `isbn` (invalid checksum)** [`tests/home_scan_redirect.rs:home_scan_isbn_unknown_redirects_to_catalog_with_code`] — Blind M. Test passes for the wrong reason (classifier rejects it before lookup runs). Use a valid-checksum ISBN that's guaranteed not seeded.
+- [x] [Review][Patch] **`htmx:afterSwap` SEARCH_MODE branch clears announcement on unrelated OOB swaps** [`static/js/search.js:121-130`] — Blind M + Edge M. Listener fires for ALL HTMX swaps anywhere on the page. Scope to `e.detail.target.id === "browse-results"`.
+- [x] [Review][Patch] **V-code/L-code uniqueness via `Date.now() % 10000` — collision risk under parallel runs** [`tests/e2e/specs/journeys/home-search.spec.ts:172,191`] — Edge M. With `fullyParallel: true`, two parallel tests in the same wall-clock-ms-mod-10000 produce identical labels → UNIQUE constraint violation. Use spec-id + counter or full Date.now().
+- [x] [Review][Patch] **Hidden `<a id="scan-trigger">` lacks `hx-target`/`hx-swap` — fallback DOM swap risk** [`templates/pages/home.html:46-52`] — Edge M. If `/scan` ever returns a non-redirect 200 (regression), HTMX `outerHTML`-swaps the response into the trigger itself, removing the listener. Add `hx-target="#search-state-announcement"` + `hx-swap="none"`.
+- [x] [Review][Patch] **`htmx:responseError` writes "Connection lost" into `#browse-results` without SCAN_PENDING reset** [`static/js/search.js:135-148`] — Edge M. State stays at SCAN_PENDING after a `/scan` error; next keystroke transitions oddly. Add SCAN_PENDING → IDLE reset in the error handlers.
+- [x] [Review][Patch] **DRY: `fallback_url` reimplements `crate::utils::url_encode`** [`src/routes/home_scan.rs:112-115`] — Edge M (Foundation Rule #1). `src/utils.rs:17-30` already provides identical NON_ALPHANUMERIC encoding. Replace with `crate::utils::url_encode`.
+- [x] [Review][Patch] **Update spec to lock empty-code = redirect-to-home decision (AC11a TBD)** [`_bmad-output/implementation-artifacts/9-9-home-scanner-state-machine.md` AC11a] — Edge L. Spec says "pick one — return 400 OR silently redirect to /. Decision in Task 1; document in spec at story close." Implementation chose redirect-to-`/`; lock the decision in the AC text.
+- [x] [Review][Patch] **Verify `/scan` interaction with `setup_gate` middleware** [`src/middleware/setup_gate.rs`] — Blind H. The whitelist per CLAUDE.md is `/static/*, /covers/*, /health, /setup*`; `/scan` is NOT whitelisted. During the wizard, scan attempts redirect to `/setup`. Verify this is intended (it is, per spec — wizard blocks all features) and add a one-liner integration test asserting the gate behavior, OR add `/scan` to the whitelist if intended otherwise. **Resolution: confirm by reading setup_gate.rs and decide.**
+
+#### Defer (file as GitHub Issues per Foundation Rule #11)
+
+- [x] [Review][Defer] **`data-debounce`/`data-scanner-threshold` strict-`<`/strict-`>` boundaries at exactly 100 ms produce no transition** [`static/js/search.js:51,77`] — Edge H, pre-existing 9-8 era. Latent flake risk for `simulateTyping("test")` E2E test that relies on Playwright jitter to cross the threshold.
+- [x] [Review][Defer] **`/catalog?code=…` fallback is a UX dead-end — catalog handler ignores `?code=`** [`src/routes/catalog.rs:304-327`] — Edge H, follow-up scope. Every fallback path lands on /catalog with `?code=` in URL but scan field is empty.
+- [x] [Review][Defer] **No `Cache-Control: no-store` on `/scan` redirect response** [`src/routes/home_scan.rs::redirect_response`] — Blind M, cross-cutting. Redirects to private detail pages could be cached upstream.
+- [x] [Review][Defer] **`find_id_by_isbn` doesn't normalize ISBN (hyphens silently miss)** [`src/models/title.rs:116-128`] — Blind M, pre-existing pattern across the codebase. Frontend strips them via `trim()` only.
+- [x] [Review][Defer] **All 4 new E2E tests use `loginAs("admin")`; anonymous role-blind path uncovered end-to-end** [`tests/e2e/specs/journeys/home-search.spec.ts:148`] — Edge M, Foundation Rule #7 wants smoke from blank context. Integration tests cover anonymous; E2E for anonymous is follow-up.
+- [x] [Review][Defer] **`hx-trigger="from:#search-field"` listener may not re-bind after parent HTMX swap** [`templates/pages/home.html:46-52`] — Blind L, fragile coupling. Story 9-3/9-4/9-5 OOB pendingUpdates pattern occasionally swaps adjacent regions.
+- [x] [Review][Defer] **No test for `Err(e)` soft-degrade branches in `handle_home_scan` (NEVER 500 invariant uncovered)** [`src/routes/home_scan.rs:84,93,101`] — Blind L. Would require pool-disconnect mid-test.
+- [x] [Review][Defer] **`detect_code_type` accepts non-digit V/L suffixes (e.g., `Vfoo!`)** [`src/routes/catalog.rs:367-381`] — Edge L, pre-existing 9-9 only inherits the behavior.
+- [x] [Review][Defer] **AC15 — JS test harness setup deferred; file `type:code-review-finding` GH issue** — Auditor caveat. Spec required filing at story close; ensure issue filed before merging next story.
 
 ## Dev Notes
 
@@ -407,3 +437,4 @@ If a fresh schema drift is discovered during dev, document inline in the test he
 |---|---|---|
 | 2026-05-03 | Dev Agent | Tasks 1-2 — 3 narrow `find_id_by_*` model fns + `handle_home_scan` handler + 14 sqlx tests. Status: ready-for-dev → in-progress. |
 | 2026-05-03 | Dev Agent | Tasks 3-7 — `scan-fire` event + Pattern B HTMX wiring + a11y announcements + 4 E2E tests + Dev Agent Record. Status: in-progress → review. 877/877 tests green. |
+| 2026-05-05 | Dev Agent | Code-review patch round (13 patches). 3 Auditor blockers (`scan_failed_fallback` i18n + JS error path; 9 model unit tests; Escape-reset E2E test) + 10 Medium+ findings (effective_code precedence; tracing info→debug; ISBN test value 9780000000002; htmx:afterSwap target scoping; V/L code uniqueness; hx-target/hx-swap on scan-trigger; htmx:responseError state reset; DRY url_encode; AC11a empty-code lock; setup_gate /scan whitelist test). 9 findings deferred to GH Issues per Foundation Rule #11. Status: review → done. 888/888 tests green; clippy clean; home.rs 1999 LOC. |

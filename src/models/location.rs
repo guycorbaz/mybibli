@@ -298,4 +298,51 @@ mod tests {
         };
         assert_eq!(loc.to_string(), "Salon (L0001)");
     }
+
+    /// Story 9-9 review fix (AC11b + Foundation Rule #2) — DB-backed unit
+    /// tests co-located with `find_id_by_label`. See the title.rs version
+    /// for the full pattern rationale.
+    async fn seed_location(pool: &sqlx::MySqlPool, label: &str) -> u64 {
+        let node_type: String = sqlx::query_scalar(
+            "SELECT name FROM location_node_types WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO storage_locations (label, name, node_type) \
+             VALUES (?, 'Test', ?)",
+        )
+        .bind(label)
+        .bind(&node_type)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id()
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_id_by_label_returns_some_for_active_match(pool: sqlx::MySqlPool) {
+        let id = seed_location(&pool, "L0042").await;
+        let got = LocationModel::find_id_by_label(&pool, "L0042").await.unwrap();
+        assert_eq!(got, Some(id));
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_id_by_label_returns_none_for_soft_deleted(pool: sqlx::MySqlPool) {
+        let id = seed_location(&pool, "L0042").await;
+        sqlx::query("UPDATE storage_locations SET deleted_at = NOW() WHERE id = ?")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let got = LocationModel::find_id_by_label(&pool, "L0042").await.unwrap();
+        assert_eq!(got, None, "soft-deleted locations MUST NOT match");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_id_by_label_returns_none_for_nonexistent(pool: sqlx::MySqlPool) {
+        let got = LocationModel::find_id_by_label(&pool, "L9999").await.unwrap();
+        assert_eq!(got, None);
+    }
 }

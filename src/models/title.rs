@@ -1276,4 +1276,72 @@ mod tests {
         title.manually_edited_fields = Some("not json".to_string());
         assert!(title.parsed_manually_edited_fields().is_empty());
     }
+
+    /// Story 9-9 review fix (AC11b + Foundation Rule #2) — DB-backed unit
+    /// tests co-located with `find_id_by_isbn`. Pattern mirrors the
+    /// `#[sqlx::test]` precedent in `src/middleware/locale.rs` /
+    /// `src/services/admin_health.rs`. The integration tests in
+    /// `tests/home_scan_redirect.rs` exercise these methods end-to-end via
+    /// the handler; these tests lock the model contract narrowly so a
+    /// regression in the SQL is caught at the model layer first.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_id_by_isbn_returns_some_for_active_match(pool: sqlx::MySqlPool) {
+        let g: u64 = sqlx::query_scalar(
+            "SELECT id FROM genres WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let r = sqlx::query(
+            "INSERT INTO titles (title, isbn, language, media_type, genre_id) \
+             VALUES ('Test', '9782070360246', 'fr', 'book', ?)",
+        )
+        .bind(g)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let expected_id = r.last_insert_id();
+
+        let got = TitleModel::find_id_by_isbn(&pool, "9782070360246")
+            .await
+            .unwrap();
+        assert_eq!(got, Some(expected_id));
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_id_by_isbn_returns_none_for_soft_deleted(pool: sqlx::MySqlPool) {
+        let g: u64 = sqlx::query_scalar(
+            "SELECT id FROM genres WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let r = sqlx::query(
+            "INSERT INTO titles (title, isbn, language, media_type, genre_id) \
+             VALUES ('Soft-deleted', '9782070360246', 'fr', 'book', ?)",
+        )
+        .bind(g)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let id = r.last_insert_id();
+        sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let got = TitleModel::find_id_by_isbn(&pool, "9782070360246")
+            .await
+            .unwrap();
+        assert_eq!(got, None, "soft-deleted titles MUST NOT match");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_id_by_isbn_returns_none_for_nonexistent(pool: sqlx::MySqlPool) {
+        let got = TitleModel::find_id_by_isbn(&pool, "9780000000002")
+            .await
+            .unwrap();
+        assert_eq!(got, None);
+    }
 }

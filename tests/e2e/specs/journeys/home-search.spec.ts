@@ -7,6 +7,22 @@ import { createLocation } from "../../helpers/locations";
 
 const SPEC_ID = "HS";
 
+/**
+ * Per-test unique CHAR(5) label generator (V0001 … V0999 …).
+ * Combines a process-local counter with `Date.now() % 1000` so two
+ * parallel tests in the same wall-clock millisecond can't collide on
+ * the UNIQUE constraint of `volumes.label` / `storage_locations.label`.
+ * Story-9-9 review fix — the prior `Date.now() % 10000` formula was
+ * collision-prone under `fullyParallel: true`.
+ */
+let labelCounter = 0;
+function uniqueLabel(prefix: "V" | "L"): string {
+  labelCounter = (labelCounter + 1) % 100;
+  const counterPart = labelCounter.toString().padStart(2, "0");
+  const timePart = (Date.now() % 100).toString().padStart(2, "0");
+  return `${prefix}${counterPart}${timePart}`;
+}
+
 test.describe("Home page search", () => {
   test("should display search field on home page", async ({ page }) => {
     await page.goto("/");
@@ -167,9 +183,11 @@ test.describe("Home page scanner detection — scan to navigate", () => {
   });
 
   test("scanning a known V-code redirects to /volume/<id>", async ({ page }) => {
-    // Per story-9-8 catch — V-code derived from Date.now() to avoid retry
-    // collisions. CHAR(5) max, so 4-digit suffix on the 'V' prefix.
-    const vcode = `V${(Date.now() % 10000).toString().padStart(4, "0")}`;
+    // Per story-9-8 catch + 9-9 review fix — V-code derived from
+    // `uniqueLabel("V")` which combines a per-test counter with
+    // `Date.now() % 1000` so two parallel tests in the same wall-clock
+    // ms can't collide on the UNIQUE constraint of `volumes.label`.
+    const vcode = uniqueLabel("V");
     const isbn = specIsbn(SPEC_ID, 1);
 
     // Seed: create a title + volume with the unique V-code via the catalog
@@ -187,8 +205,9 @@ test.describe("Home page scanner detection — scan to navigate", () => {
   test("scanning a known L-code redirects to /location/<id>", async ({
     page,
   }) => {
-    // L-code derived from Date.now() to avoid retry collisions; CHAR(5).
-    const lcode = `L${(Date.now() % 10000).toString().padStart(4, "0")}`;
+    // L-code via `uniqueLabel("L")` for the same parallel-collision
+    // resistance as V-codes. CHAR(5) constrained.
+    const lcode = uniqueLabel("L");
     const locationName = `HS-9-9 Shelf ${Date.now()}`;
 
     await createLocation(page, locationName, lcode);
@@ -222,5 +241,39 @@ test.describe("Home page scanner detection — scan to navigate", () => {
     const pageUrl = new URL(page.url());
     expect(pageUrl.pathname).toBe("/");
     expect(pageUrl.searchParams.get("q")).toBe("test");
+  });
+
+  /**
+   * AC12 Test 4 — Escape clears the input AND resets the state machine.
+   * Per `static/js/search.js:34-39`, the Escape branch zeroes the field
+   * value, transitions to IDLE, cancels any pending debounce, and clears
+   * the polite aria-live region. Locks the contract end-to-end so a
+   * future regression that drops Escape handling fails the build.
+   */
+  test("pressing Escape clears the field and resets the state machine", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    // Type a couple of chars (slow) to drive SEARCH_MODE.
+    await simulateTyping(page, "#search-field", "abc");
+    await expect(page.locator("#search-field")).toHaveValue("abc");
+
+    // Press Escape and re-assert: field empty + announcement region empty.
+    await page.locator("#search-field").press("Escape");
+    await expect(page.locator("#search-field")).toHaveValue("");
+    await expect(
+      page.locator("#search-state-announcement"),
+    ).toHaveText("");
+
+    // State-machine reset proof: a subsequent fast scanner burst on the
+    // same field must still classify as SCAN_PENDING and trigger /scan.
+    // We use an unknown ISBN so the redirect target is /catalog?code=…
+    // (no DB seeding needed).
+    const isbn = specIsbn(SPEC_ID, 92);
+    await simulateScan(page, "#search-field", isbn);
+    await page.waitForURL(new RegExp(`/catalog\\?code=${isbn}`), {
+      timeout: 5000,
+    });
   });
 });

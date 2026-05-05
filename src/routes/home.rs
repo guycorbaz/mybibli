@@ -50,6 +50,7 @@ pub struct HomeTemplate {
     pub search_placeholder: String,
     pub searching_announcement: String,
     pub scanning_announcement: String,
+    pub scan_failed_fallback: String,
     pub query: String,
     pub query_encoded: String,
     pub active_filter: String,
@@ -522,6 +523,7 @@ pub async fn home(
         search_placeholder: rust_i18n::t!("home.search_placeholder", locale = loc).to_string(),
         searching_announcement: rust_i18n::t!("home.searching_announcement", locale = loc).to_string(),
         scanning_announcement: rust_i18n::t!("home.scanning_announcement", locale = loc).to_string(),
+        scan_failed_fallback: rust_i18n::t!("home.scan_failed_fallback", locale = loc).to_string(),
         query_encoded: url_encode(&query),
         query,
         active_filter: params.filter.clone().unwrap_or_default(),
@@ -965,11 +967,9 @@ pub(crate) mod tests {
         assert!(!html.contains("/catalog/title/new"));
     }
 
-    /// Extract the substring of `html` between the opening tag of the section
-    /// with `id="<section_id>"` and its first matching `</section>`. Used by
-    /// render tests to scope assertions to a specific section and avoid false
-    /// positives from same-string occurrences elsewhere on the page (e.g.,
-    /// the nav-bar `/loans` link for the glance card).
+    /// Extract the inner HTML of `<section id="<section_id>">…</section>`.
+    /// Scopes assertions in render tests to avoid false positives on
+    /// same-string occurrences elsewhere on the page.
     pub(crate) fn slice_section<'a>(html: &'a str, section_id: &str) -> &'a str {
         let start_tag = format!(r#"id="{section_id}""#);
         let start = html
@@ -1033,8 +1033,9 @@ pub(crate) mod tests {
             nav_logout: "Log out".to_string(),
             subtitle: "Your personal media library".to_string(),
             search_placeholder: "Search...".to_string(),
-            searching_announcement: "Searching".to_string(),
-            scanning_announcement: "Scanning".to_string(),
+            searching_announcement: "Searching…".to_string(),
+            scanning_announcement: "Scan detected, processing…".to_string(),
+            scan_failed_fallback: "Scan failed. Try again or use the catalog page.".to_string(),
             query: String::new(),
             query_encoded: String::new(),
             active_filter: String::new(),
@@ -1142,9 +1143,8 @@ pub(crate) mod tests {
         t
     }
 
-    /// Story 9-3 — deterministic row factory for handler render tests.
-    /// Caller controls every visible field so assertions can pin exact
-    /// strings without running the locale formatter.
+    /// Story 9-3 — deterministic row factory; caller pins every visible
+    /// field so assertions don't depend on the locale formatter.
     fn fake_genre_stat_row(
         id: u64,
         name: &str,

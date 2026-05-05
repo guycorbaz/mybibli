@@ -512,4 +512,67 @@ mod tests {
     fn test_order_by_clause_other_columns_unchanged() {
         assert_eq!(order_by_clause("t.title", "asc"), "t.title asc");
     }
+
+    /// Story 9-9 review fix (AC11b + Foundation Rule #2) — DB-backed unit
+    /// tests co-located with `find_id_by_label`. See the title.rs version
+    /// for the full pattern rationale.
+    async fn seed_volume(pool: &sqlx::MySqlPool, label: &str) -> u64 {
+        let g: u64 = sqlx::query_scalar(
+            "SELECT id FROM genres WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let s: u64 = sqlx::query_scalar(
+            "SELECT id FROM volume_states WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let title_id = sqlx::query(
+            "INSERT INTO titles (title, isbn, language, media_type, genre_id) \
+             VALUES ('Test', NULL, 'fr', 'book', ?)",
+        )
+        .bind(g)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        sqlx::query(
+            "INSERT INTO volumes (label, title_id, condition_state_id, location_id) \
+             VALUES (?, ?, ?, NULL)",
+        )
+        .bind(label)
+        .bind(title_id)
+        .bind(s)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id()
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_id_by_label_returns_some_for_active_match(pool: sqlx::MySqlPool) {
+        let id = seed_volume(&pool, "V0042").await;
+        let got = VolumeModel::find_id_by_label(&pool, "V0042").await.unwrap();
+        assert_eq!(got, Some(id));
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_id_by_label_returns_none_for_soft_deleted(pool: sqlx::MySqlPool) {
+        let id = seed_volume(&pool, "V0042").await;
+        sqlx::query("UPDATE volumes SET deleted_at = NOW() WHERE id = ?")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let got = VolumeModel::find_id_by_label(&pool, "V0042").await.unwrap();
+        assert_eq!(got, None, "soft-deleted volumes MUST NOT match");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_id_by_label_returns_none_for_nonexistent(pool: sqlx::MySqlPool) {
+        let got = VolumeModel::find_id_by_label(&pool, "V9999").await.unwrap();
+        assert_eq!(got, None);
+    }
 }
