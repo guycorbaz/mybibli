@@ -222,10 +222,14 @@ async fn home_scan_isbn_known_redirects_to_title_detail(pool: MySqlPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn home_scan_isbn_unknown_redirects_to_catalog_with_code(pool: MySqlPool) {
-    // No title seeded.
-    let (status, hx, _loc) = scan_htmx(&app(pool), "9999999999990").await;
+    // 978-prefix ISBN guaranteed not seeded; checksum 2 makes it a valid
+    // EAN-13. CRITICAL: the prior value `9999999999990` does NOT classify
+    // as ISBN (the classifier requires 978/979 prefix) — it falls into the
+    // UPC branch, defeating the purpose of this test. We want to lock the
+    // ISBN-classified-but-DB-miss path specifically.
+    let (status, hx, _loc) = scan_htmx(&app(pool), "9780000000002").await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(hx, Some("/catalog?code=9999999999990".to_string()));
+    assert_eq!(hx, Some("/catalog?code=9780000000002".to_string()));
 }
 
 #[sqlx::test(migrations = "./migrations")]

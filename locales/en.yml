@@ -9,8 +9,9 @@ home:
   title: mybibli
   subtitle: Your personal media library
   search_placeholder: "Search titles, authors, series..."
-  searching_announcement: "Searching"
-  scanning_announcement: "Scanning"
+  searching_announcement: "Searching…"
+  scanning_announcement: "Scan detected, processing…"
+  scan_failed_fallback: "Scan failed. Try again or use the catalog page."
 catalog:
   title: Catalog
   scan_placeholder: "Scan or type: ISBN, V-code, L-code, or search..."

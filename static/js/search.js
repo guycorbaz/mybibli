@@ -114,7 +114,14 @@
         // only runs if a swap actually landed (e.g., a search-fire result
         // overlapped a SCAN_PENDING). Reset to IDLE / SEARCH_MODE based
         // on whether the user kept typing while the request was in flight.
+        // Scope to the browse-results target so unrelated OOB swaps
+        // (overdue indicator refresh, pendingUpdates, etc.) don't trip
+        // the SEARCH_MODE / SCAN_PENDING state cleanup.
         document.body.addEventListener("htmx:afterSwap", function (e) {
+            var targetId = e && e.detail && e.detail.target && e.detail.target.id;
+            if (targetId !== "browse-results" && targetId !== "search-state-announcement") {
+                return;
+            }
             if (state === SCAN_PENDING) {
                 if (field.value === fieldContentAtScan) {
                     field.value = "";
@@ -132,9 +139,16 @@
 
         // HTMX error handling — class toggle instead of `.style.opacity`
         // (strict CSP blocks runtime style writes; class lives in browse.css).
+        // Story 9-9: SCAN_PENDING resets to IDLE on error so the next
+        // keystroke transitions cleanly. The polite aria-live region also
+        // gets the localized scan-failed fallback (AC7).
         document.body.addEventListener("htmx:responseError", function () {
             var tbody = document.getElementById("browse-results");
             if (tbody) tbody.classList.add("htmx-opacity-reset");
+            if (state === SCAN_PENDING) {
+                state = IDLE;
+                announce(field, "scanfailed");
+            }
         });
 
         document.body.addEventListener("htmx:sendError", function () {
@@ -144,6 +158,10 @@
                 var msg = field.dataset.connectionLost || "Connection lost";
                 tbody.innerHTML =
                     '<div class="text-center py-8 text-red-500">' + msg + '</div>';
+            }
+            if (state === SCAN_PENDING) {
+                state = IDLE;
+                announce(field, "scanfailed");
             }
         });
     }

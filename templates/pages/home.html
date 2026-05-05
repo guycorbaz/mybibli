@@ -32,7 +32,8 @@
                data-scanner-threshold="100"
                data-connection-lost="{{ connection_lost }}"
                data-announce-searching="{{ searching_announcement }}"
-               data-announce-scanning="{{ scanning_announcement }}">
+               data-announce-scanning="{{ scanning_announcement }}"
+               data-announce-scanfailed="{{ scan_failed_fallback }}">
 
         <!-- Story 9-9: aria-live region for state-machine announcements
              ("Searching", "Scanning"). Screen-readers only (sr-only). -->
@@ -43,11 +44,16 @@
 
         <!-- Story 9-9: hidden sibling fires GET /scan when search.js
              classifies a fast burst + Enter as a scanner scan. The
-             handler returns HX-Redirect (or 303) to /title|volume|location|catalog. -->
+             handler returns HX-Redirect (or 303) to /title|volume|location|catalog.
+             hx-target/hx-swap pin the swap target to the inert announcement
+             region so a regression that returns a non-redirect response can't
+             nuke #scan-trigger itself (which would silently break future scans). -->
         <a id="scan-trigger"
            hx-get="/scan"
            hx-trigger="scan-fire from:#search-field"
            hx-include="#search-field"
+           hx-target="#search-state-announcement"
+           hx-swap="none"
            class="hidden"
            aria-hidden="true"
            tabindex="-1"></a>

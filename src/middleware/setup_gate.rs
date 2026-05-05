@@ -273,6 +273,10 @@ mod tests {
         assert!(!is_whitelisted_path("/login"));
         assert!(!is_whitelisted_path("/admin"));
         assert!(!is_whitelisted_path("/admin/health"));
+        // Story 9-9 home-scan endpoint MUST NOT bypass the wizard. While
+        // the setup gate is active, every scan attempt redirects to /setup
+        // — by design, the wizard locks the app down until completed.
+        assert!(!is_whitelisted_path("/scan"));
     }
 
     /// Defense-in-depth: a malformed path that *starts* with `/static`
