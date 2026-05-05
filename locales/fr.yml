@@ -255,7 +255,6 @@ volume:
   on_loan_since: "En prêt depuis le %{date}"
   on_loan_to_prefix: "En prêt à "
   on_loan_to_since_suffix: " depuis le %{date}"
-  view_borrower_aria: "Voir le profil de l'emprunteur"
 location:
   tree_title: Emplacements
   add_root: Ajouter un emplacement racine

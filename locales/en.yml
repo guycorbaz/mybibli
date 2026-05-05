@@ -255,7 +255,6 @@ volume:
   on_loan_since: "On loan since %{date}"
   on_loan_to_prefix: "On loan to "
   on_loan_to_since_suffix: " since %{date}"
-  view_borrower_aria: "View borrower profile"
 location:
   tree_title: Locations
   add_root: Add root location

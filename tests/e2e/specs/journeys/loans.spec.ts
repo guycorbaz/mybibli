@@ -232,24 +232,38 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 // librarian sees "On loan to {borrower} since {date}" with a clickable
 // link to /borrower/:id. AC8 LOAD-BEARING SECURITY contract: the
 // borrower's name MUST NOT appear ANYWHERE in the anonymous render.
+// Story 9-8 — per-test unique CHAR(5) V-code generator. Combines a
+// process-local counter with `Date.now() % 100` so two parallel tests
+// in the same wall-clock millisecond can't collide on the
+// `volumes.label` UNIQUE constraint. Code-review fix vs the prior
+// `Date.now() % 10000` formula which collided with sibling specs'
+// hardcoded V-codes (V0042, V0070, V0099) under fullyParallel: true.
+let vcodeCounter = 0;
+function uniqueVcode(): string {
+  vcodeCounter = (vcodeCounter + 1) % 100;
+  const counter = vcodeCounter.toString().padStart(2, "0");
+  const time = (Date.now() % 100).toString().padStart(2, "0");
+  return `V${counter}${time}`;
+}
+
 test.describe("Volume detail — loan status role-aware (FR59)", () => {
   test("anonymous sees 'On loan' without borrower name; librarian sees borrower link", async ({
-    context,
+    browser,
     page,
   }) => {
-    await context.clearCookies();
     await loginAs(page);
 
     // Per-invocation unique suffix protects against Playwright retry-
     // induced collisions:
     // - borrowerName: a duplicate name would trigger strict-mode
     //   "resolved to N elements" in createBorrower's link assertion.
-    // - volumeLabel: V-codes are CHAR(5) UNIQUE; a re-run after a
-    //   first-attempt loan creation would fail with "already on loan".
-    //   Use V + last-4-digits-of-Date.now() to stay within CHAR(5).
+    // - volumeLabel: V-codes are CHAR(5) UNIQUE; uniqueVcode()
+    //   combines a per-test counter + Date.now() % 100 (code-review
+    //   fix — was Date.now() % 10000, collision-prone vs sibling specs'
+    //   hardcoded V0042/V0070/V0099 under fullyParallel: true).
     const uniq = Date.now();
     const borrowerName = `LN-9-8 Alice Tremblay ${uniq}`;
-    const volumeLabel = `V${("0000" + (uniq % 10000)).slice(-4)}`;
+    const volumeLabel = uniqueVcode();
     const ANON_ISBN = specIsbn("LN", 8);
 
     // Seed: title + volume + borrower + active loan.
@@ -277,18 +291,24 @@ test.describe("Volume detail — loan status role-aware (FR59)", () => {
     expect(volumeId).not.toBeNull();
     const volumeUrl = `/volume/${volumeId}`;
 
-    // 1. Anonymous render — borrower name MUST NOT appear anywhere.
-    await context.clearCookies();
-    await page.goto(volumeUrl);
-    const anonContent = await page.content();
+    // 1. Anonymous render via a FRESH browser context — defeats the
+    //    HTMX GET-cache risk where a librarian-cached HTML response
+    //    could satisfy the assertion (code-review fix vs the prior
+    //    `clearCookies()` on the same context — cookies cleared but
+    //    cache preserved).
+    const anonContext = await browser.newContext();
+    const anonPage = await anonContext.newPage();
+    await anonPage.goto(volumeUrl);
+    const anonContent = await anonPage.content();
     expect(anonContent).not.toContain(borrowerName);
     expect(anonContent).not.toContain("Alice Tremblay");
     expect(anonContent).not.toContain("/borrower/");
     // Anonymous still sees the badge text.
-    await expect(page.locator("body")).toContainText(/On loan since|En prêt depuis/i);
+    await expect(anonPage.locator("body")).toContainText(/On loan since|En prêt depuis/i);
+    await anonContext.close();
 
     // 2. Librarian render — borrower name + clickable link to /borrower/<id>.
-    await loginAs(page);
+    //    Reuses the still-logged-in original `page` from the seed phase.
     await page.goto(volumeUrl);
     await expect(page.locator("body")).toContainText(borrowerName);
     const borrowerLink = page.getByRole("link", { name: borrowerName });
