@@ -188,8 +188,8 @@ async fn get_contributor_delete_modal_returns_200_with_dialog_for_librarian_requ
          got: {html}"
     );
     assert!(
-        html.contains("bg-red-600"),
-        "delete variant must render red Confirm button; got: {html}"
+        html.contains("data-modal-variant=\"delete\""),
+        "macro must render the `delete` variant marker on the dialog; got: {html}"
     );
     // AC11 — CSRF token must be embedded in the modal's confirm form so
     // the CSRF middleware on DELETE /catalog/contributors/{id} accepts
@@ -312,6 +312,43 @@ async fn get_contributor_delete_modal_returns_405_for_non_htmx_request(pool: MyS
         resp.headers().get(header::ALLOW).is_none(),
         "405 response must not set Allow header — see story 9-11 code-review patch; \
          contributor handler starts clean per the 9-11 fix"
+    );
+    // AC1 spec: empty body. Locks the canonical
+    // `Ok(StatusCode::METHOD_NOT_ALLOWED.into_response())` shape — if a
+    // future middleware ever injects a default body on 405, this fails
+    // loud rather than silently shipping a non-empty response.
+    let body = body_text(resp).await;
+    assert!(
+        body.is_empty(),
+        "AC1 specifies empty body on 405; got {body:?}"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn contributor_detail_page_renders_feedback_target_div(pool: MySqlPool) {
+    // Load-bearing assertion for the modal's hardcoded
+    // `hx_target="#contributor-feedback"` (templates/fragments/contributor_delete_modal.html).
+    // If a future template change ever removed `<div id="contributor-feedback">`
+    // from the contributor detail page, the FR54 conflict feedback HTML
+    // would silently no-op (HTMX swap with missing target is a no-op
+    // unless `hx-swap-oob` or a fallback is set). This test guards that
+    // contract at the integration layer instead of relying on E2E to
+    // catch it after the fact.
+    let id = insert_contributor(&pool, "Hannah FeedbackTarget").await;
+    let lib_cookie = seed_session(&pool, "librarian").await;
+    let app = build_router(build_state(pool));
+
+    let resp = app
+        .oneshot(req_plain(Method::GET, &format!("/contributor/{id}"), Some(&lib_cookie)))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_text(resp).await;
+    assert!(
+        html.contains(r#"id="contributor-feedback""#),
+        "contributor detail page must render <div id=\"contributor-feedback\"> so the \
+         modal's hx-target=#contributor-feedback can land FR54 conflict feedback; got: {html}"
     );
 }
 

@@ -1660,6 +1660,15 @@ pub async fn update_contributor(
     }
 }
 
+/// `DELETE /catalog/contributors/:id` — soft-deletes a contributor row,
+/// gated by the FR54 active-titles guard (returns 200 + inline feedback
+/// if the contributor still has at least one `title_contributors` row).
+///
+/// Trigger UX: see `GET /contributor/:id/delete-modal` (story 9-12) —
+/// the destructive-confirm UX migrated from `hx-confirm=` to the UX-DR8
+/// Modal component. This handler's contract is unchanged across that
+/// migration: HX-Redirect to `/catalog` on soft-delete success, inline
+/// `feedback_html` on FR54 Conflict.
 pub async fn delete_contributor(
     session: Session,
     State(state): State<AppState>,

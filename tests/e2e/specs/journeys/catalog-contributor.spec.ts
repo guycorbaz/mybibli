@@ -219,6 +219,11 @@ test.describe("Contributor Management", () => {
       name: /delete|supprimer/i,
     });
     await expect(deleteBtn).toBeVisible();
+    // Story 9-12 code-review P5 — paranoid lock against accidental
+    // re-introduction of `hx-confirm=`. The templates_audit catches
+    // count mismatches but doesn't reject re-adding both file and
+    // entry, so policing at the rendered-attribute layer is cheaper.
+    await expect(deleteBtn).not.toHaveAttribute("hx-confirm", /.*/);
     await deleteBtn.click();
     await expect(page.locator("#modal-slot dialog[open]")).toBeVisible();
     // Lock 9-10 focus-trap inheritance: Cancel is the default-focused
@@ -239,6 +244,12 @@ test.describe("Contributor Management", () => {
       /Cannot delete|Impossible de supprimer/i,
       { timeout: 5000 },
     );
+    // Story 9-12 code-review P4 — the FR54 200 + inline feedback
+    // response must close the modal via modal.js's htmx:afterRequest
+    // listener. If a future modal.js refactor regresses the
+    // close-on-2xx contract, this assertion fires loudly rather
+    // than the user being left with a stale dialog over the feedback.
+    await expect(page.locator("#modal-slot dialog[open]")).not.toBeVisible();
 
     // Step 6: Unassign the contributor via direct POST (avoids catalog page reload issue)
     const removeCsrf =

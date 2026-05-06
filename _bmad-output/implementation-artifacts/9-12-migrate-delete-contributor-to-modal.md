@@ -1,6 +1,6 @@
 # Story 9.12: Migrate hx-confirm — delete contributor
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -474,5 +474,25 @@ MODIFIED:
 | --- | --- |
 | 2026-05-06 | Story created (backlog → ready-for-dev) |
 | 2026-05-06 | Dev-story complete (in-progress → review). 3rd PR in the hx-confirm migration chain (9.10 → 9.14, 2 PRs left). Migrated delete-contributor to UX-DR8 Modal (variant `delete`, soft-delete to Trash). Server contract `DELETE /catalog/contributors/{id}` UNCHANGED — handler in `catalog.rs:1663` not touched, only the trigger UX is. ALLOWED_HX_CONFIRM_SITES: 3 → 2 entries. Dropped dead `contributor.confirm_delete` i18n key + struct field + construction site (Rule #1). 9 integration tests, 1 E2E spec migration with focus-trap regression assertion. 755 lib + 9 contributor_delete_modal + integration tests all green; clippy clean -D warnings; templates audit + i18n parity + tsc + CI flake gate all green; full E2E suite 200/200 passed (1 unrelated flake on `home-search.spec.ts:222`). |
+| 2026-05-06 | Code review complete (review → done). 3 parallel reviewers (Blind/Edge/Auditor) — 31 findings consolidated → 9 actionable + 18 dismissed. 0 BLOCKERS (Acceptance Auditor: 14/15 ACs MET + 1 PARTIAL on AC12, all addressed). 6 patches applied: (1) AC12 doc-comment on `delete_contributor` discoverability link; (2) 405 test asserts empty body per AC1 spec; (3) NEW integration test `contributor_detail_page_renders_feedback_target_div` locks `<div id="contributor-feedback">` existence on the rendered page (load-bearing for the modal's hardcoded `hx_target="#contributor-feedback"`); (4) E2E asserts modal closes after FR54 conflict 200 (regression cover for modal.js `htmx:afterRequest` close-on-2xx contract); (5) E2E asserts trigger button has no `hx-confirm=` attribute (paranoid lock against accidental re-introduction beyond the templates_audit's count-mismatch detection); (6) replaced brittle Tailwind `bg-red-600` substring with stable `data-modal-variant="delete"` selector. 3 items deferred to GH Issues per Foundation Rule #11 (404 silent UI feedback cross-cutting on all 3 modal migrations; i18n body_html defense-in-depth escape for community translations; pre-existing `locations.rs:256` Rust-emitted hx-confirm). 755 lib + 10 contributor_delete_modal (was 9, +1 new feedback-target integration test) + integration tests all green; clippy clean -D warnings; tsc clean; full E2E suite 200/200 passed on clean stack with the same unrelated `home-search.spec.ts:222` flake (passes in isolation). |
 
 ### Review Findings
+
+Adversarial code review run on 2026-05-06 (3 parallel layers: Blind Hunter / Edge Case Hunter / Acceptance Auditor). 0 decision-needed, 6 patches proposed, 3 deferred, ~18 dismissed as signal-to-noise / mirror-of-borrower / pre-existing / theoretical.
+
+**Auditor BLOCKER count: 0.** All 15 ACs MET (1 PARTIAL on AC12's optional doc-comment, addressed by patch P1).
+
+#### Patches
+
+- [x] [Review][Patch] AC12 doc-comment on `delete_contributor` [src/routes/catalog.rs:1663] — add `/// Trigger UX: see GET /contributor/:id/delete-modal (story 9-12).` discoverability link per AC12 wording.
+- [x] [Review][Patch] 405 test asserts empty body [tests/contributor_delete_modal.rs::get_contributor_delete_modal_returns_405_for_non_htmx_request] — AC1 specifies "empty body"; lock with `assert!(body_text(resp).await.is_empty())`.
+- [x] [Review][Patch] Verify `#contributor-feedback` element exists on rendered detail page [tests/contributor_delete_modal.rs] — Medium. The modal fragment hardcodes `hx_target="#contributor-feedback"`. If a future template change removed the target div, the FR54 conflict feedback would silently no-op. Add an integration test that GETs `/contributor/:id` as a librarian and asserts the response body contains `id="contributor-feedback"`.
+- [x] [Review][Patch] E2E asserts modal closes after FR54 conflict 200 [tests/e2e/specs/journeys/catalog-contributor.spec.ts:232-241] — strengthens regression cover for modal.js's `htmx:afterRequest` close-on-2xx contract. Add `await expect(page.locator("#modal-slot dialog[open]")).not.toBeVisible()` after the conflict-feedback assertion.
+- [x] [Review][Patch] E2E asserts trigger button no longer carries `hx-confirm=` [tests/e2e/specs/journeys/catalog-contributor.spec.ts] — paranoid lock against accidental re-introduction; the templates_audit catches *count mismatches* but doesn't reject re-adding both file and entry. Add `await expect(deleteBtn).not.toHaveAttribute("hx-confirm")`.
+- [x] [Review][Patch] Replace brittle `bg-red-600` substring with `data-modal-variant="delete"` [tests/contributor_delete_modal.rs::get_contributor_delete_modal_returns_200_with_dialog_for_librarian_request] — more stable than Tailwind class substrings; the macro emits `data-modal-variant="{{ variant }}"` on the `<dialog>` already.
+
+#### Deferred (to be filed as GH Issues per Foundation Rule #11)
+
+- [x] [Review][Defer] 404 silent UI feedback (TOCTOU concurrent deletion) [Edge Hunter] — cross-cutting on all 3 modal migrations (9-10 borrower, 9-11 return-loan, 9-12 contributor). Librarian A loads contributor page; Librarian B deletes the same contributor in another tab; A clicks Delete → handler returns 404 → HTMX swap no-ops → `#modal-slot` stays empty → no UI feedback. Cross-cutting code-review-finding; not a 9-12 regression.
+- [x] [Review][Defer] i18n `body_html` defense-in-depth escape [src/routes/contributors.rs:90] — `let body_html = format!("<p>{body_text}</p>");` ships the i18n value through the macro's RAW `|safe` channel. Static literals today; latent risk if community translations or YAML-import workflows are added later. Mirror of 9-10's borrower handler — file as a pattern-wide code-review-finding to consider html-escaping the i18n body across all 3 modals at once.
+- [x] [Review][Defer] Pre-existing `src/routes/locations.rs:256` Rust-emitted `hx-confirm=` [src/routes/locations.rs:256] — inherited from prior epics; `templates_audit::hx_confirm_matches_allowlist` walks `templates/` only and misses Rust string-emitted markup. Out of scope for 9-12 (delete-contributor migration); should be filed as a code-review-finding for a future migration sweep.
