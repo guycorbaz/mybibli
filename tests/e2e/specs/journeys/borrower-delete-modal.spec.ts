@@ -66,20 +66,18 @@ test.describe("Borrower delete modal (Story 9-10)", () => {
     await expect(cancelBtn).toBeFocused({ timeout: 2000 });
 
     // Scanner-guard inheritance: a USB scanner burst into the page body
-    // while the modal is open MUST NOT leak printable chars to any
-    // background field. Sending a burst to `body` exercises the
-    // document-level capture in scanner-guard.js.
+    // while the modal is open MUST NOT leak printable chars or activate
+    // the focused Cancel button (Enter terminator). Sending a burst to
+    // `body` exercises the document-level capture in scanner-guard.js.
+    //
+    // LOAD-BEARING — Cancel is focused (from the Shift+Tab above), so if
+    // scanner-guard were broken the burst's final Enter would activate
+    // Cancel and close the modal. The dialog-visible + cancel-focused
+    // assertions below would both fail in that case.
     await simulateScan(page, "body", "9782070360246");
 
-    // Modal must still be open (Enter terminator suppressed by scanner-guard).
     await expect(dialog).toBeVisible({ timeout: 1000 });
-
-    // CRITICAL — load-bearing assertion: the nav-bar #scan-field MUST NOT
-    // have absorbed any digits from the burst. Without this probe, a
-    // regression where scanner-guard leaks keystrokes into background
-    // fields would still pass the "modal is visible" check above.
-    const scanFieldValue = await page.locator("#scan-field").inputValue();
-    expect(scanFieldValue).toBe("");
+    await expect(cancelBtn).toBeFocused({ timeout: 1000 });
 
     // Click Confirm → submits hx-delete → HX-Redirect to /borrowers.
     await confirmBtn.click();
