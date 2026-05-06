@@ -102,6 +102,9 @@ contributor:
   updated: Contributeur mis à jour.
   deleted: Contributeur supprimé.
   removed: Contributeur retiré du titre.
+  delete_modal_title: "Supprimer le contributeur %{name} ?"
+  delete_modal_body: "Les titres liés perdront ce contributeur sauf s'il est réassigné."
+  delete_modal_confirm: Supprimer
   error:
     name_required: Le nom du contributeur est obligatoire.
     name_too_long: Le nom du contributeur doit faire 255 caractères ou moins.
@@ -136,7 +139,6 @@ contributor_detail:
   titles: Titres
   biography: Biographie
   delete: Supprimer
-  confirm_delete: "Supprimer ce contributeur ?"
 series:
   list_title: Séries
   add: Ajouter une série

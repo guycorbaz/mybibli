@@ -5,7 +5,7 @@ use axum::response::{Html, IntoResponse};
 
 use crate::AppState;
 use crate::error::AppError;
-use crate::middleware::auth::Session;
+use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
 use crate::middleware::locale::Locale;
 use crate::models::contributor::{ContributorModel, ContributorTitleRow};
@@ -32,7 +32,6 @@ pub struct ContributorDetailTemplate {
     pub titles: Vec<ContributorTitleRow>,
     pub label_titles: String,
     pub delete_label: String,
-    pub confirm_delete: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
 }
@@ -75,8 +74,6 @@ pub async fn contributor_detail(
             titles,
             label_titles: rust_i18n::t!("contributor_detail.titles", locale = loc).to_string(),
             delete_label: rust_i18n::t!("contributor_detail.delete", locale = loc).to_string(),
-            confirm_delete: rust_i18n::t!("contributor_detail.confirm_delete", locale = loc)
-                .to_string(),
             current_url: current_url(&uri),
             lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
         };
@@ -130,6 +127,82 @@ fn contributor_detail_fragment(
         rust_i18n::t!("contributor_detail.titles", locale = loc),
         titles_html
     )
+}
+
+// ─── Delete confirmation modal (story 9-12) ─────────────
+
+#[derive(Template)]
+#[template(path = "fragments/contributor_delete_modal.html")]
+pub struct ContributorDeleteModalTemplate {
+    pub title: String,
+    pub body_html: String,
+    pub confirm_label: String,
+    pub cancel_label: String,
+    pub action_url: String,
+    pub csrf_token: String,
+}
+
+/// `GET /contributor/:id/delete-modal` — returns the rendered UX-DR8 Modal
+/// fragment for the destructive delete-contributor flow. Librarian-gated
+/// (admin > librarian, both pass). Direct browser navigation (no
+/// `HX-Request` header) returns 405 — the modal fragment is meaningless
+/// without page context. No `Allow:` response header is emitted (per the
+/// 9-11 code-review patch — `Allow: GET` self-contradicts 405; we DO
+/// support GET, just not without HTMX).
+pub async fn delete_modal(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    HxRequest(is_htmx): HxRequest,
+    Path(id): Path<u64>,
+) -> Result<axum::response::Response, AppError> {
+    // Preserve the contributor-detail return path so an anonymous user who
+    // hits this URL directly (or whose session expired) lands back on the
+    // contributor page after login, not on /home.
+    session.require_role_with_return(Role::Librarian, &format!("/contributor/{id}"))?;
+    let pool = &state.pool;
+    let loc = locale.0;
+
+    if !is_htmx {
+        return Ok(axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response());
+    }
+
+    let contributor = ContributorModel::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
+        })?;
+
+    // Title carries the contributor name via `%{name}` interpolation. Pass
+    // the RAW name through `t!()` and let Askama's default auto-escape
+    // (on `{{ title }}` in the macro) handle HTML safety. Pre-escaping
+    // would double-escape (`<` → `&lt;` → `&amp;lt;`).
+    let title = rust_i18n::t!(
+        "contributor.delete_modal_title",
+        locale = loc,
+        name = contributor.name.as_str()
+    )
+    .to_string();
+    let body_text = rust_i18n::t!("contributor.delete_modal_body", locale = loc).to_string();
+    let body_html = format!("<p>{body_text}</p>");
+
+    tracing::debug!(contributor_id = id, "delete modal requested");
+
+    let template = ContributorDeleteModalTemplate {
+        title,
+        body_html,
+        confirm_label: rust_i18n::t!("contributor.delete_modal_confirm", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("common.cancel", locale = loc).to_string(),
+        action_url: format!("/catalog/contributors/{}", contributor.id),
+        csrf_token: session.csrf_token.clone(),
+    };
+
+    match template.render() {
+        Ok(html) => Ok(Html(html).into_response()),
+        Err(e) => Err(AppError::Internal(format!(
+            "contributor delete modal render: {e}"
+        ))),
+    }
 }
 
 #[cfg(test)]

@@ -149,6 +149,10 @@ pub fn build_router(state: AppState) -> Router {
             "/contributor/{id}",
             axum::routing::get(contributors::contributor_detail),
         )
+        .route(
+            "/contributor/{id}/delete-modal",
+            axum::routing::get(contributors::delete_modal),
+        )
         .route("/volume/{id}", axum::routing::get(catalog::volume_detail))
         .route(
             "/volume/{id}/edit",

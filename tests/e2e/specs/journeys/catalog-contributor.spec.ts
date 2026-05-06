@@ -209,19 +209,34 @@ test.describe("Contributor Management", () => {
     expect(ids.junctionId).toBeTruthy();
     const contributorId = ids.contributorHref!.split("/").pop()!;
 
-    // Step 4: Navigate to contributor detail and attempt deletion
+    // Step 4: Navigate to contributor detail and attempt deletion via modal
     await page.goto(`/contributor/${contributorId}`);
     await expect(page.locator("h1")).toContainText(CONTRIBUTOR_NAME);
 
-    // Set up dialog handler to auto-accept the native confirm()
-    page.on("dialog", (d) => d.accept());
-
-    // Click delete button
+    // Click delete trigger → modal opens (story 9-12: hx-confirm replaced
+    // by the UX-DR8 Modal component, no native confirm() dialog any more).
     const deleteBtn = page.getByRole("button", {
       name: /delete|supprimer/i,
     });
     await expect(deleteBtn).toBeVisible();
+    // Story 9-12 code-review P5 — paranoid lock against accidental
+    // re-introduction of `hx-confirm=`. The templates_audit catches
+    // count mismatches but doesn't reject re-adding both file and
+    // entry, so policing at the rendered-attribute layer is cheaper.
+    await expect(deleteBtn).not.toHaveAttribute("hx-confirm", /.*/);
     await deleteBtn.click();
+    await expect(page.locator("#modal-slot dialog[open]")).toBeVisible();
+    // Lock 9-10 focus-trap inheritance: Cancel is the default-focused
+    // element, and Escape closes the modal without firing DELETE.
+    await expect(page.locator("[data-modal-default-focus]")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#modal-slot dialog[open]")).not.toBeVisible();
+
+    // Re-open the modal and click Confirm — FR54 conflict feedback
+    // must land in #contributor-feedback, modal closes on 2xx response.
+    await deleteBtn.click();
+    await expect(page.locator("#modal-slot dialog[open]")).toBeVisible();
+    await page.locator("[data-modal-confirm]").click();
 
     // Step 5: Verify block message appears in feedback container
     const feedback = page.locator("#contributor-feedback");
@@ -229,6 +244,12 @@ test.describe("Contributor Management", () => {
       /Cannot delete|Impossible de supprimer/i,
       { timeout: 5000 },
     );
+    // Story 9-12 code-review P4 — the FR54 200 + inline feedback
+    // response must close the modal via modal.js's htmx:afterRequest
+    // listener. If a future modal.js refactor regresses the
+    // close-on-2xx contract, this assertion fires loudly rather
+    // than the user being left with a stale dialog over the feedback.
+    await expect(page.locator("#modal-slot dialog[open]")).not.toBeVisible();
 
     // Step 6: Unassign the contributor via direct POST (avoids catalog page reload issue)
     const removeCsrf =
@@ -249,11 +270,13 @@ test.describe("Contributor Management", () => {
     await page.goto(`/contributor/${contributorId}`);
     await expect(page.locator("h1")).toContainText(CONTRIBUTOR_NAME);
 
-    // Click delete again — this time it should redirect
+    // Click delete again → open modal → Confirm → HX-Redirect to /catalog
     const deleteBtn2 = page.getByRole("button", {
       name: /delete|supprimer/i,
     });
     await deleteBtn2.click();
+    await expect(page.locator("#modal-slot dialog[open]")).toBeVisible();
+    await page.locator("[data-modal-confirm]").click();
 
     // Verify redirect to catalog
     await page.waitForURL("**/catalog", { timeout: 5000 });
