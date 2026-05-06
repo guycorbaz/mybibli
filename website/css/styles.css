@@ -1,0 +1,47 @@
+/* mybibli site — small additions on top of Tailwind */
+
+html { scroll-behavior: smooth; }
+
+/* Subtle hero gradient that adapts to dark mode */
+.hero-gradient {
+  background:
+    radial-gradient(ellipse at top right, rgb(99 102 241 / 0.18), transparent 55%),
+    radial-gradient(ellipse at bottom left, rgb(244 114 182 / 0.10), transparent 60%);
+}
+.dark .hero-gradient {
+  background:
+    radial-gradient(ellipse at top right, rgb(99 102 241 / 0.22), transparent 55%),
+    radial-gradient(ellipse at bottom left, rgb(244 114 182 / 0.10), transparent 60%);
+}
+
+/* Decorative grid backdrop */
+.grid-pattern {
+  background-image:
+    linear-gradient(to right, rgb(120 113 108 / 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(120 113 108 / 0.08) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+.dark .grid-pattern {
+  background-image:
+    linear-gradient(to right, rgb(231 229 228 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(231 229 228 / 0.05) 1px, transparent 1px);
+}
+
+/* Card hover lift */
+.feature-card { transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease; }
+.feature-card:hover { transform: translateY(-2px); }
+
+/* Timeline dot pulse on the active item */
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgb(99 102 241 / 0.55); }
+  70%  { box-shadow: 0 0 0 12px rgb(99 102 241 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(99 102 241 / 0); }
+}
+.timeline-active { animation: pulse-ring 2s infinite; }
+
+/* Reveal-on-scroll: hidden by default, faded in by IntersectionObserver */
+.reveal { opacity: 0; transform: translateY(8px); transition: opacity 500ms ease, transform 500ms ease; }
+.reveal.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
