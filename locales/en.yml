@@ -102,6 +102,9 @@ contributor:
   updated: Contributor updated.
   deleted: Contributor deleted.
   removed: Contributor removed from title.
+  delete_modal_title: "Delete contributor %{name}?"
+  delete_modal_body: "Linked titles will lose this contributor unless re-assigned."
+  delete_modal_confirm: Delete
   error:
     name_required: Contributor name is required.
     name_too_long: Contributor name must be 255 characters or less.
@@ -136,7 +139,6 @@ contributor_detail:
   titles: Titles
   biography: Biography
   delete: Delete
-  confirm_delete: "Delete this contributor?"
 series:
   list_title: Series
   add: Add series
