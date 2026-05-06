@@ -33,8 +33,6 @@ use std::path::{Path, PathBuf};
 /// removing one) forces the PR to update this list, which is the whole
 /// point of the audit: a reviewer is always in the loop.
 const ALLOWED_HX_CONFIRM_SITES: &[(&str, usize)] = &[
-    ("templates/pages/loans.html", 1),
-    ("templates/pages/borrower_detail.html", 1),
     ("templates/pages/contributor_detail.html", 1),
     ("templates/pages/series_detail.html", 1),
     ("templates/fragments/admin_users_row.html", 1),

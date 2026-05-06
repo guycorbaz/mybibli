@@ -207,6 +207,10 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/loans/scan", axum::routing::get(loans::scan_on_loans))
         .route(
+            "/loans/{id}/return-modal",
+            axum::routing::get(loans::return_modal_handler),
+        )
+        .route(
             "/loans/{id}/return",
             axum::routing::post(loans::return_loan_handler),
         )

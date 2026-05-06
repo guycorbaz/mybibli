@@ -7,6 +7,7 @@ import {
   returnLoanFromLoansPage,
   scanTitleAndVolume,
 } from "../../helpers/loans";
+import { simulateScan } from "../../helpers/scanner";
 
 const VALID_ISBN = specIsbn("LR", 1);
 
@@ -65,7 +66,9 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
       // Wait for the volume detail heading to render
       await expect(page.locator("h1")).toBeVisible({ timeout: 5000 });
 
-      // Register dialog handler BEFORE clicking
+      // The volume-detail Delete still uses a browser confirm() in pre-9-11
+      // code; this story does NOT migrate it (out of scope, deferred to a
+      // future story). Keep the dialog handler for that surface.
       page.once("dialog", (dialog) => {
         dialog.accept().catch(() => {});
       });
@@ -139,21 +142,58 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
     );
     await expect(returnBtn).toBeVisible({ timeout: 3000 });
 
-    // Register dialog handler BEFORE click
-    page.once("dialog", (dialog) => {
-      dialog.accept().catch(() => {});
-    });
+    // Story 9-11 — scan-card Return now goes through the modal flow,
+    // mirroring the loans-table button. Click → wait for modal → Confirm.
     await returnBtn.click();
-
-    // Wait for scan result to update (HTMX swap after return)
-    // The scan-result region no longer shows the Return button once returned
-    await expect(returnBtn).not.toBeVisible({ timeout: 5000 });
+    const modalDialog = page.locator("#modal-slot dialog[open]");
+    await expect(modalDialog).toBeVisible({ timeout: 5000 });
+    await modalDialog.locator("[data-modal-confirm]").click();
+    // Wait for the modal to close so we know the POST round-trip
+    // completed before navigating away (avoids racing a partial swap).
+    await expect(modalDialog).not.toBeVisible({ timeout: 5000 });
 
     // Verify loan is gone from the list
     await page.goto("/loans");
     await expect(page.locator("#loans-table-body")).not.toContainText("V0072", {
       timeout: 5000,
     });
+  });
+
+  // Story 9-11 AC9 — load-bearing scanner-guard inheritance check.
+  // While the return-loan modal is open with Cancel focused, a USB-scanner
+  // burst against `body` MUST NOT leak Enter through to Cancel (which would
+  // close the modal). Mirror of the 9-10 PR #129 fix pattern.
+  test("scanner-guard suppresses scanner burst while modal open", async ({ page }) => {
+    await setupLoan(page, "V0075", "LR-Scanner Guard Borrower");
+
+    await page.goto("/loans");
+    const loanRow = page
+      .locator("#loans-table-body tr")
+      .filter({ hasText: /\bV0075\b/i });
+    const returnBtn = loanRow
+      .locator('button:has-text("Return"), button:has-text("Retourner")')
+      .first();
+    await expect(returnBtn).toBeVisible({ timeout: 3000 });
+    await returnBtn.click();
+
+    // Modal opens with Cancel as the default-focus element (UX-DR8).
+    const modalDialog = page.locator("#modal-slot dialog[open]");
+    await expect(modalDialog).toBeVisible({ timeout: 5000 });
+    const cancelBtn = modalDialog.locator("[data-modal-default-focus]");
+    await expect(cancelBtn).toBeFocused({ timeout: 3000 });
+
+    // Fire a scanner burst (ISBN — content irrelevant; what matters is the
+    // burst pace and the trailing Enter terminator). Scanner-guard must
+    // suppress the Enter, leaving the modal open and Cancel still focused.
+    await simulateScan(page, "body", "9782070360246");
+
+    await expect(modalDialog).toBeVisible({ timeout: 1000 });
+    await expect(cancelBtn).toBeFocused({ timeout: 1000 });
+
+    // Cleanup — close the modal so the row can be returned via the normal
+    // helper for the "loan disappears" smoke at the end (or just close).
+    await cancelBtn.click();
+    await expect(modalDialog).not.toBeVisible({ timeout: 3000 });
   });
 
   // Smoke test: full loan lifecycle

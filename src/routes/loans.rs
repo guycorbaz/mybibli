@@ -1,7 +1,8 @@
 use askama::Template;
 use axum::Extension;
-use axum::extract::{OriginalUri, State};
-use axum::response::{Html, IntoResponse};
+use axum::extract::{OriginalUri, Path, Query, State};
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Response};
 use serde::Deserialize;
 
 use crate::AppState;
@@ -64,7 +65,6 @@ pub struct LoansTemplate {
     pub next_label: String,
     pub return_label: String,
     pub overdue_label: String,
-    pub confirm_label: String,
     pub col_action: String,
     pub overdue_threshold: i64,
     pub current_sort: String,
@@ -128,7 +128,6 @@ pub async fn loans_page(
         next_label: rust_i18n::t!("pagination.next", locale = loc).to_string(),
         return_label: rust_i18n::t!("loan.return", locale = loc).to_string(),
         overdue_label: rust_i18n::t!("loan.overdue", locale = loc).to_string(),
-        confirm_label: rust_i18n::t!("loan.return_confirm", locale = loc).to_string(),
         col_action: rust_i18n::t!("loan.col_action", locale = loc).to_string(),
         overdue_threshold: threshold as i64,
         current_sort,
@@ -222,12 +221,17 @@ pub async fn create_loan(
 
 // ─── Return loan ────────────────────────────────────────
 
+/// `POST /loans/:id/return`. Reachable from the loans table button, the
+/// borrower-detail active-loans table, and the scan-card — all of which
+/// route through the `GET /loans/:id/return-modal` confirmation modal
+/// (story 9-11). Server contract is unchanged from pre-9-11; only the
+/// trigger UX migrated from `hx-confirm=` to the UX-DR8 Modal.
 pub async fn return_loan_handler(
     State(state): State<AppState>,
     session: Session,
     Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
-    axum::extract::Path(loan_id): axum::extract::Path<u64>,
+    Path(loan_id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Librarian)?;
     let pool = &state.pool;
@@ -253,6 +257,98 @@ pub async fn return_loan_handler(
         .into_response())
     } else {
         Ok(axum::response::Redirect::to("/loans").into_response())
+    }
+}
+
+// ─── Return loan — confirmation modal (story 9-11) ──────
+
+/// Closed allowlist of feedback-target IDs the modal is allowed to render
+/// into. Three surfaces today: the `/loans` table feedback area, the
+/// `/borrower/:id` active-loans feedback area, and the loans-page V-code
+/// scan-card. A future surface adds a single entry. The allowlist is
+/// security-load-bearing — without it, a crafted `?target=evil-injected`
+/// would let an attacker steer the server's feedback HTML into any DOM
+/// node of their choosing.
+const FEEDBACK_TARGETS: &[&str] = &["loan-feedback", "borrower-feedback", "scan-result"];
+const DEFAULT_FEEDBACK_TARGET: &str = "loan-feedback";
+
+#[derive(Deserialize)]
+pub struct ReturnModalQuery {
+    pub target: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "fragments/return_loan_modal.html")]
+pub struct ReturnLoanModalTemplate {
+    pub title: String,
+    pub body_html: String,
+    pub confirm_label: String,
+    pub cancel_label: String,
+    pub action_url: String,
+    pub csrf_token: String,
+    pub hx_target: String,
+}
+
+/// `GET /loans/:id/return-modal` — renders the UX-DR8 Modal fragment for
+/// the return-loan flow. Librarian or Admin only. Direct browser
+/// navigation (no `HX-Request`) returns 405 — the fragment is meaningless
+/// without page context.
+pub async fn return_modal_handler(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    HxRequest(is_htmx): HxRequest,
+    Path(loan_id): Path<u64>,
+    Query(query): Query<ReturnModalQuery>,
+) -> Result<Response, AppError> {
+    session.require_role_with_return(Role::Librarian, "/loans")?;
+    let pool = &state.pool;
+    let loc = locale.0;
+
+    if !is_htmx {
+        return Ok(StatusCode::METHOD_NOT_ALLOWED.into_response());
+    }
+
+    // 404 if the loan row is missing; 409 Conflict if it exists but has
+    // already been returned — the row exists, the action is just a no-op
+    // given current state. 409 is the standard HTTP semantics for "exists
+    // but state forbids the action" (see #133/#134-adjacent review notes).
+    let loan = LoanModel::find_by_id(pool, loan_id).await?.ok_or_else(|| {
+        AppError::NotFound(rust_i18n::t!("loan.not_found", locale = loc).to_string())
+    })?;
+    if loan.returned_at.is_some() {
+        return Err(AppError::Conflict(
+            rust_i18n::t!("loan.already_returned", locale = loc).to_string(),
+        ));
+    }
+
+    let target = match query.target.as_deref() {
+        Some(t) if FEEDBACK_TARGETS.contains(&t) => t,
+        _ => DEFAULT_FEEDBACK_TARGET,
+    };
+    let hx_target = format!("#{target}");
+
+    let title = rust_i18n::t!("loan.return_modal_title", locale = loc).to_string();
+    let body_text = rust_i18n::t!("loan.return_modal_body", locale = loc).to_string();
+    let body_html = format!("<p>{}</p>", crate::utils::html_escape(&body_text));
+
+    tracing::debug!(loan_id, target, "return modal requested");
+
+    let template = ReturnLoanModalTemplate {
+        title,
+        body_html,
+        confirm_label: rust_i18n::t!("loan.return_modal_confirm", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("common.cancel", locale = loc).to_string(),
+        action_url: format!("/loans/{loan_id}/return"),
+        csrf_token: session.csrf_token.clone(),
+        hx_target,
+    };
+
+    match template.render() {
+        Ok(html) => Ok(Html(html).into_response()),
+        Err(e) => Err(AppError::Internal(format!(
+            "return loan modal render: {e}"
+        ))),
     }
 }
 
@@ -315,6 +411,10 @@ pub async fn scan_on_loans(
 }
 
 /// Render a loan match result card (for scan-to-find on /loans page).
+/// The Return button routes through the `GET /loans/:id/return-modal`
+/// confirmation modal (story 9-11) — the `?target=scan-result` param
+/// tells the modal to send the success feedback back into this card's
+/// own slot, replacing it with the post-return feedback message.
 fn loan_row_html(loan: &LoanWithDetails, highlight: bool, loc: &str) -> String {
     let bg = if highlight {
         "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-400"
@@ -327,21 +427,25 @@ fn loan_row_html(loan: &LoanWithDetails, highlight: bool, loc: &str) -> String {
     let date = loan.loaned_at.format("%Y-%m-%d").to_string();
     let days = rust_i18n::t!("loan.days", locale = loc).to_string();
     let return_label = rust_i18n::t!("loan.return", locale = loc).to_string();
-    let confirm_label = rust_i18n::t!("loan.return_confirm", locale = loc).to_string();
 
     format!(
-        r#"<div class="p-3 rounded-md border {bg}" id="scan-loan-{id}">
+        r##"<div class="p-3 rounded-md border {bg}" id="scan-loan-{id}">
             <p class="font-medium text-stone-900 dark:text-stone-100">{label} — {title}</p>
             <p class="text-sm text-stone-600 dark:text-stone-400">
                 <a href="/borrower/{bid}" class="text-indigo-600 hover:underline dark:text-indigo-400">{borrower}</a>
                 · {date} · {duration} {days}
             </p>
-            <button hx-post="/loans/{id}/return" hx-confirm="{confirm}" hx-target="{target}"
+            <button hx-get="/loans/{id}/return-modal?target=scan-result"
+                    hx-target="#modal-slot"
+                    hx-swap="innerHTML"
                     hx-disabled-elt="this"
+                    data-modal-trigger
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
                     class="mt-2 px-3 py-1 text-sm font-medium text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50">
                 {return_label}
             </button>
-        </div>"#,
+        </div>"##,
         bg = bg,
         id = loan.id,
         bid = loan.borrower_id,
@@ -352,8 +456,6 @@ fn loan_row_html(loan: &LoanWithDetails, highlight: bool, loc: &str) -> String {
         duration = loan.duration_days,
         days = days,
         return_label = return_label,
-        confirm = crate::utils::html_escape(&confirm_label),
-        target = "#scan-result",
     )
 }
 
@@ -405,7 +507,11 @@ mod tests {
         assert!(html.contains("Jean"));
         assert!(html.contains("V0042"));
         assert!(html.contains("Test Book"));
-        assert!(html.contains("hx-post=\"/loans/1/return\""));
+        // Story 9-11: scan-card Return button now opens the confirmation
+        // modal instead of POSTing directly.
+        assert!(html.contains("hx-get=\"/loans/1/return-modal?target=scan-result\""));
+        assert!(html.contains("data-modal-trigger"));
+        assert!(!html.contains("hx-confirm="));
     }
 
     #[test]

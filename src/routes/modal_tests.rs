@@ -18,9 +18,20 @@ struct ModalTestWrapper {
     action_url: &'static str,
     action_method: &'static str,
     csrf_token: &'static str,
+    hx_target: &'static str,
+    hx_swap: &'static str,
 }
 
 fn render(variant: &'static str, action_method: &'static str) -> String {
+    render_with_targets(variant, action_method, "", "none")
+}
+
+fn render_with_targets(
+    variant: &'static str,
+    action_method: &'static str,
+    hx_target: &'static str,
+    hx_swap: &'static str,
+) -> String {
     ModalTestWrapper {
         variant,
         title: "Delete Alice?",
@@ -30,6 +41,8 @@ fn render(variant: &'static str, action_method: &'static str) -> String {
         action_url: "/borrower/42",
         action_method,
         csrf_token: "tok123",
+        hx_target,
+        hx_swap,
     }
     .render()
     .expect("render")
@@ -142,5 +155,67 @@ fn invalid_variant_falls_back_to_warning_palette() {
     assert!(
         !html.contains("bg-red-600") && !html.contains("bg-amber-600"),
         "fallback must not surface a destructive palette; got: {html}"
+    );
+}
+
+/// Story 9-11 AC8 — when callers pass an explicit `hx_target` + `hx_swap`,
+/// the rendered form MUST emit those attrs verbatim. Default ("", "none")
+/// preserves the 9-10 contract (no hx-target attr, hx-swap="none").
+#[test]
+fn warning_variant_with_hx_target_renders_innerhtml_swap() {
+    let html = render_with_targets("warning", "POST", "#loan-feedback", "innerHTML");
+    assert!(
+        html.contains("hx-swap=\"innerHTML\""),
+        "explicit hx_swap must round-trip verbatim; got: {html}"
+    );
+    assert!(
+        html.contains("hx-target=\"#loan-feedback\""),
+        "explicit hx_target must render an hx-target attribute; got: {html}"
+    );
+    assert!(
+        !html.contains("hx-swap=\"none\""),
+        "default hx-swap=\"none\" must NOT appear when caller overrides; got: {html}"
+    );
+}
+
+#[test]
+fn warning_variant_default_omits_hx_target_attribute() {
+    // 9-10 backward-compat: an empty hx_target string must produce NO
+    // hx-target= attribute on the form, while hx_swap defaults to "none".
+    let html = render("warning", "POST");
+    assert!(
+        html.contains("hx-swap=\"none\""),
+        "default hx_swap=\"none\" must render verbatim; got: {html}"
+    );
+    assert!(
+        !html.contains("hx-target="),
+        "empty hx_target must NOT emit an hx-target attribute (backward compat \
+         with 9-10 callers); got: {html}"
+    );
+}
+
+/// Story 9-11 — proves the macro renders byte-identical bodies for the two
+/// valid feedback targets, modulo only the target string itself. This locks
+/// the AC8 DRY claim at the unit-test layer: a future contributor can't
+/// accidentally introduce per-target divergence in the macro.
+#[test]
+fn warning_variant_byte_identical_across_feedback_targets() {
+    let loan_html = render_with_targets("warning", "POST", "#loan-feedback", "innerHTML");
+    let borrower_html =
+        render_with_targets("warning", "POST", "#borrower-feedback", "innerHTML");
+    let scan_html = render_with_targets("warning", "POST", "#scan-result", "innerHTML");
+
+    let normalized_loan = loan_html.replace("#loan-feedback", "TARGET_PLACEHOLDER");
+    let normalized_borrower = borrower_html.replace("#borrower-feedback", "TARGET_PLACEHOLDER");
+    let normalized_scan = scan_html.replace("#scan-result", "TARGET_PLACEHOLDER");
+
+    assert_eq!(
+        normalized_loan, normalized_borrower,
+        "modal output must be byte-identical between #loan-feedback and \
+         #borrower-feedback (AC8 DRY claim)"
+    );
+    assert_eq!(
+        normalized_loan, normalized_scan,
+        "modal output must be byte-identical for the scan-card target too"
     );
 }

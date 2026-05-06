@@ -18,7 +18,14 @@ export async function simulateScan(
   selector: string,
   code: string,
 ): Promise<void> {
-  await page.locator(selector).focus();
+  // When the selector is "body" the caller wants to fire a scanner burst
+  // at the document level (e.g. modal-open scanner-guard regression tests).
+  // Calling `body.focus()` would steal focus from the actual focused element
+  // (Cancel button under a modal) and defeat the test's premise — keep focus
+  // wherever it currently is so the burst exercises the real scanner path.
+  if (selector !== "body") {
+    await page.locator(selector).focus();
+  }
   await page.keyboard.type(code, { delay: 20 });
   await page.keyboard.press("Enter");
 }
