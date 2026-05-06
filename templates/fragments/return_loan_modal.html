@@ -1,0 +1,17 @@
+{# Story 9-11 — return-loan confirmation modal (warning variant).
+   Calls the shared `components/modal.html::modal` macro. The
+   `hx_target` value is constrained at the handler level by the
+   FEEDBACK_TARGETS allowlist — see `src/routes/loans.rs`. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "warning",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "POST",
+    csrf_token,
+    hx_target,
+    "innerHTML",
+) %}{% endcall %}

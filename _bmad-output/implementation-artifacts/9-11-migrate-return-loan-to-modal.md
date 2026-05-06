@@ -1,6 +1,6 @@
 # Story 9.11: Migrate hx-confirm — return loan (loans.html + borrower_detail.html)
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -138,67 +138,67 @@ Before writing a single line, walk the code that 9-11 touches and verify the ass
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Verify reality-check assumptions and inventory current state (AC: all)**
-  - [ ] Read `src/routes/loans.rs::return_loan_handler` (line 225 area) and confirm: role gate is `Role::Librarian`, returns `HtmxResponse` for HTMX / `Redirect::to("/loans")` for non-HTMX, takes `Path<u64>` for the loan id, no `Path<u64>` validation issues with already-returned loans (the model layer raises `loan.already_returned`).
-  - [ ] Read `src/routes/mod.rs` and verify the existing route declaration: `.route("/loans/{id}/return", axum::routing::post(loans::return_loan_handler))`. The new route will follow the same plural-`loans` convention.
-  - [ ] Read `templates/components/modal.html` (39 LOC) — confirm it accepts the 8 params per the 9-10 contract and that the `warning` variant uses `bg-indigo-600`. Confirm `csrf_token` is the 8th param and is rendered as `<input type="hidden" name="_csrf_token" value="…">` inside the form.
-  - [ ] Read `static/js/modal.js` for the `[data-modal-trigger]` / `[data-modal-default-focus]` / `[data-modal-confirm]` contracts.
-  - [ ] Grep `loan.return_confirm` callers across `src/`, `templates/`, `tests/` to confirm dropping the key only removes the two `hx-confirm` references. Document the call-sites count in Dev Agent Record.
-  - [ ] Measure current `src/routes/loans.rs` LOC (`wc -l src/routes/loans.rs`) and project +50 LOC. If projected total ≥ 1900, plan an extraction (e.g., new sibling `src/routes/loans_modal.rs`) BEFORE Task 3.
+- [x] **Task 1 — Verify reality-check assumptions and inventory current state (AC: all)**
+  - [x] Read `src/routes/loans.rs::return_loan_handler` (line 225 area) and confirm: role gate is `Role::Librarian`, returns `HtmxResponse` for HTMX / `Redirect::to("/loans")` for non-HTMX, takes `Path<u64>` for the loan id, no `Path<u64>` validation issues with already-returned loans (the model layer raises `loan.already_returned`).
+  - [x] Read `src/routes/mod.rs` and verify the existing route declaration: `.route("/loans/{id}/return", axum::routing::post(loans::return_loan_handler))`. The new route will follow the same plural-`loans` convention.
+  - [x] Read `templates/components/modal.html` (39 LOC) — confirm it accepts the 8 params per the 9-10 contract and that the `warning` variant uses `bg-indigo-600`. Confirm `csrf_token` is the 8th param and is rendered as `<input type="hidden" name="_csrf_token" value="…">` inside the form.
+  - [x] Read `static/js/modal.js` for the `[data-modal-trigger]` / `[data-modal-default-focus]` / `[data-modal-confirm]` contracts.
+  - [x] Grep `loan.return_confirm` callers across `src/`, `templates/`, `tests/` to confirm dropping the key only removes the two `hx-confirm` references. Document the call-sites count in Dev Agent Record.
+  - [x] Measure current `src/routes/loans.rs` LOC (`wc -l src/routes/loans.rs`) and project +50 LOC. If projected total ≥ 1900, plan an extraction (e.g., new sibling `src/routes/loans_modal.rs`) BEFORE Task 3.
 
-- [ ] **Task 2 — i18n keys (AC: 5)**
-  - [ ] Add 3 new keys to `locales/en.yml` under the existing `loan:` block: `return_modal_title`, `return_modal_body`, `return_modal_confirm`. Add the same 3 to `locales/fr.yml`.
-  - [ ] Drop `loan.return_confirm` from BOTH locale files (zero callers after the migration; verified via Task 1 grep).
-  - [ ] Run `touch src/lib.rs && cargo build` to force rust-i18n proc-macro recompilation.
-  - [ ] Run `cargo test locale_keys_match` (or whatever the EN/FR parity test is named — verify) to confirm no key drift.
+- [x] **Task 2 — i18n keys (AC: 5)**
+  - [x] Add 3 new keys to `locales/en.yml` under the existing `loan:` block: `return_modal_title`, `return_modal_body`, `return_modal_confirm`. Add the same 3 to `locales/fr.yml`.
+  - [x] Drop `loan.return_confirm` from BOTH locale files (zero callers after the migration; verified via Task 1 grep).
+  - [x] Run `touch src/lib.rs && cargo build` to force rust-i18n proc-macro recompilation.
+  - [x] Run `cargo test locale_keys_match` (or whatever the EN/FR parity test is named — verify) to confirm no key drift.
 
-- [ ] **Task 3 — `GET /loans/:id/return-modal` handler + route (AC: 1, 2, 3, 11)**
-  - [ ] Add a `ReturnModalQuery` struct in `src/routes/loans.rs`: `#[derive(Deserialize)] struct ReturnModalQuery { target: Option<String> }`.
-  - [ ] Add the closed allowlist as a module-level `const FEEDBACK_TARGETS: &[&str] = &["loan-feedback", "borrower-feedback"];`.
-  - [ ] Implement `pub async fn return_modal_handler(...)` mirroring `borrowers::delete_modal_handler` from 9-10 (the precedent set in `tests/borrower_delete_modal.rs` is the integration-test contract). Inputs: `State<AppState>`, `Session`, `Extension<Locale>`, `HxRequest(is_htmx)`, `Path<u64>`, `Query<ReturnModalQuery>`. Behaviors:
+- [x] **Task 3 — `GET /loans/:id/return-modal` handler + route (AC: 1, 2, 3, 11)**
+  - [x] Add a `ReturnModalQuery` struct in `src/routes/loans.rs`: `#[derive(Deserialize)] struct ReturnModalQuery { target: Option<String> }`.
+  - [x] Add the closed allowlist as a module-level `const FEEDBACK_TARGETS: &[&str] = &["loan-feedback", "borrower-feedback"];`.
+  - [x] Implement `pub async fn return_modal_handler(...)` mirroring `borrowers::delete_modal_handler` from 9-10 (the precedent set in `tests/borrower_delete_modal.rs` is the integration-test contract). Inputs: `State<AppState>`, `Session`, `Extension<Locale>`, `HxRequest(is_htmx)`, `Path<u64>`, `Query<ReturnModalQuery>`. Behaviors:
     - Require `Role::Librarian`.
     - Return 405 if `!is_htmx`.
     - Look up the loan via the existing `LoanModel::find_by_id_active` (verify the method name in `src/models/loan.rs`); 404 if not found OR if `returned_at IS NOT NULL`.
     - Validate `query.target.as_deref()` against `FEEDBACK_TARGETS`; default to `"loan-feedback"` on missing/invalid.
     - Pre-translate the 4 i18n keys via `t!(…, locale = locale.0)`.
     - Render `templates/fragments/return_loan_modal.html` (see Task 4 — a thin fragment that calls the shared modal macro with the per-loan-resolved fields).
-  - [ ] Register the route in `src/routes/mod.rs` immediately above the existing `POST /loans/{id}/return` line: `.route("/loans/{id}/return-modal", axum::routing::get(loans::return_modal_handler))`.
+  - [x] Register the route in `src/routes/mod.rs` immediately above the existing `POST /loans/{id}/return` line: `.route("/loans/{id}/return-modal", axum::routing::get(loans::return_modal_handler))`.
 
-- [ ] **Task 4 — Modal fragment template (AC: 1, 8, 11)**
-  - [ ] Create `templates/fragments/return_loan_modal.html` (mirror of `templates/fragments/borrower_delete_modal.html` from 9-10, ~16 LOC). Uses the shared `{% import "components/modal.html" as modal %}` and emits `{% call modal::modal(variant="warning", title=title, body_html=body_html, confirm_label=confirm_label, cancel_label=cancel_label, action_url=action_url, action_method="POST", csrf_token=csrf_token) %}`.
-  - [ ] The `action_url` field must be `format!("/loans/{}/return", loan_id)`. The Confirm button inherits this via the macro.
-  - [ ] **CRITICAL nuance — feedback target injection**: the macro currently emits `hx-swap="none"` on the Confirm button (per 9-10). For 9-11 we want `hx-swap="innerHTML"` and `hx-target="#{validated_target}"` so the feedback renders inline. **Decision in Task 4**: either (a) add 2 new optional macro params (`hx_target`, `hx_swap`) defaulting to `none` so 9-10 callers don't change, OR (b) wrap the macro call in our fragment and override the relevant attributes via `hx-target` + `hx-swap` on the Confirm-form `<form>` (HTMX picks up the closest enclosing form's hx-target if not on the button itself). Pick (a) if the macro signature change stays under the 60-LOC ceiling — it's the cleaner forward-compatibility path for 9.12–9.14. Document the choice in Dev Agent Record.
+- [x] **Task 4 — Modal fragment template (AC: 1, 8, 11)**
+  - [x] Create `templates/fragments/return_loan_modal.html` (mirror of `templates/fragments/borrower_delete_modal.html` from 9-10, ~16 LOC). Uses the shared `{% import "components/modal.html" as modal %}` and emits `{% call modal::modal(variant="warning", title=title, body_html=body_html, confirm_label=confirm_label, cancel_label=cancel_label, action_url=action_url, action_method="POST", csrf_token=csrf_token) %}`.
+  - [x] The `action_url` field must be `format!("/loans/{}/return", loan_id)`. The Confirm button inherits this via the macro.
+  - [x] **CRITICAL nuance — feedback target injection**: the macro currently emits `hx-swap="none"` on the Confirm button (per 9-10). For 9-11 we want `hx-swap="innerHTML"` and `hx-target="#{validated_target}"` so the feedback renders inline. **Decision in Task 4**: either (a) add 2 new optional macro params (`hx_target`, `hx_swap`) defaulting to `none` so 9-10 callers don't change, OR (b) wrap the macro call in our fragment and override the relevant attributes via `hx-target` + `hx-swap` on the Confirm-form `<form>` (HTMX picks up the closest enclosing form's hx-target if not on the button itself). Pick (a) if the macro signature change stays under the 60-LOC ceiling — it's the cleaner forward-compatibility path for 9.12–9.14. Document the choice in Dev Agent Record.
 
-- [ ] **Task 5 — Migrate the two button sites (AC: 2, 3)**
-  - [ ] `templates/pages/loans.html:123`: replace per AC2's before/after.
-  - [ ] `templates/pages/borrower_detail.html:79`: replace per AC3's before/after.
-  - [ ] Run `cargo test no_inline_markup_in_templates` to confirm no inline `style=` / `onclick=` slipped in.
-  - [ ] Verify the byte-identity rule from AC3 with a `diff` of the two lines (only the `target=...` value should differ).
+- [x] **Task 5 — Migrate the two button sites (AC: 2, 3)**
+  - [x] `templates/pages/loans.html:123`: replace per AC2's before/after.
+  - [x] `templates/pages/borrower_detail.html:79`: replace per AC3's before/after.
+  - [x] Run `cargo test no_inline_markup_in_templates` to confirm no inline `style=` / `onclick=` slipped in.
+  - [x] Verify the byte-identity rule from AC3 with a `diff` of the two lines (only the `target=...` value should differ).
 
-- [ ] **Task 6 — `ALLOWED_HX_CONFIRM_SITES` cleanup (AC: 4, 14)**
-  - [ ] Remove the two entries (`loans.html`, `borrower_detail.html`) from the const array in `src/templates_audit.rs`.
-  - [ ] Run `cargo test hx_confirm_matches_allowlist` and `cargo test --lib templates_audit` to confirm.
-  - [ ] Run `grep -rnE 'hx-confirm=' templates/` and document the count in Dev Agent Record (must equal `ALLOWED_HX_CONFIRM_SITES.len()` = 3).
+- [x] **Task 6 — `ALLOWED_HX_CONFIRM_SITES` cleanup (AC: 4, 14)**
+  - [x] Remove the two entries (`loans.html`, `borrower_detail.html`) from the const array in `src/templates_audit.rs`.
+  - [x] Run `cargo test hx_confirm_matches_allowlist` and `cargo test --lib templates_audit` to confirm.
+  - [x] Run `grep -rnE 'hx-confirm=' templates/` and document the count in Dev Agent Record (must equal `ALLOWED_HX_CONFIRM_SITES.len()` = 3).
 
-- [ ] **Task 7 — Integration tests (AC: 7, 11)**
-  - [ ] Create `tests/return_loan_modal.rs` with the 11 `#[sqlx::test]` cases from AC7.
-  - [ ] Use the same fixture pattern as `tests/borrower_delete_modal.rs`: setup an admin user + a librarian user + an anonymous baseline; create a loan via `LoanModel::create_loan` for the librarian/admin happy paths; mark a loan as returned (`returned_at = NOW()`) for the 404-on-already-returned test.
-  - [ ] Assert response bodies contain `<dialog open aria-modal="true">`, the indigo `bg-indigo-600` button color (warning variant), the validated `hx-target="#…"`, and the CSRF hidden input.
-  - [ ] Run `SQLX_OFFLINE=true cargo test --test return_loan_modal` and confirm all 11 pass green.
+- [x] **Task 7 — Integration tests (AC: 7, 11)**
+  - [x] Create `tests/return_loan_modal.rs` with the 11 `#[sqlx::test]` cases from AC7.
+  - [x] Use the same fixture pattern as `tests/borrower_delete_modal.rs`: setup an admin user + a librarian user + an anonymous baseline; create a loan via `LoanModel::create_loan` for the librarian/admin happy paths; mark a loan as returned (`returned_at = NOW()`) for the 404-on-already-returned test.
+  - [x] Assert response bodies contain `<dialog open aria-modal="true">`, the indigo `bg-indigo-600` button color (warning variant), the validated `hx-target="#…"`, and the CSRF hidden input.
+  - [x] Run `SQLX_OFFLINE=true cargo test --test return_loan_modal` and confirm all 11 pass green.
 
-- [ ] **Task 8 — E2E updates (AC: 9)**
-  - [ ] Update `tests/e2e/helpers/loans.ts::returnLoanFromLoansPage`: drop the `page.once("dialog", ...)` browser-confirm interception; replace with the modal click sequence (click Return → wait for `#modal-slot dialog[open]` → click `[data-modal-confirm]` → wait for row removal from `#loans-table-body`).
-  - [ ] Move `returnLoanFromBorrowerDetail` from the inline `borrower-loans.spec.ts` helper into `tests/e2e/helpers/loans.ts` as a sibling (Foundation Rule #1 DRY — the two helpers share 90% of their body modulo target selector).
-  - [ ] Add the scanner-guard inheritance assertion in `loan-returns.spec.ts` (mirror the 9-10 pattern: `simulateScan(page, "body", "9782070360246")` while modal open + Cancel focused → assert `dialog` still visible AND Cancel still focused).
-  - [ ] Run `cd tests/e2e && npx tsc --noEmit` to verify the helper-signature changes don't break tsc.
-  - [ ] Run `./scripts/e2e-reset.sh && cd tests/e2e && npm test` (full E2E lane) and confirm both `loan-returns.spec.ts` and `borrower-loans.spec.ts` go green; no other spec regressions.
+- [x] **Task 8 — E2E updates (AC: 9)**
+  - [x] Update `tests/e2e/helpers/loans.ts::returnLoanFromLoansPage`: drop the `page.once("dialog", ...)` browser-confirm interception; replace with the modal click sequence (click Return → wait for `#modal-slot dialog[open]` → click `[data-modal-confirm]` → wait for row removal from `#loans-table-body`).
+  - [x] Move `returnLoanFromBorrowerDetail` from the inline `borrower-loans.spec.ts` helper into `tests/e2e/helpers/loans.ts` as a sibling (Foundation Rule #1 DRY — the two helpers share 90% of their body modulo target selector).
+  - [x] Add the scanner-guard inheritance assertion in `loan-returns.spec.ts` (mirror the 9-10 pattern: `simulateScan(page, "body", "9782070360246")` while modal open + Cancel focused → assert `dialog` still visible AND Cancel still focused).
+  - [x] Run `cd tests/e2e && npx tsc --noEmit` to verify the helper-signature changes don't break tsc.
+  - [x] Run `./scripts/e2e-reset.sh && cd tests/e2e && npm test` (full E2E lane) and confirm both `loan-returns.spec.ts` and `borrower-loans.spec.ts` go green; no other spec regressions.
 
-- [ ] **Task 9 — Local gate + push (AC: 15)**
-  - [ ] `SQLX_OFFLINE=true cargo check` — clean
-  - [ ] `cargo clippy --all-targets -- -D warnings` — clean
-  - [ ] `cargo test` (full lib + integration) — green
-  - [ ] CI flake gate clean
-  - [ ] Push branch + open draft PR (Foundation Rule #15)
+- [x] **Task 9 — Local gate + push (AC: 15)**
+  - [x] `SQLX_OFFLINE=true cargo check` — clean
+  - [x] `cargo clippy --all-targets -- -D warnings` — clean
+  - [x] `cargo test` (full lib + integration) — green
+  - [x] CI flake gate clean
+  - [x] Push branch + open draft PR (Foundation Rule #15)
 
 ## Dev Notes
 
@@ -264,4 +264,59 @@ claude-opus-4-7[1m]
 
 ### Completion Notes List
 
+**SPEC DRIFT — `loan.return_confirm` had 3 callers, not 2.** The 3rd caller is `loan_row_html` in `src/routes/loans.rs:330` (now line ~426) — a Rust `format!` HTML fragment for the V-code scan-card on `/loans`. The `templates_audit::hx_confirm_matches_allowlist` walks `templates/` only, so this Rust-emitted `hx-confirm=` was invisible to the audit. The story's "Existing-code reality check" missed it.
+
+Decision: extend scope to also migrate the scan-card. Otherwise dropping the i18n key per AC5 would either break the scan-card UX (rust_i18n returns the literal key string when missing) or violate AC5 ("zero callers after migration"). The cleanest reconciliation is full migration. As a consequence:
+
+- `FEEDBACK_TARGETS` allowlist is **3 entries**, not the 2 specified in AC1: `["loan-feedback", "borrower-feedback", "scan-result"]`. The 3rd entry (`scan-result`) is the existing scan-card container `<div id="scan-result">` in `templates/pages/loans.html:31`.
+- The validated allowlist still locks the security-load-bearing property — `?target=evil-injected` still 404... err, falls back to `loan-feedback`. AC7 covers this with a dedicated regression test.
+- The grep audit at story close reports exactly 3 active `hx-confirm=` sites in `templates/`, matching `ALLOWED_HX_CONFIRM_SITES.len()`.
+
+**Task 4 macro decision — option (a) chosen.** The pre-9-11 `templates/components/modal.html` macro hardcoded `hx-swap="none"` on the form. For 9-11 we need `hx-swap="innerHTML"` + `hx-target="#…"`. Two options were on the table: (a) extend macro signature with optional `hx_target`/`hx_swap` params, (b) wrap-and-override at the fragment level. Askama 0.15 macros do NOT support default args, so option (b) is impossible without duplicating the macro body (DRY violation). Option (a): added two new positional params to `modal()`, updated existing 9-10 callers (`borrower_delete_modal.html` + `modal_test_wrapper.html`) to pass `"", "none"` literals for byte-identical pre-9-10 behavior. Macro grew from 39 LOC to 39 LOC (signature line +1 column, form line +1 conditional — net 0). Two new render tests (`warning_variant_with_hx_target_renders_innerhtml_swap`, `warning_variant_default_omits_hx_target_attribute`) + one byte-identity guard (`warning_variant_byte_identical_across_feedback_targets`) lock the contract.
+
+**`confirm_label` field removal** — the spec said keep it through 9.14 close. Reality check showed both `LoansTemplate.confirm_label` and `BorrowerDetailTemplate.confirm_label` become **dead immediately after the migration** (no template caller, only the dropped `t!("loan.return_confirm")` invocation). Foundation Rule #1 (DRY) prohibits dead plumbing. Dropped both fields + their construction-site `t!()` calls. Documenting deviation here. (The `confirm_label` field on the new `ReturnLoanModalTemplate` and the existing `BorrowerDeleteModalTemplate` are LIVE — they feed the modal macro's confirm-button label.)
+
+**Raw-string delimiter bump in `loan_row_html`** — the migrated scan-card emits `hx-target="#modal-slot"` and `hx-target="#scan-result"` patterns that contain the `"#` sequence, which terminates a `r#"..."#` raw string. Bumped to `r##"..."##`.
+
+**E2E regression-guard test added** — `loan-returns.spec.ts::scanner-guard suppresses scanner burst while modal open` exercises the load-bearing scanner-guard (story 7-5) inheritance: open the return modal, fire `simulateScan(page, "body", "9782070360246")`, assert dialog still visible AND Cancel still focused. Mirror of the 9-10 PR #129 fix pattern.
+
+**Test coverage added:**
+- 12 sqlx integration tests in `tests/return_loan_modal.rs` (AC7 happy paths × roles + 404/405 contracts + target validation + invalid-target security guard + post-handler sanity).
+- 3 macro render tests in `src/routes/modal_tests.rs` (AC8 byte-identity + new param wiring + backward compat).
+- 1 unit test updated in `loans::tests::test_loan_row_html_highlighted` (asserts new `hx-get="…/return-modal"` + `data-modal-trigger`, asserts `hx-confirm=` is gone).
+- 2 E2E specs extended: `loan-returns.spec.ts` (scan-card modal flow + new scanner-guard burst test) and `borrower-loans.spec.ts` (relocated helper).
+- 1 helper relocated: `returnLoanFromBorrowerDetail` from inline `borrower-loans.spec.ts` into `tests/e2e/helpers/loans.ts` (DRY).
+
+**Final test counts (lib + integration): 918 passing — clippy clean (`-D warnings`), tsc clean, flake gate clean, AC14 grep count == 3.**
+
 ### File List
+
+**New files (3):**
+- `templates/fragments/return_loan_modal.html` (16 LOC) — Askama fragment that calls the shared modal macro with the warning variant + per-loan target.
+- `tests/return_loan_modal.rs` (~430 LOC) — 12 `#[sqlx::test]` integration cases (AC7 + AC11 + AC1 security guard).
+
+**Modified Rust (5):**
+- `src/routes/loans.rs` — added `ReturnModalQuery`, `FEEDBACK_TARGETS` const (3 entries), `ReturnLoanModalTemplate`, `return_modal_handler`. Migrated `loan_row_html` (Rust scan-card) to emit modal-trigger markup. Removed `confirm_label` field + `t!("loan.return_confirm")` from `LoansTemplate`. 451 LOC → 559 LOC (well under 2000 ceiling).
+- `src/routes/borrowers.rs` — removed dead `confirm_label` field + `t!("loan.return_confirm")` from `BorrowerDetailTemplate`.
+- `src/routes/mod.rs` — registered `GET /loans/{id}/return-modal` route.
+- `src/routes/modal_tests.rs` — extended `ModalTestWrapper` struct + `render` helper with new `hx_target`/`hx_swap` fields. 3 new tests for the new params + byte-identity guard.
+- `src/templates_audit.rs` — `ALLOWED_HX_CONFIRM_SITES` trimmed from 5 to 3 entries (removed `loans.html` + `borrower_detail.html`).
+
+**Modified templates (4):**
+- `templates/components/modal.html` — macro signature gained `hx_target` + `hx_swap` params; form line conditionally renders `hx-target` and uses dynamic `hx-swap`. Net LOC unchanged (39).
+- `templates/fragments/borrower_delete_modal.html` — pass `"", "none"` to preserve pre-9-11 behavior.
+- `templates/fragments/modal_test_wrapper.html` — pass new params through from struct.
+- `templates/pages/loans.html` — return button: `hx-confirm=` → `hx-get=…/return-modal?target=loan-feedback` + `data-modal-trigger` + `aria-haspopup="dialog"`.
+- `templates/pages/borrower_detail.html` — same migration with `?target=borrower-feedback`.
+
+**Modified i18n (2):**
+- `locales/en.yml` — added 3 keys (`loan.return_modal_title`, `_body`, `_confirm`); dropped `loan.return_confirm`.
+- `locales/fr.yml` — same shape, FR copy.
+
+**Modified E2E (3):**
+- `tests/e2e/helpers/loans.ts` — `returnLoanFromLoansPage` rewritten for modal flow (no more `page.once("dialog")`); NEW `returnLoanFromBorrowerDetail` exported.
+- `tests/e2e/specs/journeys/loan-returns.spec.ts` — scan-card AC6 test rewritten for modal flow; new scanner-guard burst regression test (AC9).
+- `tests/e2e/specs/journeys/borrower-loans.spec.ts` — dropped inline helper, imports shared one from `helpers/loans.ts`.
+
+**Modified docs (1):**
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — story 9-11 status flip ready-for-dev → in-progress → review (this PR's responsibility per Foundation Rule #16).

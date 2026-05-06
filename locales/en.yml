@@ -437,7 +437,9 @@ loan:
   returned_no_location: "Loan returned: %{label} (no previous location)"
   already_returned: "This loan has already been returned."
   overdue: Overdue
-  return_confirm: "Return this volume?"
+  return_modal_title: "Mark loan as returned?"
+  return_modal_body: "The volume will be available again."
+  return_modal_confirm: "Mark as returned"
   not_found: "Loan not found."
   col_action: Action
 session:

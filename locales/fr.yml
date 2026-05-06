@@ -437,7 +437,9 @@ loan:
   returned_no_location: "Prêt retourné : %{label} (aucun emplacement précédent)"
   already_returned: "Ce prêt a déjà été retourné."
   overdue: "En retard"
-  return_confirm: "Retourner ce volume ?"
+  return_modal_title: "Marquer le prêt comme retourné ?"
+  return_modal_body: "Le volume redevient disponible."
+  return_modal_confirm: "Marquer comme retourné"
   not_found: "Prêt introuvable."
   col_action: Action
 session:

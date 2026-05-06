@@ -16,13 +16,13 @@
 
    `body_html` is consumed via `|safe`: the call site is responsible for
    HTML-escaping any interpolated user data BEFORE building it. CSP-clean. #}
-{%- macro modal(variant, title, body_html, confirm_label, cancel_label, action_url, action_method, csrf_token) -%}
+{%- macro modal(variant, title, body_html, confirm_label, cancel_label, action_url, action_method, csrf_token, hx_target, hx_swap) -%}
 <dialog open aria-modal="true" data-modal-variant="{{ variant }}" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 rounded-lg">
     <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-md w-full mx-4 border border-stone-200 dark:border-stone-700">
         <div class="p-6">
             <h3 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ title }}</h3>
             <div class="text-stone-700 dark:text-stone-300 mb-4">{{ body_html|safe }}</div>
-            <form{% if action_method == "DELETE" %} hx-delete="{{ action_url }}"{% else %} hx-post="{{ action_url }}"{% endif %} hx-swap="none" class="flex gap-2">
+            <form{% if action_method == "DELETE" %} hx-delete="{{ action_url }}"{% else %} hx-post="{{ action_url }}"{% endif %} hx-swap="{{ hx_swap }}"{% if hx_target != "" %} hx-target="{{ hx_target }}"{% endif %} class="flex gap-2">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
                 <button type="button" data-modal-default-focus data-modal-cancel class="flex-1 px-4 py-2 bg-stone-300 dark:bg-stone-700 rounded-md font-semibold hover:bg-stone-400 dark:hover:bg-stone-600">{{ cancel_label }}</button>
                 {% if variant == "delete" || variant == "delete-forever" %}

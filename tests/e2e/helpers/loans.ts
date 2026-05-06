@@ -169,18 +169,21 @@ export async function createLoan(
 /**
  * Return a loan from the /loans page.
  *
- * Registers the dialog handler BEFORE clicking (dialog handler registration is
- * async in Playwright), clicks the Return button in the row matching the
- * volume label, and waits for the row to disappear from `#loans-table-body`.
+ * Story 9-11 — the Return button now opens a UX-DR8 confirmation modal
+ * (`<dialog open aria-modal="true">` mounted into `#modal-slot`) instead
+ * of firing a browser `confirm()` dialog. The flow is:
+ *   1. Click the row's Return button → HTMX fetches the modal fragment
+ *   2. Wait for `#modal-slot dialog[open]` to appear
+ *   3. Click `[data-modal-confirm]` → POST `/loans/:id/return`
+ *   4. Wait for the row to disappear from `#loans-table-body`
+ *
+ * Replaces the pre-9-11 `page.once("dialog", ...)` handler — the browser
+ * confirm path is gone, so dialog interception is dead code now.
  */
 export async function returnLoanFromLoansPage(
   page: Page,
   volumeLabel: string,
 ): Promise<void> {
-  // Must register BEFORE the click — registration is async in Playwright.
-  page.once("dialog", (dialog) => {
-    dialog.accept().catch(() => {});
-  });
   // Word-boundary match so `V0070` does not match rows containing `V00701`,
   // `V00702`, etc. Substring semantics in Playwright's `hasText: string`
   // option have bitten per-spec V-code conventions in the past. Case-
@@ -195,9 +198,43 @@ export async function returnLoanFromLoansPage(
     .first();
   await expect(returnBtn).toBeVisible({ timeout: 3000 });
   await returnBtn.click();
-  // Wait for the row to disappear — HTMX swaps #loans-table-body on success
+  // Wait for the modal to mount — the `<dialog open>` selector matches the
+  // scanner-guard 7-5 contract, so this assertion doubles as proof that the
+  // modal entered the slot before we click Confirm.
+  const modalDialog = page.locator("#modal-slot dialog[open]");
+  await expect(modalDialog).toBeVisible({ timeout: 5000 });
+  await modalDialog.locator("[data-modal-confirm]").click();
+  // Wait for the row to disappear — POST /loans/:id/return commits, then
+  // the modal closes and the feedback HTML lands in `#loan-feedback`.
   await expect(page.locator("#loans-table-body")).not.toContainText(
     volumeLabel,
     { timeout: 10000 },
   );
+}
+
+/**
+ * Return a loan from the borrower detail page (the active-loans table).
+ *
+ * Story 9-11 — same modal flow as `returnLoanFromLoansPage`, but the row
+ * lives in `#active-loans-section` and the feedback target after Confirm
+ * is `#borrower-feedback`. Relocated from the inline spec helper into
+ * this shared module per Foundation Rule #1 (DRY) — both helpers share
+ * 90% of their body modulo the row container selector.
+ */
+export async function returnLoanFromBorrowerDetail(
+  page: Page,
+  volumeLabel: string,
+): Promise<void> {
+  const activeLoans = page.locator("#active-loans-section");
+  const returnBtn = activeLoans
+    .locator('button:has-text("Return"), button:has-text("Retourner")')
+    .first();
+  await expect(returnBtn).toBeVisible({ timeout: 3000 });
+  await returnBtn.click();
+  const modalDialog = page.locator("#modal-slot dialog[open]");
+  await expect(modalDialog).toBeVisible({ timeout: 5000 });
+  await modalDialog.locator("[data-modal-confirm]").click();
+  await expect(activeLoans).not.toContainText(volumeLabel, {
+    timeout: 10000,
+  });
 }

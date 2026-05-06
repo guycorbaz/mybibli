@@ -119,11 +119,12 @@
                     </td>
                     {% if role == "librarian" || role == "admin" %}
                     <td class="px-4 py-3">
-                        <button hx-post="/loans/{{ loan.id }}/return"
-                                hx-confirm="{{ confirm_label }}"
-                                hx-target="#loan-feedback"
+                        <button hx-get="/loans/{{ loan.id }}/return-modal?target=loan-feedback"
+                                hx-target="#modal-slot"
                                 hx-swap="innerHTML"
-                                hx-disabled-elt="this"
+                                data-modal-trigger
+                                aria-haspopup="dialog"
+                                aria-expanded="false"
                                 class="px-3 py-1 text-sm font-medium text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50">
                             {{ return_label }}
                         </button>

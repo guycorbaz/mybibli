@@ -1,9 +1,10 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import {
   createBorrower,
   createLoan,
+  returnLoanFromBorrowerDetail,
   scanTitleAndVolume,
 } from "../../helpers/loans";
 
@@ -13,34 +14,6 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
   test.beforeEach(async ({ page }) => {
     await loginAs(page);
   });
-
-  /**
-   * Return a loan from the borrower detail page (not from /loans).
-   * Registers the dialog handler BEFORE clicking and waits for the row to
-   * disappear from the borrower's active loans section.
-   */
-  async function returnLoanFromBorrowerDetail(
-    page: Page,
-    volumeLabel: string,
-  ): Promise<void> {
-    page.once("dialog", (dialog) => {
-      dialog.accept().catch(() => {});
-    });
-    // Scope the Return button to the active loans section so loan-history
-    // or other sections on the detail page cannot pick up a stale button.
-    const activeLoans = page.locator("#active-loans-section");
-    const returnBtn = activeLoans
-      .locator('button:has-text("Return"), button:has-text("Retourner")')
-      .first();
-    await expect(returnBtn).toBeVisible({ timeout: 3000 });
-    await returnBtn.click();
-    // Wait for the volume label to disappear from the ACTIVE LOANS section.
-    // Asserting on body would false-fail if the label appears elsewhere
-    // (flash message, loan history, breadcrumbs).
-    await expect(activeLoans).not.toContainText(volumeLabel, {
-      timeout: 10000,
-    });
-  }
 
   // AC1: Borrower detail shows active loans section
   test("borrower detail page shows active loans section", async ({ page }) => {
