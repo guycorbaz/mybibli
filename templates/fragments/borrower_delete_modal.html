@@ -1,0 +1,15 @@
+{# Story 9-10 — borrower delete confirmation modal.
+   Calls the shared `components/modal.html::modal` macro with the
+   `delete` variant. Body includes pre-translated copy and a 30-day
+   recovery hint. CSP-clean — no inline scripts/styles. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "delete",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "DELETE",
+    csrf_token,
+) %}{% endcall %}

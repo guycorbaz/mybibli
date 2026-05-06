@@ -1,5 +1,7 @@
 app:
   name: mybibli
+common:
+  cancel: Cancel
 browse:
   list_view: List view
   grid_view: Grid view
@@ -403,9 +405,11 @@ borrower:
   cancel: Cancel
   empty_state: "No borrowers yet. Add one to start lending!"
   detail_title: Borrower details
-  confirm_delete: "Delete this borrower?"
   active_loans: Active loans
   no_active_loans: "This borrower has no active loans."
+  delete_modal_title: "Delete borrower %{name}?"
+  delete_modal_body: "This will move the record to Trash. The borrower can be restored from the admin Trash panel within 30 days."
+  delete_modal_confirm: Delete
 loan:
   list_title: Active loans
   new: New loan

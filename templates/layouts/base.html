@@ -24,6 +24,11 @@
     {# Story 8-4: stable mount point for admin modals (delete-confirm, loanable warning).
        Decoupled from the panel so modal lifecycle is independent of the panel re-render. #}
     <div id="admin-modal-slot"></div>
+    {# Story 9-10: stable mount point for the shared UX-DR8 Modal component.
+       Sibling of #admin-modal-slot (NOT a rename — admin modals stay on
+       their dedicated slot for inline-form.js coordination). HTMX swaps
+       modal HTML in via `hx-target="#modal-slot"`. #}
+    <div id="modal-slot"></div>
     <script src="/static/js/scan-field.js"></script>
     <script src="/static/js/search.js"></script>
     <script src="/static/js/browse-mode.js"></script>
@@ -37,6 +42,7 @@
     <script src="/static/js/scanner-guard.js"></script>
     <script src="/static/js/csrf.js"></script>
     <script src="/static/js/inline-form.js"></script>
+    <script src="/static/js/modal.js"></script>
     <script src="/static/js/mybibli.js" defer></script>
     {% block scripts %}{% endblock %}
 </body>

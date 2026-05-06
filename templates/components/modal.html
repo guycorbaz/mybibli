@@ -1,0 +1,39 @@
+{# Modal component (story 9-10 AC1). Canonical UX-DR8 confirmation modal —
+   shared by destructive flows that previously used `hx-confirm=` (Epic 9
+   migration chain 9-10 → 9-14 empties ALLOWED_HX_CONFIRM_SITES).
+
+   Rendered as `<dialog open aria-modal="true">` so scanner-guard 7-5
+   protects it via the MODAL_SELECTOR MutationObserver.
+
+   Variants — all share the body, only the confirm-button color differs.
+     delete         red   — soft-delete (reversible from Trash)
+     delete-forever red   — permanent purge (Trash panel)
+     remove         amber — non-destructive removal (e.g. unassign)
+     warning        indigo — generic confirm (least severe)
+
+   Cancel button is the FIRST tab stop AND carries `data-modal-default-focus`
+   (UX-DR8 invariant — Cancel never destroys). Confirm button is SECOND.
+
+   `body_html` is consumed via `|safe`: the call site is responsible for
+   HTML-escaping any interpolated user data BEFORE building it. CSP-clean. #}
+{%- macro modal(variant, title, body_html, confirm_label, cancel_label, action_url, action_method, csrf_token) -%}
+<dialog open aria-modal="true" data-modal-variant="{{ variant }}" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 rounded-lg">
+    <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-md w-full mx-4 border border-stone-200 dark:border-stone-700">
+        <div class="p-6">
+            <h3 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ title }}</h3>
+            <div class="text-stone-700 dark:text-stone-300 mb-4">{{ body_html|safe }}</div>
+            <form{% if action_method == "DELETE" %} hx-delete="{{ action_url }}"{% else %} hx-post="{{ action_url }}"{% endif %} hx-swap="none" class="flex gap-2">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+                <button type="button" data-modal-default-focus data-modal-cancel class="flex-1 px-4 py-2 bg-stone-300 dark:bg-stone-700 rounded-md font-semibold hover:bg-stone-400 dark:hover:bg-stone-600">{{ cancel_label }}</button>
+                {% if variant == "delete" || variant == "delete-forever" %}
+                <button type="submit" data-modal-confirm class="flex-1 px-4 py-2 text-white rounded-md font-semibold bg-red-600 hover:bg-red-700">{{ confirm_label }}</button>
+                {% else if variant == "remove" %}
+                <button type="submit" data-modal-confirm class="flex-1 px-4 py-2 text-white rounded-md font-semibold bg-amber-600 hover:bg-amber-700">{{ confirm_label }}</button>
+                {% else %}
+                <button type="submit" data-modal-confirm class="flex-1 px-4 py-2 text-white rounded-md font-semibold bg-indigo-600 hover:bg-indigo-700">{{ confirm_label }}</button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</dialog>
+{%- endmacro -%}

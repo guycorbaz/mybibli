@@ -1,5 +1,7 @@
 app:
   name: mybibli
+common:
+  cancel: Annuler
 browse:
   list_view: Vue liste
   grid_view: Vue grille
@@ -403,9 +405,11 @@ borrower:
   cancel: Annuler
   empty_state: "Aucun emprunteur. Ajoutez-en un pour commencer les prêts !"
   detail_title: "Détails de l'emprunteur"
-  confirm_delete: "Supprimer cet emprunteur ?"
   active_loans: "Prêts actifs"
   no_active_loans: "Cet emprunteur n'a aucun prêt actif."
+  delete_modal_title: "Supprimer l'emprunteur %{name} ?"
+  delete_modal_body: "L'enregistrement sera déplacé vers la Corbeille. L'emprunteur peut être restauré depuis la corbeille (panneau Admin) sous 30 jours."
+  delete_modal_confirm: Supprimer
 loan:
   list_title: "Prêts actifs"
   new: "Nouveau prêt"

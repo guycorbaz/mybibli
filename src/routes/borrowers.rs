@@ -165,7 +165,6 @@ pub struct BorrowerDetailTemplate {
     pub phone_label: String,
     pub edit_label: String,
     pub delete_label: String,
-    pub confirm_delete: String,
     pub active_loans: Vec<LoanWithDetails>,
     pub active_loans_label: String,
     pub no_active_loans_label: String,
@@ -227,7 +226,6 @@ pub async fn borrower_detail(
         phone_label: rust_i18n::t!("borrower.phone", locale = loc).to_string(),
         edit_label: rust_i18n::t!("borrower.edit", locale = loc).to_string(),
         delete_label: rust_i18n::t!("borrower.delete", locale = loc).to_string(),
-        confirm_delete: rust_i18n::t!("borrower.confirm_delete", locale = loc).to_string(),
         active_loans,
         active_loans_label: rust_i18n::t!("borrower.active_loans", locale = loc).to_string(),
         no_active_loans_label: rust_i18n::t!("borrower.no_active_loans", locale = loc).to_string(),
@@ -369,6 +367,89 @@ pub async fn update_borrower(
 
     tracing::info!(borrower_id = id, "Borrower updated");
     Ok(Redirect::to(&format!("/borrower/{id}")))
+}
+
+// ─── Delete confirmation modal (story 9-10) ─────────────
+
+#[derive(Template)]
+#[template(path = "fragments/borrower_delete_modal.html")]
+pub struct BorrowerDeleteModalTemplate {
+    pub title: String,
+    pub body_html: String,
+    pub confirm_label: String,
+    pub cancel_label: String,
+    pub action_url: String,
+    pub csrf_token: String,
+}
+
+/// `GET /borrower/:id/delete-modal` — returns the rendered UX-DR8 Modal
+/// fragment for the destructive delete-borrower flow. Admin-only. Direct
+/// browser navigation (no `HX-Request` header) returns 405 — the modal
+/// fragment is meaningless without the page context.
+pub async fn delete_modal(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    HxRequest(is_htmx): HxRequest,
+    Path(id): Path<u64>,
+) -> Result<axum::response::Response, AppError> {
+    // Preserve the borrower-detail return path so an anonymous user who
+    // hits this URL directly (or whose session expired) lands back on the
+    // borrower page after login, not on /home.
+    session.require_role_with_return(Role::Admin, &format!("/borrower/{id}"))?;
+    let pool = &state.pool;
+    let loc = locale.0;
+
+    if !is_htmx {
+        // The route DOES accept GET — but only via HTMX. 405 + Allow: GET
+        // truthfully advertises the method without misleading proxies/
+        // conformance tools (the previous Allow: OPTIONS was incorrect).
+        return Ok((
+            axum::http::StatusCode::METHOD_NOT_ALLOWED,
+            [(axum::http::header::ALLOW, "GET")],
+            String::new(),
+        )
+            .into_response());
+    }
+
+    let borrower = BorrowerModel::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
+        })?;
+
+    // Title carries the borrower name via `%{name}` interpolation. Pass
+    // the RAW name through `t!()` and let Askama's default auto-escape
+    // (on `{{ title }}` in the macro) handle HTML safety. Pre-escaping
+    // would double-escape (`<` → `&lt;` → `&amp;lt;`).
+    let title = rust_i18n::t!(
+        "borrower.delete_modal_title",
+        locale = loc,
+        name = borrower.name.as_str()
+    )
+    .to_string();
+    let body_text = rust_i18n::t!("borrower.delete_modal_body", locale = loc).to_string();
+    // Body has no user-supplied interpolation; the i18n value is controlled.
+    // Wrap in <p> and ship via `|safe` — no escape needed.
+    let body_html = format!("<p>{body_text}</p>");
+
+    tracing::debug!(borrower_id = id, "delete modal requested");
+
+    let template = BorrowerDeleteModalTemplate {
+        title,
+        body_html,
+        confirm_label: rust_i18n::t!("borrower.delete_modal_confirm", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("common.cancel", locale = loc).to_string(),
+        action_url: format!("/borrower/{}", borrower.id),
+        csrf_token: session.csrf_token.clone(),
+    };
+
+    match template.render() {
+        Ok(html) => Ok(Html(html).into_response()),
+        Err(e) => Err(AppError::Internal(format!(
+            "borrower delete modal render: {e}"
+        ))),
+    }
 }
 
 // ─── Delete ─────────────────────────────────────────────

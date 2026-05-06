@@ -1,0 +1,15 @@
+{# Test-only wrapper around `components/modal.html::modal`. Lives in
+   templates/ so Askama can find it at compile time. Used by the
+   `src/routes/modal_tests.rs` unit tests to exercise each of the 4
+   variants (and the invalid-variant fallback) per AC8 of story 9-10. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    variant,
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    action_method,
+    csrf_token,
+) %}{% endcall %}
