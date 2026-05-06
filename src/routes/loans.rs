@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::Extension;
 use axum::extract::{OriginalUri, Path, Query, State};
-use axum::http::{StatusCode, header};
+use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use serde::Deserialize;
 
@@ -306,21 +306,18 @@ pub async fn return_modal_handler(
     let loc = locale.0;
 
     if !is_htmx {
-        return Ok((
-            StatusCode::METHOD_NOT_ALLOWED,
-            [(header::ALLOW, "GET")],
-            String::new(),
-        )
-            .into_response());
+        return Ok(StatusCode::METHOD_NOT_ALLOWED.into_response());
     }
 
-    // 404 if the loan is missing OR if it has already been returned —
-    // refuse to render a confirmation that would no-op anyway.
+    // 404 if the loan row is missing; 409 Conflict if it exists but has
+    // already been returned — the row exists, the action is just a no-op
+    // given current state. 409 is the standard HTTP semantics for "exists
+    // but state forbids the action" (see #133/#134-adjacent review notes).
     let loan = LoanModel::find_by_id(pool, loan_id).await?.ok_or_else(|| {
         AppError::NotFound(rust_i18n::t!("loan.not_found", locale = loc).to_string())
     })?;
     if loan.returned_at.is_some() {
-        return Err(AppError::NotFound(
+        return Err(AppError::Conflict(
             rust_i18n::t!("loan.already_returned", locale = loc).to_string(),
         ));
     }
@@ -333,7 +330,7 @@ pub async fn return_modal_handler(
 
     let title = rust_i18n::t!("loan.return_modal_title", locale = loc).to_string();
     let body_text = rust_i18n::t!("loan.return_modal_body", locale = loc).to_string();
-    let body_html = format!("<p>{body_text}</p>");
+    let body_html = format!("<p>{}</p>", crate::utils::html_escape(&body_text));
 
     tracing::debug!(loan_id, target, "return modal requested");
 
@@ -441,6 +438,7 @@ fn loan_row_html(loan: &LoanWithDetails, highlight: bool, loc: &str) -> String {
             <button hx-get="/loans/{id}/return-modal?target=scan-result"
                     hx-target="#modal-slot"
                     hx-swap="innerHTML"
+                    hx-disabled-elt="this"
                     data-modal-trigger
                     aria-haspopup="dialog"
                     aria-expanded="false"

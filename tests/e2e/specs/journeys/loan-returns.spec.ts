@@ -148,6 +148,9 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
     const modalDialog = page.locator("#modal-slot dialog[open]");
     await expect(modalDialog).toBeVisible({ timeout: 5000 });
     await modalDialog.locator("[data-modal-confirm]").click();
+    // Wait for the modal to close so we know the POST round-trip
+    // completed before navigating away (avoids racing a partial swap).
+    await expect(modalDialog).not.toBeVisible({ timeout: 5000 });
 
     // Verify loan is gone from the list
     await page.goto("/loans");

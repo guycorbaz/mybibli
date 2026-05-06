@@ -22,7 +22,7 @@
         <div class="p-6">
             <h3 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ title }}</h3>
             <div class="text-stone-700 dark:text-stone-300 mb-4">{{ body_html|safe }}</div>
-            <form{% if action_method == "DELETE" %} hx-delete="{{ action_url }}"{% else %} hx-post="{{ action_url }}"{% endif %} hx-swap="{{ hx_swap }}"{% if hx_target != "" %} hx-target="{{ hx_target }}"{% endif %} class="flex gap-2">
+            <form{% if action_method == "DELETE" %} hx-delete="{{ action_url }}"{% else %} hx-post="{{ action_url }}"{% endif %}{% if hx_swap != "" %} hx-swap="{{ hx_swap }}"{% endif %}{% if hx_target != "" %} hx-target="{{ hx_target }}"{% endif %} class="flex gap-2">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
                 <button type="button" data-modal-default-focus data-modal-cancel class="flex-1 px-4 py-2 bg-stone-300 dark:bg-stone-700 rounded-md font-semibold hover:bg-stone-400 dark:hover:bg-stone-600">{{ cancel_label }}</button>
                 {% if variant == "delete" || variant == "delete-forever" %}

@@ -1,6 +1,6 @@
 # Story 9.11: Migrate hx-confirm — return loan (loans.html + borrower_detail.html)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -320,3 +320,35 @@ Decision: extend scope to also migrate the scan-card. Otherwise dropping the i18
 
 **Modified docs (1):**
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — story 9-11 status flip ready-for-dev → in-progress → review (this PR's responsibility per Foundation Rule #16).
+
+### Review Findings
+
+Code review run on 2026-05-06 with 3 adversarial layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor). 22 raw findings → 16 retained after triage (8 patch, 4 decision-needed, 4 defer), 7 dismissed as noise/justified-drift.
+
+**Decision-needed (4) — must be resolved first:**
+
+- [x] [Review][Decision] Hardcoded `/loans` post-login redirect ignores caller surface — accepted as documented quirk; KF filed as #133. Sources: blind+edge+auditor.
+- [x] [Review][Decision] 404 vs 409 for already-returned loan — **resolved: switch to 409 Conflict.** Promoted to patch (modal handler + test). Note: existing POST `/loans/:id/return` still returns 400 BadRequest for the same condition (scope-frozen by AC13); divergence to be addressed in a follow-up. Sources: blind.
+- [x] [Review][Decision] Frozen modal on concurrent return — accepted as documented quirk; KF filed as #134. Affects all UX-DR8 modals (9-10/9-11/9-12+). Fix deferred until UX decision on in-modal vs page-feedback error rendering. Sources: edge.
+- [x] [Review][Decision] AC9 missing E2E assertions — **resolved: accepted gap.** The behaviours (Escape close, tab order, focus restoration) are inherent to Modal foundation 9-10 and tested there. Reproducing them per migration story would grow the E2E suite without incremental regression coverage. AC9 met in spirit, not in letter — Epic 9 retrospective should tighten the wording. Sources: auditor.
+
+**Patch (9) — applied 2026-05-06:**
+
+- [x] [Review][Patch] `Allow: GET` header self-contradicts 405 — dropped header, kept 405 status. `src/routes/loans.rs`
+- [x] [Review][Patch] XSS hazard via translator-controlled string + `|safe` — `body_text` now escaped via `crate::utils::html_escape` before `format!`. `src/routes/loans.rs:336`
+- [x] [Review][Patch] Restored `hx-disabled-elt="this"` on Return triggers — `templates/pages/loans.html`, `templates/pages/borrower_detail.html`, `src/routes/loans.rs::loan_row_html`
+- [x] [Review][Patch] Strengthened security test — `assert!(!html.contains("evil-injected"))` catches any echo path, not just `hx-target=`. `tests/return_loan_modal.rs::get_return_modal_target_invalid_falls_back_to_loan_feedback`
+- [x] [Review][Patch] E2E scan-card race — added `await expect(modalDialog).not.toBeVisible()` after Confirm click before `page.goto("/loans")`. `tests/e2e/specs/journeys/loan-returns.spec.ts`
+- [x] [Review][Patch] `404_for_already_returned_loan` test renamed to `409_for_…` and now asserts body contains "already been returned" — locks status+message pairing. `tests/return_loan_modal.rs`
+- [x] [Review][Patch] Empty `hx_swap` no longer renders `hx-swap=""` — conditional render `{% if hx_swap != "" %}…{% endif %}`. `templates/components/modal.html:25`
+- [x] [Review][Patch] Switched modal handler 404 → 409 Conflict for already-returned (D2 resolved) — `AppError::NotFound` → `AppError::Conflict`. `src/routes/loans.rs:322`. POST handler still returns 400 for the same condition (AC13 frozen); follow-up alignment deferred.
+- [x] [Review][Patch] Scanner-guard test flakiness — `simulateScan` skips `.focus()` when selector is `"body"` so focus stays on the actual focused element (Cancel). `tests/e2e/helpers/scanner.ts`
+
+**Local gate after patches** — `SQLX_OFFLINE=true cargo check` clean; `cargo clippy --all-targets -- -D warnings` clean; `cargo test --lib modal_tests` 8/8; `cargo test --lib templates_audit` 4/4; `cargo test --lib loans::tests` 8/8; `cargo test --test return_loan_modal --no-run` compiles; `npx tsc --noEmit` clean. DB-backed integration tests + E2E full lane to be re-run before push.
+
+**Deferred (4) — pre-existing or out-of-scope, route to GitHub Issues per Foundation Rule #11:**
+
+- [x] [Review][Defer] Macro `("", "none")` magic sentinels are fragile — `templates/components/modal.html` — deferred, pre-existing 9-10 macro design
+- [x] [Review][Defer] `<dialog open>` not promoted via `showModal()` (not top-layer) — `templates/components/modal.html` — deferred, pre-existing 9-10 design choice
+- [x] [Review][Defer] Add unit test asserting each `FEEDBACK_TARGETS` entry exists as `id=` attribute under `templates/` — `src/routes/loans.rs` — deferred, preventive guard not blocking
+- [x] [Review][Defer] Add bidirectional EN/FR locale parity test — `src/i18n/audit.rs` — deferred, Epic 9 follow-up

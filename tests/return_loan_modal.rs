@@ -303,8 +303,11 @@ async fn get_return_modal_returns_404_for_nonexistent_loan(pool: MySqlPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn get_return_modal_returns_404_for_already_returned_loan(pool: MySqlPool) {
-    // Refuse to render a confirmation that would no-op. AC1 spec.
+async fn get_return_modal_returns_409_for_already_returned_loan(pool: MySqlPool) {
+    // The row exists but the action is a no-op given current state — 409
+    // Conflict is the standard HTTP semantics. Distinct from the 404 path
+    // (loan row missing) so clients can differentiate; body assertion locks
+    // the message-vs-status pairing.
     let loan_id = make_active_loan(&pool, 4).await;
     mark_loan_returned(&pool, loan_id).await;
     let lib_cookie = seed_session(&pool, "librarian").await;
@@ -319,7 +322,12 @@ async fn get_return_modal_returns_404_for_already_returned_loan(pool: MySqlPool)
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let html = body_text(resp).await;
+    assert!(
+        html.contains("already been returned") || html.contains("déjà"),
+        "409 body must carry the loan.already_returned message; got: {html}"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -444,8 +452,8 @@ async fn get_return_modal_target_invalid_falls_back_to_loan_feedback(pool: MySql
         "invalid target must fall back to the safe default; got: {html}"
     );
     assert!(
-        !html.contains("hx-target=\"#evil-injected\""),
-        "invalid target MUST NOT round-trip into the rendered hx-target; got: {html}"
+        !html.contains("evil-injected"),
+        "invalid target MUST NOT echo into the rendered HTML at all (not just hx-target); got: {html}"
     );
 }
 

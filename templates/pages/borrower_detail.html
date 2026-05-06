@@ -78,6 +78,7 @@
                             <button hx-get="/loans/{{ loan.id }}/return-modal?target=borrower-feedback"
                                     hx-target="#modal-slot"
                                     hx-swap="innerHTML"
+                                    hx-disabled-elt="this"
                                     data-modal-trigger
                                     aria-haspopup="dialog"
                                     aria-expanded="false"
