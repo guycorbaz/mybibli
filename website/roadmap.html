@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Roadmap — mybibli</title>
+  <meta name="description" content="Development roadmap and current sprint status for mybibli — eight epics shipped, one to go before v1." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📚%3C/text%3E%3C/svg%3E" />
+  <script>
+    (function () {
+      var s = localStorage.getItem("mybibli-site-theme");
+      var d = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (s === "dark" || (!s && d)) document.documentElement.classList.add("dark");
+    })();
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: "class" };
+  </script>
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body class="min-h-screen bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100 antialiased">
+
+  <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-indigo-600 focus:px-3 focus:py-2 focus:text-white">Skip to content</a>
+
+  <header class="sticky top-0 z-40 backdrop-blur-md bg-stone-50/80 dark:bg-stone-950/80 border-b border-stone-200 dark:border-stone-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between h-14">
+      <a href="./index.html" class="flex items-center gap-2 font-semibold text-stone-900 dark:text-stone-100">
+        <span aria-hidden="true" class="text-xl">📚</span>
+        <span>mybibli</span>
+        <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 ring-1 ring-amber-200/60 dark:ring-amber-800/50">pre-v1</span>
+      </a>
+      <nav aria-label="Primary" class="hidden md:flex items-center gap-1 text-sm">
+        <a href="./index.html" class="px-3 py-1.5 rounded-md text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-stone-800/60">Home</a>
+        <a href="./about.html" class="px-3 py-1.5 rounded-md text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-stone-800/60">About</a>
+        <a href="./roadmap.html" class="px-3 py-1.5 rounded-md text-indigo-700 dark:text-indigo-300 font-medium" aria-current="page">Roadmap</a>
+        <a href="https://github.com/guycorbaz/mybibli/issues" class="px-3 py-1.5 rounded-md text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-stone-800/60">Issues</a>
+      </nav>
+      <div class="flex items-center gap-1">
+        <button data-theme-toggle type="button" aria-label="Toggle theme" class="p-2 rounded-md text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60">
+          <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3v1.5M12 19.5V21M4.22 4.22l1.06 1.06M18.72 18.72l1.06 1.06M3 12h1.5M19.5 12H21M4.22 19.78l1.06-1.06M18.72 5.28l1.06-1.06M12 7.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9z" /></svg>
+          <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z" /></svg>
+        </button>
+        <a href="https://github.com/guycorbaz/mybibli" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:opacity-90">
+          <svg class="w-4 h-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8a8.013 8.013 0 005.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+        <button data-mobile-nav-toggle type="button" aria-controls="mobile-nav" aria-expanded="false" aria-label="Open menu" class="md:hidden p-2 rounded-md text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+      </div>
+    </div>
+    <div id="mobile-nav" class="hidden md:hidden border-t border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-950 px-4 py-2">
+      <nav aria-label="Mobile" class="flex flex-col">
+        <a href="./index.html" class="py-2 text-stone-600 dark:text-stone-300">Home</a>
+        <a href="./about.html" class="py-2 text-stone-600 dark:text-stone-300">About</a>
+        <a href="./roadmap.html" class="py-2 text-indigo-700 dark:text-indigo-300 font-medium">Roadmap</a>
+        <a href="https://github.com/guycorbaz/mybibli/issues" class="py-2 text-stone-600 dark:text-stone-300">Issues</a>
+        <a href="https://github.com/guycorbaz/mybibli" class="py-2 text-stone-600 dark:text-stone-300">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- ===================== HERO ===================== -->
+    <section class="relative isolate overflow-hidden">
+      <div class="absolute inset-0 grid-pattern opacity-50" aria-hidden="true"></div>
+      <div class="absolute inset-0 hero-gradient" aria-hidden="true"></div>
+      <div class="relative max-w-4xl mx-auto px-4 sm:px-6 pt-16 pb-12">
+        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-600/10 dark:bg-indigo-400/10 ring-1 ring-indigo-600/20 dark:ring-indigo-400/30 text-indigo-700 dark:text-indigo-300 text-xs font-medium">
+          Roadmap
+        </span>
+        <h1 class="mt-5 text-4xl sm:text-5xl font-bold tracking-tight text-stone-900 dark:text-stone-50">Eight down, one to go.</h1>
+        <p class="mt-5 text-lg text-stone-600 dark:text-stone-300 leading-relaxed">
+          Development is organized into nine epics. Eight have shipped; the ninth — <strong class="text-stone-900 dark:text-stone-100">UX polish &amp; accessibility</strong> — is in flight. v1 ships at its close.
+        </p>
+
+        <!-- Progress bar -->
+        <div class="mt-8" aria-label="Overall progress">
+          <div class="flex items-center justify-between text-sm font-medium">
+            <span class="text-stone-600 dark:text-stone-300">Overall progress</span>
+            <span class="text-stone-900 dark:text-stone-100">~94%</span>
+          </div>
+          <div class="mt-2 h-2.5 rounded-full bg-stone-200 dark:bg-stone-800 overflow-hidden">
+            <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-pink-500" style="width: 94%"></div>
+          </div>
+          <p class="mt-2 text-xs text-stone-500 dark:text-stone-400">Source of truth: <code class="font-mono">_bmad-output/implementation-artifacts/sprint-status.yaml</code> in the repo. This page is hand-synced and may lag by a story or two.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== TIMELINE ===================== -->
+    <section class="py-12 sm:py-16">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6">
+        <div class="reveal mb-10">
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50">The nine epics</h2>
+          <p class="mt-3 text-stone-600 dark:text-stone-300">Each one ships behind a draft PR per story, gated by green CI. Each one ends with a retrospective.</p>
+        </div>
+
+        <ol class="relative border-l-2 border-stone-200 dark:border-stone-800 ml-3 sm:ml-4 space-y-10">
+
+          <!-- Epic 1 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-stone-50 dark:ring-stone-950" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-stone-500 dark:text-stone-400">Epic 1</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">Catalog my first book</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">✓ Done</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">Project skeleton, scan field, title CRUD with ISBN scanning, volume management, contributor management, search, async metadata fetch, login. The foundation.</p>
+          </li>
+
+          <!-- Epic 2 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-stone-50 dark:ring-stone-950" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-stone-500 dark:text-stone-400">Epic 2</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">I know where my books are</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">✓ Done</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">Configurable storage-location hierarchy, scan-to-shelve workflow, browse a shelf's contents, contextual guidance.</p>
+          </li>
+
+          <!-- Epic 3 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-stone-50 dark:ring-stone-950" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-stone-500 dark:text-stone-400">Epic 3</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">All my media types</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">✓ Done</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">Provider chain (BnF / Google Books / Open Library / MusicBrainz / OMDb / TMDB / BDGest), media-type-aware scanning, cover image management, metadata editing and re-download.</p>
+          </li>
+
+          <!-- Epic 4 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-stone-50 dark:ring-stone-950" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-stone-500 dark:text-stone-400">Epic 4</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">I manage my loans</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">✓ Done</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">Borrower CRUD &amp; search, loan registration with validation, loan return with automatic location restoration, per-borrower history.</p>
+          </li>
+
+          <!-- Epic 5 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-stone-50 dark:ring-stone-950" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-stone-500 dark:text-stone-400">Epic 5</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">My series &amp; my collection</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">✓ Done</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">E2E test stabilization, contributor deletion guard, series CRUD, title/series assignment with gap detection, BD multi-position omnibus support, browse list/grid toggle, similar titles, Dewey codes.</p>
+          </li>
+
+          <!-- Epic 6 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-stone-50 dark:ring-stone-950" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-stone-500 dark:text-stone-400">Epic 6</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">CI/CD pipeline &amp; reliability</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">✓ Done</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">GitHub Actions pipeline, seeded librarian + login-as for parallel-safe E2E, manually-edited-fields race fix, cleanup of <code class="font-mono text-xs">waitForTimeout</code> with a CI grep gate.</p>
+          </li>
+
+          <!-- Epic 7 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-stone-50 dark:ring-stone-950" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-stone-500 dark:text-stone-400">Epic 7</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">Multi-role access &amp; security</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">✓ Done</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">Anonymous browsing with role gating, session inactivity timeout with keep-alive toast, language toggle (FR/EN), strict Content Security Policy headers, scanner-guard modal interception.</p>
+          </li>
+
+          <!-- Epic 8 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-stone-50 dark:ring-stone-950" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-stone-500 dark:text-stone-400">Epic 8</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">Administration &amp; configuration</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">✓ Done</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">Admin shell with health tab, CSRF synchronizer-token middleware, user administration, reference-data management, system settings, trash view + restore, permanent delete + auto-purge, first-launch setup wizard.</p>
+          </li>
+
+          <!-- Epic 9 (active) -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-indigo-500 timeline-active ring-4 ring-stone-50 dark:ring-stone-950" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-indigo-600 dark:text-indigo-400">Epic 9 — current</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">UX polish &amp; accessibility</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300">In progress · 10/22</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">Dashboard indicators, modal-based confirmations replacing <code class="font-mono text-xs">hx-confirm</code>, status messages and empty states, connection-lost overlay, navbar polish, contextual help tooltips, keyboard shortcuts, responsive layouts, and a final WCAG AA audit.</p>
+          </li>
+
+          <!-- v1 milestone -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[11px] top-1 w-5 h-5 rounded-md bg-pink-500 ring-4 ring-stone-50 dark:ring-stone-950 flex items-center justify-center" aria-hidden="true">
+              <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+            </span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-pink-600 dark:text-pink-400">Milestone</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">v1.0.0 release</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-pink-100 dark:bg-pink-900/40 text-pink-800 dark:text-pink-300">After Epic 9</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">First public release. Pre-built Docker images on Docker Hub, install instructions, release notes.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ===================== EPIC 9 DETAIL ===================== -->
+    <section class="py-12 sm:py-20 bg-stone-100/60 dark:bg-stone-900/40 border-y border-stone-200 dark:border-stone-800">
+      <div class="max-w-5xl mx-auto px-4 sm:px-6">
+        <div class="reveal mb-10">
+          <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-600/10 dark:bg-indigo-400/10 ring-1 ring-indigo-600/20 dark:ring-indigo-400/30 text-indigo-700 dark:text-indigo-300 text-xs font-medium">
+            Active sprint
+          </span>
+          <h2 class="mt-4 text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50">Epic 9 — story by story</h2>
+          <p class="mt-3 text-stone-600 dark:text-stone-300">Twenty-two stories. Ten shipped, twelve in the backlog. Done stories link to their respective merged PR via the issues view on GitHub.</p>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-3">
+          <!-- Done -->
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-1</span>
+            <span class="text-sm text-stone-800 dark:text-stone-200 flex-1">Dashboard global stats card</span>
+            <span class="text-xs text-emerald-700 dark:text-emerald-300 font-medium">done</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-2</span>
+            <span class="text-sm text-stone-800 dark:text-stone-200 flex-1">Dashboard recent additions</span>
+            <span class="text-xs text-emerald-700 dark:text-emerald-300 font-medium">done</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-3</span>
+            <span class="text-sm text-stone-800 dark:text-stone-200 flex-1">Dashboard stats by genre</span>
+            <span class="text-xs text-emerald-700 dark:text-emerald-300 font-medium">done</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-4</span>
+            <span class="text-sm text-stone-800 dark:text-stone-200 flex-1">FilterTag &amp; unshelved indicator</span>
+            <span class="text-xs text-emerald-700 dark:text-emerald-300 font-medium">done</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-5</span>
+            <span class="text-sm text-stone-800 dark:text-stone-200 flex-1">Overdue loans indicator</span>
+            <span class="text-xs text-emerald-700 dark:text-emerald-300 font-medium">done</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-6</span>
+            <span class="text-sm text-stone-800 dark:text-stone-200 flex-1">Series-with-gaps indicator</span>
+            <span class="text-xs text-emerald-700 dark:text-emerald-300 font-medium">done</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-7</span>
+            <span class="text-sm text-stone-800 dark:text-stone-200 flex-1">Recent activity indicators</span>
+            <span class="text-xs text-emerald-700 dark:text-emerald-300 font-medium">done</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-8</span>
+            <span class="text-sm text-stone-800 dark:text-stone-200 flex-1">Loan status, role-aware</span>
+            <span class="text-xs text-emerald-700 dark:text-emerald-300 font-medium">done</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-9</span>
+            <span class="text-sm text-stone-800 dark:text-stone-200 flex-1">Home page scanner state machine</span>
+            <span class="text-xs text-emerald-700 dark:text-emerald-300 font-medium">done</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-10</span>
+            <span class="text-sm text-stone-800 dark:text-stone-200 flex-1">Modal foundation + delete-borrower migration</span>
+            <span class="text-xs text-emerald-700 dark:text-emerald-300 font-medium">done</span>
+          </div>
+
+          <!-- Backlog -->
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-11</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">Migrate return-loan to modal</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-12</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">Migrate delete-contributor to modal</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-13</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">Migrate delete-series to modal</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-14</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">Migrate deactivate-user to modal</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-15</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">Status messages &amp; empty states</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-16</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">Connection-lost overlay</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-17</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">Navbar hamburger &amp; scanner auto-close</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-18</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">Navbar role-visibility polish</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-19</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">Contextual help tooltips</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-20</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">Keyboard shortcuts &amp; cheat-sheet</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-21</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">Responsive per-page layouts</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+          <div class="reveal flex items-center gap-3 p-3 rounded-lg bg-stone-50 dark:bg-stone-900/50 ring-1 ring-dashed ring-stone-300 dark:ring-stone-700">
+            <span class="w-2 h-2 rounded-full bg-stone-400 dark:bg-stone-600" aria-hidden="true"></span>
+            <span class="text-xs font-mono text-stone-500 dark:text-stone-400">9-22</span>
+            <span class="text-sm text-stone-700 dark:text-stone-300 flex-1">WCAG AA final audit</span>
+            <span class="text-xs text-stone-500 dark:text-stone-400 font-medium">backlog</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== BEYOND v1 ===================== -->
+    <section class="py-16 sm:py-20">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6">
+        <div class="reveal">
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50">Beyond v1</h2>
+          <p class="mt-3 text-stone-600 dark:text-stone-300 leading-relaxed">
+            Post-v1 plans are tracked openly as GitHub Issues with the <code class="font-mono text-sm">type:change-request</code> label. Likely directions:
+          </p>
+          <ul class="mt-5 space-y-2 text-stone-600 dark:text-stone-300 leading-relaxed marker:text-indigo-500">
+            <li>Pre-built Docker Hub images and a one-line install script.</li>
+            <li>An inline read-status workflow (currently / finished / abandoned) on volumes.</li>
+            <li>A small mobile-friendly "scan a barcode at a friend's place" shortcut.</li>
+            <li>Backup &amp; restore from the admin panel.</li>
+            <li>An optional read-only public catalog for households that want one.</li>
+          </ul>
+          <p class="mt-5 text-stone-600 dark:text-stone-300 leading-relaxed">
+            None of these are committed; they're directions. The shape of v2 will depend on what people actually use v1 for.
+          </p>
+        </div>
+
+        <div class="mt-12 reveal flex flex-wrap gap-3">
+          <a href="https://github.com/guycorbaz/mybibli/issues" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-indigo-600 text-white font-medium shadow-sm hover:bg-indigo-700">
+            Browse open issues
+          </a>
+          <a href="https://github.com/guycorbaz/mybibli/issues/new/choose" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-medium ring-1 ring-stone-300 dark:ring-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700">
+            Open a new issue
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-stone-200 dark:border-stone-800 py-10">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between text-sm">
+      <div class="flex items-center gap-2 text-stone-600 dark:text-stone-400">
+        <span aria-hidden="true">📚</span>
+        <span><strong class="text-stone-900 dark:text-stone-100">mybibli</strong> — AGPL-3.0-or-later</span>
+      </div>
+      <nav aria-label="Footer" class="flex flex-wrap gap-x-5 gap-y-2 text-stone-500 dark:text-stone-400">
+        <a href="./about.html" class="hover:text-stone-900 dark:hover:text-stone-100">About</a>
+        <a href="./roadmap.html" class="hover:text-stone-900 dark:hover:text-stone-100">Roadmap</a>
+        <a href="https://github.com/guycorbaz/mybibli" class="hover:text-stone-900 dark:hover:text-stone-100">GitHub</a>
+        <a href="https://github.com/guycorbaz/mybibli/issues" class="hover:text-stone-900 dark:hover:text-stone-100">Issues</a>
+        <a href="https://github.com/guycorbaz/mybibli/blob/main/LICENSE" class="hover:text-stone-900 dark:hover:text-stone-100">License</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="./js/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>About — mybibli</title>
+  <meta name="description" content="What mybibli is, who it's for, and why it exists. A self-hosted personal library cataloging app." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📚%3C/text%3E%3C/svg%3E" />
+  <script>
+    (function () {
+      var s = localStorage.getItem("mybibli-site-theme");
+      var d = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (s === "dark" || (!s && d)) document.documentElement.classList.add("dark");
+    })();
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: "class" };
+  </script>
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body class="min-h-screen bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100 antialiased">
+
+  <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-indigo-600 focus:px-3 focus:py-2 focus:text-white">Skip to content</a>
+
+  <header class="sticky top-0 z-40 backdrop-blur-md bg-stone-50/80 dark:bg-stone-950/80 border-b border-stone-200 dark:border-stone-800">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between h-14">
+      <a href="./index.html" class="flex items-center gap-2 font-semibold text-stone-900 dark:text-stone-100">
+        <span aria-hidden="true" class="text-xl">📚</span>
+        <span>mybibli</span>
+        <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 ring-1 ring-amber-200/60 dark:ring-amber-800/50">pre-v1</span>
+      </a>
+      <nav aria-label="Primary" class="hidden md:flex items-center gap-1 text-sm">
+        <a href="./index.html" class="px-3 py-1.5 rounded-md text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-stone-800/60">Home</a>
+        <a href="./about.html" class="px-3 py-1.5 rounded-md text-indigo-700 dark:text-indigo-300 font-medium" aria-current="page">About</a>
+        <a href="./roadmap.html" class="px-3 py-1.5 rounded-md text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-stone-800/60">Roadmap</a>
+        <a href="https://github.com/guycorbaz/mybibli/issues" class="px-3 py-1.5 rounded-md text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-stone-800/60">Issues</a>
+      </nav>
+      <div class="flex items-center gap-1">
+        <button data-theme-toggle type="button" aria-label="Toggle theme" class="p-2 rounded-md text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60">
+          <svg class="hidden dark:block w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3v1.5M12 19.5V21M4.22 4.22l1.06 1.06M18.72 18.72l1.06 1.06M3 12h1.5M19.5 12H21M4.22 19.78l1.06-1.06M18.72 5.28l1.06-1.06M12 7.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9z" /></svg>
+          <svg class="block dark:hidden w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z" /></svg>
+        </button>
+        <a href="https://github.com/guycorbaz/mybibli" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:opacity-90">
+          <svg class="w-4 h-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8a8.013 8.013 0 005.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+        <button data-mobile-nav-toggle type="button" aria-controls="mobile-nav" aria-expanded="false" aria-label="Open menu" class="md:hidden p-2 rounded-md text-stone-600 dark:text-stone-300 hover:bg-stone-200/60 dark:hover:bg-stone-800/60">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+      </div>
+    </div>
+    <div id="mobile-nav" class="hidden md:hidden border-t border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-950 px-4 py-2">
+      <nav aria-label="Mobile" class="flex flex-col">
+        <a href="./index.html" class="py-2 text-stone-600 dark:text-stone-300">Home</a>
+        <a href="./about.html" class="py-2 text-indigo-700 dark:text-indigo-300 font-medium">About</a>
+        <a href="./roadmap.html" class="py-2 text-stone-600 dark:text-stone-300">Roadmap</a>
+        <a href="https://github.com/guycorbaz/mybibli/issues" class="py-2 text-stone-600 dark:text-stone-300">Issues</a>
+        <a href="https://github.com/guycorbaz/mybibli" class="py-2 text-stone-600 dark:text-stone-300">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- ===================== HERO ===================== -->
+    <section class="relative isolate overflow-hidden">
+      <div class="absolute inset-0 grid-pattern opacity-50" aria-hidden="true"></div>
+      <div class="absolute inset-0 hero-gradient" aria-hidden="true"></div>
+      <div class="relative max-w-4xl mx-auto px-4 sm:px-6 pt-16 pb-12">
+        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-600/10 dark:bg-indigo-400/10 ring-1 ring-indigo-600/20 dark:ring-indigo-400/30 text-indigo-700 dark:text-indigo-300 text-xs font-medium">
+          About
+        </span>
+        <h1 class="mt-5 text-4xl sm:text-5xl font-bold tracking-tight text-stone-900 dark:text-stone-50">
+          A library for the way you actually read.
+        </h1>
+        <p class="mt-5 text-lg text-stone-600 dark:text-stone-300 leading-relaxed">
+          mybibli started as a one-person itch — keeping track of what's on which shelf, who borrowed which volume, and which BD volumes are still missing in a series I've half-finished. It grew into a small, opinionated tool that tries to be useful without being heavy.
+        </p>
+      </div>
+    </section>
+
+    <!-- ===================== STORY / WHY ===================== -->
+    <section class="py-12 sm:py-16">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 prose prose-stone dark:prose-invert prose-headings:tracking-tight prose-h2:text-2xl prose-h2:sm:text-3xl prose-h2:font-bold max-w-none">
+
+        <div class="reveal">
+          <h2>Why a self-hosted app?</h2>
+          <p class="text-stone-600 dark:text-stone-300 leading-relaxed">
+            Most existing personal-library apps are either spreadsheets, abandoned mobile apps, or cloud SaaS that wants to know your reading habits. None of those fit. A book collection is a private artifact — it tells you a lot about a household — and shouldn't need an internet connection to be useful.
+          </p>
+          <p class="text-stone-600 dark:text-stone-300 leading-relaxed">
+            mybibli runs on your hardware. A NAS, a small server, a Raspberry Pi 4 — anything that can host Docker. There is no telemetry, no analytics, no phone-home. Metadata enrichment is the one network call out — to public providers like the BnF, Google Books, OpenLibrary, MusicBrainz — and you can disable any of them in the admin panel.
+          </p>
+        </div>
+
+        <div class="reveal mt-12">
+          <h2>Who it's for</h2>
+          <p class="text-stone-600 dark:text-stone-300 leading-relaxed">
+            One household, one library. mybibli is built around <em>shared family use</em>: an admin who set it up, librarians who can catalog and lend, and anonymous browsers (your kids on a tablet) who can search and see what's on a shelf without an account.
+          </p>
+          <p class="text-stone-600 dark:text-stone-300 leading-relaxed">
+            It's not designed to scale to thousands of users or to mediate loans between different libraries. If that's what you need, the open-source ILS world (Koha, Evergreen) is mature and excellent.
+          </p>
+        </div>
+
+        <div class="reveal mt-12">
+          <h2>Design choices that won't change</h2>
+          <ul class="text-stone-600 dark:text-stone-300 leading-relaxed space-y-2 marker:text-indigo-500">
+            <li><strong class="text-stone-900 dark:text-stone-100">Server-rendered HTML.</strong> No SPA, no JSON API as the front-of-house contract. HTMX over the same routes that serve the pages.</li>
+            <li><strong class="text-stone-900 dark:text-stone-100">Compile-time type checking everywhere.</strong> Templates are checked by Askama, queries by SQLx's offline cache, and the routing layer is a typed Axum router.</li>
+            <li><strong class="text-stone-900 dark:text-stone-100">Strict Content Security Policy.</strong> No inline scripts or styles. Every fragment of HTML — server-side or returned to HTMX — is policed by audit tests that fail the build on regression.</li>
+            <li><strong class="text-stone-900 dark:text-stone-100">No background workers framework.</strong> A handful of <code class="font-mono text-sm">tokio::spawn</code> tasks for metadata fetch, provider health pings, anonymous-session purge and soft-delete auto-purge — that's it.</li>
+            <li><strong class="text-stone-900 dark:text-stone-100">Two languages, key-by-key parity.</strong> EN + FR locales, with a unit test that fails if a key exists in one but not the other.</li>
+          </ul>
+        </div>
+
+        <div class="reveal mt-12">
+          <h2>How it's tested</h2>
+          <p class="text-stone-600 dark:text-stone-300 leading-relaxed">
+            Roughly 900 tests across three layers: unit tests for pure logic, <code class="font-mono text-sm">#[sqlx::test]</code> integration tests that get a fresh database per test, and Playwright end-to-end specs that drive a real browser against the full Docker stack. The CI runs Rust tests + clippy + sqlx-prepare check, DB integration tests, and two Playwright lanes — the seeded-stack suite and a dedicated wizard-E2E lane that boots from an empty database.
+          </p>
+          <p class="text-stone-600 dark:text-stone-300 leading-relaxed">
+            Every story merges through a draft PR with green CI. Every epic ends with a retrospective. Every regression gets a test before it gets a fix.
+          </p>
+        </div>
+
+        <div class="reveal mt-12">
+          <h2>License</h2>
+          <p class="text-stone-600 dark:text-stone-300 leading-relaxed">
+            mybibli is licensed under the <strong class="text-stone-900 dark:text-stone-100">GNU Affero General Public License v3.0 or later</strong> (AGPL-3.0-or-later). AGPL was chosen deliberately to keep mybibli and any fork freely modifiable by end users — including forks that are hosted as a service. If you run a modified version, you must offer the corresponding source to your users.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== STACK CARDS ===================== -->
+    <section class="py-12 sm:py-20 bg-stone-100/60 dark:bg-stone-900/40 border-t border-stone-200 dark:border-stone-800">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6">
+        <div class="reveal max-w-2xl mb-10">
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50">The toolchain</h2>
+          <p class="mt-3 text-stone-600 dark:text-stone-300">Everything is open source. No vendor lock-in.</p>
+        </div>
+        <dl class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div class="reveal rounded-lg p-5 bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <dt class="text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">Language</dt>
+            <dd class="mt-1 font-semibold">Rust 2024 edition</dd>
+            <dd class="mt-2 text-sm text-stone-600 dark:text-stone-400">Single statically-linked binary. Memory-safety and a strong type system instead of runtime guards.</dd>
+          </div>
+          <div class="reveal rounded-lg p-5 bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <dt class="text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">Web framework</dt>
+            <dd class="mt-1 font-semibold">Axum 0.8</dd>
+            <dd class="mt-2 text-sm text-stone-600 dark:text-stone-400">Tokio-based, tower middleware, typed extractors. The middleware order at request time is documented and policed.</dd>
+          </div>
+          <div class="reveal rounded-lg p-5 bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <dt class="text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">Database driver</dt>
+            <dd class="mt-1 font-semibold">SQLx 0.8 (MariaDB)</dd>
+            <dd class="mt-2 text-sm text-stone-600 dark:text-stone-400">Compile-time query checking via <code class="font-mono text-xs">cargo sqlx prepare</code>. Soft delete + optimistic locking applied uniformly.</dd>
+          </div>
+          <div class="reveal rounded-lg p-5 bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <dt class="text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">Templates</dt>
+            <dd class="mt-1 font-semibold">Askama 0.15</dd>
+            <dd class="mt-2 text-sm text-stone-600 dark:text-stone-400">Jinja-style with auto HTML-escaping, compiled into Rust types — missing or misnamed fields fail at build time.</dd>
+          </div>
+          <div class="reveal rounded-lg p-5 bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <dt class="text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">Frontend</dt>
+            <dd class="mt-1 font-semibold">HTMX 2.0 + Tailwind 4</dd>
+            <dd class="mt-2 text-sm text-stone-600 dark:text-stone-400">Server-driven UI coordination via custom events. A handful of small ES modules where it's required.</dd>
+          </div>
+          <div class="reveal rounded-lg p-5 bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <dt class="text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">i18n</dt>
+            <dd class="mt-1 font-semibold">rust-i18n</dd>
+            <dd class="mt-2 text-sm text-stone-600 dark:text-stone-400">YAML files compiled into the binary. EN + FR shipping; extra languages are one new file plus the parity test.</dd>
+          </div>
+          <div class="reveal rounded-lg p-5 bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <dt class="text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">Testing</dt>
+            <dd class="mt-1 font-semibold">cargo test + Playwright</dd>
+            <dd class="mt-2 text-sm text-stone-600 dark:text-stone-400">~525 unit, ~95 DB integration, ~160 Playwright E2E. Two CI lanes — seeded-stack and a wizard-E2E lane that boots from an empty database.</dd>
+          </div>
+          <div class="reveal rounded-lg p-5 bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <dt class="text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">Hosting</dt>
+            <dd class="mt-1 font-semibold">Docker Compose</dd>
+            <dd class="mt-2 text-sm text-stone-600 dark:text-stone-400">A small <code class="font-mono text-xs">docker-compose.yml</code>: app + MariaDB. Pre-built images on Docker Hub once v1 ships.</dd>
+          </div>
+          <div class="reveal rounded-lg p-5 bg-white dark:bg-stone-900 ring-1 ring-stone-200 dark:ring-stone-800">
+            <dt class="text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">CI/CD</dt>
+            <dd class="mt-1 font-semibold">GitHub Actions</dd>
+            <dd class="mt-2 text-sm text-stone-600 dark:text-stone-400">Four parallel jobs gate every PR. Branch protections require all green before merge.</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-stone-200 dark:border-stone-800 py-10">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between text-sm">
+      <div class="flex items-center gap-2 text-stone-600 dark:text-stone-400">
+        <span aria-hidden="true">📚</span>
+        <span><strong class="text-stone-900 dark:text-stone-100">mybibli</strong> — AGPL-3.0-or-later</span>
+      </div>
+      <nav aria-label="Footer" class="flex flex-wrap gap-x-5 gap-y-2 text-stone-500 dark:text-stone-400">
+        <a href="./about.html" class="hover:text-stone-900 dark:hover:text-stone-100">About</a>
+        <a href="./roadmap.html" class="hover:text-stone-900 dark:hover:text-stone-100">Roadmap</a>
+        <a href="https://github.com/guycorbaz/mybibli" class="hover:text-stone-900 dark:hover:text-stone-100">GitHub</a>
+        <a href="https://github.com/guycorbaz/mybibli/issues" class="hover:text-stone-900 dark:hover:text-stone-100">Issues</a>
+        <a href="https://github.com/guycorbaz/mybibli/blob/main/LICENSE" class="hover:text-stone-900 dark:hover:text-stone-100">License</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="./js/site.js"></script>
+</body>
+</html>
