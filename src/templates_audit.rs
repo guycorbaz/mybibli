@@ -27,14 +27,13 @@ use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Grandfathered `hx-confirm=` sites — the only templates allowed to carry
-/// this attribute. The count is the exact expected number of occurrences
-/// per file; a mismatch (new destructive button, or an Epic-9 migration
-/// removing one) forces the PR to update this list, which is the whole
-/// point of the audit: a reviewer is always in the loop.
-const ALLOWED_HX_CONFIRM_SITES: &[(&str, usize)] = &[
-    ("templates/fragments/admin_users_row.html", 1),
-];
+/// `hx-confirm=` is FORBIDDEN in all templates (post Epic 9 close).
+/// The empty allowlist is the steady-state contract: any new occurrence
+/// in `templates/` fails `hx_confirm_matches_allowlist` outright. The
+/// audit infrastructure is preserved on purpose — re-introducing a
+/// destructive flow with `hx-confirm=` requires editing this constant
+/// (an explicit, reviewable act), not just adding the attribute.
+const ALLOWED_HX_CONFIRM_SITES: &[(&str, usize)] = &[];
 
 #[test]
 fn no_inline_markup_in_templates() {

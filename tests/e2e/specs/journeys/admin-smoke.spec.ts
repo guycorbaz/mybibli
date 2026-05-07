@@ -143,4 +143,81 @@ test.describe("Epic 8 smoke — admin page shell + Health tab", () => {
     await page.goto("/catalog");
     await expect(page.locator('nav a[href="/admin"]').first()).toBeVisible();
   });
+
+  // ─── Story 9-14 — deactivate user via UX-DR8 Modal ────────────────────
+  // Final migration in the hx-confirm → Modal chain (9.10 → 9.14).
+  // ALLOWED_HX_CONFIRM_SITES = &[] post Epic 9.
+  test("deactivate user via modal", async ({ page }) => {
+    await page.context().clearCookies();
+    await loginAs(page, "admin");
+
+    // Seed a librarian user via the existing 8-3 admin handler. We can't
+    // direct-DB-INSERT (no Playwright global-setup precedent in this
+    // project), so go through POST /admin/users with the meta CSRF token
+    // fetched from the rendered page.
+    const username = `AU-Deact-${Date.now()}`;
+    await page.goto("/admin?tab=users");
+    const csrf = await page.evaluate(() => {
+      return (
+        document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')
+          ?.content || ""
+      );
+    });
+    const seedResp = await page.request.post("/admin/users", {
+      form: {
+        username,
+        password: "deactivate-test-pw",
+        role: "librarian",
+        _csrf_token: csrf,
+      },
+    });
+    if (!seedResp.ok()) {
+      throw new Error(
+        `seedLibrarianUser failed: ${seedResp.status()} ${await seedResp.text()}`,
+      );
+    }
+
+    // Reload so the freshly-created user appears in the table.
+    await page.goto("/admin?tab=users");
+    const row = page.locator(`tr:has-text("${username}")`);
+    await expect(row).toBeVisible();
+    const deactivateBtn = row.getByRole("button", {
+      name: /Deactivate|Désactiver/i,
+    });
+
+    // Paranoid lock: trigger button must NOT carry hx-confirm (the audit
+    // also catches this at the templates layer, but assert at the
+    // rendered-DOM level too for defense-in-depth — mirror of 9-12 / 9-13
+    // review patches).
+    await expect(deactivateBtn).not.toHaveAttribute("hx-confirm", /./);
+
+    // Open modal → verify Cancel is default-focus → Escape closes.
+    // Regression cover for the 9-10 focus-trap inheritance.
+    await deactivateBtn.click();
+    await expect(page.locator("#modal-slot dialog[open]")).toBeVisible();
+    await expect(page.locator("[data-modal-default-focus]")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#modal-slot dialog[open]")).not.toBeVisible();
+
+    // Reopen and confirm the actual deactivate.
+    await deactivateBtn.click();
+    await expect(page.locator("#modal-slot dialog[open]")).toBeVisible();
+    await page.locator("[data-modal-confirm]").click();
+
+    // Modal closes after 200 (modal.js htmx:afterRequest close-on-2xx
+    // contract from 9-12 review patch P4).
+    await expect(page.locator("#modal-slot dialog[open]")).not.toBeVisible();
+
+    // Row swap: librarian row now shows Deactivated status + Reactivate
+    // button (the existing 8-3 contract — preserved by this story).
+    await expect(row).toContainText(/Deactivated|Désactivé/i);
+    await expect(
+      row.getByRole("button", { name: /Reactivate|Réactiver/i }),
+    ).toBeVisible();
+
+    // OOB feedback in #feedback-list (page-level OOB target).
+    await expect(page.locator("#feedback-list")).toContainText(
+      /deactivated|désactivé/i,
+    );
+  });
 });

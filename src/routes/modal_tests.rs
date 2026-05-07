@@ -20,6 +20,7 @@ struct ModalTestWrapper {
     csrf_token: &'static str,
     hx_target: &'static str,
     hx_swap: &'static str,
+    version: i32,
 }
 
 fn render(variant: &'static str, action_method: &'static str) -> String {
@@ -32,6 +33,16 @@ fn render_with_targets(
     hx_target: &'static str,
     hx_swap: &'static str,
 ) -> String {
+    render_full(variant, action_method, hx_target, hx_swap, 0)
+}
+
+fn render_full(
+    variant: &'static str,
+    action_method: &'static str,
+    hx_target: &'static str,
+    hx_swap: &'static str,
+    version: i32,
+) -> String {
     ModalTestWrapper {
         variant,
         title: "Delete Alice?",
@@ -43,6 +54,7 @@ fn render_with_targets(
         csrf_token: "tok123",
         hx_target,
         hx_swap,
+        version,
     }
     .render()
     .expect("render")
@@ -191,6 +203,39 @@ fn warning_variant_default_omits_hx_target_attribute() {
         !html.contains("hx-target="),
         "empty hx_target must NOT emit an hx-target attribute (backward compat \
          with 9-10 callers); got: {html}"
+    );
+}
+
+/// Story 9-14 — version optimistic-locking input is rendered only when
+/// `version != 0`. Existing 9-10..9-13 callers pass `0` (their handlers
+/// don't use optimistic locking on the destructive path) and MUST NOT
+/// see a hidden version input in the output.
+#[test]
+fn version_zero_omits_hidden_input() {
+    let html = render_full("delete", "DELETE", "", "none", 0);
+    assert!(
+        !html.contains("name=\"version\""),
+        "version=0 must omit the hidden version input (9-10..9-13 contract); got: {html}"
+    );
+}
+
+/// Story 9-14 — when `version != 0`, the macro emits a hidden input that
+/// the form submits alongside `_csrf_token`. Used by the admin user
+/// deactivate handler for optimistic-locking guards (8-3 contract).
+#[test]
+fn version_non_zero_renders_hidden_input() {
+    let html = render_full("delete", "POST", "#admin-users-row-42", "outerHTML", 7);
+    assert!(
+        html.contains("name=\"version\" value=\"7\""),
+        "version=7 must render `name=\"version\" value=\"7\"`; got: {html}"
+    );
+    // Lock the input order: _csrf_token first, then version (form
+    // semantics don't depend on order, but the snapshot stability does).
+    let csrf_pos = html.find("name=\"_csrf_token\"").expect("_csrf_token present");
+    let version_pos = html.find("name=\"version\"").expect("version present");
+    assert!(
+        csrf_pos < version_pos,
+        "_csrf_token hidden input must precede version (macro emit order); got: {html}"
     );
 }
 
