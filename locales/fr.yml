@@ -554,7 +554,7 @@ admin:
     form_label_password_edit: "Mot de passe (laisser vide pour conserver l'actuel)"
     form_label_role: "Rôle"
     deactivate_modal_title: "Désactiver l'utilisateur %{username} ?"
-    deactivate_modal_body: "Sa session sera fermée immédiatement et il ne pourra plus se reconnecter avant réactivation."
+    deactivate_modal_body: "Sa session sera fermée immédiatement et cette personne ne pourra plus se reconnecter avant réactivation."
     deactivate_modal_confirm: "Désactiver"
     success_created: "Utilisateur %{username} créé"
     success_updated: "Utilisateur %{username} mis à jour"
