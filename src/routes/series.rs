@@ -543,7 +543,11 @@ pub async fn delete_modal(
     let body_text = rust_i18n::t!("series.delete_modal_body", locale = loc).to_string();
     let body_html = format!("<p>{body_text}</p>");
 
-    tracing::debug!(series_id = id, "delete modal requested");
+    tracing::debug!(
+        series_id = id,
+        user_id = ?session.user_id,
+        "delete modal requested"
+    );
 
     let template = SeriesDeleteModalTemplate {
         title,

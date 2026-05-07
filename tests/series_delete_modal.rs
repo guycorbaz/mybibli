@@ -203,6 +203,9 @@ async fn get_series_delete_modal_returns_200_with_dialog_for_librarian_request(
 #[sqlx::test(migrations = "./migrations")]
 async fn get_series_delete_modal_returns_200_for_admin_request(pool: MySqlPool) {
     // Admin > Librarian: admin also passes the Role::Librarian gate.
+    // Mirrors the librarian-happy-path's full assertion set per AC7
+    // ("same shape") so a regression in the admin path is caught
+    // independently of the librarian path.
     let id = insert_series(&pool, "Beth Admin Series").await;
     let admin_cookie = seed_session(&pool, "admin").await;
     let app = build_router(build_state(pool));
@@ -218,8 +221,41 @@ async fn get_series_delete_modal_returns_200_for_admin_request(pool: MySqlPool) 
 
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_text(resp).await;
-    assert!(html.contains("<dialog open aria-modal=\"true\""));
-    assert!(html.contains("Beth Admin Series"));
+    assert!(
+        html.contains("<dialog open aria-modal=\"true\""),
+        "modal must render the canonical scanner-guard contract; got: {html}"
+    );
+    assert!(
+        html.contains("Beth Admin Series"),
+        "series name must appear in the rendered modal; got: {html}"
+    );
+    assert!(
+        html.contains("data-modal-default-focus"),
+        "Cancel button must carry data-modal-default-focus; got: {html}"
+    );
+    assert!(
+        html.contains(&format!("hx-delete=\"/series/{id}\"")),
+        "Confirm form must hx-delete the singular /series/{{id}} endpoint \
+         (NO /catalog/ prefix — asymmetric with 9-12 contributor path); got: {html}"
+    );
+    assert!(
+        html.contains("hx-target=\"#series-feedback\""),
+        "Confirm form must target #series-feedback so conflict feedback lands \
+         in the action-bar feedback container; got: {html}"
+    );
+    assert!(
+        html.contains("hx-swap=\"innerHTML\""),
+        "Confirm form must use hx-swap=innerHTML to replace previous feedback content; \
+         got: {html}"
+    );
+    assert!(
+        html.contains("data-modal-variant=\"delete\""),
+        "macro must render the `delete` variant marker on the dialog; got: {html}"
+    );
+    assert!(
+        html.contains("name=\"_csrf_token\""),
+        "Confirm form must embed hidden _csrf_token input; got: {html}"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
