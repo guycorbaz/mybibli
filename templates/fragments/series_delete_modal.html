@@ -1,0 +1,18 @@
+{# Story 9-13 — series delete confirmation modal.
+   Calls the shared `components/modal.html::modal` macro with the
+   `delete` variant. Body includes pre-translated assigned-titles hint
+   copy. Hardcoded hx_target = "#series-feedback" because this is the
+   only surface (single source). CSP-clean — no inline scripts/styles. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "delete",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "DELETE",
+    csrf_token,
+    "#series-feedback",
+    "innerHTML",
+) %}{% endcall %}

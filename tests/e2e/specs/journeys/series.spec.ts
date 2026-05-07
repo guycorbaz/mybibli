@@ -68,7 +68,7 @@ test.describe("Series CRUD & Listing (Story 5-3)", () => {
     await expect(page.locator("h1")).toContainText(/Series|Séries/i);
   });
 
-  // Delete test
+  // Delete test (story 9-13: migrated from hx-confirm to UX-DR8 Modal)
   test("delete series removes it from list", async ({ page }) => {
     const SERIES_NAME = `SE-Delete-${Date.now()}`;
 
@@ -78,21 +78,100 @@ test.describe("Series CRUD & Listing (Story 5-3)", () => {
     await page.locator('main button[type="submit"]').last().click();
     await page.waitForURL(/\/series\/\d+/);
 
-    // Set up dialog handler for hx-confirm
-    page.on("dialog", (d) => d.accept());
-
-    // Click delete button
+    // Click delete button → modal opens (no native confirm dialog any more)
     const deleteBtn = page.getByRole("button", {
       name: /delete|supprimer/i,
     });
     await expect(deleteBtn).toBeVisible();
+
+    // Paranoid lock — trigger button must NOT carry hx-confirm
+    // (story 9-13 migration; covers regression beyond the audit's count check)
+    await expect(deleteBtn).not.toHaveAttribute("hx-confirm", /./);
+
+    // First click: open modal, verify default focus, press Escape, verify close
     await deleteBtn.click();
+    await expect(page.locator("#modal-slot dialog[open]")).toBeVisible();
+    await expect(page.locator("[data-modal-default-focus]")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#modal-slot dialog[open]")).not.toBeVisible();
+
+    // Re-open and confirm the actual delete
+    await deleteBtn.click();
+    await expect(page.locator("#modal-slot dialog[open]")).toBeVisible();
+    await page.locator("[data-modal-confirm]").click();
 
     // Should redirect to series list
     await page.waitForURL("**/series", { timeout: 5000 });
 
     // Series should no longer appear in list
     await expect(page.getByText(SERIES_NAME)).not.toBeVisible();
+  });
+
+  // Story 9-13 conflict path — locks the inline-feedback path on conflict.
+  // Note: feedback copy is the generic "error.internal" string ("An internal
+  // error occurred" / "Une erreur interne est survenue"), NOT the meaningful
+  // series.delete_has_titles message — that's a latent UX bug preserved by
+  // 9-13 (see story file's reality-check section + the deferred GH issue).
+  test("delete series with assigned titles shows block message", async ({
+    page,
+  }) => {
+    const SERIES_NAME = `SE-DeleteConflict-${Date.now()}`;
+    // Picked seq=30 to avoid collision with existing assignments at 10/11/12/20.
+    const ISBN = specIsbn("SE", 30);
+
+    // Step 1: create series
+    await page.goto("/series/new");
+    await page.locator("#series-name").fill(SERIES_NAME);
+    await page.locator('main button[type="submit"]').last().click();
+    await page.waitForURL(/\/series\/\d+/);
+    const seriesUrl = page.url();
+
+    // Step 2: create a title via scan
+    await page.goto("/catalog");
+    await page.locator("#scan-field").fill(ISBN);
+    await page.locator("#scan-field").press("Enter");
+    await expect(
+      page.locator(".feedback-entry, .feedback-skeleton"),
+    ).toBeVisible({ timeout: 10000 });
+
+    // Step 3: navigate to the title via home search
+    await page.goto(`/?q=${ISBN}`);
+    const titleLink = page.locator("a[href^='/title/']").first();
+    await expect(titleLink).toBeVisible({ timeout: 15000 });
+    const titleHref = (await titleLink.getAttribute("href"))!;
+    await page.goto(titleHref);
+    await page.waitForURL(/\/title\/\d+/);
+
+    // Step 4: assign the title to the series at position 1
+    await page.locator("#assign-series").selectOption({ label: SERIES_NAME });
+    await page.locator("#assign-position").fill("1");
+    await page.locator("#assign-series-submit").click();
+    await page.waitForURL(/\/title\/\d+/);
+
+    // Step 5: navigate back to the series detail page
+    await page.goto(seriesUrl);
+
+    // Open the delete modal
+    const deleteBtn = page.getByRole("button", {
+      name: /delete|supprimer/i,
+    });
+    await deleteBtn.click();
+    await expect(page.locator("#modal-slot dialog[open]")).toBeVisible();
+
+    // Confirm — server returns 200 + inline feedback HTML; modal closes via
+    // modal.js's `htmx:afterRequest` listener on 2xx.
+    await page.locator("[data-modal-confirm]").click();
+
+    // Modal closes after the 200 response
+    await expect(page.locator("#modal-slot dialog[open]")).not.toBeVisible();
+
+    // #series-feedback contains the GENERIC internal-error copy (latent bug)
+    await expect(page.locator("#series-feedback")).toContainText(
+      /An internal error occurred|Une erreur interne est survenue/i,
+    );
+
+    // No redirect — the series was NOT deleted; URL stays on /series/:id
+    await expect(page).toHaveURL(seriesUrl);
   });
 });
 

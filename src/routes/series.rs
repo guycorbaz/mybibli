@@ -172,7 +172,6 @@ pub struct SeriesDetailTemplate {
     pub gap_label: String,
     pub edit_label: String,
     pub delete_label: String,
-    pub confirm_delete: String,
     pub back_label: String,
     pub positions: Vec<SeriesPositionInfo>,
     pub position_label: String,
@@ -228,7 +227,6 @@ pub async fn series_detail_page(
         gap_label: rust_i18n::t!("series.gap_count", locale = loc).to_string(),
         edit_label: rust_i18n::t!("series.edit", locale = loc).to_string(),
         delete_label: rust_i18n::t!("series.delete", locale = loc).to_string(),
-        confirm_delete: rust_i18n::t!("series.confirm_delete", locale = loc).to_string(),
         back_label: rust_i18n::t!("series.back_to_list", locale = loc).to_string(),
         positions,
         position_label: rust_i18n::t!("series.position", locale = loc).to_string(),
@@ -488,8 +486,85 @@ pub async fn update_series(
     Ok(Redirect::to(&format!("/series/{id}")))
 }
 
+// ─── Delete confirmation modal (story 9-13) ─────────────
+
+#[derive(Template)]
+#[template(path = "fragments/series_delete_modal.html")]
+pub struct SeriesDeleteModalTemplate {
+    pub title: String,
+    pub body_html: String,
+    pub confirm_label: String,
+    pub cancel_label: String,
+    pub action_url: String,
+    pub csrf_token: String,
+}
+
+/// `GET /series/:id/delete-modal` — returns the rendered UX-DR8 Modal
+/// fragment for the destructive delete-series flow. Librarian-gated
+/// (admin > librarian, both pass). Direct browser navigation (no
+/// `HX-Request` header) returns 405 — the modal fragment is meaningless
+/// without page context. No `Allow:` response header is emitted (per the
+/// 9-11 code-review patch — `Allow: GET` self-contradicts 405; we DO
+/// support GET, just not without HTMX).
+pub async fn delete_modal(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    HxRequest(is_htmx): HxRequest,
+    Path(id): Path<u64>,
+) -> Result<axum::response::Response, AppError> {
+    // Preserve the series-detail return path so an anonymous user who
+    // hits this URL directly (or whose session expired) lands back on the
+    // series page after login, not on /home.
+    session.require_role_with_return(Role::Librarian, &format!("/series/{id}"))?;
+    let pool = &state.pool;
+    let loc = locale.0;
+
+    if !is_htmx {
+        return Ok(axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response());
+    }
+
+    let series = SeriesModel::active_find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
+        })?;
+
+    // Title carries the series name via `%{name}` interpolation. Pass
+    // the RAW name through `t!()` and let Askama's default auto-escape
+    // (on `{{ title }}` in the macro) handle HTML safety. Pre-escaping
+    // would double-escape (`<` → `&lt;` → `&amp;lt;`).
+    let title = rust_i18n::t!(
+        "series.delete_modal_title",
+        locale = loc,
+        name = series.name.as_str()
+    )
+    .to_string();
+    let body_text = rust_i18n::t!("series.delete_modal_body", locale = loc).to_string();
+    let body_html = format!("<p>{body_text}</p>");
+
+    tracing::debug!(series_id = id, "delete modal requested");
+
+    let template = SeriesDeleteModalTemplate {
+        title,
+        body_html,
+        confirm_label: rust_i18n::t!("series.delete_modal_confirm", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("common.cancel", locale = loc).to_string(),
+        action_url: format!("/series/{}", series.id),
+        csrf_token: session.csrf_token.clone(),
+    };
+
+    match template.render() {
+        Ok(html) => Ok(Html(html).into_response()),
+        Err(e) => Err(AppError::Internal(format!(
+            "series delete modal render: {e}"
+        ))),
+    }
+}
+
 // ─── Delete ─────────────────────────────────────────────
 
+/// Trigger UX: see GET /series/:id/delete-modal (story 9-13).
 pub async fn delete_series(
     State(state): State<AppState>,
     session: Session,

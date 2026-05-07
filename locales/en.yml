@@ -152,7 +152,6 @@ series:
   gap_count: Missing
   edit: Edit
   delete: Delete
-  confirm_delete: "Delete this series?"
   created: "Series created: %{name}"
   updated: Series updated.
   deleted: Series deleted.
@@ -179,6 +178,9 @@ series:
   ongoing: "ongoing, last known: #%{position}"
   no_assignments: "Not assigned to any series."
   delete_has_titles: "Cannot delete %{name}: %{count} title(s) assigned. Remove all title assignments first."
+  delete_modal_title: "Delete series %{name}?"
+  delete_modal_body: "Assigned titles must be re-attached or detached first."
+  delete_modal_confirm: "Delete"
   omnibus: Omnibus
   end_position: End position
   omnibus_assigned: "Omnibus assigned to %{series} covering positions %{start}-%{end}."
