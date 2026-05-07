@@ -213,11 +213,6 @@ struct ProviderHealthRow {
     last_checked_label: String,
 }
 
-struct UserWithConfirm {
-    user: crate::models::user::UserRow,
-    confirm_deactivate: String,
-}
-
 #[derive(Template)]
 #[template(path = "fragments/admin_users_panel.html")]
 struct AdminUsersPanel {
@@ -246,7 +241,7 @@ struct AdminUsersPanel {
     btn_edit: String,
     btn_deactivate: String,
     btn_reactivate: String,
-    users: Vec<UserWithConfirm>,
+    users: Vec<crate::models::user::UserRow>,
     filter_role: String,
     filter_status: String,
     page: u32,
@@ -280,7 +275,6 @@ struct AdminUsersRow {
     btn_edit: String,
     btn_deactivate: String,
     btn_reactivate: String,
-    confirm_deactivate: String,
     acting_admin_id: u64,
 }
 
@@ -296,6 +290,21 @@ struct AdminUsersFormEdit {
     role_admin: String,
     btn_cancel: String,
     btn_save: String,
+}
+
+/// Story 9-14 — admin user deactivate confirmation modal.
+/// Final migration in the hx-confirm → UX-DR8 Modal chain (Epic 9).
+#[derive(Template)]
+#[template(path = "fragments/admin_user_deactivate_modal.html")]
+struct AdminUserDeactivateModalTemplate {
+    title: String,
+    body_html: String,
+    confirm_label: String,
+    cancel_label: String,
+    action_url: String,
+    csrf_token: String,
+    hx_target: String,
+    version: i32,
 }
 
 // Trash panel (story 8-6 & 8-7)
@@ -578,6 +587,89 @@ pub async fn admin_users_row_view(
     Ok(Html(html))
 }
 
+/// Story 9-14 — Render the UX-DR8 Modal fragment for deactivating a user.
+///
+/// Final migration in the `hx-confirm` → Modal chain (9.10 → 9.14). The
+/// trigger button at `templates/fragments/admin_users_row.html` issues
+/// `hx-get` to this endpoint; on response the dialog is mounted into
+/// `#modal-slot` (`layouts/base.html`). The Confirm form posts to the
+/// existing 8-3 handler `admin_users_deactivate` with the same `version`
+/// + `_csrf_token` body fields the original `<form hx-confirm>` carried.
+///
+/// Direct browser navigation (no `HX-Request` header) returns 405 — the
+/// modal fragment is meaningless without page context. No `Allow:` response
+/// header (per the 9-11 code-review patch — `Allow: GET` self-contradicts
+/// 405 when we DO support GET, just not without HTMX).
+pub async fn admin_users_deactivate_modal(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    HxRequest(is_htmx): HxRequest,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+) -> Result<axum::response::Response, AppError> {
+    // Admin-only feature (mirror of the trigger's enclosing template gate).
+    // _with_return ensures an anonymous direct-URL hitter lands back on
+    // /admin?tab=users after login.
+    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    let pool = &state.pool;
+    let loc = locale.0;
+
+    if !is_htmx {
+        return Ok(axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response());
+    }
+
+    // `UserModel::find_by_id` returns deactivated users too (no
+    // `deleted_at IS NULL` filter). Add an explicit guard so the modal
+    // is never offered for an already-soft-deleted user (audit semantics:
+    // "already deactivated; modal is meaningless"). Protects against
+    // double-deactivation races.
+    let user = UserModel::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
+    if user.deleted_at.is_some() {
+        return Err(AppError::NotFound(
+            rust_i18n::t!("error.not_found", locale = loc).to_string(),
+        ));
+    }
+
+    // Title carries the username via `%{username}` interpolation. Pass
+    // the RAW username through `t!()` and let Askama's default auto-escape
+    // (on `{{ title }}` in the macro) handle HTML safety. Pre-escaping
+    // would double-escape (`<` → `&lt;` → `&amp;lt;`).
+    let title = rust_i18n::t!(
+        "admin.users.deactivate_modal_title",
+        locale = loc,
+        username = user.username.as_str()
+    )
+    .to_string();
+    let body_text = rust_i18n::t!("admin.users.deactivate_modal_body", locale = loc).to_string();
+    let body_html = format!("<p>{body_text}</p>");
+
+    tracing::debug!(
+        target_user_id = id,
+        acting_user_id = ?session.user_id,
+        "deactivate modal requested"
+    );
+
+    let template = AdminUserDeactivateModalTemplate {
+        title,
+        body_html,
+        confirm_label: rust_i18n::t!("admin.users.deactivate_modal_confirm", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("common.cancel", locale = loc).to_string(),
+        action_url: format!("/admin/users/{}/deactivate", user.id),
+        csrf_token: session.csrf_token.clone(),
+        hx_target: format!("#admin-users-row-{}", user.id),
+        version: user.version,
+    };
+
+    match template.render() {
+        Ok(html) => Ok(Html(html).into_response()),
+        Err(e) => Err(AppError::Internal(format!(
+            "admin user deactivate modal render: {e}"
+        ))),
+    }
+}
+
 pub async fn admin_users_update(
     State(state): State<AppState>,
     session: Session,
@@ -677,6 +769,7 @@ pub async fn admin_users_update(
     })
 }
 
+/// Trigger UX: see GET /admin/users/:id/deactivate-modal (story 9-14).
 pub async fn admin_users_deactivate(
     State(state): State<AppState>,
     session: Session,
@@ -1091,7 +1184,7 @@ async fn render_users_panel(
         _ => crate::models::user::UserStatus::Active,
     };
 
-    let users_raw = crate::models::user::UserModel::list_page(
+    let users = crate::models::user::UserModel::list_page(
         pool,
         role_filter,
         status_filter,
@@ -1099,13 +1192,6 @@ async fn render_users_panel(
         25,
     )
     .await?;
-
-    // Wrap users with their confirm messages
-    let users: Vec<UserWithConfirm> = users_raw.into_iter().map(|user| {
-        let confirm_deactivate = rust_i18n::t!("admin.users.confirm_deactivate", locale = loc, username = &user.username)
-            .to_string();
-        UserWithConfirm { user, confirm_deactivate }
-    }).collect();
 
     let total = crate::models::user::UserModel::count_all(
         pool,
@@ -1168,9 +1254,6 @@ async fn render_user_row(
     session: &Session,
     user: &crate::models::user::UserRow,
 ) -> Result<String, AppError> {
-    let confirm_deactivate = rust_i18n::t!("admin.users.confirm_deactivate", locale = loc, username = &user.username)
-        .to_string();
-
     let row = AdminUsersRow {
         user: user.clone(),
         csrf_token: session.csrf_token.clone(),
@@ -1182,7 +1265,6 @@ async fn render_user_row(
         btn_edit: rust_i18n::t!("admin.users.btn_edit", locale = loc).to_string(),
         btn_deactivate: rust_i18n::t!("admin.users.btn_deactivate", locale = loc).to_string(),
         btn_reactivate: rust_i18n::t!("admin.users.btn_reactivate", locale = loc).to_string(),
-        confirm_deactivate,
         acting_admin_id: session.user_id.unwrap_or(0),
     };
 

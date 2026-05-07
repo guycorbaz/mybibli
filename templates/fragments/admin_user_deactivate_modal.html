@@ -1,0 +1,19 @@
+{# Story 9-14 — admin user deactivate confirmation modal.
+   FINAL migration in the hx-confirm → UX-DR8 Modal chain.
+   Calls the shared `components/modal.html::modal` macro with the
+   `delete` variant + POST method + the new 11ᵗʰ-param `version`
+   for optimistic locking. CSP-clean — no inline scripts/styles. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "delete",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "POST",
+    csrf_token,
+    hx_target,
+    "outerHTML",
+    version,
+) %}{% endcall %}

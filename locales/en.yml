@@ -553,7 +553,9 @@ admin:
     form_label_password: Password
     form_label_password_edit: "Password (leave blank to keep current)"
     form_label_role: Role
-    confirm_deactivate: "Deactivate %{username}? They'll be signed out immediately and cannot log back in until reactivated."
+    deactivate_modal_title: "Deactivate user %{username}?"
+    deactivate_modal_body: "They will be logged out immediately and cannot log back in until reactivated."
+    deactivate_modal_confirm: "Deactivate"
     success_created: "User %{username} created"
     success_updated: "User %{username} updated"
     success_deactivated: "User %{username} deactivated (%{count} session(s) ended)"

@@ -14,9 +14,7 @@
             </tr>
         </thead>
         <tbody>
-            {% for item in users %}
-                {% let user = item.user %}
-                {% let confirm_deactivate = item.confirm_deactivate %}
+            {% for user in users %}
                 {% include "fragments/admin_users_row.html" %}
             {% endfor %}
         </tbody>
