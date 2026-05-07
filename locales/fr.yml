@@ -2,6 +2,20 @@ app:
   name: mybibli
 common:
   cancel: Annuler
+empty:
+  loans_heading: "Aucun prêt en cours"
+  loans_body: "Les prêts apparaissent ici lorsqu'un emprunteur scanne un volume."
+  borrowers_heading: "Aucun emprunteur pour l'instant"
+  borrowers_body: "Ajoutez un emprunteur pour commencer à prêter des volumes."
+  borrowers_cta: "Ajouter un emprunteur"
+  series_heading: "Aucune série pour l'instant"
+  series_body: "Créez une série pour regrouper les titres qui vont ensemble."
+  series_cta: "Créer une série"
+  search_heading: "Aucun résultat"
+  search_body: "Aucun résultat pour « %{query} ». Essayez un terme plus large ou scannez un code-barres."
+  search_cta: "Ajouter ce titre"
+  filter_heading: "Aucun résultat"
+  filter_body: "Rien ne correspond à ce filtre pour l'instant. Retirez le filtre pour tout afficher."
 browse:
   list_view: Vue liste
   grid_view: Vue grille
@@ -116,8 +130,6 @@ contributor:
     submit: Ajouter le contributeur
     add_button: Ajouter un contributeur
 search:
-  no_results: "Aucun résultat pour '%{query}'."
-  no_results_create: "+ Créer un nouveau titre"
   results_count: "%{count} résultats trouvés"
   col:
     title: Titre
@@ -155,7 +167,6 @@ series:
   created: "Série créée : %{name}"
   updated: Série mise à jour.
   deleted: Série supprimée.
-  empty_state: "Aucune série. Créez-en une pour organiser vos titres !"
   name_required: Le nom de la série est obligatoire.
   name_duplicate: "Une série nommée \"%{name}\" existe déjà."
   total_required_for_closed: Le nombre total de volumes est obligatoire pour une série fermée.
@@ -407,7 +418,6 @@ borrower:
   name_required: "Le nom de l'emprunteur est obligatoire."
   save: Enregistrer
   cancel: Annuler
-  empty_state: "Aucun emprunteur. Ajoutez-en un pour commencer les prêts !"
   detail_title: "Détails de l'emprunteur"
   active_loans: "Prêts actifs"
   no_active_loans: "Cet emprunteur n'a aucun prêt actif."
@@ -428,7 +438,6 @@ loan:
   volume_not_found: "Volume introuvable."
   not_on_loan: "Ce volume n'est pas en prêt actuellement."
   scan_placeholder: "Scanner un code V pour trouver un prêt..."
-  empty_state: "Aucun prêt actif."
   col_borrower: Emprunteur
   col_volume: Volume
   col_title: Titre

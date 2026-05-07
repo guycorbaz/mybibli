@@ -1,0 +1,16 @@
+{# Story 9-15 — search empty-state fragment for live HTMX search.
+   Mirrors the page-level home.html empty branch: SVG icon outside,
+   status_message macro inside (search variant with role-gated CTA). #}
+{% import "components/status_message.html" as status_message %}
+<div>
+    <svg class="mx-auto w-12 h-12 text-stone-300 dark:text-stone-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+    {% call status_message::status_message(
+        "empty",
+        search_empty_heading,
+        search_empty_body,
+        search_empty_cta,
+        search_empty_cta_url,
+        "librarian",
+        role,
+    ) %}{% endcall %}
+</div>

@@ -1,0 +1,8 @@
+{# Test-only wrapper around `components/status_message.html::status_message`.
+   Lives in templates/ so Askama can find it at compile time. Used by the
+   `src/routes/status_message_tests.rs` unit tests to exercise variants
+   + role-gating + CTA-rendering rules per AC9 of story 9-15. #}
+{% import "components/status_message.html" as status_message %}
+{% call status_message::status_message(
+    variant, heading, body_html, cta_label, cta_url, cta_role_gate, role,
+) %}{% endcall %}

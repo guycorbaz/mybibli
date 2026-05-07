@@ -13,6 +13,8 @@ mod home_indicator_tests;
 #[cfg(test)]
 mod modal_tests;
 #[cfg(test)]
+mod status_message_tests;
+#[cfg(test)]
 mod volume_detail_tests;
 pub mod loans;
 pub mod locations;

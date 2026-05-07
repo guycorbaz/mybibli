@@ -59,8 +59,12 @@ pub struct HomeTemplate {
     pub genres: Vec<GenreModel>,
     pub volume_states: Vec<VolumeStateModel>,
     pub results: Option<PaginatedList<SearchResult>>,
-    pub no_results_text: String,
-    pub no_results_create: String,
+    pub search_empty_heading: String,
+    pub search_empty_body: String,
+    pub search_empty_cta: String,
+    pub search_empty_cta_url: String,
+    pub filter_empty_heading: String,
+    pub filter_empty_body: String,
     pub pagination_previous: String,
     pub pagination_next: String,
     pub col_title: String,
@@ -525,7 +529,6 @@ pub async fn home(
         scanning_announcement: rust_i18n::t!("home.scanning_announcement", locale = loc).to_string(),
         scan_failed_fallback: rust_i18n::t!("home.scan_failed_fallback", locale = loc).to_string(),
         query_encoded: url_encode(&query),
-        query,
         active_filter: params.filter.clone().unwrap_or_default(),
         current_sort: results
             .as_ref()
@@ -538,8 +541,13 @@ pub async fn home(
         genres,
         volume_states,
         results,
-        no_results_text: rust_i18n::t!("search.no_results", locale = loc).to_string(),
-        no_results_create: rust_i18n::t!("search.no_results_create", locale = loc).to_string(),
+        search_empty_heading: rust_i18n::t!("empty.search_heading", locale = loc).to_string(),
+        search_empty_body: rust_i18n::t!("empty.search_body", locale = loc, query = html_escape(&query)).to_string(),
+        search_empty_cta: rust_i18n::t!("empty.search_cta", locale = loc).to_string(),
+        search_empty_cta_url: format!("/catalog/title/new?title={}", url_encode(&query)),
+        query,
+        filter_empty_heading: rust_i18n::t!("empty.filter_heading", locale = loc).to_string(),
+        filter_empty_body: rust_i18n::t!("empty.filter_body", locale = loc).to_string(),
         pagination_previous: rust_i18n::t!("pagination.previous", locale = loc).to_string(),
         pagination_next: rust_i18n::t!("pagination.next", locale = loc).to_string(),
         col_title: rust_i18n::t!("search.col.title", locale = loc).to_string(),
@@ -847,26 +855,33 @@ fn render_pagination_oob(
     html
 }
 
-fn render_empty_state(query: &str, is_librarian: bool, loc: &str) -> String {
-    let message = rust_i18n::t!("search.no_results", locale = loc, query = html_escape(query));
-    let create_link = if is_librarian {
-        format!(
-            r#"<a href="/catalog/title/new?title={}" class="mt-2 inline-block text-indigo-600 dark:text-indigo-400 hover:underline">{}</a>"#,
-            url_encode(query),
-            rust_i18n::t!("search.no_results_create", locale = loc)
-        )
-    } else {
-        String::new()
-    };
+/// Render the search empty-state via the shared `status_message` macro
+/// (story 9-15). Returns the same `<div>` shape the page-level
+/// `home.html` empty branch emits, so the live HTMX-search empty state
+/// is byte-equivalent to the navigated empty state.
+#[derive(Template)]
+#[template(path = "fragments/search_empty_state.html")]
+struct SearchEmptyState {
+    role: String,
+    search_empty_heading: String,
+    search_empty_body: String,
+    search_empty_cta: String,
+    search_empty_cta_url: String,
+}
 
-    format!(
-        r#"<div class="text-center py-12 text-stone-500 dark:text-stone-400">
-            <svg class="mx-auto w-12 h-12 text-stone-300 dark:text-stone-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-            <p>{}</p>
-            {}
-        </div>"#,
-        message, create_link
-    )
+fn render_empty_state(query: &str, is_librarian: bool, loc: &str) -> String {
+    let role = if is_librarian { "librarian" } else { "anonymous" }.to_string();
+    let template = SearchEmptyState {
+        role,
+        search_empty_heading: rust_i18n::t!("empty.search_heading", locale = loc).to_string(),
+        search_empty_body: rust_i18n::t!("empty.search_body", locale = loc, query = html_escape(query))
+            .to_string(),
+        search_empty_cta: rust_i18n::t!("empty.search_cta", locale = loc).to_string(),
+        search_empty_cta_url: format!("/catalog/title/new?title={}", url_encode(query)),
+    };
+    template
+        .render()
+        .unwrap_or_else(|_| "<div>render error</div>".to_string())
 }
 
 #[cfg(test)]
@@ -1044,8 +1059,12 @@ pub(crate) mod tests {
             genres: vec![],
             volume_states: vec![],
             results: None,
-            no_results_text: "No results".to_string(),
-            no_results_create: "Create new title".to_string(),
+            search_empty_heading: "No matches".to_string(),
+            search_empty_body: "No matches for ''.".to_string(),
+            search_empty_cta: "Add this title".to_string(),
+            search_empty_cta_url: "/catalog/title/new".to_string(),
+            filter_empty_heading: "No matches".to_string(),
+            filter_empty_body: "Nothing matches this filter.".to_string(),
             pagination_previous: "Previous".to_string(),
             pagination_next: "Next".to_string(),
             col_title: "Title".to_string(),

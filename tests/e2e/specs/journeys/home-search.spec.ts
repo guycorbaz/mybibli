@@ -70,11 +70,13 @@ test.describe("Home page search", () => {
 
   test("should show empty state for no results", async ({ page }) => {
     await page.goto("/?q=zzzznonexistent99999");
-    // Check for empty state SVG or message
-    const emptyState = page.locator("#browse-results .text-center");
-    if ((await emptyState.count()) > 0) {
-      await expect(emptyState).toContainText("No results");
-    }
+    // Story 9-15 — empty state now uses the StatusMessage component with
+    // EN copy "No matches" / FR "Aucun résultat" (encouraging-tone rewrite).
+    const emptyState = page.locator(
+      "#browse-results [data-status-message][data-variant='empty']",
+    );
+    await expect(emptyState).toBeVisible();
+    await expect(emptyState).toContainText(/No matches|Aucun résultat/i);
   });
 
   test("should focus search field when pressing / key", async ({ page }) => {
