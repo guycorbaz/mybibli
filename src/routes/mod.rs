@@ -178,6 +178,10 @@ pub fn build_router(state: AppState) -> Router {
                 .delete(series::delete_series),
         )
         .route(
+            "/series/{id}/delete-modal",
+            axum::routing::get(series::delete_modal),
+        )
+        .route(
             "/series/{id}/edit",
             axum::routing::get(series::edit_series_form),
         )
