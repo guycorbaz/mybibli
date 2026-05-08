@@ -1,6 +1,7 @@
 {% extends "layouts/base.html" %}
 {% import "components/cover.html" as cover %}
 {% import "components/filter_tag.html" as filter_tag %}
+{% import "components/status_message.html" as status_message %}
 
 {% block title %}mybibli{% endblock %}
 
@@ -402,11 +403,28 @@
         <div id="browse-results" class="browse-list">
                 {% if let Some(paginated) = results %}
                     {% if paginated.items.is_empty() %}
-                    <div class="text-center py-12 text-stone-500 dark:text-stone-400">
-                        <svg class="mx-auto w-12 h-12 text-stone-300 dark:text-stone-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                        <p>{{ no_results_text }}</p>
-                        {% if role == "librarian" || role == "admin" %}
-                        <a href="/catalog/title/new?title={{ query_encoded }}" class="mt-2 inline-block text-indigo-600 dark:text-indigo-400 hover:underline">{{ no_results_create }}</a>
+                    <div class="text-center text-stone-500 dark:text-stone-400">
+                        <svg class="mx-auto w-12 h-12 text-stone-300 dark:text-stone-600 mb-3 mt-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        {% if !active_filter.is_empty() %}
+                        {% call status_message::status_message(
+                            "empty",
+                            filter_empty_heading,
+                            filter_empty_body,
+                            "",
+                            "",
+                            "",
+                            role,
+                        ) %}{% endcall %}
+                        {% else %}
+                        {% call status_message::status_message(
+                            "empty",
+                            search_empty_heading,
+                            search_empty_body,
+                            search_empty_cta,
+                            search_empty_cta_url,
+                            "librarian",
+                            role,
+                        ) %}{% endcall %}
                         {% endif %}
                     </div>
                     {% else %}

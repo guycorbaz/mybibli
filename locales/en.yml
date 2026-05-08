@@ -2,6 +2,20 @@ app:
   name: mybibli
 common:
   cancel: Cancel
+empty:
+  loans_heading: "No active loans"
+  loans_body: "Loans appear here when a borrower scans a volume out."
+  borrowers_heading: "No borrowers yet"
+  borrowers_body: "Add a borrower to start lending volumes."
+  borrowers_cta: "Add a borrower"
+  series_heading: "No series yet"
+  series_body: "Create a series to group titles that belong together."
+  series_cta: "Create a series"
+  search_heading: "No matches"
+  search_body: "No matches for '%{query}'. Try a broader term or scan a barcode."
+  search_cta: "Add this title"
+  filter_heading: "No matches"
+  filter_body: "Nothing matches this filter right now. Clear the filter to see everything."
 browse:
   list_view: List view
   grid_view: Grid view
@@ -116,8 +130,6 @@ contributor:
     submit: Add contributor
     add_button: Add contributor
 search:
-  no_results: "No results for '%{query}'."
-  no_results_create: "+ Create new title"
   results_count: "%{count} results found"
   col:
     title: Title
@@ -155,7 +167,6 @@ series:
   created: "Series created: %{name}"
   updated: Series updated.
   deleted: Series deleted.
-  empty_state: "No series yet. Create one to organize your titles!"
   name_required: Series name is required.
   name_duplicate: "A series named \"%{name}\" already exists."
   total_required_for_closed: Total volume count is required for closed series.
@@ -407,7 +418,6 @@ borrower:
   name_required: Borrower name is required.
   save: Save
   cancel: Cancel
-  empty_state: "No borrowers yet. Add one to start lending!"
   detail_title: Borrower details
   active_loans: Active loans
   no_active_loans: "This borrower has no active loans."
@@ -428,7 +438,6 @@ loan:
   volume_not_found: "Volume not found."
   not_on_loan: "This volume is not currently on loan."
   scan_placeholder: "Scan V-code to find loan..."
-  empty_state: "No active loans."
   col_borrower: Borrower
   col_volume: Volume
   col_title: Title

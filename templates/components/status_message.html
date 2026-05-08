@@ -1,0 +1,26 @@
+{# StatusMessage component (story 9-15 AC1). UX-DR13 / UX-DR24 empty-state
+   pattern. Replaces hand-rolled `<p class="text-center py-12 text-stone-500 …">`
+   blocks across list / search views with a centralized, role-aware,
+   encouraging-tone message + optional CTA.
+
+   Variants — all share the calm stone neutral palette:
+     empty   structural — list/search has zero items (the v1 surface)
+     info    reserved for future use (informational, no destructive intent)
+
+   Role-gating: when `cta_role_gate` is non-empty, the CTA only renders if
+   the page's `role` matches (or is admin, which always passes a librarian
+   gate). Anonymous users never see a librarian/admin-gated CTA.
+
+   `body_html` is consumed via `|safe`: the call site is responsible for
+   HTML-escaping any user-supplied interpolation BEFORE building it. Same
+   contract as `templates/components/modal.html`. CSP-clean — CSS classes
+   only, no inline scripts/styles. #}
+{%- macro status_message(variant, heading, body_html, cta_label, cta_url, cta_role_gate, role) -%}
+<div class="text-center py-12 text-stone-500 dark:text-stone-400" data-status-message data-variant="{{ variant }}">
+    <h2 class="text-base font-semibold text-stone-700 dark:text-stone-200">{{ heading }}</h2>
+    <p class="mt-2">{{ body_html|safe }}</p>
+    {% if cta_label != "" && cta_url != "" && (cta_role_gate == "" || cta_role_gate == role || (cta_role_gate == "librarian" && role == "admin")) %}
+    <a href="{{ cta_url }}" class="mt-4 inline-block text-indigo-600 dark:text-indigo-400 hover:underline">{{ cta_label }}</a>
+    {% endif %}
+</div>
+{%- endmacro -%}

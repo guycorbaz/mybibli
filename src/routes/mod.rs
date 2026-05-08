@@ -8,10 +8,13 @@ pub mod contributors;
 pub mod home;
 pub mod home_indicators;
 pub mod home_scan;
+mod home_search_fragment;
 #[cfg(test)]
 mod home_indicator_tests;
 #[cfg(test)]
 mod modal_tests;
+#[cfg(test)]
+mod status_message_tests;
 #[cfg(test)]
 mod volume_detail_tests;
 pub mod loans;
