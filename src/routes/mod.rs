@@ -8,6 +8,7 @@ pub mod contributors;
 pub mod home;
 pub mod home_indicators;
 pub mod home_scan;
+mod home_search_fragment;
 #[cfg(test)]
 mod home_indicator_tests;
 #[cfg(test)]

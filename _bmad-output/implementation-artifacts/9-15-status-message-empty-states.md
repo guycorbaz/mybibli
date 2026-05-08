@@ -1,6 +1,6 @@
 # Story 9.15: StatusMessage — empty states (encouraging, role-aware)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -456,6 +456,26 @@ claude-opus-4-7[1m]
 ### Deviations from spec
 
 - **`render_empty_state` Rust function migrated** (NOT in spec but required for consistency): the function at `src/routes/home.rs:850` was emitting hand-rolled HTML for live HTMX search empties. Without migration, the live-search empty state would diverge visually from the navigated empty state. Migrated by introducing a new Askama-rendered template fragment `templates/fragments/search_empty_state.html` (renders the macro with the same params as the page-level path). Documented in Dev Agent Record as a scope deviation; trivial cost (~20 LOC) for visual consistency.
+
+### Code review patches (2026-05-08)
+
+3 parallel reviewers (Blind/Edge/Auditor) — 4 actionable patches + 12 deferred + ~10 dismissed. Acceptance Auditor: ALL 14 ACs PASS with documented deviations. 0 BLOCKERS, 0 decision-needed.
+
+**P1 (edge, HIGH)** — Borrowers empty-state CTA wired to JS toggle. The `<a href="#add-form">` anchor would scroll the page but leave the form `display: none` (hidden by Tailwind `.hidden`) — UX dead-end. Extended `static/js/borrowers.js` with a delegated listener on `a[href="#add-form"]` that calls `showForm` (the same handler the existing `borrowers-show-add-form` button uses).
+
+**P2 (auditor, HIGH)** — `src/routes/home.rs` extracted to keep under Foundation Rule #12 ceiling. `home.rs` was at 2018 LOC post-implementation. Extracted `render_search_fragment`, `render_search_row`, `render_pagination_oob`, `render_empty_state` + `SearchEmptyState` template struct into a NEW sibling module `src/routes/home_search_fragment.rs` (290 LOC). Result: `home.rs` now 1780 LOC (-238). The 2 existing test cases (`test_render_search_row` + `test_render_search_row_with_date`) moved to the new module's tests; the 3 NEW empty-state tests (`_search_librarian`, `_search_anonymous`, `_filter_no_cta`) live there too. Module is `pub(super)`-only — only the home handler invokes it.
+
+**P3 (edge, MEDIUM)** — Live HTMX search empty-state filter sub-case added. `render_empty_state` previously took only `(query, is_librarian, loc)` and ALWAYS rendered the search-empty copy. When a user filtered via HTMX with empty query, they saw "No matches for ''. Try a broader term." with broken empty quotes — divergent from the navigated path. Extended signature to `(query, has_filter, is_librarian, loc)`. The `SearchEmptyState` template struct gained `has_filter: bool`, `filter_empty_heading`, `filter_empty_body` fields. The fragment template branches on `has_filter` (mirror of the navigated `home.html:407-428` 2-sub-case shape). Added `tracing::error!` log inside the render-error fallback (was silently swallowed). 3 new test cases lock the contract.
+
+**P4 (blind, MEDIUM)** — Restored outer-wrapper centering on `home.html` empty branch + `search_empty_state.html` fragment. Both wrappers now carry `class="text-center text-stone-500 dark:text-stone-400"` (with `mt-12` on the SVG for top spacing) — fixes the visual regression where the SVG sat flush-top because the macro's `py-12` was on its inner div only. Avoids the doubled `py-12` AC6 originally accepted.
+
+**Post-patch validation**:
+- `cargo check` + `cargo clippy --all-targets -- -D warnings` — green
+- `cargo test --lib` — 769 passed, 0 failed (was 768 pre-patch, +1 from the new filter-no-cta test, −1 from `test_render_empty_state_anonymous` rename)
+- E2E single-spec `empty-states.spec.ts` + `home-search.spec.ts` — 20/20 passed (incl. the previously-flaky `home-search:224` which passed clean post-reset)
+- LOC: `home.rs` 1780 / `home_search_fragment.rs` 290 (both under 2000 ceiling)
+
+**12 deferred items to file as GH issues `type:code-review-finding`**: E2E parallel-mode flake risk (empty-states.spec.ts), locale cookie domain hardcoded `localhost`, `<h2>` macro hierarchy a11y, `data-variant` not validated, `search_empty_cta_url` computed unconditionally, `body_html|safe` no caller-side enforcement (cross-cutting on modal+status_message — already filed as GH #137), tests with weak negative assertions, `render_empty_state` admin role collapsed to librarian, AC11/AC12 spec literal numbers off (doc drift only), macro role-gate values not validated, i18n audit doesn't walk templates, `data-status-message` count not asserted in E2E.
 
 ### File List
 
