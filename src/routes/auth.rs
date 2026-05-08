@@ -21,6 +21,7 @@ pub struct LoginTemplate {
     pub role: String,
     pub current_page: &'static str,
     pub skip_label: String,
+    pub connection_status: crate::utils::ConnectionStatusContext,
     pub session_timeout_secs: u64,
     pub csrf_token: String,
     pub nav_catalog: String,
@@ -60,6 +61,7 @@ impl LoginTemplate {
             role: "anonymous".to_string(),
             current_page: "login",
             skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
+            connection_status: crate::utils::ConnectionStatusContext::new(loc),
             // Login page is anonymous — value is not rendered (guarded in base.html).
             session_timeout_secs: 0,
             csrf_token,

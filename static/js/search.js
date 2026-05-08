@@ -151,14 +151,16 @@
             }
         });
 
+        // Story 9-16 — the UI banner surface that this listener used to
+        // render is now subsumed by `static/js/connection-monitor.js`
+        // (full-viewport overlay + automatic /health polling). What
+        // remains here is the SCAN-STATE machine reset that the deleted
+        // listener also performed: a network drop mid-scan must reset
+        // SCAN_PENDING → IDLE and emit the `scanfailed` ARIA announcement,
+        // otherwise the state stays stuck until page reload. The overlay
+        // doesn't know about search.js's internal state — keep this
+        // listener minimal (no UI, no banner).
         document.body.addEventListener("htmx:sendError", function () {
-            var tbody = document.getElementById("browse-results");
-            if (tbody) {
-                tbody.classList.add("htmx-opacity-reset");
-                var msg = field.dataset.connectionLost || "Connection lost";
-                tbody.innerHTML =
-                    '<div class="text-center py-8 text-red-500">' + msg + '</div>';
-            }
             if (state === SCAN_PENDING) {
                 state = IDLE;
                 announce(field, "scanfailed");

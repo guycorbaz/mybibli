@@ -141,17 +141,13 @@
             restoreScanField();
         });
 
-        document.body.addEventListener("htmx:sendError", function (e) {
-            if (!document.getElementById("feedback-list")) return;
-            var target = e.detail.target;
-            if (target) target.classList.add("htmx-opacity-reset");
-
-            var message = document.documentElement.lang === "fr"
-                ? "Connexion perdue — vérifiez votre réseau."
-                : "Connection lost — check your network.";
-            injectErrorFeedback(message);
-            restoreScanField();
-        });
+        // Story 9-16 — REMOVED `htmx:sendError` listener that injected a
+        // FeedbackEntry "Connection lost — check your network." into
+        // `#feedback-list`. The new `static/js/connection-monitor.js`
+        // module subsumes this surface with a full-viewport overlay +
+        // automatic recovery polling. Without removal, a network drop on
+        // the catalog page would surface 3 concurrent "Connection lost"
+        // UIs (overlay + this FeedbackEntry + search.js's red banner).
     }
 
     function injectErrorFeedback(message) {

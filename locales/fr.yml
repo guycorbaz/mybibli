@@ -2,6 +2,11 @@ app:
   name: mybibli
 common:
   cancel: Annuler
+connection:
+  lost_heading: "Connexion perdue"
+  lost_body: "Tentative de reconnexion en cours..."
+  lost_retry: "Réessayer"
+  restored_toast: "Connexion rétablie"
 empty:
   loans_heading: "Aucun prêt en cours"
   loans_body: "Les prêts apparaissent ici lorsqu'un emprunteur scanne un volume."
