@@ -70,6 +70,18 @@
             pollHealth();
             startTimer();
         });
+
+        // Story 9-16 patch P3 — clean up timers on document teardown.
+        // Without this, the polling setInterval + the toast setTimeout
+        // can outlive the document (bfcache restore, slow tab unload),
+        // leaking timers and possibly firing fetch() on a detached doc.
+        // `pagehide` fires on both unload AND bfcache stash; safer than
+        // `beforeunload` (which doesn't fire on mobile back/forward).
+        window.addEventListener("pagehide", function () {
+            stopTimer();
+            var staleToast = document.getElementById("connection-restored-toast");
+            if (staleToast) staleToast.remove();
+        });
     }
 
     function showOverlay() {
@@ -79,6 +91,14 @@
 
         state.shown = true;
         overlay.classList.remove("hidden");
+        // Story 9-16 patch P2 — toggle aria-modal="true" dynamically (NOT
+        // statically in base.html) so scanner-guard's MutationObserver
+        // (`MODAL_SELECTOR = 'dialog[open], [aria-modal="true"]'`) only
+        // captures keystrokes WHILE the overlay is shown. Without this,
+        // a USB scanner burst during an outage would still leak into any
+        // other text input on the page (the `disabled` attribute on
+        // `#scan-field` is per-field, not page-wide).
+        overlay.setAttribute("aria-modal", "true");
 
         // Disable scan field if present — prevents the scanner from
         // queueing key bursts into a buffer that will silently drop on
@@ -102,6 +122,9 @@
 
         state.shown = false;
         overlay.classList.add("hidden");
+        // Story 9-16 patch P2 — release scanner-guard MutationObserver
+        // by removing aria-modal so other inputs receive keystrokes again.
+        overlay.removeAttribute("aria-modal");
         stopTimer();
 
         // Re-enable scan field + restore focus.

@@ -1,6 +1,6 @@
 # Story 9.16: StatusMessage — connection-lost overlay
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

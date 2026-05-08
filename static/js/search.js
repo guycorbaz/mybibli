@@ -151,12 +151,21 @@
             }
         });
 
-        // Story 9-16 — REMOVED `htmx:sendError` listener that replaced
-        // `#browse-results` with a "Connection lost" red banner. The
-        // new `static/js/connection-monitor.js` module subsumes this
-        // surface with a full-viewport overlay + automatic recovery
-        // polling. Scan-state reset on network failure is handled by
-        // connection-monitor.js's scan-field disable/restore coordination.
+        // Story 9-16 — the UI banner surface that this listener used to
+        // render is now subsumed by `static/js/connection-monitor.js`
+        // (full-viewport overlay + automatic /health polling). What
+        // remains here is the SCAN-STATE machine reset that the deleted
+        // listener also performed: a network drop mid-scan must reset
+        // SCAN_PENDING → IDLE and emit the `scanfailed` ARIA announcement,
+        // otherwise the state stays stuck until page reload. The overlay
+        // doesn't know about search.js's internal state — keep this
+        // listener minimal (no UI, no banner).
+        document.body.addEventListener("htmx:sendError", function () {
+            if (state === SCAN_PENDING) {
+                state = IDLE;
+                announce(field, "scanfailed");
+            }
+        });
     }
 
     function startDebounce(field, delay, minChars) {

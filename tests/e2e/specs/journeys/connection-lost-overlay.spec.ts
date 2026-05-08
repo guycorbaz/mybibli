@@ -51,17 +51,17 @@ test.describe("Story 9-16 — connection-lost overlay", () => {
     // overlay to dismiss + toast to appear.
     await context.setOffline(false);
 
-    await expect(overlay).toHaveClass(/\bhidden\b/, { timeout: 7000 });
-    // Toast appears briefly; check for either visible state OR DOM presence
-    // (toast self-removes after 3s — avoid a race by asserting on the
-    // dismissed-overlay state which is the durable signal).
+    // Toast: verify it actually appears (not a tautology — `toHaveCount(0)`
+    // alone would pass even if the toast was never created). Wait for
+    // count===1 first to prove the spawn path ran, then for count===0 to
+    // prove the auto-dismiss timer (3s) cleaned it up. The overlay-hide
+    // assertion happens AFTER so we observe both signals.
     const toast = page.locator("#connection-restored-toast");
-    // Toast may have already self-dismissed if the test runner is slow,
-    // so check that its text matched at SOME point — using attached
-    // rather than visible. Since our timer is 3s and assertions take
-    // some time, we just check it appeared (count >= 0 — meaning the
-    // dismiss path ran).
-    await expect(toast).toHaveCount(0, { timeout: 5000 }); // toast cleaned up
+    await expect(toast).toHaveCount(1, { timeout: 7000 });
+    await expect(toast).toContainText(/Connection restored|Connexion rétablie/i);
+    await expect(overlay).toHaveClass(/\bhidden\b/);
+    // Toast self-removes after 3s — assert eventual cleanup with margin.
+    await expect(toast).toHaveCount(0, { timeout: 5000 });
 
     // Scan field re-enabled.
     if ((await scanField.count()) > 0) {
