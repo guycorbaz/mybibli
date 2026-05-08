@@ -151,19 +151,12 @@
             }
         });
 
-        document.body.addEventListener("htmx:sendError", function () {
-            var tbody = document.getElementById("browse-results");
-            if (tbody) {
-                tbody.classList.add("htmx-opacity-reset");
-                var msg = field.dataset.connectionLost || "Connection lost";
-                tbody.innerHTML =
-                    '<div class="text-center py-8 text-red-500">' + msg + '</div>';
-            }
-            if (state === SCAN_PENDING) {
-                state = IDLE;
-                announce(field, "scanfailed");
-            }
-        });
+        // Story 9-16 — REMOVED `htmx:sendError` listener that replaced
+        // `#browse-results` with a "Connection lost" red banner. The
+        // new `static/js/connection-monitor.js` module subsumes this
+        // surface with a full-viewport overlay + automatic recovery
+        // polling. Scan-state reset on network failure is handled by
+        // connection-monitor.js's scan-field disable/restore coordination.
     }
 
     function startDebounce(field, delay, minChars) {

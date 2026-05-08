@@ -2,6 +2,11 @@ app:
   name: mybibli
 common:
   cancel: Cancel
+connection:
+  lost_heading: "Connection lost"
+  lost_body: "Trying to reconnect..."
+  lost_retry: "Retry now"
+  restored_toast: "Connection restored"
 empty:
   loans_heading: "No active loans"
   loans_body: "Loans appear here when a borrower scans a volume out."

@@ -57,6 +57,38 @@ pub fn format_percent(value: f64, locale: &str) -> String {
     }
 }
 
+/// Story 9-16 — base-layout connection-lost overlay i18n bundle.
+///
+/// Page templates that extend `layouts/base.html` carry the 4 strings
+/// the overlay needs (heading, body, retry button, restored toast).
+/// Bundled into a single struct field on each page-context struct so
+/// per-page ctors gain ONE line (`connection_status:
+/// ConnectionStatusContext::new(loc)`) instead of four — keeps the
+/// blast radius across ~20 page structs minimal.
+///
+/// Read by `templates/layouts/base.html` via Askama's nested-field
+/// access (`{{ connection_status.lost_heading }}` etc.). The
+/// `restored_toast` string is also exposed as a `data-i18n-restored-
+/// toast` attribute on the overlay div for `static/js/connection-
+/// monitor.js` to read when it spawns the on-success toast.
+pub struct ConnectionStatusContext {
+    pub lost_heading: String,
+    pub lost_body: String,
+    pub lost_retry: String,
+    pub restored_toast: String,
+}
+
+impl ConnectionStatusContext {
+    pub fn new(loc: &str) -> Self {
+        Self {
+            lost_heading: rust_i18n::t!("connection.lost_heading", locale = loc).to_string(),
+            lost_body: rust_i18n::t!("connection.lost_body", locale = loc).to_string(),
+            lost_retry: rust_i18n::t!("connection.lost_retry", locale = loc).to_string(),
+            restored_toast: rust_i18n::t!("connection.restored_toast", locale = loc).to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -29,12 +29,29 @@
        their dedicated slot for inline-form.js coordination). HTMX swaps
        modal HTML in via `hx-target="#modal-slot"`. #}
     <div id="modal-slot"></div>
+    {# Story 9-16 — connection-lost overlay (UX-DR13). Hidden by default;
+       toggled by `static/js/connection-monitor.js` on `htmx:sendError`
+       (network failure) — NEVER on 4xx/5xx (those are handled by
+       FeedbackEntry per UX-DR27). The toast i18n string is carried as a
+       data-attr because the toast element is JS-created on-demand;
+       heading/body/retry text is in the visible DOM directly. #}
+    <div id="connection-lost-overlay"
+         role="alert" aria-live="assertive" aria-atomic="true"
+         class="hidden fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center motion-safe:transition-opacity motion-safe:duration-200"
+         data-i18n-restored-toast="{{ connection_status.restored_toast|e }}">
+        <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 border border-stone-200 dark:border-stone-700">
+            <h2 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ connection_status.lost_heading }}</h2>
+            <p class="text-stone-700 dark:text-stone-300 mb-4">{{ connection_status.lost_body }}</p>
+            <button type="button" data-action="retry" class="px-4 py-2 bg-indigo-600 text-white rounded-md font-semibold hover:bg-indigo-700">{{ connection_status.lost_retry }}</button>
+        </div>
+    </div>
     <script src="/static/js/scan-field.js"></script>
     <script src="/static/js/search.js"></script>
     <script src="/static/js/browse-mode.js"></script>
     <script src="/static/js/focus.js"></script>
     <script src="/static/js/contributor.js"></script>
     <script src="/static/js/session-timeout.js"></script>
+    <script src="/static/js/connection-monitor.js"></script>
     <script src="/static/js/audio.js"></script>
     <script src="/static/js/title-form.js"></script>
     <script src="/static/js/borrowers.js"></script>

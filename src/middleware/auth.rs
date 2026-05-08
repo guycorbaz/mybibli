@@ -128,6 +128,16 @@ pub async fn session_resolve_middleware(
     mut request: Request,
     next: Next,
 ) -> Response {
+    // Story 9-16 — `/health` is a passive liveness probe used by
+    // `static/js/connection-monitor.js`'s 5s polling during a
+    // connection-lost overlay. Without this short-circuit, every poll
+    // walks the session-resolution path and may extend / mint a session
+    // row — burning ~720 DB writes per hour during an outage. The
+    // probe must be DB-side-effect-free.
+    if request.uri().path() == "/health" {
+        return next.run(request).await;
+    }
+
     let cookie_token = extract_session_cookie(request.headers());
     let timeout_secs = state.session_timeout_secs();
 

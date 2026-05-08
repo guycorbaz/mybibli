@@ -57,7 +57,10 @@ test.describe("Login/Logout & Epic 1 Smoke Test (Story 1-9)", () => {
 
     // Should stay on login page with error
     await expect(page).toHaveURL(/\/login/);
-    const errorMsg = page.locator('[role="alert"]');
+    // Story 9-16 — scope to <main> so the new connection-lost overlay
+    // (also `role="alert"`, sibling of <main> in base.html) doesn't
+    // shadow this assertion.
+    const errorMsg = page.locator('main [role="alert"]');
     await expect(errorMsg).toBeVisible({ timeout: 5000 });
   });
 
