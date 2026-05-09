@@ -155,6 +155,7 @@ struct AdminPageTemplate {
     nav_admin: String,
     nav_login: String,
     nav_logout: String,
+    nav_menu_open: String,
     current_url: String,
     lang_toggle_aria: String,
 
@@ -1101,6 +1102,7 @@ async fn render_admin(
         nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
         nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
         nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
+        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
         current_url: current_url(uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
         admin_page_title: rust_i18n::t!("admin.page_title", locale = loc).to_string(),

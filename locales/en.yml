@@ -50,6 +50,7 @@ nav:
   borrowers: Borrowers
   login: Log in
   logout: Log out
+  menu_open: Open menu
   skip_to_content: Skip to main content
   theme_toggle: Toggle theme
   language_toggle_aria: Change language
