@@ -1,6 +1,6 @@
 # Story 9.17: NavBar — hamburger menu + scanner auto-close
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -176,59 +176,59 @@ Before writing a single line, walk the code that 9-17 touches and verify the ass
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Verify reality-check assumptions (AC: all)**
-  - [ ] Re-read `templates/components/nav_bar.html:50-83` to confirm the markup is what the spec says (button + panel + role gates).
-  - [ ] Read `static/js/mybibli.js:174-184` (`initMobileMenuToggle`) and find its bootstrap call (likely in mybibli.js's main `init()`). Capture for Task 6's removal.
-  - [ ] Verify `nav.menu_open` does NOT exist in `locales/{en,fr}.yml` (grep). If it exists, skip AC4's add step.
-  - [ ] Read `static/js/modal.js:28-33` (`focusableInside`) to confirm the focusable-selector pattern.
-  - [ ] Verify `aria-label="Open menu"` at `nav_bar.html:50` is hardcoded EN (not `{{ nav_menu_open }}`). If templated, skip AC4's substitution.
-  - [ ] Map all page structs that pass `nav_logout` (the closest pattern to `nav_menu_open`). Run `grep -nE 'nav_logout: rust_i18n' src/routes/*.rs | wc -l` for the EXACT occurrence count (currently 23 lines as of 2026-05-08; the 9-16 retrospective recorded 19 page-template structs after excluding test fixtures + `StepProviders` false-positive). Document the actual count + per-file breakdown in Dev Agent Record before editing.
-  - [ ] **Confirm scanner-threshold attribute location**: `data-scanner-threshold` lives ONLY on `#search-field` (`templates/pages/home.html:33`, value `"100"`). The canonical `#scan-field` template (`templates/components/scan_field.html`) does NOT carry the attribute. nav.js's burst detector should read `document.getElementById("search-field")?.dataset.scannerThreshold` (home page only), else fall back to hardcoded `50`. Do NOT add a `data-scanner-threshold` to `#scan-field` — that's out of scope.
-  - [ ] Confirm `#scan-field` is NOT rendered on every page (e.g., `/admin`, `/borrowers/{id}`). nav.js's "forward to `#scan-field`" branch must safely no-op when null. Pick a known-no-`#scan-field` page for AC11 Test 5.
-  - [ ] Run baseline `cargo test no_inline_markup_in_templates` to confirm green BEFORE editing.
+- [x] **Task 1 — Verify reality-check assumptions (AC: all)**
+  - [x] Re-read `templates/components/nav_bar.html:50-83` to confirm the markup is what the spec says (button + panel + role gates).
+  - [x] Read `static/js/mybibli.js:174-184` (`initMobileMenuToggle`) and find its bootstrap call (likely in mybibli.js's main `init()`). Capture for Task 6's removal.
+  - [x] Verify `nav.menu_open` does NOT exist in `locales/{en,fr}.yml` (grep). If it exists, skip AC4's add step.
+  - [x] Read `static/js/modal.js:28-33` (`focusableInside`) to confirm the focusable-selector pattern.
+  - [x] Verify `aria-label="Open menu"` at `nav_bar.html:50` is hardcoded EN (not `{{ nav_menu_open }}`). If templated, skip AC4's substitution.
+  - [x] Map all page structs that pass `nav_logout` (the closest pattern to `nav_menu_open`). Run `grep -nE 'nav_logout: rust_i18n' src/routes/*.rs | wc -l` for the EXACT occurrence count (currently 23 lines as of 2026-05-08; the 9-16 retrospective recorded 19 page-template structs after excluding test fixtures + `StepProviders` false-positive). Document the actual count + per-file breakdown in Dev Agent Record before editing.
+  - [x] **Confirm scanner-threshold attribute location**: `data-scanner-threshold` lives ONLY on `#search-field` (`templates/pages/home.html:33`, value `"100"`). The canonical `#scan-field` template (`templates/components/scan_field.html`) does NOT carry the attribute. nav.js's burst detector should read `document.getElementById("search-field")?.dataset.scannerThreshold` (home page only), else fall back to hardcoded `50`. Do NOT add a `data-scanner-threshold` to `#scan-field` — that's out of scope.
+  - [x] Confirm `#scan-field` is NOT rendered on every page (e.g., `/admin`, `/borrowers/{id}`). nav.js's "forward to `#scan-field`" branch must safely no-op when null. Pick a known-no-`#scan-field` page for AC11 Test 5.
+  - [x] Run baseline `cargo test no_inline_markup_in_templates` to confirm green BEFORE editing.
 
-- [ ] **Task 2 — i18n key (AC: 4)** — CONDITIONAL on Task 1 outcome:
-  - [ ] If `nav.menu_open` is missing in locales: add to `locales/en.yml` (`nav.menu_open: "Open menu"`) + `locales/fr.yml` (`"Ouvrir le menu"`). Insert next to `nav.logout`.
-  - [ ] Otherwise: skip; the existing key is reused.
-  - [ ] `touch src/lib.rs && cargo build`.
+- [x] **Task 2 — i18n key (AC: 4)** — CONDITIONAL on Task 1 outcome:
+  - [x] If `nav.menu_open` is missing in locales: add to `locales/en.yml` (`nav.menu_open: "Open menu"`) + `locales/fr.yml` (`"Ouvrir le menu"`). Insert next to `nav.logout`.
+  - [x] Otherwise: skip; the existing key is reused.
+  - [x] `touch src/lib.rs && cargo build`.
 
-- [ ] **Task 3 — Update page structs to carry `nav_menu_open` (AC: 4)** — CONDITIONAL on Task 1:
-  - [ ] If new key added: ~19 page structs gain `pub nav_menu_open: String` field + 1 ctor line `nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),`. Use `sed` mirror of 9-16's struct-edit pattern.
-  - [ ] Update `nav_bar.html:50` to use `{{ nav_menu_open }}` (or whatever the i18n key resolves to) for the `aria-label`.
-  - [ ] Run `cargo build` clean.
+- [x] **Task 3 — Update page structs to carry `nav_menu_open` (AC: 4)** — CONDITIONAL on Task 1:
+  - [x] If new key added: ~19 page structs gain `pub nav_menu_open: String` field + 1 ctor line `nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),`. Use `sed` mirror of 9-16's struct-edit pattern.
+  - [x] Update `nav_bar.html:50` to use `{{ nav_menu_open }}` (or whatever the i18n key resolves to) for the `aria-label`.
+  - [x] Run `cargo build` clean.
 
-- [ ] **Task 4 — Create `static/js/nav.js` (AC: 1, 7, 8, 9)**
-  - [ ] Implement IIFE per AC1 spec. State, `open()`, `close()`, focus trap, outside-click, Escape, link-click, scanner-burst, pagehide.
-  - [ ] CSP-clean (no `eval`, no inline handlers).
-  - [ ] Include comment block referencing AC mappings (AC1, AC7, AC8 etc.).
+- [x] **Task 4 — Create `static/js/nav.js` (AC: 1, 7, 8, 9)**
+  - [x] Implement IIFE per AC1 spec. State, `open()`, `close()`, focus trap, outside-click, Escape, link-click, scanner-burst, pagehide.
+  - [x] CSP-clean (no `eval`, no inline handlers).
+  - [x] Include comment block referencing AC mappings (AC1, AC7, AC8 etc.).
 
-- [ ] **Task 5 — Register `nav.js` in `base.html` (AC: 2)**
-  - [ ] Add `<script src="/static/js/nav.js"></script>` after `mybibli.js`.
+- [x] **Task 5 — Register `nav.js` in `base.html` (AC: 2)**
+  - [x] Add `<script src="/static/js/nav.js"></script>` after `mybibli.js`.
 
-- [ ] **Task 6 — Remove `initMobileMenuToggle` from `mybibli.js` (AC: 1, 13)**
-  - [ ] Delete the function at `mybibli.js:174-184` and its bootstrap call (likely in the main `init()` or DOMContentLoaded handler).
-  - [ ] Verify `grep -rn 'initMobileMenuToggle' static/js/` returns ZERO hits.
+- [x] **Task 6 — Remove `initMobileMenuToggle` from `mybibli.js` (AC: 1, 13)**
+  - [x] Delete the function at `mybibli.js:174-184` and its bootstrap call (likely in the main `init()` or DOMContentLoaded handler).
+  - [x] Verify `grep -rn 'initMobileMenuToggle' static/js/` returns ZERO hits.
 
-- [ ] **Task 7 — Integration tests (AC: 10)**
-  - [ ] Create `tests/navbar_hamburger.rs` with 4 cases per AC10. Use a minimal `build_state` helper.
-  - [ ] Run `SQLX_OFFLINE=true cargo test --test navbar_hamburger` and confirm 4/4 green.
+- [x] **Task 7 — Integration tests (AC: 10)**
+  - [x] Create `tests/navbar_hamburger.rs` with 4 cases per AC10. Use a minimal `build_state` helper.
+  - [x] Run `SQLX_OFFLINE=true cargo test --test navbar_hamburger` and confirm 4/4 green.
 
-- [ ] **Task 8 — E2E test (AC: 11)**
-  - [ ] Create `tests/e2e/specs/journeys/navbar-hamburger.spec.ts` with 5 scenarios per AC11.
-  - [ ] Use `page.setViewportSize` for tablet/desktop simulation.
-  - [ ] Use `simulateScan(page, "body", "AB")` from `tests/e2e/helpers/scanner.ts` for the burst tests (Tests 4 + 5). Do NOT roll `dispatchEvent(new KeyboardEvent(...))` sequences — untrusted events can be filtered, and manual timing trips the flake gate.
-  - [ ] Run `cd tests/e2e && npx tsc --noEmit` to verify the spec compiles.
-  - [ ] Run `./scripts/e2e-reset.sh && cd tests/e2e && npx playwright test specs/journeys/navbar-hamburger.spec.ts` (single-spec) and confirm green.
-  - [ ] Run full E2E lane to confirm no regressions.
+- [x] **Task 8 — E2E test (AC: 11)**
+  - [x] Create `tests/e2e/specs/journeys/navbar-hamburger.spec.ts` with 5 scenarios per AC11.
+  - [x] Use `page.setViewportSize` for tablet/desktop simulation.
+  - [x] Use `simulateScan(page, "body", "AB")` from `tests/e2e/helpers/scanner.ts` for the burst tests (Tests 4 + 5). Do NOT roll `dispatchEvent(new KeyboardEvent(...))` sequences — untrusted events can be filtered, and manual timing trips the flake gate.
+  - [x] Run `cd tests/e2e && npx tsc --noEmit` to verify the spec compiles.
+  - [x] Run `./scripts/e2e-reset.sh && cd tests/e2e && npx playwright test specs/journeys/navbar-hamburger.spec.ts` (single-spec) and confirm green.
+  - [x] Run full E2E lane to confirm no regressions.
 
-- [ ] **Task 9 — Local gate + push + draft PR (AC: 14, 15, 16)**
-  - [ ] `SQLX_OFFLINE=true cargo check` clean
-  - [ ] `cargo clippy --all-targets -- -D warnings` clean
-  - [ ] `cargo test` (full lib + integration) green
-  - [ ] CI flake gate: `grep -rE "waitForTimeout\(" tests/e2e/specs/ tests/e2e/helpers/` returns nothing.
-  - [ ] Run AC13 grep audit, document in Dev Agent Record.
-  - [ ] Push branch + open draft PR.
-  - [ ] WAIT for CI green per Foundation Rule #18.
+- [x] **Task 9 — Local gate + push + draft PR (AC: 14, 15, 16)**
+  - [x] `SQLX_OFFLINE=true cargo check` clean
+  - [x] `cargo clippy --all-targets -- -D warnings` clean
+  - [x] `cargo test` (full lib + integration) green
+  - [x] CI flake gate: `grep -rE "waitForTimeout\(" tests/e2e/specs/ tests/e2e/helpers/` returns nothing.
+  - [x] Run AC13 grep audit, document in Dev Agent Record.
+  - [x] Push branch + open draft PR.
+  - [x] WAIT for CI green per Foundation Rule #18.
 
 ## Dev Notes
 
@@ -320,33 +320,96 @@ claude-opus-4-7[1m]
 
 ### Debug Log References
 
-(populated by dev agent)
+- `cargo check` — clean (5.13s)
+- `cargo clippy --all-targets -- -D warnings` — clean (7.56s)
+- `cargo test --lib` (with `DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test'`) — **769 passed, 0 failed** (30s). Without `DATABASE_URL` set, the runner picked up `.env`'s dev-DB URL and 105 DB-backed tests failed on connection auth — pre-existing dev-environment quirk, NOT a regression from this story.
+- `cargo test --lib no_inline_markup_in_templates` — green (CSP audit on the i18n'd `aria-label="{{ nav_menu_open }}"`).
+- `cargo test --lib all_t_keys_have_both_locales` — green (`nav.menu_open` ↔ `nav.menu_open` parity).
+- `cargo test --test navbar_hamburger` — **6/6 passed** (1.27s). Test 3 was split into 3 functions (anonymous / librarian / admin) for clearer failure messages, so 6 total instead of the spec's 4.
+- `npx tsc --noEmit` (E2E TypeScript) — clean.
+- `npx playwright test specs/journeys/navbar-hamburger.spec.ts` — **5/5 passed** (992ms).
+- `npm test` (full E2E lane post `e2e-reset.sh`) — **214 passed, 2 skipped, 1 failed**. The 1 failure is `home-search.spec.ts:224` "typing slowly stays on home and triggers inline browse search" — the **same pre-existing flake on `origin/main`** documented in 9-13/9-14/9-15/9-16 retros (data pollution under parallel mode). Not a 9-17 regression.
+- Flake gate `grep -rE "waitForTimeout\(" tests/e2e/specs/ tests/e2e/helpers/` — clean (no matches).
+- AC13 grep audit:
+  - `grep -rn 'initMobileMenuToggle' static/js/` → ZERO hits ✓ (function deleted; the 2 doc-comment references in `mybibli.js:174` and `nav.js:3` were reworded to drop the symbol name).
+  - `grep -rn 'mobile-menu-toggle' static/js/` → 1 hit (`nav.js:34` `var TOGGLE_ID`).
+  - `grep -rn 'mobile-nav' templates/ static/` → 4 hits: `nav_bar.html:50` (aria-controls), `nav_bar.html:57` (panel id), `nav.js:7` (doc comment), `nav.js:35` (PANEL_ID constant).
+- Reality-check verification (Task 1):
+  - `nav.menu_open` confirmed missing from both `locales/en.yml` + `locales/fr.yml` before edit.
+  - `aria-label="Open menu"` confirmed hardcoded at `nav_bar.html:50` before edit.
+  - `nav_logout` site mapping: 18 ctors + 18 struct definitions + 5 test fixtures across 11 files (per a `grep -nE 'nav_logout' src/routes/*.rs` walk). The Python injection script processed 18 + 18 + 5 = 41 sites without manual fan-out.
+  - `#scan-field` template (`templates/components/scan_field.html`) does NOT carry `data-scanner-threshold`. Only `templates/pages/home.html:33`'s `#search-field` does (value `"100"`). nav.js's threshold lookup reads `#search-field?.dataset.scannerThreshold` (home page only), else hardcoded `50`.
+  - `#scan-field` is rendered ONLY on `/catalog` — and only when `role == "librarian" || role == "admin"` (per `templates/pages/catalog.html:47`). E2E Test 4 logs in as librarian to satisfy the prerequisite.
 
 ### Completion Notes List
 
-(populated by dev agent)
+- ✅ AC1 — `static/js/nav.js` (~178 LOC) IIFE module replacing the old `initMobileMenuToggle`. State `{ open, previousActiveElement }`. Two `keydown` listeners on `document`: (a) Escape + Tab focus-trap, (b) standalone burst detector with `lastKeydownAt = Date.now()` timestamp + threshold compare. `mousedown` on document for outside-click close. Delegated `click` on the panel for link-click close. `dataset.wired` idempotency on the trigger button. CSP-clean (no `eval`, no inline handlers, all listeners via `addEventListener`).
+- ✅ AC2 — `<script src="/static/js/nav.js">` registered AFTER `modal.js` (line 62) and BEFORE deferred `mybibli.js` (line 63). `initMobileMenuToggle` deleted from `mybibli.js`; its bootstrap call at `init()` removed.
+- ✅ AC3 — `templates/components/nav_bar.html` markup unchanged at the structural level. The `aria-label` swapped from hardcoded `"Open menu"` to `{{ nav_menu_open }}` (per AC4).
+- ✅ AC4 — i18n: 1 NEW key per locale (`nav.menu_open: "Open menu"` / `"Ouvrir le menu"`) inserted next to `nav.logout` in both `locales/en.yml` and `locales/fr.yml`. The 18 page structs (across 10 route files) gained `pub nav_menu_open: String` field + 1 ctor line each. 5 test fixtures got `nav_menu_open: "Open menu".to_string(),`. All 41 edits applied via a Python injection script that preserves each line's original indent.
+- ✅ AC5 — Tailwind `md:hidden` (768px) breakpoint UNCHANGED. UX-DR24's 1024px discrepancy filed as deferred `type:change-request` in the Change Log.
+- ✅ AC6 — Role-based link visibility regression-free. Three integration tests (`mobile_nav_panel_renders_role_gated_links_anonymous`, `_librarian`, `_admin`) lock the gate by slicing `#mobile-nav` HTML and asserting per-role link sets.
+- ✅ AC7 — Focus trap correctness. E2E Test 3 verifies Tab from last wraps to first and Shift+Tab from first stays inside the panel.
+- ✅ AC8 — Scanner-burst auto-close. E2E Test 4 (on `/catalog` as librarian) confirms the panel collapses on a 20 ms inter-key burst AND the burst-confirming character `B` is forwarded into `#scan-field`. **Known v1 limitation documented**: the FIRST keystroke of a burst is consumed by the panel's normal focus target — accepted because (a) ISBN/V-code bursts terminate with Enter that lands on the now-focused `#scan-field`, (b) re-scanning is low-friction recovery.
+- ✅ AC9 — CSP compliance. `cargo test no_inline_markup_in_templates` green; nav.js loaded via `<script src=...>` (no inline script).
+- ✅ AC10 — 6 integration tests in `tests/navbar_hamburger.rs` (1 expanded from the spec's "Test 3" into per-role functions for clearer failure messages). 6/6 green.
+- ✅ AC11 — 5 E2E scenarios in `tests/e2e/specs/journeys/navbar-hamburger.spec.ts`. 5/5 green. **Test 4 deviation**: bypassed `simulateScan` for the `keyboard.type("AB", { delay: 20 })` call (without trailing Enter) — the helper appends Enter, which would land on `#scan-field` after nav.js forwards focus to it and trigger the scan workflow before the test could read the input value. Documented inline.
+- ✅ AC12 — LOC budget respected:
+  - `static/js/nav.js`: NEW 178 LOC (spec budget ~120; the comment header + the standalone burst detector with explicit fallback push it 50 LOC over but well under 2000).
+  - `static/js/mybibli.js`: net −10 LOC (function + bootstrap call removed; replaced with a 4-line "see nav.js" comment).
+  - `templates/layouts/base.html`: +1 LOC (the new `<script src=…>`).
+  - `templates/components/nav_bar.html`: +0/-0 LOC at the structural level; just an in-line `aria-label` substitution.
+  - `tests/navbar_hamburger.rs`: NEW 215 LOC (spec budget ~120; the per-role test split + the `extract_panel` helper push it up).
+  - `tests/e2e/specs/journeys/navbar-hamburger.spec.ts`: NEW 217 LOC (spec budget ~160; conservative selector regex + comments push it up).
+  - `locales/{en,fr}.yml`: +1 key per locale.
+  - `src/routes/*.rs`: 18 ctors + 18 struct defs + 5 test fixtures = 41 single-line additions across 11 files. Net per-file delta well under 2000 LOC.
+- ✅ AC13 — Story-level grep audit clean (see Debug Log).
+- ✅ AC14 — Local testing all green.
+- ✅ AC15 — Draft PR #144 opened at the first commit; CI gate respected post-push.
+- 📋 **AC16 — Foundation Rule #2 waiver applies**: `nav.js` JS unit tests deferred — coverage delegated to E2E (5 scenarios) + Rust integration tests (6 cases on the rendered markup). Same waiver as 9-16 AC18. The deferred GH issue from 9-16 ("Add JS unit-testing harness Vitest") subsumes this; do NOT file a duplicate.
+
+### Deviations from spec
+
+- **`#scan-field` is `/catalog`-only AND librarian/admin-only** (not on every page as the story implied). E2E Test 4 logs in as librarian; Test 5 uses `/login` (anonymous) where `#scan-field` is absent. Reality-check section already covered the `/catalog` part; the librarian-gating discovery happened during E2E run.
+- **AC10 Test 3 split into 3 functions** (one per role) for clearer failure messages. Net 6 integration tests instead of the spec's 4.
+- **nav.js LOC went 178 vs spec budget ~120**. The standalone burst detector + comment header + threshold-source fallback comments contribute. Still well under 2000 (Foundation Rule #12).
+- **E2E Test 4 bypasses `simulateScan`** to omit the trailing Enter — the helper's mandatory Enter would land on `#scan-field` (focused after nav.js forwarding) and trigger the scan workflow, navigating away before the value-assertion can read the input. Documented inline.
+- **`cargo test --lib` baseline failure mode** — without `DATABASE_URL` set, the runner picks up `.env`'s dev-DB URL (port 3306, user `mybibli`) and 105 DB-backed tests fail on connection auth. Pre-existing dev-env quirk; CI sets `DATABASE_URL` explicitly so this doesn't affect CI.
 
 ### File List
 
 **Modified:**
-- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status transitions.
-- `locales/en.yml` and `fr.yml` — +1 key per locale (`nav.menu_open`) IF AC4 adds it.
-- `static/js/mybibli.js` — `initMobileMenuToggle` removed.
-- `templates/layouts/base.html` — `<script src="/static/js/nav.js">` registered.
-- `templates/components/nav_bar.html` — `aria-label="Open menu"` → `{{ nav_menu_open }}` IF AC4.
-- `src/routes/*.rs` (~19 page structs) — +1 field + 1 ctor line IF AC4.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status transitions (ready-for-dev → in-progress → review).
+- `locales/en.yml` — `nav.menu_open: "Open menu"` added next to `nav.logout`.
+- `locales/fr.yml` — `nav.menu_open: "Ouvrir le menu"` added next to `nav.logout`.
+- `static/js/mybibli.js` — `initMobileMenuToggle` function + bootstrap call removed; replaced with a 4-line "see nav.js" comment block.
+- `templates/layouts/base.html` — `<script src="/static/js/nav.js"></script>` registered after `modal.js`, before deferred `mybibli.js`.
+- `templates/components/nav_bar.html:50` — `aria-label="Open menu"` → `aria-label="{{ nav_menu_open }}"`.
+- `src/routes/admin.rs` — 1 struct + 1 ctor (`pub nav_menu_open: String` + ctor line; admin.rs's struct is non-pub `nav_logout: String`, so the field is `nav_menu_open: String` to match).
+- `src/routes/auth.rs` — 1 struct + 1 ctor.
+- `src/routes/borrowers.rs` — 3 structs + 3 ctors.
+- `src/routes/catalog.rs` — 3 structs + 3 ctors.
+- `src/routes/contributors.rs` — 1 struct + 1 ctor.
+- `src/routes/home.rs` — 1 struct + 1 ctor.
+- `src/routes/loans.rs` — 1 struct + 1 ctor.
+- `src/routes/locations.rs` — 3 structs + 3 ctors.
+- `src/routes/series.rs` — 3 structs + 3 ctors.
+- `src/routes/titles.rs` — 1 struct + 1 ctor.
+- `src/routes/volume_detail_tests.rs` — 1 test fixture (hardcoded `"Open menu"`).
+- 4 additional test fixtures in `home.rs:813`, `titles.rs:1344+1446`, `locations.rs:677` — each got the matching hardcoded fixture line.
 
 **New:**
-- `static/js/nav.js` — IIFE module (~120 LOC).
-- `tests/navbar_hamburger.rs` — 4 integration test cases.
-- `tests/e2e/specs/journeys/navbar-hamburger.spec.ts` — 4 E2E scenarios.
+- `static/js/nav.js` — IIFE module (178 LOC).
+- `tests/navbar_hamburger.rs` — 6 integration test cases (215 LOC).
+- `tests/e2e/specs/journeys/navbar-hamburger.spec.ts` — 5 E2E scenarios (217 LOC).
 
 **No change:**
-- `static/js/scanner-guard.js`, `static/js/modal.js`, `templates/components/nav_bar.html` markup (per AC3 unless AC4).
+- `static/js/scanner-guard.js`, `static/js/modal.js`, `static/js/connection-monitor.js` — none of these required edits. `templates/components/scan_field.html` unchanged (the `data-scanner-threshold` attribute stays on `#search-field` only).
 
 ### Change Log
 
 | Date | Change |
 | --- | --- |
 | 2026-05-08 | Story created (backlog → ready-for-dev). Third polish-finalize story in Epic 9 (post 9-16 close). Scope: enhance the EXISTING mobile-menu toggle (`mybibli.js:174-184` `initMobileMenuToggle`) into a full disclosure pattern with outside-click close, Escape close, focus trap, scanner-burst auto-close, link-click close. NEW dedicated module `static/js/nav.js` (~120 LOC IIFE). Markup at `templates/components/nav_bar.html:50-83` is byte-identical (only the `aria-label` may be templated if AC4 adds the i18n key). Standalone burst detector (no scanner-guard.js coupling). Disclosure pattern (no `<dialog>` migration in v1). 4 integration tests + 4 E2E scenarios. Foundation Rule #2 waiver for JS unit tests (delegated to E2E + integration). Breakpoint discrepancy (Tailwind `md:` ≥ 768px vs UX-DR24's < 1024px) ACKNOWLEDGED but NOT addressed in this story — filed as deferred `type:change-request`. Migrate-to-`<dialog>` polish also deferred. |
+| 2026-05-09 | Story implemented (in-progress → review). NEW `static/js/nav.js` (178 LOC IIFE) replaces and supersedes the basic mobile-menu toggle that lived in `mybibli.js`. Adds outside-click close (mousedown), Escape close + focus restore, focus trap (Tab/Shift+Tab cycle inside `#mobile-nav`), link-click close, and standalone scanner-burst auto-close (lastKeydownAt vs threshold from `#search-field?.dataset.scannerThreshold` else 50ms; burst-confirming key forwarded to `#scan-field` if present, drop silently otherwise). `mybibli.js` lost the legacy `initMobileMenuToggle` + its bootstrap call. `templates/layouts/base.html` registers nav.js between `modal.js` and the deferred `mybibli.js`. `templates/components/nav_bar.html:50` aria-label swapped from hardcoded `"Open menu"` to `{{ nav_menu_open }}`. NEW i18n key `nav.menu_open` (`"Open menu"` / `"Ouvrir le menu"`). 18 page structs across 10 route files gained `pub nav_menu_open: String` field + 1 ctor line each; 5 test fixtures got the matching hardcoded string — 41 mechanical edits applied via Python injection script (preserves each line's original indent). 6 integration tests in `tests/navbar_hamburger.rs` (AC10 Test 3 split per-role for clearer failure messages); 5 E2E scenarios in `tests/e2e/specs/journeys/navbar-hamburger.spec.ts`. Local gates all green; full E2E lane 214/217 (1 pre-existing flake on `home-search.spec.ts:224`, 2 skipped). AC13 grep audit clean. Foundation Rule #2 waiver inherits 9-16's deferred ticket. |
 | 2026-05-08 | Story validated; 7 improvements applied (3 critical + 4 enhancements). **Critical fixes**: (C1) **`data-scanner-threshold` location corrected** — the attribute lives ONLY on `#search-field` (`templates/pages/home.html:33`, value `"100"`); the canonical `#scan-field` template does NOT carry it. nav.js's burst detector now reads `document.getElementById("search-field")?.dataset.scannerThreshold` (home page only), else hardcoded fallback `50`. Reality-check + AC1 + Task 1 updated to reflect this. (C2) **First-keystroke loss in burst detection acknowledged** — the FIRST keystroke of a scanner burst cannot be classified as "burst" (no prior timestamp); v1 accepts the single-character loss because (a) ISBN/V-code bursts terminate with Enter that lands on `#scan-field` AFTER nav.js closes the panel, (b) re-scan is low-friction recovery. Documented in AC8 + Dev Notes. (C3) **E2E Test 4 mechanism specified** — use `simulateScan(page, "body", "AB")` from `tests/e2e/helpers/scanner.ts` (Playwright trusted events, 20 ms inter-key); do NOT use `dispatchEvent(new KeyboardEvent(...))` (untrusted events can be filtered). **Enhancements**: (E1) **Script placement corrected** — insert `<script src="/static/js/nav.js">` AFTER `modal.js` (line 62) and BEFORE the deferred `mybibli.js` (line 63). Putting it after deferred `mybibli.js` would technically work but is misleading (deferred scripts run after all sync scripts regardless of source order). (E2) **Page-struct count grep updated** — Task 1 now runs `grep -nE 'nav_logout: rust_i18n' src/routes/*.rs | wc -l` for the EXACT count (23 occurrences as of 2026-05-08; ~19 page structs expected after excluding test fixtures). (E3) **search.js state-machine line range corrected** to `30-98`. (E4) **NEW E2E Test 5 added** — burst auto-close on a page WITHOUT `#scan-field` (e.g., `/admin`); locks the "drop silently" branch of AC8. AC11 grew from 4 to 5 scenarios; spec LOC budget revised to ~160. **Final scope unchanged** at the file/struct level; clarifications only. |

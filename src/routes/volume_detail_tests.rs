@@ -34,6 +34,7 @@ fn make_test_volume_detail_template(
         nav_admin: "Admin".to_string(),
         nav_login: "Log in".to_string(),
         nav_logout: "Log out".to_string(),
+        nav_menu_open: "Open menu".to_string(),
         volume: VolumeModel {
             id: 1,
             label: "V0001".to_string(),

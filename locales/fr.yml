@@ -50,6 +50,7 @@ nav:
   borrowers: Emprunteurs
   login: Connexion
   logout: Déconnexion
+  menu_open: Ouvrir le menu
   skip_to_content: Aller au contenu principal
   theme_toggle: Basculer le thème
   language_toggle_aria: Changer la langue

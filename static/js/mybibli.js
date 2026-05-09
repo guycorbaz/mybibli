@@ -171,17 +171,10 @@
         scanField.focus();
     }
 
-    // Mobile hamburger button toggles #mobile-nav visibility + ARIA state.
-    // Pre-CSP this lived as an inline onclick on #mobile-menu-toggle.
-    function initMobileMenuToggle() {
-        var btn = document.getElementById("mobile-menu-toggle");
-        var menu = document.getElementById("mobile-nav");
-        if (!btn || !menu) return;
-        btn.addEventListener("click", function () {
-            var nowHidden = menu.classList.toggle("hidden");
-            btn.setAttribute("aria-expanded", String(!nowHidden));
-        });
-    }
+    // Story 9-17 — the mobile-menu disclosure (basic click-to-toggle that
+    // used to live here) is now owned end-to-end by `static/js/nav.js`,
+    // which adds outside-click close, Escape, focus trap, link-click
+    // close, and scanner-burst auto-close on top of the original toggle.
 
     // Delegated dismiss for feedback entries — works for templates AND for
     // the JS-injected error fragment in injectErrorFeedback() (which now
@@ -325,7 +318,6 @@
         initFormEscapeHandler();
         initAudioFeedback();
         initHtmxErrorRecovery();
-        initMobileMenuToggle();
         initFeedbackDismiss();
         initProviderKeyClearToggle();
         initBorrowerDetailReload();
