@@ -36,6 +36,16 @@
     var SCAN_FIELD_ID = "scan-field";
     var SEARCH_FIELD_ID = "search-field";
     var DEFAULT_BURST_THRESHOLD_MS = 50;
+    // Mirror of scanner-guard.js's MODAL_SELECTOR. When a UX-DR8 modal is
+    // open above the panel, nav.js's outside-click + Escape handlers must
+    // defer to modal.js (which owns the topmost surface's close semantics).
+    // Without this gate, both modules would close on the same Escape and a
+    // backdrop mousedown would fight modal.js's focus restoration.
+    var MODAL_SELECTOR = 'dialog[open], [aria-modal="true"]';
+
+    function isModalOpen() {
+        return document.querySelector(MODAL_SELECTOR) !== null;
+    }
 
     // Mirror of modal.js's FOCUSABLE_SELECTOR. Rule-of-three not yet hit
     // (modal.js + nav.js = 2 callers); a future story can extract once a
@@ -110,6 +120,11 @@
         // count as a backdrop click. Mirror of modal.js's mousedown gate.
         document.addEventListener("mousedown", function (e) {
             if (!state.open) return;
+            // Defer to the modal: a UX-DR8 dialog above the panel owns the
+            // topmost surface's close semantics. Without this gate, every
+            // backdrop mousedown on the modal would also call closePanel()
+            // and fight modal.js's focus restoration.
+            if (isModalOpen()) return;
             var t = e.target;
             if (t && (panel.contains(t) || btn.contains(t))) return;
             closePanel();
@@ -119,6 +134,11 @@
         // the early `state.open` short-circuit and do not race each other.
         document.addEventListener("keydown", function (e) {
             if (!state.open) return;
+            // Defer to the modal: Escape on a modal-above-panel must close
+            // only the modal, not both surfaces. modal.js's keydown handler
+            // is registered when the modal opens, so without this gate a
+            // single Escape would collapse both surfaces.
+            if (isModalOpen()) return;
 
             if (e.key === "Escape") {
                 e.preventDefault();
@@ -171,8 +191,12 @@
             if (e.ctrlKey || e.metaKey || e.altKey) return;
             if (delta >= burstThresholdMs) return;        // human-paced typing — leave panel open
 
-            // Confirmed burst: close + forward this keystroke to #scan-field
-            // if present (catalog page only). Drop silently otherwise.
+            // Confirmed burst: consume the keystroke (preventDefault stops
+            // the browser's default keypress/input flow from also delivering
+            // this same character to #scan-field after we focus it — which
+            // would produce a duplicate "B" on browsers that re-evaluate
+            // focus before downstream events). Then close + forward.
+            e.preventDefault();
             closePanel({ restoreFocus: false });
             var scan = document.getElementById(SCAN_FIELD_ID);
             if (scan) {

@@ -246,23 +246,33 @@ async fn aria_label_renders_in_french_locale(pool: MySqlPool) {
 /// Slice the `#mobile-nav` panel HTML out of the full body so role-gate
 /// assertions only see panel-internal `<a href>` elements, not the desktop
 /// list which carries the same gate logic.
+///
+/// Walks `<div>` / `</div>` tags tracking nesting depth so the helper
+/// stays correct if the panel later gains nested wrappers. We start INSIDE
+/// the opening `<div ... id="mobile-nav" ...>` tag (so the panel itself
+/// counts as depth 1), and return the slice when the matching closing
+/// `</div>` brings the depth back to 0.
 fn extract_panel(html: &str) -> String {
     let start_marker = r#"id="mobile-nav""#;
     let start = html
         .find(start_marker)
         .expect("rendered HTML must contain the mobile-nav panel id");
-    // Walk forward to the closing </div> that terminates the panel block.
-    // The panel spans from the opening <div id="mobile-nav" ...> up to the
-    // matching </div>. Since the panel is flat (no nested <div> inside the
-    // opening element's siblings), the FIRST `</div>` after a balanced
-    // depth marker would be wrong — but the panel actually contains a
-    // nested <form> with no <div>, so the first `</div>` after
-    // `id="mobile-nav"` is the panel's own close. Defensive: take a
-    // generous suffix that still excludes the page's <main>.
     let tail = &html[start..];
-    let end = tail
-        .find("</div>")
-        .expect("mobile-nav panel must have a closing </div>")
-        + "</div>".len();
-    tail[..end].to_string()
+    let mut depth: i32 = 1;
+    let mut pos = 0;
+    while pos < tail.len() {
+        if tail[pos..].starts_with("<div") {
+            depth += 1;
+            pos += 4;
+        } else if tail[pos..].starts_with("</div>") {
+            depth -= 1;
+            pos += "</div>".len();
+            if depth == 0 {
+                return tail[..pos].to_string();
+            }
+        } else {
+            pos += 1;
+        }
+    }
+    panic!("mobile-nav panel did not close — unbalanced <div>/<\\/div>");
 }

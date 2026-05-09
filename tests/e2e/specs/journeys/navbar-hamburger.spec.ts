@@ -56,22 +56,20 @@ test.describe("Story 9-17 — NavBar hamburger menu", () => {
     await expect(panel).not.toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
     await expect(trigger).toHaveAttribute("aria-expanded", "true");
 
-    // --- Click on a link inside the panel — closes (restoreFocus=false so
-    //     the navigation isn't fought; here we close before navigation
-    //     completes by intercepting the click target's effect). The link
-    //     points to /locations — read-only, anonymous-accessible.
-    const link = panel.locator("a[href='/locations']");
-    await link.click();
-
-    // After full-page navigation the panel is rebuilt with the default
-    // hidden state on the new page. Wait for /locations to load and
-    // re-assert the panel is collapsed.
-    await page.waitForURL(/\/locations(\?|$)/);
-    await expect(page.locator("#mobile-nav")).toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
-    await expect(page.locator("#mobile-menu-toggle")).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    // --- Click on a link inside the panel — verifies nav.js's link-click
+    //     handler closes the panel BEFORE navigation. We intercept the
+    //     navigation to avoid asserting against the next page's
+    //     default-hidden render (which would be tautological — every page
+    //     starts with the panel hidden). With navigation cancelled, the
+    //     only thing that can hide the panel is nav.js's handler.
+    await page.evaluate(() => {
+      document.querySelectorAll("#mobile-nav a[href]").forEach((a) => {
+        a.addEventListener("click", (e) => e.preventDefault(), { once: true });
+      });
+    });
+    await panel.locator("a[href='/locations']").click();
+    await expect(panel).toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     // --- Escape close ---
     await page.locator("#mobile-menu-toggle").click();
@@ -170,7 +168,12 @@ test.describe("Story 9-17 — NavBar hamburger menu", () => {
     // navigating away before the value-assertion can read the field.
     // simulateScan helpfully types "+Enter"; we bypass it here and use
     // page.keyboard.type directly to keep nav focus where it is.
-    await page.keyboard.type("AB", { delay: 20 });
+    //
+    // delay: 5 ms (well below the 50 ms burst threshold) — at delay: 20
+    // a slow CI runner could slip the second keystroke past 50 ms and
+    // miss the burst classification, producing a flake. delay: 5 holds
+    // a 10× margin which is robust against scheduler jitter.
+    await page.keyboard.type("AB", { delay: 5 });
 
     // Panel must collapse within ~1s — Playwright's auto-wait under
     // toHaveClass uses default test timeout but we tighten it to keep
