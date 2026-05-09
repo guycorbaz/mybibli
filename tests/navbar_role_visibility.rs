@@ -95,19 +95,36 @@ async fn body_text(resp: axum::response::Response) -> String {
 
 /// Slice the `<nav aria-label="Main navigation">` strip out of the rendered
 /// HTML so desktop-link assertions see ONLY the desktop nav (and never the
-/// mobile-panel twin links). Walks `<nav>`/`</nav>` tracking nesting depth
-/// from the opening tag's `id="..."` marker on the `<nav>` element itself.
+/// mobile-panel twin links). Walks `<nav>`/`</nav>` tags tracking nesting
+/// depth so the helper stays correct if the desktop strip later gains a
+/// nested `<nav>` (e.g., a sub-nav for grouped sections).
 fn extract_desktop_nav(html: &str) -> String {
     let start_marker = r#"<nav aria-label="Main navigation""#;
     let start = html
         .find(start_marker)
         .expect("rendered HTML must contain the desktop nav landmark");
-    let tail = &html[start..];
-    let end = tail
-        .find("</nav>")
-        .expect("desktop nav must close")
-        + "</nav>".len();
-    tail[..end].to_string()
+    // Walk PAST the opening `<nav` (4 bytes) so the depth-1 starting state
+    // correctly accounts for the strip's own opening tag.
+    let tail = &html[start + 4..];
+    let mut depth: i32 = 1;
+    let mut pos = 0;
+    while pos < tail.len() {
+        if tail[pos..].starts_with("<nav") {
+            depth += 1;
+            pos += 4;
+        } else if tail[pos..].starts_with("</nav>") {
+            depth -= 1;
+            pos += "</nav>".len();
+            if depth == 0 {
+                // Return the slice starting at the original `<nav` opening,
+                // so the caller sees a complete `<nav ...>...</nav>` block.
+                return format!("<nav{}", &tail[..pos]);
+            }
+        } else {
+            pos += 1;
+        }
+    }
+    panic!("desktop nav did not close — unbalanced <nav>/<\\/nav>");
 }
 
 /// Slice the `#mobile-nav` panel HTML out of the full body. Walks
@@ -169,7 +186,12 @@ async fn anonymous_nav_link_set_exact(pool: MySqlPool) {
     assert!(!desktop.contains(r#"href="/admin""#), "desktop must HIDE /admin for anonymous; got: {desktop}");
     assert!(!desktop.contains(r#"action="/logout""#), "desktop must HIDE logout form for anonymous; got: {desktop}");
 
-    // Mobile panel — visible (note: NO Sign in link in panel — mobile login/logout gap, AC16)
+    // Mobile panel — visible (note: NO Sign in link in panel — mobile
+    // login/logout gap, AC16). The panel also intentionally does NOT
+    // render the theme toggle (it lives only in the desktop strip);
+    // asymmetry mirrors the template at `nav_bar.html:36` where
+    // `#theme-toggle` is a sibling of the desktop link block, not the
+    // mobile panel block. AC16's mobile-parity follow-up may revisit.
     assert!(panel.contains(r#"href="/catalog""#), "panel must include /catalog for anonymous; got panel: {panel}");
     assert!(panel.contains(r#"href="/locations""#), "panel must include /locations for anonymous; got panel: {panel}");
     assert!(panel.contains(r#"href="/series""#), "panel must include /series for anonymous; got panel: {panel}");
@@ -267,52 +289,124 @@ async fn admin_nav_link_set_exact(pool: MySqlPool) {
     assert!(!panel.contains(r#"href="/login""#), "panel must HIDE Sign in for admin");
 }
 
-// AC4 — Active-page indicator (`aria-current="page"`) rendering.
-#[sqlx::test(migrations = "./migrations")]
-async fn aria_current_renders_on_matching_page(pool: MySqlPool) {
-    // Use anonymous /catalog so we don't need a session — anonymous CAN
-    // see the Catalog link (per Epic 7) and the page renders cleanly.
-    let app = build_router(build_state(pool));
-
+// AC4 — Active-page indicator (`aria-current="page"`) rendering across
+// multiple `current_page` values. Asserts exactly 2 emits per render
+// (desktop + mobile twin), both on the matched-page link, and no other
+// entity link carries the attribute.
+//
+// Each asserted page covers a different role / accessibility scope:
+//   - /catalog: anonymous-readable (no session needed)
+//   - /locations: anonymous-readable (no session needed)
+//   - /admin?tab=health: admin-only (verifies aria-current works for
+//     librarian/admin-only pages too)
+//
+// We assert the count INSIDE the desktop nav slice + mobile panel slice
+// rather than the entire body, so a future surface adding aria-current
+// (e.g., a breadcrumb component) does NOT spuriously fail this test.
+//
+// We also relax the order-of-attributes assumption: instead of matching
+// `<a href="..." aria-current="page"`, we slice the link's containing
+// `<a>` element via two independent substring checks (href and
+// aria-current) so an Askama version that emits attributes in a different
+// order still passes.
+async fn assert_aria_current_for(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    expected_active_href: &str,
+    other_entity_hrefs: &[&str],
+) {
     let resp = app
-        .oneshot(req_get("/catalog", Some("en"), None))
+        .oneshot(req_get(uri, Some("en"), cookie))
         .await
         .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.status(), StatusCode::OK, "GET {uri} must succeed");
     let html = body_text(resp).await;
+    let desktop = extract_desktop_nav(&html);
+    let panel = extract_mobile_panel(&html);
 
-    // Per AC4: rendered output for current_page="catalog" should contain
-    // exactly TWO `aria-current="page"` occurrences — one in the desktop
-    // strip on the Catalog link, one in the mobile panel on the Catalog
-    // link. Other nav links must NOT carry `aria-current` in the same
-    // render.
-    let aria_current_count = html.matches(r#"aria-current="page""#).count();
-    assert_eq!(
-        aria_current_count, 2,
-        "expected exactly 2 aria-current=page occurrences (desktop + mobile twin) on /catalog; got {aria_current_count}"
-    );
+    // Exactly 1 aria-current in the desktop strip + 1 in the mobile panel.
+    let desktop_count = desktop.matches(r#"aria-current="page""#).count();
+    let panel_count = panel.matches(r#"aria-current="page""#).count();
+    assert_eq!(desktop_count, 1, "{uri}: desktop nav must contain exactly 1 aria-current=page; got {desktop_count}");
+    assert_eq!(panel_count, 1, "{uri}: mobile panel must contain exactly 1 aria-current=page; got {panel_count}");
 
-    // Both occurrences must be on the Catalog link. The simplest way to
-    // verify: the link `<a href="/catalog" aria-current="page" ...>`
-    // appears twice; no other entity link carries `aria-current` here.
-    let catalog_with_aria = html
-        .matches(r#"<a href="/catalog" aria-current="page""#)
-        .count();
-    assert_eq!(
-        catalog_with_aria, 2,
-        "both aria-current emits must be on the /catalog link (desktop + panel); got {catalog_with_aria}"
-    );
-
-    // Sanity: locations/series/loans/borrowers/admin must NOT carry
-    // aria-current on a /catalog render.
-    for href in ["/locations", "/series", "/loans", "/borrowers", "/admin"] {
-        let pattern = format!(r#"<a href="{href}" aria-current="page""#);
+    // The matched-page link is the one carrying aria-current. We slice
+    // each of the desktop + panel `<a>` elements that target the expected
+    // href and assert aria-current is INSIDE that anchor's open tag.
+    // Order-of-attributes agnostic.
+    for region_name in ["desktop", "panel"] {
+        let region = if region_name == "desktop" { &desktop } else { &panel };
+        let href_marker = format!(r#"href="{expected_active_href}""#);
+        let href_pos = region.find(&href_marker).unwrap_or_else(|| {
+            panic!("{uri}: {region_name} must include the active link href={expected_active_href}; got region: {region}")
+        });
+        // Walk back to find the opening `<a` of this anchor; walk forward
+        // to find the next `>` that closes the open tag.
+        let anchor_start = region[..href_pos].rfind("<a").expect("anchor must have <a opening");
+        let anchor_end = region[anchor_start..].find('>').expect("anchor open tag must have >") + anchor_start;
+        let anchor_open = &region[anchor_start..=anchor_end];
         assert!(
-            !html.contains(&pattern),
-            "{href} link must NOT carry aria-current on /catalog render"
+            anchor_open.contains(r#"aria-current="page""#),
+            "{uri}: active {region_name} link <a href={expected_active_href}> must carry aria-current=page; got open tag: {anchor_open}"
         );
     }
+
+    // Sanity: other entity links must NOT carry aria-current on this render.
+    for href in other_entity_hrefs {
+        let href_marker = format!(r#"href="{href}""#);
+        for region_name in ["desktop", "panel"] {
+            let region = if region_name == "desktop" { &desktop } else { &panel };
+            // Some links may not exist for the role being tested; only
+            // assert on links that ARE present.
+            if let Some(href_pos) = region.find(&href_marker) {
+                let anchor_start = region[..href_pos].rfind("<a").expect("anchor must have <a opening");
+                let anchor_end = region[anchor_start..].find('>').expect("anchor open tag must have >") + anchor_start;
+                let anchor_open = &region[anchor_start..=anchor_end];
+                assert!(
+                    !anchor_open.contains(r#"aria-current="page""#),
+                    "{uri}: {region_name} link <a href={href}> must NOT carry aria-current=page; got open tag: {anchor_open}"
+                );
+            }
+        }
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn aria_current_renders_on_matching_page(pool: MySqlPool) {
+    // Case 1: /catalog, anonymous.
+    let app = build_router(build_state(pool.clone()));
+    assert_aria_current_for(
+        app,
+        "/catalog",
+        None,
+        "/catalog",
+        &["/locations", "/series", "/loans", "/borrowers", "/admin"],
+    ).await;
+
+    // Case 2: /locations, anonymous.
+    let app = build_router(build_state(pool.clone()));
+    assert_aria_current_for(
+        app,
+        "/locations",
+        None,
+        "/locations",
+        &["/catalog", "/series", "/loans", "/borrowers", "/admin"],
+    ).await;
+
+    // Case 3: /admin?tab=health, admin-only — verifies aria-current works
+    // for admin-only pages too. Note `expected_active_href = "/admin"`
+    // because the nav link's href is bare `/admin`, even though the URL
+    // contains `?tab=health`.
+    let cookie = seed_session(&pool, "admin").await;
+    let app = build_router(build_state(pool));
+    assert_aria_current_for(
+        app,
+        "/admin?tab=health",
+        Some(&cookie),
+        "/admin",
+        &["/catalog", "/locations", "/series", "/loans", "/borrowers"],
+    ).await;
 }
 
 // AC5 — Role-flip template invariant: same session cookie, mutated
@@ -386,22 +480,33 @@ async fn logout_is_post_form_with_csrf_token(pool: MySqlPool) {
     let html = body_text(resp).await;
 
     // Exactly ONE POST logout form in the entire body — desktop only.
+    // NOTE: when AC16 (mobile login/logout gap) lands and adds a logout
+    // form to the mobile panel, this assertion will need to be updated
+    // to expect 2. The expectation here is a snapshot of the current
+    // (audited) state, not a forever-contract.
     let logout_forms = html.matches(r#"action="/logout""#).count();
     assert_eq!(
         logout_forms, 1,
         "expected exactly 1 logout form (desktop only; mobile gap deferred to AC16); got {logout_forms}"
     );
 
-    // The form is a POST.
-    assert!(
-        html.contains(r#"<form method="POST" action="/logout""#),
-        "logout must be a POST form, not GET"
+    // Slice the logout form's HTML so subsequent assertions verify the
+    // CSRF input is INSIDE the form, not just somewhere in the body
+    // (which would also match the language form's _csrf_token and let a
+    // dropped-from-logout-form regression pass silently).
+    let form_start = html.find(r#"<form method="POST" action="/logout""#).expect(
+        "logout must be a POST form starting with method=POST then action=/logout (Askama emits attributes in source order today)",
     );
+    let form_end = html[form_start..]
+        .find("</form>")
+        .expect("logout form must close")
+        + form_start
+        + "</form>".len();
+    let logout_form = &html[form_start..form_end];
 
-    // The form carries a hidden CSRF token (story 8-2 contract).
     assert!(
-        html.contains(r#"name="_csrf_token""#),
-        "logout form must include hidden _csrf_token input"
+        logout_form.contains(r#"name="_csrf_token""#),
+        "logout form (sliced) must include hidden _csrf_token input; got form: {logout_form}"
     );
 
     // No `<a href="/logout">` GET-link variant anywhere.

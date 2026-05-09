@@ -44,7 +44,7 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     await page.setViewportSize(TABLET);
     await page.locator("#mobile-menu-toggle").click();
     const panel = page.locator("#mobile-nav");
-    await expect(panel).not.toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
+    await expect(panel).toBeVisible();
 
     // Mobile — visible
     await expect(panel.locator("a[href='/catalog']")).toBeVisible();
@@ -84,7 +84,7 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     await page.setViewportSize(TABLET);
     await page.locator("#mobile-menu-toggle").click();
     const panel = page.locator("#mobile-nav");
-    await expect(panel).not.toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
+    await expect(panel).toBeVisible();
 
     // Mobile — visible
     await expect(panel.locator("a[href='/catalog']")).toBeVisible();
@@ -125,7 +125,7 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     await page.setViewportSize(TABLET);
     await page.locator("#mobile-menu-toggle").click();
     const panel = page.locator("#mobile-nav");
-    await expect(panel).not.toHaveClass(/(?:^|\s)hidden(?:\s|$)/);
+    await expect(panel).toBeVisible();
 
     // Mobile — visible (admin set including /admin)
     await expect(panel.locator("a[href='/catalog']")).toBeVisible();
