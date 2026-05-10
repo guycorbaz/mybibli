@@ -22,6 +22,7 @@ pub struct LoginTemplate {
     pub current_page: &'static str,
     pub skip_label: String,
     pub connection_status: crate::utils::ConnectionStatusContext,
+    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
     pub session_timeout_secs: u64,
     pub csrf_token: String,
     pub nav_catalog: String,
@@ -63,6 +64,7 @@ impl LoginTemplate {
             current_page: "login",
             skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
             connection_status: crate::utils::ConnectionStatusContext::new(loc),
+            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
             // Login page is anonymous — value is not rendered (guarded in base.html).
             session_timeout_secs: 0,
             csrf_token,

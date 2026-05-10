@@ -49,6 +49,24 @@ help:
     email_text: "Optionnel. Le courriel est stocké en texte clair — utilisé pour les rappels d'échéance si vous les activez plus tard."
     phone_summary: "Aide : téléphone de l'emprunteur"
     phone_text: "Optionnel. Le numéro est stocké en texte clair — aucune validation au-delà du format. Utilisé comme contact de repli quand le courriel est absent."
+shortcuts:
+  cheat_sheet:
+    heading: "Raccourcis clavier"
+    category_navigation: "Navigation"
+    category_catalog: "Catalogue"
+    category_modal: "Dialogues et menus"
+    shortcut_help: "Ouvrir cet aide-mémoire"
+    shortcut_escape: "Fermer tout dialogue ou menu ouvert"
+    shortcut_go_home: "Aller à l'accueil"
+    shortcut_go_catalog: "Aller au catalogue"
+    shortcut_go_loans: "Aller aux prêts"
+    shortcut_go_borrowers: "Aller aux emprunteurs"
+    shortcut_go_admin: "Aller à l'administration"
+    shortcut_focus_scan: "Focuser le champ de scan"
+    shortcut_new_title: "Ajouter un nouveau titre"
+    then_label: "puis"
+    close_label: "Fermer"
+  footer_link: "Appuyez sur ? pour les raccourcis"
 browse:
   list_view: Vue liste
   grid_view: Vue grille

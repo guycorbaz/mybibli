@@ -24,6 +24,7 @@ fn make_test_volume_detail_template(
         current_page: "catalog",
         skip_label: "Skip to main content".to_string(),
         connection_status: crate::utils::ConnectionStatusContext::new("en"),
+        shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new("en"),
         session_timeout_secs: 14400,
         csrf_token: "tok".to_string(),
         nav_catalog: "Catalog".to_string(),
