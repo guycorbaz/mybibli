@@ -49,6 +49,24 @@ help:
     email_text: "Optional. Email is stored as plain text — used for due-date reminders if you enable them later."
     phone_summary: "Help: borrower phone"
     phone_text: "Optional. Phone is stored as plain text — no validation beyond format. Used as a fallback contact when email is missing."
+shortcuts:
+  cheat_sheet:
+    heading: "Keyboard shortcuts"
+    category_navigation: "Navigation"
+    category_catalog: "Catalog"
+    category_modal: "Dialogs & menus"
+    shortcut_help: "Open this cheat sheet"
+    shortcut_escape: "Close any open dialog or menu"
+    shortcut_go_home: "Go to home"
+    shortcut_go_catalog: "Go to catalog"
+    shortcut_go_loans: "Go to loans"
+    shortcut_go_borrowers: "Go to borrowers"
+    shortcut_go_admin: "Go to admin"
+    shortcut_focus_scan: "Focus the scan field"
+    shortcut_new_title: "Add a new title"
+    then_label: "then"
+    close_label: "Close"
+  footer_link: "Press ? for shortcuts"
 browse:
   list_view: List view
   grid_view: Grid view

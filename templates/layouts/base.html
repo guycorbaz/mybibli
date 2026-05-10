@@ -45,6 +45,50 @@
             <button type="button" data-action="retry" class="px-4 py-2 bg-indigo-600 text-white rounded-md font-semibold hover:bg-indigo-700">{{ connection_status.lost_retry }}</button>
         </div>
     </div>
+    {# Story 9-20: cheat-sheet <dialog> + footer link. Native showModal()
+       handles top-layer + focus trap + Escape close; backdrop click
+       close added by static/js/shortcuts.js. Role-aware content rendered
+       server-side via Askama if-blocks. #}
+    <dialog id="shortcuts-cheat-sheet"
+            aria-labelledby="shortcuts-cheat-sheet-title"
+            class="rounded-lg shadow-xl max-w-md w-full p-6 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 border border-stone-200 dark:border-stone-700 backdrop:bg-black/50">
+        <div>
+            <h2 id="shortcuts-cheat-sheet-title" class="text-lg font-bold mb-4">{{ shortcuts_cheat_sheet.heading }}</h2>
+            <dl class="space-y-3 text-sm">
+                <div>
+                    <dt class="font-semibold text-stone-700 dark:text-stone-300 mb-1">{{ shortcuts_cheat_sheet.category_modal }}</dt>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">?</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_help }}</span></dd>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Esc</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_escape }}</span></dd>
+                </div>
+                <div>
+                    <dt class="font-semibold text-stone-700 dark:text-stone-300 mb-1">{{ shortcuts_cheat_sheet.category_navigation }}</dt>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">h</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_home }}</span></dd>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">c</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_catalog }}</span></dd>
+                    {% if role == "librarian" || role == "admin" %}
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">l</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_loans }}</span></dd>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">b</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_borrowers }}</span></dd>
+                    {% endif %}
+                    {% if role == "admin" %}
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">a</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_admin }}</span></dd>
+                    {% endif %}
+                </div>
+                {% if role == "librarian" || role == "admin" %}
+                <div>
+                    <dt class="font-semibold text-stone-700 dark:text-stone-300 mb-1">{{ shortcuts_cheat_sheet.category_catalog }}</dt>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">K</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_focus_scan }}</span></dd>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Shift</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">B</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_borrowers }}</span></dd>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">N</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_new_title }}</span></dd>
+                </div>
+                {% endif %}
+            </dl>
+            <div class="mt-6 flex justify-end">
+                <button type="button" data-cheat-sheet-close class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm">{{ shortcuts_cheat_sheet.close_label }}</button>
+            </div>
+        </div>
+    </dialog>
+    <footer class="text-center text-xs text-stone-400 dark:text-stone-500 py-3">
+        <a href="#" data-shortcuts-help-link class="hover:text-stone-600 dark:hover:text-stone-300 underline-offset-2 hover:underline">{{ shortcuts_cheat_sheet.footer_link }}</a>
+    </footer>
     <script src="/static/js/scan-field.js"></script>
     <script src="/static/js/search.js"></script>
     <script src="/static/js/browse-mode.js"></script>
@@ -62,6 +106,7 @@
     <script src="/static/js/modal.js"></script>
     <script src="/static/js/nav.js"></script>
     <script src="/static/js/tooltip.js"></script>
+    <script src="/static/js/shortcuts.js"></script>
     <script src="/static/js/mybibli.js" defer></script>
     {% block scripts %}{% endblock %}
 </body>

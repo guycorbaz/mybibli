@@ -130,6 +130,54 @@ impl TooltipData {
     }
 }
 
+/// Story 9-20 — bundles all 16 strings the cheat-sheet `<dialog>` and the
+/// "Press ? for shortcuts" footer link need. One field per page-route
+/// struct (mirror of 9-16's `ConnectionStatusContext` rollout); each
+/// ctor populates the bundle from the request locale.
+///
+/// Read by `templates/layouts/base.html` via `{{ shortcuts_cheat_sheet.* }}`.
+pub struct ShortcutsCheatSheetContext {
+    pub heading: String,
+    pub category_navigation: String,
+    pub category_catalog: String,
+    pub category_modal: String,
+    pub shortcut_help: String,
+    pub shortcut_escape: String,
+    pub shortcut_go_home: String,
+    pub shortcut_go_catalog: String,
+    pub shortcut_go_loans: String,
+    pub shortcut_go_borrowers: String,
+    pub shortcut_go_admin: String,
+    pub shortcut_focus_scan: String,
+    pub shortcut_new_title: String,
+    pub then_label: String,
+    pub close_label: String,
+    pub footer_link: String,
+}
+
+impl ShortcutsCheatSheetContext {
+    pub fn new(loc: &str) -> Self {
+        Self {
+            heading: rust_i18n::t!("shortcuts.cheat_sheet.heading", locale = loc).to_string(),
+            category_navigation: rust_i18n::t!("shortcuts.cheat_sheet.category_navigation", locale = loc).to_string(),
+            category_catalog: rust_i18n::t!("shortcuts.cheat_sheet.category_catalog", locale = loc).to_string(),
+            category_modal: rust_i18n::t!("shortcuts.cheat_sheet.category_modal", locale = loc).to_string(),
+            shortcut_help: rust_i18n::t!("shortcuts.cheat_sheet.shortcut_help", locale = loc).to_string(),
+            shortcut_escape: rust_i18n::t!("shortcuts.cheat_sheet.shortcut_escape", locale = loc).to_string(),
+            shortcut_go_home: rust_i18n::t!("shortcuts.cheat_sheet.shortcut_go_home", locale = loc).to_string(),
+            shortcut_go_catalog: rust_i18n::t!("shortcuts.cheat_sheet.shortcut_go_catalog", locale = loc).to_string(),
+            shortcut_go_loans: rust_i18n::t!("shortcuts.cheat_sheet.shortcut_go_loans", locale = loc).to_string(),
+            shortcut_go_borrowers: rust_i18n::t!("shortcuts.cheat_sheet.shortcut_go_borrowers", locale = loc).to_string(),
+            shortcut_go_admin: rust_i18n::t!("shortcuts.cheat_sheet.shortcut_go_admin", locale = loc).to_string(),
+            shortcut_focus_scan: rust_i18n::t!("shortcuts.cheat_sheet.shortcut_focus_scan", locale = loc).to_string(),
+            shortcut_new_title: rust_i18n::t!("shortcuts.cheat_sheet.shortcut_new_title", locale = loc).to_string(),
+            then_label: rust_i18n::t!("shortcuts.cheat_sheet.then_label", locale = loc).to_string(),
+            close_label: rust_i18n::t!("shortcuts.cheat_sheet.close_label", locale = loc).to_string(),
+            footer_link: rust_i18n::t!("shortcuts.footer_link", locale = loc).to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
