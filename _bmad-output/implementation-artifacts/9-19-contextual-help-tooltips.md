@@ -1,6 +1,6 @@
 # Story 9.19: Contextual help — tooltips, help icons, aria-describedby
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
