@@ -95,11 +95,11 @@
                            class="hover:underline">{{ col_borrower }}{% if current_sort == "borrower" %} {% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}</a>
                     </th>
                     <th class="px-4 py-3 text-stone-600 dark:text-stone-400">{{ col_volume }}</th>
-                    <th class="px-4 py-3 text-stone-600 dark:text-stone-400">
+                    <th class="hidden md:table-cell px-4 py-3 text-stone-600 dark:text-stone-400">
                         <a href="/loans?sort=title&dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}&page=1"
                            class="hover:underline">{{ col_title }}{% if current_sort == "title" %} {% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}</a>
                     </th>
-                    <th class="px-4 py-3 text-stone-600 dark:text-stone-400">
+                    <th class="hidden md:table-cell px-4 py-3 text-stone-600 dark:text-stone-400">
                         <a href="/loans?sort=date&dir={% if current_sort == "date" && current_dir == "desc" %}asc{% else %}desc{% endif %}&page=1"
                            class="hover:underline">{{ col_date }}{% if current_sort == "date" %} {% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}</a>
                     </th>
@@ -118,8 +118,8 @@
                     id="loan-row-{{ loan.id }}">
                     <td class="px-4 py-3"><a href="/borrower/{{ loan.borrower_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ loan.borrower_name }}</a></td>
                     <td class="px-4 py-3">{{ loan.volume_label }}</td>
-                    <td class="px-4 py-3">{{ loan.title_name }}</td>
-                    <td class="px-4 py-3">{{ loan.loaned_at.format("%Y-%m-%d") }}</td>
+                    <td class="hidden md:table-cell px-4 py-3">{{ loan.title_name }}</td>
+                    <td class="hidden md:table-cell px-4 py-3">{{ loan.loaned_at.format("%Y-%m-%d") }}</td>
                     <td class="px-4 py-3 {% if loan.duration_days >= overdue_threshold %}text-red-600 dark:text-red-400 font-semibold{% elif loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% endif %}">
                         {{ loan.duration_days }} {{ days_label }}
                         {% if loan.duration_days >= overdue_threshold %}
