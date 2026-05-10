@@ -20,6 +20,7 @@
                value="{{ query }}"
                class="w-full h-14 px-4 text-lg border border-stone-300 dark:border-stone-600 rounded-lg bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                aria-label="{{ search_placeholder }}"
+               aria-describedby="{{ home_search_help.id }}"
                placeholder="{{ search_placeholder }}"
                autocomplete="off"
                hx-get="/"
@@ -35,6 +36,7 @@
                data-announce-searching="{{ searching_announcement }}"
                data-announce-scanning="{{ scanning_announcement }}"
                data-announce-scanfailed="{{ scan_failed_fallback }}">
+        {% let tooltip = home_search_help %}{% include "components/tooltip.html" %}
 
         <!-- Story 9-9: aria-live region for state-machine announcements
              ("Searching", "Scanning"). Screen-readers only (sr-only). -->

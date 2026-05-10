@@ -300,6 +300,7 @@ pub struct SeriesFormTemplate {
     pub total_value: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
+    pub series_type_help: crate::utils::TooltipData,
 }
 
 fn form_template_labels(
@@ -345,6 +346,11 @@ fn form_template_labels(
         total_value: String::new(),
         current_url: current_url_value,
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        series_type_help: crate::utils::TooltipData::with_icon(
+            "tip-series-type",
+            &rust_i18n::t!("help.series.type_summary", locale = loc),
+            &rust_i18n::t!("help.series.type_text", locale = loc),
+        ),
     }
 }
 

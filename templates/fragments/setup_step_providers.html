@@ -9,7 +9,7 @@
 <form method="POST" action="/setup/step-2" autocomplete="off">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
 
-    <p class="text-sm text-stone-600 dark:text-stone-300 mb-4">{{ intro }}</p>
+    <p class="relative text-sm text-stone-600 dark:text-stone-300 mb-4">{{ intro }}{% let tooltip = step_providers_help %}{% include "components/tooltip.html" %}</p>
     <p class="text-sm text-stone-500 dark:text-stone-400 mb-6">{{ skip_label }}</p>
 
     <div class="space-y-4">

@@ -1,0 +1,33 @@
+{# Story 9-19 — reusable contextual-help tooltip fragment.
+
+Calling convention (NEW Askama idiom in this codebase — `{% let %}` is
+introduced here for reusable component-fragment binding):
+
+  {% let tooltip = catalog_scan_help %}{% include "components/tooltip.html" %}
+
+where `catalog_scan_help: TooltipData` is a field on the parent page
+struct. `TooltipData` (`src/utils.rs`) has two ctors:
+
+- `with_icon(id, summary, text)` — renders a clickable help-icon button
+  + a hidden `<span role="tooltip">`. Use for inline form-field help
+  (volume condition, series type, overdue threshold, provider keys,
+  setup wizard steps, borrower email/phone).
+
+- `placeholder_only(id, text)` — renders only a hidden
+  `<span class="sr-only">` linked via aria-describedby from the input.
+  Use for surfaces where the input's existing `placeholder` IS the
+  visible affordance (catalog scan, home search). The caller adds
+  `aria-describedby="{{ tooltip.id }}"` to the input itself.
+
+Visual contract (help-icon mode): the tooltip span is hidden by default
+via Tailwind `class="hidden"`. `static/js/tooltip.js` toggles it on
+hover/focus/touch. Positioning: `absolute` below the trigger;
+width-capped at `max-w-xs`. v1 has no popper-style auto-flip — clipped
+tooltips at the page bottom are accepted and revisited if user-testing
+surfaces friction. #}
+{% if let Some(summary) = tooltip.summary.as_ref() %}
+<button type="button" data-tooltip-trigger="{{ tooltip.id }}" aria-describedby="{{ tooltip.id }}" aria-label="{{ summary }}" class="help-icon ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2 text-sm font-semibold">?</button>
+<span role="tooltip" id="{{ tooltip.id }}" class="hidden absolute z-10 px-3 py-2 text-sm bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 rounded-md shadow-lg max-w-xs motion-safe:transition-opacity motion-safe:duration-150">{{ tooltip.text }}</span>
+{% else %}
+<span id="{{ tooltip.id }}" class="sr-only">{{ tooltip.text }}</span>
+{% endif %}

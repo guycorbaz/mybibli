@@ -99,6 +99,7 @@ struct AdminSystemLoansForm {
     overdue_threshold_value: i32,
     overdue_threshold_version: i32,
     btn_save: String,
+    overdue_threshold_tooltip: crate::utils::TooltipData,
 }
 
 #[derive(Template)]
@@ -116,6 +117,7 @@ struct AdminSystemProvidersForm {
     tmdb_version: i32,
     clear_label: String,
     btn_save: String,
+    provider_api_keys_tooltip: crate::utils::TooltipData,
 }
 
 #[derive(Template)]
@@ -211,6 +213,11 @@ fn render_loans_form(
         overdue_threshold_value: threshold,
         overdue_threshold_version: version,
         btn_save: rust_i18n::t!("admin.system.btn_save_loans", locale = loc).to_string(),
+        overdue_threshold_tooltip: crate::utils::TooltipData::with_icon(
+            "tip-admin-overdue-threshold",
+            &rust_i18n::t!("help.admin.overdue_threshold_summary", locale = loc),
+            &rust_i18n::t!("help.admin.overdue_threshold_text", locale = loc),
+        ),
     }
     .render()
     .map_err(|_| AppError::Internal("loans form render failed".to_string()))
@@ -253,6 +260,11 @@ fn render_providers_form(
         clear_label: rust_i18n::t!("admin.system.provider_key_clear_label", locale = loc)
             .to_string(),
         btn_save: rust_i18n::t!("admin.system.btn_save_providers", locale = loc).to_string(),
+        provider_api_keys_tooltip: crate::utils::TooltipData::with_icon(
+            "tip-admin-provider-api-keys",
+            &rust_i18n::t!("help.admin.provider_api_keys_summary", locale = loc),
+            &rust_i18n::t!("help.admin.provider_api_keys_text", locale = loc),
+        ),
     }
     .render()
     .map_err(|_| AppError::Internal("providers form render failed".to_string()))

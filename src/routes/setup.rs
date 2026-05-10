@@ -122,6 +122,7 @@ struct StepAdmin {
     submit_label: String,
     err_username: Option<String>,
     err_password: Option<String>,
+    step_admin_help: crate::utils::TooltipData,
     /// Story 8-8 review P16 / D1: when an admin row already exists
     /// (idempotent re-submit reachable via the Step 2 Previous button —
     /// see P18), the panel renders in update-mode: pre-fill username,
@@ -156,6 +157,7 @@ struct StepProviders {
     /// Per-row skip checkbox label (story 8-8 review P17). Same string
     /// for all three rows.
     skip_row_label: String,
+    step_providers_help: crate::utils::TooltipData,
 }
 
 #[derive(Template)]
@@ -173,6 +175,7 @@ struct StepPreferences {
     next_label: String,
     err_language: Option<String>,
     err_overdue: Option<String>,
+    step_preferences_help: crate::utils::TooltipData,
 }
 
 #[derive(Template)]
@@ -278,6 +281,11 @@ fn render_step_admin(
         err_password,
         admin_already_exists,
         flash_message,
+        step_admin_help: crate::utils::TooltipData::with_icon(
+            "tip-setup-step-admin",
+            &rust_i18n::t!("help.setup.step_admin_summary", locale = lang),
+            &rust_i18n::t!("help.setup.step_admin_text", locale = lang),
+        ),
     }
     .render()
     .map_err(|_| AppError::Internal("setup step 1 render failed".to_string()))
@@ -305,6 +313,11 @@ fn render_step_providers(
         next_label: rust_i18n::t!("setup.next_button", locale = lang).to_string(),
         skip_label: rust_i18n::t!("setup.step_2_skip_label", locale = lang).to_string(),
         skip_row_label: rust_i18n::t!("setup.step_2_skip_row_label", locale = lang).to_string(),
+        step_providers_help: crate::utils::TooltipData::with_icon(
+            "tip-setup-step-providers",
+            &rust_i18n::t!("help.setup.step_providers_summary", locale = lang),
+            &rust_i18n::t!("help.setup.step_providers_text", locale = lang),
+        ),
     }
     .render()
     .map_err(|_| AppError::Internal("setup step 2 render failed".to_string()))
@@ -335,6 +348,11 @@ fn render_step_preferences(
         next_label: rust_i18n::t!("setup.next_button", locale = lang).to_string(),
         err_language,
         err_overdue,
+        step_preferences_help: crate::utils::TooltipData::with_icon(
+            "tip-setup-step-preferences",
+            &rust_i18n::t!("help.setup.step_preferences_summary", locale = lang),
+            &rust_i18n::t!("help.setup.step_preferences_text", locale = lang),
+        ),
     }
     .render()
     .map_err(|_| AppError::Internal("setup step 3 render failed".to_string()))

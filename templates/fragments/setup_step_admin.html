@@ -15,8 +15,8 @@
     <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
 
     <div class="space-y-4">
-        <div>
-            <label for="setup-username" class="block text-sm font-medium text-stone-700 dark:text-stone-200">{{ username_label }}</label>
+        <div class="relative">
+            <label for="setup-username" class="block text-sm font-medium text-stone-700 dark:text-stone-200">{{ username_label }}{% let tooltip = step_admin_help %}{% include "components/tooltip.html" %}</label>
             <input
                 type="text"
                 id="setup-username"

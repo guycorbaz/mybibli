@@ -3,8 +3,8 @@
 <form method="POST" action="/setup/step-3" autocomplete="off">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
 
-    <fieldset class="space-y-2">
-        <legend class="block text-sm font-medium text-stone-700 dark:text-stone-200">{{ language_label }}</legend>
+    <fieldset class="relative space-y-2">
+        <legend class="block text-sm font-medium text-stone-700 dark:text-stone-200">{{ language_label }}{% let tooltip = step_preferences_help %}{% include "components/tooltip.html" %}</legend>
         <label class="flex items-center gap-2">
             <input
                 type="radio"

@@ -21,6 +21,34 @@ empty:
   search_cta: "Ajouter ce titre"
   filter_heading: "Aucun résultat"
   filter_body: "Rien ne correspond à ce filtre pour l'instant. Retirez le filtre pour tout afficher."
+help:
+  catalog:
+    scan_field_text: "Scannez ou saisissez un ISBN (10 ou 13 chiffres), un V-code (format V0001) ou un L-code (format L01.A) pour naviguer."
+  home:
+    search_field_text: "Tapez pour rechercher titres, auteurs et séries. Scannez un code-barres pour naviguer directement vers la fiche."
+  volume:
+    condition_summary: "Aide : état du volume"
+    condition_text: "Configuré par un admin dans les Données de référence. L'indicateur « prêtable » contrôle si les volumes dans cet état peuvent être empruntés."
+  series:
+    type_summary: "Aide : type de série"
+    type_text: "Les séries fermées ont un total déclaré — la détection de manques ne s'applique qu'aux séries fermées. Les séries ouvertes peuvent grandir indéfiniment."
+  admin:
+    overdue_threshold_summary: "Aide : seuil de retard"
+    overdue_threshold_text: "Un prêt est marqué en retard quand le nombre de jours depuis l'emprunt dépasse strictement ce seuil."
+    provider_api_keys_summary: "Aide : clés API des fournisseurs"
+    provider_api_keys_text: "Laissez une clé vide pour ignorer ce fournisseur dans la chaîne de récupération de métadonnées. Les clés s'appliquent à la requête suivante — pas de redémarrage."
+  setup:
+    step_admin_summary: "Aide : compte administrateur"
+    step_admin_text: "Crée le premier utilisateur admin. Nom d'utilisateur et mot de passe requis ; modifiables ensuite dans l'administration des utilisateurs."
+    step_providers_summary: "Aide : fournisseurs de métadonnées"
+    step_providers_text: "Clés API optionnelles pour les sources externes. Sautez cette étape pour n'utiliser que la BnF (toujours gratuite) et ajoutez les clés plus tard via les paramètres système."
+    step_preferences_summary: "Aide : préférences"
+    step_preferences_text: "Langue par défaut et seuil de retard pour les nouveaux prêts. Les deux sont modifiables ensuite dans les paramètres système."
+  borrower:
+    email_summary: "Aide : courriel de l'emprunteur"
+    email_text: "Optionnel. Le courriel est stocké en texte clair — utilisé pour les rappels d'échéance si vous les activez plus tard."
+    phone_summary: "Aide : téléphone de l'emprunteur"
+    phone_text: "Optionnel. Le numéro est stocké en texte clair — aucune validation au-delà du format. Utilisé comme contact de repli quand le courriel est absent."
 browse:
   list_view: Vue liste
   grid_view: Vue grille

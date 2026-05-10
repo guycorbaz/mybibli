@@ -9,8 +9,8 @@
       class="border border-stone-200 dark:border-stone-700 rounded-lg p-4 bg-stone-50 dark:bg-stone-900">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
     <input type="hidden" name="overdue_threshold_version" value="{{ overdue_threshold_version }}">
-    <label class="block">
-        <span class="block text-sm font-medium mb-1">{{ overdue_threshold_label }}</span>
+    <label class="block relative">
+        <span class="block text-sm font-medium mb-1">{{ overdue_threshold_label }}{% let tooltip = overdue_threshold_tooltip %}{% include "components/tooltip.html" %}</span>
         <input type="number"
                name="overdue_threshold_days"
                min="1"

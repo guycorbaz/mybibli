@@ -21,6 +21,34 @@ empty:
   search_cta: "Add this title"
   filter_heading: "No matches"
   filter_body: "Nothing matches this filter right now. Clear the filter to see everything."
+help:
+  catalog:
+    scan_field_text: "Scan or type an ISBN (10 or 13 digits), a V-code (V0001 format), or an L-code (L01.A format) to navigate."
+  home:
+    search_field_text: "Type to search titles, authors, and series. Scan a barcode to navigate to the matching record."
+  volume:
+    condition_summary: "Help: volume condition"
+    condition_text: "Configured by an admin in Reference Data. The 'loanable' flag controls whether volumes in this state can be checked out."
+  series:
+    type_summary: "Help: series type"
+    type_text: "Closed series have a declared total — gap detection only runs against closed series. Open series can grow indefinitely."
+  admin:
+    overdue_threshold_summary: "Help: overdue threshold"
+    overdue_threshold_text: "A loan is flagged overdue when the days since checkout exceeds this value (strict greater-than)."
+    provider_api_keys_summary: "Help: provider API keys"
+    provider_api_keys_text: "Leave a key blank to skip that provider in the metadata-fetch chain. Keys take effect on the next request — no restart needed."
+  setup:
+    step_admin_summary: "Help: admin account"
+    step_admin_text: "Creates the first admin user. Username and password are required; you can change them later in the user-administration panel."
+    step_providers_summary: "Help: metadata providers"
+    step_providers_text: "Optional API keys for external metadata sources. Skip this step to use only BnF (always free) and add keys later via system settings."
+    step_preferences_summary: "Help: preferences"
+    step_preferences_text: "Default language and overdue threshold for new loans. Both can be changed later in system settings."
+  borrower:
+    email_summary: "Help: borrower email"
+    email_text: "Optional. Email is stored as plain text — used for due-date reminders if you enable them later."
+    phone_summary: "Help: borrower phone"
+    phone_text: "Optional. Phone is stored as plain text — no validation beyond format. Used as a fallback contact when email is missing."
 browse:
   list_view: List view
   grid_view: Grid view

@@ -83,6 +83,7 @@ pub struct HomeTemplate {
     pub browse_sort_label: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
+    pub home_search_help: crate::utils::TooltipData,
     // "Collection at a glance" card (story 9-1)
     pub glance_heading: String,
     pub glance_titles_label: String,
@@ -575,6 +576,10 @@ pub async fn home(
         browse_sort_label: rust_i18n::t!("browse.sort_by", locale = loc).to_string(),
         current_url: current_url(&uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        home_search_help: crate::utils::TooltipData::placeholder_only(
+            "tip-home-search-text",
+            &rust_i18n::t!("help.home.search_field_text", locale = loc),
+        ),
         glance_heading: rust_i18n::t!("dashboard.glance.heading", locale = loc).to_string(),
         glance_titles_label,
         glance_volumes_label,
@@ -814,6 +819,10 @@ pub(crate) mod tests {
             nav_login: "Log in".to_string(),
             nav_logout: "Log out".to_string(),
             nav_menu_open: "Open menu".to_string(),
+            home_search_help: crate::utils::TooltipData::placeholder_only(
+                "tip-home-search-text",
+                "Type to search.",
+            ),
             subtitle: "Your personal media library".to_string(),
             search_placeholder: "Search...".to_string(),
             searching_announcement: "Searching…".to_string(),
