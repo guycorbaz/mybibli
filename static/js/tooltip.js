@@ -27,6 +27,15 @@
     "use strict";
 
     var TRIGGER_SELECTOR = "[data-tooltip-trigger]";
+    // Mirror of scanner-guard.js's MODAL_SELECTOR. When a UX-DR8 modal is
+    // open, tooltip.js's document-level Escape handler must defer to
+    // modal.js — pressing Escape on a tooltip-inside-modal must close
+    // ONLY the topmost surface (the modal), not both.
+    var MODAL_SELECTOR = 'dialog[open], [aria-modal="true"]';
+
+    function isModalOpen() {
+        return document.querySelector(MODAL_SELECTOR) !== null;
+    }
 
     // Closure-scoped state. Only one tooltip span open at a time across
     // the whole page; opening a different help icon closes the previous
@@ -35,6 +44,15 @@
         openTriggerEl: null,    // the <button> currently displaying its tooltip
         openTooltipEl: null,    // the matching <span role="tooltip">
         openShownByFocus: false, // true when focus-shown — Escape restores focus
+        // P1 fix (story 9-19 code review): suppress the next focus auto-
+        // show when a mousedown just occurred on the trigger. Without
+        // this, a desktop mouse click sequence is: mousedown → focus
+        // (auto-show) → click (toggle → close), producing a visible
+        // flash. With this flag, the focus from a mouse-click is
+        // suppressed; the click handler then shows the tooltip cleanly.
+        // Keyboard tab → focus has no preceding mousedown, so the flag
+        // stays false and focus auto-show works normally.
+        suppressNextFocusShow: false,
     };
 
     // Detect whether the primary input device supports hover. `false` on
@@ -87,8 +105,21 @@
             });
         }
 
+        // Mousedown sets the suppressNextFocusShow flag so the focus
+        // event that browsers fire on click-to-focus does NOT auto-show
+        // the tooltip (the click handler will show it instead, cleanly).
+        // Keyboard tab → focus path skips this flag (no mousedown
+        // happened) and auto-shows normally.
+        triggerEl.addEventListener("mousedown", function () {
+            state.suppressNextFocusShow = true;
+        });
+
         // Focus (keyboard): always show. focusout hides.
         triggerEl.addEventListener("focus", function () {
+            if (state.suppressNextFocusShow) {
+                state.suppressNextFocusShow = false;
+                return;
+            }
             show(triggerEl, true);
         });
         triggerEl.addEventListener("blur", function () {
@@ -96,9 +127,11 @@
         });
 
         // Click / tap: toggle. On touch this is the primary path.
-        // On mouse, click after focus is a no-op (already shown) → hide.
         triggerEl.addEventListener("click", function (e) {
             e.preventDefault();
+            // Defensive: clear the suppress flag on click so a future
+            // keyboard focus (Tab away then Tab back) auto-shows.
+            state.suppressNextFocusShow = false;
             if (state.openTriggerEl === triggerEl) {
                 hide();
             } else {
@@ -118,9 +151,16 @@
         // Document-level Escape close. If a tooltip is open AND it was
         // focus-shown, close + restore focus to the trigger (mirrors
         // modal.js's Escape pattern).
+        //
+        // P3 fix (story 9-19 code review): defer to modal.js when a
+        // UX-DR8 modal is open. modal.js's onKeydown also listens at
+        // document level and does NOT stopPropagation; without this
+        // gate, a tooltip-inside-modal would close BOTH surfaces on a
+        // single Escape. Mirror of nav.js's isModalOpen() gate.
         document.addEventListener("keydown", function (e) {
             if (e.key !== "Escape") return;
             if (!state.openTooltipEl) return;
+            if (isModalOpen()) return;
             var triggerToRefocus = state.openShownByFocus ? state.openTriggerEl : null;
             hide();
             if (triggerToRefocus && document.contains(triggerToRefocus)) {
@@ -147,8 +187,19 @@
         // successful swap. Idempotent via `dataset.wired`. Without this,
         // tooltips inside HTMX-loaded forms (e.g., admin/system tabs,
         // setup wizard steps) would be inert.
+        //
+        // P2 fix (story 9-19 code review): if the panel that contained
+        // the open tooltip was just swapped out, state.openTooltipEl
+        // references a detached node. Reset state so subsequent
+        // mousedown / Escape don't operate on dead references.
         if (document.body) {
             document.body.addEventListener("htmx:afterSwap", function () {
+                if (state.openTooltipEl && !document.contains(state.openTooltipEl)) {
+                    state.openTriggerEl = null;
+                    state.openTooltipEl = null;
+                    state.openShownByFocus = false;
+                    state.suppressNextFocusShow = false;
+                }
                 var newTriggers = document.querySelectorAll(TRIGGER_SELECTOR);
                 for (var i = 0; i < newTriggers.length; i++) {
                     wireTrigger(newTriggers[i]);
