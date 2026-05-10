@@ -1,6 +1,6 @@
 # Story 9.21: Responsive per-page layouts
 
-Status: in-progress
+Status: done
 
 ## Story
 
