@@ -1,6 +1,6 @@
 # Story 9.22: WCAG 2.2 AA — final audit + axe-core full coverage
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
