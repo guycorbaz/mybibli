@@ -75,18 +75,17 @@ impl TrashModel {
         // `NO_BACKSLASH_ESCAPES` sql_mode (sometimes enabled in
         // production) makes the backslash a literal character, breaking
         // backslash-based escapes silently. The `|` is mode-independent.
-        let (final_query, search_term) = if let Some(search) = name_search {
-            if !search.is_empty() {
-                let escaped = escape_like_pattern(search);
-                let subquery = format!(
-                    "({}) AS trash WHERE item_name LIKE ? ESCAPE '|' ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
-                    query_builder
-                );
-                (subquery, Some(format!("%{}%", escaped)))
-            } else {
-                query_builder.push_str(" ORDER BY deleted_at DESC LIMIT ? OFFSET ?");
-                (query_builder, None)
-            }
+        // Issue #79: trim before is_empty so whitespace-only input doesn't
+        // produce a `%' '%` LIKE pattern that "matches" every row containing
+        // a space — silently widening the result set.
+        let trimmed = name_search.map(|s| s.trim()).filter(|s| !s.is_empty());
+        let (final_query, search_term) = if let Some(search) = trimmed {
+            let escaped = escape_like_pattern(search);
+            let subquery = format!(
+                "({}) AS trash WHERE item_name LIKE ? ESCAPE '|' ORDER BY deleted_at DESC LIMIT ? OFFSET ?",
+                query_builder
+            );
+            (subquery, Some(format!("%{}%", escaped)))
         } else {
             query_builder.push_str(" ORDER BY deleted_at DESC LIMIT ? OFFSET ?");
             (query_builder, None)
@@ -167,15 +166,17 @@ impl TrashModel {
         // Optional name-search filter applied to the same UNION used by
         // `list_trash` so count and page slice always agree.
         // R3-N5: `|` escape char (NO_BACKSLASH_ESCAPES safe).
-        let (final_query, search_term) = match name_search {
-            Some(s) if !s.is_empty() => (
+        // Issue #79: trim before is_empty (see list_trash for rationale).
+        let trimmed = name_search.map(|s| s.trim()).filter(|s| !s.is_empty());
+        let (final_query, search_term) = match trimmed {
+            Some(s) => (
                 format!(
                     "SELECT CAST(COUNT(*) AS SIGNED) as count FROM ({}) AS trash WHERE item_name LIKE ? ESCAPE '|'",
                     union_sql
                 ),
                 Some(format!("%{}%", escape_like_pattern(s))),
             ),
-            _ => (
+            None => (
                 format!("SELECT CAST(COUNT(*) AS SIGNED) as count FROM ({}) AS trash", union_sql),
                 None,
             ),
@@ -264,6 +265,23 @@ fn escape_like_pattern(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_name_search_trim_predicate() {
+        // Issue #79: this mirrors the inline predicate used by `list_trash`
+        // and `trash_count`. A whitespace-only `name_search` must collapse
+        // to "no filter", not to a `%' '%` wildcard.
+        fn normalize(input: Option<&str>) -> Option<&str> {
+            input.map(|s| s.trim()).filter(|s| !s.is_empty())
+        }
+
+        assert_eq!(normalize(None), None);
+        assert_eq!(normalize(Some("")), None);
+        assert_eq!(normalize(Some("   ")), None);
+        assert_eq!(normalize(Some("\t \n")), None);
+        assert_eq!(normalize(Some("  hello  ")), Some("hello"));
+        assert_eq!(normalize(Some("hello")), Some("hello"));
+    }
 
     #[test]
     fn test_escape_like_pattern_passthrough() {

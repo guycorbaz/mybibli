@@ -224,6 +224,7 @@ pub async fn login(
         .http_only(true)
         .path("/")
         .same_site(SameSite::Lax)
+        .secure(crate::config::cookie_secure())
         .build();
 
     // Honor ?next= if safe and same-origin, else default to /catalog.
@@ -245,6 +246,7 @@ pub async fn login(
                 .same_site(SameSite::Lax)
                 .max_age(time::Duration::days(365))
                 .http_only(false)
+                .secure(crate::config::cookie_secure())
                 .build();
             jar.add(lang_cookie)
         }
@@ -332,6 +334,7 @@ pub async fn change_language(
         .same_site(SameSite::Lax)
         .max_age(time::Duration::days(365))
         .http_only(false)
+        .secure(crate::config::cookie_secure())
         .build();
     let jar = jar.add(cookie);
 

@@ -179,6 +179,7 @@ pub async fn session_resolve_middleware(
                 .path("/")
                 .same_site(SameSite::Lax)
                 .max_age(time::Duration::days(7))
+                .secure(crate::config::cookie_secure())
                 .build();
             if let Ok(value) = cookie.to_string().parse() {
                 response

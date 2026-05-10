@@ -17,6 +17,11 @@ services:
       PORT: "8080"
       RUST_LOG: mybibli=info
       APP_LANGUAGE: ${APP_LANGUAGE:-en}
+      # Issue #94 — set to "true" only when the deployment is fronted by HTTPS.
+      # When set, every Set-Cookie carries `Secure`; browsers refuse the cookie
+      # over plain HTTP, so leaving this unset (or "false") is correct for
+      # localhost-only / direct-port deployments.
+      MYBIBLI_COOKIE_SECURE: ${MYBIBLI_COOKIE_SECURE:-false}
     depends_on:
       db:
         condition: service_healthy

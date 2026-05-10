@@ -49,6 +49,47 @@ impl std::fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
+/// Pure parse for the `MYBIBLI_COOKIE_SECURE` accept-set. Mirrors the
+/// `csp_report_only` shape: `true` / `True` / `TRUE` / `1` / `yes`
+/// (case-insensitive, whitespace-tolerant). Anything else (incl. `None`)
+/// resolves to `false` so local dev defaults stay safe.
+fn parse_cookie_secure(raw: Option<&str>) -> bool {
+    matches!(
+        raw.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
+        Some("true" | "1" | "yes")
+    )
+}
+
+/// Issue #94: read `MYBIBLI_COOKIE_SECURE` once at first call and cache
+/// the resolved boolean. All cookie issuers (login session, anonymous
+/// session, language preference, wizard back-target / flash, etc.) call
+/// this so the `Secure` attribute is set uniformly.
+///
+/// Default: `false` so local dev over plain `http://localhost:8080` keeps
+/// working unchanged. Production deployments behind HTTPS MUST set
+/// `MYBIBLI_COOKIE_SECURE=true` (the docker-compose `mybibli` service in
+/// production should inject this).
+pub fn cookie_secure() -> bool {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<bool> = OnceLock::new();
+    *CACHE.get_or_init(|| {
+        let raw = env::var("MYBIBLI_COOKIE_SECURE").ok();
+        let secure = parse_cookie_secure(raw.as_deref());
+        match raw.as_deref() {
+            Some(v) => tracing::info!(
+                cookie_secure = secure,
+                cookie_secure_env = v,
+                "Cookie Secure flag resolved from MYBIBLI_COOKIE_SECURE env var"
+            ),
+            None => tracing::info!(
+                cookie_secure = secure,
+                "Cookie Secure flag resolved (no MYBIBLI_COOKIE_SECURE env var, default off)"
+            ),
+        }
+        secure
+    })
+}
+
 /// Read `CSP_REPORT_ONLY` once at startup and emit a `tracing::info!` line
 /// recording the resolved mode so misconfigurations don't fail silently.
 /// Accepts `true` / `True` / `TRUE` / `1` / `yes` (case-insensitive) as
@@ -134,6 +175,52 @@ mod csp_report_only_tests {
     #[test]
     fn whitespace_is_trimmed() {
         with_env(Some("  true  "), || assert!(csp_report_only()));
+    }
+}
+
+#[cfg(test)]
+mod cookie_secure_tests {
+    use super::parse_cookie_secure;
+
+    // Issue #94: pure-function tests for the accept-set. The runtime
+    // wrapper `cookie_secure()` caches via OnceLock so it can't be
+    // re-tested with mutated env; the parser is what matters.
+
+    #[test]
+    fn unset_means_off() {
+        assert!(!parse_cookie_secure(None));
+    }
+
+    #[test]
+    fn lowercase_true_means_on() {
+        assert!(parse_cookie_secure(Some("true")));
+    }
+
+    #[test]
+    fn uppercase_variants_mean_on() {
+        assert!(parse_cookie_secure(Some("TRUE")));
+        assert!(parse_cookie_secure(Some("True")));
+    }
+
+    #[test]
+    fn one_and_yes_mean_on() {
+        assert!(parse_cookie_secure(Some("1")));
+        assert!(parse_cookie_secure(Some("yes")));
+    }
+
+    #[test]
+    fn anything_else_means_off() {
+        assert!(!parse_cookie_secure(Some("false")));
+        assert!(!parse_cookie_secure(Some("0")));
+        assert!(!parse_cookie_secure(Some("")));
+        assert!(!parse_cookie_secure(Some("on")));
+        assert!(!parse_cookie_secure(Some("nope")));
+    }
+
+    #[test]
+    fn whitespace_is_trimmed() {
+        assert!(parse_cookie_secure(Some("  true  ")));
+        assert!(parse_cookie_secure(Some("\ttrue\n")));
     }
 }
 
@@ -235,7 +322,15 @@ impl AppSettings {
         for (key, value) in &rows {
             match key.as_str() {
                 "overdue_loan_threshold_days" => match value.parse::<i32>() {
-                    Ok(v) => settings.overdue_threshold_days = v,
+                    Ok(v) if (1..=365).contains(&v) => settings.overdue_threshold_days = v,
+                    Ok(v) => {
+                        tracing::warn!(
+                            key = %key,
+                            value = %value,
+                            parsed = v,
+                            "overdue_loan_threshold_days out of range (1..=365), using default"
+                        )
+                    }
                     Err(_) => {
                         tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
                     }
@@ -623,6 +718,23 @@ mod tests {
     }
 
     /// R3-N10: the auto_purge_interval_seconds clamp range.
+    #[test]
+    fn test_overdue_threshold_clamp_predicate() {
+        // The clamp range mirrors the inline guard in `AppSettings::load_from_db`.
+        // Issue #118: an out-of-range DB value must NOT poison `overdue_threshold_days`.
+        let accept = |v: i32| (1..=365).contains(&v);
+
+        assert!(!accept(0), "0 must be rejected (lower bound is 1)");
+        assert!(!accept(-1), "negative must be rejected");
+        assert!(!accept(i32::MIN), "i32::MIN must be rejected");
+        assert!(!accept(366), "366 must be rejected (upper bound is 365)");
+        assert!(!accept(i32::MAX), "i32::MAX must be rejected");
+
+        assert!(accept(1), "lower bound 1 must be accepted");
+        assert!(accept(30), "default 30 must be accepted");
+        assert!(accept(365), "upper bound 365 must be accepted");
+    }
+
     #[test]
     fn test_auto_purge_interval_clamp_constants() {
         assert_eq!(AUTO_PURGE_INTERVAL_MIN_SECS, 60);

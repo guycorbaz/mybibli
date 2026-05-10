@@ -25,7 +25,11 @@ impl TrashService {
             return Err(AppError::BadRequest(format!("Invalid table: {}", table)));
         }
 
-        // UPDATE with optimistic locking
+        // Issue #73: wrap UPDATE + existence-check in a single transaction so
+        // the 409-vs-404 distinction can't be flipped by a concurrent admin
+        // hard-deleting (or restoring) the row between our UPDATE-returning-0
+        // and the follow-up SELECT.
+        let mut tx = pool.begin().await?;
         let result = sqlx::query(
             &format!(
                 "UPDATE {} SET deleted_at = NULL, version = version + 1 WHERE id = ? AND deleted_at IS NOT NULL AND version = ?",
@@ -34,16 +38,17 @@ impl TrashService {
         )
         .bind(id as i64)
         .bind(version)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
         // Check if update succeeded
         if result.rows_affected() == 0 {
-            // Check if item exists at all
+            // Check if item exists at all (within the same tx snapshot).
             let exists = sqlx::query(&format!("SELECT id FROM {} WHERE id = ?", table))
                 .bind(id as i64)
-                .fetch_optional(pool)
+                .fetch_optional(&mut *tx)
                 .await?;
+            tx.commit().await?;
 
             if exists.is_some() {
                 return Err(AppError::Conflict("version_mismatch".to_string()));
@@ -51,6 +56,7 @@ impl TrashService {
                 return Err(AppError::NotFound("Item not found in trash".to_string()));
             }
         }
+        tx.commit().await?;
 
         // Fetch restored row
         let item_col = match table {
