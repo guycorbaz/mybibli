@@ -62,6 +62,8 @@ pub struct BorrowersTemplate {
     pub borrowers: PaginatedList<BorrowerModel>,
     pub current_url: String,
     pub lang_toggle_aria: String,
+    pub email_help: crate::utils::TooltipData,
+    pub phone_help: crate::utils::TooltipData,
 }
 
 pub async fn borrowers_page(
@@ -111,6 +113,16 @@ pub async fn borrowers_page(
         borrowers,
         current_url: current_url(&uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        email_help: crate::utils::TooltipData::with_icon(
+            "tip-borrower-email-create",
+            &rust_i18n::t!("help.borrower.email_summary", locale = loc),
+            &rust_i18n::t!("help.borrower.email_text", locale = loc),
+        ),
+        phone_help: crate::utils::TooltipData::with_icon(
+            "tip-borrower-phone-create",
+            &rust_i18n::t!("help.borrower.phone_summary", locale = loc),
+            &rust_i18n::t!("help.borrower.phone_text", locale = loc),
+        ),
     };
 
     match template.render() {
@@ -290,6 +302,8 @@ pub struct BorrowerEditTemplate {
     pub cancel_label: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
+    pub email_help: crate::utils::TooltipData,
+    pub phone_help: crate::utils::TooltipData,
 }
 
 pub async fn edit_borrower_page(
@@ -336,6 +350,16 @@ pub async fn edit_borrower_page(
         cancel_label: rust_i18n::t!("borrower.cancel", locale = loc).to_string(),
         current_url: current_url(&uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        email_help: crate::utils::TooltipData::with_icon(
+            "tip-borrower-email-edit",
+            &rust_i18n::t!("help.borrower.email_summary", locale = loc),
+            &rust_i18n::t!("help.borrower.email_text", locale = loc),
+        ),
+        phone_help: crate::utils::TooltipData::with_icon(
+            "tip-borrower-phone-edit",
+            &rust_i18n::t!("help.borrower.phone_summary", locale = loc),
+            &rust_i18n::t!("help.borrower.phone_text", locale = loc),
+        ),
     };
 
     match template.render() {

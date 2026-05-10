@@ -33,8 +33,8 @@
                       class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">{{ description_value }}</textarea>
         </div>
 
-        <div>
-            <label for="series-type" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ type_label }}</label>
+        <div class="relative">
+            <label for="series-type" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ type_label }}{% let tooltip = series_type_help %}{% include "components/tooltip.html" %}</label>
             <select id="series-type" name="series_type"
                     class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 <option value="open" {% if type_value == "open" %}selected{% endif %}>{{ type_open_label }}</option>

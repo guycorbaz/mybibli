@@ -89,6 +89,47 @@ impl ConnectionStatusContext {
     }
 }
 
+/// Story 9-19 — bundles the strings each contextual-help tooltip surface
+/// needs. Two ctors: `with_icon` (the typical help-icon button + tooltip
+/// span pair) and `placeholder_only` (sr-only span only, for surfaces like
+/// the catalog scan field where the input's existing `placeholder` IS the
+/// visible affordance and aria-describedby covers the screen-reader layer).
+///
+/// Read by `templates/components/tooltip.html` via Askama's `{% let
+/// tooltip = self.<surface>_help %}{% include %}` pattern. When `summary`
+/// is `None`, the fragment renders only the hidden `<span>` (no
+/// help-icon button).
+pub struct TooltipData {
+    pub id: String,
+    pub summary: Option<String>,
+    pub text: String,
+}
+
+impl TooltipData {
+    /// Help-icon surface: both `summary` (icon aria-label) and `text` are
+    /// rendered. The fragment emits the `<button class="help-icon">` plus
+    /// the hidden `<span role="tooltip">`.
+    pub fn with_icon(id: &str, summary: &str, text: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            summary: Some(summary.to_string()),
+            text: text.to_string(),
+        }
+    }
+
+    /// Placeholder-only surface: the fragment renders only a hidden
+    /// `<span class="sr-only">` linked via `aria-describedby` from the
+    /// input. No help-icon button is generated. Sighted users rely on
+    /// the input's existing `placeholder` text for the visible hint.
+    pub fn placeholder_only(id: &str, text: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            summary: None,
+            text: text.to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -232,6 +232,7 @@ pub struct CatalogTemplate {
     pub audio_disable: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
+    pub catalog_scan_help: crate::utils::TooltipData,
 }
 
 impl CatalogTemplate {
@@ -270,6 +271,10 @@ impl CatalogTemplate {
             audio_disable: rust_i18n::t!("audio.disable", locale = loc).to_string(),
             current_url: current_url_value,
             lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+            catalog_scan_help: crate::utils::TooltipData::placeholder_only(
+                "tip-catalog-scan-text",
+                &rust_i18n::t!("help.catalog.scan_field_text", locale = loc),
+            ),
         }
     }
 }
@@ -2077,6 +2082,7 @@ pub struct VolumeEditTemplate {
     pub submit_label: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
+    pub volume_condition_help: crate::utils::TooltipData,
 }
 
 pub async fn volume_edit_page(
@@ -2121,6 +2127,11 @@ pub async fn volume_edit_page(
         states,
         current_url: crate::utils::current_url(&uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        volume_condition_help: crate::utils::TooltipData::with_icon(
+            "tip-volume-condition",
+            &rust_i18n::t!("help.volume.condition_summary", locale = loc),
+            &rust_i18n::t!("help.volume.condition_text", locale = loc),
+        ),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
