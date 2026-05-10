@@ -1141,8 +1141,11 @@ pub async fn handle_scan_with_type(
     let pool = &state.pool;
 
     // Set cookie to remember media type preference for subsequent UPC scans
-    let updated_jar =
-        jar.add(Cookie::build(("media_type_preference", media_type.to_string())).path("/catalog"));
+    let updated_jar = jar.add(
+        Cookie::build(("media_type_preference", media_type.to_string()))
+            .path("/catalog")
+            .secure(crate::config::cookie_secure()),
+    );
 
     match TitleService::create_from_code(
         pool,

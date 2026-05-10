@@ -840,6 +840,7 @@ pub async fn step_1_submit(
             ))
             .path("/")
             .http_only(true)
+            .secure(crate::config::cookie_secure())
             .build();
             let jar = jar.add(flash);
             refresh_gate(&state.setup_gate, &state.pool).await;
@@ -863,6 +864,7 @@ pub async fn step_1_submit(
         .http_only(true)
         .path("/")
         .same_site(SameSite::Lax)
+        .secure(crate::config::cookie_secure())
         .build();
     let jar = jar.add(cookie);
 
@@ -936,6 +938,7 @@ pub async fn step_2_submit(
         let cookie = Cookie::build((COOKIE_BACK_TARGET.to_string(), "admin".to_string()))
             .path("/")
             .http_only(true)
+            .secure(crate::config::cookie_secure())
             .build();
         let jar = jar.add(cookie);
         return Ok((jar, Redirect::to("/setup").into_response()));

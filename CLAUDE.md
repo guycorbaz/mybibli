@@ -80,6 +80,16 @@ These apply to ALL sessions without exception.
 
 **Stack:** Rust 2024 + Axum 0.8 + SQLx 0.8 (MariaDB) + Askama 0.15 + HTMX 2.0 + Tailwind CSS v4
 
+### Deployment model: single-tenant
+
+mybibli is designed and operated as a **single-tenant** application — one library instance per deployment (typical: a household NAS or a small association). Several design choices follow from this and are intentionally NOT going to be revisited unless a multi-tenant goal is added explicitly:
+
+- **No per-user authorization scope** on admin routes (issue #54). Every Admin can manipulate every other user. The only ownership-style guard is the self-deactivate / last-active-admin pair in `services/users.rs`.
+- **MariaDB deadlock retry, not topology fix** (issue #16). `LoanService::register_loan` retries on SQLSTATE 40001 / MySQL 1205 up to `LOAN_REGISTER_MAX_ATTEMPTS` times. Sufficient for single-librarian load; would need to be revisited (lock ordering + `READ COMMITTED` + optimistic locking on `volumes.version`) if concurrent librarians become a goal.
+- **One settings table for the whole instance**. `AppSettings` is global, not scoped per user.
+
+If/when multi-tenancy is on the roadmap, both #54 and #16 should be re-opened together; they share the same root cause (no tenant boundary in the schema).
+
 ### Source Layout
 
 - `src/routes/` — HTTP handlers. Thin: extract params, call service, return response. `admin.rs` ships the `/admin` page (tabs: health, users, reference_data, trash, system) — admin-only.

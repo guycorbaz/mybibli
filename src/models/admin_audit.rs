@@ -57,15 +57,37 @@ impl AdminAuditModel {
 
         let id = result.last_insert_id();
 
-        // Read back the DB-assigned timestamp so the in-memory struct matches
-        // the persisted row exactly.
-        let row = sqlx::query(
-            "SELECT CAST(timestamp AS DATETIME) AS ts FROM admin_audit WHERE id = ?"
+        // Issue #80: read back the DB-assigned timestamp so the in-memory
+        // struct matches the persisted row exactly — but DON'T propagate a
+        // SELECT failure as `Err`. The INSERT has already committed; bubbling
+        // up an error would tell the caller "failure" while the audit row is
+        // permanently stored, leaving the admin with a 500 after a hard delete
+        // already happened. Fall back to the local clock and log a warning
+        // instead. The drift vs DB is at most a few ms.
+        let timestamp: NaiveDateTime = match sqlx::query(
+            "SELECT CAST(timestamp AS DATETIME) AS ts FROM admin_audit WHERE id = ?",
         )
         .bind(id as i64)
-        .fetch_one(&mut *conn)
-        .await?;
-        let timestamp: NaiveDateTime = row.get("ts");
+        .fetch_optional(&mut *conn)
+        .await
+        {
+            Ok(Some(row)) => row.get("ts"),
+            Ok(None) => {
+                tracing::warn!(
+                    audit_id = id,
+                    "audit row inserted but follow-up SELECT returned no row (purged or dropped between INSERT and SELECT?) — using local time"
+                );
+                chrono::Utc::now().naive_utc()
+            }
+            Err(e) => {
+                tracing::warn!(
+                    audit_id = id,
+                    error = %e,
+                    "audit row inserted but timestamp re-fetch failed — using local time"
+                );
+                chrono::Utc::now().naive_utc()
+            }
+        };
 
         Ok(AdminAuditEntry {
             id,
