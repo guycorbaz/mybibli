@@ -79,6 +79,7 @@ home:
   searching_announcement: "Recherche…"
   scanning_announcement: "Scan détecté, traitement…"
   scan_failed_fallback: "Échec du scan. Veuillez réessayer ou utiliser la page catalogue."
+  remove_filter_aria: "Retirer le filtre"
 catalog:
   title: Catalogue
   scan_placeholder: "Scanner ou taper : ISBN, code V, code L, ou recherche..."
@@ -192,6 +193,7 @@ search:
 pagination:
   previous: Précédent
   next: Suivant
+  aria_label: Pagination
 title_detail:
   contributors: Contributeurs
   volumes: Volumes

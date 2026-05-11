@@ -78,6 +78,7 @@ pub struct SeriesListTemplate {
     pub empty_cta: String,
     pub prev_label: String,
     pub next_label: String,
+    pub pagination_aria: String,
     pub series: PaginatedList<SeriesModel>,
     pub series_rows: Vec<SeriesListRow>,
     pub current_url: String,
@@ -141,6 +142,7 @@ pub async fn series_list_page(
         empty_cta: rust_i18n::t!("empty.series_cta", locale = loc).to_string(),
         prev_label: rust_i18n::t!("pagination.previous", locale = loc).to_string(),
         next_label: rust_i18n::t!("pagination.next", locale = loc).to_string(),
+        pagination_aria: rust_i18n::t!("pagination.aria_label", locale = loc).to_string(),
         series,
         series_rows,
         current_url: current_url(&uri),
@@ -569,7 +571,7 @@ pub async fn delete_modal(
     )
     .to_string();
     let body_text = rust_i18n::t!("series.delete_modal_body", locale = loc).to_string();
-    let body_html = format!("<p>{body_text}</p>");
+    let body_html = format!("<p>{}</p>", crate::utils::html_escape(&body_text));
 
     tracing::debug!(
         series_id = id,

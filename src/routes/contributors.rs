@@ -190,7 +190,7 @@ pub async fn delete_modal(
     )
     .to_string();
     let body_text = rust_i18n::t!("contributor.delete_modal_body", locale = loc).to_string();
-    let body_html = format!("<p>{body_text}</p>");
+    let body_html = format!("<p>{}</p>", crate::utils::html_escape(&body_text));
 
     tracing::debug!(contributor_id = id, "delete modal requested");
 

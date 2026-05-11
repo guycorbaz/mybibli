@@ -646,7 +646,7 @@ pub async fn admin_users_deactivate_modal(
     )
     .to_string();
     let body_text = rust_i18n::t!("admin.users.deactivate_modal_body", locale = loc).to_string();
-    let body_html = format!("<p>{body_text}</p>");
+    let body_html = format!("<p>{}</p>", crate::utils::html_escape(&body_text));
 
     tracing::debug!(
         target_user_id = id,

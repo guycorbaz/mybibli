@@ -79,6 +79,7 @@ home:
   searching_announcement: "Searching…"
   scanning_announcement: "Scan detected, processing…"
   scan_failed_fallback: "Scan failed. Try again or use the catalog page."
+  remove_filter_aria: "Remove filter"
 catalog:
   title: Catalog
   scan_placeholder: "Scan or type: ISBN, V-code, L-code, or search..."
@@ -192,6 +193,7 @@ search:
 pagination:
   previous: Previous
   next: Next
+  aria_label: Pagination
 title_detail:
   contributors: Contributors
   volumes: Volumes

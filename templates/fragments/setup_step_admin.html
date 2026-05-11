@@ -16,8 +16,12 @@
 
     <div class="space-y-4">
         <div class="relative">
-            <label for="setup-username" class="block text-sm font-medium text-stone-700 dark:text-stone-200">{{ username_label }}{% let tooltip = step_admin_help %}{% include "components/tooltip.html" %}</label>
+            <div class="flex items-center gap-0">
+                <label for="setup-username" class="text-sm font-medium text-stone-700 dark:text-stone-200">{{ username_label }}</label>
+                {% let tooltip = step_admin_help %}{% include "components/tooltip.html" %}
+            </div>
             <input
+                aria-describedby="{{ step_admin_help.id }}"
                 type="text"
                 id="setup-username"
                 name="username"

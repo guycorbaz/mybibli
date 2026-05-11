@@ -9,10 +9,14 @@
 <form method="POST" action="/setup/step-2" autocomplete="off">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
 
-    <p class="relative text-sm text-stone-600 dark:text-stone-300 mb-4">{{ intro }}{% let tooltip = step_providers_help %}{% include "components/tooltip.html" %}</p>
     <p class="text-sm text-stone-500 dark:text-stone-400 mb-6">{{ skip_label }}</p>
 
-    <div class="space-y-4">
+    {# Issue #156: wrap the 3 provider rows in a <fieldset> and move the
+       step's help-icon onto <legend> so the help is announced when SR users
+       enter the form group. Previously anchored on the intro <p>, where SR
+       users tabbing into a specific API-key field got no help context. #}
+    <fieldset class="space-y-4">
+        <legend class="relative text-sm text-stone-600 dark:text-stone-300 mb-4">{{ intro }}{% let tooltip = step_providers_help %}{% include "components/tooltip.html" %}</legend>
         <div>
             <label for="setup-gb" class="block text-sm font-medium text-stone-700 dark:text-stone-200">{{ label_google_books }}</label>
             <input
@@ -69,7 +73,7 @@
                 {% if tmdb_masked.is_empty() %}{{ helper_not_set }}{% else %}{{ helper_set }}{% endif %}
             </p>
         </div>
-    </div>
+    </fieldset>
 
     <div class="mt-6 flex items-center justify-between gap-3">
         <button
