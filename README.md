@@ -4,7 +4,7 @@
 
 > Personal library cataloging for home collectors.
 
-**Status:** active development — pre-v1 (current version: `0.1.0`). Epics 1–8 done; Epic 9 (Polish UX & Accessibilité) is next. First public release targeted after Epic 9.
+**Status:** first public release shipped — `v1.0.0`. All nine epics done. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli).
 
 ## What it is
 
@@ -34,7 +34,7 @@ Built for collectors who want more than a spreadsheet:
 
 ## Quick start (end users)
 
-Pre-built images are published to Docker Hub once v1 ships. Until then, see **Development** below.
+Pre-built images are published to Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli) — `:latest` tracks the highest semver, individual tags pin to the exact release. For development against the source tree, see **Development** below.
 
 ## Development
 
@@ -228,9 +228,9 @@ Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](
 | 6 | Pipeline CI/CD et fiabilité | ✅ done |
 | 7 | Accès multi-rôle & Sécurité | ✅ done |
 | 8 | Administration & Configuration | ✅ done |
-| 9 | Polish UX & Accessibilité | 🚧 next (decomposition pending) |
+| 9 | Polish UX & Accessibilité | ✅ done |
 
-v1 release will ship after Epic 9. See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the full breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the live story-by-story state.
+v1.0.0 shipped after Epic 9 close (2026-05-10). See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the full breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
 
 ## License
 
