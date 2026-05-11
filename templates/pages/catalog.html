@@ -21,9 +21,9 @@
         <div id="contributor-list" class="text-sm">
             <!-- Contributor list populated via OOB swap -->
         </div>
-        <span id="session-counter" class="hidden">
-            <!-- Session counter populated via OOB swap -->
-        </span>
+        {# Issue #14: the visible #session-counter lives in components/catalog_toolbar.html
+           (the OOB swap target). Removed the hidden placeholder that previously sat here
+           — it was a duplicate id causing axe-core duplicate-id-active flags. #}
     </div>
 
     <div class="flex flex-col">

@@ -96,7 +96,7 @@
 
     <!-- Pagination -->
     {% if volumes.total_pages > 1 %}
-    <nav class="flex items-center justify-center gap-2 mt-4" aria-label="Pagination">
+    <nav class="flex items-center justify-center gap-2 mt-4" aria-label="{{ pagination_aria }}">
         {% if volumes.has_previous() %}
         <a href="/location/{{ location.id }}?sort={% match volumes.sort %}{% when Some with (s) %}{{ s }}{% when None %}title{% endmatch %}&dir={% match volumes.dir %}{% when Some with (d) %}{{ d }}{% when None %}asc{% endmatch %}&page={{ volumes.page - 1 }}"
            class="px-3 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded hover:bg-stone-100 dark:hover:bg-stone-800">

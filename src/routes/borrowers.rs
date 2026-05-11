@@ -60,6 +60,7 @@ pub struct BorrowersTemplate {
     pub empty_cta: String,
     pub prev_label: String,
     pub next_label: String,
+    pub pagination_aria: String,
     pub borrowers: PaginatedList<BorrowerModel>,
     pub current_url: String,
     pub lang_toggle_aria: String,
@@ -112,6 +113,7 @@ pub async fn borrowers_page(
         empty_cta: rust_i18n::t!("empty.borrowers_cta", locale = loc).to_string(),
         prev_label: rust_i18n::t!("pagination.previous", locale = loc).to_string(),
         next_label: rust_i18n::t!("pagination.next", locale = loc).to_string(),
+        pagination_aria: rust_i18n::t!("pagination.aria_label", locale = loc).to_string(),
         borrowers,
         current_url: current_url(&uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
@@ -475,7 +477,7 @@ pub async fn delete_modal(
     let body_text = rust_i18n::t!("borrower.delete_modal_body", locale = loc).to_string();
     // Body has no user-supplied interpolation; the i18n value is controlled.
     // Wrap in <p> and ship via `|safe` — no escape needed.
-    let body_html = format!("<p>{body_text}</p>");
+    let body_html = format!("<p>{}</p>", crate::utils::html_escape(&body_text));
 
     tracing::debug!(borrower_id = id, "delete modal requested");
 

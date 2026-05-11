@@ -65,6 +65,7 @@ pub struct LocationDetailTemplate {
     pub col_status: String,
     pub prev_label: String,
     pub next_label: String,
+    pub pagination_aria: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
 }
@@ -117,6 +118,7 @@ pub async fn location_detail(
         col_status: rust_i18n::t!("location.col_status", locale = loc).to_string(),
         prev_label: rust_i18n::t!("pagination.previous", locale = loc).to_string(),
         next_label: rust_i18n::t!("pagination.next", locale = loc).to_string(),
+        pagination_aria: rust_i18n::t!("pagination.aria_label", locale = loc).to_string(),
         location,
         breadcrumb_segments,
         volumes,
@@ -708,6 +710,7 @@ mod tests {
             col_status: "Status".to_string(),
             prev_label: "Previous".to_string(),
             next_label: "Next".to_string(),
+            pagination_aria: "Pagination".to_string(),
             current_url: "/location/1".to_string(),
             lang_toggle_aria: "Change language".to_string(),
         };

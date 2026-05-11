@@ -12,6 +12,7 @@
     <label class="block relative">
         <span class="block text-sm font-medium mb-1">{{ overdue_threshold_label }}{% let tooltip = overdue_threshold_tooltip %}{% include "components/tooltip.html" %}</span>
         <input type="number"
+               aria-describedby="{{ overdue_threshold_tooltip.id }}"
                name="overdue_threshold_days"
                min="1"
                max="365"
