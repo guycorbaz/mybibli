@@ -4,7 +4,6 @@ use serde_json::json;
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::admin_audit::AdminAuditModel;
-use crate::services::soft_delete::ALLOWED_TABLES;
 
 /// Maximum number of LIMIT-bounded DELETE batches to issue per table during a
 /// single purge run. Each batch deletes up to 10 000 rows; with the cap at 100
@@ -17,6 +16,29 @@ const MAX_DRAIN_ITERATIONS: usize = 100;
 /// Per-batch DELETE LIMIT — keep small enough that the implicit row-lock
 /// window doesn't block concurrent writers for too long.
 const DELETE_BATCH_SIZE: u64 = 10_000;
+
+/// FK-safe deletion order for `run_purge` — children before their parents.
+///
+/// Distinct from `services::soft_delete::ALLOWED_TABLES` (which guards the
+/// soft-delete API surface against user-supplied table names): the soft-delete
+/// whitelist only contains entity-parent tables (the rows admins can soft-delete
+/// from the UI), whereas auto-purge must also visit junction-table children so
+/// the FK-dependent rows are gone before the parent DELETE runs (issue #60).
+///
+/// Every entry MUST exist in the schema and carry a `deleted_at` column —
+/// `validate_schema` cross-checks this at startup.
+pub(crate) const PURGE_DELETION_ORDER: &[&str] = &[
+    "title_contributors", // FK → titles, contributors, contributor_roles
+    "title_series",       // FK → titles, series
+    "loans",              // FK → volumes, borrowers, storage_locations
+    "volumes",            // FK → titles, volume_states, storage_locations
+    "titles",             // FK → genres
+    "series",
+    "borrowers",
+    "storage_locations", // self-FK (hierarchical)
+    "contributors",
+    "genres",
+];
 
 #[derive(Clone, Debug, Default)]
 pub struct PurgeStats {
@@ -58,19 +80,11 @@ impl PurgeStats {
 pub struct AutoPurgeService;
 
 impl AutoPurgeService {
-    /// Validate that FK dependency order matches schema constraints (call at startup)
+    /// Validate that every table in `PURGE_DELETION_ORDER` exists in the schema
+    /// (called at startup from `main.rs`). On error main logs a warning and
+    /// continues — this is a forensic guard, not a hard failure.
     pub async fn validate_schema(pool: &DbPool) -> Result<(), AppError> {
-        // Check that all tables in deletion_order exist and have expected structure
-        let deletion_order = vec![
-            "title_contributors", "series_title_assignments", "volume_locations", "loans", "volumes",
-            "titles", "series", "borrowers", "storage_locations", "contributors", "genres",
-        ];
-
-        for table in &deletion_order {
-            if !ALLOWED_TABLES.contains(table) {
-                continue;
-            }
-
+        for table in PURGE_DELETION_ORDER {
             let exists: bool = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?)"
             )
@@ -106,31 +120,7 @@ impl AutoPurgeService {
     pub async fn run_purge(pool: &DbPool) -> Result<PurgeStats, AppError> {
         let mut stats = PurgeStats::default();
 
-        // Define deletion order to respect FK constraints (children first).
-        // Note: children must be in `ALLOWED_TABLES` for this to actually
-        // delete them — the loop below skips anything not whitelisted (kept
-        // for safety symmetry with `services::soft_delete::soft_delete`).
-        // The drift-risk between this list and `ALLOWED_TABLES` is tracked as
-        // P15 (single source of truth refactor).
-        let deletion_order = vec![
-            "title_contributors",      // FK → titles, contributors
-            "series_title_assignments", // FK → series, titles
-            "volume_locations",         // FK → volumes, storage_locations
-            "loans",                    // FK → volumes, borrowers
-            "volumes",                  // FK → titles
-            "titles",                   // No FK constraints
-            "series",                   // No FK constraints (titles assign to series)
-            "borrowers",                // No FK constraints
-            "storage_locations",        // No FK constraints (soft FK from volumes)
-            "contributors",             // No FK constraints
-            "genres",                   // No FK constraints
-        ];
-
-        for table in &deletion_order {
-            if !ALLOWED_TABLES.contains(table) {
-                continue;
-            }
-
+        for table in PURGE_DELETION_ORDER {
             let mut table_total: u64 = 0;
             let mut iterations: usize = 0;
             let mut errored = false;
@@ -289,6 +279,7 @@ impl AutoPurgeService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::soft_delete::ALLOWED_TABLES;
     use sqlx::Row;
 
     #[sqlx::test(migrations = "./migrations")]
@@ -350,6 +341,83 @@ mod tests {
             .fetch_optional(&pool)
             .await?;
         assert!(check_29d.is_some(), "29-day-old row should still exist");
+
+        Ok(())
+    }
+
+    /// Regression test for issue #60 — `ALLOWED_TABLES` filter was skipping
+    /// junction-child tables so the FK-dependent rows survived and parent
+    /// DELETEs hit FK violations, rolling back the transaction. After the
+    /// fix, `PURGE_DELETION_ORDER` is canonical and children are visited
+    /// before their parents.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_purge_deletes_child_then_parent(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let title_id: u64 = sqlx::query(
+            "INSERT INTO titles (title, media_type, genre_id, deleted_at) \
+             VALUES (?, 'book', 1, NOW() - INTERVAL 31 DAY)",
+        )
+        .bind("Old Title with Series")
+        .execute(&pool)
+        .await?
+        .last_insert_id();
+
+        let series_id: u64 = sqlx::query(
+            "INSERT INTO series (name, deleted_at) VALUES (?, NOW() - INTERVAL 31 DAY)",
+        )
+        .bind("Old Series")
+        .execute(&pool)
+        .await?
+        .last_insert_id();
+
+        sqlx::query(
+            "INSERT INTO title_series (title_id, series_id, position_number, deleted_at) \
+             VALUES (?, ?, 1, NOW() - INTERVAL 31 DAY)",
+        )
+        .bind(title_id)
+        .bind(series_id)
+        .execute(&pool)
+        .await?;
+
+        let stats = AutoPurgeService::run_purge(&pool).await?;
+        assert!(
+            stats.errors.is_empty(),
+            "purge should not error on FK-ordered children, got: {:?}",
+            stats.errors
+        );
+
+        let title_left: Option<u64> =
+            sqlx::query_scalar("SELECT id FROM titles WHERE id = ?")
+                .bind(title_id)
+                .fetch_optional(&pool)
+                .await?;
+        assert!(
+            title_left.is_none(),
+            "parent title should be hard-deleted once child title_series is purged first"
+        );
+
+        let series_left: Option<u64> =
+            sqlx::query_scalar("SELECT id FROM series WHERE id = ?")
+                .bind(series_id)
+                .fetch_optional(&pool)
+                .await?;
+        assert!(
+            series_left.is_none(),
+            "parent series should be hard-deleted once child title_series is purged first"
+        );
+
+        let child_left: Option<u64> = sqlx::query_scalar(
+            "SELECT title_id FROM title_series WHERE title_id = ? AND series_id = ?",
+        )
+        .bind(title_id)
+        .bind(series_id)
+        .fetch_optional(&pool)
+        .await?;
+        assert!(
+            child_left.is_none(),
+            "child title_series row should be hard-deleted"
+        );
 
         Ok(())
     }
