@@ -197,12 +197,14 @@ async fn anonymous_nav_link_set_exact(pool: MySqlPool) {
     assert!(panel.contains(r#"href="/series""#), "panel must include /series for anonymous; got panel: {panel}");
     assert!(panel.contains(r#"action="/language""#), "panel must include language toggle for anonymous; got panel: {panel}");
 
-    // Mobile panel — hidden (incl. Sign in per the mobile-gap decision)
+    // Mobile panel — hidden
     assert!(!panel.contains(r#"href="/borrowers""#), "panel must HIDE /borrowers for anonymous; got panel: {panel}");
     assert!(!panel.contains(r#"href="/loans""#), "panel must HIDE /loans for anonymous; got panel: {panel}");
     assert!(!panel.contains(r#"href="/admin""#), "panel must HIDE /admin for anonymous; got panel: {panel}");
-    assert!(!panel.contains(r#"href="/login""#), "panel must HIDE Sign in for anonymous (mobile gap, deferred to AC16); got panel: {panel}");
     assert!(!panel.contains(r#"action="/logout""#), "panel must HIDE logout form for anonymous; got panel: {panel}");
+
+    // Mobile panel — visible (issue #150 — login/logout parity with desktop)
+    assert!(panel.contains(r#"href="/login""#), "panel must include Sign in for anonymous (issue #150); got panel: {panel}");
 }
 
 // AC2 — Librarian nav-link set frozen.
@@ -234,16 +236,16 @@ async fn librarian_nav_link_set_exact(pool: MySqlPool) {
     assert!(!desktop.contains(r#"href="/admin""#), "desktop must HIDE /admin for librarian; got: {desktop}");
     assert!(!desktop.contains(r#"href="/login""#), "desktop must HIDE Sign in for librarian; got: {desktop}");
 
-    // Mobile panel — visible (no logout per AC16 gap)
+    // Mobile panel — visible (issue #150 — logout now in panel for parity)
     assert!(panel.contains(r#"href="/catalog""#), "panel must include /catalog for librarian; got panel: {panel}");
     assert!(panel.contains(r#"href="/locations""#), "panel must include /locations for librarian");
     assert!(panel.contains(r#"href="/series""#), "panel must include /series for librarian");
     assert!(panel.contains(r#"href="/borrowers""#), "panel must include /borrowers for librarian");
     assert!(panel.contains(r#"href="/loans""#), "panel must include /loans for librarian");
+    assert!(panel.contains(r#"action="/logout""#), "panel must include logout form for librarian (issue #150); got panel: {panel}");
 
-    // Mobile panel — hidden (incl. logout per AC16 gap)
+    // Mobile panel — hidden
     assert!(!panel.contains(r#"href="/admin""#), "panel must HIDE /admin for librarian; got panel: {panel}");
-    assert!(!panel.contains(r#"action="/logout""#), "panel must HIDE logout form for librarian (mobile gap, deferred to AC16); got panel: {panel}");
     assert!(!panel.contains(r#"href="/login""#), "panel must HIDE Sign in for librarian; got panel: {panel}");
 }
 
@@ -276,16 +278,16 @@ async fn admin_nav_link_set_exact(pool: MySqlPool) {
     // Desktop — hidden
     assert!(!desktop.contains(r#"href="/login""#), "desktop must HIDE Sign in for admin");
 
-    // Mobile panel — visible
+    // Mobile panel — visible (issue #150 — logout now in panel for parity)
     assert!(panel.contains(r#"href="/catalog""#), "panel must include /catalog for admin");
     assert!(panel.contains(r#"href="/locations""#), "panel must include /locations for admin");
     assert!(panel.contains(r#"href="/series""#), "panel must include /series for admin");
     assert!(panel.contains(r#"href="/borrowers""#), "panel must include /borrowers for admin");
     assert!(panel.contains(r#"href="/loans""#), "panel must include /loans for admin");
     assert!(panel.contains(r#"href="/admin""#), "panel must include /admin for admin");
+    assert!(panel.contains(r#"action="/logout""#), "panel must include logout form for admin (issue #150); got panel: {panel}");
 
-    // Mobile panel — hidden (incl. logout per AC16 gap)
-    assert!(!panel.contains(r#"action="/logout""#), "panel must HIDE logout form for admin (mobile gap, deferred to AC16); got panel: {panel}");
+    // Mobile panel — hidden
     assert!(!panel.contains(r#"href="/login""#), "panel must HIDE Sign in for admin");
 }
 
@@ -463,9 +465,10 @@ async fn role_change_reflects_immediately_in_template_render(pool: MySqlPool) {
     );
 }
 
-// AC6 — Sign out is a POST form on the desktop nav, with a hidden
-// _csrf_token input. NOT an `<a href="/logout">`. Mobile panel does NOT
-// render the form (mobile gap, deferred to AC16).
+// AC6 — Sign out is a POST form, with a hidden _csrf_token input. NOT an
+// `<a href="/logout">`. Issue #150: the mobile panel now renders its own
+// logout form for parity with desktop, so we expect 2 occurrences in
+// total (one desktop, one mobile-panel).
 #[sqlx::test(migrations = "./migrations")]
 async fn logout_is_post_form_with_csrf_token(pool: MySqlPool) {
     let cookie = seed_session(&pool, "admin").await;
@@ -479,15 +482,15 @@ async fn logout_is_post_form_with_csrf_token(pool: MySqlPool) {
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_text(resp).await;
 
-    // Exactly ONE POST logout form in the entire body — desktop only.
-    // NOTE: when AC16 (mobile login/logout gap) lands and adds a logout
-    // form to the mobile panel, this assertion will need to be updated
-    // to expect 2. The expectation here is a snapshot of the current
-    // (audited) state, not a forever-contract.
+    // Issue #150: two POST logout forms — one in the desktop strip, one
+    // in the mobile panel. Both share the CSRF input + same `/logout`
+    // action. The CSRF assertion below targets the FIRST form (desktop)
+    // via `html.find(...)` so the contract still pins down the desktop
+    // form's internal shape.
     let logout_forms = html.matches(r#"action="/logout""#).count();
     assert_eq!(
-        logout_forms, 1,
-        "expected exactly 1 logout form (desktop only; mobile gap deferred to AC16); got {logout_forms}"
+        logout_forms, 2,
+        "expected exactly 2 logout forms (desktop + mobile-panel per issue #150); got {logout_forms}"
     );
 
     // Slice the logout form's HTML so subsequent assertions verify the
