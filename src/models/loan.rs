@@ -117,8 +117,16 @@ impl LoanModel {
         let sort_dir = validated_dir(dir);
         let sql_col = map_loan_sort_column(sort_col);
 
+        // JOIN parents with `deleted_at IS NULL` so the pagination total
+        // matches the data SELECT below (which already does this filter).
+        // Without the JOINs, an orphan loan with a soft-deleted borrower/
+        // volume/title inflates `total_count` past the row count actually
+        // rendered. Issue #117.
         let count_row: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM loans l \
+             JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL \
+             JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL \
+             JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL \
              WHERE l.returned_at IS NULL AND l.deleted_at IS NULL",
         )
         .fetch_one(pool)
@@ -312,12 +320,17 @@ impl LoanModel {
     }
 
     /// Count of active loans (not returned, not soft-deleted) across the entire catalog.
-    /// "Active" = `returned_at IS NULL AND deleted_at IS NULL`. Used by
-    /// `services::dashboard::collection_glance` for the home-page "Collection at a glance"
-    /// card and reusable by other dashboard surfaces.
+    /// "Active" = loan rows whose `returned_at IS NULL AND deleted_at IS NULL` AND whose
+    /// parent borrower / volume / title are all live. Mirrors the JOIN shape used by
+    /// `list_active` and `list_active_by_borrower` so this count never diverges from the
+    /// rows the user actually sees (issue #117).
     pub async fn count_active(pool: &DbPool) -> Result<i64, AppError> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM loans WHERE returned_at IS NULL AND deleted_at IS NULL",
+            "SELECT COUNT(*) FROM loans l \
+             JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL \
+             JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL \
+             JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL \
+             WHERE l.returned_at IS NULL AND l.deleted_at IS NULL",
         )
         .fetch_one(pool)
         .await?;
@@ -329,11 +342,18 @@ impl LoanModel {
     /// the threshold is NOT overdue per FR48 ("exceeds this number of
     /// days"). The boundary is locked by
     /// `count_overdue_threshold_boundary` in `tests/dashboard_overdue.rs`.
+    ///
+    /// JOINs `borrowers` / `volumes` / `titles` with `deleted_at IS NULL` so the count
+    /// matches `list_overdue`'s output exactly even when a parent row has been soft-
+    /// deleted underneath an active loan (issue #117).
     pub async fn count_overdue(pool: &DbPool, threshold_days: i32) -> Result<i64, AppError> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM loans \
-             WHERE returned_at IS NULL AND deleted_at IS NULL \
-             AND DATEDIFF(NOW(), loaned_at) > ?",
+            "SELECT COUNT(*) FROM loans l \
+             JOIN borrowers b ON l.borrower_id = b.id AND b.deleted_at IS NULL \
+             JOIN volumes v ON l.volume_id = v.id AND v.deleted_at IS NULL \
+             JOIN titles t ON v.title_id = t.id AND t.deleted_at IS NULL \
+             WHERE l.returned_at IS NULL AND l.deleted_at IS NULL \
+             AND DATEDIFF(NOW(), l.loaned_at) > ?",
         )
         .bind(threshold_days)
         .fetch_one(pool)
@@ -675,5 +695,94 @@ mod tests {
         assert_eq!(details.volume_label, "V0042");
         assert_eq!(details.title_name, "Les Misérables");
         assert_eq!(details.duration_days, 5);
+    }
+
+    /// Regression for issue #117 — count_overdue / count_active / list_active's
+    /// inline COUNT now JOIN parent rows with `deleted_at IS NULL`, so a soft-
+    /// delete on a parent (borrower / volume / title) excludes the loan from
+    /// the pill counters in the same way it already excluded it from the
+    /// rendered list. Without the fix, `count_overdue == 1` while
+    /// `list_overdue.len() == 0` (the divergence).
+    #[sqlx::test(migrations = "./migrations")]
+    async fn count_aligns_with_list_when_parent_is_soft_deleted(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Pick the first seed genre and volume_state.
+        let genre_id: u64 = sqlx::query_scalar(
+            "SELECT id FROM genres WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await?;
+        let state_id: u64 = sqlx::query_scalar(
+            "SELECT id FROM volume_states WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await?;
+
+        let title_id: u64 = sqlx::query(
+            "INSERT INTO titles (title, language, media_type, genre_id) \
+             VALUES (?, 'fr', 'book', ?)",
+        )
+        .bind("Issue-117 Title")
+        .bind(genre_id)
+        .execute(&pool)
+        .await?
+        .last_insert_id();
+
+        let volume_id: u64 = sqlx::query(
+            "INSERT INTO volumes (label, title_id, condition_state_id, location_id) \
+             VALUES ('V0117', ?, ?, NULL)",
+        )
+        .bind(title_id)
+        .bind(state_id)
+        .execute(&pool)
+        .await?
+        .last_insert_id();
+
+        let borrower_id: u64 =
+            sqlx::query("INSERT INTO borrowers (name) VALUES ('Issue-117 Borrower')")
+                .execute(&pool)
+                .await?
+                .last_insert_id();
+
+        // One active loan 60 days old → overdue at the default 30-day threshold.
+        sqlx::query(
+            "INSERT INTO loans (volume_id, borrower_id, loaned_at) \
+             VALUES (?, ?, NOW() - INTERVAL 60 DAY)",
+        )
+        .bind(volume_id)
+        .bind(borrower_id)
+        .execute(&pool)
+        .await?;
+
+        // Sanity: both pre-soft-delete numbers see the loan.
+        assert_eq!(LoanModel::count_active(&pool).await?, 1);
+        assert_eq!(LoanModel::count_overdue(&pool, 30).await?, 1);
+
+        // Soft-delete the borrower. The loan row stays live, but its parent
+        // is now in the trash.
+        sqlx::query("UPDATE borrowers SET deleted_at = NOW() WHERE id = ?")
+            .bind(borrower_id)
+            .execute(&pool)
+            .await?;
+
+        let overdue_count = LoanModel::count_overdue(&pool, 30).await?;
+        let overdue_list_len = LoanModel::list_overdue(&pool, 30, 100).await?.len() as i64;
+        assert_eq!(
+            overdue_count, overdue_list_len,
+            "count_overdue must equal list_overdue.len() — was the divergence in #117"
+        );
+        assert_eq!(overdue_count, 0, "orphan loan must drop out of the count");
+
+        let active_count = LoanModel::count_active(&pool).await?;
+        let active_list_len =
+            LoanModel::list_active(&pool, 1, &None, &None).await?.total_items as i64;
+        assert_eq!(
+            active_count, active_list_len,
+            "count_active must equal list_active total_count for pagination integrity"
+        );
+        assert_eq!(active_count, 0);
+
+        Ok(())
     }
 }
