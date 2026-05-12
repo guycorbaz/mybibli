@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tokio::time::{MissedTickBehavior, interval};
 
-use crate::config::AppSettings;
+use crate::config::{AUTO_PURGE_INTERVAL_MAX_SECS, AUTO_PURGE_INTERVAL_MIN_SECS, AppSettings};
 use crate::db::DbPool;
 use crate::services::auto_purge::AutoPurgeService;
 
@@ -84,8 +84,11 @@ pub fn spawn(pool: DbPool, settings: Arc<RwLock<AppSettings>>) {
 }
 
 /// Read the auto-purge interval (seconds) from settings, falling back to the
-/// default if the lock is poisoned. Clamped at >= 60s so a misconfigured row
-/// can't put us in a hot loop.
+/// default if the lock is poisoned. Clamped to
+/// `AUTO_PURGE_INTERVAL_MIN_SECS..=AUTO_PURGE_INTERVAL_MAX_SECS` so a value
+/// inserted via direct SQL (bypassing `AppSettings::load_from_db`'s write-side
+/// clamp) cannot put us in a hot loop OR push the next run past any plausible
+/// operator-attention window. Issue #75.
 ///
 /// R3-N9: a poisoned `std::sync::RwLock` indicates that some other writer
 /// panicked while holding the lock — that's a serious failure mode and
@@ -104,5 +107,30 @@ fn read_interval_seconds(settings: &Arc<RwLock<AppSettings>>) -> u64 {
             poisoned.into_inner().auto_purge_interval_seconds
         }
     };
-    raw.max(60)
+    raw.clamp(AUTO_PURGE_INTERVAL_MIN_SECS, AUTO_PURGE_INTERVAL_MAX_SECS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Issue #75: a stale or SQL-inserted value larger than
+    /// `AUTO_PURGE_INTERVAL_MAX_SECS` must be clamped at read, not just at
+    /// `AppSettings::load_from_db`. Mirror the inline predicate here so a
+    /// regression in `read_interval_seconds` fails this assertion.
+    #[test]
+    fn read_interval_clamps_both_bounds() {
+        let cap = |v: u64| v.clamp(AUTO_PURGE_INTERVAL_MIN_SECS, AUTO_PURGE_INTERVAL_MAX_SECS);
+        assert_eq!(cap(0), AUTO_PURGE_INTERVAL_MIN_SECS, "below MIN clamps up");
+        assert_eq!(cap(30), AUTO_PURGE_INTERVAL_MIN_SECS, "below MIN clamps up");
+        assert_eq!(cap(AUTO_PURGE_INTERVAL_MIN_SECS), AUTO_PURGE_INTERVAL_MIN_SECS);
+        assert_eq!(cap(86_400), 86_400, "valid value passes through");
+        assert_eq!(cap(AUTO_PURGE_INTERVAL_MAX_SECS), AUTO_PURGE_INTERVAL_MAX_SECS);
+        assert_eq!(
+            cap(AUTO_PURGE_INTERVAL_MAX_SECS + 1),
+            AUTO_PURGE_INTERVAL_MAX_SECS,
+            "above MAX clamps down"
+        );
+        assert_eq!(cap(u64::MAX), AUTO_PURGE_INTERVAL_MAX_SECS, "u64::MAX clamps down");
+    }
 }

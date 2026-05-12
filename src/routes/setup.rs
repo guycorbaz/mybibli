@@ -202,6 +202,14 @@ struct StepDone {
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
+/// Issue #93: tight predicate for the masked-display sentinel emitted by
+/// `mask_key_tail`. Returns either exactly "••••" (for keys shorter than
+/// 4 chars) or exactly "••••XXXX" (4 bullets + 4-char tail = 8 chars
+/// total). Anything else is a real user-provided value.
+fn is_masked_sentinel(s: &str) -> bool {
+    s == "••••" || (s.chars().count() == 8 && s.starts_with("••••"))
+}
+
 /// Return the four-letter masked tail of a non-empty key (`"••••abcd"`).
 /// `None` is returned for an empty input. Mirrors `routes/admin_system::mask_key`'s
 /// contract — short keys get fully hidden — minus the i18n-bound caller.
@@ -962,7 +970,12 @@ pub async fn step_2_submit(
             return None;
         }
         // Submitting the masked display back unchanged ⇒ no save.
-        if trimmed.starts_with("••••") {
+        // Issue #93: `mask_key_tail` returns either exactly "••••" (for
+        // keys shorter than 4 chars) or exactly "••••" + 4-char tail
+        // (total 8 chars). Match those shapes specifically rather than
+        // any prefix of "••••" — so a real key that happens to start
+        // with 4 bullet chars but has a different length is preserved.
+        if is_masked_sentinel(trimmed) {
             return None;
         }
         Some(trimmed.to_string())
@@ -1127,14 +1140,29 @@ mod tests {
             if trimmed.is_empty() {
                 return None;
             }
-            if trimmed.starts_with("••••") {
+            if is_masked_sentinel(trimmed) {
                 return None;
             }
             Some(trimmed.to_string())
         };
         assert_eq!(strip(""), None);
         assert_eq!(strip("   "), None);
-        assert_eq!(strip("••••abcd"), None);
+        // Masked-display sentinels: dropped.
+        assert_eq!(strip("••••"), None, "bullets-only (short-key mask)");
+        assert_eq!(strip("••••abcd"), None, "bullets + 4-char tail (normal mask)");
+        // Real keys preserved.
         assert_eq!(strip("realkey"), Some("realkey".to_string()));
+        // Issue #93: a real key whose first 4 chars are bullets but whose
+        // length is NOT 8 chars is preserved (not the masked sentinel).
+        assert_eq!(
+            strip("••••realtail"),
+            Some("••••realtail".to_string()),
+            "12 chars with bullet prefix → real key, not sentinel",
+        );
+        assert_eq!(
+            strip("••••a"),
+            Some("••••a".to_string()),
+            "5 chars with bullet prefix → real key, not sentinel",
+        );
     }
 }

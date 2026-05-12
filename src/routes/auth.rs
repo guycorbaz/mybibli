@@ -211,9 +211,11 @@ pub async fn login(
     // row becomes orphaned — the daily anonymous-session purge would
     // collect it eventually, but deleting it now keeps the `sessions`
     // table tight immediately after login.
-    if let Some(old_token) = &session.token
-        && old_token != &token
-    {
+    //
+    // Issue #44: the previous `old_token != &token` guard was vacuous —
+    // `token` was just minted from a 32-byte base64 random string a few
+    // lines above and cannot collide with any prior token. Dropped.
+    if let Some(old_token) = &session.token {
         let _ = crate::models::session::SessionModel::soft_delete(pool, old_token).await;
     }
 

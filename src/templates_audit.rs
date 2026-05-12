@@ -35,6 +35,19 @@ use std::path::{Path, PathBuf};
 /// (an explicit, reviewable act), not just adding the attribute.
 const ALLOWED_HX_CONFIRM_SITES: &[(&str, usize)] = &[];
 
+/// Issue #138 — companion allowlist for `hx-confirm=` literals emitted
+/// from Rust `format!()` calls in `src/**/*.rs`. Same fail-closed
+/// contract as `ALLOWED_HX_CONFIRM_SITES`: any NEW Rust-emitted
+/// `hx-confirm=` must be migrated to the UX-DR8 Modal component before
+/// landing.
+///
+/// Grandfathered entry: `src/routes/locations.rs` carries one
+/// hx-confirm= in the location-tree delete-row button (inherited gap,
+/// pre-existing before Story 9-12). Migration to UX-DR8 Modal is
+/// tracked as a follow-up — until then, this entry locks-in the count
+/// so the gap can't widen.
+const ALLOWED_HX_CONFIRM_RUST_SITES: &[(&str, usize)] = &[("src/routes/locations.rs", 1)];
+
 #[test]
 fn no_inline_markup_in_templates() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates");
@@ -278,6 +291,102 @@ fn hx_confirm_matches_allowlist() {
                       button was added (use the UX-DR8 Modal component — Epic 9 — not \
                       `hx-confirm=`), or an Epic-9 migration removed one; in either case \
                       update `ALLOWED_HX_CONFIRM_SITES` in the same PR.\n";
+        let report = format!("{}{}", header, violations.join("\n"));
+        panic!("{report}");
+    }
+}
+
+#[test]
+fn hx_confirm_in_rust_strings_matches_allowlist() {
+    // Issue #138: extend the `hx-confirm=` audit to Rust-emitted markup.
+    // `templates_audit::hx_confirm_matches_allowlist` only walks `templates/`;
+    // Rust `format!()` strings producing `hx-confirm=` previously slipped
+    // through. Fail-closed contract: every Rust-emitted `hx-confirm=` MUST
+    // appear in `ALLOWED_HX_CONFIRM_RUST_SITES` with an exact count.
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let src = root.join("src");
+    assert!(
+        src.is_dir(),
+        "src directory not found at {}",
+        src.display()
+    );
+
+    // Require the attribute value to start with a letter or whitespace —
+    // a real `hx-confirm="Delete…"` qualifies, but a test assertion like
+    // `html.contains("hx-confirm=")` (where the next char after the opening
+    // `"` is `)`) does not. The optional backslash supports both Rust
+    // string literals (`hx-confirm=\"…\"`) and raw strings (`hx-confirm="…"`).
+    let re = Regex::new(r#"\bhx-confirm\s*=\s*\\?"[A-Za-z ]"#).unwrap();
+
+    let mut counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    visit(&src, &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            return;
+        }
+        // Skip the audit itself — its source contains the literal
+        // `\bhx-confirm` in the regex pattern.
+        if path.file_name().and_then(|s| s.to_str()) == Some("templates_audit.rs") {
+            return;
+        }
+        let raw = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let n = re.find_iter(&raw).count();
+        if n == 0 {
+            return;
+        }
+        let rel = path.strip_prefix(&root).unwrap_or(path);
+        let rel_str = rel
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/");
+        counts.insert(rel_str, n);
+    });
+
+    let mut violations: Vec<String> = Vec::new();
+
+    for (path, actual) in &counts {
+        match ALLOWED_HX_CONFIRM_RUST_SITES.iter().find(|(p, _)| *p == path) {
+            Some((_, expected)) => {
+                if expected != actual {
+                    violations.push(format!(
+                        "  {}: {} hx-confirm= literal(s), expected {}",
+                        path, actual, expected
+                    ));
+                }
+            }
+            None => {
+                violations.push(format!(
+                    "  {}: {} hx-confirm= literal(s) — file not in allowlist",
+                    path, actual
+                ));
+            }
+        }
+    }
+
+    for (path, expected) in ALLOWED_HX_CONFIRM_RUST_SITES {
+        let present = counts.contains_key(*path);
+        let on_disk = root.join(path).is_file();
+        if !on_disk {
+            violations.push(format!(
+                "  {}: allowlisted file missing from disk — remove the stale entry",
+                path
+            ));
+        } else if !present && *expected > 0 {
+            violations.push(format!(
+                "  {}: expected {} hx-confirm= literal(s), found 0 — remove the stale entry",
+                path, expected
+            ));
+        }
+    }
+
+    if !violations.is_empty() {
+        let header = "hx-confirm= Rust-emitted audit failed (Issue #138):\n\
+                      A new Rust `format!()` string containing `hx-confirm=` was added \
+                      (use the UX-DR8 Modal component — Epic 9 — not `hx-confirm=`), \
+                      or a migration removed one; in either case update \
+                      `ALLOWED_HX_CONFIRM_RUST_SITES` in the same PR.\n";
         let report = format!("{}{}", header, violations.join("\n"));
         panic!("{report}");
     }
