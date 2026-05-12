@@ -104,12 +104,16 @@ impl TrashService {
 
         match table {
             "series" => {
-                // Check if any assigned titles have been reassigned to different series
+                // Find titles whose soft-deleted assignment to THIS series is
+                // shadowed by a newer LIVE assignment to a DIFFERENT series.
+                // The real junction table is `title_series` (not the historical
+                // name `series_title_assignments`) and the position column is
+                // `position_number`. Issue #66.
                 let conflict_rows = sqlx::query(
-                    "SELECT DISTINCT sta.title_id, t.title FROM series_title_assignments sta
+                    "SELECT DISTINCT sta.title_id, t.title FROM title_series sta
                      JOIN titles t ON sta.title_id = t.id
                      WHERE sta.series_id = ? AND sta.series_id != (
-                         SELECT series_id FROM series_title_assignments WHERE title_id = sta.title_id AND deleted_at IS NULL ORDER BY position DESC LIMIT 1
+                         SELECT series_id FROM title_series WHERE title_id = sta.title_id AND deleted_at IS NULL ORDER BY position_number DESC LIMIT 1
                      )",
                 )
                 .bind(id as i64)
@@ -149,7 +153,15 @@ impl TrashService {
         Ok(conflicts)
     }
 
-    /// Restore with conflicts cleared: set conflicting FKs to NULL
+    /// Restore with conflicts cleared.
+    ///
+    /// For "series": hard-deletes the soft-deleted `title_series` rows whose
+    /// titles now have a newer LIVE assignment to a different series. Issue #66
+    /// — previously this was an `UPDATE ... SET series_id = NULL` against the
+    /// (non-existent) `series_title_assignments` table, which would have
+    /// violated NOT NULL on the real schema and triggered MariaDB's correlated-
+    /// subquery-on-update-target restriction (error 1093). Switched to a
+    /// two-step SELECT-then-DELETE to dodge both issues.
     pub async fn restore_with_conflicts_cleared(
         pool: &DbPool,
         table: &str,
@@ -162,17 +174,35 @@ impl TrashService {
         // Clear conflicting FKs based on table type
         match table {
             "series" => {
-                // Set title.series_id to NULL for any reassigned titles
-                sqlx::query(
-                    "UPDATE series_title_assignments sta
-                     SET series_id = NULL
-                     WHERE series_id = ? AND series_id != (
-                         SELECT series_id FROM series_title_assignments WHERE title_id = sta.title_id AND deleted_at IS NULL ORDER BY position DESC LIMIT 1
+                // Step 1: collect the conflicting title_ids (read-only — no
+                // target-table-in-update-source conflict).
+                let conflict_title_ids: Vec<i64> = sqlx::query_scalar(
+                    "SELECT DISTINCT CAST(sta.title_id AS SIGNED) FROM title_series sta
+                     WHERE sta.series_id = ? AND sta.series_id != (
+                         SELECT series_id FROM title_series WHERE title_id = sta.title_id AND deleted_at IS NULL ORDER BY position_number DESC LIMIT 1
                      )",
                 )
                 .bind(id as i64)
-                .execute(&mut *tx)
+                .fetch_all(&mut *tx)
                 .await?;
+
+                // Step 2: hard-delete those soft-deleted assignments in this
+                // series. Skipping when empty avoids building a `DELETE ...
+                // IN ()` which MariaDB rejects.
+                if !conflict_title_ids.is_empty() {
+                    let placeholders = std::iter::repeat_n("?", conflict_title_ids.len())
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let query_str = format!(
+                        "DELETE FROM title_series WHERE series_id = ? AND title_id IN ({})",
+                        placeholders
+                    );
+                    let mut q = sqlx::query(&query_str).bind(id as i64);
+                    for tid in &conflict_title_ids {
+                        q = q.bind(*tid);
+                    }
+                    q.execute(&mut *tx).await?;
+                }
             }
             _ => {
                 // Other tables handled similarly (implementation per table type)
@@ -196,13 +226,37 @@ impl TrashService {
             return Err(AppError::Conflict("version_mismatch".to_string()));
         }
 
-        // Fetch restored row
-        let entry = TrashModel::get_trash_entry(pool, table, id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Restored item not found".to_string()))?;
-
         tx.commit().await?;
-        Ok(entry)
+
+        // Fetch restored row inline — `get_trash_entry` filters by
+        // `deleted_at IS NOT NULL` (trash semantics) which the freshly-
+        // restored row no longer matches. Mirrors `restore()` above.
+        let item_col = match table {
+            "titles" => "title",
+            "volumes" => "label",
+            "contributors" => "name",
+            "storage_locations" => "name",
+            "borrowers" => "name",
+            "series" => "name",
+            _ => "name",
+        };
+
+        let row = sqlx::query(&format!(
+            "SELECT CAST(id AS SIGNED) as id, '{}' as table_name, {} as item_name, CAST(deleted_at AS DATETIME) as deleted_at, version FROM {} WHERE id = ?",
+            table, item_col, table
+        ))
+        .bind(id as i64)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Restored item not found".to_string()))?;
+
+        Ok(TrashEntry {
+            id: row.get::<i64, _>("id") as u64,
+            table_name: row.get::<String, _>("table_name"),
+            item_name: row.get::<String, _>("item_name"),
+            deleted_at: row.get::<Option<NaiveDateTime>, _>("deleted_at"),
+            version: row.get::<i32, _>("version"),
+        })
     }
 
     /// Verify parent exists (for child entities)
@@ -377,6 +431,105 @@ mod tests {
         assert!(
             matches!(result, Err(AppError::NotFound(msg)) if msg == "Item already gone"),
             "Expected NotFound error"
+        );
+
+        Ok(())
+    }
+
+    /// Regression test for issue #66 — series restore conflict path
+    /// previously referenced the ghost table `series_title_assignments`
+    /// and attempted `UPDATE ... SET series_id = NULL` (violating NOT NULL
+    /// + triggering MariaDB's correlated-subquery-on-update-target error).
+    /// Now uses two-step SELECT-then-DELETE against the real `title_series`
+    /// table.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_series_restore_with_conflicts_cleared(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let old_series_id: u64 = sqlx::query(
+            "INSERT INTO series (name, version, deleted_at) VALUES (?, 1, NOW())",
+        )
+        .bind("Original Series")
+        .execute(&pool)
+        .await?
+        .last_insert_id();
+
+        let new_series_id: u64 =
+            sqlx::query("INSERT INTO series (name, version) VALUES (?, 1)")
+                .bind("New Series")
+                .execute(&pool)
+                .await?
+                .last_insert_id();
+
+        let title_id: u64 = sqlx::query(
+            "INSERT INTO titles (title, media_type, genre_id, version) VALUES (?, 'book', 1, 1)",
+        )
+        .bind("Reassigned Title")
+        .execute(&pool)
+        .await?
+        .last_insert_id();
+
+        // Soft-deleted assignment to the OLD series (the conflict to clear).
+        sqlx::query(
+            "INSERT INTO title_series (title_id, series_id, position_number, deleted_at) \
+             VALUES (?, ?, 1, NOW())",
+        )
+        .bind(title_id)
+        .bind(old_series_id)
+        .execute(&pool)
+        .await?;
+
+        // Live assignment to the NEW series (the shadow that creates the conflict).
+        sqlx::query(
+            "INSERT INTO title_series (title_id, series_id, position_number) VALUES (?, ?, 1)",
+        )
+        .bind(title_id)
+        .bind(new_series_id)
+        .execute(&pool)
+        .await?;
+
+        let conflicts = TrashService::detect_restore_conflicts(&pool, "series", old_series_id)
+            .await?;
+        assert_eq!(conflicts.len(), 1, "should detect one conflict");
+        assert!(
+            conflicts[0].description.contains("Reassigned Title"),
+            "conflict description should name the reassigned title, got: {}",
+            conflicts[0].description
+        );
+
+        let restored = TrashService::restore_with_conflicts_cleared(
+            &pool,
+            "series",
+            old_series_id,
+            1,
+        )
+        .await?;
+        assert_eq!(restored.version, 2, "version should be bumped after restore");
+
+        // The conflicting assignment to the old series must be gone.
+        let old_assignment: Option<i64> = sqlx::query_scalar(
+            "SELECT CAST(id AS SIGNED) FROM title_series WHERE title_id = ? AND series_id = ?",
+        )
+        .bind(title_id)
+        .bind(old_series_id)
+        .fetch_optional(&pool)
+        .await?;
+        assert!(
+            old_assignment.is_none(),
+            "soft-deleted conflicting assignment should be hard-deleted"
+        );
+
+        // The fresh live assignment to the new series must be untouched.
+        let new_assignment: Option<i64> = sqlx::query_scalar(
+            "SELECT CAST(id AS SIGNED) FROM title_series WHERE title_id = ? AND series_id = ?",
+        )
+        .bind(title_id)
+        .bind(new_series_id)
+        .fetch_optional(&pool)
+        .await?;
+        assert!(
+            new_assignment.is_some(),
+            "live assignment to the new series should be preserved"
         );
 
         Ok(())
