@@ -12,8 +12,10 @@ test.describe("Login/Logout & Epic 1 Smoke Test (Story 1-9)", () => {
     // Start from home page — no cookies
     await page.goto("/");
 
-    // Click login link in nav bar
-    const loginLink = page.locator('a[href="/login"]');
+    // Click login link in nav bar. Scope to `<nav>` so we don't strict-mode
+    // collide with the mirror link inside `<div id="mobile-nav">` (added by
+    // issue #150 — sibling of <nav>, hidden on desktop but present in the DOM).
+    const loginLink = page.locator('nav a[href="/login"]');
     await expect(loginLink).toBeVisible({ timeout: 5000 });
     await loginLink.click();
 
