@@ -1,26 +1,24 @@
 # Full local stack: app + persistent MariaDB.
 #
-# To use an external database instead:
-#   1. Comment out (or delete) the `db` service and the `volumes:` block.
-#   2. Remove the `depends_on:` block from the `mybibli` service.
-#   3. Set MYSQL_HOST / MYSQL_PORT / MYSQL_PASSWORD in your .env or shell
-#      to point at the external DB (defaults below target the bundled `db`).
+# All configuration values live in .env — nothing in this file needs editing.
+#
+# To use an EXTERNAL database instead:
+#   1. Comment out (or delete) the `db:` service and the `volumes:` block.
+#   2. Comment out the `depends_on:` block on the `mybibli` service.
+#   3. Set MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD / MYSQL_DATABASE
+#      in your .env to point at the external DB.
 
 services:
   mybibli:
     build: .
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8080}:${PORT:-8080}"
     environment:
-      DATABASE_URL: mysql://mybibli:${MYSQL_PASSWORD:-mybibli_password}@${MYSQL_HOST:-db}:${MYSQL_PORT:-3306}/mybibli?charset=utf8mb4
-      HOST: "0.0.0.0"
-      PORT: "8080"
-      RUST_LOG: mybibli=info
+      DATABASE_URL: mysql://${MYSQL_USER:-mybibli}:${MYSQL_PASSWORD:-mybibli_password}@${MYSQL_HOST:-db}:${MYSQL_PORT:-3306}/${MYSQL_DATABASE:-mybibli}?charset=utf8mb4
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8080}
+      RUST_LOG: ${RUST_LOG:-mybibli=info}
       APP_LANGUAGE: ${APP_LANGUAGE:-en}
-      # Issue #94 — set to "true" only when the deployment is fronted by HTTPS.
-      # When set, every Set-Cookie carries `Secure`; browsers refuse the cookie
-      # over plain HTTP, so leaving this unset (or "false") is correct for
-      # localhost-only / direct-port deployments.
       MYBIBLI_COOKIE_SECURE: ${MYBIBLI_COOKIE_SECURE:-false}
     depends_on:
       db:
@@ -31,14 +29,14 @@ services:
     image: mariadb:10.11
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
-      MYSQL_DATABASE: mybibli
-      MYSQL_USER: mybibli
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-mybibli}
+      MYSQL_USER: ${MYSQL_USER:-mybibli}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-mybibli_password}
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mybibli_db_data:/var/lib/mysql
     healthcheck:
