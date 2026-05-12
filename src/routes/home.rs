@@ -504,14 +504,23 @@ pub async fn home(
         .to_string()
     };
 
-    // Count titles with failed metadata (for librarian dashboard badge)
+    // Count titles with failed metadata (for librarian dashboard badge).
+    // Issue #104: a transient DB error here previously rendered the badge
+    // as "0 titles with errors" silently. We still fall back to 0 (the
+    // badge is best-effort), but warn so the failure is observable.
     let metadata_error_count: u64 = if session.role == Role::Librarian {
-        sqlx::query_scalar::<_, i64>(
+        match sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(DISTINCT title_id) FROM pending_metadata_updates WHERE status = 'failed' AND deleted_at IS NULL"
         )
         .fetch_one(pool)
         .await
-        .unwrap_or(0) as u64
+        {
+            Ok(n) => n as u64,
+            Err(e) => {
+                tracing::warn!(error = %e, "metadata_error_count query failed; rendering badge as 0");
+                0
+            }
+        }
     } else {
         0
     };
