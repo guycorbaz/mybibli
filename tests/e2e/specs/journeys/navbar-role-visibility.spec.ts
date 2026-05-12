@@ -9,9 +9,9 @@
  *
  * Spec ID "NV" — no ISBNs generated.
  *
- * Mobile-panel gap (AC16): the panel does NOT have login/logout — that's
- * a deferred change. Tests assert the gap explicitly so any future work
- * filling it must update both this spec and `tests/navbar_hamburger.rs`.
+ * Mobile-panel login/logout parity (issue #150 — shipped): the panel
+ * now carries the same role-gated login link / logout POST form as the
+ * desktop strip. The 3 scenarios assert this positively.
  */
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
@@ -51,12 +51,14 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     await expect(panel.locator("a[href='/locations']")).toBeVisible();
     await expect(panel.locator("a[href='/series']")).toBeVisible();
 
-    // Mobile — hidden (incl. Sign in per the AC16 mobile-gap decision)
+    // Mobile — hidden
     await expect(panel.locator("a[href='/borrowers']")).toHaveCount(0);
     await expect(panel.locator("a[href='/loans']")).toHaveCount(0);
     await expect(panel.locator("a[href='/admin']")).toHaveCount(0);
-    await expect(panel.locator("a[href='/login']")).toHaveCount(0);
     await expect(panel.locator("form[action='/logout']")).toHaveCount(0);
+
+    // Mobile — visible (issue #150 — Sign in now in panel for parity)
+    await expect(panel.locator("a[href='/login']")).toBeVisible();
   });
 
   test("librarian — nav link set on /loans (desktop + mobile panel)", async ({
@@ -86,16 +88,16 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     const panel = page.locator("#mobile-nav");
     await expect(panel).toBeVisible();
 
-    // Mobile — visible
+    // Mobile — visible (issue #150 — logout in panel for parity)
     await expect(panel.locator("a[href='/catalog']")).toBeVisible();
     await expect(panel.locator("a[href='/locations']")).toBeVisible();
     await expect(panel.locator("a[href='/series']")).toBeVisible();
     await expect(panel.locator("a[href='/borrowers']")).toBeVisible();
     await expect(panel.locator("a[href='/loans']")).toBeVisible();
+    await expect(panel.locator("form[action='/logout']")).toBeVisible();
 
-    // Mobile — hidden (incl. logout per AC16 gap)
+    // Mobile — hidden
     await expect(panel.locator("a[href='/admin']")).toHaveCount(0);
-    await expect(panel.locator("form[action='/logout']")).toHaveCount(0);
     await expect(panel.locator("a[href='/login']")).toHaveCount(0);
   });
 
@@ -127,16 +129,16 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     const panel = page.locator("#mobile-nav");
     await expect(panel).toBeVisible();
 
-    // Mobile — visible (admin set including /admin)
+    // Mobile — visible (admin set + logout per issue #150)
     await expect(panel.locator("a[href='/catalog']")).toBeVisible();
     await expect(panel.locator("a[href='/locations']")).toBeVisible();
     await expect(panel.locator("a[href='/series']")).toBeVisible();
     await expect(panel.locator("a[href='/borrowers']")).toBeVisible();
     await expect(panel.locator("a[href='/loans']")).toBeVisible();
     await expect(panel.locator("a[href='/admin']")).toBeVisible();
+    await expect(panel.locator("form[action='/logout']")).toBeVisible();
 
-    // Mobile — hidden (logout gap per AC16)
-    await expect(panel.locator("form[action='/logout']")).toHaveCount(0);
+    // Mobile — hidden
     await expect(panel.locator("a[href='/login']")).toHaveCount(0);
   });
 });

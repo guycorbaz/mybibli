@@ -80,6 +80,17 @@
         <button type="submit" name="lang" value="en" lang="en" aria-pressed="false" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2">EN</button>
         {% endif %}
     </form>
+    {# Issue #150 — mobile parity with desktop login/logout (lines 40-47 above).
+       Without this block, an authenticated user on a ≤768px viewport cannot
+       sign out via the navbar (the desktop strip is hidden by `md:hidden`). #}
+    {% if role == "anonymous" %}
+    <a href="/login" class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">{{ nav_login }}</a>
+    {% else %}
+    <form method="POST" action="/logout" class="py-2">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+        <button type="submit" class="block w-full text-left text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 bg-transparent border-none p-0 cursor-pointer">{{ nav_logout }}</button>
+    </form>
+    {% endif %}
 </div>
 </header>
 

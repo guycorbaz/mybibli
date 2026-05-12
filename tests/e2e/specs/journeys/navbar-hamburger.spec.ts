@@ -223,4 +223,37 @@ test.describe("Story 9-17 — NavBar hamburger menu", () => {
     );
     expect(errors).toHaveLength(0);
   });
+
+  // Issue #150 — authenticated users on tablet/mobile can log out via
+  // the hamburger panel (parity with the desktop strip hidden by md:hidden).
+  test("logout from mobile panel signs the user out", async ({ page }) => {
+    await loginAs(page, "librarian");
+    await page.setViewportSize(TABLET);
+    await page.goto("/catalog");
+
+    await page.locator("#mobile-menu-toggle").click();
+    await expect(page.locator("#mobile-nav")).not.toHaveClass(
+      /(?:^|\s)hidden(?:\s|$)/,
+    );
+
+    // The mobile panel carries its own POST /logout form. Submit it and
+    // follow the redirect to /.
+    const logoutForm = page.locator(
+      '#mobile-nav form[action="/logout"][method="POST"]',
+    );
+    await expect(logoutForm).toBeVisible();
+    await logoutForm.locator('button[type="submit"]').click();
+
+    // Post-logout, the session cookie is cleared and the user lands on
+    // the public landing page with the anonymous navbar.
+    await page.waitForURL((u) => u.pathname === "/");
+    await page.setViewportSize(TABLET);
+    await page.locator("#mobile-menu-toggle").click();
+    await expect(
+      page.locator('#mobile-nav a[href="/login"]'),
+    ).toBeVisible();
+    await expect(
+      page.locator('#mobile-nav form[action="/logout"]'),
+    ).toHaveCount(0);
+  });
 });
