@@ -218,11 +218,11 @@ strings \texttt{1}, \texttt{true} and \texttt{TRUE} count as
 footgun where a stale shell value like \texttt{0} reads as ``set''
 and silently flips an opt-out.
 
-\begin{longtable}{@{} l l p{6.5cm} @{}}
+\begin{center}\small
+\begin{tabular}{l l >{\raggedright\arraybackslash}p{6.2cm}}
 \toprule
 \textbf{Variable} & \textbf{Default} & \textbf{Purpose} \\
 \midrule
-\endhead
 \multicolumn{3}{l}{\emph{Database}} \\
 \texttt{DATABASE\_URL}        & --- (required) & MariaDB connection string (DSN). \\
 \texttt{MYSQL\_HOST}          & \texttt{db}    & Hostname for the bundled DB service. \\
@@ -256,7 +256,8 @@ and silently flips an opt-out.
 \texttt{MYBIBLI\_SKIP\_STARTUP\_PURGE} & \texttt{false} & Skip the boot-time auto-purge. \\
 \texttt{MYBIBLI\_SEED\_DEV\_USERS} & \texttt{false} & Seed dev \texttt{admin/admin} + \texttt{librarian/librarian}. \emph{Never on prod.} \\
 \bottomrule
-\end{longtable}
+\end{tabular}
+\end{center}
 
 Provider base-URL overrides (\texttt{BNF\_API\_BASE\_URL},
 \texttt{GOOGLE\_BOOKS\_API\_BASE\_URL}, \dots) exist solely to point

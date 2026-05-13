@@ -29,6 +29,11 @@
 *.gls
 *.ist
 
-# Generated PDFs — uncomment to commit alongside source.
+# Intermediate per-language PDFs produced by latexmk before build.sh
+# copies them to the top-level mybibli-manual-{en,fr}.pdf.
+en/main.pdf
+fr/main.pdf
+
+# Top-level distribution PDFs — uncomment to commit alongside source.
 # mybibli-manual-en.pdf
 # mybibli-manual-fr.pdf

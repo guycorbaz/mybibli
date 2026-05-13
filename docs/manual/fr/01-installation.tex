@@ -232,11 +232,11 @@ comptent comme « activé ». Toute autre valeur (chaîne vide,
 évite le piège classique où une valeur shell éculée comme \texttt{0}
 se lit comme « positionnée » et bascule silencieusement un opt-out.
 
-\begin{longtable}{@{} l l p{6.5cm} @{}}
+\begin{center}\small
+\begin{tabular}{l l >{\raggedright\arraybackslash}p{6.2cm}}
 \toprule
 \textbf{Variable} & \textbf{Défaut} & \textbf{Rôle} \\
 \midrule
-\endhead
 \multicolumn{3}{l}{\emph{Base de données}} \\
 \texttt{DATABASE\_URL}        & --- (requis) & Chaîne de connexion MariaDB (DSN). \\
 \texttt{MYSQL\_HOST}          & \texttt{db}    & Hôte pour le service DB embarqué. \\
@@ -270,7 +270,8 @@ se lit comme « positionnée » et bascule silencieusement un opt-out.
 \texttt{MYBIBLI\_SKIP\_STARTUP\_PURGE} & \texttt{false} & Saute l'auto-purge au démarrage. \\
 \texttt{MYBIBLI\_SEED\_DEV\_USERS} & \texttt{false} & Crée les utilisateurs dev \texttt{admin/admin} + \texttt{librarian/librarian}. \emph{Jamais en prod.} \\
 \bottomrule
-\end{longtable}
+\end{tabular}
+\end{center}
 
 Les overrides d'URL de base des fournisseurs
 (\texttt{BNF\_API\_BASE\_URL},
