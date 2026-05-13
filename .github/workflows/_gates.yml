@@ -110,6 +110,7 @@ jobs:
             --test find_by_location_dewey \
             --test metadata_fetch_dewey \
             --test metadata_fetch_race \
+            --test seed_gate \
             --test seeded_users \
             --test setup_wizard
 
