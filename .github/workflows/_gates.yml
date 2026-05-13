@@ -106,6 +106,7 @@ jobs:
       - name: Run DB-backed integration tests
         run: |
           cargo test \
+            --test admin_audit_fk_set_null \
             --test find_similar \
             --test find_by_location_dewey \
             --test metadata_fetch_dewey \

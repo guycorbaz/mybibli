@@ -958,14 +958,30 @@ pub async fn admin_trash_permanent_delete(
         form.version,
     ).await?;
 
-    // Record in admin audit (uses the consolidated `user_id` from above).
+    // Issue #70: capture actor identity in the JSON details so
+    // attribution survives the admin_audit FK becoming SET NULL —
+    // if THIS admin is themselves later hard-deleted, the audit row
+    // keeps `user_username` + `user_role` for forensic reconstruction.
+    // Look up username from the acting `user_id` (session carries
+    // the id + role but not the string username).
+    let actor_username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .unwrap_or_else(|| format!("user-{}", user_id));
+    let actor_role = session.role.to_string();
+
     crate::models::admin_audit::AdminAuditModel::create(
         &state.pool,
         user_id,
         "permanent_delete_from_trash",
         Some(&table),
         Some(id),
-        Some(serde_json::json!({"item_name": deleted.item_name})),
+        Some(serde_json::json!({
+            "user_username": actor_username,
+            "user_role": actor_role,
+            "item_name": deleted.item_name,
+        })),
     )
     .await?;
 

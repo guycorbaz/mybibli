@@ -245,6 +245,13 @@ impl AutoPurgeService {
             .unwrap_or(serde_json::Value::Null);
 
         let details = json!({
+            // Issue #70: capture actor identity in the JSON payload so
+            // the audit row survives an FK SET NULL when the SYSTEM
+            // user row is itself deleted (admin_audit_user_fk via
+            // migration 20260513000002). Hardcoded for SYSTEM since
+            // those values are migration-stable.
+            "user_username": "SYSTEM",
+            "user_role": "system",
             // R3-N2 + R3-N11: split the conflated `tables_processed`
             // counter into attempted/succeeded/errored so forensic readers
             // can tell "everything ran clean" from "12 tables visited but
