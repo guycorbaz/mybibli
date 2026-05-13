@@ -1,0 +1,181 @@
+\chapter{Usage au quotidien}
+\label{ch:usage}
+
+Ce chapitre parcourt les flux que vous lancerez des dizaines de
+fois une fois la bibliothèque opérationnelle : cataloguer un nouveau
+volume, chercher dans la collection, déplacer un volume, le prêter,
+le récupérer, et auditer ce qui est sur les étagères.
+
+\section{La page d'accueil}\label{sec:home}
+
+La page d'accueil est le tableau de bord. De haut en bas :
+
+\begin{itemize}
+  \item \textbf{Champ de scan.}\index{champ de scan} Un champ
+        focalisé qui accepte un ISBN, un code V ou un code L. La
+        couche scanner-guard route l'entrée vers la bonne page
+        selon le préfixe.
+  \item \textbf{Bandeau d'indicateurs.} Ajouts récents, prêts en
+        retard, séries avec lacunes, volumes non rangés — chaque
+        clic ouvre la liste filtrée correspondante.
+  \item \textbf{Activité récente.} Les sept derniers jours de
+        catalogage et de retours.
+\end{itemize}
+
+\section{Cataloguer un nouveau titre via code-barres}\label{sec:catalog-scan}
+
+\begin{enumerate}
+  \item Focalisez le champ de scan de la page d'accueil (il est
+        sélectionné par défaut au chargement). Scannez l'ISBN /
+        EAN-13 du dos de l'ouvrage.
+  \item mybibli redirige vers la page de catalogage, qui affiche un
+        titre squelette avec le code-barres scanné. Une tâche
+        d'arrière-plan lance des requêtes contre la chaîne de
+        fournisseurs de métadonnées.
+  \item En quelques secondes, le squelette se remplit : titre,
+        contributeurs, éditeur, année, image de couverture. Un
+        petit indicateur confirme quel fournisseur a résolu le
+        titre.
+  \item Choisissez un \textbf{lieu}\index{lieu} dans le menu
+        déroulant (ou scannez le code L du rayon de destination) et
+        un \textbf{état de volume}\index{état de volume}
+        (typiquement \emph{Neuf}). Cliquez \textbf{Ajouter un
+        volume}.
+  \item Imprimez et collez une étiquette de code V sur le volume.
+\end{enumerate}
+
+Si le pipeline de métadonnées échoue à résoudre l'ISBN, le titre
+apparaît avec un badge \emph{Non résolu}. Vous pouvez modifier les
+champs manuellement et le volume est créé malgré tout.
+
+\begin{tip}
+Le catalogage en série marche le mieux quand la planche de codes V,
+la douchette et l'imprimante sont à portée de main. La plupart du
+temps est consacré à scanner, pas à attendre mybibli — la
+récupération de métadonnées est asynchrone, vous n'avez donc pas à
+attendre qu'elle se termine avant de passer au volume suivant.
+\end{tip}
+
+\section{Rechercher dans la collection}\label{sec:search}
+
+La page \texttt{/search} accepte :
+
+\begin{itemize}
+  \item \textbf{titre} complet ou partiel ;
+  \item \textbf{nom de contributeur} (matche l'auteur par défaut ;
+        les autres rôles de contributeur sont scorés moins fort) ;
+  \item \textbf{ISBN / EAN-13} — match exact ;
+  \item \textbf{code V} ou \textbf{code L} — match exact ;
+  \item \textbf{code Dewey} (pour les bibliothèques qui utilisent
+        Dewey).
+\end{itemize}
+
+Les résultats sont triés par pertinence. Cliquez un résultat pour
+ouvrir la page du titre ; cliquez un contributeur pour filtrer le
+catalogue sur ses œuvres ; cliquez le libellé d'un lieu pour voir
+chaque volume actuellement à cet endroit.
+
+\begin{tip}
+Vous pouvez « rechercher » un seul volume en scannant son code V
+depuis n'importe quelle page qui dispose du champ de scan d'accueil
+— y compris la page d'accueil, \texttt{/search} et \texttt{/loans}.
+Plus rapide que la frappe.
+\end{tip}
+
+\section{Déplacer un volume vers un autre lieu}\label{sec:move-volume}
+
+\begin{enumerate}
+  \item Ouvrez la page du volume (recherche par code V ou clic
+        depuis la page du titre).
+  \item Cliquez \textbf{Déplacer}.
+  \item Scannez le code L du lieu de destination, ou choisissez-le
+        dans le menu déroulant.
+  \item Confirmez.
+\end{enumerate}
+
+mybibli enregistre le déplacement dans l'historique de lieu du
+volume, vous permettant de retracer où un livre a vécu au fil du
+temps.
+
+\section{Prêts}\label{sec:loans}
+
+\subsection*{Prêter un volume}
+
+\begin{enumerate}
+  \item Ouvrez \texttt{/loans} et cliquez \textbf{Nouveau prêt}.
+  \item Scannez ou choisissez l'\textbf{emprunteur}\index{emprunteur}.
+        Si l'emprunteur n'existe pas encore, cliquez \emph{Créer
+        l'emprunteur} en ligne.
+  \item Scannez ou choisissez le \textbf{volume} (code V).
+  \item Réglez optionnellement une \textbf{date de retour
+        prévue} ; sinon mybibli la calcule à partir du seuil de
+        retard (chapitre~\ref{ch:configuration}).
+  \item Confirmez.
+\end{enumerate}
+
+Le lieu actuel du volume est inscrit sur la ligne de prêt pour
+qu'un retour ultérieur puisse le restaurer au bon rayon.
+
+\subsection*{Retourner un volume}
+
+\begin{enumerate}
+  \item Ouvrez \texttt{/loans} et trouvez le prêt actif (filtre
+        \emph{Actifs} ou scan du code V).
+  \item Cliquez \textbf{Retourner}.
+  \item Choisissez l'état post-retour (\emph{Bon}, \emph{Usé},
+        \dots).
+  \item Confirmez. Le volume retourne automatiquement à son lieu
+        d'avant prêt.
+\end{enumerate}
+
+\subsection*{Prêts en retard}
+
+Les prêts qui dépassent le seuil de retard passent au rouge sur la
+page \texttt{/loans} et sur l'indicateur \emph{En retard} de la page
+d'accueil. \texttt{/loans?filter=overdue} donne une liste focalisée.
+
+\section{Audit de la bibliothèque}\label{sec:audit}
+
+Un \emph{audit}\index{audit} c'est le rituel « je parcours les
+étagères et je confirme que tout est bien à la place que la base
+indique ». mybibli ne livre pas un mode audit dédié — le flux
+équivalent est :
+
+\begin{enumerate}
+  \item Filtrez \texttt{/search} par le lieu que vous comptez
+        auditer, trié par code V.
+  \item Parcourez le rayon en scannant chaque code V.
+  \item Pour tout volume scanné qui \emph{n'est pas} dans la liste
+        filtrée, mybibli affiche un message \emph{Volume absent de
+        ce lieu}. Déplacez-le (section~\ref{sec:move-volume}) et
+        continuez.
+  \item Tout volume \emph{dans} la liste filtrée que vous
+        \emph{n'avez pas} scanné après avoir parcouru le rayon est
+        suspect — soit déplacé, soit manquant. Marquez-le pour
+        suivi.
+\end{enumerate}
+
+\begin{tip}
+Un audit trimestriel attrape les volumes mal rangés tôt — plus un
+livre traîne au mauvais rayon, plus il est difficile de se rappeler
+où il aurait dû être.
+\end{tip}
+
+\section{Rangement après retours}\label{sec:shelving}
+
+Après une fournée de retours, les volumes s'empilent près du poste
+de scan. Le flux de \emph{rangement}\index{rangement} de mybibli
+accélère la remise en rayon :
+
+\begin{enumerate}
+  \item Prenez un volume et scannez son code V.
+  \item mybibli affiche la page du volume avec le lieu d'origine
+        bien en évidence.
+  \item Portez le volume au rayon indiqué. Scannez le code L du
+        rayon pour confirmer.
+  \item Recommencez.
+\end{enumerate}
+
+La confirmation par code L est optionnelle mais recommandée — elle
+laisse une entrée fraîche dans l'historique du volume sur laquelle
+le prochain audit pourra s'appuyer.

@@ -1,0 +1,125 @@
+\chapter{Rôles et permissions}
+\label{ch:roles}
+
+mybibli a trois rôles\index{rôles} utilisateur, ordonnés par
+privilège :
+
+\begin{enumerate}
+  \item \textbf{Anonyme}\index{anonyme} — quiconque arrive sur le
+        site sans cookie de session. Accès en lecture seule au
+        catalogue. Ne peut ni prêter, ni éditer, ni supprimer.
+  \item \textbf{Bibliothécaire}\index{bibliothécaire} — utilisateur
+        authentifié de rôle \texttt{librarian}. Catalogage au
+        quotidien, prêts, retours, déplacements de lieu. Ne peut
+        ni gérer les utilisateurs ni changer les paramètres
+        système.
+  \item \textbf{Administrateur}\index{administrateur} — utilisateur
+        authentifié de rôle \texttt{admin}. Tout ce qu'un
+        bibliothécaire peut faire, plus le panneau \texttt{/admin}
+        : utilisateurs, données de référence, corbeille,
+        paramètres système.
+\end{enumerate}
+
+\section{Qui peut faire quoi}
+
+\begin{longtable}{@{} l c c c @{}}
+\toprule
+\textbf{Action} & \textbf{Anon} & \textbf{Bibl.} & \textbf{Admin} \\
+\midrule
+\endhead
+Parcourir / rechercher dans le catalogue & oui & oui & oui \\
+Voir les pages de titre et de volume     & oui & oui & oui \\
+Voir l'arbre des lieux                   & oui & oui & oui \\
+\midrule
+Scanner / cataloguer un nouveau titre    & non & oui & oui \\
+Ajouter ou retirer un volume             & non & oui & oui \\
+Déplacer un volume entre lieux           & non & oui & oui \\
+Éditer les métadonnées d'un titre        & non & oui & oui \\
+Créer / éditer les emprunteurs           & non & oui & oui \\
+Enregistrer / retourner des prêts        & non & oui & oui \\
+Éditer l'arbre des lieux                 & non & oui & oui \\
+\midrule
+Ouvrir \texttt{/admin}                   & non & non & oui \\
+Créer / désactiver des utilisateurs      & non & non & oui \\
+Éditer les données de référence          & non & non & oui \\
+Restaurer depuis la corbeille            & non & non & oui \\
+Supprimer définitivement de la corbeille & non & non & oui \\
+Éditer les paramètres système            & non & non & oui \\
+\bottomrule
+\end{longtable}
+
+\section{Sessions et timeout d'inactivité}
+
+Après la connexion, mybibli pose un cookie de
+session\index{cookie de session} qui voyage avec chaque requête
+suivante. Le cookie est :
+
+\begin{itemize}
+  \item \texttt{HttpOnly} — non exposé à JavaScript ;
+  \item \texttt{SameSite=Lax} — envoyé sur les navigations
+        same-site de haut niveau mais pas sur les requêtes
+        cross-site ;
+  \item \texttt{Secure} (uniquement si
+        \texttt{MYBIBLI\_COOKIE\_SECURE} est positionné à
+        \texttt{true} — voir chapitre~\ref{ch:installation}).
+\end{itemize}
+
+La session a un \textbf{timeout d'inactivité}\index{timeout
+d'inactivité} (défaut 30 minutes, configurable depuis
+\texttt{/admin > System > Loans}). Chaque requête authentifiée
+réinitialise le compte à rebours ; si aucune requête n'arrive dans
+la fenêtre, la session est effacée côté serveur et la requête
+suivante redirige vers la page de connexion.
+
+Un petit \emph{toast de keep-alive} apparaît dans un coin de l'écran
+environ deux minutes avant l'expiration — cliquez-le pour
+prolonger la session sans quitter la page courante.
+
+\section{Garde du dernier admin actif}
+
+mybibli refuse de laisser l'installation sans aucun admin actif.
+La garde s'applique à deux actions :
+
+\begin{itemize}
+  \item \textbf{Désactiver un utilisateur.} Si l'utilisateur est le
+        seul admin actif, la requête renvoie un 409 conflict et la
+        désactivation est refusée.
+  \item \textbf{Supprimer définitivement un utilisateur depuis la
+        corbeille.} Même règle.
+\end{itemize}
+
+L'auto-désactivation est également bloquée sans condition (vous ne
+pouvez pas désactiver le compte avec lequel vous êtes connecté).
+
+\begin{warning}
+La garde ne compte que les admins \emph{actifs}. Si vous
+désactivez en masse des admins et que la garde se déclenche,
+défaites en réactivant quelqu'un depuis l'onglet corbeille. Il n'y
+a aucun chemin de récupération via l'assistant ou la base sans
+SQL manuel.
+\end{warning}
+
+\section{Réinitialisation de mot de passe}
+
+mybibli n'implémente pas l'envoi de courriels de réinitialisation
+de mot de passe — les déploiements familiaux / petite communauté
+tirent rarement profit de la plomberie email. Un admin peut
+réinitialiser le mot de passe d'un autre utilisateur en :
+
+\begin{enumerate}
+  \item Ouvrant \texttt{/admin > Users}.
+  \item Choisissant l'utilisateur, cliquant \textbf{Désactiver}.
+  \item Cliquant \textbf{Réactiver} depuis l'onglet corbeille.
+  \item Re-créant l'utilisateur avec un mot de passe frais.
+\end{enumerate}
+
+Un utilisateur qui connaît son mot de passe actuel peut le changer
+depuis la page \texttt{/account}.
+
+\section{Sessions anonymes}
+
+Les visiteurs anonymes obtiennent aussi une ligne de session
+(utilisée pour la protection CSRF et la livraison des mises à jour
+HTMX en cours). Les sessions anonymes expirent après sept jours
+d'inactivité et sont collectées par une tâche d'arrière-plan
+quotidienne — elles n'affectent pas les utilisateurs connectés.

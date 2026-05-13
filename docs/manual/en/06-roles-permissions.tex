@@ -1,0 +1,116 @@
+\chapter{Roles and permissions}
+\label{ch:roles}
+
+mybibli has three user roles\index{roles} ordered by privilege:
+
+\begin{enumerate}
+  \item \textbf{Anonymous}\index{anonymous} — anyone who lands on
+        the site without a session cookie. Read-only access to the
+        catalog. Cannot loan, edit or delete anything.
+  \item \textbf{Librarian}\index{librarian} — authenticated user
+        whose role is \texttt{librarian}. Day-to-day cataloging,
+        loans, returns, location moves. Cannot manage users or
+        change system settings.
+  \item \textbf{Admin}\index{admin role} — authenticated user whose
+        role is \texttt{admin}. Everything a Librarian can do, plus
+        the \texttt{/admin} panel: users, reference data, trash,
+        system settings.
+\end{enumerate}
+
+\section{Who can do what}
+
+\begin{longtable}{@{} l c c c @{}}
+\toprule
+\textbf{Action} & \textbf{Anon} & \textbf{Lib} & \textbf{Admin} \\
+\midrule
+\endhead
+Browse / search the catalog        & yes & yes & yes \\
+View title and volume pages        & yes & yes & yes \\
+View location tree                 & yes & yes & yes \\
+\midrule
+Scan / catalog a new title         & no  & yes & yes \\
+Add or remove a volume             & no  & yes & yes \\
+Move a volume between locations    & no  & yes & yes \\
+Edit a title's metadata            & no  & yes & yes \\
+Create / edit borrowers            & no  & yes & yes \\
+Register / return loans            & no  & yes & yes \\
+Edit storage location tree         & no  & yes & yes \\
+\midrule
+Open \texttt{/admin}               & no  & no  & yes \\
+Create / deactivate users          & no  & no  & yes \\
+Edit reference data                & no  & no  & yes \\
+Restore from trash                 & no  & no  & yes \\
+Permanently delete from trash      & no  & no  & yes \\
+Edit system settings               & no  & no  & yes \\
+\bottomrule
+\end{longtable}
+
+\section{Sessions and the inactivity timeout}
+
+After login, mybibli sets a session cookie\index{session cookie}
+that travels with every subsequent request. The cookie is:
+
+\begin{itemize}
+  \item \texttt{HttpOnly} — not exposed to JavaScript;
+  \item \texttt{SameSite=Lax} — sent on top-level same-site
+        navigations but not on cross-site requests;
+  \item \texttt{Secure} (only when \texttt{MYBIBLI\_COOKIE\_SECURE}
+        is set to \texttt{true} — see chapter~\ref{ch:installation}).
+\end{itemize}
+
+The session has an \textbf{inactivity timeout}\index{inactivity
+timeout} (default 30 minutes, configurable from
+\texttt{/admin > System > Loans}). Every authenticated request resets
+the countdown; if no request lands within the timeout window, the
+session is wiped server-side and the next request redirects to the
+login page.
+
+A small \emph{keep-alive toast} appears in the corner of the screen
+roughly two minutes before expiry — click it to extend the session
+without leaving your current page.
+
+\section{The last-active-admin guard}
+
+mybibli refuses to leave the installation without any active admin.
+The guard applies to two actions:
+
+\begin{itemize}
+  \item \textbf{Deactivating a user.} If the user is the only
+        active admin, the request returns a 409 conflict and the
+        deactivation is refused.
+  \item \textbf{Permanently deleting a user from the trash.} Same
+        rule.
+\end{itemize}
+
+Self-deactivation is also blocked unconditionally (you cannot
+deactivate the account you are currently logged in as).
+
+\begin{warning}
+The guard counts only \emph{active} admins. If you mass-deactivate
+admins and the guard fires, undo by reactivating someone from the
+trash tab. There is no recovery path through the wizard or the
+database without manual SQL surgery.
+\end{warning}
+
+\section{Password reset}
+
+mybibli does not implement password-reset emails — household /
+small-community deployments rarely benefit from the email
+plumbing. An admin can reset another user's password by:
+
+\begin{enumerate}
+  \item Open \texttt{/admin > Users}.
+  \item Pick the user, click \textbf{Deactivate}.
+  \item Click \textbf{Reactivate} from the trash tab.
+  \item Re-create the user with a fresh password.
+\end{enumerate}
+
+A user who knows their own password can change it from the
+\texttt{/account} page.
+
+\section{Anonymous sessions}
+
+Anonymous visitors also get a session row (used for CSRF protection
+and pending HTMX updates). Anonymous sessions expire after seven
+days of inactivity and are garbage-collected by a daily background
+task — they do not affect logged-in users.

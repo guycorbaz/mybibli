@@ -1,0 +1,81 @@
+\chapter*{Preface}
+\addcontentsline{toc}{chapter}{Preface}
+\markboth{Preface}{Preface}
+
+\section*{Who this manual is for}
+
+This manual is written for the person who installs, configures and
+runs a mybibli instance for their household, a small association,
+or a community library. It assumes you can:
+
+\begin{itemize}
+  \item open a terminal and run \texttt{docker compose} commands;
+  \item edit a plain-text configuration file with the editor of
+        your choice;
+  \item read a URL printed in a log line and open it in a browser.
+\end{itemize}
+
+No Rust, MariaDB or HTMX knowledge is required. The manual is
+deliberately scoped to the \emph{operator} role — building mybibli
+from source or modifying its code is covered by
+\texttt{CLAUDE.md} and the planning artifacts in the repository.
+
+\section*{Conventions}
+
+\textbf{Commands.} Shell snippets are shown in a fixed-width box:
+
+\begin{lstlisting}
+docker compose up -d
+\end{lstlisting}
+
+\textbf{Configuration files.} File excerpts use the same style with
+the file name called out in the surrounding text. Comments inside
+the snippet use the file's native comment marker.
+
+\textbf{Callouts.} Three sidebars highlight important text:
+
+\begin{note}
+A \emph{note} provides background or context that helps you understand
+why something works the way it does. Skipping it is safe.
+\end{note}
+
+\begin{tip}
+A \emph{tip} suggests a practice that makes day-to-day use smoother.
+Try it once you are comfortable with the basics.
+\end{tip}
+
+\begin{warning}
+A \emph{warning} flags a step where a mistake can lose data, lock
+you out of the admin panel, or expose the instance to unauthorized
+access. Read these in full.
+\end{warning}
+
+\textbf{Cross-references.} Chapters and sections are linked in the
+PDF — click any blue title or page number to jump there. The
+\hyperref[index]{index} at the end maps every important term to its
+page of first use.
+
+\section*{Getting help}
+
+The canonical source of truth for mybibli is the GitHub repository:
+
+\begin{center}
+\url{https://github.com/guycorbaz/mybibli}
+\end{center}
+
+Open an issue against the \texttt{guycorbaz/mybibli} repository when
+you hit a bug, a documentation gap, or a missing feature. The issue
+templates ask for the version (visible at the bottom of any page in
+the admin panel), your install method, and the steps to reproduce.
+
+\section*{Manual coverage}
+
+This manual covers mybibli \textbf{1.1.0 and later}. Older versions
+shipped a security-relevant bug where the first-launch setup wizard
+was silently bypassed — see chapter~\ref{ch:upgrade} for the
+upgrade path from 1.0.x.
+
+\vspace{1cm}
+\hrule
+\vspace{0.5cm}
+\textit{Happy cataloging.}

@@ -1,0 +1,138 @@
+\chapter{Fournisseurs de métadonnées}
+\label{ch:providers}
+
+Lorsque vous scannez un ISBN ou un EAN-13, mybibli ne cherche pas le
+titre dans un catalogue local — il interroge un ou plusieurs
+\emph{fournisseurs de métadonnées}\index{fournisseurs de métadonnées}
+externes jusqu'à ce que l'un d'eux renvoie une réponse propre. Ce
+chapitre explique la chaîne, où récupérer les clés d'API et comment
+les faire tourner en toute sécurité.
+
+\section{La chaîne de fournisseurs}
+
+mybibli parcourt les fournisseurs dans l'ordre le mieux adapté au
+type de média deviné :
+
+\begin{longtable}{@{} l l p{4.5cm} c @{}}
+\toprule
+\textbf{Fournisseur} & \textbf{Types de média} & \textbf{Notes} & \textbf{Clé ?} \\
+\midrule
+\endhead
+BnF\index{BnF}                  & Livres         & Catalogue de la
+Bibliothèque nationale de France ; idéal pour les titres en français. & non \\
+Open Library\index{Open Library} & Livres         & Catalogue
+bénévole ; large couverture anglaise / multilingue. & non \\
+Google Books\index{Google Books} & Livres         & Commercial ; bon
+sur les essais grand public. & optionnelle \\
+MusicBrainz\index{MusicBrainz}  & Audio          & Métadonnées musicales
+bénévoles ; très complet sur CD / vinyles. & non \\
+OMDb\index{OMDb}                & Films, séries  & Palier gratuit ; quotas. & requise \\
+TMDb\index{TMDb}                & Films, séries  & Gratuit avec attribution. & requise \\
+BDGest\index{BDGest}            & BD, comics     & Catalogue BD
+francophone (web-scraped). & non \\
+\bottomrule
+\end{longtable}
+
+Le premier fournisseur qui renvoie un enregistrement \emph{propre}
+l'emporte. « Propre » veut dire : titre présent, au moins un
+contributeur, et une année. Les correspondances partielles sont
+enregistrées mais mybibli continue à parcourir la chaîne jusqu'à
+trouver une correspondance propre ou épuiser les fournisseurs.
+
+\section{Clés d'API}
+
+Trois fournisseurs requièrent une clé d'API :
+
+\subsection*{Google Books}
+
+Optionnelle mais relève significativement le budget de requêtes
+quotidien.
+
+\begin{enumerate}
+  \item Connectez-vous sur \url{https://console.cloud.google.com/}.
+  \item Créez un nouveau projet (ou réutilisez-en un).
+  \item Activez l'\textbf{API Books}.
+  \item Créez une \textbf{clé d'API} sous \emph{APIs \& Services →
+        Credentials}.
+  \item Collez-la dans \texttt{/admin > System > Metadata
+        Providers} dans mybibli.
+\end{enumerate}
+
+\subsection*{OMDb}
+
+\begin{enumerate}
+  \item Visitez \url{https://www.omdbapi.com/apikey.aspx}.
+  \item Choisissez le palier gratuit (1000 requêtes/jour).
+  \item Confirmez via le courriel d'activation reçu.
+  \item Collez la clé dans mybibli.
+\end{enumerate}
+
+\subsection*{TMDb}
+
+\begin{enumerate}
+  \item Inscrivez-vous sur \url{https://www.themoviedb.org/}.
+  \item Ouvrez \emph{Settings → API} et demandez une clé pour
+        \emph{usage personnel / non-commercial}.
+  \item Collez la clé dans mybibli.
+\end{enumerate}
+
+\section{Où vivent les clés}
+
+Les clés transitent par deux couches :
+
+\begin{enumerate}
+  \item \textbf{Variables d'environnement}\index{variables d'env!clés
+        fournisseurs} (\texttt{GOOGLE\_BOOKS\_API\_KEY},
+        \texttt{OMDB\_API\_KEY}, \texttt{TMDB\_API\_KEY}). Elles sont
+        migrées \emph{une fois} au boot dans la table
+        \texttt{settings} — elles servent essentiellement
+        d'amorçage au moment du déploiement.
+  \item \textbf{La table \texttt{settings}}, exposée via
+        \texttt{/admin > System > Metadata Providers}. C'est la
+        source de vérité au moment de la requête. La rotation d'une
+        clé depuis l'interface prend effet à la toute prochaine
+        récupération de métadonnées.
+\end{enumerate}
+
+L'implication est asymétrique :
+
+\begin{itemize}
+  \item Si vous positionnez une clé uniquement en variable
+        d'environnement, le premier boot la copie dans la base et
+        ensuite c'est la base qui fait foi.
+  \item Si vous positionnez une clé uniquement dans l'interface,
+        la variable d'environnement n'est plus jamais consultée.
+  \item Si vous positionnez les deux puis \emph{Effacez} la clé
+        depuis l'interface, la valeur en base devient vide — mais
+        au boot suivant, la valeur d'environnement y est
+        re-migrée. Pour rendre l'effacement durable, retirez
+        aussi la variable d'environnement de \texttt{.env} /
+        \texttt{docker-compose.yml}.
+\end{itemize}
+
+\section{Santé des fournisseurs}
+
+\texttt{/admin > Health} pingue chaque fournisseur enregistré toutes
+les cinq minutes et rapporte son état sous forme de coche verte ou
+de croix rouge. Une croix rouge ne signifie pas toujours que le
+fournisseur est en panne — cela peut aussi vouloir dire que la clé
+d'API est absente ou invalide. L'onglet Health inclut le timestamp
+du dernier check et le code HTTP pour faciliter le diagnostic.
+
+\section{Quotas et back-pressure}
+
+mybibli applique un petit quota par fournisseur (quelques requêtes
+par seconde). Cataloguer cent volumes à la suite ne déclenchera pas
+de 429 distant. Si un fournisseur renvoie quand même 429, la
+requête est loguée et le fournisseur suivant de la chaîne est
+consulté — le flux de catalogage ne se bloque jamais sur un
+fournisseur en quota.
+
+\begin{warning}
+Ne committez jamais une vraie clé d'API dans git. Le fichier
+\texttt{.env} est dans \texttt{.gitignore} pour cette raison ;
+\texttt{.env.example} ne porte que des placeholders. Si une clé
+fuit, faites-la tourner immédiatement sur la console du
+fournisseur — coller une nouvelle clé dans mybibli prend effet en
+quelques secondes.
+\end{warning}

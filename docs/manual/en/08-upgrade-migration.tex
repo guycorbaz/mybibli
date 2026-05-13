@@ -1,0 +1,122 @@
+\chapter{Upgrade and migration}
+\label{ch:upgrade}
+
+Routine upgrades are designed to be safe. The exception is the
+1.0.x to 1.1.0 jump, which is a one-time breaking change documented
+below.
+
+\section{Routine upgrades (1.y to 1.z)}
+
+\begin{enumerate}
+  \item Read the release notes for every version between your
+        current and the target version.
+  \item Take a fresh \textbf{database backup} (chapter
+        \ref{ch:backup}).
+  \item Update the image tag in \texttt{docker-compose.yml} (or
+        repull \texttt{:latest} if you track that tag).
+  \item Run \texttt{docker compose up -d}. The new container boots,
+        runs any new migrations against the existing database, and
+        starts serving requests.
+  \item Watch the logs for migration errors:
+        \texttt{docker compose logs mybibli | grep -i migrate}.
+\end{enumerate}
+
+Migrations are append-only — schema changes are forward
+compatible. A 1.4 install upgraded to 1.5 keeps every row from 1.4
+and applies new tables / columns in place.
+
+\begin{tip}
+For homelab installs, the \texttt{:latest} Docker tag is a
+reasonable default. For production-style setups (a community
+library, an association), pin to an explicit version tag so an
+unattended pull does not bring in a release you have not read about.
+\end{tip}
+
+\section{The 1.0.x to 1.1.0 jump}\label{sec:upgrade-1.1.0}
+
+\begin{warning}
+\textbf{This is a one-time breaking change.}\index{1.1.0 upgrade}
+1.0.x installs are subject to the issue documented in
+\href{https://github.com/guycorbaz/mybibli/issues/173}{\#173}:
+the seed migrations create the credentials \texttt{admin/admin}
+and \texttt{librarian/librarian} on every fresh install, including
+production, and silently bypass the first-launch setup wizard.
+\end{warning}
+
+The recommended path depends on whether your 1.0.x install holds
+real data:
+
+\subsection*{If your 1.0.x install is empty (no titles cataloged)}
+
+The simplest path: wipe the database and reinstall on 1.1.0+.
+
+\begin{enumerate}
+  \item Stop the stack: \texttt{docker compose down}.
+  \item Remove the database volume:
+        \texttt{docker volume rm mybibli\_mybibli\_db\_data}
+        (or the equivalent volume name on your host —
+        \texttt{docker volume ls} lists them).
+  \item Pull the 1.1.0 image:
+        \texttt{docker compose pull}.
+  \item Update the image tag in \texttt{docker-compose.yml} if you
+        pinned a previous version.
+  \item Start: \texttt{docker compose up -d}.
+  \item Open \texttt{/setup} and walk through the wizard.
+\end{enumerate}
+
+\subsection*{If your 1.0.x install holds real data}
+
+\begin{enumerate}
+  \item Take a database backup (chapter \ref{ch:backup}).
+  \item Take a covers + \texttt{.env} backup.
+  \item Log in as the seeded admin and rotate the password
+        \emph{before} you upgrade. The 1.1.0 upgrade flow itself is
+        safe, but rotation closes the only window where the default
+        credentials could leak.
+  \item Update the image tag in \texttt{docker-compose.yml} and run
+        \texttt{docker compose up -d}.
+  \item The 1.1.0 boot detects the existing admin and does
+        \emph{not} re-enable the wizard — the rotated admin remains
+        the active admin.
+\end{enumerate}
+
+\subsection*{The new \texttt{MYBIBLI\_SEED\_DEV\_USERS} variable}
+
+Starting with 1.1.0, the seed migration is gated by
+\texttt{MYBIBLI\_SEED\_DEV\_USERS}\index{MYBIBLI\_SEED\_DEV\_USERS}.
+The default is \texttt{0} (no seed). Only set it to \texttt{1} for
+local-development workflows or automated tests — never in
+production. The first-launch wizard becomes the canonical
+onboarding path.
+
+\section{Reading the release notes}
+
+Every mybibli release publishes a GitHub Release page with:
+
+\begin{itemize}
+  \item a one-paragraph summary of the change set;
+  \item the migration impact (none / additive / breaking);
+  \item a link to the diff against the previous tag;
+  \item attached PDFs of this manual (English + French) once the
+        release-time PDF build is wired into CI.
+\end{itemize}
+
+Read the notes before upgrading. Breaking changes are tagged with a
+prominent \emph{Breaking} label.
+
+\section{Rollback}
+
+Rollback is \emph{not} a first-class flow. Schema migrations move
+forward only — there is no \texttt{down.sql}. The supported recovery
+strategy is:
+
+\begin{enumerate}
+  \item Restore the pre-upgrade database backup
+        (chapter~\ref{ch:backup}).
+  \item Pin the image tag back to the prior version.
+  \item Start the stack.
+\end{enumerate}
+
+This works because the backup is consistent with the prior schema.
+Trying to point an older image at a newly-migrated database will
+fail to boot.

@@ -1,0 +1,34 @@
+# LaTeX build artifacts — kept out of git.
+# The generated PDFs are committed only when attached to a release.
+*.aux
+*.log
+*.toc
+*.lof
+*.lot
+*.out
+*.idx
+*.ind
+*.ilg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb
+*-blx.bib
+*.run.xml
+*.xdv
+*.bcf
+*.acn
+*.acr
+*.alg
+*.glg
+*.glo
+*.gls
+*.ist
+
+# Generated PDFs — uncomment to commit alongside source.
+# mybibli-manual-en.pdf
+# mybibli-manual-fr.pdf

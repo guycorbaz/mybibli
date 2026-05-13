@@ -1,0 +1,224 @@
+\chapter{Configuration}
+\label{ch:configuration}
+
+Once the setup wizard is behind you, the day-one configuration work
+consists of three blocks: defining your \emph{storage
+locations}\index{storage locations}, populating the \emph{reference
+data} (genres, contributor roles, volume states, location types),
+and adjusting the system-wide \emph{settings} (overdue threshold,
+auto-purge cadence, provider keys).
+
+Everything in this chapter is configured from the
+\texttt{/admin}\index{admin panel} panel — there is no separate
+configuration file. The panel has five tabs:
+
+\begin{itemize}
+  \item \textbf{Health} — read-only status dashboard.
+  \item \textbf{Users} — create / deactivate users, change roles.
+  \item \textbf{Reference data} — the four taxonomy tables.
+  \item \textbf{Trash} — view and restore soft-deleted items.
+  \item \textbf{System} — global settings.
+\end{itemize}
+
+Only the \texttt{Admin} role sees the panel; \texttt{Librarian} and
+\texttt{Anonymous} users get a 403 from every \texttt{/admin/*}
+route.
+
+\section{Storage locations and hierarchy}\label{sec:locations}
+
+Storage locations are the physical spots where your volumes
+live\index{volume}: a room, a shelf, a row, a numbered box, a
+specific cell in a cabinet. mybibli organises them as a
+\textbf{tree}\index{location tree} — every location has at most one
+parent. The hierarchy is arbitrary: you decide both the levels and
+the labels.
+
+A workable household hierarchy might be three levels deep:
+
+\begin{lstlisting}
+Living room          (room)
+ └── Bookshelf A      (shelf)
+      └── Row 1       (row)
+      └── Row 2       (row)
+ └── Bookshelf B      (shelf)
+      └── Row 1       (row)
+Bedroom              (room)
+ └── Nightstand      (shelf)
+\end{lstlisting}
+
+Three levels is enough to find any volume in seconds without forcing
+the hierarchy to mirror every nook of your living space. A flat list
+(one big ``shelf'' per physical shelf) works equally well for
+collections under a few hundred volumes.
+
+\subsection*{Editing the tree}
+
+Open \texttt{/locations}. The tree is rendered as a nested list with
+inline create / rename / move / delete affordances. Drag-and-drop is
+\emph{not} supported (mybibli ships with a CSP-strict no-JS policy);
+moves are done by editing a node and picking a new parent from a
+dropdown.
+
+\subsection*{Location node types}
+
+Each location node carries a \textbf{node type}\index{node type} —
+``room'', ``shelf'', ``row'', ``box'', anything you like. Node types
+are managed under \texttt{/admin > Reference data > Location node
+types}. They are pure labels; mybibli does not enforce that a
+``shelf'' must sit under a ``room''.
+
+\begin{tip}
+Renaming a node type cascades to every location that uses it (the
+type is stored by name in the locations table). Deleting a node type
+is refused as long as one location still references it.
+\end{tip}
+
+\section{Labels: V-codes and L-codes}\label{sec:labels}
+
+mybibli prints two kinds of barcode labels:
+
+\begin{itemize}
+  \item \textbf{V-codes}\index{V-code} — one per
+        \emph{volume}\index{volume} (the physical book on a shelf).
+        Format: \texttt{V} followed by a zero-padded sequence
+        (e.g.\ \texttt{V0042}).
+  \item \textbf{L-codes}\index{L-code} — one per
+        \emph{storage location}. Format: \texttt{L} followed by a
+        zero-padded sequence (e.g.\ \texttt{L0007}).
+\end{itemize}
+
+V-codes and L-codes are scanned with the same barcode scanner you
+use for ISBNs at cataloging time. The scanner's prefix
+(\texttt{V} or \texttt{L}) tells mybibli which lookup to perform.
+
+\subsection*{Printing labels}
+
+Open \texttt{/locations} or the relevant volume page and click
+\textbf{Print label}. mybibli renders a printable HTML page with the
+Code-128 barcode and human-readable text. Print on plain paper or
+sticker stock — the encoding is forgiving enough that a low-cost
+inkjet works for V-codes and L-codes alike.
+
+\begin{tip}
+Print V-code stickers \emph{before} you start cataloging in bulk. A
+roll of pre-printed V0001 through V0500 means you can grab a sticker,
+stick it on the back cover, and scan in one motion — no
+context-switch between the cataloging UI and the printer.
+\end{tip}
+
+\section{Reference data}\label{sec:reference-data}
+
+Four taxonomy tables drive the dropdowns you see while
+cataloging. They live under \texttt{/admin > Reference data}:
+
+\begin{description}
+  \item[Genres]\index{genres} The genres assigned to titles. mybibli
+        ships with a baseline FR/EN seed (Fiction, Non-fiction,
+        Biography, \dots) — edit or extend to match your collection.
+  \item[Contributor roles]\index{contributor roles} Author,
+        Illustrator, Translator, Editor, Narrator, \dots Used by
+        title detail pages to attribute the right people to the
+        right slots.
+  \item[Volume states]\index{volume state} The physical condition
+        of an exemplaire — New, Good, Worn, Damaged, \dots Useful
+        for loan returns (mark a volume Worn when the borrower
+        damaged it).
+  \item[Location node types]\index{node type} See
+        section~\ref{sec:locations} above.
+\end{description}
+
+\subsection*{CRUD semantics}
+
+All four tables share the same CRUD pattern:
+
+\begin{itemize}
+  \item \textbf{Create} adds a row. If the name collides with a
+        soft-deleted row of the same table, the existing row is
+        reactivated and the result reads \emph{Reactivated} instead
+        of \emph{Created}.
+  \item \textbf{Rename} updates the name. For location node types,
+        the new name cascades to every location that uses the
+        type.
+  \item \textbf{Delete} performs a soft-delete \emph{only when the
+        row is unused}. If any title still references the
+        genre / role / state / type, the deletion is refused with
+        a count of dependents.
+\end{itemize}
+
+\subsection*{Reference data is not translated}
+
+Reference data values are stored verbatim — the FR seed creates a
+genre called ``Roman'' and that is the literal text English-speaking
+users will see if they switch the UI to English. Only the UI
+chrome\index{i18n} (button labels, navigation, error messages) is
+translated.
+
+\section{System settings}\label{sec:system}
+
+The \texttt{/admin > System} tab groups every global setting. The
+panel is divided into three forms, each with its own save button:
+
+\subsection*{Loans}
+
+\begin{itemize}
+  \item \textbf{Overdue threshold (days).} Defines how many days a
+        loan can run before it surfaces as overdue on the dashboard.
+        Default 30.
+  \item \textbf{Session inactivity timeout (seconds).} Idle time
+        after which an authenticated session is wiped. Default
+        1800\,s (30\,minutes).
+  \item \textbf{Auto-purge interval (seconds).} How often the
+        background scheduler hard-deletes items older than 30\,days
+        in the trash. Default 86400\,s (24\,hours).
+\end{itemize}
+
+\subsection*{Metadata providers}
+
+One row per keyed provider (Google Books, OMDb, TMDb). Each row has
+a key input and a \emph{Clear} button. Saving a key takes effect on
+the next metadata fetch — no restart, no re-deploy.
+
+\begin{note}
+If the same provider key is set in \texttt{.env} \emph{and} cleared
+from the UI, the next reboot re-migrates the value from
+\texttt{.env}. The operator's deployment-time intent wins on boot.
+To make a Clear durable across reboots, also remove the variable
+from \texttt{.env} (or \texttt{docker-compose.yml}).
+\end{note}
+
+\subsection*{Language}
+
+Sets the default UI language for \emph{anonymous} visitors.
+Authenticated users override this with the language toggle in the
+navigation bar — the choice is stored on their user row.
+
+\section{Users}\label{sec:users}
+
+Open \texttt{/admin > Users} to manage user accounts. Each row shows
+the username, role, active flag, and last-seen timestamp. The
+available actions are:
+
+\begin{itemize}
+  \item \textbf{Create user} (top of the page) — username, password,
+        role.
+  \item \textbf{Edit} — change role or rename. Cannot change another
+        user's password from this view; password resets go through
+        the user's own \texttt{Account} page.
+  \item \textbf{Deactivate} — soft-delete the user. Their sessions
+        are wiped immediately; they cannot log back in.
+  \item \textbf{Reactivate} — undo a deactivation (from the
+        \texttt{Trash} tab).
+\end{itemize}
+
+Two safety guards apply:
+
+\begin{itemize}
+  \item \textbf{Self-deactivate is blocked.} You cannot deactivate
+        the account you are logged in as.
+  \item \textbf{Last-active-admin guard.} The system always keeps at
+        least one active admin. Deactivating the last one is
+        refused with a 409 conflict and a clear error.
+\end{itemize}
+
+The three roles\index{roles} (Anonymous, Librarian, Admin) are
+detailed in chapter~\ref{ch:roles}.

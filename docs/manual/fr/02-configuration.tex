@@ -1,0 +1,242 @@
+\chapter{Configuration}
+\label{ch:configuration}
+
+Une fois l'assistant de mise en service passé, le travail de
+configuration du jour 1 se compose de trois blocs : définir vos
+\emph{lieux de stockage}\index{lieux de stockage}, peupler les
+\emph{données de référence} (genres, rôles de contributeur, états de
+volume, types de nœud de localisation) et ajuster les
+\emph{paramètres globaux} (seuil de retard, cadence d'auto-purge,
+clés de fournisseurs).
+
+Tout se configure depuis le panneau
+\texttt{/admin}\index{panneau admin} — il n'y a pas de fichier de
+configuration séparé. Le panneau a cinq onglets :
+
+\begin{itemize}
+  \item \textbf{Health} — tableau de bord en lecture seule.
+  \item \textbf{Users} — créer/désactiver des utilisateurs, changer
+        de rôle.
+  \item \textbf{Reference data} — les quatre tables taxonomiques.
+  \item \textbf{Trash} — voir et restaurer les éléments
+        soft-deleted.
+  \item \textbf{System} — paramètres globaux.
+\end{itemize}
+
+Seul le rôle \texttt{Admin} voit le panneau ; les utilisateurs
+\texttt{Librarian} et \texttt{Anonymous} reçoivent un 403 sur toute
+route \texttt{/admin/*}.
+
+\section{Lieux de stockage et hiérarchie}\label{sec:locations}
+
+Les lieux de stockage sont les endroits physiques où vivent vos
+volumes\index{volume} : une pièce, une étagère, une rangée, une
+boîte numérotée, une case précise d'une armoire. mybibli les
+organise comme un \textbf{arbre}\index{arbre des lieux} — chaque lieu
+a au plus un parent. La hiérarchie est arbitraire : vous décidez à la
+fois des niveaux et des libellés.
+
+Une hiérarchie domestique exploitable peut tenir sur trois niveaux :
+
+\begin{lstlisting}
+Salon                (pièce)
+ |-- Bibliothèque A   (étagère)
+ |    |-- Rangée 1    (rangée)
+ |    |-- Rangée 2    (rangée)
+ |-- Bibliothèque B   (étagère)
+ |    |-- Rangée 1    (rangée)
+Chambre              (pièce)
+ |-- Table de nuit   (étagère)
+\end{lstlisting}
+
+Trois niveaux suffisent à retrouver n'importe quel volume en quelques
+secondes sans forcer la hiérarchie à épouser chaque recoin de votre
+intérieur. Une liste plate (une grosse « étagère » par étagère
+physique) fonctionne tout aussi bien pour des collections de
+quelques centaines de volumes.
+
+\subsection*{Éditer l'arbre}
+
+Ouvrez \texttt{/locations}. L'arbre est rendu sous forme de liste
+imbriquée avec des actions création / renommage / déplacement /
+suppression en ligne. Le glisser-déposer \emph{n'est pas} pris en
+charge (mybibli applique une CSP stricte sans JavaScript inline) ;
+les déplacements se font en éditant un nœud et en choisissant un
+nouveau parent dans un menu déroulant.
+
+\subsection*{Types de nœud de localisation}
+
+Chaque nœud de localisation porte un \textbf{type de
+nœud}\index{type de nœud} — « pièce », « étagère », « rangée »,
+« boîte », ce que vous voulez. Les types sont gérés depuis
+\texttt{/admin > Reference data > Location node types}. Ce sont de
+purs libellés ; mybibli n'impose pas qu'une « étagère » soit sous
+une « pièce ».
+
+\begin{tip}
+Renommer un type de nœud propage la modification à chaque lieu qui
+l'utilise (le type est stocké par nom dans la table des lieux).
+Supprimer un type est refusé tant qu'au moins un lieu y fait
+référence.
+\end{tip}
+
+\section{Étiquettes : codes V et codes L}\label{sec:labels}
+
+mybibli imprime deux types d'étiquettes à code-barres :
+
+\begin{itemize}
+  \item \textbf{Codes V}\index{code V} — un par
+        \emph{volume}\index{volume} (l'exemplaire physique sur
+        l'étagère). Format : \texttt{V} suivi d'un numéro
+        zéro-paddé (par exemple \texttt{V0042}).
+  \item \textbf{Codes L}\index{code L} — un par \emph{lieu de
+        stockage}. Format : \texttt{L} suivi d'un numéro zéro-paddé
+        (par exemple \texttt{L0007}).
+\end{itemize}
+
+Les codes V et L sont scannés avec la même douchette code-barres que
+vous utilisez pour les ISBN au moment du catalogage. Le préfixe
+(\texttt{V} ou \texttt{L}) indique à mybibli quel lookup effectuer.
+
+\subsection*{Imprimer les étiquettes}
+
+Ouvrez \texttt{/locations} ou la page du volume concerné et cliquez
+\textbf{Imprimer l'étiquette}. mybibli rend une page HTML
+imprimable avec le code-barres Code-128 et le texte lisible. Imprimez
+sur papier ordinaire ou sur planches autocollantes — l'encodage est
+suffisamment robuste pour qu'une imprimante jet d'encre bas de gamme
+suffise pour les codes V comme les codes L.
+
+\begin{tip}
+Imprimez vos étiquettes de codes V \emph{avant} de commencer un
+catalogage en série. Une planche pré-imprimée de V0001 à V0500
+permet de saisir un autocollant, de le coller au dos du livre et de
+scanner d'un même mouvement — sans aller-retour entre l'interface
+de catalogage et l'imprimante.
+\end{tip}
+
+\section{Données de référence}\label{sec:reference-data}
+
+Quatre tables taxonomiques pilotent les menus déroulants que vous
+voyez pendant le catalogage. Elles vivent sous \texttt{/admin >
+Reference data} :
+
+\begin{description}
+  \item[Genres]\index{genres} Les genres assignés aux titres.
+        mybibli livre un seed de base FR/EN (Fiction, Documentaire,
+        Biographie, \dots) — éditez ou étendez pour coller à votre
+        collection.
+  \item[Rôles de contributeur]\index{rôles de contributeur} Auteur,
+        Illustrateur, Traducteur, Éditeur, Narrateur, \dots Utilisés
+        sur les pages détail de titre pour attribuer les bonnes
+        personnes aux bons rôles.
+  \item[États de volume]\index{état de volume} L'état physique d'un
+        exemplaire — Neuf, Bon, Usé, Endommagé, \dots Utile pour les
+        retours de prêt (marquer un volume Usé quand un emprunteur
+        l'a abîmé).
+  \item[Types de nœud de localisation]\index{type de nœud} Voir
+        section~\ref{sec:locations}.
+\end{description}
+
+\subsection*{Sémantique CRUD}
+
+Les quatre tables partagent le même schéma CRUD :
+
+\begin{itemize}
+  \item \textbf{Créer} ajoute une ligne. Si le nom entre en collision
+        avec une ligne soft-deleted de la même table, la ligne
+        existante est réactivée et le résultat affiche
+        \emph{Réactivé} au lieu de \emph{Créé}.
+  \item \textbf{Renommer} met à jour le nom. Pour les types de nœud
+        de localisation, le nouveau nom cascade sur tous les lieux
+        qui utilisent ce type.
+  \item \textbf{Supprimer} effectue un soft-delete \emph{uniquement
+        si la ligne est inutilisée}. Si un titre référence encore
+        ce genre / rôle / état / type, la suppression est refusée
+        avec un comptage des dépendants.
+\end{itemize}
+
+\subsection*{Les données de référence ne sont pas traduites}
+
+Les valeurs des données de référence sont stockées telles quelles —
+le seed FR crée un genre appelé « Roman » et c'est ce texte
+littéral que verront les utilisateurs anglophones s'ils basculent
+l'interface en anglais. Seule l'ossature de l'interface\index{i18n}
+(libellés de boutons, navigation, messages d'erreur) est traduite.
+
+\section{Paramètres système}\label{sec:system}
+
+L'onglet \texttt{/admin > System} regroupe tous les paramètres
+globaux. Le panneau est divisé en trois formulaires, chacun avec
+son bouton de sauvegarde :
+
+\subsection*{Prêts}
+
+\begin{itemize}
+  \item \textbf{Seuil de retard (jours).} Définit combien de jours
+        un prêt peut courir avant d'apparaître comme en retard sur
+        le tableau de bord. Défaut : 30.
+  \item \textbf{Timeout d'inactivité de session (secondes).} Temps
+        d'inactivité après lequel une session authentifiée est
+        effacée. Défaut : 1800\,s (30\,minutes).
+  \item \textbf{Intervalle d'auto-purge (secondes).} Cadence à
+        laquelle le scheduler d'arrière-plan supprime
+        définitivement les éléments soft-deleted depuis plus de
+        30\,jours. Défaut : 86400\,s (24\,heures).
+\end{itemize}
+
+\subsection*{Fournisseurs de métadonnées}
+
+Une ligne par fournisseur à clé (Google Books, OMDb, TMDb). Chaque
+ligne a un champ clé et un bouton \emph{Effacer}. Sauvegarder une
+clé prend effet à la prochaine récupération de métadonnées — pas de
+redémarrage, pas de redéploiement.
+
+\begin{note}
+Si la même clé de fournisseur est positionnée dans \texttt{.env}
+\emph{et} effacée depuis l'interface, le prochain reboot re-migre la
+valeur depuis \texttt{.env}. L'intention de l'opérateur au moment du
+déploiement l'emporte au boot. Pour rendre l'effacement durable,
+retirez aussi la variable de \texttt{.env} (ou de
+\texttt{docker-compose.yml}).
+\end{note}
+
+\subsection*{Langue}
+
+Fixe la langue d'interface par défaut pour les visiteurs
+\emph{anonymes}. Les utilisateurs authentifiés outrepassent ce
+choix via le bouton bascule dans la barre de navigation — leur
+choix est stocké sur leur ligne utilisateur.
+
+\section{Utilisateurs}\label{sec:users}
+
+Ouvrez \texttt{/admin > Users} pour gérer les comptes utilisateur.
+Chaque ligne montre le nom d'utilisateur, le rôle, le drapeau
+actif et la date de dernière activité. Les actions disponibles :
+
+\begin{itemize}
+  \item \textbf{Créer un utilisateur} (haut de page) — nom, mot de
+        passe, rôle.
+  \item \textbf{Éditer} — changer le rôle ou renommer. Ne change
+        pas le mot de passe d'un autre utilisateur depuis cette
+        vue ; les changements de mot de passe passent par la page
+        \texttt{/account} de l'utilisateur lui-même.
+  \item \textbf{Désactiver} — soft-delete l'utilisateur. Ses
+        sessions sont effacées immédiatement ; il ne peut plus se
+        reconnecter.
+  \item \textbf{Réactiver} — défait une désactivation (depuis
+        l'onglet \texttt{Trash}).
+\end{itemize}
+
+Deux garde-fous s'appliquent :
+
+\begin{itemize}
+  \item \textbf{L'auto-désactivation est bloquée.} Vous ne pouvez
+        pas désactiver le compte avec lequel vous êtes connecté.
+  \item \textbf{Garde du dernier admin actif.} Le système maintient
+        toujours au moins un admin actif. Désactiver le dernier
+        est refusé avec un 409 et un message d'erreur clair.
+\end{itemize}
+
+Les trois rôles\index{rôles} (Anonyme, Bibliothécaire, Administrateur)
+sont détaillés au chapitre~\ref{ch:roles}.

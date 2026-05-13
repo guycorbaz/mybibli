@@ -1,0 +1,164 @@
+\chapter{Troubleshooting}
+\label{ch:troubleshooting}
+
+When things go wrong, start with the logs and the
+\texttt{/admin > Health} dashboard. This chapter catalogues the
+problems users actually hit, in rough order of frequency.
+
+\section{Reading the logs}
+
+\begin{lstlisting}
+docker compose logs --since 10m mybibli
+docker compose logs -f mybibli
+\end{lstlisting}
+
+Logs are emitted as structured JSON. The most useful fields are
+\texttt{level}, \texttt{target} (which module logged this),
+\texttt{message}, and any contextual key=value pairs that the log
+line carries (\texttt{user\_id}, \texttt{volume\_id}, \dots).
+
+To filter:
+
+\begin{lstlisting}
+docker compose logs --since 10m mybibli | grep -i error
+\end{lstlisting}
+
+\section{App does not start}
+
+\subsection*{Symptom: container exits immediately}
+
+Run \texttt{docker compose logs mybibli} and look for one of:
+
+\begin{itemize}
+  \item \texttt{missing required environment variable:
+        DATABASE\_URL}\index{troubleshooting!DATABASE\_URL} — the
+        \texttt{.env} file is missing or the variable is unset. See
+        section~\ref{sec:env-vars}.
+  \item \texttt{Failed to create database pool} — the database
+        hostname / port / credentials in \texttt{DATABASE\_URL} are
+        wrong, or the DB is not reachable. From the host, try
+        \texttt{docker compose exec mybibli sh -c 'apk add curl;
+        curl <db-host>:<db-port>'} to confirm reachability.
+  \item \texttt{Failed to run database migrations} — usually a
+        permissions issue. Confirm the DB user has \texttt{ALL
+        PRIVILEGES} on the database (see
+        section~\ref{sec:install-external-db}).
+  \item \texttt{Address already in use} — the published host port
+        is taken. Change \texttt{HOST\_PORT} in \texttt{.env}.
+\end{itemize}
+
+\subsection*{Symptom: every page returns 404}
+
+The container is up but routes are missing. Most common cause:
+you pulled an image tag that does not exist (typo) and Docker
+fell back to a stale older tag. \texttt{docker compose pull} and
+restart.
+
+\section{Cannot log in}
+
+\subsection*{Symptom: ``Invalid credentials'' on a fresh 1.0.x install}
+
+The seed credentials are \texttt{admin/admin}. If they do not work
+either:
+
+\begin{itemize}
+  \item the database migration that creates them failed silently
+        — look for migration errors in the logs;
+  \item the previous admin already rotated the password (check
+        with whoever installed mybibli);
+  \item you are looking at a 1.1.0+ install, where no seed exists —
+        use the wizard at \texttt{/setup} instead.
+\end{itemize}
+
+\subsection*{Symptom: login redirects back to \texttt{/login}}
+
+The session cookie is being rejected by the browser. Causes:
+
+\begin{itemize}
+  \item \texttt{MYBIBLI\_COOKIE\_SECURE=true} on a plain-HTTP
+        deployment — the browser refuses to accept a Secure cookie
+        over HTTP. Set the variable to \texttt{false} or front the
+        instance with HTTPS.
+  \item Cookies blocked by browser policy (private window with
+        strict third-party blocking, etc.). Test in a default
+        profile.
+\end{itemize}
+
+\subsection*{Symptom: locked out — last admin deactivated}
+
+The last-active-admin guard should prevent this, but if a previous
+admin was deactivated then permanently deleted, recovery requires
+direct SQL access:
+
+\begin{lstlisting}
+docker compose exec db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli \
+    -e "UPDATE users SET deleted_at=NULL, active=1 WHERE username='your-admin';"
+\end{lstlisting}
+
+Then log in normally.
+
+\section{Metadata never resolves}
+
+\subsection*{Symptom: skeleton title stays unresolved}
+
+Open \texttt{/admin > Health}. Look at each provider's status. A
+red cross usually means one of:
+
+\begin{itemize}
+  \item the provider is genuinely down (rare for BnF / Open Library;
+        more common for the smaller services);
+  \item the API key is missing or invalid — open
+        \texttt{/admin > System > Metadata Providers} and re-enter
+        the key;
+  \item the host cannot reach the upstream. Confirm with
+        \texttt{docker compose exec mybibli sh -c "wget -q
+        https://www.googleapis.com/books/v1 -O -"} or equivalent.
+\end{itemize}
+
+\subsection*{Symptom: only French ISBNs resolve}
+
+You disabled (or never set) the Google Books / Open Library keys.
+BnF is excellent for French-published titles but limited for
+foreign-language titles. Add at least Open Library (no key
+required).
+
+\section{Search returns too little}
+
+\subsection*{Symptom: known titles do not surface}
+
+\begin{itemize}
+  \item Confirm the title is not soft-deleted (check
+        \texttt{/admin > Trash}). Search hides soft-deleted items.
+  \item Confirm the title's contributors are spelled the way you
+        searched. mybibli's search is fuzzy but not magical;
+        ``Camus'' will find ``Albert Camus'' but ``Camu'' might
+        not.
+\end{itemize}
+
+\subsection*{Symptom: search is slow}
+
+For collections above 10,000 titles, queries that combine
+contributor + free-text can take a second or two. This is a known
+limitation; planned indexes will close the gap.
+
+\section{Cover images are missing}
+
+\subsection*{Symptom: every title shows the placeholder}
+
+The \texttt{covers/} directory is empty or unreadable. Confirm:
+
+\begin{itemize}
+  \item the volume mount in \texttt{docker-compose.yml} points to
+        a directory that exists and is writable by the container;
+  \item the metadata fetch actually returned a cover URL (check the
+        title page — if the URL is missing, the provider did not
+        supply one).
+\end{itemize}
+
+\section{Where to file bugs}
+
+Issues you cannot resolve, or behaviour that contradicts this
+manual: open a ticket at
+\url{https://github.com/guycorbaz/mybibli/issues}. The issue
+template asks for the version (visible in the page footer), the
+install method, and the steps to reproduce — please fill them in.

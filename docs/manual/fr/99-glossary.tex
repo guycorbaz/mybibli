@@ -1,0 +1,173 @@
+\chapter{Glossaire}
+\label{ch:glossary}
+
+\begin{description}
+
+  \item[Administrateur]\index{administrateur} Compte utilisateur
+        avec le rôle \texttt{admin}. Le seul rôle qui peut ouvrir
+        le panneau \texttt{/admin} et éditer les utilisateurs, les
+        données de référence, la corbeille ou les paramètres
+        système.
+
+  \item[Anonyme]\index{anonyme} Visiteur sans cookie de session.
+        Accès en lecture seule au catalogue public. Pas de
+        catalogage, pas de prêt, pas d'édition.
+
+  \item[Audit]\index{audit} Le rituel « je parcours les étagères
+        et je confirme que tout est à la place que la base
+        indique » décrit en section~\ref{sec:audit}.
+
+  \item[BDGest]\index{BDGest} Catalogue BD francophone utilisé comme
+        source de métadonnées pour ce type de média.
+
+  \item[BnF]\index{BnF} \textit{Bibliothèque nationale de France}.
+        Catalogue de la BNF, utilisé comme source principale de
+        métadonnées pour les livres en français.
+
+  \item[Catalogage] L'acte d'enregistrer un nouveau titre et/ou
+        volume dans la base. Typiquement piloté au code-barres :
+        scanner, confirmer, coller l'étiquette, recommencer.
+
+  \item[Code L]\index{code L} Étiquette code-barres d'un lieu de
+        stockage. Format : \texttt{L} suivi d'un numéro
+        zéro-paddé.
+
+  \item[Code V]\index{code V} Étiquette code-barres d'un volume.
+        Format : \texttt{V} suivi d'un numéro zéro-paddé.
+
+  \item[Couverture]\index{couvertures} La face visuelle avant d'un
+        livre / disque / vinyle, téléchargée depuis un fournisseur
+        de métadonnées et mise en cache sous \texttt{COVERS\_DIR}
+        sur disque.
+
+  \item[CSP] Content Security Policy. En-tête imposé par le
+        navigateur qui restreint quels scripts et styles la page
+        peut exécuter. mybibli applique une politique stricte qui
+        interdit scripts et styles inline.
+
+  \item[CSRF (jeton)]\index{CSRF} Secret par session intégré dans
+        chaque formulaire. mybibli rejette les requêtes POST /
+        PUT / DELETE dont le jeton ne correspond pas — défense
+        contre les forgeries de requête inter-sites.
+
+  \item[Dewey (code)]\index{Dewey} Le numéro de la Classification
+        décimale de Dewey, utilisé pour la navigation par sujet
+        du catalogue. Optionnel par titre.
+
+  \item[EAN-13] Le standard de code-barres à 13 chiffres. Les ISBN
+        sont encodés en EAN-13 depuis 2007 ; les CD, DVD et autres
+        supports portent aussi des codes EAN-13.
+
+  \item[Emprunteur]\index{emprunteur} Personne qui emprunte des
+        volumes à la bibliothèque. Modélisé comme sa propre entité
+        (nom, contact optionnel, historique de prêts).
+
+  \item[Exemplaire] Synonyme de \emph{volume} (l'objet physique).
+        Utilisé par certaines bibliothèques françaises ; mybibli
+        préfère \emph{volume}.
+
+  \item[État de volume]\index{état de volume} Ligne de données de
+        référence décrivant l'état d'un volume : Neuf, Bon, Usé,
+        Endommagé, \dots.
+
+  \item[Garde du dernier admin actif]\index{garde du dernier admin}
+        Règle qui empêche de désactiver ou supprimer définitivement
+        le dernier utilisateur de rôle \texttt{admin}. Voir
+        section~\ref{sec:users}.
+
+  \item[Genre]\index{genres} Classification libre du sujet d'un
+        titre (Fiction, Documentaire, Polar, \dots). Définie dans
+        la table de référence des genres.
+
+  \item[Hard-delete] Suppression d'une ligne pour de bon. mybibli
+        ne hard-delete que depuis le panneau \texttt{/admin >
+        Trash} et la tâche d'auto-purge en arrière-plan ; tout le
+        reste est un soft-delete.
+
+  \item[HTMX] Bibliothèque JavaScript qu'utilise mybibli pour
+        échanger des fragments de page sans rechargement complet.
+        Les exploitants n'ont pas besoin de comprendre HTMX pour
+        utiliser mybibli.
+
+  \item[ISBN] International Standard Book Number. Identifiant
+        imprimé au dos des livres, encodé en code-barres EAN-13.
+
+  \item[Lieu]\index{lieu} L'endroit physique où vit un volume.
+        Modélisé comme un arbre (pièce → étagère → rangée),
+        identifié par un code L.
+
+  \item[MariaDB] Le moteur de base où mybibli stocke ses données.
+        Fork de MySQL.
+
+  \item[Multi-position (volume)]\index{multi-position} Un volume
+        physique unique qui contient plusieurs positions dans une
+        série — typiquement un album BD omnibus.
+
+  \item[MusicBrainz]\index{MusicBrainz} Catalogue de métadonnées
+        musicales maintenu par des bénévoles, utilisé comme source
+        principale pour les médias audio.
+
+  \item[OMDb]\index{OMDb} Open Movie Database. Source de
+        métadonnées pour films et séries TV.
+
+  \item[Open Library]\index{Open Library} Catalogue ouvert de
+        livres porté par des bénévoles, utilisé comme source de
+        métadonnées.
+
+  \item[Optimistic locking] Technique qu'utilise mybibli pour
+        détecter les éditions concurrentes. Deux utilisateurs qui
+        éditent le même titre obtiennent une erreur claire à la
+        seconde sauvegarde au lieu de s'écraser silencieusement.
+
+  \item[Prêt]\index{prêt} Enregistrement qu'un volume précis est
+        actuellement sorti chez un emprunteur précis. Note la date
+        de prêt, la date de retour prévue, la date de retour, et
+        le lieu pré-prêt du volume.
+
+  \item[Réactivation] Restauration d'une ligne soft-deleted. Pour
+        les utilisateurs, efface \texttt{deleted\_at} et leur
+        permet de se reconnecter. Pour les données de référence,
+        le terme couvre aussi le fait de re-créer une ligne avec
+        le même nom qu'une soft-deleted, ce qui défait la
+        suppression de manière transparente.
+
+  \item[Série]\index{série} Suite ordonnée et nommée de titres
+        liés (par exemple une trilogie ou une série BD en cours).
+        La position de chaque titre dans la série est un petit
+        entier ou une plage (pour les omnibus).
+
+  \item[Setup wizard]\index{setup wizard} Le flux en quatre étapes
+        à \texttt{/setup} qu'une instance vide présente jusqu'à
+        ce qu'un compte admin existe.
+
+  \item[Soft-delete]\index{soft-delete} Positionnement de la
+        colonne \texttt{deleted\_at} d'une ligne à « maintenant »
+        au lieu de supprimer physiquement la ligne. Les lignes
+        soft-deleted sont invisibles aux requêtes normales mais
+        apparaissent dans \texttt{/admin > Trash} pendant
+        30\,jours, après quoi l'auto-purge les hard-delete.
+
+  \item[Titre] L'entité bibliographique (un livre, un film, un
+        album). Un titre peut avoir plusieurs volumes — par
+        exemple, deux exemplaires du même roman sur des étagères
+        différentes.
+
+  \item[TMDb]\index{TMDb} The Movie Database. Source de
+        métadonnées communautaire pour films et séries TV.
+
+  \item[Type de média]\index{types de médias} La nature de l'objet
+        que représente un titre : Livre, BD / comic, Audio, Film /
+        série. Pilote la sélection des fournisseurs et l'affichage
+        des champs.
+
+  \item[Type de nœud]\index{type de nœud} Libellé appliqué aux
+        lieux de stockage pour indiquer quel type de contenant
+        ils sont (pièce, étagère, rangée, boîte). Pur libellé —
+        aucune contrainte sémantique.
+
+  \item[Volume]\index{volume} L'objet physique sur l'étagère — un
+        exemplaire d'un titre. Un titre peut avoir plusieurs
+        volumes ; chacun porte son propre code V, son lieu et son
+        état.
+
+\end{description}

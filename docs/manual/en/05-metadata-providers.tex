@@ -1,0 +1,130 @@
+\chapter{Metadata providers}
+\label{ch:providers}
+
+When you scan an ISBN or an EAN-13, mybibli does not look the title
+up in a local catalog — it queries one or more external
+\emph{metadata providers}\index{metadata providers} until one
+returns a clean answer. This chapter explains the chain, where to
+get API keys, and how to rotate them safely.
+
+\section{The provider chain}
+
+mybibli walks the providers in the order best-suited to the guessed
+media type:
+
+\begin{longtable}{@{} l l p{4.5cm} c @{}}
+\toprule
+\textbf{Provider} & \textbf{Media types} & \textbf{Notes} & \textbf{Key?} \\
+\midrule
+\endhead
+BnF\index{BnF}                  & Books         & French
+Bibliothèque nationale catalogue; best for French-language titles. & no \\
+Open Library\index{Open Library} & Books         & Volunteer
+catalogue; broad English / multilingual coverage. & no \\
+Google Books\index{Google Books} & Books         & Commercial; good
+for trade non-fiction. & optional \\
+MusicBrainz\index{MusicBrainz}  & Audio         & Volunteer music
+metadata; very deep on CDs / LPs. & no \\
+OMDb\index{OMDb}                & Films, series & Free tier; rate-limited. & required \\
+TMDb\index{TMDb}                & Films, series & Free with attribution. & required \\
+BDGest\index{BDGest}            & Comics, BD    & FR-language comic
+catalogue (web-scraped). & no \\
+\bottomrule
+\end{longtable}
+
+The first provider to return a \emph{clean} record wins. ``Clean''
+means: title present, at least one contributor, and a year. Partial
+matches are recorded but mybibli keeps walking the chain until it
+finds a clean one or runs out of providers.
+
+\section{API keys}
+
+Three providers require an API key:
+
+\subsection*{Google Books}
+
+Optional but raises the daily request budget significantly.
+
+\begin{enumerate}
+  \item Sign in to \url{https://console.cloud.google.com/}.
+  \item Create a new project (or reuse one).
+  \item Enable the \textbf{Books API}.
+  \item Create an \textbf{API key} under \emph{APIs \& Services →
+        Credentials}.
+  \item Paste it into \texttt{/admin > System > Metadata Providers}
+        in mybibli.
+\end{enumerate}
+
+\subsection*{OMDb}
+
+\begin{enumerate}
+  \item Visit \url{https://www.omdbapi.com/apikey.aspx}.
+  \item Pick the free tier (1000 requests/day).
+  \item Confirm via the activation email you receive.
+  \item Paste the key into mybibli.
+\end{enumerate}
+
+\subsection*{TMDb}
+
+\begin{enumerate}
+  \item Sign up at \url{https://www.themoviedb.org/}.
+  \item Open \emph{Settings → API} and request a key for
+        \emph{Personal / non-commercial use}.
+  \item Paste the key into mybibli.
+\end{enumerate}
+
+\section{Where the keys live}
+
+Keys travel through two layers:
+
+\begin{enumerate}
+  \item \textbf{Environment variables}\index{env vars!provider keys}
+        (\texttt{GOOGLE\_BOOKS\_API\_KEY}, \texttt{OMDB\_API\_KEY},
+        \texttt{TMDB\_API\_KEY}). These are migrated \emph{once} on
+        boot into the \texttt{settings} table — they are essentially
+        a deployment-time bootstrap.
+  \item \textbf{The \texttt{settings} table}, exposed through
+        \texttt{/admin > System > Metadata Providers}. This is the
+        live source of truth at request time. Rotating a key from
+        the UI takes effect on the very next metadata fetch.
+\end{enumerate}
+
+The implication is asymmetrical:
+
+\begin{itemize}
+  \item If you set a key only in the environment, the first boot
+        copies it into the database and afterwards the database
+        wins.
+  \item If you set a key only in the UI, the environment is never
+        consulted again.
+  \item If you set both and then \emph{Clear} the key from the UI,
+        the database value goes empty — but on the next boot, the
+        environment value is migrated back in. To make the UI clear
+        durable, also remove the environment variable from
+        \texttt{.env} / \texttt{docker-compose.yml}.
+\end{itemize}
+
+\section{Provider health}
+
+\texttt{/admin > Health} pings every registered provider every five
+minutes and reports their status as a green check or a red cross.
+A red cross does not always mean the provider is down — it can also
+mean the API key is missing or invalid. The Health tab includes the
+last-checked timestamp and the HTTP status code for diagnostics.
+
+\section{Rate limits and back-pressure}
+
+mybibli applies a small per-provider rate limit (a couple of
+requests per second). Bulk-cataloging a hundred volumes in a row
+will not trigger remote 429 responses. If a provider does return
+429, the request is logged and the next provider in the chain is
+consulted instead — the catalog flow never blocks waiting for a
+rate-limited provider.
+
+\begin{warning}
+Never commit a real API key to git. The \texttt{.env} file is in
+\texttt{.gitignore} for this reason; \texttt{.env.example} carries
+only placeholders. If a key leaks, rotate it at the provider
+console immediately — pasting a new key into mybibli takes effect
+within seconds.
+\end{warning}

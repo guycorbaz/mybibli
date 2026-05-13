@@ -1,0 +1,89 @@
+\chapter*{Préface}
+\addcontentsline{toc}{chapter}{Préface}
+\markboth{Préface}{Préface}
+
+\section*{À qui ce manuel s'adresse}
+
+Ce manuel s'adresse à la personne qui installe, configure et exploite
+une instance mybibli pour son foyer, une petite association ou une
+bibliothèque communautaire. Il suppose que vous savez :
+
+\begin{itemize}
+  \item ouvrir un terminal et lancer des commandes
+        \texttt{docker compose} ;
+  \item modifier un fichier texte de configuration dans l'éditeur de
+        votre choix ;
+  \item lire une URL imprimée dans une ligne de log et l'ouvrir dans
+        un navigateur.
+\end{itemize}
+
+Aucune connaissance de Rust, MariaDB ou HTMX n'est requise. Le manuel
+se limite délibérément au rôle d'\emph{exploitant} — compiler
+mybibli depuis les sources ou modifier son code est couvert par
+\texttt{CLAUDE.md} et les artefacts de planification du dépôt.
+
+\section*{Conventions}
+
+\textbf{Commandes.} Les fragments de shell sont présentés dans un
+encadré à largeur fixe :
+
+\begin{lstlisting}
+docker compose up -d
+\end{lstlisting}
+
+\textbf{Fichiers de configuration.} Les extraits de fichiers utilisent
+le même style, le nom du fichier étant indiqué dans le texte
+environnant. Les commentaires à l'intérieur du fragment utilisent le
+marqueur de commentaire propre au fichier.
+
+\textbf{Encadrés.} Trois types d'encadrés signalent les passages
+importants :
+
+\begin{note}
+Une \emph{note} fournit un contexte ou un éclairage qui aide à
+comprendre pourquoi quelque chose fonctionne comme cela. La sauter
+ne pose pas de problème.
+\end{note}
+
+\begin{tip}
+Une \emph{astuce} suggère une pratique qui rend l'usage quotidien
+plus fluide. Essayez-la une fois que les bases sont maîtrisées.
+\end{tip}
+
+\begin{warning}
+Un \emph{avertissement} signale une étape où une erreur peut
+entraîner une perte de données, vous verrouiller hors du panneau
+d'administration ou exposer l'instance à des accès non autorisés.
+Lisez ces encadrés en entier.
+\end{warning}
+
+\textbf{Renvois croisés.} Les chapitres et sections sont liés dans le
+PDF — cliquez sur un titre ou un numéro de page en bleu pour y
+sauter. L'\hyperref[index]{index} en fin d'ouvrage renvoie chaque
+terme important à sa page de premier usage.
+
+\section*{Demander de l'aide}
+
+La source de vérité canonique pour mybibli est le dépôt GitHub :
+
+\begin{center}
+\url{https://github.com/guycorbaz/mybibli}
+\end{center}
+
+Ouvrez une \emph{issue} sur le dépôt \texttt{guycorbaz/mybibli}
+lorsque vous rencontrez un bug, une lacune dans la documentation ou
+une fonctionnalité manquante. Les modèles d'issue demandent la
+version (visible en pied de page du panneau d'administration), votre
+méthode d'installation et les étapes pour reproduire le problème.
+
+\section*{Couverture du manuel}
+
+Ce manuel couvre mybibli \textbf{1.1.0 et versions ultérieures}. Les
+versions antérieures comportaient un bug de sécurité où l'assistant
+de première mise en service était silencieusement contourné — voir le
+chapitre~\ref{ch:upgrade} pour le chemin de mise à jour depuis 1.0.x.
+
+\vspace{1cm}
+\hrule
+\vspace{0.5cm}
+\textit{Bon catalogage.}

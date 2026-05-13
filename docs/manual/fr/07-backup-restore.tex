@@ -1,0 +1,149 @@
+\chapter{Sauvegarde et restauration}
+\label{ch:backup}
+
+Une bibliothèque auto-hébergée n'a pas de filet de sécurité dans le
+cloud. Ce chapitre couvre quoi sauvegarder, à quelle fréquence, et
+comment restaurer.
+
+\section{Quoi sauvegarder}
+
+Trois artefacts forment ensemble une sauvegarde mybibli complète :
+
+\begin{enumerate}
+  \item \textbf{La base MariaDB.}\index{sauvegarde!base} Contient
+        chaque titre, volume, lieu, contributeur, prêt,
+        utilisateur, journal d'audit et paramètre. La perdre,
+        c'est repartir de zéro.
+  \item \textbf{Le répertoire \texttt{covers/}.}\index{sauvegarde!covers}
+        Les images de couverture téléchargées au catalogage. Le
+        perdre, le catalogue fonctionne toujours mais chaque page
+        de titre affiche un placeholder générique tant que vous
+        n'avez pas re-fetché les métadonnées titre par titre.
+  \item \textbf{Le fichier \texttt{.env}.}\index{sauvegarde!.env}
+        Contient les mots de passe (base, clés d'API non encore
+        migrées). Le perdre, un re-déploiement vous oblige à
+        re-saisir chaque credential.
+\end{enumerate}
+
+Les images Docker elles-mêmes ne sont \emph{pas} critiques — vous
+pouvez toujours les re-tirer depuis Docker Hub.
+
+\section{Procédure de sauvegarde}
+
+\subsection*{Base de données — MariaDB embarquée}
+
+Depuis l'hôte qui exécute la pile compose :
+
+\begin{lstlisting}
+docker compose exec -T db mariadb-dump \
+    -u root -p"$MYSQL_ROOT_PASSWORD" \
+    --single-transaction --routines --triggers \
+    mybibli \
+    > backups/mybibli-$(date +%Y%m%d-%H%M%S).sql
+\end{lstlisting}
+
+Le drapeau \texttt{--single-transaction} est important : il fait un
+snapshot cohérent sans verrouiller les tables pendant la durée du
+dump. \texttt{--routines --triggers} préserve les routines stockées
+(mybibli n'en utilise pas pour l'instant, mais le drapeau est peu
+coûteux et future-proof).
+
+Compressez le dump si l'espace disque est une préoccupation :
+
+\begin{lstlisting}
+gzip backups/mybibli-*.sql
+\end{lstlisting}
+
+\subsection*{Base de données — MariaDB externe}
+
+Lancez \texttt{mariadb-dump} directement contre le serveur externe.
+Les utilisateurs DSM Synology peuvent aussi planifier une tâche
+\emph{Hyper Backup} qui cible le paquet MariaDB — elle produit une
+sauvegarde binaire qui se restaure plus vite qu'un dump SQL.
+
+\subsection*{Covers et \texttt{.env}}
+
+Une simple archive \texttt{tar} suffit :
+
+\begin{lstlisting}
+tar czf backups/mybibli-files-$(date +%Y%m%d).tar.gz \
+    .env covers/
+\end{lstlisting}
+
+\section{Cadence recommandée}
+
+\begin{itemize}
+  \item \textbf{Quotidien} — dump de base automatisé. Même sur un
+        catalogue rarement modifié, un dump journalier garantit que
+        la pire perte de données est bornée à une journée.
+  \item \textbf{Hebdomadaire} — covers et \texttt{.env}. Ils ne
+        changent que quand vous cataloguez de nouveaux titres ou
+        faites tourner des clés ; hebdomadaire est amplement
+        suffisant.
+  \item \textbf{Copie hors-site} — au moins mensuelle. Rsync du
+        répertoire \texttt{backups/} vers un NAS distant, un
+        disque USB que vous échangez ou un bucket de stockage
+        cloud. Un incendie qui consume le serveur domestique ne
+        doit pas aussi consumer vos sauvegardes.
+\end{itemize}
+
+\begin{tip}
+Une sauvegarde qui n'a jamais été restaurée n'est pas une
+sauvegarde. Une fois par trimestre, restaurez votre dernier dump
+dans un environnement Docker jetable et vérifiez que les compteurs
+de titres et de prêts correspondent à ce que rapporte
+\texttt{/admin > Health} en production.
+\end{tip}
+
+\section{Procédure de restauration}
+
+\subsection*{Base de données}
+
+Pour le setup avec base embarquée :
+
+\begin{lstlisting}
+docker compose stop mybibli
+docker compose exec -T db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" \
+    -e "DROP DATABASE mybibli; CREATE DATABASE mybibli CHARACTER SET utf8mb4;"
+zcat backups/mybibli-20260513-1200.sql.gz | \
+    docker compose exec -T db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli
+docker compose start mybibli
+\end{lstlisting}
+
+Pour MariaDB externe, les mêmes commandes client \texttt{mariadb}
+fonctionnent contre le serveur externe.
+
+\subsection*{Covers et \texttt{.env}}
+
+\begin{lstlisting}
+tar xzf backups/mybibli-files-20260513.tar.gz
+\end{lstlisting}
+
+Redémarrez la pile pour que le conteneur mybibli prenne en compte
+le \texttt{.env} restauré.
+
+\section{Migration vers un nouvel hôte}
+
+La procédure de sauvegarde est aussi la procédure de migration :
+
+\begin{enumerate}
+  \item Sur l'ancien hôte : produire un dump de base et une archive
+        tar frais.
+  \item Transférer les deux sur le nouvel hôte.
+  \item Sur le nouvel hôte : installer Docker, récupérer le fichier
+        compose depuis la release correspondant à la version du
+        dump, placer \texttt{.env} et \texttt{covers/} à côté,
+        restaurer la base, démarrer la pile.
+  \item Vérifier en comptant les titres sur \texttt{/admin >
+        Health} et en contrôlant quelques pages de titre au
+        hasard.
+\end{enumerate}
+
+\begin{warning}
+Le dump est lié à la version de \emph{schéma}. Si l'hôte source
+tournait en 1.1.0 et que le nouvel hôte tire 1.5.0, les migrations
+du nouvel hôte mettront à niveau la base restaurée — c'est OK.
+L'inverse (restaurer un dump 1.5.0 sur une installation 1.1.0)
+n'est \emph{pas} supporté et échouera au boot. Restaurez toujours
+sur un hôte exécutant la même version mybibli ou plus récente.
+\end{warning}

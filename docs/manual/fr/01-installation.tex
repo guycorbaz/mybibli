@@ -1,0 +1,333 @@
+\chapter{Installation}
+\label{ch:installation}
+
+Ce chapitre vous guide pour installer mybibli\index{installation} sur
+votre propre matériel. La cible de déploiement de référence est un
+serveur domestique, un NAS, ou toute machine Linux toujours allumée
+capable de faire tourner Docker.
+
+\section{Pré-requis système}
+
+\begin{itemize}
+  \item \textbf{Système d'exploitation :} toute distribution Linux,
+        macOS, ou hôte Windows capable de faire tourner Docker. Le
+        noyau hôte doit prendre en charge cgroups v2 (toute
+        distribution à partir de 2021).
+  \item \textbf{Docker :} version 24 ou ultérieure, avec le plugin
+        \texttt{compose}. Vérifiez avec
+        \texttt{docker compose version}.
+  \item \textbf{Disque :} au moins 1\,Go libre pour l'image de
+        l'application et la base de données. Les images de
+        couverture ajoutent environ 50\,Ko par titre.
+  \item \textbf{Mémoire :} 512\,Mo suffisent pour une bibliothèque de
+        taille familiale (quelques milliers de titres) ; 1\,Go offre
+        une marge confortable pour le pipeline de récupération de
+        métadonnées.
+  \item \textbf{Réseau :} HTTPS sortant vers les fournisseurs de
+        métadonnées\index{fournisseurs de métadonnées} que vous
+        choisissez d'utiliser (voir chapitre~\ref{ch:providers}). Les
+        déploiements en LAN uniquement fonctionnent sans aucune
+        redirection de port entrante.
+\end{itemize}
+
+\begin{warning}
+\textbf{N'installez pas mybibli en version inférieure à
+1.1.0.}\index{sécurité!seuil 1.1.0} Toute image publiée portant un
+tag inférieur à \texttt{1.1.0} contient une migration d'amorçage qui
+crée les identifiants \texttt{admin/admin} et
+\texttt{librarian/librarian} à \emph{chaque} installation neuve, y
+compris en production. L'assistant de première mise en service est
+silencieusement contourné. Utilisez 1.1.0 ou plus récent ; les images
+antérieures à 1.1.0 seront retirées de Docker Hub pour éviter toute
+utilisation accidentelle.
+\end{warning}
+
+\section{Checklist de pré-installation}
+
+Avant de commencer :
+
+\begin{enumerate}
+  \item Choisissez un répertoire hôte pour les fichiers mybibli
+        (par exemple \texttt{/srv/mybibli} sur Linux,
+        \texttt{/volume1/docker/mybibli} sur Synology DSM).
+  \item Choisissez un répertoire hôte pour le stockage des images de
+        couverture\index{couvertures!répertoire}
+        (par exemple \texttt{/srv/mybibli/covers}). Il sera monté
+        dans le conteneur.
+  \item Choisissez un mot de passe fort pour les utilisateurs
+        \texttt{root} et applicatif de la MariaDB embarquée — ou,
+        pour une base de données externe, créez à l'avance une base
+        dédiée et un utilisateur (voir
+        section~\ref{sec:install-external-db}).
+\end{enumerate}
+
+\section{Méthode 1 — Base de données embarquée}\label{sec:install-bundled}
+
+C'est le chemin le plus simple. Le fichier \texttt{docker-compose.yml}
+livré déclare deux services : l'application mybibli et une instance
+MariaDB épinglée à une version connue. Les deux sont gérés comme une
+seule unité.
+
+\subsection*{1. Récupérer le fichier compose et le \texttt{.env}}
+
+Téléchargez \texttt{docker-compose.yml} et \texttt{.env.example}
+depuis la version que vous comptez installer (ou clonez le dépôt sur
+le tag correspondant) :
+
+\begin{lstlisting}
+mkdir -p /srv/mybibli && cd /srv/mybibli
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/docker-compose.yml
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/.env.example
+cp .env.example .env
+\end{lstlisting}
+
+\subsection*{2. Éditer \texttt{.env}}
+
+Ouvrez \texttt{.env} dans votre éditeur. Chaque variable porte un
+commentaire explicatif ; les valeurs qui comptent pour une
+installation avec base embarquée sont :
+
+\begin{lstlisting}
+DATABASE_URL=mysql://mybibli:mybibli_password@db:3306/mybibli?charset=utf8mb4
+MYSQL_HOST=db
+MYSQL_DATABASE=mybibli
+MYSQL_USER=mybibli
+MYSQL_PASSWORD=<choisir-un-mot-de-passe-fort>
+MYSQL_ROOT_PASSWORD=<choisir-un-mot-de-passe-fort>
+
+HOST_PORT=8080         # à changer si 8080 est déjà pris sur l'hôte
+APP_LANGUAGE=fr        # ou 'en' pour l'interface en anglais par défaut
+
+MYBIBLI_COOKIE_SECURE=false   # mettre à true uniquement derrière HTTPS
+\end{lstlisting}
+
+L'URL \texttt{DATABASE\_URL} \emph{doit} référencer les mêmes
+utilisateur, mot de passe et nom de base que les valeurs
+\texttt{MYSQL\_*} — le fichier compose reconstruit l'URL à partir de
+ces parties mais le binaire Rust lit \texttt{DATABASE\_URL}
+directement, les deux doivent donc concorder.
+
+\begin{warning}
+Les mots de passe par défaut dans \texttt{.env.example}
+(\texttt{mybibli\_password}, \texttt{root\_password}) sont des
+remplaçants, pas des identifiants à conserver. Changez-les avant le
+premier \texttt{docker compose up}. Une fois la base créée, les faire
+tourner nécessite aussi de réécrire les entrées utilisateur dans
+MariaDB — autant le faire correctement du premier coup.
+\end{warning}
+
+\subsection*{3. Démarrer la pile}
+
+\begin{lstlisting}
+docker compose up -d
+docker compose logs -f mybibli
+\end{lstlisting}
+
+Au premier lancement :
+
+\begin{enumerate}
+  \item tire l'image \texttt{gcorbaz/mybibli:1.1.0} (ou ultérieure)
+        et l'image MariaDB ;
+  \item démarre la base de données et attend qu'elle soit saine ;
+  \item exécute les migrations de schéma mybibli
+        (initialisation unique) ;
+  \item démarre le serveur HTTP sur le port configuré.
+\end{enumerate}
+
+Vous pouvez arrêter le suivi des logs avec \texttt{Ctrl-C} ; les
+conteneurs continuent de tourner en arrière-plan.
+
+\subsection*{4. Ouvrir l'assistant de mise en service}
+
+Visitez \url{http://<hôte>:8080/setup} dans un navigateur. L'assistant
+de première mise en service\index{assistant de mise en service}
+apparaît (voir section~\ref{sec:first-boot}).
+
+\section{Méthode 2 — Base de données externe (exemple NAS Synology)}\label{sec:install-external-db}
+
+Si vous exploitez déjà MariaDB sur votre NAS — par exemple via le
+paquet \textbf{MariaDB 10} de Synology — vous pouvez pointer mybibli
+dessus au lieu de faire tourner une seconde base dans Docker. L'image
+mybibli ne change pas ; seuls le fichier compose et le \texttt{.env}
+diffèrent.
+
+\subsection*{1. Créer la base et l'utilisateur}
+
+Connectez-vous à la MariaDB externe en \texttt{root} et exécutez :
+
+\begin{lstlisting}
+CREATE DATABASE mybibli CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'mybibli'@'%' IDENTIFIED BY 'choisir-un-mot-de-passe-fort';
+GRANT ALL PRIVILEGES ON mybibli.* TO 'mybibli'@'%';
+FLUSH PRIVILEGES;
+\end{lstlisting}
+
+\begin{note}
+Sur Synology DSM, MariaDB 10 écoute sur le port \texttt{3307} par
+défaut (et non 3306 — ce port est réservé à l'ancien paquet MySQL).
+Ouvrez \textbf{MariaDB 10 → Paramètres} et cochez \emph{Activer la
+connexion TCP/IP} pour que les conteneurs sur le même pont Docker
+puissent atteindre le serveur.
+\end{note}
+
+\subsection*{2. Élaguer le fichier compose}
+
+Modifiez \texttt{docker-compose.yml} et retirez la base embarquée :
+
+\begin{itemize}
+  \item supprimez (ou commentez) tout le service \texttt{db:} ;
+  \item supprimez (ou commentez) le bloc \texttt{depends\_on:} sur le
+        service \texttt{mybibli} ;
+  \item supprimez (ou commentez) le bloc \texttt{volumes:} en bas du
+        fichier.
+\end{itemize}
+
+\subsection*{3. Pointer \texttt{.env} vers la base externe}
+
+\begin{lstlisting}
+DATABASE_URL=mysql://mybibli:mot-de-passe-fort@host.docker.internal:3307/mybibli?charset=utf8mb4
+\end{lstlisting}
+
+Remplacez le nom d'hôte et le port qui correspondent à votre réseau.
+Depuis un conteneur mybibli qui tourne sur le même pont Docker que
+le NAS hôte, \texttt{host.docker.internal} résout vers l'hôte sur
+macOS et les installations Docker Linux récentes ; sur les moteurs
+Docker plus anciens, utilisez plutôt l'IP LAN du NAS (par exemple
+\texttt{192.168.1.10}).
+
+Les variables \texttt{MYSQL\_*} sont désormais inutilisées — laissez
+les vides ou supprimez-les.
+
+\subsection*{4. Démarrer l'application}
+
+\begin{lstlisting}
+docker compose up -d
+docker compose logs -f mybibli
+\end{lstlisting}
+
+Le premier lancement exécute les migrations de schéma sur la base
+externe. Le paquet MariaDB de Synology gardera ce schéma aussi
+longtemps que le paquet existe ; sa sauvegarde est couverte par les
+outils de backup du NAS (voir chapitre~\ref{ch:backup}).
+
+\begin{tip}
+La configuration avec base externe est le chemin recommandé lorsque
+vous maintenez déjà un serveur de bases de données, car elle vous
+donne un seul pipeline de sauvegarde à surveiller au lieu de deux. La
+configuration avec base embarquée est plus rapide à mettre en place
+si vous n'avez pas d'autre charge sur l'hôte.
+\end{tip}
+
+\section{Référence des variables d'environnement}\label{sec:env-vars}
+
+La référence complète vit dans le fichier
+\texttt{.env.example}\index{variables d'env!.env.example} à la racine
+du dépôt — chaque variable porte un commentaire en ligne. Le tableau
+ci-dessous résume où chaque variable s'applique.
+
+Toutes les variables booléennes suivent un \textbf{accept-set strict}
+: seules les chaînes \texttt{1}, \texttt{true} et \texttt{TRUE}
+comptent comme « activé ». Toute autre valeur (chaîne vide,
+\texttt{0}, \texttt{false}) est traitée comme « désactivé ». Cela
+évite le piège classique où une valeur shell éculée comme \texttt{0}
+se lit comme « positionnée » et bascule silencieusement un opt-out.
+
+\begin{longtable}{@{} l l p{6.5cm} @{}}
+\toprule
+\textbf{Variable} & \textbf{Défaut} & \textbf{Rôle} \\
+\midrule
+\endhead
+\multicolumn{3}{l}{\emph{Base de données}} \\
+\texttt{DATABASE\_URL}        & --- (requis) & Chaîne de connexion MariaDB (DSN). \\
+\texttt{MYSQL\_HOST}          & \texttt{db}    & Hôte pour le service DB embarqué. \\
+\texttt{MYSQL\_PORT}          & \texttt{3306}  & Port pour le service DB embarqué. \\
+\texttt{MYSQL\_DATABASE}      & \texttt{mybibli} & Nom de base pour le service embarqué. \\
+\texttt{MYSQL\_USER}          & \texttt{mybibli} & Utilisateur DB pour le service embarqué. \\
+\texttt{MYSQL\_PASSWORD}      & --- & Mot de passe utilisateur DB embarqué. \\
+\texttt{MYSQL\_ROOT\_PASSWORD}& --- & Mot de passe root pour le service embarqué. \\
+\midrule
+\multicolumn{3}{l}{\emph{Serveur HTTP}} \\
+\texttt{HOST}                 & \texttt{0.0.0.0} & Adresse de bind dans le conteneur. \\
+\texttt{PORT}                 & \texttt{8080}    & Port de bind dans le conteneur. \\
+\texttt{HOST\_PORT}           & \texttt{8080}    & Port publié par Docker sur l'hôte. \\
+\midrule
+\multicolumn{3}{l}{\emph{Application}} \\
+\texttt{RUST\_LOG}            & \texttt{mybibli=info} & Filtre tracing. \texttt{mybibli=debug} pour des logs verbeux. \\
+\texttt{APP\_LANGUAGE}        & \texttt{en}     & Langue d'interface par défaut pour les visiteurs anonymes. \\
+\texttt{COVERS\_DIR}          & \texttt{./covers} & Chemin de stockage des images de couverture. \\
+\midrule
+\multicolumn{3}{l}{\emph{Durcissement}} \\
+\texttt{MYBIBLI\_COOKIE\_SECURE} & \texttt{false} & Mettre à \texttt{true} uniquement derrière HTTPS. \\
+\texttt{CSP\_REPORT\_ONLY}     & \texttt{false} & Bascule l'en-tête CSP en mode report-only. \\
+\midrule
+\multicolumn{3}{l}{\emph{Fournisseurs de métadonnées (migrés en DB au premier boot)}} \\
+\texttt{GOOGLE\_BOOKS\_API\_KEY} & --- & Clé optionnelle pour Google Books. \\
+\texttt{OMDB\_API\_KEY}         & --- & Clé optionnelle pour OMDb (films/séries). \\
+\texttt{TMDB\_API\_KEY}         & --- & Clé optionnelle pour TMDb (films/séries). \\
+\midrule
+\multicolumn{3}{l}{\emph{Overrides optionnels dev / test}} \\
+\texttt{MYBIBLI\_SKIP\_SETUP}      & \texttt{false} & Contourne l'assistant de première mise en service. \emph{Jamais en prod.} \\
+\texttt{MYBIBLI\_SKIP\_STARTUP\_PURGE} & \texttt{false} & Saute l'auto-purge au démarrage. \\
+\texttt{MYBIBLI\_SEED\_DEV\_USERS} & \texttt{false} & Crée les utilisateurs dev \texttt{admin/admin} + \texttt{librarian/librarian}. \emph{Jamais en prod.} \\
+\bottomrule
+\end{longtable}
+
+Les overrides d'URL de base des fournisseurs
+(\texttt{BNF\_API\_BASE\_URL},
+\texttt{GOOGLE\_BOOKS\_API\_BASE\_URL}, \dots) n'existent que pour
+pointer le pipeline de métadonnées sur le serveur mock embarqué
+pendant les tests automatisés. Laissez-les vides en production.
+
+\section{Premier boot — l'assistant de mise en service}\label{sec:first-boot}
+
+Sur une installation neuve, toute requête est redirigée vers
+\texttt{/setup} tant que l'assistant\index{assistant de mise en
+service} n'est pas terminé. L'assistant comporte quatre étapes :
+
+\begin{enumerate}
+  \item \textbf{Compte administrateur.} Choisissez un nom
+        d'utilisateur et un mot de passe fort pour le premier
+        administrateur. Cette étape est toute la raison d'être de
+        l'assistant — une fois le compte créé, le prédicat de la
+        garde s'inverse et les visiteurs suivants atterrissent sur
+        le catalogue public au lieu de \texttt{/setup}.
+  \item \textbf{Fournisseurs de métadonnées.} Collez les clés d'API
+        que vous avez sous la main (Google Books, OMDb, TMDb). Tous
+        les fournisseurs à clé sont optionnels — vous pouvez sauter
+        cette étape et ajouter les clés plus tard depuis
+        \texttt{/admin > System > Metadata Providers}.
+  \item \textbf{Préférences.} Choisissez la langue d'interface par
+        défaut pour les visiteurs anonymes et le seuil de retard de
+        prêt (en jours).
+  \item \textbf{Terminé.} Un écran récapitulatif. Après confirmation,
+        l'assistant écrit \texttt{settings.setup\_completed\_at} et
+        se désactive pour la durée de vie de l'installation.
+\end{enumerate}
+
+L'assistant est idempotent : si vous fermez le navigateur entre les
+étapes, rouvrez \texttt{/setup} et l'assistant reprend côté serveur à
+la bonne étape (il interroge la base à chaque chargement — il n'y a
+pas d'état client à perdre).
+
+\section{Vérification de l'installation}
+
+Après la fin de l'assistant :
+
+\begin{itemize}
+  \item Connectez-vous sur \url{http://<hôte>:8080/login} avec les
+        identifiants admin que vous venez de créer.
+  \item Visitez \texttt{/admin > Health}. La page doit afficher des
+        compteurs d'entités non-nuls (zéro sur une installation
+        neuve — c'est normal) et une coche verte à côté de chaque
+        fournisseur de métadonnées qui a été joignable dans les
+        cinq dernières minutes.
+  \item Scannez un ISBN (le champ de recherche en haut de la page
+        d'accueil) pour confirmer que le pipeline de métadonnées
+        résout bien un vrai titre. Le premier scan prend quelques
+        secondes ; le résultat apparaît dans la timeline des ajouts
+        récents sur la page d'accueil une fois la récupération
+        d'arrière-plan terminée.
+\end{itemize}
+
+Si quelque chose tourne mal, sautez au
+chapitre~\ref{ch:troubleshooting}.

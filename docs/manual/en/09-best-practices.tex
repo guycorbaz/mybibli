@@ -1,0 +1,119 @@
+\chapter{Best practices}
+\label{ch:bestpractices}
+
+Concentrated lessons from real-world deployments. Every section is
+optional — pick what fits your scale.
+
+\section{Storage hierarchy}
+
+\begin{itemize}
+  \item \textbf{Three levels are usually enough.} Room → shelf →
+        row covers most households. A fourth level (e.g.\ ``box
+        inside row'') becomes paperwork you have to maintain.
+  \item \textbf{Name locations the way you talk about them.}
+        ``Living-room shelf, top'' beats ``LR-S01-R01''. The names
+        are visible on barcode labels; treat them as user-facing.
+  \item \textbf{Print L-codes once.} Re-printing because you
+        rebalanced shelves is wasted effort — L-codes are stable
+        identifiers; the human-readable name on the label can drift
+        and that is fine.
+\end{itemize}
+
+\section{V-code rolls}
+
+\begin{itemize}
+  \item Print V-codes in rolls of 50 to 100. Pre-printed stickers in
+        a holder beside the scanner station make cataloging
+        \emph{fast}.
+  \item \textbf{Stick the V-code before scanning.} It removes a
+        future failure mode where you mislabel a book and have to
+        scan-find it again.
+  \item \textbf{Place the sticker consistently.} Inside back cover,
+        upper-right corner, parallel to the spine — pick a rule
+        and stick to it. Future-you doing an audit will thank
+        present-you.
+\end{itemize}
+
+\section{Genre versus Dewey}
+
+mybibli supports both broad genres and Dewey codes\index{Dewey}.
+Pick one as your primary navigation aid:
+
+\begin{itemize}
+  \item \textbf{Use genres} when the audience browses by mood
+        (``I want a thriller'') and the collection is small enough
+        that ``Thriller'' is granular enough.
+  \item \textbf{Use Dewey} when the audience browses by topic
+        (``books on 18th-century French history'') or when the
+        collection has reached the size where ``Non-fiction'' is no
+        longer a useful filter.
+  \item Using both is fine; mybibli does not force a choice.
+\end{itemize}
+
+\section{Audit cadence}
+
+\begin{itemize}
+  \item \textbf{Quarterly} for collections under a few hundred
+        volumes.
+  \item \textbf{Monthly} for collections above that, especially if
+        more than one person catalogs.
+  \item Always run an audit \emph{after} a major shelf rebalance —
+        moving books physically without telling mybibli is the
+        single biggest source of ``where is this volume?'' bugs.
+\end{itemize}
+
+\section{User accounts}
+
+\begin{itemize}
+  \item \textbf{One human, one account.} Sharing a single
+        \texttt{admin} account between two people loses the audit
+        trail and makes the last-active-admin guard less useful.
+  \item \textbf{Most editors should be Librarians, not Admins.} The
+        admin panel handles installation-time concerns and rare
+        cleanups; you do not need admin rights to catalog or loan.
+  \item \textbf{Rotate the seeded admin password on first login.}
+        On 1.1.0+ the setup wizard forces this; on legacy 1.0.x
+        installs do it manually before exposing the instance to a
+        network.
+\end{itemize}
+
+\section{Loans}
+
+\begin{itemize}
+  \item \textbf{Keep borrowers identifiable.} ``Marie L.'' beats
+        ``Marie'' the moment the second Marie shows up. Email or
+        phone in the notes field helps for chase-ups.
+  \item \textbf{Run the overdue list weekly.} The dashboard
+        indicator nags you for a reason — overdue loans
+        compounded over a year become books you no longer
+        own.
+  \item \textbf{Mark damage at return time.} Switching a returned
+        volume to \emph{Worn} or \emph{Damaged} captures the
+        information while the borrower is in front of you; chasing
+        the cost later from memory rarely works.
+\end{itemize}
+
+\section{Metadata providers}
+
+\begin{itemize}
+  \item \textbf{Keep keys minimal.} You do not need all three
+        keyed providers from day one — BnF + Open Library cover
+        books for free. Add OMDb + TMDb the day you catalog
+        your first DVD.
+  \item \textbf{Treat keys as secrets.} \texttt{.env} is in
+        \texttt{.gitignore}; keep backups of \texttt{.env}
+        encrypted (chapter~\ref{ch:backup}).
+\end{itemize}
+
+\section{Upgrades}
+
+\begin{itemize}
+  \item \textbf{Read release notes before pulling \texttt{:latest}.}
+        See chapter~\ref{ch:upgrade}.
+  \item \textbf{Back up immediately before any upgrade.} Even
+        ``additive'' migrations have non-zero failure surface;
+        a same-minute backup turns a worry into a chore.
+  \item \textbf{Pin a version tag for production.} Auto-updates
+        for a household instance are fine; for a community library,
+        an unattended major bump can interrupt service.
+\end{itemize}

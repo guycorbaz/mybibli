@@ -1,0 +1,170 @@
+\chapter{Dépannage}
+\label{ch:troubleshooting}
+
+Quand quelque chose tourne mal, commencez par les logs et le tableau
+de bord \texttt{/admin > Health}. Ce chapitre catalogue les
+problèmes que les utilisateurs rencontrent vraiment, par ordre de
+fréquence approximatif.
+
+\section{Lire les logs}
+
+\begin{lstlisting}
+docker compose logs --since 10m mybibli
+docker compose logs -f mybibli
+\end{lstlisting}
+
+Les logs sortent en JSON structuré. Les champs les plus utiles sont
+\texttt{level}, \texttt{target} (quel module a logué cette ligne),
+\texttt{message}, et toute paire clé=valeur contextuelle que la
+ligne porte (\texttt{user\_id}, \texttt{volume\_id}, \dots).
+
+Pour filtrer :
+
+\begin{lstlisting}
+docker compose logs --since 10m mybibli | grep -i error
+\end{lstlisting}
+
+\section{L'application ne démarre pas}
+
+\subsection*{Symptôme : le conteneur s'arrête immédiatement}
+
+Lancez \texttt{docker compose logs mybibli} et cherchez l'une des
+lignes :
+
+\begin{itemize}
+  \item \texttt{missing required environment variable:
+        DATABASE\_URL}\index{dépannage!DATABASE\_URL} — le fichier
+        \texttt{.env} est absent ou la variable n'est pas
+        positionnée. Voir section~\ref{sec:env-vars}.
+  \item \texttt{Failed to create database pool} — l'hôte / port /
+        identifiants dans \texttt{DATABASE\_URL} sont faux, ou la
+        base n'est pas joignable. Depuis l'hôte, essayez
+        \texttt{docker compose exec mybibli sh -c 'apk add curl;
+        curl <db-host>:<db-port>'} pour confirmer la joignabilité.
+  \item \texttt{Failed to run database migrations} — généralement
+        un souci de permission. Confirmez que l'utilisateur DB a
+        \texttt{ALL PRIVILEGES} sur la base (voir
+        section~\ref{sec:install-external-db}).
+  \item \texttt{Address already in use} — le port hôte publié est
+        pris. Changez \texttt{HOST\_PORT} dans \texttt{.env}.
+\end{itemize}
+
+\subsection*{Symptôme : chaque page renvoie 404}
+
+Le conteneur est levé mais les routes manquent. Cause la plus
+fréquente : vous avez tiré un tag d'image qui n'existe pas (faute
+de frappe) et Docker est retombé sur un vieux tag obsolète.
+\texttt{docker compose pull} puis redémarrez.
+
+\section{Impossible de se connecter}
+
+\subsection*{Symptôme : « Invalid credentials » sur une installation 1.0.x neuve}
+
+Les identifiants seedés sont \texttt{admin/admin}. S'ils ne marchent
+pas non plus :
+
+\begin{itemize}
+  \item la migration de base qui les crée a échoué silencieusement
+        — cherchez les erreurs de migration dans les logs ;
+  \item l'admin précédent a déjà tourné le mot de passe (vérifiez
+        avec qui a installé mybibli) ;
+  \item vous regardez une installation 1.1.0+, où il n'y a pas de
+        seed — utilisez plutôt l'assistant à \texttt{/setup}.
+\end{itemize}
+
+\subsection*{Symptôme : la connexion redirige vers \texttt{/login}}
+
+Le cookie de session est rejeté par le navigateur. Causes :
+
+\begin{itemize}
+  \item \texttt{MYBIBLI\_COOKIE\_SECURE=true} sur un déploiement
+        plain-HTTP — le navigateur refuse d'accepter un cookie
+        Secure en HTTP. Positionnez la variable à \texttt{false}
+        ou frontez l'instance en HTTPS.
+  \item Cookies bloqués par politique du navigateur (fenêtre
+        privée avec blocage strict des cookies tiers, etc.).
+        Testez dans un profil par défaut.
+\end{itemize}
+
+\subsection*{Symptôme : verrouillé dehors — dernier admin désactivé}
+
+La garde du dernier admin actif devrait empêcher cela, mais si un
+admin précédent a été désactivé puis supprimé définitivement, la
+récupération demande un accès SQL direct :
+
+\begin{lstlisting}
+docker compose exec db mariadb -u root -p"$MYSQL_ROOT_PASSWORD" mybibli \
+    -e "UPDATE users SET deleted_at=NULL, active=1 WHERE username='votre-admin';"
+\end{lstlisting}
+
+Ensuite connectez-vous normalement.
+
+\section{Les métadonnées ne se résolvent jamais}
+
+\subsection*{Symptôme : le titre squelette reste non résolu}
+
+Ouvrez \texttt{/admin > Health}. Regardez l'état de chaque
+fournisseur. Une croix rouge veut généralement dire :
+
+\begin{itemize}
+  \item le fournisseur est vraiment down (rare pour BnF / Open
+        Library ; plus fréquent pour les services plus petits) ;
+  \item la clé d'API est absente ou invalide — ouvrez
+        \texttt{/admin > System > Metadata Providers} et re-saisissez
+        la clé ;
+  \item l'hôte ne peut pas joindre l'upstream. Confirmez avec
+        \texttt{docker compose exec mybibli sh -c "wget -q
+        https://www.googleapis.com/books/v1 -O -"} ou équivalent.
+\end{itemize}
+
+\subsection*{Symptôme : seuls les ISBN français se résolvent}
+
+Vous avez désactivé (ou jamais positionné) les clés Google Books /
+Open Library. BnF est excellent pour les titres édités en France
+mais limité pour les titres en langues étrangères. Ajoutez au
+moins Open Library (sans clé requise).
+
+\section{La recherche renvoie trop peu de résultats}
+
+\subsection*{Symptôme : des titres connus ne remontent pas}
+
+\begin{itemize}
+  \item Confirmez que le titre n'est pas soft-deleted (vérifiez
+        \texttt{/admin > Trash}). La recherche cache les éléments
+        soft-deleted.
+  \item Confirmez que les contributeurs du titre sont orthographiés
+        comme vous avez cherché. La recherche mybibli est floue
+        mais pas magique ; « Camus » trouvera « Albert Camus »
+        mais « Camu » peut ne rien donner.
+\end{itemize}
+
+\subsection*{Symptôme : la recherche est lente}
+
+Pour les collections au-delà de 10\,000 titres, les requêtes qui
+combinent contributeur et texte libre peuvent prendre une
+seconde ou deux. C'est une limitation connue ; des index prévus
+combleront l'écart.
+
+\section{Images de couverture manquantes}
+
+\subsection*{Symptôme : chaque titre affiche le placeholder}
+
+Le répertoire \texttt{covers/} est vide ou illisible. Confirmez :
+
+\begin{itemize}
+  \item que le volume monté dans \texttt{docker-compose.yml} pointe
+        vers un répertoire qui existe et est accessible en écriture
+        au conteneur ;
+  \item que la récupération de métadonnées a effectivement renvoyé
+        une URL de couverture (regardez la page du titre — si l'URL
+        manque, le fournisseur ne l'a pas fournie).
+\end{itemize}
+
+\section{Où signaler un bug}
+
+Problèmes que vous ne pouvez pas résoudre, ou comportement qui
+contredit ce manuel : ouvrez un ticket sur
+\url{https://github.com/guycorbaz/mybibli/issues}. Le template
+d'issue demande la version (visible en pied de page), la méthode
+d'installation et les étapes pour reproduire — merci de les
+renseigner.

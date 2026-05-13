@@ -1,0 +1,173 @@
+\chapter{Everyday use}
+\label{ch:usage}
+
+This chapter walks through the workflows you will run dozens of
+times once the library is live: cataloging a new volume, searching
+your collection, moving a volume, lending it out, taking it back,
+and auditing what is on the shelves.
+
+\section{The home page}\label{sec:home}
+
+The home page is the dashboard. From top to bottom:
+
+\begin{itemize}
+  \item \textbf{Scan field.}\index{scan field} A focused input that
+        accepts an ISBN, a V-code or an L-code. The scanner-guard
+        layer routes the input to the right page depending on its
+        prefix.
+  \item \textbf{Indicators row.} Recent additions, overdue loans,
+        series with gaps, unshelved volumes — each click jumps to
+        the filtered list.
+  \item \textbf{Recent activity.} The last seven days of cataloging
+        and returns.
+\end{itemize}
+
+\section{Cataloging a new title via barcode}\label{sec:catalog-scan}
+
+\begin{enumerate}
+  \item Focus the home-page scan field (it is selected by default
+        on page load). Scan the ISBN / EAN-13 of the back cover.
+  \item mybibli redirects to the catalog page, which displays a
+        skeleton title with the barcode you scanned. A background
+        task fires off requests against the metadata provider
+        chain.
+  \item Within a few seconds, the skeleton fills in: title,
+        contributors, publisher, year, cover image. A small
+        indicator confirms which provider resolved the title.
+  \item Pick a \textbf{location}\index{location} from the dropdown
+        (or scan the L-code of the destination shelf) and pick a
+        \textbf{volume state}\index{volume state} (typically
+        \emph{New}). Click \textbf{Add volume}.
+  \item Print and stick a V-code label on the volume.
+\end{enumerate}
+
+If the metadata pipeline fails to resolve the ISBN, the title
+appears with an \emph{Unresolved} badge. You can edit the title
+fields manually and the volume is still created.
+
+\begin{tip}
+Cataloging in batches works best when the V-code sticker roll, the
+scanner and the printer are all within arm's reach. Most of the time
+is spent scanning, not waiting for mybibli — the metadata fetch is
+asynchronous, so you do not have to wait for it to finish before
+moving on to the next volume.
+\end{tip}
+
+\section{Searching the collection}\label{sec:search}
+
+The \texttt{/search} page accepts:
+
+\begin{itemize}
+  \item full or partial \textbf{title};
+  \item \textbf{contributor name} (matches on author by default;
+        other contributor roles are scored lower);
+  \item \textbf{ISBN / EAN-13} — exact match;
+  \item \textbf{V-code} or \textbf{L-code} — exact match;
+  \item \textbf{Dewey code} (for libraries that use Dewey).
+\end{itemize}
+
+Results are sorted by relevance. Click a result to open the
+title page; click a contributor to filter the catalog by their
+work; click a location label to see every volume currently in
+that location.
+
+\begin{tip}
+You can ``search'' a single volume by scanning its V-code from any
+page that has the home-page scan field — that includes the home
+page, \texttt{/search} and \texttt{/loans}. Faster than typing.
+\end{tip}
+
+\section{Moving a volume to another location}\label{sec:move-volume}
+
+\begin{enumerate}
+  \item Open the volume page (search by V-code or click through from
+        a title page).
+  \item Click \textbf{Move}.
+  \item Scan the L-code of the destination location, or pick it
+        from the dropdown.
+  \item Confirm.
+\end{enumerate}
+
+mybibli records the move in the volume's location history so you can
+trace where a book has lived over time.
+
+\section{Loans}\label{sec:loans}
+
+\subsection*{Lending a volume}
+
+\begin{enumerate}
+  \item Open \texttt{/loans} and click \textbf{New loan}.
+  \item Scan or pick the \textbf{borrower}\index{borrower}. If the
+        borrower does not exist yet, click \emph{Create borrower}
+        inline.
+  \item Scan or pick the \textbf{volume} (V-code).
+  \item Optionally set a custom \textbf{due date}; otherwise mybibli
+        derives it from the overdue threshold (chapter
+        \ref{ch:configuration}).
+  \item Confirm.
+\end{enumerate}
+
+The volume's current location is recorded on the loan row so a
+later return can restore it to the right shelf.
+
+\subsection*{Returning a volume}
+
+\begin{enumerate}
+  \item Open \texttt{/loans} and find the active loan (filter on
+        \emph{Active} or scan the V-code).
+  \item Click \textbf{Return}.
+  \item Pick the post-return state (\emph{Good}, \emph{Worn},
+        \dots).
+  \item Confirm. The volume snaps back to its pre-loan
+        location automatically.
+\end{enumerate}
+
+\subsection*{Overdue loans}
+
+Loans that exceed the overdue threshold turn red on the
+\texttt{/loans} page and on the home-page \emph{Overdue} indicator.
+You can run \texttt{/loans?filter=overdue} for a focused list.
+
+\section{Library audit}\label{sec:audit}
+
+An \emph{audit}\index{audit} is the routine ``walk the shelves and
+confirm everything is where the database says it is''. mybibli does
+not ship a dedicated audit mode — the equivalent workflow is:
+
+\begin{enumerate}
+  \item Filter \texttt{/search} by the location you intend to
+        audit, sorted by V-code.
+  \item Walk the shelf, scanning each V-code.
+  \item For any volume scanned that is \emph{not} in the filtered
+        list, mybibli surfaces a \emph{Volume not in this location}
+        message. Move it (section~\ref{sec:move-volume}) and move
+        on.
+  \item Any volume \emph{in} the filtered list that you did
+        \emph{not} scan after walking the shelf is suspect — either
+        misplaced or missing. Mark it for follow-up.
+\end{enumerate}
+
+\begin{tip}
+A quarterly audit catches misplaced volumes early — the longer a
+book has been on the wrong shelf, the harder it is to remember
+where it should be.
+\end{tip}
+
+\section{Shelving workflow}\label{sec:shelving}
+
+After a returns batch, the volumes pile up near the scanner
+station. mybibli's \emph{shelving}\index{shelving} flow speeds up
+putting them back:
+
+\begin{enumerate}
+  \item Pick up a volume and scan its V-code.
+  \item mybibli shows the volume page with the original location
+        prominently displayed.
+  \item Walk the volume to that shelf. Scan the L-code on the shelf
+        to confirm.
+  \item Repeat.
+\end{enumerate}
+
+Confirming with the L-code is optional but recommended — it leaves
+a fresh entry in the volume's location history that the next audit
+can rely on.
