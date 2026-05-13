@@ -228,6 +228,10 @@ impl TrashModel {
             "storage_locations" => "name",
             "borrowers" => "name",
             "series" => "name",
+            // Issue #69: `users` was added to ALLOWED_TABLES so the
+            // trash UNION enumerates it; surface the username as the
+            // human-readable item label.
+            "users" => "username",
             _ => "name",
         }
     }

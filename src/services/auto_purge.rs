@@ -38,6 +38,15 @@ pub(crate) const PURGE_DELETION_ORDER: &[&str] = &[
     "storage_locations", // self-FK (hierarchical)
     "contributors",
     "genres",
+    // Issue #69: deactivated users hard-deleted after 30 days.
+    // Sessions for deactivated users are wiped in the same transaction
+    // by `services::users::deactivate` (story 8-3), so by the time
+    // auto-purge visits the row the `sessions.user_id` RESTRICT FK has
+    // no rows to block the DELETE. `admin_audit.user_id` is SET NULL
+    // (migration 20260513000002 / issue #70), so audit history
+    // survives the hard delete with `user_username` + `user_role`
+    // preserved in the JSON details payload.
+    "users",
 ];
 
 #[derive(Clone, Debug, Default)]
