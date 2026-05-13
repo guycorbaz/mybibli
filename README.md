@@ -4,6 +4,24 @@
 
 > Personal library cataloging for home collectors.
 
+> ## 🛑 DO NOT INSTALL VERSIONS BELOW 1.1.0
+>
+> Every published image with a tag below `1.1.0` (including `v1.0.0` …
+> `v1.0.5` and any `:latest` snapshot taken before the 1.1.0 release)
+> ships seed migrations that create default credentials
+> (`admin/admin`, `librarian/librarian`) on EVERY fresh install,
+> including production deployments. The first-launch setup wizard at
+> `/setup` is silently bypassed because the seed creates an admin
+> before the gate predicate is evaluated. See
+> [#173](https://github.com/guycorbaz/mybibli/issues/173) for the full
+> writeup. The pre-1.1.0 Docker Hub tags will be removed to prevent
+> accidental installs.
+>
+> **Install 1.1.0 or later.** A fresh install at 1.1.0+ greets you with
+> the setup wizard and forces you to create your own admin account. If
+> you already deployed an earlier version, wipe the database and
+> reinstall on 1.1.0+ before adding any data.
+
 **Status:** first public release shipped — `v1.0.0`. All nine epics done. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli).
 
 ## What it is
@@ -34,7 +52,54 @@ Built for collectors who want more than a spreadsheet:
 
 ## Quick start (end users)
 
-Pre-built images are published to Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli) — `:latest` tracks the highest semver, individual tags pin to the exact release. For development against the source tree, see **Development** below.
+Pre-built images are published to Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli) — `:latest` tracks the highest semver, individual tags pin to the exact release. Honor the **1.1.0 minimum** banner above. For development against the source tree, see **Development** below.
+
+## Configuration
+
+All deployment-time settings are environment variables — there is no
+config file. `.env.example` is the canonical reference: every variable
+the Rust binary reads or that `docker-compose.yml` interpolates is
+listed and commented there. Copy it to `.env` and adjust for your
+deployment:
+
+```bash
+cp .env.example .env
+$EDITOR .env
+docker compose up
+```
+
+The variables are grouped in seven sections:
+
+1. **Database connection** — `DATABASE_URL` plus the `MYSQL_*` parts
+   used by the bundled `db` service.
+2. **HTTP server** — `HOST`, `PORT`, `HOST_PORT` (the host-side port
+   published by Docker).
+3. **Application** — `RUST_LOG` (tracing filter; prod-safe default
+   `mybibli=info`), `APP_LANGUAGE` (`en` or `fr`), `COVERS_DIR`
+   (filesystem path for downloaded cover images).
+4. **Cookie & CSP hardening** — `MYBIBLI_COOKIE_SECURE` (set to `true`
+   only behind HTTPS, see issue
+   [#94](https://github.com/guycorbaz/mybibli/issues/94)),
+   `CSP_REPORT_ONLY`.
+5. **Metadata provider API keys** — `GOOGLE_BOOKS_API_KEY`,
+   `OMDB_API_KEY`, `TMDB_API_KEY`. Migrated ONCE into the `settings`
+   table at boot; afterwards the admin can rotate or clear them via
+   `/admin > System > Metadata Providers`. Re-set them in `.env` only
+   when you want the deployment-time value to win on the next reboot.
+6. **Metadata provider base URL overrides** — used exclusively by the
+   E2E test stack to point each provider at the in-tree mock server.
+   Leave unset in production.
+7. **Optional dev/test overrides** — `MYBIBLI_SKIP_SETUP`,
+   `MYBIBLI_SKIP_STARTUP_PURGE`. Strict accept-set: only `1` / `true`
+   / `TRUE` count as "on"; anything else is ignored.
+
+Boolean variables across the codebase use the same strict accept-set,
+which avoids the classic footgun where a stale shell value like `0`
+reads as "set" and silently flips an opt-out.
+
+Shell-level env vars used for build / test commands (`SQLX_OFFLINE`,
+`TEST_ADMIN_PASSWORD`, `MYBIBLI_SETUP_E2E`, …) are documented inline
+in the **Development** section below — they do not belong in `.env`.
 
 ## Development
 
@@ -63,7 +128,10 @@ The app listens on `http://localhost:8080`. The seed migrations create an admin 
 > `admin/admin`, open **`/admin?tab=users`**, rotate the admin password,
 > and deactivate or rename the `librarian` account if you don't need a
 > second seeded user. Never expose a fresh install to an untrusted network
-> before completing this step.
+> before completing this step. **This is being fixed in 1.1.0** — see
+> [#173](https://github.com/guycorbaz/mybibli/issues/173); a new env var
+> (`MYBIBLI_SEED_DEV_USERS`, default `0`) gates the seed so production
+> installs land on the `/setup` wizard instead.
 
 **Fresh-install wizard.** Story 8-8 introduced a first-launch wizard at `/setup` whose gate predicate is `(active_admin_count == 0) AND (settings.setup_completed_at IS NONE)`. Because the seed migrations create an admin before the gate is first evaluated, the wizard never triggers in practice on a default install — the password-rotation step above is the effective onboarding flow. The wizard can still be exercised by running `cargo run` against an empty DB with the seed migrations skipped. `MYBIBLI_SKIP_SETUP=1` (strict accept-set: `1` / `true` / `TRUE`) is the explicit bypass.
 
