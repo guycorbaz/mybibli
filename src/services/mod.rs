@@ -11,6 +11,7 @@ pub mod locations;
 pub mod locking;
 pub mod password;
 pub mod search;
+pub mod seed_gate;
 pub mod series;
 pub mod setup;
 pub mod soft_delete;

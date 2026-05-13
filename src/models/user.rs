@@ -59,10 +59,13 @@ impl UserModel {
             validate_role(role)?;
         }
 
+        // Issue #68: the SYSTEM user is an internal audit-attribution
+        // actor, NOT a member of the human user roster. Hide it from
+        // every paginated listing so it never appears in `/admin > Users`.
         let mut query_str = String::from(
             "SELECT u.id, u.username, u.role, u.preferred_language, u.created_at, u.deleted_at, u.version, \
                     (SELECT MAX(s.created_at) FROM sessions s WHERE s.user_id = u.id) AS last_login \
-             FROM users u WHERE 1=1",
+             FROM users u WHERE u.role != 'system'",
         );
 
         match filter_status {
@@ -106,7 +109,9 @@ impl UserModel {
             validate_role(role)?;
         }
 
-        let mut query_str = String::from("SELECT COUNT(*) FROM users WHERE 1=1");
+        // Issue #68: mirror the `role != 'system'` exclusion from
+        // `list_page` so the count and the page contents stay aligned.
+        let mut query_str = String::from("SELECT COUNT(*) FROM users WHERE role != 'system'");
 
         match filter_status {
             UserStatus::Active => query_str.push_str(" AND deleted_at IS NULL"),
@@ -145,6 +150,20 @@ impl UserModel {
             Some(r) => Ok(Some(row_to_user(r)?)),
             None => Ok(None),
         }
+    }
+
+    /// Issue #68 — return the id of the dedicated SYSTEM user row.
+    /// Background tasks (auto-purge, scheduled jobs) attribute their
+    /// `admin_audit` rows to this id instead of hardcoding `user_id=1`.
+    /// Returns an error if the SYSTEM row is missing — that points at a
+    /// migration that did not run; callers should log and fall back to
+    /// a non-attribution path rather than crashing.
+    pub async fn find_system_user_id(pool: &DbPool) -> Result<u64, AppError> {
+        let id: (u64,) =
+            sqlx::query_as("SELECT id FROM users WHERE role = 'system' LIMIT 1")
+                .fetch_one(pool)
+                .await?;
+        Ok(id.0)
     }
 
     /// Find a user by username, including deactivated users.

@@ -14,14 +14,20 @@ use sqlx::MySqlPool;
 
 #[sqlx::test(migrations = "./migrations")]
 async fn admin_and_librarian_seeds_present(pool: MySqlPool) {
-    // AC #1: fresh DB must contain EXACTLY these two users, both active.
-    let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL")
-        .fetch_one(&pool)
-        .await
-        .expect("count users");
+    // AC #1: fresh DB must contain EXACTLY two HUMAN-login-eligible
+    // users, both active. The SYSTEM user (issue #68, migration
+    // 20260513000001) is also present but excluded from this
+    // assertion — see the dedicated `system_user_present` test below.
+    let (total,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM users \
+         WHERE deleted_at IS NULL AND role IN ('admin', 'librarian')",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count users");
     assert_eq!(
         total, 2,
-        "fresh DB must seed exactly two users (admin + librarian), got {total}"
+        "fresh DB must seed exactly two human users (admin + librarian), got {total}"
     );
 
     let rows: Vec<(String, String, bool)> = sqlx::query_as(
@@ -41,6 +47,26 @@ async fn admin_and_librarian_seeds_present(pool: MySqlPool) {
         ],
         "fresh DB must seed admin and librarian users with matching roles and active=TRUE"
     );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn system_user_present_and_not_login_eligible(pool: MySqlPool) {
+    // Issue #68: dedicated SYSTEM user for audit-trail attribution.
+    // Migration 20260513000001 plants exactly one row with role='system',
+    // active=FALSE, and a password_hash that is not a valid argon2
+    // string. The login predicate filters role IN ('admin', 'librarian'),
+    // so SYSTEM is unreachable through `POST /login` regardless.
+    let rows: Vec<(String, String, bool)> = sqlx::query_as(
+        "SELECT username, role, active FROM users WHERE role = 'system'",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("query system users");
+
+    assert_eq!(rows.len(), 1, "exactly one SYSTEM user must exist");
+    assert_eq!(rows[0].0, "SYSTEM");
+    assert_eq!(rows[0].1, "system");
+    assert!(!rows[0].2, "SYSTEM user must have active=FALSE");
 }
 
 #[sqlx::test(migrations = "./migrations")]

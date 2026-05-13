@@ -16,6 +16,12 @@ pub const ALLOWED_TABLES: &[&str] = &[
     "storage_locations",
     "borrowers",
     "series",
+    // Issue #69: deactivated users are soft-deleted into this table.
+    // Adding `users` here activates the pre-existing self-delete and
+    // last-active-admin guards in `admin_trash_permanent_delete` —
+    // they were unreachable before because the handler delegated to
+    // `TrashService::permanent_delete` which rejected `users` outright.
+    "users",
 ];
 
 pub struct SoftDeleteService;
@@ -60,12 +66,16 @@ mod tests {
         assert!(ALLOWED_TABLES.contains(&"storage_locations"));
         assert!(ALLOWED_TABLES.contains(&"borrowers"));
         assert!(ALLOWED_TABLES.contains(&"series"));
+        // Issue #69 — deactivated users are soft-deleted into Trash.
+        assert!(ALLOWED_TABLES.contains(&"users"));
     }
 
     #[test]
     fn test_disallowed_table_rejected() {
-        // Cannot test async without DB, but verify the whitelist check logic
-        assert!(!ALLOWED_TABLES.contains(&"users"));
+        // Cannot test async without DB, but verify the whitelist check logic.
+        // Both `sessions` and `settings` are deliberately out — sessions are
+        // hard-deleted in the deactivate flow, and `settings` is a K/V row
+        // not an entity row.
         assert!(!ALLOWED_TABLES.contains(&"sessions"));
         assert!(!ALLOWED_TABLES.contains(&"settings"));
         assert!(!ALLOWED_TABLES.contains(&"DROP TABLE titles; --"));

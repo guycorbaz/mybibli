@@ -6,7 +6,11 @@ use crate::error::AppError;
 #[derive(Clone, Debug)]
 pub struct AdminAuditEntry {
     pub id: u64,
-    pub user_id: u64,
+    /// `None` when the row's actor has been hard-deleted (issue #70).
+    /// The audit row's persistent attribution lives in
+    /// `details.user_username` + `details.user_role`, set at insert
+    /// time by every production call site.
+    pub user_id: Option<u64>,
     pub action: String,
     pub entity_type: Option<String>,
     pub entity_id: Option<u64>,
@@ -91,7 +95,7 @@ impl AdminAuditModel {
 
         Ok(AdminAuditEntry {
             id,
-            user_id,
+            user_id: Some(user_id),
             action: action.to_string(),
             entity_type: entity_type.map(|s| s.to_string()),
             entity_id,
@@ -145,7 +149,9 @@ impl AdminAuditModel {
                 let id = r.get::<i64, _>("id") as u64;
                 AdminAuditEntry {
                     id,
-                    user_id: r.get::<i64, _>("user_id") as u64,
+                    // Issue #70: user_id is NULLable post-migration
+                    // `20260513000002_admin_audit_fk_set_null.sql`.
+                    user_id: r.get::<Option<i64>, _>("user_id").map(|v| v as u64),
                     action: r.get::<String, _>("action"),
                     entity_type: r.get::<Option<String>, _>("entity_type"),
                     entity_id: r.get::<Option<i64>, _>("entity_id").map(|id| id as u64),
@@ -191,7 +197,7 @@ mod tests {
         .await?;
 
         assert!(entry.id > 0);
-        assert_eq!(entry.user_id, 1);
+        assert_eq!(entry.user_id, Some(1));
         assert_eq!(entry.action, "permanent_delete_from_trash");
         assert_eq!(entry.entity_type, Some("titles".to_string()));
         assert_eq!(entry.entity_id, Some(42));

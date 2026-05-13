@@ -13,6 +13,10 @@ services:
       # dev stack — the seed migrations already create admin + librarian.
       # To exercise the wizard locally, run `cargo run` against an empty DB.
       MYBIBLI_SKIP_SETUP: "1"
+      # Issue #173: retain the seeded admin/librarian users so the
+      # integrated dev stack keeps `admin/admin` / `librarian/librarian`
+      # working out of the box. NEVER set this on a production deployment.
+      MYBIBLI_SEED_DEV_USERS: "1"
     depends_on:
       db:
         condition: service_healthy

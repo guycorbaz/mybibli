@@ -120,18 +120,16 @@ cd tests/e2e
 docker compose -f docker-compose.test.yml up --build
 ```
 
-The app listens on `http://localhost:8080`. The seed migrations create an admin user (`admin` / `admin`, role `admin`) and a librarian (`librarian` / `librarian`, role `librarian`).
+The app listens on `http://localhost:8080`. The seed migrations create an admin user (`admin` / `admin`, role `admin`) and a librarian (`librarian` / `librarian`, role `librarian`) **only when `MYBIBLI_SEED_DEV_USERS=1` is set** — which is baked into both `docker-compose.dev.yml` and `tests/e2e/docker-compose.test.yml`.
 
-> ⚠️ **Default credentials run unconditionally — including in production.**
-> The seed migrations apply to every fresh install regardless of `RUST_LOG`
-> or environment. As soon as your deployment is reachable, log in as
-> `admin/admin`, open **`/admin?tab=users`**, rotate the admin password,
-> and deactivate or rename the `librarian` account if you don't need a
-> second seeded user. Never expose a fresh install to an untrusted network
-> before completing this step. **This is being fixed in 1.1.0** — see
-> [#173](https://github.com/guycorbaz/mybibli/issues/173); a new env var
-> (`MYBIBLI_SEED_DEV_USERS`, default `0`) gates the seed so production
-> installs land on the `/setup` wizard instead.
+> ℹ️ **Seed users are now gated (issue #173, fixed in 1.1.0).**
+> On a fresh install where `MYBIBLI_SEED_DEV_USERS` is unset, the
+> seed migrations still apply but the gate in `src/services/seed_gate.rs`
+> immediately soft-deletes any user whose hash still matches the
+> documented seed value. The first-launch wizard at `/setup` is
+> therefore reachable on every fresh production deployment. Set the
+> env var to `1` only for local development and the E2E test stack —
+> never in production.
 
 **Fresh-install wizard.** Story 8-8 introduced a first-launch wizard at `/setup` whose gate predicate is `(active_admin_count == 0) AND (settings.setup_completed_at IS NONE)`. Because the seed migrations create an admin before the gate is first evaluated, the wizard never triggers in practice on a default install — the password-rotation step above is the effective onboarding flow. The wizard can still be exercised by running `cargo run` against an empty DB with the seed migrations skipped. `MYBIBLI_SKIP_SETUP=1` (strict accept-set: `1` / `true` / `TRUE`) is the explicit bypass.
 

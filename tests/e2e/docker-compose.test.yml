@@ -29,6 +29,10 @@ services:
       # Accepts only "1" / "true" / "TRUE". The wizard's own E2E spec
       # spawns a sibling stack WITHOUT this flag (see setup-wizard.spec.ts).
       MYBIBLI_SKIP_SETUP: "1"
+      # Issue #173: retain the seeded admin/librarian rows for the
+      # Playwright loginAs() helper and the seeded-stack E2E suite.
+      # The wizard-E2E override (docker-compose.wizard.yml) unsets this.
+      MYBIBLI_SEED_DEV_USERS: "1"
     depends_on:
       db:
         condition: service_healthy

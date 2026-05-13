@@ -253,14 +253,16 @@ mod tests {
         let n = trash_count(&pool).await.unwrap();
         assert_eq!(n, 2, "trash count sums across every ALLOWED_TABLES entry");
 
-        // Regression guard: the whitelist size is frozen at 6 for story 8-1.
-        // Story 8-5 extends this — when it does, this assertion is the
-        // intentional tripwire that forces the extension PR to touch the
-        // badge-count test rather than silently shrink it.
+        // Regression guard: the whitelist size is currently 7 — original
+        // 8-1 entries (titles, volumes, contributors, storage_locations,
+        // borrowers, series) plus issue #69's addition of `users`. When
+        // a future story extends the whitelist, this assertion is the
+        // intentional tripwire that forces the extension PR to touch
+        // the badge-count test rather than silently shrink it.
         assert_eq!(
             ALLOWED_TABLES.len(),
-            6,
-            "8-1 expects exactly 6 whitelisted tables; story 8-5 extends the whitelist + this test"
+            7,
+            "ALLOWED_TABLES = 7 since issue #69; extending the whitelist requires updating this regression guard."
         );
     }
 

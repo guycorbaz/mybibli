@@ -38,6 +38,15 @@ pub(crate) const PURGE_DELETION_ORDER: &[&str] = &[
     "storage_locations", // self-FK (hierarchical)
     "contributors",
     "genres",
+    // Issue #69: deactivated users hard-deleted after 30 days.
+    // Sessions for deactivated users are wiped in the same transaction
+    // by `services::users::deactivate` (story 8-3), so by the time
+    // auto-purge visits the row the `sessions.user_id` RESTRICT FK has
+    // no rows to block the DELETE. `admin_audit.user_id` is SET NULL
+    // (migration 20260513000002 / issue #70), so audit history
+    // survives the hard delete with `user_username` + `user_role`
+    // preserved in the JSON details payload.
+    "users",
 ];
 
 #[derive(Clone, Debug, Default)]
@@ -245,6 +254,13 @@ impl AutoPurgeService {
             .unwrap_or(serde_json::Value::Null);
 
         let details = json!({
+            // Issue #70: capture actor identity in the JSON payload so
+            // the audit row survives an FK SET NULL when the SYSTEM
+            // user row is itself deleted (admin_audit_user_fk via
+            // migration 20260513000002). Hardcoded for SYSTEM since
+            // those values are migration-stable.
+            "user_username": "SYSTEM",
+            "user_role": "system",
             // R3-N2 + R3-N11: split the conflated `tables_processed`
             // counter into attempted/succeeded/errored so forensic readers
             // can tell "everything ran clean" from "12 tables visited but
@@ -260,11 +276,29 @@ impl AutoPurgeService {
             "per_table": per_table_json,
         });
 
-        // Use a system user ID or hardcoded value. For now, we'll use 1 (assuming admin user exists)
-        // In production, you might want a special "system" user ID (tracked as P29).
+        // Issue #68: attribute the row to the dedicated SYSTEM user
+        // (migration 20260513000001) instead of hardcoding `user_id=1`.
+        // A missing SYSTEM row points at a migration that did not run;
+        // log loudly and fall back to id=1 so the audit insert does not
+        // panic — the row will simply attribute to whatever admin owns
+        // id=1, which is the pre-1.1.0 behaviour.
+        let system_user_id =
+            match crate::models::user::UserModel::find_system_user_id(pool).await {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::error!(
+                        error = ?e,
+                        "SYSTEM user lookup failed — falling back to user_id=1. \
+                         This points at migration 20260513000001 not having run; \
+                         investigate and re-run migrations."
+                    );
+                    1
+                }
+            };
+
         AdminAuditModel::create(
             pool,
-            1,
+            system_user_id,
             "auto_purge",
             None,
             None,

@@ -154,10 +154,15 @@ pub async fn login(
     let password = form.password.as_str();
     let url_for_toggle = current_url(&uri);
 
-    // Look up user (widened to read preferred_language for cookie sync — AC 5, 15)
+    // Look up user (widened to read preferred_language for cookie sync — AC 5, 15).
+    // Issue #68: explicitly restrict to the two human-login roles. The
+    // SYSTEM user (role = 'system', see migration 20260513000001) MUST
+    // NOT be reachable through this query even if `active` is ever
+    // flipped on its row by an operator who doesn't know what it is.
     let user_row: Option<(u64, String, String, Option<String>)> = sqlx::query_as(
         "SELECT id, password_hash, role, preferred_language FROM users \
-         WHERE username = ? AND active = TRUE AND deleted_at IS NULL",
+         WHERE username = ? AND active = TRUE AND deleted_at IS NULL \
+           AND role IN ('admin', 'librarian')",
     )
     .bind(username)
     .fetch_optional(pool)

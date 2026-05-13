@@ -16,7 +16,7 @@ use mybibli::metadata::tmdb::TmdbProvider;
 use mybibli::middleware::logging;
 use mybibli::middleware::setup_gate::SetupGateState;
 use mybibli::routes;
-use mybibli::services::{admin_health, auto_purge};
+use mybibli::services::{admin_health, auto_purge, seed_gate};
 use mybibli::tasks::{anonymous_session_purge, auto_purge_scheduler, provider_health};
 
 use tokio::net::TcpListener;
@@ -47,6 +47,27 @@ async fn main() {
         .expect("Failed to run database migrations");
 
     tracing::info!("Database migrations completed");
+
+    // Issue #173 — production gate against the dev seed migrations.
+    // Soft-deletes any user whose hash still matches the documented seed
+    // hash unless MYBIBLI_SEED_DEV_USERS=1 opts back in (dev/E2E). Runs
+    // immediately after migrations so the setup wizard's
+    // `active_admin_count == 0` predicate sees the correct count on the
+    // very first request. Errors are logged and the binary continues —
+    // a failed gate leaves the seeded users in place, no worse than the
+    // pre-1.1.0 behaviour, and worth flagging in logs.
+    match seed_gate::apply(&pool).await {
+        Ok(removed) if removed > 0 => {
+            tracing::info!(
+                removed_count = removed,
+                "Seed gate removed {removed} seeded user(s) (issue #173)"
+            );
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::error!(error = %e, "Seed gate failed (continuing, see issue #173)");
+        }
+    }
 
     // Validate FK dependency order against schema. Story 8-7 P5: never panic
     // here — schema evolution (adding/removing whitelisted tables) MUST NOT
