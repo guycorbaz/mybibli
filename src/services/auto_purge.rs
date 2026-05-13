@@ -260,11 +260,29 @@ impl AutoPurgeService {
             "per_table": per_table_json,
         });
 
-        // Use a system user ID or hardcoded value. For now, we'll use 1 (assuming admin user exists)
-        // In production, you might want a special "system" user ID (tracked as P29).
+        // Issue #68: attribute the row to the dedicated SYSTEM user
+        // (migration 20260513000001) instead of hardcoding `user_id=1`.
+        // A missing SYSTEM row points at a migration that did not run;
+        // log loudly and fall back to id=1 so the audit insert does not
+        // panic — the row will simply attribute to whatever admin owns
+        // id=1, which is the pre-1.1.0 behaviour.
+        let system_user_id =
+            match crate::models::user::UserModel::find_system_user_id(pool).await {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::error!(
+                        error = ?e,
+                        "SYSTEM user lookup failed — falling back to user_id=1. \
+                         This points at migration 20260513000001 not having run; \
+                         investigate and re-run migrations."
+                    );
+                    1
+                }
+            };
+
         AdminAuditModel::create(
             pool,
-            1,
+            system_user_id,
             "auto_purge",
             None,
             None,

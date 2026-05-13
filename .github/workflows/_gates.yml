@@ -112,7 +112,8 @@ jobs:
             --test metadata_fetch_race \
             --test seed_gate \
             --test seeded_users \
-            --test setup_wizard
+            --test setup_wizard \
+            --test system_user
 
       - name: Collect MariaDB logs on failure
         if: failure() || cancelled()
