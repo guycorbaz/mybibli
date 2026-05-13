@@ -1,0 +1,90 @@
+\chapter{Types de médias multiples}
+\label{ch:multimedia}
+
+mybibli n'est pas réservé aux livres. Quatre types de
+médias\index{types de médias} sont des citoyens de première classe :
+
+\begin{itemize}
+  \item \textbf{Livre} — le défaut. Romans, essais, ouvrages de
+        référence, albums illustrés pour enfants.
+  \item \textbf{BD / comic}\index{BD / comic} — comic individuel ou
+        album omnibus multi-positions (par exemple une « anthologie
+        Tintin » qui réunit physiquement les volumes 1 à 5).
+  \item \textbf{Audio} — CD, vinyles, livres audio sur support
+        physique.
+  \item \textbf{Film / série}\index{film} — DVD, coffrets Blu-ray,
+        intégrales de séries TV.
+\end{itemize}
+
+Le type de média pilote trois choses :
+
+\begin{enumerate}
+  \item \textbf{Quel fournisseur de métadonnées est consulté en
+        premier.} Les ISBN routent vers BnF + Google Books + Open
+        Library ; les films routent vers TMDb + OMDb ; l'audio
+        route vers MusicBrainz.
+  \item \textbf{Quels champs sont exposés sur la page du titre.}
+        Les titres audio font apparaître une track list ; les
+        films font apparaître réalisateur, durée, restriction
+        d'âge.
+  \item \textbf{L'icône affichée à côté du titre} dans les
+        résultats de recherche et la liste de catalogue.
+\end{enumerate}
+
+\section{Livres}
+
+Le type de média par défaut. Catalogage tel que décrit en
+section~\ref{sec:catalog-scan}. Les séries multi-volumes
+(encyclopédies, trilogies, \dots) sont modélisées par une entité
+\emph{série}\index{série} au chapitre~\ref{ch:configuration}.
+
+\section{BD et comics}
+
+Un volume \textbf{omnibus}\index{omnibus} peut contenir plusieurs
+positions dans une série. mybibli gère cela via la fonctionnalité
+\emph{multi-position}\index{multi-position} : au moment de la
+création d'un volume, vous pouvez fixer la \emph{plage de
+positions} (par exemple « contient les volumes 5 à 7 »). La
+détection de lacunes de série (chapitre~\ref{ch:usage}) comprend ces
+plages et ne signalera pas les positions 5, 6 ou 7 comme manquantes
+une fois l'omnibus en rayon.
+
+\section{Sorties audio}
+
+Les titres audio utilisent MusicBrainz\index{MusicBrainz} comme
+source principale de métadonnées. Le code-barres au dos d'un CD
+(EAN-13) se résout de la même façon qu'un ISBN.
+
+\begin{itemize}
+  \item \textbf{Pistes.} MusicBrainz renvoie la liste des pistes ;
+        mybibli les affiche sur la page du titre.
+  \item \textbf{Support.} CD vs vinyle vs cassette est capturé sur
+        la ligne du volume (pas sur le titre) — deux pressages
+        identiques sur supports différents sont deux volumes du
+        même titre.
+\end{itemize}
+
+\section{Films et séries}
+
+Les films et séries TV utilisent OMDb\index{OMDb} et
+TMDb\index{TMDb} comme sources principales de métadonnées. Un
+coffret de série est modélisé comme un \emph{titre} avec un volume
+multi-position couvrant la plage de disques.
+
+\begin{tip}
+OMDb est gratuit pour de faibles volumes (moins de 1000 requêtes
+par jour) ; TMDb est gratuit avec attribution. L'un ou l'autre
+couvre largement une étagère DVD / Blu-ray familiale. Voir le
+chapitre~\ref{ch:providers} pour la mise en place.
+\end{tip}
+
+\section{Choisir le type de média au scan}
+
+Après scan d'un code-barres inconnu, mybibli devine le type de
+média depuis le préfixe EAN (le préfixe pays GS1 et la réponse du
+fournisseur). La devinette est affichée sur la page de catalogage ;
+vous pouvez la corriger avant de cliquer \textbf{Ajouter un volume}.
+Re-typer un titre plus tard se fait en quelques clics
+(\texttt{/title/<id>}) et la chaîne de fournisseurs ré-exécute
+contre le nouveau type si vous déclenchez \emph{Re-fetch
+metadata}.

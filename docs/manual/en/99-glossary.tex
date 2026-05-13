@@ -1,0 +1,177 @@
+\chapter{Glossary}
+\label{ch:glossary}
+
+\begin{description}
+
+  \item[Admin]\index{admin role} A user account with role
+        \texttt{admin}. The only role that can open the
+        \texttt{/admin} panel and edit users, reference data, trash
+        or system settings.
+
+  \item[Anonymous]\index{anonymous} A visitor without a session
+        cookie. Read-only access to the public catalog. No
+        cataloging, no loans, no edits.
+
+  \item[Audit]\index{audit} The routine ``walk the shelves and
+        confirm everything is where the database says it is''
+        workflow described in section~\ref{sec:audit}.
+
+  \item[BDGest]\index{BDGest} A French-language comic / BD
+        catalogue used as a metadata source for that media type.
+
+  \item[BnF]\index{BnF} \textit{Bibliothèque nationale de France}.
+        The French national library catalogue, used as the primary
+        metadata source for French-language books.
+
+  \item[Borrower]\index{borrower} A person who loans volumes from
+        the library. Modeled as its own entity (name, optional
+        contact information, loan history).
+
+  \item[Cataloging] The act of registering a new title and / or
+        volume in the database. Typically barcode-driven: scan,
+        confirm, stick label, repeat.
+
+  \item[Cover image]\index{covers} The visual front of a book / disc
+        / record, downloaded from a metadata provider and cached
+        under \texttt{COVERS\_DIR} on disk.
+
+  \item[CSP] Content Security Policy. A browser-enforced
+        instructions header that restricts which scripts and styles
+        the page may execute. mybibli ships a strict policy that
+        forbids inline scripts and styles.
+
+  \item[CSRF token]\index{CSRF} A per-session secret embedded into
+        every form. mybibli rejects POST / PUT / DELETE requests
+        whose token does not match — a defense against cross-site
+        request forgery.
+
+  \item[Dewey code]\index{Dewey} The Dewey Decimal Classification
+        number, used for topic-based catalog navigation. Optional
+        per title.
+
+  \item[EAN-13] The 13-digit barcode standard. ISBNs are encoded
+        as EAN-13 since 2007; CDs, DVDs and other media carry
+        EAN-13 codes too.
+
+  \item[Exemplaire] Synonym for \emph{volume} (the physical copy).
+        Used by some French libraries; mybibli prefers
+        \emph{volume}.
+
+  \item[Genre]\index{genres} A free-form classification of a title's
+        subject (Fiction, Non-fiction, Mystery, \dots). Defined in
+        the genres reference table.
+
+  \item[Hard-delete] Deleting a row outright. mybibli only
+        hard-deletes from the \texttt{/admin > Trash} panel and
+        from the auto-purge background task; everything else is a
+        soft-delete.
+
+  \item[HTMX] The JavaScript library mybibli uses to swap fragments
+        of the page in place without full reloads. Operators do
+        not need to understand HTMX to use mybibli.
+
+  \item[ISBN] International Standard Book Number. Identifier
+        printed on the back cover of books, encoded as an EAN-13
+        barcode.
+
+  \item[Last-active-admin guard]\index{last-active-admin guard}
+        The rule that prevents deactivating or permanently
+        deleting the last user with the \texttt{admin} role. See
+        section~\ref{sec:users}.
+
+  \item[L-code]\index{L-code} A storage-location barcode label.
+        Format: \texttt{L} followed by a zero-padded number.
+
+  \item[Librarian]\index{librarian} A user account with role
+        \texttt{librarian}. Can catalog, loan, return and edit
+        most data but cannot administer users or settings.
+
+  \item[Loan]\index{loan} A record that a specific volume is
+        currently out with a specific borrower. Tracks the loan
+        date, due date, return date, and the volume's pre-loan
+        location.
+
+  \item[Location]\index{location} The physical place where a
+        volume lives. Modeled as a tree (room → shelf → row),
+        identified by an L-code.
+
+  \item[MariaDB] The database engine mybibli stores its data in.
+        A fork of MySQL.
+
+  \item[Media type]\index{media types} The kind of object a title
+        represents: Book, Comic / BD, Audio, Film / series. Drives
+        provider selection and field display.
+
+  \item[Multi-position volume]\index{multi-position} A single
+        physical volume that contains several positions in a
+        series — typically an omnibus comic album.
+
+  \item[MusicBrainz]\index{MusicBrainz} A volunteer-maintained
+        music metadata catalogue, used as the primary source for
+        audio media.
+
+  \item[Node type]\index{node type} A label applied to storage
+        locations to indicate what kind of container they are
+        (room, shelf, row, box). Pure label — no semantic
+        enforcement.
+
+  \item[OMDb]\index{OMDb} Open Movie Database. Metadata source
+        for films and TV series.
+
+  \item[Open Library]\index{Open Library} An open volunteer-driven
+        catalogue of books, used as a metadata source.
+
+  \item[Optimistic locking] The technique mybibli uses to detect
+        concurrent edits. Two users editing the same title get a
+        clear error on the second save instead of silently
+        overwriting each other.
+
+  \item[Reactivation] Restoring a soft-deleted row. For users,
+        clears \texttt{deleted\_at} and lets them log in again.
+        For reference data, the term also covers re-creating a
+        row with the same name as a soft-deleted one, which
+        transparently undoes the delete.
+
+  \item[Reference data] The four taxonomy tables: genres,
+        contributor roles, volume states, location node types.
+        Editable from \texttt{/admin > Reference data}.
+
+  \item[Series]\index{series} A named ordering of related titles
+        (e.g.\ a trilogy or an open-ended comic series). Each
+        title's position in the series is a small integer or a
+        range (for omnibuses).
+
+  \item[Setup wizard]\index{setup wizard} The four-step
+        first-launch flow at \texttt{/setup} that an empty
+        instance presents until an admin account exists.
+
+  \item[Soft-delete]\index{soft-delete} Setting a row's
+        \texttt{deleted\_at} column to ``now'' instead of
+        physically removing the row. Soft-deleted rows are
+        invisible to normal queries but surface in
+        \texttt{/admin > Trash} for 30 days, after which the
+        auto-purge hard-deletes them.
+
+  \item[Title] The bibliographic entity (a book, a film, an
+        album). A title can have multiple volumes — for example,
+        two copies of the same novel on different shelves.
+
+  \item[TMDb]\index{TMDb} The Movie Database. A community-curated
+        metadata source for films and TV series.
+
+  \item[Trash] The \texttt{/admin > Trash} tab. Lists soft-deleted
+        entities of every type and lets an admin restore them or
+        permanently delete them.
+
+  \item[V-code]\index{V-code} A per-volume barcode label. Format:
+        \texttt{V} followed by a zero-padded number.
+
+  \item[Volume]\index{volume} The physical object on a shelf — one
+        copy of a title. A title can have many volumes; each
+        carries its own V-code, location and state.
+
+  \item[Volume state]\index{volume state} A reference-data row
+        describing the condition of a volume: New, Good, Worn,
+        Damaged, \dots.
+
+\end{description}

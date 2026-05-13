@@ -1,0 +1,131 @@
+\chapter{Bonnes pratiques}
+\label{ch:bestpractices}
+
+Leçons concentrées tirées de déploiements réels. Chaque section est
+optionnelle — prenez ce qui colle à votre échelle.
+
+\section{Hiérarchie de stockage}
+
+\begin{itemize}
+  \item \textbf{Trois niveaux suffisent en général.} Pièce →
+        étagère → rangée couvre la plupart des foyers. Un quatrième
+        niveau (par exemple « boîte à l'intérieur de la rangée »)
+        devient de la paperasse à maintenir.
+  \item \textbf{Nommez les lieux comme vous en parlez.} « Étagère
+        du salon, en haut » bat « SAL-E01-R01 ». Les noms
+        apparaissent sur les étiquettes ; traitez-les comme du
+        contenu visible.
+  \item \textbf{Imprimez les codes L une seule fois.} Réimprimer
+        parce que vous avez rééquilibré les étagères est du
+        travail perdu — les codes L sont des identifiants
+        stables ; le nom humain sur l'étiquette peut dériver et
+        c'est OK.
+\end{itemize}
+
+\section{Planches de codes V}
+
+\begin{itemize}
+  \item Imprimez les codes V en planches de 50 à 100. Des
+        autocollants pré-imprimés dans un porte-étiquettes près du
+        poste de scan rendent le catalogage \emph{rapide}.
+  \item \textbf{Collez le code V avant de scanner.} Cela élimine
+        un futur mode de panne où vous mal-étiquetez un livre et
+        devez le re-trouver par scan.
+  \item \textbf{Placez l'étiquette toujours au même endroit.}
+        Intérieur de la 4\textsuperscript{e} de couverture, coin
+        supérieur droit, parallèle au dos — choisissez une règle
+        et tenez-vous-y. Le futur-vous lors d'un audit remerciera
+        le présent-vous.
+\end{itemize}
+
+\section{Genre versus Dewey}
+
+mybibli supporte à la fois des genres larges et des codes
+Dewey\index{Dewey}. Choisissez l'un des deux comme aide principale
+à la navigation :
+
+\begin{itemize}
+  \item \textbf{Utilisez les genres} quand le public navigue par
+        humeur (« je veux un thriller ») et que la collection est
+        assez petite pour que « Thriller » soit suffisamment
+        granulaire.
+  \item \textbf{Utilisez Dewey} quand le public navigue par sujet
+        (« livres sur l'histoire de France du XVIII\textsuperscript{e}
+        siècle ») ou quand la collection a atteint la taille où
+        « Documentaire » n'est plus un filtre utile.
+  \item Utiliser les deux est OK ; mybibli ne force pas le choix.
+\end{itemize}
+
+\section{Cadence d'audit}
+
+\begin{itemize}
+  \item \textbf{Trimestriel} pour les collections sous quelques
+        centaines de volumes.
+  \item \textbf{Mensuel} pour les collections au-dessus,
+        spécialement si plus d'une personne catalogue.
+  \item Lancez toujours un audit \emph{après} un grand
+        rééquilibrage de rayons — déplacer des livres
+        physiquement sans le dire à mybibli est la première
+        source de bugs « où est ce volume ? ».
+\end{itemize}
+
+\section{Comptes utilisateur}
+
+\begin{itemize}
+  \item \textbf{Un humain, un compte.} Partager un seul compte
+        \texttt{admin} entre deux personnes fait perdre la piste
+        d'audit et rend la garde du dernier admin moins utile.
+  \item \textbf{La plupart des éditeurs doivent être
+        Bibliothécaires, pas Admins.} Le panneau admin gère des
+        préoccupations d'installation et de nettoyage rare ; vous
+        n'avez pas besoin de droits admin pour cataloguer ou
+        prêter.
+  \item \textbf{Changez le mot de passe admin seedé au premier
+        login.} Sur 1.1.0+ l'assistant le force ; sur les
+        installations 1.0.x existantes, faites-le manuellement
+        avant d'exposer l'instance sur un réseau.
+\end{itemize}
+
+\section{Prêts}
+
+\begin{itemize}
+  \item \textbf{Gardez des emprunteurs identifiables.} « Marie L. »
+        bat « Marie » dès la seconde Marie qui pointe son nez.
+        Email ou téléphone dans le champ notes aide pour les
+        relances.
+  \item \textbf{Parcourez la liste des retards une fois par
+        semaine.} L'indicateur du dashboard vous houspille pour
+        une raison — les prêts en retard cumulés sur un an
+        deviennent des livres que vous ne possédez plus.
+  \item \textbf{Notez les dégâts au retour.} Basculer un volume
+        retourné en \emph{Usé} ou \emph{Endommagé} capture
+        l'information pendant que l'emprunteur est devant vous ;
+        chasser le coût plus tard de mémoire fonctionne rarement.
+\end{itemize}
+
+\section{Fournisseurs de métadonnées}
+
+\begin{itemize}
+  \item \textbf{Limitez les clés.} Vous n'avez pas besoin des
+        trois fournisseurs à clé dès le premier jour — BnF + Open
+        Library couvrent les livres gratuitement. Ajoutez OMDb +
+        TMDb le jour où vous cataloguez votre premier DVD.
+  \item \textbf{Traitez les clés comme des secrets.} \texttt{.env}
+        est dans \texttt{.gitignore} ; conservez les sauvegardes
+        de \texttt{.env} chiffrées (chapitre~\ref{ch:backup}).
+\end{itemize}
+
+\section{Mises à jour}
+
+\begin{itemize}
+  \item \textbf{Lisez les notes de version avant de tirer
+        \texttt{:latest}.} Voir chapitre~\ref{ch:upgrade}.
+  \item \textbf{Sauvegardez juste avant chaque mise à jour.} Même
+        les migrations « additives » ont une surface de panne
+        non-nulle ; une sauvegarde minute-avant transforme une
+        inquiétude en formalité.
+  \item \textbf{Épinglez une version pour la production.} Les
+        auto-updates conviennent à une instance familiale ; pour
+        une bibliothèque communautaire, un saut majeur non
+        surveillé peut interrompre le service.
+\end{itemize}

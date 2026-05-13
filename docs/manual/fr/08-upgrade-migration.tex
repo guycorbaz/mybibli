@@ -1,0 +1,128 @@
+\chapter{Mise à jour et migration}
+\label{ch:upgrade}
+
+Les mises à jour de routine sont conçues pour être sûres.
+L'exception est le saut 1.0.x → 1.1.0, un breaking change unique
+documenté ci-dessous.
+
+\section{Mises à jour de routine (1.y → 1.z)}
+
+\begin{enumerate}
+  \item Lisez les notes de version pour chaque version entre votre
+        version courante et la cible.
+  \item Prenez une \textbf{sauvegarde de base} fraîche
+        (chapitre~\ref{ch:backup}).
+  \item Mettez à jour le tag d'image dans
+        \texttt{docker-compose.yml} (ou re-tirez \texttt{:latest}
+        si vous suivez ce tag).
+  \item Lancez \texttt{docker compose up -d}. Le nouveau conteneur
+        boote, exécute les nouvelles migrations contre la base
+        existante, et reprend le service.
+  \item Surveillez les logs pour les erreurs de migration :
+        \texttt{docker compose logs mybibli | grep -i migrate}.
+\end{enumerate}
+
+Les migrations sont append-only — les changements de schéma sont
+forward-compatibles. Une installation 1.4 mise à jour en 1.5 garde
+toutes les lignes de 1.4 et applique les nouvelles tables /
+colonnes sur place.
+
+\begin{tip}
+Pour les installations homelab, le tag Docker \texttt{:latest} est
+un défaut raisonnable. Pour des montages production
+(bibliothèque communautaire, association), épinglez une version
+explicite pour qu'un \texttt{pull} non surveillé n'amène pas une
+release sur laquelle vous n'avez pas lu les notes.
+\end{tip}
+
+\section{Le saut 1.0.x → 1.1.0}\label{sec:upgrade-1.1.0}
+
+\begin{warning}
+\textbf{Ceci est un breaking change unique.}\index{mise à jour 1.1.0}
+Les installations 1.0.x sont sujettes au bug documenté dans
+\href{https://github.com/guycorbaz/mybibli/issues/173}{\#173} :
+les migrations seed créent les identifiants \texttt{admin/admin}
+et \texttt{librarian/librarian} à chaque installation neuve, y
+compris en production, et contournent silencieusement l'assistant
+de première mise en service.
+\end{warning}
+
+Le chemin recommandé dépend de si votre installation 1.0.x détient
+des données réelles :
+
+\subsection*{Si votre installation 1.0.x est vide (aucun titre catalogué)}
+
+Le chemin le plus simple : effacer la base et réinstaller en 1.1.0+.
+
+\begin{enumerate}
+  \item Arrêter la pile : \texttt{docker compose down}.
+  \item Supprimer le volume de base :
+        \texttt{docker volume rm mybibli\_mybibli\_db\_data}
+        (ou l'équivalent sur votre hôte —
+        \texttt{docker volume ls} les liste).
+  \item Tirer l'image 1.1.0 : \texttt{docker compose pull}.
+  \item Mettre à jour le tag d'image dans
+        \texttt{docker-compose.yml} si vous aviez épinglé une
+        version antérieure.
+  \item Démarrer : \texttt{docker compose up -d}.
+  \item Ouvrir \texttt{/setup} et parcourir l'assistant.
+\end{enumerate}
+
+\subsection*{Si votre installation 1.0.x détient des données réelles}
+
+\begin{enumerate}
+  \item Prenez une sauvegarde de base (chapitre~\ref{ch:backup}).
+  \item Prenez une sauvegarde covers + \texttt{.env}.
+  \item Connectez-vous comme l'admin seedé et changez le mot de
+        passe \emph{avant} la mise à jour. La mise à jour 1.1.0
+        elle-même est sûre, mais la rotation ferme la dernière
+        fenêtre pendant laquelle les identifiants par défaut
+        pourraient fuiter.
+  \item Mettre à jour le tag d'image dans
+        \texttt{docker-compose.yml} et lancer
+        \texttt{docker compose up -d}.
+  \item Le boot 1.1.0 détecte l'admin existant et n'active
+        \emph{pas} l'assistant — l'admin avec mot de passe tourné
+        reste l'admin actif.
+\end{enumerate}
+
+\subsection*{La nouvelle variable \texttt{MYBIBLI\_SEED\_DEV\_USERS}}
+
+À partir de 1.1.0, la migration seed est gardée par
+\texttt{MYBIBLI\_SEED\_DEV\_USERS}\index{MYBIBLI\_SEED\_DEV\_USERS}.
+Le défaut est \texttt{0} (pas de seed). Ne la positionnez à
+\texttt{1} que pour des flux de dev local ou des tests automatisés
+— jamais en production. L'assistant de première mise en service
+devient le chemin canonique d'onboarding.
+
+\section{Lire les notes de version}
+
+Chaque release mybibli publie une page GitHub Release avec :
+
+\begin{itemize}
+  \item un paragraphe résumant le changement ;
+  \item l'impact migration (aucun / additif / breaking) ;
+  \item un lien vers le diff contre le tag précédent ;
+  \item les PDF de ce manuel (anglais + français) en pièce jointe
+        une fois le build PDF de release câblé dans la CI.
+\end{itemize}
+
+Lisez les notes avant de mettre à jour. Les breaking changes
+portent une étiquette \emph{Breaking} bien visible.
+
+\section{Rollback}
+
+Le rollback \emph{n'est pas} un flux de première classe. Les
+migrations de schéma avancent uniquement — il n'y a pas de
+\texttt{down.sql}. La stratégie de récupération supportée est :
+
+\begin{enumerate}
+  \item Restaurer la sauvegarde de base pré-mise-à-jour
+        (chapitre~\ref{ch:backup}).
+  \item Réépingler le tag d'image à la version antérieure.
+  \item Démarrer la pile.
+\end{enumerate}
+
+Cela fonctionne car la sauvegarde est cohérente avec le schéma
+antérieur. Tenter de pointer une image plus ancienne sur une base
+fraîchement migrée échoue au boot.

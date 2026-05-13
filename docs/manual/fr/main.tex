@@ -1,0 +1,134 @@
+% mybibli — Manuel utilisateur (français)
+%
+% Compilation :   latexmk -xelatex main.tex
+% ou depuis le répertoire parent :
+%                 ./build.sh fr
+%
+% Requiert XeLaTeX (pour fontspec + polyglossia + Unicode).
+\documentclass[a4paper,11pt,oneside]{book}
+
+% ---- Polices (XeLaTeX) ----------------------------------------------
+\usepackage{fontspec}
+\setmainfont{Latin Modern Roman}
+\setsansfont{Latin Modern Sans}
+\setmonofont{Latin Modern Mono}[Scale=0.92]
+
+% ---- Langue ---------------------------------------------------------
+\usepackage{polyglossia}
+\setdefaultlanguage{french}
+
+% ---- Mise en page ---------------------------------------------------
+\usepackage[a4paper,margin=2.5cm,headheight=14pt]{geometry}
+\usepackage{microtype}
+\usepackage{parskip}
+
+% ---- Couleurs et hyperliens -----------------------------------------
+\usepackage{xcolor}
+\definecolor{linkcolor}{HTML}{0B5394}
+\definecolor{codebg}{HTML}{F5F5F5}
+\usepackage[colorlinks=true,linkcolor=linkcolor,urlcolor=linkcolor,citecolor=linkcolor]{hyperref}
+
+% ---- En-tête / pied de page -----------------------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\nouppercase{\leftmark}}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancypagestyle{plain}{%
+  \fancyhf{}
+  \fancyfoot[C]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}}
+
+% ---- Tableaux -------------------------------------------------------
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{tabularx}
+
+% ---- Listes ---------------------------------------------------------
+\usepackage{enumitem}
+\setlist{itemsep=2pt, topsep=4pt}
+
+% ---- Blocs de code --------------------------------------------------
+\usepackage{listings}
+\lstdefinestyle{config}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  breaklines=true,
+  breakatwhitespace=false,
+  frame=single,
+  framerule=0pt,
+  rulecolor=\color{codebg},
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  xleftmargin=4pt,
+  xrightmargin=4pt,
+  aboveskip=8pt,
+  belowskip=8pt,
+  literate=%
+    {é}{{\'e}}1 {è}{{\`e}}1 {ê}{{\^e}}1 {ë}{{\"e}}1
+    {à}{{\`a}}1 {â}{{\^a}}1 {ä}{{\"a}}1
+    {î}{{\^\i}}1 {ï}{{\"\i}}1
+    {ô}{{\^o}}1 {ö}{{\"o}}1
+    {ù}{{\`u}}1 {û}{{\^u}}1 {ü}{{\"u}}1
+    {ç}{{\c c}}1 {Ç}{{\c C}}1 {œ}{{\oe}}1 {Œ}{{\OE}}1
+    {’}{{'}}1 {–}{{--}}1 {—}{{---}}1
+}
+\lstset{style=config}
+
+% ---- Encadrés -------------------------------------------------------
+\usepackage[most]{tcolorbox}
+\newtcolorbox{note}{colback=blue!4!white, colframe=blue!55!black,
+  fonttitle=\bfseries, title=Note, breakable, enhanced}
+\newtcolorbox{tip}{colback=green!4!white, colframe=green!50!black,
+  fonttitle=\bfseries, title=Astuce, breakable, enhanced}
+\newtcolorbox{warning}{colback=red!4!white, colframe=red!70!black,
+  fonttitle=\bfseries, title=Attention, breakable, enhanced}
+
+% ---- Index ----------------------------------------------------------
+\usepackage{imakeidx}
+\makeindex[intoc,columns=2,title=Index]
+
+% ---- Métadonnées du document ---------------------------------------
+\title{\Huge\bfseries mybibli\\[6pt]\Large Manuel utilisateur}
+\author{Les auteurs de mybibli\\\small \texttt{https://github.com/guycorbaz/mybibli}}
+\date{Version 1.1.0 — \today}
+
+% =====================================================================
+\begin{document}
+\frontmatter
+\maketitle
+
+\begin{center}
+\vspace*{2cm}
+\small
+Distribué sous licence AGPL-3.0-or-later.\\
+Ce manuel couvre mybibli version 1.1.0 et ultérieures.
+\end{center}
+
+\tableofcontents
+
+\mainmatter
+
+\input{00-preface}
+\input{01-installation}
+\input{02-configuration}
+\input{03-usage}
+\input{04-multimedia}
+\input{05-metadata-providers}
+\input{06-roles-permissions}
+\input{07-backup-restore}
+\input{08-upgrade-migration}
+\input{09-best-practices}
+\input{10-troubleshooting}
+\input{99-glossary}
+
+\backmatter
+\cleardoublepage
+\phantomsection
+\label{index}
+\printindex
+
+\end{document}

@@ -1,0 +1,39 @@
+# LaTeX build artifacts — kept out of git.
+# The generated PDFs are committed only when attached to a release.
+*.aux
+*.log
+*.toc
+*.lof
+*.lot
+*.out
+*.idx
+*.ind
+*.ilg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb
+*-blx.bib
+*.run.xml
+*.xdv
+*.bcf
+*.acn
+*.acr
+*.alg
+*.glg
+*.glo
+*.gls
+*.ist
+
+# Intermediate per-language PDFs produced by latexmk before build.sh
+# copies them to the top-level mybibli-manual-{en,fr}.pdf.
+en/main.pdf
+fr/main.pdf
+
+# Top-level distribution PDFs — uncomment to commit alongside source.
+# mybibli-manual-en.pdf
+# mybibli-manual-fr.pdf

@@ -1,0 +1,313 @@
+\chapter{Installation}
+\label{ch:installation}
+
+This chapter walks you through installing mybibli\index{installation}
+on your own hardware. The reference deployment target is a home
+server, NAS, or any always-on Linux box that can run Docker.
+
+\section{System requirements}
+
+\begin{itemize}
+  \item \textbf{Operating system:} any Linux distribution, macOS, or
+        Windows host capable of running Docker. The host kernel must
+        support cgroups v2 (any distribution from 2021 onward).
+  \item \textbf{Docker:} version 24 or later, with the \texttt{compose}
+        plugin. Test with \texttt{docker compose version}.
+  \item \textbf{Disk:} at least 1\,GB free for the application image
+        plus the database. Cover images add roughly 50\,KB per title.
+  \item \textbf{Memory:} 512\,MB is enough for a household-sized
+        library (a few thousand titles); 1\,GB gives generous
+        headroom for the metadata-fetch pipeline.
+  \item \textbf{Network:} outbound HTTPS to the metadata
+        providers\index{metadata providers} you choose to use
+        (see chapter~\ref{ch:providers}). LAN-only deployments work
+        without any inbound port forwarding.
+\end{itemize}
+
+\begin{warning}
+\textbf{Do not install mybibli versions below 1.1.0.}\index{security!1.1.0 floor}
+Every published image with a tag below \texttt{1.1.0} contains a seed
+migration that creates the credentials \texttt{admin/admin} and
+\texttt{librarian/librarian} on \emph{every} fresh install, including
+production. The first-launch setup wizard is silently bypassed. Use
+1.1.0 or later; the pre-1.1.0 images will be removed from Docker Hub
+to prevent accidental use.
+\end{warning}
+
+\section{Pre-installation checklist}
+
+Before you start:
+
+\begin{enumerate}
+  \item Pick a host directory for the mybibli files
+        (e.g.\ \texttt{/srv/mybibli} on Linux,
+        \texttt{/volume1/docker/mybibli} on Synology DSM).
+  \item Pick a host directory for the cover-image
+        store\index{covers!directory}
+        (e.g.\ \texttt{/srv/mybibli/covers}). This will be mounted
+        into the container.
+  \item Choose a strong password for the bundled MariaDB
+        \texttt{root} and application users — or, for an external
+        database, create a dedicated database and user up front (see
+        section~\ref{sec:install-external-db}).
+\end{enumerate}
+
+\section{Method 1 — Bundled database}\label{sec:install-bundled}
+
+This is the simplest path. The shipped \texttt{docker-compose.yml}
+file declares two services: the mybibli application and a MariaDB
+instance pinned to a known version. Both are managed as one unit.
+
+\subsection*{1. Get the compose file and \texttt{.env}}
+
+Download the \texttt{docker-compose.yml} and \texttt{.env.example}
+from the release you intend to install (or check out the repository
+at the matching tag):
+
+\begin{lstlisting}
+mkdir -p /srv/mybibli && cd /srv/mybibli
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/docker-compose.yml
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/.env.example
+cp .env.example .env
+\end{lstlisting}
+
+\subsection*{2. Edit \texttt{.env}}
+
+Open \texttt{.env} in your editor. Every variable carries an
+explanatory comment; the values that matter for a bundled-database
+install are:
+
+\begin{lstlisting}
+DATABASE_URL=mysql://mybibli:mybibli_password@db:3306/mybibli?charset=utf8mb4
+MYSQL_HOST=db
+MYSQL_DATABASE=mybibli
+MYSQL_USER=mybibli
+MYSQL_PASSWORD=<choose-a-strong-password>
+MYSQL_ROOT_PASSWORD=<choose-a-strong-password>
+
+HOST_PORT=8080         # change if 8080 is already taken on the host
+APP_LANGUAGE=en        # or 'fr' for the French UI by default
+
+MYBIBLI_COOKIE_SECURE=false   # set to true only behind HTTPS
+\end{lstlisting}
+
+The \texttt{DATABASE\_URL} \emph{must} reference the same user,
+password and database name as the \texttt{MYSQL\_*} values — the
+compose file rebuilds the URL from those parts but the Rust binary
+reads \texttt{DATABASE\_URL} directly, so the two must agree.
+
+\begin{warning}
+The default passwords in \texttt{.env.example}
+(\texttt{mybibli\_password}, \texttt{root\_password}) are
+placeholders, not credentials to keep. Change them before the first
+\texttt{docker compose up}. After the database has been created,
+rotating these passwords requires also rewriting the MariaDB user
+entries — easier to get it right the first time.
+\end{warning}
+
+\subsection*{3. Start the stack}
+
+\begin{lstlisting}
+docker compose up -d
+docker compose logs -f mybibli
+\end{lstlisting}
+
+The first launch:
+
+\begin{enumerate}
+  \item pulls the \texttt{gcorbaz/mybibli:1.1.0} (or later) image
+        and the MariaDB image;
+  \item starts the database and waits for it to be healthy;
+  \item runs the mybibli database migrations
+        (one-time schema setup);
+  \item starts the HTTP listener on the port you configured.
+\end{enumerate}
+
+You can stop tailing the logs with \texttt{Ctrl-C}; the containers
+keep running detached.
+
+\subsection*{4. Open the setup wizard}
+
+Visit \url{http://<host>:8080/setup} in a browser. The first-launch
+setup wizard\index{setup wizard} appears (covered in
+section~\ref{sec:first-boot}).
+
+\section{Method 2 — External database (Synology NAS example)}\label{sec:install-external-db}
+
+If you already run MariaDB on your NAS — for example via the Synology
+\textbf{MariaDB 10} package — you can point mybibli at it instead of
+running a second database in Docker. The mybibli image is unchanged;
+only the compose file and \texttt{.env} differ.
+
+\subsection*{1. Create the database and user}
+
+Connect to the external MariaDB as \texttt{root} and run:
+
+\begin{lstlisting}
+CREATE DATABASE mybibli CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'mybibli'@'%' IDENTIFIED BY 'choose-a-strong-password';
+GRANT ALL PRIVILEGES ON mybibli.* TO 'mybibli'@'%';
+FLUSH PRIVILEGES;
+\end{lstlisting}
+
+\begin{note}
+On Synology DSM, MariaDB 10 listens on port \texttt{3307} by default
+(not 3306 — that port is reserved for the older MySQL package). Open
+\textbf{MariaDB 10 → Settings} and tick \emph{Enable TCP/IP
+connection} so containers on the same Docker bridge can reach the
+server.
+\end{note}
+
+\subsection*{2. Trim the compose file}
+
+Edit \texttt{docker-compose.yml} and remove the bundled database:
+
+\begin{itemize}
+  \item delete (or comment out) the entire \texttt{db:} service;
+  \item delete (or comment out) the \texttt{depends\_on:} block on
+        the \texttt{mybibli} service;
+  \item delete (or comment out) the \texttt{volumes:} block at the
+        bottom of the file.
+\end{itemize}
+
+\subsection*{3. Point \texttt{.env} at the external database}
+
+\begin{lstlisting}
+DATABASE_URL=mysql://mybibli:strong-password@host.docker.internal:3307/mybibli?charset=utf8mb4
+\end{lstlisting}
+
+Substitute the host name and port that match your network. From a
+mybibli container running on the same Docker bridge as the NAS host,
+\texttt{host.docker.internal} resolves to the host on macOS and
+recent Linux Docker installs; on older Docker engines, use the LAN
+IP of the NAS instead (e.g.\ \texttt{192.168.1.10}).
+
+The \texttt{MYSQL\_*} variables are now unused — leave them blank or
+delete them.
+
+\subsection*{4. Start the application}
+
+\begin{lstlisting}
+docker compose up -d
+docker compose logs -f mybibli
+\end{lstlisting}
+
+The first launch runs the schema migrations against the external
+database. The Synology MariaDB package will hold this schema for as
+long as the package exists; backing it up is covered by the NAS-level
+backup tools (see chapter~\ref{ch:backup}).
+
+\begin{tip}
+The external-database setup is the recommended path when you already
+maintain a database server, because it gives you one backup pipeline
+to monitor instead of two. The bundled-database setup is faster to
+get going if you have no other workloads on the host.
+\end{tip}
+
+\section{Environment variable reference}\label{sec:env-vars}
+
+The full reference lives in the file
+\texttt{.env.example}\index{env vars!.env.example} at the repository
+root — every variable carries an inline comment. The table below
+summarises which variable applies where.
+
+All boolean variables follow a \textbf{strict accept-set}: only the
+strings \texttt{1}, \texttt{true} and \texttt{TRUE} count as
+``on''. Anything else (including the empty string, \texttt{0}, and
+\texttt{false}) is treated as ``off''. This avoids the classic
+footgun where a stale shell value like \texttt{0} reads as ``set''
+and silently flips an opt-out.
+
+\begin{center}\small
+\begin{tabular}{l l >{\raggedright\arraybackslash}p{6.2cm}}
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Purpose} \\
+\midrule
+\multicolumn{3}{l}{\emph{Database}} \\
+\texttt{DATABASE\_URL}        & --- (required) & MariaDB connection string (DSN). \\
+\texttt{MYSQL\_HOST}          & \texttt{db}    & Hostname for the bundled DB service. \\
+\texttt{MYSQL\_PORT}          & \texttt{3306}  & Port for the bundled DB service. \\
+\texttt{MYSQL\_DATABASE}      & \texttt{mybibli} & DB name for the bundled service. \\
+\texttt{MYSQL\_USER}          & \texttt{mybibli} & DB user for the bundled service. \\
+\texttt{MYSQL\_PASSWORD}      & --- & DB user password for the bundled service. \\
+\texttt{MYSQL\_ROOT\_PASSWORD}& --- & Root password for the bundled service. \\
+\midrule
+\multicolumn{3}{l}{\emph{HTTP server}} \\
+\texttt{HOST}                 & \texttt{0.0.0.0} & Bind address inside the container. \\
+\texttt{PORT}                 & \texttt{8080}    & Bind port inside the container. \\
+\texttt{HOST\_PORT}           & \texttt{8080}    & Port published by Docker on the host. \\
+\midrule
+\multicolumn{3}{l}{\emph{Application}} \\
+\texttt{RUST\_LOG}            & \texttt{mybibli=info} & Tracing filter. Use \texttt{mybibli=debug} for verbose logs. \\
+\texttt{APP\_LANGUAGE}        & \texttt{en}     & Default UI language for anonymous visitors. \\
+\texttt{COVERS\_DIR}          & \texttt{./covers} & Filesystem path for cover-image storage. \\
+\midrule
+\multicolumn{3}{l}{\emph{Hardening}} \\
+\texttt{MYBIBLI\_COOKIE\_SECURE} & \texttt{false} & Set to \texttt{true} only behind HTTPS. \\
+\texttt{CSP\_REPORT\_ONLY}     & \texttt{false} & Switch CSP header to report-only mode. \\
+\midrule
+\multicolumn{3}{l}{\emph{Metadata providers (migrated to DB on first boot)}} \\
+\texttt{GOOGLE\_BOOKS\_API\_KEY} & --- & Optional key for Google Books. \\
+\texttt{OMDB\_API\_KEY}         & --- & Optional key for OMDb (films/series). \\
+\texttt{TMDB\_API\_KEY}         & --- & Optional key for TMDb (films/series). \\
+\midrule
+\multicolumn{3}{l}{\emph{Optional dev / test overrides}} \\
+\texttt{MYBIBLI\_SKIP\_SETUP}      & \texttt{false} & Bypass the first-launch wizard. \emph{Never on prod.} \\
+\texttt{MYBIBLI\_SKIP\_STARTUP\_PURGE} & \texttt{false} & Skip the boot-time auto-purge. \\
+\texttt{MYBIBLI\_SEED\_DEV\_USERS} & \texttt{false} & Seed dev \texttt{admin/admin} + \texttt{librarian/librarian}. \emph{Never on prod.} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Provider base-URL overrides (\texttt{BNF\_API\_BASE\_URL},
+\texttt{GOOGLE\_BOOKS\_API\_BASE\_URL}, \dots) exist solely to point
+the metadata pipeline at the in-tree mock server during automated
+tests. Leave them unset in production.
+
+\section{First boot — the setup wizard}\label{sec:first-boot}
+
+On a clean install, every request is redirected to \texttt{/setup}
+until the wizard\index{setup wizard} completes. The wizard has four
+steps:
+
+\begin{enumerate}
+  \item \textbf{Admin account.} Choose a username and a strong
+        password for the first administrator. This step is the whole
+        reason the wizard exists — once the account is created, the
+        wizard's gate predicate flips and subsequent visitors land on
+        the public catalog instead.
+  \item \textbf{Metadata providers.} Paste in any API keys you have
+        on hand (Google Books, OMDb, TMDb). All keyed providers are
+        optional — you can skip this step entirely and add keys later
+        from \texttt{/admin > System > Metadata Providers}.
+  \item \textbf{Preferences.} Pick the default UI language for
+        anonymous visitors and the loan overdue threshold (in days).
+  \item \textbf{Done.} A summary screen. After confirming, the wizard
+        writes \texttt{settings.setup\_completed\_at} and disables
+        itself for the lifetime of the installation.
+\end{enumerate}
+
+The wizard is idempotent: if you close the browser between steps,
+reopen \texttt{/setup} and the wizard resumes server-side at the
+right step (it queries the database on every load — there is no
+client state to lose).
+
+\section{Verifying the install}
+
+After the wizard finishes:
+
+\begin{itemize}
+  \item Log in at \url{http://<host>:8080/login} with the admin
+        credentials you just created.
+  \item Visit \texttt{/admin > Health}. The page should show
+        non-zero entity counts (zero on a clean install — that is
+        expected) and a green check next to each metadata provider
+        that has been reachable in the last 5\,minutes.
+  \item Scan an ISBN (the search field at the top of the home page)
+        to confirm the metadata pipeline resolves a real title. The
+        first scan takes a couple of seconds; the result appears in
+        the timeline of recent additions on the home page once the
+        background fetch completes.
+\end{itemize}
+
+If anything goes wrong, jump to chapter~\ref{ch:troubleshooting}.
