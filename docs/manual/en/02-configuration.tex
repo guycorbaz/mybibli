@@ -106,6 +106,78 @@ stick it on the back cover, and scan in one motion — no
 context-switch between the cataloging UI and the printer.
 \end{tip}
 
+\section{Hardware: barcode scanner}\label{sec:scanner-hardware}
+
+mybibli is designed around a barcode scanner but does not strictly
+require one — every ISBN, V-code and L-code field accepts manual
+keyboard input as a fallback. That said, for any collection beyond
+a handful of titles, a cheap USB scanner pays for itself within the
+first dozen scans.
+
+\subsection*{What to buy}
+
+Any \emph{HID-keyboard-mode}\index{HID keyboard mode} USB scanner in
+the 15--30~\euro{} range works. The HID mode is what makes the
+scanner driver-free: the OS sees it as a regular keyboard and the
+scanned digits land directly in whatever input field has focus.
+Almost every general-purpose USB scanner on the market ships in this
+mode by default; look for the words ``HID'', ``keyboard
+emulation'' or ``plug-and-play'' on the product page.
+
+The scanner must support the two symbologies mybibli uses:
+
+\begin{itemize}
+  \item \textbf{EAN-13}\index{EAN-13} — the 13-digit code on the
+        back cover of books, CDs, DVDs, and most consumer products.
+        Universally supported.
+  \item \textbf{Code-128}\index{Code-128} — the symbology mybibli
+        uses to encode V-codes and L-codes on the labels it prints
+        (see section~\ref{sec:labels}). Universally supported.
+\end{itemize}
+
+You do \emph{not} need a 2D imager (the kind that reads QR codes) —
+a basic 1D laser or LED scanner is enough. mybibli does not use QR
+codes.
+
+\subsection*{Configuration}
+
+Three settings on the scanner matter. Most scanners ship them
+correctly out of the box; if your scans behave strangely, check the
+scanner's manual or the configuration sheet of barcodes that comes
+in the box:
+
+\begin{itemize}
+  \item \textbf{Terminator / suffix:} \texttt{Enter} (also called
+        \texttt{CR} or \texttt{Carriage Return}). mybibli's
+        cataloging form auto-submits on Enter, so this turns each
+        scan into one round-trip. Anything else (\texttt{Tab}, no
+        terminator) will not work without manual key presses.
+  \item \textbf{Prefix:} none. Some scanners can prepend a fixed
+        string before the payload — leave it disabled.
+  \item \textbf{Keyboard layout:} \emph{must} match the layout of
+        the host the browser runs on. If your laptop uses an AZERTY
+        layout but the scanner is configured for QWERTY, the digits
+        come out as letters (e.g.\ \texttt{1234567890} arrives as
+        \texttt{\&é"'(-è\_çà}) and no ISBN ever resolves. The
+        scanner's manual will have a code chart to switch.
+\end{itemize}
+
+\begin{tip}
+USB scanners on a Synology NAS host: it does not matter that the
+scanner is plugged into the laptop you use to access the mybibli
+web UI rather than the NAS itself. The scanner is a keyboard for
+the browser, not for the server. The same setup works with a
+phone-side scanner app, an industrial Bluetooth scanner paired to
+the laptop, or any USB stick scanner.
+\end{tip}
+
+\subsection*{What to do when the scanner is unavailable}
+
+Every scan field also accepts hand-typed input. Click into the field
+labelled ``Scan ISBN'' (or ``Scan V-code'' / ``Scan L-code''
+elsewhere), type the digits, press Enter. The form behaves
+identically.
+
 \section{Reference data}\label{sec:reference-data}
 
 Four taxonomy tables drive the dropdowns you see while
