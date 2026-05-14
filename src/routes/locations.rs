@@ -170,16 +170,23 @@ fn build_subtree(
 }
 
 /// Render the tree as HTML string (avoids recursive template which crashes Askama compiler).
+///
+/// `csrf_token` is the per-session synchronizer token (see CLAUDE.md → CSRF
+/// synchronizer token / story 8-2). It is injected as a hidden input on every
+/// inline "add child" form. Forgetting it causes issue #185: the middleware
+/// rejects the POST, redirects authenticated users to `/login` which itself
+/// redirects to `/` — the action silently fails with no UI feedback.
 fn render_tree_html(
     nodes: &[TreeNode],
     node_types: &[(u64, String)],
     next_lcode: &str,
     can_edit: bool,
     loc: &str,
+    csrf_token: &str,
 ) -> String {
     let mut html = String::new();
     for node in nodes {
-        render_node_html(node, &mut html, node_types, next_lcode, can_edit, loc);
+        render_node_html(node, &mut html, node_types, next_lcode, can_edit, loc, csrf_token);
     }
     html
 }
@@ -191,10 +198,12 @@ fn render_node_html(
     next_lcode: &str,
     can_edit: bool,
     loc: &str,
+    csrf_token: &str,
 ) {
-    render_node_at_depth(node, html, node_types, next_lcode, 0, can_edit, loc);
+    render_node_at_depth(node, html, node_types, next_lcode, 0, can_edit, loc, csrf_token);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_node_at_depth(
     node: &TreeNode,
     html: &mut String,
@@ -203,6 +212,7 @@ fn render_node_at_depth(
     depth: usize,
     can_edit: bool,
     loc: &str,
+    csrf_token: &str,
 ) {
     let name = crate::utils::html_escape(&node.location.name);
     let label = crate::utils::html_escape(&node.location.label);
@@ -267,6 +277,7 @@ fn render_node_at_depth(
             ),
             format!(
                 r#"<form id="{form_id}" method="POST" action="/locations" class="hidden {child_margin_class} px-3 py-2 space-y-2 bg-stone-50 dark:bg-stone-800/50 rounded-md mt-1 mb-2">
+<input type="hidden" name="_csrf_token" value="{csrf_token_escaped}">
 <input type="hidden" name="parent_id" value="{id}">
 <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
 <div><label class="block text-xs text-stone-600 dark:text-stone-400">{name_lbl}</label><input type="text" name="name" required class="w-full px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100"></div>
@@ -277,6 +288,7 @@ fn render_node_at_depth(
 </form>"#,
                 id = node.location.id,
                 next_lcode = crate::utils::html_escape(next_lcode),
+                csrf_token_escaped = crate::utils::html_escape(csrf_token),
             ),
         )
     } else {
@@ -306,6 +318,7 @@ fn render_node_at_depth(
             depth + 1,
             can_edit,
             loc,
+            csrf_token,
         );
     }
 }
@@ -371,7 +384,14 @@ pub async fn locations_page(
 
     let tree = build_tree(&locations, &volume_counts);
     let can_edit = session.role >= Role::Librarian;
-    let tree_html = render_tree_html(&tree, &node_types, &next_lcode, can_edit, loc);
+    let tree_html = render_tree_html(
+        &tree,
+        &node_types,
+        &next_lcode,
+        can_edit,
+        loc,
+        &session.csrf_token,
+    );
 
     let template = LocationsTemplate {
         lang: loc.to_string(),
@@ -669,6 +689,98 @@ mod tests {
         assert_eq!(tree[0].children.len(), 1);
         assert_eq!(tree[0].children[0].children.len(), 1);
         assert_eq!(tree[0].children[0].children[0].volume_count, 5);
+    }
+
+    /// Issue #185 regression lock: the inline "add child" form rendered by
+    /// `render_tree_html` MUST include the CSRF synchronizer token as a
+    /// hidden input. Forgetting it causes the middleware to reject the POST
+    /// with a 303 → /login → / silent redirect.
+    ///
+    /// This sits outside the Askama `forms_include_csrf_token` audit
+    /// (issue #48) because that audit scans templates only, not HTML
+    /// produced by Rust code. Keep this test until #48 lands.
+    #[test]
+    fn render_tree_html_includes_csrf_token_in_inline_form() {
+        let locations = vec![LocationModel {
+            id: 42,
+            parent_id: None,
+            name: "Salon".to_string(),
+            node_type: "room".to_string(),
+            label: "L0001".to_string(),
+        }];
+        let tree = build_tree(&locations, &HashMap::new());
+        let token = "test-csrf-token-abcdef0123456789";
+        let html = render_tree_html(
+            &tree,
+            &[(1, "room".to_string())],
+            "L0002",
+            /* can_edit */ true,
+            "en",
+            token,
+        );
+        let needle = format!(r#"<input type="hidden" name="_csrf_token" value="{token}">"#);
+        assert!(
+            html.contains(&needle),
+            "inline add-child form must include the CSRF token (issue #185). \
+             Looked for {needle:?} in rendered HTML."
+        );
+    }
+
+    /// When the viewer cannot edit, no form is rendered — the CSRF token
+    /// should NOT leak into the read-only HTML.
+    #[test]
+    fn render_tree_html_omits_csrf_token_when_read_only() {
+        let locations = vec![LocationModel {
+            id: 42,
+            parent_id: None,
+            name: "Salon".to_string(),
+            node_type: "room".to_string(),
+            label: "L0001".to_string(),
+        }];
+        let tree = build_tree(&locations, &HashMap::new());
+        let html = render_tree_html(
+            &tree,
+            &[(1, "room".to_string())],
+            "L0002",
+            /* can_edit */ false,
+            "en",
+            "should-not-appear",
+        );
+        assert!(
+            !html.contains("_csrf_token"),
+            "no form, no token: read-only tree leaked CSRF token in HTML"
+        );
+        assert!(
+            !html.contains("should-not-appear"),
+            "read-only tree leaked the CSRF token value"
+        );
+    }
+
+    /// CSRF token must be HTML-escaped when injected into the hidden input's
+    /// `value=` attribute (defense in depth — tokens are constant-time-compared
+    /// against the session row, so a non-escaped token wouldn't directly cause
+    /// XSS, but the audit-friendly contract is "every dynamic attribute value
+    /// goes through html_escape").
+    #[test]
+    fn render_tree_html_escapes_csrf_token() {
+        let locations = vec![LocationModel {
+            id: 1,
+            parent_id: None,
+            name: "Salon".to_string(),
+            node_type: "room".to_string(),
+            label: "L0001".to_string(),
+        }];
+        let tree = build_tree(&locations, &HashMap::new());
+        let html = render_tree_html(
+            &tree,
+            &[(1, "room".to_string())],
+            "L0002",
+            true,
+            "en",
+            r#"a"b<c>"#,
+        );
+        assert!(html.contains(r#"value="a&quot;b&lt;c&gt;""#));
+        assert!(!html.contains(r#"value="a"b<c>""#));
     }
 
     #[test]
