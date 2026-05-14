@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-05-10 (Epic 9 retrospective → done — final epic of project)
+# last_updated: 2026-05-14 (Epic 10 spec added — mobile UX + sécurité closeout)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -186,3 +186,17 @@ development_status:
   9-21-responsive-per-page-layouts: done
   9-22-wcag-aa-final-audit: done
   epic-9-retrospective: done
+
+  # Epic 10: Mobile UX & sécurité closeout
+  # UX-DRs: UX-DR28(complete), UX-DR8(complete carryover)
+  # ARs: AR20 (CSRF synchronizer-token threat-model addendum)
+  # NFRs: NFR12 (a11y)
+  # Closes GitHub issues: #17, #45, #159, #160, #162.
+  # Sequencing: 10-1 → 10-2 → 10-3 → 10-4 → 10-5 (series, per Foundation Rule #14).
+  epic-10: backlog
+  10-1-auth-threat-model-doc: backlog
+  10-2-csrf-rejection-ux-and-mobile-logout: backlog
+  10-3-mobile-datatable-card-mode: backlog
+  10-4-admin-tabs-mobile-dropdown: backlog
+  10-5-a11y-entity-detail-coverage: backlog
+  epic-10-retrospective: backlog

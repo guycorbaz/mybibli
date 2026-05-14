@@ -1614,3 +1614,83 @@ The dashboard shows actionable indicators with counts. Every page has encouragin
 - i18n: EN + FR for any new copy in the audit doc + README
 - Unit tests: the URL list is loaded from a single source of truth (no duplicated lists between the spec and a registry); the `templates_audit.rs` regression test detects a new handler not in the URL list
 - E2E smoke (Foundation Rule #7, Epic 9 closure): the new accessibility-full spec runs in CI on PR; the run passes locally + in CI; manual sign-off doc is committed to the repo
+
+### Epic 10: Mobile UX & sécurité closeout
+
+Mobile-first responsive UX completed per UX-DR28 (DataTable → card list, admin tabs → dropdown). End-to-end accessibility coverage extended to entity-detail routes. CSRF rejection + mobile logout UX gaps closed. Long-deferred CSRF + cookie hardening dossier formalized via auth-threat-model doc — finally clears the four-deferral chain from Epic 1 / 5 / 7 / 8.
+
+**FRs:** (none — refinements of FR55-FR59 / FR83-FR84 from Epic 9)
+**UX-DRs:** UX-DR28 (complete — mobile DataTable card mode + admin-tab dropdown), UX-DR8 (complete — modal anonymous redirect surface preservation, optional carryover from KF #133)
+**ARs:** AR20 (CSRF synchronizer token — threat-model addendum)
+**NFRs:** NFR12 (a11y), NFR3 (CSP unchanged)
+
+**Scope note — what this epic is and is not.** Epic 10 is *closeout*, not new surface: every story is grounded in a GitHub issue from the post-Epic-9 review pass (#159 / #160 / #162 / #45) or in a deferral chain that the user explicitly called out as needing to close (#17). No new feature lands. No new database column. No new dependency. The success criterion is *empty open medium-severity issue list*, not "did we add anything."
+
+**Sequencing.** 10.1 (docs-only, zero blast radius) → 10.2 (middleware UX, exercised behind the existing CSRF chain) → 10.3 + 10.4 (mobile UX, independent surfaces) → 10.5 (a11y test infra, may surface follow-ups).
+
+**Stories:**
+
+#### Story 10.1: auth-threat-model doc — formalize the single-tenant posture (closes #17)
+**As an** operator running mybibli on a household NAS, **I want** the auth surface (CSRF, cookie flags, Secure on HTTPS-vs-HTTP, exempt routes) to be documented as a single coherent threat model, **so that** future changes to session / cookie / CSRF code have a stated baseline to compare against and the four-deferral history is closed.
+
+**Acceptance Criteria:**
+- New file `docs/auth-threat-model.md` covering: deployment shape (single-tenant LAN/NAS, anonymous reads, authenticated writes), trust boundaries, attacker models (drive-by browser, LAN-local, post-compromise lateral), what mybibli *does* defend against (CSRF token, SameSite=Lax, HttpOnly, session rotation on login, last-active-admin guard, scanner-guard), what it *does not* (TLS termination handled by reverse proxy, no client cert auth, no per-user authorization scope — see CLAUDE.md § single-tenant)
+- `MYBIBLI_COOKIE_SECURE` flag semantics documented: required for prod-HTTPS deployments, off-by-default for LAN HTTP dev; the threat model explains why "off + LAN-only HTTP" is an accepted posture
+- The four sub-items of #17 each cross-referenced and either marked "implemented in story 8-2" or "accepted-posture, see § X" with the section cited
+- Audit-friendly: `src/templates_audit.rs::csrf_exempt_routes_frozen` is referenced from the doc as the test that enforces the frozen exempt-route allowlist; same for `forms_include_csrf_token`
+- Linked from `README.md` § Security and from `CLAUDE.md` § Architecture
+- Unit tests: none (docs-only)
+- E2E: none
+
+#### Story 10.2: CSRF rejection UX + mobile logout (closes #45)
+**As a** logged-in librarian or admin, **I want** a CSRF token drift on a plain-form submission to surface a visible "session expired, please reload" page instead of a silent redirect to `/`, **and** I want a working logout button in the mobile nav, **and** the keepalive fetch fallback to handle a 403 by re-showing the warning.
+
+**Acceptance Criteria:**
+- Plain-form CSRF rejection for an *authenticated* session emits a full-chrome HTML response (status 403) with localized banner "Session expired — please reload to continue" (new i18n keys `csrf_session_drifted_title` / `csrf_session_drifted_message`); the existing `csrf_rejected_*` keys remain for the HTMX-envelope path
+- `templates/components/nav_bar.html` mobile menu gets a parallel `<form method="POST" action="/logout">` with the `_csrf_token` hidden input, inside the `{% if role != "anonymous" %}` branch, styled full-width per mobile menu convention
+- `static/js/session-timeout.js`'s `fetch("/session/keepalive", ...)` callback inspects the response status; on 403, re-show the warning toast with a "Reload page" CTA
+- The fix preserves issue #185's regression test (sub-location form CSRF token still asserted)
+- Unit tests: the new `build_rejection_response` branch (authenticated + form + non-HTMX) returns 403 with the full HTML page, not 303
+- E2E: simulate token drift via DB tweak → submit a plain form → assert 403 page renders with the i18n banner; mobile viewport → click logout → assert redirected to `/login`
+- CSP: zero inline JS introduced; the keepalive change stays in `static/js/session-timeout.js`
+
+#### Story 10.3: Mobile DataTable card mode (closes #159)
+**As a** librarian on a mobile device, **I want** `/loans`, `/borrowers` and `/title/:id` to render the row data as stacked cards on narrow viewports (< md breakpoint), **so that** I do not have to horizontally scroll a table to read a row.
+
+**Acceptance Criteria:**
+- A new template fragment (`templates/components/data_table_mobile_card.html` or equivalent) renders one card per row with field labels stacked above values; consumed by `/loans`, `/borrowers`, and the volumes list on `/title/:id`
+- Tailwind breakpoint switch: `hidden md:table-row` / `md:hidden` (or `flex md:hidden`) so the desktop table and the mobile card list are mutually exclusive — no duplication in the rendered HTML, no JS toggle
+- Card layout: title row (primary identifier — loan ID / borrower name / volume V-code), then 2-column grid of remaining fields, then actions row (Return / Edit / Delete)
+- CSP: class-driven only, no inline `style="..."`
+- All three pages keep their existing role-gating, pagination, and filtering intact — the change is purely the renderer
+- Existing axe-core spec for these three pages passes (no new contrast or semantic regressions)
+- Unit tests: rendered HTML for each page contains both the table (with `md:table-row` classes) and the card list (with `md:hidden` classes); both carry the same data
+- E2E (mobile viewport via Playwright `viewport: { width: 375, height: 667 }`):
+  - `/loans` → cards visible, table hidden, all loan info accessible without horizontal scroll
+  - `/borrowers` → same shape
+  - `/title/:id` volumes table → same shape
+
+#### Story 10.4: Admin tabs → select dropdown on mobile (closes #160)
+**As an** admin on a mobile device, **I want** the `/admin` tab strip to render as a `<select>` dropdown on narrow viewports (< md breakpoint), **so that** the tabs stay on a single visual row regardless of viewport.
+
+**Acceptance Criteria:**
+- `templates/components/admin_tabs.html` renders both the existing `flex flex-wrap` tab strip (with `hidden md:flex`) and a new `<select>` with `md:hidden` containing one `<option>` per tab; the `<select>`'s `name=tab` triggers HTMX swap on `change` (`hx-get="/admin"`, `hx-trigger="change"`, `hx-push-url="true"`)
+- Selected tab is reflected in both surfaces — `aria-selected="true"` on the desktop button and `selected` on the dropdown option
+- Keyboard a11y: dropdown is fully keyboard-navigable; desktop tab strip retains its existing keyboard semantics
+- CSP: no inline JS; the change is via `hx-*` attributes already used elsewhere
+- The `forms_include_csrf_token` audit's allowlist is NOT touched (the dropdown is a GET, not a POST)
+- Unit tests: rendered HTML contains both surfaces with correct selected-state flags
+- E2E (mobile viewport): navigate to `/admin?tab=health` → dropdown shows "Health" selected → change to "Users" → URL becomes `/admin?tab=users` → users panel renders; desktop viewport → tab strip visible, dropdown hidden
+
+#### Story 10.5: a11y full coverage — entity-detail routes (closes #162)
+**As a** maintainer, **I want** the axe-core full-coverage spec to also cover `/title/:id`, `/borrower/:id`, `/contributor/:id`, `/series/:id`, and `/setup`, **so that** the WCAG 2.2 AA gate truly covers every reachable surface.
+
+**Acceptance Criteria:**
+- `tests/e2e/specs/accessibility-full.spec.ts` extended with the five excluded routes
+- Each entity-detail route uses a Playwright fixture that seeds the minimum data needed (title, borrower, contributor, series) before navigation; reuse `tests/e2e/helpers/isbn.ts::specIsbn` for ISBN-derived test data
+- `/setup` test reuses the pattern from `setup_wizard_step_admin_renders_help_icon` (seed an empty users + sessions state, navigate, assert axe-clean)
+- Any new violation surfaced by the extended coverage is either fixed in this story (preferred) or filed as a GitHub issue with `severity:low` and linked from the spec's `test.skip()` block (acceptable for non-trivial a11y debt)
+- CI's `e2e` job continues to run the full spec without flakes (parallel-safe data isolation via `specIsbn`)
+- Foundation Rule #7 — the spec is a smoke test layer, NOT counted toward an epic smoke test (this epic's smoke is the 10.3 mobile flow)
+- Unit tests: none (test infrastructure)
+- E2E: the new tests themselves
