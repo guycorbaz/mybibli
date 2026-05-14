@@ -72,12 +72,14 @@ export async function createBorrower(page: Page, name: string): Promise<void> {
   await page.locator("#new-name").fill(name);
   await page.locator('main button[type="submit"]').last().click();
   // Assertion-as-wait: the borrower anchor appearing in the list confirms
-  // the server committed the INSERT. Scoped to the actual `/borrower/:id`
-  // anchor so stale DOM (form input echo, nav, breadcrumbs) cannot trip
-  // the wait before the row is visible.
+  // the server committed the INSERT. Scoped to `tbody` so the assertion
+  // works correctly across viewports — story 10-3 added a parallel
+  // mobile-card surface (`md:hidden`) that also carries the borrower
+  // anchor. The `tbody` scope picks only the desktop-table copy, which
+  // is the surface visible at default Playwright viewport (1280x720).
   const exactName = new RegExp(`^\\s*${escapeRegex(name)}\\s*$`);
   await expect(
-    page.locator('a[href^="/borrower/"]').filter({ hasText: exactName }),
+    page.locator('tbody a[href^="/borrower/"]').filter({ hasText: exactName }),
   ).toBeVisible({ timeout: 5000 });
 }
 
@@ -89,8 +91,12 @@ export async function createBorrower(page: Page, name: string): Promise<void> {
  */
 async function getBorrowerIdByName(page: Page, name: string): Promise<string> {
   await page.goto("/borrowers");
+  // Scoped to `tbody` (story 10-3): the borrowers list now renders the
+  // same row in two surfaces (desktop table + mobile card list). Counting
+  // matches across both would inflate the count by 2× and break the
+  // ambiguity-detection assertion. Only the table has a `<tbody>`.
   const link = page
-    .locator('a[href^="/borrower/"]')
+    .locator('tbody a[href^="/borrower/"]')
     .filter({ hasText: new RegExp(`^\\s*${escapeRegex(name)}\\s*$`) });
   // Fail loud on ambiguity: if two borrowers share the exact name, .first()
   // would silently pick the wrong id and the loan would be created against
@@ -226,8 +232,12 @@ export async function returnLoanFromBorrowerDetail(
   volumeLabel: string,
 ): Promise<void> {
   const activeLoans = page.locator("#active-loans-section");
+  // Story 10-3: the active-loans section now renders the Return button
+  // in both surfaces (mobile card + desktop table). Scope to `tbody` so
+  // the helper picks the visible desktop-table copy at the default
+  // Playwright viewport (1280x720).
   const returnBtn = activeLoans
-    .locator('button:has-text("Return"), button:has-text("Retourner")')
+    .locator('tbody button:has-text("Return"), tbody button:has-text("Retourner")')
     .first();
   await expect(returnBtn).toBeVisible({ timeout: 3000 });
   await returnBtn.click();
