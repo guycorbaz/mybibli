@@ -82,7 +82,7 @@ These apply to ALL sessions without exception.
 
 ### Deployment model: single-tenant
 
-mybibli is designed and operated as a **single-tenant** application — one library instance per deployment (typical: a household NAS or a small association). Several design choices follow from this and are intentionally NOT going to be revisited unless a multi-tenant goal is added explicitly:
+mybibli is designed and operated as a **single-tenant** application — one library instance per deployment (typical: a household NAS or a small association). The auth surface (CSRF, cookie attributes, session policy) is formalized end-to-end in [`docs/auth-threat-model.md`](docs/auth-threat-model.md) — read it before changing anything in `src/middleware/csrf.rs`, `src/middleware/auth.rs`, the `sessions` schema, or cookie set/read code. Several design choices follow from the single-tenant shape and are intentionally NOT going to be revisited unless a multi-tenant goal is added explicitly:
 
 - **No per-user authorization scope** on admin routes (issue #54). Every Admin can manipulate every other user. The only ownership-style guard is the self-deactivate / last-active-admin pair in `services/users.rs`.
 - **MariaDB deadlock retry, not topology fix** (issue #16). `LoanService::register_loan` retries on SQLSTATE 40001 / MySQL 1205 up to `LOAN_REGISTER_MAX_ATTEMPTS` times. Sufficient for single-librarian load; would need to be revisited (lock ordering + `READ COMMITTED` + optimistic locking on `volumes.version`) if concurrent librarians become a goal.
