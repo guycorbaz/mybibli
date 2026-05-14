@@ -1,6 +1,30 @@
 {# Admin tab bar + panel wrapper (story 8-1). Rendered Rust-side via
-   `AdminShellTemplate` and returned verbatim on HTMX swaps into #admin-shell. #}
-<div role="tablist" aria-label="{{ tabs_aria }}" class="border-b border-stone-200 dark:border-stone-700 flex flex-wrap gap-2 mb-6">
+   `AdminShellTemplate` and returned verbatim on HTMX swaps into #admin-shell.
+
+   Story 10-4 (closes #160): on narrow viewports (< md) the tablist is
+   replaced by a <select> dropdown so the tabs stay on a single visual row.
+   Both surfaces target the same #admin-shell endpoint so a swap from
+   either path lands the new shell render. #}
+<div class="md:hidden mb-6">
+    <label for="admin-tab-select" class="sr-only">{{ tabs_aria }}</label>
+    <select id="admin-tab-select"
+            name="tab"
+            hx-get="/admin"
+            hx-trigger="change"
+            hx-target="#admin-shell"
+            hx-swap="innerHTML"
+            hx-push-url="true"
+            class="w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 text-sm focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2">
+    {% for tab in tabs %}
+        {% if tab.aria_selected %}
+        <option value="{{ tab.name }}" selected>{{ tab.label }}{% if tab.badge_count > 0 %} ({{ tab.badge_count }}){% endif %}</option>
+        {% else %}
+        <option value="{{ tab.name }}">{{ tab.label }}{% if tab.badge_count > 0 %} ({{ tab.badge_count }}){% endif %}</option>
+        {% endif %}
+    {% endfor %}
+    </select>
+</div>
+<div role="tablist" aria-label="{{ tabs_aria }}" class="hidden md:flex border-b border-stone-200 dark:border-stone-700 flex-wrap gap-2 mb-6">
 {% for tab in tabs %}
     {% if tab.aria_selected %}
     <a role="tab"

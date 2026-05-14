@@ -1684,4 +1684,87 @@ mod tests {
                 .is_ok()
         );
     }
+
+    // ─── Story 10-4: admin tabs mobile dropdown ─────────────
+
+    /// Build an AdminShellTemplate with all 5 tabs and the named tab
+    /// marked active, for use by the rendering tests below.
+    fn admin_shell_with_active(active: AdminTab) -> AdminShellTemplate {
+        let mk = |tab: AdminTab, label: &str, badge: i64| AdminTabItem {
+            name: tab.as_str(),
+            hx_path: tab.hx_path(),
+            label: label.to_string(),
+            aria_selected: tab == active,
+            badge_count: badge,
+            badge_aria: format!("{} {}", label, badge),
+        };
+        AdminShellTemplate {
+            tabs: vec![
+                mk(AdminTab::Health, "Health", 0),
+                mk(AdminTab::Users, "Users", 0),
+                mk(AdminTab::ReferenceData, "Reference data", 0),
+                mk(AdminTab::Trash, "Trash", 3),
+                mk(AdminTab::System, "System", 0),
+            ],
+            tabs_aria: "Admin tabs".to_string(),
+            active_tab_name: active.as_str(),
+            panel_html: "<p>panel body</p>".to_string(),
+        }
+    }
+
+    /// Story 10-4 (closes #160): admin_tabs.html must render BOTH the
+    /// mobile <select> dropdown (md:hidden) AND the desktop tablist
+    /// (hidden md:flex). Both surfaces target the same #admin-shell
+    /// endpoint so swap behaviour is identical from either path.
+    #[test]
+    fn admin_shell_renders_mobile_select_and_desktop_tablist() {
+        use askama::Template;
+        let html = admin_shell_with_active(AdminTab::Health).render().unwrap();
+        // Mobile dropdown surface
+        assert!(
+            html.contains(r#"id="admin-tab-select""#),
+            "mobile <select> must carry the well-known id"
+        );
+        assert!(
+            html.contains(r#"<div class="md:hidden mb-6""#),
+            "mobile wrapper must be md:hidden"
+        );
+        // HTMX wiring (per AC: name=tab, hx-get=/admin, change trigger,
+        // push-url so back/forward work)
+        assert!(html.contains(r#"name="tab""#));
+        assert!(html.contains(r#"hx-get="/admin""#));
+        assert!(html.contains(r#"hx-trigger="change""#));
+        assert!(html.contains(r##"hx-target="#admin-shell""##));
+        assert!(html.contains(r#"hx-push-url="true""#));
+        // Desktop tablist surface
+        assert!(
+            html.contains(r#"class="hidden md:flex"#),
+            "desktop tablist must be hidden md:flex"
+        );
+        assert!(html.contains(r#"role="tablist""#));
+    }
+
+    /// The selected tab must be reflected in BOTH the desktop tablist
+    /// (aria-selected="true") and the mobile dropdown (`<option ... selected>`).
+    #[test]
+    fn admin_shell_selected_tab_is_reflected_in_both_surfaces() {
+        use askama::Template;
+        let html = admin_shell_with_active(AdminTab::Trash).render().unwrap();
+        // Desktop: aria-selected="true" on the Trash tab anchor
+        assert!(
+            html.contains(r#"id="tab-trash""#) && html.contains(r#"aria-selected="true""#),
+            "Trash tab anchor must carry aria-selected=true on desktop"
+        );
+        // Mobile: the Trash option carries `selected`. We pin the exact
+        // string so a regression that drops the attribute fails loudly.
+        assert!(
+            html.contains(r#"<option value="trash" selected>"#),
+            "Trash option must carry the `selected` attribute in the mobile dropdown"
+        );
+        // Badge count surfaces in the option label too (Trash carries 3)
+        assert!(
+            html.contains("Trash (3)"),
+            "option label must include the badge count in parens"
+        );
+    }
 }
