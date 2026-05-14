@@ -288,7 +288,7 @@ Product and planning documents are versioned under `_bmad-output/`:
 - [`implementation-artifacts/sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) — live sprint state
 - [`implementation-artifacts/epic-*-retro-*.md`](_bmad-output/implementation-artifacts/) — per-epic retrospectives
 
-Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](CLAUDE.md). CI/CD pipeline, Docker Hub publishing, and release procedure are documented in [`docs/ci-cd.md`](docs/ci-cd.md).
+Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](CLAUDE.md). CI/CD pipeline, Docker Hub publishing, and release procedure are documented in [`docs/ci-cd.md`](docs/ci-cd.md). The auth surface (CSRF, cookies, session policy) and its accepted posture for the single-tenant LAN/NAS deployment shape are formalized in [`docs/auth-threat-model.md`](docs/auth-threat-model.md).
 
 ## Roadmap
 
