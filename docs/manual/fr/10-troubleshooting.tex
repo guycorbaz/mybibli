@@ -68,9 +68,66 @@ pas non plus :
         — cherchez les erreurs de migration dans les logs ;
   \item l'admin précédent a déjà tourné le mot de passe (vérifiez
         avec qui a installé mybibli) ;
-  \item vous regardez une installation 1.1.0+, où il n'y a pas de
-        seed — utilisez plutôt l'assistant à \texttt{/setup}.
+  \item vous regardez une installation 1.1.0+, où les identifiants
+        seedés sont bien plantés par la migration mais immédiatement
+        soft-deleted par la garde issue-\#173 au démarrage —
+        utilisez plutôt l'assistant à \texttt{/setup}.
 \end{itemize}
+
+\section{Utilisateurs résiduels dans la table \texttt{users} après l'assistant}
+\label{sec:troubleshoot-seeded-users}
+
+\subsection*{Symptôme : quatre utilisateurs en base, un seul créé dans l'assistant}
+
+Si vous inspectez la table \texttt{users} directement (via
+phpMyAdmin ou le CLI MariaDB) juste après avoir terminé
+\texttt{/setup}, vous verrez \emph{quatre} lignes alors que vous
+n'avez saisi qu'un seul nom d'utilisateur et un seul mot de passe.
+C'est intentionnel. Trois de ces lignes ne peuvent pas servir à se
+connecter.
+
+\begin{longtable}{@{} l l c l @{}}
+\toprule
+\textbf{username} & \textbf{role} & \textbf{active} & \textbf{deleted\_at} \\
+\midrule
+\endhead
+\texttt{admin}     & \texttt{admin}     & 1 & rempli, $\approx$ heure du premier boot \\
+\texttt{librarian} & \texttt{librarian} & 1 & rempli, $\approx$ heure du premier boot \\
+\texttt{SYSTEM}    & \texttt{system}    & 0 & NULL \\
+\texttt{<votre-username>} & \texttt{admin} & 1 & NULL \\
+\bottomrule
+\end{longtable}
+
+\begin{itemize}
+  \item \texttt{admin} et \texttt{librarian} sont plantés par les
+        migrations de seed (qui tournent à chaque installation neuve
+        pour le flux dev / E2E) puis immédiatement
+        \emph{soft-deleted} par la garde issue-\#173 au démarrage.
+        Leur \texttt{deleted\_at} est rempli, donc la requête de
+        login (qui filtre \texttt{deleted\_at IS NULL}) les refuse.
+  \item \texttt{SYSTEM}\index{utilisateur SYSTEM} est un compte
+        utilitaire non connectable, utilisé pour attribuer les
+        entrées du journal d'audit produites par la tâche de fond
+        de purge automatique à 30 jours. Son rôle est \texttt{system}
+        (hors de l'énum de login \texttt{admin/librarian}), son
+        \texttt{password\_hash} est la chaîne littérale
+        \texttt{NO\_LOGIN\_SYSTEM\_USER\_HASH\_NOT\_A\_VALID\_ARGON2\_STRING},
+        et son flag \texttt{active} vaut \texttt{0}.
+\end{itemize}
+
+\begin{tip}
+Pour vérifier que les lignes soft-deleted sont inertes, essayez de
+vous connecter avec \texttt{admin/admin} : la tentative est
+refusée. Le panneau \texttt{/admin > Utilisateurs} filtre la ligne
+\texttt{SYSTEM} ainsi que toute ligne avec \texttt{deleted\_at}
+rempli, donc l'interface admin n'affiche que le compte que vous
+avez créé dans l'assistant.
+\end{tip}
+
+Les deux lignes soft-deleted sont physiquement supprimées de la
+table par le planificateur de purge automatique à 30 jours —
+attendez-vous à les voir disparaître environ un mois après la date
+de boot inscrite dans \texttt{deleted\_at}.
 
 \subsection*{Symptôme : la connexion redirige vers \texttt{/login}}
 

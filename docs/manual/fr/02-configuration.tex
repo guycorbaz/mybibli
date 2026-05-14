@@ -115,6 +115,85 @@ scanner d'un même mouvement — sans aller-retour entre l'interface
 de catalogage et l'imprimante.
 \end{tip}
 
+\section{Matériel : douchette code-barres}\label{sec:scanner-hardware}
+
+mybibli est conçu autour d'une douchette code-barres mais n'en exige
+pas strictement une : tous les champs ISBN, code V et code L
+acceptent la saisie clavier comme repli. Cela dit, dès que la
+collection dépasse une poignée de titres, une douchette USB
+bon marché est rentabilisée après la première douzaine de scans.
+
+\subsection*{Quoi acheter}
+
+N'importe quelle douchette USB en \emph{mode clavier HID}\index{mode
+HID clavier} dans la gamme 15--30~\euro{} convient. Le mode HID est
+ce qui rend la douchette sans pilote : l'OS la voit comme un clavier
+ordinaire et les chiffres scannés atterrissent directement dans le
+champ qui a le focus. Presque toutes les douchettes USB grand public
+sortent d'usine dans ce mode ; cherchez les mots ``HID'',
+``émulation clavier'' ou ``plug-and-play'' sur la fiche produit.
+
+La douchette doit prendre en charge les deux symbologies que
+mybibli utilise :
+
+\begin{itemize}
+  \item \textbf{EAN-13}\index{EAN-13} — le code à 13 chiffres au dos
+        des livres, CD, DVD et de la plupart des produits grand
+        public. Universellement supporté.
+  \item \textbf{Code-128}\index{Code-128} — la symbologie utilisée
+        par mybibli pour encoder les codes V et codes L sur les
+        étiquettes qu'il imprime (voir section~\ref{sec:labels}).
+        Universellement supporté.
+\end{itemize}
+
+Vous n'avez \emph{pas} besoin d'un imageur 2D (le type qui lit les
+QR codes) — une douchette laser ou LED 1D basique suffit. mybibli
+n'utilise pas les QR codes.
+
+\subsection*{Configuration}
+
+Trois réglages comptent côté douchette. La plupart sortent d'usine
+correctement configurées ; si vos scans se comportent bizarrement,
+consultez le manuel de la douchette ou la planche de codes-barres de
+configuration livrée dans la boîte :
+
+\begin{itemize}
+  \item \textbf{Terminateur / suffixe :} \texttt{Enter} (parfois
+        appelé \texttt{CR} ou \texttt{Carriage Return}). Le
+        formulaire de catalogage de mybibli soumet
+        automatiquement à la pression d'Entrée, donc ce réglage
+        transforme chaque scan en un seul aller-retour. Toute autre
+        valeur (\texttt{Tab}, pas de terminateur) ne marchera pas
+        sans intervention clavier manuelle.
+  \item \textbf{Préfixe :} aucun. Certaines douchettes peuvent
+        préfixer une chaîne fixe au début du payload — laissez
+        cette option désactivée.
+  \item \textbf{Disposition clavier :} \emph{doit} correspondre à
+        la disposition de l'hôte sur lequel tourne le navigateur. Si
+        votre ordinateur utilise AZERTY mais la douchette est
+        configurée en QWERTY, les chiffres sortent en lettres (p.~ex.
+        \texttt{1234567890} arrive comme \texttt{\&é"'(-è\_çà}) et
+        aucun ISBN ne résout. Le manuel de la douchette contient une
+        planche de codes pour changer la disposition.
+\end{itemize}
+
+\begin{tip}
+Douchettes USB sur NAS Synology : peu importe que la douchette soit
+branchée sur l'ordinateur portable depuis lequel vous accédez à
+l'interface web de mybibli plutôt que sur le NAS lui-même. La
+douchette est un clavier pour le navigateur, pas pour le serveur. Le
+même montage marche avec une appli scanner sur téléphone, une
+douchette Bluetooth industrielle appairée à l'ordinateur, ou
+n'importe quelle douchette USB clé.
+\end{tip}
+
+\subsection*{Quand la douchette n'est pas disponible}
+
+Chaque champ de scan accepte aussi la saisie clavier. Cliquez dans
+le champ étiqueté ``Scanner ISBN'' (ou ``Scanner code V'' /
+``Scanner code L'' ailleurs), tapez les chiffres, pressez Entrée. Le
+formulaire se comporte à l'identique.
+
 \section{Données de référence}\label{sec:reference-data}
 
 Quatre tables taxonomiques pilotent les menus déroulants que vous

@@ -66,9 +66,63 @@ either:
         — look for migration errors in the logs;
   \item the previous admin already rotated the password (check
         with whoever installed mybibli);
-  \item you are looking at a 1.1.0+ install, where no seed exists —
-        use the wizard at \texttt{/setup} instead.
+  \item you are looking at a 1.1.0+ install, where the seed
+        credentials are planted by the migration but immediately
+        soft-deleted by the issue-\#173 seed gate at startup — use
+        the wizard at \texttt{/setup} instead.
 \end{itemize}
+
+\section{Stray users in the \texttt{users} table after the wizard}
+\label{sec:troubleshoot-seeded-users}
+
+\subsection*{Symptom: four users in the database, only one was created in the wizard}
+
+If you inspect the \texttt{users} table directly (via phpMyAdmin or
+the MariaDB CLI) right after completing \texttt{/setup}, you will
+see \emph{four} rows even though you only entered one username and
+password. This is by design. Three of the rows cannot be used to
+log in.
+
+\begin{longtable}{@{} l l c l @{}}
+\toprule
+\textbf{username} & \textbf{role} & \textbf{active} & \textbf{deleted\_at} \\
+\midrule
+\endhead
+\texttt{admin}     & \texttt{admin}     & 1 & set, $\approx$ first-boot time \\
+\texttt{librarian} & \texttt{librarian} & 1 & set, $\approx$ first-boot time \\
+\texttt{SYSTEM}    & \texttt{system}    & 0 & NULL \\
+\texttt{<your-username>} & \texttt{admin} & 1 & NULL \\
+\bottomrule
+\end{longtable}
+
+\begin{itemize}
+  \item \texttt{admin} and \texttt{librarian} are planted by the
+        seed migrations (which run on every fresh install for the
+        dev / E2E workflow) and immediately \emph{soft-deleted}
+        by the issue-\#173 seed gate at startup. Their
+        \texttt{deleted\_at} is set, so the login query (which
+        filters \texttt{deleted\_at IS NULL}) refuses them.
+  \item \texttt{SYSTEM}\index{SYSTEM user} is a non-loginable
+        utility account used to attribute the audit-log entries
+        produced by the 30-day auto-purge background task. Its role
+        is \texttt{system} (outside the login enum
+        \texttt{admin/librarian}), its \texttt{password\_hash} is
+        the literal string
+        \texttt{NO\_LOGIN\_SYSTEM\_USER\_HASH\_NOT\_A\_VALID\_ARGON2\_STRING},
+        and its \texttt{active} flag is \texttt{0}.
+\end{itemize}
+
+\begin{tip}
+To confirm the soft-deleted rows are inert, try logging in as
+\texttt{admin/admin} — it returns an authentication failure. The
+\texttt{/admin > Users} panel filters out both the \texttt{SYSTEM}
+row and any \texttt{deleted\_at}-set row, so the admin UI shows the
+single account you created in the wizard.
+\end{tip}
+
+The two soft-deleted rows are physically removed from the table by
+the 30-day auto-purge scheduler — expect them to disappear roughly
+one month after the boot date stamped in \texttt{deleted\_at}.
 
 \subsection*{Symptom: login redirects back to \texttt{/login}}
 
