@@ -592,4 +592,150 @@ mod tests {
         assert_eq!(form.name, "Marie");
         assert_eq!(form.phone.as_deref(), Some("+33612345678"));
     }
+
+    /// Story 10-3: the borrowers list page must render both the
+    /// mobile-card list (md:hidden) and the desktop table (hidden
+    /// md:block) with the same borrower data.
+    #[test]
+    fn borrowers_template_renders_both_mobile_cards_and_desktop_table() {
+        use crate::models::PaginatedList;
+        use askama::Template;
+        let borrower = BorrowerModel {
+            id: 11,
+            name: "Mobile-List-User".to_string(),
+            email: Some("mobile@example.com".to_string()),
+            phone: Some("+33611111111".to_string()),
+            address: None,
+            version: 1,
+        };
+        let template = BorrowersTemplate {
+            lang: "en".to_string(),
+            role: "librarian".to_string(),
+            current_page: "borrowers",
+            skip_label: "Skip".to_string(),
+            connection_status: crate::utils::ConnectionStatusContext::new("en"),
+            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new("en"),
+            session_timeout_secs: 1800,
+            csrf_token: "tok".to_string(),
+            nav_catalog: "Catalog".to_string(),
+            nav_loans: "Loans".to_string(),
+            nav_locations: "Locations".to_string(),
+            nav_series: "Series".to_string(),
+            nav_borrowers: "Borrowers".to_string(),
+            nav_admin: "Admin".to_string(),
+            nav_login: "Log in".to_string(),
+            nav_logout: "Log out".to_string(),
+            nav_menu_open: "Open menu".to_string(),
+            list_title: "Borrowers".to_string(),
+            add_label: "Add".to_string(),
+            name_label: "Name".to_string(),
+            email_label: "Email".to_string(),
+            phone_label: "Phone".to_string(),
+            address_label: "Address".to_string(),
+            save_label: "Save".to_string(),
+            cancel_label: "Cancel".to_string(),
+            empty_heading: "No borrowers".to_string(),
+            empty_body: "Add one".to_string(),
+            empty_cta: "Add".to_string(),
+            prev_label: "Previous".to_string(),
+            next_label: "Next".to_string(),
+            pagination_aria: "Pagination".to_string(),
+            borrowers: PaginatedList::new(vec![borrower], 1, 1, None, None, None),
+            current_url: "/borrowers".to_string(),
+            lang_toggle_aria: "Change language".to_string(),
+            email_help: crate::utils::TooltipData::placeholder_only("borrower-email-help", "Email"),
+            phone_help: crate::utils::TooltipData::placeholder_only("borrower-phone-help", "Phone"),
+        };
+        let html = template.render().unwrap();
+
+        assert!(html.contains(r#"id="borrowers-cards-mobile""#));
+        assert!(html.contains(r#"id="borrower-card-11""#));
+        assert!(html.contains(r#"class="md:hidden"#));
+        assert!(html.contains(r#"class="hidden md:block overflow-x-auto""#));
+        // Same data in both surfaces (the borrower name appears in both)
+        assert_eq!(
+            html.matches("Mobile-List-User").count(),
+            2,
+            "borrower name must appear in both card and row"
+        );
+    }
+
+    /// Story 10-3: borrower-detail page's active-loans section must
+    /// render both the mobile-card list and the desktop table.
+    #[test]
+    fn borrower_detail_active_loans_renders_both_surfaces() {
+        use askama::Template;
+        let borrower = BorrowerModel {
+            id: 22,
+            name: "Detail-User".to_string(),
+            email: None,
+            phone: None,
+            address: None,
+            version: 1,
+        };
+        let loan = LoanWithDetails {
+            id: 99,
+            volume_id: 500,
+            borrower_id: 22,
+            borrower_name: "Detail-User".to_string(),
+            volume_label: "V0099".to_string(),
+            title_name: "Detail Test Book".to_string(),
+            loaned_at: chrono::NaiveDate::from_ymd_opt(2026, 5, 14)
+                .unwrap()
+                .and_hms_opt(9, 0, 0)
+                .unwrap(),
+            duration_days: 1,
+        };
+        let template = BorrowerDetailTemplate {
+            lang: "en".to_string(),
+            role: "librarian".to_string(),
+            current_page: "borrowers",
+            skip_label: "Skip".to_string(),
+            connection_status: crate::utils::ConnectionStatusContext::new("en"),
+            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new("en"),
+            session_timeout_secs: 1800,
+            csrf_token: "tok".to_string(),
+            nav_catalog: "Catalog".to_string(),
+            nav_loans: "Loans".to_string(),
+            nav_locations: "Locations".to_string(),
+            nav_series: "Series".to_string(),
+            nav_borrowers: "Borrowers".to_string(),
+            nav_admin: "Admin".to_string(),
+            nav_login: "Log in".to_string(),
+            nav_logout: "Log out".to_string(),
+            nav_menu_open: "Open menu".to_string(),
+            borrower,
+            address_label: "Address".to_string(),
+            email_label: "Email".to_string(),
+            phone_label: "Phone".to_string(),
+            edit_label: "Edit".to_string(),
+            delete_label: "Delete".to_string(),
+            active_loans: vec![loan],
+            active_loans_label: "Active loans".to_string(),
+            no_active_loans_label: "No active loans".to_string(),
+            overdue_threshold: 30,
+            days_label: "days".to_string(),
+            return_label: "Return".to_string(),
+            overdue_label: "Overdue".to_string(),
+            col_volume: "V-code".to_string(),
+            col_title: "Title".to_string(),
+            col_date: "Date".to_string(),
+            col_duration: "Duration".to_string(),
+            col_action: "Action".to_string(),
+            current_url: "/borrower/22".to_string(),
+            lang_toggle_aria: "Change language".to_string(),
+        };
+        let html = template.render().unwrap();
+
+        assert!(html.contains(r#"id="borrower-loans-cards-mobile""#));
+        assert!(html.contains(r#"id="borrower-loan-card-99""#));
+        assert!(html.contains(r#"class="md:hidden"#));
+        assert!(html.contains(r#"class="hidden md:block overflow-x-auto""#));
+        // Same V-code appears in both card and table
+        assert_eq!(
+            html.matches("V0099").count(),
+            2,
+            "volume label must appear in both card and row"
+        );
+    }
 }

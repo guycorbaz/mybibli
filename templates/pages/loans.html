@@ -86,7 +86,51 @@
         role,
     ) %}{% endcall %}
     {% else %}
-    <div class="overflow-x-auto">
+    {# Story 10-3 — mobile DataTable card mode (closes #159).
+       Desktop keeps the table; mobile renders the same data as stacked
+       cards. The two surfaces are mutually exclusive via the md
+       breakpoint, share zero JS, and carry the same data so the
+       sort/page query params already on `/loans` apply identically. #}
+    <div class="md:hidden space-y-3" role="list" id="loans-cards-mobile">
+        {% for loan in loans.items %}
+        <article id="loan-card-{{ loan.id }}" role="listitem"
+                 class="rounded-md border border-stone-200 dark:border-stone-700 p-4 bg-white dark:bg-stone-800{% if highlight_loan_id.is_some() && highlight_loan_id.unwrap() == loan.id %} ring-2 ring-yellow-400 dark:ring-yellow-500{% endif %}">
+            <header class="mb-2">
+                <a href="/borrower/{{ loan.borrower_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold text-base">{{ loan.borrower_name }}</a>
+            </header>
+            <dl class="text-sm grid grid-cols-2 gap-y-1 gap-x-3">
+                <dt class="text-stone-500 dark:text-stone-400">{{ col_volume }}</dt>
+                <dd class="text-stone-900 dark:text-stone-100 text-right font-mono">{{ loan.volume_label }}</dd>
+                <dt class="text-stone-500 dark:text-stone-400">{{ col_title }}</dt>
+                <dd class="text-stone-900 dark:text-stone-100 text-right break-words">{{ loan.title_name }}</dd>
+                <dt class="text-stone-500 dark:text-stone-400">{{ col_date }}</dt>
+                <dd class="text-stone-900 dark:text-stone-100 text-right">{{ loan.loaned_at.format("%Y-%m-%d") }}</dd>
+                <dt class="text-stone-500 dark:text-stone-400">{{ col_duration }}</dt>
+                <dd class="text-right {% if loan.duration_days >= overdue_threshold %}text-red-600 dark:text-red-400 font-semibold{% elif loan.duration_days >= 14 %}text-amber-600 dark:text-amber-400{% else %}text-stone-900 dark:text-stone-100{% endif %}">
+                    {{ loan.duration_days }} {{ days_label }}
+                    {% if loan.duration_days >= overdue_threshold %}
+                    <span class="ml-1 inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">{{ overdue_label }}</span>
+                    {% endif %}
+                </dd>
+            </dl>
+            {% if role == "librarian" || role == "admin" %}
+            <div class="mt-3 flex justify-end">
+                <button hx-get="/loans/{{ loan.id }}/return-modal?target=loan-feedback"
+                        hx-target="#modal-slot"
+                        hx-swap="innerHTML"
+                        hx-disabled-elt="this"
+                        data-modal-trigger
+                        aria-haspopup="dialog"
+                        aria-expanded="false"
+                        class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded hover:bg-indigo-700 disabled:opacity-50">
+                    {{ return_label }}
+                </button>
+            </div>
+            {% endif %}
+        </article>
+        {% endfor %}
+    </div>
+    <div class="hidden md:block overflow-x-auto">
         <table class="min-w-full text-sm">
             <thead>
                 <tr class="border-b border-stone-200 dark:border-stone-700 text-left">

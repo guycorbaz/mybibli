@@ -564,4 +564,115 @@ mod tests {
         assert!(!html.contains("<script>"));
         assert!(html.contains("&amp;"));
     }
+
+    /// Story 10-3: build a minimal LoansTemplate with one loan for
+    /// the mobile-cards rendering tests below.
+    fn build_loans_template_for_test(loan: LoanWithDetails) -> LoansTemplate {
+        use crate::models::PaginatedList;
+        LoansTemplate {
+            lang: "en".to_string(),
+            role: "librarian".to_string(),
+            current_page: "loans",
+            skip_label: "Skip".to_string(),
+            connection_status: crate::utils::ConnectionStatusContext::new("en"),
+            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new("en"),
+            session_timeout_secs: 1800,
+            csrf_token: "tok".to_string(),
+            nav_catalog: "Catalog".to_string(),
+            nav_loans: "Loans".to_string(),
+            nav_locations: "Locations".to_string(),
+            nav_series: "Series".to_string(),
+            nav_borrowers: "Borrowers".to_string(),
+            nav_admin: "Admin".to_string(),
+            nav_login: "Log in".to_string(),
+            nav_logout: "Log out".to_string(),
+            nav_menu_open: "Open menu".to_string(),
+            list_title: "Loans".to_string(),
+            new_loan_label: "New".to_string(),
+            volume_label_label: "V-code".to_string(),
+            borrower_label: "Borrower".to_string(),
+            borrower_search_label: "Search".to_string(),
+            register_label: "Register".to_string(),
+            col_borrower: "Borrower".to_string(),
+            col_volume: "V-code".to_string(),
+            col_title: "Title".to_string(),
+            col_date: "Date".to_string(),
+            col_duration: "Duration".to_string(),
+            days_label: "days".to_string(),
+            scan_placeholder: "Scan".to_string(),
+            empty_heading: "No active loans".to_string(),
+            empty_body: "Create one".to_string(),
+            prev_label: "Previous".to_string(),
+            next_label: "Next".to_string(),
+            pagination_aria: "Pagination".to_string(),
+            return_label: "Return".to_string(),
+            overdue_label: "Overdue".to_string(),
+            col_action: "Action".to_string(),
+            overdue_threshold: 30,
+            current_sort: "date".to_string(),
+            current_dir: "desc".to_string(),
+            loans: PaginatedList::new(vec![loan], 1, 1, None, Some("date".to_string()), Some("desc".to_string())),
+            highlight_loan_id: None,
+            current_url: "/loans".to_string(),
+            lang_toggle_aria: "Change language".to_string(),
+        }
+    }
+
+    /// Story 10-3: the loans page must render BOTH the mobile-card list
+    /// (md:hidden) AND the desktop table (hidden md:block), each carrying
+    /// the same loan data, so the layout switches purely via the Tailwind
+    /// breakpoint — no JS, no duplicated data fetch.
+    #[test]
+    fn loans_template_renders_both_mobile_cards_and_desktop_table() {
+        let loan = LoanWithDetails {
+            id: 7,
+            volume_id: 100,
+            borrower_id: 200,
+            borrower_name: "Mobile-Card-User".to_string(),
+            volume_label: "V0007".to_string(),
+            title_name: "Mobile Test Title".to_string(),
+            loaned_at: chrono::NaiveDate::from_ymd_opt(2026, 5, 14)
+                .unwrap()
+                .and_hms_opt(9, 0, 0)
+                .unwrap(),
+            duration_days: 2,
+        };
+        let html = build_loans_template_for_test(loan).render().unwrap();
+
+        // Mobile-cards surface
+        assert!(
+            html.contains(r#"id="loans-cards-mobile""#),
+            "expected mobile-cards container"
+        );
+        assert!(
+            html.contains(r#"id="loan-card-7""#),
+            "expected per-loan card with id"
+        );
+        assert!(
+            html.contains(r#"class="md:hidden"#),
+            "mobile-cards container must be md:hidden"
+        );
+
+        // Desktop table surface
+        assert!(
+            html.contains(r#"class="hidden md:block overflow-x-auto""#),
+            "desktop table wrapper must be hidden md:block"
+        );
+        assert!(
+            html.contains(r#"id="loan-row-7""#),
+            "expected per-loan row with id (desktop)"
+        );
+
+        // Same data in both: borrower name, V-code, title, days
+        assert_eq!(
+            html.matches("Mobile-Card-User").count(),
+            2,
+            "borrower name must appear in both card and row"
+        );
+        assert_eq!(
+            html.matches("V0007").count(),
+            2,
+            "volume label must appear in both surfaces"
+        );
+    }
 }

@@ -62,7 +62,24 @@
         role,
     ) %}{% endcall %}
     {% else %}
-    <div class="overflow-x-auto">
+    {# Story 10-3 — mobile DataTable card mode (closes #159). #}
+    <div class="md:hidden space-y-3" role="list" id="borrowers-cards-mobile">
+        {% for b in borrowers.items %}
+        <article id="borrower-card-{{ b.id }}" role="listitem"
+                 class="rounded-md border border-stone-200 dark:border-stone-700 p-4 bg-white dark:bg-stone-800">
+            <header class="mb-2">
+                <a href="/borrower/{{ b.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold text-base">{{ b.name }}</a>
+            </header>
+            <dl class="text-sm grid grid-cols-[auto_1fr] gap-y-1 gap-x-3">
+                <dt class="text-stone-500 dark:text-stone-400">{{ email_label }}</dt>
+                <dd class="text-stone-900 dark:text-stone-100 text-right break-words">{{ b.email.as_deref().unwrap_or("-") }}</dd>
+                <dt class="text-stone-500 dark:text-stone-400">{{ phone_label }}</dt>
+                <dd class="text-stone-900 dark:text-stone-100 text-right">{{ b.phone.as_deref().unwrap_or("-") }}</dd>
+            </dl>
+        </article>
+        {% endfor %}
+    </div>
+    <div class="hidden md:block overflow-x-auto">
         <table class="w-full text-sm">
             <thead>
                 <tr class="border-b border-stone-200 dark:border-stone-700 text-left">

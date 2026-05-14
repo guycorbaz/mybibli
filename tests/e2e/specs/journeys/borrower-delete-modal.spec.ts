@@ -26,9 +26,11 @@ test.describe("Borrower delete modal (Story 9-10)", () => {
 
     await createBorrower(page, NAME);
 
-    // Navigate to borrower detail.
+    // Navigate to borrower detail. Story 10-3 added a mobile-card surface
+    // that also carries the borrower link; scope to `tbody` so the
+    // desktop-table copy is the unambiguous click target.
     const link = page
-      .locator('a[href^="/borrower/"]')
+      .locator('tbody a[href^="/borrower/"]')
       .filter({ hasText: new RegExp(`^\\s*${NAME}\\s*$`) });
     await link.click();
     await expect(page.locator("h1")).toContainText(NAME, { timeout: 5000 });

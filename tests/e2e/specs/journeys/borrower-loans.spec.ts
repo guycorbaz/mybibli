@@ -20,7 +20,7 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
     await createBorrower(page, "BL-Detail Borrower");
 
     // Navigate to borrower detail
-    await page.getByText("BL-Detail Borrower").click();
+    await page.locator("tbody").getByText("BL-Detail Borrower").click();
     await expect(page.locator("h1")).toContainText("BL-Detail Borrower", {
       timeout: 3000,
     });
@@ -44,7 +44,7 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
 
     // Navigate to borrower detail
     await page.goto("/borrowers");
-    await page.getByText("BL-Loan Detail Borrower").click();
+    await page.locator("tbody").getByText("BL-Loan Detail Borrower").click();
     await expect(page.locator("h1")).toContainText("BL-Loan Detail Borrower", {
       timeout: 3000,
     });
@@ -52,9 +52,10 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
     // Should show the loan with volume label and title
     await expect(page.locator("body")).toContainText("V0080", { timeout: 5000 });
 
-    // Should show Return button
+    // Should show Return button — story 10-3 scope to tbody so the
+    // desktop-table copy (visible at default viewport) is asserted.
     const returnBtn = page.locator(
-      'button:has-text("Return"), button:has-text("Retourner")',
+      'tbody button:has-text("Return"), tbody button:has-text("Retourner")',
     );
     await expect(returnBtn.first()).toBeVisible({ timeout: 3000 });
   });
@@ -67,7 +68,7 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
 
     // Navigate to borrower detail
     await page.goto("/borrowers");
-    await page.getByText("BL-Return Detail Borrower").click();
+    await page.locator("tbody").getByText("BL-Return Detail Borrower").click();
     await expect(page.locator("#active-loans-section")).toContainText("V0081", {
       timeout: 5000,
     });
@@ -102,7 +103,7 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
 
     // Navigate to borrower detail — should see loan
     await page.goto("/borrowers");
-    await page.getByText("BL-Smoke Detail Borrower").click();
+    await page.locator("tbody").getByText("BL-Smoke Detail Borrower").click();
     const activeLoans = page.locator("#active-loans-section");
     await expect(activeLoans).toContainText("V0082", { timeout: 5000 });
 
