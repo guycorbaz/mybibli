@@ -58,10 +58,18 @@ jobs:
 
       - name: Check if pushed tag is the highest semver
         id: is-highest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          git fetch --tags --quiet
-          HIGHEST=$(git tag -l 'v*.*.*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          HIGHEST=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/tags" --jq '.[].name' \
+            | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } \
+            | sort -V \
+            | tail -1)
+          if [ -z "$HIGHEST" ]; then
+            echo "::error::Could not determine highest semver tag via GitHub API"
+            exit 1
+          fi
           if [ "$HIGHEST" = "$GITHUB_REF_NAME" ]; then
             echo "is_highest=true" >> "$GITHUB_OUTPUT"
             echo "Tag $GITHUB_REF_NAME is the highest semver — :latest will be updated"
