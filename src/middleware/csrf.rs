@@ -23,6 +23,7 @@
 //! Exempt routes are frozen at one entry (`POST /login`) and policed by
 //! `src/templates_audit.rs::csrf_exempt_routes_frozen`.
 
+use askama::Template;
 use axum::body::Body;
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
@@ -33,6 +34,21 @@ use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::Session;
 use crate::middleware::locale::Locale;
+
+/// Full-chrome page emitted to authenticated users whose plain-form
+/// POST is CSRF-rejected (story 10-2, issue #45 H4). Without this page,
+/// the old behaviour was a silent 303 → /login → / round-trip that ate
+/// the user's action without any feedback.
+#[derive(Template)]
+#[template(path = "pages/csrf_drifted.html")]
+struct CsrfDriftedTemplate<'a> {
+    lang: &'a str,
+    role: &'a str,
+    csrf_token: &'a str,
+    title: String,
+    message: String,
+    reload_button: String,
+}
 
 /// Frozen allowlist of `(method, path)` tuples that skip CSRF validation.
 /// Login is the only legitimate case — no authenticated session exists at
@@ -133,7 +149,7 @@ pub async fn csrf_middleware(
         // `is_form` not yet computed here; pass false to get the HTMX /
         // JSON envelope response. Plain-form attackers would need to
         // bypass SameSite=Lax to reach this path anyway.
-        return build_rejection_response(locale, &parts, false);
+        return build_rejection_response(locale, &parts, false, Some(&session));
     }
     let header_token: Option<String> = header_values
         .first()
@@ -198,7 +214,7 @@ pub async fn csrf_middleware(
                         .get::<Locale>()
                         .map(|l| l.0)
                         .unwrap_or("fr");
-                    return build_rejection_response(locale, &parts, is_form);
+                    return build_rejection_response(locale, &parts, is_form, Some(&session));
                 }
                 first.map(|(_, v)| v)
             }
@@ -226,7 +242,7 @@ pub async fn csrf_middleware(
             .get::<Locale>()
             .map(|l| l.0)
             .unwrap_or("fr");
-        return build_rejection_response(locale, &parts, is_form);
+        return build_rejection_response(locale, &parts, is_form, Some(&session));
     }
 
     // Re-attach the (possibly body-consumed) bytes so the handler sees
@@ -257,14 +273,65 @@ fn build_rejection_response(
     locale: &str,
     parts: &axum::http::request::Parts,
     is_form: bool,
+    session: Option<&Session>,
 ) -> Response {
     // Plain-browser form submitters (no HTMX, classic `<form method="POST">`)
     // cannot consume the HTMX envelope — they would render a bare feedback
-    // fragment with no page chrome. Redirect them to /login so the user
-    // lands on a fully-rendered page where re-establishing a session also
-    // refreshes the CSRF token. API / JSON / fetch() clients still get the
-    // 403 envelope so they can handle the failure programmatically.
+    // fragment with no page chrome.
+    //
+    // Story 10-2 (issue #45 H4): differentiate by session state:
+    //
+    //   * **Authenticated** session whose token has drifted (browser
+    //     extension stripping the meta tag, 7+ days open tab,
+    //     post-redeploy) — render a full-chrome 403 page with a "Reload
+    //     page" CTA. The previous silent 303 → /login → / round-trip
+    //     ate the user's action without any feedback.
+    //
+    //   * **Anonymous** session — keep the 303 → /login redirect. The
+    //     /login page is the natural recovery surface for a not-yet-
+    //     authenticated visitor.
+    //
+    // API / JSON / fetch() clients still get the 403 envelope below so
+    // they can handle the failure programmatically.
     if is_form && !is_htmx_request(parts) {
+        if let Some(sess) = session
+            && sess.user_id.is_some()
+        {
+            let title = rust_i18n::t!("error.csrf_session_drifted_title", locale = locale)
+                .to_string();
+            let message =
+                rust_i18n::t!("error.csrf_session_drifted_message", locale = locale).to_string();
+            let reload_button =
+                rust_i18n::t!("error.csrf_session_drifted_reload_button", locale = locale)
+                    .to_string();
+            let role_str = sess.role.to_string();
+            let tpl = CsrfDriftedTemplate {
+                lang: locale,
+                role: &role_str,
+                csrf_token: &sess.csrf_token,
+                title,
+                message,
+                reload_button,
+            };
+            match tpl.render() {
+                Ok(html) => {
+                    let mut response: Response = (StatusCode::FORBIDDEN, html).into_response();
+                    let headers = response.headers_mut();
+                    headers.insert(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_static("text/html; charset=utf-8"),
+                    );
+                    headers
+                        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+                    return response;
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "csrf_drifted template render failed");
+                    // Fall through to the 303 path below as a degraded
+                    // fallback; better a /login redirect than a 500.
+                }
+            }
+        }
         let mut response: Response = StatusCode::SEE_OTHER.into_response();
         let headers = response.headers_mut();
         headers.insert(header::LOCATION, HeaderValue::from_static("/login"));
@@ -693,5 +760,76 @@ mod tests {
             logs_contain("csrf_multiple_headers"),
             "expected tracing::warn! with reason=csrf_multiple_headers"
         );
+    }
+
+    /// Story 10-2 (issue #45 H4): an *authenticated* user whose plain
+    /// form submission drifts on the CSRF token must NOT be silently
+    /// redirected to `/login`. They must see a full-chrome 403 page so
+    /// they know their action failed and can reload to recover.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn authenticated_plain_form_drift_returns_403_full_chrome(
+        pool: crate::db::DbPool,
+    ) {
+        let state = state_with_pool(pool);
+        let token = "real-token";
+        let authenticated = Session {
+            token: Some("sess-xyz".to_string()),
+            user_id: Some(42),
+            role: crate::middleware::auth::Role::Librarian,
+            csrf_token: token.to_string(),
+            preferred_language: None,
+        };
+        let app = build_app(state, authenticated);
+
+        let body = "_csrf_token=wrong";
+        let req = HttpRequest::post("/echo")
+            .header("content-type", "application/x-www-form-urlencoded")
+            // No hx-request header → plain-browser submission path
+            .body(AxumBody::from(body))
+            .unwrap();
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        // Cache-Control: no-store ensures the 403 page does not get
+        // served from the browser back-cache.
+        assert_eq!(
+            res.headers().get("cache-control").unwrap(),
+            "no-store"
+        );
+        // Body is the rendered full-chrome HTML, not a 303 redirect.
+        let body_bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
+        assert!(
+            body_str.contains("<!DOCTYPE html>"),
+            "expected full-chrome HTML page in 403 body"
+        );
+        assert!(
+            body_str.contains("Reload page") || body_str.contains("Recharger"),
+            "expected reload-CTA i18n string in body"
+        );
+    }
+
+    /// Anonymous-session counterpart of the test above: an anonymous
+    /// visitor who hits a CSRF mismatch on a plain form is still
+    /// redirected to /login (preserves the existing pre-10-2 behaviour
+    /// for the not-yet-authenticated case).
+    #[sqlx::test(migrations = "./migrations")]
+    async fn anonymous_plain_form_drift_keeps_303_to_login(
+        pool: crate::db::DbPool,
+    ) {
+        let state = state_with_pool(pool);
+        let session = Session::anonymous_with_token("real-token".to_string());
+        let app = build_app(state, session);
+
+        let body = "_csrf_token=wrong";
+        let req = HttpRequest::post("/echo")
+            .header("content-type", "application/x-www-form-urlencoded")
+            // No hx-request header → plain-browser submission path
+            .body(AxumBody::from(body))
+            .unwrap();
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::SEE_OTHER);
+        assert_eq!(res.headers().get(header::LOCATION).unwrap(), "/login");
     }
 }

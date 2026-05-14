@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-05-14 (Story 10-1 → done — auth-threat-model doc closes #17)
+# last_updated: 2026-05-14 (Story 10-2 → done — CSRF drift full-chrome page closes #45)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -195,7 +195,7 @@ development_status:
   # Sequencing: 10-1 → 10-2 → 10-3 → 10-4 → 10-5 (series, per Foundation Rule #14).
   epic-10: backlog
   10-1-auth-threat-model-doc: done
-  10-2-csrf-rejection-ux-and-mobile-logout: backlog
+  10-2-csrf-rejection-ux-and-mobile-logout: done
   10-3-mobile-datatable-card-mode: backlog
   10-4-admin-tabs-mobile-dropdown: backlog
   10-5-a11y-entity-detail-coverage: backlog

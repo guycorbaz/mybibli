@@ -112,6 +112,20 @@
             fetch("/session/keepalive", {
                 method: "POST",
                 headers: { "X-CSRF-Token": token },
+            }).then(function (r) {
+                // Issue #45 B-M1: if the CSRF token drifted (rotation in
+                // another tab, post-redeploy, browser extension stripping
+                // the meta tag), the keepalive POST returns 403 and the
+                // user's session is effectively unreachable. Don't swallow
+                // the rejection — re-show the warning so the user knows
+                // to reload.
+                if (r && r.status === 403) {
+                    showWarning(0);
+                }
+            }).catch(function () {
+                // Network errors fall through silently — the next user
+                // action will surface the disconnection via the
+                // connection-lost overlay (story 9-16).
             });
         }
         hideWarning();

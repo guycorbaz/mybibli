@@ -1,0 +1,17 @@
+{% extends "layouts/bare.html" %}
+
+{% block title %}{{ title }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center px-4">
+    <div class="max-w-lg w-full bg-white dark:bg-stone-800 border border-amber-300 dark:border-amber-700 rounded-lg shadow-md p-6">
+        <h1 class="text-xl font-semibold text-amber-700 dark:text-amber-400 mb-3">{{ title }}</h1>
+        <p class="text-stone-700 dark:text-stone-300 mb-5">{{ message }}</p>
+        <form method="GET" action="/" class="contents">
+            <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2">
+                {{ reload_button }}
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
