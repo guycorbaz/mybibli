@@ -260,6 +260,9 @@ error:
     body: Votre compte ne dispose pas des droits nécessaires pour cette action. Contactez un administrateur si vous avez besoin d'un accès.
   csrf_rejected_title: Session expirée
   csrf_rejected_message: Votre jeton CSRF est manquant ou expiré. Actualisez la page et réessayez.
+  csrf_session_drifted_title: Session expirée — veuillez recharger
+  csrf_session_drifted_message: Votre action a été refusée parce que le jeton de sécurité associé à votre session a expiré. Cela se produit généralement lorsqu'un onglet est resté ouvert plusieurs jours. Cliquez sur Recharger pour rafraîchir votre session et réessayer.
+  csrf_session_drifted_reload_button: Recharger la page
   csrf_payload_too_large_title: Requête trop volumineuse
   csrf_payload_too_large_message: Le formulaire envoyé dépasse la limite de taille du serveur. Raccourcissez votre saisie et réessayez.
   title:

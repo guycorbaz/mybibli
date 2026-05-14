@@ -260,6 +260,9 @@ error:
     body: Your account does not have permission to perform this action. Ask an administrator if you need access.
   csrf_rejected_title: Session expired
   csrf_rejected_message: Your CSRF token is missing or expired. Please refresh the page and retry your action.
+  csrf_session_drifted_title: Session expired — please reload
+  csrf_session_drifted_message: Your action was rejected because the security token attached to your session has expired. This typically happens after a tab has been left open for several days. Click Reload to refresh your session and try again.
+  csrf_session_drifted_reload_button: Reload page
   csrf_payload_too_large_title: Request too large
   csrf_payload_too_large_message: The submitted form exceeded the server's size limit. Please shorten your input and retry.
   title:

@@ -129,4 +129,34 @@ test.describe("Story 8-2 smoke — CSRF", () => {
     await frButton.click();
     await expect(page).toHaveURL(/\/$/);
   });
+
+  /**
+   * Story 10-2 (issue #45 H4): an authenticated user whose plain-form POST
+   * drifts on the CSRF token sees a full-chrome 403 page with a Reload CTA,
+   * NOT a silent 303 → /login → / redirect that eats the action.
+   */
+  test("authenticated plain-form CSRF drift renders 403 full-chrome page", async ({
+    page,
+  }) => {
+    await page.context().clearCookies();
+    await loginAs(page, "admin");
+    await page.goto("/catalog");
+
+    // Plain form POST with a wrong `_csrf_token` body, no `hx-request` header.
+    // Routes the middleware down the authenticated-form-drift branch.
+    const response = await page.request.post("/language", {
+      form: { _csrf_token: "tampered-by-test", next: "/catalog", lang: "fr" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      maxRedirects: 0,
+    });
+    expect(response.status()).toBe(403);
+    // The response is a full HTML page, not a 303 redirect — body must
+    // contain a doctype and the EN/FR reload-CTA i18n strings.
+    const body = await response.text();
+    expect(body).toContain("<!DOCTYPE html>");
+    expect(body).toMatch(/Reload page|Recharger la page/);
+    // Cache-Control: no-store prevents the browser back-cache from serving
+    // a stale rejection after the user reloads and re-establishes a session.
+    expect(response.headers()["cache-control"]).toBe("no-store");
+  });
 });
