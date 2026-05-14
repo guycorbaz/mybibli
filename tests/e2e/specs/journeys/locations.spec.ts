@@ -168,4 +168,62 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
   // AC4/AC5: Delete guards tested via API (HTMX delete returns error HTML)
   // These are harder to test in E2E without seeded data with volumes/children,
   // but the unit tests cover the service logic. The E2E verifies the UI flow.
+
+  // Issue #185 regression — inline "add child" form must carry the CSRF token
+  // and create the sub-location in-place (not silently redirect to /).
+  test("inline add-child form creates the sub-location and stays on /locations", async ({
+    page,
+  }) => {
+    await page.goto("/locations");
+
+    // Create the parent.
+    await page.locator("summary").filter({ hasText: /add root/i }).click();
+    await page.locator("#new-name").fill("LO-IssueOneEightFive-Parent");
+    await page.locator("#new-lcode").fill("L5185");
+    await page.locator("#add-root-submit").click();
+    await expect(page).toHaveURL(/\/locations\/?$/, { timeout: 5000 });
+    await expect(
+      page.locator("text=LO-IssueOneEightFive-Parent"),
+    ).toBeVisible();
+
+    // Extract the parent's id from its edit link so we can target its own
+    // inline "add child" toggle button (`data-locations-toggle="add-child-{id}"`).
+    const parentEditLink = page
+      .locator('a[aria-label*="LO-IssueOneEightFive-Parent"][href*="/edit"]')
+      .first();
+    await expect(parentEditLink).toBeVisible({ timeout: 3000 });
+    const parentHref = await parentEditLink.getAttribute("href");
+    const parentId = parentHref?.match(/\/locations\/(\d+)/)?.[1];
+    expect(parentId).toBeTruthy();
+
+    // Expand the inline child form (issue #185: this form is rendered by Rust
+    // HTML literal, not via Askama template — it bypassed the CSRF audit).
+    await page
+      .locator(`[data-locations-toggle="add-child-${parentId}"]`)
+      .click();
+
+    const childForm = page.locator(`#add-child-${parentId}`);
+    await expect(childForm).toBeVisible();
+
+    // The CSRF synchronizer token MUST be present as a hidden input — this is
+    // exactly what was missing in 1.1.0 and what caused the silent redirect.
+    await expect(
+      childForm.locator('input[name="_csrf_token"]'),
+    ).toHaveCount(1);
+
+    // Fill the form and submit.
+    await childForm.locator('input[name="name"]').fill(
+      "LO-IssueOneEightFive-Child",
+    );
+    await childForm.locator('input[name="label"]').fill("L5186");
+    await childForm.locator('button[type="submit"]').click();
+
+    // Before the fix: the POST was rejected, the user landed on /. After the
+    // fix: the POST succeeds and we redirect back to /locations.
+    await expect(page).toHaveURL(/\/locations\/?$/, { timeout: 5000 });
+    await expect(page).not.toHaveURL(/^\/(\?|$)/);
+    await expect(
+      page.locator("text=LO-IssueOneEightFive-Child"),
+    ).toBeVisible();
+  });
 });
