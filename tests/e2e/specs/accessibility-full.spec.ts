@@ -220,9 +220,12 @@ test.describe("Story 10-5 — entity-detail routes WCAG 2.2 AA", () => {
     }
   });
 
+  // All entity-detail routes require an authenticated role — anonymous
+  // hits the auth middleware and redirects. Role narrowed to the typed
+  // union accepted by `loginAs` so a typo fails `tsc --noEmit` in CI.
   const ROUTES: Array<{
     key: "title" | "borrower" | "contributor" | "series";
-    role: "anonymous" | "librarian" | "admin";
+    role: "admin" | "librarian";
     label: string;
   }> = [
     { key: "title", role: "admin", label: "title detail" },
