@@ -1,12 +1,22 @@
-# Full local stack: app + persistent MariaDB.
+# Full local stack: app + persistent MariaDB + persistent covers.
 #
 # All configuration values live in .env — nothing in this file needs editing.
 #
+# Persistent state lives in two named volumes (both survive `docker compose
+# down` AND `docker compose up -d` after a `pull`):
+#   - `mybibli_db_data`  — MariaDB data directory
+#   - `mybibli_covers`   — downloaded cover JPGs (issue #213)
+# Back them up together — losing one without the other will surface as
+# half-broken (DB references that point at missing covers or vice versa).
+#
 # To use an EXTERNAL database instead:
-#   1. Comment out (or delete) the `db:` service and the `volumes:` block.
-#   2. Comment out the `depends_on:` block on the `mybibli` service.
-#   3. Set MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD / MYSQL_DATABASE
+#   1. Comment out (or delete) the `db:` service.
+#   2. Remove `mybibli_db_data:` from the `volumes:` block at the bottom.
+#   3. Comment out the `depends_on:` block on the `mybibli` service.
+#   4. Set MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD / MYSQL_DATABASE
 #      in your .env to point at the external DB.
+# Keep `mybibli_covers:` even with an external DB — covers are local to
+# this app instance.
 
 services:
   mybibli:
@@ -20,6 +30,19 @@ services:
       RUST_LOG: ${RUST_LOG:-mybibli=info}
       APP_LANGUAGE: ${APP_LANGUAGE:-en}
       MYBIBLI_COOKIE_SECURE: ${MYBIBLI_COOKIE_SECURE:-false}
+    volumes:
+      # Issue #213 — cover images MUST persist across container upgrades.
+      # The Rust binary writes cover JPGs into `/app/covers` (resolved
+      # from `COVERS_DIR=./covers` against WORKDIR /app). Without this
+      # mount, every `docker compose up -d` after a `docker compose pull`
+      # destroys the writable layer holding the accumulated covers.
+      #
+      # The named volume `mybibli_covers` works zero-config — Docker
+      # manages persistence, backup via `docker volume`. If you prefer a
+      # bind mount visible in the host filesystem (Synology DSM, manual
+      # rsync backups), comment the line below and uncomment the second:
+      - mybibli_covers:/app/covers
+      # - ${COVERS_HOST_PATH:-./covers-host}:/app/covers
     depends_on:
       db:
         condition: service_healthy
@@ -48,3 +71,4 @@ services:
 
 volumes:
   mybibli_db_data:
+  mybibli_covers:

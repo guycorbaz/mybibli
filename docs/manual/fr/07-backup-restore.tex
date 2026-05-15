@@ -14,11 +14,16 @@ Trois artefacts forment ensemble une sauvegarde mybibli complète :
         chaque titre, volume, lieu, contributeur, prêt,
         utilisateur, journal d'audit et paramètre. La perdre,
         c'est repartir de zéro.
-  \item \textbf{Le répertoire \texttt{covers/}.}\index{sauvegarde!covers}
-        Les images de couverture téléchargées au catalogage. Le
-        perdre, le catalogue fonctionne toujours mais chaque page
-        de titre affiche un placeholder générique tant que vous
-        n'avez pas re-fetché les métadonnées titre par titre.
+  \item \textbf{Les images de couverture.}\index{sauvegarde!couvertures}
+        Téléchargées au catalogage et persistées dans le volume
+        Docker \texttt{mybibli\_covers} (ou dans le chemin hôte du
+        bind mount si vous avez basculé selon
+        section~\ref{sec:install-covers-bind}). Les perdre, le
+        catalogue fonctionne toujours mais chaque page de titre
+        affiche un placeholder générique tant que vous n'avez pas
+        re-fetché les métadonnées titre par titre (issue~\#213 — les
+        installs antérieures à 1.1.4 sans ce volume perdaient les
+        couvertures à chaque mise à jour du conteneur).
   \item \textbf{Le fichier \texttt{.env}.}\index{sauvegarde!.env}
         Contient les mots de passe (base, clés d'API non encore
         migrées). Le perdre, un re-déploiement vous oblige à
@@ -61,14 +66,34 @@ Les utilisateurs DSM Synology peuvent aussi planifier une tâche
 \emph{Hyper Backup} qui cible le paquet MariaDB — elle produit une
 sauvegarde binaire qui se restaure plus vite qu'un dump SQL.
 
-\subsection*{Covers et \texttt{.env}}
+\subsection*{Couvertures et \texttt{.env}}
 
-Une simple archive \texttt{tar} suffit :
+Pour un répertoire de couvertures monté en bind-mount sur l'hôte,
+une simple archive \texttt{tar} suffit :
 
 \begin{lstlisting}
 tar czf backups/mybibli-files-$(date +%Y%m%d).tar.gz \
-    .env covers/
+    .env "$COVERS_HOST_PATH"
 \end{lstlisting}
+
+Pour l'install par défaut (volume Docker nommé), sauvegardez le
+volume via Docker — le chemin hôte d'un volume nommé varie selon la
+version de Docker et n'est pas stable, donc n'essayez pas de le
+\texttt{tar} directement :
+
+\begin{lstlisting}
+docker run --rm \
+    -v mybibli_covers:/source:ro \
+    -v "$(pwd)/backups:/backup" \
+    alpine \
+    tar czf "/backup/mybibli-covers-$(date +%Y%m%d).tar.gz" -C /source .
+tar czf "backups/mybibli-env-$(date +%Y%m%d).tar.gz" .env
+\end{lstlisting}
+
+Le conteneur \texttt{alpine} jetable monte le volume nommé en
+lecture seule, le répertoire \texttt{backups/} hôte en écriture, et
+écrit l'archive tar. Même forme pour restaurer — voir la section
+Restauration plus bas.
 
 \section{Cadence recommandée}
 
@@ -113,10 +138,26 @@ docker compose start mybibli
 Pour MariaDB externe, les mêmes commandes client \texttt{mariadb}
 fonctionnent contre le serveur externe.
 
-\subsection*{Covers et \texttt{.env}}
+\subsection*{Couvertures et \texttt{.env}}
+
+Pour un install bind-mount hôte :
 
 \begin{lstlisting}
 tar xzf backups/mybibli-files-20260513.tar.gz
+\end{lstlisting}
+
+Pour l'install par défaut (volume nommé), restaurez via un
+conteneur jetable symétrique à la sauvegarde :
+
+\begin{lstlisting}
+docker compose stop mybibli
+docker run --rm \
+    -v mybibli_covers:/target \
+    -v "$(pwd)/backups:/backup:ro" \
+    alpine \
+    sh -c "rm -rf /target/* && tar xzf /backup/mybibli-covers-20260513.tar.gz -C /target"
+tar xzf backups/mybibli-env-20260513.tar.gz
+docker compose start mybibli
 \end{lstlisting}
 
 Redémarrez la pile pour que le conteneur mybibli prenne en compte

@@ -50,10 +50,17 @@ Avant de commencer :
   \item Choisissez un répertoire hôte pour les fichiers mybibli
         (par exemple \texttt{/srv/mybibli} sur Linux,
         \texttt{/volume1/docker/mybibli} sur Synology DSM).
-  \item Choisissez un répertoire hôte pour le stockage des images de
-        couverture\index{couvertures!répertoire}
-        (par exemple \texttt{/srv/mybibli/covers}). Il sera monté
-        dans le conteneur.
+  \item Choisissez comment stocker les images de
+        couverture\index{couvertures!répertoire}. Le fichier
+        \texttt{docker-compose.yml} fourni déclare un \emph{volume
+        nommé} Docker (\texttt{mybibli\_covers}) — aucune
+        configuration, Docker gère la persistance et la sauvegarde via
+        \texttt{docker volume}. Si vous préférez un répertoire visible
+        dans votre gestionnaire de fichiers (File Station de Synology
+        DSM, sauvegardes rsync manuelles), choisissez dès maintenant
+        un chemin sur l'hôte (par exemple
+        \texttt{/volume1/docker/mybibli/covers}); vous basculerez le
+        compose vers un bind mount à l'étape~3 plus bas.
   \item Choisissez un mot de passe fort pour les utilisateurs
         \texttt{root} et applicatif de la MariaDB embarquée — ou,
         pour une base de données externe, créez à l'avance une base
@@ -80,6 +87,33 @@ curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/docker-compos
 curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/.env.example
 cp .env.example .env
 \end{lstlisting}
+
+\subsection*{1b. (Optionnel) Basculer les couvertures vers un bind mount}\label{sec:install-covers-bind}
+
+Par défaut, le fichier \texttt{docker-compose.yml} stocke les images
+de couverture téléchargées dans le volume nommé Docker
+\texttt{mybibli\_covers}. Cela fonctionne sans configuration et persiste
+à travers les mises à jour du conteneur (issue~\#213). La plupart des
+opérateurs peuvent laisser tel quel.
+
+Si vous souhaitez voir les couvertures dans votre gestionnaire de
+fichiers (File Station de Synology DSM, sauvegardes rsync manuelles,
+etc.), éditez le fichier compose :
+
+\begin{itemize}
+  \item Dans le bloc \texttt{volumes:} du service \texttt{mybibli},
+        commentez la ligne \texttt{- mybibli\_covers:/app/covers} et
+        décommentez la ligne
+        \texttt{- \$\{COVERS\_HOST\_PATH:-./covers-host\}:/app/covers}
+        juste en-dessous.
+  \item Dans \texttt{.env}, définissez \texttt{COVERS\_HOST\_PATH} sur
+        le chemin hôte choisi dans la liste de vérification
+        pré-installation (par exemple
+        \texttt{COVERS\_HOST\_PATH=/volume1/docker/mybibli/covers}).
+  \item Créez le répertoire avant de démarrer la pile
+        (\texttt{mkdir -p}) pour éviter que Docker ne le crée
+        automatiquement avec le propriétaire root.
+\end{itemize}
 
 \subsection*{2. Éditer \texttt{.env}}
 
@@ -178,8 +212,12 @@ Modifiez \texttt{docker-compose.yml} et retirez la base embarquée :
   \item supprimez (ou commentez) tout le service \texttt{db:} ;
   \item supprimez (ou commentez) le bloc \texttt{depends\_on:} sur le
         service \texttt{mybibli} ;
-  \item supprimez (ou commentez) le bloc \texttt{volumes:} en bas du
-        fichier.
+  \item dans le bloc \texttt{volumes:} en bas du fichier, retirez
+        \texttt{mybibli\_db\_data:} uniquement —
+        \textbf{conservez} \texttt{mybibli\_covers:}\index{couvertures!persistance}.
+        Les images de couverture sont locales à l'application et doivent
+        survivre aux mises à jour du conteneur, peu importe où réside
+        la base de données (issue~\#213).
 \end{itemize}
 
 \subsection*{3. Pointer \texttt{.env} vers la base externe}

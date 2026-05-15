@@ -42,10 +42,15 @@ Before you start:
   \item Pick a host directory for the mybibli files
         (e.g.\ \texttt{/srv/mybibli} on Linux,
         \texttt{/volume1/docker/mybibli} on Synology DSM).
-  \item Pick a host directory for the cover-image
-        store\index{covers!directory}
-        (e.g.\ \texttt{/srv/mybibli/covers}). This will be mounted
-        into the container.
+  \item Decide how cover images are stored\index{covers!directory}.
+        The shipped \texttt{docker-compose.yml} declares a Docker
+        \emph{named volume} (\texttt{mybibli\_covers}) — zero
+        configuration, Docker manages persistence and backup via
+        \texttt{docker volume}. If you prefer a host-visible directory
+        (Synology DSM file browser, manual rsync backups), pick a host
+        path now (e.g.\ \texttt{/volume1/docker/mybibli/covers}) and
+        you will switch the compose file to a bind mount in step~3
+        below.
   \item Choose a strong password for the bundled MariaDB
         \texttt{root} and application users — or, for an external
         database, create a dedicated database and user up front (see
@@ -70,6 +75,31 @@ curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/docker-compos
 curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/.env.example
 cp .env.example .env
 \end{lstlisting}
+
+\subsection*{1b. (Optional) Switch covers to a bind mount}\label{sec:install-covers-bind}
+
+By default, the shipped \texttt{docker-compose.yml} stores downloaded
+cover images in the Docker-managed named volume
+\texttt{mybibli\_covers}. This works zero-config and persists across
+container upgrades (issue~\#213). Most operators should leave it
+as-is.
+
+If you want covers visible in your host file manager (Synology DSM
+File Station, manual rsync backups, etc.), edit the compose file:
+
+\begin{itemize}
+  \item In the \texttt{mybibli} service's \texttt{volumes:} block,
+        comment out the \texttt{- mybibli\_covers:/app/covers} line
+        and uncomment the
+        \texttt{- \$\{COVERS\_HOST\_PATH:-./covers-host\}:/app/covers}
+        line right below it.
+  \item In \texttt{.env}, set \texttt{COVERS\_HOST\_PATH} to the host
+        path you picked in the pre-installation checklist (e.g.\
+        \texttt{COVERS\_HOST\_PATH=/volume1/docker/mybibli/covers}).
+  \item Create the directory before starting the stack
+        (\texttt{mkdir -p}) so Docker doesn't auto-create it owned by
+        root.
+\end{itemize}
 
 \subsection*{2. Edit \texttt{.env}}
 
@@ -166,8 +196,11 @@ Edit \texttt{docker-compose.yml} and remove the bundled database:
   \item delete (or comment out) the entire \texttt{db:} service;
   \item delete (or comment out) the \texttt{depends\_on:} block on
         the \texttt{mybibli} service;
-  \item delete (or comment out) the \texttt{volumes:} block at the
-        bottom of the file.
+  \item in the bottom \texttt{volumes:} block, remove
+        \texttt{mybibli\_db\_data:} only — \textbf{keep}
+        \texttt{mybibli\_covers:}\index{covers!persistence}. Cover
+        images are local to the app and must survive container
+        upgrades regardless of where the database lives (issue~\#213).
 \end{itemize}
 
 \subsection*{3. Point \texttt{.env} at the external database}
