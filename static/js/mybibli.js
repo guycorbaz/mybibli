@@ -299,16 +299,44 @@
 
     // Permanent delete modal: enable confirm button only when user types the correct item name.
     // Uses data-confirm-name and data-confirm-btn attributes instead of inline script.
+    //
+    // polish-1 AC1: when the input lives inside a UX-DR8 macro modal,
+    // there's no stable id on the Confirm button — but `[data-modal-confirm]`
+    // is always present. Fallback lookup: if `data-confirm-btn` id is
+    // absent OR doesn't resolve, find `[data-modal-confirm]` inside the
+    // nearest dialog ancestor.
+    function findConfirmButton(input) {
+        var btnId = input.dataset.confirmBtn;
+        if (btnId) {
+            var byId = document.getElementById(btnId);
+            if (byId) return byId;
+        }
+        var dialog = input.closest("dialog");
+        if (dialog) return dialog.querySelector("[data-modal-confirm]");
+        return null;
+    }
+    function syncConfirmButtonDisabled(input) {
+        var expectedName = input.dataset.confirmName;
+        if (!expectedName) return;
+        var btn = findConfirmButton(input);
+        if (!btn) return;
+        btn.disabled = input.value !== expectedName;
+    }
     function initConfirmationNameValidation() {
+        // Live updates on every keystroke.
         document.addEventListener("input", function (e) {
             var input = e.target.closest && e.target.closest("[data-confirm-name]");
-            if (!input) return;
-            var expectedName = input.dataset.confirmName;
-            var btnId = input.dataset.confirmBtn;
-            if (!expectedName || !btnId) return;
-            var btn = document.getElementById(btnId);
-            if (!btn) return;
-            btn.disabled = input.value !== expectedName;
+            if (input) syncConfirmButtonDisabled(input);
+        });
+        // polish-1 AC1: pre-disable the Confirm button when a modal lands
+        // in the DOM. The macro doesn't hardcode `disabled` on the
+        // button — that responsibility shifts to this listener. Runs on
+        // every HTMX swap so freshly-injected modals are caught.
+        document.body.addEventListener("htmx:afterSwap", function () {
+            var inputs = document.querySelectorAll("[data-confirm-name]");
+            for (var i = 0; i < inputs.length; i++) {
+                syncConfirmButtonDisabled(inputs[i]);
+            }
         });
     }
 

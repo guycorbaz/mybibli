@@ -338,24 +338,17 @@ struct TrashEntryDisplay {
 #[derive(Template)]
 #[template(path = "fragments/admin_trash_permanent_delete_modal.html")]
 struct AdminTrashPermanentDeleteModal {
-    modal_title: String,
-    modal_warning: String,
-    modal_confirmation_label: String,
-    modal_confirm_label: String,
-    modal_confirmation_instruction: String,
-    modal_confirm_button: String,
-    modal_cancel: String,
-    modal_close_target: String,
+    /// polish-1 AC1: thin wrapper around `components/modal.html::modal`
+    /// macro. Field names now mirror the macro's parameters. Pre-built
+    /// `body_html` + `inner_form_html` are stuffed in by the handler.
+    title: String,
+    body_html: String,
+    confirm_label: String,
+    cancel_label: String,
+    action_url: String,
     csrf_token: String,
-    item_name: String,
-    table_name: String,
-    item_id: u64,
     version: i32,
-    /// R3-N1: filters carried through to the POST URL so the post-delete
-    /// re-render lands on the same panel view.
-    entity_type_filter: String,
-    search_query: String,
-    current_page: u32,
+    inner_form_html: String,
 }
 
 #[derive(Template)]
@@ -871,24 +864,72 @@ pub async fn admin_trash_permanent_delete_confirm(
         .await?
         .ok_or(AppError::NotFound("Item not found in trash".to_string()))?;
 
-    let modal = AdminTrashPermanentDeleteModal {
-        modal_title: rust_i18n::t!("admin.trash.delete_permanent_modal_title", locale = loc).to_string(),
-        modal_warning: rust_i18n::t!("admin.trash.delete_permanent_modal_warning", locale = loc).to_string(),
-        modal_confirmation_label: rust_i18n::t!("admin.trash.delete_permanent_modal_confirm_label", locale = loc).to_string(),
-        modal_confirm_label: rust_i18n::t!("admin.trash.delete_permanent_modal_confirm_label", locale = loc).to_string(),
-        modal_confirmation_instruction: rust_i18n::t!("admin.trash.modal_confirmation_instruction", locale = loc, item_name = &entry.item_name).to_string(),
-        modal_confirm_button: rust_i18n::t!("admin.trash.delete_permanent_modal_confirm_button", locale = loc).to_string(),
-        modal_cancel: rust_i18n::t!("admin.trash.delete_permanent_modal_cancel", locale = loc).to_string(),
-        modal_close_target: format!("dialog:has(form[hx-post*='/{}/'])", table),
-        csrf_token: session.csrf_token.clone(),
-        item_name: entry.item_name.clone(),
-        table_name: table.clone(),
-        item_id: id,
+    // polish-1 AC1: pre-build body_html + inner_form_html so the
+    // fragment template is a thin one-call wrapper around the
+    // UX-DR8 macro. Item-name and the type-to-confirm instruction
+    // strings carry user data → run through html_escape before
+    // interpolating (FeedbackEntry helper escapes its inputs, but
+    // we're hand-building here so be explicit).
+    let item_name_esc = crate::utils::html_escape(&entry.item_name);
+    let warning_msg = rust_i18n::t!("admin.trash.delete_permanent_modal_warning", locale = loc).to_string();
+    let confirmation_label_msg = rust_i18n::t!("admin.trash.delete_permanent_modal_confirm_label", locale = loc).to_string();
+    let confirmation_instruction = rust_i18n::t!(
+        "admin.trash.modal_confirmation_instruction",
+        locale = loc,
+        item_name = &entry.item_name
+    )
+    .to_string();
+
+    let body_html = format!(
+        r##"<p class="text-red-600 dark:text-red-400 font-semibold mb-4 flex items-start gap-2">
+    <svg class="w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+    </svg>
+    <span>{warning}</span>
+</p>
+<div class="bg-stone-50 dark:bg-stone-800 p-4 rounded-lg mb-4 border border-stone-200 dark:border-stone-700">
+    <p class="text-sm text-stone-600 dark:text-stone-400 mb-2">{confirmation_label}</p>
+    <p class="font-mono font-bold text-stone-900 dark:text-white break-all">{item_name}</p>
+</div>"##,
+        warning = crate::utils::html_escape(&warning_msg),
+        confirmation_label = crate::utils::html_escape(&confirmation_label_msg),
+        item_name = item_name_esc,
+    );
+
+    let inner_form_html = format!(
+        r##"<div>
+    <label for="confirm-name-input" class="text-sm font-semibold mb-1 block">{label}</label>
+    <input type="text" id="confirm-name-input" name="confirmed_name" placeholder="{placeholder}" data-confirm-name="{confirm_name}" data-modal-default-focus class="w-full px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800 focus:outline-none focus:ring-2 focus:ring-red-600" autocomplete="off">
+    <p class="text-xs text-stone-500 dark:text-stone-400 mt-1">{instruction}</p>
+</div>"##,
+        label = crate::utils::html_escape(&confirmation_label_msg),
+        placeholder = item_name_esc,
+        confirm_name = item_name_esc,
+        instruction = crate::utils::html_escape(&confirmation_instruction),
+    );
+
+    let entity_type_filter = params.entity_type.unwrap_or_default();
+    let search_query = params.search.unwrap_or_default();
+    let current_page = params.page.unwrap_or(1).max(1);
+    let action_url = format!(
+        "/admin/trash/{}/{}/permanent-delete?version={}&entity_type={}&search={}&page={}",
+        crate::utils::html_escape(&table),
+        id,
         version,
-        // R3-N1: thread filters straight through to the POST URL.
-        entity_type_filter: params.entity_type.unwrap_or_default(),
-        search_query: params.search.unwrap_or_default(),
-        current_page: params.page.unwrap_or(1).max(1),
+        crate::utils::url_encode(&entity_type_filter),
+        crate::utils::url_encode(&search_query),
+        current_page,
+    );
+
+    let modal = AdminTrashPermanentDeleteModal {
+        title: rust_i18n::t!("admin.trash.delete_permanent_modal_title", locale = loc).to_string(),
+        body_html,
+        confirm_label: rust_i18n::t!("admin.trash.delete_permanent_modal_confirm_button", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("admin.trash.delete_permanent_modal_cancel", locale = loc).to_string(),
+        action_url,
+        csrf_token: session.csrf_token.clone(),
+        version,
+        inner_form_html,
     };
 
     modal.render()

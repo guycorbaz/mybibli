@@ -21,6 +21,10 @@ struct ModalTestWrapper {
     hx_target: &'static str,
     hx_swap: &'static str,
     version: i32,
+    /// polish-1 AC1: optional in-form HTML injected before the button row.
+    /// Empty in every existing modal test case; the trash modal (Phase 5)
+    /// uses it to host the type-to-confirm input.
+    inner_form_html: &'static str,
 }
 
 fn render(variant: &'static str, action_method: &'static str) -> String {
@@ -55,6 +59,7 @@ fn render_full(
         hx_target,
         hx_swap,
         version,
+        inner_form_html: "",
     }
     .render()
     .expect("render")
