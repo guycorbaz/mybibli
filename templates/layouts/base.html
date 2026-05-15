@@ -7,6 +7,14 @@
     <title>{% block title %}mybibli{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/output.css">
     <link rel="stylesheet" href="/static/css/browse.css">
+    {# Favicon set — SVG primary (modern browsers), PNG fallbacks at
+       common sizes (Safari + iOS Add-to-Home-Screen), .ico for legacy.
+       Served from /logo/ via ServeDir on docs/mybibli-logo/. #}
+    <link rel="icon" type="image/svg+xml" href="/logo/svg/mybibli-icon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/logo/png/mybibli-icon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/logo/png/mybibli-icon-16.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="/logo/png/mybibli-icon-192.png">
+    <link rel="shortcut icon" href="/logo/png/favicon.ico">
     <!-- Tell HTMX NOT to inject its inline `.htmx-indicator { ... }` <style>
          block (CSP `style-src 'self'` blocks it). The same rules live in
          browse.css. Must come BEFORE the htmx script. -->
