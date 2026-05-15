@@ -55,12 +55,23 @@ Three fragments still use the pre-Modal-component ad-hoc shape. They are NOT equ
 - **MIGRATE** `admin_trash_permanent_delete_modal.html` to the UX-DR8 Modal component. The trash modal carries 4 of the 5 bugs end-to-end and the simplest UX (type-the-name confirmation — see Dev Notes for how to absorb it). Story 9-10's "deferred migration" note (`_bmad-output/implementation-artifacts/9-10-modal-foundation-and-borrower-migration.md`, §Existing-code reality check) explicitly anticipates this — quote: *"DOES NOT migrate the 3 existing admin fragments in the same PR (refactor-during-feature anti-pattern). Migrations of the admin fragments are deferred work, tracked as a `type:code-review-finding` GH issue at story close."*
 - **LEAVE IN PLACE** the 2 ref-data modals on Pattern B. They get the `showModal()` fix via a symmetric patch to `inline-form.js`, which closes #65 for them without touching the working Cancel/Escape lifecycle. #64 is closed via the same `HX-Trigger: modal-close` pattern as the trash modal (AC2), but emitted by the ref-data handlers and listened to by both `modal.js` AND `inline-form.js`.
 
-### Issue #134 — frozen-open on error (Pattern A bug)
-Separate concern. `static/js/modal.js`'s `htmx:afterRequest` listener filters error responses out (`if (!isConfirm || detail.failed || detail.successful === false) return;`). When the Confirm button's POST returns non-2xx (409 Conflict from optimistic locking, 403 CSRF drift, etc.), the modal stays open with NO visual feedback. The user has to click Cancel manually. Affects every Pattern-A modal.
+### Issue #134 — frozen-open on error (Pattern A bug, nuanced)
 
-**UX decision required (recorded in this spec):**
-- Error feedback lands **inside the modal** (inline error banner in the modal body, modal stays open so the user can re-read context and retry or Cancel)
-- NOT in the page's `#feedback-list` (which would disappear under the modal's backdrop and feel disconnected from the action that failed)
+Separate concern. `static/js/modal.js`'s `htmx:afterRequest` listener filters error responses out (`if (!isConfirm || detail.failed || detail.successful === false) return;`). When the Confirm button's POST returns non-2xx, the listener early-returns and never calls `close()`. The modal stays open.
+
+**But the "no visible feedback" framing in the original #134 report is more nuanced than first appears.** A reality-check of every error path showed three distinct behaviors currently shipping:
+
+| Error path | Status | HX-Retarget emitted? | UX today |
+|---|---|---|---|
+| Trash 4xx (self-delete, last-admin, name-mismatch) | 403/400 | ❌ — handler returns `(StatusCode, Html(...))` directly | **Fully silent.** HTMX's default `responseHandling` for 4xx is `swap:false` → body dropped → user sees nothing. |
+| Any `AppError::Conflict` (trash 409 version mismatch, ref-data in-use, return-loan optimistic-lock race) | 409 | ✅ — `AppError::Conflict::IntoResponse` (`src/error/mod.rs:140-154`) emits `HX-Retarget: #feedback-list` + `HX-Reswap: beforeend` (story 8-4 P18) | Feedback lands in `#feedback-list` BUT it sits behind the modal's translucent backdrop (`bg-black bg-opacity-50`). Partially readable; not obvious it's the failure for the action you just clicked. |
+
+Issue #134's reporter most likely hit the second case (modal stays open, feedback fuzzy behind backdrop) and read it as "no visible feedback". The first case (fully silent) is the one the trash modal lives in today.
+
+**UX decision (recorded — user-approved 2026-05-15):**
+- Error feedback lands **inside the modal** in a dedicated `data-modal-error` region, NOT behind the backdrop nor in `#feedback-list`. Closer to the action that failed, no backdrop occlusion, modal stays open so the user can re-read context and retry or Cancel.
+- **Server-side opt-out of `AppError::Conflict`'s `HX-Retarget` when the request originated from a modal Confirm.** A new `X-Modal-Confirm: true` request header (set by `modal.js` via `htmx:configRequest`) signals the server to omit the `HX-Retarget` / `HX-Reswap` headers in `AppError::Conflict::IntoResponse`. Result: the body lands in the response normally and `modal.js`'s listener injects it into `data-modal-error`. **Non-modal forms (ref-data list-level deletes, etc.) keep the existing retarget-to-feedback-list behavior** — story 8-4 P18's intent is preserved for that context.
+- **A11y:** `role="alert"` alone on the error region. Per WAI-ARIA spec this implies `aria-live="assertive"` — screen readers announce immediately. Appropriate for action-failure context where the user is actively waiting for feedback. **NOT `aria-live="polite"`** (the spec rev 0 had `role="alert" aria-live="polite"` which is contradictory — pick one, `role="alert"` wins per the user-action-context).
 
 This decision is binding for AC4 below. Re-open this spec if the UX choice changes.
 
@@ -89,15 +100,40 @@ This decision is binding for AC4 below. Re-open this spec if the UX choice chang
    - **Cross-cutting impact:** this fixes #65 not only for the migrated trash modal but for ALL 5 already-shipped UX-DR8 modals (`borrower_delete_modal.html`, `contributor_delete_modal.html`, `series_delete_modal.html`, `return_loan_modal.html`, `admin_user_deactivate_modal.html`) AND the 2 ref-data modals. **Regression risk is highest here** — verify under code-review that the existing modal flows (delete-borrower, return-loan, etc.) still work end-to-end with the proper top-layer + native Escape + native backdrop behavior. Their custom JS Escape + backdrop-click handlers in `modal.js` may now be redundant or even fight the native ones — Task 1 must reconcile.
 
 4. **AC4 — `static/js/modal.js` surfaces Confirm-error feedback INSIDE the open Pattern A modal (closes #134 for Pattern A only).**
-   - Current behavior: `htmx:afterRequest` early-returns on failed responses, leaving the modal frozen open.
-   - New behavior: on `detail.failed === true || detail.successful === false` for a request originating from the Confirm button:
-     - Parse the response body as HTML (HTMX has already done the parse for us via `detail.xhr.responseText`).
-     - Inject the response into a NEW DOM region inside the modal: `<div data-modal-error class="..."></div>`. The macro `templates/components/modal.html` adds this region (initially `hidden`; `modal.js` flips `hidden` off when injecting content).
-     - Modal stays open. User can re-read context, hit Cancel, or fix the upstream condition and retry.
-   - **Handler contract addendum:** when a Confirm handler returns non-2xx, the response body MUST be a renderable HTML fragment (FeedbackEntry shape from `feedback_html()` in `src/routes/catalog.rs:33`). Existing handlers already do this for 4xx (CSRF, 409 Conflict in optimistic-lock paths) — verify in Task 1 that no Confirm-handler returns plain-text or JSON on the error path; if any does, add the FeedbackEntry wrapper in the SAME PR (in-scope per #134's coordination clause).
-   - **No re-opening on subsequent same-button click** — the existing focus-trap + lifecycle continues to run; only the error-region is new.
-   - The macro change: bump `templates/components/modal.html` to include `<div data-modal-error role="alert" aria-live="polite" class="hidden ..."></div>` immediately after the body content. Tailwind sizing + colors: amber (variant `warning`/`remove`) / red (variant `delete`/`delete-forever`).
-   - **Scope note:** this AC fixes #134 for Pattern A modals (which includes the migrated trash modal after AC1). The 2 ref-data modals stay on Pattern B and inherit their existing error-handling-via-list-re-render behavior. If a real user hits a frozen-open ref-data modal in production, file a follow-up issue and consider extending `inline-form.js` symmetrically; not in scope here.
+
+   Four coordinated changes (client tag + server suppression + client inject + macro region):
+
+   **4.a — `modal.js` tags every Confirm request with `X-Modal-Confirm: true`.**
+   - Add an `htmx:configRequest` listener that, when the originating element matches the existing `isConfirm` shape (FORM tag inside `state.dialog`, `[data-modal-confirm]` attr, or `closest("[data-modal-confirm]")`), sets `evt.detail.headers["X-Modal-Confirm"] = "true"`.
+   - Plain non-modal forms (ref-data list-level deletes, page-level forms) get no header — no change for them.
+
+   **4.b — `AppError::Conflict::IntoResponse` (`src/error/mod.rs:140-154`) suppresses `HX-Retarget` / `HX-Reswap` when `X-Modal-Confirm: true` is present.**
+   - The `IntoResponse` impl doesn't take Request — see Dev Notes for the implementation path (an extractor that stashes the header into a thread-local OR a response middleware that strips the headers when X-Modal-Confirm was on the way in OR carry the flag through the AppError variant's structure). **Task 1 picks the cleanest plumbing path — non-trivial decision, record in Dev Agent Record.**
+   - When `X-Modal-Confirm` is set on the request: response is 409 with HTML body but **NO** `HX-Retarget`, **NO** `HX-Reswap`. HTMX's `responseHandling` for 4xx is still `swap:false` by default, so the body would normally be dropped — but step 4.c catches it.
+   - When the header is absent (non-modal context): existing retarget-to-`#feedback-list` behavior is preserved verbatim — story 8-4 P18 contract intact.
+
+   **4.c — `modal.js`'s existing `htmx:afterRequest` listener injects the body into `data-modal-error`.**
+   - On `detail.failed === true || detail.successful === false` for a Confirm-originating request:
+     - **Race guard:** if `state` is null or `state.dialog` is no longer in the DOM (user closed the modal between request and response), early-return.
+     - **Retarget guard:** if `evt.detail.xhr.getResponseHeader("HX-Retarget")` is non-empty, HTMX has already swapped the body elsewhere (defensive: 4.b should prevent this for modal Confirms, but if a future handler ships an explicit retarget the guard avoids double-display).
+     - Read `evt.detail.xhr.responseText` (raw HTML string).
+     - Find `state.dialog.querySelector("[data-modal-error]")`. Set `innerHTML = responseText`. Remove the `hidden` class.
+     - Modal stays open. Focus stays where it was (the existing focus-trap lifecycle is undisturbed).
+   - **Clear on retry:** add an `htmx:beforeRequest` listener for the SAME Confirm-button detection. When fired, set `data-modal-error.innerHTML = ""` and re-add the `hidden` class. A retry starts with a clean slate, no stale errors.
+
+   **4.d — Macro `templates/components/modal.html` adds the error region.**
+   - Insert `<div data-modal-error role="alert" class="hidden ..."></div>` immediately after the modal body content.
+   - **A11y:** `role="alert"` alone — per WAI-ARIA spec this implies `aria-live="assertive"`. NO explicit `aria-live` attribute (the rev 0 contradiction `role="alert" aria-live="polite"` is resolved in favor of `role="alert"` for the action-failure context — user just clicked, is actively waiting for feedback, assertive announce is appropriate).
+   - Tailwind sizing + variant-tinted colors: amber (variant `warning`/`remove`) / red (variant `delete`/`delete-forever`). Match the existing `feedback_html()` palette for visual consistency with `#feedback-list`.
+   - The `hidden` class is the CSP-clean conditional-display mechanism (Tailwind `[data-modal-error]:empty { display: none }` doesn't compose cleanly per Dev Notes).
+
+   **4.e — Handler contract addendum (verify in Task 1).**
+   - Every Confirm-target handler's non-2xx return path MUST emit a renderable HTML fragment (FeedbackEntry shape from `feedback_html_pub()` in `src/routes/catalog.rs:33`). Verified for trash today: `admin.rs:927-950` returns 400/403 with `Html(feedback_html_pub(...))`. Verified for Conflict: `error/mod.rs:140-154` emits `feedback_html_pub("error", msg, "")`. **Task 1 must grep every Confirm-route handler for non-2xx return paths and confirm 100% FeedbackEntry coverage — no plain-text, no JSON, no bare `Result<_, sqlx::Error>` propagation that would surface as a bare 500.** Any gap gets the FeedbackEntry wrapper in the SAME PR.
+
+   **Scope note:** AC4 fixes #134 for Pattern A modals (5 already-shipped + the migrated trash). The 2 ref-data modals stay on Pattern B and inherit their existing UX:
+   - On `AppError::Conflict` (in-use guard) → no X-Modal-Confirm header → 4.b's suppression doesn't trigger → retarget-to-`#feedback-list` is preserved → feedback partially visible behind backdrop (pre-existing, unchanged).
+   - On non-Conflict 4xx → HTMX drops the body (silent failure, pre-existing, unchanged).
+   - If a real user hits a frozen-open ref-data modal in production, file a follow-up issue and consider extending `inline-form.js` symmetrically; not in scope here.
 
 5. **AC5 — `src/templates_audit.rs::hx_confirm_matches_allowlist` invariant still passes.** The allowlist is currently empty (per CLAUDE.md story 7-5 note: *"the allowlist is empty post Epic 9 — any new `hx-confirm=` is BLOCKED outright by the audit"*). This polish iteration introduces no new `hx-confirm=` attributes — it only migrates the trash modal to the UX-DR8 macro and patches JS modules. The audit MUST still report 0 occurrences.
 
@@ -123,7 +159,8 @@ This decision is binding for AC4 below. Re-open this spec if the UX choice chang
      - **HX-Trigger idiom — two legitimate variants** (a new clarification the project hasn't had so far):
        - **Variant A — post-swap effect** (`document.body.addEventListener("event-name", handler)`). HTMX dispatches a DOM custom event keyed on the header value AFTER the swap completes. Use when the side-effect doesn't influence the swap itself — close a modal, refresh a widget, toast a message, etc. **New canonical example:** `HX-Trigger: modal-close` consumed by `modal.js` + `inline-form.js` (this polish iteration's AC2).
        - **Variant B — pre-swap decision** (`document.body.addEventListener("htmx:beforeSwap", evt => parseHeader(evt.detail.xhr.getResponseHeader("HX-Trigger")))`). Listener attaches to the synchronous HTMX swap-decision event and parses the header itself. Use when the side-effect MUST influence the swap (force-swap on 403, retarget, suppress isError). **Existing canonical example:** `HX-Trigger: csrf-rejected` consumed by `csrf.js` to flip `evt.detail.shouldSwap = true` on a 403 (story 8-2). Variant B is also robust to comma-separated lists (`csrf-rejected, session-warn`) — a future composability concern Variant A doesn't have.
-     - The error-feedback-INSIDE-modal UX decision and the `data-modal-error` region contract (Pattern A only)
+     - The error-feedback-INSIDE-modal UX decision and the `data-modal-error` region contract (Pattern A only). Coordinates the `X-Modal-Confirm: true` request-header set by `modal.js` on every Confirm AND the `AppError::Conflict::IntoResponse` server-side suppression of `HX-Retarget`/`HX-Reswap` when the header is present. Ref-data forms (no header) keep the story 8-4 P18 retarget-to-`#feedback-list` contract.
+     - The `X-Modal-Confirm: true` request header pattern itself, as a new project-wide idiom for context-aware error routing — server-side error responses adapt their target based on whether the request came from a modal Confirm or from a page-level form. Future modal-like surfaces can opt-in by setting the same header.
      - The slot-ownership rule: **`#modal-slot` for Pattern A (UX-DR8 macro)**, **`#admin-modal-slot` for Pattern B (ref-data legacy)**. Both slots now call `showModal()` on `dialog[open]` arrival.
      - The `templates_audit.rs::hx_confirm_matches_allowlist` invariant remains empty.
    - **No new Foundation Rule** — this is a pattern extension, not a new discipline.
@@ -134,6 +171,11 @@ This decision is binding for AC4 below. Re-open this spec if the UX choice chang
 - **AC3 reconciliation question**: `modal.js` currently has its own Escape + backdrop-click + Tab-cycling handlers. `showModal()` provides native Escape + native backdrop close. Some of those manual handlers may become redundant or conflict (e.g., native Escape may close before the JS Tab-trap can react). Plan a Test 1 pass to walk the existing UX-DR8 modal specs (`borrower-delete-modal.spec.ts`, `contributor-delete-modal.spec.ts`, `series-delete-modal.spec.ts`, `return-loan-modal.spec.ts`, `admin_user_deactivate-modal.spec.ts`) and identify any behavior the JS provides that native `showModal()` doesn't (e.g., outside-click on `<dialog>` itself is NOT a standard native close — backdrop click via `event.target === dialog` is custom code that must stay).
 - **The `HX-Trigger: modal-close` event listener** is best added directly to `modal.js` (`#modal-slot`) and `inline-form.js` (`#admin-modal-slot`) — same module that already owns each slot's lifecycle. ~10 LOC addition each.
 - **The error-region (AC4)** needs a CSS-only conditional-display idiom — `[data-modal-error]:empty { display: none; }` won't work because of how Tailwind's hidden modifier composes; the simplest path is server-side `class="hidden"` initially + `modal.js` removes `hidden` on inject. Check `.feedback-entry` patterns elsewhere for prior art.
+- **AC4.b — `AppError::Conflict::IntoResponse` reading the request header** is the trickiest plumbing piece. Three candidate approaches, ordered by cleanliness:
+  - **(a)** A response middleware (`tower::Layer`) that runs AFTER the handler. It inspects the request headers (captured pre-handler via a shared state or a `task_local`) and, if `X-Modal-Confirm` was on the way in AND the response carries `HX-Retarget: #feedback-list`, strips those HTMX headers. Pure orthogonal — `AppError::Conflict::IntoResponse` stays untouched.
+  - **(b)** A request extractor that stashes the header into the Axum request extensions, plus an `AppError::Conflict` variant change to `Conflict { msg: String, from_modal: bool }`. Every site that constructs the variant has to pass the flag.
+  - **(c)** Carry a `tokio::task_local` flag set by an extractor and read by `IntoResponse`. Less invasive than (b) but uses a thread-local — easy to mis-use.
+  - Recommend (a) — it's the lowest-coupling. Lives next to the existing `csp.rs` / `csrf.rs` middleware layer order documented in CLAUDE.md (`Logging → Auth → [Handler] → PendingUpdates → CSP`). Insert a new `ModalConfirmRetargetGuard` layer that reads `X-Modal-Confirm` on the way in and rewrites HX-* headers on the way out. Task 1 confirms after reading `src/middleware/`.
 - **Trash modal call site is short** — once the type-to-confirm wiring is solved, the migrated fragment should be ~10 LOC (`{% import %}` + `{% call modal::modal(...) %}` + the type-to-confirm input + the hidden CSRF/version fields).
 - **CSRF token plumbing**: the legacy trash fragment already includes `<input name="_csrf_token" value="{{ csrf_token|e }}">` — verify after migration that the macro emits this in the form. Story 8-2's `templates_audit.rs::forms_include_csrf_token` invariant must still pass.
 
@@ -164,6 +206,11 @@ This iteration is the FIRST to reinstate the code-review-as-default discipline p
 - **HX-Trigger event-name collision** — is `modal-close` already used anywhere? Grep before adding.
 - **Type-to-confirm UX preservation** — the migrated trash modal MUST still disable Confirm until the user types the exact item name. Whatever path AC1 picks (macro extension vs call-site wiring), the E2E test in AC7 must lock the disabled-until-match behavior.
 - **Error-region injection (AC4)** — is the response HTML always safe-by-construction? FeedbackEntry helper already escapes; verify it's used on every Confirm-handler error path. Plain-text/JSON returns would inject as raw text and look broken, NOT as an XSS vector (the body is inserted into a `<div>`, not via `eval`), but the UX bug would be ugly.
+- **AC4.b retarget-suppression middleware** — non-trivial new infrastructure. Reviewer must verify:
+  - The middleware layer order (`ModalConfirmRetargetGuard` between Auth and Handler, or after Handler in the response path?) doesn't break any existing flow that relies on `HX-Retarget` (CSRF rejection emits `HX-Retarget: #feedback-list` too — does this header strip break the CSRF UX from story 8-2 / story 10-2?).
+  - The `X-Modal-Confirm: true` header detection is request-scoped — no leakage across requests (no thread-local pitfalls).
+  - Non-modal forms that legitimately retarget (e.g., a future ref-data inline-edit error) are not affected because they don't carry the header.
+- **AC4.d ARIA `role="alert"` only** — verify no axe-core rule trips on the absence of explicit `aria-live`. The WCAG 2.2 AA gate from story 10-5 should accept `role="alert"` alone, but it's worth running the new `admin-modal-lifecycle.spec.ts` AC7 tests through axe to confirm.
 - **E2E race conditions on the rapid-double-click test (#67)** under 14-worker default-local Playwright (matches Epic 10 §4.1 pattern). The 100ms threshold may flake; consider `clickCount: 2` instead.
 
 Re-run review after fixes if any Medium+ findings land. Story is clean only when a full review pass produces 0 Medium+ findings (Foundation Rule #6).
