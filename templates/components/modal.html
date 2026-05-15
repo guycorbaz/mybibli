@@ -22,6 +22,13 @@
         <div class="p-6">
             <h3 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ title }}</h3>
             <div class="text-stone-700 dark:text-stone-300 mb-4">{{ body_html|safe }}</div>
+            {# polish-1 AC4.d: error region for failed Confirm responses.
+               Populated by static/js/modal.js's htmx:afterRequest listener when
+               detail.failed === true. role="alert" implies aria-live="assertive"
+               per WAI-ARIA — appropriate for action-failure context where the
+               user just clicked and is actively waiting for feedback. Cleared
+               at htmx:beforeRequest on retry. #}
+            <div data-modal-error role="alert" class="hidden mb-4"></div>
             <form{% if action_method == "DELETE" %} hx-delete="{{ action_url }}"{% else %} hx-post="{{ action_url }}"{% endif %}{% if hx_swap != "" %} hx-swap="{{ hx_swap }}"{% endif %}{% if hx_target != "" %} hx-target="{{ hx_target }}"{% endif %} class="flex gap-2">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
                 {% if version != 0 %}<input type="hidden" name="version" value="{{ version }}">{% endif %}
