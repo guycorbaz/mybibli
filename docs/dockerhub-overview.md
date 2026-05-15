@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/guycorbaz/mybibli/main/docs/mybibli-logo/png/mybibli-logo-800w.png" alt="mybibli" width="440">
+</p>
+
 # mybibli
 
 > **Self-hosted personal library catalog** — Rust + Axum + MariaDB. Single-tenant, single household, runs on your NAS.

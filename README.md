@@ -1,4 +1,9 @@
-# mybibli
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/mybibli-logo/svg/mybibli-logo-dark.svg">
+    <img src="docs/mybibli-logo/svg/mybibli-logo.svg" alt="mybibli" width="440">
+  </picture>
+</p>
 
 ![CI](https://github.com/guycorbaz/mybibli/actions/workflows/ci.yml/badge.svg?branch=main)
 
