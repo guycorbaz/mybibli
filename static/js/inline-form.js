@@ -341,8 +341,15 @@
         if (!slot) return;
         var dialog = slot.querySelector("dialog[open]");
         if (!dialog || dialog.matches(":modal")) return;
-        try { dialog.close(); } catch (_) { /* ignore */ }
-        try { dialog.showModal(); } catch (_) { /* ignore */ }
+        // removeAttribute("open") is a synchronous attribute change with no
+        // events fired — unlike dialog.close() which would dispatch a
+        // `close` event. The dialog goes from declarative-open → no-open →
+        // modal-open atomically.
+        dialog.removeAttribute("open");
+        try { dialog.showModal(); } catch (_) { /* ignore — fall back */ }
+        if (!dialog.hasAttribute("open")) {
+            dialog.setAttribute("open", "");
+        }
     }
     function watchAdminModalSlot() {
         var slot = document.getElementById("admin-modal-slot");

@@ -68,19 +68,32 @@
         // top-layer modal. The `:modal` pseudo is true ONLY when opened
         // via `showModal()`; the declarative `open` attribute alone
         // doesn't grant native modal semantics (top-layer, inert
-        // background, ::backdrop). Close + showModal upgrades it.
-        // Fixes issue #65 for every Pattern A modal (the 5 already-
-        // shipped ones + the trash modal after Phase 5 migration).
+        // background, ::backdrop). Fixes #65 for every Pattern A modal.
+        //
+        // showModal() throws InvalidStateError if the dialog is already
+        // marked open — so we remove the declarative `open` attribute
+        // first (a synchronous attribute change, no events fired —
+        // unlike dialog.close() which would dispatch a `close` event
+        // that could race with our subsequent listener registration).
         if (!dialog.matches(":modal")) {
-            try { dialog.close(); } catch (_) { /* ignore */ }
-            try { dialog.showModal(); } catch (_) { /* ignore */ }
+            dialog.removeAttribute("open");
+            try { dialog.showModal(); } catch (_) { /* ignore — fall back to declarative open below */ }
+            if (!dialog.hasAttribute("open")) {
+                // showModal() failed (e.g. very old browser, dialog detached
+                // mid-promotion). Restore declarative open so the test
+                // assertion `dialog[open]` still matches and the existing
+                // manual handlers (Escape, backdrop click, focus trap)
+                // provide degraded but functional UX.
+                dialog.setAttribute("open", "");
+            }
         }
 
-        // polish-1 AC3: catch native close events (Escape, dialog.close(),
-        // form method=dialog) so cleanup runs even when the close didn't
-        // go through our manual handlers. Without this, native Escape on
-        // a showModal()'d dialog would fire the browser's close path
-        // (clearing :modal + open) but leave our `state` variable stale.
+        // polish-1 AC3: catch native close events (Escape, native
+        // form method=dialog submit) so cleanup runs even when the
+        // close didn't go through our manual handlers. Native Escape
+        // on a showModal()'d dialog fires the browser's close path
+        // (clearing :modal + open) which would otherwise leave our
+        // `state` variable stale.
         function onNativeClose() { if (state && state.dialog === dialog) close({ skipFocusRestore: false }); }
         dialog.addEventListener("close", onNativeClose, { once: true });
 
