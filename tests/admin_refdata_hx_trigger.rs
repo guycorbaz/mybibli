@@ -11,6 +11,13 @@
 //! is identical for the other two; covering the parameterized shape is
 //! sufficient.
 //!
+//! polish-1 review-P4: also covers the loanable-warning Confirm path
+//! (`volume_states_loanable_confirm` → `apply_loanable_toggle` with
+//! `close_modal=true`) which is a distinct success path (different
+//! handler, conditional trigger emission). Without this test, a
+//! regression that flips `close_modal` to false silently breaks the
+//! modal-close for #admin-modal-slot's loanable-warning flow.
+//!
 //! Run locally:
 //!     docker compose -f tests/docker-compose.rust-test.yml up -d
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
@@ -90,6 +97,25 @@ async fn seed_unused_genre(pool: &MySqlPool) -> (u64, i32) {
     (id, version)
 }
 
+async fn seed_unused_volume_state(pool: &MySqlPool) -> (u64, i32, bool) {
+    let name = format!("vs-{}", rand_suffix());
+    // Seed a loanable=TRUE state so the loanable_confirm toggle to FALSE
+    // exercises the close_modal=true branch with a real state change.
+    let id: u64 = sqlx::query_scalar(
+        "INSERT INTO volume_states (name, is_loanable) VALUES (?, TRUE) RETURNING id",
+    )
+    .bind(&name)
+    .fetch_one(pool)
+    .await
+    .expect("insert volume_state");
+    let version: i32 = sqlx::query_scalar("SELECT version FROM volume_states WHERE id = ?")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .expect("fetch volume_state version");
+    (id, version, true)
+}
+
 async fn seed_unused_contributor_role(pool: &MySqlPool) -> (u64, i32) {
     let name = format!("r-{}", rand_suffix());
     let id: u64 =
@@ -133,6 +159,50 @@ async fn genres_delete_success_emits_hx_trigger_modal_close(pool: MySqlPool) {
         .headers()
         .get("HX-Trigger")
         .expect("HX-Trigger header MUST be present on success — polish-1 AC2 broken");
+    assert_eq!(
+        trigger.to_str().unwrap(),
+        "modal-close",
+        "HX-Trigger value drifted from `modal-close`"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn loanable_warning_confirm_success_emits_hx_trigger_modal_close(pool: MySqlPool) {
+    // polish-1 review-P4: the `volume_states_loanable_confirm` endpoint
+    // (`/admin/reference-data/volume-states/{id}/loanable/confirm`) emits
+    // `HX-Trigger: modal-close` ONLY when the caller went through the
+    // warning modal — which it does in this test by toggling is_loanable
+    // from TRUE to FALSE on a state with no active loans (warning modal
+    // is the only entry point; the inline toggle for that direction is
+    // gated by usage count). This pins the conditional emission at
+    // `apply_loanable_toggle` line ~1008.
+    let admin_token = seed_admin_session(&pool).await;
+    let (state_id, version, _was_loanable) = seed_unused_volume_state(&pool).await;
+    let app = build_router(build_state(pool));
+
+    // Toggle loanable to FALSE via the /loanable/confirm endpoint.
+    // is_loanable absent from form (HTML checkbox semantics) → false.
+    let form_body = format!("_csrf_token={TEST_CSRF_TOKEN}&version={version}");
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(format!(
+                    "/admin/reference-data/volume-states/{state_id}/loanable/confirm"
+                ))
+                .header(header::COOKIE, format!("session={admin_token}"))
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .header("HX-Request", "true")
+                .header("X-CSRF-Token", TEST_CSRF_TOKEN)
+                .body(Body::from(form_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "confirm should succeed");
+    let trigger = resp.headers().get("HX-Trigger").expect(
+        "HX-Trigger header MUST be present when loanable_confirm closes the warning modal — polish-1 review-P4",
+    );
     assert_eq!(
         trigger.to_str().unwrap(),
         "modal-close",

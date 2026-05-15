@@ -319,3 +319,50 @@ If `/bmad-code-review` surfaces blockers that can't be fixed within reasonable s
 - **Partial merge:** ACs 1, 2, 3, 6, 7, 8 (modal migration + showModal + tests + docs) ship as polish-1a. AC4 (error feedback inside modal) defers to polish-1b with its own spec PR after the design issue is resolved. AC4.e universal IntoResponse fix CAN ship with polish-1a (no dependency on AC4.b middleware) — it's the polish-1a's bonus.
 - **Defer entirely:** if even ACs 1–3 surface deep regression risks, polish-1 defers to a re-spec'd polish-2 that takes the lessons. Polish iterations are advisory, not contractual — the framework that introduced them (Epic 10 retro A5) explicitly allows.
 - **Block merge:** in all rollback cases, file a `type:change-request` GH issue tagged `polish-1-blocked-by-review` linking the spec PR + the review findings, and merge nothing until the user explicitly approves the new path.
+
+## Review Findings (3-layer adversarial review, 2026-05-15)
+
+Three parallel reviewer layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor) flagged Medium+ issues. Triage classification per `bmad-code-review` workflow.
+
+### Decision-needed (3) — user input required before patching
+
+- [ ] [Review][Decision] D1: CSRF rejection inside modal Confirm hides feedback behind top-layer dialog backdrop — `src/middleware/csrf.rs:352-354` emits `HX-Retarget: #feedback-list`, the retarget guard whitelists it, modal.js bails on error injection due to retarget present, `#feedback-list` renders beneath `::backdrop`. User sees frozen modal with no error indication. Resolution options: (a) modal.js listens for `csrf-rejected` HX-Trigger and closes the modal before swap (loses user's typed form data); (b) drop the whitelist — strip retarget on csrf-rejected too, render the CSRF error inside the modal; (c) extend csrf.js to detect modal-confirm context and render CSRF entry inside `data-modal-error` rather than `#feedback-list`; (d) defer as known limitation.
+
+- [ ] [Review][Decision] D2: User cancels modal mid-Confirm → 4xx response silently discarded — `src/middleware/modal_confirm_retarget_guard.rs:236-238` strips retarget unconditionally on request; if user closes modal before response arrives, `modal.js::htmx:afterRequest` bails (state null) and the error body has no target → dropped. Pre-polish-1 the same scenario rendered in `#feedback-list`. Resolution options: (a) keep current behavior — closed modal means user moved on, dropped error is acceptable; (b) modal.js's afterRequest fallback when state is null: append response body to `#feedback-list` directly; (c) middleware preserves retarget when `state` was nulled mid-flight (impossible to know server-side, would need re-design); (d) emit X-Modal-Confirm only at htmx:beforeRequest when state is non-null.
+
+- [ ] [Review][Decision] D3: Trash modal carries TWO `[data-modal-default-focus]` markers — `templates/components/modal.html:42` (Cancel button, UX-DR8 invariant) AND `src/routes/admin.rs:902` (type-to-confirm input via `inner_form_html`). `static/js/modal.js:34-42` picks the FIRST in DOM order = the input. UX-DR8 doc invariant "Cancel never destroys + Cancel is first focus" is silently violated for the most destructive modal. Resolution options: (a) remove `data-modal-default-focus` from the trash input — Cancel wins, user Tabs once to reach input (UX-DR8 enforced strictly); (b) modal.html macro takes a `suppress_default_cancel_focus: bool` flag for special cases — explicit opt-out; (c) trash modal is a documented exception to UX-DR8 — input-first focus is intentional for type-to-confirm UX, update the macro doc to reflect "Cancel-first UNLESS inner_form_html overrides".
+
+### Patch (7) — fixable without further input
+
+- [ ] [Review][Patch] P1: Cross-slot `modal-close` event coupling — Pattern B success closes Pattern A modal and vice versa [`static/js/modal.js:264-266`, `static/js/inline-form.js:373-376`]
+- [ ] [Review][Patch] P2: Unit test `permanent_delete_with_wrong_name_returns_400_feedback` does not assert `HX-Retarget` / `HX-Reswap` are stripped [`tests/admin_trash_modal_lifecycle.rs:226-265`] — regression where the middleware is removed would still pass
+- [ ] [Review][Patch] P3: AC7 missing E2E coverage for #134 error-path (the AC4 centerpiece) — type wrong name → Confirm → error inside `data-modal-error`, modal stays open, retry clears region [`tests/e2e/specs/journeys/admin-modal-lifecycle.spec.ts`]
+- [ ] [Review][Patch] P4: AC6 missing unit test for loanable-warning Confirm path [`src/routes/admin_reference_data.rs:1009`]
+- [ ] [Review][Patch] P5: AC8 CLAUDE.md missing two required mentions — (a) `templates_audit::hx_confirm_matches_allowlist` invariant remains empty; (b) "new handlers no longer need to manually wrap errors in `feedback_html_pub()` — propagating any `AppError` via `?` is enough" [`CLAUDE.md:130`]
+- [ ] [Review][Patch] P6: AC8 CLAUDE.md misdescribes `ModalConfirmRetargetGuard` layer placement — says "between Handler and PendingUpdates", actually wraps outside CSRF (Locale → Guard → CSRF → handler per `src/routes/mod.rs:400-423`) [`CLAUDE.md:130`]
+- [ ] [Review][Patch] P7: Rapid race of two DIFFERENT Pattern A modal triggers leaks tabindex restore handle + `mybibliModal.isOpen()` lies — no `#modal-slot` busy guard (only `#admin-modal-slot` has one in `inline-form.js:38-87`) [`static/js/modal.js:64-66, 170`]
+
+### Deferred (5) — to be filed as GH Issues per Foundation Rule #11
+
+- [x] [Review][Defer] DEF1: `AppError::IntoResponse` returns HTML fragment + `HX-Retarget` for direct browser GETs (non-HTMX) — pre-polish-1 returned plain text, polish-1 returns styled feedback fragment. Both equally broken in a direct browser; polish-1 is not materially worse but the regression deserves a future polish-2 fix (branch on HX-Request header).
+- [x] [Review][Defer] DEF2: `originatesFromConfirm` would tag `X-Modal-Confirm: true` on a nested form's submit if any modal ever ships nested forms — theoretical, no current consumer in `templates/`. Tighten predicate if a nested form is ever added.
+- [x] [Review][Defer] DEF3: CSRF whitelist parser (`response_has_csrf_rejected_trigger`) and `csrf.js`'s mirror handle comma-separated `HX-Trigger` only — would break if CSRF middleware ever emits the JSON form. Pre-existing pattern, consistent on both sides.
+- [x] [Review][Defer] DEF4: `ModalConfirmRetargetGuard` trusts client-supplied `X-Modal-Confirm` header — defense-in-depth concern only (single-tenant LAN threat model per `docs/auth-threat-model.md`).
+- [x] [Review][Defer] DEF5: `AppError::Forbidden` body rendered in default locale, not user's locale (`src/error/mod.rs:114-115` lacks `locale = locale` arg). Pre-existing bug; polish-1 amplifies visibility by ensuring the body reaches a real region.
+
+### Dismissed (4) — false positives or working-as-intended
+
+- DSM1: Blind #4 (XSS via user-controlled error message) — `feedback_html_pub` does call `html_escape(message)` at `src/routes/catalog.rs:96`; `html_escape` covers `&`, `<`, `>`, `"`, `'`. Verified at `src/utils.rs:33-39`.
+- DSM2: Blind #5 (`inner_form_html` attribute-injection via placeholder) — same as above; placeholder is interpolated from `html_escape(item_name)` which escapes `"`.
+- DSM3: Blind #8 (close listener `{once:true}` re-entry) — `close()` never calls `dialog.close()`, so the native `close` event is not dispatched on manual close. The `once:true` listener is a defensive backup for native Escape on a top-layer dialog and works as intended.
+- DSM4: Blind #10 (E2E spec fragility on soft-deleted borrowers in trash) — `borrowers` IS in `services::soft_delete::ALLOWED_TABLES`; tests pass locally (6/6) and the seed flow is validated by `seedSoftDeletedBorrower`.
+
+### Review summary
+
+| Bucket | Count |
+|---|---|
+| decision-needed | 3 |
+| patch | 7 |
+| defer | 5 (file as GH Issues) |
+| dismiss | 4 |
+| **Total raised** | 19 (after dedupe across 3 layers) |

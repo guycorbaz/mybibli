@@ -163,6 +163,74 @@ test.describe("polish-1 — admin modal lifecycle (Pattern A trash modal)", () =
     await expect(page.locator(`tr:has-text("${name}")`)).toHaveCount(0);
   });
 
+  test("#134 error path: wrong name → error in data-modal-error, modal stays open, retry clears region", async ({
+    page,
+  }) => {
+    // polish-1 review-P3: AC7 third-bullet coverage — the AC4 chain
+    // centerpiece (X-Modal-Confirm → ModalConfirmRetargetGuard → modal.js
+    // data-modal-error injection → role="alert" → clear on retry) has no
+    // integration coverage until this spec. Without it, a regression in
+    // any of the four moving parts ships unnoticed.
+    const name = `ml-err-${Date.now()}`;
+    await seedSoftDeletedBorrower(page, name);
+
+    await page.goto("/admin?tab=trash");
+    const trashRow = page.locator(`tr:has-text("${name}")`);
+    await trashRow
+      .getByRole("button", { name: /Delete permanently|Supprimer d[ée]finitivement/i })
+      .click();
+    const modal = page.locator("#modal-slot dialog[open]");
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    // Error region starts hidden + empty (AC4.d).
+    const errorRegion = modal.locator("[data-modal-error]");
+    await expect(errorRegion).toHaveAttribute("class", /hidden/);
+    await expect(errorRegion).toBeEmpty();
+
+    // Type a WRONG name to enable Confirm (the data-confirm-name guard is
+    // bypassed: the input value just has to be non-empty for some flows;
+    // for trash modal it requires an exact match — but the BadRequest is
+    // returned by the server, not blocked client-side, so we send a
+    // mismatch to trigger the 400 path).
+    // Actually mybibli.js's data-confirm-name handler ONLY enables the
+    // Confirm when value matches. To force a server-side BadRequest, we
+    // need to bypass that gate. The simplest way is to fill the right
+    // name (enables button), click Confirm, intercept the request — no,
+    // too brittle. Instead: dispatch a submit via JS bypassing the
+    // disabled state.
+    const wrongName = `${name}-not-this`;
+    await modal.locator("input[data-confirm-name]").fill(wrongName);
+    // Force-enable the Confirm button via JS (the disabled gate is purely
+    // client-side; the server still validates).
+    await modal.locator("[data-modal-confirm]").evaluate((btn: HTMLButtonElement) => {
+      btn.disabled = false;
+    });
+    await modal.locator("[data-modal-confirm]").click();
+
+    // The middleware strips HX-Retarget (AC4.b), modal.js's afterRequest
+    // failed-path injects xhr.responseText into data-modal-error (AC4.c).
+    await expect(errorRegion).not.toHaveAttribute("class", /hidden/, { timeout: 5000 });
+    await expect(errorRegion).not.toBeEmpty();
+    // Modal STAYS open (AC4 centerpiece — pre-polish-1 the error retargeted
+    // to #feedback-list behind the backdrop and the modal froze visibly).
+    await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(1);
+
+    // Retry: correct the input value to the real name. mybibli.js's
+    // data-confirm-name listener enables the button. Click Confirm again.
+    await modal.locator("input[data-confirm-name]").fill(name);
+    // Wait for the button to re-enable via the mybibli.js sync listener.
+    await expect(modal.locator("[data-modal-confirm]")).toBeEnabled({ timeout: 2000 });
+    await modal.locator("[data-modal-confirm]").click();
+
+    // On a NEW Confirm request, modal.js's beforeRequest listener clears
+    // data-modal-error (AC4.d clear-on-retry). The success path closes
+    // the modal (HX-Trigger: modal-close, AC2).
+    await expect(page.locator("#modal-slot dialog[open]")).toHaveCount(0, {
+      timeout: 10000,
+    });
+    await expect(page.locator(`tr:has-text("${name}")`)).toHaveCount(0);
+  });
+
   test("#67 rapid double-click guard: innerHTML swap keeps single dialog", async ({
     page,
   }) => {

@@ -253,6 +253,20 @@ async fn permanent_delete_with_wrong_name_returns_400_feedback(pool: MySqlPool) 
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "wrong name → 400");
+    // polish-1 review-P2: assert the ModalConfirmRetargetGuard
+    // middleware actually stripped HX-Retarget / HX-Reswap from the
+    // response. Without these assertions a regression that disables
+    // the middleware (e.g. a future refactor removing the
+    // `.layer(from_fn(...))` line in routes/mod.rs) would still pass
+    // the body-shape check — defeating the whole point of AC4.b.
+    assert!(
+        resp.headers().get("hx-retarget").is_none(),
+        "ModalConfirmRetargetGuard must strip HX-Retarget on error responses to X-Modal-Confirm requests",
+    );
+    assert!(
+        resp.headers().get("hx-reswap").is_none(),
+        "ModalConfirmRetargetGuard must strip HX-Reswap on error responses to X-Modal-Confirm requests",
+    );
     // The body must be the FeedbackEntry HTML shape (matches AC4.e
     // universal IntoResponse contract, even though the trash handler
     // returns directly without going through AppError for this case).

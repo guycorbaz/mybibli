@@ -365,12 +365,38 @@
         watchAdminModalSlot();
     }
 
+    // polish-1 P1: track whether a recently in-flight HTMX request
+    // originated from `#admin-modal-slot`. Used by the modal-close
+    // listener below to scope the close to OUR slot — without this,
+    // a Pattern A trash success would empty `#admin-modal-slot.innerHTML`
+    // and destroy any open ref-data modal (cross-slot coupling).
+    var lastRequestFromAdminSlot = false;
+    document.body.addEventListener("htmx:beforeRequest", function (evt) {
+        var detail = evt.detail || {};
+        var slot = document.getElementById("admin-modal-slot");
+        if (slot && detail.elt && slot.contains(detail.elt)) {
+            lastRequestFromAdminSlot = true;
+        }
+    }, false);
+
     // polish-1 AC2: server-driven modal close via `HX-Trigger: modal-close`.
     // Same event-name as modal.js's listener, but this handler targets
-    // `#admin-modal-slot`. Broadcast on document.body — both listeners
-    // receive, each acts on its own slot, idempotent if the slot is
-    // already empty (slot.innerHTML = "" no-op).
+    // `#admin-modal-slot`. Broadcast on document.body. polish-1 P1: only
+    // close when the recently-finished request originated from THIS slot
+    // (cross-slot guard — Pattern A's modal-close doesn't nuke an open
+    // Pattern B modal and vice versa).
     document.body.addEventListener("modal-close", function () {
+        if (!lastRequestFromAdminSlot) return;
+        lastRequestFromAdminSlot = false;
+        var slot = document.getElementById("admin-modal-slot");
+        if (slot) slot.innerHTML = "";
+    }, false);
+
+    // polish-1 P8 (decision D1): close any open ref-data modal when the
+    // server signals CSRF rejection — symmetric with modal.js so the
+    // user always sees the "Session expired" FeedbackEntry in
+    // `#feedback-list` rather than a frozen modal masking it.
+    document.body.addEventListener("csrf-rejected", function () {
         var slot = document.getElementById("admin-modal-slot");
         if (slot) slot.innerHTML = "";
     }, false);
