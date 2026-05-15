@@ -107,5 +107,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Sync Docker Hub overview (the README-equivalent shown on
+      # hub.docker.com/r/gcorbaz/mybibli) with docs/dockerhub-overview.md.
+      # Runs only when this tag is the highest semver — same gate as the
+      # `:latest` Docker tag promotion above. Pre-release / hotfix tags
+      # to older lines must not overwrite the overview with stale content.
+      # Source file lives in the repo (version-controlled, doc-sync'd per
+      # Foundation Rule #19).
+      - name: Sync Docker Hub overview
+        if: steps.is-highest.outputs.is_highest == 'true'
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: gcorbaz/mybibli
+          short-description: "Self-hosted personal library catalog — Rust + Axum + MariaDB. Single-tenant, single household, runs on your NAS."
+          readme-filepath: ./docs/dockerhub-overview.md
+
       - name: Summary
         run: echo "Pushed ${{ steps.meta.outputs.tags }}"
