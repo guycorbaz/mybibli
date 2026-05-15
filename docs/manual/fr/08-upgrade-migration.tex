@@ -110,6 +110,53 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.1.2}\label{sec:whats-new-1.1.2}
+
+La version 1.1.2 clôt l'Epic~10 — polish UX mobile et closeout
+sécurité. Aucune migration de schéma, aucun breaking change.
+La mise à jour est un simple \texttt{docker compose pull \&\&
+docker compose up -d} de routine. Les améliorations visibles
+côté utilisateur :
+
+\begin{itemize}
+  \item \textbf{Les tableaux deviennent des cartes sur mobile.}
+        Catalogue, prêts, emprunteurs et séries s'affichent sous
+        forme de cartes compactes sur les viewports étroits
+        (en-dessous du breakpoint Tailwind \texttt{md}). La mise
+        en page tableau desktop reste inchangée. Les deux formats
+        rendent les mêmes lignes — le basculement est purement CSS,
+        sans JavaScript.
+  \item \textbf{Les onglets admin deviennent une liste déroulante
+        sur mobile.} Sur les écrans étroits, les cinq onglets de
+        l'admin (Santé, Utilisateurs, Données de référence, Corbeille,
+        Système) se replient en \texttt{<select>} au lieu de
+        déborder horizontalement. Les liens profonds
+        \texttt{/admin?tab=...} continuent de fonctionner.
+  \item \textbf{Le message «~Session expirée~» est désormais
+        explicite.} Quand le jeton CSRF de session dérive (par
+        exemple parce que le navigateur est resté inactif au-delà
+        du timeout et que la session a tourné), l'action suivante
+        affiche maintenant une bannière serveur claire au lieu
+        d'échouer silencieusement. Le même flux gère les 403 de
+        timeout de session.
+  \item \textbf{Couverture accessibilité étendue aux pages
+        d'entité.} Le gate WCAG~2.2~AA en CI couvre désormais
+        chaque \texttt{/title/:id}, \texttt{/borrower/:id},
+        \texttt{/contributor/:id}, \texttt{/series/:id} et
+        l'assistant de première installation \texttt{/setup}, pas
+        seulement les routes de navigation principales. Deux
+        violations de contraste sur la page détail titre et sur le
+        bloc «~ajouts récents~» de la page d'accueil ont été
+        corrigées au passage.
+  \item \textbf{Posture d'authentification documentée bout en bout.}
+        \texttt{docs/auth-threat-model.md} formalise désormais la
+        forme de déploiement single-tenant LAN/NAS : ce que CSRF
+        protège, ce que font les cookies de session, le pourquoi
+        des choix de conception et ce qu'il faudrait revisiter si
+        le multi-tenant devenait un objectif. Référencé depuis
+        \texttt{README.md} et \texttt{CLAUDE.md}.
+\end{itemize}
+
 \section{Rollback}
 
 Le rollback \emph{n'est pas} un flux de première classe. Les

@@ -36,9 +36,10 @@ Built for collectors who want more than a spreadsheet:
 - **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow.
 - **Loan management.** Borrower CRUD, loan registration with automatic location restoration on return, overdue threshold (admin-configurable), per-borrower history.
 - **Multi-role auth.** Anonymous (read-only), Librarian (catalog + loans), Admin (everything). Session inactivity timeout with keep-alive toast. FR/EN language toggle with per-user preference.
-- **Hardened by construction.** Strict Content Security Policy (no `unsafe-inline`/`unsafe-eval`), CSRF synchronizer-token middleware on every state-changing request, scanner-guard against burst-keyboard input leaking into modals.
+- **Hardened by construction.** Strict Content Security Policy (no `unsafe-inline`/`unsafe-eval`), CSRF synchronizer-token middleware on every state-changing request (with a server-rendered "session expired" feedback when the token drifts — see [`docs/auth-threat-model.md`](docs/auth-threat-model.md)), scanner-guard against burst-keyboard input leaking into modals.
 - **Admin panel.** Health dashboard (entity counts, MariaDB version, disk usage, provider reachability), user management with last-active-admin guard, editable reference data (genres, volume states, contributor roles, location node types), system settings (overdue threshold, provider API keys, default language), trash view + restore + permanent delete, configurable auto-purge after 30 days.
 - **First-launch setup wizard.** Fresh installs walk through Admin → Providers → Preferences → Done; the gate middleware redirects every route to `/setup` until completion. Idempotent — interruptions resume at the right step server-side.
+- **Mobile-aware + WCAG 2.2 AA accessible.** Dual-surface mobile UX on data-dense pages (desktop tables collapse into mobile cards, admin tabs collapse into a `<select>` dropdown), full keyboard navigation with shortcuts cheat-sheet (`?`), contextual help-icon tooltips, and an axe-core CI gate that covers every reachable surface including entity-detail routes and the first-launch wizard.
 
 ## Tech stack
 
@@ -303,8 +304,9 @@ Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](
 | 7 | Accès multi-rôle & Sécurité | ✅ done |
 | 8 | Administration & Configuration | ✅ done |
 | 9 | Polish UX & Accessibilité | ✅ done |
+| 10 | Mobile UX & sécurité closeout | ✅ done |
 
-v1.0.0 shipped after Epic 9 close (2026-05-10). See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the full breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
+mybibli has been live in production since v1.1.1 (2026-05-14) on the household NAS that drove the project. v1.0.0 shipped after Epic 9 close (2026-05-10) as the first production-ready build; v1.1.0 added the seed-gate + audit trio (mandatory install floor — see banner at the top of this file); v1.1.2 closed Epic 10 (mobile UX dual-surface pattern, CSRF rejection UX, axe-core entity-detail coverage). The planned-feature build phase is complete — future work is GH-issue-driven polish iterations and production-driven fixes. See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the full breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
 
 ## License
 
