@@ -330,4 +330,41 @@
             return "\\" + ch;
         });
     }
+
+    // polish-1 AC3: promote declarative `<dialog open>` to native top-layer
+    // modal for fragments mounting into `#admin-modal-slot` (legacy
+    // ref-data delete + loanable-warning fragments from story 8-4 that
+    // stay on Pattern B per the spec). Symmetric to modal.js's promotion
+    // for `#modal-slot`. Fixes issue #65 for ref-data modals.
+    function promoteAdminModal() {
+        var slot = document.getElementById("admin-modal-slot");
+        if (!slot) return;
+        var dialog = slot.querySelector("dialog[open]");
+        if (!dialog || dialog.matches(":modal")) return;
+        try { dialog.close(); } catch (_) { /* ignore */ }
+        try { dialog.showModal(); } catch (_) { /* ignore */ }
+    }
+    function watchAdminModalSlot() {
+        var slot = document.getElementById("admin-modal-slot");
+        if (!slot || typeof MutationObserver !== "function") return;
+        var observer = new MutationObserver(promoteAdminModal);
+        observer.observe(slot, { childList: true, subtree: true });
+        // Initial check in case a dialog was already in the slot.
+        promoteAdminModal();
+    }
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", watchAdminModalSlot);
+    } else {
+        watchAdminModalSlot();
+    }
+
+    // polish-1 AC2: server-driven modal close via `HX-Trigger: modal-close`.
+    // Same event-name as modal.js's listener, but this handler targets
+    // `#admin-modal-slot`. Broadcast on document.body — both listeners
+    // receive, each acts on its own slot, idempotent if the slot is
+    // already empty (slot.innerHTML = "" no-op).
+    document.body.addEventListener("modal-close", function () {
+        var slot = document.getElementById("admin-modal-slot");
+        if (slot) slot.innerHTML = "";
+    }, false);
 })();
