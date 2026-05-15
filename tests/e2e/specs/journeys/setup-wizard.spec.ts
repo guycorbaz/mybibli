@@ -28,8 +28,15 @@
  * is tracked as a follow-up issue surfaced in Epic 8 retrospective.
  */
 import { test, expect } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 
 const SETUP_E2E_GATED = process.env.MYBIBLI_SETUP_E2E !== "1";
+
+// WCAG tag sets shared with `accessibility-full.spec.ts`. Story 10-5
+// (closes #162) adds a `/setup` axe check on Step 1, since the gate
+// predicate requires an empty users table that only the wizard CI lane
+// (this spec's lane) provides.
+const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag22aa"];
 
 test.describe("Story 8-8 — First-launch setup wizard", () => {
   test.skip(
@@ -47,6 +54,23 @@ test.describe("Story 8-8 — First-launch setup wizard", () => {
     // Step 1: redirect from any app route to /setup.
     await page.goto("/catalog");
     await expect(page).toHaveURL(/\/setup$/);
+
+    // Story 10-5 — axe-clean assertion on the live wizard. Runs before
+    // any form fills so the test exercises the as-rendered admin step.
+    {
+      const results = await new AxeBuilder({ page })
+        .withTags(WCAG_TAGS)
+        .analyze();
+      const summary = results.violations.map((v) => ({
+        rule: v.id,
+        impact: v.impact,
+        targets: v.nodes.slice(0, 3).map((n) => n.target.join(" ")),
+      }));
+      expect(
+        results.violations,
+        `/setup (Step 1): ${results.violations.length} WCAG violation(s):\n${JSON.stringify(summary, null, 2)}`,
+      ).toEqual([]);
+    }
 
     // Fill admin form.
     await page.fill('input[name="username"]', "wizard_admin");

@@ -26,13 +26,13 @@
                     <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ pub_name }}</p>
                 {% endif %}
                 {% if let Some(isbn) = title.isbn %}
-                    <p class="mt-1 text-xs text-stone-400">ISBN: {{ isbn }}</p>
+                    <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">ISBN: {{ isbn }}</p>
                 {% endif %}
                 {% if let Some(issn) = title.issn %}
-                    <p class="mt-1 text-xs text-stone-400">ISSN: {{ issn }}</p>
+                    <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">ISSN: {{ issn }}</p>
                 {% endif %}
                 {% if let Some(upc) = title.upc %}
-                    <p class="mt-1 text-xs text-stone-400">UPC: {{ upc }}</p>
+                    <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">UPC: {{ upc }}</p>
                 {% endif %}
                 {% if let Some(desc) = title.description %}
                 <div class="mt-4">
@@ -40,7 +40,7 @@
                 </div>
                 {% endif %}
                 {% if let Some(dewey) = title.dewey_code %}
-                    <p class="mt-1 text-xs text-stone-400">{{ label_dewey_code }}: {{ dewey }}</p>
+                    <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ label_dewey_code }}: {{ dewey }}</p>
                 {% endif %}
 
                 {% if role == "librarian" || role == "admin" %}
