@@ -204,18 +204,38 @@ combleront l'écart.
 
 \section{Images de couverture manquantes}
 
-\subsection*{Symptôme : chaque titre affiche le placeholder}
+\subsection*{Symptôme : chaque titre affiche le placeholder}\label{sec:troubleshoot-couvertures-manquantes}
 
-Le répertoire \texttt{covers/} est vide ou illisible. Confirmez :
+Le répertoire des couvertures est vide ou illisible. Confirmez :
 
 \begin{itemize}
-  \item que le volume monté dans \texttt{docker-compose.yml} pointe
-        vers un répertoire qui existe et est accessible en écriture
-        au conteneur ;
+  \item que \texttt{docker-compose.yml} déclare le volume nommé
+        \texttt{mybibli\_covers} (ou un bind mount sur
+        \texttt{COVERS\_HOST\_PATH}) mappé sur \texttt{/app/covers}.
+        Les installs antérieures à 1.1.4 ne déclaraient PAS ce
+        volume — voir la sous-section suivante ;
   \item que la récupération de métadonnées a effectivement renvoyé
         une URL de couverture (regardez la page du titre — si l'URL
         manque, le fournisseur ne l'a pas fournie).
 \end{itemize}
+
+\subsection*{Symptôme : les couvertures ont disparu après mise à jour de l'image}\label{sec:troubleshoot-couvertures-perte-mise-a-jour}
+
+Vous avez mis à jour depuis une install antérieure à 1.1.4 et toutes
+les couvertures précédemment cataloguées ont disparu. Il s'agit de
+l'issue~\#213 — l'ancien modèle compose ne persistait pas
+\texttt{/app/covers}, donc le layer en écriture portant ces JPG a
+été détruit quand le nouveau conteneur a remplacé l'ancien.
+
+Correctif : récupérez le \texttt{docker-compose.yml} de la 1.1.4,
+puis lancez \texttt{docker compose down \&\& docker compose up -d}.
+Les couvertures suivantes seront persistées dans le volume
+\texttt{mybibli\_covers}.
+
+Récupération des couvertures perdues : ouvrez la page de détail de
+chaque titre concerné et cliquez sur \emph{Re-télécharger les
+métadonnées} pour repeupler depuis la chaîne de fournisseurs. Une
+action en masse est suivie dans l'issue~\#214.
 
 \section{Où signaler un bug}
 

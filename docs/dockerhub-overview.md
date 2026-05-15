@@ -41,9 +41,11 @@ services:
       DATABASE_URL: mysql://mybibli:mybibli@db:3306/mybibli?charset=utf8mb4
       HOST: "0.0.0.0"
       PORT: "8080"
-      COVERS_DIR: "/data/covers"
     volumes:
-      - mybibli-covers:/data/covers
+      # Issue #213 — cover JPGs MUST persist across container upgrades.
+      # Without this mount, every `docker compose up -d` after a pull
+      # destroys the writable layer and the cataloged covers vanish.
+      - mybibli-covers:/app/covers
     depends_on:
       db:
         condition: service_healthy
@@ -84,7 +86,7 @@ All deployment-time settings are environment variables — no config file. The c
 ## Tags
 
 - `:latest` — tracks the highest semver release tag.
-- `:1.1.3` (current), `:1.1.2`, `:1.1.1`, `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; track `:latest` is reasonable for homelab.
+- `:1.1.4` (current), `:1.1.3`, `:1.1.2`, `:1.1.1`, `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; track `:latest` is reasonable for homelab.
 - **No `:dev`, no `:main`, no `:beta` published** — tagged releases only.
 
 ## Docs

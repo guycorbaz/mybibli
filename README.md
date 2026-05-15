@@ -60,6 +60,19 @@ Built for collectors who want more than a spreadsheet:
 
 Pre-built images are published to Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli) — `:latest` tracks the highest semver, individual tags pin to the exact release. Honor the **1.1.0 minimum** banner above. For development against the source tree, see **Development** below.
 
+### Persistent storage — both volumes are mandatory
+
+`docker-compose.yml` declares **two named volumes** that MUST survive container upgrades:
+
+- `mybibli_db_data` → `/var/lib/mysql` — your catalog (titles, volumes, loans, etc.)
+- `mybibli_covers` → `/app/covers` — downloaded cover JPGs (issue [#213](https://github.com/guycorbaz/mybibli/issues/213))
+
+If you deploy `docker-compose.yml` from the repo unchanged, you already have both. Back them up together — losing one without the other leaves DB references pointing at missing files (or vice versa).
+
+**Upgrading from a pre-1.1.4 install?** Pre-1.1.4 `docker-compose.yml` did not declare `mybibli_covers`, so the cover JPGs lived inside the container's writable layer and were lost on every `docker compose up -d` after a `pull`. Adding the volume now preserves covers fetched from this point forward, but does NOT restore the ones that disappeared on prior upgrades. To recover, re-trigger metadata fetch from each affected title's detail page (the "Re-fetch metadata" button). A bulk-fetch admin action is tracked at issue [#214](https://github.com/guycorbaz/mybibli/issues/214).
+
+**Synology DSM / bind-mount users:** comment out the `mybibli_covers:/app/covers` line in `docker-compose.yml` and uncomment the bind-mount line right below it, then set `COVERS_HOST_PATH` in your `.env` to the host path you want — Synology File Station / your rsync routine will see the covers directly.
+
 ## Configuration
 
 All deployment-time settings are environment variables — there is no
@@ -82,7 +95,11 @@ The variables are grouped in seven sections:
    published by Docker).
 3. **Application** — `RUST_LOG` (tracing filter; prod-safe default
    `mybibli=info`), `APP_LANGUAGE` (`en` or `fr`), `COVERS_DIR`
-   (filesystem path for downloaded cover images).
+   (filesystem path for downloaded cover images — in Docker, the
+   `/app/covers` directory is mapped to the persistent `mybibli_covers`
+   named volume; see "Persistent storage" above. `COVERS_HOST_PATH`
+   is an optional bind-mount override for users who prefer a host path
+   visible in their file manager).
 4. **Cookie & CSP hardening** — `MYBIBLI_COOKIE_SECURE` (set to `true`
    only behind HTTPS, see issue
    [#94](https://github.com/guycorbaz/mybibli/issues/94)),
@@ -311,7 +328,7 @@ Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](
 | 9 | Polish UX & Accessibilité | ✅ done |
 | 10 | Mobile UX & sécurité closeout | ✅ done |
 
-mybibli has been live in production since v1.1.1 (2026-05-14) on the household NAS that drove the project. v1.0.0 shipped after Epic 9 close (2026-05-10) as the first production-ready build; v1.1.0 added the seed-gate + audit trio (mandatory install floor — see banner at the top of this file); v1.1.2 closed Epic 10 (mobile UX dual-surface pattern, CSRF rejection UX, axe-core entity-detail coverage); v1.1.3 is the first production-driven-feedback patch (home-page layout reorder so filter results land above the fold; locations tree rows clickable). The planned-feature build phase is complete — future work is GH-issue-driven polish iterations and production-driven fixes. See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the full breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
+mybibli has been live in production since v1.1.1 (2026-05-14) on the household NAS that drove the project. v1.0.0 shipped after Epic 9 close (2026-05-10) as the first production-ready build; v1.1.0 added the seed-gate + audit trio (mandatory install floor — see banner at the top of this file); v1.1.2 closed Epic 10 (mobile UX dual-surface pattern, CSRF rejection UX, axe-core entity-detail coverage); v1.1.3 was the first production-driven-feedback patch (home-page layout reorder so filter results land above the fold; locations tree rows clickable); v1.1.4 fixes issue [#213](https://github.com/guycorbaz/mybibli/issues/213) — the published `docker-compose.yml` template now persists cover JPGs in the `mybibli_covers` named volume so they survive container upgrades. The planned-feature build phase is complete — future work is GH-issue-driven polish iterations and production-driven fixes. See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the full breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
 
 ## License
 

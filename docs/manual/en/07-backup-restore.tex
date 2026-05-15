@@ -12,11 +12,15 @@ Three artifacts together form a complete mybibli backup:
   \item \textbf{The MariaDB database.}\index{backup!database} Holds
         every title, volume, location, contributor, loan, user,
         audit log and setting. Lose this and you start from zero.
-  \item \textbf{The \texttt{covers/} directory.}\index{backup!covers}
-        Cover images downloaded during cataloging. Lose this and
-        the catalog still works, but every title page shows a
-        generic placeholder until you re-fetch metadata
-        title-by-title.
+  \item \textbf{Cover images.}\index{backup!covers} Downloaded during
+        cataloging and persisted in the Docker volume
+        \texttt{mybibli\_covers} (or in your host bind-mount path if
+        you switched per
+        section~\ref{sec:install-covers-bind}). Lose this and the
+        catalog still works, but every title page shows a generic
+        placeholder until you re-fetch metadata title-by-title
+        (issue~\#213 — pre-1.1.4 installs without this volume had
+        covers disappear on every container upgrade).
   \item \textbf{The \texttt{.env} file.}\index{backup!.env} Holds
         passwords (database, API keys not yet migrated). Lose this
         and a re-deploy needs you to re-enter every credential.
@@ -60,12 +64,31 @@ restores faster than a SQL dump.
 
 \subsection*{Covers and \texttt{.env}}
 
-A plain \texttt{tar} archive is enough:
+For a host-mounted covers directory (bind-mount installs), a plain
+\texttt{tar} archive is enough:
 
 \begin{lstlisting}
 tar czf backups/mybibli-files-$(date +%Y%m%d).tar.gz \
-    .env covers/
+    .env "$COVERS_HOST_PATH"
 \end{lstlisting}
+
+For the default install (named Docker volume), back up the volume
+through Docker — the host path of a named volume varies by Docker
+version and is not stable, so don't try to \texttt{tar} it directly:
+
+\begin{lstlisting}
+docker run --rm \
+    -v mybibli_covers:/source:ro \
+    -v "$(pwd)/backups:/backup" \
+    alpine \
+    tar czf "/backup/mybibli-covers-$(date +%Y%m%d).tar.gz" -C /source .
+tar czf "backups/mybibli-env-$(date +%Y%m%d).tar.gz" .env
+\end{lstlisting}
+
+The throwaway \texttt{alpine} container mounts the named volume
+read-only, the host \texttt{backups/} directory writable, and writes
+the tarball. Same shape works for restoring — see the Restore
+section below.
 
 \section{Recommended cadence}
 
@@ -110,8 +133,24 @@ against the external server.
 
 \subsection*{Covers and \texttt{.env}}
 
+For a host-bind-mount install:
+
 \begin{lstlisting}
 tar xzf backups/mybibli-files-20260513.tar.gz
+\end{lstlisting}
+
+For the default named-volume install, restore through a throwaway
+container in the symmetric shape to the backup:
+
+\begin{lstlisting}
+docker compose stop mybibli
+docker run --rm \
+    -v mybibli_covers:/target \
+    -v "$(pwd)/backups:/backup:ro" \
+    alpine \
+    sh -c "rm -rf /target/* && tar xzf /backup/mybibli-covers-20260513.tar.gz -C /target"
+tar xzf backups/mybibli-env-20260513.tar.gz
+docker compose start mybibli
 \end{lstlisting}
 
 Restart the stack so the mybibli container picks up the restored

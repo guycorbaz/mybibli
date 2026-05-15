@@ -197,17 +197,36 @@ limitation; planned indexes will close the gap.
 
 \section{Cover images are missing}
 
-\subsection*{Symptom: every title shows the placeholder}
+\subsection*{Symptom: every title shows the placeholder}\label{sec:troubleshoot-covers-missing}
 
-The \texttt{covers/} directory is empty or unreadable. Confirm:
+The cover directory is empty or unreadable. Confirm:
 
 \begin{itemize}
-  \item the volume mount in \texttt{docker-compose.yml} points to
-        a directory that exists and is writable by the container;
+  \item \texttt{docker-compose.yml} declares the
+        \texttt{mybibli\_covers} named volume (or a bind mount on
+        \texttt{COVERS\_HOST\_PATH}) mapped to \texttt{/app/covers}.
+        Pre-1.1.4 installs did NOT declare this volume — see the
+        next subsection;
   \item the metadata fetch actually returned a cover URL (check the
         title page — if the URL is missing, the provider did not
         supply one).
 \end{itemize}
+
+\subsection*{Symptom: covers vanished after upgrading the image}\label{sec:troubleshoot-covers-upgrade-loss}
+
+You upgraded from a pre-1.1.4 install and all previously cataloged
+covers are gone. This is issue~\#213 — the older compose template
+did not persist \texttt{/app/covers}, so the writable layer holding
+those JPGs was destroyed when the new container replaced the old
+one.
+
+Fix forward: pull the 1.1.4 \texttt{docker-compose.yml}, run
+\texttt{docker compose down \&\& docker compose up -d}. Subsequent
+covers are persisted in the \texttt{mybibli\_covers} volume.
+
+Recovery of lost covers: open each affected title's detail page and
+click \emph{Re-fetch metadata} to repopulate from the provider
+chain. A bulk action is tracked at issue~\#214.
 
 \section{Where to file bugs}
 
