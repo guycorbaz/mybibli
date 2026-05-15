@@ -31,6 +31,7 @@ use crate::middleware::auth::session_resolve_middleware;
 use crate::middleware::csp::apply_csp_layer;
 use crate::middleware::csrf::csrf_middleware;
 use crate::middleware::locale::locale_resolve_middleware;
+use crate::middleware::modal_confirm_retarget_guard::modal_confirm_retarget_guard;
 use crate::middleware::pending_updates::pending_updates_middleware;
 use crate::middleware::setup_gate::setup_gate_middleware;
 
@@ -389,8 +390,8 @@ pub fn build_router(state: AppState) -> Router {
         // Layer stack (axum applies layers bottom-up; at request time
         // the request hits the OUTERMOST layer first):
         //
-        //   CSP  →  Session-resolve  →  Locale  →  CSRF  →  [handler /
-        //   PendingUpdates on catalog routes]
+        //   CSP  →  Session-resolve  →  Locale  →  ModalConfirmRetargetGuard
+        //   →  CSRF  →  [handler / PendingUpdates on catalog routes]
         //
         //   * Session-resolve must run before CSRF so the CSRF middleware
         //     sees a populated `Session` extension (including anonymous
@@ -399,10 +400,20 @@ pub fn build_router(state: AppState) -> Router {
         //   * Locale runs after session-resolve so the CSRF rejection
         //     body can be localized via the cached session's
         //     preferred_language (Pattern A in story 7-3 still works).
+        //   * polish-1 AC4.b: ModalConfirmRetargetGuard sits OUTSIDE
+        //     CSRF so it sees the CSRF middleware's response headers
+        //     on token-drift 403. The Guard reads `X-Modal-Confirm`
+        //     from the request and strips `HX-Retarget`/`HX-Reswap`
+        //     from the response — EXCEPT when the response carries
+        //     `HX-Trigger: csrf-rejected` (whitelist, so story 8-2's
+        //     CSRF rejection UX stays intact for modal Confirms).
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             csrf_middleware,
         ))
+        // polish-1 AC4.b — wraps CSRF + handler, so it sees CSRF's
+        // response on token-drift 403. No state dep → plain `from_fn`.
+        .layer(axum::middleware::from_fn(modal_confirm_retarget_guard))
         // Locale middleware runs on every request (before the state-consuming
         // `.with_state(state)` call) so handlers can read `Extension<Locale>`
         // without per-route wiring. Registered here after route mounting —
