@@ -295,17 +295,26 @@ fn render_node_at_depth(
         (String::new(), String::new())
     };
 
+    // Issue #208: the name/label/type/volume-count span chain becomes
+    // an `<a>` linking to /location/:id, so a user clicking a tree row
+    // navigates to the per-location volume list (location_detail handler
+    // at L73 + templates/pages/location_detail.html). mutation_controls
+    // (edit / delete / add-child buttons, when can_edit) stay OUTSIDE
+    // the anchor so they remain individually focusable + clickable.
     html.push_str(&format!(
         r#"<div role="treeitem" class="{indent_class}">
 <div class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 group">
+<a href="/location/{id}" class="flex items-center gap-2 flex-1 min-w-0 no-underline">
 <span class="text-stone-400" aria-hidden="true">{icon}</span>
 <span class="font-medium text-stone-900 dark:text-stone-100">{name}</span>
 <span class="text-xs text-stone-400 font-mono">{label}</span>
 <span class="text-xs text-stone-500 dark:text-stone-400">({node_type})</span>{vol}
+</a>
 {mutation_controls}
 </div>
 {child_form}
 </div>"#,
+        id = node.location.id,
     ));
 
     // Render children at deeper indentation

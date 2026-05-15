@@ -104,6 +104,32 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.1.3}\label{sec:whats-new-1.1.3}
+
+Version 1.1.3 is the first production-feedback-driven patch on top of
+1.1.2. No schema migrations and no breaking changes — routine
+\texttt{docker compose pull \&\& docker compose up -d}. Two
+user-visible improvements:
+
+\begin{itemize}
+  \item \textbf{Home page reorder.} The filter results / search
+        results area (the list that updates when you click a genre
+        chip or type in the search box) now sits directly under the
+        search box, ABOVE the indicator widgets (recent additions,
+        recent returns, stats by genre, etc.). Pre-1.1.3 the results
+        landed at the very bottom of the page — clicking a chip
+        triggered the swap, but the swap happened five or more
+        scroll-screens below the user's viewport, so it looked like
+        nothing happened. Closes GH issue \#204.
+  \item \textbf{Locations tree rows are now clickable.} On the
+        \texttt{/locations} page, clicking a location's name (or its
+        icon, L-code, type label, or volume count) navigates to
+        \texttt{/location/:id} — the per-location volume list with
+        sortable columns (title, author, genre, Dewey). The
+        edit/delete/add-child buttons stay individually clickable
+        OUTSIDE the link. Closes GH issue \#208.
+\end{itemize}
+
 \section{What's new in 1.1.2}\label{sec:whats-new-1.1.2}
 
 Version 1.1.2 closes Epic 10 — mobile UX and security closeout.
