@@ -29,6 +29,10 @@ COPY static/js/ /app/static/js/
 COPY static/icons/ /app/static/icons/
 COPY locales/ /app/locales/
 COPY migrations/ /app/migrations/
+# Logo assets — served at /logo/* via the ServeDir mount in
+# src/routes/mod.rs. Includes SVG icon, light/dark wordmarks, PNG
+# multi-size set, and favicon.ico.
+COPY docs/mybibli-logo/ /app/docs/mybibli-logo/
 WORKDIR /app
 EXPOSE 8080
 CMD ["mybibli"]

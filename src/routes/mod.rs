@@ -387,6 +387,13 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
         .nest_service("/covers", ServeDir::new(&state.covers_dir))
+        // Logo assets (SVG icon + horizontal wordmark in light/dark + PNG
+        // multi-size + favicon.ico). Lives in `docs/mybibli-logo/` (the
+        // source-of-truth dir, with README explaining colors / file role
+        // / HTML snippets). Served at /logo/{svg,png,...} so HTML can
+        // reference `/logo/svg/mybibli-icon.svg` etc. The Dockerfile
+        // copies this directory into the runtime image.
+        .nest_service("/logo", ServeDir::new("docs/mybibli-logo"))
         // Layer stack (axum applies layers bottom-up; at request time
         // the request hits the OUTERMOST layer first):
         //

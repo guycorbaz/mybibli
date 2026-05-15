@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "website/**"
+      - "docs/mybibli-logo/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -29,6 +30,14 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+
+      # Mirror the canonical logo dir (docs/mybibli-logo/, the source-
+      # of-truth with README) into the deploy-time website/ tree so the
+      # GitHub Pages site can serve `./logo/svg/mybibli-icon.svg` etc.
+      # Same files the running app exposes via the /logo ServeDir mount
+      # — single source maintained in docs/, mirrored at deploy time.
+      - name: Mirror logo assets into website/
+        run: cp -r docs/mybibli-logo website/logo
 
       - uses: actions/upload-pages-artifact@v3
         with:

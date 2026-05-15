@@ -1,4 +1,9 @@
-# mybibli
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/mybibli-logo/svg/mybibli-logo-dark.svg">
+    <img src="docs/mybibli-logo/svg/mybibli-logo.svg" alt="mybibli" width="440">
+  </picture>
+</p>
 
 ![CI](https://github.com/guycorbaz/mybibli/actions/workflows/ci.yml/badge.svg?branch=main)
 
@@ -306,7 +311,7 @@ Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](
 | 9 | Polish UX & Accessibilité | ✅ done |
 | 10 | Mobile UX & sécurité closeout | ✅ done |
 
-mybibli has been live in production since v1.1.1 (2026-05-14) on the household NAS that drove the project. v1.0.0 shipped after Epic 9 close (2026-05-10) as the first production-ready build; v1.1.0 added the seed-gate + audit trio (mandatory install floor — see banner at the top of this file); v1.1.2 closed Epic 10 (mobile UX dual-surface pattern, CSRF rejection UX, axe-core entity-detail coverage). The planned-feature build phase is complete — future work is GH-issue-driven polish iterations and production-driven fixes. See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the full breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
+mybibli has been live in production since v1.1.1 (2026-05-14) on the household NAS that drove the project. v1.0.0 shipped after Epic 9 close (2026-05-10) as the first production-ready build; v1.1.0 added the seed-gate + audit trio (mandatory install floor — see banner at the top of this file); v1.1.2 closed Epic 10 (mobile UX dual-surface pattern, CSRF rejection UX, axe-core entity-detail coverage); v1.1.3 is the first production-driven-feedback patch (home-page layout reorder so filter results land above the fold; locations tree rows clickable). The planned-feature build phase is complete — future work is GH-issue-driven polish iterations and production-driven fixes. See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the full breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
 
 ## License
 
