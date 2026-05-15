@@ -994,13 +994,20 @@ pub async fn admin_trash_permanent_delete(
     // filters, dumping the admin out of context after every delete.
     let panel_html = render_trash_panel(&state, loc, &filters).await?;
 
+    // polish-1 AC2: fire `HX-Trigger: modal-close` so static/js/modal.js
+    // closes the open trash modal on success. Replaces the
+    // pre-polish-1 approach (the legacy fragment's CSS-selector-as-URL
+    // hx-delete Cancel that #61 documented as broken). After Phase 5
+    // the trash modal is migrated to the UX-DR8 macro in #modal-slot;
+    // this trigger then drives modal.js's close() listener.
     Ok(HtmxResponse {
         main: panel_html,
         oob: vec![OobUpdate {
             target: "feedback-list".to_string(),
             content: feedback,
         }],
-    }.into_response())
+    }
+    .into_response_with_hx_trigger("modal-close"))
 }
 
 /// Wrapper used by `admin_reference_data::admin_reference_data_panel`

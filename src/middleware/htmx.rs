@@ -35,8 +35,12 @@ pub struct HtmxResponse {
     pub oob: Vec<OobUpdate>,
 }
 
-impl IntoResponse for HtmxResponse {
-    fn into_response(self) -> Response {
+impl HtmxResponse {
+    /// Build the response body as HTML — main fragment followed by
+    /// `<div id="..." hx-swap-oob="true">` markers for each OOB update.
+    /// Factored out of `into_response` so the same body shape can be
+    /// re-used by `into_response_with_hx_trigger` (polish-1 AC2).
+    fn body(self) -> String {
         let mut body = self.main;
         for update in &self.oob {
             body.push_str(&format!(
@@ -44,7 +48,34 @@ impl IntoResponse for HtmxResponse {
                 update.target, update.content
             ));
         }
-        Html(body).into_response()
+        body
+    }
+
+    /// Convert into a `Response` with an `HX-Trigger` header attached.
+    /// Handlers that want to fire a server-driven client event
+    /// (e.g. `modal-close` per polish-1 AC2) use this builder instead
+    /// of the bare `IntoResponse` impl. Body shape is identical —
+    /// only the response carries the extra header.
+    ///
+    /// `trigger` is `&'static str` (HeaderValue::from_static) — caller
+    /// passes a literal, not user-derived data. No HX-Trigger injection
+    /// vector by construction.
+    pub fn into_response_with_hx_trigger(self, trigger: &'static str) -> Response {
+        let body = self.body();
+        (
+            [(
+                axum::http::HeaderName::from_static("hx-trigger"),
+                axum::http::HeaderValue::from_static(trigger),
+            )],
+            Html(body),
+        )
+            .into_response()
+    }
+}
+
+impl IntoResponse for HtmxResponse {
+    fn into_response(self) -> Response {
+        Html(self.body()).into_response()
     }
 }
 
