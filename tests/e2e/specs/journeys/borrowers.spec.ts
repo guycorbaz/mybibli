@@ -83,7 +83,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
 
     // Navigate to the borrower detail
-    await page.getByText("BW-Temp Borrower").click();
+    await page.locator("tbody").getByText("BW-Temp Borrower").click();
     await expect(page.locator("h1")).toContainText("BW-Temp Borrower");
 
     // Delete
@@ -131,7 +131,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await expect(page.locator("body")).toContainText("BW-Smoke Borrower");
 
     // Click into detail
-    await page.getByText("BW-Smoke Borrower").click();
+    await page.locator("tbody").getByText("BW-Smoke Borrower").click();
     await expect(page.locator("h1")).toContainText("BW-Smoke Borrower");
   });
 });

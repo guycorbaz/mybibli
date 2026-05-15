@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-05-14 (Story 10-3 → done — mobile DataTable card mode closes #159)
+# last_updated: 2026-05-15 (Story 10-4 → done — admin tabs mobile dropdown)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -197,6 +197,6 @@ development_status:
   10-1-auth-threat-model-doc: done
   10-2-csrf-rejection-ux-and-mobile-logout: done
   10-3-mobile-datatable-card-mode: done
-  10-4-admin-tabs-mobile-dropdown: backlog
+  10-4-admin-tabs-mobile-dropdown: done
   10-5-a11y-entity-detail-coverage: backlog
   epic-10-retrospective: backlog
