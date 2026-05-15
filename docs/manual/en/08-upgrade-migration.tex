@@ -104,6 +104,48 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.1.2}\label{sec:whats-new-1.1.2}
+
+Version 1.1.2 closes Epic 10 — mobile UX and security closeout.
+There are no schema migrations and no breaking changes. The
+upgrade is a routine \texttt{docker compose pull \&\& docker
+compose up -d}. The user-visible improvements are:
+
+\begin{itemize}
+  \item \textbf{Mobile data tables become cards.} The catalog,
+        loans, borrowers, and series tables now collapse into a
+        compact card list on narrow viewports (anything below the
+        \texttt{md} Tailwind breakpoint). The desktop table layout
+        is unchanged. The same rows are rendered in both shapes —
+        the responsive switch is pure CSS, no JavaScript involved.
+  \item \textbf{The admin tabs become a dropdown on mobile.} On
+        narrow viewports, the five-tab admin nav (Health, Users,
+        Reference data, Trash, System) renders as a \texttt{<select>}
+        dropdown instead of overflowing horizontally. Deep links
+        to \texttt{/admin?tab=...} keep working.
+  \item \textbf{``Session expired'' feedback is now explicit.} When
+        the per-session CSRF token drifts (e.g.\ because the
+        browser was idle past the inactivity timeout and the
+        session rotated), the next state-changing action returns a
+        clear server-rendered banner instead of a silent
+        failure. The same flow handles session-timeout 403s.
+  \item \textbf{Full accessibility coverage extended to entity
+        pages.} The WCAG~2.2~AA gate in CI now covers every
+        \texttt{/title/:id}, \texttt{/borrower/:id},
+        \texttt{/contributor/:id}, \texttt{/series/:id}, and the
+        first-launch \texttt{/setup} wizard, not just the top-level
+        navigation routes. Two contrast violations on the title
+        detail page and the home recent-additions block were
+        fixed inline.
+  \item \textbf{Auth posture documented end-to-end.}
+        \texttt{docs/auth-threat-model.md} now formalises the
+        single-tenant LAN/NAS deployment shape: what CSRF protects,
+        what session cookies do, why specific design choices were
+        made, and what would need revisiting if multi-tenancy
+        became a goal. Referenced from \texttt{README.md} and
+        \texttt{CLAUDE.md}.
+\end{itemize}
+
 \section{Rollback}
 
 Rollback is \emph{not} a first-class flow. Schema migrations move

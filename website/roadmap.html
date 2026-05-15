@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Roadmap — mybibli</title>
-  <meta name="description" content="Development roadmap for mybibli — v1.0.0 shipped, all nine epics done, post-v1 directions tracked openly as GitHub issues." />
+  <meta name="description" content="Development roadmap for mybibli — v1.1.2 in production, all ten epics done, post-v1 directions tracked openly as GitHub issues." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📚%3C/text%3E%3C/svg%3E" />
   <script>
     (function () {
@@ -28,7 +28,7 @@
       <a href="./index.html" class="flex items-center gap-2 font-semibold text-stone-900 dark:text-stone-100">
         <span aria-hidden="true" class="text-xl">📚</span>
         <span>mybibli</span>
-        <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-200/60 dark:ring-emerald-800/50">v1.0.0</span>
+        <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-200/60 dark:ring-emerald-800/50">v1.1.2</span>
       </a>
       <nav aria-label="Primary" class="hidden md:flex items-center gap-1 text-sm">
         <a href="./index.html" class="px-3 py-1.5 rounded-md text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-stone-800/60">Home</a>
@@ -71,9 +71,9 @@
         <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-600/10 dark:bg-indigo-400/10 ring-1 ring-indigo-600/20 dark:ring-indigo-400/30 text-indigo-700 dark:text-indigo-300 text-xs font-medium">
           Roadmap
         </span>
-        <h1 class="mt-5 text-4xl sm:text-5xl font-bold tracking-tight text-stone-900 dark:text-stone-50">All nine epics shipped.</h1>
+        <h1 class="mt-5 text-4xl sm:text-5xl font-bold tracking-tight text-stone-900 dark:text-stone-50">All ten epics shipped.</h1>
         <p class="mt-5 text-lg text-stone-600 dark:text-stone-300 leading-relaxed">
-          Development was organized into nine epics. <strong class="text-stone-900 dark:text-stone-100">v1.0.0 shipped at Epic 9's close</strong> — pre-built Docker images now live on Docker Hub. Post-v1 directions are tracked openly as GitHub issues.
+          Development was organized into ten epics. <strong class="text-stone-900 dark:text-stone-100">mybibli is in production</strong> on the household NAS that drove the project — v1.0.0 shipped at Epic 9's close, v1.1.0 added the seed-gate + audit trio (mandatory install floor), and v1.1.2 closed Epic 10 with the mobile UX dual-surface pattern, CSRF rejection UX, and full axe-core entity-detail coverage. Pre-built Docker images are on Docker Hub. The planned-feature build phase is complete — future work is tracked openly as GitHub issues.
         </p>
 
         <!-- Progress bar -->
@@ -94,7 +94,7 @@
     <section class="py-12 sm:py-16">
       <div class="max-w-4xl mx-auto px-4 sm:px-6">
         <div class="reveal mb-10">
-          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50">The nine epics</h2>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50">The ten epics</h2>
           <p class="mt-3 text-stone-600 dark:text-stone-300">Each one ships behind a draft PR per story, gated by green CI. Each one ends with a retrospective.</p>
         </div>
 
@@ -199,17 +199,28 @@
             <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">Dashboard indicators, modal-based confirmations replacing <code class="font-mono text-xs">hx-confirm</code>, status messages and empty states, connection-lost overlay, navbar polish, contextual help tooltips, keyboard shortcuts, responsive layouts, and a final WCAG 2.2 AA audit.</p>
           </li>
 
-          <!-- v1 milestone (shipped) -->
+          <!-- Epic 10 (done) -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-stone-50 dark:ring-stone-950" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-stone-500 dark:text-stone-400">Epic 10</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">Mobile UX &amp; sécurité closeout</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">✓ Done</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">Auth threat model documented end-to-end, CSRF rejection UX (server-rendered &quot;session expired&quot; feedback), mobile DataTable card mode + admin tabs <code class="font-mono text-xs">&lt;select&gt;</code> dropdown (dual-surface pattern), axe-core extended to every entity-detail route. Closeout epic — every story grounded in a GitHub issue from the post-Epic-9 review pass, no new feature surface.</p>
+          </li>
+
+          <!-- v1 milestone (shipped, in production) -->
           <li class="reveal pl-6 sm:pl-8 relative">
             <span class="absolute -left-[11px] top-1 w-5 h-5 rounded-md bg-emerald-500 ring-4 ring-stone-50 dark:ring-stone-950 flex items-center justify-center" aria-hidden="true">
               <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
             </span>
             <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span class="text-xs uppercase tracking-wide font-semibold text-emerald-600 dark:text-emerald-400">Milestone</span>
-              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">v1.0.0 release</h3>
-              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">✓ Shipped</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">v1.1.2 — in production</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">✓ Live</span>
             </div>
-            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">First public release. Pre-built Docker images on Docker Hub at <a href="https://hub.docker.com/r/gcorbaz/mybibli" class="underline decoration-stone-400 hover:decoration-indigo-500">gcorbaz/mybibli</a> (<code class="font-mono text-xs">:1.0.0</code> + <code class="font-mono text-xs">:latest</code>).</p>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">mybibli has been live on the household NAS that drove the project since v1.1.1 (2026-05-14). v1.1.2 (post-Epic-10) is the current release. Pre-built Docker images on Docker Hub at <a href="https://hub.docker.com/r/gcorbaz/mybibli" class="underline decoration-stone-400 hover:decoration-indigo-500">gcorbaz/mybibli</a> — <code class="font-mono text-xs">:1.1.2</code> + <code class="font-mono text-xs">:latest</code>. Honor the <strong>1.1.0 minimum</strong> install floor (seed-gate + audit trio); earlier tags are removed.</p>
           </li>
         </ol>
       </div>
