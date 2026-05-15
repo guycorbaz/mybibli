@@ -109,7 +109,7 @@ This decision is binding for AC4 below. Re-open this spec if the UX choice chang
 
 7. **AC7 — E2E tests.**
    - NEW `tests/e2e/specs/journeys/admin-modal-lifecycle.spec.ts` covering:
-     - **Smoke trash:** admin clicks Delete permanently → modal opens (assert `dialog[open]` count == 1 in `#modal-slot`) → Cancel → modal closed (assert count == 0 after a `waitFor`) → row still in trash.
+     - **Smoke trash:** admin clicks Delete permanently → modal opens (assert `dialog[open]` count == 1 in `#modal-slot`) → Cancel → modal closed (assert count == 0 after a `waitFor`) → row still in trash. **Note:** the existing `tests/e2e/specs/journeys/admin-permanent-delete.spec.ts:48` clicks Cancel but does NOT assert post-click closure — so the test currently passes despite #61 being broken (Cancel sends a 403 DELETE silently). This new AC7 assertion locks the fixed behavior so #61 cannot regress unnoticed again.
      - **Success path trash:** admin clicks Delete permanently → modal opens → types name in the confirm input → Confirm → modal closes (via `HX-Trigger: modal-close`), panel updates, FeedbackEntry shows in `#feedback-list`.
      - **Error path trash (#134):** admin clicks Delete permanently on an entity whose version is stale (seed by bumping version in a parallel `page.request` call) → Confirm → modal STAYS open in `#modal-slot`, `data-modal-error` populated with the error FeedbackEntry, user can Cancel cleanly.
      - **Rapid-double-click guard (#67) trash:** click Delete permanently twice rapidly via two sequential clicks within 100ms → assert `dialog[open]` count is always 1 (`innerHTML` swap semantic guarantees this).
