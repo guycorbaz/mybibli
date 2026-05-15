@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-05-15 (Epic 10 → done — retrospective complete; final planned epic)
+# last_updated: 2026-05-15 (polish-1-modal-lifecycle-hardening spec → backlog; first post-Epic-10 polish iteration)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -200,3 +200,10 @@ development_status:
   10-4-admin-tabs-mobile-dropdown: done
   10-5-a11y-entity-detail-coverage: done
   epic-10-retrospective: done
+
+  # ─── Post-Epic-10 polish iterations ────────────────────────────────
+  # Per Epic 10 retro action A5: no more "Epic N+1". Production-driven
+  # bundles (3+ GH issues sharing one fix surface) get a polish-N spec.
+  # Status flow: backlog → ready-for-dev → in-progress → done. Same as
+  # stories. Lightweight "iteration retro" only if a new pattern emerges.
+  polish-1-modal-lifecycle-hardening: backlog
