@@ -110,6 +110,36 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.1.3}\label{sec:whats-new-1.1.3}
+
+La version 1.1.3 est le premier patch issu de retours utilisateur de
+production, par-dessus la 1.1.2. Aucune migration de schéma, aucun
+breaking change \string— routine \texttt{docker compose pull \&\&
+docker compose up -d}. Deux améliorations visibles côté utilisateur~:
+
+\begin{itemize}
+  \item \textbf{Réorganisation de la page d'accueil.} La zone des
+        résultats filtrés/recherchés (la liste qui se met à jour
+        quand vous cliquez sur une étiquette de genre ou tapez dans
+        le champ de recherche) se trouve maintenant directement sous
+        le champ de recherche, AU-DESSUS des indicateurs (ajouts
+        récents, retours récents, statistiques par genre, etc.).
+        Avant la 1.1.3 les résultats apparaissaient tout en bas de
+        la page \string— cliquer sur une étiquette déclenchait bien
+        le swap, mais celui-ci se faisait cinq écrans plus bas, hors
+        de votre viewport, donc on avait l'impression que rien ne se
+        passait. Clôt l'issue GitHub \#204.
+  \item \textbf{Lignes de l'arborescence Emplacements cliquables.}
+        Sur la page \texttt{/locations}, cliquer sur le nom d'un
+        emplacement (ou son icône, son L-code, son type, son
+        compteur de volumes) navigue vers \texttt{/location/:id}~:
+        la liste des volumes de cet emplacement, avec colonnes
+        triables (titre, auteur, genre, Dewey). Les boutons
+        d'édition/suppression/ajout-enfant restent cliquables
+        individuellement EN DEHORS du lien. Clôt l'issue GitHub
+        \#208.
+\end{itemize}
+
 \section{Nouveautés de la 1.1.2}\label{sec:whats-new-1.1.2}
 
 La version 1.1.2 clôt l'Epic~10 — polish UX mobile et closeout

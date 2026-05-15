@@ -150,6 +150,129 @@
         </ul>
     </section>
 
+    {# Browse toggle + sort. Sits between #collection-glance and the
+       indicator sections so the filter / search results land directly
+       under the search box, not 5+ scroll-screens below the recent-
+       additions section (issue #204). Pre-issue-204 the browse block
+       was at the bottom of the page; users clicking a genre chip saw
+       no visible change because the filter swap landed off-screen.
+       The 3-way-mutual-exclusion sections (unshelved/overdue/recent-
+       additions) and the recent-cataloged / recent-returns / stats-by-
+       genre rails now follow below, visible without scrolling past
+       the actual search results. #}
+    <!-- Browse toggle + sort -->
+    <div class="w-full max-w-4xl mt-6 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+            <label class="text-xs text-stone-500 dark:text-stone-400" for="browse-sort-select">{{ browse_sort_label }}:</label>
+            <select id="browse-sort-select"
+                    data-base-q="{{ query_encoded }}"
+                    data-active-filter="{{ active_filter }}"
+                    class="text-xs border border-stone-300 dark:border-stone-600 rounded px-2 py-1 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300">
+                <option value="title:asc" {% if current_sort == "title" && current_dir == "asc" %}selected{% endif %}>{{ col_title }} &#9650;</option>
+                <option value="title:desc" {% if current_sort == "title" && current_dir == "desc" %}selected{% endif %}>{{ col_title }} &#9660;</option>
+                <option value="genre_name:asc" {% if current_sort == "genre_name" && current_dir == "asc" %}selected{% endif %}>{{ col_genre }} &#9650;</option>
+                <option value="genre_name:desc" {% if current_sort == "genre_name" && current_dir == "desc" %}selected{% endif %}>{{ col_genre }} &#9660;</option>
+            </select>
+        </div>
+        <div role="radiogroup" aria-label="{{ browse_mode_label }}" class="flex border border-stone-300 dark:border-stone-600 rounded-md overflow-hidden">
+            <button type="button" data-browse-mode="list" role="radio" aria-checked="true" aria-label="{{ browse_list_label }}"
+                    tabindex="0"
+                    class="px-2 py-1 text-sm bg-indigo-600 text-white dark:bg-indigo-500">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+            </button>
+            <button type="button" data-browse-mode="grid" role="radio" aria-checked="false" aria-label="{{ browse_grid_label }}"
+                    tabindex="-1"
+                    class="px-2 py-1 text-sm text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Search results (list/grid) -->
+    <div class="w-full max-w-4xl mt-4">
+        <div id="browse-results" class="browse-list">
+                {% if let Some(paginated) = results %}
+                    {% if paginated.items.is_empty() %}
+                    <div class="text-center text-stone-500 dark:text-stone-400">
+                        <svg class="mx-auto w-12 h-12 text-stone-300 dark:text-stone-600 mb-3 mt-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        {% if !active_filter.is_empty() %}
+                        {% call status_message::status_message(
+                            "empty",
+                            filter_empty_heading,
+                            filter_empty_body,
+                            "",
+                            "",
+                            "",
+                            role,
+                        ) %}{% endcall %}
+                        {% else %}
+                        {% call status_message::status_message(
+                            "empty",
+                            search_empty_heading,
+                            search_empty_body,
+                            search_empty_cta,
+                            search_empty_cta_url,
+                            "librarian",
+                            role,
+                        ) %}{% endcall %}
+                        {% endif %}
+                    </div>
+                    {% else %}
+                        {% for item in paginated.items %}
+                        <article class="title-card group">
+                            <a href="/title/{{ item.id }}" class="title-card-link"
+                               aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
+                                <div class="title-card-cover">
+                                    {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
+                                    <div class="title-card-overlay">
+                                        <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
+                                        <span class="text-xs">{{ item.volume_count }} vol</span>
+                                    </div>
+                                </div>
+                                <div class="title-card-info">
+                                    <p class="title-card-title">{{ item.title }}</p>
+                                    <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
+                                    <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
+                                    <p class="title-card-volumes">{{ item.volume_count }} vol</p>
+                                </div>
+                            </a>
+                        </article>
+                        {% endfor %}
+                    {% endif %}
+                {% endif %}
+        </div>
+
+        <!-- Pagination -->
+        <nav id="pagination" aria-label="{{ pagination_aria_label }}" class="flex items-center justify-center gap-2 mt-4">
+            {% if let Some(paginated) = results %}
+                {% if paginated.total_pages > 1 %}
+                    {% if paginated.has_previous() %}
+                    <a href="/?q={{ query_encoded }}&amp;page={{ paginated.page - 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+                       hx-get="/?q={{ query_encoded }}&amp;page={{ paginated.page - 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+                       hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
+                       class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">&laquo; {{ pagination_previous }}</a>
+                    {% endif %}
+                    {% for p in 1..=paginated.total_pages %}
+                        {% if p == paginated.page %}
+                        <span class="px-3 py-1 rounded bg-indigo-600 text-white text-sm" aria-current="page">{{ p }}</span>
+                        {% else %}
+                        <a href="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+                           hx-get="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+                           hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
+                           class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">{{ p }}</a>
+                        {% endif %}
+                    {% endfor %}
+                    {% if paginated.has_next() %}
+                    <a href="/?q={{ query_encoded }}&amp;page={{ paginated.page + 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+                       hx-get="/?q={{ query_encoded }}&amp;page={{ paginated.page + 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+                       hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
+                       class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">{{ pagination_next }} &raquo;</a>
+                    {% endif %}
+                {% endif %}
+            {% endif %}
+        </nav>
+    </div>
+
     {# Story 9-4 AC6 + 9-5 AC6: 3-way mutual exclusion in the same DOM
        position. When the unshelved indicator filter is active, render
        #unshelved-list; when the overdue indicator filter is active,
@@ -371,119 +494,6 @@
         </ul>
     </section>
     {% endif %}
-
-    <!-- Browse toggle + sort -->
-    <div class="w-full max-w-4xl mt-6 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-            <label class="text-xs text-stone-500 dark:text-stone-400" for="browse-sort-select">{{ browse_sort_label }}:</label>
-            <select id="browse-sort-select"
-                    data-base-q="{{ query_encoded }}"
-                    data-active-filter="{{ active_filter }}"
-                    class="text-xs border border-stone-300 dark:border-stone-600 rounded px-2 py-1 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300">
-                <option value="title:asc" {% if current_sort == "title" && current_dir == "asc" %}selected{% endif %}>{{ col_title }} &#9650;</option>
-                <option value="title:desc" {% if current_sort == "title" && current_dir == "desc" %}selected{% endif %}>{{ col_title }} &#9660;</option>
-                <option value="genre_name:asc" {% if current_sort == "genre_name" && current_dir == "asc" %}selected{% endif %}>{{ col_genre }} &#9650;</option>
-                <option value="genre_name:desc" {% if current_sort == "genre_name" && current_dir == "desc" %}selected{% endif %}>{{ col_genre }} &#9660;</option>
-            </select>
-        </div>
-        <div role="radiogroup" aria-label="{{ browse_mode_label }}" class="flex border border-stone-300 dark:border-stone-600 rounded-md overflow-hidden">
-            <button type="button" data-browse-mode="list" role="radio" aria-checked="true" aria-label="{{ browse_list_label }}"
-                    tabindex="0"
-                    class="px-2 py-1 text-sm bg-indigo-600 text-white dark:bg-indigo-500">
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
-            </button>
-            <button type="button" data-browse-mode="grid" role="radio" aria-checked="false" aria-label="{{ browse_grid_label }}"
-                    tabindex="-1"
-                    class="px-2 py-1 text-sm text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800">
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-            </button>
-        </div>
-    </div>
-
-    <!-- Search results (list/grid) -->
-    <div class="w-full max-w-4xl mt-4">
-        <div id="browse-results" class="browse-list">
-                {% if let Some(paginated) = results %}
-                    {% if paginated.items.is_empty() %}
-                    <div class="text-center text-stone-500 dark:text-stone-400">
-                        <svg class="mx-auto w-12 h-12 text-stone-300 dark:text-stone-600 mb-3 mt-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                        {% if !active_filter.is_empty() %}
-                        {% call status_message::status_message(
-                            "empty",
-                            filter_empty_heading,
-                            filter_empty_body,
-                            "",
-                            "",
-                            "",
-                            role,
-                        ) %}{% endcall %}
-                        {% else %}
-                        {% call status_message::status_message(
-                            "empty",
-                            search_empty_heading,
-                            search_empty_body,
-                            search_empty_cta,
-                            search_empty_cta_url,
-                            "librarian",
-                            role,
-                        ) %}{% endcall %}
-                        {% endif %}
-                    </div>
-                    {% else %}
-                        {% for item in paginated.items %}
-                        <article class="title-card group">
-                            <a href="/title/{{ item.id }}" class="title-card-link"
-                               aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
-                                <div class="title-card-cover">
-                                    {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
-                                    <div class="title-card-overlay">
-                                        <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
-                                        <span class="text-xs">{{ item.volume_count }} vol</span>
-                                    </div>
-                                </div>
-                                <div class="title-card-info">
-                                    <p class="title-card-title">{{ item.title }}</p>
-                                    <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
-                                    <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
-                                    <p class="title-card-volumes">{{ item.volume_count }} vol</p>
-                                </div>
-                            </a>
-                        </article>
-                        {% endfor %}
-                    {% endif %}
-                {% endif %}
-        </div>
-
-        <!-- Pagination -->
-        <nav id="pagination" aria-label="{{ pagination_aria_label }}" class="flex items-center justify-center gap-2 mt-4">
-            {% if let Some(paginated) = results %}
-                {% if paginated.total_pages > 1 %}
-                    {% if paginated.has_previous() %}
-                    <a href="/?q={{ query_encoded }}&amp;page={{ paginated.page - 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                       hx-get="/?q={{ query_encoded }}&amp;page={{ paginated.page - 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                       hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
-                       class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">&laquo; {{ pagination_previous }}</a>
-                    {% endif %}
-                    {% for p in 1..=paginated.total_pages %}
-                        {% if p == paginated.page %}
-                        <span class="px-3 py-1 rounded bg-indigo-600 text-white text-sm" aria-current="page">{{ p }}</span>
-                        {% else %}
-                        <a href="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                           hx-get="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                           hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
-                           class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">{{ p }}</a>
-                        {% endif %}
-                    {% endfor %}
-                    {% if paginated.has_next() %}
-                    <a href="/?q={{ query_encoded }}&amp;page={{ paginated.page + 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                       hx-get="/?q={{ query_encoded }}&amp;page={{ paginated.page + 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                       hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
-                       class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">{{ pagination_next }} &raquo;</a>
-                    {% endif %}
-                {% endif %}
-            {% endif %}
-        </nav>
-    </div>
 </div>
 
 {% endblock %}
