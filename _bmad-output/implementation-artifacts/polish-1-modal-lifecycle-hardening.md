@@ -77,10 +77,10 @@ This decision is binding for AC4 below. Re-open this spec if the UX choice chang
 
 2. **AC2 — `HX-Trigger: modal-close` as the project-wide server-driven close idiom (closes #64 across ALL three fragments).**
    - The trash-purge handler (`src/routes/admin.rs::permanent_delete_confirm`) AND the 2 ref-data delete handlers (`src/routes/admin_reference_data.rs::*delete*` — verify exact symbols in Task 1) emit `HX-Trigger: modal-close` on success (HTTP 200 + panel/list re-render).
-   - **Two listeners** consume that custom event:
-     - `static/js/modal.js` — for the migrated trash modal mounted in `#modal-slot`. Adds a `document.body.addEventListener("modal-close", ...)` that calls `dialog.close()` + clears the slot (or equivalent — re-use the existing close path).
+   - **Two listeners** consume that custom event via **Variant A** of the HX-Trigger idiom (post-swap, addEventListener-native — see AC8 for variant taxonomy):
+     - `static/js/modal.js` — for the migrated trash modal mounted in `#modal-slot`. Adds `document.body.addEventListener("modal-close", ...)` that calls `dialog.close()` + clears the slot (or equivalent — re-use the existing close path).
      - `static/js/inline-form.js` — for the 2 ref-data modals that stay in `#admin-modal-slot`. Adds the same listener at the same scope. Behavior: `slot.innerHTML = ""`, mirroring the existing `admin-modal-close` action handler.
-   - This reuses the CLAUDE.md `HX-Trigger → JS-listener` idiom (story 8-2's `csrf-rejected` pattern) — a project-wide convention.
+   - **Broadcast semantics, intentional.** The event fires on `document.body`; both listeners receive it. Each acts on its own slot. `slot.innerHTML = ""` is idempotent when the slot is empty, so the listener whose slot is empty is a no-op. This matches the user-intent: when a destructive action succeeds, close anything modal-shaped that's still open. If a future surface needs scoped close (close only the modal that originated the request), HTMX supports a JSON payload (`HX-Trigger: {"modal-close":{"slot":"modal-slot"}}`) — extension possible without breaking the current contract.
    - **Future-proof:** any new admin handler that needs to close a modal on success uses the same trigger; the two listeners cover both slots.
 
 3. **AC3 — `showModal()` lifted to `modal.js` AND `inline-form.js` (closes #65 across ALL 8 modals — 5 Pattern A + 3 Pattern B).**
@@ -120,7 +120,9 @@ This decision is binding for AC4 below. Re-open this spec if the UX choice chang
 
 8. **AC8 — Documentation refresh.**
    - `CLAUDE.md` "Key Patterns" — add a paragraph under the existing Modal section (story 7-5 / 9-10) documenting:
-     - `HX-Trigger: modal-close` as the canonical server-driven modal-close idiom (listened in both `modal.js` AND `inline-form.js` — different slots, same event)
+     - **HX-Trigger idiom — two legitimate variants** (a new clarification the project hasn't had so far):
+       - **Variant A — post-swap effect** (`document.body.addEventListener("event-name", handler)`). HTMX dispatches a DOM custom event keyed on the header value AFTER the swap completes. Use when the side-effect doesn't influence the swap itself — close a modal, refresh a widget, toast a message, etc. **New canonical example:** `HX-Trigger: modal-close` consumed by `modal.js` + `inline-form.js` (this polish iteration's AC2).
+       - **Variant B — pre-swap decision** (`document.body.addEventListener("htmx:beforeSwap", evt => parseHeader(evt.detail.xhr.getResponseHeader("HX-Trigger")))`). Listener attaches to the synchronous HTMX swap-decision event and parses the header itself. Use when the side-effect MUST influence the swap (force-swap on 403, retarget, suppress isError). **Existing canonical example:** `HX-Trigger: csrf-rejected` consumed by `csrf.js` to flip `evt.detail.shouldSwap = true` on a 403 (story 8-2). Variant B is also robust to comma-separated lists (`csrf-rejected, session-warn`) — a future composability concern Variant A doesn't have.
      - The error-feedback-INSIDE-modal UX decision and the `data-modal-error` region contract (Pattern A only)
      - The slot-ownership rule: **`#modal-slot` for Pattern A (UX-DR8 macro)**, **`#admin-modal-slot` for Pattern B (ref-data legacy)**. Both slots now call `showModal()` on `dialog[open]` arrival.
      - The `templates_audit.rs::hx_confirm_matches_allowlist` invariant remains empty.
