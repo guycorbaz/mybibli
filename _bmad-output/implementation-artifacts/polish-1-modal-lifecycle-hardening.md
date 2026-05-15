@@ -215,22 +215,107 @@ This decision is binding for AC4 below. Re-open this spec if the UX choice chang
 
 ## Code-review checkpoint (Epic 10 retro A1)
 
-This iteration is the FIRST to reinstate the code-review-as-default discipline per Epic 10 retro action A1. Run `bmad-code-review` (3-layer adversarial) BEFORE merging. Expected Medium+ findings to probe:
-- **`showModal()` regression risk on the 5 already-shipped UX-DR8 modals** (delete-borrower, return-loan, etc.). Native top-layer + Escape + backdrop semantics may collide with `modal.js`'s manual Tab-cycling, focus-trap, and Cancel-button delegation. Have the reviewer walk each existing modal E2E spec mentally and flag every assertion that relies on a non-native behavior.
-- **Slot-move ripple effect on the trash trigger** — `templates/fragments/admin_trash_panel.html:76`'s `hx-target="body"` flips to `#modal-slot`. Anything else still firing on the old target (e.g., OOB swaps that landed in body)?
-- **HX-Trigger event-name collision** — is `modal-close` already used anywhere? Grep before adding.
-- **Type-to-confirm UX preservation** — the migrated trash modal MUST still disable Confirm until the user types the exact item name. Whatever path AC1 picks (macro extension vs call-site wiring), the E2E test in AC7 must lock the disabled-until-match behavior.
-- **Error-region injection (AC4)** — is the response HTML always safe-by-construction? FeedbackEntry helper already escapes; verify it's used on every Confirm-handler error path. Plain-text/JSON returns would inject as raw text and look broken, NOT as an XSS vector (the body is inserted into a `<div>`, not via `eval`), but the UX bug would be ugly.
-- **AC4.e universal IntoResponse fix** — touches the whole-app error response surface. Reviewer must verify:
-  - The 4 variant arms (BadRequest, NotFound, Internal, Database) get the same HTML+retarget shape as Conflict, not just one of them by accident.
-  - The `#feedback-container` → `#feedback-list` switch in Forbidden doesn't break a use case I missed. Grep `#feedback-container` outside `error/mod.rs` to confirm zero references.
-  - Existing E2E Playwright specs that DO assert on `#feedback-list` content for OTHER reasons aren't accidentally broken by new error feedback landing there (e.g. a test that asserts `#feedback-list` is empty after a navigation — would now see a stale Forbidden FeedbackEntry).
-  - The new universal retarget makes `AppError::Forbidden` errors visible for the first time on the wire — verify in code-review that there's no error path that LEAKED sensitive info via plain text that we now expose as user-visible HTML (defense-in-depth check).
-- **AC4.b retarget-suppression middleware** — non-trivial new infrastructure. Reviewer must verify:
-  - The middleware layer order (`ModalConfirmRetargetGuard` between Auth and Handler, or after Handler in the response path?) doesn't break any existing flow that relies on `HX-Retarget` (CSRF rejection emits `HX-Retarget: #feedback-list` too — does this header strip break the CSRF UX from story 8-2 / story 10-2?).
-  - The `X-Modal-Confirm: true` header detection is request-scoped — no leakage across requests (no thread-local pitfalls).
-  - Non-modal forms that legitimately retarget (e.g., a future ref-data inline-edit error) are not affected because they don't carry the header.
-- **AC4.d ARIA `role="alert"` only** — verify no axe-core rule trips on the absence of explicit `aria-live`. The WCAG 2.2 AA gate from story 10-5 should accept `role="alert"` alone, but it's worth running the new `admin-modal-lifecycle.spec.ts` AC7 tests through axe to confirm.
-- **E2E race conditions on the rapid-double-click test (#67)** under 14-worker default-local Playwright (matches Epic 10 §4.1 pattern). The 100ms threshold may flake; consider `clickCount: 2` instead.
+This iteration is the **first** to reinstate the code-review-as-default discipline per Epic 10 retro action A1. Production-context cost of a regression is real — mybibli is live at v1.1.2 and every modal Confirm path is on a critical workflow.
 
-Re-run review after fixes if any Medium+ findings land. Story is clean only when a full review pass produces 0 Medium+ findings (Foundation Rule #6).
+### When + how
+
+1. Spec PR (this one, #199) merges first after review feedback is incorporated.
+2. Implementation branch opens: `polish-1/modal-lifecycle-hardening` from main.
+3. Implementer completes ACs 1–8, runs the full Test plan above locally (incl. the `CI=true --workers=2` truth-gate from Foundation Rule #13 §4).
+4. **Before marking the implementation PR ready**: invoke `/bmad-code-review` (3-layer adversarial: Blind Hunter, Edge Case Hunter, Acceptance Auditor — same shape Epic 9 used on stories 9-17 → 9-19 where it caught Medium findings the dev had missed).
+5. Triage findings per the severity table below.
+6. On any blocking finding (Critical or High, plus any Medium that is action-relevant for this PR): fix in the same branch, re-run `/bmad-code-review` from scratch. Foundation Rule #6: story is clean **only** when a full pass surfaces 0 Medium+ findings.
+7. After 0-Medium+ pass: PR ready → CI green → squash-merge.
+
+### Severity triage
+
+| Severity | Disposition | Tag in PR |
+|---|---|---|
+| **Critical** | Absolute merge blocker. Production correctness, data integrity, security boundary. Fix before any merge. | `severity:critical` |
+| **High** | Merge blocker for this PR. User-visible regression, accessibility regression, code-quality red flag. Fix in this branch. | `severity:high` |
+| **Medium** | Merge blocker per Foundation Rule #6 — but if action-irrelevant to this PR's narrative (e.g. a pre-existing issue surfaced by the review but not introduced here), can be split into a GH issue with `type:code-review-finding` and deferred. Document the split in the PR body. | `severity:medium` |
+| **Low** | Not a merge blocker. File as GH issue with `type:code-review-finding, severity:low, status:deferred` and move on. | `severity:low` |
+
+### Probes the reviewer must walk explicitly
+
+Grouped by AC for orientation. **Each bullet is a concrete probe**, not a vague "check carefully" — the reviewer should leave a `[Verified]` or `[Finding]` line on each.
+
+#### Probes for AC1 (trash modal migration)
+
+- **Slot-move ripple effect.** `templates/fragments/admin_trash_panel.html:76`'s `hx-target="body"` flips to `#modal-slot`. Grep the repo for `hx-target="body"` outside this file and verify no other code path relied on the trash modal landing at body-end as a sibling. Also verify scanner-guard's global selector still finds the dialog post-slot-move (already analysed in spec Point 2, but re-verify).
+- **Type-to-confirm UX preservation.** The migrated trash modal MUST still disable the Confirm button until the user types the exact item name. Whatever path AC1 picks (macro extension via new params vs call-site wiring), the E2E test in AC7 must lock disabled-until-match. Also verify the JS module currently providing `data-confirm-name` / `data-confirm-btn` behavior (Task 1 finding) is wired correctly to the migrated DOM.
+- **`modal_close_target` field removal.** Confirm `pub modal_close_target: String,` on `admin.rs:348` and its construction site at `:882` (CSS-selector-as-URL — issue #61's root cause) are both deleted. Grep for any other usage to be safe.
+
+#### Probes for AC2 (`HX-Trigger: modal-close` broadcast)
+
+- **Event-name collision.** Is `modal-close` already used anywhere as an HX-Trigger value, a DOM event listener, an htmx hyperscript trigger, or a JS `dispatchEvent`? Grep `modal-close` across the repo before merge.
+- **Dual-listener safety re-verify.** modal.js (for `#modal-slot`) and inline-form.js (for `#admin-modal-slot`) both listen for `modal-close`. Each acts on its own slot — `slot.innerHTML = ""` idempotent. Confirm both handlers early-return cleanly if their slot is empty.
+- **Future-extension scope.** The spec mentions JSON payload (`HX-Trigger: {"modal-close":{"slot":"modal-slot"}}`) as a future scoping mechanism. Confirm the rev-5 broadcast-by-default implementation doesn't paint us into a corner if scoped close becomes needed.
+
+#### Probes for AC3 (`showModal()` lift)
+
+- **5 already-shipped UX-DR8 modals — regression risk.** Walk each existing modal E2E spec (`borrower-delete-modal.spec.ts`, `contributor-delete-modal.spec.ts`, `series-delete-modal.spec.ts`, `return-loan-modal.spec.ts`, `admin-user-deactivate-modal.spec.ts` — verify exact paths in Task 1) and flag every assertion that relies on a non-native behavior. Native top-layer + Escape + backdrop semantics may collide with modal.js's existing manual Tab-cycling, focus-trap, and Cancel-button delegation. Decision recorded in Dev Agent Record about which manual handlers stay vs are removed.
+- **2 ref-data legacy modals — regression risk.** The `admin-modal-close-revert-row` UX (Cancel on loanable-warning triggers a row-revert HTMX GET) must still work after the symmetric `showModal()` in inline-form.js. Walk story 8-4 P14's contract explicitly.
+- **`<dialog open>` attribute reconciliation.** Task 1's decision (idempotent `showModal()` against an already-`open` dialog vs. drop the `open` attribute server-side) is recorded in Dev Agent Record. Reviewer confirms the chosen path doesn't break the scanner-guard MODAL_SELECTOR contract (`dialog[open], [aria-modal="true"]` — story 7-5).
+
+#### Probes for AC4 (#134 error feedback inside modal)
+
+- **AC4.b — middleware vs CSRF rejection interaction (CRITICAL probe).** The CSRF middleware (`src/middleware/csrf.rs:352`) emits `HX-Trigger: csrf-rejected` + `HX-Retarget: #feedback-list` on a token-drift 403. If a request comes from a modal Confirm (`X-Modal-Confirm: true`) AND hits CSRF rejection, the new `ModalConfirmRetargetGuard` middleware would strip the retarget — leaving the user with a frozen modal AND no CSRF feedback anywhere. **The middleware MUST whitelist `HX-Trigger: csrf-rejected` from stripping** (or equivalently, only strip when no `HX-Trigger: csrf-rejected` is present in the response). Verify this in code-review and in a new E2E test: open a modal, wait for session timeout / induce CSRF drift, click Confirm, assert the modal closes AND a session-expired FeedbackEntry appears in `#feedback-list`.
+- **AC4.b — request-scoped header detection.** The middleware reads `X-Modal-Confirm` from the request and rewrites response headers based on that. Verify the implementation is request-scoped — no thread-local pitfalls (Tokio task-local would be acceptable; raw `thread_local!` is not because Axum handlers run on a worker pool).
+- **AC4.b — layer order.** The new layer sits in `src/middleware/`. Per CLAUDE.md the existing chain is `Logging → Auth → [Handler] → PendingUpdates → CSP` (story 7-4). Confirm the new layer's position in `src/routes/mod.rs::build_router` doesn't break that order or any inter-layer header dependency.
+- **AC4.c — error-region injection safety.** Response HTML is injected as `innerHTML` into `data-modal-error`. Verify that `feedback_html_pub()` (catalog.rs:33) HTML-escapes every dynamic input. Any code path that bypasses `feedback_html_pub` and returns raw user-supplied text would be an XSS vector. The AppError variants (now all wrapped per AC4.e) carry user-derived `msg` strings — confirm they're all escaped server-side before reaching the inject path.
+- **AC4.c — race guard correctness.** If `state.dialog` is gone when the failed response arrives (user clicked Cancel), modal.js must early-return cleanly without throwing. Verify the guard order: state-null check FIRST, then dialog-still-in-DOM check.
+- **AC4.c — clear-on-retry semantics.** Verify the `htmx:beforeRequest` clearing listener doesn't fire on NON-Confirm requests within the modal (e.g., an autocomplete dropdown inside the modal body would fire htmx:beforeRequest too — the listener must use the same `isConfirm` discrimination as the inject listener).
+- **AC4.d — ARIA `role="alert"` only.** Verify no axe-core rule trips on the absence of explicit `aria-live`. The WCAG 2.2 AA gate from story 10-5 should accept `role="alert"` alone (implies `aria-live="assertive"`), but run the new `admin-modal-lifecycle.spec.ts` AC7 cases through axe to confirm. Test on Firefox AND Chromium — historically the two read alerts differently.
+- **AC4.e — universal IntoResponse fix.**
+  - The 4 variant arms (BadRequest, NotFound, Internal, Database) all get the same HTML+retarget shape as Conflict, not just one by accident.
+  - The `#feedback-container` → `#feedback-list` switch in Forbidden doesn't break a use case. Grep `#feedback-container` outside `error/mod.rs` to confirm zero references (already verified pre-spec — re-verify in case a parallel branch added one).
+  - Existing E2E Playwright specs that DO assert on `#feedback-list` content for OTHER reasons aren't accidentally broken by new error feedback landing there (e.g. a test that asserts `#feedback-list` is empty after a navigation — would now see a stale Forbidden FeedbackEntry from a 403 elsewhere).
+  - **Defense-in-depth check (sensitive info leakage).** The new universal retarget makes `AppError::Forbidden` / `Internal` / `Database` errors visible for the first time on the wire. Verify no error path leaked sensitive info via plain text that we now expose as user-visible HTML — focus on `Database` (whose `err.to_string()` could include SQL fragments or column names) and `Internal` (whose `msg.clone()` could include path or session details). Spec says client-message is sanitized to "An internal error occurred" for both Internal and Database — confirm post-implementation that this stays true.
+
+#### Probes for AC7 (E2E)
+
+- **E2E race conditions on the rapid-double-click test (#67).** Under 14-worker default-local Playwright the 100ms threshold may flake (Epic 10 §4.1 pattern). Use `clickCount: 2` or assert on `dialog[open]` count == 1 throughout the click sequence, NOT just at the end.
+- **CI-shape verification.** Foundation Rule #13 §4 mandates `CI=true npx playwright test --workers=2` for shared-DB-state specs. The new modal-lifecycle spec touches shared DB state (trash entries, ref-data rows). Implementer MUST have run this; reviewer confirms by reading the PR description / Dev Agent Record.
+
+### Manual smoke checklist (Task 1 author + reviewer)
+
+The implementer runs this checklist in a real browser before marking PR ready. Reviewer also walks it during review (manual cross-check is cheap and catches what specs don't).
+
+```
+□ /admin?tab=trash, click Delete permanently → modal opens
+  □ backdrop appears (native top-layer post-showModal)
+  □ Escape closes
+  □ Backdrop click closes
+  □ Cancel closes
+  □ Type wrong name → Confirm stays disabled
+  □ Type correct name → Confirm enables
+  □ Confirm with success → modal closes (HX-Trigger), panel updates,
+    FeedbackEntry in #feedback-list
+  □ Trigger 409 conflict (open second tab, race) → error region
+    visible INSIDE modal with role=alert, modal stays open
+  □ Retry after error → error region clears at htmx:beforeRequest
+□ /admin?tab=reference_data, delete a genre → ref-data modal opens
+  □ Escape closes (existing inline-form.js handler)
+  □ Cancel closes (existing data-action handler)
+  □ Confirm with success → modal closes (HX-Trigger: modal-close
+    via new inline-form.js listener)
+  □ Confirm with in-use conflict → error in #feedback-list, modal
+    stays open (intentional — see AC4 scope note)
+□ /borrowers, delete a borrower with active loans → BadRequest
+  → user sees FeedbackEntry in #feedback-list (AC4.e bonus)
+□ Force CSRF drift (delete session row via DB), click Confirm in
+  any modal → modal closes, "Session expired" FeedbackEntry visible
+  (validates AC4.b CSRF whitelist probe)
+□ axe-core via DevTools on each modal in open state → 0 WCAG 2.2
+  AA violations
+□ Mobile viewport (375px) → trash modal still usable
+```
+
+### Rollback if blocked
+
+If `/bmad-code-review` surfaces blockers that can't be fixed within reasonable scope (e.g. AC4.b middleware design proves architecturally incompatible with story 8-2's CSRF flow), the spec authorizes splitting:
+
+- **Partial merge:** ACs 1, 2, 3, 6, 7, 8 (modal migration + showModal + tests + docs) ship as polish-1a. AC4 (error feedback inside modal) defers to polish-1b with its own spec PR after the design issue is resolved. AC4.e universal IntoResponse fix CAN ship with polish-1a (no dependency on AC4.b middleware) — it's the polish-1a's bonus.
+- **Defer entirely:** if even ACs 1–3 surface deep regression risks, polish-1 defers to a re-spec'd polish-2 that takes the lessons. Polish iterations are advisory, not contractual — the framework that introduced them (Epic 10 retro A5) explicitly allows.
+- **Block merge:** in all rollback cases, file a `type:change-request` GH issue tagged `polish-1-blocked-by-review` linking the spec PR + the review findings, and merge nothing until the user explicitly approves the new path.
