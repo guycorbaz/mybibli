@@ -675,7 +675,7 @@ pub async fn genres_delete(
     Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
     Form(form): Form<DeleteRefForm>,
-) -> Result<HtmxResponse, AppError> {
+) -> Result<axum::response::Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
     let row = GenreModel::find_by_id(&state.pool, id)
@@ -689,6 +689,11 @@ pub async fn genres_delete(
     }
 
     // Render fresh list + close modal via OOB (admin-modal-slot cleared).
+    // polish-1 AC2 layered on top: ALSO emit `HX-Trigger: modal-close` so
+    // the new inline-form.js listener participates in the close path. The
+    // OOB swap stays as belt-and-suspenders — both mechanisms target
+    // `#admin-modal-slot.innerHTML = ""` and `innerHTML = ""` is
+    // idempotent if the slot is already empty.
     let entries = build_genre_rows(&state.pool, loc).await?;
     let list_html = render_genres_list(entries, loc)?;
     let feedback = success_feedback(loc, "success.reference_data.deleted", &row.name);
@@ -704,7 +709,8 @@ pub async fn genres_delete(
                 content: String::new(),
             },
         ],
-    })
+    }
+    .into_response_with_hx_trigger("modal-close"))
 }
 
 // ─── Volume States CRUD ────────────────────────────────────────────
@@ -815,7 +821,7 @@ pub async fn volume_states_delete(
     Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
     Form(form): Form<DeleteRefForm>,
-) -> Result<HtmxResponse, AppError> {
+) -> Result<axum::response::Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
     let row = VolumeStateModel::find_by_id(&state.pool, id)
@@ -830,6 +836,8 @@ pub async fn volume_states_delete(
     let entries = build_volume_state_rows(&state.pool, loc).await?;
     let list_html = render_volume_states_list(entries, &session.csrf_token, loc)?;
     let feedback = success_feedback(loc, "success.reference_data.deleted", &row.name);
+    // polish-1 AC2: HX-Trigger: modal-close + existing OOB (belt-and-
+    // suspenders, see genres_delete comment for rationale).
     Ok(HtmxResponse {
         main: list_html,
         oob: vec![
@@ -842,7 +850,8 @@ pub async fn volume_states_delete(
                 content: String::new(),
             },
         ],
-    })
+    }
+    .into_response_with_hx_trigger("modal-close"))
 }
 
 pub async fn volume_states_loanable_toggle(
@@ -986,11 +995,21 @@ async fn apply_loanable_toggle(
             content: String::new(),
         });
     }
-    Ok(HtmxResponse {
+    let response = HtmxResponse {
         main: row_html,
         oob,
+    };
+    // polish-1 AC2: when this call originated from the loanable-warning
+    // modal Confirm (close_modal == true), also fire `HX-Trigger:
+    // modal-close` so the new inline-form.js listener participates in
+    // the close path (belt-and-suspenders with the OOB above). When
+    // called from the inline toggle (close_modal == false, no modal
+    // is open), the trigger is unnecessary — return the bare response.
+    if close_modal {
+        Ok(response.into_response_with_hx_trigger("modal-close"))
+    } else {
+        Ok(response.into_response())
     }
-    .into_response())
 }
 
 pub async fn volume_states_row_view(
@@ -1119,7 +1138,7 @@ pub async fn roles_delete(
     Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
     Form(form): Form<DeleteRefForm>,
-) -> Result<HtmxResponse, AppError> {
+) -> Result<axum::response::Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
     let row = ContributorRoleModel::get(&state.pool, id)
@@ -1134,6 +1153,8 @@ pub async fn roles_delete(
     let entries = build_role_rows(&state.pool, loc).await?;
     let list_html = render_roles_list(entries, loc)?;
     let feedback = success_feedback(loc, "success.reference_data.deleted", &row.name);
+    // polish-1 AC2: HX-Trigger: modal-close + existing OOB (belt-and-
+    // suspenders, see genres_delete comment for rationale).
     Ok(HtmxResponse {
         main: list_html,
         oob: vec![
@@ -1146,7 +1167,8 @@ pub async fn roles_delete(
                 content: String::new(),
             },
         ],
-    })
+    }
+    .into_response_with_hx_trigger("modal-close"))
 }
 
 // ─── Location Node Types CRUD ──────────────────────────────────────
@@ -1295,7 +1317,7 @@ pub async fn node_types_delete(
     Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
     Form(form): Form<DeleteRefForm>,
-) -> Result<HtmxResponse, AppError> {
+) -> Result<axum::response::Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
     let loc = locale.0;
     let row = LocationNodeTypeModel::find_by_id(&state.pool, id)
@@ -1310,6 +1332,8 @@ pub async fn node_types_delete(
     let entries = build_node_type_rows(&state.pool, loc).await?;
     let list_html = render_node_types_list(entries, loc)?;
     let feedback = success_feedback(loc, "success.reference_data.deleted", &row.name);
+    // polish-1 AC2: HX-Trigger: modal-close + existing OOB (belt-and-
+    // suspenders, see genres_delete comment for rationale).
     Ok(HtmxResponse {
         main: list_html,
         oob: vec![
@@ -1322,7 +1346,8 @@ pub async fn node_types_delete(
                 content: String::new(),
             },
         ],
-    })
+    }
+    .into_response_with_hx_trigger("modal-close"))
 }
 
 // ─── Modal renderers ───────────────────────────────────────────────

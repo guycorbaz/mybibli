@@ -114,17 +114,20 @@ impl IntoResponse for AppError {
                 let title = rust_i18n::t!("error.forbidden.title").to_string();
                 let body = rust_i18n::t!("error.forbidden.body").to_string();
                 let html = crate::routes::catalog::feedback_html_pub("error", &title, &body);
-                // HX-Retarget + HX-Reswap force HTMX to swap the feedback fragment
-                // into #feedback-container instead of dropping the response (default
-                // HTMX behavior on non-2xx is no-swap, which makes admin-route 403s
-                // look like silent failures to the user).
+                // polish-1 AC4.e: retarget to `#feedback-list`. The previous
+                // target `#feedback-container` was a latent dead-retarget bug
+                // — the selector existed nowhere in templates, so HTMX
+                // silently dropped 403 bodies (the very failure mode this
+                // branch was added to fix). `#feedback-list` is the canonical
+                // feedback region present on admin.html + catalog.html and
+                // already used by AppError::Conflict via the same pattern.
                 return (
                     StatusCode::FORBIDDEN,
                     [
                         (header::CONTENT_TYPE, "text/html; charset=utf-8"),
                         (
                             header::HeaderName::from_static("hx-retarget"),
-                            "#feedback-container",
+                            "#feedback-list",
                         ),
                         (header::HeaderName::from_static("hx-reswap"), "beforeend"),
                     ],
@@ -178,7 +181,30 @@ impl IntoResponse for AppError {
         };
 
         tracing::error!(%status, message = %log_message, "request error");
-        (status, client_message).into_response()
+        // polish-1 AC4.e: wrap every remaining variant in a FeedbackEntry HTML
+        // fragment + HX-Retarget so the response stops being a silent failure
+        // under HTMX's default 4xx/5xx `responseHandling: swap:false`. Before
+        // this change, NotFound / BadRequest / Internal / Database all
+        // serialized as bare plain-text bodies that HTMX dropped on the floor.
+        // Now they retarget to `#feedback-list` (the canonical feedback region
+        // present on admin.html + catalog.html), matching the Conflict shape
+        // established by story 8-4 P18. Modal-Confirm requests get the
+        // retarget stripped by the ModalConfirmRetargetGuard middleware (AC4.b)
+        // so the body lands in the modal's data-modal-error region instead.
+        let html = crate::routes::catalog::feedback_html_pub("error", &client_message, "");
+        (
+            status,
+            [
+                (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                (
+                    header::HeaderName::from_static("hx-retarget"),
+                    "#feedback-list",
+                ),
+                (header::HeaderName::from_static("hx-reswap"), "beforeend"),
+            ],
+            html,
+        )
+            .into_response()
     }
 }
 

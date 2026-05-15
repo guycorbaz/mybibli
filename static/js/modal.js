@@ -62,7 +62,45 @@
     }
 
     function open(dialog) {
-        if (state) close({ skipFocusRestore: true });
+        // polish-1 P7: rapid 2nd modal swap into the same slot — the new
+        // dialog is already in the slot by the time MutationObserver
+        // fires; `close()` would wipe `slot.innerHTML` and destroy it.
+        // Pass `skipSlotWipe` so cleanup runs on the OLD state without
+        // touching the slot content (the new dialog stays put).
+        if (state) close({ skipFocusRestore: true, skipSlotWipe: true });
+
+        // polish-1 AC3: promote declarative `<dialog open>` to a native
+        // top-layer modal. The `:modal` pseudo is true ONLY when opened
+        // via `showModal()`; the declarative `open` attribute alone
+        // doesn't grant native modal semantics (top-layer, inert
+        // background, ::backdrop). Fixes #65 for every Pattern A modal.
+        //
+        // showModal() throws InvalidStateError if the dialog is already
+        // marked open — so we remove the declarative `open` attribute
+        // first (a synchronous attribute change, no events fired —
+        // unlike dialog.close() which would dispatch a `close` event
+        // that could race with our subsequent listener registration).
+        if (!dialog.matches(":modal")) {
+            dialog.removeAttribute("open");
+            try { dialog.showModal(); } catch (_) { /* ignore — fall back to declarative open below */ }
+            if (!dialog.hasAttribute("open")) {
+                // showModal() failed (e.g. very old browser, dialog detached
+                // mid-promotion). Restore declarative open so the test
+                // assertion `dialog[open]` still matches and the existing
+                // manual handlers (Escape, backdrop click, focus trap)
+                // provide degraded but functional UX.
+                dialog.setAttribute("open", "");
+            }
+        }
+
+        // polish-1 AC3: catch native close events (Escape, native
+        // form method=dialog submit) so cleanup runs even when the
+        // close didn't go through our manual handlers. Native Escape
+        // on a showModal()'d dialog fires the browser's close path
+        // (clearing :modal + open) which would otherwise leave our
+        // `state` variable stale.
+        function onNativeClose() { if (state && state.dialog === dialog) close({ skipFocusRestore: false }); }
+        dialog.addEventListener("close", onNativeClose, { once: true });
 
         var triggerEl = document.querySelector('[data-modal-trigger][data-pressed="true"]');
         if (triggerEl) triggerEl.setAttribute("aria-expanded", "true");
@@ -134,7 +172,10 @@
             if (s.onClick) s.dialog.removeEventListener("click", s.onClick, false);
         }
         restoreBackgroundTabindex(s.restoredTabindexes);
-        if (slot) slot.innerHTML = "";
+        // polish-1 P7: skipSlotWipe protects against destroying a newly
+        // swapped-in dialog when this close() is the "cleanup-old-state"
+        // path inside open().
+        if (slot && !(opts && opts.skipSlotWipe)) slot.innerHTML = "";
 
         if (s.triggerEl) {
             s.triggerEl.removeAttribute("data-pressed");
@@ -159,19 +200,128 @@
         trigger.setAttribute("data-pressed", "true");
     }, true);
 
-    // After successful Confirm submit, close the modal. HX-Redirect drives
+    // polish-1 AC4.a: tag every Pattern A modal Confirm request with
+    // `X-Modal-Confirm: true`. The server-side `ModalConfirmRetargetGuard`
+    // middleware reads this header and strips `HX-Retarget`/`HX-Reswap`
+    // from error responses so the body lands in our data-modal-error
+    // region instead of being retargeted behind the backdrop. Same
+    // isConfirm detection shape used by every modal.js listener.
+    function originatesFromConfirm(elt) {
+        if (!elt || !state || !state.dialog || !state.dialog.contains(elt)) return false;
+        return elt.tagName === "FORM"
+            || (elt.matches && elt.matches("[data-modal-confirm]"))
+            || (elt.closest && elt.closest("[data-modal-confirm]"));
+    }
+    document.body.addEventListener("htmx:configRequest", function (evt) {
+        var detail = evt.detail || {};
+        if (!originatesFromConfirm(detail.elt)) return;
+        if (!detail.headers) detail.headers = {};
+        detail.headers["X-Modal-Confirm"] = "true";
+    }, false);
+
+    // polish-1 AC4.c (clear-on-retry): when a Confirm fires a NEW request,
+    // clear any stale error message in the modal's data-modal-error
+    // region. A retry after an error starts with a clean slate.
+    document.body.addEventListener("htmx:beforeRequest", function (evt) {
+        var detail = evt.detail || {};
+        if (!originatesFromConfirm(detail.elt)) return;
+        var region = state.dialog.querySelector("[data-modal-error]");
+        if (region) {
+            region.innerHTML = "";
+            region.classList.add("hidden");
+        }
+    }, false);
+
+    // polish-1 P1: track whether a recently in-flight HTMX request
+    // originated from THIS slot's modal Confirm. Used by the modal-close
+    // listener below to avoid cross-slot coupling (Pattern B success
+    // would otherwise close an open Pattern A modal). Also feeds the P9
+    // fallback path (user-cancelled modal mid-flight → 4xx still surfaces
+    // in #feedback-list instead of being silently dropped).
+    var lastConfirmFromOurSlot = false;
+    function eltLooksLikeConfirm(elt) {
+        if (!elt) return false;
+        return elt.tagName === "FORM"
+            || (elt.matches && elt.matches("[data-modal-confirm]"))
+            || (elt.closest && elt.closest("[data-modal-confirm]"));
+    }
+    document.body.addEventListener("htmx:beforeRequest", function (evt) {
+        var detail = evt.detail || {};
+        if (state && originatesFromConfirm(detail.elt)) {
+            lastConfirmFromOurSlot = true;
+        }
+    }, false);
+
+    // After Confirm submit, either close on success OR inject the error
+    // body into data-modal-error on failure. HX-Redirect drives
     // navigation; clearing the slot first avoids a stale modal frame.
     // Filter to Confirm form/button only — child HTMX (autocomplete, etc.)
     // must not close the modal.
     document.body.addEventListener("htmx:afterRequest", function (evt) {
         var detail = evt.detail || {};
-        var elt = detail.elt;
-        if (!elt || !state || !state.dialog || !state.dialog.contains(elt)) return;
-        var isConfirm = elt.tagName === "FORM"
-            || (elt.matches && elt.matches("[data-modal-confirm]"))
-            || (elt.closest && elt.closest("[data-modal-confirm]"));
-        if (!isConfirm || detail.failed || detail.successful === false) return;
-        close();
+        var isFailed = detail.failed || detail.successful === false;
+
+        // Path A: modal still open AND request originated from our Confirm.
+        if (originatesFromConfirm(detail.elt)) {
+            if (isFailed) {
+                // polish-1 AC4.c failed-Confirm path: inject the response body
+                // into data-modal-error. Retarget guard (defensive) — if
+                // HX-Retarget is set on the response, AC4.b middleware didn't
+                // strip it (shouldn't happen for modal Confirms post-Phase 2,
+                // but if a future handler ships an explicit retarget we won't
+                // double-display).
+                var xhr = detail.xhr;
+                if (!xhr) return;
+                if (xhr.getResponseHeader && xhr.getResponseHeader("HX-Retarget")) return;
+                var region = state.dialog.querySelector("[data-modal-error]");
+                if (!region) return;
+                region.innerHTML = xhr.responseText || "";
+                region.classList.remove("hidden");
+                return;
+            }
+            // Success: close.
+            close();
+            return;
+        }
+
+        // Path B (polish-1 P9): user closed the modal mid-flight (state is
+        // now null). If our beforeRequest had marked this request as a
+        // Confirm originating from our slot, the 4xx body would otherwise
+        // be silently discarded (the middleware stripped HX-Retarget at
+        // request time). Append to `#feedback-list` so optimistic-lock
+        // conflicts and validation errors stay visible even when the user
+        // cancelled before the response arrived.
+        if (!state && lastConfirmFromOurSlot && isFailed && eltLooksLikeConfirm(detail.elt)) {
+            lastConfirmFromOurSlot = false;
+            var fallbackXhr = detail.xhr;
+            if (!fallbackXhr) return;
+            var feedbackList = document.getElementById("feedback-list");
+            if (feedbackList && fallbackXhr.responseText) {
+                feedbackList.insertAdjacentHTML("beforeend", fallbackXhr.responseText);
+            }
+        }
+    }, false);
+
+    // polish-1 AC2: server-driven modal close via `HX-Trigger: modal-close`.
+    // Variant A of the HX-Trigger idiom (post-swap addEventListener
+    // native — HTMX dispatches a DOM event from the header value).
+    // Broadcast on document.body. polish-1 P1: only close when the
+    // recently-finished Confirm originated from OUR slot — otherwise a
+    // Pattern B success would close a Pattern A modal that the user
+    // never confirmed.
+    document.body.addEventListener("modal-close", function () {
+        if (lastConfirmFromOurSlot && state) close();
+        lastConfirmFromOurSlot = false;
+    }, false);
+
+    // polish-1 P8 (decision D1): when the server emits
+    // `HX-Trigger: csrf-rejected` (CSRF synchronizer-token middleware
+    // story 8-2), close any open modal before the swap reveals the
+    // "Session expired" FeedbackEntry. Without this, the entry lands in
+    // `#feedback-list` which is rendered beneath the showModal()-promoted
+    // dialog's `::backdrop` — user sees a frozen modal with no signal.
+    document.body.addEventListener("csrf-rejected", function () {
+        if (state) close({ skipFocusRestore: true });
     }, false);
 
     function observeSlot() {

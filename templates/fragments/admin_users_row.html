@@ -30,7 +30,7 @@
             <form method="POST" action="/admin/users/{{ user.id }}/reactivate" class="inline" hx-post="/admin/users/{{ user.id }}/reactivate" hx-target="#admin-users-row-{{ user.id }}" hx-swap="outerHTML">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
                 <input type="hidden" name="version" value="{{ user.version }}">
-                <button type="submit" class="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">{{ btn_reactivate }}</button>
+                <button type="submit" class="px-2 py-1 bg-green-700 text-white text-xs rounded hover:bg-green-800">{{ btn_reactivate }}</button>
             </form>
         {% endif %}
     </td>
