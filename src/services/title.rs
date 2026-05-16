@@ -236,18 +236,44 @@ impl TitleService {
         TitleModel::create(pool, &new_title).await
     }
 
-    async fn find_default_genre_id(pool: &DbPool) -> Result<u64, AppError> {
-        let row: Option<(u64,)> = sqlx::query_as(
+    pub async fn find_default_genre_id(pool: &DbPool) -> Result<u64, AppError> {
+        if let Some((id,)) = sqlx::query_as::<_, (u64,)>(
             "SELECT id FROM genres WHERE name = 'Non classé' AND deleted_at IS NULL LIMIT 1",
         )
         .fetch_optional(pool)
-        .await?;
+        .await?
+        {
+            return Ok(id);
+        }
 
-        row.map(|r| r.0).ok_or_else(|| {
-            AppError::Internal(
-                "Default genre 'Non classé' not found. Run seed migrations first.".to_string(),
-            )
-        })
+        // Reactivate soft-deleted row if present — the UNIQUE constraint on
+        // `genres.name` would otherwise block the INSERT below.
+        if let Some((id,)) = sqlx::query_as::<_, (u64,)>(
+            "SELECT id FROM genres WHERE name = 'Non classé' AND deleted_at IS NOT NULL LIMIT 1",
+        )
+        .fetch_optional(pool)
+        .await?
+        {
+            sqlx::query("UPDATE genres SET deleted_at = NULL WHERE id = ?")
+                .bind(id)
+                .execute(pool)
+                .await?;
+            tracing::warn!(
+                genre_id = id,
+                "Reactivated soft-deleted 'Non classé' default genre"
+            );
+            return Ok(id);
+        }
+
+        let result = sqlx::query("INSERT INTO genres (name) VALUES ('Non classé')")
+            .execute(pool)
+            .await?;
+        let id = result.last_insert_id();
+        tracing::warn!(
+            genre_id = id,
+            "Default genre 'Non classé' was missing — re-seeded"
+        );
+        Ok(id)
     }
 
     async fn insert_pending_metadata(

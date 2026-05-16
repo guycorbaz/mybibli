@@ -545,6 +545,17 @@ pub async fn update_title(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
+    // Defensive fallback: if the submitted genre_id is 0 (missing field,
+    // empty <select>, or a corrupt row where title.genre_id pointed at a
+    // soft-deleted genre and the dropdown had no `selected` option), fall
+    // back to the seeded "Non classé" default — TitleService self-heals the
+    // row when missing, so this never errors on a clean schema.
+    let resolved_genre_id = if form.genre_id == 0 {
+        TitleService::find_default_genre_id(pool).await?
+    } else {
+        form.genre_id
+    };
+
     let trimmed_title = form.title.trim();
     let subtitle = non_empty(&form.subtitle);
     let description = non_empty(&form.description);
@@ -570,7 +581,7 @@ pub async fn update_title(
         description.as_deref(),
         publisher.as_deref(),
         &form.language,
-        form.genre_id,
+        resolved_genre_id,
         publication_date,
         dewey_code.as_deref(),
         form.page_count,
@@ -605,7 +616,7 @@ pub async fn update_title(
         description.as_deref(),
         publisher.as_deref(),
         &form.language,
-        form.genre_id,
+        resolved_genre_id,
         publication_date,
         dewey_code.as_deref(),
         form.page_count,
