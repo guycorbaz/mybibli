@@ -46,17 +46,46 @@ Trois fournisseurs requièrent une clé d'API :
 \subsection*{Google Books}
 
 Optionnelle mais relève significativement le budget de requêtes
-quotidien.
+quotidien. Sans clé, le fournisseur Google Books reste désactivé —
+la chaîne fonctionne toujours (BnF \texttt{→} Open Library
+n'exigent pas de clé), mais les ouvrages anglophones grand public
+que BnF ne référence pas arriveront avec des métadonnées vides.
+
+Le parcours dans la Google Cloud Console déroute souvent les
+nouveaux venus parce que l'étape de création de la clé est nichée
+à deux menus de profondeur. Suivez exactement ces étapes :
 
 \begin{enumerate}
-  \item Connectez-vous sur \url{https://console.cloud.google.com/}.
-  \item Créez un nouveau projet (ou réutilisez-en un).
-  \item Activez l'\textbf{API Books}.
-  \item Créez une \textbf{clé d'API} sous \emph{APIs \& Services →
-        Credentials}.
-  \item Collez-la dans \texttt{/admin > System > Metadata
-        Providers} dans mybibli.
+  \item Ouvrez \url{https://console.cloud.google.com/} et
+        connectez-vous.
+  \item Sélecteur de projet en haut (à côté du logo
+        \emph{Google Cloud}) → \emph{Nouveau projet} → nommez-le
+        librement (p.\,ex.\ \texttt{mybibli-metadata}) →
+        \emph{Créer}. Attendez quelques secondes que le projet
+        soit sélectionné.
+  \item Menu hamburger (≡) → \emph{APIs \& services} →
+        \emph{Bibliothèque}. Cherchez \textbf{Books API}, cliquez
+        dessus, puis \emph{Activer}.
+  \item Toujours sous \emph{APIs \& services}, ouvrez
+        \emph{Identifiants}. Cliquez \emph{+ Créer des
+        identifiants} → \emph{Clé d'API}. Une fenêtre affiche
+        une clé fraîchement générée — copiez-la maintenant.
+  \item Recommandé : cliquez \emph{Restreindre la clé} → sous
+        \emph{Restrictions d'API} choisissez \emph{Restreindre la
+        clé} → cochez uniquement \emph{Books API}. Laissez
+        \emph{Restrictions d'application} sur \emph{Aucune}
+        (mybibli n'envoie pas d'en-tête Referer). Enregistrez.
+  \item Dans mybibli : \texttt{/admin > System > Metadata
+        Providers} → collez dans le champ \textbf{Google Books
+        API key} → \emph{Enregistrer}. Le prochain scan la prend
+        en compte — pas de redémarrage requis.
 \end{enumerate}
+
+Pour vérifier que la clé est active, scannez un ISBN anglophone
+que BnF ne connaît pas (\emph{Effective Java}, 9780134685991, est
+un bon canari). Les métadonnées doivent se peupler en quelques
+secondes. Si elles restent vides, voyez \emph{Dépannage} en fin
+de chapitre.
 
 \subsection*{OMDb}
 
@@ -136,3 +165,37 @@ fuit, faites-la tourner immédiatement sur la console du
 fournisseur — coller une nouvelle clé dans mybibli prend effet en
 quelques secondes.
 \end{warning}
+
+\section{Dépannage : métadonnées vides}
+
+Si un ISBN fraîchement scanné finit avec des champs titre /
+auteur / description vides, parcourez cette liste avant de
+suspecter un bug :
+
+\begin{enumerate}
+  \item \textbf{État des fournisseurs dans \texttt{/admin >
+        Health}.} Si Google Books ou Open Library affichent une
+        croix rouge, ces fournisseurs sont sautés à chaque
+        récupération. Vérifiez le code HTTP du dernier check —
+        \texttt{403} ou \texttt{401} signifie en général une clé
+        d'API absente ou invalide, pas une panne du fournisseur.
+  \item \textbf{Langue du titre.} BnF est le fournisseur primaire
+        et privilégie le français. Pour les livres anglophones,
+        la chaîne bascule sur Google Books — donc la clé (voir
+        plus haut) est la pièce qui débloque la situation.
+  \item \textbf{Format de l'ISBN.} mybibli normalise EAN-13 vs
+        ISBN-10 en interne, mais certains fournisseurs n'indexent
+        que l'un des deux. Un second scan quelques minutes plus
+        tard frappe parfois une route de repli différente.
+  \item \textbf{Édition manuelle.} Vous pouvez toujours saisir
+        titre, genre, contributeurs etc.\ à la main depuis la
+        page de détail du titre — la sauvegarde fonctionne même
+        si aucun fournisseur n'a répondu. Le genre \texttt{Non
+        classé} est la valeur par défaut pour un titre arrivé
+        sans données de classification.
+\end{enumerate}
+
+Si les champs restent vides après avoir configuré les bonnes
+clés et attendu quelques secondes, ouvrez une issue sur le dépôt
+du projet avec l'ISBN qui échoue — les mainteneurs ajoutent des
+mocks de fournisseurs pour les cas reproductibles.

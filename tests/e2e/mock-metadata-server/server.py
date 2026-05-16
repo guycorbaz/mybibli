@@ -182,8 +182,10 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
 
         # Blocklist: ISBNs that must return "not found" from BnF
         # - 9780000000002: used by provider-chain to test "all providers fail"
+        # - 9780000000019: used by title-edit-no-metadata (#203) — title is created
+        #   with empty metadata, exercising the edit-then-save flow
         # - Google Books known ISBNs: must NOT resolve via BnF so the chain falls through to Google Books
-        NO_METADATA_ISBNS = {"9780000000002", "9780134685991", "9780201633610"}
+        NO_METADATA_ISBNS = {"9780000000002", "9780000000019", "9780134685991", "9780201633610"}
 
         if isbn and isbn in BNF_KNOWN_ISBNS:
             body = make_sru_response(BNF_KNOWN_ISBNS[isbn])

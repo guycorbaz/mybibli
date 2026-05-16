@@ -43,17 +43,42 @@ Three providers require an API key:
 
 \subsection*{Google Books}
 
-Optional but raises the daily request budget significantly.
+Optional but raises the daily request budget significantly. Without
+a key the Google Books provider stays disabled — the chain still
+works (BnF \texttt{→} Open Library are key-less), but English-language
+trade non-fiction that BnF misses will land with empty metadata.
+
+The Google Cloud Console flow trips up many first-timers because
+the API-key creation step is buried two menus deep. Walk through
+this exactly:
 
 \begin{enumerate}
-  \item Sign in to \url{https://console.cloud.google.com/}.
-  \item Create a new project (or reuse one).
-  \item Enable the \textbf{Books API}.
-  \item Create an \textbf{API key} under \emph{APIs \& Services →
-        Credentials}.
-  \item Paste it into \texttt{/admin > System > Metadata Providers}
-        in mybibli.
+  \item Open \url{https://console.cloud.google.com/} and sign in.
+  \item Top-bar project picker (next to the
+        \emph{Google Cloud} logo) → \emph{New project} → name it
+        anything (e.g.\ \texttt{mybibli-metadata}) → \emph{Create}.
+        Wait a few seconds for the project to be selected.
+  \item Hamburger menu (≡) → \emph{APIs \& Services} →
+        \emph{Library}. Search for \textbf{Books API}, click it,
+        then \emph{Enable}.
+  \item Still under \emph{APIs \& Services}, open
+        \emph{Credentials}. Click \emph{+ Create credentials} →
+        \emph{API key}. A modal pops up with a freshly generated
+        key — copy it now.
+  \item Recommended: click \emph{Restrict key} → under
+        \emph{API restrictions} pick \emph{Restrict key} → tick
+        only \emph{Books API}. Leave \emph{Application
+        restrictions} on \emph{None} (mybibli does not send a
+        Referer header). Save.
+  \item In mybibli: \texttt{/admin > System > Metadata Providers}
+        → paste into the \textbf{Google Books API key} field →
+        \emph{Save}. The next scan picks it up — no restart needed.
 \end{enumerate}
+
+To verify the key is active, scan an English-only ISBN that BnF
+will not have (\emph{Effective Java}, 9780134685991, is a good
+canary). The metadata should populate within a few seconds. If it
+stays empty, see \emph{Troubleshooting} at the end of the chapter.
 
 \subsection*{OMDb}
 
@@ -128,3 +153,35 @@ only placeholders. If a key leaks, rotate it at the provider
 console immediately — pasting a new key into mybibli takes effect
 within seconds.
 \end{warning}
+
+\section{Troubleshooting empty metadata}
+
+If a freshly scanned ISBN ends up with empty title / author /
+description fields, walk this list before suspecting a bug:
+
+\begin{enumerate}
+  \item \textbf{Provider status in \texttt{/admin > Health}.}
+        If Google Books or Open Library show a red cross, those
+        providers will be skipped on every fetch. Re-check the
+        last-checked HTTP code — \texttt{403} or \texttt{401}
+        usually means a missing or invalid API key, not a remote
+        outage.
+  \item \textbf{Language of the title.} BnF is the primary
+        provider and is FR-leaning. For English-only books, the
+        chain falls through to Google Books — which means the
+        key (see above) is the unblocker.
+  \item \textbf{ISBN format.} mybibli normalises EAN-13 vs ISBN-10
+        internally, but some providers index only one of the two.
+        A second scan a few minutes later sometimes hits a
+        different fallback path.
+  \item \textbf{Manually edit and save.} You can always edit
+        title, genre, contributors etc.\ by hand from the title's
+        detail page — saving works even when no provider returned
+        anything. The genre \texttt{Non classé} is the default for
+        any title that came in without classification data.
+\end{enumerate}
+
+If the fields are still empty after configuring the right keys
+and waiting a few seconds, open an issue on the project repo with
+the failing ISBN — the maintainers add provider mocks for
+reproducible cases.
