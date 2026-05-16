@@ -39,25 +39,41 @@
 //! requests that 303 to `/login` never reach this middleware). The CSP
 //! layer wraps everything outermost — its hardening headers run AFTER our
 //! header strip.
+//!
+//! ## Defense-in-depth: HX-Request pairing (#218)
+//! `X-Modal-Confirm` is client-set and therefore trusted only as a hint.
+//! HTMX sets `HX-Request: true` on every request it issues, so a legitimate
+//! modal Confirm always carries both headers. Requiring the pair closes the
+//! "naive curl / scripted non-HTMX client" surface — a hostile script with
+//! full session credentials can still mimic both headers, but at that point
+//! it can do anything the user could, so this layer is not the right place
+//! to defend against that. The threat model (`docs/auth-threat-model.md`)
+//! keeps this at defense-in-depth severity for the single-tenant LAN
+//! deployment shape.
 
 use axum::extract::Request;
 use axum::http::{HeaderMap, HeaderName};
 use axum::middleware::Next;
 use axum::response::Response;
 
-const REQUEST_HEADER_NAME: &str = "x-modal-confirm";
+const MODAL_CONFIRM_HEADER: &str = "x-modal-confirm";
+const HX_REQUEST_HEADER: &str = "hx-request";
 const RETARGET_HEADER: &str = "hx-retarget";
 const RESWAP_HEADER: &str = "hx-reswap";
 const TRIGGER_HEADER: &str = "hx-trigger";
 
-/// True when the request originated from a Pattern A modal Confirm —
-/// i.e. `X-Modal-Confirm: true` (case-insensitive value).
-fn request_is_modal_confirm(headers: &HeaderMap) -> bool {
+fn header_is_true(headers: &HeaderMap, name: &str) -> bool {
     headers
-        .get(REQUEST_HEADER_NAME)
+        .get(name)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
+}
+
+/// True when the request originated from a Pattern A modal Confirm — both
+/// `X-Modal-Confirm: true` AND `HX-Request: true` must be present.
+fn request_is_modal_confirm(headers: &HeaderMap) -> bool {
+    header_is_true(headers, MODAL_CONFIRM_HEADER) && header_is_true(headers, HX_REQUEST_HEADER)
 }
 
 /// True when the response carries `HX-Trigger: csrf-rejected` (literal value
@@ -103,17 +119,23 @@ mod tests {
         HeaderValue::from_static(s)
     }
 
+    fn modal_confirm_headers() -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(MODAL_CONFIRM_HEADER, header_value("true"));
+        h.insert(HX_REQUEST_HEADER, header_value("true"));
+        h
+    }
+
     #[test]
     fn request_is_modal_confirm_true_lower() {
-        let mut h = HeaderMap::new();
-        h.insert(REQUEST_HEADER_NAME, header_value("true"));
-        assert!(request_is_modal_confirm(&h));
+        assert!(request_is_modal_confirm(&modal_confirm_headers()));
     }
 
     #[test]
     fn request_is_modal_confirm_true_upper() {
         let mut h = HeaderMap::new();
-        h.insert(REQUEST_HEADER_NAME, header_value("TRUE"));
+        h.insert(MODAL_CONFIRM_HEADER, header_value("TRUE"));
+        h.insert(HX_REQUEST_HEADER, header_value("TRUE"));
         assert!(request_is_modal_confirm(&h));
     }
 
@@ -126,7 +148,30 @@ mod tests {
     #[test]
     fn request_is_modal_confirm_other_value_is_false() {
         let mut h = HeaderMap::new();
-        h.insert(REQUEST_HEADER_NAME, header_value("yes"));
+        h.insert(MODAL_CONFIRM_HEADER, header_value("yes"));
+        h.insert(HX_REQUEST_HEADER, header_value("true"));
+        assert!(!request_is_modal_confirm(&h));
+    }
+
+    // Defense-in-depth: a client setting only X-Modal-Confirm (e.g. curl)
+    // without the HX-Request header HTMX always sends MUST NOT trigger the
+    // retarget strip. (#218)
+    #[test]
+    fn request_is_modal_confirm_requires_hx_request() {
+        let mut h = HeaderMap::new();
+        h.insert(MODAL_CONFIRM_HEADER, header_value("true"));
+        assert!(
+            !request_is_modal_confirm(&h),
+            "X-Modal-Confirm alone must not be sufficient — HTMX always pairs it with HX-Request"
+        );
+    }
+
+    // The inverse: an HTMX request without X-Modal-Confirm is the normal
+    // page-level form path and must not have its retarget stripped.
+    #[test]
+    fn request_is_modal_confirm_requires_modal_confirm_header() {
+        let mut h = HeaderMap::new();
+        h.insert(HX_REQUEST_HEADER, header_value("true"));
         assert!(!request_is_modal_confirm(&h));
     }
 
