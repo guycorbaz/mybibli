@@ -110,6 +110,74 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.1.5}\label{sec:whats-new-1.1.5}
+
+La version 1.1.5 poursuit la série de patchs issus de retours
+utilisateur, par-dessus la 1.1.4. Aucune migration de schéma, aucun
+breaking change \string— routine \texttt{docker compose pull \&\&
+docker compose up -d}. Trois améliorations~:
+
+\begin{itemize}
+  \item \textbf{Sauvegarde d'un titre sans métadonnées.} Quand la
+        chaîne de fournisseurs ne renvoie rien pour un ISBN scanné
+        (BnF / Google Books / Open Library tous muets), le titre
+        était créé avec le genre \texttt{Non classé} par défaut,
+        mais une sauvegarde manuelle depuis le formulaire d'édition
+        pouvait déclencher une violation de FK si le
+        \texttt{genre\_id} soumis valait 0 \string— cas limite qui
+        touchait les utilisateurs qui éditaient un titre fraîchement
+        scanné dont le dropdown n'avait aucune pré-sélection. Le
+        handler bascule désormais sur \texttt{Non classé} pour tout
+        \texttt{genre\_id == 0}, et la résolution sous-jacente
+        s'auto-répare (réactive une ligne soft-deleted, ré-amorce
+        si elle est absente). Clôt l'issue GitHub \#203.
+  \item \textbf{Durcissement de l'en-tête Modal-Confirm.} Le
+        \texttt{ModalConfirmRetargetGuard} exige maintenant
+        \texttt{X-Modal-Confirm: true} ET \texttt{HX-Request: true}
+        avant de retirer \texttt{HX-Retarget} / \texttt{HX-Reswap}
+        d'une réponse. Un client non HTMX (curl, wget, script non
+        navigateur) ne peut plus déclencher ce strip simplement en
+        envoyant l'en-tête modal. Défense en profondeur \string—
+        le modèle de menace garde ce point en sévérité basse pour
+        le déploiement single-tenant LAN. Clôt l'issue GitHub
+        \#218.
+  \item \textbf{Guide de configuration Google Books.} Le chapitre
+        sur les fournisseurs de métadonnées
+        (Chapitre~\ref{ch:providers}) comporte désormais une
+        procédure pas-à-pas pour la Google Cloud Console (clé de la
+        Books API), ainsi qu'une section \emph{Dépannage~:
+        métadonnées vides} pour les cas où un scan repart avec des
+        champs vides. Tranche docs de l'issue GitHub \#202~; les
+        idées plus larges sur la visibilité par fournisseur (badge
+        source des métadonnées, retry par fournisseur, surfaçage
+        structuré des erreurs) restent ouvertes pour des stories
+        futures.
+\end{itemize}
+
+\section{Nouveautés de la 1.1.4}\label{sec:whats-new-1.1.4}
+
+La version 1.1.4 est une release à un seul correctif. Pas de
+migration de schéma ni de breaking change côté \emph{application}
+\string— mais la mise à jour requiert une modification de
+\texttt{docker-compose.yml}, raison pour laquelle l'histoire de la
+persistance des couvertures est documentée principalement dans le
+chapitre Installation plutôt qu'ici.
+
+\begin{itemize}
+  \item \textbf{Persistance des couvertures à travers les mises à
+        jour de conteneur.} Le \texttt{docker-compose.yml} publié
+        déclare désormais un volume nommé \texttt{mybibli\_covers}
+        monté sur \texttt{/app/covers}, en parallèle de
+        \texttt{mybibli\_db\_data}. Avant la 1.1.4 les JPG des
+        couvertures vivaient dans la couche d'écriture du conteneur
+        et étaient détruits à chaque \texttt{docker compose up -d}
+        suivant un \texttt{pull}. Les utilisateurs déjà installés
+        en pré-1.1.4 doivent re-télécharger les couvertures depuis
+        la page de détail de chaque titre concerné \string— une
+        action admin de bulk-fetch est suivie à l'issue GitHub
+        \#214. Clôt l'issue GitHub \#213.
+\end{itemize}
+
 \section{Nouveautés de la 1.1.3}\label{sec:whats-new-1.1.3}
 
 La version 1.1.3 est le premier patch issu de retours utilisateur de

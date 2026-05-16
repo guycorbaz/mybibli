@@ -104,6 +104,68 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.1.5}\label{sec:whats-new-1.1.5}
+
+Version 1.1.5 continues the production-feedback patch series on top
+of 1.1.4. No schema migrations and no breaking changes — routine
+\texttt{docker compose pull \&\& docker compose up -d}. Three
+improvements:
+
+\begin{itemize}
+  \item \textbf{Save title with no metadata.} When the provider
+        chain returns nothing for a scanned ISBN (BnF / Google
+        Books / Open Library all silent), the title was created
+        with the \texttt{Non classé} default genre but a manual
+        save from the edit form could trip an FK violation if the
+        submitted \texttt{genre\_id} was 0 — a corner case that hit
+        users editing freshly-scanned titles whose dropdown had no
+        pre-selection. The handler now falls back to
+        \texttt{Non classé} for any \texttt{genre\_id == 0} input,
+        and the underlying lookup self-heals (reactivates a
+        soft-deleted row, re-seeds when missing). Closes GH issue
+        \#203.
+  \item \textbf{Modal-Confirm header hardening.} The
+        \texttt{ModalConfirmRetargetGuard} now requires
+        \texttt{X-Modal-Confirm: true} AND \texttt{HX-Request: true}
+        before it will strip \texttt{HX-Retarget} / \texttt{HX-Reswap}
+        from a response. A non-HTMX client (curl, wget, scripted
+        non-browser) can no longer trip the strip just by sending
+        the modal header. Defense-in-depth — the threat model
+        keeps this at low severity for the single-tenant LAN shape.
+        Closes GH issue \#218.
+  \item \textbf{Google Books configuration walk-through.} The
+        metadata-providers chapter (Chapter~\ref{ch:providers}) now
+        carries a step-by-step Google Cloud Console procedure for
+        the Books API key, plus a \emph{Troubleshooting empty
+        metadata} checklist for when a scan lands with empty
+        fields. Docs slice of GH issue \#202; the broader
+        per-provider visibility ideas (metadata-source badge,
+        per-provider retry, structured error surfacing) remain
+        open for future stories.
+\end{itemize}
+
+\section{What's new in 1.1.4}\label{sec:whats-new-1.1.4}
+
+Version 1.1.4 is a single-fix release. No schema migrations and no
+breaking changes for the \emph{application} side — but the upgrade
+path required a \texttt{docker-compose.yml} change, which is why
+the cover persistence story is documented prominently in the
+Installation chapter rather than buried here.
+
+\begin{itemize}
+  \item \textbf{Covers persist across container upgrades.} The
+        published \texttt{docker-compose.yml} template now declares
+        a \texttt{mybibli\_covers} named volume mapped to
+        \texttt{/app/covers}, parallel to \texttt{mybibli\_db\_data}.
+        Pre-1.1.4 the cover JPGs lived inside the container's
+        writable layer and were destroyed by every \texttt{docker
+        compose up -d} after a \texttt{pull}. Existing users
+        upgrading from a pre-1.1.4 install need to re-fetch covers
+        from each affected title's detail page — a bulk-fetch
+        admin action is tracked at GH issue \#214. Closes GH issue
+        \#213.
+\end{itemize}
+
 \section{What's new in 1.1.3}\label{sec:whats-new-1.1.3}
 
 Version 1.1.3 is the first production-feedback-driven patch on top of
