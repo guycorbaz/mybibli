@@ -104,6 +104,63 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.2.0}\label{sec:whats-new-1.2.0}
+
+Version 1.2.0 is the first minor release of the post-v1 era — six
+change-requests bundled around a single theme: \textbf{see what you
+own, find it faster}. No schema migrations beyond a small additive
+column the admin bulk-fetch needs to track, no breaking changes —
+routine \texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Dewey code right next to the genre.} The title-
+        detail page now shows the Dewey code as a chip in the
+        media-type / genre / volume-count row at the top of the
+        page (when set). The old standalone Dewey paragraph
+        further down is gone. Closes GH issue \#236.
+  \item \textbf{Sort series by Dewey or title.} The series-detail
+        page gains a small sort-link row above the gap grid.
+        Three keys: \emph{position} (the original behaviour, kept
+        as default), \emph{Dewey code} (assigned titles with a
+        Dewey first, then assigned without, then gaps — gaps
+        never lead the list, even in descending direction), and
+        \emph{title} (alphabetic, case-insensitive). The
+        location-detail page already had the same Dewey sort
+        column from Epic 5; v1.2 finishes the symmetry. Closes
+        GH issue \#235.
+  \item \textbf{Fold / unfold the Locations tree.} Every parent
+        node in the \texttt{/locations} tree now has a small
+        \emph{▼ / ▶} toggle in front of its row. Clicking it
+        hides the node's subtree; the collapsed-node set is
+        persisted in the browser's localStorage, so the layout
+        survives a reload. Useful once your hierarchy grows
+        beyond a screen-full. Closes GH issue \#200.
+  \item \textbf{One-click "Uncategorized" filter.} The home page
+        gains a dedicated filter chip next to the named-genre
+        chips. Clicking it surfaces titles whose genre is the
+        default \texttt{Non classé} bucket — the ones the
+        metadata-fetch chain couldn't classify and you haven't
+        re-classified yet. Closes GH issue \#205.
+  \item \textbf{Spinner on "Apply selected changes".} The
+        metadata-conflict confirmation form, the one that
+        appears when re-fetching metadata on a title with manual
+        edits, now shows a spinner inside the \emph{Apply}
+        button while the request is in flight. No more wondering
+        whether the click registered. Closes GH issue \#215.
+  \item \textbf{Bulk re-fetch missing covers.} The
+        \texttt{/admin?tab=health} panel gains a \emph{Maintenance}
+        section with a count of titles missing a cover and a
+        one-click \emph{Re-fetch missing covers} button. Clicking
+        it spawns a background task that walks the eligible
+        titles (those with at least one ISBN / ISSN / UPC code,
+        ordered oldest first) and re-triggers the full metadata-
+        fetch chain on each — including the Open Library Covers
+        fallback that landed in v1.1.6/1.1.7. A 500\,ms inter-
+        title gap keeps the providers happy; a single-instance
+        lock refuses a concurrent click with a friendly message.
+        Closes GH issue \#214.
+\end{itemize}
+
 \section{What's new in 1.1.9}\label{sec:whats-new-1.1.9}
 
 Version 1.1.9 is a single-fix release on top of 1.1.8. No schema

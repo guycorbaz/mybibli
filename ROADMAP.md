@@ -32,23 +32,22 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.1.9`](https://github.com/guycorbaz/mybibli/releases/tag/v1.1.9)** — published 2026-05-17. The `1.1.x` patch line is in active maintenance: bug fixes and known-failure resolutions only. The next feature release is `1.2.0` (see below).
+**Current stable: [`v1.2.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.2.0)** — published 2026-05-18. The first minor release of the post-v1 era, themed "See what you own, find it faster" (full list of CRs below). Concurrently, the `1.1.x` patch line stays in maintenance for bug fixes and known-failure resolutions only.
 
-Patch-line work currently in flight or planned:
+Patch-line work currently in flight or planned (will ship as `1.1.10+`, NOT in `1.2.x`):
 
 - [#219](https://github.com/guycorbaz/mybibli/issues/219) — `AppError::Forbidden` rendered in the default locale instead of the user's locale.
 - [#196](https://github.com/guycorbaz/mybibli/issues/196) — Flake in `home-search.spec.ts:224` under default-worker parallel mode (a long-standing known-failure; downgraded to fix-when-convenient).
 
-## v1.2.0 — "See what you own, find it faster"
+## v1.2.0 — "See what you own, find it faster" *(shipped)*
 
-UX polish round focused on visibility and quick wins. Small CRs grouped
-into one coordinated release because they're individually too small to
-justify their own version.
+UX polish round focused on visibility and quick wins. Six CRs grouped
+into one coordinated release.
 
-- [#235](https://github.com/guycorbaz/mybibli/issues/235) — Sort title lists by Dewey code on `/series/:id` and `/locations/:id`.
-- [#236](https://github.com/guycorbaz/mybibli/issues/236) — Show the Dewey code on the title-detail page, next to the genre chip.
-- [#205](https://github.com/guycorbaz/mybibli/issues/205) — Add an "uncategorized" filter to home / catalog (titles with no genre).
-- [#200](https://github.com/guycorbaz/mybibli/issues/200) — Fold / unfold the `/locations` tree (currently always fully expanded).
+- [#236](https://github.com/guycorbaz/mybibli/issues/236) — Dewey code chip on the title-detail page, next to the genre.
+- [#235](https://github.com/guycorbaz/mybibli/issues/235) — Sort series by Dewey or title (in addition to position); location detail had the same column since Epic 5.
+- [#205](https://github.com/guycorbaz/mybibli/issues/205) — "Uncategorized" filter chip on home — surfaces titles with no real genre yet.
+- [#200](https://github.com/guycorbaz/mybibli/issues/200) — Fold / unfold the `/locations` tree, with localStorage persistence.
 - [#215](https://github.com/guycorbaz/mybibli/issues/215) — Spinner on "Apply selected changes" in the metadata re-fetch second phase.
 - [#214](https://github.com/guycorbaz/mybibli/issues/214) — Bulk cover-fetch admin action — re-trigger the metadata-fetch chain for every title with a missing cover.
 
