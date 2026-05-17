@@ -104,6 +104,42 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.1.6}\label{sec:whats-new-1.1.6}
+
+Version 1.1.6 is a single-fix release on top of 1.1.5. No schema
+migrations, no breaking changes \string— routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Cover images for titles resolved by BnF.} The
+        metadata-provider chain is "first-match-wins for the whole
+        result". When BnF (the chain's primary FR book provider)
+        resolved a title it would set the metadata fields but never
+        a cover URL \string— UNIMARC XML, the format BnF returns
+        via its SRU API, simply doesn't carry image URLs. The same
+        happened for Google Books results without an
+        \texttt{imageLinks} block (common for self-published Amazon
+        KDP titles). The chain didn't fall through to Open Library
+        for the cover, so most catalog entries landed with no
+        jacket image even when Open Library had one.
+
+        mybibli now performs a cover-only fallback: when the
+        chain returns metadata but no \texttt{cover\_url} and the
+        lookup code is an ISBN, it HEAD-probes the
+        \emph{Open Library Covers API}
+        (\url{https://covers.openlibrary.org/b/isbn/}). On a
+        \texttt{200} the cover is downloaded, resized to 400~px
+        wide, and saved as JPEG 80~\% as if the original provider
+        had supplied it. On \texttt{404} / network error / non-ISBN
+        code the title stays cover-less, but quietly (no warn-log
+        noise per missed cover).
+
+        To recover covers on titles cataloged before this release,
+        open each affected title's detail page and click
+        \emph{Re-fetch metadata}. A bulk-fetch admin action is
+        tracked at issue \#214. Closes GH issue \#225.
+\end{itemize}
+
 \section{What's new in 1.1.5}\label{sec:whats-new-1.1.5}
 
 Version 1.1.5 continues the production-feedback patch series on top
