@@ -51,6 +51,9 @@ fn state_with_pool(pool: DbPool) -> AppState {
             active: false,
             bypass_via_env: true,
         })),
+        bulk_cover_fetch: Arc::new(RwLock::new(
+            mybibli::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
+        )),
     }
 }
 

@@ -29,7 +29,7 @@
     </table>
 
     <h2 class="text-lg font-semibold text-stone-900 dark:text-stone-100 mb-4">{{ providers_heading }}</h2>
-    <table class="min-w-full divide-y divide-stone-200 dark:divide-stone-700">
+    <table class="min-w-full divide-y divide-stone-200 dark:divide-stone-700 mb-8">
         <tbody class="divide-y divide-stone-100 dark:divide-stone-800">
             {% for p in providers %}
             <tr>
@@ -43,4 +43,38 @@
             {% endfor %}
         </tbody>
     </table>
+
+    {# Fix #214: Maintenance — bulk cover-refetch. Single-button
+       interface; the actual work runs detached in tokio::spawn. The
+       button is disabled while a fetch is in flight; refreshing the
+       Health panel polls the latest status. #}
+    <h2 class="text-lg font-semibold text-stone-900 dark:text-stone-100 mb-4">{{ maintenance_heading }}</h2>
+    <div class="mb-4">
+        <div class="flex items-center justify-between mb-3">
+            <div>
+                <p class="text-sm text-stone-500 dark:text-stone-400">{{ missing_covers_label }}</p>
+                <p class="text-2xl font-mono text-stone-900 dark:text-stone-100">{{ missing_covers_count }}</p>
+            </div>
+            {% if bulk_cover_fetch_can_start %}
+            <button type="button"
+                    hx-post="/admin/health/bulk-cover-refetch"
+                    hx-target="#admin-panel-feedback"
+                    hx-swap="innerHTML"
+                    class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
+                {{ bulk_cover_fetch_button_label }}
+            </button>
+            {% else %}
+            <button type="button"
+                    disabled
+                    class="px-4 py-2 text-sm font-medium text-stone-400 bg-stone-200 dark:bg-stone-800 rounded-md cursor-not-allowed">
+                {{ bulk_cover_fetch_button_label }}
+            </button>
+            {% endif %}
+        </div>
+        <p class="text-sm {% if bulk_cover_fetch_running %}text-amber-700 dark:text-amber-300{% else %}text-stone-500 dark:text-stone-400{% endif %}">
+            {{ bulk_cover_fetch_status_label }}
+        </p>
+    </div>
+
+    <div id="admin-panel-feedback" class="mt-4" aria-live="polite"></div>
 </section>

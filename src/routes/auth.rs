@@ -600,6 +600,9 @@ mod language_tests {
             setup_gate: std::sync::Arc::new(std::sync::RwLock::new(
                 crate::middleware::setup_gate::SetupGateState::default(),
             )),
+            bulk_cover_fetch: std::sync::Arc::new(std::sync::RwLock::new(
+                crate::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
+            )),
         };
         Router::new()
             .route("/language", axum::routing::post(change_language))
@@ -842,6 +845,9 @@ mod language_tests {
             mariadb_version_cache: crate::services::admin_health::new_mariadb_version_cache(),
             setup_gate: std::sync::Arc::new(std::sync::RwLock::new(
                 crate::middleware::setup_gate::SetupGateState::default(),
+            )),
+            bulk_cover_fetch: std::sync::Arc::new(std::sync::RwLock::new(
+                crate::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
             )),
         };
         let app = axum::Router::new()

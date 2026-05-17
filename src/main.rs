@@ -238,6 +238,11 @@ async fn main() {
         provider_health: provider_health_map.clone(),
         mariadb_version_cache,
         setup_gate,
+        // Fix #214: single-instance lock for the admin bulk-cover-refetch
+        // workflow. Starts idle; the admin handler flips it to running.
+        bulk_cover_fetch: std::sync::Arc::new(std::sync::RwLock::new(
+            mybibli::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
+        )),
     };
 
     // Spawn provider-health background task AFTER AppState is built so we

@@ -28,6 +28,9 @@ fn state_with_pool(pool: DbPool) -> mybibli::AppState {
         setup_gate: Arc::new(RwLock::new(
             mybibli::middleware::setup_gate::SetupGateState::default(),
         )),
+        bulk_cover_fetch: Arc::new(RwLock::new(
+            mybibli::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
+        )),
     }
 }
 
