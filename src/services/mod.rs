@@ -3,6 +3,7 @@ pub mod admin_system;
 pub mod auth;
 pub mod auto_purge;
 pub mod borrowers;
+pub mod bulk_cover_fetch;
 pub mod contributor;
 pub mod cover;
 pub mod dashboard;

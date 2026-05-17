@@ -264,6 +264,9 @@ mod middleware_integration_tests {
             setup_gate: Arc::new(RwLock::new(
                 crate::middleware::setup_gate::SetupGateState::default(),
             )),
+            bulk_cover_fetch: Arc::new(RwLock::new(
+                crate::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
+            )),
         }
     }
 

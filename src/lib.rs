@@ -22,6 +22,7 @@ use db::DbPool;
 use metadata::registry::ProviderRegistry;
 use middleware::setup_gate::SetupGateState;
 use services::admin_health::MariadbVersionCache;
+use services::bulk_cover_fetch::BulkCoverFetchStatus;
 use tasks::provider_health::ProviderHealthMap;
 
 rust_i18n::i18n!("locales", fallback = "en");
@@ -45,6 +46,11 @@ pub struct AppState {
     /// `/setup`. Refreshed by Step 1 (admin row created) and Step 4
     /// (`setup_completed_at` written) inside the wizard handlers.
     pub setup_gate: Arc<RwLock<SetupGateState>>,
+    /// Fix #214: status of the admin "Re-fetch missing covers" bulk
+    /// action. At most one bulk fetch runs at a time, repo-wide; this
+    /// `RwLock`-guarded state is the single-instance gate, plus a small
+    /// progress counter that the admin Health panel renders.
+    pub bulk_cover_fetch: Arc<RwLock<BulkCoverFetchStatus>>,
 }
 
 impl AppState {

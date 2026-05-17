@@ -207,6 +207,16 @@ struct AdminHealthPanel {
     count_active_loans: i64,
     providers_heading: String,
     providers: Vec<ProviderHealthRow>,
+    // Fix #214: maintenance section — "Re-fetch missing covers".
+    // Single-instance: the button is disabled while a fetch is in
+    // flight and re-enables when the task completes.
+    maintenance_heading: String,
+    missing_covers_label: String,
+    missing_covers_count: i64,
+    bulk_cover_fetch_button_label: String,
+    bulk_cover_fetch_can_start: bool,
+    bulk_cover_fetch_running: bool,
+    bulk_cover_fetch_status_label: String,
 }
 
 struct ProviderHealthRow {
@@ -417,6 +427,105 @@ pub async fn admin_health_panel(
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=health")?;
     render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::Health, None).await
+}
+
+/// Fix #214: admin action — re-trigger the metadata-fetch chain on
+/// every title with a missing cover. Single-instance: a second click
+/// while one is in flight returns 409. The actual work runs in a
+/// detached `tokio::spawn` task — the handler returns immediately
+/// with a feedback HTML snippet for HTMX to swap into the Health
+/// panel.
+pub async fn admin_bulk_cover_refetch(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+) -> Result<Response, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=health")?;
+    let pool = &state.pool;
+    let loc = locale.0;
+
+    let titles = crate::models::title::TitleModel::list_missing_covers(pool).await?;
+    let total = titles.len();
+
+    if total == 0 {
+        // Nothing to do — surface a friendly message, don't lock the
+        // status, don't audit-log.
+        return Ok(crate::routes::catalog::feedback_html_pub(
+            "info",
+            &rust_i18n::t!("admin.health.bulk_cover_fetch.empty", locale = loc),
+            "",
+        )
+        .into_response());
+    }
+
+    if crate::services::bulk_cover_fetch::try_start(&state.bulk_cover_fetch, total).is_err() {
+        return Err(AppError::Conflict(
+            rust_i18n::t!(
+                "admin.health.bulk_cover_fetch.already_running",
+                locale = loc
+            )
+            .to_string(),
+        ));
+    }
+
+    tracing::info!(
+        admin_id = session.user_id.unwrap_or(0),
+        total = total,
+        "Bulk cover-refetch started"
+    );
+
+    // Spawn the detached worker. Clones what it needs from AppState
+    // (cheap — all Arc-wrapped); no shared mutable references.
+    let pool_clone = pool.clone();
+    let registry_clone = state.registry.clone();
+    let http_client_clone = state.http_client.clone();
+    let covers_dir_clone = state.covers_dir.clone();
+    let status_clone = state.bulk_cover_fetch.clone();
+    let timeout_secs = {
+        // Snapshot the timeout setting once, outside the loop.
+        state
+            .settings
+            .read()
+            .map(|s| s.metadata_fetch_timeout_secs)
+            .unwrap_or(30)
+    };
+
+    tokio::spawn(async move {
+        for title in titles {
+            crate::tasks::metadata_fetch::fetch_metadata_chain(
+                pool_clone.clone(),
+                title.id,
+                title.code.clone(),
+                title.code_type,
+                title
+                    .media_type
+                    .parse::<crate::models::media_type::MediaType>()
+                    .unwrap_or(crate::models::media_type::MediaType::Book),
+                registry_clone.clone(),
+                timeout_secs,
+                http_client_clone.clone(),
+                covers_dir_clone.clone(),
+            )
+            .await;
+            crate::services::bulk_cover_fetch::increment_processed(&status_clone);
+            // Politeness toward external metadata providers. The
+            // chain has its own per-provider rate limiters, but a
+            // small inter-title gap helps when the chain runs short
+            // (e.g. cached BnF hits).
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        crate::services::bulk_cover_fetch::mark_complete(&status_clone);
+        tracing::info!("Bulk cover-refetch completed");
+    });
+
+    let message = rust_i18n::t!(
+        "admin.health.bulk_cover_fetch.started",
+        locale = loc,
+        total = total
+    )
+    .to_string();
+    Ok(crate::routes::catalog::feedback_html_pub("success", &message, "")
+        .into_response())
 }
 
 pub async fn admin_users_panel(
@@ -1512,6 +1621,32 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
 
     let providers = build_provider_rows(&state.registry, &state.provider_health, loc);
 
+    // Fix #214: maintenance section data — count of titles with no
+    // cover + bulk-fetch status. Cheap query (single SELECT COUNT) and
+    // a lock-only status read; no extra DB round-trip beyond the count.
+    let missing_covers_count = crate::models::title::TitleModel::count_missing_covers(pool).await?;
+    let bulk_status =
+        crate::services::bulk_cover_fetch::snapshot(&state.bulk_cover_fetch);
+    let bulk_cover_fetch_status_label = if bulk_status.running {
+        rust_i18n::t!(
+            "admin.health.bulk_cover_fetch.running",
+            locale = loc,
+            processed = bulk_status.processed,
+            total = bulk_status.total
+        )
+        .to_string()
+    } else if bulk_status.last_completed_at.is_some() {
+        rust_i18n::t!(
+            "admin.health.bulk_cover_fetch.last_run",
+            locale = loc,
+            processed = bulk_status.processed,
+            total = bulk_status.total
+        )
+        .to_string()
+    } else {
+        rust_i18n::t!("admin.health.bulk_cover_fetch.idle", locale = loc).to_string()
+    };
+
     let panel = AdminHealthPanel {
         versions_heading: rust_i18n::t!("admin.health.versions_heading", locale = loc)
             .to_string(),
@@ -1538,6 +1673,22 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
         providers_heading: rust_i18n::t!("admin.health.providers_heading", locale = loc)
             .to_string(),
         providers,
+        maintenance_heading: rust_i18n::t!("admin.health.maintenance_heading", locale = loc)
+            .to_string(),
+        missing_covers_label: rust_i18n::t!(
+            "admin.health.bulk_cover_fetch.missing_covers_label",
+            locale = loc
+        )
+        .to_string(),
+        missing_covers_count,
+        bulk_cover_fetch_button_label: rust_i18n::t!(
+            "admin.health.bulk_cover_fetch.button",
+            locale = loc
+        )
+        .to_string(),
+        bulk_cover_fetch_can_start: !bulk_status.running && missing_covers_count > 0,
+        bulk_cover_fetch_running: bulk_status.running,
+        bulk_cover_fetch_status_label,
     };
 
     panel

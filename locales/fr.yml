@@ -590,6 +590,16 @@ admin:
     provider_status_na: "n/a"
     last_checked: "Dernier contrôle : %{when}"
     last_checked_never: Jamais
+    maintenance_heading: Maintenance
+    bulk_cover_fetch:
+      missing_covers_label: "Titres sans couverture"
+      button: "Récupérer les couvertures manquantes"
+      idle: "Au repos"
+      running: "En cours : %{processed} / %{total} traités"
+      last_run: "Dernière exécution : %{processed} / %{total} traités"
+      started: "Récupération en lot lancée pour %{total} titres. La progression est journalisée ; rafraîchissez le panneau pour voir les mises à jour."
+      empty: "Aucun titre n'a besoin d'être re-fetché — tout ce qui peut être récupéré l'a été."
+      already_running: "Une récupération en lot est déjà en cours. Attendez sa fin."
   users:
     heading: "Comptes utilisateurs"
     empty_state: "Vous êtes seul·e ! Créez un compte Bibliothécaire pour les membres du foyer."

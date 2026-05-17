@@ -38,6 +38,16 @@ impl std::fmt::Display for TitleModel {
     }
 }
 
+/// Fix #214: projection used by the bulk cover-refetch admin action.
+/// Carries only the fields `fetch_metadata_chain` needs.
+#[derive(Debug, Clone)]
+pub struct MissingCoverTitle {
+    pub id: u64,
+    pub code: String,
+    pub code_type: crate::models::media_type::CodeType,
+    pub media_type: String,
+}
+
 /// Data required to create a new title.
 #[derive(Debug, Deserialize)]
 pub struct NewTitle {
@@ -195,6 +205,76 @@ impl TitleModel {
             Some(r) => Ok(Some(row_to_title(r)?)),
             None => Ok(None),
         }
+    }
+
+    /// Fix #214: count active titles eligible for a bulk cover-refetch.
+    ///
+    /// Eligibility: `cover_image_url IS NULL OR ''` AND at least one
+    /// lookup code (ISBN / ISSN / UPC) — the bulk-fetch reuses the
+    /// per-title metadata chain, which only operates on codes. Titles
+    /// without any code can't be re-fetched here; they'd be a manual
+    /// catalog edit.
+    pub async fn count_missing_covers(pool: &DbPool) -> Result<i64, AppError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM titles \
+             WHERE deleted_at IS NULL \
+               AND (cover_image_url IS NULL OR cover_image_url = '') \
+               AND (isbn IS NOT NULL OR issn IS NOT NULL OR upc IS NOT NULL)",
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(row.0)
+    }
+
+    /// Fix #214: list the titles eligible for a bulk cover-refetch.
+    ///
+    /// Returns the minimal projection the bulk task needs to call
+    /// [`crate::tasks::metadata_fetch::fetch_metadata_chain`]: title
+    /// id, the lookup code, its type, and the media type. ISBN is
+    /// preferred when several codes are set (it has the broadest
+    /// provider coverage); UPC second, ISSN last.
+    ///
+    /// Ordered by `created_at ASC` so the user sees the oldest
+    /// cover-less titles fill in first.
+    pub async fn list_missing_covers(
+        pool: &DbPool,
+    ) -> Result<Vec<MissingCoverTitle>, AppError> {
+        let rows = sqlx::query(
+            "SELECT id, isbn, issn, upc, media_type FROM titles \
+             WHERE deleted_at IS NULL \
+               AND (cover_image_url IS NULL OR cover_image_url = '') \
+               AND (isbn IS NOT NULL OR issn IS NOT NULL OR upc IS NOT NULL) \
+             ORDER BY created_at ASC",
+        )
+        .fetch_all(pool)
+        .await?;
+
+        let titles = rows
+            .into_iter()
+            .filter_map(|r| {
+                let id: u64 = r.try_get("id").ok()?;
+                let isbn: Option<String> = r.try_get("isbn").ok().flatten();
+                let issn: Option<String> = r.try_get("issn").ok().flatten();
+                let upc: Option<String> = r.try_get("upc").ok().flatten();
+                let media_type: String = r.try_get("media_type").ok()?;
+                let (code, code_type) = if let Some(c) = isbn {
+                    (c, crate::models::media_type::CodeType::Isbn)
+                } else if let Some(c) = upc {
+                    (c, crate::models::media_type::CodeType::Upc)
+                } else if let Some(c) = issn {
+                    (c, crate::models::media_type::CodeType::Issn)
+                } else {
+                    return None;
+                };
+                Some(MissingCoverTitle {
+                    id,
+                    code,
+                    code_type,
+                    media_type,
+                })
+            })
+            .collect();
+        Ok(titles)
     }
 
     /// Count of active (non-soft-deleted) titles in the catalog.
