@@ -37,6 +37,20 @@ means: title present, at least one contributor, and a year. Partial
 matches are recorded but mybibli keeps walking the chain until it
 finds a clean one or runs out of providers.
 
+\subsection*{Cover-image fallback}
+
+When the resolving provider returns metadata but no cover URL
+(BnF never carries image URLs in its UNIMARC payload; Google Books
+occasionally lacks \texttt{imageLinks} for self-published titles)
+mybibli falls back to the \emph{Open Library Covers API}
+(\url{https://covers.openlibrary.org/}) keyed by ISBN. That covers
+index is broad and independent of Open Library's catalogue
+completeness, so most books still get a cover even when their text
+metadata comes from a different provider. The fallback runs only
+when (a) the chain succeeded \emph{and} (b) the resolving provider
+gave no \texttt{cover\_url}, so a title for which no provider has a
+cover anywhere will land cover-less without retry storms.
+
 \section{API keys}
 
 Three providers require an API key:
