@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Roadmap — mybibli</title>
-  <meta name="description" content="Development roadmap for mybibli — v1.1.9 in production, all ten epics done, post-v1 directions tracked openly as GitHub issues." />
+  <meta name="description" content="mybibli roadmap — v1.1.9 in production, six themed releases on the way (Dewey UX, Wish list, AI-friendly API, collection valuation, shelf audit, classification refactor). The full plan lives in ROADMAP.md." />
   <link rel="icon" type="image/svg+xml" href="./logo/svg/mybibli-icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="./logo/png/mybibli-icon-32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="./logo/png/mybibli-icon-16.png" />
@@ -75,9 +75,9 @@
         <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-600/10 dark:bg-indigo-400/10 ring-1 ring-indigo-600/20 dark:ring-indigo-400/30 text-indigo-700 dark:text-indigo-300 text-xs font-medium">
           Roadmap
         </span>
-        <h1 class="mt-5 text-4xl sm:text-5xl font-bold tracking-tight text-stone-900 dark:text-stone-50">All ten epics shipped.</h1>
+        <h1 class="mt-5 text-4xl sm:text-5xl font-bold tracking-tight text-stone-900 dark:text-stone-50">Shipped, and shipping next.</h1>
         <p class="mt-5 text-lg text-stone-600 dark:text-stone-300 leading-relaxed">
-          Development was organized into ten epics. <strong class="text-stone-900 dark:text-stone-100">mybibli is in production</strong> on the household NAS that drove the project — v1.0.0 shipped at Epic 9's close, v1.1.0 added the seed-gate + audit trio (mandatory install floor), v1.1.2 closed Epic 10 with the mobile UX dual-surface pattern, CSRF rejection UX, and full axe-core entity-detail coverage. Seven production-feedback patches followed: v1.1.3 (home-page layout reorder + clickable locations tree), v1.1.4 (cover JPGs persisted across container upgrades), v1.1.5 (defensive genre fallback for no-metadata scans, modal-Confirm header hardening, Google Books config walkthrough), v1.1.6 (Open Library Covers fallback for fresh-scan path), v1.1.7 (same fallback in the Re-fetch metadata user path), v1.1.8 (stop tracking genre_id in manually_edited_fields so the conflict-confirm flow doesn't permanently swallow the cover fallback on re-classified titles, plus first illustrations in README + manual + website), v1.1.9 (title-save no longer returns a silent HTTP 422 when numeric fields are left empty). Pre-built Docker images are on Docker Hub. The planned-feature build phase is complete — future work is tracked openly as GitHub issues.
+          mybibli reached v1.0 after ten epics of foundational work, and is in production on the household NAS that drove the project. Beyond v1, every release is a focused theme — see <a href="#whats-next" class="underline decoration-stone-400 hover:decoration-indigo-500">what's coming next</a>, or scroll down for <a href="#shipped" class="underline decoration-stone-400 hover:decoration-indigo-500">what already shipped</a>. Pre-built Docker images on Docker Hub; everything tracked openly as GitHub issues.
         </p>
 
         <!-- Progress bar -->
@@ -94,11 +94,170 @@
       </div>
     </section>
 
-    <!-- ===================== TIMELINE ===================== -->
-    <section class="py-12 sm:py-16">
+    <!-- ===================== WHAT'S NEXT ===================== -->
+    <section id="whats-next" class="py-12 sm:py-16 bg-stone-100/60 dark:bg-stone-900/40 border-y border-stone-200 dark:border-stone-800">
       <div class="max-w-4xl mx-auto px-4 sm:px-6">
         <div class="reveal mb-10">
-          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50">The ten epics</h2>
+          <span class="text-xs uppercase tracking-wide font-semibold text-indigo-700 dark:text-indigo-300">What's next</span>
+          <h2 class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50">Coming up.</h2>
+          <p class="mt-3 text-stone-600 dark:text-stone-300">
+            Planned releases, in roughly the order they will ship. Themes are stable, dates are not — mybibli is a side-project and ships when ready. Each version is bundled around one coherent user benefit. The full plan, including the tech-debt parking lot, lives in <a href="https://github.com/guycorbaz/mybibli/blob/main/ROADMAP.md" class="underline decoration-stone-400 hover:decoration-indigo-500">ROADMAP.md</a>.
+          </p>
+        </div>
+
+        <ol class="relative border-l-2 border-dashed border-indigo-300 dark:border-indigo-800 ml-3 sm:ml-4 space-y-10">
+
+          <!-- v1.2.0 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-stone-50 dark:bg-stone-950 ring-2 ring-indigo-400 dark:ring-indigo-500" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-indigo-600 dark:text-indigo-400">v1.2</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">See what you own, find it faster</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300">Planned</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">
+              A polish round around discoverability. Several small wins that together make daily browsing noticeably nicer.
+            </p>
+            <ul class="mt-2 text-sm text-stone-600 dark:text-stone-400 list-disc list-inside space-y-1">
+              <li>Sort series and shelf views by Dewey code.</li>
+              <li>Show the Dewey code right next to the genre on the title page.</li>
+              <li>Filter the catalog by "uncategorized" titles in one click.</li>
+              <li>Collapse the Locations tree, with a spinner on the slower bulk metadata re-fetch.</li>
+              <li>An admin action to re-fetch all missing covers in one go.</li>
+            </ul>
+            <p class="mt-3 text-xs text-stone-500 dark:text-stone-400">
+              Tracked on GitHub:
+              <a href="https://github.com/guycorbaz/mybibli/issues/235" class="underline decoration-stone-400 hover:decoration-indigo-500">#235</a> ·
+              <a href="https://github.com/guycorbaz/mybibli/issues/236" class="underline decoration-stone-400 hover:decoration-indigo-500">#236</a> ·
+              <a href="https://github.com/guycorbaz/mybibli/issues/205" class="underline decoration-stone-400 hover:decoration-indigo-500">#205</a> ·
+              <a href="https://github.com/guycorbaz/mybibli/issues/200" class="underline decoration-stone-400 hover:decoration-indigo-500">#200</a> ·
+              <a href="https://github.com/guycorbaz/mybibli/issues/215" class="underline decoration-stone-400 hover:decoration-indigo-500">#215</a> ·
+              <a href="https://github.com/guycorbaz/mybibli/issues/214" class="underline decoration-stone-400 hover:decoration-indigo-500">#214</a>
+            </p>
+          </li>
+
+          <!-- v1.3.0 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-stone-50 dark:bg-stone-950 ring-2 ring-indigo-400 dark:ring-indigo-500" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-indigo-600 dark:text-indigo-400">v1.3</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">Plan your next purchase</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300">Planned</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">
+              A wish list lives next to your catalog. Scan an ISBN at home, browse it on your phone in the bookstore, print it to PDF if you prefer paper. When you actually buy the book and scan it in, mybibli quietly clears the wish list entry.
+            </p>
+            <ul class="mt-2 text-sm text-stone-600 dark:text-stone-400 list-disc list-inside space-y-1">
+              <li>Add books by ISBN (with metadata) or free-form title (when you only have a name).</li>
+              <li>Bookstore-friendly mobile view + printable PDF export.</li>
+              <li>Auto-remove from the wish list on catalog scan match.</li>
+              <li>Per-volume table on the title page (V-code + location + condition), with inline edit and delete — handy when a redundant copy is given away.</li>
+            </ul>
+            <p class="mt-3 text-xs text-stone-500 dark:text-stone-400">
+              Tracked on GitHub:
+              <a href="https://github.com/guycorbaz/mybibli/issues/242" class="underline decoration-stone-400 hover:decoration-indigo-500">#242</a> ·
+              <a href="https://github.com/guycorbaz/mybibli/issues/209" class="underline decoration-stone-400 hover:decoration-indigo-500">#209</a>
+            </p>
+          </li>
+
+          <!-- v1.4.0 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-stone-50 dark:bg-stone-950 ring-2 ring-indigo-400 dark:ring-indigo-500" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-indigo-600 dark:text-indigo-400">v1.4</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">Open the catalog to your AI</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300">Planned</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">
+              A clean JSON HTTP API behind admin-issued keys, with two coexisting access levels: read-only and read-write. Built for an AI assistant to read your catalog and propose classifications (Dewey, genre, description), but works just as well for any homelab script.
+            </p>
+            <ul class="mt-2 text-sm text-stone-600 dark:text-stone-400 list-disc list-inside space-y-1">
+              <li>Read-only or read-write API keys, issued and revoked from the admin panel.</li>
+              <li>JSON endpoints for titles, contributors, volumes, locations, series.</li>
+              <li>Write access narrowly scoped to classification fields — your AI can suggest, not delete.</li>
+              <li>Two keys can be active at once — one for the AI, one for a custom script.</li>
+            </ul>
+            <p class="mt-3 text-xs text-stone-500 dark:text-stone-400">
+              Tracked on GitHub:
+              <a href="https://github.com/guycorbaz/mybibli/issues/241" class="underline decoration-stone-400 hover:decoration-indigo-500">#241</a>
+            </p>
+          </li>
+
+          <!-- v1.5.0 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-stone-50 dark:bg-stone-950 ring-2 ring-indigo-400 dark:ring-indigo-500" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-indigo-600 dark:text-indigo-400">v1.5</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">Know what your collection is worth</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300">Planned</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">
+              Track purchase price and current value per volume — handy for collector BD, signed editions, and the insurance form nobody wants to fill out from scratch.
+            </p>
+            <ul class="mt-2 text-sm text-stone-600 dark:text-stone-400 list-disc list-inside space-y-1">
+              <li>Two optional fields per volume: purchase price + current value, with currency.</li>
+              <li>Aggregated totals: whole library, per genre, per series.</li>
+              <li>Opt-in dashboard indicator — values stay invisible unless you turn them on.</li>
+            </ul>
+            <p class="mt-3 text-xs text-stone-500 dark:text-stone-400">
+              Tracked on GitHub:
+              <a href="https://github.com/guycorbaz/mybibli/issues/243" class="underline decoration-stone-400 hover:decoration-indigo-500">#243</a>
+            </p>
+          </li>
+
+          <!-- v1.6.0 -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-stone-50 dark:bg-stone-950 ring-2 ring-indigo-400 dark:ring-indigo-500" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-indigo-600 dark:text-indigo-400">v1.6</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">Audit your shelves</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300">Planned</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">
+              A guided audit workflow built around a persistent "to check" flag. Mark a shelf or a search-result set, walk the rows physically, clear the flag as you verify each volume. What's left at the end is what needs attention.
+            </p>
+            <ul class="mt-2 text-sm text-stone-600 dark:text-stone-400 list-disc list-inside space-y-1">
+              <li>Bulk-mark every volume on a shelf — or selected volumes from any search result.</li>
+              <li>Dedicated filter view for the audit pass; mobile-friendly so you walk with your phone.</li>
+              <li>The flag stays put until you clear it manually — no auto-clear, by design.</li>
+            </ul>
+            <p class="mt-3 text-xs text-stone-500 dark:text-stone-400">
+              Tracked on GitHub:
+              <a href="https://github.com/guycorbaz/mybibli/issues/237" class="underline decoration-stone-400 hover:decoration-indigo-500">#237</a>
+            </p>
+          </li>
+
+          <!-- v2.0.0 candidate -->
+          <li class="reveal pl-6 sm:pl-8 relative">
+            <span class="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-stone-50 dark:bg-stone-950 ring-2 ring-indigo-400 dark:ring-indigo-500" aria-hidden="true"></span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span class="text-xs uppercase tracking-wide font-semibold text-indigo-600 dark:text-indigo-400">v2.0 candidate</span>
+              <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-50">Classification, reinvented</h3>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300">Exploring</span>
+            </div>
+            <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">
+              Today the "genre" field tries to be two things at once: the catalog source's idea of a section, and the owner's manual classification. v2 candidate splits them — keep Dewey for the standards-based axis, treat genre as a free-form owner-side label, and stop the auto-fetch from ever touching either.
+            </p>
+            <ul class="mt-2 text-sm text-stone-600 dark:text-stone-400 list-disc list-inside space-y-1">
+              <li>Splits a longstanding entanglement that surfaced in v1.1.8's <code class="font-mono text-xs">genre_id</code> fix.</li>
+              <li>Will land on a minor version if a backwards-compatible path is found, on v2.0 otherwise.</li>
+            </ul>
+            <p class="mt-3 text-xs text-stone-500 dark:text-stone-400">
+              Tracked on GitHub:
+              <a href="https://github.com/guycorbaz/mybibli/issues/206" class="underline decoration-stone-400 hover:decoration-indigo-500">#206</a>
+            </p>
+          </li>
+
+        </ol>
+      </div>
+    </section>
+
+    <!-- ===================== TIMELINE ===================== -->
+    <section id="shipped" class="py-12 sm:py-16">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6">
+        <div class="reveal mb-10">
+          <span class="text-xs uppercase tracking-wide font-semibold text-emerald-700 dark:text-emerald-400">Shipped</span>
+          <h2 class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50">The ten epics</h2>
           <p class="mt-3 text-stone-600 dark:text-stone-300">Each one ships behind a draft PR per story, gated by green CI. Each one ends with a retrospective.</p>
         </div>
 
@@ -380,32 +539,25 @@
       </div>
     </section>
 
-    <!-- ===================== BEYOND v1 ===================== -->
+    <!-- ===================== ENGAGEMENT ===================== -->
     <section class="py-16 sm:py-20">
       <div class="max-w-4xl mx-auto px-4 sm:px-6">
         <div class="reveal">
-          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50">Beyond v1</h2>
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50">Steer the next release.</h2>
           <p class="mt-3 text-stone-600 dark:text-stone-300 leading-relaxed">
-            Post-v1 plans are tracked openly as GitHub Issues with the <code class="font-mono text-sm">type:change-request</code> label. Likely directions:
-          </p>
-          <ul class="mt-5 space-y-2 text-stone-600 dark:text-stone-300 leading-relaxed marker:text-indigo-500">
-            <li>Pre-built Docker Hub images and a one-line install script.</li>
-            <li>An inline read-status workflow (currently / finished / abandoned) on volumes.</li>
-            <li>A small mobile-friendly "scan a barcode at a friend's place" shortcut.</li>
-            <li>Backup &amp; restore from the admin panel.</li>
-            <li>An optional read-only public catalog for households that want one.</li>
-          </ul>
-          <p class="mt-5 text-stone-600 dark:text-stone-300 leading-relaxed">
-            None of these are committed; they're directions. The shape of v2 will depend on what people actually use v1 for.
+            The roadmap above describes the direction. The order — and which features get pulled forward, deferred, or reshaped — depends on what real users hit. If something in <a href="#whats-next" class="underline decoration-stone-400 hover:decoration-indigo-500">what's next</a> matters to you, say so on the issue. If a feature is missing entirely, open one — every release of mybibli so far has been driven by production feedback.
           </p>
         </div>
 
-        <div class="mt-12 reveal flex flex-wrap gap-3">
+        <div class="mt-10 reveal flex flex-wrap gap-3">
           <a href="https://github.com/guycorbaz/mybibli/issues" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-indigo-600 text-white font-medium shadow-sm hover:bg-indigo-700">
             Browse open issues
           </a>
           <a href="https://github.com/guycorbaz/mybibli/issues/new/choose" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-medium ring-1 ring-stone-300 dark:ring-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700">
             Open a new issue
+          </a>
+          <a href="https://github.com/guycorbaz/mybibli/blob/main/ROADMAP.md" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-medium ring-1 ring-stone-300 dark:ring-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700">
+            Read ROADMAP.md
           </a>
         </div>
       </div>
