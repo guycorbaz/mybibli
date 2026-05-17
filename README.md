@@ -46,6 +46,22 @@ Built for collectors who want more than a spreadsheet:
 - **First-launch setup wizard.** Fresh installs walk through Admin → Providers → Preferences → Done; the gate middleware redirects every route to `/setup` until completion. Idempotent — interruptions resume at the right step server-side.
 - **Mobile-aware + WCAG 2.2 AA accessible.** Dual-surface mobile UX on data-dense pages (desktop tables collapse into mobile cards, admin tabs collapse into a `<select>` dropdown), full keyboard navigation with shortcuts cheat-sheet (`?`), contextual help-icon tooltips, and an axe-core CI gate that covers every reachable surface including entity-detail routes and the first-launch wizard.
 
+## Screenshots
+
+Live production install (`v1.1.7`, household NAS, ~88 titles cataloged):
+
+<p align="center">
+  <img src="docs/screenshots/home.png" alt="mybibli home page — search bar, genre filters, dashboard counters, and a recent-additions strip with cover thumbnails." width="780">
+  <br>
+  <em>Home — search, genre filters, dashboard counters ("À traiter" / "Aperçu de la collection"), recent additions with cover thumbnails.</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/locations.png" alt="mybibli locations page — hierarchical tree of rooms, bookcases and shelves with per-node volume counts and edit/delete affordances." width="780">
+  <br>
+  <em>Locations — configurable hierarchy (room → bookcase → shelf …), per-node volume counts, inline create / edit / delete.</em>
+</p>
+
 ## Tech stack
 
 - **Backend:** Rust 2024 edition + [Axum](https://github.com/tokio-rs/axum) 0.8
