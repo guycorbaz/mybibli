@@ -110,6 +110,35 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.1.9}\label{sec:whats-new-1.1.9}
+
+La version 1.1.9 est une release mono-correctif au-dessus de la
+1.1.8. Aucune migration de schéma, aucun breaking change
+\string— routine \texttt{docker compose pull \&\& docker compose
+up -d}.
+
+\begin{itemize}
+  \item \textbf{Sauvegarder un titre n'échoue plus silencieusement
+        quand des champs numériques sont vides.} Le formulaire
+        d'édition comporte quatre champs numériques (nombre de
+        pages, pistes, durée, numéro). Pour un titre où le champ
+        est \texttt{NULL} (cas fréquent sur les livres français
+        dont la BnF n'a pas fourni le nombre de pages), l'input
+        s'affiche vide. Cliquer \emph{Sauver} renvoyait HTTP~422
+        \emph{Unprocessable Entity} \string— le navigateur
+        envoyait \texttt{page\_count=} (chaîne vide) et le
+        désérialiseur du formulaire le refusait comme non-numéro.
+        Symptôme particulièrement pénible~: la page restait
+        affichée, sans retour, sans changement persisté, seule
+        la console du navigateur mentionnait le 422. La 1.1.9
+        fait passer les quatre champs numériques
+        \texttt{Option} par le désérialiseur tolérant aux
+        chaînes vides déjà en place pour le formulaire de
+        série, donc une entrée vide est correctement comprise
+        comme \emph{non fournie} et la sauvegarde aboutit.
+        Clôt l'issue GitHub \#238.
+\end{itemize}
+
 \section{Nouveautés de la 1.1.8}\label{sec:whats-new-1.1.8}
 
 La version 1.1.8 clôt le troisième bug de la saga

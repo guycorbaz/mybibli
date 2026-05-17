@@ -104,6 +104,32 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.1.9}\label{sec:whats-new-1.1.9}
+
+Version 1.1.9 is a single-fix release on top of 1.1.8. No schema
+migrations, no breaking changes \string— routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Saving a title no longer fails silently when
+        numeric fields are empty.} The edit form has four numeric
+        inputs (page count, track count, total duration, issue
+        number). For a title where the field is \texttt{NULL}
+        (the common case on French books where BnF didn't supply
+        a page count), the input renders empty. Clicking
+        \emph{Save} used to return HTTP~422 \emph{Unprocessable
+        Entity} \string— the browser submitted
+        \texttt{page\_count=} (an empty string) and the form
+        deserializer rejected it as not-a-number. The symptom was
+        the worst kind: the page sat there, no feedback, no
+        change persisted, only the browser console mentioned the
+        422. 1.1.9 routes the four numeric \texttt{Option} fields
+        through the empty-string-tolerant deserializer that was
+        already in place for the series form, so an empty input
+        is correctly understood as \emph{not provided} and the
+        save proceeds. Closes GH issue \#238.
+\end{itemize}
+
 \section{What's new in 1.1.8}\label{sec:whats-new-1.1.8}
 
 Version 1.1.8 closes the third bug in the cover-fallback saga
