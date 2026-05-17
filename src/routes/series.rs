@@ -195,6 +195,24 @@ pub struct SeriesDetailTemplate {
     pub no_assignments_label: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
+    // Fix #235: surfaced for the sort UI (which key is currently
+    // selected, which direction). Stable identifiers — see
+    // `SeriesSortKey::as_str` / `SortDir::as_str` for the canonical
+    // string forms emitted into `?sort=…&dir=…`.
+    pub current_sort: &'static str,
+    pub current_dir: &'static str,
+    pub label_sort_by: String,
+    pub label_sort_position: String,
+    pub label_sort_dewey: String,
+    pub label_sort_title: String,
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct SeriesDetailQuery {
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub dir: Option<String>,
 }
 
 pub async fn series_detail_page(
@@ -203,6 +221,7 @@ pub async fn series_detail_page(
     Extension(locale): Extension<Locale>,
     OriginalUri(uri): OriginalUri,
     Path(id): Path<u64>,
+    axum::extract::Query(params): axum::extract::Query<SeriesDetailQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     // No auth required — anonymous read per FR95
     let pool = &state.pool;
@@ -212,10 +231,18 @@ pub async fn series_detail_page(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
-    let positions = SeriesService::get_series_positions(pool, &series).await?;
+    let mut positions = SeriesService::get_series_positions(pool, &series).await?;
     let owned = positions.iter().filter(|p| p.title_id.is_some()).count() as u64;
     let gap = compute_gap(&series, owned);
     let series_name_for_grid = series.name.clone();
+
+    // Fix #235: sort the position grid by the requested key / dir.
+    // The owned / gap counters are computed BEFORE the sort because
+    // they are scope-invariant — the values must match the underlying
+    // catalog state, not whatever order the user is browsing in.
+    let sort_key = crate::services::series::SeriesSortKey::from_param(params.sort.as_deref());
+    let sort_dir = crate::services::series::SortDir::from_param(params.dir.as_deref());
+    crate::services::series::sort_positions(&mut positions, sort_key, sort_dir);
 
     let template = SeriesDetailTemplate {
         lang: loc.to_string(),
@@ -257,6 +284,12 @@ pub async fn series_detail_page(
         no_assignments_label: rust_i18n::t!("series.no_assignments", locale = loc).to_string(),
         current_url: current_url(&uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        current_sort: sort_key.as_str(),
+        current_dir: sort_dir.as_str(),
+        label_sort_by: rust_i18n::t!("browse.sort_by", locale = loc).to_string(),
+        label_sort_position: rust_i18n::t!("series.sort.position", locale = loc).to_string(),
+        label_sort_dewey: rust_i18n::t!("series.sort.dewey_code", locale = loc).to_string(),
+        label_sort_title: rust_i18n::t!("series.sort.title", locale = loc).to_string(),
     };
 
     match template.render() {

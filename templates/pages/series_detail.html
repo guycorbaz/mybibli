@@ -44,6 +44,25 @@
     <div id="series-feedback" class="mt-4" aria-live="polite"></div>
 
     {% if !positions.is_empty() %}
+    {# Fix #235: sort dropdown above the position grid. The three keys
+       (position / dewey_code / title) match `SeriesSortKey::as_str` on
+       the Rust side. Direction toggles via the dir=… link below. #}
+    <div class="mt-4 flex flex-wrap items-center gap-3 text-sm">
+        <span class="text-stone-600 dark:text-stone-400">{{ label_sort_by }}</span>
+        <a href="/series/{{ series.id }}?sort=position&amp;dir={% if current_sort == "position" && current_dir == "asc" %}desc{% else %}asc{% endif %}"
+           class="px-2 py-1 rounded-md {% if current_sort == "position" %}bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300{% else %}text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800{% endif %}">
+            {{ label_sort_position }}{% if current_sort == "position" %} {% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
+        </a>
+        <a href="/series/{{ series.id }}?sort=dewey_code&amp;dir={% if current_sort == "dewey_code" && current_dir == "asc" %}desc{% else %}asc{% endif %}"
+           class="px-2 py-1 rounded-md {% if current_sort == "dewey_code" %}bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300{% else %}text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800{% endif %}">
+            {{ label_sort_dewey }}{% if current_sort == "dewey_code" %} {% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
+        </a>
+        <a href="/series/{{ series.id }}?sort=title&amp;dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}"
+           class="px-2 py-1 rounded-md {% if current_sort == "title" %}bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300{% else %}text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800{% endif %}">
+            {{ label_sort_title }}{% if current_sort == "title" %} {% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
+        </a>
+    </div>
+
     {% include "components/series_gap_grid.html" %}
     {% endif %}
 
