@@ -573,7 +573,10 @@ pub async fn update_title(
             .ok()
     });
 
-    // Detect which fields changed
+    // Detect which fields changed. NOTE: `resolved_genre_id` is
+    // deliberately not passed — genre is a mybibli-only classification
+    // and the metadata-fetch chain never returns it, so it must not be
+    // tracked in `manually_edited_fields` (fix #232).
     let changed = detect_edited_fields(
         &old_title,
         trimmed_title,
@@ -581,7 +584,6 @@ pub async fn update_title(
         description.as_deref(),
         publisher.as_deref(),
         &form.language,
-        resolved_genre_id,
         publication_date,
         dewey_code.as_deref(),
         form.page_count,

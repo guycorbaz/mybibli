@@ -659,7 +659,6 @@ pub fn detect_edited_fields(
     new_description: Option<&str>,
     new_publisher: Option<&str>,
     new_language: &str,
-    new_genre_id: u64,
     new_publication_date: Option<chrono::NaiveDate>,
     new_dewey_code: Option<&str>,
     new_page_count: Option<i32>,
@@ -685,9 +684,12 @@ pub fn detect_edited_fields(
     if old.language != new_language {
         changed.push("language".to_string());
     }
-    if old.genre_id != new_genre_id {
-        changed.push("genre_id".to_string());
-    }
+    // NOTE: `genre_id` is intentionally NOT tracked here. It is a
+    // mybibli-only classification, no provider in the metadata chain
+    // ever returns it, so the conflict-confirm flow has nothing to
+    // protect. Tracking it used to send every re-fetch through the
+    // confirmation form and silently swallow the Open Library cover
+    // fallback (fix #232).
     if old.publication_date != new_publication_date {
         changed.push("publication_date".to_string());
     }
@@ -1197,7 +1199,6 @@ mod tests {
             None,
             Some("Gallimard"),
             "fr",
-            1,
             None,
             None,
             Some(186),
@@ -1219,7 +1220,6 @@ mod tests {
             None,
             Some("Flammarion"),
             "fr",
-            1,
             None,
             None,
             Some(186),
@@ -1241,7 +1241,6 @@ mod tests {
             Some("A description"),
             Some("Gallimard"),
             "en",
-            1,
             None,
             None,
             Some(186),
@@ -1254,6 +1253,44 @@ mod tests {
         assert!(changed.contains(&"description".to_string()));
         assert!(changed.contains(&"language".to_string()));
         assert_eq!(changed.len(), 3);
+    }
+
+    /// Regression guard for fix #232.
+    ///
+    /// The signature deliberately omits `new_genre_id` so a future
+    /// refactor cannot quietly reintroduce `"genre_id"` tracking. If
+    /// someone ever puts `new_genre_id: u64` back into the parameter
+    /// list and pushes it onto `changed`, this test stops compiling
+    /// because the call won't match the signature any more. Belt-and-
+    /// braces against the conflict-confirm-flow regression that
+    /// silently swallowed Open Library cover fallbacks for every title
+    /// whose genre had ever been edited.
+    #[test]
+    fn test_detect_edited_fields_does_not_track_genre() {
+        let old = make_test_title();
+        let changed = detect_edited_fields(
+            &old,
+            "Original Title",
+            Some("Original Sub"),
+            None,
+            Some("Gallimard"),
+            "fr",
+            None,
+            None,
+            Some(186),
+            None,
+            None,
+            None,
+            None,
+        );
+        // The model never produces "genre_id" in the changed list — the
+        // function doesn't even take a genre input. The empty result
+        // here is the explicit assertion that nothing genre-related
+        // leaks through.
+        assert!(
+            !changed.iter().any(|f| f == "genre_id"),
+            "genre_id must never appear in manually_edited_fields"
+        );
     }
 
     #[test]
