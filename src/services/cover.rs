@@ -3,6 +3,9 @@ use std::path::Path;
 
 use image::ImageReader;
 
+use crate::metadata::provider::MetadataResult;
+use crate::models::media_type::CodeType;
+
 /// Errors that can occur during cover image download and processing.
 #[derive(Debug)]
 pub enum CoverError {
@@ -78,6 +81,34 @@ pub async fn probe_openlibrary_cover_url(
             None
         }
     }
+}
+
+/// Resolve a cover URL combining the resolving provider's `cover_url` and
+/// the Open Library Covers fallback. Single source of truth used by every
+/// code path that downloads a cover for a resolved metadata result
+/// (fix #228 — was inlined only in the background scan path #225).
+///
+/// Order:
+/// 1. If `metadata.cover_url` is `Some`, return it as-is.
+/// 2. Else, when `code_type` is ISBN, HEAD-probe Open Library Covers and
+///    return its URL on 2xx.
+/// 3. Else, `None`.
+///
+/// Never panics, never bubbles errors — the worst outcome is a title
+/// landing cover-less.
+pub async fn resolve_cover_url_with_fallback(
+    client: &reqwest::Client,
+    metadata: &MetadataResult,
+    code: &str,
+    code_type: &CodeType,
+) -> Option<String> {
+    if let Some(url) = &metadata.cover_url {
+        return Some(url.clone());
+    }
+    if matches!(code_type, CodeType::Isbn) {
+        return probe_openlibrary_cover_url(client, code).await;
+    }
+    None
 }
 
 pub struct CoverService;
@@ -177,6 +208,13 @@ impl CoverService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Serialize every test that mutates `OPEN_LIBRARY_COVERS_BASE_URL`.
+    /// `set_var` / `remove_var` are process-global and tokio tests run on a
+    /// shared thread pool — without this lock, parallel runs leak the env
+    /// var between cases and the default-base-URL assertion fails.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_cover_error_display() {
@@ -260,6 +298,7 @@ mod tests {
 
     #[test]
     fn openlibrary_cover_url_strips_separators_and_uses_default_base() {
+        let _guard = ENV_LOCK.lock().unwrap();
         // Stash any existing env override so the test is hermetic.
         let prev = std::env::var("OPEN_LIBRARY_COVERS_BASE_URL").ok();
         // SAFETY: tests in this crate run in the same process; this env
@@ -285,7 +324,86 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)] // ENV_LOCK serializes env-var access between tests; release-before-await would defeat the purpose.
+    async fn resolve_cover_url_returns_provider_value_when_present() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        // When the resolving provider supplied a cover_url, the helper must
+        // return it verbatim without touching Open Library — this is the
+        // "fast path" that every popular EN book on Google Books hits.
+        let prev = std::env::var("OPEN_LIBRARY_COVERS_BASE_URL").ok();
+        // Point at a closed port: if the helper ever calls Open Library on
+        // the happy path it'll hang or error — we want it to return early.
+        unsafe { std::env::set_var("OPEN_LIBRARY_COVERS_BASE_URL", "http://127.0.0.1:1") };
+
+        let client = reqwest::Client::new();
+        let metadata = MetadataResult {
+            cover_url: Some("https://example.com/cover.jpg".to_string()),
+            ..MetadataResult::default()
+        };
+        let result =
+            resolve_cover_url_with_fallback(&client, &metadata, "9782804156893", &CodeType::Isbn)
+                .await;
+        assert_eq!(result.as_deref(), Some("https://example.com/cover.jpg"));
+
+        match prev {
+            Some(v) => unsafe { std::env::set_var("OPEN_LIBRARY_COVERS_BASE_URL", v) },
+            None => unsafe { std::env::remove_var("OPEN_LIBRARY_COVERS_BASE_URL") },
+        }
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn resolve_cover_url_skips_fallback_for_non_isbn_codes() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        // UPC / ISSN codes aren't indexed by Open Library Covers — the helper
+        // must short-circuit to None without making a network call.
+        let prev = std::env::var("OPEN_LIBRARY_COVERS_BASE_URL").ok();
+        unsafe { std::env::set_var("OPEN_LIBRARY_COVERS_BASE_URL", "http://127.0.0.1:1") };
+
+        let client = reqwest::Client::new();
+        let metadata = MetadataResult::default();
+        let upc = resolve_cover_url_with_fallback(&client, &metadata, "012345678905", &CodeType::Upc)
+            .await;
+        let issn =
+            resolve_cover_url_with_fallback(&client, &metadata, "00280836", &CodeType::Issn).await;
+        assert!(upc.is_none());
+        assert!(issn.is_none());
+
+        match prev {
+            Some(v) => unsafe { std::env::set_var("OPEN_LIBRARY_COVERS_BASE_URL", v) },
+            None => unsafe { std::env::remove_var("OPEN_LIBRARY_COVERS_BASE_URL") },
+        }
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn resolve_cover_url_returns_none_when_provider_silent_and_fallback_unreachable() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        // Belt-and-braces: no provider cover_url, ISBN code, OL probe fails →
+        // None. Must never panic, must never bubble the error.
+        let prev = std::env::var("OPEN_LIBRARY_COVERS_BASE_URL").ok();
+        unsafe { std::env::set_var("OPEN_LIBRARY_COVERS_BASE_URL", "http://127.0.0.1:1") };
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap();
+        let metadata = MetadataResult::default();
+        let result =
+            resolve_cover_url_with_fallback(&client, &metadata, "9782804156893", &CodeType::Isbn)
+                .await;
+        assert!(result.is_none());
+
+        match prev {
+            Some(v) => unsafe { std::env::set_var("OPEN_LIBRARY_COVERS_BASE_URL", v) },
+            None => unsafe { std::env::remove_var("OPEN_LIBRARY_COVERS_BASE_URL") },
+        }
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn probe_openlibrary_cover_returns_none_on_network_error() {
+        let _guard = ENV_LOCK.lock().unwrap();
         // 127.0.0.1:1 is a guaranteed-closed port (TCP reserved). The
         // connection will fail fast and the probe must swallow the error
         // and return None — never bubble it up to the metadata-fetch task.
