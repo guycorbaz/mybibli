@@ -110,6 +110,48 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.1.6}\label{sec:whats-new-1.1.6}
+
+La version 1.1.6 est une release mono-correctif au-dessus de la
+1.1.5. Aucune migration de schéma, aucun breaking change
+\string— routine \texttt{docker compose pull \&\& docker compose
+up -d}.
+
+\begin{itemize}
+  \item \textbf{Couvertures pour les titres résolus par la BnF.}
+        La chaîne de fournisseurs de métadonnées fonctionne en
+        «~premier qui répond gagne tout~». Quand la BnF (le
+        premier fournisseur livres pour le français) résolvait un
+        titre, elle remplissait les champs textuels mais jamais
+        l'URL de couverture \string— l'UNIMARC XML que la BnF
+        renvoie via son API SRU ne contient tout simplement pas
+        d'URL d'image. Même symptôme pour les résultats Google
+        Books sans bloc \texttt{imageLinks} (cas fréquent pour les
+        titres auto-édités sur Amazon KDP). La chaîne ne se
+        rabattait pas sur Open Library pour la seule couverture,
+        donc la majorité des fiches du catalogue restaient sans
+        jaquette même quand Open Library en avait une.
+
+        mybibli effectue désormais un repli ciblé couverture~:
+        quand la chaîne renvoie des métadonnées sans
+        \texttt{cover\_url} et que le code interrogé est un ISBN,
+        mybibli interroge l'\emph{API Open Library Covers}
+        (\url{https://covers.openlibrary.org/b/isbn/}) en
+        \texttt{HEAD}. Sur \texttt{200}, la couverture est
+        téléchargée, redimensionnée à 400~px de large et stockée
+        en JPEG 80~\%, exactement comme si le fournisseur initial
+        l'avait fournie. Sur \texttt{404} / erreur réseau / code
+        non ISBN, le titre reste sans couverture mais
+        silencieusement (pas de bruit de log par couverture
+        manquante).
+
+        Pour récupérer les couvertures sur les titres déjà
+        catalogués avant cette release, ouvrir la fiche détail du
+        titre concerné et cliquer \emph{Re-fetch metadata}. Une
+        action admin de re-fetch en masse est suivie à l'issue
+        \#214. Clôt l'issue GitHub \#225.
+\end{itemize}
+
 \section{Nouveautés de la 1.1.5}\label{sec:whats-new-1.1.5}
 
 La version 1.1.5 poursuit la série de patchs issus de retours
