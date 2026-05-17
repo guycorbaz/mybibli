@@ -20,6 +20,9 @@
                         {{ title.media_type }}
                     </span>
                     <span>{{ genre_name }}</span>
+                    {% if let Some(dewey) = title.dewey_code %}
+                    <span title="{{ label_dewey_code }}">{{ label_dewey_code }} {{ dewey }}</span>
+                    {% endif %}
                     <span>{{ volume_count }} {{ label_vol }}</span>
                 </div>
                 {% if let Some(pub_name) = title.publisher %}
@@ -39,10 +42,6 @@
                     <p class="text-stone-700 dark:text-stone-300 text-sm">{{ desc }}</p>
                 </div>
                 {% endif %}
-                {% if let Some(dewey) = title.dewey_code %}
-                    <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ label_dewey_code }}: {{ dewey }}</p>
-                {% endif %}
-
                 {% if role == "librarian" || role == "admin" %}
                 <div class="mt-4 flex gap-3">
                     <button hx-get="/title/{{ title.id }}/edit" hx-target="#title-metadata" hx-swap="innerHTML"

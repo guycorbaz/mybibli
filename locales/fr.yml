@@ -354,6 +354,8 @@ location:
   invalid_node_type: "Type d'emplacement invalide."
   volumes_count: "%{count} volumes"
   breadcrumb_label: Chemin de l'emplacement
+  tree:
+    toggle: Afficher / masquer la sous-arborescence
   contents_title: Contenu de l'étagère
   empty_volumes: "Aucun volume à cet emplacement."
   col_title: Titre
