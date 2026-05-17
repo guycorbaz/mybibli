@@ -18,6 +18,7 @@ use crate::routes::home_indicators::{
     IndicatorFilter, IndicatorTag, build_indicator_tags, parse_indicator_filter,
 };
 use crate::services::search::{SearchOutcome, SearchService};
+use crate::services::title::TitleService;
 use crate::utils::{current_url, html_escape, url_encode};
 
 #[derive(Debug, Deserialize)]
@@ -72,6 +73,9 @@ pub struct HomeTemplate {
     pub pagination_next: String,
     pub pagination_aria_label: String,
     pub remove_filter_aria: String,
+    // Fix #205: label for the dedicated "uncategorized" filter chip
+    // (titles whose genre is the default "Non classé"). Localized.
+    pub label_uncategorized: String,
     pub col_title: String,
     pub col_contributor: String,
     pub col_genre: String,
@@ -200,8 +204,19 @@ pub async fn home(
     // Parse legacy filter (genre:N / state:foo) — but skip when an
     // indicator filter is parsed (any role) so it doesn't double-fire
     // downstream.
+    //
+    // Fix #205: `?filter=uncategorized` is a marketing alias for "show
+    // only titles whose genre is the default Non-classé bucket". We
+    // resolve it to that genre id at handler time (one async lookup,
+    // also self-heals via `TitleService::find_default_genre_id` if the
+    // row was soft-deleted) and treat it like an ordinary genre filter
+    // downstream. `parse_filter` itself stays pure / non-async / DB-
+    // free so existing call sites and tests don't have to move.
     let (genre_id, volume_state) = if parsed_indicator.is_some() {
         (None, None)
+    } else if params.filter.as_deref() == Some("uncategorized") {
+        let default_genre_id = TitleService::find_default_genre_id(pool).await?;
+        (Some(default_genre_id), None)
     } else {
         parse_filter(&params.filter)
     };
@@ -572,6 +587,7 @@ pub async fn home(
         pagination_next: rust_i18n::t!("pagination.next", locale = loc).to_string(),
         pagination_aria_label: rust_i18n::t!("pagination.aria_label", locale = loc).to_string(),
         remove_filter_aria: rust_i18n::t!("home.remove_filter_aria", locale = loc).to_string(),
+        label_uncategorized: rust_i18n::t!("home.filter.uncategorized", locale = loc).to_string(),
         col_title: rust_i18n::t!("search.col.title", locale = loc).to_string(),
         col_contributor: rust_i18n::t!("search.col.contributor", locale = loc).to_string(),
         col_genre: rust_i18n::t!("search.col.genre", locale = loc).to_string(),
@@ -744,6 +760,23 @@ pub(crate) mod tests {
         assert!(s.is_none());
     }
 
+    /// Fix #205: `parse_filter` MUST stay DB-free / pure. The
+    /// `?filter=uncategorized` keyword is resolved at handler level
+    /// (one async lookup to find the default-genre id), NOT here. This
+    /// sentinel pins the contract — if someone later moves the logic
+    /// into `parse_filter`, this test catches it and forces them to
+    /// also revisit the caller in `home_search` that currently does
+    /// the short-circuit before reaching parse_filter.
+    #[test]
+    fn test_parse_filter_uncategorized_is_handled_at_handler_level() {
+        let (g, s) = parse_filter(&Some("uncategorized".to_string()));
+        assert!(
+            g.is_none(),
+            "parse_filter must not try to resolve the uncategorized keyword"
+        );
+        assert!(s.is_none(), "no volume-state should be inferred either");
+    }
+
     #[test]
     fn test_parse_filter_state() {
         let (g, s) = parse_filter(&Some("state:unshelved".to_string()));
@@ -862,6 +895,7 @@ pub(crate) mod tests {
             pagination_next: "Next".to_string(),
             pagination_aria_label: "Pagination".to_string(),
             remove_filter_aria: "Remove filter".to_string(),
+            label_uncategorized: "Uncategorized".to_string(),
             col_title: "Title".to_string(),
             col_contributor: "Contributor".to_string(),
             col_genre: "Genre".to_string(),

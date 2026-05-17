@@ -88,6 +88,34 @@
            aria-label="Filter by: {{ genre.name }}">{{ genre.name }}</a>
         {% endif %}
         {% endfor %}
+
+        {# Fix #205: dedicated "Uncategorized" chip — surfaces titles
+           whose genre is the default Non-classé bucket. Distinct from
+           the genre chips above (which list named genres only) because
+           the default genre is conceptually "no real classification yet"
+           and deserves a one-click filter. #}
+        {% if active_filter == "uncategorized" %}
+        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-sm" role="status" aria-label="Active filter: {{ label_uncategorized }}. Press to remove filter">
+            {{ label_uncategorized }}
+            <button type="button"
+                    hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+                    hx-target="#browse-results"
+                    hx-swap="innerHTML"
+                    hx-push-url="true"
+                    class="ml-1 text-indigo-500 hover:text-indigo-700"
+                    aria-label="{{ remove_filter_aria }}">&times;</button>
+        </span>
+        {% else %}
+        <a href="/?q={{ query_encoded }}&amp;filter=uncategorized&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+           hx-get="/?q={{ query_encoded }}&amp;filter=uncategorized&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+           hx-target="#browse-results"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           class="px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 text-sm hover:bg-stone-200 dark:hover:bg-stone-700"
+           role="link"
+           aria-label="Filter by: {{ label_uncategorized }}">{{ label_uncategorized }}</a>
+        {% endif %}
+
         <input type="hidden" name="filter" id="filter-hidden" value="{{ active_filter }}">
         <input type="hidden" name="sort" value="{{ current_sort }}">
         <input type="hidden" name="dir" value="{{ current_dir }}">
