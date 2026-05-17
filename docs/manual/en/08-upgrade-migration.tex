@@ -104,6 +104,49 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.1.8}\label{sec:whats-new-1.1.8}
+
+Version 1.1.8 closes the third bug in the cover-fallback saga
+(\#225 → \#228 → \#232) and brings the first illustrations to the
+manual. One small schema migration ships with this release \string—
+review the section on routine updates if you have not seen a
+release with a migration in a while, but the change is data-only
+(no breaking schema diff).
+
+\begin{itemize}
+  \item \textbf{Re-fetch finally downloads covers on titles whose
+        only customization was the genre.} The previous releases
+        wired the Open Library Covers fallback into both the
+        background scan path (1.1.6) and the user-triggered
+        Re-fetch metadata path (1.1.7), but the form coming back
+        from Re-fetch still hid the cover behind an unchecked
+        \emph{accept cover} checkbox whenever
+        \texttt{manually\_edited\_fields} was non-empty.
+        Investigation showed that mybibli used to record every
+        \emph{genre} change in that list, even though no metadata
+        provider in the chain ever returns the genre. Result: every
+        title you had ever re-classified was permanently pinned to
+        the conflict-confirmation flow, and a one-click Re-fetch
+        silently dropped the cover. v1.1.8 stops tracking
+        \texttt{genre\_id} in
+        \texttt{manually\_edited\_fields}, ships a one-shot data
+        migration that strips the spurious entry from existing
+        rows, and \texttt{NULL}s out arrays that become empty so
+        the next Re-fetch on those titles takes the
+        \emph{direct-apply} branch \string— metadata refreshed and
+        cover downloaded silently when Open Library has one.
+        Closes GH issue \#232.
+  \item \textbf{Illustrations.} Chapter~\ref{ch:usage}
+        (\emph{Everyday use}) and Chapter~\ref{ch:bestpractices}
+        (\emph{Best practices}) now carry annotated screenshots
+        taken from a real production install \string— a Home
+        dashboard with the search bar, genre chips, counters and
+        recent additions, and a Locations tree with the
+        household's room~/ bookcase~/ shelf hierarchy. The same
+        images now lead the project README and the website
+        landing page.
+\end{itemize}
+
 \section{What's new in 1.1.7}\label{sec:whats-new-1.1.7}
 
 Version 1.1.7 is a single-fix follow-up to 1.1.6 — same area (the
