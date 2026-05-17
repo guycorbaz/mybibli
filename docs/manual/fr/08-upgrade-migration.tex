@@ -110,6 +110,55 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.1.8}\label{sec:whats-new-1.1.8}
+
+La version 1.1.8 clôt le troisième bug de la saga
+\emph{cover-fallback} (\#225 → \#228 → \#232) et apporte les
+premières illustrations du manuel. Une petite migration de schéma
+accompagne cette release \string— révisez la section sur les
+mises à jour de routine si vous n'avez pas vu de release avec
+migration depuis un moment, mais le changement est purement
+données (pas de diff de schéma cassant).
+
+\begin{itemize}
+  \item \textbf{Le Re-fetch télécharge enfin la couverture des
+        titres dont seul le genre avait été personnalisé.} Les
+        releases précédentes branchaient le repli Open Library
+        Covers à la fois sur le chemin de scan en arrière-plan
+        (1.1.6) et sur le chemin Re-fetch metadata déclenché par
+        l'utilisateur (1.1.7), mais le formulaire renvoyé par
+        Re-fetch cachait toujours la couverture derrière une case
+        à cocher \emph{accept cover} non cochée dès que
+        \texttt{manually\_edited\_fields} n'était pas vide.
+        L'enquête a montré que mybibli enregistrait chaque
+        changement de \emph{genre} dans cette liste, alors
+        qu'aucun fournisseur de métadonnées ne renvoie le genre.
+        Conséquence~: chaque titre que vous aviez déjà reclassé
+        était bloqué de façon permanente sur le flux de
+        confirmation des conflits, et un Re-fetch en un clic
+        laissait silencieusement tomber la couverture. La 1.1.8
+        arrête de suivre \texttt{genre\_id} dans
+        \texttt{manually\_edited\_fields}, embarque une migration
+        de données mono-coup qui retire l'entrée parasite des
+        lignes existantes, et passe à \texttt{NULL} les tableaux
+        qui deviennent vides, de sorte que le prochain Re-fetch
+        sur ces titres prend la branche \emph{direct-apply}
+        \string— métadonnées rafraîchies et couverture
+        téléchargée en silence quand Open Library en a une.
+        Clôt l'issue GitHub \#232.
+  \item \textbf{Illustrations.} Le chapitre~\ref{ch:usage}
+        (\emph{Usage au quotidien}) et le
+        chapitre~\ref{ch:bestpractices} (\emph{Bonnes pratiques})
+        portent désormais des captures d'écran annotées prises
+        sur une installation de production réelle \string— un
+        tableau de bord d'accueil avec le champ de scan, les
+        puces de genres, les compteurs et les ajouts récents, et
+        un arbre Emplacements avec la hiérarchie pièce~/
+        bibliothèque~/ étagère du foyer. Les mêmes images
+        ouvrent maintenant le README du projet et la page
+        d'accueil du site web.
+\end{itemize}
+
 \section{Nouveautés de la 1.1.7}\label{sec:whats-new-1.1.7}
 
 La version 1.1.7 est un suivi mono-correctif de la 1.1.6 \string—
