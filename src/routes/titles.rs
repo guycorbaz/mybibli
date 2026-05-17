@@ -494,15 +494,25 @@ pub struct TitleEditForm {
     pub publication_date: Option<String>,
     #[serde(default)]
     pub dewey_code: Option<String>,
-    #[serde(default)]
+    // The four numeric Option fields below MUST go through
+    // `deserialize_optional_i32` — the templated edit form renders
+    // `<input type="number" name="…" value="">` whenever the title's
+    // current value is NULL, and the browser submits the empty input
+    // as `name=` (present with an empty string). Plain `Option<i32>`
+    // + `#[serde(default)]` would only short-circuit when the field
+    // is absent, so an empty string trips the i32 parser and Axum
+    // surfaces it as HTTP 422 — the symptom users see when they
+    // try to save a title where BnF never returned a page count.
+    // (Fix #238.)
+    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_i32")]
     pub page_count: Option<i32>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_i32")]
     pub track_count: Option<i32>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_i32")]
     pub total_duration: Option<i32>,
     #[serde(default)]
     pub age_rating: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_i32")]
     pub issue_number: Option<i32>,
 }
 
@@ -1333,6 +1343,67 @@ struct MetadataConfirmTemplate {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression guard for fix #238.
+    ///
+    /// `serde-urlencoded` is what Axum's `Form<T>` uses to parse a POST
+    /// body. Without `deserialize_optional_i32` on the four numeric
+    /// Option fields, an empty `<input type="number">` would be sent
+    /// as `page_count=` (present, empty string), trip the i32 parser
+    /// and bubble up as HTTP 422. Each subtest pins one such field
+    /// to ensure the annotation stays in place.
+    #[test]
+    fn title_edit_form_accepts_empty_numeric_fields() {
+        // page_count empty
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&page_count=",
+        )
+        .expect("empty page_count must deserialize as None");
+        assert_eq!(form.page_count, None);
+
+        // track_count empty
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&track_count=",
+        )
+        .expect("empty track_count must deserialize as None");
+        assert_eq!(form.track_count, None);
+
+        // total_duration empty
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&total_duration=",
+        )
+        .expect("empty total_duration must deserialize as None");
+        assert_eq!(form.total_duration, None);
+
+        // issue_number empty
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&issue_number=",
+        )
+        .expect("empty issue_number must deserialize as None");
+        assert_eq!(form.issue_number, None);
+    }
+
+    #[test]
+    fn title_edit_form_parses_valid_numeric_fields() {
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&page_count=235&track_count=12&total_duration=3600&issue_number=42",
+        )
+        .expect("valid numeric fields must deserialize");
+        assert_eq!(form.page_count, Some(235));
+        assert_eq!(form.track_count, Some(12));
+        assert_eq!(form.total_duration, Some(3600));
+        assert_eq!(form.issue_number, Some(42));
+    }
+
+    #[test]
+    fn title_edit_form_rejects_garbage_numeric_fields() {
+        // Empty-string-as-None is the only laxity — actual garbage
+        // must still bubble up as a parse error.
+        let result: Result<TitleEditForm, _> = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&page_count=abc",
+        );
+        assert!(result.is_err(), "non-numeric page_count must error");
+    }
 
     #[test]
     fn test_title_detail_template_renders() {
