@@ -23,6 +23,63 @@ impl std::fmt::Display for CoverError {
 
 impl std::error::Error for CoverError {}
 
+/// Default Open Library Covers API base URL. Overridable via the
+/// `OPEN_LIBRARY_COVERS_BASE_URL` env var (used in tests to point at a
+/// local mock server).
+const OPEN_LIBRARY_COVERS_BASE_URL_DEFAULT: &str = "https://covers.openlibrary.org";
+
+/// Build the Open Library Covers URL for an ISBN. Returns `None` when the
+/// normalized ISBN (ASCII alphanumerics only — dashes and spaces are
+/// stripped) is empty.
+///
+/// The `-L` size yields ~640px wide and downscales cleanly to mybibli's
+/// 400px cover; `?default=false` makes Open Library return a real `404`
+/// when no cover exists instead of a 1×1 placeholder JPEG.
+pub fn openlibrary_cover_url_for_isbn(isbn: &str) -> Option<String> {
+    let normalized: String = isbn.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    if normalized.is_empty() {
+        return None;
+    }
+    let base = std::env::var("OPEN_LIBRARY_COVERS_BASE_URL")
+        .unwrap_or_else(|_| OPEN_LIBRARY_COVERS_BASE_URL_DEFAULT.to_string());
+    Some(format!("{base}/b/isbn/{normalized}-L.jpg?default=false"))
+}
+
+/// Probe the Open Library Covers API to see whether a cover exists for
+/// `isbn`. Returns `Some(url)` on a `2xx` HEAD response, `None` on `4xx` /
+/// `5xx` / network errors / empty ISBN.
+///
+/// Used as a cover-only fallback (fix #225) when the metadata provider
+/// chain resolves a title but the resolving provider didn't supply a
+/// `cover_url` — most commonly BnF (UNIMARC XML never carries image URLs)
+/// or Google Books results without `imageLinks`. The HEAD-first pattern
+/// avoids downloading bytes just to discover absence, keeping the warn-log
+/// surface quiet for the common "no cover anywhere" case.
+pub async fn probe_openlibrary_cover_url(
+    client: &reqwest::Client,
+    isbn: &str,
+) -> Option<String> {
+    let url = openlibrary_cover_url_for_isbn(isbn)?;
+    match client.head(&url).send().await {
+        Ok(r) if r.status().is_success() => {
+            tracing::info!(isbn = %isbn, "Open Library cover fallback: found");
+            Some(url)
+        }
+        Ok(r) => {
+            tracing::debug!(
+                isbn = %isbn,
+                status = %r.status(),
+                "Open Library cover fallback: not found"
+            );
+            None
+        }
+        Err(e) => {
+            tracing::debug!(isbn = %isbn, error = %e, "Open Library cover probe failed");
+            None
+        }
+    }
+}
+
 pub struct CoverService;
 
 impl CoverService {
@@ -199,6 +256,53 @@ mod tests {
         let url2 = "https://example.com/cover.jpg";
         let rewritten2 = url2.replace("http://", "https://");
         assert_eq!(rewritten2, "https://example.com/cover.jpg");
+    }
+
+    #[test]
+    fn openlibrary_cover_url_strips_separators_and_uses_default_base() {
+        // Stash any existing env override so the test is hermetic.
+        let prev = std::env::var("OPEN_LIBRARY_COVERS_BASE_URL").ok();
+        // SAFETY: tests in this crate run in the same process; this env
+        // var is read once per call here and we restore it below.
+        unsafe { std::env::remove_var("OPEN_LIBRARY_COVERS_BASE_URL") };
+
+        let url = openlibrary_cover_url_for_isbn("978-2-8041-5689-3").unwrap();
+        assert_eq!(
+            url,
+            "https://covers.openlibrary.org/b/isbn/9782804156893-L.jpg?default=false"
+        );
+
+        if let Some(v) = prev {
+            unsafe { std::env::set_var("OPEN_LIBRARY_COVERS_BASE_URL", v) };
+        }
+    }
+
+    #[test]
+    fn openlibrary_cover_url_empty_or_punctuation_only_is_none() {
+        assert!(openlibrary_cover_url_for_isbn("").is_none());
+        assert!(openlibrary_cover_url_for_isbn("---").is_none());
+        assert!(openlibrary_cover_url_for_isbn("   ").is_none());
+    }
+
+    #[tokio::test]
+    async fn probe_openlibrary_cover_returns_none_on_network_error() {
+        // 127.0.0.1:1 is a guaranteed-closed port (TCP reserved). The
+        // connection will fail fast and the probe must swallow the error
+        // and return None — never bubble it up to the metadata-fetch task.
+        let prev = std::env::var("OPEN_LIBRARY_COVERS_BASE_URL").ok();
+        unsafe { std::env::set_var("OPEN_LIBRARY_COVERS_BASE_URL", "http://127.0.0.1:1") };
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap();
+        let result = probe_openlibrary_cover_url(&client, "9782804156893").await;
+        assert!(result.is_none());
+
+        match prev {
+            Some(v) => unsafe { std::env::set_var("OPEN_LIBRARY_COVERS_BASE_URL", v) },
+            None => unsafe { std::env::remove_var("OPEN_LIBRARY_COVERS_BASE_URL") },
+        }
     }
 
     #[test]
