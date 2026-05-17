@@ -58,7 +58,7 @@ Wish list as a first-class surface, with a bookstore-friendly print
 flow. Pairs with the per-volume detail polish.
 
 - [#242](https://github.com/guycorbaz/mybibli/issues/242) — Wish list: add books by ISBN or free-form title, browse on mobile, print to PDF for the bookstore, **auto-remove** entries from the wish list when the same ISBN gets cataloged.
-- [#209](https://github.com/guycorbaz/mybibli/issues/209) — Show the per-volume list (V-code + location) at the bottom of `/title/:id`.
+- [#209](https://github.com/guycorbaz/mybibli/issues/209) — Per-volume table on `/title/:id` (between contributors and similar-titles), with inline edit and delete actions — useful when a redundant copy is given away.
 
 ## v1.4.0 — "Open the catalog to your AI"
 
