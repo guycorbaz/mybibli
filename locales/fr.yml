@@ -242,6 +242,10 @@ series:
   missing_volume: "Volume manquant #"
   ongoing: "en cours, dernier connu : #%{position}"
   no_assignments: "Non assigné à aucune série."
+  sort:
+    position: Position
+    dewey_code: Code Dewey
+    title: Titre
   delete_has_titles: "Impossible de supprimer %{name} : %{count} titre(s) assigné(s). Retirez d'abord toutes les assignations."
   delete_modal_title: "Supprimer la série %{name} ?"
   delete_modal_body: "Les titres associés doivent être détachés ou réaffectés au préalable."

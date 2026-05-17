@@ -340,6 +340,9 @@ pub struct TitleSeriesRow {
     pub is_omnibus: bool,
     pub title_name: String,
     pub media_type: String,
+    /// Fix #235: surfaced so the series-detail page can sort positions
+    /// by Dewey, alongside the existing default sort by position number.
+    pub dewey_code: Option<String>,
 }
 
 /// A series assignment as seen from a title (for title detail page).
@@ -434,7 +437,7 @@ impl TitleSeriesModel {
     ) -> Result<Vec<TitleSeriesRow>, AppError> {
         let rows = sqlx::query(
             "SELECT ts.id, ts.title_id, ts.series_id, ts.position_number, ts.is_omnibus, \
-             t.title AS title_name, t.media_type \
+             t.title AS title_name, t.media_type, t.dewey_code \
              FROM title_series ts \
              JOIN titles t ON ts.title_id = t.id \
              WHERE ts.series_id = ? AND ts.deleted_at IS NULL AND t.deleted_at IS NULL \
@@ -454,6 +457,7 @@ impl TitleSeriesModel {
                     is_omnibus: r.try_get("is_omnibus")?,
                     title_name: r.try_get("title_name")?,
                     media_type: r.try_get("media_type")?,
+                    dewey_code: r.try_get("dewey_code")?,
                 })
             })
             .collect::<Result<Vec<_>, sqlx::Error>>()

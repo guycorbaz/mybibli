@@ -9,6 +9,10 @@ pub struct SeriesPositionInfo {
     pub title_id: Option<u64>,
     pub title_name: Option<String>,
     pub is_omnibus: bool,
+    /// Fix #235: the assigned title's Dewey code (when set), or `None`
+    /// for unassigned grid gaps. Used by `sort_positions` to support
+    /// `?sort=dewey_code` on the series-detail page.
+    pub dewey_code: Option<String>,
 }
 
 pub struct SeriesService;
@@ -256,6 +260,7 @@ impl SeriesService {
                     title_id: Some(a.title_id),
                     title_name: Some(a.title_name),
                     is_omnibus: a.is_omnibus,
+                    dewey_code: a.dewey_code,
                 })
                 .collect());
         }
@@ -279,14 +284,253 @@ fn build_position_grid(
             title_id: assignment.map(|a| a.title_id),
             title_name: assignment.map(|a| a.title_name.clone()),
             is_omnibus: assignment.is_some_and(|a| a.is_omnibus),
+            dewey_code: assignment.and_then(|a| a.dewey_code.clone()),
         });
     }
     Ok(positions)
 }
 
+/// Sort keys accepted by `sort_positions` (fix #235). The default is
+/// `Position`, which is the natural order the grid was built in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeriesSortKey {
+    Position,
+    DeweyCode,
+    Title,
+}
+
+impl SeriesSortKey {
+    /// Parse a sort key from the `?sort=` query param. Unknown / missing
+    /// values fall back to `Position` — keep this `match` and the values
+    /// in sync with the dropdown in `templates/pages/series_detail.html`.
+    pub fn from_param(s: Option<&str>) -> Self {
+        match s {
+            Some("dewey_code") => Self::DeweyCode,
+            Some("title") => Self::Title,
+            _ => Self::Position,
+        }
+    }
+
+    /// Stable identifier used in URLs and templates.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Position => "position",
+            Self::DeweyCode => "dewey_code",
+            Self::Title => "title",
+        }
+    }
+}
+
+/// Direction accepted by `sort_positions`. `Asc` is the project-wide
+/// default and matches the direction handling on the location pages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortDir {
+    Asc,
+    Desc,
+}
+
+impl SortDir {
+    pub fn from_param(s: Option<&str>) -> Self {
+        match s {
+            Some("desc") => Self::Desc,
+            _ => Self::Asc,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Asc => "asc",
+            Self::Desc => "desc",
+        }
+    }
+}
+
+/// Sort an existing position list in place by the chosen key and
+/// direction (fix #235).
+///
+/// Contract:
+/// - **Position**: the input order is preserved (the grid is already
+///   built in position order). `Desc` reverses.
+/// - **DeweyCode**: assigned titles WITH a Dewey code come first
+///   (ascending or descending lexicographic on the code string),
+///   then assigned titles WITHOUT a code, then gaps. The trailing
+///   buckets keep their original position-order so a user looking at
+///   "everything without Dewey" still reads naturally.
+/// - **Title**: assigned titles in alphabetical title order
+///   (case-insensitive), then gaps. Empty / `None` titles sort last
+///   within the assigned bucket; gaps sort last overall.
+///
+/// The function never panics and never re-allocates beyond the in-
+/// place sort. Stable sort is used so the secondary tiebreaker is
+/// always the position order.
+pub fn sort_positions(positions: &mut [SeriesPositionInfo], key: SeriesSortKey, dir: SortDir) {
+    match key {
+        SeriesSortKey::Position => {
+            if dir == SortDir::Desc {
+                positions.reverse();
+            }
+            // Asc: input is already in position order — no-op.
+        }
+        SeriesSortKey::DeweyCode => {
+            positions.sort_by(|a, b| {
+                use std::cmp::Ordering;
+                // Compute a 3-class bucket: 0 = assigned + Dewey set,
+                // 1 = assigned + no Dewey, 2 = gap. Lower buckets sort
+                // first regardless of direction so gaps never lead.
+                let bucket = |p: &SeriesPositionInfo| -> u8 {
+                    match (p.title_id, p.dewey_code.as_deref()) {
+                        (Some(_), Some(code)) if !code.is_empty() => 0,
+                        (Some(_), _) => 1,
+                        (None, _) => 2,
+                    }
+                };
+                match bucket(a).cmp(&bucket(b)) {
+                    Ordering::Equal => {
+                        // Within the same bucket, ordered comparison
+                        // uses the Dewey code (or position for the
+                        // no-Dewey buckets, by stable-sort fallthrough).
+                        let cmp = a
+                            .dewey_code
+                            .as_deref()
+                            .cmp(&b.dewey_code.as_deref());
+                        if dir == SortDir::Desc {
+                            cmp.reverse()
+                        } else {
+                            cmp
+                        }
+                    }
+                    other => other,
+                }
+            });
+        }
+        SeriesSortKey::Title => {
+            positions.sort_by(|a, b| {
+                use std::cmp::Ordering;
+                let bucket = |p: &SeriesPositionInfo| -> u8 {
+                    match p.title_id {
+                        Some(_) => 0,
+                        None => 1,
+                    }
+                };
+                match bucket(a).cmp(&bucket(b)) {
+                    Ordering::Equal => {
+                        let an = a
+                            .title_name
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_lowercase();
+                        let bn = b
+                            .title_name
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_lowercase();
+                        let cmp = an.cmp(&bn);
+                        if dir == SortDir::Desc {
+                            cmp.reverse()
+                        } else {
+                            cmp
+                        }
+                    }
+                    other => other,
+                }
+            });
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pos(position: i32, title_id: Option<u64>, name: Option<&str>, dewey: Option<&str>) -> SeriesPositionInfo {
+        SeriesPositionInfo {
+            position,
+            title_id,
+            title_name: name.map(String::from),
+            is_omnibus: false,
+            dewey_code: dewey.map(String::from),
+        }
+    }
+
+    #[test]
+    fn series_sort_key_from_param_defaults_to_position() {
+        assert_eq!(SeriesSortKey::from_param(None), SeriesSortKey::Position);
+        assert_eq!(
+            SeriesSortKey::from_param(Some("garbage")),
+            SeriesSortKey::Position
+        );
+        assert_eq!(
+            SeriesSortKey::from_param(Some("dewey_code")),
+            SeriesSortKey::DeweyCode
+        );
+        assert_eq!(SeriesSortKey::from_param(Some("title")), SeriesSortKey::Title);
+    }
+
+    #[test]
+    fn sort_positions_position_asc_is_noop() {
+        let mut v = vec![pos(1, Some(1), Some("A"), None), pos(2, Some(2), Some("B"), None)];
+        sort_positions(&mut v, SeriesSortKey::Position, SortDir::Asc);
+        assert_eq!(v[0].position, 1);
+        assert_eq!(v[1].position, 2);
+    }
+
+    #[test]
+    fn sort_positions_position_desc_reverses() {
+        let mut v = vec![pos(1, Some(1), Some("A"), None), pos(2, Some(2), Some("B"), None)];
+        sort_positions(&mut v, SeriesSortKey::Position, SortDir::Desc);
+        assert_eq!(v[0].position, 2);
+        assert_eq!(v[1].position, 1);
+    }
+
+    #[test]
+    fn sort_positions_dewey_groups_buckets() {
+        // Bucket 0: assigned + dewey set
+        // Bucket 1: assigned + no dewey
+        // Bucket 2: gap
+        let mut v = vec![
+            pos(1, None, None, None),                       // gap
+            pos(2, Some(2), Some("B"), Some("700")),         // dewey
+            pos(3, Some(3), Some("C"), None),                // no-dewey
+            pos(4, Some(4), Some("D"), Some("500")),         // dewey
+        ];
+        sort_positions(&mut v, SeriesSortKey::DeweyCode, SortDir::Asc);
+        // Bucket 0 first: 500 then 700
+        assert_eq!(v[0].dewey_code.as_deref(), Some("500"));
+        assert_eq!(v[1].dewey_code.as_deref(), Some("700"));
+        // Bucket 1 next: no dewey, assigned
+        assert!(v[2].title_id.is_some() && v[2].dewey_code.is_none());
+        // Bucket 2 last: gap
+        assert!(v[3].title_id.is_none());
+    }
+
+    #[test]
+    fn sort_positions_dewey_desc_within_bucket_only() {
+        // Even in desc, gaps stay at the end — only within-bucket order
+        // flips. This pins the "buckets are sort-direction-invariant"
+        // half of the contract documented on `sort_positions`.
+        let mut v = vec![
+            pos(1, None, None, None),
+            pos(2, Some(2), Some("B"), Some("700")),
+            pos(3, Some(3), Some("C"), Some("500")),
+        ];
+        sort_positions(&mut v, SeriesSortKey::DeweyCode, SortDir::Desc);
+        assert_eq!(v[0].dewey_code.as_deref(), Some("700"));
+        assert_eq!(v[1].dewey_code.as_deref(), Some("500"));
+        assert!(v[2].title_id.is_none(), "gap must stay last in desc too");
+    }
+
+    #[test]
+    fn sort_positions_title_case_insensitive() {
+        let mut v = vec![
+            pos(1, Some(1), Some("banana"), None),
+            pos(2, Some(2), Some("Apple"), None),
+            pos(3, None, None, None),
+        ];
+        sort_positions(&mut v, SeriesSortKey::Title, SortDir::Asc);
+        assert_eq!(v[0].title_name.as_deref(), Some("Apple"));
+        assert_eq!(v[1].title_name.as_deref(), Some("banana"));
+        assert!(v[2].title_id.is_none());
+    }
 
     #[test]
     fn test_empty_name_validation() {
@@ -346,6 +590,7 @@ mod tests {
             is_omnibus: false,
             title_name: name.to_string(),
             media_type: "book".to_string(),
+            dewey_code: None,
         }
     }
 
@@ -358,6 +603,7 @@ mod tests {
             is_omnibus: true,
             title_name: name.to_string(),
             media_type: "book".to_string(),
+            dewey_code: None,
         }
     }
 
