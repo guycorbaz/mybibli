@@ -27,7 +27,7 @@
 > you already deployed an earlier version, wipe the database and
 > reinstall on 1.1.0+ before adding any data.
 
-**Status:** first public release shipped — `v1.0.0`. All nine epics done. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli).
+**Status:** first public release shipped — `v1.0.0`. All nine epics done. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli). See [ROADMAP.md](ROADMAP.md) for what's coming next.
 
 ## What it is
 
