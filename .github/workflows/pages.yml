@@ -6,6 +6,7 @@ on:
     paths:
       - "website/**"
       - "docs/mybibli-logo/**"
+      - "docs/screenshots/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -38,6 +39,15 @@ jobs:
       # — single source maintained in docs/, mirrored at deploy time.
       - name: Mirror logo assets into website/
         run: cp -r docs/mybibli-logo website/logo
+
+      # Mirror the prod-screenshots dir (docs/screenshots/, single
+      # source shared with README) into the deploy-time website/ tree
+      # so the home page's "In the wild" section can reference
+      # `./screenshots/home.png` etc. — same one-source-many-mirrors
+      # pattern as the logo. The `|| true` guards against the
+      # directory not existing if a future commit ever removes it.
+      - name: Mirror screenshots into website/
+        run: cp -r docs/screenshots website/screenshots || true
 
       - uses: actions/upload-pages-artifact@v3
         with:
