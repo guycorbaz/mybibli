@@ -110,6 +110,71 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.2.0}\label{sec:whats-new-1.2.0}
+
+La version 1.2.0 est la première version mineure de l'ère post-v1
+\string— six change-requests regroupées autour d'un même thème~:
+\textbf{voir ce qu'on possède, le retrouver plus vite}. Aucune
+migration de schéma au-delà d'une petite colonne additive utilisée
+par la maintenance admin, aucun breaking change \string—~routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Le code Dewey juste à côté du genre.} La page
+        détail d'un titre affiche désormais le code Dewey
+        comme une puce dans la ligne type-de-média / genre /
+        nombre-de-volumes en haut de page (quand il est défini).
+        L'ancien paragraphe Dewey isolé plus bas a été retiré.
+        Clôt l'issue GitHub \#236.
+  \item \textbf{Tri d'une série par Dewey ou par titre.} La page
+        détail d'une série gagne une rangée de liens de tri
+        au-dessus de la grille de gaps. Trois clés~: \emph{position}
+        (comportement d'origine, gardé en défaut), \emph{code
+        Dewey} (titres assignés avec un Dewey d'abord, puis sans
+        Dewey, puis les gaps \string— les gaps ne passent jamais
+        devant, même en ordre décroissant), et \emph{titre}
+        (alphabétique, insensible à la casse). La page détail
+        d'un emplacement avait déjà la même colonne de tri Dewey
+        depuis Epic 5~; la 1.2.0 achève la symétrie. Clôt
+        l'issue GitHub \#235.
+  \item \textbf{Plier / déplier l'arbre des Emplacements.}
+        Chaque n\oe ud parent dans l'arbre \texttt{/locations}
+        porte désormais un petit basculement \emph{▼ / ▶} devant
+        sa ligne. Un clic masque la sous-arborescence~; l'état
+        plié est conservé dans le localStorage du navigateur,
+        donc la mise en page survit à un rechargement. Utile
+        dès que la hiérarchie dépasse l'écran. Clôt l'issue
+        GitHub \#200.
+  \item \textbf{Filtre «~Sans genre~» en un clic.} La page
+        d'accueil gagne une puce de filtre dédiée à côté des
+        puces par genre. Un clic affiche les titres dont le
+        genre est la valeur par défaut \texttt{Non classé}~:
+        ceux que la chaîne de récupération de métadonnées n'a
+        pas pu classer et que vous n'avez pas reclassés. Clôt
+        l'issue GitHub \#205.
+  \item \textbf{Indicateur de chargement sur «~Appliquer les
+        modifications choisies~».} Le formulaire de
+        confirmation des conflits de métadonnées \string—~celui
+        qui apparaît au re-fetch d'un titre avec des champs
+        édités à la main \string—~affiche désormais un spinner
+        dans le bouton \emph{Appliquer} pendant que la requête
+        est en vol. Plus de doute sur le fait que le clic a
+        bien été pris en compte. Clôt l'issue GitHub \#215.
+  \item \textbf{Récupération en lot des couvertures manquantes.}
+        Le panneau \texttt{/admin?tab=health} gagne une section
+        \emph{Maintenance} avec un compteur des titres sans
+        couverture et un bouton \emph{Récupérer les couvertures
+        manquantes}. Un clic lance une tâche d'arrière-plan qui
+        parcourt les titres éligibles (ceux avec au moins un
+        code ISBN / ISSN / UPC, ordonnés du plus ancien au plus
+        récent) et re-déclenche la chaîne complète de récupération
+        de métadonnées sur chacun \string—~y compris le repli
+        Open Library Covers introduit en v1.1.6/1.1.7. Un délai
+        de 500\,ms entre titres garde les fournisseurs heureux~;
+        un verrou unique refuse les clics concurrents avec un
+        message amical. Clôt l'issue GitHub \#214.
+\end{itemize}
+
 \section{Nouveautés de la 1.1.9}\label{sec:whats-new-1.1.9}
 
 La version 1.1.9 est une release mono-correctif au-dessus de la
