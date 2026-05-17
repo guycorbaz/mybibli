@@ -371,27 +371,33 @@ fn metadata_display_html(
     let desc_html = title.description.as_ref()
         .map(|d| format!(r#"<div class="mt-4"><p class="text-stone-700 dark:text-stone-300 text-sm">{}</p></div>"#, html_escape(d)))
         .unwrap_or_default();
-    let dewey_html = title
+    // Fix #236: the Dewey chip now lives inside the media-type / genre
+    // row at the top of the metadata block (right after the genre),
+    // matching the full-page template's layout. The separate
+    // `<p>{label}: {value}</p>` paragraph is gone.
+    let dewey_label = rust_i18n::t!("metadata.field.dewey_code", locale = loc);
+    let dewey_chip_html = title
         .dewey_code
         .as_ref()
         .map(|d| {
             format!(
-                r#"<p class="mt-1 text-xs text-stone-400">{}: {}</p>"#,
-                rust_i18n::t!("metadata.field.dewey_code", locale = loc),
-                html_escape(d)
+                r#"<span title="{label}">{label} {value}</span>"#,
+                label = html_escape(&dewey_label),
+                value = html_escape(d),
             )
         })
         .unwrap_or_default();
 
     format!(
         r#"<h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{title}</h1>
-        {subtitle}{publisher}{isbn}{desc}{dewey}
+        {subtitle}{publisher}{isbn}{desc}
         <div class="mt-4 flex flex-wrap gap-4 text-sm text-stone-600 dark:text-stone-400">
             <span class="inline-flex items-center gap-1">
                 <img src="/static/icons/{media_type}.svg" alt="" class="w-4 h-4" aria-hidden="true">
                 {media_type}
             </span>
             <span>{genre}</span>
+            {dewey_chip}
         </div>
         {buttons}"#,
         title = html_escape(&title.title),
@@ -399,7 +405,7 @@ fn metadata_display_html(
         publisher = publisher_html,
         isbn = isbn_html,
         desc = desc_html,
-        dewey = dewey_html,
+        dewey_chip = dewey_chip_html,
         media_type = html_escape(&title.media_type),
         genre = html_escape(genre_name),
         buttons = edit_buttons,
@@ -1343,6 +1349,101 @@ struct MetadataConfirmTemplate {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Fix #236: Dewey chip rides in the media-type / genre row at the
+    /// top of the title-detail metadata block, NOT in a separate `<p>`
+    /// further down the page. This test pins both halves: the chip is
+    /// present when `dewey_code` is `Some`, and the old standalone
+    /// `<p>{label}: {value}</p>` paragraph is gone.
+    #[test]
+    fn metadata_display_html_renders_dewey_chip_in_row() {
+        let title = TitleModel {
+            id: 1,
+            title: "Le Lotus bleu".to_string(),
+            subtitle: None,
+            description: None,
+            language: "fr".to_string(),
+            media_type: "bd".to_string(),
+            publication_date: None,
+            publisher: None,
+            isbn: None,
+            issn: None,
+            upc: None,
+            cover_image_url: None,
+            genre_id: 1,
+            dewey_code: Some("741.5".to_string()),
+            page_count: None,
+            track_count: None,
+            total_duration: None,
+            age_rating: None,
+            issue_number: None,
+            manually_edited_fields: None,
+            version: 0,
+        };
+        let session = crate::middleware::auth::Session {
+            token: None,
+            user_id: None,
+            role: crate::middleware::auth::Role::Anonymous,
+            csrf_token: String::new(),
+            preferred_language: None,
+        };
+
+        let html = metadata_display_html(&title, "BD", &session, false, "en");
+
+        // The chip itself (label + value), rendered inside a <span>.
+        assert!(
+            html.contains(r#"<span title="Dewey code">Dewey code 741.5</span>"#),
+            "Dewey chip should appear in the metadata row. Got:\n{html}"
+        );
+        // The legacy standalone paragraph must NOT be there anymore.
+        assert!(
+            !html.contains(r#"<p class="mt-1 text-xs text-stone-400">Dewey code: 741.5</p>"#),
+            "Legacy standalone Dewey paragraph should have been removed."
+        );
+    }
+
+    /// When `dewey_code` is `None`, no chip and no leftover spacing
+    /// should leak into the rendered HTML.
+    #[test]
+    fn metadata_display_html_omits_dewey_chip_when_absent() {
+        let title = TitleModel {
+            id: 1,
+            title: "Title".to_string(),
+            subtitle: None,
+            description: None,
+            language: "en".to_string(),
+            media_type: "book".to_string(),
+            publication_date: None,
+            publisher: None,
+            isbn: None,
+            issn: None,
+            upc: None,
+            cover_image_url: None,
+            genre_id: 1,
+            dewey_code: None,
+            page_count: None,
+            track_count: None,
+            total_duration: None,
+            age_rating: None,
+            issue_number: None,
+            manually_edited_fields: None,
+            version: 0,
+        };
+        let session = crate::middleware::auth::Session {
+            token: None,
+            user_id: None,
+            role: crate::middleware::auth::Role::Anonymous,
+            csrf_token: String::new(),
+            preferred_language: None,
+        };
+
+        let html = metadata_display_html(&title, "Fiction", &session, false, "en");
+
+        assert!(
+            !html.contains("Dewey code"),
+            "no Dewey code on title → no Dewey chip / label anywhere"
+        );
+    }
 
     /// Regression guard for fix #238.
     ///

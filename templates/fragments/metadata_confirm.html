@@ -1,7 +1,8 @@
 <div class="space-y-4">
     <h3 class="text-lg font-semibold text-stone-900 dark:text-stone-100">{{ label_confirm_title }}</h3>
 
-    <form hx-post="/title/{{ title_id }}/confirm-metadata" hx-target="#title-metadata" hx-swap="innerHTML">
+    <form hx-post="/title/{{ title_id }}/confirm-metadata" hx-target="#title-metadata" hx-swap="innerHTML"
+          hx-indicator="#apply-changes-spinner">
         <input type="hidden" name="version" value="{{ version }}">
         <!-- Pass new metadata values as hidden fields -->
         <input type="hidden" name="new_title" value="{{ new_title }}">
@@ -72,6 +73,9 @@
             <button type="submit"
                     class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
                 {{ label_apply }}
+                <span id="apply-changes-spinner" class="htmx-indicator ml-1">
+                    <svg class="animate-spin inline h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                </span>
             </button>
         </div>
     </form>

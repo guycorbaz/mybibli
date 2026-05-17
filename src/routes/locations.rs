@@ -301,9 +301,35 @@ fn render_node_at_depth(
     // at L73 + templates/pages/location_detail.html). mutation_controls
     // (edit / delete / add-child buttons, when can_edit) stay OUTSIDE
     // the anchor so they remain individually focusable + clickable.
+    //
+    // Issue #200: rows that have at least one child get a fold/unfold
+    // toggle in front of the row, and the children are wrapped in a
+    // `<div class="tree-children" id="tree-children-{id}">` container
+    // (instead of being rendered as flat siblings). Both pieces work
+    // together: `static/js/locations-tree-toggle.js` hides the container
+    // on click and persists the collapsed-node-id set in localStorage so
+    // the layout survives a reload. Indentation classes still drive the
+    // visual depth, so wrapping doesn't change the look when open.
+    let has_children = !node.children.is_empty();
+    let toggle_html = if has_children {
+        format!(
+            r#"<button type="button" class="tree-toggle p-1 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200" data-tree-target="tree-children-{id}" aria-expanded="true" aria-label="{toggle_lbl}"><span class="tree-toggle-icon" aria-hidden="true">▼</span></button>"#,
+            id = node.location.id,
+            toggle_lbl = crate::utils::html_escape(
+                rust_i18n::t!("location.tree.toggle", locale = loc).as_ref()
+            ),
+        )
+    } else {
+        // Spacer keeps row labels aligned across the column whether or
+        // not a row has children. `w-6` matches the toggle button's
+        // approximate width (icon + padding).
+        r#"<span class="w-6" aria-hidden="true"></span>"#.to_string()
+    };
+
     html.push_str(&format!(
-        r#"<div role="treeitem" class="{indent_class}">
+        r#"<div role="treeitem" class="{indent_class}" data-tree-node-id="{id}">
 <div class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 group">
+{toggle_html}
 <a href="/location/{id}" class="flex items-center gap-2 flex-1 min-w-0 no-underline">
 <span class="text-stone-400" aria-hidden="true">{icon}</span>
 <span class="font-medium text-stone-900 dark:text-stone-100">{name}</span>
@@ -312,24 +338,31 @@ fn render_node_at_depth(
 </a>
 {mutation_controls}
 </div>
-{child_form}
-</div>"#,
+{child_form}"#,
         id = node.location.id,
     ));
 
-    // Render children at deeper indentation
-    for child in &node.children {
-        render_node_at_depth(
-            child,
-            html,
-            node_types,
-            next_lcode,
-            depth + 1,
-            can_edit,
-            loc,
-            csrf_token,
-        );
+    if has_children {
+        html.push_str(&format!(
+            r#"<div class="tree-children" id="tree-children-{id}">"#,
+            id = node.location.id,
+        ));
+        for child in &node.children {
+            render_node_at_depth(
+                child,
+                html,
+                node_types,
+                next_lcode,
+                depth + 1,
+                can_edit,
+                loc,
+                csrf_token,
+            );
+        }
+        html.push_str("</div>");
     }
+
+    html.push_str("</div>");
 }
 
 // ─── Location tree page ──────────────────────────────────────────
@@ -790,6 +823,60 @@ mod tests {
         );
         assert!(html.contains(r#"value="a&quot;b&lt;c&gt;""#));
         assert!(!html.contains(r#"value="a"b<c>""#));
+    }
+
+    /// Fix #200: a parent node carries a `tree-toggle` button + a
+    /// `tree-children-<id>` container around its children. Leaf nodes
+    /// carry no toggle (alignment spacer instead). This pairs with
+    /// `static/js/locations-tree-toggle.js` for the fold/unfold UX.
+    #[test]
+    fn render_tree_html_emits_toggle_and_children_container_for_parents() {
+        let locations = vec![
+            LocationModel {
+                id: 1,
+                parent_id: None,
+                name: "Salon".to_string(),
+                node_type: "room".to_string(),
+                label: "L0001".to_string(),
+            },
+            LocationModel {
+                id: 2,
+                parent_id: Some(1),
+                name: "Étagère".to_string(),
+                node_type: "shelf".to_string(),
+                label: "L0002".to_string(),
+            },
+        ];
+        let tree = build_tree(&locations, &HashMap::new());
+        let html = render_tree_html(
+            &tree,
+            &[(1, "room".to_string())],
+            "L0003",
+            /* can_edit */ false,
+            "en",
+            "tok",
+        );
+
+        // Parent (id=1) has children → expect a toggle wired to the
+        // children container, and the container itself with the matching id.
+        assert!(
+            html.contains(r#"data-tree-target="tree-children-1""#),
+            "parent's toggle should target its children container"
+        );
+        assert!(
+            html.contains(r#"id="tree-children-1""#),
+            "parent should wrap its children in a tree-children container"
+        );
+
+        // The leaf (id=2) has no children → no toggle button, no container.
+        assert!(
+            !html.contains(r#"data-tree-target="tree-children-2""#),
+            "leaf node should not emit a toggle"
+        );
+        assert!(
+            !html.contains(r#"id="tree-children-2""#),
+            "leaf node should not emit a children container"
+        );
     }
 
     #[test]

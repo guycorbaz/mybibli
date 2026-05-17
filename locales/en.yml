@@ -354,6 +354,8 @@ location:
   invalid_node_type: "Invalid location type."
   volumes_count: "%{count} volumes"
   breadcrumb_label: Location path
+  tree:
+    toggle: Toggle subtree
   contents_title: Shelf contents
   empty_volumes: "No volumes at this location."
   col_title: Title
