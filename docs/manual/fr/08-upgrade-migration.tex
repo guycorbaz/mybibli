@@ -110,6 +110,38 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.1.7}\label{sec:whats-new-1.1.7}
+
+La version 1.1.7 est un suivi mono-correctif de la 1.1.6 \string—
+même surface (le repli Open Library Covers introduit pour
+l'issue \#225), code path différent. Aucune migration de schéma,
+aucun breaking change \string— routine \texttt{docker compose
+pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Re-fetch metadata applique enfin le repli
+        couverture.} La 1.1.6 avait branché le repli Open Library
+        Covers dans le code path \emph{background} de
+        récupération de métadonnées (déclenché au scan d'un
+        nouvel ISBN) mais avait raté le bouton \emph{Re-fetch
+        metadata} de la page détail d'un titre. Bug symétrique~:
+        les titres FR résolus par la BnF restaient sans
+        couverture sur re-fetch alors qu'Open Library en avait
+        peut-être une indexée par ISBN. La 1.1.7 extrait un
+        helper unique
+        (\texttt{CoverService::resolve\_cover\_url\_with\_fallback})
+        utilisé par tous les chemins qui téléchargent une
+        couverture pour un résultat de métadonnées résolu
+        \string— scan background, application directe sur
+        re-fetch (sans édition manuelle), et la case
+        \emph{accept cover} du formulaire de confirmation
+        de conflits. Pour récupérer un titre laissé sans
+        couverture, ré-ouvrir sa page détail et cliquer
+        \emph{Re-fetch metadata}~; la couverture arrive
+        désormais dans la même requête quand Open Library
+        la possède. Clôt l'issue GitHub \#228.
+\end{itemize}
+
 \section{Nouveautés de la 1.1.6}\label{sec:whats-new-1.1.6}
 
 La version 1.1.6 est une release mono-correctif au-dessus de la

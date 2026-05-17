@@ -104,6 +104,34 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.1.7}\label{sec:whats-new-1.1.7}
+
+Version 1.1.7 is a single-fix follow-up to 1.1.6 — same area (the
+Open Library Covers fallback introduced for issue \#225), different
+code path. No schema migrations, no breaking changes \string—
+routine \texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Re-fetch metadata now applies the cover fallback.}
+        v1.1.6 wired the Open Library Covers fallback into the
+        \emph{background} metadata-fetch path that fires on a fresh
+        ISBN scan, but missed the user-triggered \emph{Re-fetch
+        metadata} button on a title's detail page. Symmetric bug:
+        FR titles resolved by BnF still landed cover-less on
+        re-fetch even though Open Library may have had the cover
+        indexed by ISBN. v1.1.7 extracts a single helper
+        (\texttt{CoverService::resolve\_cover\_url\_with\_fallback})
+        used by every code path that downloads a cover for a
+        resolved metadata result \string— background scan,
+        direct-apply re-fetch (no manual edits), and the
+        conflict-confirmation form's \emph{accept cover}
+        checkbox. To recover a previously cover-less title,
+        re-open its detail page and click
+        \emph{Re-fetch metadata}; the cover now arrives in the
+        same request when Open Library has it. Closes GH issue
+        \#228.
+\end{itemize}
+
 \section{What's new in 1.1.6}\label{sec:whats-new-1.1.6}
 
 Version 1.1.6 is a single-fix release on top of 1.1.5. No schema
