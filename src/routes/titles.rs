@@ -19,7 +19,7 @@ use crate::models::series::{SeriesModel, TitleSeriesAssignment};
 use crate::models::title::{SimilarTitle, TitleModel, detect_edited_fields};
 use crate::models::volume::VolumeModel;
 use crate::routes::catalog::feedback_html_pub;
-use crate::services::cover::CoverService;
+use crate::services::cover::{CoverService, resolve_cover_url_with_fallback};
 use crate::services::series::SeriesService;
 use crate::services::title::{FieldConflict, TitleService};
 use crate::utils::{current_url, html_escape};
@@ -719,11 +719,24 @@ pub async fn redownload_metadata(
         }
     };
 
+    // Resolve cover URL with the Open Library fallback (fix #228) once, before
+    // either branch consumes it. Both the direct-apply path and the conflict-
+    // confirmation form share the same resolved URL.
+    let resolved_cover_url =
+        resolve_cover_url_with_fallback(&state.http_client, &metadata, &code, &code_type).await;
+
     let manually_edited = title.parsed_manually_edited_fields();
 
     if manually_edited.is_empty() {
         // No manual edits — apply all metadata directly
-        let updated = apply_metadata_to_title(pool, &state, &title, &metadata).await?;
+        let updated = apply_metadata_to_title(
+            pool,
+            &state,
+            &title,
+            &metadata,
+            resolved_cover_url.as_deref(),
+        )
+        .await?;
         let genre_name = GenreModel::find_name_by_id(pool, updated.genre_id).await?;
         let has_code = true;
         let mut html = metadata_display_html(&updated, &genre_name, &session, has_code, loc);
@@ -785,7 +798,7 @@ pub async fn redownload_metadata(
         new_age_rating: metadata.age_rating.clone().unwrap_or_default(),
         new_issue_number: metadata.issue_number.clone().unwrap_or_default(),
         new_dewey_code: metadata.dewey_code.clone().unwrap_or_default(),
-        new_cover_url: metadata.cover_url.clone().unwrap_or_default(),
+        new_cover_url: resolved_cover_url.clone().unwrap_or_default(),
         label_confirm_title: rust_i18n::t!("metadata.confirm_title", locale = loc).to_string(),
         label_current: rust_i18n::t!("metadata.current_value", locale = loc).to_string(),
         label_new: rust_i18n::t!("metadata.new_value", locale = loc).to_string(),
@@ -1188,6 +1201,7 @@ async fn apply_metadata_to_title(
     state: &AppState,
     title: &TitleModel,
     metadata: &MetadataResult,
+    cover_url: Option<&str>,
 ) -> Result<TitleModel, AppError> {
     let pub_date = metadata.publication_date.as_deref().and_then(|s| {
         chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
@@ -1247,8 +1261,10 @@ async fn apply_metadata_to_title(
     )
     .await?;
 
-    // Download cover if available (use updated version for locking)
-    if let Some(cover_url) = &metadata.cover_url {
+    // Download cover if available — caller is responsible for resolving the URL,
+    // which gives the Open Library Covers fallback a single source of truth across
+    // the background-fetch + re-fetch paths (fix #228, extends #225).
+    if let Some(cover_url) = cover_url {
         match CoverService::download_and_resize(
             &state.http_client,
             cover_url,

@@ -9,7 +9,7 @@ use crate::metadata::provider::MetadataResult;
 use crate::metadata::registry::ProviderRegistry;
 use crate::models::media_type::{CodeType, MediaType};
 use crate::models::title::TitleModel;
-use crate::services::cover::{CoverService, probe_openlibrary_cover_url};
+use crate::services::cover::{CoverService, resolve_cover_url_with_fallback};
 
 /// Fetch metadata asynchronously for a title using the provider chain.
 /// This function is meant to be called via `tokio::spawn`.
@@ -51,20 +51,9 @@ pub async fn fetch_metadata_chain(
                 return;
             }
 
-            // Resolve a cover URL: prefer what the resolving provider gave us, but
-            // fall back to the Open Library Covers API by ISBN when the chain
-            // returned no `cover_url` (fix #225 — BnF never carries image URLs in
-            // its UNIMARC payload, and Google Books results without `imageLinks`
-            // would otherwise leave the title cover-less even when Open Library
-            // has one). The fallback is ISBN-only; UPC/ISSN codes aren't indexed
-            // by the Open Library covers service.
-            let cover_url: Option<String> = match metadata.cover_url.clone() {
-                Some(url) => Some(url),
-                None if matches!(code_type, CodeType::Isbn) => {
-                    probe_openlibrary_cover_url(&http_client, &code).await
-                }
-                None => None,
-            };
+            // Resolve cover URL via the shared fallback helper (fix #225 + #228).
+            let cover_url =
+                resolve_cover_url_with_fallback(&http_client, &metadata, &code, &code_type).await;
 
             if let Some(cover_url) = cover_url.as_deref() {
                 match CoverService::download_and_resize(
