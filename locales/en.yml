@@ -82,6 +82,7 @@ home:
   remove_filter_aria: "Remove filter"
   filter:
     uncategorized: "Uncategorized"
+  genre_filter_no_longer_exists: "This genre no longer exists — showing all titles."
 catalog:
   title: Catalog
   scan_placeholder: "Scan or type: ISBN, V-code, L-code, or search..."

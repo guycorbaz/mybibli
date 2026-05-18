@@ -131,6 +131,20 @@
     </div>
     {% endif %}
 
+    {# Fix #112: surfaced when the handler dropped a `?filter=genre:N`
+       that pointed at a soft-deleted (or never-existed) genre. Mirrors
+       the visual treatment of `#metadata-error-count` above — same
+       amber-tinted info strip. role="status" + aria-live="polite" so
+       screen readers announce the change on HTMX swaps. #}
+    {% if stale_genre_filter %}
+    <div id="stale-genre-filter-notice" class="w-full max-w-4xl mt-4" role="status" aria-live="polite">
+        <div class="flex items-center gap-2 px-3 py-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+            <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
+            <span>{{ stale_genre_filter_label }}</span>
+        </div>
+    </div>
+    {% endif %}
+
     {# "What needs attention" indicator section (story 9-4). Top of the
        dashboard — actionable indicators outrank informational stats for
        a librarian. Hidden entirely for anonymous users (handler emits

@@ -84,6 +84,12 @@ pub struct HomeTemplate {
     pub label_no_cover: String,
     pub metadata_error_count: u64,
     pub label_metadata_errors: String,
+    // Fix #112: when a stale `?filter=genre:N` (pointing at a soft-deleted
+    // genre) is silently cleared by the handler, render a localized notice
+    // above #browse-results so the user understands why their filter chip
+    // is gone and they're seeing the full catalog instead of an empty list.
+    pub stale_genre_filter: bool,
+    pub stale_genre_filter_label: String,
     pub browse_list_label: String,
     pub browse_grid_label: String,
     pub browse_mode_label: String,
@@ -173,6 +179,11 @@ pub async fn home(
     HxRequest(is_htmx): HxRequest,
     Query(params): Query<SearchParams>,
 ) -> Result<impl IntoResponse, AppError> {
+    // Fix #112: `params.filter` is shadowed mutable so we can clear a stale
+    // `?filter=genre:N` (genre soft-deleted between page render and click)
+    // before it propagates into the search SQL and into the chip rendering
+    // — without this, the user sees an empty list with no explanation.
+    let mut params = params;
     let loc = locale.0;
     let pool = &state.pool;
     let mut query = params.q.unwrap_or_default();
@@ -212,13 +223,34 @@ pub async fn home(
     // row was soft-deleted) and treat it like an ordinary genre filter
     // downstream. `parse_filter` itself stays pure / non-async / DB-
     // free so existing call sites and tests don't have to move.
+    let mut stale_genre_filter = false;
     let (genre_id, volume_state) = if parsed_indicator.is_some() {
         (None, None)
     } else if params.filter.as_deref() == Some("uncategorized") {
         let default_genre_id = TitleService::find_default_genre_id(pool).await?;
         (Some(default_genre_id), None)
     } else {
-        parse_filter(&params.filter)
+        let (gid, vs) = parse_filter(&params.filter);
+        // Fix #112: validate that the resolved genre id still references an
+        // active (non-soft-deleted) row. Stale URLs (old browser tab, a
+        // ?filter=genre:7 link clicked after admin soft-deleted genre 7)
+        // used to fall straight through to SearchService::search and return
+        // an empty list with no UI explanation. Now we drop the filter,
+        // surface a localized notice above the results, and render the
+        // full catalog instead.
+        if let Some(g) = gid
+            && GenreModel::find_by_id(pool, g).await?.is_none()
+        {
+            tracing::info!(
+                genre_id = g,
+                "stale genre filter — soft-deleted or never existed; clearing"
+            );
+            stale_genre_filter = true;
+            params.filter = None;
+            (None, vs)
+        } else {
+            (gid, vs)
+        }
     };
 
     // Perform search/browse when either a query is typed OR a filter pill is active.
@@ -601,6 +633,12 @@ pub async fn home(
             count = metadata_error_count
         )
         .to_string(),
+        stale_genre_filter,
+        stale_genre_filter_label: rust_i18n::t!(
+            "home.genre_filter_no_longer_exists",
+            locale = loc
+        )
+        .to_string(),
         browse_list_label: rust_i18n::t!("browse.list_view", locale = loc).to_string(),
         browse_grid_label: rust_i18n::t!("browse.grid_view", locale = loc).to_string(),
         browse_mode_label: rust_i18n::t!("browse.display_mode", locale = loc).to_string(),
@@ -904,6 +942,8 @@ pub(crate) mod tests {
             label_no_cover: "No cover available".to_string(),
             metadata_error_count: 0,
             label_metadata_errors: String::new(),
+            stale_genre_filter: false,
+            stale_genre_filter_label: String::new(),
             browse_list_label: "List view".to_string(),
             browse_grid_label: "Grid view".to_string(),
             browse_mode_label: "Display mode".to_string(),
