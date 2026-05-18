@@ -89,7 +89,7 @@ pub async fn loans_page(
     axum::extract::Query(params): axum::extract::Query<LoanListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     // AC #2: preserve `next` so post-login lands back on /loans.
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -169,7 +169,7 @@ pub async fn create_loan(
     HxRequest(is_htmx): HxRequest,
     axum::Form(form): axum::Form<CreateLoanForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -243,7 +243,7 @@ pub async fn return_loan_handler(
     HxRequest(is_htmx): HxRequest,
     Path(loan_id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -271,6 +271,22 @@ pub async fn return_loan_handler(
 }
 
 // ─── Return loan — confirmation modal (story 9-11) ──────
+
+/// Parse `HX-Current-URL` (the document's full URL the modal trigger
+/// came from) and extract a same-origin path-and-query suitable for use
+/// as a post-login `next=` return target. Returns `None` when the URL
+/// can't be parsed or fails the [`crate::error::is_safe_next`] guard
+/// (defends against open-redirect when the header is attacker-controlled).
+fn extract_safe_path(current_url: &str) -> Option<String> {
+    use axum::http::Uri;
+    let uri: Uri = current_url.parse().ok()?;
+    let p = uri.path_and_query()?.as_str().to_string();
+    if crate::error::is_safe_next(&p) {
+        Some(p)
+    } else {
+        None
+    }
+}
 
 /// Closed allowlist of feedback-target IDs the modal is allowed to render
 /// into. Three surfaces today: the `/loans` table feedback area, the
@@ -308,10 +324,20 @@ pub async fn return_modal_handler(
     session: Session,
     Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
+    headers: axum::http::HeaderMap,
     Path(loan_id): Path<u64>,
     Query(query): Query<ReturnModalQuery>,
 ) -> Result<Response, AppError> {
-    session.require_role_with_return(Role::Librarian, "/loans")?;
+    // Fix #133: derive the post-login return path from HX-Current-URL when
+    // available so anonymous users sent through /login bounce back to the
+    // surface they were on (/borrower/:id, /loans, etc.) instead of being
+    // hard-coded to /loans. Falls back to /loans on missing/invalid header.
+    let return_path = headers
+        .get("hx-current-url")
+        .and_then(|v| v.to_str().ok())
+        .and_then(extract_safe_path)
+        .unwrap_or_else(|| "/loans".to_string());
+    session.require_role_with_return(Role::Librarian, &return_path, locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -379,7 +405,7 @@ pub async fn scan_on_loans(
 ) -> Result<impl IntoResponse, AppError> {
     // Strip query string from `next` — no point replaying a failed scan after login,
     // and the user-supplied `?code=` shouldn't be reflected into the login form.
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
     let code = params.code.trim().to_uppercase();
@@ -494,6 +520,45 @@ mod tests {
     #[test]
     fn test_default_page() {
         assert_eq!(default_page(), 1);
+    }
+
+    // ─── #133: extract_safe_path coverage ───────────────
+
+    #[test]
+    fn extract_safe_path_accepts_absolute_url() {
+        assert_eq!(
+            extract_safe_path("http://example.com/borrower/42"),
+            Some("/borrower/42".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_safe_path_preserves_query() {
+        assert_eq!(
+            extract_safe_path("https://example.com/loans?page=2&sort=title"),
+            Some("/loans?page=2&sort=title".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_safe_path_accepts_bare_path() {
+        // HTMX always sends an absolute URL today, but accept a bare path
+        // defensively so we don't regress on clients that emit one.
+        assert_eq!(
+            extract_safe_path("/borrower/7"),
+            Some("/borrower/7".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_safe_path_rejects_protocol_relative() {
+        assert_eq!(extract_safe_path("//evil.example.com/path"), None);
+    }
+
+    #[test]
+    fn extract_safe_path_rejects_unparseable() {
+        assert_eq!(extract_safe_path(""), None);
+        assert_eq!(extract_safe_path("not a url"), None);
     }
 
     #[test]

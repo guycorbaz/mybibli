@@ -76,7 +76,7 @@ pub async fn borrowers_page(
     HxRequest(_is_htmx): HxRequest,
     axum::extract::Query(params): axum::extract::Query<BorrowerListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -151,9 +151,10 @@ pub struct CreateBorrowerForm {
 pub async fn create_borrower(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     axum::Form(form): axum::Form<CreateBorrowerForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
 
     let borrower =
@@ -216,7 +217,7 @@ pub async fn borrower_detail(
     HxRequest(_is_htmx): HxRequest,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -322,7 +323,7 @@ pub async fn edit_borrower_page(
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 2a: Admin → Librarian.
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -393,11 +394,12 @@ pub struct UpdateBorrowerForm {
 pub async fn update_borrower(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
     axum::Form(form): axum::Form<UpdateBorrowerForm>,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 2a: Admin → Librarian.
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
 
     BorrowerService::update_borrower(
@@ -442,7 +444,7 @@ pub async fn delete_modal(
     // Preserve the borrower-detail return path so an anonymous user who
     // hits this URL directly (or whose session expired) lands back on the
     // borrower page after login, not on /home.
-    session.require_role_with_return(Role::Admin, &format!("/borrower/{id}"))?;
+    session.require_role_with_return(Role::Admin, &format!("/borrower/{id}"), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -503,10 +505,11 @@ pub async fn delete_modal(
 pub async fn delete_borrower(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Admin)?;
+    session.require_role(Role::Admin, locale.0)?;
     let pool = &state.pool;
 
     BorrowerService::delete_borrower(pool, id).await?;
@@ -537,10 +540,11 @@ pub struct BorrowerSearchQuery {
 pub async fn borrower_search(
     session: Session,
     State(state): State<AppState>,
+    Extension(locale): Extension<Locale>,
     uri: axum::http::Uri,
     axum::extract::Query(query): axum::extract::Query<BorrowerSearchQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
 
     let q = query.q.trim();
     if q.len() < 2 || q.len() > 255 {

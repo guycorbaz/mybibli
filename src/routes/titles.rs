@@ -444,7 +444,7 @@ pub async fn title_edit_form(
     OriginalUri(uri): OriginalUri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(crate::middleware::auth::Role::Librarian, uri.path())?;
+    session.require_role_with_return(crate::middleware::auth::Role::Librarian, uri.path(), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -547,7 +547,7 @@ pub async fn update_title(
     Path(id): Path<u64>,
     Form(form): Form<TitleEditForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(crate::middleware::auth::Role::Librarian)?;
+    session.require_role(crate::middleware::auth::Role::Librarian, locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -672,7 +672,7 @@ pub async fn redownload_metadata(
     Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(crate::middleware::auth::Role::Librarian)?;
+    session.require_role(crate::middleware::auth::Role::Librarian, locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -900,7 +900,7 @@ pub async fn confirm_metadata(
     Path(id): Path<u64>,
     Form(form): Form<MetadataConfirmForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(crate::middleware::auth::Role::Librarian)?;
+    session.require_role(crate::middleware::auth::Role::Librarian, locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -1900,10 +1900,11 @@ pub struct AssignToSeriesForm {
 pub async fn assign_to_series(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     Path(title_id): Path<u64>,
     Form(form): Form<AssignToSeriesForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
 
     let is_omnibus = form.omnibus.as_deref() == Some("on");
@@ -1938,10 +1939,11 @@ pub struct UnassignFromSeriesForm {
 pub async fn unassign_omnibus_from_series(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     Path(title_id): Path<u64>,
     Form(form): Form<UnassignFromSeriesForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
 
     SeriesService::unassign_all_from_series(pool, title_id, form.series_id).await?;
@@ -1952,9 +1954,10 @@ pub async fn unassign_omnibus_from_series(
 pub async fn unassign_from_series(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     Path((title_id, assignment_id)): Path<(u64, u64)>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
 
     SeriesService::unassign_title(pool, assignment_id, title_id).await?;

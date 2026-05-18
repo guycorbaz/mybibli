@@ -65,31 +65,36 @@ impl Session {
         }
     }
 
-    pub fn require_role(&self, min_role: Role) -> Result<(), AppError> {
+    /// `loc` is the request locale (one of `"en"` / `"fr"`, pulled from
+    /// `Extension(Locale)` at the handler) and is carried in
+    /// `AppError::Forbidden` so the 403 body renders in the user's language
+    /// — see issue #219.
+    pub fn require_role(&self, min_role: Role, loc: &'static str) -> Result<(), AppError> {
         if self.role >= min_role {
             Ok(())
         } else if self.role == Role::Anonymous {
             Err(AppError::Unauthorized)
         } else {
-            Err(AppError::Forbidden)
+            Err(AppError::Forbidden(loc))
         }
     }
 
     /// Like `require_role`, but for GET handlers — if the user is Anonymous, the error
     /// preserves `return_path` so `/login` can bounce them back after sign-in.
     /// Authenticated-but-insufficient still produces `Forbidden` (no point returning to
-    /// a page the user can't access anyway).
+    /// a page the user can't access anyway). `loc` is the request locale — see #219.
     pub fn require_role_with_return(
         &self,
         min_role: Role,
         return_path: &str,
+        loc: &'static str,
     ) -> Result<(), AppError> {
         if self.role >= min_role {
             Ok(())
         } else if self.role == Role::Anonymous {
             Err(AppError::UnauthorizedWithReturn(return_path.to_string()))
         } else {
-            Err(AppError::Forbidden)
+            Err(AppError::Forbidden(loc))
         }
     }
 }
@@ -410,13 +415,13 @@ mod tests {
             csrf_token: String::new(),
             preferred_language: None,
         };
-        assert!(session.require_role(Role::Librarian).is_ok());
+        assert!(session.require_role(Role::Librarian, "fr").is_ok());
     }
 
     #[test]
     fn test_require_role_anonymous_returns_unauthorized() {
         let session = anon();
-        match session.require_role(Role::Librarian) {
+        match session.require_role(Role::Librarian, "fr") {
             Err(AppError::Unauthorized) => {}
             other => panic!("expected Unauthorized, got {other:?}"),
         }
@@ -431,8 +436,8 @@ mod tests {
             csrf_token: String::new(),
             preferred_language: None,
         };
-        match session.require_role(Role::Admin) {
-            Err(AppError::Forbidden) => {}
+        match session.require_role(Role::Admin, "en") {
+            Err(AppError::Forbidden(loc)) => assert_eq!(loc, "en"),
             other => panic!("expected Forbidden, got {other:?}"),
         }
     }
@@ -440,7 +445,7 @@ mod tests {
     #[test]
     fn test_require_role_with_return_anonymous_preserves_path() {
         let session = anon();
-        match session.require_role_with_return(Role::Librarian, "/loans") {
+        match session.require_role_with_return(Role::Librarian, "/loans", "fr") {
             Err(AppError::UnauthorizedWithReturn(next)) => {
                 assert_eq!(next, "/loans");
             }
@@ -457,8 +462,8 @@ mod tests {
             csrf_token: String::new(),
             preferred_language: None,
         };
-        match session.require_role_with_return(Role::Admin, "/admin") {
-            Err(AppError::Forbidden) => {}
+        match session.require_role_with_return(Role::Admin, "/admin", "fr") {
+            Err(AppError::Forbidden(loc)) => assert_eq!(loc, "fr"),
             other => panic!("expected Forbidden, got {other:?}"),
         }
     }
@@ -482,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_role_gating_matrix_anonymous_vs_librarian_min() {
-        match make_session(Role::Anonymous).require_role(Role::Librarian) {
+        match make_session(Role::Anonymous).require_role(Role::Librarian, "fr") {
             Err(AppError::Unauthorized) => {}
             other => panic!("Anonymous/Librarian expected Unauthorized, got {other:?}"),
         }
@@ -490,7 +495,7 @@ mod tests {
 
     #[test]
     fn test_role_gating_matrix_anonymous_vs_admin_min() {
-        match make_session(Role::Anonymous).require_role(Role::Admin) {
+        match make_session(Role::Anonymous).require_role(Role::Admin, "fr") {
             Err(AppError::Unauthorized) => {}
             other => panic!("Anonymous/Admin expected Unauthorized, got {other:?}"),
         }
@@ -500,15 +505,15 @@ mod tests {
     fn test_role_gating_matrix_librarian_vs_librarian_min() {
         assert!(
             make_session(Role::Librarian)
-                .require_role(Role::Librarian)
+                .require_role(Role::Librarian, "fr")
                 .is_ok()
         );
     }
 
     #[test]
     fn test_role_gating_matrix_librarian_vs_admin_min() {
-        match make_session(Role::Librarian).require_role(Role::Admin) {
-            Err(AppError::Forbidden) => {}
+        match make_session(Role::Librarian).require_role(Role::Admin, "fr") {
+            Err(AppError::Forbidden(_)) => {}
             other => panic!("Librarian/Admin expected Forbidden, got {other:?}"),
         }
     }
@@ -517,14 +522,14 @@ mod tests {
     fn test_role_gating_matrix_admin_vs_librarian_min() {
         assert!(
             make_session(Role::Admin)
-                .require_role(Role::Librarian)
+                .require_role(Role::Librarian, "fr")
                 .is_ok()
         );
     }
 
     #[test]
     fn test_role_gating_matrix_admin_vs_admin_min() {
-        assert!(make_session(Role::Admin).require_role(Role::Admin).is_ok());
+        assert!(make_session(Role::Admin).require_role(Role::Admin, "fr").is_ok());
     }
 
     // ─── Timeout boundary contract (AC 10 / Task 6) ─────────────
@@ -587,7 +592,7 @@ mod tests {
             csrf_token: String::new(),
             preferred_language: None,
         };
-        assert!(session.require_role(Role::Librarian).is_ok());
+        assert!(session.require_role(Role::Librarian, "fr").is_ok());
     }
 
     #[test]

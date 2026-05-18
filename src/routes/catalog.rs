@@ -1,4 +1,5 @@
 use askama::Template;
+use axum::Extension;
 use axum::extract::State;
 use axum::response::{Html, IntoResponse, Redirect};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
@@ -8,6 +9,7 @@ use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
+use crate::middleware::locale::Locale;
 use crate::models::contributor::{ContributorModel, ContributorRoleModel, TitleContributorModel};
 use crate::models::session::SessionModel;
 use crate::models::volume::VolumeModel;
@@ -314,7 +316,7 @@ async fn compute_guide_message(pool: &crate::db::DbPool, session: &Session, loc:
 
 pub async fn catalog_page(
     session: Session,
-    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
+    Extension(locale): Extension<Locale>,
     axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -422,14 +424,14 @@ pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
 
 pub async fn handle_scan(
     session: Session,
-    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
+    Extension(locale): Extension<Locale>,
     axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     HxRequest(is_htmx): HxRequest,
     jar: CookieJar,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<ScanForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let loc = locale.0;
 
     let code = form.code.trim().to_string();
@@ -1119,12 +1121,13 @@ pub struct ScanWithTypeForm {
 
 pub async fn handle_scan_with_type(
     session: Session,
+    Extension(locale): Extension<Locale>,
     HxRequest(_is_htmx): HxRequest,
     jar: CookieJar,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<ScanWithTypeForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
 
     use crate::models::media_type::{CodeType, MediaType};
 
@@ -1279,7 +1282,7 @@ struct TitleFormTemplate {
 
 pub async fn title_form_page(
     session: Session,
-    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
+    Extension(locale): Extension<Locale>,
     axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     HxRequest(is_htmx): HxRequest,
     State(state): State<AppState>,
@@ -1287,7 +1290,7 @@ pub async fn title_form_page(
     // Use the pre-nest original URI for BOTH the role-gate return path and
     // the toggle's `current_url` so the two stay aligned under any future
     // router nesting.
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let loc = locale.0;
 
     let pool = &state.pool;
@@ -1348,12 +1351,12 @@ pub async fn title_form_page(
 
 pub async fn create_title(
     session: Session,
-    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
+    Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<TitleForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let loc = locale.0;
 
     let pool = &state.pool;
@@ -1422,10 +1425,11 @@ struct TypeSpecificFieldsTemplate {
 
 pub async fn type_specific_fields(
     session: Session,
+    Extension(locale): Extension<Locale>,
     uri: axum::http::Uri,
     axum::extract::Path(media_type): axum::extract::Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
 
     let template = TypeSpecificFieldsTemplate {
         show_page_count: matches!(media_type.as_str(), "book" | "bd" | "magazine" | "report"),
@@ -1472,11 +1476,12 @@ pub struct ContributorSearchQuery {
 
 pub async fn contributor_search(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     uri: axum::http::Uri,
     axum::extract::Query(query): axum::extract::Query<ContributorSearchQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
 
     let q = query.q.trim();
     if q.len() < 2 || q.len() > 255 {
@@ -1503,11 +1508,12 @@ pub struct AddContributorForm {
 
 pub async fn add_contributor(
     session: Session,
+    Extension(locale): Extension<Locale>,
     HxRequest(_is_htmx): HxRequest,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<AddContributorForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
 
     let pool = &state.pool;
 
@@ -1583,11 +1589,12 @@ pub struct RemoveContributorForm {
 
 pub async fn remove_contributor(
     session: Session,
+    Extension(locale): Extension<Locale>,
     HxRequest(_is_htmx): HxRequest,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<RemoveContributorForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
 
     let pool = &state.pool;
     ContributorService::remove_from_title(pool, form.junction_id).await?;
@@ -1636,10 +1643,11 @@ pub struct UpdateContributorForm {
 
 pub async fn update_contributor(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<UpdateContributorForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
 
     let pool = &state.pool;
     let bio = form.biography.as_deref();
@@ -1685,11 +1693,12 @@ pub async fn update_contributor(
 /// `feedback_html` on FR54 Conflict.
 pub async fn delete_contributor(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     HxRequest(is_htmx): HxRequest,
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
 
     let pool = &state.pool;
 
@@ -1733,10 +1742,11 @@ struct ContributorFormTemplate {
 
 pub async fn contributor_form_page(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     uri: axum::http::Uri,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
 
     let pool = &state.pool;
 
@@ -1832,10 +1842,11 @@ fn contributor_list_html(contributors: &[TitleContributorModel]) -> String {
 
 pub async fn delete_title(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
 
     let pool = &state.pool;
 
@@ -1854,10 +1865,11 @@ pub async fn delete_title(
 
 pub async fn delete_volume(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
 
     // Guard: block deletion if volume is currently on loan
@@ -1929,7 +1941,7 @@ pub struct VolumeDetailTemplate {
 
 pub async fn volume_detail(
     session: Session,
-    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
+    Extension(locale): Extension<Locale>,
     axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     HxRequest(_is_htmx): HxRequest,
     State(state): State<AppState>,
@@ -2095,12 +2107,12 @@ pub struct VolumeEditTemplate {
 
 pub async fn volume_edit_page(
     session: Session,
-    axum::Extension(locale): axum::Extension<crate::middleware::locale::Locale>,
+    Extension(locale): Extension<Locale>,
     axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -2162,11 +2174,12 @@ pub struct VolumeEditForm {
 
 pub async fn update_volume(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<u64>,
     axum::Form(form): axum::Form<VolumeEditForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
 
     VolumeModel::update_details(
         &state.pool,
@@ -2204,6 +2217,7 @@ pub struct SessionTimeoutOverride {
 
 pub async fn debug_set_session_timeout(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<SessionTimeoutOverride>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -2215,7 +2229,7 @@ pub async fn debug_set_session_timeout(
     if std::env::var("TEST_MODE").as_deref() != Ok("1") {
         return Err(AppError::NotFound("disabled".to_string()));
     }
-    session.require_role(Role::Admin)?;
+    session.require_role(Role::Admin, locale.0)?;
     if form.secs == 0 {
         return Err(AppError::BadRequest("secs must be >= 1".to_string()));
     }

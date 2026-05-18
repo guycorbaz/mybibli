@@ -488,11 +488,12 @@ pub struct CreateLocationForm {
 
 pub async fn create_location(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     axum::Form(form): axum::Form<CreateLocationForm>,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 1a: location creation promoted from Admin → Librarian.
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
 
     let pool = &state.pool;
     let location = LocationService::create_location(
@@ -555,7 +556,7 @@ pub async fn edit_location_page(
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 1a: Admin → Librarian.
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
 
     let pool = &state.pool;
     let loc = locale.0;
@@ -617,12 +618,13 @@ pub struct UpdateLocationForm {
 
 pub async fn update_location(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     Path(id): Path<u64>,
     axum::Form(form): axum::Form<UpdateLocationForm>,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 1a: Admin → Librarian.
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
 
     LocationService::update_location(
         &state.pool,
@@ -645,7 +647,7 @@ pub async fn delete_location(
     State(state): State<AppState>,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Admin)?;
+    session.require_role(Role::Admin, locale.0)?;
     let loc = locale.0;
 
     LocationService::delete_location(&state.pool, id).await?;
@@ -663,11 +665,12 @@ pub async fn delete_location(
 
 pub async fn next_lcode(
     session: Session,
+    Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
 ) -> Result<impl IntoResponse, AppError> {
     // Story 7-1 decision 1a: Admin → Librarian (used by create-location form).
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
 
     let lcode = LocationService::get_next_available_lcode(&state.pool).await?;
     Ok(axum::Json(serde_json::json!({"lcode": lcode})))

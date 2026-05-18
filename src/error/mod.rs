@@ -19,7 +19,9 @@ pub enum AppError {
     /// Use for GET redirects only — pointless for failed mutations.
     UnauthorizedWithReturn(String),
     /// Authenticated user with insufficient role. Returns 403 with a FeedbackEntry body.
-    Forbidden,
+    /// Carries the request locale (one of `"en"` / `"fr"`) so the body is rendered in
+    /// the user's language — issue #219.
+    Forbidden(&'static str),
     Database(sqlx::Error),
 }
 
@@ -32,7 +34,7 @@ impl std::fmt::Display for AppError {
             AppError::Conflict(msg) => write!(f, "Conflict: {msg}"),
             AppError::Unauthorized => write!(f, "Unauthorized"),
             AppError::UnauthorizedWithReturn(next) => write!(f, "Unauthorized (next={next})"),
-            AppError::Forbidden => write!(f, "Forbidden"),
+            AppError::Forbidden(loc) => write!(f, "Forbidden (locale={loc})"),
             AppError::Database(err) => write!(f, "Database error: {err}"),
         }
     }
@@ -110,9 +112,9 @@ impl IntoResponse for AppError {
                 )
                     .into_response();
             }
-            AppError::Forbidden => {
-                let title = rust_i18n::t!("error.forbidden.title").to_string();
-                let body = rust_i18n::t!("error.forbidden.body").to_string();
+            AppError::Forbidden(loc) => {
+                let title = rust_i18n::t!("error.forbidden.title", locale = loc).to_string();
+                let body = rust_i18n::t!("error.forbidden.body", locale = loc).to_string();
                 let html = crate::routes::catalog::feedback_html_pub("error", &title, &body);
                 // polish-1 AC4.e: retarget to `#feedback-list`. The previous
                 // target `#feedback-container` was a latent dead-retarget bug
@@ -174,7 +176,7 @@ impl IntoResponse for AppError {
             ),
             AppError::Unauthorized
             | AppError::UnauthorizedWithReturn(_)
-            | AppError::Forbidden
+            | AppError::Forbidden(_)
             | AppError::Conflict(_) => {
                 unreachable!()
             }
@@ -250,6 +252,34 @@ mod tests {
         let err = AppError::Internal("crash".to_string());
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // ─── #219: Forbidden body honours the carried locale ───────
+
+    #[tokio::test]
+    async fn test_forbidden_body_renders_in_french_locale() {
+        let err = AppError::Forbidden("fr");
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body_bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        let body = String::from_utf8(body_bytes.to_vec()).unwrap();
+        assert!(
+            body.contains("Accès refusé") || body.contains("Action non autorisée"),
+            "FR locale should render French body, got: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_forbidden_body_renders_in_english_locale() {
+        let err = AppError::Forbidden("en");
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body_bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        let body = String::from_utf8(body_bytes.to_vec()).unwrap();
+        assert!(
+            body.contains("Access denied") || body.contains("permission"),
+            "EN locale should render English body, got: {body}"
+        );
     }
 
     #[test]
