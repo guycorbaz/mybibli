@@ -508,7 +508,13 @@ pub async fn home(
             Vec::new()
         }
     };
-    let stats_by_genre = build_stats_by_genre_rows(stats_rows, loc);
+    // Fix #111: pass the FULL active-title count from collection_glance as
+    // the denominator, not the sum of displayed genre rows. If the orphan-
+    // FK state ever materializes (defense-in-depth — story 8-4's guard
+    // currently prevents it), per-row percentages still reflect the true
+    // catalog share. The displayed total may sum to <100% in that case;
+    // the invisible delta is the orphan-genre titles.
+    let stats_by_genre = build_stats_by_genre_rows(stats_rows, loc, glance.titles);
 
     // Choose `_one` vs `_other` for each count. Inline if/else so the macro receives
     // a literal key (matching the project's i18n audit at `src/i18n/audit.rs`),
@@ -759,8 +765,18 @@ fn is_singular(locale: &str, count: i64) -> bool {
 fn build_stats_by_genre_rows(
     rows: Vec<crate::services::dashboard::GenreStat>,
     loc: &str,
+    total_active_titles: i64,
 ) -> Vec<StatsByGenreRow> {
-    let total: i64 = rows.iter().map(|r| r.title_count).sum();
+    // Fix #111: denominator is the full active title count (passed in
+    // from the home handler's `collection_glance.titles`) rather than the
+    // sum of displayed rows. This makes per-row percentages reflect the
+    // TRUE share of the catalog. Orphan-FK titles (story 8-4's guard
+    // currently makes this state unreachable, but defense-in-depth) are
+    // excluded from `stats_by_genre`'s INNER JOIN output — under the old
+    // denominator they would have inflated each displayed row's share;
+    // under the new denominator they correctly subtract from the sum,
+    // which can now be < 100% (intentional, signals the orphan delta).
+    let total: i64 = total_active_titles;
     rows.into_iter()
         .map(|r| {
             let percent = if total > 0 {
@@ -1565,7 +1581,7 @@ pub(crate) mod tests {
     #[test]
     fn build_stats_by_genre_rows_en_singular_for_count_one() {
         let rows = vec![make_genre_stat(1, "Roman", 1)];
-        let out = build_stats_by_genre_rows(rows, "en");
+        let out = build_stats_by_genre_rows(rows, "en", 1);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].count_label, "1 title");
     }
@@ -1575,7 +1591,7 @@ pub(crate) mod tests {
     #[test]
     fn build_stats_by_genre_rows_en_plural_for_count_two() {
         let rows = vec![make_genre_stat(1, "Roman", 2)];
-        let out = build_stats_by_genre_rows(rows, "en");
+        let out = build_stats_by_genre_rows(rows, "en", 2);
         assert_eq!(out[0].count_label, "2 titles");
     }
 
@@ -1587,7 +1603,7 @@ pub(crate) mod tests {
     #[test]
     fn build_stats_by_genre_rows_fr_singular_for_count_zero() {
         let rows = vec![make_genre_stat(1, "Roman", 0)];
-        let out = build_stats_by_genre_rows(rows, "fr");
+        let out = build_stats_by_genre_rows(rows, "fr", 0);
         assert_eq!(out[0].count_label, "0 titre");
     }
 
@@ -1595,7 +1611,7 @@ pub(crate) mod tests {
     #[test]
     fn build_stats_by_genre_rows_fr_singular_for_count_one() {
         let rows = vec![make_genre_stat(1, "Roman", 1)];
-        let out = build_stats_by_genre_rows(rows, "fr");
+        let out = build_stats_by_genre_rows(rows, "fr", 1);
         assert_eq!(out[0].count_label, "1 titre");
     }
 
@@ -1603,11 +1619,11 @@ pub(crate) mod tests {
     #[test]
     fn build_stats_by_genre_rows_fr_plural_for_count_many() {
         let rows = vec![make_genre_stat(1, "Roman", 12)];
-        let out = build_stats_by_genre_rows(rows, "fr");
+        let out = build_stats_by_genre_rows(rows, "fr", 12);
         assert_eq!(out[0].count_label, "12 titres");
     }
 
-    /// Percent computation — three rows with counts 3/2/1 (total 6) must
+    /// Percent computation — three rows with counts 3/2/1, total 6, must
     /// round to 50.0% / 33.3% / 16.7% (1 decimal). Bakes in the AC9
     /// rounding contract end-to-end through the helper.
     #[test]
@@ -1617,7 +1633,7 @@ pub(crate) mod tests {
             make_genre_stat(2, "B", 2),
             make_genre_stat(3, "C", 1),
         ];
-        let out = build_stats_by_genre_rows(rows, "en");
+        let out = build_stats_by_genre_rows(rows, "en", 6);
         assert_eq!(out.len(), 3);
         assert_eq!(out[0].percent_label, "50.0%");
         assert_eq!(out[1].percent_label, "33.3%");
@@ -1637,7 +1653,7 @@ pub(crate) mod tests {
             make_genre_stat(2, "B", 2),
             make_genre_stat(3, "C", 1),
         ];
-        let out = build_stats_by_genre_rows(rows, "fr");
+        let out = build_stats_by_genre_rows(rows, "fr", 6);
         assert_eq!(out[0].percent_label, "50,0\u{00A0}%");
         assert_eq!(out[1].percent_label, "33,3\u{00A0}%");
     }
@@ -1646,8 +1662,37 @@ pub(crate) mod tests {
     /// the helper exists for this scenario; we lock it in.
     #[test]
     fn build_stats_by_genre_rows_empty_input_yields_empty_output() {
-        let out = build_stats_by_genre_rows(vec![], "en");
+        let out = build_stats_by_genre_rows(vec![], "en", 0);
         assert!(out.is_empty());
+    }
+
+    /// Fix #111: when the catalog has orphan-FK active titles (a genre
+    /// has been soft-deleted but titles still reference it), the
+    /// displayed rows' percentages must reflect their share of the FULL
+    /// active catalog — NOT a renormalized share of the visible rows.
+    /// Concrete scenario: 12 titles in Roman, 8 in BD, 5 orphan-FK in a
+    /// soft-deleted genre Z. Total active = 25. Roman should display
+    /// 12/25 = 48.0%, not 12/20 = 60.0%.
+    #[test]
+    fn build_stats_by_genre_rows_111_percent_uses_full_catalog_denominator() {
+        let rows = vec![
+            make_genre_stat(1, "Roman", 12),
+            make_genre_stat(2, "BD", 8),
+        ];
+        let out = build_stats_by_genre_rows(rows, "en", 25);
+        assert_eq!(
+            out[0].percent_label, "48.0%",
+            "Roman must reflect 12/25 (true catalog share), not 12/20"
+        );
+        assert_eq!(
+            out[1].percent_label, "32.0%",
+            "BD must reflect 8/25, not 8/20"
+        );
+        // Sum is 80%, not 100% — the missing 20% is the orphan-FK
+        // delta. This is the intended signal that the catalog has
+        // titles assigned to a soft-deleted genre.
+        assert_eq!(out[0].max, 25);
+        assert_eq!(out[1].max, 25);
     }
 
     /// `aria-label` carries genre name + percent for screen readers
