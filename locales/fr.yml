@@ -204,6 +204,17 @@ title_detail:
   publisher: Éditeur
   published: Publié
   similar_titles: Titres similaires
+  # CR #209: tableau par volume inséré entre les contributeurs et les titres similaires.
+  volumes_section_heading: Volumes de ce titre
+  no_volumes: "Aucun volume pour ce titre pour le moment."
+  add_volume_cta: "Scanner un nouveau volume"
+  col_vcode: Code V
+  col_location: Emplacement
+  col_condition: État
+  col_actions: Actions
+  action_edit: Modifier
+  action_delete: Supprimer
+  field_unset: "—"
 contributor_detail:
   titles: Titres
   biography: Biographie
@@ -336,6 +347,10 @@ volume:
   on_loan_since: "En prêt depuis le %{date}"
   on_loan_to_prefix: "En prêt à "
   on_loan_to_since_suffix: " depuis le %{date}"
+  # CR #209 : modale de confirmation de suppression de volume (tableau par volume sur /title/:id)
+  delete_modal_title: "Supprimer le volume %{label} ?"
+  delete_modal_body: "Cela retire le volume du catalogue. L'action est réversible depuis le panneau Corbeille de l'admin dans les 30 jours."
+  delete_modal_confirm: "Supprimer"
 location:
   tree_title: Emplacements
   add_root: Ajouter un emplacement racine

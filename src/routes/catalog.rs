@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::Extension;
 use axum::extract::State;
-use axum::response::{Html, IntoResponse, Redirect};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use serde::Deserialize;
 
@@ -1868,9 +1868,19 @@ pub async fn delete_volume(
     Extension(locale): Extension<Locale>,
     State(state): State<AppState>,
     axum::extract::Path(id): axum::extract::Path<u64>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Response, AppError> {
     session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
+
+    // CR #209: fetch the volume BEFORE soft-delete so we know the
+    // parent title id for the post-delete HX-Redirect that takes the
+    // user back to /title/:id with the volumes table re-rendered (one
+    // less row, header count decremented). NotFound here also covers
+    // an already-soft-deleted row (find_by_id filters `deleted_at IS
+    // NULL`), which gives a clean 404 instead of a silent no-op.
+    let volume = VolumeModel::find_by_id(pool, id).await?.ok_or_else(|| {
+        AppError::NotFound(rust_i18n::t!("error.not_found", locale = locale.0).to_string())
+    })?;
 
     // Guard: block deletion if volume is currently on loan
     if crate::models::loan::LoanModel::find_active_by_volume(pool, id)
@@ -1878,13 +1888,90 @@ pub async fn delete_volume(
         .is_some()
     {
         let message = rust_i18n::t!("volume.currently_on_loan").to_string();
-        return Ok(Html(feedback_html("warning", &message, "")));
+        return Ok(Html(feedback_html("warning", &message, "")).into_response());
     }
 
     crate::services::soft_delete::SoftDeleteService::soft_delete(pool, "volumes", id).await?;
 
-    let message = rust_i18n::t!("feedback.deleted").to_string();
-    Ok(Html(feedback_html("success", &message, "")))
+    // CR #209: HX-Redirect drives HTMX into a full-page navigation
+    // back to the title-detail page. Simpler than OOB-swapping the
+    // row + header count and consistent with the existing volume-
+    // edit flow that also redirects to /volume/:id on success.
+    Ok((
+        axum::http::StatusCode::OK,
+        [(
+            axum::http::header::HeaderName::from_static("hx-redirect"),
+            format!("/title/{}", volume.title_id),
+        )],
+        String::new(),
+    )
+        .into_response())
+}
+
+// ─── CR #209: volume delete confirmation modal ───────────────────
+
+#[derive(Template)]
+#[template(path = "fragments/volume_delete_modal.html")]
+pub struct VolumeDeleteModalTemplate {
+    pub title: String,
+    pub body_html: String,
+    pub confirm_label: String,
+    pub cancel_label: String,
+    pub action_url: String,
+    pub csrf_token: String,
+}
+
+/// `GET /volume/:id/delete-modal` — returns the UX-DR8 destructive
+/// modal for the per-volume table's Delete button (CR #209). Mirrors
+/// the series-delete-modal pattern (story 9-13). Librarian-gated,
+/// HTMX-only (direct browser nav returns 405).
+pub async fn delete_volume_modal(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    HxRequest(is_htmx): HxRequest,
+    axum::extract::Path(id): axum::extract::Path<u64>,
+) -> Result<Response, AppError> {
+    session.require_role_with_return(
+        Role::Librarian,
+        &format!("/volume/{id}"),
+        locale.0,
+    )?;
+    let pool = &state.pool;
+    let loc = locale.0;
+
+    if !is_htmx {
+        return Ok(axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response());
+    }
+
+    let volume = VolumeModel::find_by_id(pool, id).await?.ok_or_else(|| {
+        AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
+    })?;
+
+    let title = rust_i18n::t!(
+        "volume.delete_modal_title",
+        locale = loc,
+        label = volume.label.as_str()
+    )
+    .to_string();
+    let body_text = rust_i18n::t!("volume.delete_modal_body", locale = loc).to_string();
+    let body_html = format!("<p>{}</p>", crate::utils::html_escape(&body_text));
+
+    let template = VolumeDeleteModalTemplate {
+        title,
+        body_html,
+        confirm_label: rust_i18n::t!("volume.delete_modal_confirm", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("common.cancel", locale = loc).to_string(),
+        action_url: format!("/volume/{}", volume.id),
+        csrf_token: session.csrf_token.clone(),
+    };
+
+    match template.render() {
+        Ok(html) => Ok(Html(html).into_response()),
+        Err(e) => Err(AppError::Internal(format!(
+            "volume delete modal render: {e}"
+        ))),
+    }
 }
 
 // ─── Volume detail & edit ────────────────────────────────────────

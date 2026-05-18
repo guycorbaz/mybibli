@@ -204,6 +204,17 @@ title_detail:
   publisher: Publisher
   published: Published
   similar_titles: Similar titles
+  # CR #209: per-volume table inserted between contributors and similar-titles.
+  volumes_section_heading: Volumes of this title
+  no_volumes: "No volumes for this title yet."
+  add_volume_cta: "Scan a new volume"
+  col_vcode: V-code
+  col_location: Location
+  col_condition: Condition
+  col_actions: Actions
+  action_edit: Edit
+  action_delete: Delete
+  field_unset: "—"
 contributor_detail:
   titles: Titles
   biography: Biography
@@ -336,6 +347,10 @@ volume:
   on_loan_since: "On loan since %{date}"
   on_loan_to_prefix: "On loan to "
   on_loan_to_since_suffix: " since %{date}"
+  # CR #209: volume delete confirmation modal (per-volume table on /title/:id)
+  delete_modal_title: "Delete volume %{label}?"
+  delete_modal_body: "This removes the volume from the catalog. The action is reversible from the admin Trash panel within 30 days."
+  delete_modal_confirm: "Delete"
 location:
   tree_title: Locations
   add_root: Add root location

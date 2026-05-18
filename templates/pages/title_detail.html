@@ -149,6 +149,108 @@
             </div>
         </div>
     </div>
+    {# CR #209: per-volume table — sits between the contributor/series block
+       and the similar-titles strip. Desktop = sortable table; mobile = card
+       stack (dual-surface convention, see CLAUDE.md "Mobile-aware"). #}
+    <section id="title-volumes" aria-labelledby="title-volumes-heading" class="mt-8 max-w-4xl mx-auto px-4 lg:px-8">
+        <h2 id="title-volumes-heading" class="text-lg font-semibold text-stone-800 dark:text-stone-200">
+            {{ label_volumes_heading }} <span class="text-stone-500 dark:text-stone-400">({{ volumes.len() }})</span>
+        </h2>
+
+        {% if volumes.is_empty() %}
+        <div class="mt-3 px-4 py-6 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg text-center text-sm text-stone-600 dark:text-stone-400">
+            <p>{{ label_volumes_empty }}</p>
+            {% if can_edit %}
+            <a href="{{ label_volumes_empty_cta_url }}" class="mt-3 inline-flex items-center px-3 py-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-700 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-900/20">{{ label_volumes_empty_cta }}</a>
+            {% endif %}
+        </div>
+        {% else %}
+        {# Desktop table — hidden below `md` breakpoint. The matching mobile
+           card stack is the next sibling. #}
+        <div class="mt-3 hidden md:block overflow-x-auto rounded-lg border border-stone-200 dark:border-stone-700">
+            <table class="w-full text-sm text-left">
+                <thead class="text-xs text-stone-500 dark:text-stone-400 uppercase bg-stone-50 dark:bg-stone-800/50 border-b border-stone-200 dark:border-stone-700">
+                    <tr>
+                        <th scope="col" class="px-3 py-2">{{ label_col_vcode }}</th>
+                        <th scope="col" class="px-3 py-2">{{ label_col_location }}</th>
+                        <th scope="col" class="px-3 py-2">{{ label_col_condition }}</th>
+                        {% if can_edit %}<th scope="col" class="px-3 py-2 text-right">{{ label_col_actions }}</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in volumes %}
+                    <tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50 last:border-b-0">
+                        <td class="px-3 py-2">
+                            <a href="/volume/{{ v.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-mono tabular-nums">{{ v.label }}</a>
+                        </td>
+                        <td class="px-3 py-2 text-stone-700 dark:text-stone-300">
+                            {% match v.location_name %}
+                            {% when Some with (name) %}
+                                {{ name }}
+                                {% match v.location_label %}{% when Some with (l) %} <span class="ml-1 font-mono text-xs text-stone-400">({{ l }})</span>{% when None %}{% endmatch %}
+                            {% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>
+                            {% endmatch %}
+                        </td>
+                        <td class="px-3 py-2 text-stone-700 dark:text-stone-300">
+                            {% match v.condition_name %}{% when Some with (c) %}{{ c }}{% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
+                        </td>
+                        {% if can_edit %}
+                        <td class="px-3 py-2 text-right whitespace-nowrap">
+                            <a href="/volume/{{ v.id }}/edit"
+                               class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline mr-3">{{ label_action_edit }}</a>
+                            <button type="button"
+                                    hx-get="/volume/{{ v.id }}/delete-modal"
+                                    hx-target="#modal-slot"
+                                    hx-swap="innerHTML"
+                                    class="text-xs text-red-600 dark:text-red-400 hover:underline">{{ label_action_delete }}</button>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {# Mobile card stack — visible below `md` breakpoint. #}
+        <ul class="mt-3 md:hidden space-y-2">
+            {% for v in volumes %}
+            <li class="px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg">
+                <div class="flex items-baseline justify-between gap-2">
+                    <a href="/volume/{{ v.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-mono text-sm tabular-nums">{{ v.label }}</a>
+                    {% if can_edit %}
+                    <div class="text-xs flex gap-3">
+                        <a href="/volume/{{ v.id }}/edit" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ label_action_edit }}</a>
+                        <button type="button"
+                                hx-get="/volume/{{ v.id }}/delete-modal"
+                                hx-target="#modal-slot"
+                                hx-swap="innerHTML"
+                                class="text-red-600 dark:text-red-400 hover:underline">{{ label_action_delete }}</button>
+                    </div>
+                    {% endif %}
+                </div>
+                <dl class="mt-2 text-xs text-stone-600 dark:text-stone-400 space-y-1">
+                    <div class="flex gap-2">
+                        <dt class="font-medium text-stone-500 dark:text-stone-400">{{ label_col_location }}:</dt>
+                        <dd>
+                            {% match v.location_name %}
+                            {% when Some with (name) %}
+                                {{ name }}
+                                {% match v.location_label %}{% when Some with (l) %} <span class="font-mono text-stone-400">({{ l }})</span>{% when None %}{% endmatch %}
+                            {% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>
+                            {% endmatch %}
+                        </dd>
+                    </div>
+                    <div class="flex gap-2">
+                        <dt class="font-medium text-stone-500 dark:text-stone-400">{{ label_col_condition }}:</dt>
+                        <dd>{% match v.condition_name %}{% when Some with (c) %}{{ c }}{% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}</dd>
+                    </div>
+                </dl>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </section>
+
     {% call similar::similar_titles(similar_titles, label_similar_titles, label_no_cover) %}{% endcall %}
     <div id="title-feedback" class="mt-4"></div>
 </div>

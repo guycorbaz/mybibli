@@ -157,7 +157,10 @@ pub fn build_router(state: AppState) -> Router {
             "/contributor/{id}/delete-modal",
             axum::routing::get(contributors::delete_modal),
         )
-        .route("/volume/{id}", axum::routing::get(catalog::volume_detail))
+        .route(
+            "/volume/{id}",
+            axum::routing::get(catalog::volume_detail).delete(catalog::delete_volume),
+        )
         .route(
             "/volume/{id}/edit",
             axum::routing::get(catalog::volume_edit_page),
@@ -165,6 +168,14 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/volume/{id}/update",
             axum::routing::post(catalog::update_volume),
+        )
+        // CR #209: per-volume table delete flow on /title/:id uses
+        // /volume/{id}/delete-modal for the UX-DR8 confirmation
+        // fragment, then DELETE /volume/{id} for the destructive
+        // action (HX-Redirect to /title/:id on success).
+        .route(
+            "/volume/{id}/delete-modal",
+            axum::routing::get(catalog::delete_volume_modal),
         )
         // Series routes
         .route(
