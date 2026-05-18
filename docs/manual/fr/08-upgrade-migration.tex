@@ -110,6 +110,64 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.2.2}\label{sec:whats-new-1.2.2}
+
+La version 1.2.2 est un correctif de trois bugs en
+\emph{defense-in-depth} sur 1.2.1, autour de la sémantique des
+genres soft-deleted. Aucune migration de schéma, aucun breaking
+change \string— routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+Le garde de suppression de la story 8-4 empêche l'état orphan-FK
+par la voie supportée~: on ne peut pas soft-deleter un genre qui
+a encore des titres assignés. Ces fixes durcissent le contrat
+côté lecture pour qu'une migration future, un
+\texttt{UPDATE} SQL manuel ou un retrait du garde n'induise pas
+silencieusement le bibliothécaire en erreur.
+
+\begin{itemize}
+  \item \textbf{Les liens de filtre genre périmés ne renvoient
+        plus de listes vides silencieuses.} Ouvrez la home dans
+        deux onglets, soft-deletez un genre depuis l'onglet
+        admin reference-data, puis cliquez sur la puce filtre
+        de ce genre dans l'autre onglet. Avant~: le SQL
+        catalogue filtrait sur l'id du genre maintenant
+        soft-deleted, la LISTE renvoyait vide, sans explication.
+        Maintenant~: le handler home valide le genre cible du
+        filtre, retire silencieusement la puce s'il pointe sur
+        un genre supprimé, et affiche un bandeau d'information
+        localisé (\emph{Ce genre n'existe plus \string—
+        affichage de tous les titres.}) au-dessus des résultats
+        pour expliquer ce qui s'est passé. Clôt l'issue GitHub
+        \#112.
+  \item \textbf{Les titres orphelins ne disparaissent plus du
+        catalogue.} Les quatre requêtes SQL du catalogue
+        (résultats de recherche, ajouts récents, catalogués
+        récemment) utilisent désormais une jointure externe à
+        gauche sur la table des genres, avec un
+        \texttt{COALESCE} sur le nom du genre. Un titre dont le
+        genre a été soft-deleted (orphan FK) disparaissait
+        silencieusement de toutes les listes du catalogue~; il
+        apparaît maintenant avec un placeholder localisé
+        (\emph{(Genre supprimé)} / \emph{(Deleted genre)}) pour
+        que vous puissiez le retrouver, lui réassigner un vrai
+        genre et passer à autre chose. Clôt l'issue GitHub
+        \#107.
+  \item \textbf{Les pourcentages des statistiques par genre
+        reflètent désormais la vraie part du catalogue.} Le
+        panneau des pourcentages par genre sur la home
+        calculait son dénominateur à partir de la somme des
+        lignes affichées. Avec des titres orphan-FK actifs,
+        cela gonflait le pourcentage de chaque ligne affichée
+        (12 Roman + 8 BD + 5 orphan-Z affichait Roman à 60\%
+        au lieu des 48\% véridiques). Le dénominateur provient
+        désormais du compte total des titres actifs émis par
+        la carte glance. En présence de titres orphan-FK, le
+        total affiché est \(<\)100\%~; l'écart est le delta
+        des orphelins et signale que certains titres pointent
+        sur un genre soft-deleted. Clôt l'issue GitHub \#111.
+\end{itemize}
+
 \section{Nouveautés de la 1.2.1}\label{sec:whats-new-1.2.1}
 
 La version 1.2.1 est un correctif de quatre bugs sur la 1.2.0.

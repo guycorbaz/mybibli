@@ -104,6 +104,57 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.2.2}\label{sec:whats-new-1.2.2}
+
+Version 1.2.2 is a three-fix \emph{defense-in-depth} patch on top of
+1.2.1, focused on the soft-deleted-genre semantics. No schema
+migrations, no breaking changes \string— routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+Story 8-4's deletion guard prevents the orphan-FK state via the
+supported delete path: you can't actually soft-delete a genre that
+still has titles assigned. These fixes harden the read-side contract
+so a future migration, a manual SQL \texttt{UPDATE}, or removal of
+the guard wouldn't silently mislead the librarian.
+
+\begin{itemize}
+  \item \textbf{Stale genre-filter links no longer return empty
+        lists silently.} Open the home page in two browser tabs,
+        soft-delete a genre from the admin reference-data tab in
+        one of them, then click the genre's filter chip in the
+        other. Before: the catalog SQL filtered by the now
+        soft-deleted genre id, the LIST came back empty, and you
+        had no explanation of why your filter showed zero
+        results. Now: the home handler validates the filter's
+        target genre, silently clears the chip if it points at a
+        deleted genre, and surfaces a localized info notice
+        (\emph{This genre no longer exists \string— showing all
+        titles.}) above the results so you understand what
+        happened. Closes GH issue \#112.
+  \item \textbf{Orphan-genre titles no longer disappear from the
+        catalog.} The four catalog SQL queries (search results,
+        recent-additions, recent-cataloged) now use a left
+        outer-join on the genre table with a \texttt{COALESCE}
+        on the genre name. A title whose genre was soft-deleted
+        (orphan FK) used to silently vanish from every catalog
+        listing; it now appears with a localized placeholder
+        (\emph{(Deleted genre)} / \emph{(Genre supprimé)}) so
+        you can find it, re-assign a real genre, and move on.
+        Closes GH issue \#107.
+  \item \textbf{Stats-by-genre percentages now reflect the true
+        catalog share.} The home dashboard's per-genre
+        percentage panel used to compute its denominator from
+        the sum of displayed rows. With orphan-FK active titles,
+        this inflated each displayed row's percentage (12 Roman
+        + 8 BD + 5 orphan-Z would display Roman at 60\% instead
+        of the truthful 48\%). The denominator now comes from
+        the full active-title count emitted by the glance card.
+        When orphan-FK titles exist, the displayed sum is
+        \(<\)100\%; the gap is the orphan delta and signals
+        that some titles point at a soft-deleted genre. Closes
+        GH issue \#111.
+\end{itemize}
+
 \section{What's new in 1.2.1}\label{sec:whats-new-1.2.1}
 
 Version 1.2.1 is a four-fix patch on top of 1.2.0. No schema
