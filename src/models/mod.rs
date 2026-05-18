@@ -15,6 +15,7 @@ pub mod trash;
 pub mod user;
 pub mod volume;
 pub mod volume_state;
+pub mod wishlist;
 
 /// Outcome of inserting a reference-data row (story 8-4). When the unique
 /// `name` constraint collides with a soft-deleted row, the model layer
