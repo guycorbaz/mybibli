@@ -661,7 +661,7 @@ pub async fn delete_series(
         }
         Err(e) => {
             let message = match &e {
-                AppError::NotFound(msg) => msg.clone(),
+                AppError::NotFound(msg) | AppError::Conflict(msg) => msg.clone(),
                 _ => rust_i18n::t!("error.internal", locale = loc).to_string(),
             };
             Ok(Html(feedback_html_pub("error", &message, "")).into_response())

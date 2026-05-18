@@ -464,18 +464,11 @@ async fn delete_series_via_existing_handler_still_works(pool: MySqlPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn delete_series_with_assigned_titles_returns_inline_conflict_feedback(pool: MySqlPool) {
-    // LATENT UX BUG: series delete_series matches only NotFound; Conflict
-    // falls into the catch-all generic copy. Story 9-13 preserves this
-    // server contract; fix is deferred to a future chore PR.
-    //
-    // The title-assignment guard in `SeriesService::delete_series`
-    // returns `AppError::Conflict(series.delete_has_titles)`, but the
-    // route handler at `src/routes/series.rs` matches only `NotFound` and
-    // routes everything else through `error.internal`. The user sees the
-    // generic "internal error" copy instead of the meaningful payload.
-    // When the bug is fixed (likely `Err(AppError::NotFound(msg) |
-    // AppError::Conflict(msg)) => msg.clone()`), this test will fail and
-    // force the fixer to flip the assertion in the same chore PR.
+    // Regression test for #139: series delete_series must surface the
+    // meaningful `series.delete_has_titles` payload (not the generic
+    // `error.internal` copy) when SeriesService::delete_series returns
+    // AppError::Conflict. The original handler matched only NotFound;
+    // 1.2.1 extended the match arm to NotFound | Conflict.
     let id = insert_series(&pool, "Guard Series").await;
     let _title_id = assign_title_to_series(&pool, id).await;
     let lib_cookie = seed_session(&pool, "librarian").await;
@@ -500,17 +493,14 @@ async fn delete_series_with_assigned_titles_returns_inline_conflict_feedback(poo
         "no HX-Redirect on conflict — feedback must land in #series-feedback"
     );
     let html = body_text(resp).await;
-    // LATENT BUG ASSERTION: the rendered copy is the GENERIC error.internal
-    // text, NOT the meaningful series.delete_has_titles payload.
     assert!(
-        html.contains("An internal error occurred")
-            || html.contains("Une erreur interne est survenue"),
-        "inline feedback must carry the GENERIC error.internal copy (latent bug); got: {html}"
+        html.contains("title(s) assigned") || html.contains("titre(s) assigné"),
+        "inline feedback must carry the meaningful series.delete_has_titles payload; got: {html}"
     );
     assert!(
-        !html.contains("title(s) assigned") && !html.contains("titre(s) assigné"),
-        "feedback must NOT carry the meaningful series.delete_has_titles payload \
-         (locks the latent UX bug — when fixed, this assertion flips); got: {html}"
+        !html.contains("An internal error occurred")
+            && !html.contains("Une erreur interne est survenue"),
+        "feedback must NOT carry the generic error.internal copy; got: {html}"
     );
 
     let (deleted_at_count,): (i64,) = sqlx::query_as(

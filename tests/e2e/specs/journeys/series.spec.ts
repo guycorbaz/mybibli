@@ -107,11 +107,8 @@ test.describe("Series CRUD & Listing (Story 5-3)", () => {
     await expect(page.getByText(SERIES_NAME)).not.toBeVisible();
   });
 
-  // Story 9-13 conflict path — locks the inline-feedback path on conflict.
-  // Note: feedback copy is the generic "error.internal" string ("An internal
-  // error occurred" / "Une erreur interne est survenue"), NOT the meaningful
-  // series.delete_has_titles message — that's a latent UX bug preserved by
-  // 9-13 (see story file's reality-check section + the deferred GH issue).
+  // Story 9-13 conflict path — verifies the meaningful series.delete_has_titles
+  // copy is surfaced (not the generic error.internal copy). 1.2.1 fix for #139.
   test("delete series with assigned titles shows block message", async ({
     page,
   }) => {
@@ -165,9 +162,9 @@ test.describe("Series CRUD & Listing (Story 5-3)", () => {
     // Modal closes after the 200 response
     await expect(page.locator("#modal-slot dialog[open]")).not.toBeVisible();
 
-    // #series-feedback contains the GENERIC internal-error copy (latent bug)
+    // #series-feedback contains the meaningful series.delete_has_titles copy
     await expect(page.locator("#series-feedback")).toContainText(
-      /An internal error occurred|Une erreur interne est survenue/i,
+      /title\(s\) assigned|titre\(s\) assigné/i,
     );
 
     // No redirect — the series was NOT deleted; URL stays on /series/:id
