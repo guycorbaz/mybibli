@@ -230,6 +230,55 @@ impl VolumeModel {
         Ok(row.0 as u64)
     }
 
+    /// CR #209 — list active volumes for a title with their resolved
+    /// location + condition for the per-volume table on `/title/:id`.
+    ///
+    /// Soft-delete guards:
+    /// - `volumes.deleted_at IS NULL` (the title's own active volumes)
+    /// - `storage_locations.deleted_at IS NULL` join condition — a
+    ///   volume whose location was soft-deleted still appears in the
+    ///   list, with `location_name`/`location_label` as `None`
+    ///   (orphan-FK rendered as "—" placeholder in the template).
+    /// - `volume_states.deleted_at IS NULL` join condition — same
+    ///   resilience semantics for the condition column.
+    ///
+    /// Sort: V-code (numeric suffix) ASC so the table reads naturally
+    /// (V0001, V0002, V0042, V0143…). `label` is a 5-char string of
+    /// shape `V%04d`, so lexicographic ordering on the column matches
+    /// the numeric intent.
+    pub async fn find_by_title(
+        pool: &DbPool,
+        title_id: u64,
+    ) -> Result<Vec<VolumeWithLocation>, AppError> {
+        let rows = sqlx::query(
+            "SELECT v.id, v.label, v.version, \
+                    sl.name AS location_name, sl.label AS location_label, \
+                    vs.name AS condition_name \
+             FROM volumes v \
+             LEFT JOIN storage_locations sl \
+               ON v.location_id = sl.id AND sl.deleted_at IS NULL \
+             LEFT JOIN volume_states vs \
+               ON v.condition_state_id = vs.id AND vs.deleted_at IS NULL \
+             WHERE v.title_id = ? AND v.deleted_at IS NULL \
+             ORDER BY v.label ASC",
+        )
+        .bind(title_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| VolumeWithLocation {
+                id: r.try_get("id").unwrap_or(0),
+                label: r.try_get("label").unwrap_or_default(),
+                version: r.try_get("version").unwrap_or(0),
+                location_name: r.try_get("location_name").ok(),
+                location_label: r.try_get("location_label").ok(),
+                condition_name: r.try_get("condition_name").ok(),
+            })
+            .collect())
+    }
+
     /// Count of active (non-soft-deleted) volumes across the entire catalog.
     /// Used by `services::dashboard::collection_glance` for the home-page
     /// "Collection at a glance" card and reusable by other dashboard surfaces.
@@ -321,6 +370,24 @@ pub struct UnshelvedVolumeRow {
     pub title: String,
     pub primary_contributor: Option<String>,
     pub media_type: String,
+}
+
+/// CR #209 — one row of the per-volume table rendered on `/title/:id`,
+/// between the contributor block and the similar-titles section. Carries
+/// the V-code label, optional location name/label (NULL if the volume is
+/// unshelved OR its location was soft-deleted), optional condition name
+/// (NULL if no condition state was set OR the condition row was
+/// soft-deleted), the volume id (for the row link → `/volume/:id`), and
+/// the optimistic-locking `version` (used by the destructive-modal
+/// confirmation step).
+#[derive(Debug, Clone)]
+pub struct VolumeWithLocation {
+    pub id: u64,
+    pub label: String,
+    pub version: i32,
+    pub location_name: Option<String>,
+    pub location_label: Option<String>,
+    pub condition_name: Option<String>,
 }
 
 /// A volume with its title metadata, for location contents display.
@@ -574,5 +641,155 @@ mod tests {
     async fn find_id_by_label_returns_none_for_nonexistent(pool: sqlx::MySqlPool) {
         let got = VolumeModel::find_id_by_label(&pool, "V9999").await.unwrap();
         assert_eq!(got, None);
+    }
+
+    // ─── CR #209: VolumeModel::find_by_title coverage ──────
+
+    /// Helper for #209 tests: insert a `storage_locations` row and return its id.
+    async fn seed_location(pool: &sqlx::MySqlPool, name: &str, label: &str) -> u64 {
+        let nt: String = sqlx::query_scalar(
+            "SELECT name FROM location_node_types WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO storage_locations (parent_id, name, label, node_type) VALUES (NULL, ?, ?, ?)")
+            .bind(name)
+            .bind(label)
+            .bind(nt)
+            .execute(pool)
+            .await
+            .unwrap()
+            .last_insert_id()
+    }
+
+    /// Helper for #209 tests: title id from the first volume inserted by
+    /// `seed_volume` — `seed_volume` always creates a fresh title, so the
+    /// most recent one is the latest insert.
+    async fn seed_title_with_volume(
+        pool: &sqlx::MySqlPool,
+        v_label: &str,
+        location_id: Option<u64>,
+    ) -> (u64, u64) {
+        let g: u64 = sqlx::query_scalar(
+            "SELECT id FROM genres WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let s: u64 = sqlx::query_scalar(
+            "SELECT id FROM volume_states WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let title_id = sqlx::query(
+            "INSERT INTO titles (title, isbn, language, media_type, genre_id) \
+             VALUES ('Test #209', NULL, 'fr', 'book', ?)",
+        )
+        .bind(g)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        let vol_id = sqlx::query(
+            "INSERT INTO volumes (label, title_id, condition_state_id, location_id) \
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(v_label)
+        .bind(title_id)
+        .bind(s)
+        .bind(location_id)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        (title_id, vol_id)
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_by_title_returns_active_volumes_in_label_order(pool: sqlx::MySqlPool) {
+        let loc = seed_location(&pool, "Salon", "L0001").await;
+        let (title_id, _) = seed_title_with_volume(&pool, "V0042", Some(loc)).await;
+        // Add a second volume to the same title, with no location.
+        sqlx::query(
+            "INSERT INTO volumes (label, title_id, condition_state_id, location_id) \
+             VALUES ('V0007', ?, NULL, NULL)",
+        )
+        .bind(title_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let got = VolumeModel::find_by_title(&pool, title_id).await.unwrap();
+        assert_eq!(got.len(), 2);
+        // ORDER BY v.label ASC — V0007 before V0042 lexicographically.
+        assert_eq!(got[0].label, "V0007");
+        assert_eq!(got[1].label, "V0042");
+        // V0007 has no location, no condition.
+        assert_eq!(got[0].location_name, None);
+        assert_eq!(got[0].location_label, None);
+        assert_eq!(got[0].condition_name, None);
+        // V0042 has location "Salon" (label L0001) and the default state.
+        assert_eq!(got[1].location_name.as_deref(), Some("Salon"));
+        assert_eq!(got[1].location_label.as_deref(), Some("L0001"));
+        assert!(got[1].condition_name.is_some());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_by_title_returns_empty_for_title_with_no_volumes(pool: sqlx::MySqlPool) {
+        let g: u64 = sqlx::query_scalar(
+            "SELECT id FROM genres WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let title_id = sqlx::query(
+            "INSERT INTO titles (title, isbn, language, media_type, genre_id) \
+             VALUES ('Empty title', NULL, 'fr', 'book', ?)",
+        )
+        .bind(g)
+        .execute(&pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+
+        let got = VolumeModel::find_by_title(&pool, title_id).await.unwrap();
+        assert!(got.is_empty());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_by_title_excludes_soft_deleted_volumes(pool: sqlx::MySqlPool) {
+        let (title_id, vol_id) = seed_title_with_volume(&pool, "V0001", None).await;
+        sqlx::query("UPDATE volumes SET deleted_at = NOW() WHERE id = ?")
+            .bind(vol_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let got = VolumeModel::find_by_title(&pool, title_id).await.unwrap();
+        assert!(
+            got.is_empty(),
+            "soft-deleted volumes MUST NOT appear in find_by_title"
+        );
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_by_title_keeps_volume_when_location_is_soft_deleted(pool: sqlx::MySqlPool) {
+        // Defense-in-depth: a soft-deleted location MUST NOT make its
+        // attached volumes disappear. The volume stays in the result with
+        // location_name / location_label = None (rendered as "—").
+        let loc = seed_location(&pool, "Bureau", "L0002").await;
+        let (title_id, _) = seed_title_with_volume(&pool, "V0099", Some(loc)).await;
+        sqlx::query("UPDATE storage_locations SET deleted_at = NOW() WHERE id = ?")
+            .bind(loc)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let got = VolumeModel::find_by_title(&pool, title_id).await.unwrap();
+        assert_eq!(got.len(), 1, "volume must remain visible");
+        assert_eq!(got[0].location_name, None);
+        assert_eq!(got[0].location_label, None);
     }
 }
