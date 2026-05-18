@@ -89,7 +89,7 @@ pub async fn loans_page(
     axum::extract::Query(params): axum::extract::Query<LoanListQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     // AC #2: preserve `next` so post-login lands back on /loans.
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -169,7 +169,7 @@ pub async fn create_loan(
     HxRequest(is_htmx): HxRequest,
     axum::Form(form): axum::Form<CreateLoanForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -243,7 +243,7 @@ pub async fn return_loan_handler(
     HxRequest(is_htmx): HxRequest,
     Path(loan_id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -337,7 +337,7 @@ pub async fn return_modal_handler(
         .and_then(|v| v.to_str().ok())
         .and_then(extract_safe_path)
         .unwrap_or_else(|| "/loans".to_string());
-    session.require_role_with_return(Role::Librarian, &return_path)?;
+    session.require_role_with_return(Role::Librarian, &return_path, locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -405,7 +405,7 @@ pub async fn scan_on_loans(
 ) -> Result<impl IntoResponse, AppError> {
     // Strip query string from `next` — no point replaying a failed scan after login,
     // and the user-supplied `?code=` shouldn't be reflected into the login form.
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
     let code = params.code.trim().to_uppercase();

@@ -412,7 +412,7 @@ pub async fn admin_page(
         .path_and_query()
         .map(|pq| pq.as_str().to_string())
         .unwrap_or_else(|| "/admin".to_string());
-    session.require_role_with_return(Role::Admin, &return_path)?;
+    session.require_role_with_return(Role::Admin, &return_path, locale.0)?;
 
     let tab = AdminTab::from_query_str(params.tab.as_deref());
     render_admin(&state, &session, locale.0, &uri, is_htmx, tab, None).await
@@ -425,7 +425,7 @@ pub async fn admin_health_panel(
     OriginalUri(uri): OriginalUri,
     HxRequest(is_htmx): HxRequest,
 ) -> Result<Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=health")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=health", locale.0)?;
     render_admin(&state, &session, locale.0, &uri, is_htmx, AdminTab::Health, None).await
 }
 
@@ -440,7 +440,7 @@ pub async fn admin_bulk_cover_refetch(
     session: Session,
     Extension(locale): Extension<Locale>,
 ) -> Result<Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=health")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=health", locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -540,7 +540,7 @@ pub async fn admin_users_panel(
         .path_and_query()
         .map(|pq| pq.as_str().to_string())
         .unwrap_or_else(|| "/admin?tab=users".to_string());
-    session.require_role_with_return(Role::Admin, &return_path)?;
+    session.require_role_with_return(Role::Admin, &return_path, locale.0)?;
 
     let tab = AdminTab::Users;
     let filters = UsersFilters {
@@ -564,7 +564,7 @@ pub async fn admin_users_create_form(
     session: Session,
     Extension(locale): Extension<Locale>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=users", locale.0)?;
     let loc = locale.0;
 
     let form = AdminUsersFormCreate {
@@ -592,7 +592,7 @@ pub async fn admin_users_create(
     Extension(locale): Extension<Locale>,
     Form(form): Form<CreateUserForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=users", locale.0)?;
     let loc = locale.0;
 
     // Validate username (trim whitespace, check not empty)
@@ -648,7 +648,7 @@ pub async fn admin_users_edit_form(
     Extension(locale): Extension<Locale>,
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=users", locale.0)?;
     let loc = locale.0;
 
     // Fetch user
@@ -680,7 +680,7 @@ pub async fn admin_users_row_view(
     Extension(locale): Extension<Locale>,
     axum::extract::Path(id): axum::extract::Path<u64>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=users", locale.0)?;
     let loc = locale.0;
 
     // Fetch user
@@ -715,7 +715,7 @@ pub async fn admin_users_deactivate_modal(
     // Admin-only feature (mirror of the trigger's enclosing template gate).
     // _with_return ensures an anonymous direct-URL hitter lands back on
     // /admin?tab=users after login.
-    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=users", locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -782,7 +782,7 @@ pub async fn admin_users_update(
     axum::extract::Path(id): axum::extract::Path<u64>,
     Form(form): Form<UpdateUserForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=users", locale.0)?;
     let loc = locale.0;
 
     // Validate username (trim whitespace, check not empty)
@@ -882,7 +882,7 @@ pub async fn admin_users_deactivate(
     axum::extract::Path(id): axum::extract::Path<u64>,
     Form(form): Form<DeactivateForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=users", locale.0)?;
     let loc = locale.0;
     let acting_admin_id = session.user_id.ok_or_else(|| {
         AppError::Internal("admin session missing user_id".to_string())
@@ -918,7 +918,7 @@ pub async fn admin_users_reactivate(
     axum::extract::Path(id): axum::extract::Path<u64>,
     Form(form): Form<ReactivateForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=users")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=users", locale.0)?;
     let loc = locale.0;
 
     // Reactivate the user
@@ -961,7 +961,7 @@ pub async fn admin_trash_permanent_delete_confirm(
     axum::extract::Path((table, id)): axum::extract::Path<(String, u64)>,
     Query(params): Query<PermanentDeleteConfirmQuery>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=trash")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=trash", locale.0)?;
     let loc = locale.0;
 
     let version = params
@@ -1054,7 +1054,7 @@ pub async fn admin_trash_permanent_delete(
     Query(filters): Query<TrashQuery>,
     Form(form): Form<PermanentDeleteForm>,
 ) -> Result<Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=trash")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=trash", locale.0)?;
     let loc = locale.0;
 
     // Patch P20: consolidate user_id resolution. The handler is admin-gated
@@ -1189,7 +1189,7 @@ pub async fn admin_trash_panel(
     headers: axum::http::HeaderMap,
     Query(query): Query<TrashQuery>,
 ) -> Result<Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=trash")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=trash", locale.0)?;
 
     // The same /admin/trash URL serves two HTMX swap targets:
     //   * `#admin-shell` — emitted by the admin tab bar when the user
@@ -1859,15 +1859,15 @@ mod tests {
 
     #[test]
     fn test_admin_handler_requires_admin_role_for_librarian() {
-        match make_session(Role::Librarian).require_role_with_return(Role::Admin, "/admin") {
-            Err(AppError::Forbidden) => {}
+        match make_session(Role::Librarian).require_role_with_return(Role::Admin, "/admin", "fr") {
+            Err(AppError::Forbidden(_)) => {}
             other => panic!("librarian on /admin: expected Forbidden, got {other:?}"),
         }
     }
 
     #[test]
     fn test_admin_handler_anonymous_returns_unauthorized_with_return() {
-        match make_session(Role::Anonymous).require_role_with_return(Role::Admin, "/admin") {
+        match make_session(Role::Anonymous).require_role_with_return(Role::Admin, "/admin", "fr") {
             Err(AppError::UnauthorizedWithReturn(next)) => {
                 assert_eq!(next, "/admin");
             }
@@ -1879,7 +1879,7 @@ mod tests {
     fn test_admin_handler_admin_role_passes() {
         assert!(
             make_session(Role::Admin)
-                .require_role_with_return(Role::Admin, "/admin")
+                .require_role_with_return(Role::Admin, "/admin", "fr")
                 .is_ok()
         );
     }

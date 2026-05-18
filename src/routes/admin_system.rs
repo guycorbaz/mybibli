@@ -6,7 +6,7 @@
 //! different settings do not collide.
 //!
 //! The handlers all follow the same shape:
-//!   1. `session.require_role_with_return(Role::Admin, &return_path)?`
+//!   1. `session.require_role_with_return(Role::Admin, &return_path, locale.0)?`
 //!   2. Validate the form fields
 //!   3. UPDATE the row(s) with optimistic-lock check via `save_setting`
 //!   4. Reload the `Arc<RwLock<AppSettings>>` cache via `reload_settings_cache`
@@ -358,7 +358,7 @@ pub async fn admin_system_panel(
         .path_and_query()
         .map(|pq| pq.as_str().to_string())
         .unwrap_or_else(|| "/admin?tab=system".to_string());
-    session.require_role_with_return(Role::Admin, &return_path)?;
+    session.require_role_with_return(Role::Admin, &return_path, locale.0)?;
 
     // Tab click swaps #admin-shell — needs the full shell. There's no
     // panel-only swap on this URL (the three section forms target their
@@ -387,7 +387,7 @@ pub async fn save_loans_settings(
     Extension(locale): Extension<Locale>,
     Form(form): Form<LoansSettingsForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=system")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=system", locale.0)?;
     let loc = locale.0;
     validate_overdue_threshold(form.overdue_threshold_days, loc)?;
     save_setting(
@@ -426,7 +426,7 @@ pub async fn save_provider_keys(
     Extension(locale): Extension<Locale>,
     Form(form): Form<ProviderKeysForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=system")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=system", locale.0)?;
     let loc = locale.0;
 
     let mut tx = state.pool.begin().await?;
@@ -506,7 +506,7 @@ pub async fn save_language_settings(
     Extension(locale): Extension<Locale>,
     Form(form): Form<LanguageSettingsForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=system")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=system", locale.0)?;
     let loc = locale.0;
     validate_default_language(&form.default_language, loc)?;
     save_setting(

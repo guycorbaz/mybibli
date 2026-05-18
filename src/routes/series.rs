@@ -401,7 +401,7 @@ pub async fn create_series_form(
     Extension(locale): Extension<Locale>,
     OriginalUri(uri): OriginalUri,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
 
     let template = form_template_labels(
         &session,
@@ -451,9 +451,10 @@ fn default_series_type() -> String {
 pub async fn create_series(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     axum::Form(form): axum::Form<CreateSeriesForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
 
     let series_type = form
@@ -480,7 +481,7 @@ pub async fn edit_series_form(
     OriginalUri(uri): OriginalUri,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role_with_return(Role::Librarian, uri.path())?;
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -522,10 +523,11 @@ pub struct UpdateSeriesForm {
 pub async fn update_series(
     State(state): State<AppState>,
     session: Session,
+    Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
     axum::Form(form): axum::Form<UpdateSeriesForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
 
     let series_type = form
@@ -579,7 +581,7 @@ pub async fn delete_modal(
     // Preserve the series-detail return path so an anonymous user who
     // hits this URL directly (or whose session expired) lands back on the
     // series page after login, not on /home.
-    session.require_role_with_return(Role::Librarian, &format!("/series/{id}"))?;
+    session.require_role_with_return(Role::Librarian, &format!("/series/{id}"), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 
@@ -639,7 +641,7 @@ pub async fn delete_series(
     HxRequest(is_htmx): HxRequest,
     Path(id): Path<u64>,
 ) -> Result<impl IntoResponse, AppError> {
-    session.require_role(Role::Librarian)?;
+    session.require_role(Role::Librarian, locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 

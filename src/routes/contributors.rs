@@ -165,7 +165,7 @@ pub async fn delete_modal(
     // Preserve the contributor-detail return path so an anonymous user who
     // hits this URL directly (or whose session expired) lands back on the
     // contributor page after login, not on /home.
-    session.require_role_with_return(Role::Librarian, &format!("/contributor/{id}"))?;
+    session.require_role_with_return(Role::Librarian, &format!("/contributor/{id}"), locale.0)?;
     let pool = &state.pool;
     let loc = locale.0;
 

@@ -7,7 +7,7 @@
 //! Lives in its own module because Foundation Rule #12 caps source files
 //! at 2000 lines and `routes/admin.rs` is already at 1500+. Every POST
 //! handler here is automatically CSRF-protected (8-2 middleware) and
-//! every handler's first line is `session.require_role_with_return(Role::Admin, …)?`.
+//! every handler's first line is `session.require_role_with_return(Role::Admin, …, locale.0)?`.
 
 use askama::Template;
 use axum::Extension;
@@ -544,7 +544,7 @@ pub async fn admin_reference_data_panel(
         .path_and_query()
         .map(|pq| pq.as_str().to_string())
         .unwrap_or_else(|| "/admin?tab=reference_data".to_string());
-    session.require_role_with_return(Role::Admin, &return_path)?;
+    session.require_role_with_return(Role::Admin, &return_path, locale.0)?;
 
     // The /admin/reference-data URL is hit by the admin tab bar (HTMX swap
     // into #admin-shell) and direct page navigation. Sub-section forms POST
@@ -578,7 +578,7 @@ pub async fn genres_section(
     session: Session,
     Extension(locale): Extension<Locale>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let entries = build_genre_rows(&state.pool, loc).await?;
     let html = render_genres_list(entries, loc)?;
@@ -591,7 +591,7 @@ pub async fn genres_create(
     Extension(locale): Extension<Locale>,
     Form(form): Form<CreateRefForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let name = validate_name(&form.name, loc)?;
     let outcome = GenreModel::create(&state.pool, &name)
@@ -621,7 +621,7 @@ pub async fn genres_rename(
     Path(id): Path<u64>,
     Form(form): Form<RenameRefForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let name = validate_name(&form.name, loc)?;
     GenreModel::rename(&state.pool, id, form.version, &name)
@@ -652,7 +652,7 @@ pub async fn genres_delete_modal(
     Path(id): Path<u64>,
     Query(q): Query<VersionQuery>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     require_valid_version(q.version, loc)?;
     let row = GenreModel::find_by_id(&state.pool, id)
@@ -676,7 +676,7 @@ pub async fn genres_delete(
     Path(id): Path<u64>,
     Form(form): Form<DeleteRefForm>,
 ) -> Result<axum::response::Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let row = GenreModel::find_by_id(&state.pool, id)
         .await?
@@ -720,7 +720,7 @@ pub async fn volume_states_section(
     session: Session,
     Extension(locale): Extension<Locale>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let entries = build_volume_state_rows(&state.pool, loc).await?;
     let html = render_volume_states_list(entries, &session.csrf_token, loc)?;
@@ -733,7 +733,7 @@ pub async fn volume_states_create(
     Extension(locale): Extension<Locale>,
     Form(form): Form<CreateVolumeStateForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let name = validate_name(&form.name, loc)?;
     let is_loanable = checkbox_to_bool(&form.is_loanable);
@@ -764,7 +764,7 @@ pub async fn volume_states_rename(
     Path(id): Path<u64>,
     Form(form): Form<RenameRefForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let name = validate_name(&form.name, loc)?;
     VolumeStateModel::rename(&state.pool, id, form.version, &name)
@@ -798,7 +798,7 @@ pub async fn volume_states_delete_modal(
     Path(id): Path<u64>,
     Query(q): Query<VersionQuery>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     require_valid_version(q.version, loc)?;
     let row = VolumeStateModel::find_by_id(&state.pool, id)
@@ -822,7 +822,7 @@ pub async fn volume_states_delete(
     Path(id): Path<u64>,
     Form(form): Form<DeleteRefForm>,
 ) -> Result<axum::response::Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let row = VolumeStateModel::find_by_id(&state.pool, id)
         .await?
@@ -861,7 +861,7 @@ pub async fn volume_states_loanable_toggle(
     Path(id): Path<u64>,
     Form(form): Form<LoanableToggleForm>,
 ) -> Result<Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let new_loanable = checkbox_to_bool(&form.is_loanable);
     // Story 8-4 P33 (D2-b): the `force` field on the toggle form is intentionally
@@ -927,7 +927,7 @@ pub async fn volume_states_loanable_confirm(
     Path(id): Path<u64>,
     Form(form): Form<LoanableToggleForm>,
 ) -> Result<Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let new_loanable = checkbox_to_bool(&form.is_loanable);
 
@@ -1018,7 +1018,7 @@ pub async fn volume_states_row_view(
     Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let row = VolumeStateModel::find_by_id(&state.pool, id)
         .await?
@@ -1041,7 +1041,7 @@ pub async fn roles_section(
     session: Session,
     Extension(locale): Extension<Locale>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let entries = build_role_rows(&state.pool, loc).await?;
     let html = render_roles_list(entries, loc)?;
@@ -1054,7 +1054,7 @@ pub async fn roles_create(
     Extension(locale): Extension<Locale>,
     Form(form): Form<CreateRefForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let name = validate_name(&form.name, loc)?;
     let outcome = ContributorRoleModel::create(&state.pool, &name)
@@ -1084,7 +1084,7 @@ pub async fn roles_rename(
     Path(id): Path<u64>,
     Form(form): Form<RenameRefForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let name = validate_name(&form.name, loc)?;
     ContributorRoleModel::rename(&state.pool, id, form.version, &name)
@@ -1115,7 +1115,7 @@ pub async fn roles_delete_modal(
     Path(id): Path<u64>,
     Query(q): Query<VersionQuery>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     require_valid_version(q.version, loc)?;
     let row = ContributorRoleModel::get(&state.pool, id)
@@ -1139,7 +1139,7 @@ pub async fn roles_delete(
     Path(id): Path<u64>,
     Form(form): Form<DeleteRefForm>,
 ) -> Result<axum::response::Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let row = ContributorRoleModel::get(&state.pool, id)
         .await?
@@ -1178,7 +1178,7 @@ pub async fn node_types_section(
     session: Session,
     Extension(locale): Extension<Locale>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let entries = build_node_type_rows(&state.pool, loc).await?;
     let html = render_node_types_list(entries, loc)?;
@@ -1191,7 +1191,7 @@ pub async fn node_types_create(
     Extension(locale): Extension<Locale>,
     Form(form): Form<CreateRefForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let name = validate_name(&form.name, loc)?;
     let outcome = LocationNodeTypeModel::create(&state.pool, &name)
@@ -1221,7 +1221,7 @@ pub async fn node_types_rename(
     Path(id): Path<u64>,
     Form(form): Form<RenameRefForm>,
 ) -> Result<HtmxResponse, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let name = validate_name(&form.name, loc)?;
     // Story 8-4 P3: storage_locations.node_type is VARCHAR(50). Reject
@@ -1294,7 +1294,7 @@ pub async fn node_types_delete_modal(
     Path(id): Path<u64>,
     Query(q): Query<VersionQuery>,
 ) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     require_valid_version(q.version, loc)?;
     let row = LocationNodeTypeModel::find_by_id(&state.pool, id)
@@ -1318,7 +1318,7 @@ pub async fn node_types_delete(
     Path(id): Path<u64>,
     Form(form): Form<DeleteRefForm>,
 ) -> Result<axum::response::Response, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data")?;
+    session.require_role_with_return(Role::Admin, "/admin?tab=reference_data", locale.0)?;
     let loc = locale.0;
     let row = LocationNodeTypeModel::find_by_id(&state.pool, id)
         .await?
