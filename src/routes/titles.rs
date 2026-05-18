@@ -47,6 +47,22 @@ pub struct TitleDetailTemplate {
     pub title: TitleModel,
     pub genre_name: String,
     pub volume_count: u64,
+    // CR #209: per-volume table data + role gate. Rendered as a new
+    // <section> between the contributor block and the similar-titles
+    // section.
+    pub volumes: Vec<crate::models::volume::VolumeWithLocation>,
+    pub can_edit: bool,
+    pub label_volumes_heading: String,
+    pub label_volumes_empty: String,
+    pub label_volumes_empty_cta: String,
+    pub label_volumes_empty_cta_url: String,
+    pub label_col_vcode: String,
+    pub label_col_location: String,
+    pub label_col_condition: String,
+    pub label_col_actions: String,
+    pub label_action_edit: String,
+    pub label_action_delete: String,
+    pub label_placeholder_empty: String,
     pub contributors: Vec<TitleContributorModel>,
     pub label_contributors: String,
     pub label_vol: String,
@@ -86,7 +102,12 @@ pub async fn title_detail(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
-    let volume_count = VolumeModel::count_by_title(pool, title.id).await?;
+    // CR #209: fetch the volumes list once and derive volume_count from
+    // it so the table and the header pill stay consistent. Replaces the
+    // older count_by_title round-trip (the SELECT COUNT was a separate
+    // query; the new shape is one round-trip + .len()).
+    let volumes = VolumeModel::find_by_title(pool, title.id).await?;
+    let volume_count = volumes.len() as u64;
     let contributors = TitleContributorModel::find_by_title(pool, title.id).await?;
     let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
     let has_code = title.isbn.is_some() || title.issn.is_some() || title.upc.is_some();
@@ -128,6 +149,19 @@ pub async fn title_detail(
             title,
             genre_name,
             volume_count,
+            volumes,
+            can_edit: session.role >= crate::middleware::auth::Role::Librarian,
+            label_volumes_heading: rust_i18n::t!("title_detail.volumes_section_heading", locale = loc).to_string(),
+            label_volumes_empty: rust_i18n::t!("title_detail.no_volumes", locale = loc).to_string(),
+            label_volumes_empty_cta: rust_i18n::t!("title_detail.add_volume_cta", locale = loc).to_string(),
+            label_volumes_empty_cta_url: "/catalog".to_string(),
+            label_col_vcode: rust_i18n::t!("title_detail.col_vcode", locale = loc).to_string(),
+            label_col_location: rust_i18n::t!("title_detail.col_location", locale = loc).to_string(),
+            label_col_condition: rust_i18n::t!("title_detail.col_condition", locale = loc).to_string(),
+            label_col_actions: rust_i18n::t!("title_detail.col_actions", locale = loc).to_string(),
+            label_action_edit: rust_i18n::t!("title_detail.action_edit", locale = loc).to_string(),
+            label_action_delete: rust_i18n::t!("title_detail.action_delete", locale = loc).to_string(),
+            label_placeholder_empty: rust_i18n::t!("title_detail.field_unset", locale = loc).to_string(),
             contributors,
             label_contributors: rust_i18n::t!("title_detail.contributors", locale = loc).to_string(),
             label_vol: rust_i18n::t!("title_detail.volumes", locale = loc).to_string(),
@@ -1552,6 +1586,19 @@ mod tests {
             title,
             genre_name: "Roman".to_string(),
             volume_count: 2,
+            volumes: vec![],
+            can_edit: false,
+            label_volumes_heading: "Volumes of this title".to_string(),
+            label_volumes_empty: "No volumes yet.".to_string(),
+            label_volumes_empty_cta: "Scan".to_string(),
+            label_volumes_empty_cta_url: "/catalog".to_string(),
+            label_col_vcode: "V-code".to_string(),
+            label_col_location: "Location".to_string(),
+            label_col_condition: "Condition".to_string(),
+            label_col_actions: "Actions".to_string(),
+            label_action_edit: "Edit".to_string(),
+            label_action_delete: "Delete".to_string(),
+            label_placeholder_empty: "—".to_string(),
             contributors: vec![],
             label_contributors: "Contributors".to_string(),
             label_vol: "Volumes".to_string(),
@@ -1656,6 +1703,19 @@ mod tests {
             title,
             genre_name: "Roman".to_string(),
             volume_count: 1,
+            volumes: vec![],
+            can_edit: false,
+            label_volumes_heading: "Volumes of this title".to_string(),
+            label_volumes_empty: "No volumes yet.".to_string(),
+            label_volumes_empty_cta: "Scan".to_string(),
+            label_volumes_empty_cta_url: "/catalog".to_string(),
+            label_col_vcode: "V-code".to_string(),
+            label_col_location: "Location".to_string(),
+            label_col_condition: "Condition".to_string(),
+            label_col_actions: "Actions".to_string(),
+            label_action_edit: "Edit".to_string(),
+            label_action_delete: "Delete".to_string(),
+            label_placeholder_empty: "—".to_string(),
             contributors: vec![],
             label_contributors: "Contributors".to_string(),
             label_vol: "Volumes".to_string(),

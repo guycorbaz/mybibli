@@ -1,0 +1,21 @@
+{# CR #209 — volume delete confirmation modal, mirrored from the
+   series delete modal (story 9-13 pattern). On success the
+   `delete_volume` handler returns HX-Redirect to /title/{title_id}
+   so the per-volume table re-renders with the updated count;
+   #title-feedback is the inline error target for the on-loan guard
+   and other 4xx responses. CSP-clean. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "delete",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "DELETE",
+    csrf_token,
+    "#title-feedback",
+    "innerHTML",
+    0,
+    "",
+) %}{% endcall %}
