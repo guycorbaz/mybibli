@@ -2,6 +2,52 @@ app:
   name: mybibli
 common:
   cancel: Annuler
+# CR #242 — Wish list (v1.3)
+wishlist:
+  list_title: "Wish list"
+  add_button: "Ajouter à la wish list"
+  add_to_wishlist: "Ajouter à la wish list"
+  print_button: "Imprimer"
+  empty_heading: "Votre wish list est vide"
+  empty_body: "Ajoutez des livres que vous souhaitez acheter. Scannez un ISBN ou saisissez un titre libre."
+  form_title: "Nouvelle entrée wish list"
+  mode_isbn: "Par ISBN"
+  mode_freeform: "Saisie libre"
+  field_isbn: "ISBN (13 chiffres)"
+  field_title: "Titre"
+  field_authors: "Auteurs"
+  field_publisher: "Éditeur"
+  field_year: "Année"
+  field_notes: "Notes"
+  notes_placeholder: "ex. reliure rigide, occasion possible"
+  lookup_button: "Rechercher"
+  confirm_add: "Ajouter à la wish list"
+  isbn_invalid: "ISBN invalide — 13 chiffres avec une clé de contrôle valide."
+  title_required: "Le titre est obligatoire."
+  resolved_intro: "Voici ce que les fournisseurs de métadonnées ont trouvé :"
+  no_metadata: "Aucune métadonnée trouvée pour cet ISBN. Passez en mode saisie libre pour ajouter le livre manuellement."
+  col_title: "Titre"
+  col_isbn: "ISBN"
+  col_authors: "Auteurs"
+  col_publisher: "Éditeur"
+  col_added: "Ajouté"
+  col_actions: "Actions"
+  col_notes: "Notes"
+  action_bought: "Acheté"
+  action_remove: "Retirer"
+  back_to_list: "Retour à la wish list"
+  delete_modal_title: "Marquer %{title} comme acheté ?"
+  delete_modal_body: "Cela retire l'entrée de la wish list. L'action est réversible depuis le panneau Corbeille de l'admin dans les 30 jours."
+  print_title: "Ma wish list"
+  print_count_one: "%{count} livre"
+  print_count_other: "%{count} livres"
+  # Bandeau d'auto-détection sur scan catalogue quand l'ISBN match une ligne wish list active.
+  autolink_banner_title: "Sur votre wish list"
+  autolink_banner_body: "Cet ISBN est sur votre wish list. La retirer ?"
+  autolink_remove: "Retirer de la wish list"
+  autolink_keep: "Garder sur la wish list"
+  # Compteur du tableau de bord (règle UX-DR4 sur le zéro)
+  home_counter_label: "Sur la wish list"
 connection:
   lost_heading: "Connexion perdue"
   lost_body: "Tentative de reconnexion en cours..."
@@ -98,6 +144,7 @@ nav:
   locations: Emplacements
   series: Séries
   borrowers: Emprunteurs
+  wishlist: "Wish list"
   login: Connexion
   logout: Déconnexion
   menu_open: Ouvrir le menu

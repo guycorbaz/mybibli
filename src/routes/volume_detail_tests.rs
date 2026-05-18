@@ -29,6 +29,7 @@ fn make_test_volume_detail_template(
         csrf_token: "tok".to_string(),
         nav_catalog: "Catalog".to_string(),
         nav_loans: "Loans".to_string(),
+        nav_wishlist: "Wish list".to_string(),
         nav_locations: "Locations".to_string(),
         nav_series: "Series".to_string(),
         nav_borrowers: "Borrowers".to_string(),

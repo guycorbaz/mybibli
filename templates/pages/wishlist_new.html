@@ -1,0 +1,94 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ label_form_title }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100 mb-6">{{ label_form_title }}</h1>
+
+    {# Mode picker — `data-action` attributes hand off to static/js/wishlist-new.js to
+       toggle the two sub-forms below. Default mode = ISBN. #}
+    <div role="radiogroup" aria-label="{{ label_form_title }}" class="mb-6 flex gap-2">
+        <button type="button"
+                data-wishlist-mode="isbn"
+                class="px-3 py-1.5 text-sm font-medium rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30"
+                aria-pressed="true">{{ label_mode_isbn }}</button>
+        <button type="button"
+                data-wishlist-mode="freeform"
+                class="px-3 py-1.5 text-sm font-medium rounded-md border border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300"
+                aria-pressed="false">{{ label_mode_freeform }}</button>
+    </div>
+
+    {# ISBN sub-form — visible by default. Submits to /wishlist/preview-isbn via
+       HTMX and renders the preview card into #wishlist-preview below. #}
+    <section id="wishlist-mode-isbn" aria-labelledby="wishlist-isbn-heading">
+        <h2 id="wishlist-isbn-heading" class="sr-only">{{ label_mode_isbn }}</h2>
+        <form id="wishlist-isbn-form"
+              hx-post="/wishlist/preview-isbn"
+              hx-target="#wishlist-preview"
+              hx-swap="innerHTML"
+              class="space-y-3">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <div>
+                <label for="isbn-input" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_isbn }} *</label>
+                <input type="text" id="isbn-input" name="isbn" required
+                       inputmode="numeric"
+                       pattern="[0-9]{13}"
+                       autocomplete="off"
+                       class="mt-1 block w-full font-mono rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            </div>
+            <div class="flex justify-end gap-2">
+                <a href="/wishlist"
+                   class="px-3 py-1.5 text-sm text-stone-600 dark:text-stone-400 hover:underline">{{ label_cancel }}</a>
+                <button type="submit"
+                        class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
+                    {{ label_lookup }}
+                </button>
+            </div>
+        </form>
+        <div id="wishlist-preview" class="mt-6"></div>
+    </section>
+
+    {# Free-form sub-form — hidden by default. Submits directly to /wishlist
+       with mode=freeform. #}
+    <section id="wishlist-mode-freeform" aria-labelledby="wishlist-freeform-heading" hidden>
+        <h2 id="wishlist-freeform-heading" class="sr-only">{{ label_mode_freeform }}</h2>
+        <form method="POST" action="/wishlist" class="space-y-3">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <input type="hidden" name="mode" value="freeform">
+            <div>
+                <label for="freeform-title" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_title }} *</label>
+                <input type="text" id="freeform-title" name="title" required maxlength="500"
+                       class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            </div>
+            <div>
+                <label for="freeform-authors" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_authors }}</label>
+                <input type="text" id="freeform-authors" name="authors" maxlength="500"
+                       class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            </div>
+            <div>
+                <label for="freeform-publisher" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_publisher }}</label>
+                <input type="text" id="freeform-publisher" name="publisher" maxlength="200"
+                       class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            </div>
+            <div>
+                <label for="freeform-notes" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_notes }}</label>
+                <textarea id="freeform-notes" name="notes" rows="3"
+                          class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"></textarea>
+            </div>
+            <div class="flex justify-end gap-2">
+                <a href="/wishlist"
+                   class="px-3 py-1.5 text-sm text-stone-600 dark:text-stone-400 hover:underline">{{ label_cancel }}</a>
+                <button type="submit"
+                        class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
+                    {{ label_add }}
+                </button>
+            </div>
+        </form>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/wishlist-new.js" defer></script>
+{% endblock %}

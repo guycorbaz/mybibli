@@ -1,0 +1,50 @@
+{# CR #242 — print-friendly wishlist page. Server-rendered, styled
+   via /static/css/print-page.css (@page + @media print). No nav
+   bar, no actions, no JS — just title + tabular list. CSP-clean.
+   User prints via the browser's native dialog (Ctrl+P / Cmd+P /
+   menu). #}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ label_print_title }}</title>
+    <link rel="stylesheet" href="/static/css/dist/tailwind.css">
+    <link rel="stylesheet" href="/static/css/print-page.css">
+</head>
+<body class="bg-white text-stone-900 p-8 max-w-5xl mx-auto">
+    <header class="mb-6">
+        <h1 class="text-2xl font-bold">{{ label_print_title }}</h1>
+        <p class="text-sm text-stone-600 tabular-nums">
+            {% if item_count == 1 %}{{ label_print_count_one }}{% else %}{{ label_print_count_other }}{% endif %}
+            — {{ generated_at }}
+        </p>
+    </header>
+
+    {% if items.is_empty() %}
+    <p class="text-sm text-stone-500">—</p>
+    {% else %}
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b-2 border-stone-300">
+                <th class="px-2 py-2 text-left">{{ label_col_title }}</th>
+                <th class="px-2 py-2 text-left">{{ label_col_authors }}</th>
+                <th class="px-2 py-2 text-left">{{ label_col_isbn }}</th>
+                <th class="px-2 py-2 text-left">{{ label_col_publisher }}</th>
+                <th class="px-2 py-2 text-left">{{ label_col_notes }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr class="border-b border-stone-200">
+                <td class="px-2 py-1.5 font-medium">{{ item.title }}</td>
+                <td class="px-2 py-1.5">{% match item.authors %}{% when Some with (a) %}{{ a }}{% when None %}{{ label_placeholder_empty }}{% endmatch %}</td>
+                <td class="px-2 py-1.5 font-mono text-xs">{% match item.isbn %}{% when Some with (i) %}{{ i }}{% when None %}{{ label_placeholder_empty }}{% endmatch %}</td>
+                <td class="px-2 py-1.5">{% match item.publisher %}{% when Some with (p) %}{{ p }}{% when None %}{{ label_placeholder_empty }}{% endmatch %}</td>
+                <td class="px-2 py-1.5 text-xs">{% match item.notes %}{% when Some with (n) %}{{ n }}{% when None %}{{ label_placeholder_empty }}{% endmatch %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</body>
+</html>

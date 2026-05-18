@@ -1,0 +1,116 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ label_list_title }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ label_list_title }}</h1>
+        <div class="flex gap-2">
+            <a href="/wishlist/print"
+               class="px-3 py-1.5 text-sm font-medium text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-stone-600 rounded-md hover:bg-stone-50 dark:hover:bg-stone-800">
+                {{ label_print }}
+            </a>
+            {% if can_edit %}
+            <a href="/wishlist/new"
+               class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
+                {{ label_add }}
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="wishlist-feedback" class="mb-4"></div>
+
+    {% if items.is_empty() %}
+    <div class="text-center py-12 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg">
+        <h2 class="text-lg font-semibold text-stone-700 dark:text-stone-300">{{ label_empty_heading }}</h2>
+        <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ label_empty_body }}</p>
+        {% if can_edit %}
+        <a href="/wishlist/new"
+           class="mt-4 inline-block px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
+            {{ label_add }}
+        </a>
+        {% endif %}
+    </div>
+    {% else %}
+    {# Desktop table — hidden below `md` breakpoint. Mobile cards follow. #}
+    <div class="hidden md:block overflow-x-auto rounded-lg border border-stone-200 dark:border-stone-700">
+        <table class="w-full text-sm text-left">
+            <thead class="text-xs text-stone-500 dark:text-stone-400 uppercase bg-stone-50 dark:bg-stone-800/50 border-b border-stone-200 dark:border-stone-700">
+                <tr>
+                    <th scope="col" class="px-3 py-2">{{ label_col_title }}</th>
+                    <th scope="col" class="px-3 py-2">{{ label_col_authors }}</th>
+                    <th scope="col" class="px-3 py-2">{{ label_col_isbn }}</th>
+                    <th scope="col" class="px-3 py-2">{{ label_col_publisher }}</th>
+                    <th scope="col" class="px-3 py-2">{{ label_col_added }}</th>
+                    {% if can_edit %}<th scope="col" class="px-3 py-2 text-right">{{ label_col_actions }}</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50 last:border-b-0">
+                    <td class="px-3 py-2">
+                        <a href="/wishlist/{{ item.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ item.title }}</a>
+                    </td>
+                    <td class="px-3 py-2 text-stone-700 dark:text-stone-300">
+                        {% match item.authors %}{% when Some with (a) %}{{ a }}{% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
+                    </td>
+                    <td class="px-3 py-2 font-mono text-xs text-stone-600 dark:text-stone-400">
+                        {% match item.isbn %}{% when Some with (i) %}{{ i }}{% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
+                    </td>
+                    <td class="px-3 py-2 text-stone-700 dark:text-stone-300">
+                        {% match item.publisher %}{% when Some with (p) %}{{ p }}{% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
+                    </td>
+                    <td class="px-3 py-2 text-stone-500 dark:text-stone-400 text-xs tabular-nums">{{ item.created_at.format("%Y-%m-%d") }}</td>
+                    {% if can_edit %}
+                    <td class="px-3 py-2 text-right whitespace-nowrap">
+                        <button type="button"
+                                hx-get="/wishlist/{{ item.id }}/delete-modal"
+                                hx-target="#modal-slot"
+                                hx-swap="innerHTML"
+                                class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline">
+                            ✓ {{ label_action_bought }}
+                        </button>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {# Mobile card stack — visible below `md` breakpoint. #}
+    <ul class="md:hidden space-y-2">
+        {% for item in items %}
+        <li class="px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg">
+            <div class="flex justify-between items-start gap-2">
+                <a href="/wishlist/{{ item.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ item.title }}</a>
+                {% if can_edit %}
+                <button type="button"
+                        hx-get="/wishlist/{{ item.id }}/delete-modal"
+                        hx-target="#modal-slot"
+                        hx-swap="innerHTML"
+                        class="text-xs text-emerald-600 dark:text-emerald-400 hover:underline shrink-0">
+                    ✓ {{ label_action_bought }}
+                </button>
+                {% endif %}
+            </div>
+            <dl class="mt-2 text-xs text-stone-600 dark:text-stone-400 space-y-1">
+                {% match item.authors %}{% when Some with (a) %}
+                <div class="flex gap-2"><dt class="font-medium text-stone-500 dark:text-stone-400">{{ label_col_authors }}:</dt><dd>{{ a }}</dd></div>
+                {% when None %}{% endmatch %}
+                {% match item.isbn %}{% when Some with (i) %}
+                <div class="flex gap-2"><dt class="font-medium text-stone-500 dark:text-stone-400">{{ label_col_isbn }}:</dt><dd class="font-mono">{{ i }}</dd></div>
+                {% when None %}{% endmatch %}
+                {% match item.publisher %}{% when Some with (p) %}
+                <div class="flex gap-2"><dt class="font-medium text-stone-500 dark:text-stone-400">{{ label_col_publisher }}:</dt><dd>{{ p }}</dd></div>
+                {% when None %}{% endmatch %}
+                <div class="flex gap-2"><dt class="font-medium text-stone-500 dark:text-stone-400">{{ label_col_added }}:</dt><dd class="tabular-nums">{{ item.created_at.format("%Y-%m-%d") }}</dd></div>
+            </dl>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endblock %}

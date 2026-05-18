@@ -1,0 +1,63 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ item.title }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-8">
+    <nav class="mb-4 text-sm">
+        <a href="/wishlist" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; {{ label_back }}</a>
+    </nav>
+
+    <div class="flex gap-6 items-start flex-wrap">
+        {% match item.cover_image_url %}
+        {% when Some with (u) %}
+        <img src="{{ u }}" alt="" class="w-32 h-48 object-cover rounded border border-stone-200 dark:border-stone-700">
+        {% when None %}
+        <div class="w-32 h-48 bg-stone-100 dark:bg-stone-800 rounded border border-stone-200 dark:border-stone-700 flex items-center justify-center text-xs text-stone-500" aria-label="{{ label_no_cover }}">{{ label_no_cover }}</div>
+        {% endmatch %}
+
+        <div class="flex-1 min-w-0">
+            <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100 break-words">{{ item.title }}</h1>
+            <dl class="mt-4 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+                {% match item.isbn %}{% when Some with (i) %}
+                <dt class="text-stone-500 dark:text-stone-400">{{ label_isbn }}</dt>
+                <dd class="font-mono text-stone-700 dark:text-stone-300">{{ i }}</dd>
+                {% when None %}{% endmatch %}
+                {% match item.authors %}{% when Some with (a) %}
+                <dt class="text-stone-500 dark:text-stone-400">{{ label_authors }}</dt>
+                <dd class="text-stone-700 dark:text-stone-300">{{ a }}</dd>
+                {% when None %}{% endmatch %}
+                {% match item.publisher %}{% when Some with (p) %}
+                <dt class="text-stone-500 dark:text-stone-400">{{ label_publisher }}</dt>
+                <dd class="text-stone-700 dark:text-stone-300">{{ p }}</dd>
+                {% when None %}{% endmatch %}
+                {% match item.publication_year %}{% when Some with (y) %}
+                <dt class="text-stone-500 dark:text-stone-400">{{ label_year }}</dt>
+                <dd class="text-stone-700 dark:text-stone-300 tabular-nums">{{ y }}</dd>
+                {% when None %}{% endmatch %}
+                <dt class="text-stone-500 dark:text-stone-400">{{ label_added_at }}</dt>
+                <dd class="text-stone-700 dark:text-stone-300 tabular-nums">{{ item.created_at.format("%Y-%m-%d") }}</dd>
+            </dl>
+
+            {% match item.notes %}{% when Some with (n) %}
+            <div class="mt-4 p-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded">
+                <h2 class="text-xs font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wide">{{ label_notes }}</h2>
+                <p class="mt-1 text-sm text-stone-700 dark:text-stone-300 whitespace-pre-wrap">{{ n }}</p>
+            </div>
+            {% when None %}{% endmatch %}
+
+            {% if can_edit %}
+            <div class="mt-6">
+                <button type="button"
+                        hx-get="/wishlist/{{ item.id }}/delete-modal"
+                        hx-target="#modal-slot"
+                        hx-swap="innerHTML"
+                        class="px-4 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-md hover:bg-emerald-100 dark:hover:bg-emerald-900/50">
+                    ✓ {{ label_action_bought }}
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

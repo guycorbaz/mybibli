@@ -22,6 +22,7 @@ pub mod locations;
 pub mod series;
 pub mod setup;
 pub mod titles;
+pub mod wishlist;
 
 use axum::Router;
 use tower_http::services::ServeDir;
@@ -222,6 +223,31 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/borrower/{id}/delete-modal",
             axum::routing::get(borrowers::delete_modal),
+        )
+        // CR #242 — Wish list routes
+        .route(
+            "/wishlist",
+            axum::routing::get(wishlist::wishlist_page).post(wishlist::wishlist_create),
+        )
+        .route(
+            "/wishlist/new",
+            axum::routing::get(wishlist::wishlist_new_page),
+        )
+        .route(
+            "/wishlist/preview-isbn",
+            axum::routing::post(wishlist::wishlist_preview_isbn),
+        )
+        .route(
+            "/wishlist/print",
+            axum::routing::get(wishlist::wishlist_print),
+        )
+        .route(
+            "/wishlist/{id}",
+            axum::routing::get(wishlist::wishlist_detail).delete(wishlist::wishlist_delete),
+        )
+        .route(
+            "/wishlist/{id}/delete-modal",
+            axum::routing::get(wishlist::wishlist_delete_modal),
         )
         // Loan routes
         .route(
