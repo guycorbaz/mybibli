@@ -82,6 +82,7 @@ home:
   remove_filter_aria: "Retirer le filtre"
   filter:
     uncategorized: "Sans genre"
+  genre_filter_no_longer_exists: "Ce genre n'existe plus — affichage de tous les titres."
 catalog:
   title: Catalogue
   scan_placeholder: "Scanner ou taper : ISBN, code V, code L, ou recherche..."
@@ -428,6 +429,12 @@ cover:
 audio:
   enable: "Activer les sons de scan"
   disable: "Désactiver les sons de scan"
+genre:
+  # Fix #107: rendu à la place de `genre_name` quand la ligne genre du
+  # titre a été soft-deleted (orphan FK). Defense-in-depth — le guard
+  # de suppression 8-4 empêche cet état par la voie supportée.
+  placeholder:
+    deleted: "(Genre supprimé)"
 dashboard:
   metadata_errors: "%{count} titre(s) avec erreurs de métadonnées"
   glance:

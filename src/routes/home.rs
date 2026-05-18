@@ -84,6 +84,12 @@ pub struct HomeTemplate {
     pub label_no_cover: String,
     pub metadata_error_count: u64,
     pub label_metadata_errors: String,
+    // Fix #112: when a stale `?filter=genre:N` (pointing at a soft-deleted
+    // genre) is silently cleared by the handler, render a localized notice
+    // above #browse-results so the user understands why their filter chip
+    // is gone and they're seeing the full catalog instead of an empty list.
+    pub stale_genre_filter: bool,
+    pub stale_genre_filter_label: String,
     pub browse_list_label: String,
     pub browse_grid_label: String,
     pub browse_mode_label: String,
@@ -173,6 +179,11 @@ pub async fn home(
     HxRequest(is_htmx): HxRequest,
     Query(params): Query<SearchParams>,
 ) -> Result<impl IntoResponse, AppError> {
+    // Fix #112: `params.filter` is shadowed mutable so we can clear a stale
+    // `?filter=genre:N` (genre soft-deleted between page render and click)
+    // before it propagates into the search SQL and into the chip rendering
+    // — without this, the user sees an empty list with no explanation.
+    let mut params = params;
     let loc = locale.0;
     let pool = &state.pool;
     let mut query = params.q.unwrap_or_default();
@@ -212,13 +223,34 @@ pub async fn home(
     // row was soft-deleted) and treat it like an ordinary genre filter
     // downstream. `parse_filter` itself stays pure / non-async / DB-
     // free so existing call sites and tests don't have to move.
+    let mut stale_genre_filter = false;
     let (genre_id, volume_state) = if parsed_indicator.is_some() {
         (None, None)
     } else if params.filter.as_deref() == Some("uncategorized") {
         let default_genre_id = TitleService::find_default_genre_id(pool).await?;
         (Some(default_genre_id), None)
     } else {
-        parse_filter(&params.filter)
+        let (gid, vs) = parse_filter(&params.filter);
+        // Fix #112: validate that the resolved genre id still references an
+        // active (non-soft-deleted) row. Stale URLs (old browser tab, a
+        // ?filter=genre:7 link clicked after admin soft-deleted genre 7)
+        // used to fall straight through to SearchService::search and return
+        // an empty list with no UI explanation. Now we drop the filter,
+        // surface a localized notice above the results, and render the
+        // full catalog instead.
+        if let Some(g) = gid
+            && GenreModel::find_by_id(pool, g).await?.is_none()
+        {
+            tracing::info!(
+                genre_id = g,
+                "stale genre filter — soft-deleted or never existed; clearing"
+            );
+            stale_genre_filter = true;
+            params.filter = None;
+            (None, vs)
+        } else {
+            (gid, vs)
+        }
     };
 
     // Perform search/browse when either a query is typed OR a filter pill is active.
@@ -232,7 +264,7 @@ pub async fn home(
         query = String::new();
     }
     let has_filter = params.filter.is_some() && parsed_indicator.is_none();
-    let (results, redirect) = if !query.trim().is_empty() || has_filter {
+    let (mut results, redirect) = if !query.trim().is_empty() || has_filter {
         let outcome = SearchService::search(
             pool,
             &query,
@@ -251,6 +283,12 @@ pub async fn home(
     } else {
         (None, None)
     };
+    // Fix #107: paginated search results may carry orphan-genre titles
+    // (LEFT JOIN keeps them in). Substitute the locale-aware placeholder
+    // before the template renders `{{ item.genre_name }}`.
+    if let Some(ref mut paginated) = results {
+        resolve_genre_placeholder(&mut paginated.items, loc);
+    }
 
     // Handle L-code redirect (HTMX-aware)
     if let Some(url) = redirect {
@@ -388,7 +426,7 @@ pub async fn home(
     };
     let recent_cataloged_filter_active = session.role >= Role::Librarian
         && active_indicator_filter == Some(IndicatorFilter::RecentCataloged);
-    let recent_cataloged_titles: Vec<crate::models::title::SearchResult> =
+    let mut recent_cataloged_titles: Vec<crate::models::title::SearchResult> =
         if recent_cataloged_filter_active {
             crate::models::title::TitleModel::list_recent_cataloged(pool, recent_days, 100)
                 .await
@@ -399,6 +437,7 @@ pub async fn home(
         } else {
             Vec::new()
         };
+    resolve_genre_placeholder(&mut recent_cataloged_titles, loc);
 
     let recent_returns_count: i64 = if session.role >= Role::Librarian {
         crate::models::loan::LoanModel::count_recent_returns(pool, recent_days)
@@ -450,13 +489,14 @@ pub async fn home(
     // single enriched round-trip (story 9-2). Soft-degrade on DB error
     // mirrors the glance pattern above: warn and fall back to an empty list
     // so the home page never 500s on a transient query failure.
-    let recent_additions = match crate::models::title::TitleModel::list_recent_active(pool, 10).await {
+    let mut recent_additions = match crate::models::title::TitleModel::list_recent_active(pool, 10).await {
         Ok(items) => items,
         Err(e) => {
             tracing::warn!(error = %e, "list_recent_active failed; rendering empty section");
             Vec::new()
         }
     };
+    resolve_genre_placeholder(&mut recent_additions, loc);
 
     // "By genre" section — single GROUP BY round-trip (story 9-3). Same
     // soft-degrade pattern: a transient DB hiccup yields an empty Vec,
@@ -468,7 +508,13 @@ pub async fn home(
             Vec::new()
         }
     };
-    let stats_by_genre = build_stats_by_genre_rows(stats_rows, loc);
+    // Fix #111: pass the FULL active-title count from collection_glance as
+    // the denominator, not the sum of displayed genre rows. If the orphan-
+    // FK state ever materializes (defense-in-depth — story 8-4's guard
+    // currently prevents it), per-row percentages still reflect the true
+    // catalog share. The displayed total may sum to <100% in that case;
+    // the invisible delta is the orphan-genre titles.
+    let stats_by_genre = build_stats_by_genre_rows(stats_rows, loc, glance.titles);
 
     // Choose `_one` vs `_other` for each count. Inline if/else so the macro receives
     // a literal key (matching the project's i18n audit at `src/i18n/audit.rs`),
@@ -601,6 +647,12 @@ pub async fn home(
             count = metadata_error_count
         )
         .to_string(),
+        stale_genre_filter,
+        stale_genre_filter_label: rust_i18n::t!(
+            "home.genre_filter_no_longer_exists",
+            locale = loc
+        )
+        .to_string(),
         browse_list_label: rust_i18n::t!("browse.list_view", locale = loc).to_string(),
         browse_grid_label: rust_i18n::t!("browse.grid_view", locale = loc).to_string(),
         browse_mode_label: rust_i18n::t!("browse.display_mode", locale = loc).to_string(),
@@ -669,6 +721,21 @@ pub async fn home(
     }
 }
 
+/// Fix #107: substitute a locale-aware placeholder for the empty
+/// `genre_name` marker the model SQL emits when a title's genre row has
+/// been soft-deleted (LEFT JOIN + `COALESCE(g.name, '')`). Idempotent —
+/// titles with a real genre pass through untouched. Applied to every
+/// SearchResult collection that reaches the home template (results,
+/// recent_additions, recent_cataloged_titles).
+pub(crate) fn resolve_genre_placeholder(items: &mut [SearchResult], loc: &str) {
+    let placeholder = rust_i18n::t!("genre.placeholder.deleted", locale = loc).to_string();
+    for item in items {
+        if item.genre_name.is_empty() {
+            item.genre_name = placeholder.clone();
+        }
+    }
+}
+
 /// Locale-aware singular/plural selector for the glance card labels (story 9-1).
 ///
 /// CLDR rule: French treats 0 as singular ("0 titre", not "0 titres"); English
@@ -698,8 +765,18 @@ fn is_singular(locale: &str, count: i64) -> bool {
 fn build_stats_by_genre_rows(
     rows: Vec<crate::services::dashboard::GenreStat>,
     loc: &str,
+    total_active_titles: i64,
 ) -> Vec<StatsByGenreRow> {
-    let total: i64 = rows.iter().map(|r| r.title_count).sum();
+    // Fix #111: denominator is the full active title count (passed in
+    // from the home handler's `collection_glance.titles`) rather than the
+    // sum of displayed rows. This makes per-row percentages reflect the
+    // TRUE share of the catalog. Orphan-FK titles (story 8-4's guard
+    // currently makes this state unreachable, but defense-in-depth) are
+    // excluded from `stats_by_genre`'s INNER JOIN output — under the old
+    // denominator they would have inflated each displayed row's share;
+    // under the new denominator they correctly subtract from the sum,
+    // which can now be < 100% (intentional, signals the orphan delta).
+    let total: i64 = total_active_titles;
     rows.into_iter()
         .map(|r| {
             let percent = if total > 0 {
@@ -904,6 +981,8 @@ pub(crate) mod tests {
             label_no_cover: "No cover available".to_string(),
             metadata_error_count: 0,
             label_metadata_errors: String::new(),
+            stale_genre_filter: false,
+            stale_genre_filter_label: String::new(),
             browse_list_label: "List view".to_string(),
             browse_grid_label: "Grid view".to_string(),
             browse_mode_label: "Display mode".to_string(),
@@ -1502,7 +1581,7 @@ pub(crate) mod tests {
     #[test]
     fn build_stats_by_genre_rows_en_singular_for_count_one() {
         let rows = vec![make_genre_stat(1, "Roman", 1)];
-        let out = build_stats_by_genre_rows(rows, "en");
+        let out = build_stats_by_genre_rows(rows, "en", 1);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].count_label, "1 title");
     }
@@ -1512,7 +1591,7 @@ pub(crate) mod tests {
     #[test]
     fn build_stats_by_genre_rows_en_plural_for_count_two() {
         let rows = vec![make_genre_stat(1, "Roman", 2)];
-        let out = build_stats_by_genre_rows(rows, "en");
+        let out = build_stats_by_genre_rows(rows, "en", 2);
         assert_eq!(out[0].count_label, "2 titles");
     }
 
@@ -1524,7 +1603,7 @@ pub(crate) mod tests {
     #[test]
     fn build_stats_by_genre_rows_fr_singular_for_count_zero() {
         let rows = vec![make_genre_stat(1, "Roman", 0)];
-        let out = build_stats_by_genre_rows(rows, "fr");
+        let out = build_stats_by_genre_rows(rows, "fr", 0);
         assert_eq!(out[0].count_label, "0 titre");
     }
 
@@ -1532,7 +1611,7 @@ pub(crate) mod tests {
     #[test]
     fn build_stats_by_genre_rows_fr_singular_for_count_one() {
         let rows = vec![make_genre_stat(1, "Roman", 1)];
-        let out = build_stats_by_genre_rows(rows, "fr");
+        let out = build_stats_by_genre_rows(rows, "fr", 1);
         assert_eq!(out[0].count_label, "1 titre");
     }
 
@@ -1540,11 +1619,11 @@ pub(crate) mod tests {
     #[test]
     fn build_stats_by_genre_rows_fr_plural_for_count_many() {
         let rows = vec![make_genre_stat(1, "Roman", 12)];
-        let out = build_stats_by_genre_rows(rows, "fr");
+        let out = build_stats_by_genre_rows(rows, "fr", 12);
         assert_eq!(out[0].count_label, "12 titres");
     }
 
-    /// Percent computation — three rows with counts 3/2/1 (total 6) must
+    /// Percent computation — three rows with counts 3/2/1, total 6, must
     /// round to 50.0% / 33.3% / 16.7% (1 decimal). Bakes in the AC9
     /// rounding contract end-to-end through the helper.
     #[test]
@@ -1554,7 +1633,7 @@ pub(crate) mod tests {
             make_genre_stat(2, "B", 2),
             make_genre_stat(3, "C", 1),
         ];
-        let out = build_stats_by_genre_rows(rows, "en");
+        let out = build_stats_by_genre_rows(rows, "en", 6);
         assert_eq!(out.len(), 3);
         assert_eq!(out[0].percent_label, "50.0%");
         assert_eq!(out[1].percent_label, "33.3%");
@@ -1574,7 +1653,7 @@ pub(crate) mod tests {
             make_genre_stat(2, "B", 2),
             make_genre_stat(3, "C", 1),
         ];
-        let out = build_stats_by_genre_rows(rows, "fr");
+        let out = build_stats_by_genre_rows(rows, "fr", 6);
         assert_eq!(out[0].percent_label, "50,0\u{00A0}%");
         assert_eq!(out[1].percent_label, "33,3\u{00A0}%");
     }
@@ -1583,8 +1662,37 @@ pub(crate) mod tests {
     /// the helper exists for this scenario; we lock it in.
     #[test]
     fn build_stats_by_genre_rows_empty_input_yields_empty_output() {
-        let out = build_stats_by_genre_rows(vec![], "en");
+        let out = build_stats_by_genre_rows(vec![], "en", 0);
         assert!(out.is_empty());
+    }
+
+    /// Fix #111: when the catalog has orphan-FK active titles (a genre
+    /// has been soft-deleted but titles still reference it), the
+    /// displayed rows' percentages must reflect their share of the FULL
+    /// active catalog — NOT a renormalized share of the visible rows.
+    /// Concrete scenario: 12 titles in Roman, 8 in BD, 5 orphan-FK in a
+    /// soft-deleted genre Z. Total active = 25. Roman should display
+    /// 12/25 = 48.0%, not 12/20 = 60.0%.
+    #[test]
+    fn build_stats_by_genre_rows_111_percent_uses_full_catalog_denominator() {
+        let rows = vec![
+            make_genre_stat(1, "Roman", 12),
+            make_genre_stat(2, "BD", 8),
+        ];
+        let out = build_stats_by_genre_rows(rows, "en", 25);
+        assert_eq!(
+            out[0].percent_label, "48.0%",
+            "Roman must reflect 12/25 (true catalog share), not 12/20"
+        );
+        assert_eq!(
+            out[1].percent_label, "32.0%",
+            "BD must reflect 8/25, not 8/20"
+        );
+        // Sum is 80%, not 100% — the missing 20% is the orphan-FK
+        // delta. This is the intended signal that the catalog has
+        // titles assigned to a soft-deleted genre.
+        assert_eq!(out[0].max, 25);
+        assert_eq!(out[1].max, 25);
     }
 
     /// `aria-label` carries genre name + percent for screen readers

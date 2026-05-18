@@ -82,6 +82,7 @@ home:
   remove_filter_aria: "Remove filter"
   filter:
     uncategorized: "Uncategorized"
+  genre_filter_no_longer_exists: "This genre no longer exists — showing all titles."
 catalog:
   title: Catalog
   scan_placeholder: "Scan or type: ISBN, V-code, L-code, or search..."
@@ -428,6 +429,12 @@ cover:
 audio:
   enable: Enable scan sounds
   disable: Disable scan sounds
+genre:
+  # Fix #107: rendered in place of `genre_name` when the title's genre row
+  # has been soft-deleted (orphan FK). Defense-in-depth — story 8-4's
+  # deletion guard prevents this via the supported path.
+  placeholder:
+    deleted: "(Deleted genre)"
 dashboard:
   metadata_errors: "%{count} title(s) with metadata errors"
   glance:
