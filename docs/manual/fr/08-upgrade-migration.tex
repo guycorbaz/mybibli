@@ -110,6 +110,63 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.2.1}\label{sec:whats-new-1.2.1}
+
+La version 1.2.1 est un correctif de quatre bugs sur la 1.2.0.
+Aucune migration de schéma, aucun breaking change \string— routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Supprimer une série avec des titres assignés
+        affiche désormais le bon message d'erreur.} Tenter de
+        supprimer une série qui possède encore des titres
+        renvoyait le bandeau générique \emph{Une erreur interne
+        est survenue}~; la vraie cause (\emph{Impossible de
+        supprimer X~: N titre(s) assigné(s). Retirez d'abord
+        toutes les assignations.}) ne sortait que dans les logs
+        serveur. Le handler reconnaît maintenant aussi la
+        variante \texttt{Conflict} retournée par le garde
+        d'assignation, donc l'utilisateur voit le message
+        actionnable et sait qu'il faut désassigner les titres
+        d'abord. Clôt l'issue GitHub \#139.
+  \item \textbf{Le bouton d'aide n'est plus imbriqué dans son
+        \texttt{<label>}.} Six formulaires (étape admin de
+        l'assistant, étape préférences de l'assistant, création
+        et édition d'emprunteur pour les champs email \&
+        téléphone, type de série, état de volume) rendaient le
+        \texttt{<button>} d'aide à l'intérieur du
+        \texttt{<label>} du contrôle de formulaire. HTML5
+        interdit du contenu interactif dans \texttt{<label>}~;
+        certains lecteurs d'écran propageaient aussi les clics
+        sur le label vers le bouton d'aide, provoquant des
+        sauts de focus parasites. Le bouton est désormais un
+        frère du label dans un petit conteneur flex, et le
+        tooltip s'affiche sous le déclencheur pour ne jamais
+        recouvrir le contrôle de formulaire. Clôt l'issue
+        GitHub \#154.
+  \item \textbf{Le modal de retour de prêt revient maintenant à
+        la page d'origine après connexion.} Un utilisateur
+        anonyme arrivant sur la page \texttt{/borrower/:id} et
+        cliquant sur \emph{Retour} pour un prêt actif était
+        envoyé vers \texttt{/login} puis déposé sur la liste
+        générique \texttt{/loans}, perdant le contexte
+        emprunteur. Le handler lit désormais l'en-tête
+        \texttt{HX-Current-URL} envoyé par HTMX, valide le
+        chemin via le garde same-origin existant et l'utilise
+        comme cible de retour post-connexion. Clôt l'issue
+        GitHub \#133.
+  \item \textbf{Le corps de la réponse 403 Interdit s'affiche
+        désormais dans la langue de l'utilisateur.} Un
+        utilisateur en locale française cliquant sur une action
+        réservée à l'admin en étant Bibliothécaire (ou tout
+        autre flux produisant un 403) voyait le texte d'erreur
+        en anglais au lieu de la traduction française. La
+        locale traverse maintenant le helper de vérification de
+        permission jusqu'à la réponse d'erreur, donc tout corps
+        Interdit est rendu dans la langue que l'utilisateur
+        voit déjà partout ailleurs. Clôt l'issue GitHub \#219.
+\end{itemize}
+
 \section{Nouveautés de la 1.2.0}\label{sec:whats-new-1.2.0}
 
 La version 1.2.0 est la première version mineure de l'ère post-v1

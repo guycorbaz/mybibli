@@ -104,6 +104,55 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.2.1}\label{sec:whats-new-1.2.1}
+
+Version 1.2.1 is a four-fix patch on top of 1.2.0. No schema
+migrations, no breaking changes \string— routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Deleting a series with assigned titles now shows
+        the meaningful error message.} Trying to delete a series
+        that still has titles attached used to surface a generic
+        \emph{An internal error occurred} feedback strip; the
+        actual cause (\emph{Cannot delete X: N title(s) assigned.
+        Remove all title assignments first.}) only reached the
+        server log. The handler now also recognises the
+        \texttt{Conflict} variant returned by the title-assignment
+        guard, so the user sees the actionable message and knows
+        to unassign the titles first. Closes GH issue \#139.
+  \item \textbf{Help-icon button no longer sits inside its
+        associated \texttt{<label>} element.} Six forms (setup
+        wizard admin step, setup wizard preferences step,
+        borrowers create/edit email \& phone, series-type, volume
+        condition) rendered the help-icon \texttt{<button>}
+        nested inside the form-control \texttt{<label>}. HTML5
+        forbids interactive content inside \texttt{<label>}; some
+        screen readers also propagated label clicks to the help
+        button, producing stray focus jumps. The button is now a
+        sibling of the label in a small flex container, with the
+        tooltip popping up below the trigger so it never
+        overlaps the form control. Closes GH issue \#154.
+  \item \textbf{Return-loan modal now bounces back to the original
+        page after login.} An anonymous user landing on the
+        \texttt{/borrower/:id} page and clicking the
+        \emph{Return} button on an active loan used to be sent to
+        \texttt{/login} and then dropped on the generic
+        \texttt{/loans} list page, losing the borrower context.
+        The handler now reads the \texttt{HX-Current-URL} header
+        sent by HTMX, validates the path through the existing
+        same-origin guard, and uses it as the post-login return
+        target. Closes GH issue \#133.
+  \item \textbf{403 Forbidden body now renders in the user's
+        language.} A French-locale user clicking an admin-only
+        action as a Librarian (or any 403-producing flow) saw
+        the English error text instead of the French
+        translation. The locale now travels through the
+        permission-check helper into the error response, so
+        every Forbidden body is rendered in the locale the user
+        already sees everywhere else. Closes GH issue \#219.
+\end{itemize}
+
 \section{What's new in 1.2.0}\label{sec:whats-new-1.2.0}
 
 Version 1.2.0 is the first minor release of the post-v1 era — six
