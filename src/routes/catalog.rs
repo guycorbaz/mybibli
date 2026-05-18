@@ -496,6 +496,15 @@ pub async fn handle_scan(
                             });
                         }
 
+                        // CR #242 — auto-link banner appended to either the
+                        // "title exists" or the new-title skeleton feedback so
+                        // a librarian who scans an ISBN that's on the wishlist
+                        // sees a one-click "Remove from wishlist" affordance.
+                        let autolink = crate::routes::wishlist::autolink_feedback_html(
+                            pool, &code, loc,
+                        )
+                        .await;
+
                         if !is_new {
                             // Existing title — return info feedback
                             let guide = rust_i18n::t!("guide.title_active", title = &title.title)
@@ -505,7 +514,7 @@ pub async fn handle_scan(
                             let suggestion =
                                 rust_i18n::t!("feedback.title_exists_suggestion").to_string();
                             let resp = HtmxResponse {
-                                main: feedback_html("info", &message, &suggestion),
+                                main: feedback_html("info", &message, &suggestion) + &autolink,
                                 oob,
                             };
                             return Ok(resp.into_response());
@@ -545,7 +554,7 @@ pub async fn handle_scan(
                         push_guide_oob(&mut oob, &guide);
                         let skeleton = skeleton_feedback_html(title.id, &code);
                         let resp = HtmxResponse {
-                            main: skeleton,
+                            main: skeleton + &autolink,
                             oob,
                         };
                         Ok(resp.into_response())

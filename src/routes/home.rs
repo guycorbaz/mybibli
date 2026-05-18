@@ -85,6 +85,10 @@ pub struct HomeTemplate {
     pub label_no_cover: String,
     pub metadata_error_count: u64,
     pub label_metadata_errors: String,
+    // CR #242: wishlist counter on the home dashboard (UX-DR4 zero-count
+    // rule: chip hidden when count == 0).
+    pub wishlist_count: i64,
+    pub label_wishlist_counter: String,
     // Fix #112: when a stale `?filter=genre:N` (pointing at a soft-deleted
     // genre) is silently cleared by the handler, render a localized notice
     // above #browse-results so the user understands why their filter chip
@@ -649,6 +653,13 @@ pub async fn home(
             count = metadata_error_count
         )
         .to_string(),
+        wishlist_count: crate::models::wishlist::WishlistItemModel::count_active(pool)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "wishlist count failed; rendering chip as hidden");
+                0
+            }),
+        label_wishlist_counter: rust_i18n::t!("wishlist.home_counter_label", locale = loc).to_string(),
         stale_genre_filter,
         stale_genre_filter_label: rust_i18n::t!(
             "home.genre_filter_no_longer_exists",
@@ -984,6 +995,8 @@ pub(crate) mod tests {
             label_no_cover: "No cover available".to_string(),
             metadata_error_count: 0,
             label_metadata_errors: String::new(),
+            wishlist_count: 0,
+            label_wishlist_counter: "On wish list".to_string(),
             stale_genre_filter: false,
             stale_genre_filter_label: String::new(),
             browse_list_label: "List view".to_string(),

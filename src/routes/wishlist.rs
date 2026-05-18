@@ -2,17 +2,15 @@
 //!
 //! Surface map:
 //!
-//! - `GET  /wishlist`              — list page (newest-first table + mobile cards)
-//! - `GET  /wishlist/new`          — add form (radio: by-ISBN | free-form)
+//! - `GET  /wishlist` — list page (newest-first table + mobile cards)
+//! - `GET  /wishlist/new` — add form (radio: by-ISBN | free-form)
 //! - `POST /wishlist/preview-isbn` — ISBN preview card (renders the resolved
-//!                                    metadata as a confirmation step; HTMX)
-//! - `POST /wishlist`              — final insert (both ISBN-confirmed and
-//!                                    free-form land here)
-//! - `GET  /wishlist/:id`          — detail page
+//!   metadata as a confirmation step; HTMX)
+//! - `POST /wishlist` — final insert (both ISBN-confirmed and free-form here)
+//! - `GET  /wishlist/:id` — detail page
 //! - `GET  /wishlist/:id/delete-modal` — UX-DR8 "Mark as bought" confirmation
-//! - `DELETE /wishlist/:id`        — soft-delete (powers "Mark as bought" +
-//!                                    "Remove" + auto-link confirm)
-//! - `GET  /wishlist/print`        — print-friendly page (browser → PDF)
+//! - `DELETE /wishlist/:id` — soft-delete (Mark as bought + Remove + auto-link)
+//! - `GET  /wishlist/print` — print-friendly page (browser → PDF)
 //!
 //! v1 cover-handling decision: a wishlist row stores the REMOTE URL the
 //! provider chain resolved (CSP `img-src` allowlists the common image
@@ -621,6 +619,48 @@ pub async fn wishlist_delete(
         String::new(),
     )
         .into_response())
+}
+
+// ─── Auto-link on catalog scan ───────────────────────────────────
+
+/// CR #242 — emit an HTML banner snippet when a freshly-cataloged ISBN
+/// matches an active wishlist row. Called from the catalog scan handlers
+/// (ISBN + UPC paths). Returns an empty string when no match is found
+/// so callers can unconditionally concatenate it onto the success
+/// feedback HTML without worrying about layout fallout.
+///
+/// The banner carries a single action: open the UX-DR8 "Mark as bought"
+/// confirmation modal at `/wishlist/:id/delete-modal`. No silent
+/// deletion — the user always confirms.
+pub async fn autolink_feedback_html(pool: &crate::db::DbPool, isbn: &str, loc: &str) -> String {
+    let item = match WishlistItemModel::find_by_isbn(pool, isbn).await {
+        Ok(Some(i)) => i,
+        _ => return String::new(),
+    };
+    let title = rust_i18n::t!("wishlist.autolink_banner_title", locale = loc);
+    let body = rust_i18n::t!("wishlist.autolink_banner_body", locale = loc);
+    let remove = rust_i18n::t!("wishlist.autolink_remove", locale = loc);
+    let escaped_item_title = crate::utils::html_escape(&item.title);
+    format!(
+        r##"<div class="feedback-entry mt-2 border-l-4 border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3 rounded-r-lg" role="status" data-wishlist-autolink="{item_id}">
+            <p class="text-sm font-semibold text-emerald-700 dark:text-emerald-300">{title}</p>
+            <p class="mt-1 text-sm text-emerald-700 dark:text-emerald-300">{body} <span class="font-medium">{item_title}</span></p>
+            <div class="mt-2">
+                <button type="button"
+                        hx-get="/wishlist/{item_id}/delete-modal"
+                        hx-target="#modal-slot"
+                        hx-swap="innerHTML"
+                        class="px-3 py-1 text-xs font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700">
+                    {remove}
+                </button>
+            </div>
+        </div>"##,
+        title = title,
+        body = body,
+        item_title = escaped_item_title,
+        item_id = item.id,
+        remove = remove,
+    )
 }
 
 // ─── Print page ──────────────────────────────────────────────────
