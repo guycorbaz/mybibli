@@ -429,6 +429,12 @@ cover:
 audio:
   enable: "Activer les sons de scan"
   disable: "Désactiver les sons de scan"
+genre:
+  # Fix #107: rendu à la place de `genre_name` quand la ligne genre du
+  # titre a été soft-deleted (orphan FK). Defense-in-depth — le guard
+  # de suppression 8-4 empêche cet état par la voie supportée.
+  placeholder:
+    deleted: "(Genre supprimé)"
 dashboard:
   metadata_errors: "%{count} titre(s) avec erreurs de métadonnées"
   glance:

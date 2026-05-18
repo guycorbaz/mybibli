@@ -264,7 +264,7 @@ pub async fn home(
         query = String::new();
     }
     let has_filter = params.filter.is_some() && parsed_indicator.is_none();
-    let (results, redirect) = if !query.trim().is_empty() || has_filter {
+    let (mut results, redirect) = if !query.trim().is_empty() || has_filter {
         let outcome = SearchService::search(
             pool,
             &query,
@@ -283,6 +283,12 @@ pub async fn home(
     } else {
         (None, None)
     };
+    // Fix #107: paginated search results may carry orphan-genre titles
+    // (LEFT JOIN keeps them in). Substitute the locale-aware placeholder
+    // before the template renders `{{ item.genre_name }}`.
+    if let Some(ref mut paginated) = results {
+        resolve_genre_placeholder(&mut paginated.items, loc);
+    }
 
     // Handle L-code redirect (HTMX-aware)
     if let Some(url) = redirect {
@@ -420,7 +426,7 @@ pub async fn home(
     };
     let recent_cataloged_filter_active = session.role >= Role::Librarian
         && active_indicator_filter == Some(IndicatorFilter::RecentCataloged);
-    let recent_cataloged_titles: Vec<crate::models::title::SearchResult> =
+    let mut recent_cataloged_titles: Vec<crate::models::title::SearchResult> =
         if recent_cataloged_filter_active {
             crate::models::title::TitleModel::list_recent_cataloged(pool, recent_days, 100)
                 .await
@@ -431,6 +437,7 @@ pub async fn home(
         } else {
             Vec::new()
         };
+    resolve_genre_placeholder(&mut recent_cataloged_titles, loc);
 
     let recent_returns_count: i64 = if session.role >= Role::Librarian {
         crate::models::loan::LoanModel::count_recent_returns(pool, recent_days)
@@ -482,13 +489,14 @@ pub async fn home(
     // single enriched round-trip (story 9-2). Soft-degrade on DB error
     // mirrors the glance pattern above: warn and fall back to an empty list
     // so the home page never 500s on a transient query failure.
-    let recent_additions = match crate::models::title::TitleModel::list_recent_active(pool, 10).await {
+    let mut recent_additions = match crate::models::title::TitleModel::list_recent_active(pool, 10).await {
         Ok(items) => items,
         Err(e) => {
             tracing::warn!(error = %e, "list_recent_active failed; rendering empty section");
             Vec::new()
         }
     };
+    resolve_genre_placeholder(&mut recent_additions, loc);
 
     // "By genre" section — single GROUP BY round-trip (story 9-3). Same
     // soft-degrade pattern: a transient DB hiccup yields an empty Vec,
@@ -704,6 +712,21 @@ pub async fn home(
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
         Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+    }
+}
+
+/// Fix #107: substitute a locale-aware placeholder for the empty
+/// `genre_name` marker the model SQL emits when a title's genre row has
+/// been soft-deleted (LEFT JOIN + `COALESCE(g.name, '')`). Idempotent —
+/// titles with a real genre pass through untouched. Applied to every
+/// SearchResult collection that reaches the home template (results,
+/// recent_additions, recent_cataloged_titles).
+pub(crate) fn resolve_genre_placeholder(items: &mut [SearchResult], loc: &str) {
+    let placeholder = rust_i18n::t!("genre.placeholder.deleted", locale = loc).to_string();
+    for item in items {
+        if item.genre_name.is_empty() {
+            item.genre_name = placeholder.clone();
+        }
     }
 }
 

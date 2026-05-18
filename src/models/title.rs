@@ -327,9 +327,16 @@ impl TitleModel {
         limit: u32,
     ) -> Result<Vec<SearchResult>, AppError> {
         let rows = sqlx::query(
+            // Fix #107: LEFT JOIN + COALESCE so a title whose genre was
+            // soft-deleted (orphan FK — story 8-4's deletion guard prevents
+            // this via the supported path, but defense-in-depth against a
+            // future migration / manual UPDATE) still appears in the result
+            // set instead of silently disappearing. The empty `genre_name`
+            // marker is replaced with a locale-aware placeholder at the
+            // route layer via `routes::home::resolve_genre_placeholder`.
             "SELECT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, \
                     CAST(t.publication_date AS DATE) AS publication_date, \
-                    g.name AS genre_name, \
+                    COALESCE(g.name, '') AS genre_name, \
                     (SELECT c.name FROM title_contributors tc \
                      JOIN contributors c ON tc.contributor_id = c.id \
                      JOIN contributor_roles cr ON tc.role_id = cr.id \
@@ -340,7 +347,7 @@ impl TitleModel {
                     (SELECT COUNT(*) FROM volumes v WHERE v.title_id = t.id \
                        AND v.deleted_at IS NULL) AS volume_count \
              FROM titles t \
-             JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
+             LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
              WHERE t.deleted_at IS NULL \
                AND t.created_at >= NOW() - INTERVAL ? DAY \
              ORDER BY t.created_at DESC, t.id DESC \
@@ -922,9 +929,12 @@ impl TitleModel {
         let where_clause = conditions.join(" AND ");
 
         // Count query
+        // Fix #107: LEFT JOIN keeps orphan-genre titles in the count so it
+        // matches the data-query row count. See the data-query comment for
+        // the full rationale.
         let count_sql = format!(
             "SELECT COUNT(DISTINCT t.id) as cnt FROM titles t \
-             JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL{} \
+             LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL{} \
              WHERE {}",
             extra_join, where_clause
         );
@@ -943,9 +953,18 @@ impl TitleModel {
         let total_items: i64 = count_row.try_get("cnt")?;
 
         // Data query
+        // Fix #107: LEFT JOIN + COALESCE on the genre relation so a title
+        // whose genre row has been soft-deleted (orphan FK) still shows up
+        // in the result set with an empty `genre_name` marker. The route
+        // layer's `resolve_genre_placeholder` substitutes a locale-aware
+        // "(Genre supprimé)" / "(Deleted genre)" before rendering, so the
+        // title remains discoverable instead of silently disappearing from
+        // the catalog. The story-8-4 deletion guard makes this unreachable
+        // via the supported delete path; this is defense-in-depth against
+        // a future migration or manual UPDATE that bypasses the guard.
         let data_sql = format!(
             "SELECT DISTINCT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, CAST(t.publication_date AS DATE) AS publication_date, \
-                    g.name AS genre_name, \
+                    COALESCE(g.name, '') AS genre_name, \
                     (SELECT c.name FROM title_contributors tc \
                      JOIN contributors c ON tc.contributor_id = c.id \
                      JOIN contributor_roles cr ON tc.role_id = cr.id \
@@ -954,7 +973,7 @@ impl TitleModel {
                      LIMIT 1) AS primary_contributor, \
                     (SELECT COUNT(*) FROM volumes v WHERE v.title_id = t.id AND v.deleted_at IS NULL) AS volume_count \
              FROM titles t \
-             JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL{} \
+             LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL{} \
              WHERE {} \
              ORDER BY {} {} \
              LIMIT ? OFFSET ?",
@@ -1018,9 +1037,12 @@ impl TitleModel {
         limit: u32,
     ) -> Result<Vec<SearchResult>, AppError> {
         let rows = sqlx::query(
+            // Fix #107: same LEFT JOIN + COALESCE pattern as
+            // `list_recent_cataloged` and `active_search`. See those for
+            // rationale.
             "SELECT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, \
                     CAST(t.publication_date AS DATE) AS publication_date, \
-                    g.name AS genre_name, \
+                    COALESCE(g.name, '') AS genre_name, \
                     (SELECT c.name FROM title_contributors tc \
                      JOIN contributors c ON tc.contributor_id = c.id \
                      JOIN contributor_roles cr ON tc.role_id = cr.id \
@@ -1031,7 +1053,7 @@ impl TitleModel {
                     (SELECT COUNT(*) FROM volumes v WHERE v.title_id = t.id \
                        AND v.deleted_at IS NULL) AS volume_count \
              FROM titles t \
-             JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
+             LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
              WHERE t.deleted_at IS NULL \
              ORDER BY t.created_at DESC, t.id DESC \
              LIMIT ?",
