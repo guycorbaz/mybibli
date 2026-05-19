@@ -314,6 +314,10 @@ series:
   omnibus: Omnibus
   end_position: Position de fin
   omnibus_assigned: "Omnibus assigné à %{series} couvrant les positions %{start}-%{end}."
+  # CR #259 — tooltip d'explication de la case Omnibus. Le besoin a émergé
+  # en prod v1.3.0 quand l'utilisateur a dû demander ce que ça voulait dire.
+  omnibus_help_summary: "Aide : omnibus"
+  omnibus_help_text: "Cochez quand le livre regroupe plusieurs volumes de la série (par ex. une intégrale tomes 1–3). Le formulaire révèle alors un champ 'Position de fin' pour que le titre couvre une plage de positions au lieu d'une seule."
   select_series: "Sélectionner une série..."
 error:
   internal: Une erreur interne est survenue

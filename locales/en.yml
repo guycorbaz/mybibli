@@ -314,6 +314,10 @@ series:
   omnibus: Omnibus
   end_position: End position
   omnibus_assigned: "Omnibus assigned to %{series} covering positions %{start}-%{end}."
+  # CR #259 — tooltip explaining what the Omnibus checkbox does. Surfaced
+  # in production v1.3.0 when the user had to ask out loud what it meant.
+  omnibus_help_summary: "Help: omnibus"
+  omnibus_help_text: "Check this when the book bundles multiple volumes of the series (e.g. an omnibus collecting volumes 1–3). The form then reveals an 'End position' field so the title covers a range of series positions instead of just one."
   select_series: "Select a series..."
 error:
   internal: An internal error occurred

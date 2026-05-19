@@ -1,15 +1,31 @@
-/* CR #242 — wishlist print page styles. Lives in a dedicated CSS
- * file (instead of an inline <style>) so the CSP `style-src 'self'`
- * directive is honoured. */
+/* CR #242 + CR #260 — wishlist print page styles.
+ *
+ * Lives in a dedicated CSS file (instead of an inline <style>) so the
+ * CSP `style-src 'self'` directive is honoured. v1 shipped a minimal
+ * table; the 1.3.1 revision adds card-based layout, page-break
+ * guards, a footer with page numbers, and richer @media print rules.
+ */
 
 @page {
-    margin: 1.5cm;
+    margin: 1.8cm 1.5cm 2cm 1.5cm;
+
+    /* CR #260 — footer with page counter. Renders only in browsers
+     * that support CSS Paged Media counters (Chromium-based browsers
+     * + Firefox in print mode). Falls back gracefully on older
+     * engines (no footer, the rest of the layout still works). */
+    @bottom-center {
+        content: counter(page) " / " counter(pages);
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 9pt;
+        color: #888;
+    }
 }
 
 @media print {
     body {
         background: white;
         color: #111;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     }
     .no-print {
         display: none !important;
@@ -18,6 +34,33 @@
         color: inherit;
         text-decoration: none;
     }
+
+    /* CR #260 — card layout: keep each entry on a single page when
+     * possible. `page-break-inside: avoid` is the legacy spelling
+     * (Chromium honours it); `break-inside: avoid` is the modern
+     * equivalent and is set via Tailwind's `break-inside-avoid` class
+     * on the <li> in the template. Both belt-and-suspenders. */
+    .wishlist-print-card {
+        page-break-inside: avoid;
+        break-inside: avoid;
+        border: 1px solid #d6d3d1; /* stone-300 */
+        border-radius: 6px;
+        padding: 10px 12px;
+    }
+
+    .wishlist-print-cover {
+        background: #f5f5f4; /* stone-100 */
+        border: 1px solid #e7e5e4; /* stone-200 */
+    }
+
+    .wishlist-print-cover img {
+        max-width: 100%;
+        max-height: 100%;
+    }
+
+    /* Legacy table styling still used by the empty-state placeholder
+     * and any future tabular section (e.g. an "Index" page) — kept
+     * for backward compatibility. */
     table {
         width: 100%;
         border-collapse: collapse;

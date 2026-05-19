@@ -99,6 +99,13 @@ test.describe("Home page — Recent additions section", () => {
       /Recent additions|Ajouts récents/i,
     );
 
+    // CR #261: the section is now wrapped in <details> and default-
+    // closed to reduce home-page clutter. Open it before asserting on
+    // its inner cards (anonymous user with cleared localStorage starts
+    // closed every time).
+    const fold = section.locator("details#recent-additions-fold");
+    await fold.evaluate((el: HTMLDetailsElement) => (el.open = true));
+
     const cards = section.locator("article.title-card");
     const count = await cards.count();
 

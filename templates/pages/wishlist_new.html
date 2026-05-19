@@ -27,6 +27,8 @@
               hx-post="/wishlist/preview-isbn"
               hx-target="#wishlist-preview"
               hx-swap="innerHTML"
+              hx-indicator="#wishlist-lookup-spinner"
+              hx-disabled-elt="find button[type='submit']"
               class="space-y-3">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
             <div>
@@ -41,8 +43,15 @@
                 <a href="/wishlist"
                    class="px-3 py-1.5 text-sm text-stone-600 dark:text-stone-400 hover:underline">{{ label_cancel }}</a>
                 <button type="submit"
-                        class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
+                        class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-wait">
                     {{ label_lookup }}
+                    {# CR #258 — spinner during provider-chain metadata fetch
+                       (2–5 seconds latency). Mirrors the redownload-spinner
+                       pattern from #215. The .htmx-indicator class flips
+                       opacity from 0 → 1 when the form is in flight. #}
+                    <span id="wishlist-lookup-spinner" class="htmx-indicator ml-1">
+                        <svg class="animate-spin inline h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                    </span>
                 </button>
             </div>
         </form>
