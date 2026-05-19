@@ -110,6 +110,57 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.3.0}\label{sec:whats-new-1.3.0}
+
+La version 1.3.0 est la deuxième version mineure thématique de
+l'ère post-v1 \string— \textbf{Plan your next purchase}. Une
+migration additive (\texttt{wishlist\_items}), aucun breaking
+change \string— routine \texttt{docker compose pull \&\& docker
+compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Tableau par volume sur la page détail d'un titre
+        (\#209).} Ouvrez n'importe quel titre et faites défiler
+        après le bloc contributeurs~: une liste inline de tous
+        les volumes actifs pour ce titre s'affiche, avec le
+        code V (cliquable, lien vers \texttt{/volume/:id}), le
+        nom de l'emplacement résolu et son code L, l'état, et
+        \string— pour les Bibliothécaires et les Admins \string—
+        les actions Modifier + Supprimer. Le bouton Supprimer
+        ouvre une modale de confirmation UX-DR8~; sur succès,
+        redirection vers la page détail du titre avec la liste
+        des volumes re-rendue sans la ligne supprimée. Sur
+        mobile, le tableau se transforme en pile de cartes selon
+        le pattern dual-surface établi. Clôt l'issue GitHub
+        \#209.
+  \item \textbf{Wish list comme surface de premier ordre
+        (\#242).} Une nouvelle surface \texttt{/wishlist},
+        accessible depuis la barre de navigation (Bibliothécaire+
+        pour les mutations, lecture accessible à tous). Deux
+        modes d'ajout~: scanner ou saisir un ISBN à 13 chiffres
+        pour que mybibli récupère les métadonnées via la chaîne
+        de fournisseurs existante (carte de prévisualisation
+        avec couverture, puis Confirmer) \string— ou choisir
+        \emph{Saisie libre} et taper juste un titre (tout le
+        reste optionnel). Chaque entrée peut être marquée
+        \emph{Acheté} depuis la liste, la page détail, OU
+        automatiquement quand le même ISBN est ensuite catalogué
+        via \texttt{/catalog} \string— mybibli affiche un
+        bandeau émeraude dans le feedback du scan proposant
+        \emph{Retirer de la wish list} en un clic (aucune
+        suppression silencieuse). La page \texttt{/wishlist/print}
+        rend une mise en page d'impression épurée~; utilisez
+        \emph{Imprimer en PDF} du navigateur pour emporter la
+        liste à la librairie. Un nouveau compteur sur le tableau
+        de bord affiche le nombre d'entrées (caché quand vide).
+        Trace d'audit complète sur ajout et marquage comme
+        acheté. Voir \autoref{sec:wishlist} pour la marche à
+        suivre. Clôt l'issue GitHub \#242.
+\end{itemize}
+
+La ligne de patches 1.2.x reste en maintenance pour les bugs de
+production qui ne justifient pas un bump de fonctionnalité.
+
 \section{Nouveautés de la 1.2.2}\label{sec:whats-new-1.2.2}
 
 La version 1.2.2 est un correctif de trois bugs en
