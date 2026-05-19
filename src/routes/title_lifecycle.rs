@@ -317,8 +317,11 @@ mod tests {
             "success path must emit HX-Redirect"
         );
 
+        // CLAUDE.md MariaDB gotcha #4: titles.deleted_at is TIMESTAMP
+        // (not DATETIME), so a bare `SELECT deleted_at` can't decode
+        // into NaiveDateTime via dynamic query_as. Cast to DATETIME.
         let (deleted_at,): (Option<chrono::NaiveDateTime>,) =
-            sqlx::query_as("SELECT deleted_at FROM titles WHERE id = ?")
+            sqlx::query_as("SELECT CAST(deleted_at AS DATETIME) FROM titles WHERE id = ?")
                 .bind(id)
                 .fetch_one(&pool)
                 .await
@@ -351,8 +354,11 @@ mod tests {
         assert_eq!(res.status(), StatusCode::CONFLICT);
 
         // Row must NOT be soft-deleted.
+        // CLAUDE.md MariaDB gotcha #4: titles.deleted_at is TIMESTAMP
+        // (not DATETIME), so a bare `SELECT deleted_at` can't decode
+        // into NaiveDateTime via dynamic query_as. Cast to DATETIME.
         let (deleted_at,): (Option<chrono::NaiveDateTime>,) =
-            sqlx::query_as("SELECT deleted_at FROM titles WHERE id = ?")
+            sqlx::query_as("SELECT CAST(deleted_at AS DATETIME) FROM titles WHERE id = ?")
                 .bind(id)
                 .fetch_one(&pool)
                 .await
