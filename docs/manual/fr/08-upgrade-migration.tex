@@ -110,6 +110,55 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.4.0}\label{sec:whats-new-1.4.0}
+
+La version 1.4.0 est la troisième version mineure thématique de
+l'ère post-v1 \string— \textbf{Apportez votre propre agent}. Une
+migration de schéma additive (table \texttt{api\_keys}), pas de
+changement cassant \string— mise à jour routinière
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{API JSON HTTP sous \texttt{/api/v1/*} (\#241).} Une
+        nouvelle API authentifiée expose le catalogue à des scripts
+        externes et à des outils basés sur des LLM. Les points
+        d'entrée en lecture couvrent les titres (liste, détail,
+        par bucket Dewey), les genres, les emplacements et les
+        séries. Un point d'entrée d'écriture restreint
+        \texttt{PATCH /api/v1/titles/\{id\}} modifie quatre
+        champs en liste blanche (sous-titre, description, code
+        Dewey, genre) avec verrouillage optimiste et une ligne
+        d'audit complète par modification. Voir le nouveau chapitre
+        11 \emph{API \string& intégrations} pour les contrats des
+        points d'entrée, l'authentification et trois exemples
+        Python / curl / boucle LLM.
+  \item \textbf{Onglet d'administration Clés d'API.} Nouvelle
+        surface \texttt{/admin?tab=api\_keys} pour créer, lister
+        et révoquer des clés. La valeur en clair de chaque
+        nouvelle clé est affichée \emph{une seule fois} dans une
+        boîte modale UX-DR8 \string— ensuite seuls le hachage
+        argon2 et un préfixe de 12 caractères sont persistés.
+        Deux portées : \emph{lecture seule} (points d'entrée
+        GET) et \emph{lecture + écriture} (ajoute PATCH). La
+        liste affiche le libellé, la portée, le préfixe,
+        l'horodatage de création, l'horodatage de dernière
+        utilisation et le statut (active / révoquée). La
+        révocation est réversible au sens où l'on peut toujours
+        recréer une clé avec le même libellé, mais une clé
+        révoquée ne peut plus jamais s'authentifier.
+  \item \textbf{Pas de CSRF sur \texttt{/api/*}.}
+        L'authentification par jeton ne repose pas sur les
+        cookies, donc le middleware CSRF court-circuite tout le
+        préfixe \texttt{/api/*}. Les points d'entrée formulaires
+        de l'interface humaine restent protégés CSRF.
+  \item \textbf{Chapitre 11 du manuel \emph{API \string&
+        intégrations} (FR + EN).} Détaille la création des clés,
+        la forme de l'authentification, chaque point d'entrée
+        et trois exemples de bout en bout \string— une fiche
+        \texttt{curl}, une boucle de pagination Python et une
+        boucle de classificateur LLM en pseudo-code.
+\end{itemize}
+
 \section{Nouveautés de la 1.3.1}\label{sec:whats-new-1.3.1}
 
 La version 1.3.1 est un correctif de quatre papercuts UX

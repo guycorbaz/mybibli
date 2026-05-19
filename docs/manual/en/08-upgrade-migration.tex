@@ -104,6 +104,49 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.4.0}\label{sec:whats-new-1.4.0}
+
+Version 1.4.0 is the third themed minor of the post-v1 era \string—
+\textbf{Bring your own agent}. One additive schema migration
+(\texttt{api\_keys} table), no breaking changes \string— routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{JSON HTTP API at \texttt{/api/v1/*} (\#241).} A
+        new authenticated API exposes the catalog to external
+        scripts and LLM-powered tools. Read endpoints cover
+        titles (list, detail, by-Dewey bucket), genres,
+        locations, and series. A focused
+        \texttt{PATCH /api/v1/titles/\{id\}} write endpoint
+        updates four whitelisted fields (subtitle, description,
+        Dewey code, genre) under optimistic locking, with a
+        full audit row per change. See the new chapter 11
+        \emph{API \string& integrations} for endpoint contracts,
+        authentication, and a Python / curl / LLM-loop example.
+  \item \textbf{API keys admin tab.} New
+        \texttt{/admin?tab=api\_keys} surface to mint, list, and
+        revoke keys. Each new key's plaintext is shown
+        \emph{exactly once} in a UX-DR8 modal \string— argon2
+        hash + 12-character prefix persisted afterwards. Two
+        scopes: \emph{read only} (GET endpoints) and \emph{read
+        + write} (adds PATCH). The list shows label, scope
+        chip, prefix, created timestamp, last-used timestamp,
+        and status (active / revoked). Revoke is reversible-ish
+        in the sense that you can always re-create a key with
+        the same label, but a revoked key can never authenticate
+        again.
+  \item \textbf{No CSRF on \texttt{/api/*}.} Bearer-token auth
+        doesn't ride on cookies, so the CSRF middleware
+        short-circuits the entire \texttt{/api/*} prefix. Form
+        endpoints under the human UI remain CSRF-protected.
+  \item \textbf{Manual chapter 11 \emph{API \string& integrations}
+        (EN + FR).} Walks through key creation, the
+        authentication shape, every endpoint, and three end-to-end
+        examples \string— a \texttt{curl} crib sheet, a Python
+        pagination loop, and an LLM classifier loop in
+        pseudocode.
+\end{itemize}
+
 \section{What's new in 1.3.1}\label{sec:whats-new-1.3.1}
 
 Version 1.3.1 is a four-papercut polish patch surfaced by Guy
