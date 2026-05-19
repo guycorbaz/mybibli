@@ -8,6 +8,14 @@
         <a href="/wishlist" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; {{ label_back }}</a>
     </nav>
 
+    {# CR #242 — feedback target for the "Mark as bought" delete modal.
+       The modal's `hx-target="#wishlist-feedback"` carries the inline
+       error message when the soft-delete fails (e.g. optimistic-lock
+       Conflict). Without this slot on the detail page, HTMX has
+       nowhere to land the failure payload and the form submission
+       itself stalls silently. #}
+    <div id="wishlist-feedback" class="mb-4"></div>
+
     <div class="flex gap-6 items-start flex-wrap">
         {% match item.cover_image_url %}
         {% when Some with (u) %}
