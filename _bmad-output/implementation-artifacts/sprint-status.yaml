@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-05-19 (v1.3.1 patch — UX papercuts: #258 spinner + #259 omnibus tooltip + #260 print pretty + #261 fold recent additions)
+# last_updated: 2026-05-19 (v1.4.0 minor — CR #241: JSON HTTP API at /api/v1/* with API-key auth, read + write scopes, admin UI tab, manual chapter 11)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system

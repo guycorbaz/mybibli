@@ -86,7 +86,7 @@ All deployment-time settings are environment variables — no config file. The c
 ## Tags
 
 - `:latest` — tracks the highest semver release tag.
-- `:1.3.1` (current), `:1.3.0`, `:1.2.2`, `:1.2.1`, `:1.2.0`, `:1.1.9`, `:1.1.8`, `:1.1.7`, `:1.1.6`, `:1.1.5`, `:1.1.4`, `:1.1.3`, `:1.1.2`, `:1.1.1`, `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; track `:latest` is reasonable for homelab.
+- `:1.4.0` (current), `:1.3.1`, `:1.3.0`, `:1.2.2`, `:1.2.1`, `:1.2.0`, `:1.1.9`, `:1.1.8`, `:1.1.7`, `:1.1.6`, `:1.1.5`, `:1.1.4`, `:1.1.3`, `:1.1.2`, `:1.1.1`, `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; track `:latest` is reasonable for homelab.
 - **No `:dev`, no `:main`, no `:beta` published** — tagged releases only.
 
 ## Docs
