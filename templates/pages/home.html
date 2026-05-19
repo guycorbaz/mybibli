@@ -542,22 +542,55 @@
        NOT /catalog?genre=<id> (the spec text refers to a v1 route that
        doesn't exist — same convention as 9-1's /catalog?view=volumes
        deviation). #}
-    {% if !stats_by_genre.is_empty() %}
+    {% if stats_by_genre.has_data() %}
+    {# CR #265 — donut chart of catalog composition by genre. Server-side
+       renders the canvas (with an aria-label summary for screen readers
+       and as the no-JS fallback alongside the legend list below) plus
+       the legend list. CSP-clean: legend dots use inline SVG circles
+       with a fill attribute (no inline color CSS). Chart.js v4 vendored
+       under /static/js/vendor/chart.umd.js. The wrapper script reads
+       the JSON payload from data-stats-json, instantiates the doughnut,
+       and hands click events back to the existing /?filter=genre:N route. #}
     <section id="stats-by-genre" aria-labelledby="stats-by-genre-heading" class="w-full max-w-4xl mt-6">
         <h2 id="stats-by-genre-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ stats_by_genre_heading }}</h2>
-        <ul class="mt-3 space-y-2">
-            {% for row in stats_by_genre %}
-            <li>
-                <a href="/?filter=genre:{{ row.id }}" class="block px-4 py-3 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-700 transition-colors">
-                    <div class="flex items-center justify-between gap-3">
-                        <span class="font-medium text-stone-900 dark:text-stone-100 truncate">{{ row.name }}</span>
-                        <span class="text-sm text-stone-600 dark:text-stone-400 whitespace-nowrap"><span class="tabular-nums">{{ row.count_label }}</span> · <span class="tabular-nums">{{ row.percent_label }}</span></span>
+        <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+            <div id="stats-by-genre-canvas-wrap" class="relative mx-auto w-full max-w-xs aspect-square" data-stats-json="{{ stats_by_genre.data_json|e }}" data-center-total="{{ stats_by_genre.total_label }}" data-center-caption="{{ stats_by_genre.center_caption }}">
+                <canvas id="stats-by-genre-canvas" role="img" aria-label="{{ stats_by_genre.aria_summary }}"></canvas>
+            </div>
+            <ul class="space-y-1.5">
+                {% for slice in stats_by_genre.visible %}
+                <li>
+                    <a href="/?filter=genre:{{ slice.id }}" class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors">
+                        <svg width="12" height="12" aria-hidden="true" class="flex-shrink-0"><circle cx="6" cy="6" r="6" fill="{{ slice.color }}"/></svg>
+                        <span class="font-medium text-stone-900 dark:text-stone-100 truncate flex-1">{{ slice.name }}</span>
+                        <span class="text-xs text-stone-600 dark:text-stone-400 whitespace-nowrap"><span class="tabular-nums">{{ slice.count_label }}</span> · <span class="tabular-nums">{{ slice.percent_label }}</span></span>
+                    </a>
+                </li>
+                {% endfor %}
+                {% if let Some(o) = stats_by_genre.other.as_ref() %}
+                <li>
+                    <div class="flex items-center gap-2 px-3 py-2 rounded-md">
+                        <svg width="12" height="12" aria-hidden="true" class="flex-shrink-0"><circle cx="6" cy="6" r="6" fill="{{ o.color }}"/></svg>
+                        <span class="font-medium text-stone-700 dark:text-stone-300 truncate flex-1">{{ o.other_label }}</span>
+                        <span class="text-xs text-stone-600 dark:text-stone-400 whitespace-nowrap"><span class="tabular-nums">{{ o.count_label }}</span> · <span class="tabular-nums">{{ o.percent_label }}</span></span>
                     </div>
-                    <progress class="genre-bar mt-2 w-full" value="{{ row.value }}" max="{{ row.max }}" aria-label="{{ row.name }}: {{ row.percent_label }}">{{ row.percent_label }}</progress>
-                </a>
-            </li>
-            {% endfor %}
-        </ul>
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+        {% if let Some(o) = stats_by_genre.other.as_ref() %}
+        <details class="mt-3">
+            <summary class="cursor-pointer text-sm text-stone-600 dark:text-stone-400">{{ o.other_heading }}</summary>
+            <ul class="mt-2 ml-4 space-y-1">
+                {% for entry in o.rolled_up %}
+                <li class="text-sm">
+                    <a href="/?filter=genre:{{ entry.id }}" class="text-stone-700 dark:text-stone-300 hover:underline">{{ entry.name }}</a>
+                    <span class="text-xs text-stone-500 dark:text-stone-400 ml-1 tabular-nums">{{ entry.count_label }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </details>
+        {% endif %}
     </section>
     {% endif %}
 </div>
@@ -566,4 +599,8 @@
 
 {% block scripts %}
 <script src="/static/js/home-recent-additions.js" defer></script>
+{# CR #265 — Chart.js v4 vendored; tiny wrapper reads data-stats-json and
+   instantiates the doughnut. defer keeps the page render unblocked. #}
+<script src="/static/js/vendor/chart.umd.js" defer></script>
+<script src="/static/js/home-stats-donut.js" defer></script>
 {% endblock %}
