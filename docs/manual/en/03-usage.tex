@@ -181,3 +181,58 @@ putting them back:
 Confirming with the L-code is optional but recommended — it leaves
 a fresh entry in the volume's location history that the next audit
 can rely on.
+
+\section{Wish list}\label{sec:wishlist}
+
+The \emph{wish list}\index{wish list} is a separate list of books
+you'd like to buy, kept distinct from the owned catalog. It lives
+under \texttt{/wishlist}\index{wishlist@/wishlist} (see the
+navigation bar) and is available to Librarians and Admins.
+
+\subsection{Adding an entry}
+
+The \emph{Add to wish list} form has two modes:
+
+\begin{itemize}
+  \item \textbf{By ISBN.} Scan or type a 13-digit ISBN. mybibli
+        looks the book up through the same metadata provider chain
+        the catalog uses, then shows a preview card (title, author,
+        publisher, year, cover). Click \emph{Add to wish list} to
+        save. Cover images come from the resolved provider's URL
+        directly (e.g.\ Open Library Covers or Google Books);
+        downloading the cover locally is on the roadmap.
+  \item \textbf{Free-form.} Use this when you don't have an ISBN
+        handy (a self-published title, a recommendation jotted
+        down at lunch). Only \emph{Title} is required; author,
+        publisher and notes are optional.
+\end{itemize}
+
+\subsection{Browsing at the bookstore}
+
+The list view collapses into a mobile-card stack on narrow
+viewports — designed to scan quickly with one thumb at a
+bookstore. Each card shows the title, the author (if known), the
+ISBN (if any), the publisher, and the date you added it.
+
+To print a paper copy or save a PDF for offline use, click
+\emph{Print} at the top of the list. mybibli renders a clean
+print-friendly page; use the browser's \emph{Print to PDF}
+(File \string→ Print \string→ Save as PDF, or Ctrl/Cmd-P) to
+generate a PDF you can take to the bookstore.
+
+\subsection{Marking a book as bought}
+
+When you buy a book, open its wish list entry (or tap \emph{Bought}
+directly from the list row), confirm in the modal, and the entry
+soft-deletes. The action is reversible from the Admin Trash panel
+for 30 days.
+
+\subsection{Auto-detect on catalog scan}
+
+When you catalog a freshly bought book through the standard scan
+flow (\texttt{/catalog}), mybibli checks whether its ISBN matches
+an active wish list entry. If it does, an emerald banner appears
+in the feedback area: \emph{This ISBN is on your wish list — Remove
+it?} One click on the banner's \emph{Remove from wish list} button
+opens the same \emph{Mark as bought} modal, and confirming removes
+the entry. No silent deletions.

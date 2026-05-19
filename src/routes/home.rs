@@ -43,6 +43,7 @@ pub struct HomeTemplate {
     pub csrf_token: String,
     pub nav_catalog: String,
     pub nav_loans: String,
+    pub nav_wishlist: String,
     pub nav_locations: String,
     pub nav_series: String,
     pub nav_borrowers: String,
@@ -84,6 +85,10 @@ pub struct HomeTemplate {
     pub label_no_cover: String,
     pub metadata_error_count: u64,
     pub label_metadata_errors: String,
+    // CR #242: wishlist counter on the home dashboard (UX-DR4 zero-count
+    // rule: chip hidden when count == 0).
+    pub wishlist_count: i64,
+    pub label_wishlist_counter: String,
     // Fix #112: when a stale `?filter=genre:N` (pointing at a soft-deleted
     // genre) is silently cleared by the handler, render a localized notice
     // above #browse-results so the user understands why their filter chip
@@ -597,6 +602,7 @@ pub async fn home(
         csrf_token: session.csrf_token.clone(),
         nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
         nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
         nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
         nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
         nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
@@ -647,6 +653,13 @@ pub async fn home(
             count = metadata_error_count
         )
         .to_string(),
+        wishlist_count: crate::models::wishlist::WishlistItemModel::count_active(pool)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "wishlist count failed; rendering chip as hidden");
+                0
+            }),
+        label_wishlist_counter: rust_i18n::t!("wishlist.home_counter_label", locale = loc).to_string(),
         stale_genre_filter,
         stale_genre_filter_label: rust_i18n::t!(
             "home.genre_filter_no_longer_exists",
@@ -938,6 +951,7 @@ pub(crate) mod tests {
             csrf_token: "tok".to_string(),
             nav_catalog: "Catalog".to_string(),
             nav_loans: "Loans".to_string(),
+            nav_wishlist: "Wish list".to_string(),
             nav_locations: "Locations".to_string(),
             nav_series: "Series".to_string(),
             nav_borrowers: "Borrowers".to_string(),
@@ -981,6 +995,8 @@ pub(crate) mod tests {
             label_no_cover: "No cover available".to_string(),
             metadata_error_count: 0,
             label_metadata_errors: String::new(),
+            wishlist_count: 0,
+            label_wishlist_counter: "On wish list".to_string(),
             stale_genre_filter: false,
             stale_genre_filter_label: String::new(),
             browse_list_label: "List view".to_string(),

@@ -217,6 +217,7 @@ pub struct CatalogTemplate {
     pub csrf_token: String,
     pub nav_catalog: String,
     pub nav_loans: String,
+    pub nav_wishlist: String,
     pub nav_locations: String,
     pub nav_series: String,
     pub nav_borrowers: String,
@@ -257,6 +258,7 @@ impl CatalogTemplate {
             csrf_token: session.csrf_token.clone(),
             nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
             nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+            nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
             nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
             nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
             nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
@@ -494,6 +496,15 @@ pub async fn handle_scan(
                             });
                         }
 
+                        // CR #242 — auto-link banner appended to either the
+                        // "title exists" or the new-title skeleton feedback so
+                        // a librarian who scans an ISBN that's on the wishlist
+                        // sees a one-click "Remove from wishlist" affordance.
+                        let autolink = crate::routes::wishlist::autolink_feedback_html(
+                            pool, &code, loc,
+                        )
+                        .await;
+
                         if !is_new {
                             // Existing title — return info feedback
                             let guide = rust_i18n::t!("guide.title_active", title = &title.title)
@@ -503,7 +514,7 @@ pub async fn handle_scan(
                             let suggestion =
                                 rust_i18n::t!("feedback.title_exists_suggestion").to_string();
                             let resp = HtmxResponse {
-                                main: feedback_html("info", &message, &suggestion),
+                                main: feedback_html("info", &message, &suggestion) + &autolink,
                                 oob,
                             };
                             return Ok(resp.into_response());
@@ -543,7 +554,7 @@ pub async fn handle_scan(
                         push_guide_oob(&mut oob, &guide);
                         let skeleton = skeleton_feedback_html(title.id, &code);
                         let resp = HtmxResponse {
-                            main: skeleton,
+                            main: skeleton + &autolink,
                             oob,
                         };
                         Ok(resp.into_response())
@@ -2003,6 +2014,7 @@ pub struct VolumeDetailTemplate {
     pub csrf_token: String,
     pub nav_catalog: String,
     pub nav_loans: String,
+    pub nav_wishlist: String,
     pub nav_locations: String,
     pub nav_series: String,
     pub nav_borrowers: String,
@@ -2130,6 +2142,7 @@ pub async fn volume_detail(
         csrf_token: session.csrf_token.clone(),
         nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
         nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
         nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
         nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
         nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
@@ -2173,6 +2186,7 @@ pub struct VolumeEditTemplate {
     pub csrf_token: String,
     pub nav_catalog: String,
     pub nav_loans: String,
+    pub nav_wishlist: String,
     pub nav_locations: String,
     pub nav_series: String,
     pub nav_borrowers: String,
@@ -2219,6 +2233,7 @@ pub async fn volume_edit_page(
         csrf_token: session.csrf_token.clone(),
         nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
         nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
+        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
         nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
         nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
         nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),

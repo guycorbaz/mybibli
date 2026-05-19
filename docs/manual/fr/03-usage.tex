@@ -190,3 +190,64 @@ accélère la remise en rayon :
 La confirmation par code L est optionnelle mais recommandée — elle
 laisse une entrée fraîche dans l'historique du volume sur laquelle
 le prochain audit pourra s'appuyer.
+
+\section{Wish list}\label{sec:wishlist}
+
+La \emph{wish list}\index{wish list} est une liste séparée des
+livres que vous aimeriez acheter, distincte du catalogue possédé.
+Elle vit sous \texttt{/wishlist}\index{wishlist@/wishlist} (voir
+la barre de navigation) et est disponible pour les Bibliothécaires
+et les Admins.
+
+\subsection{Ajouter une entrée}
+
+Le formulaire \emph{Ajouter à la wish list} propose deux modes~:
+
+\begin{itemize}
+  \item \textbf{Par ISBN.} Scannez ou saisissez un ISBN à 13
+        chiffres. mybibli interroge la même chaîne de fournisseurs
+        de métadonnées que le catalogue, puis affiche une carte de
+        prévisualisation (titre, auteur, éditeur, année,
+        couverture). Cliquez sur \emph{Ajouter à la wish list}
+        pour enregistrer. Les images de couverture pointent
+        directement sur l'URL du fournisseur résolu (Open Library
+        Covers ou Google Books par exemple)~; le téléchargement
+        local de la couverture est sur la roadmap.
+  \item \textbf{Saisie libre.} À utiliser quand vous n'avez pas
+        d'ISBN sous la main (titre auto-édité, recommandation
+        notée pendant le déjeuner). Seul le \emph{Titre} est
+        obligatoire~; auteur, éditeur et notes sont optionnels.
+\end{itemize}
+
+\subsection{Parcourir en librairie}
+
+La vue liste se transforme en pile de cartes sur les petits
+écrans \string— conçue pour parcourir rapidement d'un pouce dans
+une librairie. Chaque carte affiche le titre, l'auteur (s'il est
+connu), l'ISBN (s'il y en a un), l'éditeur et la date d'ajout.
+
+Pour imprimer une copie papier ou sauver un PDF pour usage
+hors-ligne, cliquez sur \emph{Imprimer} en haut de la liste.
+mybibli rend une page d'impression épurée~; utilisez \emph{Imprimer
+en PDF} du navigateur (Fichier \string→ Imprimer \string→
+Enregistrer en PDF, ou Ctrl/Cmd-P) pour générer un PDF à
+emporter à la librairie.
+
+\subsection{Marquer un livre comme acheté}
+
+Quand vous achetez un livre, ouvrez son entrée wish list (ou
+tapez \emph{Acheté} directement depuis la ligne de la liste),
+confirmez dans la modale, et l'entrée est mise en
+soft-delete. L'action est réversible depuis le panneau Corbeille
+de l'admin pendant 30 jours.
+
+\subsection{Auto-détection au scan catalogue}
+
+Quand vous cataloguez un livre fraîchement acheté via le flux
+standard de scan (\texttt{/catalog}), mybibli vérifie si son ISBN
+correspond à une entrée wish list active. Si oui, un bandeau
+émeraude apparaît dans la zone de feedback~: \emph{Cet ISBN est
+sur votre wish list \string— la retirer~?} Un clic sur le bouton
+\emph{Retirer de la wish list} ouvre la même modale \emph{Marquer
+comme acheté}, et la confirmation supprime l'entrée. Aucune
+suppression silencieuse.

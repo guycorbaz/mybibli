@@ -2,6 +2,52 @@ app:
   name: mybibli
 common:
   cancel: Cancel
+# CR #242 — Wish list (v1.3)
+wishlist:
+  list_title: "Wish list"
+  add_button: "Add to wish list"
+  add_to_wishlist: "Add to wish list"
+  print_button: "Print"
+  empty_heading: "Your wish list is empty"
+  empty_body: "Add books you'd like to buy. Scan an ISBN or type a free-form title."
+  form_title: "New wish list entry"
+  mode_isbn: "By ISBN"
+  mode_freeform: "Free-form"
+  field_isbn: "ISBN (13 digits)"
+  field_title: "Title"
+  field_authors: "Authors"
+  field_publisher: "Publisher"
+  field_year: "Year"
+  field_notes: "Notes"
+  notes_placeholder: "e.g. hardback only, second-hand OK"
+  lookup_button: "Look up"
+  confirm_add: "Add to wish list"
+  isbn_invalid: "Invalid ISBN — must be 13 digits with a valid check digit."
+  title_required: "Title is required."
+  resolved_intro: "Found this on the metadata providers:"
+  no_metadata: "No metadata found for this ISBN. Switch to free-form mode to add the book manually."
+  col_title: "Title"
+  col_isbn: "ISBN"
+  col_authors: "Authors"
+  col_publisher: "Publisher"
+  col_added: "Added"
+  col_actions: "Actions"
+  col_notes: "Notes"
+  action_bought: "Bought"
+  action_remove: "Remove"
+  back_to_list: "Back to wish list"
+  delete_modal_title: "Mark %{title} as bought?"
+  delete_modal_body: "This removes the entry from the wish list. The action is reversible from the admin Trash panel within 30 days."
+  print_title: "My wish list"
+  print_count_one: "%{count} book"
+  print_count_other: "%{count} books"
+  # Auto-link banner shown on catalog scan when the ISBN matches an active wishlist row.
+  autolink_banner_title: "On your wish list"
+  autolink_banner_body: "This ISBN is on your wish list. Remove it?"
+  autolink_remove: "Remove from wish list"
+  autolink_keep: "Keep on wish list"
+  # Home-dashboard counter (UX-DR4 zero-count rule)
+  home_counter_label: "On wish list"
 connection:
   lost_heading: "Connection lost"
   lost_body: "Trying to reconnect..."
@@ -98,6 +144,7 @@ nav:
   locations: Locations
   series: Series
   borrowers: Borrowers
+  wishlist: "Wish list"
   login: Log in
   logout: Log out
   menu_open: Open menu
