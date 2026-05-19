@@ -32,12 +32,18 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.2.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.2.0)** — published 2026-05-18. The first minor release of the post-v1 era, themed "See what you own, find it faster" (full list of CRs below). Concurrently, the `1.1.x` patch line stays in maintenance for bug fixes and known-failure resolutions only.
+**Current stable: [`v1.3.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.3.0)** — published 2026-05-19. The second themed minor of the post-v1 era — "Plan your next purchase" — bundling the per-volume table on `/title/:id` (#209) and the first-class wish list at `/wishlist` (#242, with ISBN scan, free-form title, mark-as-bought, auto-link on catalog scan, and bookstore-friendly print). The `1.2.x` patch line stays in maintenance for bug fixes only.
 
-Patch-line work currently in flight or planned (will ship as `1.1.10+`, NOT in `1.2.x`):
+Patch-line work currently open against `1.2.x` or `1.3.x` (will ship as patches, NOT in the next minor):
 
-- [#219](https://github.com/guycorbaz/mybibli/issues/219) — `AppError::Forbidden` rendered in the default locale instead of the user's locale.
 - [#196](https://github.com/guycorbaz/mybibli/issues/196) — Flake in `home-search.spec.ts:224` under default-worker parallel mode (a long-standing known-failure; downgraded to fix-when-convenient).
+
+## v1.3.0 — "Plan your next purchase" *(shipped)*
+
+Wish list as a first-class surface + per-volume polish.
+
+- [#242](https://github.com/guycorbaz/mybibli/issues/242) — Wish list (ISBN / free-form / print to PDF / auto-link on catalog scan).
+- [#209](https://github.com/guycorbaz/mybibli/issues/209) — Per-volume table on `/title/:id`.
 
 ## v1.2.0 — "See what you own, find it faster" *(shipped)*
 
@@ -50,14 +56,6 @@ into one coordinated release.
 - [#200](https://github.com/guycorbaz/mybibli/issues/200) — Fold / unfold the `/locations` tree, with localStorage persistence.
 - [#215](https://github.com/guycorbaz/mybibli/issues/215) — Spinner on "Apply selected changes" in the metadata re-fetch second phase.
 - [#214](https://github.com/guycorbaz/mybibli/issues/214) — Bulk cover-fetch admin action — re-trigger the metadata-fetch chain for every title with a missing cover.
-
-## v1.3.0 — "Plan your next purchase"
-
-Wish list as a first-class surface, with a bookstore-friendly print
-flow. Pairs with the per-volume detail polish.
-
-- [#242](https://github.com/guycorbaz/mybibli/issues/242) — Wish list: add books by ISBN or free-form title, browse on mobile, print to PDF for the bookstore, **auto-remove** entries from the wish list when the same ISBN gets cataloged.
-- [#209](https://github.com/guycorbaz/mybibli/issues/209) — Per-volume table on `/title/:id` (between contributors and similar-titles), with inline edit and delete actions — useful when a redundant copy is given away.
 
 ## v1.4.0 — "Open the catalog to your AI"
 

@@ -104,6 +104,51 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.3.0}\label{sec:whats-new-1.3.0}
+
+Version 1.3.0 is the second themed minor of the post-v1 era \string—
+\textbf{Plan your next purchase}. One additive schema migration
+(\texttt{wishlist\_items} table), no breaking changes \string—
+routine \texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Per-volume table on the title-detail page (\#209).}
+        Open any title and scroll past the contributors block~:
+        you now see an inline list of every active volume for that
+        title, with the V-code (clickable, links to
+        \texttt{/volume/:id}), the resolved location name and
+        L-code, the condition state, and \string— for Librarians
+        and Admins \string— Edit + Delete affordances. The Delete
+        button opens a UX-DR8 confirmation modal~; success
+        redirects back to the title-detail page with the volumes
+        list re-rendered without the deleted row. On a mobile
+        viewport, the table collapses into the established
+        card-stack pattern. Closes GH issue \#209.
+  \item \textbf{Wish list as a first-class surface (\#242).}
+        A new \texttt{/wishlist} surface, available from the
+        navigation bar (Librarian+ for mutations, browseable to
+        anyone). Two add modes~: scan or type a 13-digit ISBN to
+        let mybibli pull the metadata through the existing
+        provider chain (preview card with cover, then Confirm)
+        \string— or pick \emph{Free-form} and just type a title
+        (everything else optional). Each entry can be marked as
+        \emph{Bought} from the list, the detail page, OR
+        automatically when the same ISBN is later cataloged
+        through \texttt{/catalog} \string— mybibli surfaces an
+        emerald banner on the scan feedback offering
+        \emph{Remove from wish list} in one click (no silent
+        deletions). The \texttt{/wishlist/print} page renders a
+        clean print-friendly layout~; use the browser's
+        \emph{Print to PDF} to take the list along to the
+        bookstore. A new home-dashboard chip shows the wish-list
+        count (hidden when empty). Full audit-trail entries on
+        add and on mark-as-bought. See \autoref{sec:wishlist}
+        for the full walk-through. Closes GH issue \#242.
+\end{itemize}
+
+The 1.2.x patch line stays in maintenance for production bug
+fixes that don't warrant a feature bump.
+
 \section{What's new in 1.2.2}\label{sec:whats-new-1.2.2}
 
 Version 1.2.2 is a three-fix \emph{defense-in-depth} patch on top of
