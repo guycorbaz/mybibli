@@ -190,11 +190,15 @@ mod tests {
     }
 
     async fn seed_title(pool: &MySqlPool, name: &str, isbn: Option<&str>) -> u64 {
-        let (genre_id,): (i64,) =
-            sqlx::query_as("SELECT MIN(id) FROM genres WHERE deleted_at IS NULL")
-                .fetch_one(pool)
-                .await
-                .unwrap();
+        // CLAUDE.md MariaDB gotcha #2: `genres.id` is `BIGINT UNSIGNED`
+        // and SQLx can't decode it directly as `i64`. CAST to SIGNED so
+        // the type unifier picks the signed shape `query_as` expects.
+        let (genre_id,): (i64,) = sqlx::query_as(
+            "SELECT CAST(MIN(id) AS SIGNED) FROM genres WHERE deleted_at IS NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
         let r = sqlx::query(
             "INSERT INTO titles (title, language, genre_id, media_type, isbn) VALUES (?, 'en', ?, 'book', ?)",
         )
