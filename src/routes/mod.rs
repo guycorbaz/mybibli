@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod admin_api_keys;
 pub mod admin_reference_data;
 pub mod admin_system;
 pub mod api_v1;
@@ -441,6 +442,22 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/admin/system/language",
             axum::routing::post(admin_system::save_language_settings),
+        )
+        // CR #241 — Admin → API keys (v1.4.0). 4 routes: 1 GET panel +
+        // 1 POST create + 1 GET revoke-modal + 1 POST revoke. All
+        // Admin-gated. CSRF-protected via the 8-2 middleware.
+        .route(
+            "/admin/api-keys",
+            axum::routing::get(admin_api_keys::admin_api_keys_panel)
+                .post(admin_api_keys::admin_api_keys_create),
+        )
+        .route(
+            "/admin/api-keys/{id}/revoke-modal",
+            axum::routing::get(admin_api_keys::admin_api_keys_revoke_modal),
+        )
+        .route(
+            "/admin/api-keys/{id}/revoke",
+            axum::routing::post(admin_api_keys::admin_api_keys_revoke),
         )
         // Story 8-8 — first-launch setup wizard. Whitelisted by the
         // setup-gate middleware (so this is reachable on a fresh install

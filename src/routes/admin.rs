@@ -47,6 +47,7 @@ pub enum AdminTab {
     ReferenceData,
     Trash,
     System,
+    ApiKeys,
 }
 
 impl AdminTab {
@@ -58,6 +59,7 @@ impl AdminTab {
             "reference_data" => AdminTab::ReferenceData,
             "trash" => AdminTab::Trash,
             "system" => AdminTab::System,
+            "api_keys" => AdminTab::ApiKeys,
             _ => AdminTab::Health,
         }
     }
@@ -70,6 +72,7 @@ impl AdminTab {
             AdminTab::ReferenceData => "reference_data",
             AdminTab::Trash => "trash",
             AdminTab::System => "system",
+            AdminTab::ApiKeys => "api_keys",
         }
     }
 
@@ -82,6 +85,7 @@ impl AdminTab {
             AdminTab::ReferenceData => "reference-data",
             AdminTab::Trash => "trash",
             AdminTab::System => "system",
+            AdminTab::ApiKeys => "api-keys",
         }
     }
 }
@@ -1236,6 +1240,17 @@ pub(crate) async fn render_admin_for_system(
     render_admin(state, session, loc, uri, is_htmx, AdminTab::System, None).await
 }
 
+/// CR #241: render the API-keys tab, mirroring `render_admin_for_system`.
+pub(crate) async fn render_admin_for_api_keys(
+    state: &AppState,
+    session: &Session,
+    loc: &'static str,
+    uri: &axum::http::Uri,
+    is_htmx: bool,
+) -> Result<Response, AppError> {
+    render_admin(state, session, loc, uri, is_htmx, AdminTab::ApiKeys, None).await
+}
+
 // ─── Rendering ──────────────────────────────────────────────────
 
 async fn render_admin(
@@ -1314,6 +1329,9 @@ fn render_shell(
             }
             AdminTab::Trash => rust_i18n::t!("admin.tabs.trash", locale = loc).to_string(),
             AdminTab::System => rust_i18n::t!("admin.tabs.system", locale = loc).to_string(),
+            AdminTab::ApiKeys => {
+                rust_i18n::t!("admin.tabs.api_keys", locale = loc).to_string()
+            }
         },
         aria_selected: tab == active,
         badge_count: if tab == AdminTab::Trash {
@@ -1335,6 +1353,7 @@ fn render_shell(
             mk(AdminTab::ReferenceData),
             mk(AdminTab::Trash),
             mk(AdminTab::System),
+            mk(AdminTab::ApiKeys),
         ],
         tabs_aria: rust_i18n::t!("admin.tabs_aria", locale = loc).to_string(),
         active_tab_name: active.as_str(),
@@ -1473,6 +1492,9 @@ async fn render_panel(
         }
         AdminTab::System => {
             crate::routes::admin_system::render_panel_html(state, loc, session).await
+        }
+        AdminTab::ApiKeys => {
+            crate::routes::admin_api_keys::render_panel_html(state, loc, session).await
         }
     }
 }
