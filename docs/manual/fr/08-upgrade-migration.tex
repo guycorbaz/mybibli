@@ -110,6 +110,57 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.3.1}\label{sec:whats-new-1.3.1}
+
+La version 1.3.1 est un correctif de quatre papercuts UX
+remontés par Guy dans les heures suivant le déploiement de la
+1.3.0 en production. Aucune migration de schéma, aucun breaking
+change \string— routine \texttt{docker compose pull \&\&
+docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Roue de chargement sur le bouton "Rechercher"
+        de la wish list (\#258).} La recherche par ISBN exécute
+        toute la chaîne de fournisseurs (BnF / Open Library /
+        Google Books / …), ce qui prend 2 à 5 secondes. La
+        1.3.0 partait sans indicateur visuel, ce qui laissait
+        l'utilisateur dans le doute. Le bouton affiche
+        maintenant une roue pendant la requête, et est
+        désactivé pour bloquer les doubles-clics.
+  \item \textbf{Tooltip d'aide sur la case Omnibus (\#259).}
+        L'option Omnibus dans le formulaire d'assignation à une
+        série sur la page détail d'un titre était opaque
+        \string— un utilisateur fraîchement déployé a dû
+        demander à quoi elle servait. Un nouveau tooltip
+        explique~: \emph{cochez si le livre regroupe plusieurs
+        volumes de la série~; le formulaire révèle alors un
+        champ Position de fin pour que le titre couvre une
+        plage de positions au lieu d'une seule.}
+  \item \textbf{Page d'impression de la wish list revue
+        (\#260).} Le bouton Imprimer ouvre désormais
+        \texttt{/wishlist/print} dans un \emph{nouvel onglet}
+        pour ne pas perdre la vue wish list quand on ferme la
+        boîte de dialogue d'impression. La page d'impression
+        elle-même a été refondue d'un tableau dense en une mise
+        en page en cartes avec vignettes de couverture, une
+        hiérarchie typographique plus claire (titre en gras,
+        auteur estompé), un pied de page avec le compteur de
+        pages, et des règles CSS pour qu'une entrée ne soit
+        jamais coupée entre deux pages. Le PDF est prêt à
+        emporter en librairie.
+  \item \textbf{Section "Ajouts récents" repliée par défaut sur
+        la home (\#261).} À mesure que le catalogue grandit, le
+        tableau de bord s'allonge. La section "Ajouts récents"
+        est maintenant emballée dans un \texttt{<details>}
+        natif, fermé par défaut, avec l'état ouvert / fermé
+        persisté entre les rechargements via
+        \texttt{localStorage}. Cliquez sur le titre pour
+        développer. Les filtres indicateurs du tableau de bord
+        (en retard, non rangés, gaps, catalogués récemment,
+        retours récents) restent dépliés puisqu'ils sont le
+        résultat d'un clic explicite.
+\end{itemize}
+
 \section{Nouveautés de la 1.3.0}\label{sec:whats-new-1.3.0}
 
 La version 1.3.0 est la deuxième version mineure thématique de
