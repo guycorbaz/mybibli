@@ -7,6 +7,7 @@ use mybibli::db;
 use mybibli::metadata::bdgest::BdgestProvider;
 use mybibli::metadata::bnf::BnfProvider;
 use mybibli::metadata::google_books::GoogleBooksProvider;
+use mybibli::metadata::library_of_congress::LibraryOfCongressProvider;
 use mybibli::metadata::musicbrainz::MusicBrainzProvider;
 use mybibli::metadata::omdb::OmdbProvider;
 use mybibli::metadata::open_library::OpenLibraryProvider;
@@ -157,15 +158,23 @@ async fn main() {
     // Build provider registry (registration order = chain priority)
     let mut registry = ProviderRegistry::new();
 
-    // Book chain: BnF → Google Books → Open Library
+    // Book chain: BnF → Google Books → Library of Congress → Open Library
     // BD chain: BDGest (stub) → BnF → Google Books
-    // Magazine chain: BnF → Google Books
+    // Magazine chain: BnF → Google Books → Library of Congress
+    //
+    // CR #263: LoC slot sits between Google Books and Open Library. BnF
+    // stays first for FR-language titles; Google Books second for broad
+    // modern coverage; LoC third because it's authoritative for older
+    // / academic / US-government EN titles (fills exactly the gaps where
+    // Google Books returns nothing); OL last as the community
+    // gap-filler + cover-URL fallback.
     registry.register(Box::new(BdgestProvider::new()));
     registry.register(Box::new(BnfProvider::new(http_client.clone())));
     registry.register(Box::new(GoogleBooksProvider::new(
         http_client.clone(),
         settings_arc.clone(),
     )));
+    registry.register(Box::new(LibraryOfCongressProvider::new(http_client.clone())));
     registry.register(Box::new(OpenLibraryProvider::new(http_client.clone())));
 
     // CD chain: MusicBrainz (1 req/sec rate limit)
