@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod admin_reference_data;
 pub mod admin_system;
+pub mod api_v1;
 pub mod auth;
 pub mod borrowers;
 pub mod catalog;
@@ -248,6 +249,32 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/wishlist/{id}/delete-modal",
             axum::routing::get(wishlist::wishlist_delete_modal),
+        )
+        // CR #241 — JSON HTTP API under /api/v1/* (API-key auth).
+        // CSRF middleware short-circuits on `/api/*` (see csrf.rs).
+        .route(
+            "/api/v1/titles",
+            axum::routing::get(api_v1::list_titles),
+        )
+        .route(
+            "/api/v1/titles/{id}",
+            axum::routing::get(api_v1::get_title).patch(api_v1::patch_title),
+        )
+        .route(
+            "/api/v1/genres",
+            axum::routing::get(api_v1::list_genres),
+        )
+        .route(
+            "/api/v1/locations",
+            axum::routing::get(api_v1::list_locations),
+        )
+        .route(
+            "/api/v1/series",
+            axum::routing::get(api_v1::list_series_endpoint),
+        )
+        .route(
+            "/api/v1/dewey/{prefix}",
+            axum::routing::get(api_v1::list_titles_by_dewey_prefix),
         )
         // Loan routes
         .route(
