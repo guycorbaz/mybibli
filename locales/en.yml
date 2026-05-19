@@ -519,6 +519,10 @@ dashboard:
     heading: By genre
     titles_one: "%{count} title"
     titles_other: "%{count} titles"
+    other_label: Other
+    other_heading: "Less than 5% of the catalog"
+    center_caption: titles
+    aria_summary: "Catalog by genre: %{summary}"
   attention:
     heading: What needs attention
     unshelved_label: Unshelved volumes

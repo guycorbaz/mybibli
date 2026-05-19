@@ -113,8 +113,9 @@ pub struct HomeTemplate {
     pub recent_additions: Vec<crate::models::title::SearchResult>,
     pub recent_additions_heading: String,
     pub recent_additions_empty: String,
-    // "By genre" section (story 9-3) — empty Vec → section hidden entirely (AC4).
-    pub stats_by_genre: Vec<StatsByGenreRow>,
+    // "By genre" section (story 9-3, reshaped in CR #265 to a donut).
+    // Section hidden entirely when `stats_by_genre.has_data()` is false.
+    pub stats_by_genre: StatsByGenreDonut,
     pub stats_by_genre_heading: String,
     // "What needs attention" section (story 9-4). Anonymous users get
     // an empty Vec and the section is hidden by `{% if %}`.
@@ -161,20 +162,96 @@ pub struct HomeTemplate {
     pub recent_returns_empty_label: String,
 }
 
-/// One row of the "By genre" dashboard section (story 9-3).
+/// One row of the "By genre" dashboard section.
 ///
-/// Pairs the SQL-emitted `GenreStat` with the pre-translated, locale-
-/// formatted labels that the Askama template renders verbatim. The
-/// `value`/`max` pair drives the `<progress>` bar's HTML attributes —
-/// CSP-clean variable-width visualization without inline `style=`.
+/// Originally a `<progress>` bar row (story 9-3); reshaped in CR #265 to
+/// a donut-slice row. The `<progress>`-driving `value` + `max` were
+/// dropped — Chart.js handles the variable-width visualization from
+/// `count` and the donut's `total`. `color` is the palette assignment
+/// the legend dots + Chart.js share so both surfaces stay in sync.
 pub struct StatsByGenreRow {
     pub id: u64,
     pub name: String,
+    pub count: i64,
     pub count_label: String,   // pre-translated, e.g. "12 titles" / "12 titres"
     pub percent_label: String, // locale-formatted, e.g. "33.3%" / "33,3 %"
-    pub value: i64,            // <progress value="...">
-    pub max: i64,              // <progress max="...">
+    pub color: String,         // palette color shared with Chart.js
 }
+
+/// "Other" aggregate slice for genres below the 5% threshold (CR #265).
+///
+/// Roll-up of every genre whose share of the active catalog is strictly
+/// less than 5%. The donut renders this as a single stone-gray slice,
+/// the legend lists "Other (N genres) — X%", and a `<details>` block
+/// below the chart shows the rolled-up genres by name for transparency.
+pub struct StatsByGenreOther {
+    pub count: i64,
+    pub count_label: String,
+    pub percent_label: String,
+    pub other_label: String,      // localized "Other" / "Autres"
+    pub other_heading: String,    // localized "Less than 5% of the catalog" / "Moins de 5%..."
+    pub color: String,            // fixed stone gray
+    pub rolled_up: Vec<StatsByGenreOtherEntry>,
+}
+
+/// One row inside the `<details>` list of rolled-up small genres.
+pub struct StatsByGenreOtherEntry {
+    pub id: u64,
+    pub name: String,
+    pub count_label: String,
+}
+
+/// Composite donut payload — visible slices, optional "Other" bucket,
+/// the JSON blob the client-side script reads, and the pre-built aria
+/// summary for the `<canvas>`.
+pub struct StatsByGenreDonut {
+    pub visible: Vec<StatsByGenreRow>,
+    pub other: Option<StatsByGenreOther>,
+    pub total: i64,
+    pub total_label: String,
+    /// Pre-translated section sub-heading rendered in the chart center.
+    pub center_caption: String,
+    pub aria_summary: String,
+    /// JSON-serialized payload consumed by `home-stats-donut.js`.
+    /// Stored as a single String so the template can stamp it into a
+    /// `data-stats-json="…"` attribute on the canvas wrapper.
+    pub data_json: String,
+}
+
+impl StatsByGenreDonut {
+    /// `true` when there's at least one slice (visible or rolled-up Other).
+    /// Used by the template to hide the entire section when the catalog
+    /// has no titles yet.
+    pub fn has_data(&self) -> bool {
+        !self.visible.is_empty() || self.other.is_some()
+    }
+}
+
+/// CR #265 — 5% threshold for the donut's "Other" bucket. Strictly less
+/// than this fraction goes into Other; exactly equal or greater gets its
+/// own visible slice.
+const STATS_BY_GENRE_OTHER_THRESHOLD_PERCENT: f64 = 5.0;
+
+/// CR #265 — palette assigned to visible donut slices in their sorted
+/// order (descending count). 8 entries cover the typical home dashboard
+/// — when more visible slices exist than colors, indices wrap modulo
+/// `PALETTE.len()`. Picked for distinguishability under both light and
+/// dark Tailwind themes; values match the `-500` stop of each Tailwind
+/// hue so legend dots blend with the surrounding UI.
+const STATS_BY_GENRE_PALETTE: &[&str] = &[
+    "#6366f1", // indigo-500
+    "#ec4899", // pink-500
+    "#10b981", // emerald-500
+    "#f59e0b", // amber-500
+    "#3b82f6", // blue-500
+    "#8b5cf6", // violet-500
+    "#ef4444", // red-500
+    "#14b8a6", // teal-500
+];
+
+/// Fixed gray for the "Other" slice — kept outside the rotating palette
+/// so it stays visually distinct from the named genres.
+const STATS_BY_GENRE_OTHER_COLOR: &str = "#a8a29e"; // stone-400
 
 pub async fn home(
     State(state): State<AppState>,
@@ -519,7 +596,7 @@ pub async fn home(
     // currently prevents it), per-row percentages still reflect the true
     // catalog share. The displayed total may sum to <100% in that case;
     // the invisible delta is the orphan-genre titles.
-    let stats_by_genre = build_stats_by_genre_rows(stats_rows, loc, glance.titles);
+    let stats_by_genre = build_stats_by_genre_donut(stats_rows, loc, glance.titles);
 
     // Choose `_one` vs `_other` for each count. Inline if/else so the macro receives
     // a literal key (matching the project's i18n audit at `src/i18n/audit.rs`),
@@ -761,67 +838,198 @@ fn is_singular(locale: &str, count: i64) -> bool {
     }
 }
 
-/// Transform raw `GenreStat` rows into presentation-ready dashboard rows
-/// (story 9-3). The total denominator is the row sum — single SQL
-/// round-trip per AC3, no extra SELECT.
+/// CR #265 — reshape raw `GenreStat` rows into a donut payload:
+/// visible slices (>=5% of `total_active_titles`) plus an optional
+/// rolled-up "Other" bucket (strictly <5%). The visible slices keep
+/// the rounded-percent contract from #111 (denominator = full active
+/// catalog, NOT the row-sum, so orphan-FK rows correctly subtract
+/// from the visible total).
 ///
-/// Per-row computation:
-/// - `percent` is `(count / total) * 100` rounded to one decimal place.
-///   When `total == 0` (defensive — shouldn't happen since INNER JOIN
-///   excludes empty genres) we fall back to `0.0` rather than risk a
-///   `NaN` from division.
-/// - `count_label` and `percent_label` are pre-translated locale-aware
-///   strings; the Askama template renders them verbatim. This stays
-///   consistent with the project pattern (see 9-1's `is_singular` +
-///   literal `t!()` keys; canonical example at `src/routes/home.rs`'s
-///   glance-label construction).
-fn build_stats_by_genre_rows(
+/// `data_json` carries the same content as the template fields but as
+/// a JSON string the `home-stats-donut.js` wrapper reads to instantiate
+/// Chart.js without a second server round-trip.
+///
+/// Defensive: when `total == 0` (shouldn't happen since INNER JOIN
+/// excludes empty genres) percent falls back to `0.0` rather than
+/// risk a `NaN` from division.
+fn build_stats_by_genre_donut(
     rows: Vec<crate::services::dashboard::GenreStat>,
     loc: &str,
     total_active_titles: i64,
-) -> Vec<StatsByGenreRow> {
-    // Fix #111: denominator is the full active title count (passed in
-    // from the home handler's `collection_glance.titles`) rather than the
-    // sum of displayed rows. This makes per-row percentages reflect the
-    // TRUE share of the catalog. Orphan-FK titles (story 8-4's guard
-    // currently makes this state unreachable, but defense-in-depth) are
-    // excluded from `stats_by_genre`'s INNER JOIN output — under the old
-    // denominator they would have inflated each displayed row's share;
-    // under the new denominator they correctly subtract from the sum,
-    // which can now be < 100% (intentional, signals the orphan delta).
+) -> StatsByGenreDonut {
     let total: i64 = total_active_titles;
-    rows.into_iter()
-        .map(|r| {
-            let percent = if total > 0 {
-                ((r.title_count as f64 / total as f64) * 1000.0).round() / 10.0
-            } else {
-                0.0
-            };
-            let count_label = if is_singular(loc, r.title_count) {
-                rust_i18n::t!(
-                    "dashboard.stats_by_genre.titles_one",
-                    locale = loc,
-                    count = r.title_count
-                )
-                .to_string()
-            } else {
-                rust_i18n::t!(
-                    "dashboard.stats_by_genre.titles_other",
-                    locale = loc,
-                    count = r.title_count
-                )
-                .to_string()
-            };
-            StatsByGenreRow {
+    let count_label_for = |n: i64| -> String {
+        if is_singular(loc, n) {
+            rust_i18n::t!(
+                "dashboard.stats_by_genre.titles_one",
+                locale = loc,
+                count = n
+            )
+            .to_string()
+        } else {
+            rust_i18n::t!(
+                "dashboard.stats_by_genre.titles_other",
+                locale = loc,
+                count = n
+            )
+            .to_string()
+        }
+    };
+
+    // Pre-sort by descending count so the palette assignment + legend
+    // order are stable.
+    let mut sorted = rows;
+    sorted.sort_by_key(|r| std::cmp::Reverse(r.title_count));
+
+    let mut visible: Vec<StatsByGenreRow> = Vec::new();
+    let mut other_entries: Vec<StatsByGenreOtherEntry> = Vec::new();
+    let mut other_count: i64 = 0;
+
+    for r in sorted {
+        let percent = if total > 0 {
+            ((r.title_count as f64 / total as f64) * 1000.0).round() / 10.0
+        } else {
+            0.0
+        };
+        if percent < STATS_BY_GENRE_OTHER_THRESHOLD_PERCENT {
+            other_entries.push(StatsByGenreOtherEntry {
                 id: r.id,
                 name: r.name,
-                count_label,
+                count_label: count_label_for(r.title_count),
+            });
+            other_count += r.title_count;
+        } else {
+            let color = STATS_BY_GENRE_PALETTE
+                [visible.len() % STATS_BY_GENRE_PALETTE.len()]
+            .to_string();
+            visible.push(StatsByGenreRow {
+                id: r.id,
+                name: r.name,
+                count: r.title_count,
+                count_label: count_label_for(r.title_count),
                 percent_label: crate::utils::format_percent(percent, loc),
-                value: r.title_count,
-                max: total,
-            }
+                color,
+            });
+        }
+    }
+
+    let other = if other_count > 0 {
+        let percent = if total > 0 {
+            ((other_count as f64 / total as f64) * 1000.0).round() / 10.0
+        } else {
+            0.0
+        };
+        Some(StatsByGenreOther {
+            count: other_count,
+            count_label: count_label_for(other_count),
+            percent_label: crate::utils::format_percent(percent, loc),
+            other_label: rust_i18n::t!("dashboard.stats_by_genre.other_label", locale = loc)
+                .to_string(),
+            other_heading: rust_i18n::t!("dashboard.stats_by_genre.other_heading", locale = loc)
+                .to_string(),
+            color: STATS_BY_GENRE_OTHER_COLOR.to_string(),
+            rolled_up: other_entries,
         })
-        .collect()
+    } else {
+        None
+    };
+
+    let total_label = total.to_string();
+    let center_caption = rust_i18n::t!(
+        "dashboard.stats_by_genre.center_caption",
+        locale = loc
+    )
+    .to_string();
+
+    // Build an aria summary sentence pinning every visible slice + the
+    // Other aggregate. Format: "Genre A 48%, Genre B 32%, Other (3) 20%."
+    let mut parts: Vec<String> = visible
+        .iter()
+        .map(|s| format!("{} {}", s.name, s.percent_label))
+        .collect();
+    if let Some(ref o) = other {
+        parts.push(format!(
+            "{} ({}) {}",
+            o.other_label,
+            o.rolled_up.len(),
+            o.percent_label
+        ));
+    }
+    let aria_summary = rust_i18n::t!(
+        "dashboard.stats_by_genre.aria_summary",
+        locale = loc,
+        summary = parts.join(", ")
+    )
+    .to_string();
+
+    // JSON blob for the client-side wrapper. Keep keys short for size.
+    let data_json = build_donut_data_json(&visible, other.as_ref(), total);
+
+    StatsByGenreDonut {
+        visible,
+        other,
+        total,
+        total_label,
+        center_caption,
+        aria_summary,
+        data_json,
+    }
+}
+
+fn build_donut_data_json(
+    visible: &[StatsByGenreRow],
+    other: Option<&StatsByGenreOther>,
+    total: i64,
+) -> String {
+    // Hand-roll the JSON: `serde_json::to_string` would need #[derive]s
+    // on every public struct, which leaks Serialize into a presentation
+    // surface that has no other reason to wear it. The blob is tiny
+    // (max ~512 bytes) and the shape is closed — one place to keep in
+    // sync with `static/js/home-stats-donut.js`.
+    let mut buf = String::with_capacity(256);
+    buf.push_str("{\"slices\":[");
+    for (i, s) in visible.iter().enumerate() {
+        if i > 0 {
+            buf.push(',');
+        }
+        buf.push_str(&format!(
+            r#"{{"id":{id},"name":"{name}","count":{count},"color":"{color}"}}"#,
+            id = s.id,
+            name = json_escape(&s.name),
+            count = s.count,
+            color = s.color,
+        ));
+    }
+    buf.push(']');
+    if let Some(o) = other {
+        buf.push_str(&format!(
+            r#","other":{{"label":"{label}","count":{count},"color":"{color}"}}"#,
+            label = json_escape(&o.other_label),
+            count = o.count,
+            color = o.color,
+        ));
+    }
+    buf.push_str(&format!(r#","total":{total}}}"#));
+    buf
+}
+
+/// Minimal JSON string escape — covers the four chars that would break
+/// the embedded `data-stats-json` attribute. Genre names are user
+/// content but constrained by the reference-data validation upstream;
+/// this guard is belt-and-braces against an `&` or `"` slipping in.
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 fn parse_filter(filter: &Option<String>) -> (Option<u64>, Option<String>) {
@@ -1014,7 +1222,15 @@ pub(crate) mod tests {
             recent_additions: Vec::new(),
             recent_additions_heading: "Recent additions".to_string(),
             recent_additions_empty: "No recent additions yet — start cataloging!".to_string(),
-            stats_by_genre: Vec::new(),
+            stats_by_genre: StatsByGenreDonut {
+                visible: Vec::new(),
+                other: None,
+                total: 0,
+                total_label: "0".to_string(),
+                center_caption: "titles".to_string(),
+                aria_summary: String::new(),
+                data_json: "{\"slices\":[],\"total\":0}".to_string(),
+            },
             stats_by_genre_heading: "By genre".to_string(),
             attention_heading: "What needs attention".to_string(),
             indicator_tags: Vec::new(),
@@ -1074,35 +1290,45 @@ pub(crate) mod tests {
         }
     }
 
-    /// Story 9-3 — build a HomeTemplate with `stats_by_genre`. Caller
+    /// Story 9-3 (CR #265 reshape) — build a HomeTemplate with
+    /// `stats_by_genre` from a pre-built Vec of visible slices. Caller
     /// can flip `lang` post-construction for FR-formatting tests.
     fn make_test_home_template_with_stats(
         role: &str,
         stats: Vec<StatsByGenreRow>,
     ) -> HomeTemplate {
         let mut t = make_test_home_template_with_counts(role, false, 5, 8, 2);
-        t.stats_by_genre = stats;
+        let total: i64 = stats.iter().map(|s| s.count).sum();
+        t.stats_by_genre = StatsByGenreDonut {
+            visible: stats,
+            other: None,
+            total,
+            total_label: total.to_string(),
+            center_caption: "titles".to_string(),
+            aria_summary: "Catalog by genre".to_string(),
+            data_json: format!(r#"{{"slices":[],"total":{}}}"#, total),
+        };
         t.stats_by_genre_heading = "By genre".to_string();
         t
     }
 
-    /// Story 9-3 — deterministic row factory; caller pins every visible
-    /// field so assertions don't depend on the locale formatter.
+    /// Story 9-3 (CR #265 reshape) — deterministic donut-slice factory.
+    /// `color` defaults to indigo-500 so callers don't need to spell it
+    /// out unless the test specifically wants palette-rotation behavior.
     fn fake_genre_stat_row(
         id: u64,
         name: &str,
         count_label: &str,
         percent_label: &str,
-        value: i64,
-        max: i64,
+        count: i64,
     ) -> StatsByGenreRow {
         StatsByGenreRow {
             id,
             name: name.to_string(),
+            count,
             count_label: count_label.to_string(),
             percent_label: percent_label.to_string(),
-            value,
-            max,
+            color: "#6366f1".to_string(),
         }
     }
 
@@ -1433,9 +1659,9 @@ pub(crate) mod tests {
     #[test]
     fn home_renders_stats_by_genre_with_three_rows() {
         let stats = vec![
-            fake_genre_stat_row(1, "Roman", "12 titles", "60.0%", 12, 20),
-            fake_genre_stat_row(2, "BD", "5 titles", "25.0%", 5, 20),
-            fake_genre_stat_row(3, "Essai", "3 titles", "15.0%", 3, 20),
+            fake_genre_stat_row(1, "Roman", "12 titles", "60.0%", 12),
+            fake_genre_stat_row(2, "BD", "5 titles", "25.0%", 5),
+            fake_genre_stat_row(3, "Essai", "3 titles", "15.0%", 3),
         ];
         let template = make_test_home_template_with_stats("anonymous", stats);
         let html = template.render().expect("render");
@@ -1460,11 +1686,26 @@ pub(crate) mod tests {
             );
         }
 
-        // <progress> bar carries semantic value/max attributes (CSP-clean
-        // alternative to inline width=...; AC8).
-        assert!(slice.contains("<progress"));
-        assert!(slice.contains("value=\"12\""));
-        assert!(slice.contains("max=\"20\""));
+        // CR #265: donut canvas + legend dots replace the <progress> bars.
+        // Locks the new DOM shape: a <canvas> wrapped in a div carrying
+        // data-stats-json, and SVG legend dots with fill="..." (CSP-clean
+        // alternative to inline style="background-color:...").
+        assert!(
+            slice.contains("id=\"stats-by-genre-canvas\""),
+            "donut canvas must render under #stats-by-genre"
+        );
+        assert!(
+            slice.contains("data-stats-json="),
+            "canvas wrapper carries the JSON payload Chart.js consumes"
+        );
+        assert!(
+            slice.contains("<svg"),
+            "legend dots are inline SVGs with fill attribute"
+        );
+        assert!(
+            !slice.contains("<progress"),
+            "<progress> bars belong to the old shape and must not regress"
+        );
 
         // Document order inside the slice — Roman before BD before Essai.
         let pos_roman = slice.find("Roman").expect("Roman row position");
@@ -1500,7 +1741,7 @@ pub(crate) mod tests {
     fn home_renders_recent_additions_above_stats_by_genre() {
         let mut template = make_test_home_template_with_stats(
             "anonymous",
-            vec![fake_genre_stat_row(1, "Roman", "1 title", "100.0%", 1, 1)],
+            vec![fake_genre_stat_row(1, "Roman", "1 title", "100.0%", 1)],
         );
         // Force `recent_additions` to be non-empty so the section renders.
         template.recent_additions = vec![fake_search_result(42, "Sample Title")];
@@ -1528,8 +1769,8 @@ pub(crate) mod tests {
     fn home_stats_by_genre_byte_identical_for_anonymous_and_librarian() {
         let stats = || {
             vec![
-                fake_genre_stat_row(1, "Roman", "12 titles", "60.0%", 12, 20),
-                fake_genre_stat_row(2, "BD", "5 titles", "25.0%", 5, 20),
+                fake_genre_stat_row(1, "Roman", "12 titles", "60.0%", 12),
+                fake_genre_stat_row(2, "BD", "5 titles", "25.0%", 5),
             ]
         };
         let html_anon = make_test_home_template_with_stats("anonymous", stats())
@@ -1556,8 +1797,8 @@ pub(crate) mod tests {
     #[test]
     fn home_renders_stats_by_genre_french_uses_nbsp_and_comma() {
         let stats = vec![
-            fake_genre_stat_row(1, "Roman", "12 titres", "60,0\u{00A0}%", 12, 20),
-            fake_genre_stat_row(2, "BD", "8 titres", "40,0\u{00A0}%", 8, 20),
+            fake_genre_stat_row(1, "Roman", "12 titres", "60,0\u{00A0}%", 12),
+            fake_genre_stat_row(2, "BD", "8 titres", "40,0\u{00A0}%", 8),
         ];
         let mut template = make_test_home_template_with_stats("anonymous", stats);
         template.lang = "fr".to_string();
@@ -1578,11 +1819,11 @@ pub(crate) mod tests {
         );
     }
 
-    // ─── Story 9-3 — `build_stats_by_genre_rows` direct unit tests
-    // (added during code-review follow-up — the render tests above use
-    // `fake_genre_stat_row` which bypasses the helper entirely, so the
-    // i18n-branching + percent-rounding + total=0 branches were never
-    // exercised. These tests close that coverage gap.)
+    // ─── Story 9-3 (CR #265 reshape) — `build_stats_by_genre_donut`
+    // direct unit tests. Originally written for the flat
+    // `build_stats_by_genre_rows`; reshaped to assert on the donut's
+    // `visible` Vec + optional `other` bucket. The i18n-branching,
+    // percent-rounding, and total=0 branches are still exercised.
 
     fn make_genre_stat(id: u64, name: &str, count: i64) -> crate::services::dashboard::GenreStat {
         crate::services::dashboard::GenreStat {
@@ -1592,138 +1833,209 @@ pub(crate) mod tests {
         }
     }
 
-    /// Helper output for `count == 1` → `_one` key in EN ("1 title", not "1 titles").
-    /// Locks the EN singular branch in `is_singular`.
     #[test]
-    fn build_stats_by_genre_rows_en_singular_for_count_one() {
+    fn build_stats_by_genre_donut_en_singular_for_count_one() {
         let rows = vec![make_genre_stat(1, "Roman", 1)];
-        let out = build_stats_by_genre_rows(rows, "en", 1);
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].count_label, "1 title");
+        let donut = build_stats_by_genre_donut(rows, "en", 1);
+        assert_eq!(donut.visible.len(), 1);
+        assert_eq!(donut.visible[0].count_label, "1 title");
     }
 
-    /// EN plural branch — `count == 2` must use `_other` key ("2 titles").
-    /// A swap of the two `t!()` keys would surface as "2 title".
     #[test]
-    fn build_stats_by_genre_rows_en_plural_for_count_two() {
+    fn build_stats_by_genre_donut_en_plural_for_count_two() {
         let rows = vec![make_genre_stat(1, "Roman", 2)];
-        let out = build_stats_by_genre_rows(rows, "en", 2);
-        assert_eq!(out[0].count_label, "2 titles");
+        let donut = build_stats_by_genre_donut(rows, "en", 2);
+        assert_eq!(donut.visible[0].count_label, "2 titles");
     }
 
-    /// FR CLDR rule — count of 0 maps to the singular form ("0 titre",
-    /// not "0 titres"). Encoded by `is_singular` (`fr` arm includes 0).
-    /// Note: this case isn't reachable through the SQL pipeline (INNER
-    /// JOIN excludes zero-count genres) but the helper API is public
-    /// and a future caller could pass it.
-    #[test]
-    fn build_stats_by_genre_rows_fr_singular_for_count_zero() {
-        let rows = vec![make_genre_stat(1, "Roman", 0)];
-        let out = build_stats_by_genre_rows(rows, "fr", 0);
-        assert_eq!(out[0].count_label, "0 titre");
-    }
+    // (The FR `is_singular("fr", 0)` case used to be re-exercised here
+    // through the helper. Under the CR #265 donut shape a 0-count genre
+    // at 0% total goes into the Other bucket — and with `other_count == 0`
+    // the bucket itself is `None`, so the row vanishes. The CLDR rule
+    // still has direct coverage at `is_singular_french_treats_zero_and_one_as_singular`.)
 
-    /// FR singular for count == 1.
     #[test]
-    fn build_stats_by_genre_rows_fr_singular_for_count_one() {
+    fn build_stats_by_genre_donut_fr_singular_for_count_one() {
         let rows = vec![make_genre_stat(1, "Roman", 1)];
-        let out = build_stats_by_genre_rows(rows, "fr", 1);
-        assert_eq!(out[0].count_label, "1 titre");
+        let donut = build_stats_by_genre_donut(rows, "fr", 1);
+        assert_eq!(donut.visible[0].count_label, "1 titre");
     }
 
-    /// FR plural for count >= 2.
     #[test]
-    fn build_stats_by_genre_rows_fr_plural_for_count_many() {
+    fn build_stats_by_genre_donut_fr_plural_for_count_many() {
         let rows = vec![make_genre_stat(1, "Roman", 12)];
-        let out = build_stats_by_genre_rows(rows, "fr", 12);
-        assert_eq!(out[0].count_label, "12 titres");
+        let donut = build_stats_by_genre_donut(rows, "fr", 12);
+        assert_eq!(donut.visible[0].count_label, "12 titres");
     }
 
-    /// Percent computation — three rows with counts 3/2/1, total 6, must
-    /// round to 50.0% / 33.3% / 16.7% (1 decimal). Bakes in the AC9
-    /// rounding contract end-to-end through the helper.
     #[test]
-    fn build_stats_by_genre_rows_computes_percent_to_one_decimal() {
+    fn build_stats_by_genre_donut_computes_percent_to_one_decimal() {
         let rows = vec![
             make_genre_stat(1, "A", 3),
             make_genre_stat(2, "B", 2),
             make_genre_stat(3, "C", 1),
         ];
-        let out = build_stats_by_genre_rows(rows, "en", 6);
-        assert_eq!(out.len(), 3);
-        assert_eq!(out[0].percent_label, "50.0%");
-        assert_eq!(out[1].percent_label, "33.3%");
-        assert_eq!(out[2].percent_label, "16.7%");
-        // Each row's `value`/`max` mirrors the count and the global total —
-        // the <progress> bar drives off these.
-        assert_eq!(out[0].value, 3);
-        assert_eq!(out[0].max, 6);
-        assert_eq!(out[2].max, 6);
+        let donut = build_stats_by_genre_donut(rows, "en", 6);
+        // All three are ≥5% (smallest = 16.7%) so nothing rolls into Other.
+        assert!(donut.other.is_none());
+        assert_eq!(donut.visible.len(), 3);
+        assert_eq!(donut.visible[0].percent_label, "50.0%");
+        assert_eq!(donut.visible[1].percent_label, "33.3%");
+        assert_eq!(donut.visible[2].percent_label, "16.7%");
+        assert_eq!(donut.visible[0].count, 3);
+        assert_eq!(donut.total, 6);
     }
 
-    /// FR percent uses comma + NBSP — round-trip through the helper.
     #[test]
-    fn build_stats_by_genre_rows_fr_percent_uses_comma_and_nbsp() {
+    fn build_stats_by_genre_donut_fr_percent_uses_comma_and_nbsp() {
         let rows = vec![
             make_genre_stat(1, "A", 3),
             make_genre_stat(2, "B", 2),
             make_genre_stat(3, "C", 1),
         ];
-        let out = build_stats_by_genre_rows(rows, "fr", 6);
-        assert_eq!(out[0].percent_label, "50,0\u{00A0}%");
-        assert_eq!(out[1].percent_label, "33,3\u{00A0}%");
+        let donut = build_stats_by_genre_donut(rows, "fr", 6);
+        assert_eq!(donut.visible[0].percent_label, "50,0\u{00A0}%");
+        assert_eq!(donut.visible[1].percent_label, "33,3\u{00A0}%");
     }
 
-    /// Empty input → empty output. The defensive `total > 0` branch in
-    /// the helper exists for this scenario; we lock it in.
     #[test]
-    fn build_stats_by_genre_rows_empty_input_yields_empty_output() {
-        let out = build_stats_by_genre_rows(vec![], "en", 0);
-        assert!(out.is_empty());
+    fn build_stats_by_genre_donut_empty_input_yields_no_data() {
+        let donut = build_stats_by_genre_donut(vec![], "en", 0);
+        assert!(donut.visible.is_empty());
+        assert!(donut.other.is_none());
+        assert!(!donut.has_data());
     }
 
     /// Fix #111: when the catalog has orphan-FK active titles (a genre
     /// has been soft-deleted but titles still reference it), the
     /// displayed rows' percentages must reflect their share of the FULL
     /// active catalog — NOT a renormalized share of the visible rows.
-    /// Concrete scenario: 12 titles in Roman, 8 in BD, 5 orphan-FK in a
-    /// soft-deleted genre Z. Total active = 25. Roman should display
-    /// 12/25 = 48.0%, not 12/20 = 60.0%.
     #[test]
-    fn build_stats_by_genre_rows_111_percent_uses_full_catalog_denominator() {
+    fn build_stats_by_genre_donut_111_percent_uses_full_catalog_denominator() {
         let rows = vec![
             make_genre_stat(1, "Roman", 12),
             make_genre_stat(2, "BD", 8),
         ];
-        let out = build_stats_by_genre_rows(rows, "en", 25);
+        let donut = build_stats_by_genre_donut(rows, "en", 25);
         assert_eq!(
-            out[0].percent_label, "48.0%",
+            donut.visible[0].percent_label, "48.0%",
             "Roman must reflect 12/25 (true catalog share), not 12/20"
         );
         assert_eq!(
-            out[1].percent_label, "32.0%",
+            donut.visible[1].percent_label, "32.0%",
             "BD must reflect 8/25, not 8/20"
         );
-        // Sum is 80%, not 100% — the missing 20% is the orphan-FK
-        // delta. This is the intended signal that the catalog has
-        // titles assigned to a soft-deleted genre.
-        assert_eq!(out[0].max, 25);
-        assert_eq!(out[1].max, 25);
+        // Sum is 80%, not 100% — the missing 20% is the orphan-FK delta.
+        assert_eq!(donut.total, 25);
     }
 
-    /// `aria-label` carries genre name + percent for screen readers
-    /// reading the `<progress>` in isolation (review patch P2). Without
-    /// this test, a regression to bare `aria-label="{{ percent_label }}"`
-    /// would slip past CI.
+    // ─── CR #265 — 5% bucketing threshold tests ──────────────────────
+
+    /// Genre at exactly 5.0% gets its own visible slice (boundary is
+    /// strictly `<`, NOT `<=`). A genre at 4.9% goes to Other. Locks
+    /// the threshold from accidentally shifting to `<=` in a refactor.
     #[test]
-    fn home_progress_bar_aria_label_includes_genre_name() {
-        let stats = vec![fake_genre_stat_row(7, "Roman", "12 titles", "60.0%", 12, 20)];
+    fn build_stats_by_genre_donut_threshold_is_strict_less_than_5_percent() {
+        let rows = vec![
+            make_genre_stat(1, "Big", 91),
+            make_genre_stat(2, "AtThreshold", 5),
+            make_genre_stat(3, "Below", 4),
+        ];
+        let donut = build_stats_by_genre_donut(rows, "en", 100);
+        assert_eq!(donut.visible.len(), 2, "Big + AtThreshold are visible");
+        assert_eq!(donut.visible[0].name, "Big");
+        assert_eq!(donut.visible[1].name, "AtThreshold");
+        let other = donut.other.expect("Below 5% rolled into Other");
+        assert_eq!(other.count, 4);
+        assert_eq!(other.rolled_up.len(), 1);
+        assert_eq!(other.rolled_up[0].name, "Below");
+    }
+
+    #[test]
+    fn build_stats_by_genre_donut_no_other_when_all_visible() {
+        let rows = vec![
+            make_genre_stat(1, "Roman", 12),
+            make_genre_stat(2, "BD", 8),
+        ];
+        let donut = build_stats_by_genre_donut(rows, "en", 20);
+        assert!(donut.other.is_none());
+    }
+
+    #[test]
+    fn build_stats_by_genre_donut_other_rolls_up_multiple_small_genres() {
+        let rows = vec![
+            make_genre_stat(1, "Big", 90),
+            make_genre_stat(2, "Small1", 4),
+            make_genre_stat(3, "Small2", 3),
+            make_genre_stat(4, "Small3", 2),
+            make_genre_stat(5, "Small4", 1),
+        ];
+        let donut = build_stats_by_genre_donut(rows, "en", 100);
+        assert_eq!(donut.visible.len(), 1);
+        let other = donut.other.unwrap();
+        assert_eq!(other.count, 10);
+        assert_eq!(other.percent_label, "10.0%");
+        assert_eq!(other.rolled_up[0].name, "Small1");
+        assert_eq!(other.rolled_up[3].name, "Small4");
+    }
+
+    /// The 8-color palette wraps modulo its length once visible slices
+    /// exceed 8. Locks the modulo expression in case someone clamps it.
+    #[test]
+    fn build_stats_by_genre_donut_palette_wraps_after_eight_visible() {
+        let rows: Vec<_> = (1..=9)
+            .map(|i| make_genre_stat(i as u64, &format!("G{i}"), 11))
+            .collect();
+        let donut = build_stats_by_genre_donut(rows, "en", 99);
+        assert_eq!(donut.visible.len(), 9);
+        assert_eq!(donut.visible[0].color, donut.visible[8].color);
+    }
+
+    /// `data_json` blob — pin the contract `home-stats-donut.js`
+    /// consumes. Two visible slices + one Other.
+    #[test]
+    fn build_stats_by_genre_donut_data_json_shape() {
+        let rows = vec![
+            make_genre_stat(1, "Big", 91),
+            make_genre_stat(2, "Below", 4),
+        ];
+        let donut = build_stats_by_genre_donut(rows, "en", 95);
+        let parsed: serde_json::Value = serde_json::from_str(&donut.data_json)
+            .expect("data_json must be valid JSON");
+        assert!(parsed["slices"].is_array());
+        assert_eq!(parsed["slices"][0]["id"], 1);
+        assert_eq!(parsed["slices"][0]["name"], "Big");
+        assert!(parsed["other"].is_object());
+        assert_eq!(parsed["total"], 95);
+    }
+
+    /// JSON escape — genre names containing `"` or `\` must round-trip
+    /// through the data attribute.
+    #[test]
+    fn build_stats_by_genre_donut_json_escape_handles_special_chars() {
+        let rows = vec![make_genre_stat(1, r#"Sci-Fi "Hard" \ Other"#, 10)];
+        let donut = build_stats_by_genre_donut(rows, "en", 10);
+        let parsed: serde_json::Value = serde_json::from_str(&donut.data_json).unwrap();
+        assert_eq!(parsed["slices"][0]["name"], r#"Sci-Fi "Hard" \ Other"#);
+    }
+
+    /// CR #265: the donut canvas carries an aria-label that summarizes
+    /// the chart contents for screen readers (replacing the per-`<progress>`
+    /// aria-label of the bar-chart shape). The helper assembles the
+    /// summary server-side via `dashboard.stats_by_genre.aria_summary`.
+    #[test]
+    fn home_donut_canvas_aria_label_is_set() {
+        let stats = vec![fake_genre_stat_row(7, "Roman", "12 titles", "60.0%", 12)];
         let template = make_test_home_template_with_stats("anonymous", stats);
         let html = template.render().expect("render");
         let slice = stats_by_genre_slice(&html);
         assert!(
-            slice.contains("aria-label=\"Roman: 60.0%\""),
-            "<progress> aria-label must include genre name + percent; got slice:\n{slice}"
+            slice.contains("id=\"stats-by-genre-canvas\""),
+            "donut canvas must render; got slice:\n{slice}"
+        );
+        assert!(
+            slice.contains("aria-label="),
+            "canvas must carry an aria-label summary; got slice:\n{slice}"
         );
     }
 
