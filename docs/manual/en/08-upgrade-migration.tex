@@ -104,6 +104,51 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.3.1}\label{sec:whats-new-1.3.1}
+
+Version 1.3.1 is a four-papercut polish patch surfaced by Guy
+within hours of v1.3.0's production deployment. No schema
+migrations, no breaking changes \string— routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Loading spinner on the wish list "Rechercher" /
+        "Look up" button (\#258).} The ISBN lookup runs the
+        full provider chain (BnF / Open Library / Google Books /
+        …) which takes 2 to 5 seconds. v1.3.0 shipped without a
+        visual indicator, leaving the user to wonder whether
+        their click had registered. The button now shows a
+        spinner during the in-flight request and is disabled to
+        prevent double-clicks.
+  \item \textbf{Help-icon tooltip on the Omnibus checkbox
+        (\#259).} The Omnibus option in the series-assignment
+        form on the title-detail page used to be opaque \string—
+        a freshly-deployed user had to ask out loud what it
+        does. A new help-icon tooltip now explains: \emph{check
+        this if the book bundles multiple series volumes; the
+        form reveals an End-position field so the title covers a
+        range of positions instead of just one.}
+  \item \textbf{Polished wish list print page (\#260).} The
+        Print button now opens \texttt{/wishlist/print} in a
+        \emph{new tab} so closing the print dialog doesn't lose
+        the wish list view. The print page itself was rebuilt
+        from a dense table to a card-based layout with cover
+        thumbnails, a tighter typography hierarchy (title
+        bold, author muted), a footer with the page counter,
+        and CSS guards so a single entry never splits across
+        two pages. Take the PDF to the bookstore and enjoy.
+  \item \textbf{Folded "Recent additions" on the home page
+        (\#261).} As the catalog grows, the home dashboard
+        becomes tall. The "Recent additions" section is now
+        wrapped in a native \texttt{<details>} block, closed by
+        default, with the open / closed state persisted across
+        reloads via \texttt{localStorage}. Click the heading to
+        expand. The dashboard indicator filters (overdue,
+        unshelved, gaps, recent-cataloged, recent-returns)
+        remain expanded since they're the result of an explicit
+        filter click.
+\end{itemize}
+
 \section{What's new in 1.3.0}\label{sec:whats-new-1.3.0}
 
 Version 1.3.0 is the second themed minor of the post-v1 era \string—
