@@ -1,0 +1,50 @@
+{# CR #241 — list of API keys (active + revoked). HTMX swap target for
+   the create handler. Each row's Revoke button opens a UX-DR8 modal
+   (no `hx-confirm=`; the audit allow-list is frozen empty). #}
+<div id="admin-api-keys-list" class="overflow-x-auto">
+    {% if keys.is_empty() %}
+        <p class="text-stone-500 dark:text-stone-400 py-4">{{ empty_state }}</p>
+    {% else %}
+    <table class="w-full text-sm border-collapse">
+        <thead class="bg-stone-100 dark:bg-stone-800">
+            <tr>
+                <th scope="col" class="px-3 py-2 text-left">{{ col_label }}</th>
+                <th scope="col" class="px-3 py-2 text-left">{{ col_scope }}</th>
+                <th scope="col" class="px-3 py-2 text-left font-mono">{{ col_prefix }}</th>
+                <th scope="col" class="px-3 py-2 text-left">{{ col_created }}</th>
+                <th scope="col" class="px-3 py-2 text-left">{{ col_last_used }}</th>
+                <th scope="col" class="px-3 py-2 text-left">{{ col_status }}</th>
+                <th scope="col" class="px-3 py-2 text-right">{{ col_actions }}</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-stone-200 dark:divide-stone-700">
+            {% for k in keys %}
+            <tr>
+                <td class="px-3 py-2">{{ k.label }}</td>
+                <td class="px-3 py-2">
+                    <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold {{ k.scope_chip_class }}">{{ k.scope_label }}</span>
+                </td>
+                <td class="px-3 py-2 font-mono text-xs">{{ k.key_prefix }}…</td>
+                <td class="px-3 py-2">{{ k.created_at }}</td>
+                <td class="px-3 py-2">{{ k.last_used_at }}</td>
+                <td class="px-3 py-2">
+                    <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold {{ k.status_chip_class }}">{{ k.status_label }}</span>
+                </td>
+                <td class="px-3 py-2 text-right">
+                    {% if !k.is_revoked %}
+                    <button type="button"
+                            hx-get="/admin/api-keys/{{ k.id }}/revoke-modal"
+                            hx-target="#admin-modal-slot"
+                            hx-swap="innerHTML"
+                            aria-label="{{ k.revoke_aria }}"
+                            class="px-3 py-1 bg-stone-200 dark:bg-stone-700 hover:bg-red-600 hover:text-white text-sm rounded">{{ btn_revoke }}</button>
+                    {% else %}
+                    <span class="text-stone-400 dark:text-stone-500 text-xs">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>

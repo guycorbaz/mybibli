@@ -610,6 +610,7 @@ admin:
     reference_data: Reference data
     trash: Trash
     system: System
+    api_keys: API keys
   trash:
     badge_aria: "Trash, %{count} items"
     heading: Trash bin (soft-deleted items)
@@ -773,6 +774,49 @@ admin:
     btn_save_loans: "Save loans settings"
     btn_save_providers: "Save provider keys"
     btn_save_language: "Save language settings"
+  api_keys:
+    panel_heading: "API keys"
+    intro: "API keys authenticate external callers to the HTTP JSON API under /api/v1/*. Read keys can list and fetch records; write keys can also PATCH whitelisted title fields. Each key is shown ONCE at creation — copy it now or revoke and re-create."
+    tooltip_aria: "About API keys"
+    tooltip_text: "Pass the key as `Authorization: Bearer <key>` or `X-API-Key: <key>`. CSRF is bypassed for /api/* because bearer auth doesn't ride on cookies. Keys are never exported in logs; only the 12-char prefix appears here."
+    section_create: "New API key"
+    section_list: "Existing keys"
+    label_field: "Label"
+    label_help: "A name only you see — e.g. \"AI classifier\" or \"Backup script\"."
+    scope_field: "Scope"
+    scope_read: "Read only"
+    scope_read_help: "GET /api/v1/* — list and fetch resources. Cannot mutate."
+    scope_write: "Read + write"
+    scope_write_help: "Adds PATCH /api/v1/titles/{id} for genre_id, dewey_code, description, subtitle."
+    btn_create: "Create key"
+    col_label: "Label"
+    col_scope: "Scope"
+    col_prefix: "Prefix"
+    col_created: "Created"
+    col_last_used: "Last used"
+    col_status: "Status"
+    col_actions: "Actions"
+    btn_revoke: "Revoke"
+    btn_revoke_confirm: "Revoke key"
+    revoke_aria: "Revoke API key %{label}"
+    revoke_modal_heading: "Revoke this API key?"
+    revoke_modal_body: "The key \"%{label}\" will stop authenticating immediately. Existing in-flight requests will see 401 on their next call. This action cannot be undone — you'll need to create a new key."
+    status_active: "Active"
+    status_revoked: "Revoked"
+    last_used_never: "Never"
+    empty_state: "No API keys yet. Create one to start using /api/v1/*."
+    created_modal_heading: "Key created — copy it now"
+    created_modal_body: "This is the only time you'll see the full key. Once you close this modal it cannot be recovered — only revoked and replaced."
+    created_copy_hint: "Triple-click the field above to select, then copy with Ctrl+C / Cmd+C."
+    created_btn_close: "I copied it"
+    feedback_created: "API key created. Copy the plaintext before closing the modal."
+    feedback_revoked: "API key revoked."
+    error_label_required: "A label is required."
+    error_label_too_long: "Label must be 120 characters or fewer."
+    error_invalid_scope: "Scope must be \"read\" or \"write\"."
+    error_not_found: "API key not found."
+    error_already_revoked: "This key has already been revoked."
+    error_version_conflict: "This key was modified by another administrator. Reload the panel."
 success:
   reference_data:
     created: "Added %{name}"

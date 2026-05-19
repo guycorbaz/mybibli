@@ -1,0 +1,46 @@
+{# CR #241 — Admin → API keys panel.
+   Two sections: a Create form (label + scope) and a list table.
+   The list is the HTMX swap target for the create handler. #}
+<section id="admin-api-keys-panel" aria-labelledby="admin-api-keys-heading" class="space-y-8">
+    <header class="flex items-start gap-2">
+        <h2 id="admin-api-keys-heading" class="text-2xl font-semibold">{{ panel_heading }}</h2>
+        {% let tooltip = info_tooltip %}{% include "components/tooltip.html" %}
+    </header>
+    <p class="text-stone-700 dark:text-stone-300 max-w-3xl">{{ intro }}</p>
+
+    <section aria-labelledby="admin-api-keys-create-heading" class="border border-stone-200 dark:border-stone-700 rounded-lg p-4 max-w-3xl">
+        <h3 id="admin-api-keys-create-heading" class="text-lg font-semibold mb-3">{{ section_create }}</h3>
+        <form method="POST" action="/admin/api-keys" hx-post="/admin/api-keys" hx-target="#admin-api-keys-list" hx-swap="outerHTML" class="space-y-4">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <div>
+                <label for="admin-api-keys-label" class="block text-sm font-medium mb-1">{{ label_field }}</label>
+                <input id="admin-api-keys-label" name="label" type="text" required maxlength="120" autocomplete="off"
+                       class="w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2">
+                <p class="text-xs text-stone-500 dark:text-stone-400 mt-1">{{ label_help }}</p>
+            </div>
+            <fieldset>
+                <legend class="block text-sm font-medium mb-1">{{ scope_field }}</legend>
+                <label class="flex items-start gap-2 mb-2">
+                    <input type="radio" name="scope" value="read" checked class="mt-1">
+                    <span>
+                        <span class="font-semibold">{{ scope_read }}</span>
+                        <span class="block text-xs text-stone-500 dark:text-stone-400">{{ scope_read_help }}</span>
+                    </span>
+                </label>
+                <label class="flex items-start gap-2">
+                    <input type="radio" name="scope" value="write" class="mt-1">
+                    <span>
+                        <span class="font-semibold">{{ scope_write }}</span>
+                        <span class="block text-xs text-stone-500 dark:text-stone-400">{{ scope_write_help }}</span>
+                    </span>
+                </label>
+            </fieldset>
+            <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-semibold">{{ btn_create }}</button>
+        </form>
+    </section>
+
+    <section aria-labelledby="admin-api-keys-list-heading">
+        <h3 id="admin-api-keys-list-heading" class="text-lg font-semibold mb-3">{{ section_list }}</h3>
+        {{ list_html|safe }}
+    </section>
+</section>

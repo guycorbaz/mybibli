@@ -98,6 +98,17 @@ pub async fn csrf_middleware(
         return next.run(req).await;
     }
 
+    // CR #241: `/api/*` routes authenticate via `Authorization: Bearer`
+    // (or `X-API-Key:`) headers, not session cookies. CSRF is a
+    // defense against cookie-based browser-session abuse and doesn't
+    // apply to bearer-token clients. Skip the validation here so the
+    // `api_key` middleware extractor downstream can handle auth on
+    // its own terms. The path check is narrow enough (only `/api/`)
+    // that no browser route can accidentally claim the bypass.
+    if path.starts_with("/api/") {
+        return next.run(req).await;
+    }
+
     let (mut parts, body) = req.into_parts();
 
     // Resolve the session (Extension fast path from session_resolve_middleware).

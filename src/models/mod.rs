@@ -1,4 +1,5 @@
 pub mod admin_audit;
+pub mod api_key;
 pub mod borrower;
 pub mod contributor;
 pub mod contributor_role;

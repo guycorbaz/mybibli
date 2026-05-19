@@ -1,0 +1,19 @@
+{# CR #241 — revoke-confirm modal (UX-DR8 destructive pattern).
+   No type-the-name friction — revoke is reversible-ish (re-create gives
+   a fresh key). The modal closes via `HX-Trigger: modal-close` from
+   the revoke handler. #}
+<dialog open aria-modal="true" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 rounded-lg">
+    <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-md w-full mx-4 border border-stone-200 dark:border-stone-700">
+        <div class="p-6">
+            <h3 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ modal_heading }}</h3>
+            <p class="text-stone-700 dark:text-stone-300 mb-4">{{ modal_body }}</p>
+
+            <form method="POST" action="{{ revoke_endpoint }}" hx-post="{{ revoke_endpoint }}" hx-target="{{ list_target }}" hx-swap="outerHTML" class="flex gap-2">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+                <input type="hidden" name="version" value="{{ version }}">
+                <button type="submit" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-md font-semibold hover:bg-red-700">{{ btn_revoke }}</button>
+                <button type="button" data-action="admin-modal-close" class="flex-1 px-4 py-2 bg-stone-300 dark:bg-stone-700 rounded-md font-semibold hover:bg-stone-400 dark:hover:bg-stone-600">{{ btn_cancel }}</button>
+            </form>
+        </div>
+    </div>
+</dialog>
