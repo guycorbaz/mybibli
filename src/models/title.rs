@@ -455,6 +455,75 @@ impl TitleModel {
             .ok_or_else(|| AppError::Internal("Failed to retrieve updated title".to_string()))
     }
 
+    /// CR #272 — extension of [`Self::update_metadata`] that ALSO updates
+    /// the three identifier columns (`isbn`, `issn`, `upc`). Used by the
+    /// metadata editing form when the user corrects a wrong-scan ISBN.
+    /// The re-download / conflict-confirm flows keep calling
+    /// [`Self::update_metadata`] because the provider response always
+    /// carries back the same identifier that was looked up.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_full(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+        title: &str,
+        subtitle: Option<&str>,
+        description: Option<&str>,
+        publisher: Option<&str>,
+        language: &str,
+        genre_id: u64,
+        publication_date: Option<chrono::NaiveDate>,
+        dewey_code: Option<&str>,
+        page_count: Option<i32>,
+        track_count: Option<i32>,
+        total_duration: Option<i32>,
+        age_rating: Option<&str>,
+        issue_number: Option<i32>,
+        manually_edited_fields: Option<&str>,
+        isbn: Option<&str>,
+        issn: Option<&str>,
+        upc: Option<&str>,
+    ) -> Result<TitleModel, AppError> {
+        let result = sqlx::query(
+            "UPDATE titles SET title = ?, subtitle = ?, description = ?, \
+             publisher = ?, language = ?, genre_id = ?, \
+             publication_date = ?, dewey_code = ?, \
+             page_count = ?, track_count = ?, total_duration = ?, \
+             age_rating = ?, issue_number = ?, \
+             manually_edited_fields = ?, \
+             isbn = ?, issn = ?, upc = ?, \
+             version = version + 1, updated_at = NOW() \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(title)
+        .bind(subtitle)
+        .bind(description)
+        .bind(publisher)
+        .bind(language)
+        .bind(genre_id)
+        .bind(publication_date)
+        .bind(dewey_code)
+        .bind(page_count)
+        .bind(track_count)
+        .bind(total_duration)
+        .bind(age_rating)
+        .bind(issue_number)
+        .bind(manually_edited_fields)
+        .bind(isbn)
+        .bind(issn)
+        .bind(upc)
+        .bind(id)
+        .bind(version)
+        .execute(pool)
+        .await?;
+
+        crate::services::locking::check_update_result(result.rows_affected(), "title")?;
+
+        TitleModel::find_by_id(pool, id)
+            .await?
+            .ok_or_else(|| AppError::Internal("Failed to retrieve updated title".to_string()))
+    }
+
     /// Update all metadata fields on a title with optimistic locking.
     /// Used by the metadata editing form and re-download confirmation.
     #[allow(clippy::too_many_arguments)]

@@ -1,0 +1,19 @@
+{# CR #271 — title delete confirmation modal. Mirrors the volume-delete
+   modal from CR #209: UX-DR8 destructive-action pattern, no hx-confirm=,
+   server returns HX-Redirect to / on success so the user lands on the
+   home page. CSP-clean. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "delete",
+    modal_title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "DELETE",
+    csrf_token,
+    "#title-feedback",
+    "innerHTML",
+    0,
+    "",
+) %}{% endcall %}
