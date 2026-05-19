@@ -1,0 +1,297 @@
+\chapter{API \& intégrations}
+\label{ch:api}
+
+mybibli expose une petite API JSON HTTP sous \texttt{/api/v1/*} qui
+permet à des scripts externes et à des outils d'intelligence
+artificielle de lire votre catalogue et de modifier la classification
+des titres. Cette API est servie par le même serveur web que
+l'interface humaine — pas de démon séparé, pas de port supplémentaire
+à ouvrir.
+
+Ce chapitre couvre :
+
+\begin{itemize}
+  \item la création d'une clé d'API dans le panneau d'administration,
+  \item les deux portées (\emph{lecture seule} et \emph{lecture +
+        écriture}),
+  \item les points d'entrée exposés sous \texttt{/api/v1/*},
+  \item trois exemples de bout en bout (\texttt{curl}, Python, boucle
+        de classificateur IA).
+\end{itemize}
+
+\section{Pourquoi une API HTTP ?}
+
+Le cas d'usage quotidien est de déléguer le travail de classification
+à un outil externe — par exemple demander à un LLM de suggérer un
+code Dewey, un genre ou un sous-titre propre pour chaque nouveau
+livre en anglais. Le LLM parcourt le catalogue avec
+\texttt{GET /api/v1/titles}, récupère le détail de chaque entrée via
+\texttt{GET /api/v1/titles/\{id\}}, calcule une suggestion, puis
+l'écrit avec \texttt{PATCH /api/v1/titles/\{id\}}. Chaque PATCH est
+journalisé pour pouvoir revenir en arrière si un modèle a mal
+travaillé.
+
+L'API n'est \emph{pas} prévue pour l'import en masse à haut débit —
+pour cela, utilisez directement la base SQL lors d'une fenêtre de
+maintenance. Elle \emph{est} prévue pour le genre d'écritures lentes,
+réfléchies et opinionées qui s'insèrent dans une boucle d'agent LLM.
+
+\section{Créer une clé d'API}
+\label{sec:api-keys-create}
+
+Les clés sont gérées dans \textbf{Administration \(\rightarrow\)
+Clés d'API}. Seuls les utilisateurs Admin voient cet onglet.
+
+\begin{enumerate}
+  \item Cliquez sur \textbf{Administration} dans la barre de
+        navigation.
+  \item Ouvrez l'onglet \textbf{Clés d'API}.
+  \item Saisissez un \textbf{libellé} — un nom que vous seul voyez,
+        par ex.\ \emph{« Classificateur IA »} ou \emph{« Script de
+        sauvegarde »}. Le libellé sert au journal d'audit ; la clé
+        elle-même est aléatoire et indépendante du libellé.
+  \item Choisissez une \textbf{portée} :
+        \begin{itemize}
+          \item \textbf{Lecture seule} — uniquement les points
+                d'entrée \texttt{GET}. Idéal pour des tableaux de
+                bord en lecture, des outils de miroir ou des
+                scripts de curiosité.
+          \item \textbf{Lecture + écriture} — autorise en plus
+                \texttt{PATCH /api/v1/titles/\{id\}} pour une
+                liste blanche restreinte de champs (genre, Dewey,
+                description, sous-titre). À utiliser pour des
+                agents LLM ou des outils de curation.
+        \end{itemize}
+  \item Cliquez sur \textbf{Créer la clé}. Une boîte de dialogue
+        affiche la valeur complète une seule fois — copiez-la
+        maintenant. Une fois fermée, il n'y a aucun moyen de la
+        récupérer ; si vous perdez la clé, révoquez-la et créez-en
+        une nouvelle.
+\end{enumerate}
+
+La clé a la forme \texttt{mybibli\_<portée>\_<aléa40>}, où
+\texttt{<portée>} vaut \texttt{ro} ou \texttt{rw}. Seuls le hachage
+argon2 et les 12 premiers caractères du texte clair (le préfixe)
+sont persistés en base ; le préfixe sert à restreindre les candidats
+lors de l'authentification. Le hachage ne peut pas être inversé.
+
+\section{S'authentifier}
+
+Chaque requête \texttt{/api/v1/*} doit transporter l'un des deux
+en-têtes :
+
+\begin{itemize}
+  \item \texttt{Authorization: Bearer <clé>} — préféré.
+  \item \texttt{X-API-Key: <clé>} — solution de repli pratique.
+\end{itemize}
+
+Une clé absente ou invalide retourne \texttt{401 Unauthorized} avec
+une enveloppe JSON :
+
+\begin{verbatim}
+{ "error": "unauthorized",
+  "reason": "missing_api_key" }
+\end{verbatim}
+
+Une clé en lecture seule sur un point d'entrée d'écriture retourne
+\texttt{403 Forbidden} avec la portée manquante explicitement nommée :
+
+\begin{verbatim}
+{ "error": "forbidden",
+  "reason": "insufficient_scope",
+  "scope_required": "write" }
+\end{verbatim}
+
+La protection CSRF est volontairement court-circuitée pour
+\texttt{/api/*} parce que l'authentification par jeton ne repose
+pas sur les cookies, et le risque de rejeu cross-site contre lequel
+CSRF protège ne s'applique pas.
+
+\section{Points d'entrée}
+
+\subsection{GET /api/v1/titles}
+
+Liste paginée. Accepte \texttt{?page=N},
+\texttt{?q=<recherche>}, \texttt{?genre\_id=N} et
+\texttt{?dewey\_prefix=8}.
+
+Retour :
+
+\begin{verbatim}
+{ "items": [ { "id": 42, "title": "...",
+               "subtitle": null,
+               "language": "fr",
+               "media_type": "book",
+               "isbn": "9782...",
+               "publisher": "...",
+               "publication_year": 2020,
+               "genre_id": 7,
+               "genre_name": "Roman",
+               "dewey_code": "843.92" },
+             ... ],
+  "page": 1, "total_pages": 12,
+  "total_items": 287 }
+\end{verbatim}
+
+\subsection{GET /api/v1/titles/\{id\}}
+
+Détail complet, incluant les contributeurs, les volumes (avec leur
+emplacement) et les affectations de série. Le champ
+\texttt{version} est le verrou optimiste — conservez-le à côté des
+données que votre script va modifier.
+
+\subsection{GET /api/v1/genres, /locations, /series}
+
+Données de référence. À utiliser quand un LLM a besoin de connaître
+les genres existants avant de suggérer un \texttt{genre\_id}.
+
+\subsection{GET /api/v1/dewey/\{prefix\}}
+
+Recherche par bucket. Passez un préfixe Dewey partiel (par ex.
+\texttt{8} pour la littérature) et récupérez tous les titres dont
+le \texttt{dewey\_code} commence par ce préfixe. Utile pour
+« trouver tous les livres qui ont déjà un code Dewey en 800 que je
+puisse comparer ».
+
+\subsection{PATCH /api/v1/titles/\{id\}}
+
+\textbf{Portée écriture uniquement.} Modifie les quatre champs en
+liste blanche :
+
+\begin{itemize}
+  \item \texttt{subtitle} — peut être null.
+  \item \texttt{description} — peut être null.
+  \item \texttt{dewey\_code} — peut être null ; chiffres, points
+        et slashes uniquement.
+  \item \texttt{genre\_id} — doit référencer un genre existant
+        et non supprimé.
+\end{itemize}
+
+Le corps JSON suit une sémantique de mise à jour partielle :
+
+\begin{itemize}
+  \item Champ \textbf{omis} \(\rightarrow\) pas de changement.
+  \item Champ à \texttt{null} \(\rightarrow\) effacement vers NULL
+        (pour les trois champs nullable ; \texttt{null} sur
+        \texttt{genre\_id} retourne \texttt{400}).
+  \item Champ avec une valeur \(\rightarrow\) mise à jour.
+\end{itemize}
+
+\texttt{version} est obligatoire. En cas de désaccord la réponse
+est \texttt{409 Conflict} et contient la version attendue et la
+version reçue — relisez la donnée et réessayez.
+
+Un PATCH réussi écrit une ligne dans \texttt{admin\_audit} avec
+l'action \texttt{api\_patch\_title}, l'attribution via l'admin
+émetteur (\texttt{user\_id}) et la clé d'API
+(\texttt{details.via\_api\_key\_id} +
+\texttt{details.via\_api\_key\_label}), et un diff
+\texttt{old}/\texttt{new} par champ. Un PATCH sans changement
+effectif renvoie \texttt{200} mais NE bump PAS \texttt{version} et
+N'ÉCRIT PAS de ligne d'audit.
+
+\section{Exemples}
+
+\subsection{\texttt{curl}}
+
+\begin{verbatim}
+KEY="mybibli_ro_..."
+
+# Lister la première page des titres.
+curl -H "Authorization: Bearer $KEY" \
+     https://library.example.org/api/v1/titles
+
+# Afficher un titre en détail.
+curl -H "Authorization: Bearer $KEY" \
+     https://library.example.org/api/v1/titles/42
+
+# PATCH un code Dewey (clé write requise).
+KEY_WRITE="mybibli_rw_..."
+curl -X PATCH \
+     -H "Authorization: Bearer $KEY_WRITE" \
+     -H "Content-Type: application/json" \
+     -d '{"version": 3, "dewey_code": "813.54"}' \
+     https://library.example.org/api/v1/titles/42
+\end{verbatim}
+
+\subsection{Python}
+
+\begin{verbatim}
+import os, requests
+
+BASE = "https://library.example.org/api/v1"
+KEY  = os.environ["MYBIBLI_API_KEY"]
+H    = {"Authorization": f"Bearer {KEY}"}
+
+# Parcourir toutes les pages.
+page = 1
+while True:
+    r = requests.get(f"{BASE}/titles?page={page}",
+                     headers=H, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    for t in data["items"]:
+        print(t["id"], t["title"], t.get("dewey_code"))
+    if page >= data["total_pages"]:
+        break
+    page += 1
+\end{verbatim}
+
+\subsection{Une boucle de classificateur LLM}
+
+Le flux d'écriture prévu ressemble à ceci — en pseudo-code :
+
+\begin{verbatim}
+for t in walk_titles(KEY_READ):
+    if t["dewey_code"]:
+        continue                   # déjà classifié
+    detail = get(f"/titles/{t['id']}")
+    suggestion = ask_llm(detail)   # renvoie {"dewey_code": ...}
+    if not suggestion.get("dewey_code"):
+        continue
+    patch(
+        f"/titles/{t['id']}",
+        json = {
+            "version":    detail["version"],
+            "dewey_code": suggestion["dewey_code"],
+        },
+        key  = KEY_WRITE,
+    )
+\end{verbatim}
+
+Si deux classificateurs entrent en course sur le même titre, le
+perdant reçoit un \texttt{409} et re-lit la donnée ; pas
+d'écrasement silencieux. Le journal d'audit conserve qui (clé)
+a suggéré quoi — pratique pour annuler un modèle qui aurait eu
+une mauvaise journée.
+
+\section{Révoquer une clé}
+
+La révocation se fait en un clic dans le panneau d'administration.
+Une clé révoquée \emph{ne peut pas} être restaurée ; l'historique
+d'audit des utilisations passées est préservé à côté de la ligne
+désormais désactivée. Si vous soupçonnez une fuite (commit dans un
+dépôt public, envoi par e-mail par erreur, présence dans un fichier
+de log), révoquez immédiatement et créez-en une nouvelle.
+
+\section{Ce que l'API n'expose \emph{pas}}
+
+Par construction, l'API v1 est majoritairement en lecture. Elle
+ne permet pas :
+
+\begin{itemize}
+  \item de créer ou supprimer des titres, volumes, contributeurs,
+        emprunteurs, prêts ou séries ;
+  \item de modifier un champ en-dehors de la liste blanche des
+        quatre champs du PATCH ;
+  \item de retourner des mots de passe, hachages, jetons de
+        session ou autres credentials ;
+  \item d'accepter des uploads multipart (pas de PUT de jaquette).
+\end{itemize}
+
+Ce sont des limites volontaires de la v1 — le cas d'usage qui
+justifie l'API est la classification, et cela tient dans la liste
+blanche restreinte. Une surface d'écriture plus large changerait la
+posture de sécurité (considérations CSRF, limitation de débit pour
+les mutations en masse) et est reportée tant qu'un besoin concret
+ne s'est pas manifesté.

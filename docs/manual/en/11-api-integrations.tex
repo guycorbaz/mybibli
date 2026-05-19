@@ -1,0 +1,282 @@
+\chapter{API \& integrations}
+\label{ch:api}
+
+mybibli ships a small JSON HTTP API at \texttt{/api/v1/*} that lets
+external scripts and AI tools read your catalog and update the
+classification of titles. The API runs on the same web server as the
+human-facing UI — there is no separate daemon, no extra port to open.
+
+This chapter walks through:
+
+\begin{itemize}
+  \item creating an API key in the admin panel,
+  \item the two scopes (\emph{read only} vs. \emph{read + write}),
+  \item the endpoints exposed under \texttt{/api/v1/*},
+  \item three end-to-end examples (\texttt{curl}, Python, an AI
+        classifier loop).
+\end{itemize}
+
+\section{Why an HTTP API?}
+
+The everyday use case is offloading classification work to an
+external tool — for instance, asking an LLM to suggest a Dewey
+code, a genre, or a clean subtitle for every newly-added English
+book. The LLM walks the catalog over \texttt{GET /api/v1/titles},
+fetches the detail of each via \texttt{GET /api/v1/titles/\{id\}},
+computes a suggestion, and writes it back with
+\texttt{PATCH /api/v1/titles/\{id\}}. Every PATCH is audited so you
+can roll back changes if a model produced garbage.
+
+The API is \emph{not} meant for high-throughput batch ingest — for
+that, use the SQL database directly during a maintenance window.
+It \emph{is} meant for the kind of slow, careful, opinionated
+write that fits inside an LLM agent loop.
+
+\section{Creating an API key}
+\label{sec:api-keys-create}
+
+API keys are managed under \textbf{Administration \(\rightarrow\)
+API keys}. Only Admin users see this tab.
+
+\begin{enumerate}
+  \item Click \textbf{Administration} in the navigation bar.
+  \item Open the \textbf{API keys} tab.
+  \item Fill in a \textbf{label} — a name only you see, e.g.
+        \emph{``AI classifier''} or \emph{``Backup script''}. The
+        label is for the audit log; the key plaintext itself is
+        random and unrelated to it.
+  \item Choose a \textbf{scope}:
+        \begin{itemize}
+          \item \textbf{Read only} — \texttt{GET} endpoints only.
+                Safe for read-only dashboards, mirroring tools,
+                or curiosity-driven scripts.
+          \item \textbf{Read + write} — additionally allows
+                \texttt{PATCH /api/v1/titles/\{id\}} for a
+                narrow allow-list of fields (genre, dewey,
+                description, subtitle). Use this for LLM agents
+                or curation tools.
+        \end{itemize}
+  \item Click \textbf{Create key}. A modal appears showing the
+        full plaintext exactly once — copy it now. Once you
+        close the modal there is no recovery path; if you lose
+        the key, revoke it and create a new one.
+\end{enumerate}
+
+The plaintext shape is
+\texttt{mybibli\_<scope>\_<random40>}, where \texttt{<scope>} is
+\texttt{ro} or \texttt{rw}. Only the argon2 hash and the first
+12 characters of the plaintext (the prefix) are persisted; the
+prefix is what mybibli uses to narrow candidates during
+authentication. The hash itself cannot be reversed.
+
+\section{Authenticating}
+
+Every \texttt{/api/v1/*} request must carry one of:
+
+\begin{itemize}
+  \item \texttt{Authorization: Bearer <plaintext>} — preferred.
+  \item \texttt{X-API-Key: <plaintext>} — convenience fallback.
+\end{itemize}
+
+A missing or invalid key returns \texttt{401 Unauthorized} with
+a JSON envelope:
+
+\begin{verbatim}
+{ "error": "unauthorized",
+  "reason": "missing_api_key" }
+\end{verbatim}
+
+A read-only key on a write endpoint returns \texttt{403
+Forbidden} with the missing scope named:
+
+\begin{verbatim}
+{ "error": "forbidden",
+  "reason": "insufficient_scope",
+  "scope_required": "write" }
+\end{verbatim}
+
+CSRF protection is intentionally bypassed for \texttt{/api/*}
+because bearer-token authentication does not ride on cookies and
+the cross-site replay risk that CSRF defends against does not
+apply.
+
+\section{Endpoints}
+
+\subsection{GET /api/v1/titles}
+
+Paginated list. Supports \texttt{?page=N},
+\texttt{?q=<search>}, \texttt{?genre\_id=N}, and
+\texttt{?dewey\_prefix=8}.
+
+Returns:
+
+\begin{verbatim}
+{ "items": [ { "id": 42, "title": "...",
+               "subtitle": null,
+               "language": "en",
+               "media_type": "book",
+               "isbn": "9780...",
+               "publisher": "...",
+               "publication_year": 2020,
+               "genre_id": 7,
+               "genre_name": "Fiction",
+               "dewey_code": "813.54" },
+             ... ],
+  "page": 1, "total_pages": 12,
+  "total_items": 287 }
+\end{verbatim}
+
+\subsection{GET /api/v1/titles/\{id\}}
+
+Full detail, including contributors, volumes (with their
+location), and series assignments. The
+\texttt{version} field is the optimistic-locking handle —
+keep it next to the data your script will edit.
+
+\subsection{GET /api/v1/genres, /locations, /series}
+
+Reference data. Use these when an LLM needs to know which genres
+exist before it suggests a \texttt{genre\_id}.
+
+\subsection{GET /api/v1/dewey/\{prefix\}}
+
+Bucket lookup. Pass a partial Dewey prefix (e.g.
+\texttt{8} for literature) and get back every title whose
+\texttt{dewey\_code} starts with it. Useful for ``find all books
+that already have a Dewey code in the 800s so I can compare''.
+
+\subsection{PATCH /api/v1/titles/\{id\}}
+
+\textbf{Write-scope only.} Updates the four whitelisted fields:
+
+\begin{itemize}
+  \item \texttt{subtitle} — nullable.
+  \item \texttt{description} — nullable.
+  \item \texttt{dewey\_code} — nullable; digits, dots, slashes only.
+  \item \texttt{genre\_id} — must reference an existing,
+        non-deleted genre.
+\end{itemize}
+
+The JSON body uses partial-update semantics:
+
+\begin{itemize}
+  \item Field \textbf{omitted} \(\rightarrow\) no change.
+  \item Field set to \texttt{null} \(\rightarrow\) clear to
+        NULL (for the three nullable fields above; \texttt{null}
+        on \texttt{genre\_id} returns \texttt{400}).
+  \item Field set to a value \(\rightarrow\) update.
+\end{itemize}
+
+\texttt{version} is required. On mismatch the response is
+\texttt{409 Conflict} carrying both the expected and the
+supplied version — refetch and retry.
+
+A successful PATCH writes one row into \texttt{admin\_audit}
+with action \texttt{api\_patch\_title}, attribution via the
+issuing admin (\texttt{user\_id}) and the API key
+(\texttt{details.via\_api\_key\_id} +
+\texttt{details.via\_api\_key\_label}), and a per-field
+\texttt{old}/\texttt{new} diff. A no-op PATCH (no field
+actually changed) returns \texttt{200} but does NOT bump
+\texttt{version} and does NOT write an audit row.
+
+\section{Examples}
+
+\subsection{\texttt{curl}}
+
+\begin{verbatim}
+KEY="mybibli_ro_..."
+
+# List the first page of titles.
+curl -H "Authorization: Bearer $KEY" \
+     https://library.example.org/api/v1/titles
+
+# Show one title in full.
+curl -H "Authorization: Bearer $KEY" \
+     https://library.example.org/api/v1/titles/42
+
+# PATCH a Dewey code (needs a write-scope key).
+KEY_WRITE="mybibli_rw_..."
+curl -X PATCH \
+     -H "Authorization: Bearer $KEY_WRITE" \
+     -H "Content-Type: application/json" \
+     -d '{"version": 3, "dewey_code": "813.54"}' \
+     https://library.example.org/api/v1/titles/42
+\end{verbatim}
+
+\subsection{Python}
+
+\begin{verbatim}
+import os, requests
+
+BASE = "https://library.example.org/api/v1"
+KEY  = os.environ["MYBIBLI_API_KEY"]
+H    = {"Authorization": f"Bearer {KEY}"}
+
+# Walk every page.
+page = 1
+while True:
+    r = requests.get(f"{BASE}/titles?page={page}",
+                     headers=H, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    for t in data["items"]:
+        print(t["id"], t["title"], t.get("dewey_code"))
+    if page >= data["total_pages"]:
+        break
+    page += 1
+\end{verbatim}
+
+\subsection{An LLM classifier loop}
+
+The intended write-flow looks like this — pseudocode:
+
+\begin{verbatim}
+for t in walk_titles(KEY_READ):
+    if t["dewey_code"]:
+        continue                   # already classified
+    detail = get(f"/titles/{t['id']}")
+    suggestion = ask_llm(detail)   # returns {"dewey_code": ...}
+    if not suggestion.get("dewey_code"):
+        continue
+    patch(
+        f"/titles/{t['id']}",
+        json = {
+            "version":    detail["version"],
+            "dewey_code": suggestion["dewey_code"],
+        },
+        key  = KEY_WRITE,
+    )
+\end{verbatim}
+
+If two classifiers race on the same title, the loser gets a
+\texttt{409} and re-fetches; no silent clobber. The audit log
+records who (key) suggested what — handy for rolling back a
+model that has a bad day.
+
+\section{Revoking a key}
+
+Revocation is one click in the admin panel. A revoked key
+\emph{cannot} be restored; the audit history of past usage is
+preserved alongside the now-defunct row. If you suspect a key has
+leaked (committed to a public repo, e-mailed by mistake, found in a
+log file), revoke immediately and create a new one.
+
+\section{What the API does \emph{not} expose}
+
+By design, the v1 API is read-mostly. It does not:
+
+\begin{itemize}
+  \item create or delete titles, volumes, contributors, borrowers,
+        loans, or series;
+  \item update any field outside the four-field PATCH allow-list;
+  \item return passwords, password hashes, session tokens, or any
+        other credentials;
+  \item accept multipart uploads (no cover-image PUT).
+\end{itemize}
+
+These are intentional v1 limits — the use case that justified the
+API is classification, and that fits inside the narrow allow-list.
+Wider write-surface would change the security posture (CSRF
+considerations, mass-mutation rate limits) and is deferred until a
+concrete need surfaces.
