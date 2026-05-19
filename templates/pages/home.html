@@ -485,38 +485,52 @@
     {# Recent additions section (story 9-2). Sits directly below #collection-glance
        and above #browse-results so it survives HTMX search swaps. The inner
        <article> block is duplicated VERBATIM from the browse-results loop
-       (lines ~148-165 of this file) — known follow-up to extract into a partial. #}
+       (lines ~148-165 of this file) — known follow-up to extract into a partial.
+
+       CR #261 — wrap in a native <details> default-closed to reduce vertical
+       clutter on the home page (the dashboard was getting long once the
+       catalog grew). Optional localStorage persistence via
+       /static/js/home-recent-additions.js. The mutual-exclusion siblings
+       above (#unshelved-list / #overdue-list / #gaps-list / #recent-
+       cataloged-list / #recent-returns-list) deliberately stay expanded
+       since they're the explicit result of a filter click. #}
     <section id="recent-additions" aria-labelledby="recent-additions-heading" class="w-full max-w-4xl mt-6">
-        <h2 id="recent-additions-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ recent_additions_heading }}</h2>
-        {% if recent_additions.is_empty() %}
-            <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ recent_additions_empty }}</div>
-        {% else %}
-            {# Use the existing `.browse-list` parent so the `.title-card-*` rules in
-               static/css/browse.css apply (cover layout, padding, hover, dark-mode).
-               The class isn't decorative — it's load-bearing for AC2 visual parity. #}
-            <div class="browse-list mt-3">
-                {% for item in recent_additions %}
-                <article class="title-card group">
-                    <a href="/title/{{ item.id }}" class="title-card-link"
-                       aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
-                        <div class="title-card-cover">
-                            {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
-                            <div class="title-card-overlay">
-                                <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
-                                <span class="text-xs">{{ item.volume_count }} vol</span>
+        <details id="recent-additions-fold" data-home-fold-key="recent_additions">
+            <summary class="cursor-pointer list-none flex items-center gap-2 text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide select-none hover:text-stone-900 dark:hover:text-stone-100">
+                <svg class="w-3 h-3 transition-transform" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M3 2l5 4-5 4z"/></svg>
+                <h2 id="recent-additions-heading" class="inline">{{ recent_additions_heading }}</h2>
+                {% if !recent_additions.is_empty() %}<span class="text-stone-400 dark:text-stone-500 normal-case font-normal">({{ recent_additions.len() }})</span>{% endif %}
+            </summary>
+            {% if recent_additions.is_empty() %}
+                <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ recent_additions_empty }}</div>
+            {% else %}
+                {# Use the existing `.browse-list` parent so the `.title-card-*` rules in
+                   static/css/browse.css apply (cover layout, padding, hover, dark-mode).
+                   The class isn't decorative — it's load-bearing for AC2 visual parity. #}
+                <div class="browse-list mt-3">
+                    {% for item in recent_additions %}
+                    <article class="title-card group">
+                        <a href="/title/{{ item.id }}" class="title-card-link"
+                           aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
+                            <div class="title-card-cover">
+                                {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
+                                <div class="title-card-overlay">
+                                    <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
+                                    <span class="text-xs">{{ item.volume_count }} vol</span>
+                                </div>
                             </div>
-                        </div>
-                        <div class="title-card-info">
-                            <p class="title-card-title">{{ item.title }}</p>
-                            <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
-                            <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
-                            <p class="title-card-volumes">{{ item.volume_count }} vol</p>
-                        </div>
-                    </a>
-                </article>
-                {% endfor %}
-            </div>
-        {% endif %}
+                            <div class="title-card-info">
+                                <p class="title-card-title">{{ item.title }}</p>
+                                <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
+                                <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
+                                <p class="title-card-volumes">{{ item.volume_count }} vol</p>
+                            </div>
+                        </a>
+                    </article>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </details>
     </section>
     {% endif %}{# /unshelved_filter_active or overdue_filter_active or gaps_filter_active or recent_cataloged_filter_active or recent_returns_filter_active #}
 
@@ -548,4 +562,8 @@
     {% endif %}
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/home-recent-additions.js" defer></script>
 {% endblock %}
