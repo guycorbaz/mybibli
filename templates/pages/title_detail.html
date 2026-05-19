@@ -131,10 +131,16 @@
                         <input type="number" id="assign-position" name="position_number" min="1" required
                                class="mt-1 w-20 rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 text-sm">
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="relative flex items-center gap-2">
                         <input type="checkbox" id="assign-omnibus" name="omnibus"
                                class="rounded border-stone-300 dark:border-stone-600">
                         <label for="assign-omnibus" class="text-xs text-stone-600 dark:text-stone-400">{{ label_omnibus }}</label>
+                        {# CR #259 — discoverability tooltip: the Omnibus checkbox
+                           was opaque to a user in production (v1.3.0) — they had
+                           to ask out loud what it does. Hoist the help-icon out
+                           of the label per #154; tooltip.html mounts both the
+                           button and the absolute-positioned <span role="tooltip">. #}
+                        {% let tooltip = omnibus_help %}{% include "components/tooltip.html" %}
                     </div>
                     <div id="end-position-group" class="hidden">
                         <label for="assign-end-position" class="block text-xs text-stone-600 dark:text-stone-400">{{ label_end_position }}</label>
