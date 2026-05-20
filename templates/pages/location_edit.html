@@ -41,6 +41,25 @@
             </select>
         </div>
 
+        {# CR #280 — organizational checkbox. Checked means the row
+           can only hold child locations, not volumes. Flipping a row
+           that already has volumes attached is rejected server-side
+           with a 400 + count message (the user must re-shelve first). #}
+        <div class="border border-stone-200 dark:border-stone-700 rounded-md p-3">
+            <label class="inline-flex items-start gap-2">
+                <input type="checkbox"
+                       id="edit-organizational"
+                       name="is_organizational"
+                       value="true"
+                       {% if location.is_organizational %}checked{% endif %}
+                       class="mt-1">
+                <span>
+                    <span class="text-sm font-medium text-stone-700 dark:text-stone-300">{{ organizational_label }}</span>
+                    <span class="block text-xs text-stone-500 dark:text-stone-400">{{ organizational_help }}</span>
+                </span>
+            </label>
+        </div>
+
         <div class="flex gap-3">
             <button type="submit" id="edit-location-submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md min-h-[44px]">
                 {{ submit_label }}

@@ -211,6 +211,8 @@ feedback:
   volume_shelved: "Volume %{label} shelved at %{path}."
   vcode_invalid: "Invalid volume code format. Expected V followed by 4 digits (e.g., V0042)."
   lcode_not_found: "Location %{label} not found."
+  # CR #280 — scan-shelve flow refusing an organizational location.
+  location_organizational: "Location %{label} is organizational — it can only hold child locations, not volumes. Pick a shelving location instead."
   location_stub: "Location contents — coming soon."
   active_location: "Active location: %{path}. Scan V-codes to shelve here."
   scan_vcode_to_shelve: "Scan a V-code to shelve at this location."
@@ -437,6 +439,10 @@ location:
   parent_label: Parent location
   submit: Save
   none: "(none — root level)"
+  # CR #280 — organizational location flag.
+  organizational_label: "Organizational location (cannot hold volumes directly)"
+  organizational_help: "Check this if the location only groups child locations (e.g. \"Living Room\" contains \"Bookshelf A\" and \"Bookshelf B\" but holds no volumes itself). Volumes cannot be assigned to an organizational location — the scan-to-shelve flow refuses, and the location-edit form rejects flipping a row that still has volumes attached."
+  organizational_blocked_has_volumes: "Cannot mark organizational — %{count} volume(s) currently use this location. Re-shelve them first."
   empty_state: "Create your first location to start organizing!"
   created: "%{name} created (%{label})."
   updated: Location updated.

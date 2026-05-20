@@ -212,6 +212,8 @@ feedback:
   volume_shelved: "Volume %{label} rangé à %{path}."
   vcode_invalid: "Format de code volume invalide. Attendu : V suivi de 4 chiffres (ex. V0042)."
   lcode_not_found: "Emplacement %{label} introuvable."
+  # CR #280 — flux scan refusant un emplacement organisationnel.
+  location_organizational: "L'emplacement %{label} est organisationnel — il ne peut contenir que des emplacements enfants, pas de volumes. Choisissez un emplacement de rangement à la place."
   location_stub: "Contenu de l'emplacement — bientôt disponible."
   active_location: "Emplacement actif : %{path}. Scannez des codes V pour ranger ici."
   scan_vcode_to_shelve: "Scannez un code V pour ranger à cet emplacement."
@@ -438,6 +440,10 @@ location:
   parent_label: Emplacement parent
   submit: Enregistrer
   none: "(aucun — niveau racine)"
+  # CR #280 — emplacement organisationnel.
+  organizational_label: "Emplacement organisationnel (ne peut pas contenir de volumes directement)"
+  organizational_help: "Cochez cette case si l'emplacement ne fait que regrouper d'autres emplacements (par ex. « Salon » contient « Bibliothèque A » et « Bibliothèque B » mais ne contient pas de volumes lui-même). Aucun volume ne peut être assigné à un emplacement organisationnel — le flux scan refuse, et l'édition d'emplacement rejette le basculement si la ligne a encore des volumes attachés."
+  organizational_blocked_has_volumes: "Impossible de marquer organisationnel — %{count} volume(s) sont actuellement attachés à cet emplacement. Re-rangez-les d'abord."
   empty_state: "Créez votre premier emplacement pour commencer à organiser !"
   created: "%{name} créé (%{label})."
   updated: Emplacement mis à jour.

@@ -43,6 +43,14 @@
                     <input type="text" id="new-lcode" name="label" value="{{ next_lcode }}" required maxlength="5" pattern="L[0-9]{4}" class="mt-1 w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-mono min-h-[44px]">
                 </div>
             </div>
+            {# CR #280 — organizational checkbox for the root-create form. #}
+            <label class="inline-flex items-start gap-2">
+                <input type="checkbox" name="is_organizational" value="true" class="mt-1">
+                <span>
+                    <span class="text-sm font-medium text-stone-700 dark:text-stone-300">{{ organizational_label }}</span>
+                    <span class="block text-xs text-stone-500 dark:text-stone-400">{{ organizational_help }}</span>
+                </span>
+            </label>
             <button type="submit" id="add-root-submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md min-h-[44px]">
                 {{ submit_label }}
             </button>

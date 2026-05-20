@@ -87,6 +87,20 @@ impl VolumeService {
                 )
             })?;
 
+        // CR #280 — refuse to assign a volume to an organizational
+        // container. The catalog scan flow + the volume-edit form
+        // both come through here; rejecting at the service layer
+        // catches both surfaces with one guard.
+        if !location.is_assignable() {
+            return Err(AppError::BadRequest(
+                rust_i18n::t!(
+                    "feedback.location_organizational",
+                    label = location_label
+                )
+                .to_string(),
+            ));
+        }
+
         VolumeModel::update_location(pool, volume.id, Some(location.id)).await?;
 
         let path = LocationModel::get_path(pool, location.id).await?;
