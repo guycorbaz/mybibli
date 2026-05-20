@@ -63,7 +63,7 @@ async fn empty_query_with_genre_filter_returns_filtered_titles(pool: MySqlPool) 
     let _ = seed_title(&pool, "Matching Two", genre_a).await;
     let _ = seed_title(&pool, "Other genre", genre_b).await;
 
-    let outcome = SearchService::search(&pool, "", Some(genre_a), None, &None, &None, 1)
+    let outcome = SearchService::search(&pool, "", Some(genre_a), None, &None, &None, 1, false)
         .await
         .expect("search must succeed");
 
@@ -92,7 +92,7 @@ async fn empty_query_without_filter_returns_empty(pool: MySqlPool) {
     let genre_a = first_genre_id(&pool).await;
     let _ = seed_title(&pool, "Something", genre_a).await;
 
-    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1)
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, false)
         .await
         .expect("search must succeed");
 
@@ -114,7 +114,7 @@ async fn whitespace_query_with_filter_is_treated_as_filter_only_browse(pool: MyS
     let genre_a = first_genre_id(&pool).await;
     let _ = seed_title(&pool, "Matching", genre_a).await;
 
-    let outcome = SearchService::search(&pool, "   ", Some(genre_a), None, &None, &None, 1)
+    let outcome = SearchService::search(&pool, "   ", Some(genre_a), None, &None, &None, 1, false)
         .await
         .expect("search must succeed");
 
@@ -124,6 +124,85 @@ async fn whitespace_query_with_filter_is_treated_as_filter_only_browse(pool: MyS
                 paginated.items.len(),
                 1,
                 "whitespace-only query + filter must still browse by filter"
+            );
+        }
+        SearchOutcome::Redirect(_) => panic!("unexpected redirect"),
+    }
+}
+
+/// CR #279 — the `no_volumes_only` flag restricts results to titles
+/// that have no active volume row. Locks the `NOT EXISTS` branch in
+/// `TitleModel::active_search`. Seeds 3 titles: one bare, one with a
+/// live volume, one with a soft-deleted volume only. The bare title
+/// AND the title with only soft-deleted volumes must surface; the
+/// title with a live volume must NOT.
+#[sqlx::test(migrations = "./migrations")]
+async fn no_volumes_only_filters_titles_with_active_volumes(pool: MySqlPool) {
+    let genre = first_genre_id(&pool).await;
+
+    let _bare = seed_title(&pool, "Bare Title", genre).await;
+    let with_volume = seed_title(&pool, "Has Volume", genre).await;
+    let soft_only = seed_title(&pool, "Soft Only", genre).await;
+
+    sqlx::query("INSERT INTO volumes (title_id, label) VALUES (?, 'V9001')")
+        .bind(with_volume)
+        .execute(&pool)
+        .await
+        .expect("insert live volume");
+
+    // Soft-deleted volume on `soft_only` — NOT EXISTS guard must still
+    // surface this title (the `WHERE deleted_at IS NULL` inside the
+    // subquery is the load-bearing predicate).
+    sqlx::query("INSERT INTO volumes (title_id, label, deleted_at) VALUES (?, 'V9002', NOW())")
+        .bind(soft_only)
+        .execute(&pool)
+        .await
+        .expect("insert soft-deleted volume");
+
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, true)
+        .await
+        .expect("search must succeed");
+
+    match outcome {
+        SearchOutcome::Results(paginated) => {
+            let titles: Vec<&str> = paginated.items.iter().map(|i| i.title.as_str()).collect();
+            assert!(
+                titles.contains(&"Bare Title"),
+                "bare title must surface, got {:?}",
+                titles
+            );
+            assert!(
+                titles.contains(&"Soft Only"),
+                "title with only soft-deleted volumes must surface (deleted_at-aware), got {:?}",
+                titles
+            );
+            assert!(
+                !titles.contains(&"Has Volume"),
+                "title with a live volume must NOT surface, got {:?}",
+                titles
+            );
+        }
+        SearchOutcome::Redirect(_) => panic!("unexpected redirect for no_volumes browse"),
+    }
+}
+
+/// CR #279 — when `no_volumes_only` is `true`, the empty-query
+/// short-circuit must NOT fire. The handler-shortcut depends on this:
+/// `?filter=no_volumes` lands with no query and no genre filter set.
+#[sqlx::test(migrations = "./migrations")]
+async fn no_volumes_only_disables_empty_query_short_circuit(pool: MySqlPool) {
+    let genre = first_genre_id(&pool).await;
+    let _ = seed_title(&pool, "Bare", genre).await;
+
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, true)
+        .await
+        .expect("search must succeed");
+
+    match outcome {
+        SearchOutcome::Results(paginated) => {
+            assert!(
+                paginated.total_items >= 1,
+                "no_volumes filter must override the empty-query short-circuit"
             );
         }
         SearchOutcome::Redirect(_) => panic!("unexpected redirect"),

@@ -137,6 +137,7 @@ home:
   remove_filter_aria: "Retirer le filtre"
   filter:
     uncategorized: "Sans genre"
+    no_volumes: "Titres sans exemplaire"
   genre_filter_no_longer_exists: "Ce genre n'existe plus — affichage de tous les titres."
 catalog:
   title: Catalogue

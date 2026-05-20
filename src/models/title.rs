@@ -915,6 +915,7 @@ fn map_sort_to_column(sort: &str) -> &str {
 
 impl TitleModel {
     /// Full-text search across titles with pagination, sorting, and optional genre/state filters.
+    #[allow(clippy::too_many_arguments)]
     pub async fn active_search(
         pool: &DbPool,
         query: &str,
@@ -923,6 +924,12 @@ impl TitleModel {
         sort: &Option<String>,
         dir: &Option<String>,
         page: u32,
+        // CR #279 — when `true`, restrict to titles that have no
+        // active volume row. Implemented as a `NOT EXISTS` guard
+        // because LEFT JOIN + COUNT(...) = 0 would require GROUP BY,
+        // which collides with the DISTINCT shape the data query
+        // already needs.
+        no_volumes_only: bool,
     ) -> Result<PaginatedList<SearchResult>, AppError> {
         let sort_col = validated_sort(sort);
         let sort_dir = validated_dir(dir);
@@ -984,6 +991,15 @@ impl TitleModel {
         if let Some(gid) = genre_id {
             conditions.push("t.genre_id = ?".to_string());
             genre_bind = Some(gid);
+        }
+
+        if no_volumes_only {
+            // CR #279 — title with zero active volumes.
+            conditions.push(
+                "NOT EXISTS (SELECT 1 FROM volumes v_no WHERE v_no.title_id = t.id \
+                 AND v_no.deleted_at IS NULL)"
+                    .to_string(),
+            );
         }
 
         if let Some(ref state_name) = volume_state {

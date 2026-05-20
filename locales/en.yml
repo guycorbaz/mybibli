@@ -136,6 +136,7 @@ home:
   remove_filter_aria: "Remove filter"
   filter:
     uncategorized: "Uncategorized"
+    no_volumes: "Titles without volumes"
   genre_filter_no_longer_exists: "This genre no longer exists — showing all titles."
 catalog:
   title: Catalog
