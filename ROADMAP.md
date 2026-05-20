@@ -32,11 +32,49 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.3.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.3.0)** — published 2026-05-19. The second themed minor of the post-v1 era — "Plan your next purchase" — bundling the per-volume table on `/title/:id` (#209) and the first-class wish list at `/wishlist` (#242, with ISBN scan, free-form title, mark-as-bought, auto-link on catalog scan, and bookstore-friendly print). The `1.2.x` patch line stays in maintenance for bug fixes only.
+**Current stable: [`v1.6.1`](https://github.com/guycorbaz/mybibli/releases/tag/v1.6.1)** — published 2026-05-20. One-fix hotfix on the v1.6.0 minor "Tighten the catalog" (organizational locations, shelf-audit workflow, titles-without-volumes filter chip, home list-view sortable table). The originally-planned feature build for v1.1 through v1.6 is complete; the project is now in **GH-issue-driven polish mode** — no next themed minor is currently scoped. Patches ship independently for production bugs; new feature CRs are queued in the parking lot until a coherent theme emerges or a roadmap-slotted candidate (e.g., the v2.0 classification refactor) is greenlit.
 
-Patch-line work currently open against `1.2.x` or `1.3.x` (will ship as patches, NOT in the next minor):
+Patch-line work currently open against the live line `1.6.x` (will ship as patches, not bundled into a future minor):
 
 - [#196](https://github.com/guycorbaz/mybibli/issues/196) — Flake in `home-search.spec.ts:224` under default-worker parallel mode (a long-standing known-failure; downgraded to fix-when-convenient).
+
+## v1.6.0 — "Tighten the catalog" *(shipped)*
+
+Four CRs aimed at catalog hygiene, plus the one-fix v1.6.1 hotfix that
+unblocked the new organizational-location flow on root containers.
+
+- [#280](https://github.com/guycorbaz/mybibli/issues/280) — Storage location can be marked **organizational** to refuse volume assignments (folders, not shelves). Checkbox on create/edit form, flip-with-volumes guard, volume-edit picker rejects organizational targets.
+- [#237](https://github.com/guycorbaz/mybibli/issues/237) — **Shelf-audit workflow**: mark volumes "À contrôler" (single or bulk-per-shelf), amber home-dashboard indicator, dedicated `/audit` list sorted by location → V-code, audit-trail entries for every mark/clear. Surplus-detection deferred to a follow-up.
+- [#279](https://github.com/guycorbaz/mybibli/issues/279) — **"Titles without volumes"** filter chip on the home dashboard (Librarian+ only, `NOT EXISTS` SQL guard).
+- [#250](https://github.com/guycorbaz/mybibli/issues/250) — Home page's **list view becomes a sortable table** (Title · Author · Genre · Dewey · Volumes), replacing the cards-stacked-vertically layout. Grid view unchanged.
+
+**v1.6.1 hotfix:**
+
+- [#296](https://github.com/guycorbaz/mybibli/issues/296) — `Failed to deserialize form body: parent_id: cannot parse integer from empty string` when ticking "Emplacement organisationnel" on a root location. Latent bug since the location-edit feature shipped; #280 just gave users a new reason to edit root containers. New `deserialize_optional_u64` helper wired to `CreateLocationForm.parent_id`, `UpdateLocationForm.parent_id`, AND `VolumeEditForm.condition_state_id` (same shape, same latent bug).
+
+## v1.5.0 — "Know what you have, and what it's worth" *(shipped)*
+
+Five CRs around collection valuation + a new metadata provider, then
+two same-day production-hygiene patches.
+
+- [#243](https://github.com/guycorbaz/mybibli/issues/243) — Per-volume `purchase_price` + `current_value` + currency + `/stats/value` page (total, by-genre, by-series). CHF as the seeded default currency, admin-overridable.
+- [#263](https://github.com/guycorbaz/mybibli/issues/263) — Library of Congress metadata provider (chain order: BDGest → BnF → Google Books → Library of Congress → Open Library).
+- [#265](https://github.com/guycorbaz/mybibli/issues/265) — Donut chart for stats-by-genre on home (Chart.js v4 vendored, 5% "Other" bucket).
+- [#271](https://github.com/guycorbaz/mybibli/issues/271) — Delete a title with zero volumes (UX-DR8 modal, volume-count guard).
+- [#272](https://github.com/guycorbaz/mybibli/issues/272) — Edit ISBN/ISSN/UPC in the metadata-edit form, with ISBN-13 checksum + duplicate-collision guards.
+- [#266](https://github.com/guycorbaz/mybibli/issues/266) — Real server-rendered PDF wish list export (`genpdf` + DejaVu Sans vendored, no browser print-to-PDF round-trip).
+
+**v1.5.1 hygiene patch** — 5 production-feedback fixes: #281 (Dockerfile missing `COPY static/fonts/` → wish list PDF crash), #282 (Trash permanent-delete on titles failed because 4 child FKs weren't cascaded), #283 (Library valuation toggle missing from System admin tab), #284 (revoked API keys couldn't be hard-deleted), #285 (provider Health-tab probe marked everyone Unreachable — missing User-Agent + overly strict reachability rule).
+
+**v1.5.2 hotfix** — #288 — `VolumeModel::find_by_id` and `find_by_label` crashed because SQLx 0.8 can't decode raw MariaDB `DECIMAL(10,2)` into `Option<f64>` without a feature flag. Fixed with `CAST(... AS DOUBLE)` (same pattern the aggregation queries already used).
+
+## v1.4.0 — "Bring your own agent" *(shipped)*
+
+JSON HTTP API at `/api/v1/*` protected by API keys, designed for an
+external AI assistant (or any custom script) to read the catalog and
+help with classification. Two coexisting access levels.
+
+- [#241](https://github.com/guycorbaz/mybibli/issues/241) — HTTP API with API-key auth (argon2-hashed, 12-char prefix index, `Authorization: Bearer` or `X-API-Key`), read-only and read-write scopes, JSON endpoints for titles / contributors / volumes / locations / series, write allow-list `PATCH /api/v1/titles/{id}` over `subtitle`, `description`, `dewey_code`, `genre_id` (optimistic-locking via `version` in body, 409 on mismatch, full `admin_audit` row per change). Admin tab `/admin?tab=api_keys` to mint / list / revoke keys. New manual chapter 11 ("API & integrations", EN + FR) walks the LLM-classifier use case.
 
 ## v1.3.0 — "Plan your next purchase" *(shipped)*
 
@@ -44,6 +82,8 @@ Wish list as a first-class surface + per-volume polish.
 
 - [#242](https://github.com/guycorbaz/mybibli/issues/242) — Wish list (ISBN / free-form / print to PDF / auto-link on catalog scan).
 - [#209](https://github.com/guycorbaz/mybibli/issues/209) — Per-volume table on `/title/:id`.
+
+**v1.3.1 polish patch** — 4 papercuts surfaced within hours of v1.3.0: #258 (spinner on wish list Rechercher button), #259 (Omnibus help-icon tooltip), #260 (wish list print page refactored to card layout, opens in new tab), #261 (home "Recent additions" folded by default with localStorage persistence).
 
 ## v1.2.0 — "See what you own, find it faster" *(shipped)*
 
@@ -57,29 +97,9 @@ into one coordinated release.
 - [#215](https://github.com/guycorbaz/mybibli/issues/215) — Spinner on "Apply selected changes" in the metadata re-fetch second phase.
 - [#214](https://github.com/guycorbaz/mybibli/issues/214) — Bulk cover-fetch admin action — re-trigger the metadata-fetch chain for every title with a missing cover.
 
-## v1.4.0 — "Open the catalog to your AI"
+**v1.2.1 polish patch** — 4 fixes: #139 (series-delete shows meaningful "N titles assigned" instead of `error.internal`), #154 (help-icon button hoisted out of `<label>` for HTML5 + a11y), #133 (return-loan modal preserves trigger surface across login redirect), #219 (`AppError::Forbidden` now carries the request locale).
 
-A new surface: a JSON HTTP API protected by API keys, designed for an
-external AI assistant (or any custom script) to read the catalog and
-help with classification. Two coexisting access levels.
-
-- [#241](https://github.com/guycorbaz/mybibli/issues/241) — HTTP API with API-key auth, read-only and read-write scopes, JSON endpoints for titles / contributors / volumes / locations / series, write allow-list focused on classification fields (`genre_id`, `dewey_code`, description, subtitle).
-
-## v1.5.0 — "Know what your collection is worth"
-
-Per-volume purchase price and current value, with aggregations by
-genre and by series — useful for collectors of BD or signed editions,
-and for insurance / inheritance paperwork.
-
-- [#243](https://github.com/guycorbaz/mybibli/issues/243) — Per-volume `purchase_price` + `current_value` + currency + `/stats/value` page (total, by-genre, by-series).
-
-## v1.6.0 — "Audit your shelves"
-
-A library-audit workflow built around a persistent "À contrôler" flag
-on each volume. Mark a shelf or a search-result set, walk the rows,
-clear the flag as you verify.
-
-- [#237](https://github.com/guycorbaz/mybibli/issues/237) — Audit flag with bulk-by-location, bulk-by-search-result, per-volume marking; dedicated filter view; manual-only flag clearing; surplus-detection deferred to a follow-up.
+**v1.2.2 defense-in-depth patch** — 3 fixes around soft-deleted-genre semantics: #112 (stale `?filter=genre:N` drops the chip with localized notice), #107 (catalog SQL switches to LEFT JOIN + COALESCE so orphan-genre titles still appear), #111 (stats-by-genre denominator uses full active-catalog count).
 
 ## v2.0.0 candidate — "Classification, reinvented"
 
@@ -99,14 +119,17 @@ happen to fit a theme.
 - [#220](https://github.com/guycorbaz/mybibli/issues/220) — CSRF whitelist parser handles comma-separated HX-Trigger only.
 - [#217](https://github.com/guycorbaz/mybibli/issues/217) — `originatesFromConfirm` would tag `X-Modal-Confirm` on nested-form submits inside modals.
 - [#216](https://github.com/guycorbaz/mybibli/issues/216) — `AppError::IntoResponse` returns HTML fragment for direct browser nav (non-HTMX).
-- [#154](https://github.com/guycorbaz/mybibli/issues/154) — Help-icon button nested inside `<label>` creates HTML validity issues.
 - [#152](https://github.com/guycorbaz/mybibli/issues/152) — Add `anonymous_gets_200_on_series` test to `role_gating.rs`.
 - [#151](https://github.com/guycorbaz/mybibli/issues/151) — Align UX spec + 9.18 epic spec nav-link tables with shipped implementation.
 - [#148](https://github.com/guycorbaz/mybibli/issues/148) — `nav.js` burst detector — Bluetooth Android scanners emit `Unidentified`.
 - [#147](https://github.com/guycorbaz/mybibli/issues/147) — `nav.js` `getBurstThresholdMs` accepts `n=1` (1ms) — pathological admin-config protection.
 - [#146](https://github.com/guycorbaz/mybibli/issues/146) — E2E `navbar-hamburger` Test 5 — `simulateScan` trailing Enter race on `/login`.
 - [#145](https://github.com/guycorbaz/mybibli/issues/145) — `nav.js` burst threshold (50ms) may be tight for very fast typists / mechanical keyboards.
-- [#139](https://github.com/guycorbaz/mybibli/issues/139) — `series::delete_series` renders generic `error.internal` on Conflict instead of `series.delete_has_titles`.
+
+### Localisation
+
+- [#275](https://github.com/guycorbaz/mybibli/issues/275) — German (de) UI translation.
+- [#276](https://github.com/guycorbaz/mybibli/issues/276) — Italian (it) UI translation.
 
 ### Larger CRs awaiting prioritization
 
