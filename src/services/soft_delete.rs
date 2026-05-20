@@ -24,6 +24,13 @@ pub const ALLOWED_TABLES: &[&str] = &[
     "users",
 ];
 
+// v1.5.1 fix #284 — `api_keys` is NOT in this whitelist on purpose.
+// The Trash panel's UNION query expects a `name` column on every
+// whitelisted table (api_keys uses `label`), and conceptually a
+// deleted API key isn't restorable: the plaintext is gone forever.
+// The admin → API keys panel does its own soft-delete via a direct
+// UPDATE statement on the row, bypassing `SoftDeleteService`.
+
 pub struct SoftDeleteService;
 
 impl SoftDeleteService {

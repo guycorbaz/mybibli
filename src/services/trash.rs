@@ -287,7 +287,15 @@ impl TrashService {
         Ok(true)
     }
 
-    /// Permanently delete a soft-deleted item (hard delete)
+    /// Permanently delete a soft-deleted item (hard delete).
+    ///
+    /// v1.5.1 fix #282 — wraps the delete in a transaction and cascades
+    /// through every child FK that points at the parent (using the same
+    /// FK-ordered chain `services::auto_purge::run_purge` already
+    /// maintains). Without the cascade, MariaDB's default-RESTRICT FKs
+    /// reject the bare `DELETE FROM titles` when any child row still
+    /// references the title (even soft-deleted children — FK constraints
+    /// don't consider `deleted_at`).
     pub async fn permanent_delete(
         pool: &DbPool,
         table: &str,
@@ -304,15 +312,71 @@ impl TrashService {
             .await?
             .ok_or_else(|| AppError::NotFound("Item already gone".to_string()))?;
 
-        // Hard delete with optimistic locking
+        // FK-ordered children that need to clear BEFORE the parent.
+        // This list mirrors the cascade chain the auto-purge task
+        // already runs nightly; the difference is that the trash
+        // path targets a single parent id, not "everything older
+        // than N days". Empty list = no children to clear.
+        let children: &[&str] = match table {
+            // titles ← 4 child tables with default-RESTRICT FKs
+            "titles" => &[
+                "title_contributors",
+                "title_series",
+                "pending_metadata_updates",
+                "volumes",
+            ],
+            // series ← title_series only
+            "series" => &["title_series"],
+            // contributors ← title_contributors only
+            "contributors" => &["title_contributors"],
+            // borrowers ← loans (and loans hold no inbound FKs from
+            // active tables — soft-deleted loans go away with the
+            // borrower; this matches auto_purge's chain).
+            "borrowers" => &["loans"],
+            // volumes / storage_locations / users — no child rows
+            // we need to clear before the parent. (FKs from sessions
+            // / admin_audit are already SET NULL per issues #69/#70.)
+            _ => &[],
+        };
+
+        let mut tx = pool.begin().await?;
+
+        // Clear every child row referencing the target parent id.
+        // FK-column convention: every child references its parent
+        // via `<parent_singular>_id`. For our 6 children:
+        //   title_contributors.title_id, title_series.title_id,
+        //   pending_metadata_updates.title_id, volumes.title_id,
+        //   loans.borrower_id (NOT borrower)
+        // — we need a per-table column lookup rather than a naive
+        // suffix-strip. Build the column name from the parent.
+        let fk_column = match table {
+            "titles" => "title_id",
+            "series" => "series_id",
+            "contributors" => "contributor_id",
+            "borrowers" => "borrower_id",
+            _ => "id", // unused branch — no children for this parent
+        };
+
+        for child in children {
+            let sql = format!("DELETE FROM {child} WHERE {fk_column} = ?");
+            sqlx::query(&sql)
+                .bind(id as i64)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        // Hard delete the parent with optimistic locking.
         let result = sqlx::query(&format!("DELETE FROM {} WHERE id = ? AND version = ?", table))
             .bind(id as i64)
             .bind(version)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
 
         if result.rows_affected() == 0 {
-            // Check if item exists at all
+            // Roll the transaction back before the diagnostic SELECTs
+            // — otherwise the cascade DELETEs we just queued would
+            // commit while the parent stayed put.
+            tx.rollback().await?;
             let exists = sqlx::query(&format!("SELECT id FROM {} WHERE id = ?", table))
                 .bind(id as i64)
                 .fetch_optional(pool)
@@ -325,6 +389,7 @@ impl TrashService {
             }
         }
 
+        tx.commit().await?;
         Ok(entry)
     }
 }

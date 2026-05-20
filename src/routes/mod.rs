@@ -461,6 +461,11 @@ pub fn build_router(state: AppState) -> Router {
             "/admin/system/language",
             axum::routing::post(admin_system::save_language_settings),
         )
+        // v1.5.1 fix #283 — Library valuation section save endpoint.
+        .route(
+            "/admin/system/valuation",
+            axum::routing::post(admin_system::save_library_valuation_settings),
+        )
         // CR #241 — Admin → API keys (v1.4.0). 4 routes: 1 GET panel +
         // 1 POST create + 1 GET revoke-modal + 1 POST revoke. All
         // Admin-gated. CSRF-protected via the 8-2 middleware.
@@ -476,6 +481,15 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/admin/api-keys/{id}/revoke",
             axum::routing::post(admin_api_keys::admin_api_keys_revoke),
+        )
+        // v1.5.1 fix #284 — hard-delete a (revoked) API key.
+        .route(
+            "/admin/api-keys/{id}/delete-modal",
+            axum::routing::get(admin_api_keys::admin_api_keys_delete_modal),
+        )
+        .route(
+            "/admin/api-keys/{id}",
+            axum::routing::delete(admin_api_keys::admin_api_keys_delete),
         )
         // Story 8-8 — first-launch setup wizard. Whitelisted by the
         // setup-gate middleware (so this is reachable on a fresh install

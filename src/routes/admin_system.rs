@@ -34,8 +34,10 @@ use crate::routes::catalog::feedback_html_pub;
 // `save_setting` / `reload_settings_cache` / `validate_*` definitions have
 // been deleted in favour of the canonical implementations.
 use crate::services::admin_system::{
-    KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_OMDB, KEY_OVERDUE_THRESHOLD, KEY_TMDB,
-    reload_settings_cache, save_setting, validate_default_language, validate_overdue_threshold,
+    KEY_DEFAULT_CURRENCY, KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_OMDB,
+    KEY_OVERDUE_THRESHOLD, KEY_SHOW_VALUE_INDICATORS, KEY_TMDB, reload_settings_cache,
+    save_setting, validate_default_currency, validate_default_language,
+    validate_overdue_threshold,
 };
 
 // ─── Form structs ─────────────────────────────────────────────────
@@ -76,6 +78,21 @@ pub struct LanguageSettingsForm {
     pub _csrf_token: String,
 }
 
+// v1.5.1 fix #283 — Library valuation section. Two settings on one
+// form so the user can pick currency + flip the home-indicator
+// toggle in one round-trip.
+#[derive(Deserialize)]
+pub struct LibraryValuationSettingsForm {
+    pub default_currency: String,
+    pub default_currency_version: i32,
+    // HTML checkbox semantics: only sent when checked. `#[serde(default)]`
+    // gives us `None` when the box was unchecked.
+    #[serde(default)]
+    pub show_value_indicators: Option<String>,
+    pub show_value_indicators_version: i32,
+    pub _csrf_token: String,
+}
+
 // ─── Template structs ────────────────────────────────────────────
 
 #[derive(Template)]
@@ -85,9 +102,11 @@ pub(crate) struct AdminSystemPanel {
     pub section_loans: String,
     pub section_providers: String,
     pub section_language: String,
+    pub section_valuation: String,
     pub loans_form_html: String,
     pub providers_form_html: String,
     pub language_form_html: String,
+    pub valuation_form_html: String,
 }
 
 #[derive(Template)]
@@ -128,6 +147,24 @@ struct AdminSystemLanguageForm {
     default_language_help: String,
     default_language_value: String,
     default_language_version: i32,
+    btn_save: String,
+}
+
+// v1.5.1 fix #283 — Library valuation form. Currency dropdown +
+// home-indicator checkbox.
+#[derive(Template)]
+#[template(path = "fragments/admin_system_valuation_form.html")]
+struct AdminSystemValuationForm {
+    csrf_token: String,
+    default_currency_label: String,
+    default_currency_help: String,
+    default_currency_value: String,
+    default_currency_version: i32,
+    show_value_indicators_label: String,
+    show_value_indicators_help: String,
+    show_value_indicators_checked: bool,
+    show_value_indicators_version: i32,
+    supported_currencies: Vec<&'static str>,
     btn_save: String,
 }
 
@@ -174,13 +211,15 @@ async fn fetch_setting_rows(
 ) -> Result<HashMap<String, (String, i32)>, AppError> {
     let rows: Vec<(String, String, i32)> = sqlx::query_as(
         "SELECT setting_key, setting_value, version FROM settings \
-         WHERE setting_key IN (?, ?, ?, ?, ?) AND deleted_at IS NULL",
+         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
     )
     .bind(KEY_OVERDUE_THRESHOLD)
     .bind(KEY_DEFAULT_LANGUAGE)
     .bind(KEY_GOOGLE_BOOKS)
     .bind(KEY_OMDB)
     .bind(KEY_TMDB)
+    .bind(KEY_DEFAULT_CURRENCY)
+    .bind(KEY_SHOW_VALUE_INDICATORS)
     .fetch_all(pool)
     .await?;
     let mut map = HashMap::new();
@@ -296,6 +335,48 @@ fn render_language_form(
     .map_err(|_| AppError::Internal("language form render failed".to_string()))
 }
 
+// v1.5.1 fix #283 — Library valuation form renderer.
+fn render_valuation_form(
+    csrf: &str,
+    loc: &'static str,
+    default_currency: &str,
+    currency_version: i32,
+    show_indicators: bool,
+    indicators_version: i32,
+) -> Result<String, AppError> {
+    AdminSystemValuationForm {
+        csrf_token: csrf.to_string(),
+        default_currency_label: rust_i18n::t!(
+            "admin.system.default_currency_label",
+            locale = loc
+        )
+        .to_string(),
+        default_currency_help: rust_i18n::t!(
+            "admin.system.default_currency_help",
+            locale = loc
+        )
+        .to_string(),
+        default_currency_value: default_currency.to_string(),
+        default_currency_version: currency_version,
+        show_value_indicators_label: rust_i18n::t!(
+            "admin.system.show_value_indicators_label",
+            locale = loc
+        )
+        .to_string(),
+        show_value_indicators_help: rust_i18n::t!(
+            "admin.system.show_value_indicators_help",
+            locale = loc
+        )
+        .to_string(),
+        show_value_indicators_checked: show_indicators,
+        show_value_indicators_version: indicators_version,
+        supported_currencies: vec!["CHF", "EUR", "USD", "GBP", "CAD", "JPY"],
+        btn_save: rust_i18n::t!("admin.system.btn_save_valuation", locale = loc).to_string(),
+    }
+    .render()
+    .map_err(|_| AppError::Internal("valuation form render failed".to_string()))
+}
+
 /// Public panel renderer — called by `admin.rs::render_panel` on the
 /// `AdminTab::System` branch. Pulls the 5 setting rows and assembles the
 /// three sections. The session's `csrf_token` is threaded into every form
@@ -325,10 +406,30 @@ pub async fn render_panel_html(
         .cloned()
         .unwrap_or_else(|| (default_lang.clone(), 1));
 
+    let default_currency = state.default_currency();
+    let (_, currency_version) = rows
+        .get(KEY_DEFAULT_CURRENCY)
+        .cloned()
+        .unwrap_or_else(|| (default_currency.clone(), 1));
+
+    let show_indicators = state.show_value_indicators();
+    let (_, indicators_version) = rows
+        .get(KEY_SHOW_VALUE_INDICATORS)
+        .cloned()
+        .unwrap_or_else(|| (if show_indicators { "true" } else { "false" }.to_string(), 1));
+
     let csrf = session.csrf_token.as_str();
     let loans_form_html = render_loans_form(csrf, loc, threshold, threshold_version)?;
     let providers_form_html = render_providers_form(csrf, loc, &rows)?;
     let language_form_html = render_language_form(csrf, loc, &default_lang, lang_version)?;
+    let valuation_form_html = render_valuation_form(
+        csrf,
+        loc,
+        &default_currency,
+        currency_version,
+        show_indicators,
+        indicators_version,
+    )?;
 
     AdminSystemPanel {
         panel_heading: rust_i18n::t!("admin.system.panel_heading", locale = loc).to_string(),
@@ -336,9 +437,12 @@ pub async fn render_panel_html(
         section_providers: rust_i18n::t!("admin.system.section_providers", locale = loc)
             .to_string(),
         section_language: rust_i18n::t!("admin.system.section_language", locale = loc).to_string(),
+        section_valuation: rust_i18n::t!("admin.system.section_valuation", locale = loc)
+            .to_string(),
         loans_form_html,
         providers_form_html,
         language_form_html,
+        valuation_form_html,
     }
     .render()
     .map_err(|_| AppError::Internal("admin system panel render failed".to_string()))
@@ -525,6 +629,72 @@ pub async fn save_language_settings(
         .unwrap_or_else(|| (form.default_language.clone(), 2));
     let main = render_language_form(&session.csrf_token, loc, &form.default_language, version)?;
     let feedback = success_feedback(loc, "success.system.language_saved");
+    Ok(HtmxResponse {
+        main,
+        oob: vec![OobUpdate {
+            target: "feedback-list".to_string(),
+            content: feedback,
+        }],
+    })
+}
+
+// v1.5.1 fix #283 — Library valuation save handler. Two settings on
+// the same form; we run them through `save_setting` sequentially.
+// On a version-mismatch on the first row, the second isn't touched
+// (sensible: the form re-renders with the up-to-date versions for
+// retry). The `Arc<RwLock<AppSettings>>` cache is reloaded once
+// after both writes.
+pub async fn save_library_valuation_settings(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    Form(form): Form<LibraryValuationSettingsForm>,
+) -> Result<HtmxResponse, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=system", locale.0)?;
+    let loc = locale.0;
+
+    let normalized_currency = form.default_currency.trim().to_ascii_uppercase();
+    validate_default_currency(&normalized_currency, loc)?;
+    save_setting(
+        &state.pool,
+        KEY_DEFAULT_CURRENCY,
+        &normalized_currency,
+        form.default_currency_version,
+    )
+    .await?;
+
+    // HTML checkbox semantics: `name=` is only submitted when checked.
+    // `form.show_value_indicators.is_some()` means the box was ticked.
+    let new_show = form.show_value_indicators.is_some();
+    save_setting(
+        &state.pool,
+        KEY_SHOW_VALUE_INDICATORS,
+        if new_show { "true" } else { "false" },
+        form.show_value_indicators_version,
+    )
+    .await?;
+
+    reload_settings_cache(&state).await?;
+
+    let rows = fetch_setting_rows(&state.pool).await?;
+    let (_, cur_version) = rows
+        .get(KEY_DEFAULT_CURRENCY)
+        .cloned()
+        .unwrap_or_else(|| (normalized_currency.clone(), 2));
+    let (_, ind_version) = rows
+        .get(KEY_SHOW_VALUE_INDICATORS)
+        .cloned()
+        .unwrap_or_else(|| (if new_show { "true" } else { "false" }.to_string(), 2));
+
+    let main = render_valuation_form(
+        &session.csrf_token,
+        loc,
+        &normalized_currency,
+        cur_version,
+        new_show,
+        ind_version,
+    )?;
+    let feedback = success_feedback(loc, "success.system.valuation_saved");
     Ok(HtmxResponse {
         main,
         oob: vec![OobUpdate {
