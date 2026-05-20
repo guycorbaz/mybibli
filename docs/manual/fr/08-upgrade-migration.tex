@@ -110,6 +110,37 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.5.2}\label{sec:whats-new-1.5.2}
+
+La version 1.5.2 est un hotfix d'une seule correction sur la
+v1.5.1 : le flux de valorisation v1.5.0 \#243 était partiellement
+cassé en production. Enregistrer un \emph{prix d'achat} ou une
+\emph{valeur actuelle estimée} sur un volume écrivait bien la
+valeur (les totaux de \texttt{/stats/value} et l'indicateur de
+l'accueil reflétaient le nouveau montant), mais retournait un
+500 à l'utilisateur, et chaque consultation suivante du volume
+plantait.
+
+Cause racine : SQLx 0.8 ne sait pas décoder une colonne
+MariaDB \texttt{DECIMAL(10,2)} brute en \texttt{Option<f64>}
+sans la feature \texttt{bigdecimal} ou \texttt{rust\_decimal}.
+Le côté écriture fonctionnait parce que le driver convertit
+\texttt{f64 \string→ DECIMAL} ; le côté lecture non. Les
+requêtes d'agrégation (totaux de \texttt{/stats/value})
+utilisaient déjà \texttt{CAST(SUM(...) AS DOUBLE)} et n'étaient
+pas affectées.
+
+Correctif : \texttt{VolumeModel::find\_by\_id} et
+\texttt{find\_by\_label} entourent désormais les deux colonnes
+DECIMAL avec \texttt{CAST(... AS DOUBLE)}. Deux nouveaux tests
+\texttt{sqlx::test} de garde-fou INSERT un volume avec des
+colonnes de valorisation non nulles et vérifient le
+round-trip, empêchant le bug de réapparaître silencieusement.
+
+Pas de migration de schéma, pas de changement cassant
+\string— mise à jour routinière \texttt{docker compose pull
+\&\& docker compose up -d}.
+
 \section{Nouveautés de la 1.5.1}\label{sec:whats-new-1.5.1}
 
 La version 1.5.1 est un correctif de cinq bugs de production
