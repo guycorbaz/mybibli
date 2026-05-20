@@ -682,6 +682,51 @@ pub struct WishlistPrintTemplate {
     pub item_count: i64,
 }
 
+/// CR #266 — server-rendered PDF export. Returns a real PDF document
+/// (text layer extractable via `pdftotext`, searchable in any viewer,
+/// identical rendering everywhere). The Content-Disposition header
+/// triggers the browser's download flow.
+///
+/// The legacy `/wishlist/print` HTML route is kept as a deep-link
+/// fallback but no longer surfaced in the UI (the Print button on
+/// `/wishlist` now points here).
+pub async fn wishlist_export_pdf(
+    State(state): State<AppState>,
+    Extension(locale): Extension<Locale>,
+) -> Result<Response, AppError> {
+    let pool = &state.pool;
+    let loc = locale.0;
+
+    let items = WishlistItemModel::list_active(pool).await?;
+    let bytes = crate::services::wishlist_pdf::render(&items, loc)?;
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let disposition = format!(r#"attachment; filename="wishlist-{today}.pdf""#);
+
+    Ok((
+        axum::http::StatusCode::OK,
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "application/pdf".to_string(),
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                disposition,
+            ),
+            // PDFs are deterministic per session-locale + DB state at
+            // request time; no-store keeps a stale dump from sitting in
+            // a proxy after the user adds entries.
+            (
+                axum::http::header::CACHE_CONTROL,
+                "no-store".to_string(),
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
 pub async fn wishlist_print(
     State(state): State<AppState>,
     Extension(locale): Extension<Locale>,
