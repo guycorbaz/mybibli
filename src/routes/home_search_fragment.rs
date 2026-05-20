@@ -222,6 +222,7 @@ mod tests {
             volume_count: 2,
             cover_image_url: None,
             publication_date: None,
+            dewey_code: None,
         };
         let html = render_search_row(&item);
         assert!(html.contains("/title/42"));
@@ -255,6 +256,7 @@ mod tests {
             volume_count: 0,
             cover_image_url: Some("/covers/test.jpg".to_string()),
             publication_date: Some(chrono::NaiveDate::from_ymd_opt(1942, 1, 1).unwrap()),
+            dewey_code: None,
         };
         let html = render_search_row(&item);
         assert!(html.contains("1942"), "Should display publication year");

@@ -13,6 +13,14 @@
     if (!container) return;
     container.classList.remove("browse-list", "browse-grid");
     container.classList.add("browse-" + mode);
+    // CR #250 — list mode uses sortable column headers, so the
+    // <select> sort dropdown is redundant; hide it via a class toggle
+    // (CSP-friendly — strict policy blocks element.style.* writes,
+    // see mybibli.js:73 for the same pattern). Grid mode shows it.
+    var sortControl = document.getElementById("browse-sort-control");
+    if (sortControl) {
+      sortControl.classList.toggle("hidden", mode === "list");
+    }
     // Update radiogroup
     var radios = document.querySelectorAll("[data-browse-mode]");
     radios.forEach(function (btn) {

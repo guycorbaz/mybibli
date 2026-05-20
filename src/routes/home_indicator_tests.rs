@@ -309,6 +309,7 @@ mod tests {
             volume_count: 0,
             cover_image_url: None,
             publication_date: None,
+            dewey_code: None,
         }
     }
 
