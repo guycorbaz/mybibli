@@ -169,6 +169,12 @@ pub struct HomeTemplate {
     pub value_indicator_label: String,
     pub value_indicator_amount: String,
     pub value_indicator_cta: String,
+    // CR #237 — shelf-audit "Volumes à contrôler" indicator. Visible
+    // to Librarian+ when at least one volume carries the flag.
+    pub show_audit_indicator: bool,
+    pub audit_indicator_label: String,
+    pub audit_indicator_count: i64,
+    pub audit_indicator_cta: String,
 }
 
 /// One row of the "By genre" dashboard section.
@@ -613,6 +619,19 @@ pub async fn home(
     // surface the total of the dominant currency. Mixed-currency
     // catalogs see the top row only — the full /stats/value page
     // lists every currency.
+    // CR #237 — count of volumes currently flagged "À contrôler".
+    // Librarian+ only — Anonymous never sees the audit surface. A
+    // zero-count user gets the indicator hidden so the home dashboard
+    // stays clean for users who don't audit.
+    let audit_indicator_count = if session.role >= crate::middleware::auth::Role::Librarian {
+        crate::services::volume_audit::VolumeAuditService::count_under_audit(pool)
+            .await
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let show_audit_indicator = audit_indicator_count > 0;
+
     let (show_value_indicator, value_indicator_amount) = if state.show_value_indicators() {
         match crate::models::volume::VolumeModel::value_totals_by_currency(pool).await {
             Ok(rows) if !rows.is_empty() => {
@@ -845,6 +864,12 @@ pub async fn home(
             .to_string(),
         value_indicator_amount,
         value_indicator_cta: rust_i18n::t!("dashboard.value_indicator.cta", locale = loc)
+            .to_string(),
+        show_audit_indicator,
+        audit_indicator_label: rust_i18n::t!("dashboard.audit_indicator.label", locale = loc)
+            .to_string(),
+        audit_indicator_count,
+        audit_indicator_cta: rust_i18n::t!("dashboard.audit_indicator.cta", locale = loc)
             .to_string(),
     };
     match template.render() {
@@ -1304,6 +1329,10 @@ pub(crate) mod tests {
             value_indicator_label: "Library estimated value".to_string(),
             value_indicator_amount: String::new(),
             value_indicator_cta: "See breakdown".to_string(),
+            show_audit_indicator: false,
+            audit_indicator_label: "Volumes to check".to_string(),
+            audit_indicator_count: 0,
+            audit_indicator_cta: "Open audit".to_string(),
         }
     }
 

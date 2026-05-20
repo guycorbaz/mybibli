@@ -413,6 +413,10 @@ volume:
   edition_label: Édition
   not_shelved: Non rangé
   submit: Enregistrer
+  # CR #237 — bouton d'audit sur la page volume.
+  under_audit_chip: "À contrôler"
+  mark_under_audit: "Marquer à contrôler"
+  mark_checked: "Contrôlé"
   # CR #243 — champs de valuation (prix d'achat + valeur actuelle).
   valuation_section: "Valeur (optionnel)"
   purchase_price: "Prix d'achat"
@@ -444,6 +448,8 @@ location:
   organizational_label: "Emplacement organisationnel (ne peut pas contenir de volumes directement)"
   organizational_help: "Cochez cette case si l'emplacement ne fait que regrouper d'autres emplacements (par ex. « Salon » contient « Bibliothèque A » et « Bibliothèque B » mais ne contient pas de volumes lui-même). Aucun volume ne peut être assigné à un emplacement organisationnel — le flux scan refuse, et l'édition d'emplacement rejette le basculement si la ligne a encore des volumes attachés."
   organizational_blocked_has_volumes: "Impossible de marquer organisationnel — %{count} volume(s) sont actuellement attachés à cet emplacement. Re-rangez-les d'abord."
+  # CR #237 — marquer tous les volumes d'une étagère « à contrôler ».
+  bulk_audit_button: "Marquer tous les volumes à contrôler"
   empty_state: "Créez votre premier emplacement pour commencer à organiser !"
   created: "%{name} créé (%{label})."
   updated: Emplacement mis à jour.
@@ -538,6 +544,16 @@ genre:
   # de suppression 8-4 empêche cet état par la voie supportée.
   placeholder:
     deleted: "(Genre supprimé)"
+# CR #237 — vue liste d'audit.
+audit:
+  heading: "Audit des étagères"
+  intro: "Volumes actuellement marqués à contrôler, triés par emplacement → V-code pour que vous puissiez parcourir l'étagère dans l'ordre. Cliquez sur Contrôlé à côté d'une ligne à chaque volume confirmé."
+  empty_state: "Rien à contrôler pour l'instant. Marquez une étagère ou un volume pour démarrer une passe d'audit."
+  col_volume: "Code V"
+  col_title: "Titre"
+  col_location: "Emplacement"
+  col_action: "Action"
+  btn_clear_all: "Effacer toutes les marques"
 stats:
   value:
     heading: "Valorisation de la bibliothèque"
@@ -601,6 +617,10 @@ dashboard:
   value_indicator:
     label: "Valeur estimée de la bibliothèque"
     cta: "Voir le détail"
+  # CR #237 — indicateur d'audit sur l'accueil.
+  audit_indicator:
+    label: "Volumes à contrôler"
+    cta: "Ouvrir l'audit"
 borrower:
   list_title: Emprunteurs
   add: Ajouter un emprunteur

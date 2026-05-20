@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod admin_api_keys;
+pub mod audit;
 pub mod stats;
 pub mod title_lifecycle;
 pub mod admin_reference_data;
@@ -260,6 +261,24 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/stats/value",
             axum::routing::get(stats::stats_value_page),
+        )
+        // CR #237 — shelf-audit workflow (Librarian+).
+        .route("/audit", axum::routing::get(audit::audit_list_page))
+        .route(
+            "/audit/clear-all",
+            axum::routing::post(audit::clear_all_audit),
+        )
+        .route(
+            "/volume/{id}/mark-audit",
+            axum::routing::post(audit::mark_volume_audit),
+        )
+        .route(
+            "/volume/{id}/clear-audit",
+            axum::routing::post(audit::clear_volume_audit),
+        )
+        .route(
+            "/location/{id}/mark-audit",
+            axum::routing::post(audit::mark_location_audit),
         )
         .route(
             "/wishlist/{id}",

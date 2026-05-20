@@ -50,6 +50,7 @@ fn make_test_volume_detail_template(
             current_value: None,
             current_value_currency: None,
             current_value_updated_at: None,
+            under_audit_since: None,
         },
         title_name: "Test Title".to_string(),
         condition_name: None,
@@ -63,6 +64,10 @@ fn make_test_volume_detail_template(
         loan_status_label_anonymous: "On loan since 2026-04-15".to_string(),
         loan_status_label_prefix: "On loan to ".to_string(),
         loan_status_label_suffix: " since 2026-04-15".to_string(),
+        can_audit: false,
+        under_audit_chip_label: "To check".to_string(),
+        audit_button_label_mark: "Mark to check".to_string(),
+        audit_button_label_clear: "Checked".to_string(),
     }
 }
 

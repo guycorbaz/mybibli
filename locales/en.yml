@@ -412,6 +412,10 @@ volume:
   edition_label: Edition
   not_shelved: Not shelved
   submit: Save
+  # CR #237 — shelf-audit affordance on the volume detail page.
+  under_audit_chip: "To check"
+  mark_under_audit: "Mark to check"
+  mark_checked: "Checked"
   # CR #243 — volume value-entry fields (purchase price + current value).
   valuation_section: "Valuation (optional)"
   purchase_price: "Purchase price"
@@ -443,6 +447,8 @@ location:
   organizational_label: "Organizational location (cannot hold volumes directly)"
   organizational_help: "Check this if the location only groups child locations (e.g. \"Living Room\" contains \"Bookshelf A\" and \"Bookshelf B\" but holds no volumes itself). Volumes cannot be assigned to an organizational location — the scan-to-shelve flow refuses, and the location-edit form rejects flipping a row that still has volumes attached."
   organizational_blocked_has_volumes: "Cannot mark organizational — %{count} volume(s) currently use this location. Re-shelve them first."
+  # CR #237 — bulk-mark all volumes on a shelf "to check".
+  bulk_audit_button: "Mark all volumes for audit"
   empty_state: "Create your first location to start organizing!"
   created: "%{name} created (%{label})."
   updated: Location updated.
@@ -536,6 +542,16 @@ genre:
   # deletion guard prevents this via the supported path.
   placeholder:
     deleted: "(Deleted genre)"
+# CR #237 — shelf-audit list view.
+audit:
+  heading: "Shelf audit"
+  intro: "Volumes currently flagged to check, sorted by location → V-code so you can walk the shelf in order. Click Checked next to a row as you confirm each volume."
+  empty_state: "Nothing to check right now. Mark a shelf or a single volume to start an audit pass."
+  col_volume: "V-code"
+  col_title: "Title"
+  col_location: "Location"
+  col_action: "Action"
+  btn_clear_all: "Clear all flags"
 stats:
   value:
     heading: "Library valuation"
@@ -599,6 +615,10 @@ dashboard:
   value_indicator:
     label: "Library estimated value"
     cta: "See breakdown"
+  # CR #237 — shelf-audit indicator on home.
+  audit_indicator:
+    label: "Volumes to check"
+    cta: "Open audit"
 borrower:
   list_title: Borrowers
   add: Add borrower

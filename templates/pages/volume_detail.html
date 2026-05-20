@@ -5,7 +5,38 @@
 
 {% block content %}
 <div class="max-w-3xl mx-auto px-4 lg:px-8 py-6">
-    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ detail_title }}: {{ volume.label }}</h1>
+    <div class="flex flex-wrap items-baseline justify-between gap-3">
+        <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ detail_title }}: {{ volume.label }}</h1>
+        {# CR #237 — shelf-audit affordance. The chip surfaces the
+           current flag state (only when set); the button is a single
+           toggle that flips it (Librarian+). Both are part of the
+           inline header so the affordance is reachable without
+           scrolling. #}
+        <div class="flex items-center gap-2">
+            {% if volume.under_audit_since.is_some() %}
+            <span class="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                ⏳ {{ under_audit_chip_label }}
+            </span>
+            {% endif %}
+            {% if can_audit %}
+            {% if volume.under_audit_since.is_some() %}
+            <form method="POST" action="/volume/{{ volume.id }}/clear-audit" class="inline">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+                <button type="submit" class="px-3 py-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-md hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+                    ✓ {{ audit_button_label_clear }}
+                </button>
+            </form>
+            {% else %}
+            <form method="POST" action="/volume/{{ volume.id }}/mark-audit" class="inline">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+                <button type="submit" class="px-3 py-1.5 text-sm font-medium text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-stone-600 rounded-md hover:bg-stone-50 dark:hover:bg-stone-800">
+                    ⏳ {{ audit_button_label_mark }}
+                </button>
+            </form>
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
 
     <div class="mt-6 space-y-4">
         <div class="flex items-center gap-3">

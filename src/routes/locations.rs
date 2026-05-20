@@ -67,6 +67,9 @@ pub struct LocationDetailTemplate {
     pub prev_label: String,
     pub next_label: String,
     pub pagination_aria: String,
+    // CR #237 — bulk-mark affordance.
+    pub can_audit: bool,
+    pub bulk_audit_button_label: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
 }
@@ -121,6 +124,15 @@ pub async fn location_detail(
         prev_label: rust_i18n::t!("pagination.previous", locale = loc).to_string(),
         next_label: rust_i18n::t!("pagination.next", locale = loc).to_string(),
         pagination_aria: rust_i18n::t!("pagination.aria_label", locale = loc).to_string(),
+        // CR #237 — bulk-mark affordance. Hidden for organizational
+        // containers (an organizational location holds no volumes,
+        // there's nothing to mark) and hidden for Anonymous.
+        can_audit: session.role >= Role::Librarian && location.is_assignable(),
+        bulk_audit_button_label: rust_i18n::t!(
+            "location.bulk_audit_button",
+            locale = loc
+        )
+        .to_string(),
         location,
         breadcrumb_segments,
         volumes,
@@ -971,6 +983,8 @@ mod tests {
             prev_label: "Previous".to_string(),
             next_label: "Next".to_string(),
             pagination_aria: "Pagination".to_string(),
+            can_audit: false,
+            bulk_audit_button_label: "Mark all volumes for audit".to_string(),
             current_url: "/location/1".to_string(),
             lang_toggle_aria: "Change language".to_string(),
         };
