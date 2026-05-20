@@ -41,6 +41,15 @@ wishlist:
   print_title: "Ma wish list"
   print_count_one: "%{count} livre"
   print_count_other: "%{count} livres"
+  # CR #266 — export PDF rendu côté serveur. Mise en page : ligne
+  # d'en-tête + ligne de date, puis un bloc par entrée, sinon
+  # "(aucune entrée)" si la liste est vide.
+  pdf:
+    doc_title: "Wish list"
+    header_one: "Ma wish list — %{count} livre"
+    header_other: "Ma wish list — %{count} livres"
+    generated_on: "Généré le %{date}"
+    empty: "(Aucune entrée dans la wish list pour le moment.)"
   # Bandeau d'auto-détection sur scan catalogue quand l'ISBN match une ligne wish list active.
   autolink_banner_title: "Sur votre wish list"
   autolink_banner_body: "Cet ISBN est sur votre wish list. La retirer ?"

@@ -41,6 +41,14 @@ wishlist:
   print_title: "My wish list"
   print_count_one: "%{count} book"
   print_count_other: "%{count} books"
+  # CR #266 — server-rendered PDF export. Layout: header line + a
+  # date line, then one block per entry, then "(no entries)" if empty.
+  pdf:
+    doc_title: "Wish list"
+    header_one: "My wish list — %{count} book"
+    header_other: "My wish list — %{count} books"
+    generated_on: "Generated on %{date}"
+    empty: "(No entries on the wish list yet.)"
   # Auto-link banner shown on catalog scan when the ISBN matches an active wishlist row.
   autolink_banner_title: "On your wish list"
   autolink_banner_body: "This ISBN is on your wish list. Remove it?"

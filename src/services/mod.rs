@@ -19,3 +19,4 @@ pub mod soft_delete;
 pub mod title;
 pub mod trash;
 pub mod volume;
+pub mod wishlist_pdf;

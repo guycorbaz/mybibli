@@ -33,6 +33,10 @@ nix = { version = "0.29", features = ["fs"] }
 # validation. Token length is small; `==` is not constant-time.
 subtle = "2.6"
 serde_urlencoded = "0.7"
+# CR #266 — server-rendered PDF export for the wish list (`/wishlist/export.pdf`).
+# Pure Rust, mid-level layout API on top of `printpdf`. ~250 KB extra in the
+# release binary; uses DejaVu Sans (TTF in `static/fonts/`) for unicode support.
+genpdf = "0.2"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

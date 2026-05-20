@@ -7,13 +7,13 @@
     <div class="flex justify-between items-center mb-6 flex-wrap gap-2">
         <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ label_list_title }}</h1>
         <div class="flex gap-2">
-            {# CR #260 — open the print page in a new tab so the user
-               doesn't have to hit Back after closing the browser's
-               Print-to-PDF dialog. rel="noopener" closes the
-               window.opener bridge per OWASP recommendation. #}
-            <a href="/wishlist/print"
-               target="_blank"
-               rel="noopener"
+            {# CR #266 — server-rendered PDF export. Replaces the
+               browser-print HTML round-trip from #260: download a real
+               PDF document (selectable text, consistent rendering,
+               searchable). The Content-Disposition header on the
+               response triggers the browser's download flow without
+               needing target="_blank". #}
+            <a href="/wishlist/export.pdf"
                class="px-3 py-1.5 text-sm font-medium text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-stone-600 rounded-md hover:bg-stone-50 dark:hover:bg-stone-800">
                 {{ label_print }}
             </a>

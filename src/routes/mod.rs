@@ -250,6 +250,11 @@ pub fn build_router(state: AppState) -> Router {
             "/wishlist/print",
             axum::routing::get(wishlist::wishlist_print),
         )
+        // CR #266 — server-rendered PDF export.
+        .route(
+            "/wishlist/export.pdf",
+            axum::routing::get(wishlist::wishlist_export_pdf),
+        )
         .route(
             "/wishlist/{id}",
             axum::routing::get(wishlist::wishlist_detail).delete(wishlist::wishlist_delete),
