@@ -81,6 +81,8 @@ pub struct HomeTemplate {
     pub col_contributor: String,
     pub col_genre: String,
     pub col_volumes: String,
+    // CR #250 — Dewey column header on the new home list-view table.
+    pub col_dewey: String,
     pub connection_lost: String,
     pub label_no_cover: String,
     pub metadata_error_count: u64,
@@ -791,6 +793,7 @@ pub async fn home(
         col_contributor: rust_i18n::t!("search.col.contributor", locale = loc).to_string(),
         col_genre: rust_i18n::t!("search.col.genre", locale = loc).to_string(),
         col_volumes: rust_i18n::t!("search.col.volumes", locale = loc).to_string(),
+        col_dewey: rust_i18n::t!("search.col.dewey", locale = loc).to_string(),
         connection_lost: rust_i18n::t!("search.connection_lost", locale = loc).to_string(),
         label_no_cover: rust_i18n::t!("cover.no_cover", locale = loc).to_string(),
         metadata_error_count,
@@ -1284,6 +1287,7 @@ pub(crate) mod tests {
             col_contributor: "Contributor".to_string(),
             col_genre: "Genre".to_string(),
             col_volumes: "Volumes".to_string(),
+            col_dewey: "Dewey".to_string(),
             connection_lost: "Connection lost".to_string(),
             label_no_cover: "No cover available".to_string(),
             metadata_error_count: 0,
@@ -1383,6 +1387,7 @@ pub(crate) mod tests {
             volume_count: 1,
             cover_image_url: None,
             publication_date: None,
+            dewey_code: None,
         }
     }
 

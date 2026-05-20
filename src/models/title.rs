@@ -334,7 +334,7 @@ impl TitleModel {
             // set instead of silently disappearing. The empty `genre_name`
             // marker is replaced with a locale-aware placeholder at the
             // route layer via `routes::home::resolve_genre_placeholder`.
-            "SELECT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, \
+            "SELECT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, t.dewey_code, \
                     CAST(t.publication_date AS DATE) AS publication_date, \
                     COALESCE(g.name, '') AS genre_name, \
                     (SELECT c.name FROM title_contributors tc \
@@ -373,6 +373,7 @@ impl TitleModel {
                     .unwrap_or(0),
                 cover_image_url: r.try_get("cover_image_url").unwrap_or(None),
                 publication_date: r.try_get("publication_date").unwrap_or(None),
+                dewey_code: r.try_get("dewey_code").unwrap_or(None),
             })
             .collect();
 
@@ -883,10 +884,23 @@ pub struct SearchResult {
     pub volume_count: u64,
     pub cover_image_url: Option<String>,
     pub publication_date: Option<chrono::NaiveDate>,
+    // CR #250 — Dewey code surfaced on the home list-view table so the
+    // sortable column has a value to render. Already present on the
+    // `titles` row; this just adds it to the search projection.
+    pub dewey_code: Option<String>,
 }
 
 /// Allowed sort columns for search results (validated whitelist to prevent SQL injection).
-const VALID_SORT_COLUMNS: &[&str] = &["title", "media_type", "genre_name", "volume_count"];
+/// CR #250 adds `primary_contributor` + `dewey_code` for the list-view
+/// table's sortable column headers.
+const VALID_SORT_COLUMNS: &[&str] = &[
+    "title",
+    "media_type",
+    "genre_name",
+    "volume_count",
+    "primary_contributor",
+    "dewey_code",
+];
 const VALID_SORT_DIRS: &[&str] = &["asc", "desc"];
 
 fn validated_sort(sort: &Option<String>) -> &str {
@@ -909,6 +923,11 @@ fn map_sort_to_column(sort: &str) -> &str {
         "media_type" => "t.media_type",
         "genre_name" => "g.name",
         "volume_count" => "volume_count",
+        // CR #250 — sort by the alias produced in the subquery (the
+        // SELECT projection emits `primary_contributor` from a
+        // correlated subquery; MariaDB resolves the alias in ORDER BY).
+        "primary_contributor" => "primary_contributor",
+        "dewey_code" => "t.dewey_code",
         _ => "t.title",
     }
 }
@@ -1048,7 +1067,7 @@ impl TitleModel {
         // via the supported delete path; this is defense-in-depth against
         // a future migration or manual UPDATE that bypasses the guard.
         let data_sql = format!(
-            "SELECT DISTINCT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, CAST(t.publication_date AS DATE) AS publication_date, \
+            "SELECT DISTINCT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, t.dewey_code, CAST(t.publication_date AS DATE) AS publication_date, \
                     COALESCE(g.name, '') AS genre_name, \
                     (SELECT c.name FROM title_contributors tc \
                      JOIN contributors c ON tc.contributor_id = c.id \
@@ -1094,6 +1113,7 @@ impl TitleModel {
                     .unwrap_or(0),
                 cover_image_url: r.try_get("cover_image_url").unwrap_or(None),
                 publication_date: r.try_get("publication_date").unwrap_or(None),
+                dewey_code: r.try_get("dewey_code").unwrap_or(None),
             })
             .collect();
 
@@ -1125,7 +1145,7 @@ impl TitleModel {
             // Fix #107: same LEFT JOIN + COALESCE pattern as
             // `list_recent_cataloged` and `active_search`. See those for
             // rationale.
-            "SELECT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, \
+            "SELECT t.id, t.title, t.subtitle, t.media_type, t.cover_image_url, t.dewey_code, \
                     CAST(t.publication_date AS DATE) AS publication_date, \
                     COALESCE(g.name, '') AS genre_name, \
                     (SELECT c.name FROM title_contributors tc \
@@ -1162,6 +1182,7 @@ impl TitleModel {
                     .unwrap_or(0),
                 cover_image_url: r.try_get("cover_image_url").unwrap_or(None),
                 publication_date: r.try_get("publication_date").unwrap_or(None),
+                dewey_code: r.try_get("dewey_code").unwrap_or(None),
             })
             .collect();
 
@@ -1185,6 +1206,7 @@ mod tests {
             volume_count: 2,
             cover_image_url: None,
             publication_date: None,
+            dewey_code: None,
         };
         assert_eq!(result.id, 1);
         assert_eq!(result.title, "L'Étranger");
@@ -1208,10 +1230,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_validated_sort_rejects_dewey_code_on_search() {
-        assert_eq!(validated_sort(&Some("dewey_code".to_string())), "title");
-    }
+    // CR #250 expanded `VALID_SORT_COLUMNS` to include `dewey_code`
+    // (and `primary_contributor`) so the home list-view table headers
+    // can sort by them. The historical "rejects" test is superseded by
+    // `test_validated_sort_accepts_cr250_columns` below.
 
     #[test]
     fn test_validated_sort_injection() {
@@ -1241,7 +1263,38 @@ mod tests {
         assert_eq!(map_sort_to_column("media_type"), "t.media_type");
         assert_eq!(map_sort_to_column("genre_name"), "g.name");
         assert_eq!(map_sort_to_column("volume_count"), "volume_count");
+        // CR #250 — sortable columns on the home list-view table.
+        assert_eq!(
+            map_sort_to_column("primary_contributor"),
+            "primary_contributor"
+        );
+        assert_eq!(map_sort_to_column("dewey_code"), "t.dewey_code");
         assert_eq!(map_sort_to_column("unknown"), "t.title");
+    }
+
+    /// CR #250 — lock the SQL-injection guard for the two new sortable
+    /// columns. Anything the table headers can send must be in the
+    /// whitelist; anything else falls back to `title`.
+    #[test]
+    fn test_validated_sort_accepts_cr250_columns() {
+        assert_eq!(
+            validated_sort(&Some("primary_contributor".to_string())),
+            "primary_contributor"
+        );
+        assert_eq!(
+            validated_sort(&Some("dewey_code".to_string())),
+            "dewey_code"
+        );
+        // Adjacent values that *look* close but aren't in the whitelist
+        // must fall back to the default, not get partially accepted.
+        assert_eq!(
+            validated_sort(&Some("primary_contributor; --".to_string())),
+            "title"
+        );
+        assert_eq!(
+            validated_sort(&Some("dewey".to_string())),
+            "title"
+        );
     }
 
     // ─── Similar titles — decade bounds (pure function) ────────────────

@@ -133,7 +133,13 @@ test.describe("Series CRUD & Listing (Story 5-3)", () => {
 
     // Step 3: navigate to the title via home search
     await page.goto(`/?q=${ISBN}`);
-    const titleLink = page.locator("a[href^='/title/']").first();
+    // CR #250 — scope to the visible list-mode table row link;
+    // `.browse-cards` markup is in the DOM but hidden in list mode.
+    const titleLink = page
+      .locator(
+        "#browse-results table.browse-table tbody tr td a[href^='/title/']",
+      )
+      .first();
     await expect(titleLink).toBeVisible({ timeout: 15000 });
     const titleHref = (await titleLink.getAttribute("href"))!;
     await page.goto(titleHref);
@@ -207,7 +213,11 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
     // Step 3: Find title 1 via home search — navigate with query param
     // The title is created during scan, so it should be searchable immediately
     await page.goto(`/?q=${specIsbn("SE", 10)}`);
-    const title1Link = page.locator("a[href^='/title/']").first();
+    const title1Link = page
+      .locator(
+        "#browse-results table.browse-table tbody tr td a[href^='/title/']",
+      )
+      .first();
     await expect(title1Link).toBeVisible({ timeout: 15000 });
     const title1Href = (await title1Link.getAttribute("href"))!;
     await page.goto(title1Href);
@@ -227,7 +237,11 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
 
     // Step 4: Find title 2 via home search and navigate to detail
     await page.goto(`/?q=${specIsbn("SE", 11)}`);
-    const title2Link = page.locator("a[href^='/title/']").first();
+    const title2Link = page
+      .locator(
+        "#browse-results table.browse-table tbody tr td a[href^='/title/']",
+      )
+      .first();
     await expect(title2Link).toBeVisible({ timeout: 10000 });
     const title2Href = (await title2Link.getAttribute("href"))!;
     await page.goto(title2Href);
@@ -284,7 +298,13 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
 
     // Find the title via home search
     await page.goto(`/?q=${ISBN}`);
-    const titleLink = page.locator("a[href^='/title/']").first();
+    // CR #250 — scope to the visible list-mode table row link;
+    // `.browse-cards` markup is in the DOM but hidden in list mode.
+    const titleLink = page
+      .locator(
+        "#browse-results table.browse-table tbody tr td a[href^='/title/']",
+      )
+      .first();
     await expect(titleLink).toBeVisible({ timeout: 10000 });
     const titleHref = (await titleLink.getAttribute("href"))!;
     await page.goto(titleHref);
@@ -329,7 +349,13 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
 
     // Find title via home search
     await page.goto(`/?q=${specIsbn("SE", 20)}`);
-    const titleLink = page.locator("a[href^='/title/']").first();
+    // CR #250 — scope to the visible list-mode table row link;
+    // `.browse-cards` markup is in the DOM but hidden in list mode.
+    const titleLink = page
+      .locator(
+        "#browse-results table.browse-table tbody tr td a[href^='/title/']",
+      )
+      .first();
     await expect(titleLink).toBeVisible({ timeout: 10000 });
     const titleHref = (await titleLink.getAttribute("href"))!;
     await page.goto(titleHref);

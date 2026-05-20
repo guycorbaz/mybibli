@@ -57,6 +57,7 @@ impl SearchService {
             volume_count,
             cover_image_url: title.cover_image_url.clone(),
             publication_date: title.publication_date,
+            dewey_code: title.dewey_code.clone(),
         }
     }
 }

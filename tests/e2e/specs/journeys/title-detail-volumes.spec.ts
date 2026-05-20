@@ -49,8 +49,12 @@ test.describe("CR #209 — per-volume table on /title/:id", () => {
 
     // Step 2: navigate to the title-detail page via home search.
     await page.goto(`/?q=${ISBN}`);
+    // CR #250 — scope to the list-mode table row link (default mode);
+    // legacy `.browse-cards` markup is in the DOM but `display:none`.
     const titleLink = page
-      .locator('#browse-results a[href^="/title/"]')
+      .locator(
+        '#browse-results table.browse-table tbody tr td a[href^="/title/"]',
+      )
       .first();
     await expect(titleLink).toBeVisible({ timeout: 15000 });
     const titleHref = (await titleLink.getAttribute("href"))!;

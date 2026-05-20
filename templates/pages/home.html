@@ -241,7 +241,11 @@
        the actual search results. #}
     <!-- Browse toggle + sort -->
     <div class="w-full max-w-4xl mt-6 flex items-center justify-between">
-        <div class="flex items-center gap-2">
+        {# CR #250 — wrapped in #browse-sort-control so browse-mode.js
+           can hide it in list mode (where the sortable column headers
+           replace the <select>). Visible in grid mode (cards have no
+           column headers, so the select stays the only sort affordance). #}
+        <div id="browse-sort-control" class="flex items-center gap-2">
             <label class="text-xs text-stone-500 dark:text-stone-400" for="browse-sort-select">{{ browse_sort_label }}:</label>
             <select id="browse-sort-select"
                     data-base-q="{{ query_encoded }}"
@@ -297,6 +301,14 @@
                         {% endif %}
                     </div>
                     {% else %}
+                        {# CR #250 — TWO renderings of the same item set:
+                           the existing .browse-cards stack (visible in grid
+                           mode, unchanged) AND a new .browse-table (visible
+                           in list mode). Toggled via CSS in browse.css
+                           keyed on `.browse-list` / `.browse-grid` on the
+                           parent. The browse-mode.js toggle continues to
+                           swap that class on `#browse-results`. #}
+                        <div class="browse-cards">
                         {% for item in paginated.items %}
                         <article class="title-card group">
                             <a href="/title/{{ item.id }}" class="title-card-link"
@@ -317,6 +329,92 @@
                             </a>
                         </article>
                         {% endfor %}
+                        </div>
+
+                        {# CR #250 — sortable table (list mode). Mirrors
+                           location_detail.html's column-header pattern:
+                           clicking a header issues an hx-get that toggles
+                           dir on the active column or sets asc on a new
+                           column. Arrows ▲/▼ surface the current state. #}
+                        <div class="browse-table-wrap overflow-x-auto">
+                            <table class="browse-table w-full text-sm text-left">
+                                <thead class="text-xs text-stone-500 dark:text-stone-400 uppercase border-b border-stone-200 dark:border-stone-700">
+                                    <tr>
+                                        <th class="px-3 py-2 w-10" aria-hidden="true"></th>
+                                        <th class="px-3 py-2">
+                                            <a href="/?q={{ query_encoded }}&amp;sort=title&amp;dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                               hx-get="/?q={{ query_encoded }}&amp;sort=title&amp;dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                               hx-target="#browse-results"
+                                               hx-swap="innerHTML"
+                                               hx-push-url="true"
+                                               class="hover:text-stone-700 dark:hover:text-stone-200">
+                                                {{ col_title }} {% if current_sort == "title" %}{% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
+                                            </a>
+                                        </th>
+                                        <th class="px-3 py-2">
+                                            <a href="/?q={{ query_encoded }}&amp;sort=primary_contributor&amp;dir={% if current_sort == "primary_contributor" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                               hx-get="/?q={{ query_encoded }}&amp;sort=primary_contributor&amp;dir={% if current_sort == "primary_contributor" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                               hx-target="#browse-results"
+                                               hx-swap="innerHTML"
+                                               hx-push-url="true"
+                                               class="hover:text-stone-700 dark:hover:text-stone-200">
+                                                {{ col_contributor }} {% if current_sort == "primary_contributor" %}{% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
+                                            </a>
+                                        </th>
+                                        <th class="px-3 py-2">
+                                            <a href="/?q={{ query_encoded }}&amp;sort=genre_name&amp;dir={% if current_sort == "genre_name" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                               hx-get="/?q={{ query_encoded }}&amp;sort=genre_name&amp;dir={% if current_sort == "genre_name" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                               hx-target="#browse-results"
+                                               hx-swap="innerHTML"
+                                               hx-push-url="true"
+                                               class="hover:text-stone-700 dark:hover:text-stone-200">
+                                                {{ col_genre }} {% if current_sort == "genre_name" %}{% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
+                                            </a>
+                                        </th>
+                                        <th class="px-3 py-2">
+                                            <a href="/?q={{ query_encoded }}&amp;sort=dewey_code&amp;dir={% if current_sort == "dewey_code" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                               hx-get="/?q={{ query_encoded }}&amp;sort=dewey_code&amp;dir={% if current_sort == "dewey_code" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                               hx-target="#browse-results"
+                                               hx-swap="innerHTML"
+                                               hx-push-url="true"
+                                               class="hover:text-stone-700 dark:hover:text-stone-200">
+                                                {{ col_dewey }} {% if current_sort == "dewey_code" %}{% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
+                                            </a>
+                                        </th>
+                                        <th class="px-3 py-2 text-right">
+                                            <a href="/?q={{ query_encoded }}&amp;sort=volume_count&amp;dir={% if current_sort == "volume_count" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                               hx-get="/?q={{ query_encoded }}&amp;sort=volume_count&amp;dir={% if current_sort == "volume_count" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                               hx-target="#browse-results"
+                                               hx-swap="innerHTML"
+                                               hx-push-url="true"
+                                               class="hover:text-stone-700 dark:hover:text-stone-200">
+                                                {{ col_volumes }} {% if current_sort == "volume_count" %}{% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
+                                            </a>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in paginated.items %}
+                                    <tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50">
+                                        <td class="px-3 py-2">
+                                            <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5" aria-hidden="true">
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <a href="/title/{{ item.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ item.title }}</a>
+                                        </td>
+                                        <td class="px-3 py-2 text-stone-600 dark:text-stone-400">
+                                            {% match item.primary_contributor %}{% when Some with (name) %}{{ name }}{% when None %}—{% endmatch %}
+                                        </td>
+                                        <td class="px-3 py-2 text-stone-600 dark:text-stone-400">{{ item.genre_name }}</td>
+                                        <td class="px-3 py-2 text-stone-600 dark:text-stone-400">
+                                            {% match item.dewey_code %}{% when Some with (d) %}<code class="font-mono text-xs">{{ d }}</code>{% when None %}—{% endmatch %}
+                                        </td>
+                                        <td class="px-3 py-2 text-right tabular-nums text-stone-600 dark:text-stone-400">{{ item.volume_count }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     {% endif %}
                 {% endif %}
         </div>

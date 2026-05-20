@@ -256,6 +256,9 @@ search:
     contributor: Contributor
     genre: Genre
     volumes: Volumes
+    dewey: Dewey
+  sort_aria_asc: "Sort by %{column} ascending"
+  sort_aria_desc: "Sort by %{column} descending"
   connection_lost: "Connection lost — check your network."
 pagination:
   previous: Previous

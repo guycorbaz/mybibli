@@ -257,6 +257,9 @@ search:
     contributor: Contributeur
     genre: Genre
     volumes: Volumes
+    dewey: Dewey
+  sort_aria_asc: "Trier par %{column} croissant"
+  sort_aria_desc: "Trier par %{column} décroissant"
   connection_lost: "Connexion perdue — vérifiez votre réseau."
 pagination:
   previous: Précédent
