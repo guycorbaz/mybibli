@@ -45,6 +45,7 @@ impl LocationService {
         node_type: &str,
         parent_id: Option<u64>,
         label: &str,
+        is_organizational: bool,
     ) -> Result<LocationModel, AppError> {
         let name = name.trim();
         if name.is_empty() {
@@ -83,12 +84,22 @@ impl LocationService {
             ));
         }
 
-        let location = LocationModel::create(pool, name, node_type, parent_id, label).await?;
+        let location =
+            LocationModel::create(pool, name, node_type, parent_id, label, is_organizational)
+                .await?;
         tracing::info!(id = location.id, name = %name, label = %label, "Location created");
         Ok(location)
     }
 
     /// Update a location with optimistic locking and cycle detection.
+    ///
+    /// CR #280 — if the form flips `is_organizational` from FALSE to
+    /// TRUE on a row that still has volumes attached, refuse with a
+    /// 400 + the volume count. Silent re-parenting of the volumes is
+    /// explicitly rejected (the user must re-shelve them first; that
+    /// also gives them a chance to think about WHERE the volumes
+    /// should land instead of getting auto-orphaned).
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_location(
         pool: &DbPool,
         id: u64,
@@ -96,6 +107,7 @@ impl LocationService {
         name: &str,
         node_type: &str,
         parent_id: Option<u64>,
+        is_organizational: bool,
     ) -> Result<LocationModel, AppError> {
         let name = name.trim();
         if name.is_empty() {
@@ -122,9 +134,34 @@ impl LocationService {
             Self::validate_parent_chain(pool, id, pid).await?;
         }
 
-        let location =
-            LocationModel::update_with_locking(pool, id, version, name, node_type, parent_id)
-                .await?;
+        // CR #280 — block the flip-to-organizational on a row that
+        // still holds volumes. Reads the live count; a transient race
+        // (volume just got assigned between this check and the UPDATE)
+        // is acceptable because the worst case is the form re-render
+        // showing the new count.
+        if is_organizational {
+            let attached = LocationModel::count_assigned_volumes(pool, id).await?;
+            if attached > 0 {
+                return Err(AppError::BadRequest(
+                    rust_i18n::t!(
+                        "location.organizational_blocked_has_volumes",
+                        count = attached
+                    )
+                    .to_string(),
+                ));
+            }
+        }
+
+        let location = LocationModel::update_with_locking(
+            pool,
+            id,
+            version,
+            name,
+            node_type,
+            parent_id,
+            is_organizational,
+        )
+        .await?;
         tracing::info!(id = id, name = %name, "Location updated");
         Ok(location)
     }

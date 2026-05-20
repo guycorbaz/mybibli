@@ -582,10 +582,22 @@ pub async fn handle_scan(
                         None => None,
                     };
                     if let Some(loc_id) = active_loc {
-                        // Validate location still exists
-                        if crate::models::location::LocationModel::find_by_id(pool, loc_id)
-                            .await?
-                            .is_some()
+                        // Validate location still exists AND is assignable
+                        // (CR #280: refuse the scan-shelve flow on an
+                        // organizational container, same as the form path).
+                        let loc_row = crate::models::location::LocationModel::find_by_id(
+                            pool, loc_id,
+                        )
+                        .await?;
+                        if loc_row.as_ref().is_some_and(|l| !l.is_assignable()) {
+                            let message = rust_i18n::t!(
+                                "feedback.location_organizational",
+                                label = loc_row.unwrap().label.as_str()
+                            )
+                            .to_string();
+                            return Ok(Html(feedback_html("warning", &message, "")).into_response());
+                        }
+                        if loc_row.is_some()
                         {
                             match VolumeModel::update_location(pool, existing_vol.id, Some(loc_id))
                                 .await
@@ -649,11 +661,25 @@ pub async fn handle_scan(
                                 .unwrap_or(None);
                             let shelved_path = if let Some(loc_id) = active_loc {
                                 // Validate location still exists (may have been deleted)
+                                // AND is not organizational (CR #280 — same
+                                // rule as the volume-edit form: a container
+                                // node cannot directly hold volumes; the
+                                // auto-shelve quietly skips in that case
+                                // rather than dropping a scan into a wrong
+                                // shelf).
                                 match crate::models::location::LocationModel::find_by_id(
                                     pool, loc_id,
                                 )
                                 .await?
                                 {
+                                    Some(loc) if !loc.is_assignable() => {
+                                        tracing::info!(
+                                            volume_label = %volume.label,
+                                            location_label = %loc.label,
+                                            "Active-scan auto-shelve skipped — location is organizational"
+                                        );
+                                        None
+                                    }
                                     Some(_) => {
                                         match VolumeModel::update_location(
                                             pool,

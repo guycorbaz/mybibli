@@ -10,6 +10,22 @@ pub struct LocationModel {
     pub name: String,
     pub node_type: String,
     pub label: String,
+    /// CR #280 — TRUE = this location can only hold child locations,
+    /// not volumes. The volume-edit location picker greys out
+    /// organizational entries, and `update_location` rejects an
+    /// organizational target server-side.
+    pub is_organizational: bool,
+}
+
+impl LocationModel {
+    /// CR #280 — Returns `true` if a volume can be assigned to this
+    /// location. The volume-edit form, the catalog scan default-location
+    /// flow, and the server-side `update_location` guard all consult
+    /// this single source of truth so the rule can't drift between
+    /// surfaces.
+    pub fn is_assignable(&self) -> bool {
+        !self.is_organizational
+    }
 }
 
 impl std::fmt::Display for LocationModel {
@@ -23,7 +39,7 @@ impl LocationModel {
         tracing::debug!(id = id, "Looking up location by ID");
 
         let row = sqlx::query(
-            r#"SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label
+            r#"SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational
                FROM storage_locations
                WHERE id = ? AND deleted_at IS NULL"#,
         )
@@ -38,6 +54,7 @@ impl LocationModel {
                 name: r.try_get("name")?,
                 node_type: r.try_get("node_type")?,
                 label: r.try_get("label")?,
+                is_organizational: r.try_get::<i8, _>("is_organizational").unwrap_or(0) != 0,
             })),
             None => Ok(None),
         }
@@ -67,7 +84,7 @@ impl LocationModel {
         tracing::debug!(label = %label, "Looking up location by label");
 
         let row = sqlx::query(
-            r#"SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label
+            r#"SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational
                FROM storage_locations
                WHERE label = ? AND deleted_at IS NULL"#,
         )
@@ -82,6 +99,7 @@ impl LocationModel {
                 name: r.try_get("name")?,
                 node_type: r.try_get("node_type")?,
                 label: r.try_get("label")?,
+                is_organizational: r.try_get::<i8, _>("is_organizational").unwrap_or(0) != 0,
             })),
             None => Ok(None),
         }
@@ -125,7 +143,7 @@ impl LocationModel {
     /// Load all non-deleted locations ordered for tree building.
     pub async fn find_all_tree(pool: &DbPool) -> Result<Vec<LocationModel>, AppError> {
         let rows = sqlx::query(
-            "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label \
+            "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational \
              FROM storage_locations WHERE deleted_at IS NULL \
              ORDER BY parent_id IS NOT NULL, parent_id, name",
         )
@@ -143,6 +161,10 @@ impl LocationModel {
                 name: r.try_get("name").unwrap_or_default(),
                 node_type: r.try_get("node_type").unwrap_or_default(),
                 label: r.try_get("label").unwrap_or_default(),
+                is_organizational: r
+                    .try_get::<i8, _>("is_organizational")
+                    .unwrap_or(0)
+                    != 0,
             })
             .collect())
     }
@@ -153,7 +175,7 @@ impl LocationModel {
         parent_id: u64,
     ) -> Result<Vec<LocationModel>, AppError> {
         let rows = sqlx::query(
-            "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label \
+            "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label, is_organizational \
              FROM storage_locations WHERE parent_id = ? AND deleted_at IS NULL \
              ORDER BY name",
         )
@@ -172,6 +194,10 @@ impl LocationModel {
                 name: r.try_get("name").unwrap_or_default(),
                 node_type: r.try_get("node_type").unwrap_or_default(),
                 label: r.try_get("label").unwrap_or_default(),
+                is_organizational: r
+                    .try_get::<i8, _>("is_organizational")
+                    .unwrap_or(0)
+                    != 0,
             })
             .collect())
     }
@@ -185,20 +211,27 @@ impl LocationModel {
     }
 
     /// Create a new location.
+    ///
+    /// CR #280 — `is_organizational` is opt-in at creation; the form's
+    /// checkbox is unchecked by default so existing user mental models
+    /// (a fresh location holds volumes) don't shift on upgrade.
     pub async fn create(
         pool: &DbPool,
         name: &str,
         node_type: &str,
         parent_id: Option<u64>,
         label: &str,
+        is_organizational: bool,
     ) -> Result<LocationModel, AppError> {
         let result = sqlx::query(
-            "INSERT INTO storage_locations (name, node_type, parent_id, label) VALUES (?, ?, ?, ?)",
+            "INSERT INTO storage_locations (name, node_type, parent_id, label, is_organizational) \
+             VALUES (?, ?, ?, ?, ?)",
         )
         .bind(name)
         .bind(node_type)
         .bind(parent_id)
         .bind(label)
+        .bind(is_organizational)
         .execute(pool)
         .await?;
 
@@ -209,6 +242,13 @@ impl LocationModel {
     }
 
     /// Update a location with optimistic locking.
+    ///
+    /// CR #280 — `is_organizational` may flip in either direction; the
+    /// guard against flipping a row that still has attached volumes
+    /// lives at the handler layer (the model can't fail the UPDATE
+    /// itself because a per-volume check is cheaper to do once at
+    /// route time than to inline as a SQL trigger).
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_with_locking(
         pool: &DbPool,
         id: u64,
@@ -216,15 +256,18 @@ impl LocationModel {
         name: &str,
         node_type: &str,
         parent_id: Option<u64>,
+        is_organizational: bool,
     ) -> Result<LocationModel, AppError> {
         let result = sqlx::query(
             "UPDATE storage_locations SET name = ?, node_type = ?, parent_id = ?, \
+             is_organizational = ?, \
              version = version + 1, updated_at = NOW() \
              WHERE id = ? AND version = ? AND deleted_at IS NULL",
         )
         .bind(name)
         .bind(node_type)
         .bind(parent_id)
+        .bind(is_organizational)
         .bind(id)
         .bind(version)
         .execute(pool)
@@ -235,6 +278,24 @@ impl LocationModel {
         Self::find_by_id(pool, id)
             .await?
             .ok_or_else(|| AppError::Internal("Failed to retrieve updated location".to_string()))
+    }
+
+    /// CR #280 — count of active volumes currently assigned to this
+    /// location. Used by the location-edit handler to refuse the
+    /// flip to `is_organizational = true` when the row still has
+    /// volumes attached (the silent-orphan re-parenting alternative
+    /// is unacceptable — the user must re-shelve first).
+    pub async fn count_assigned_volumes(
+        pool: &DbPool,
+        location_id: u64,
+    ) -> Result<u64, AppError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM volumes WHERE location_id = ? AND deleted_at IS NULL",
+        )
+        .bind(location_id)
+        .fetch_one(pool)
+        .await?;
+        Ok(row.0 as u64)
     }
 
     /// Walk the parent chain and return structured segments for linked breadcrumbs.
@@ -295,8 +356,36 @@ mod tests {
             name: "Salon".to_string(),
             node_type: "room".to_string(),
             label: "L0001".to_string(),
+            is_organizational: false,
         };
         assert_eq!(loc.to_string(), "Salon (L0001)");
+    }
+
+    /// CR #280 — `is_assignable()` returns `true` for a normal shelving
+    /// location and `false` for an organizational container. The
+    /// volume-edit picker greys out the disagreeing entries; the
+    /// server-side `update_location` guard reads this same predicate.
+    #[test]
+    fn is_assignable_reflects_organizational_flag() {
+        let shelf = LocationModel {
+            id: 1,
+            parent_id: None,
+            name: "Étagère A".to_string(),
+            node_type: "shelf".to_string(),
+            label: "L0001".to_string(),
+            is_organizational: false,
+        };
+        assert!(shelf.is_assignable(), "non-organizational = assignable");
+
+        let container = LocationModel {
+            id: 2,
+            parent_id: None,
+            name: "Salon".to_string(),
+            node_type: "room".to_string(),
+            label: "L0002".to_string(),
+            is_organizational: true,
+        };
+        assert!(!container.is_assignable(), "organizational = NOT assignable");
     }
 
     /// Story 9-9 review fix (AC11b + Foundation Rule #2) — DB-backed unit

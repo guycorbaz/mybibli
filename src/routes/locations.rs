@@ -249,6 +249,14 @@ fn render_node_at_depth(
         crate::utils::html_escape(rust_i18n::t!("location.lcode_label", locale = loc).as_ref());
     let submit_lbl =
         crate::utils::html_escape(rust_i18n::t!("location.submit", locale = loc).as_ref());
+    // CR #280 — organizational checkbox copy for the inline child-create
+    // form rendered inside the locations tree.
+    let org_label = crate::utils::html_escape(
+        rust_i18n::t!("location.organizational_label", locale = loc).as_ref(),
+    );
+    let org_help = crate::utils::html_escape(
+        rust_i18n::t!("location.organizational_help", locale = loc).as_ref(),
+    );
     let form_id = format!("add-child-{}", node.location.id);
 
     // Indentation classes (defined in static/css/browse.css). Pre-CSP this
@@ -286,6 +294,7 @@ fn render_node_at_depth(
 <div><label class="block text-xs text-stone-600 dark:text-stone-400">{type_lbl}</label><select name="node_type" required class="w-full px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">{type_options}</select></div>
 <div><label class="block text-xs text-stone-600 dark:text-stone-400">{lcode_lbl}</label><input type="text" name="label" value="{next_lcode}" required maxlength="5" pattern="L[0-9]{{4}}" class="w-full px-2 py-1 text-sm font-mono border border-stone-300 dark:border-stone-600 rounded bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100"></div>
 </div>
+<label class="inline-flex items-start gap-2"><input type="checkbox" name="is_organizational" value="true" class="mt-1"><span><span class="text-xs font-medium text-stone-700 dark:text-stone-300">{org_label}</span><span class="block text-xs text-stone-500 dark:text-stone-400">{org_help}</span></span></label>
 <button type="submit" class="px-3 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded">{submit_lbl}</button>
 </form>"#,
                 id = node.location.id,
@@ -400,6 +409,10 @@ pub struct LocationsTemplate {
     pub type_label: String,
     pub lcode_label: String,
     pub submit_label: String,
+    // CR #280 — organizational checkbox copy (also used by the inline
+    // root-create form on the tree page).
+    pub organizational_label: String,
+    pub organizational_help: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
 }
@@ -467,6 +480,10 @@ pub async fn locations_page(
         type_label: rust_i18n::t!("location.type_label", locale = loc).to_string(),
         lcode_label: rust_i18n::t!("location.lcode_label", locale = loc).to_string(),
         submit_label: rust_i18n::t!("location.submit", locale = loc).to_string(),
+        organizational_label: rust_i18n::t!("location.organizational_label", locale = loc)
+            .to_string(),
+        organizational_help: rust_i18n::t!("location.organizational_help", locale = loc)
+            .to_string(),
         current_url: current_url(&uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
@@ -488,6 +505,10 @@ pub struct CreateLocationForm {
     pub label: String,
     #[serde(default)]
     pub parent_id: Option<u64>,
+    /// CR #280 — checkbox: HTML submits the field only when checked.
+    /// `Option<String>` lets us treat "absent" as `false`.
+    #[serde(default)]
+    pub is_organizational: Option<String>,
 }
 
 pub async fn create_location(
@@ -506,6 +527,7 @@ pub async fn create_location(
         &form.node_type,
         form.parent_id,
         &form.label,
+        form.is_organizational.is_some(),
     )
     .await?;
 
@@ -548,6 +570,9 @@ pub struct LocationEditTemplate {
     pub parent_label: String,
     pub submit_label: String,
     pub none_label: String,
+    // CR #280 — organizational checkbox copy.
+    pub organizational_label: String,
+    pub organizational_help: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
 }
@@ -601,6 +626,10 @@ pub async fn edit_location_page(
         parent_label: rust_i18n::t!("location.parent_label", locale = loc).to_string(),
         submit_label: rust_i18n::t!("location.submit", locale = loc).to_string(),
         none_label: rust_i18n::t!("location.none", locale = loc).to_string(),
+        organizational_label: rust_i18n::t!("location.organizational_label", locale = loc)
+            .to_string(),
+        organizational_help: rust_i18n::t!("location.organizational_help", locale = loc)
+            .to_string(),
         current_url: current_url(&uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
     };
@@ -620,6 +649,8 @@ pub struct UpdateLocationForm {
     pub version: i32,
     #[serde(default)]
     pub parent_id: Option<u64>,
+    #[serde(default)]
+    pub is_organizational: Option<String>,
 }
 
 pub async fn update_location(
@@ -639,6 +670,7 @@ pub async fn update_location(
         &form.name,
         &form.node_type,
         form.parent_id,
+        form.is_organizational.is_some(),
     )
     .await?;
 
@@ -701,6 +733,7 @@ mod tests {
             name: "Maison".to_string(),
             node_type: "Room".to_string(),
             label: "L0001".to_string(),
+            is_organizational: false,
         }];
         let tree = build_tree(&locations, &HashMap::new());
         assert_eq!(tree.len(), 1);
@@ -717,6 +750,7 @@ mod tests {
                 name: "Maison".to_string(),
                 node_type: "Room".to_string(),
                 label: "L0001".to_string(),
+                is_organizational: false,
             },
             LocationModel {
                 id: 2,
@@ -724,6 +758,7 @@ mod tests {
                 name: "Salon".to_string(),
                 node_type: "Room".to_string(),
                 label: "L0002".to_string(),
+                is_organizational: false,
             },
             LocationModel {
                 id: 3,
@@ -731,6 +766,7 @@ mod tests {
                 name: "Étagère 1".to_string(),
                 node_type: "Shelf".to_string(),
                 label: "L0003".to_string(),
+                is_organizational: false,
             },
         ];
         let mut counts = HashMap::new();
@@ -758,6 +794,7 @@ mod tests {
             name: "Salon".to_string(),
             node_type: "room".to_string(),
             label: "L0001".to_string(),
+            is_organizational: false,
         }];
         let tree = build_tree(&locations, &HashMap::new());
         let token = "test-csrf-token-abcdef0123456789";
@@ -787,6 +824,7 @@ mod tests {
             name: "Salon".to_string(),
             node_type: "room".to_string(),
             label: "L0001".to_string(),
+            is_organizational: false,
         }];
         let tree = build_tree(&locations, &HashMap::new());
         let html = render_tree_html(
@@ -820,6 +858,7 @@ mod tests {
             name: "Salon".to_string(),
             node_type: "room".to_string(),
             label: "L0001".to_string(),
+            is_organizational: false,
         }];
         let tree = build_tree(&locations, &HashMap::new());
         let html = render_tree_html(
@@ -847,6 +886,7 @@ mod tests {
                 name: "Salon".to_string(),
                 node_type: "room".to_string(),
                 label: "L0001".to_string(),
+                is_organizational: false,
             },
             LocationModel {
                 id: 2,
@@ -854,6 +894,7 @@ mod tests {
                 name: "Étagère".to_string(),
                 node_type: "shelf".to_string(),
                 label: "L0002".to_string(),
+                is_organizational: false,
             },
         ];
         let tree = build_tree(&locations, &HashMap::new());
@@ -915,6 +956,7 @@ mod tests {
                 name: "Salon".to_string(),
                 node_type: "room".to_string(),
                 label: "L0001".to_string(),
+                is_organizational: false,
             },
             breadcrumb_segments: vec![(1, "Salon".to_string())],
             volumes: crate::models::PaginatedList::new(vec![], 1, 0, None, None, None),
