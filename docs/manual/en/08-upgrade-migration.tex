@@ -104,6 +104,55 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.5.1}\label{sec:whats-new-1.5.1}
+
+Version 1.5.1 is a five-fix production-hygiene patch shipped within
+hours of the v1.5.0 NAS upgrade. No schema migrations, no breaking
+changes \string— routine \texttt{docker compose pull \&\& docker
+compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Wish list PDF crash (\#281).} The v1.5.0 Dockerfile
+        never received \texttt{COPY static/fonts/} when CR \#266
+        landed the vendored DejaVu Sans TTFs, so
+        \texttt{/wishlist/export.pdf} returned 500 in production.
+        Fix: one line added to the Dockerfile.
+  \item \textbf{Trash permanent-delete crashed on titles (\#282).}
+        The 4 child FKs that reference \texttt{titles}
+        (\texttt{volumes}, \texttt{title\_contributors},
+        \texttt{title\_series}, \texttt{pending\_metadata\_updates})
+        default to RESTRICT and MariaDB rejected the parent delete
+        as soon as any child row referenced it \string— even
+        soft-deleted children, because FK constraints don't consider
+        \texttt{deleted\_at}. Fix: \texttt{TrashService::permanent\_delete}
+        now opens a transaction and cascades through the FK-ordered
+        children before deleting the parent.
+  \item \textbf{Library valuation toggle was missing from
+        \texttt{/admin?tab=system} (\#283).} The v1.5.0 \#243 added
+        \texttt{default\_currency} + \texttt{show\_value\_indicators}
+        in the settings table and the AppSettings cache but no UI
+        was wired to flip them. Fix: a new "Library valuation"
+        section on the System tab with a currency dropdown + the
+        opt-in indicator checkbox.
+  \item \textbf{No path to delete a revoked API key (\#284).} The
+        v1.4.0 \#241 implementation deliberately preserved revoked
+        rows for audit, but the list grew monotonically. Fix: a
+        Delete button on revoked rows (UX-DR8 modal) calling a new
+        \texttt{DELETE /admin/api-keys/\{id\}} handler. Active
+        keys still show only Revoke. The audit references to
+        deleted keys survive (the link is logical, not a schema
+        FK).
+  \item \textbf{Admin \string→ Health tab marked every provider
+        red (\#285).} \texttt{probe\_once} was sending HEAD without
+        a User-Agent and treating 4xx responses as "down" \string—
+        most providers' WAFs answer 4xx to anonymous HEADs even
+        when the API works. Fix: the probe now sends
+        \texttt{User-Agent: mybibli/1.x.y} matching the actual
+        metadata-fetch path and treats any HTTP response as
+        Reachable (only timeouts / DNS / refused connections
+        count as Unreachable).
+\end{itemize}
+
 \section{What's new in 1.5.0}\label{sec:whats-new-1.5.0}
 
 Version 1.5.0 is the fourth themed minor of the post-v1 era \string—

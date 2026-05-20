@@ -110,6 +110,63 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.5.1}\label{sec:whats-new-1.5.1}
+
+La version 1.5.1 est un correctif de cinq bugs de production
+livré dans les heures qui ont suivi la mise à niveau du NAS en
+v1.5.0. Pas de migration de schéma, pas de changement cassant
+\string— mise à jour routinière \texttt{docker compose pull
+\&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Plantage du PDF de la wish list (\#281).} Le
+        Dockerfile v1.5.0 n'a jamais reçu de \texttt{COPY
+        static/fonts/} quand la CR \#266 a embarqué les TTF
+        DejaVu Sans, donc \texttt{/wishlist/export.pdf}
+        retournait 500 en production. Correctif : une ligne
+        ajoutée au Dockerfile.
+  \item \textbf{Suppression définitive d'un titre depuis la
+        Corbeille plantait (\#282).} Les 4 FK enfants qui
+        référencent \texttt{titles} (\texttt{volumes},
+        \texttt{title\_contributors}, \texttt{title\_series},
+        \texttt{pending\_metadata\_updates}) utilisent la
+        contrainte RESTRICT par défaut ; MariaDB rejetait la
+        suppression du parent dès qu'une ligne enfant y faisait
+        référence \string— même supprimée en doux, parce que les
+        FK ne considèrent pas \texttt{deleted\_at}. Correctif :
+        \texttt{TrashService::permanent\_delete} ouvre maintenant
+        une transaction et casse les enfants dans l'ordre FK
+        avant de supprimer le parent.
+  \item \textbf{Bascule de la valorisation absente de
+        \texttt{/admin?tab=system} (\#283).} La CR v1.5.0 \#243
+        avait ajouté \texttt{default\_currency} +
+        \texttt{show\_value\_indicators} dans la table settings
+        et le cache AppSettings, mais aucune interface n'avait
+        été câblée pour les modifier. Correctif : une nouvelle
+        section « Valorisation » sur l'onglet Système avec une
+        liste déroulante de devise + la case à cocher
+        d'indicateur opt-in.
+  \item \textbf{Impossible de supprimer une clé d'API révoquée
+        (\#284).} L'implémentation v1.4.0 \#241 conservait
+        volontairement les lignes révoquées pour l'audit, mais
+        la liste grossissait sans fin. Correctif : un bouton
+        Supprimer sur les lignes révoquées (boîte modale UX-DR8)
+        appelle un nouveau handler \texttt{DELETE /admin/api-keys/\{id\}}.
+        Les clés actives ne montrent toujours que Révoquer. Les
+        références d'audit aux clés supprimées survivent (le
+        lien est logique, pas une FK de schéma).
+  \item \textbf{Onglet d'administration Santé marquait tous les
+        fournisseurs en rouge (\#285).} \texttt{probe\_once}
+        envoyait HEAD sans User-Agent et traitait les réponses
+        4xx comme « down » \string— la plupart des WAF des
+        fournisseurs répondent 4xx aux HEAD anonymes même quand
+        l'API fonctionne. Correctif : le probe envoie
+        désormais \texttt{User-Agent: mybibli/1.x.y} comme le
+        chemin réel de récupération des métadonnées et traite
+        toute réponse HTTP comme Reachable (seuls les timeouts /
+        DNS / connexions refusées comptent comme Unreachable).
+\end{itemize}
+
 \section{Nouveautés de la 1.5.0}\label{sec:whats-new-1.5.0}
 
 La version 1.5.0 est la quatrième version mineure thématique de
