@@ -2327,7 +2327,13 @@ pub async fn volume_edit_page(
 #[derive(Deserialize)]
 pub struct VolumeEditForm {
     pub version: i32,
-    #[serde(default)]
+    /// Fix #296 — `<select name="condition_state_id">` has
+    /// `<option value="">—</option>` for "no condition set", so the
+    /// browser submits `condition_state_id=` (empty string). Plain
+    /// `#[serde(default)] Option<u64>` bails with "cannot parse
+    /// integer from empty string". Same shape, same fix as
+    /// `UpdateLocationForm.parent_id` (see locations.rs).
+    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_u64")]
     pub condition_state_id: Option<u64>,
     #[serde(default)]
     pub edition_comment: Option<String>,

@@ -515,7 +515,13 @@ pub struct CreateLocationForm {
     pub name: String,
     pub node_type: String,
     pub label: String,
-    #[serde(default)]
+    /// Fix #296 — the form's `<select name="parent_id">` carries
+    /// `<option value="">None</option>` for root locations; the
+    /// browser submits `parent_id=` (empty string). Plain
+    /// `#[serde(default)] Option<u64>` only handles ABSENT fields, so
+    /// the u64 parser used to bail with "cannot parse integer from
+    /// empty string". The custom deserializer treats empty as `None`.
+    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_u64")]
     pub parent_id: Option<u64>,
     /// CR #280 — checkbox: HTML submits the field only when checked.
     /// `Option<String>` lets us treat "absent" as `false`.
@@ -659,7 +665,10 @@ pub struct UpdateLocationForm {
     pub name: String,
     pub node_type: String,
     pub version: i32,
-    #[serde(default)]
+    /// Fix #296 — same empty-string-from-`<option value="">` shape
+    /// as `CreateLocationForm.parent_id` above. See that comment for
+    /// the full rationale.
+    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_u64")]
     pub parent_id: Option<u64>,
     #[serde(default)]
     pub is_organizational: Option<String>,
@@ -730,6 +739,44 @@ pub async fn next_lcode(
 mod tests {
     use super::*;
     use askama::Template;
+
+    /// Fix #296 — `<select name="parent_id"><option value="">None</option>...
+    /// </select>` sends `parent_id=` (empty string) when the user picks the
+    /// root-location option. The `deserialize_optional_u64` wiring on
+    /// `parent_id` must accept that as `None`. Same coverage for the
+    /// `is_organizational` checkbox absence (the form omits the field
+    /// entirely when unchecked).
+    #[test]
+    fn create_location_form_accepts_empty_parent_id() {
+        let body = "name=Salon&node_type=room&label=L0001&parent_id=";
+        let form: CreateLocationForm = serde_urlencoded::from_str(body).unwrap();
+        assert_eq!(form.parent_id, None);
+        assert!(form.is_organizational.is_none());
+    }
+
+    #[test]
+    fn create_location_form_parses_non_empty_parent_id() {
+        let body = "name=Tablette&node_type=shelf&label=L0002&parent_id=7";
+        let form: CreateLocationForm = serde_urlencoded::from_str(body).unwrap();
+        assert_eq!(form.parent_id, Some(7));
+    }
+
+    #[test]
+    fn update_location_form_accepts_empty_parent_id_with_organizational_checkbox() {
+        // Reproduces #296 exactly — root location, organisationnel ticked.
+        let body = "name=Salon&node_type=room&version=3&parent_id=&is_organizational=on";
+        let form: UpdateLocationForm = serde_urlencoded::from_str(body).unwrap();
+        assert_eq!(form.parent_id, None);
+        assert!(form.is_organizational.is_some());
+    }
+
+    #[test]
+    fn update_location_form_parses_non_empty_parent_id() {
+        let body = "name=Tablette&node_type=shelf&version=2&parent_id=4";
+        let form: UpdateLocationForm = serde_urlencoded::from_str(body).unwrap();
+        assert_eq!(form.parent_id, Some(4));
+        assert!(form.is_organizational.is_none());
+    }
 
     #[test]
     fn test_build_tree_empty() {
