@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-05-20 (v1.5.2 patch — #288 CAST DECIMAL → DOUBLE in volume read queries to fix the valuation save/load crash surfaced in prod on v1.5.1)
+# last_updated: 2026-05-20 (v1.6.0 minor — "Tighten the catalog" — bundles #280 organizational locations, #237 shelf-audit workflow, #279 titles-without-volumes filter, #250 home list-view sortable table)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
