@@ -23,7 +23,16 @@ test.describe("Dewey Code Management (Story 5-8)", () => {
     // selector doesn't pick up the Story 9-2 #recent-additions section, which
     // also renders <a href="/title/N"> blocks ABOVE the search results.
     await page.goto(`/?q=${ISBN}`);
-    await page.locator('#browse-results a[href^="/title/"]').first().click();
+    // CR #250 — default list mode renders results as a <table>; the
+    // legacy `.browse-cards` markup is still in the DOM (for grid mode)
+    // but `display: none`, so `.first()` on a bare selector would
+    // race against a hidden link. Scope to the visible table row.
+    await page
+      .locator(
+        '#browse-results table.browse-table tbody tr td a[href^="/title/"]',
+      )
+      .first()
+      .click();
     await expect(page.locator("h1")).toBeVisible({ timeout: 5000 });
 
     // Click Edit metadata
@@ -93,7 +102,16 @@ test.describe("Dewey Code Management (Story 5-8)", () => {
       await page.goto(`/?q=${isbn}`);
       // Scope to #browse-results — Story 9-2 introduced #recent-additions
       // ABOVE the search results, which also contains <a href="/title/N">.
-      await page.locator('#browse-results a[href^="/title/"]').first().click();
+      // CR #250 — default list mode renders results as a <table>; the
+    // legacy `.browse-cards` markup is still in the DOM (for grid mode)
+    // but `display: none`, so `.first()` on a bare selector would
+    // race against a hidden link. Scope to the visible table row.
+    await page
+      .locator(
+        '#browse-results table.browse-table tbody tr td a[href^="/title/"]',
+      )
+      .first()
+      .click();
       await expect(page.locator("h1")).toBeVisible({ timeout: 5000 });
       await page
         .getByRole("button", {

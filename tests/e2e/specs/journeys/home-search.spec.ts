@@ -40,10 +40,16 @@ test.describe("Home page search", () => {
     // Trigger search-fire event (simulating debounce completion)
     await searchField.dispatchEvent("search-fire");
     const tbody = page.locator("#browse-results");
-    // Wait for HTMX swap to complete: either title cards render or the empty-state
-    // block appears. Matching either variant guarantees the swap landed.
+    // Wait for HTMX swap to complete: either a result row (CR #250
+    // list-mode <table> or the legacy `.browse-cards` grid markup)
+    // renders, or the empty-state block appears. Matching either
+    // variant guarantees the swap landed.
     await expect(
-      tbody.locator('article.title-card, .text-center').first(),
+      tbody
+        .locator(
+          'table.browse-table tbody tr, article.title-card, .text-center',
+        )
+        .first(),
     ).toBeVisible({ timeout: 5000 });
   });
 
@@ -51,8 +57,13 @@ test.describe("Home page search", () => {
     page,
   }) => {
     await page.goto("/?q=test");
-    // If results exist, click first row
-    const rows = page.locator("#browse-results article.title-card");
+    // CR #250 — default browse mode is list = sortable table. Click
+    // the first table-row link; sibling .title-card markup exists in
+    // the DOM for grid mode but `display: none` in list mode, so
+    // `.first()` on a card would auto-wait on a hidden element.
+    const rows = page.locator(
+      "#browse-results table.browse-table tbody tr td a[href^='/title/']",
+    );
     const count = await rows.count();
     if (count > 0) {
       await rows.first().click();
@@ -136,11 +147,16 @@ test.describe("Home page search", () => {
 
     await firstGenrePill.click();
 
-    // Post-click: #browse-results swap landed. Wait for either a title card
-    // or the empty-state block to materialize inside the target.
+    // Post-click: #browse-results swap landed. Wait for a result row
+    // (CR #250 list-mode table OR legacy grid-mode card) or the
+    // empty-state block to materialize inside the target.
     const results = page.locator("#browse-results");
     await expect(
-      results.locator("article.title-card, .text-center").first(),
+      results
+        .locator(
+          "table.browse-table tbody tr, article.title-card, .text-center",
+        )
+        .first(),
     ).toBeVisible({ timeout: 10000 });
 
     // THE REGRESSION ASSERTION: still exactly one <header> and one <main>.
@@ -230,10 +246,15 @@ test.describe("Home page scanner detection — scan to navigate", () => {
     await simulateTyping(page, "#search-field", "test");
 
     // Inline browse: #browse-results swap landed, page DID NOT navigate
-    // away from /. Match either a title card or empty-state block.
+    // away from /. Match a result row (CR #250 table OR legacy card)
+    // or the empty-state block.
     const tbody = page.locator("#browse-results");
     await expect(
-      tbody.locator("article.title-card, .text-center").first(),
+      tbody
+        .locator(
+          "table.browse-table tbody tr, article.title-card, .text-center",
+        )
+        .first(),
     ).toBeVisible({ timeout: 5000 });
 
     // Critical: still on home (not /title/, /volume/, /location/, /catalog).

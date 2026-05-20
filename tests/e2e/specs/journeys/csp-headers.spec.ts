@@ -154,8 +154,14 @@ test.describe("Story 7-4 — CSP headers", () => {
     // ABOVE the search results on the home page, which also renders
     // <a href="/title/N"> blocks. A bare `a[href^="/title/"].first()` would
     // pick whatever title happens to be most recent in the test stack.
+    // CR #250 — scope to the visible table row link. The `.browse-cards`
+    // grid markup is still in the DOM (for grid mode) but `display:none`
+    // in the default list mode, so a bare `a[href^="/title/"]` would
+    // race against a hidden card link.
     const titleLink = page
-      .locator('#browse-results a[href^="/title/"]')
+      .locator(
+        '#browse-results table.browse-table tbody tr td a[href^="/title/"]',
+      )
       .first();
     await expect(titleLink).toBeVisible({ timeout: 10000 });
     const titleHref = await titleLink.getAttribute("href");

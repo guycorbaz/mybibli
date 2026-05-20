@@ -56,6 +56,14 @@ test.describe("Browse List/Grid Toggle (Story 5-6)", () => {
   test("title cards are rendered as articles", async ({ page }) => {
     await page.goto(`/?q=${specIsbn("BT", 1)}`);
 
+    // CR #250 — the home list view is now a sortable <table>, so the
+    // .browse-cards stack is `display: none` in list mode (the
+    // default). Switch to grid mode FIRST so the cards become visible
+    // — this test exists to assert the card markup itself, not the
+    // mode-default rendering. The default-mode rendering (table) is
+    // covered by the `list view renders as a table` test below.
+    await page.locator('[data-browse-mode="grid"]').click();
+
     // Should have at least one title card
     const cards = page.locator("article.title-card");
     await expect(cards.first()).toBeVisible({ timeout: 5000 });
@@ -63,6 +71,28 @@ test.describe("Browse List/Grid Toggle (Story 5-6)", () => {
     // Card should have a link to title detail
     const link = cards.first().locator("a.title-card-link");
     await expect(link).toBeVisible();
+
+    // Restore default for sibling specs.
+    await page.evaluate(() =>
+      localStorage.removeItem("mybibli_browse_mode"),
+    );
+  });
+
+  // CR #250 — locks the new list-view rendering. Default mode is
+  // "list" → #browse-results carries `.browse-list`, the table is
+  // visible, and the legacy `.browse-cards` stack is hidden.
+  test("list view renders as a sortable table", async ({ page }) => {
+    await page.goto(`/?q=${specIsbn("BT", 1)}`);
+
+    const container = page.locator("#browse-results");
+    await expect(container).toHaveClass(/browse-list/);
+
+    const table = container.locator("table.browse-table");
+    await expect(table).toBeVisible({ timeout: 5000 });
+    await expect(table.locator("tbody tr").first()).toBeVisible();
+    // Sortable column headers are <a> tags inside <th>, mirroring
+    // location_detail.html.
+    await expect(table.locator("thead th a").first()).toBeVisible();
   });
 
   test("ARIA: radiogroup with proper roles", async ({ page }) => {
