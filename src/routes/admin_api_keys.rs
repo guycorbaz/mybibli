@@ -76,6 +76,8 @@ struct AdminApiKeysList {
     col_status: String,
     col_actions: String,
     btn_revoke: String,
+    // v1.5.1 fix #284 — Delete affordance on revoked rows.
+    btn_delete: String,
 }
 
 #[derive(Debug, Clone)]
@@ -91,6 +93,7 @@ struct KeyRowDisplay {
     status_chip_class: &'static str,
     is_revoked: bool,
     revoke_aria: String,
+    delete_aria: String,
 }
 
 #[derive(Template)]
@@ -113,6 +116,21 @@ struct AdminApiKeyRevokeModal {
     csrf_token: String,
     version: i32,
     btn_revoke: String,
+    btn_cancel: String,
+}
+
+// v1.5.1 fix #284 — hard-delete a revoked API key. Same UX-DR8 shape
+// as the revoke modal; the delete endpoint is gated to revoked rows
+// only (active keys must be revoked first).
+#[derive(Template)]
+#[template(path = "fragments/admin_api_keys_delete_modal.html")]
+struct AdminApiKeyDeleteModal {
+    modal_heading: String,
+    modal_body: String,
+    delete_endpoint: String,
+    list_target: String,
+    csrf_token: String,
+    btn_delete: String,
     btn_cancel: String,
 }
 
@@ -209,6 +227,12 @@ fn render_list_html(loc: &'static str, _csrf_token: &str, keys: &[ApiKey]) -> Re
                     label = &k.label
                 )
                 .to_string(),
+                delete_aria: rust_i18n::t!(
+                    "admin.api_keys.delete_aria",
+                    locale = loc,
+                    label = &k.label
+                )
+                .to_string(),
             }
         })
         .collect();
@@ -224,6 +248,7 @@ fn render_list_html(loc: &'static str, _csrf_token: &str, keys: &[ApiKey]) -> Re
         col_status: rust_i18n::t!("admin.api_keys.col_status", locale = loc).to_string(),
         col_actions: rust_i18n::t!("admin.api_keys.col_actions", locale = loc).to_string(),
         btn_revoke: rust_i18n::t!("admin.api_keys.btn_revoke", locale = loc).to_string(),
+        btn_delete: rust_i18n::t!("admin.api_keys.btn_delete", locale = loc).to_string(),
     }
     .render()
     .map_err(|_| AppError::Internal("admin api_keys list render failed".to_string()))
@@ -447,6 +472,129 @@ pub async fn admin_api_keys_revoke(
     let feedback = feedback_html_pub(
         "success",
         rust_i18n::t!("admin.api_keys.feedback_revoked", locale = loc).as_ref(),
+        "",
+    );
+
+    let resp = HtmxResponse {
+        main: list_html,
+        oob: vec![OobUpdate {
+            target: "feedback-list".to_string(),
+            content: feedback,
+        }],
+    };
+    Ok(resp.into_response_with_hx_trigger("modal-close"))
+}
+
+// ─── v1.5.1 fix #284 — hard-delete handler ────────────────────────
+
+/// `GET /admin/api-keys/{id}/delete-modal` — confirm-modal for the
+/// destructive hard-delete on a revoked API key. Refuses with 409
+/// if the key is still active (Revoke is the prerequisite).
+pub async fn admin_api_keys_delete_modal(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    Path(id): Path<u64>,
+) -> Result<Response, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=api_keys", locale.0)?;
+    let loc = locale.0;
+
+    let key = ApiKeyModel::find_by_id(&state.pool, id).await?.ok_or_else(|| {
+        AppError::NotFound(
+            rust_i18n::t!("admin.api_keys.error_not_found", locale = loc).to_string(),
+        )
+    })?;
+
+    if key.revoked_at.is_none() {
+        return Err(AppError::Conflict(
+            rust_i18n::t!("admin.api_keys.error_delete_active", locale = loc).to_string(),
+        ));
+    }
+
+    let modal = AdminApiKeyDeleteModal {
+        modal_heading: rust_i18n::t!("admin.api_keys.delete_modal_heading", locale = loc)
+            .to_string(),
+        modal_body: rust_i18n::t!(
+            "admin.api_keys.delete_modal_body",
+            locale = loc,
+            label = &key.label
+        )
+        .to_string(),
+        delete_endpoint: format!("/admin/api-keys/{}", key.id),
+        list_target: "#admin-api-keys-list".to_string(),
+        csrf_token: session.csrf_token.clone(),
+        btn_delete: rust_i18n::t!("admin.api_keys.btn_delete_confirm", locale = loc).to_string(),
+        btn_cancel: rust_i18n::t!("common.cancel", locale = loc).to_string(),
+    };
+    modal
+        .render()
+        .map(|html| axum::response::Html(html).into_response())
+        .map_err(|e| AppError::Internal(format!("api key delete-modal render: {e}")))
+}
+
+/// `DELETE /admin/api-keys/{id}` — soft-delete the (already-revoked)
+/// row. Goes through `SoftDeleteService::soft_delete("api_keys", id)`.
+/// Active keys are refused: Revoke is the prerequisite, mirrors the
+/// two-step destructive flow used everywhere else in the admin UI.
+#[derive(Deserialize)]
+pub struct DeleteApiKeyForm {
+    pub _csrf_token: String,
+}
+
+pub async fn admin_api_keys_delete(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    Path(id): Path<u64>,
+    Form(_form): Form<DeleteApiKeyForm>,
+) -> Result<Response, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=api_keys", locale.0)?;
+    let loc = locale.0;
+    let pool = &state.pool;
+
+    let key = ApiKeyModel::find_by_id(pool, id).await?.ok_or_else(|| {
+        AppError::NotFound(
+            rust_i18n::t!("admin.api_keys.error_not_found", locale = loc).to_string(),
+        )
+    })?;
+
+    if key.revoked_at.is_none() {
+        return Err(AppError::Conflict(
+            rust_i18n::t!("admin.api_keys.error_delete_active", locale = loc).to_string(),
+        ));
+    }
+
+    crate::services::soft_delete::SoftDeleteService::soft_delete(pool, "api_keys", id).await?;
+
+    let details = serde_json::json!({
+        "key_id": id,
+        "label": key.label,
+        "scope": key.scope.as_str(),
+        "prefix": key.key_prefix,
+    });
+    if let Err(e) = crate::models::admin_audit::AdminAuditModel::create(
+        pool,
+        session.user_id.unwrap_or(0),
+        "api_key_delete",
+        Some("api_keys"),
+        Some(id),
+        Some(details),
+    )
+    .await
+    {
+        tracing::warn!(
+            key_id = id,
+            error = %e,
+            "api_key delete audit insert failed — soft-delete has already committed"
+        );
+    }
+
+    let keys = ApiKeyModel::list_for_admin(pool).await?;
+    let list_html = render_list_html(loc, &session.csrf_token, &keys)?;
+
+    let feedback = feedback_html_pub(
+        "success",
+        rust_i18n::t!("admin.api_keys.feedback_deleted", locale = loc).as_ref(),
         "",
     );
 

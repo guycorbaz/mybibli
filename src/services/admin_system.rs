@@ -26,6 +26,24 @@ pub const KEY_TMDB: &str = "tmdb_api_key";
 pub const KEY_SETUP_COMPLETED_AT: &str = "setup_completed_at";
 pub const KEY_SETUP_STEP_2_DONE: &str = "setup_step_2_done";
 pub const KEY_SETUP_STEP_3_DONE: &str = "setup_step_3_done";
+// v1.5.1 fix #283 — Library valuation section. Seeded by migration
+// 20260520100000; `routes/admin_system.rs::save_library_valuation_settings`
+// writes them through `save_setting`.
+pub const KEY_DEFAULT_CURRENCY: &str = "default_currency";
+pub const KEY_SHOW_VALUE_INDICATORS: &str = "show_value_indicators";
+
+/// Validate the default-currency setting. 3-letter ISO 4217 code,
+/// alphabetic, accepted both cases (normalized to upper on write).
+pub fn validate_default_currency(value: &str, loc: &'static str) -> Result<(), AppError> {
+    let trimmed = value.trim();
+    if trimmed.len() == 3 && trimmed.chars().all(|c| c.is_ascii_alphabetic()) {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest(
+            rust_i18n::t!("error.system.default_currency_invalid", locale = loc).to_string(),
+        ))
+    }
+}
 
 /// Inclusive bounds for the overdue-loan threshold. Validated by both
 /// `routes/admin_system.rs::save_loans_settings` and the wizard's

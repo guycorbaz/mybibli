@@ -356,6 +356,8 @@ error:
     invalid_format: "Invalid ISBN format — must be 13 digits"
     already_used: "Another title already uses this ISBN — refusing to create a duplicate"
     not_found: ISBN not found
+  system:
+    default_currency_invalid: "Default currency must be a 3-letter ISO 4217 code (e.g. CHF, EUR)."
   genre:
     required: Genre is required
   media_type:
@@ -813,6 +815,7 @@ admin:
     section_loans: Loans
     section_providers: Metadata providers
     section_language: Language
+    section_valuation: Library valuation
     overdue_threshold_label: "Overdue loan threshold (days)"
     overdue_threshold_help: "A loan is flagged overdue when its age exceeds this number of days."
     provider_key_label_google_books: "Google Books API key"
@@ -826,6 +829,12 @@ admin:
     btn_save_loans: "Save loans settings"
     btn_save_providers: "Save provider keys"
     btn_save_language: "Save language settings"
+    # v1.5.1 fix #283 — Library valuation section keys.
+    default_currency_label: "Default currency"
+    default_currency_help: "Used as the pre-filled currency for new volume valuations. 3-letter ISO 4217 code; users can still pick a different currency per volume."
+    show_value_indicators_label: "Show value indicator on home dashboard"
+    show_value_indicators_help: "Adds a 'Library estimated value' card to the home page linking to /stats/value. Default OFF — turn this on if you want money visible on the home dashboard."
+    btn_save_valuation: "Save valuation settings"
   api_keys:
     panel_heading: "API keys"
     intro: "API keys authenticate external callers to the HTTP JSON API under /api/v1/*. Read keys can list and fetch records; write keys can also PATCH whitelisted title fields. Each key is shown ONCE at creation — copy it now or revoke and re-create."
@@ -863,6 +872,14 @@ admin:
     created_btn_close: "I copied it"
     feedback_created: "API key created. Copy the plaintext before closing the modal."
     feedback_revoked: "API key revoked."
+    # v1.5.1 fix #284 — hard-delete a revoked key.
+    btn_delete: "Delete"
+    btn_delete_confirm: "Delete key"
+    delete_aria: "Delete API key %{label}"
+    delete_modal_heading: "Delete this revoked key?"
+    delete_modal_body: "The revoked key \"%{label}\" will be removed from the list. The audit history of past usage (per-call attribution in admin_audit) is preserved. This action cannot be undone."
+    feedback_deleted: "API key deleted."
+    error_delete_active: "Active keys cannot be deleted — revoke the key first."
     error_label_required: "A label is required."
     error_label_too_long: "Label must be 120 characters or fewer."
     error_invalid_scope: "Scope must be \"read\" or \"write\"."
@@ -883,6 +900,7 @@ success:
     loans_saved: "Loans settings saved"
     providers_saved: "Provider keys saved"
     language_saved: "Default language saved"
+    valuation_saved: "Library valuation settings saved"
     no_changes: "No changes"
     provider_set: "%{provider} key saved"
     provider_cleared: "%{provider} key cleared"

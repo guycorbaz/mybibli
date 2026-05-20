@@ -27,6 +27,12 @@ COPY --from=css /app/static/css/output.css /app/static/css/output.css
 COPY static/css/browse.css /app/static/css/browse.css
 COPY static/js/ /app/static/js/
 COPY static/icons/ /app/static/icons/
+# v1.5.1 fix #281: DejaVu Sans TTFs are required by the wishlist
+# PDF route (CR #266); shipping them was missed in the v1.5.0
+# Dockerfile, which crashed `/wishlist/export.pdf` with a generic
+# 500 because `genpdf::fonts::from_files("static/fonts", …)` failed
+# to open the missing files.
+COPY static/fonts/ /app/static/fonts/
 COPY locales/ /app/locales/
 COPY migrations/ /app/migrations/
 # Logo assets — served at /logo/* via the ServeDir mount in

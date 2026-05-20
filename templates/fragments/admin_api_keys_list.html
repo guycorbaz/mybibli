@@ -39,7 +39,15 @@
                             aria-label="{{ k.revoke_aria }}"
                             class="px-3 py-1 bg-stone-200 dark:bg-stone-700 hover:bg-red-600 hover:text-white text-sm rounded">{{ btn_revoke }}</button>
                     {% else %}
-                    <span class="text-stone-400 dark:text-stone-500 text-xs">—</span>
+                    {# v1.5.1 fix #284 — hard-delete a revoked key. The
+                       /admin/api-keys/{id} DELETE route soft-deletes the
+                       row; admin_audit references survive. #}
+                    <button type="button"
+                            hx-get="/admin/api-keys/{{ k.id }}/delete-modal"
+                            hx-target="#admin-modal-slot"
+                            hx-swap="innerHTML"
+                            aria-label="{{ k.delete_aria }}"
+                            class="px-3 py-1 bg-stone-200 dark:bg-stone-700 hover:bg-red-600 hover:text-white text-sm rounded">{{ btn_delete }}</button>
                     {% endif %}
                 </td>
             </tr>

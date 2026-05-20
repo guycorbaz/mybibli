@@ -127,40 +127,38 @@ async fn ping_all(
     }
 }
 
-/// Issue one HEAD request (falling back to GET on 405) with the shared
-/// client. Returns `Reachable` on any 2xx/3xx response, `Unreachable`
-/// otherwise.
+/// Issue one HEAD request with the shared client. Returns `Reachable`
+/// if the host responded with **any** HTTP status — 2xx, 3xx, 4xx,
+/// or 5xx — because all four imply the host is up and answering.
+/// Only network-level failures (timeout, DNS, refused connection)
+/// fall into `Unreachable`.
+///
+/// Fix #285 — earlier versions accepted only 2xx/3xx, which caused
+/// every provider to render red in the Admin → Health tab because
+/// most providers' homepages return 4xx on an anonymous HEAD
+/// (Cloudflare / WAF / anti-bot). The actual metadata-fetch path
+/// sails through with a User-Agent — we now mirror that header
+/// here so we measure "host is up" rather than "WAF likes us".
 async fn probe_once(http_client: &reqwest::Client, url: &str) -> ProviderStatus {
     match http_client
         .head(url)
+        .header(reqwest::header::USER_AGENT, USER_AGENT)
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
         .send()
         .await
     {
-        Ok(resp) if resp.status().is_success() || resp.status().is_redirection() => {
-            ProviderStatus::Reachable
-        }
-        Ok(resp) if resp.status().as_u16() == 405 => {
-            // Fall back to GET — some origins reject HEAD.
-            match http_client
-                .get(url)
-                .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-                .send()
-                .await
-            {
-                Ok(r) if r.status().is_success() || r.status().is_redirection() => {
-                    ProviderStatus::Reachable
-                }
-                _ => ProviderStatus::Unreachable,
-            }
-        }
-        Ok(_) => ProviderStatus::Unreachable,
+        Ok(_) => ProviderStatus::Reachable,
         Err(e) => {
             tracing::debug!(url = %url, error = %e, "provider_health probe failed");
             ProviderStatus::Unreachable
         }
     }
 }
+
+/// User-Agent string sent on every health probe. Matches the
+/// metadata-fetch path's identification so providers don't reject
+/// our HEAD requests differently than our GETs.
+const USER_AGENT: &str = concat!("mybibli/", env!("CARGO_PKG_VERSION"));
 
 #[cfg(test)]
 mod tests {

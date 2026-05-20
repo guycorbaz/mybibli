@@ -22,6 +22,12 @@ pub const ALLOWED_TABLES: &[&str] = &[
     // they were unreachable before because the handler delegated to
     // `TrashService::permanent_delete` which rejected `users` outright.
     "users",
+    // v1.5.1 fix #284 — revoked API keys can now be soft-deleted from
+    // the admin → API keys panel. The row's argon2 hash is wiped from
+    // the active set; admin_audit rows referencing the key via
+    // `details.via_api_key_id` survive (the FK is logical, not a
+    // schema constraint).
+    "api_keys",
 ];
 
 pub struct SoftDeleteService;

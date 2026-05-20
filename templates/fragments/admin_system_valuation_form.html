@@ -1,0 +1,46 @@
+{# Admin → System → Library valuation form (v1.5.1 fix #283).
+   Two settings in one form: default_currency dropdown + show_value_indicators
+   checkbox. Mirrors the language-form shape: CSRF first, hidden per-setting
+   `_version`, hx-post to a dedicated endpoint, swap-self on success. #}
+<form id="admin-system-valuation-form"
+      method="POST"
+      action="/admin/system/valuation"
+      hx-post="/admin/system/valuation"
+      hx-target="#admin-system-valuation-form"
+      hx-swap="outerHTML"
+      class="border border-stone-200 dark:border-stone-700 rounded-lg p-4 bg-stone-50 dark:bg-stone-900">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+    <input type="hidden" name="default_currency_version" value="{{ default_currency_version }}">
+    <input type="hidden" name="show_value_indicators_version" value="{{ show_value_indicators_version }}">
+
+    <div class="mb-4">
+        <label for="admin-system-default-currency" class="block text-sm font-medium mb-1">{{ default_currency_label }}</label>
+        <p class="text-xs text-stone-500 dark:text-stone-400 mb-2">{{ default_currency_help }}</p>
+        <select id="admin-system-default-currency"
+                name="default_currency"
+                class="rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2 text-sm">
+            {% for cur in supported_currencies %}
+            <option value="{{ cur }}" {% if *cur == default_currency_value.as_str() %}selected{% endif %}>{{ cur }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="mb-4">
+        <label class="inline-flex items-start gap-2">
+            <input type="checkbox"
+                   name="show_value_indicators"
+                   value="true"
+                   {% if show_value_indicators_checked %}checked{% endif %}
+                   class="mt-1">
+            <span>
+                <span class="text-sm font-medium">{{ show_value_indicators_label }}</span>
+                <span class="block text-xs text-stone-500 dark:text-stone-400">{{ show_value_indicators_help }}</span>
+            </span>
+        </label>
+    </div>
+
+    <div>
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm">{{ btn_save }}</button>
+    </div>
+</form>

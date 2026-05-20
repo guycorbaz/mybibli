@@ -357,6 +357,8 @@ error:
     invalid_format: "Format ISBN invalide — doit contenir 13 chiffres"
     already_used: "Un autre titre utilise déjà cet ISBN — refus de créer un doublon"
     not_found: ISBN introuvable
+  system:
+    default_currency_invalid: "La devise par défaut doit être un code ISO 4217 à 3 lettres (ex. CHF, EUR)."
   genre:
     required: Le genre est obligatoire
   media_type:
@@ -815,6 +817,7 @@ admin:
     section_loans: "Prêts"
     section_providers: "Fournisseurs de métadonnées"
     section_language: "Langue"
+    section_valuation: "Valorisation"
     overdue_threshold_label: "Seuil de retard de prêt (jours)"
     overdue_threshold_help: "Un prêt est signalé en retard quand son âge dépasse ce nombre de jours."
     provider_key_label_google_books: "Clé d'API Google Books"
@@ -828,6 +831,12 @@ admin:
     btn_save_loans: "Enregistrer les prêts"
     btn_save_providers: "Enregistrer les clés"
     btn_save_language: "Enregistrer la langue"
+    # v1.5.1 fix #283 — clés de la section Valorisation.
+    default_currency_label: "Devise par défaut"
+    default_currency_help: "Devise pré-remplie pour les nouvelles valorisations de volume. Code ISO 4217 à 3 lettres ; l'utilisateur peut toujours choisir une autre devise par volume."
+    show_value_indicators_label: "Afficher l'indicateur de valeur sur l'accueil"
+    show_value_indicators_help: "Ajoute une carte « Valeur estimée de la bibliothèque » sur la page d'accueil avec un lien vers /stats/value. Désactivé par défaut — activez si vous voulez voir les montants sur l'accueil."
+    btn_save_valuation: "Enregistrer la valorisation"
   api_keys:
     panel_heading: "Clés d'API"
     intro: "Les clés d'API authentifient les appelants externes à l'API JSON HTTP sous /api/v1/*. Les clés en lecture peuvent lister et consulter ; les clés en écriture peuvent aussi modifier les champs autorisés (PATCH). Chaque clé n'est affichée QU'UNE FOIS à la création — copiez-la maintenant ou révoquez-la et recréez-en une."
@@ -865,6 +874,14 @@ admin:
     created_btn_close: "Je l'ai copiée"
     feedback_created: "Clé d'API créée. Copiez-la avant de fermer la boîte de dialogue."
     feedback_revoked: "Clé d'API révoquée."
+    # v1.5.1 fix #284 — suppression d'une clé révoquée.
+    btn_delete: "Supprimer"
+    btn_delete_confirm: "Supprimer la clé"
+    delete_aria: "Supprimer la clé d'API %{label}"
+    delete_modal_heading: "Supprimer cette clé révoquée ?"
+    delete_modal_body: "La clé révoquée « %{label} » sera retirée de la liste. L'historique d'audit des utilisations passées (attribution par appel dans admin_audit) est préservé. Action irréversible."
+    feedback_deleted: "Clé d'API supprimée."
+    error_delete_active: "Une clé active ne peut pas être supprimée — révoquez-la d'abord."
     error_label_required: "Un libellé est requis."
     error_label_too_long: "Le libellé doit contenir au maximum 120 caractères."
     error_invalid_scope: "La portée doit être « read » ou « write »."
@@ -885,6 +902,7 @@ success:
     loans_saved: "Préférences de prêt enregistrées"
     providers_saved: "Clés de fournisseur enregistrées"
     language_saved: "Langue par défaut enregistrée"
+    valuation_saved: "Paramètres de valorisation enregistrés"
     no_changes: "Aucune modification"
     provider_set: "Clé %{provider} enregistrée"
     provider_cleared: "Clé %{provider} effacée"

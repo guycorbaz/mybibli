@@ -19,4 +19,12 @@
         <h3 id="admin-system-language-heading" class="text-lg font-semibold mb-3">{{ section_language }}</h3>
         {{ language_form_html|safe }}
     </section>
+
+    {# v1.5.1 fix #283 — Library valuation section. Currency + opt-in
+       indicator. Hidden under the same `<section>` shape as the other
+       three so the panel stays uniform. #}
+    <section aria-labelledby="admin-system-valuation-heading">
+        <h3 id="admin-system-valuation-heading" class="text-lg font-semibold mb-3">{{ section_valuation }}</h3>
+        {{ valuation_form_html|safe }}
+    </section>
 </section>
