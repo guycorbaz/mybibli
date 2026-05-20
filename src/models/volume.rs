@@ -13,6 +13,17 @@ pub struct VolumeModel {
     pub edition_comment: Option<String>,
     pub location_id: Option<u64>,
     pub version: i32,
+    // CR #243 — Collection valuation. All five columns are nullable;
+    // an opt-in volume sets only what the owner cares about. `f64`
+    // covers the personal-library scale comfortably (well under
+    // 2^53 cents) and avoids dragging a `bigdecimal` feature into
+    // sqlx for the household-NAS deploy. The DECIMAL(10,2) column
+    // preserves the 2-decimal precision at the storage layer.
+    pub purchase_price: Option<f64>,
+    pub purchase_currency: Option<String>,
+    pub current_value: Option<f64>,
+    pub current_value_currency: Option<String>,
+    pub current_value_updated_at: Option<chrono::NaiveDateTime>,
 }
 
 impl std::fmt::Display for VolumeModel {
@@ -46,7 +57,9 @@ impl VolumeModel {
         tracing::debug!(label = %label, "Looking up volume by label");
 
         let row = sqlx::query(
-            r#"SELECT id, title_id, label, condition_state_id, edition_comment, location_id, version
+            r#"SELECT id, title_id, label, condition_state_id, edition_comment, location_id, version,
+                      purchase_price, purchase_currency, current_value, current_value_currency,
+                      CAST(current_value_updated_at AS DATETIME) AS current_value_updated_at
                FROM volumes
                WHERE label = ? AND deleted_at IS NULL"#,
         )
@@ -63,6 +76,11 @@ impl VolumeModel {
                 edition_comment: r.try_get("edition_comment")?,
                 location_id: r.try_get("location_id")?,
                 version: r.try_get("version")?,
+                purchase_price: r.try_get("purchase_price")?,
+                purchase_currency: r.try_get("purchase_currency")?,
+                current_value: r.try_get("current_value")?,
+                current_value_currency: r.try_get("current_value_currency")?,
+                current_value_updated_at: r.try_get("current_value_updated_at")?,
             })),
             None => Ok(None),
         }
@@ -92,6 +110,11 @@ impl VolumeModel {
                     edition_comment: None,
                     location_id: None,
                     version: 1,
+                    purchase_price: None,
+                    purchase_currency: None,
+                    current_value: None,
+                    current_value_currency: None,
+                    current_value_updated_at: None,
                 })
             }
             Err(e) => {
@@ -149,7 +172,9 @@ impl VolumeModel {
 
     pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<Option<VolumeModel>, AppError> {
         let row = sqlx::query(
-            r#"SELECT id, title_id, label, condition_state_id, edition_comment, location_id, version
+            r#"SELECT id, title_id, label, condition_state_id, edition_comment, location_id, version,
+                      purchase_price, purchase_currency, current_value, current_value_currency,
+                      CAST(current_value_updated_at AS DATETIME) AS current_value_updated_at
                FROM volumes WHERE id = ? AND deleted_at IS NULL"#,
         )
         .bind(id)
@@ -165,6 +190,11 @@ impl VolumeModel {
                 edition_comment: r.try_get("edition_comment")?,
                 location_id: r.try_get("location_id")?,
                 version: r.try_get("version")?,
+                purchase_price: r.try_get("purchase_price")?,
+                purchase_currency: r.try_get("purchase_currency")?,
+                current_value: r.try_get("current_value")?,
+                current_value_currency: r.try_get("current_value_currency")?,
+                current_value_updated_at: r.try_get("current_value_updated_at")?,
             })),
             None => Ok(None),
         }
@@ -357,6 +387,234 @@ impl VolumeModel {
             .collect();
         Ok(items)
     }
+
+    // ─── CR #243 — Collection valuation ───────────────────────────
+
+    /// Update the four volume-value columns + bump
+    /// `current_value_updated_at` to NOW() when the current value
+    /// actually changed. Optimistic-lock via `version`. Passing `None`
+    /// for any field clears it.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_value(
+        pool: &DbPool,
+        id: u64,
+        version: i32,
+        purchase_price: Option<f64>,
+        purchase_currency: Option<&str>,
+        current_value: Option<f64>,
+        current_value_currency: Option<&str>,
+    ) -> Result<VolumeModel, AppError> {
+        // Look up the existing row to decide whether `current_value`
+        // actually changed — only then do we touch the
+        // `current_value_updated_at` timestamp.
+        let existing = Self::find_by_id(pool, id).await?.ok_or_else(|| {
+            AppError::NotFound(rust_i18n::t!("error.not_found").to_string())
+        })?;
+        let value_changed = existing.current_value != current_value
+            || existing.current_value_currency.as_deref() != current_value_currency;
+
+        let result = sqlx::query(
+            "UPDATE volumes SET purchase_price = ?, purchase_currency = ?, \
+             current_value = ?, current_value_currency = ?, \
+             current_value_updated_at = CASE WHEN ? THEN NOW() ELSE current_value_updated_at END, \
+             version = version + 1, updated_at = NOW() \
+             WHERE id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(purchase_price)
+        .bind(purchase_currency)
+        .bind(current_value)
+        .bind(current_value_currency)
+        .bind(value_changed)
+        .bind(id)
+        .bind(version)
+        .execute(pool)
+        .await?;
+
+        crate::services::locking::check_update_result(result.rows_affected(), "volume")?;
+        Self::find_by_id(pool, id)
+            .await?
+            .ok_or_else(|| AppError::Internal("Failed to retrieve updated volume".to_string()))
+    }
+
+    /// CR #243 — sum of `current_value` and `purchase_price`, grouped
+    /// by currency, across all active volumes. The /stats/value page
+    /// renders one row per currency so a mixed-currency catalog stays
+    /// honest (FX conversion is a future CR).
+    pub async fn value_totals_by_currency(
+        pool: &DbPool,
+    ) -> Result<Vec<ValueTotalRow>, AppError> {
+        let value_rows: Vec<(Option<String>, Option<f64>, i64)> = sqlx::query_as(
+            "SELECT current_value_currency, CAST(SUM(current_value) AS DOUBLE), \
+                    CAST(COUNT(*) AS SIGNED) \
+             FROM volumes \
+             WHERE deleted_at IS NULL AND current_value IS NOT NULL \
+             GROUP BY current_value_currency",
+        )
+        .fetch_all(pool)
+        .await?;
+
+        let purchase_rows: Vec<(Option<String>, Option<f64>, i64)> = sqlx::query_as(
+            "SELECT purchase_currency, CAST(SUM(purchase_price) AS DOUBLE), \
+                    CAST(COUNT(*) AS SIGNED) \
+             FROM volumes \
+             WHERE deleted_at IS NULL AND purchase_price IS NOT NULL \
+             GROUP BY purchase_currency",
+        )
+        .fetch_all(pool)
+        .await?;
+
+        let mut by_currency: std::collections::HashMap<String, ValueTotalRow> =
+            std::collections::HashMap::new();
+        for (cur, sum, count) in value_rows {
+            let cur = cur.unwrap_or_default();
+            by_currency
+                .entry(cur.clone())
+                .or_insert_with(|| ValueTotalRow {
+                    currency: cur,
+                    total_current_value: 0.0,
+                    total_purchase_price: 0.0,
+                    current_value_count: 0,
+                    purchase_price_count: 0,
+                })
+                .merge_current(sum.unwrap_or(0.0), count);
+        }
+        for (cur, sum, count) in purchase_rows {
+            let cur = cur.unwrap_or_default();
+            by_currency
+                .entry(cur.clone())
+                .or_insert_with(|| ValueTotalRow {
+                    currency: cur,
+                    total_current_value: 0.0,
+                    total_purchase_price: 0.0,
+                    current_value_count: 0,
+                    purchase_price_count: 0,
+                })
+                .merge_purchase(sum.unwrap_or(0.0), count);
+        }
+        let mut rows: Vec<ValueTotalRow> = by_currency.into_values().collect();
+        rows.sort_by(|a, b| {
+            b.total_current_value
+                .partial_cmp(&a.total_current_value)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Ok(rows)
+    }
+
+    /// CR #243 — total `current_value` per (genre, currency). LEFT JOIN
+    /// genres so orphan-FK rows still surface (with an empty
+    /// `genre_name` that the template renders as "(Deleted genre)" —
+    /// same pattern as the home dashboard's #107 fix).
+    pub async fn value_by_genre(
+        pool: &DbPool,
+    ) -> Result<Vec<ValueByGenreRow>, AppError> {
+        // Tuple shape: (genre_id, genre_name, currency, total, count).
+        type Row = (Option<i64>, Option<String>, Option<String>, Option<f64>, i64);
+        let rows: Vec<Row> =
+            sqlx::query_as(
+                "SELECT CAST(g.id AS SIGNED) AS genre_id, g.name AS genre_name, \
+                        v.current_value_currency AS currency, \
+                        CAST(SUM(v.current_value) AS DOUBLE) AS total, \
+                        CAST(COUNT(v.id) AS SIGNED) AS volume_count \
+                 FROM volumes v \
+                 JOIN titles t ON t.id = v.title_id AND t.deleted_at IS NULL \
+                 LEFT JOIN genres g ON g.id = t.genre_id AND g.deleted_at IS NULL \
+                 WHERE v.deleted_at IS NULL AND v.current_value IS NOT NULL \
+                 GROUP BY g.id, g.name, v.current_value_currency \
+                 ORDER BY total DESC",
+            )
+            .fetch_all(pool)
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(genre_id, genre_name, currency, total, count)| ValueByGenreRow {
+                genre_id: genre_id.map(|v| v as u64),
+                genre_name,
+                currency: currency.unwrap_or_default(),
+                total_current_value: total.unwrap_or(0.0),
+                volume_count: count,
+            })
+            .collect())
+    }
+
+    /// CR #243 — total `current_value` per (series, currency). A
+    /// volume linked to N series via `title_series` contributes to
+    /// each one — the BD-collector case ("Tintin omnibus" sitting
+    /// across two series) is the prototypical scenario.
+    pub async fn value_by_series(
+        pool: &DbPool,
+    ) -> Result<Vec<ValueBySeriesRow>, AppError> {
+        // Tuple shape: (series_id, series_name, currency, total, count).
+        type Row = (i64, String, Option<String>, Option<f64>, i64);
+        let rows: Vec<Row> = sqlx::query_as(
+            "SELECT CAST(s.id AS SIGNED) AS series_id, s.name AS series_name, \
+                    v.current_value_currency AS currency, \
+                    CAST(SUM(v.current_value) AS DOUBLE) AS total, \
+                    CAST(COUNT(v.id) AS SIGNED) AS volume_count \
+             FROM volumes v \
+             JOIN titles t ON t.id = v.title_id AND t.deleted_at IS NULL \
+             JOIN title_series ts ON ts.title_id = t.id \
+             JOIN series s ON s.id = ts.series_id AND s.deleted_at IS NULL \
+             WHERE v.deleted_at IS NULL AND v.current_value IS NOT NULL \
+             GROUP BY s.id, s.name, v.current_value_currency \
+             ORDER BY total DESC",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(series_id, series_name, currency, total, count)| ValueBySeriesRow {
+                series_id: series_id as u64,
+                series_name,
+                currency: currency.unwrap_or_default(),
+                total_current_value: total.unwrap_or(0.0),
+                volume_count: count,
+            })
+            .collect())
+    }
+}
+
+/// CR #243 — one row of the per-currency totals table on
+/// `/stats/value`. Two parallel sums (current_value + purchase_price)
+/// because the two columns can disagree on currency for the same
+/// volume — kept as separate series.
+#[derive(Debug, Clone)]
+pub struct ValueTotalRow {
+    pub currency: String,
+    pub total_current_value: f64,
+    pub total_purchase_price: f64,
+    pub current_value_count: i64,
+    pub purchase_price_count: i64,
+}
+
+impl ValueTotalRow {
+    fn merge_current(&mut self, sum: f64, count: i64) {
+        self.total_current_value += sum;
+        self.current_value_count += count;
+    }
+    fn merge_purchase(&mut self, sum: f64, count: i64) {
+        self.total_purchase_price += sum;
+        self.purchase_price_count += count;
+    }
+}
+
+/// CR #243 — one row of the per-genre breakdown.
+#[derive(Debug, Clone)]
+pub struct ValueByGenreRow {
+    pub genre_id: Option<u64>,
+    pub genre_name: Option<String>,
+    pub currency: String,
+    pub total_current_value: f64,
+    pub volume_count: i64,
+}
+
+/// CR #243 — one row of the per-series breakdown.
+#[derive(Debug, Clone)]
+pub struct ValueBySeriesRow {
+    pub series_id: u64,
+    pub series_name: String,
+    pub currency: String,
+    pub total_current_value: f64,
+    pub volume_count: i64,
 }
 
 /// One unshelved-volume row as rendered on the home-page indicator
@@ -539,6 +797,11 @@ mod tests {
             edition_comment: None,
             location_id: None,
             version: 1,
+            purchase_price: None,
+            purchase_currency: None,
+            current_value: None,
+            current_value_currency: None,
+            current_value_updated_at: None,
         };
         assert_eq!(vol.to_string(), "V0042");
     }
@@ -553,6 +816,11 @@ mod tests {
             edition_comment: Some("Poche".to_string()),
             location_id: Some(5),
             version: 1,
+            purchase_price: None,
+            purchase_currency: None,
+            current_value: None,
+            current_value_currency: None,
+            current_value_updated_at: None,
         };
         assert_eq!(vol.label, "V0001");
         assert_eq!(vol.location_id, Some(5));

@@ -160,6 +160,15 @@ pub struct HomeTemplate {
     pub recent_returns: Vec<crate::models::loan::LoanWithDetails>,
     pub recent_returns_heading: String,
     pub recent_returns_empty_label: String,
+    // CR #243 — opt-in "Library estimated value" indicator. Renders
+    // a tiny link card to `/stats/value` showing the total per
+    // currency. `show_value_indicator` is the gate (admin setting
+    // `show_value_indicators` AND at least one valued volume exists);
+    // when false the section is hidden.
+    pub show_value_indicator: bool,
+    pub value_indicator_label: String,
+    pub value_indicator_amount: String,
+    pub value_indicator_cta: String,
 }
 
 /// One row of the "By genre" dashboard section.
@@ -598,6 +607,33 @@ pub async fn home(
     // the invisible delta is the orphan-genre titles.
     let stats_by_genre = build_stats_by_genre_donut(stats_rows, loc, glance.titles);
 
+    // CR #243 — opt-in "Library estimated value" indicator. Off by
+    // default (admin setting `show_value_indicators=false`); when
+    // toggled on, we fire the cheap per-currency aggregation and
+    // surface the total of the dominant currency. Mixed-currency
+    // catalogs see the top row only — the full /stats/value page
+    // lists every currency.
+    let (show_value_indicator, value_indicator_amount) = if state.show_value_indicators() {
+        match crate::models::volume::VolumeModel::value_totals_by_currency(pool).await {
+            Ok(rows) if !rows.is_empty() => {
+                let top = &rows[0];
+                let amount = if loc == "fr" {
+                    format!("{} {:.2}", top.currency, top.total_current_value).replace('.', ",")
+                } else {
+                    format!("{} {:.2}", top.currency, top.total_current_value)
+                };
+                (true, amount)
+            }
+            Ok(_) => (false, String::new()),
+            Err(e) => {
+                tracing::warn!(error = %e, "value_totals_by_currency failed; hiding indicator");
+                (false, String::new())
+            }
+        }
+    } else {
+        (false, String::new())
+    };
+
     // Choose `_one` vs `_other` for each count. Inline if/else so the macro receives
     // a literal key (matching the project's i18n audit at `src/i18n/audit.rs`),
     // while preserving correct EN/FR plural grammar.
@@ -804,6 +840,12 @@ pub async fn home(
         recent_returns,
         recent_returns_heading: rust_i18n::t!("dashboard.attention.recent_returns_heading", locale = loc).to_string(),
         recent_returns_empty_label: rust_i18n::t!("dashboard.attention.recent_returns_empty", locale = loc).to_string(),
+        show_value_indicator,
+        value_indicator_label: rust_i18n::t!("dashboard.value_indicator.label", locale = loc)
+            .to_string(),
+        value_indicator_amount,
+        value_indicator_cta: rust_i18n::t!("dashboard.value_indicator.cta", locale = loc)
+            .to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -1258,6 +1300,10 @@ pub(crate) mod tests {
             recent_returns: Vec::new(),
             recent_returns_heading: "Recently returned (last 7 days)".to_string(),
             recent_returns_empty_label: "No recent returns in the last 7 days — quiet week!".to_string(),
+            show_value_indicator: false,
+            value_indicator_label: "Library estimated value".to_string(),
+            value_indicator_amount: String::new(),
+            value_indicator_cta: "See breakdown".to_string(),
         }
     }
 

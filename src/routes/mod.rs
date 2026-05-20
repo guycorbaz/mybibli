@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod admin_api_keys;
+pub mod stats;
 pub mod title_lifecycle;
 pub mod admin_reference_data;
 pub mod admin_system;
@@ -254,6 +255,11 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/wishlist/export.pdf",
             axum::routing::get(wishlist::wishlist_export_pdf),
+        )
+        // CR #243 — collection valuation breakdown page (Librarian+).
+        .route(
+            "/stats/value",
+            axum::routing::get(stats::stats_value_page),
         )
         .route(
             "/wishlist/{id}",

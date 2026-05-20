@@ -2204,6 +2204,16 @@ pub struct VolumeEditTemplate {
     pub current_url: String,
     pub lang_toggle_aria: String,
     pub volume_condition_help: crate::utils::TooltipData,
+    // CR #243 — Collection valuation. The form renders two
+    // optional number+currency pairs; both default to the admin's
+    // `default_currency` setting when the column is NULL.
+    pub label_valuation_section: String,
+    pub label_purchase_price: String,
+    pub label_current_value: String,
+    pub label_currency: String,
+    pub label_valuation_help: String,
+    pub default_currency: String,
+    pub supported_currencies: Vec<&'static str>,
 }
 
 pub async fn volume_edit_page(
@@ -2246,6 +2256,17 @@ pub async fn volume_edit_page(
         condition_label: rust_i18n::t!("volume.condition_label", locale = loc).to_string(),
         edition_label: rust_i18n::t!("volume.edition_label", locale = loc).to_string(),
         submit_label: rust_i18n::t!("volume.submit", locale = loc).to_string(),
+        label_valuation_section: rust_i18n::t!("volume.valuation_section", locale = loc)
+            .to_string(),
+        label_purchase_price: rust_i18n::t!("volume.purchase_price", locale = loc).to_string(),
+        label_current_value: rust_i18n::t!("volume.current_value", locale = loc).to_string(),
+        label_currency: rust_i18n::t!("volume.currency_label", locale = loc).to_string(),
+        label_valuation_help: rust_i18n::t!("volume.valuation_help", locale = loc).to_string(),
+        default_currency: state.default_currency(),
+        // CR #243 — short list of common ISO 4217 codes. Admins can
+        // store any 3-letter uppercase code via the form; the select
+        // is a UX shortcut, not a hard whitelist.
+        supported_currencies: vec!["CHF", "EUR", "USD", "GBP", "CAD", "JPY"],
         volume,
         states,
         current_url: crate::utils::current_url(&uri),
@@ -2272,6 +2293,18 @@ pub struct VolumeEditForm {
     pub condition_state_id: Option<u64>,
     #[serde(default)]
     pub edition_comment: Option<String>,
+    // CR #243 — Collection valuation. All four optional. Empty input
+    // → None ("clear"). The currency selector defaults to
+    // `state.default_currency()` server-side when rendering the form,
+    // so the user just sees a pre-filled select.
+    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_f64")]
+    pub purchase_price: Option<f64>,
+    #[serde(default)]
+    pub purchase_currency: Option<String>,
+    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_f64")]
+    pub current_value: Option<f64>,
+    #[serde(default)]
+    pub current_value_currency: Option<String>,
 }
 
 pub async fn update_volume(
@@ -2283,14 +2316,106 @@ pub async fn update_volume(
 ) -> Result<impl IntoResponse, AppError> {
     session.require_role(Role::Librarian, locale.0)?;
 
+    // CR #243 — update the value-bearing columns when at least one
+    // is in the form. The two updates run on the same row so they
+    // need to be sequenced: condition/comment first (bumps version),
+    // then value (re-reads version). To avoid stepping on the
+    // optimistic-lock contract, we instead set ALL fields in a single
+    // statement — extend `update_details` would explode the arg list;
+    // pragmatic call: do the condition/comment update first, then re-
+    // fetch the row to learn the new version, then do the value
+    // update. Both bump the version once each. The form's hidden
+    // `version` field is the pre-update version that both calls share
+    // — but the second call must use version+1. We re-fetch in
+    // between.
+    let pool = &state.pool;
+
     VolumeModel::update_details(
-        &state.pool,
+        pool,
         id,
         form.version,
         form.condition_state_id,
         form.edition_comment.as_deref(),
     )
     .await?;
+
+    // Did the form actually carry value-update intent? If all four
+    // value fields are absent / empty, skip — saves a round-trip + an
+    // audit row for the common "edit condition only" path.
+    let has_value_intent = form.purchase_price.is_some()
+        || form.current_value.is_some()
+        || form.purchase_currency.is_some()
+        || form.current_value_currency.is_some();
+    if has_value_intent {
+        let after_details = VolumeModel::find_by_id(pool, id).await?.ok_or_else(|| {
+            AppError::Internal(format!("volume {id} vanished mid-edit"))
+        })?;
+
+        // Empty-string → None for the currency selectors. The
+        // <select> renders empty when the column is NULL.
+        let pp_cur = form
+            .purchase_currency
+            .as_ref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let cv_cur = form
+            .current_value_currency
+            .as_ref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        // Capture old values for the audit row's old/new diff.
+        let old_pp = after_details.purchase_price;
+        let old_pp_cur = after_details.purchase_currency.clone();
+        let old_cv = after_details.current_value;
+        let old_cv_cur = after_details.current_value_currency.clone();
+
+        let updated = VolumeModel::update_value(
+            pool,
+            id,
+            after_details.version,
+            form.purchase_price,
+            pp_cur.as_deref(),
+            form.current_value,
+            cv_cur.as_deref(),
+        )
+        .await?;
+
+        let values_changed = old_pp != updated.purchase_price
+            || old_pp_cur != updated.purchase_currency
+            || old_cv != updated.current_value
+            || old_cv_cur != updated.current_value_currency;
+        if values_changed
+            && let Err(e) = crate::models::admin_audit::AdminAuditModel::create(
+                pool,
+                session.user_id.unwrap_or(0),
+                "volume_value_update",
+                Some("volumes"),
+                Some(id),
+                Some(serde_json::json!({
+                    "old": {
+                        "purchase_price": old_pp,
+                        "purchase_currency": old_pp_cur,
+                        "current_value": old_cv,
+                        "current_value_currency": old_cv_cur,
+                    },
+                    "new": {
+                        "purchase_price": updated.purchase_price,
+                        "purchase_currency": updated.purchase_currency,
+                        "current_value": updated.current_value,
+                        "current_value_currency": updated.current_value_currency,
+                    },
+                })),
+            )
+            .await
+        {
+            tracing::warn!(
+                volume_id = id,
+                error = %e,
+                "volume_value_update audit insert failed — value update has already committed"
+            );
+        }
+    }
 
     Ok(axum::response::Redirect::to(&format!("/volume/{id}")))
 }

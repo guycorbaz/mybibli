@@ -1,0 +1,103 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ page_heading }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 lg:px-8 py-6">
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ page_heading }}</h1>
+    <p class="mt-2 text-sm text-stone-600 dark:text-stone-400 max-w-3xl">{{ page_intro }}</p>
+
+    {% if !has_any_data %}
+    <p class="mt-10 text-center text-stone-500 dark:text-stone-400">{{ empty_state }}</p>
+    {% else %}
+
+    {# ── Section 1: per-currency totals ────────────────────────── #}
+    <section class="mt-8" aria-labelledby="stats-value-totals-heading">
+        <h2 id="stats-value-totals-heading" class="text-sm font-medium uppercase tracking-wide text-stone-600 dark:text-stone-400">{{ section_totals }}</h2>
+        <div class="mt-3 overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-stone-100 dark:bg-stone-800">
+                    <tr>
+                        <th scope="col" class="px-3 py-2 text-left">{{ col_currency }}</th>
+                        <th scope="col" class="px-3 py-2 text-right">{{ col_total_value }}</th>
+                        <th scope="col" class="px-3 py-2 text-right">{{ col_total_purchase }}</th>
+                        <th scope="col" class="px-3 py-2 text-right">{{ col_count }}</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-stone-200 dark:divide-stone-700">
+                    {% for row in totals %}
+                    <tr>
+                        <td class="px-3 py-2 font-mono text-stone-700 dark:text-stone-300">{{ row.currency }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums font-semibold">{{ row.total_current_value }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums text-stone-500 dark:text-stone-400">{{ row.total_purchase_price }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums text-xs text-stone-500 dark:text-stone-400">{{ row.current_value_count }} / {{ row.purchase_price_count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {# ── Section 2: per-genre breakdown ────────────────────────── #}
+    {% if !by_genre.is_empty() %}
+    <section class="mt-8" aria-labelledby="stats-value-genre-heading">
+        <h2 id="stats-value-genre-heading" class="text-sm font-medium uppercase tracking-wide text-stone-600 dark:text-stone-400">{{ section_by_genre }}</h2>
+        <div class="mt-3 overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-stone-100 dark:bg-stone-800">
+                    <tr>
+                        <th scope="col" class="px-3 py-2 text-left">{{ col_genre }}</th>
+                        <th scope="col" class="px-3 py-2 text-left">{{ col_currency }}</th>
+                        <th scope="col" class="px-3 py-2 text-right">{{ col_total_value }}</th>
+                        <th scope="col" class="px-3 py-2 text-right">{{ col_volumes }}</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-stone-200 dark:divide-stone-700">
+                    {% for row in by_genre %}
+                    <tr>
+                        <td class="px-3 py-2 text-stone-900 dark:text-stone-100">{{ row.genre_label }}</td>
+                        <td class="px-3 py-2 font-mono text-stone-700 dark:text-stone-300">{{ row.currency }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums">{{ row.total }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums text-stone-500 dark:text-stone-400">{{ row.volume_count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {# ── Section 3: per-series breakdown ───────────────────────── #}
+    {% if !by_series.is_empty() %}
+    <section class="mt-8" aria-labelledby="stats-value-series-heading">
+        <h2 id="stats-value-series-heading" class="text-sm font-medium uppercase tracking-wide text-stone-600 dark:text-stone-400">{{ section_by_series }}</h2>
+        <div class="mt-3 overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-stone-100 dark:bg-stone-800">
+                    <tr>
+                        <th scope="col" class="px-3 py-2 text-left">{{ col_series }}</th>
+                        <th scope="col" class="px-3 py-2 text-left">{{ col_currency }}</th>
+                        <th scope="col" class="px-3 py-2 text-right">{{ col_total_value }}</th>
+                        <th scope="col" class="px-3 py-2 text-right">{{ col_volumes }}</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-stone-200 dark:divide-stone-700">
+                    {% for row in by_series %}
+                    <tr>
+                        <td class="px-3 py-2 text-stone-900 dark:text-stone-100">
+                            <a href="/series/{{ row.series_id }}" class="hover:underline">{{ row.series_name }}</a>
+                        </td>
+                        <td class="px-3 py-2 font-mono text-stone-700 dark:text-stone-300">{{ row.currency }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums font-semibold">{{ row.total }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums text-stone-500 dark:text-stone-400">{{ row.volume_count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {% endif %}
+</div>
+{% endblock %}

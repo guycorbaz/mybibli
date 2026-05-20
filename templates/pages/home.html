@@ -542,6 +542,23 @@
        NOT /catalog?genre=<id> (the spec text refers to a v1 route that
        doesn't exist — same convention as 9-1's /catalog?view=volumes
        deviation). #}
+    {# CR #243 — opt-in "Library estimated value" card. Hidden unless
+       the admin flipped `show_value_indicators` AND at least one
+       volume has a current_value set. Single line + link to the
+       breakdown page. Librarian-only at the route layer; the home
+       handler also gates the population. #}
+    {% if show_value_indicator %}
+    <section id="library-value-indicator" aria-labelledby="library-value-heading" class="w-full max-w-4xl mt-6">
+        <a href="/stats/value" class="block px-4 py-3 bg-stone-50 dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-700 transition-colors">
+            <h2 id="library-value-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ value_indicator_label }}</h2>
+            <div class="mt-1 flex items-baseline justify-between">
+                <span class="text-2xl font-semibold text-stone-900 dark:text-stone-100 tabular-nums">{{ value_indicator_amount }}</span>
+                <span class="text-sm text-indigo-600 dark:text-indigo-400">{{ value_indicator_cta }} →</span>
+            </div>
+        </a>
+    </section>
+    {% endif %}
+
     {% if stats_by_genre.has_data() %}
     {# CR #265 — donut chart of catalog composition by genre. Server-side
        renders the canvas (with an aria-label summary for screen readers
