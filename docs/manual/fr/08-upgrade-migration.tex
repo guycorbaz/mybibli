@@ -110,6 +110,73 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.5.0}\label{sec:whats-new-1.5.0}
+
+La version 1.5.0 est la quatrième version mineure thématique de
+l'ère post-v1 \string— \textbf{Sachez ce que vous avez, et ce que
+ça vaut}. Une migration de schéma additive (5 colonnes nullable
+sur la table \texttt{volumes} + deux nouveaux paramètres dans
+\texttt{settings}), pas de changement cassant \string— mise à jour
+routinière \texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Fournisseur de métadonnées Library of Congress
+        (\#263).} Source bibliographique faisant autorité pour
+        les titres en anglais, placée dans la chaîne entre Google
+        Books et Open Library : \texttt{BnF \string→ Google Books
+        \string→ Library of Congress \string→ Open Library}.
+        Comble le manque sur les ouvrages anciens, académiques
+        ou US gouvernementaux que Google Books ne couvre pas.
+  \item \textbf{Donut chart pour stats-by-genre sur l'accueil
+        (\#265).} Remplace les barres de progression par un
+        donut Chart.js v4. Les genres \(\geq\) 5\% du catalogue
+        actif ont leur propre tranche ; les plus petits sont
+        regroupés dans « Autres » avec un \texttt{<details>}
+        listant les genres regroupés. Clic sur une tranche ou
+        sur une entrée de légende \string→
+        \texttt{/?filter=genre:N}. Chart.js est embarqué dans
+        \texttt{static/js/vendor/} \string— aucun CDN, CSP reste
+        strict.
+  \item \textbf{Supprimer un titre sans volume (\#271).} Nouveau
+        bouton Supprimer sur \texttt{/title/:id} (Bibliothécaire+,
+        visible uniquement quand le titre n'a aucun volume actif)
+        qui ouvre une boîte modale UX-DR8. À la confirmation, le
+        titre est marqué comme supprimé et l'utilisateur est
+        redirigé sur l'accueil ; la ligne est récupérable depuis
+        la Corbeille pendant 30 jours.
+  \item \textbf{Modifier ISBN / ISSN / UPC dans le formulaire de
+        métadonnées (\#272).} Les lignes d'identifiants
+        précédemment en lecture seule sont maintenant des
+        champs éditables. Le checksum ISBN-13 est validé côté
+        serveur ; une collision avec l'ISBN d'un autre titre
+        retourne 409 avec un retour utilisateur clair. Compagnon
+        de \#271 \string— les deux résolvent le scénario du
+        titre bloqué après un mauvais scan.
+  \item \textbf{Vrai export PDF pour la wish list (\#266).}
+        Remplace le HTML print-to-PDF du navigateur (v1.3.1)
+        par un vrai PDF généré côté serveur via \texttt{genpdf}
+        (Rust pur, pas de sous-processus). Le bouton Imprimer
+        sur \texttt{/wishlist} télécharge maintenant directement
+        \texttt{wishlist-YYYY-MM-DD.pdf} \string— texte
+        sélectionnable, recherchable, rendu identique dans tous
+        les navigateurs. DejaVu Sans embarquée pour le support
+        unicode.
+  \item \textbf{Valorisation de la collection (\#243).} Deux
+        nouveaux champs optionnels par volume \string— \emph{Prix
+        d'achat} et \emph{Valeur actuelle estimée} \string— avec
+        une devise ISO 4217 par champ. Agrégations sur une
+        nouvelle page \texttt{/stats/value} (Bibliothécaire+) :
+        total par devise, valeur par genre, valeur par série.
+        Les catalogues multi-devises affichent une ligne par
+        devise (la conversion FX est reportée à une future CR).
+        Indicateur opt-in sur l'accueil \string— désactivé par
+        défaut, basculable depuis \texttt{/admin?tab=system}.
+        La devise par défaut est seedée à \texttt{CHF} et
+        admin-modifiable. Toutes les vues liées à la valeur sont
+        owner-facing (Bibliothécaire+) ; un visiteur anonyme ne
+        voit jamais d'argent.
+\end{itemize}
+
 \section{Nouveautés de la 1.4.0}\label{sec:whats-new-1.4.0}
 
 La version 1.4.0 est la troisième version mineure thématique de

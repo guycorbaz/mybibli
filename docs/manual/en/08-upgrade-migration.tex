@@ -104,6 +104,67 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.5.0}\label{sec:whats-new-1.5.0}
+
+Version 1.5.0 is the fourth themed minor of the post-v1 era \string—
+\textbf{Know what you have, and what it's worth}. One additive
+schema migration (\texttt{volumes} table gains 5 nullable
+valuation columns + two new \texttt{settings} rows), no breaking
+changes \string— routine \texttt{docker compose pull \&\&
+docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Library of Congress metadata provider (\#263).}
+        Authoritative bibliographic source for English-language
+        titles, slotted in the chain between Google Books and
+        Open Library: \texttt{BnF \string→ Google Books \string→
+        Library of Congress \string→ Open Library}. Fills the
+        older / academic / US-government EN-book gap where
+        Google Books returns nothing.
+  \item \textbf{Donut chart for stats-by-genre on home (\#265).}
+        Replaces the per-row \texttt{<progress>} bars with a
+        Chart.js v4 doughnut. Genres at \(\geq\) 5\% of the
+        active catalog get their own slice; genres below the
+        threshold roll up into a single "Other" slice with a
+        \texttt{<details>} block listing the rolled-up names.
+        Click on a slice or legend item navigates to
+        \texttt{/?filter=genre:N}. Chart.js is vendored under
+        \texttt{static/js/vendor/} \string— no CDN, CSP stays strict.
+  \item \textbf{Delete a title with no volumes (\#271).} A new
+        Delete button on \texttt{/title/:id} (Librarian+, visible
+        only when the title has zero active volumes) opens a
+        UX-DR8 destructive-action modal. On confirmation the
+        title is soft-deleted and the user is redirected home;
+        the row is recoverable from the Trash panel for 30 days.
+  \item \textbf{Edit ISBN / ISSN / UPC in the metadata form (\#272).}
+        The previously read-only identifier lines in the
+        title-edit form are now editable inputs. ISBN-13
+        checksum is validated server-side; a collision with
+        another title's existing ISBN returns 409 + a friendly
+        feedback entry. Companion to \#271 \string— both fix
+        the wrong-scan-stuck-title scenario.
+  \item \textbf{Real PDF export for the wish list (\#266).}
+        Replaces the v1.3.1 browser-print HTML round-trip with a
+        server-rendered PDF via \texttt{genpdf} (pure Rust, no
+        subprocess). The Print button on \texttt{/wishlist} now
+        downloads \texttt{wishlist-YYYY-MM-DD.pdf} directly \string—
+        text is selectable, searchable, consistent across all
+        browsers. DejaVu Sans vendored for unicode support.
+  \item \textbf{Collection valuation (\#243).} Two new optional
+        fields per volume \string— \emph{Purchase price} and
+        \emph{Estimated current value} \string— each with its own
+        ISO 4217 currency. Aggregations on a new
+        \texttt{/stats/value} page (Librarian-gated): total per
+        currency, value by genre, value by series. Mixed-currency
+        catalogs show one row per currency (FX-conversion deferred
+        to a future CR). Opt-in home dashboard indicator
+        \string— default OFF, admin toggle under
+        \texttt{/admin?tab=system}. The default currency is
+        seeded to \texttt{CHF} and is admin-overridable. All
+        value-related views are owner-facing (Librarian+);
+        Anonymous visitors never see money.
+\end{itemize}
+
 \section{What's new in 1.4.0}\label{sec:whats-new-1.4.0}
 
 Version 1.4.0 is the third themed minor of the post-v1 era \string—
