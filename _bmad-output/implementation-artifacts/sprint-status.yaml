@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-05-20 (v1.5.0 minor — "Know what you have, and what it's worth": LoC provider #263, donut chart #265, title lifecycle #271+#272, PDF wishlist #266, collection valuation #243)
+# last_updated: 2026-05-20 (v1.5.1 patch — production hygiene bundle: #281 PDF fonts in Docker, #282 Trash cascade for titles, #283 valuation admin UI toggle, #284 hard-delete revoked API keys, #285 provider health UA + accept-any-HTTP)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
