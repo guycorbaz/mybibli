@@ -70,6 +70,8 @@ pub struct TitleDetailTemplate {
     pub label_no_cover: String,
     pub label_edit: String,
     pub label_redownload: String,
+    // CR #271 — Delete-title button shown only when volume_count == 0.
+    pub label_delete_title: String,
     pub has_code: bool,
     pub series_assignments: Vec<TitleSeriesAssignment>,
     pub all_series: Vec<SeriesModel>,
@@ -172,6 +174,7 @@ pub async fn title_detail(
             label_no_cover: rust_i18n::t!("cover.no_cover", locale = loc).to_string(),
             label_edit: rust_i18n::t!("metadata.edit_metadata", locale = loc).to_string(),
             label_redownload: rust_i18n::t!("metadata.redownload", locale = loc).to_string(),
+            label_delete_title: rust_i18n::t!("title.delete_title_button", locale = loc).to_string(),
             has_code,
             series_assignments,
             all_series,
@@ -476,6 +479,12 @@ struct TitleEditFormTemplate {
     label_age_rating: String,
     label_issue_number: String,
     label_media_type: String,
+    // CR #272 — editable ISBN/ISSN/UPC fields in the metadata-edit form.
+    label_identifiers: String,
+    label_identifiers_help: String,
+    label_isbn: String,
+    label_issn: String,
+    label_upc: String,
     label_save: String,
     label_cancel: String,
 }
@@ -513,6 +522,15 @@ pub async fn title_edit_form(
         label_age_rating: rust_i18n::t!("metadata.field.age_rating", locale = loc).to_string(),
         label_issue_number: rust_i18n::t!("metadata.field.issue_number", locale = loc).to_string(),
         label_media_type: rust_i18n::t!("title.form.media_type", locale = loc).to_string(),
+        // CR #272 — identifier fields are editable; help text explains the
+        // ISBN-13 checksum guard so the user knows why a typo'd value
+        // bounces back as 400.
+        label_identifiers: rust_i18n::t!("metadata.field.identifiers", locale = loc).to_string(),
+        label_identifiers_help: rust_i18n::t!("metadata.field.identifiers_help", locale = loc)
+            .to_string(),
+        label_isbn: rust_i18n::t!("metadata.field.isbn", locale = loc).to_string(),
+        label_issn: rust_i18n::t!("metadata.field.issn", locale = loc).to_string(),
+        label_upc: rust_i18n::t!("metadata.field.upc", locale = loc).to_string(),
         label_save: rust_i18n::t!("metadata.save_changes", locale = loc).to_string(),
         label_cancel: rust_i18n::t!("metadata.cancel", locale = loc).to_string(),
     };
@@ -563,6 +581,15 @@ pub struct TitleEditForm {
     pub age_rating: Option<String>,
     #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_i32")]
     pub issue_number: Option<i32>,
+    // CR #272 — editable identifiers. Empty input = clear to NULL via
+    // `non_empty()` below. ISBN-13 checksum validation runs in the
+    // handler; bad input bounces back as 400 with i18n'd copy.
+    #[serde(default)]
+    pub isbn: Option<String>,
+    #[serde(default)]
+    pub issn: Option<String>,
+    #[serde(default)]
+    pub upc: Option<String>,
 }
 
 fn default_language() -> String {
@@ -622,6 +649,47 @@ pub async fn update_title(
     let dewey_code = non_empty(&form.dewey_code);
     let age_rating = non_empty(&form.age_rating);
 
+    // CR #272 — identifier edit path. Normalize: strip spaces and dashes
+    // from ISBN so a "978-2-07-036024-6" pasted from a barcode reader
+    // gets accepted (the provider chain stores the canonical 13-digit
+    // form). Empty → None ("clear the column").
+    let isbn = form.isbn.as_ref().map(|s| {
+        s.chars().filter(|c| !c.is_whitespace() && *c != '-').collect::<String>()
+    }).filter(|s| !s.is_empty());
+    let issn = non_empty(&form.issn).map(|s| s.replace('-', ""));
+    let upc = non_empty(&form.upc).map(|s| {
+        s.chars().filter(|c| !c.is_whitespace() && *c != '-').collect::<String>()
+    });
+
+    // ISBN-13 checksum guard. Only validate if the user actually
+    // changed the value (a corrupt existing ISBN should still
+    // round-trip — fixing it is what they're trying to do).
+    if let Some(ref new_isbn) = isbn
+        && new_isbn.as_str() != old_title.isbn.as_deref().unwrap_or("")
+    {
+        if new_isbn.len() != 13 || !new_isbn.chars().all(|c| c.is_ascii_digit()) {
+            return Err(AppError::BadRequest(
+                rust_i18n::t!("error.isbn.invalid_format", locale = loc).to_string(),
+            ));
+        }
+        if !crate::services::title::TitleService::validate_isbn13_checksum(new_isbn) {
+            return Err(AppError::BadRequest(
+                rust_i18n::t!("error.isbn.invalid_checksum", locale = loc).to_string(),
+            ));
+        }
+        // Collision guard — another title may already carry this ISBN
+        // (the schema allows duplicates because re-scan is intentional,
+        // but for the EDIT path we surface the conflict rather than
+        // silently creating a hidden dupe).
+        if let Some(existing) = TitleModel::find_by_isbn(pool, new_isbn).await?
+            && existing.id != id
+        {
+            return Err(AppError::Conflict(
+                rust_i18n::t!("error.isbn.already_used", locale = loc).to_string(),
+            ));
+        }
+    }
+
     let publication_date = form.publication_date.as_deref().and_then(|s| {
         let t = s.trim();
         if t.is_empty() {
@@ -668,7 +736,15 @@ pub async fn update_title(
         Some(serde_json::to_string(&v).unwrap_or_default())
     };
 
-    let updated = TitleModel::update_metadata(
+    // CR #272 — capture old identifiers BEFORE the update so the audit
+    // row carries the before/after diff for forensics. Comparing to the
+    // post-update DTO would only show the new values; the audit needs
+    // both sides.
+    let old_isbn = old_title.isbn.clone();
+    let old_issn = old_title.issn.clone();
+    let old_upc = old_title.upc.clone();
+
+    let updated = TitleModel::update_full(
         pool,
         id,
         form.version,
@@ -686,8 +762,38 @@ pub async fn update_title(
         age_rating.as_deref(),
         form.issue_number,
         edited_json.as_deref(),
+        isbn.as_deref(),
+        issn.as_deref(),
+        upc.as_deref(),
     )
     .await?;
+
+    // CR #272 — audit any identifier change. Skipped when the
+    // identifier columns are byte-identical to what was in the row
+    // before this PATCH.
+    let identifiers_changed = old_isbn != updated.isbn
+        || old_issn != updated.issn
+        || old_upc != updated.upc;
+    if identifiers_changed
+        && let Err(e) = crate::models::admin_audit::AdminAuditModel::create(
+            pool,
+            session.user_id.unwrap_or(0),
+            "title_identifiers_edit",
+            Some("titles"),
+            Some(id),
+            Some(serde_json::json!({
+                "old": { "isbn": old_isbn, "issn": old_issn, "upc": old_upc },
+                "new": { "isbn": updated.isbn, "issn": updated.issn, "upc": updated.upc },
+            })),
+        )
+        .await
+    {
+        tracing::warn!(
+            title_id = id,
+            error = %e,
+            "title_identifiers_edit audit insert failed — title update has already committed"
+        );
+    }
 
     let genre_name = GenreModel::find_name_by_id(pool, updated.genre_id).await?;
     let has_code = updated.isbn.is_some() || updated.issn.is_some() || updated.upc.is_some();
@@ -1615,6 +1721,7 @@ mod tests {
             label_no_cover: "No cover available".to_string(),
             label_edit: "Edit metadata".to_string(),
             label_redownload: "Re-download".to_string(),
+            label_delete_title: "Delete title".to_string(),
             has_code: true,
             series_assignments: vec![],
             all_series: vec![],
@@ -1738,6 +1845,7 @@ mod tests {
             label_no_cover: "No cover available".to_string(),
             label_edit: "Edit metadata".to_string(),
             label_redownload: "Re-download".to_string(),
+            label_delete_title: "Delete title".to_string(),
             has_code: false,
             series_assignments: vec![],
             all_series: vec![],

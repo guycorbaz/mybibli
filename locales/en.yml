@@ -157,6 +157,12 @@ title:
   current_banner: "Current: %{title}"
   current_banner_with_volumes: "Current: %{title} — %{count} vol"
   current_banner_with_author: "Current: %{title} — %{author} — %{count} vol"
+  # CR #271 — delete a title that has no volumes.
+  delete_title_button: "Delete title"
+  delete_modal_title: "Delete \"%{title}\"?"
+  delete_modal_body: "This title has no volumes attached. Deleting it removes the record from the catalog (recoverable from the Trash panel for 30 days)."
+  delete_modal_confirm: "Delete title"
+  delete_blocked_has_volumes: "Cannot delete: this title now has volumes attached. Reload the page to see them."
   form:
     heading: New title
     title_label: Title
@@ -339,6 +345,8 @@ error:
     required: Title is required
   isbn:
     invalid_checksum: Invalid ISBN checksum
+    invalid_format: "Invalid ISBN format — must be 13 digits"
+    already_used: "Another title already uses this ISBN — refusing to create a duplicate"
     not_found: ISBN not found
   genre:
     required: Genre is required
@@ -480,6 +488,12 @@ metadata:
     total_duration: "Duration (min)"
     age_rating: Age rating
     issue_number: Issue number
+    # CR #272 — editable identifier fields in the metadata-edit form.
+    identifiers: Identifiers
+    identifiers_help: "ISBN-13 must be 13 digits with a valid checksum. ISSN / UPC are accepted as-is. Leave blank to clear a field."
+    isbn: ISBN
+    issn: ISSN
+    upc: UPC
 media_type:
   book: Book
   bd: BD

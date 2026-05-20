@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod admin_api_keys;
+pub mod title_lifecycle;
 pub mod admin_reference_data;
 pub mod admin_system;
 pub mod api_v1;
@@ -122,7 +123,13 @@ pub fn build_router(state: AppState) -> Router {
         // Detail pages
         .route(
             "/title/{id}",
-            axum::routing::get(titles::title_detail).post(titles::update_title),
+            axum::routing::get(titles::title_detail)
+                .post(titles::update_title)
+                .delete(title_lifecycle::delete_title),
+        )
+        .route(
+            "/title/{id}/delete-modal",
+            axum::routing::get(title_lifecycle::delete_title_modal),
         )
         .route(
             "/title/{id}/edit",

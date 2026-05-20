@@ -157,6 +157,12 @@ title:
   current_banner: "En cours : %{title}"
   current_banner_with_volumes: "En cours : %{title} — %{count} vol"
   current_banner_with_author: "En cours : %{title} — %{author} — %{count} vol"
+  # CR #271 — supprimer un titre qui n'a aucun volume.
+  delete_title_button: "Supprimer le titre"
+  delete_modal_title: "Supprimer « %{title} » ?"
+  delete_modal_body: "Ce titre n'a aucun volume attaché. Sa suppression retire l'enregistrement du catalogue (récupérable depuis le panneau Corbeille pendant 30 jours)."
+  delete_modal_confirm: "Supprimer le titre"
+  delete_blocked_has_volumes: "Suppression impossible : ce titre a maintenant des volumes attachés. Rechargez la page pour les voir."
   form:
     heading: Nouveau titre
     title_label: Titre
@@ -339,6 +345,8 @@ error:
     required: Le titre est obligatoire
   isbn:
     invalid_checksum: Checksum ISBN invalide
+    invalid_format: "Format ISBN invalide — doit contenir 13 chiffres"
+    already_used: "Un autre titre utilise déjà cet ISBN — refus de créer un doublon"
     not_found: ISBN introuvable
   genre:
     required: Le genre est obligatoire
@@ -480,6 +488,13 @@ metadata:
     total_duration: "Durée (min)"
     age_rating: "Classification d'âge"
     issue_number: Numéro
+    # CR #272 — champs d'identifiants éditables dans le formulaire de
+    # modification des métadonnées.
+    identifiers: Identifiants
+    identifiers_help: "L'ISBN-13 doit comporter 13 chiffres avec un checksum valide. ISSN et UPC sont acceptés tels quels. Laissez vide pour effacer un champ."
+    isbn: ISBN
+    issn: ISSN
+    upc: UPC
 media_type:
   book: Livre
   bd: BD

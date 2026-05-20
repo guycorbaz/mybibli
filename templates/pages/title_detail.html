@@ -43,7 +43,7 @@
                 </div>
                 {% endif %}
                 {% if role == "librarian" || role == "admin" %}
-                <div class="mt-4 flex gap-3">
+                <div class="mt-4 flex flex-wrap gap-3">
                     <button hx-get="/title/{{ title.id }}/edit" hx-target="#title-metadata" hx-swap="innerHTML"
                             class="px-3 py-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-700 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
                         {{ label_edit }}
@@ -56,6 +56,17 @@
                         <span id="redownload-spinner" class="htmx-indicator ml-1">
                             <svg class="animate-spin inline h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
                         </span>
+                    </button>
+                    {% endif %}
+                    {# CR #271: Delete-title button — only when volume_count == 0
+                       (the title row has no active volumes; deletion is then
+                       harmless since no children get orphaned). UX-DR8 modal. #}
+                    {% if volume_count == 0 %}
+                    <button hx-get="/title/{{ title.id }}/delete-modal"
+                            hx-target="#modal-slot"
+                            hx-swap="innerHTML"
+                            class="px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20">
+                        {{ label_delete_title }}
                     </button>
                     {% endif %}
                 </div>
