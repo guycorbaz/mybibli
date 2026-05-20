@@ -2062,6 +2062,14 @@ pub struct VolumeDetailTemplate {
     pub loan_status_label_anonymous: String,
     pub loan_status_label_prefix: String,
     pub loan_status_label_suffix: String,
+    // CR #237 — shelf-audit affordance. `under_audit_chip_label` is the
+    // "À contrôler" badge text; `audit_button_label` flips between Mark
+    // and Contrôlé depending on the volume's current state. Visible to
+    // Librarian+ only (the template checks `can_audit`).
+    pub can_audit: bool,
+    pub under_audit_chip_label: String,
+    pub audit_button_label_mark: String,
+    pub audit_button_label_clear: String,
 }
 
 pub async fn volume_detail(
@@ -2189,6 +2197,10 @@ pub async fn volume_detail(
         loan_status_label_anonymous,
         loan_status_label_prefix,
         loan_status_label_suffix,
+        can_audit: session.role >= Role::Librarian,
+        under_audit_chip_label: rust_i18n::t!("volume.under_audit_chip", locale = loc).to_string(),
+        audit_button_label_mark: rust_i18n::t!("volume.mark_under_audit", locale = loc).to_string(),
+        audit_button_label_clear: rust_i18n::t!("volume.mark_checked", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),

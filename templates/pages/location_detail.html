@@ -19,9 +19,23 @@
         </ol>
     </nav>
 
-    <div>
-        <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ location.name }}</h1>
-        <p class="mt-1 text-sm text-stone-400">{{ location.label }} · {{ location.node_type }}</p>
+    <div class="flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+            <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ location.name }}</h1>
+            <p class="mt-1 text-sm text-stone-400">{{ location.label }} · {{ location.node_type }}</p>
+        </div>
+        {# CR #237 — bulk-mark all volumes on this shelf "À contrôler".
+           Hidden for organizational containers (`can_audit` already
+           checks `location.is_assignable()` server-side) and for
+           Anonymous. #}
+        {% if can_audit %}
+        <form method="POST" action="/location/{{ location.id }}/mark-audit" class="inline">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <button type="submit" class="px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20">
+                ⏳ {{ bulk_audit_button_label }}
+            </button>
+        </form>
+        {% endif %}
     </div>
 
     <h2 class="text-lg font-semibold text-stone-800 dark:text-stone-200">{{ contents_title }}</h2>

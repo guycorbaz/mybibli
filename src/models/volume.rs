@@ -24,6 +24,10 @@ pub struct VolumeModel {
     pub current_value: Option<f64>,
     pub current_value_currency: Option<String>,
     pub current_value_updated_at: Option<chrono::NaiveDateTime>,
+    /// CR #237 — shelf-audit flag. `Some(ts)` = currently marked
+    /// "À contrôler" since `ts`; `None` = not marked. Cleared only
+    /// manually (move / re-fetch / loan return do NOT clear it).
+    pub under_audit_since: Option<chrono::NaiveDateTime>,
 }
 
 impl std::fmt::Display for VolumeModel {
@@ -65,7 +69,8 @@ impl VolumeModel {
             r#"SELECT id, title_id, label, condition_state_id, edition_comment, location_id, version,
                       CAST(purchase_price AS DOUBLE) AS purchase_price, purchase_currency,
                       CAST(current_value AS DOUBLE) AS current_value, current_value_currency,
-                      CAST(current_value_updated_at AS DATETIME) AS current_value_updated_at
+                      CAST(current_value_updated_at AS DATETIME) AS current_value_updated_at,
+                      CAST(under_audit_since AS DATETIME) AS under_audit_since
                FROM volumes
                WHERE label = ? AND deleted_at IS NULL"#,
         )
@@ -87,6 +92,7 @@ impl VolumeModel {
                 current_value: r.try_get("current_value")?,
                 current_value_currency: r.try_get("current_value_currency")?,
                 current_value_updated_at: r.try_get("current_value_updated_at")?,
+                under_audit_since: r.try_get("under_audit_since")?,
             })),
             None => Ok(None),
         }
@@ -121,6 +127,7 @@ impl VolumeModel {
                     current_value: None,
                     current_value_currency: None,
                     current_value_updated_at: None,
+                    under_audit_since: None,
                 })
             }
             Err(e) => {
@@ -182,7 +189,8 @@ impl VolumeModel {
             r#"SELECT id, title_id, label, condition_state_id, edition_comment, location_id, version,
                       CAST(purchase_price AS DOUBLE) AS purchase_price, purchase_currency,
                       CAST(current_value AS DOUBLE) AS current_value, current_value_currency,
-                      CAST(current_value_updated_at AS DATETIME) AS current_value_updated_at
+                      CAST(current_value_updated_at AS DATETIME) AS current_value_updated_at,
+                      CAST(under_audit_since AS DATETIME) AS under_audit_since
                FROM volumes WHERE id = ? AND deleted_at IS NULL"#,
         )
         .bind(id)
@@ -203,6 +211,7 @@ impl VolumeModel {
                 current_value: r.try_get("current_value")?,
                 current_value_currency: r.try_get("current_value_currency")?,
                 current_value_updated_at: r.try_get("current_value_updated_at")?,
+                under_audit_since: r.try_get("under_audit_since")?,
             })),
             None => Ok(None),
         }
@@ -810,6 +819,7 @@ mod tests {
             current_value: None,
             current_value_currency: None,
             current_value_updated_at: None,
+            under_audit_since: None,
         };
         assert_eq!(vol.to_string(), "V0042");
     }
@@ -829,6 +839,7 @@ mod tests {
             current_value: None,
             current_value_currency: None,
             current_value_updated_at: None,
+            under_audit_since: None,
         };
         assert_eq!(vol.label, "V0001");
         assert_eq!(vol.location_id, Some(5));
