@@ -56,9 +56,15 @@ impl VolumeModel {
     ) -> Result<Option<VolumeModel>, AppError> {
         tracing::debug!(label = %label, "Looking up volume by label");
 
+        // v1.5.2 fix #288 — CAST DECIMAL columns to DOUBLE so SQLx
+        // can decode them into `Option<f64>`. Without the cast, a row
+        // with a non-NULL purchase_price or current_value triggers a
+        // ColumnDecode error ("mismatched types") and the whole
+        // request fails 500.
         let row = sqlx::query(
             r#"SELECT id, title_id, label, condition_state_id, edition_comment, location_id, version,
-                      purchase_price, purchase_currency, current_value, current_value_currency,
+                      CAST(purchase_price AS DOUBLE) AS purchase_price, purchase_currency,
+                      CAST(current_value AS DOUBLE) AS current_value, current_value_currency,
                       CAST(current_value_updated_at AS DATETIME) AS current_value_updated_at
                FROM volumes
                WHERE label = ? AND deleted_at IS NULL"#,
@@ -171,9 +177,11 @@ impl VolumeModel {
     }
 
     pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<Option<VolumeModel>, AppError> {
+        // v1.5.2 fix #288 — see comment in find_by_label.
         let row = sqlx::query(
             r#"SELECT id, title_id, label, condition_state_id, edition_comment, location_id, version,
-                      purchase_price, purchase_currency, current_value, current_value_currency,
+                      CAST(purchase_price AS DOUBLE) AS purchase_price, purchase_currency,
+                      CAST(current_value AS DOUBLE) AS current_value, current_value_currency,
                       CAST(current_value_updated_at AS DATETIME) AS current_value_updated_at
                FROM volumes WHERE id = ? AND deleted_at IS NULL"#,
         )
@@ -909,6 +917,52 @@ mod tests {
     async fn find_id_by_label_returns_none_for_nonexistent(pool: sqlx::MySqlPool) {
         let got = VolumeModel::find_id_by_label(&pool, "V9999").await.unwrap();
         assert_eq!(got, None);
+    }
+
+    /// v1.5.2 fix #288 — regression guard. Insert a volume row with
+    /// non-NULL DECIMAL columns (purchase_price + current_value) and
+    /// confirm `find_by_id` reads them back as `Option<f64>` without
+    /// the SQLx `ColumnDecode { Rust f64 vs SQL DECIMAL }` error
+    /// that broke the v1.5.0 #243 workflow in prod.
+    ///
+    /// Without the CAST in the SELECT, this test fails with:
+    ///   ColumnDecode { index: "purchase_price",
+    ///     source: "mismatched types; Rust type `Option<f64>`
+    ///     (as SQL type `DOUBLE`) is not compatible with SQL type
+    ///     `NEWDECIMAL`" }
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_by_id_reads_decimal_columns_back_as_f64(pool: sqlx::MySqlPool) {
+        let id = seed_volume(&pool, "V0042").await;
+        sqlx::query(
+            "UPDATE volumes SET purchase_price = 12.50, purchase_currency = 'CHF', \
+             current_value = 18.75, current_value_currency = 'CHF', \
+             current_value_updated_at = NOW() WHERE id = ?",
+        )
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let got = VolumeModel::find_by_id(&pool, id).await.unwrap().unwrap();
+        assert_eq!(got.purchase_price, Some(12.50));
+        assert_eq!(got.purchase_currency.as_deref(), Some("CHF"));
+        assert_eq!(got.current_value, Some(18.75));
+        assert_eq!(got.current_value_currency.as_deref(), Some("CHF"));
+        assert!(got.current_value_updated_at.is_some());
+    }
+
+    /// v1.5.2 fix #288 — same regression guard via the label path.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_by_label_reads_decimal_columns_back_as_f64(pool: sqlx::MySqlPool) {
+        let id = seed_volume(&pool, "V0099").await;
+        sqlx::query("UPDATE volumes SET purchase_price = 5.00, current_value = 7.25 WHERE id = ?")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let got = VolumeModel::find_by_label(&pool, "V0099").await.unwrap().unwrap();
+        assert_eq!(got.purchase_price, Some(5.00));
+        assert_eq!(got.current_value, Some(7.25));
     }
 
     // ─── CR #209: VolumeModel::find_by_title coverage ──────
