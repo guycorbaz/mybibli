@@ -96,29 +96,63 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
     await editLink.click();
     await expect(page).toHaveURL(/\/locations\/\d+\/edit/);
 
-    // Change name and submit
+    // Change name and submit. Fix #296 — the empty-`parent_id=` form
+    // body now deserializes cleanly to `None`, so the previous
+    // workaround that stripped the `name="parent_id"` attribute
+    // client-side is gone. If this test starts 422-ing again, the
+    // `deserialize_optional_u64` wiring on `UpdateLocationForm` got
+    // dropped.
     const nameInput = page.locator("#edit-name");
     await nameInput.clear();
     await nameInput.fill("LO-EditedName");
-
-    // Remove empty parent_id from form to avoid 422 (empty string → invalid integer)
-    const parentSelect = page.locator("#edit-parent");
-    if (await parentSelect.isVisible().catch(() => false)) {
-      const parentVal = await parentSelect.inputValue();
-      if (!parentVal) {
-        // Remove the select from the form so it doesn't send parent_id=""
-        await page.evaluate(() => {
-          const el = document.getElementById("edit-parent");
-          if (el) el.removeAttribute("name");
-        });
-      }
-    }
 
     await page.locator("#edit-location-submit").click();
 
     // Should redirect back to locations
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
     await expect(page.locator("text=LO-EditedName")).toBeVisible();
+  });
+
+  // Fix #296 — production-reproducer. Ticking "Emplacement
+  // organisationnel" (CR #280) on a ROOT location used to fail with
+  // `Failed to deserialize form body: parent_id: cannot parse
+  // integer from empty string` because the `<select name="parent_id">
+  // <option value="">None</option></select>` submits an empty string
+  // for root locations. The form struct now uses
+  // `deserialize_optional_u64`, so this round-trips cleanly.
+  test("Fix #296 — toggle organisationnel on a root location", async ({
+    page,
+  }) => {
+    await page.goto("/locations");
+
+    // Create a root location.
+    await page.locator("summary").filter({ hasText: /add root/i }).click();
+    await page.locator("#new-name").fill("LO-OrgRoot");
+    await page.locator("#new-lcode").fill("L5099");
+    await page.locator("#add-root-submit").click();
+    await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
+
+    // Open its edit form.
+    const editLink = page
+      .locator('a[aria-label*="LO-OrgRoot"][href*="/edit"]')
+      .first();
+    await expect(editLink).toBeVisible({ timeout: 5000 });
+    await editLink.click();
+    await expect(page).toHaveURL(/\/locations\/\d+\/edit/);
+
+    // Sanity: parent is None — this is the empty-string-on-submit path.
+    const parentSelect = page.locator("#edit-parent");
+    await expect(parentSelect).toBeVisible();
+    expect(await parentSelect.inputValue()).toBe("");
+
+    // Tick the organisationnel checkbox + submit.
+    await page.locator("#edit-organizational").check();
+    await page.locator("#edit-location-submit").click();
+
+    // Must redirect to /locations (NOT 400 the deserialize error
+    // body). Pre-fix this was 400 with the bare error string.
+    await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
+    await expect(page.locator("text=LO-OrgRoot")).toBeVisible();
   });
 
   // AC3: Delete empty location

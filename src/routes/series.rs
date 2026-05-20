@@ -450,6 +450,30 @@ where
     }
 }
 
+/// Fix #296 — sibling of [`deserialize_optional_i32`] for ID-shaped
+/// foreign-key fields. The location-edit form (and several others)
+/// renders `<select name="parent_id"><option value="">None</option>
+/// ...</select>` so picking "no parent" sends `parent_id=` (empty
+/// string). `#[serde(default)]` only short-circuits ABSENT fields,
+/// not empty strings, so the `u64` parser used to bail with
+/// "cannot parse integer from empty string". Treat empty as `None`
+/// just like the i32 + f64 helpers do.
+pub fn deserialize_optional_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: Option<String> = Option::deserialize(deserializer)?;
+    match s {
+        None => Ok(None),
+        Some(ref v) if v.trim().is_empty() => Ok(None),
+        Some(v) => v
+            .trim()
+            .parse::<u64>()
+            .map(Some)
+            .map_err(serde::de::Error::custom),
+    }
+}
+
 /// CR #243 — sibling of [`deserialize_optional_i32`] for monetary
 /// inputs. Browser submits `<input type="number" step="0.01" value="">`
 /// as `name=` (empty string), which `f64` can't parse — convert to
@@ -697,5 +721,81 @@ pub async fn delete_series(
             };
             Ok(Html(feedback_html_pub("error", &message, "")).into_response())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Fix #296 regression — the three optional-from-empty-string
+    /// deserializers must accept `""` (e.g., from `<select><option
+    /// value="">None</option></select>`) and return `None` instead of
+    /// trying to parse it as a number. Locks the contract for u64 (new
+    /// in this fix), i32, and f64.
+    #[derive(serde::Deserialize)]
+    struct U64Holder {
+        #[serde(default, deserialize_with = "deserialize_optional_u64")]
+        v: Option<u64>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct I32Holder {
+        #[serde(default, deserialize_with = "deserialize_optional_i32")]
+        v: Option<i32>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct F64Holder {
+        #[serde(default, deserialize_with = "deserialize_optional_f64")]
+        v: Option<f64>,
+    }
+
+    #[test]
+    fn deserialize_optional_u64_treats_empty_string_as_none() {
+        let h: U64Holder = serde_urlencoded::from_str("v=").unwrap();
+        assert_eq!(h.v, None);
+    }
+
+    #[test]
+    fn deserialize_optional_u64_treats_whitespace_as_none() {
+        let h: U64Holder = serde_urlencoded::from_str("v=%20%20").unwrap();
+        assert_eq!(h.v, None);
+    }
+
+    #[test]
+    fn deserialize_optional_u64_parses_valid_value() {
+        let h: U64Holder = serde_urlencoded::from_str("v=42").unwrap();
+        assert_eq!(h.v, Some(42));
+    }
+
+    #[test]
+    fn deserialize_optional_u64_absent_field_is_none() {
+        let h: U64Holder = serde_urlencoded::from_str("other=x").unwrap();
+        assert_eq!(h.v, None);
+    }
+
+    #[test]
+    fn deserialize_optional_u64_rejects_negative_value() {
+        let result: Result<U64Holder, _> = serde_urlencoded::from_str("v=-1");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn deserialize_optional_i32_treats_empty_string_as_none() {
+        let h: I32Holder = serde_urlencoded::from_str("v=").unwrap();
+        assert_eq!(h.v, None);
+    }
+
+    #[test]
+    fn deserialize_optional_f64_treats_empty_string_as_none() {
+        let h: F64Holder = serde_urlencoded::from_str("v=").unwrap();
+        assert_eq!(h.v, None);
+    }
+
+    #[test]
+    fn deserialize_optional_f64_accepts_comma_decimal() {
+        let h: F64Holder = serde_urlencoded::from_str("v=12%2C50").unwrap();
+        assert_eq!(h.v, Some(12.5));
     }
 }
