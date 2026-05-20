@@ -282,6 +282,19 @@ pub struct AppSettings {
     /// states leave the same row values in `settings`. Without this
     /// sentinel the resolver would loop the user back to Step 3 forever.
     pub setup_step_3_done: bool,
+    // === CR #243 — Collection valuation ===
+    /// ISO 4217 currency code (e.g. `CHF`, `EUR`, `USD`) used as the
+    /// default for new volume-value entries when the user doesn't pick
+    /// one. Admin-overridable via the System tab. Seeded to `CHF` by
+    /// migration 20260520100000; on an empty / unknown row, the
+    /// Default impl falls back to `CHF` so the household-NAS deploy
+    /// stays consistent.
+    pub default_currency: String,
+    /// Toggle for the opt-in home-dashboard "Library estimated value"
+    /// indicator. Default `false` keeps the home page neutral for
+    /// users who don't track money. Flipping the admin setting
+    /// (System tab) brings the indicator back.
+    pub show_value_indicators: bool,
 }
 
 impl Default for AppSettings {
@@ -301,6 +314,10 @@ impl Default for AppSettings {
             tmdb_api_key: String::new(),
             setup_completed_at: None,
             setup_step_3_done: false,
+            // CR #243: CHF default per the v1.5.0 install decision —
+            // matches the household-NAS Swiss context. Admin-overridable.
+            default_currency: "CHF".to_string(),
+            show_value_indicators: false,
         }
     }
 }
@@ -451,6 +468,28 @@ impl AppSettings {
                 }
                 "setup_step_3_done" => {
                     settings.setup_step_3_done = value == "1";
+                }
+                // CR #243: collection valuation. `default_currency` is
+                // a free-form 3-letter ISO 4217 code; we uppercase it
+                // and validate length so a typo'd `chf` still works
+                // but `XXXXX` falls back to the Default.
+                "default_currency" => {
+                    let up = value.trim().to_ascii_uppercase();
+                    if up.len() == 3 && up.chars().all(|c| c.is_ascii_alphabetic()) {
+                        settings.default_currency = up;
+                    } else {
+                        tracing::warn!(
+                            key = %key,
+                            value = %value,
+                            "default_currency must be a 3-letter ISO 4217 code, using default"
+                        );
+                    }
+                }
+                "show_value_indicators" => {
+                    settings.show_value_indicators = matches!(
+                        value.trim().to_ascii_lowercase().as_str(),
+                        "1" | "true" | "yes"
+                    );
                 }
                 _ => {} // Ignore unknown keys
             }
@@ -644,6 +683,8 @@ mod tests {
             tmdb_api_key: "tmdb-key".to_string(),
             setup_completed_at: None,
             setup_step_3_done: false,
+            default_currency: "CHF".to_string(),
+            show_value_indicators: false,
         };
         let cloned = settings.clone();
         assert_eq!(cloned.overdue_threshold_days, 60);

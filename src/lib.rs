@@ -117,4 +117,23 @@ impl AppState {
             }
         })
     }
+
+    /// CR #243: ISO 4217 currency code used as the default when the
+    /// user enters a volume value without specifying a currency.
+    /// Seeded to `CHF` by migration 20260520100000; admin-overridable.
+    pub fn default_currency(&self) -> String {
+        self.settings
+            .read()
+            .map(|s| s.default_currency.clone())
+            .unwrap_or_else(|_| AppSettings::default().default_currency)
+    }
+
+    /// CR #243: whether the home-dashboard surfaces the opt-in
+    /// "Library estimated value" indicator. Default `false`.
+    pub fn show_value_indicators(&self) -> bool {
+        self.settings
+            .read()
+            .map(|s| s.show_value_indicators)
+            .unwrap_or(false)
+    }
 }

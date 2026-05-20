@@ -409,6 +409,12 @@ volume:
   edition_label: Edition
   not_shelved: Not shelved
   submit: Save
+  # CR #243 — volume value-entry fields (purchase price + current value).
+  valuation_section: "Valuation (optional)"
+  purchase_price: "Purchase price"
+  current_value: "Estimated current value"
+  currency_label: "Currency"
+  valuation_help: "Optional — leave blank to skip. The currency defaults to the admin-configured value but can be overridden per volume."
   currently_on_loan: "Cannot delete: this volume is currently on loan."
   loan_status_field: "Loan status:"
   on_loan_since: "On loan since %{date}"
@@ -523,6 +529,22 @@ genre:
   # deletion guard prevents this via the supported path.
   placeholder:
     deleted: "(Deleted genre)"
+stats:
+  value:
+    heading: "Library valuation"
+    intro: "Sum of every volume's current value across the catalog, broken down per currency / per genre / per series. Soft-deleted volumes and titles are excluded; volumes without a value set are skipped."
+    section_totals: "Per currency"
+    section_by_genre: "By genre"
+    section_by_series: "By series"
+    col_currency: "Currency"
+    col_total_value: "Total value"
+    col_total_purchase: "Total purchase cost"
+    col_count: "Valued / cost-recorded"
+    col_genre: "Genre"
+    col_series: "Series"
+    col_volumes: "Volumes"
+    empty_state: "No volume has a value recorded yet. Edit a volume to enter a purchase price or estimated value."
+    deleted_genre: "(Deleted genre)"
 dashboard:
   metadata_errors: "%{count} title(s) with metadata errors"
   glance:
@@ -566,6 +588,10 @@ dashboard:
     recent_returns_clear_aria: "Clear filter: Recent returns"
     recent_returns_heading: "Recently returned (last 7 days)"
     recent_returns_empty: "No recent returns in the last 7 days — quiet week!"
+  # CR #243 — opt-in "Library estimated value" card on the home page.
+  value_indicator:
+    label: "Library estimated value"
+    cta: "See breakdown"
 borrower:
   list_title: Borrowers
   add: Add borrower

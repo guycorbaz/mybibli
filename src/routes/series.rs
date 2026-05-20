@@ -450,6 +450,29 @@ where
     }
 }
 
+/// CR #243 — sibling of [`deserialize_optional_i32`] for monetary
+/// inputs. Browser submits `<input type="number" step="0.01" value="">`
+/// as `name=` (empty string), which `f64` can't parse — convert to
+/// `None`. Accepts both `12.50` and `12,50` (FR-locale decimal comma)
+/// so the form is forgiving when a user types the way their keyboard
+/// suggests.
+pub fn deserialize_optional_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: Option<String> = Option::deserialize(deserializer)?;
+    match s {
+        None => Ok(None),
+        Some(ref v) if v.trim().is_empty() => Ok(None),
+        Some(v) => v
+            .trim()
+            .replace(',', ".")
+            .parse::<f64>()
+            .map(Some)
+            .map_err(serde::de::Error::custom),
+    }
+}
+
 fn default_series_type() -> String {
     "open".to_string()
 }

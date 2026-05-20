@@ -33,6 +33,66 @@
                    class="w-full px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 min-h-[44px]">
         </div>
 
+        {# CR #243 — Collection valuation. Both number+currency pairs are
+           optional. Empty number = "clear the column". The currency
+           <select> pre-selects either the row's stored currency or the
+           admin's default. step="0.01" + a comma-tolerant deserializer
+           on the server make `12,50` and `12.50` both work. #}
+        <fieldset class="border border-stone-200 dark:border-stone-700 rounded-md p-3">
+            <legend class="text-sm font-medium text-stone-700 dark:text-stone-300 px-1">{{ label_valuation_section }}</legend>
+            <p class="text-xs text-stone-500 dark:text-stone-400 mb-3">{{ label_valuation_help }}</p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                <div class="sm:col-span-2">
+                    <label for="purchase_price" class="block text-xs font-medium text-stone-700 dark:text-stone-300">{{ label_purchase_price }}</label>
+                    <input type="number" step="0.01" min="0" id="purchase_price" name="purchase_price"
+                           inputmode="decimal"
+                           value="{% match volume.purchase_price %}{% when Some with (p) %}{{ p }}{% when None %}{% endmatch %}"
+                           class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="purchase_currency" class="block text-xs font-medium text-stone-700 dark:text-stone-300">{{ label_currency }}</label>
+                    <select id="purchase_currency" name="purchase_currency"
+                            class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                        {% for cur in supported_currencies %}
+                        <option value="{{ cur }}"
+                            {%- match volume.purchase_currency -%}
+                            {%- when Some with (c) -%}
+                                {%- if c.as_str() == *cur -%} selected{%- endif -%}
+                            {%- when None -%}
+                                {%- if *cur == default_currency.as_str() -%} selected{%- endif -%}
+                            {%- endmatch -%}>{{ cur }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="sm:col-span-2">
+                    <label for="current_value" class="block text-xs font-medium text-stone-700 dark:text-stone-300">{{ label_current_value }}</label>
+                    <input type="number" step="0.01" min="0" id="current_value" name="current_value"
+                           inputmode="decimal"
+                           value="{% match volume.current_value %}{% when Some with (p) %}{{ p }}{% when None %}{% endmatch %}"
+                           class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="current_value_currency" class="block text-xs font-medium text-stone-700 dark:text-stone-300">{{ label_currency }}</label>
+                    <select id="current_value_currency" name="current_value_currency"
+                            class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                        {% for cur in supported_currencies %}
+                        <option value="{{ cur }}"
+                            {%- match volume.current_value_currency -%}
+                            {%- when Some with (c) -%}
+                                {%- if c.as_str() == *cur -%} selected{%- endif -%}
+                            {%- when None -%}
+                                {%- if *cur == default_currency.as_str() -%} selected{%- endif -%}
+                            {%- endmatch -%}>{{ cur }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </fieldset>
+
         <div class="flex gap-3">
             <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md min-h-[44px]">
                 {{ submit_label }}

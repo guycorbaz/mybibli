@@ -410,6 +410,12 @@ volume:
   edition_label: Édition
   not_shelved: Non rangé
   submit: Enregistrer
+  # CR #243 — champs de valuation (prix d'achat + valeur actuelle).
+  valuation_section: "Valeur (optionnel)"
+  purchase_price: "Prix d'achat"
+  current_value: "Valeur actuelle estimée"
+  currency_label: "Devise"
+  valuation_help: "Optionnel — laisser vide pour ignorer. La devise par défaut vient des paramètres administrateur mais peut être surchargée par volume."
   currently_on_loan: "Suppression impossible : ce volume est actuellement en prêt."
   loan_status_field: "Statut du prêt :"
   on_loan_since: "En prêt depuis le %{date}"
@@ -525,6 +531,22 @@ genre:
   # de suppression 8-4 empêche cet état par la voie supportée.
   placeholder:
     deleted: "(Genre supprimé)"
+stats:
+  value:
+    heading: "Valorisation de la bibliothèque"
+    intro: "Somme des valeurs actuelles de tous les volumes du catalogue, ventilée par devise / par genre / par série. Les volumes et titres supprimés sont exclus ; les volumes sans valeur enregistrée sont ignorés."
+    section_totals: "Par devise"
+    section_by_genre: "Par genre"
+    section_by_series: "Par série"
+    col_currency: "Devise"
+    col_total_value: "Valeur totale"
+    col_total_purchase: "Coût d'achat total"
+    col_count: "Valorisés / coût enregistré"
+    col_genre: "Genre"
+    col_series: "Série"
+    col_volumes: "Volumes"
+    empty_state: "Aucun volume n'a encore de valeur enregistrée. Modifiez un volume pour saisir un prix d'achat ou une valeur estimée."
+    deleted_genre: "(Genre supprimé)"
 dashboard:
   metadata_errors: "%{count} titre(s) avec erreurs de métadonnées"
   glance:
@@ -568,6 +590,10 @@ dashboard:
     recent_returns_clear_aria: "Retirer le filtre : Retours récents"
     recent_returns_heading: "Retours récents (7 derniers jours)"
     recent_returns_empty: "Aucun retour récent ces 7 derniers jours — semaine calme !"
+  # CR #243 — carte opt-in « Valeur estimée de la bibliothèque » sur l'accueil.
+  value_indicator:
+    label: "Valeur estimée de la bibliothèque"
+    cta: "Voir le détail"
 borrower:
   list_title: Emprunteurs
   add: Ajouter un emprunteur
