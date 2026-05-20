@@ -69,6 +69,7 @@ pub enum SearchOutcome {
 
 impl SearchService {
     /// Perform a search: detect code patterns first, then fall through to fulltext.
+    #[allow(clippy::too_many_arguments)]
     pub async fn search(
         pool: &DbPool,
         query: &str,
@@ -77,12 +78,14 @@ impl SearchService {
         sort: &Option<String>,
         dir: &Option<String>,
         page: u32,
+        // CR #279 — title without any active volume.
+        no_volumes_only: bool,
     ) -> Result<SearchOutcome, AppError> {
         let trimmed = query.trim();
         // Browse-without-query path: empty query + no filter → no results.
         // Empty query WITH a genre/state filter falls through to `fulltext_search`
         // (pill-driven browse, e.g. clicking "BD" on the home page).
-        if trimmed.is_empty() && genre_id.is_none() && volume_state.is_none() {
+        if trimmed.is_empty() && genre_id.is_none() && volume_state.is_none() && !no_volumes_only {
             return Ok(SearchOutcome::Results(PaginatedList::new(
                 vec![],
                 1,
@@ -95,8 +98,17 @@ impl SearchService {
 
         // Empty query + filter set → skip code detection, go straight to fulltext_search.
         if trimmed.is_empty() {
-            return Self::fulltext_search(pool, trimmed, genre_id, volume_state, sort, dir, page)
-                .await;
+            return Self::fulltext_search(
+                pool,
+                trimmed,
+                genre_id,
+                volume_state,
+                sort,
+                dir,
+                page,
+                no_volumes_only,
+            )
+            .await;
         }
 
         match detect_code(trimmed) {
@@ -125,6 +137,7 @@ impl SearchService {
                             sort,
                             dir,
                             page,
+                            no_volumes_only,
                         )
                         .await
                     }
@@ -145,6 +158,7 @@ impl SearchService {
                             sort,
                             dir,
                             page,
+                            no_volumes_only,
                         )
                         .await
                     }
@@ -174,17 +188,29 @@ impl SearchService {
                             sort,
                             dir,
                             page,
+                            no_volumes_only,
                         )
                         .await
                     }
                 }
             }
             CodeType::Text => {
-                Self::fulltext_search(pool, trimmed, genre_id, volume_state, sort, dir, page).await
+                Self::fulltext_search(
+                    pool,
+                    trimmed,
+                    genre_id,
+                    volume_state,
+                    sort,
+                    dir,
+                    page,
+                    no_volumes_only,
+                )
+                .await
             }
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn fulltext_search(
         pool: &DbPool,
         query: &str,
@@ -193,9 +219,19 @@ impl SearchService {
         sort: &Option<String>,
         dir: &Option<String>,
         page: u32,
+        no_volumes_only: bool,
     ) -> Result<SearchOutcome, AppError> {
-        let results =
-            TitleModel::active_search(pool, query, genre_id, volume_state, sort, dir, page).await?;
+        let results = TitleModel::active_search(
+            pool,
+            query,
+            genre_id,
+            volume_state,
+            sort,
+            dir,
+            page,
+            no_volumes_only,
+        )
+        .await?;
         Ok(SearchOutcome::Results(results))
     }
 }

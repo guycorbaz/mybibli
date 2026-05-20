@@ -175,6 +175,14 @@ pub struct HomeTemplate {
     pub audit_indicator_label: String,
     pub audit_indicator_count: i64,
     pub audit_indicator_cta: String,
+    // CR #279 — "Titles without any volume" filter chip. Librarian+
+    // only (Anonymous shouldn't see catalog-cleanup affordances).
+    // `show_no_volumes_chip` is the gate (role-derived in the handler);
+    // `no_volumes_filter_active` toggles between the link variant and
+    // the active-with-remove variant (mirrors the Uncategorized chip).
+    pub show_no_volumes_chip: bool,
+    pub no_volumes_filter_active: bool,
+    pub label_no_volumes: String,
 }
 
 /// One row of the "By genre" dashboard section.
@@ -321,7 +329,13 @@ pub async fn home(
     // downstream. `parse_filter` itself stays pure / non-async / DB-
     // free so existing call sites and tests don't have to move.
     let mut stale_genre_filter = false;
-    let (genre_id, volume_state) = if parsed_indicator.is_some() {
+    // CR #279 — `?filter=no_volumes` short-circuit. Same handler-level
+    // alias shape as `uncategorized` (#205): bypass `parse_filter`,
+    // hand the SearchService a flag instead of a magic genre id. Only
+    // Librarian+ — Anonymous shouldn't see catalog-cleanup affordances.
+    let no_volumes_filter_active = params.filter.as_deref() == Some("no_volumes")
+        && session.role >= crate::middleware::auth::Role::Librarian;
+    let (genre_id, volume_state) = if parsed_indicator.is_some() || no_volumes_filter_active {
         (None, None)
     } else if params.filter.as_deref() == Some("uncategorized") {
         let default_genre_id = TitleService::find_default_genre_id(pool).await?;
@@ -370,6 +384,7 @@ pub async fn home(
             &params.sort,
             &params.dir,
             page,
+            no_volumes_filter_active,
         )
         .await?;
 
@@ -871,6 +886,9 @@ pub async fn home(
         audit_indicator_count,
         audit_indicator_cta: rust_i18n::t!("dashboard.audit_indicator.cta", locale = loc)
             .to_string(),
+        show_no_volumes_chip: session.role >= crate::middleware::auth::Role::Librarian,
+        no_volumes_filter_active,
+        label_no_volumes: rust_i18n::t!("home.filter.no_volumes", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -1333,6 +1351,9 @@ pub(crate) mod tests {
             audit_indicator_label: "Volumes to check".to_string(),
             audit_indicator_count: 0,
             audit_indicator_cta: "Open audit".to_string(),
+            show_no_volumes_chip: false,
+            no_volumes_filter_active: false,
+            label_no_volumes: "Titles without volumes".to_string(),
         }
     }
 

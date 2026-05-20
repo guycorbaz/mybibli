@@ -116,6 +116,33 @@
            aria-label="Filter by: {{ label_uncategorized }}">{{ label_uncategorized }}</a>
         {% endif %}
 
+        {# CR #279 — "Titles without any volume" filter chip. Librarian+
+           only (catalog-cleanup affordance, not surfaced to Anonymous).
+           Same shape as the Uncategorized chip above. #}
+        {% if show_no_volumes_chip %}
+        {% if no_volumes_filter_active %}
+        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 text-sm" role="status" aria-label="Active filter: {{ label_no_volumes }}. Press to remove filter">
+            {{ label_no_volumes }}
+            <button type="button"
+                    hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+                    hx-target="#browse-results"
+                    hx-swap="innerHTML"
+                    hx-push-url="true"
+                    class="ml-1 text-amber-600 hover:text-amber-800"
+                    aria-label="{{ remove_filter_aria }}">&times;</button>
+        </span>
+        {% else %}
+        <a href="/?q={{ query_encoded }}&amp;filter=no_volumes&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+           hx-get="/?q={{ query_encoded }}&amp;filter=no_volumes&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+           hx-target="#browse-results"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           class="px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 text-sm hover:bg-stone-200 dark:hover:bg-stone-700"
+           role="link"
+           aria-label="Filter by: {{ label_no_volumes }}">{{ label_no_volumes }}</a>
+        {% endif %}
+        {% endif %}
+
         <input type="hidden" name="filter" id="filter-hidden" value="{{ active_filter }}">
         <input type="hidden" name="sort" value="{{ current_sort }}">
         <input type="hidden" name="dir" value="{{ current_dir }}">
