@@ -356,8 +356,6 @@ error:
     invalid_format: "Invalid ISBN format — must be 13 digits"
     already_used: "Another title already uses this ISBN — refusing to create a duplicate"
     not_found: ISBN not found
-  system:
-    default_currency_invalid: "Default currency must be a 3-letter ISO 4217 code (e.g. CHF, EUR)."
   genre:
     required: Genre is required
   media_type:
@@ -394,6 +392,7 @@ error:
     overdue_threshold_invalid: "Threshold must be ≥ 1 day"
     overdue_threshold_too_large: "Threshold must be ≤ 365 days"
     default_language_invalid: "Language must be FR or EN"
+    default_currency_invalid: "Default currency must be a 3-letter ISO 4217 code (e.g. CHF, EUR)."
     version_mismatch: "Settings were modified by another admin — reload and retry"
     provider_version_mismatch: "%{provider} was modified by another admin — reload and retry"
   code:

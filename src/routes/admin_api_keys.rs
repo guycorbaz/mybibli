@@ -564,7 +564,22 @@ pub async fn admin_api_keys_delete(
         ));
     }
 
-    crate::services::soft_delete::SoftDeleteService::soft_delete(pool, "api_keys", id).await?;
+    // v1.5.1 fix #284 — direct soft-delete UPDATE rather than going
+    // through `SoftDeleteService` (which would require api_keys to
+    // be in ALLOWED_TABLES, which would in turn surface the row in
+    // the Trash panel — see the comment in soft_delete.rs explaining
+    // why that's undesirable).
+    let result = sqlx::query(
+        "UPDATE api_keys SET deleted_at = NOW() WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .execute(pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound(
+            rust_i18n::t!("admin.api_keys.error_not_found", locale = loc).to_string(),
+        ));
+    }
 
     let details = serde_json::json!({
         "key_id": id,

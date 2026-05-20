@@ -357,8 +357,6 @@ error:
     invalid_format: "Format ISBN invalide — doit contenir 13 chiffres"
     already_used: "Un autre titre utilise déjà cet ISBN — refus de créer un doublon"
     not_found: ISBN introuvable
-  system:
-    default_currency_invalid: "La devise par défaut doit être un code ISO 4217 à 3 lettres (ex. CHF, EUR)."
   genre:
     required: Le genre est obligatoire
   media_type:
@@ -395,6 +393,7 @@ error:
     overdue_threshold_invalid: "Le seuil doit être ≥ 1 jour"
     overdue_threshold_too_large: "Le seuil ne peut dépasser 365 jours"
     default_language_invalid: "La langue doit être FR ou EN"
+    default_currency_invalid: "La devise par défaut doit être un code ISO 4217 à 3 lettres (ex. CHF, EUR)."
     version_mismatch: "Les paramètres ont été modifiés par un autre administrateur — rechargez et réessayez"
     provider_version_mismatch: "%{provider} a été modifié par un autre administrateur — rechargez et réessayez"
   code:
