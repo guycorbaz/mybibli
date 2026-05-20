@@ -104,6 +104,34 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.5.2}\label{sec:whats-new-1.5.2}
+
+Version 1.5.2 is a one-fix hotfix on top of v1.5.1: the v1.5.0 \#243
+valuation workflow was partially broken in production. Saving a
+\emph{Purchase price} or \emph{Estimated current value} on a volume
+landed the UPDATE (the totals on \texttt{/stats/value} and the
+home indicator both reflected the new amount) but returned a 500
+to the user, and every subsequent view of the affected volume
+crashed.
+
+Root cause: SQLx 0.8 can't decode a raw MariaDB
+\texttt{DECIMAL(10,2)} into \texttt{Option<f64>} without the
+\texttt{bigdecimal} / \texttt{rust\_decimal} feature flag. The
+write side worked because the driver coerces \texttt{f64} into
+\texttt{DECIMAL}; the read side didn't. The aggregation queries
+(\texttt{/stats/value} totals) already used \texttt{CAST(SUM(...)
+AS DOUBLE)} and were unaffected.
+
+Fix: \texttt{VolumeModel::find\_by\_id} and
+\texttt{find\_by\_label} now wrap the two DECIMAL columns with
+\texttt{CAST(... AS DOUBLE)}. Two new \texttt{sqlx::test}
+regression guards INSERT a volume with non-NULL valuation columns
+and assert round-trip so the bug can't silently regress on a
+future refactor.
+
+No schema migration, no breaking changes \string— routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
 \section{What's new in 1.5.1}\label{sec:whats-new-1.5.1}
 
 Version 1.5.1 is a five-fix production-hygiene patch shipped within
