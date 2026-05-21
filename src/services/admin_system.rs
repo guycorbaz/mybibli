@@ -67,10 +67,11 @@ pub fn validate_overdue_threshold(days: i32, loc: &'static str) -> Result<(), Ap
     Ok(())
 }
 
-/// Validate the default-language setting. Accepts `"fr"` or `"en"`
-/// only — anything else (including the empty string) is `BadRequest`.
+/// Validate the default-language setting. Accepts `"fr"`, `"en"`, `"de"`,
+/// or `"it"` — anything else (including the empty string) is `BadRequest`.
+/// CR #275 / #276 (v1.7.0) added DE + IT to the original FR/EN set.
 pub fn validate_default_language(value: &str, loc: &'static str) -> Result<(), AppError> {
-    if value == "fr" || value == "en" {
+    if matches!(value, "fr" | "en" | "de" | "it") {
         Ok(())
     } else {
         Err(AppError::BadRequest(
@@ -170,9 +171,12 @@ mod tests {
     }
 
     #[test]
-    fn validate_default_language_accepts_fr_en() {
+    fn validate_default_language_accepts_all_supported() {
+        // v1.7.0 (CR #275 / #276) added DE + IT to the original FR/EN set.
         assert!(validate_default_language("fr", "en").is_ok());
         assert!(validate_default_language("en", "en").is_ok());
+        assert!(validate_default_language("de", "en").is_ok());
+        assert!(validate_default_language("it", "en").is_ok());
     }
 
     #[test]
@@ -185,9 +189,17 @@ mod tests {
             validate_default_language("es", "en"),
             Err(AppError::BadRequest(_))
         ));
+        assert!(matches!(
+            validate_default_language("pt", "en"),
+            Err(AppError::BadRequest(_))
+        ));
         // Case-sensitive: callers must lowercase before validating.
         assert!(matches!(
             validate_default_language("FR", "en"),
+            Err(AppError::BadRequest(_))
+        ));
+        assert!(matches!(
+            validate_default_language("DE", "en"),
             Err(AppError::BadRequest(_))
         ));
     }

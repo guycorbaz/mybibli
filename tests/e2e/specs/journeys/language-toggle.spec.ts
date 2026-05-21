@@ -8,9 +8,10 @@
  *  3. Return-URL integrity — toggle preserves the current path + query string.
  *
  * Selector policy (per CLAUDE.md): prefer role/text selectors. The toggle
- * emits `<button name="lang" value="fr">` / `value="en"` — both are reachable
- * via `getByRole("button", { name: /FR|EN/ })` AND via direct attribute
- * selector as a belt-and-suspenders.
+ * emits a `<select id="lang-select">` dropdown (v1.7.0 — was originally a
+ * pair of `<button name="lang">` elements). Tests use `selectOption("en")`
+ * which fires the `change` event picked up by
+ * `mybibli.js::initAutoSubmitSelects`.
  */
 import { test, expect, Page } from "@playwright/test";
 import { loginAs, logout } from "../../helpers/auth";
@@ -59,9 +60,15 @@ test.describe("Story 7-3 — language toggle FR/EN", () => {
     await expect(page.getByRole("link", { name: /Catalogue/i }).first()).toBeVisible();
 
     // Click the EN toggle — full page reload, not HTMX swap.
+    // v1.7.0 (CR #275 / #276) — the nav toggle is now a `<select>`
+    // dropdown (4 langs). `selectOption("en")` fires the `change` event,
+    // which `mybibli.js::initAutoSubmitSelects` listens for and submits
+    // the parent form. The desktop variant has id `lang-select`; the
+    // mobile variant `lang-select-mobile`. We always hit the desktop one
+    // here — the chromium project runs at desktop viewport.
     await Promise.all([
       page.waitForLoadState("load"),
-      page.locator('button[name="lang"][value="en"]').first().click(),
+      page.locator("#lang-select").selectOption("en"),
     ]);
 
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
@@ -81,9 +88,15 @@ test.describe("Story 7-3 — language toggle FR/EN", () => {
 
     // Toggle to EN while authenticated — the handler persists to
     // `users.preferred_language` AND sets the cookie.
+    // v1.7.0 (CR #275 / #276) — the nav toggle is now a `<select>`
+    // dropdown (4 langs). `selectOption("en")` fires the `change` event,
+    // which `mybibli.js::initAutoSubmitSelects` listens for and submits
+    // the parent form. The desktop variant has id `lang-select`; the
+    // mobile variant `lang-select-mobile`. We always hit the desktop one
+    // here — the chromium project runs at desktop viewport.
     await Promise.all([
       page.waitForLoadState("load"),
-      page.locator('button[name="lang"][value="en"]').first().click(),
+      page.locator("#lang-select").selectOption("en"),
     ]);
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
 
@@ -107,9 +120,15 @@ test.describe("Story 7-3 — language toggle FR/EN", () => {
     await page.goto("/catalog?q=tintin&sort=title");
     await expect(page.locator("html")).toHaveAttribute("lang", "fr");
 
+    // v1.7.0 (CR #275 / #276) — the nav toggle is now a `<select>`
+    // dropdown (4 langs). `selectOption("en")` fires the `change` event,
+    // which `mybibli.js::initAutoSubmitSelects` listens for and submits
+    // the parent form. The desktop variant has id `lang-select`; the
+    // mobile variant `lang-select-mobile`. We always hit the desktop one
+    // here — the chromium project runs at desktop viewport.
     await Promise.all([
       page.waitForLoadState("load"),
-      page.locator('button[name="lang"][value="en"]').first().click(),
+      page.locator("#lang-select").selectOption("en"),
     ]);
 
     // Parse the URL and pin the exact guarantees from AC 18: path must be

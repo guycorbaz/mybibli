@@ -191,8 +191,12 @@ test.describe("Story 8-5 — Admin System Settings", () => {
         .getByText(/Default language saved|Langue par défaut enregistrée/i),
     ).toBeVisible({ timeout: 10000 });
 
-    // Fresh context, no cookie, Accept-Language: de (no match).
-    const ctx = await browser.newContext({ locale: "de-DE" });
+    // Fresh context, no cookie, Accept-Language: es (no match).
+    // v1.7.0 (CR #275 / #276) added DE + IT to the resolver, so the
+    // original `de-DE` value now resolves directly to `de` and skips
+    // the default-language fallback this test is exercising. Use `es-ES`
+    // (still unsupported) to force the fall-through.
+    const ctx = await browser.newContext({ locale: "es-ES" });
     const fresh = await ctx.newPage();
     await fresh.goto("/");
     // Body's lang attribute reflects the resolved locale.

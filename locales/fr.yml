@@ -966,6 +966,8 @@ setup:
   step_3_language_label: "Langue par défaut de l'interface"
   step_3_language_fr: "Français"
   step_3_language_en: "English"
+  step_3_language_de: "Deutsch"
+  step_3_language_it: "Italiano"
   step_3_overdue_label: "Seuil de retard (jours)"
   step_3_overdue_help: "Les prêts dépassant ce nombre de jours sont signalés en retard."
   step_3_overdue_unit: "jours"

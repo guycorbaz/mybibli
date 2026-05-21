@@ -28,6 +28,28 @@
             >
             <span class="text-sm text-stone-700 dark:text-stone-200">{{ label_en }}</span>
         </label>
+        <label class="flex items-center gap-2">
+            <input
+                aria-describedby="{{ step_preferences_help.id }}"
+                type="radio"
+                name="default_language"
+                value="de"
+                {% if language_value == "de" %}checked{% endif %}
+                class="text-stone-900 focus:ring-stone-500"
+            >
+            <span class="text-sm text-stone-700 dark:text-stone-200">{{ label_de }}</span>
+        </label>
+        <label class="flex items-center gap-2">
+            <input
+                aria-describedby="{{ step_preferences_help.id }}"
+                type="radio"
+                name="default_language"
+                value="it"
+                {% if language_value == "it" %}checked{% endif %}
+                class="text-stone-900 focus:ring-stone-500"
+            >
+            <span class="text-sm text-stone-700 dark:text-stone-200">{{ label_it }}</span>
+        </label>
         {% if let Some(msg) = err_language %}
             <p class="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">{{ msg }}</p>
         {% endif %}

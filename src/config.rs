@@ -422,14 +422,17 @@ impl AppSettings {
                 // Story 8-5: admin-editable language fallback. Normalize to
                 // lowercase so a manual SQL edit of `'FR'` or `'EN'` is
                 // accepted instead of silently falling back to default.
+                // v1.7.0 (CR #275 / #276) added DE + IT.
                 "default_language" => match value.to_lowercase().as_str() {
                     "fr" => settings.default_language = "fr".to_string(),
                     "en" => settings.default_language = "en".to_string(),
+                    "de" => settings.default_language = "de".to_string(),
+                    "it" => settings.default_language = "it".to_string(),
                     _ => {
                         tracing::warn!(
                             key = %key,
                             value = %value,
-                            "Invalid default_language (must be fr or en), using default"
+                            "Invalid default_language (must be fr, en, de, or it), using default"
                         );
                     }
                 },

@@ -20,7 +20,10 @@ use crate::AppState;
 use crate::i18n::resolve_locale;
 
 /// Request-scoped locale, inserted as an axum `Extension` by
-/// [`locale_resolve_middleware`]. Only `"fr"` and `"en"` are possible.
+/// [`locale_resolve_middleware`]. One of `"fr"`, `"en"`, `"de"`, `"it"`
+/// (DE + IT added in v1.7.0 via CR #275 / #276 — translation YAMLs ship
+/// in subsequent v1.7.x patches; `rust_i18n` fallback renders EN until
+/// then).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Locale(pub &'static str);
 

@@ -4,18 +4,25 @@
 //!   1. `?lang=` query override (render-only, never mutates state — AC 7)
 //!   2. `lang` cookie
 //!   3. authenticated user's `users.preferred_language`
-//!   4. `Accept-Language` header (first recognized FR/EN tag, q-ranked)
+//!   4. `Accept-Language` header (first recognized FR/EN/DE/IT tag, q-ranked)
 //!   5. hard-coded `default` (call sites pass `"fr"`)
 //!
-//! Only `"fr"` and `"en"` are accepted. Any other value falls through to the
-//! next slot, so a malformed cookie or a query param like `?lang=es` cannot
-//! clobber a valid preference further down the chain.
+//! Accepted locales: `"fr"`, `"en"`, `"de"`, `"it"`. CR #275 (DE) + #276 (IT)
+//! extended the original FR/EN-only set in v1.7.0 — translation YAML files
+//! (`locales/de.yml`, `locales/it.yml`) ship in subsequent v1.7.x PRs;
+//! `rust_i18n::i18n!(fallback = "en")` carries the rendering until then.
+//!
+//! Any other value falls through to the next slot, so a malformed cookie or
+//! a query param like `?lang=es` cannot clobber a valid preference further
+//! down the chain.
 
-/// Resolve the request locale to a static `"fr"` / `"en"` string.
+/// Resolve the request locale to a static `"fr"` / `"en"` / `"de"` / `"it"`
+/// string.
 ///
-/// All inputs are optional. Any `Some("xx")` whose value is not `"fr"` or
-/// `"en"` (case-insensitive) is treated as absent for that slot and the next
-/// slot is consulted. `default` must itself be a valid locale.
+/// All inputs are optional. Any `Some("xx")` whose value is not one of the
+/// four accepted locales (case-insensitive) is treated as absent for that
+/// slot and the next slot is consulted. `default` must itself be a valid
+/// locale.
 pub fn resolve_locale(
     query: Option<&str>,
     cookie: Option<&str>,
@@ -41,15 +48,19 @@ pub fn resolve_locale(
     normalize_exact(Some(default)).unwrap_or("fr")
 }
 
-/// Accept ONLY exactly `"fr"` or `"en"` (case-insensitive, trimmed).
-/// `"fr-CA"`, `"en_US"`, etc. are rejected here — those go through
-/// `parse_accept_language` which handles prefixes + q-values.
+/// Accept ONLY exactly `"fr"`, `"en"`, `"de"`, or `"it"` (case-insensitive,
+/// trimmed). `"fr-CA"`, `"en_US"`, `"de-AT"`, etc. are rejected here — those
+/// go through `parse_accept_language` which handles prefixes + q-values.
 fn normalize_exact(v: Option<&str>) -> Option<&'static str> {
     let s = v?.trim();
     if s.eq_ignore_ascii_case("fr") {
         Some("fr")
     } else if s.eq_ignore_ascii_case("en") {
         Some("en")
+    } else if s.eq_ignore_ascii_case("de") {
+        Some("de")
+    } else if s.eq_ignore_ascii_case("it") {
+        Some("it")
     } else {
         None
     }
@@ -120,9 +131,9 @@ fn parse_accept_language(header: &str) -> Option<&'static str> {
     None
 }
 
-/// Prefix-match a single `Accept-Language` tag (`fr`, `fr-CA`, `en_US`, …)
-/// against the supported locales. Returns `None` for unsupported languages
-/// (`*`, `es`, `de`, …).
+/// Prefix-match a single `Accept-Language` tag (`fr`, `fr-CA`, `en_US`,
+/// `de-AT`, `it-CH`, …) against the supported locales. Returns `None` for
+/// unsupported languages (`*`, `es`, `pt`, …).
 fn tag_to_locale(tag: &str) -> Option<&'static str> {
     // Normalize to lower-case ASCII — locale tags are ASCII per BCP 47.
     let lower = tag.to_ascii_lowercase();
@@ -134,6 +145,8 @@ fn tag_to_locale(tag: &str) -> Option<&'static str> {
     match primary {
         "fr" => Some("fr"),
         "en" => Some("en"),
+        "de" => Some("de"),
+        "it" => Some("it"),
         _ => None,
     }
 }
@@ -192,20 +205,57 @@ mod tests {
 
     #[test]
     fn unknown_cookie_falls_through_to_user_pref() {
-        let r = resolve_locale(None, Some("de"), Some("en"), None, "fr");
+        // v1.7.0 (CR #275 / #276) added DE + IT to the accepted set, so a
+        // truly-unknown locale token is now needed here (`pt`, `es`, …) —
+        // `de` would resolve directly instead of falling through.
+        let r = resolve_locale(None, Some("pt"), Some("en"), None, "fr");
         assert_eq!(r, "en");
     }
 
     #[test]
     fn unknown_user_pref_falls_through_to_accept_language() {
-        let r = resolve_locale(None, None, Some("de"), Some("en"), "fr");
+        let r = resolve_locale(None, None, Some("pt"), Some("en"), "fr");
         assert_eq!(r, "en");
     }
 
     #[test]
     fn all_unknown_falls_to_default() {
-        let r = resolve_locale(Some("xx"), Some("yy"), Some("zz"), Some("es,de"), "fr");
+        let r = resolve_locale(Some("xx"), Some("yy"), Some("zz"), Some("es,pt"), "fr");
         assert_eq!(r, "fr");
+    }
+
+    // CR #275 / #276 — DE + IT priority chain coverage. Mirror of the
+    // FR/EN tests above: explicit cookie/user-pref values must resolve.
+
+    #[test]
+    fn de_cookie_resolves() {
+        let r = resolve_locale(None, Some("de"), None, None, "fr");
+        assert_eq!(r, "de");
+    }
+
+    #[test]
+    fn it_cookie_resolves() {
+        let r = resolve_locale(None, Some("it"), None, None, "fr");
+        assert_eq!(r, "it");
+    }
+
+    #[test]
+    fn de_query_wins_over_cookie() {
+        let r = resolve_locale(Some("de"), Some("en"), None, None, "fr");
+        assert_eq!(r, "de");
+    }
+
+    #[test]
+    fn it_accept_language_resolves_with_region() {
+        // `it-CH;q=0.9` (Italian as spoken in Switzerland) should map to "it".
+        let r = resolve_locale(None, None, None, Some("it-CH;q=0.9"), "fr");
+        assert_eq!(r, "it");
+    }
+
+    #[test]
+    fn de_at_accept_language_resolves() {
+        let r = resolve_locale(None, None, None, Some("de-AT"), "fr");
+        assert_eq!(r, "de");
     }
 
     // ─── Case / whitespace tolerance ────────────────────────────
@@ -281,7 +331,9 @@ mod tests {
 
     #[test]
     fn accept_language_only_unsupported_is_none() {
-        assert_eq!(parse_accept_language("es,de;q=0.8"), None);
+        // `de` is now SUPPORTED (CR #275 v1.7.0), so this test uses `es` + `pt`
+        // — both currently unmapped.
+        assert_eq!(parse_accept_language("es,pt;q=0.8"), None);
     }
 
     #[test]

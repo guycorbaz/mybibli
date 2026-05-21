@@ -1,5 +1,7 @@
-{# Admin → System → Language form (story 8-5). Two-radio group (FR / EN).
-   CSRF first. The selected radio matches the current default_language. #}
+{# Admin → System → Language form (story 8-5). Radio group with one
+   option per supported locale. CSRF first. The selected radio matches
+   the current default_language. v1.7.0 (CR #275 / #276) extended the
+   original FR / EN set with DE + IT. #}
 <form id="admin-system-language-form"
       method="POST"
       action="/admin/system/language"
@@ -19,12 +21,26 @@
                    {% if default_language_value == "fr" %}checked{% endif %}>
             <span>FR</span>
         </label>
-        <label class="inline-flex items-center gap-2">
+        <label class="inline-flex items-center gap-2 mr-4">
             <input type="radio"
                    name="default_language"
                    value="en"
                    {% if default_language_value == "en" %}checked{% endif %}>
             <span>EN</span>
+        </label>
+        <label class="inline-flex items-center gap-2 mr-4">
+            <input type="radio"
+                   name="default_language"
+                   value="de"
+                   {% if default_language_value == "de" %}checked{% endif %}>
+            <span>DE</span>
+        </label>
+        <label class="inline-flex items-center gap-2">
+            <input type="radio"
+                   name="default_language"
+                   value="it"
+                   {% if default_language_value == "it" %}checked{% endif %}>
+            <span>IT</span>
         </label>
     </fieldset>
     <div class="mt-3">

@@ -964,6 +964,8 @@ setup:
   step_3_language_label: "Default UI language"
   step_3_language_fr: "Français"
   step_3_language_en: "English"
+  step_3_language_de: "Deutsch"
+  step_3_language_it: "Italiano"
   step_3_overdue_label: "Overdue threshold (days)"
   step_3_overdue_help: "Loans past this many days are flagged as overdue."
   step_3_overdue_unit: "days"
