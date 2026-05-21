@@ -104,6 +104,72 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.1}\label{sec:whats-new-1.7.1}
+
+Version 1.7.1 is a patch release that closes the v1.7.0 \#301 gap
+and bundles four production-surfaced bugfixes from the user's
+v1.7.0 NAS upgrade. \emph{No schema migration affecting catalog
+data}; routine \texttt{docker compose pull \&\& docker compose up
+-d}. One new settings row is seeded (\texttt{log\_level}) by an
+idempotent migration.
+
+Six fixes:
+
+\begin{itemize}
+  \item \textbf{Runtime log-level admin UI (\#308).} Finishes the
+        v1.7.0 \#301 feature properly. \texttt{/admin > System}
+        gains a \textbf{Logging} section with a free-form
+        \texttt{EnvFilter} directive field. Click Save and the
+        next log line uses the new level \string— no
+        \texttt{docker compose up -d}, no restart. Persisted to
+        the \texttt{settings} table so the choice survives
+        container restarts. The v1.7.0 release notes had
+        advertised this surface but only the env-var bootstrap +
+        rotation actually shipped; this release ships the missing
+        piece.
+  \item \textbf{API-key permanent-delete 422 (\#309).} The
+        \texttt{DELETE /admin/api-keys/\{id\}} handler was
+        returning 422 Unprocessable Entity because it required a
+        request-body form, but HTMX \texttt{hx-delete} puts form
+        fields in the query string. Drop the body extractor; the
+        CSRF middleware already validates the \texttt{X-CSRF-Token}
+        header. Latent regression since v1.5.1 \#284.
+  \item \textbf{Provider-health probe timeout configurable, default
+        bumped 3 s \string→ 10 s (\#310).} The hardcoded 3 s
+        probe timeout was too tight for typical home-NAS DNS + TLS
+        handshake; every probe was timing out, making
+        \texttt{/admin > Health} permanently red even when
+        providers were reachable for the actual metadata-fetch
+        path. New env var
+        \texttt{MYBIBLI\_PROVIDER\_HEALTH\_TIMEOUT\_SECS}
+        (default 10) lets ops bump to 20\string–30 s on fragile
+        uplinks or down to 4\string–5 s on fast infra.
+  \item \textbf{Bulk cover-refetch now actually re-queries
+        providers (\#311).} The admin "Re-fetch missing covers"
+        action was silently no-op'ing on cached titles because the
+        metadata chain short-circuited on the cache hit set when
+        the title was originally cataloged. New \texttt{force\_refresh}
+        path invalidates the cache before re-running the chain,
+        so Google Books / BDGest / etc. get re-asked for a cover
+        URL. List-mode after HTMX search swap also restored
+        (\#315).
+  \item \textbf{DB pool size 10 \string→ 20 (\#312).} A transient
+        \texttt{pool timed out while waiting for an open
+        connection} was observed on the user's prod NAS during a
+        64-title bulk-refetch. The sqlx default 10 was too tight
+        for HTTP handlers + 3 always-on background tasks +
+        concurrent admin HTMX polling + the per-title DB hits of
+        the bulk worker. 20 gives comfortable headroom for
+        single-household / small-association load.
+  \item \textbf{Home filter chips: drop duplicate "Non classé"
+        chip (\#314).} The home page was rendering both a "Non
+        classé" chip (auto-generated from the placeholder genre
+        row) and a "Sans genre" chip (the dedicated \#205
+        affordance) \string— both returning the same titles.
+        Strip the placeholder from the chip list; the dedicated
+        chip remains.
+\end{itemize}
+
 \section{What's new in 1.7.0}\label{sec:whats-new-1.7.0}
 
 Version 1.7.0 is the fifth themed minor of the post-v1 era \string—

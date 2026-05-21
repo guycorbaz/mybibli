@@ -108,15 +108,36 @@ par requête HTTP).
 
 \subsection*{Comment changer le niveau}
 
-Modifier le \texttt{docker-compose.yml} ou le \texttt{.env}, fixer
-\texttt{MYBIBLI\_LOG\_LEVEL}, puis :
+\textbf{Deux chemins}, selon que vous voulez que le changement
+survive aux redémarrages du conteneur ou qu'il ne dure que le
+temps d'une investigation.
+
+\subsubsection*{Depuis l'interface admin (v1.7.1+, recommandé)}
+
+Connectez-vous en Admin, allez sur \texttt{/admin?tab=system},
+descendez jusqu'à la section \textbf{Journalisation}. Saisissez la
+nouvelle directive dans le champ \texttt{Niveau de journalisation}
+(tout ce que \texttt{tracing-subscriber::EnvFilter} accepte
+\string— niveau simple ou liste de directives). Cliquez
+\textbf{Enregistrer}. La prochaine ligne de log utilise le nouveau
+filtre \string— sans redémarrage du conteneur, sans
+\texttt{docker compose up -d}. La valeur est persistée en table
+\texttt{settings} et survit aux redémarrages.
+
+\subsubsection*{Depuis \texttt{docker-compose.yml} / \texttt{.env}}
+
+Modifier le fichier, fixer \texttt{MYBIBLI\_LOG\_LEVEL}, puis :
 
 \begin{lstlisting}
 docker compose up -d
 \end{lstlisting}
 
 Le conteneur redémarre et le nouveau niveau prend effet dès la
-prochaine ligne de journal.
+prochaine ligne de journal. \textbf{À noter :} la valeur enregistrée
+en admin dans la table \texttt{settings} gagne au prochain boot.
+Donc si vous avez déjà enregistré un niveau depuis l'UI admin, c'est
+celui-là qui sera chargé \string— la variable d'environnement ne
+compte qu'à l'installation fraîche avant le premier enregistrement.
 
 \section{Lire le JSON structuré}
 

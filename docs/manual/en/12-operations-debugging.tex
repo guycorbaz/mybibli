@@ -98,15 +98,33 @@ no per-query SQL noise, no per-request trace floods).
 
 \subsection*{How to change the level}
 
-Edit your \texttt{docker-compose.yml} or \texttt{.env}, set
-\texttt{MYBIBLI\_LOG\_LEVEL}, then:
+\textbf{Two paths}, depending on whether you want the change to
+survive container restarts or just for one investigation.
+
+\subsubsection*{From the admin UI (v1.7.1+, recommended)}
+
+Log in as Admin, go to \texttt{/admin?tab=system}, scroll to the
+\textbf{Logging} section. Enter the new directive in the
+\texttt{Log level} field (anything that
+\texttt{tracing-subscriber::EnvFilter} accepts \string— plain
+level or full directive list). Click \textbf{Save}. The next log
+line uses the new filter \string— no container restart, no
+\texttt{docker compose up -d}. The value is persisted to the
+\texttt{settings} table, so it survives container restarts.
+
+\subsubsection*{From \texttt{docker-compose.yml} / \texttt{.env}}
+
+Edit the file, set \texttt{MYBIBLI\_LOG\_LEVEL}, then:
 
 \begin{lstlisting}
 docker compose up -d
 \end{lstlisting}
 
 The container restarts and the new level takes effect from the next
-log line.
+log line. \textbf{Caveat:} the admin-saved value in the
+\texttt{settings} table wins on the next boot, so if you've ever
+saved a level via the admin UI, that's what will load \string—
+the env var only matters on a fresh install before the first save.
 
 \section{Reading the structured JSON}
 
