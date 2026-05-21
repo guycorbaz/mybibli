@@ -1,0 +1,971 @@
+app:
+  name: mybibli
+common:
+  cancel: Annulla
+# CR #242 — Lista dei desideri (v1.3)
+wishlist:
+  list_title: "Lista dei desideri"
+  add_button: "Aggiungi alla lista dei desideri"
+  add_to_wishlist: "Aggiungi alla lista dei desideri"
+  print_button: "Stampa"
+  empty_heading: "La tua lista dei desideri è vuota"
+  empty_body: "Aggiungi i libri che desideri acquistare. Scansiona un ISBN o digita un titolo in formato libero."
+  form_title: "Nuova voce nella lista dei desideri"
+  mode_isbn: "Tramite ISBN"
+  mode_freeform: "Formato libero"
+  field_isbn: "ISBN (13 cifre)"
+  field_title: "Titolo"
+  field_authors: "Autori"
+  field_publisher: "Editore"
+  field_year: "Anno"
+  field_notes: "Note"
+  notes_placeholder: "es. solo rilegato, usato OK"
+  lookup_button: "Cerca"
+  confirm_add: "Aggiungi alla lista dei desideri"
+  isbn_invalid: "ISBN non valido — deve contenere 13 cifre con un codice di controllo corretto."
+  title_required: "Il titolo è obbligatorio."
+  resolved_intro: "Trovato presso i fornitori di metadati:"
+  no_metadata: "Nessun metadato trovato per questo ISBN. Passa alla modalità libera per aggiungere il libro manualmente."
+  col_title: "Titolo"
+  col_isbn: "ISBN"
+  col_authors: "Autori"
+  col_publisher: "Editore"
+  col_added: "Aggiunto"
+  col_actions: "Azioni"
+  col_notes: "Note"
+  action_bought: "Acquistato"
+  action_remove: "Rimuovi"
+  back_to_list: "Torna alla lista dei desideri"
+  delete_modal_title: "Segnare %{title} come acquistato?"
+  delete_modal_body: "La voce viene rimossa dalla lista dei desideri. L'azione è reversibile entro 30 giorni dal pannello Cestino dell'amministrazione."
+  print_title: "La mia lista dei desideri"
+  print_count_one: "%{count} libro"
+  print_count_other: "%{count} libri"
+  # CR #266 — server-rendered PDF export.
+  pdf:
+    doc_title: "Lista dei desideri"
+    header_one: "La mia lista dei desideri — %{count} libro"
+    header_other: "La mia lista dei desideri — %{count} libri"
+    generated_on: "Generata il %{date}"
+    empty: "(Ancora nessuna voce nella lista dei desideri.)"
+  autolink_banner_title: "Nella tua lista dei desideri"
+  autolink_banner_body: "Questo ISBN è nella tua lista dei desideri. Rimuoverlo?"
+  autolink_remove: "Rimuovi dalla lista dei desideri"
+  autolink_keep: "Mantieni nella lista dei desideri"
+  home_counter_label: "Nella lista dei desideri"
+connection:
+  lost_heading: "Connessione persa"
+  lost_body: "Tentativo di riconnessione…"
+  lost_retry: "Riprova ora"
+  restored_toast: "Connessione ripristinata"
+empty:
+  loans_heading: "Nessun prestito attivo"
+  loans_body: "I prestiti appaiono qui quando un lettore preleva un esemplare."
+  borrowers_heading: "Ancora nessun lettore"
+  borrowers_body: "Aggiungi un lettore per iniziare a prestare esemplari."
+  borrowers_cta: "Aggiungi un lettore"
+  series_heading: "Ancora nessuna serie"
+  series_body: "Crea una serie per raggruppare titoli correlati."
+  series_cta: "Crea una serie"
+  search_heading: "Nessun risultato"
+  search_body: "Nessun risultato per «%{query}». Prova un termine più generico o scansiona un codice a barre."
+  search_cta: "Aggiungi questo titolo"
+  filter_heading: "Nessun risultato"
+  filter_body: "Nessun elemento corrisponde a questo filtro al momento. Rimuovi il filtro per vedere tutto."
+help:
+  catalog:
+    scan_field_text: "Scansiona o digita un ISBN (10 o 13 cifre), un codice V (formato V0001) o un codice L (formato L01.A) per navigare."
+  home:
+    search_field_text: "Digita per cercare titoli, autori e serie. Scansiona un codice a barre per andare direttamente al record corrispondente."
+  volume:
+    condition_summary: "Aiuto: stato dell'esemplare"
+    condition_text: "Configurato da un amministratore nei Dati di riferimento. Il flag «Prestabile» determina se gli esemplari in questo stato possono essere prestati."
+  series:
+    type_summary: "Aiuto: tipo di serie"
+    type_text: "Le serie chiuse hanno un totale dichiarato — il rilevamento delle lacune si applica solo alle serie chiuse. Le serie aperte possono crescere indefinitamente."
+  admin:
+    overdue_threshold_summary: "Aiuto: soglia di scadenza"
+    overdue_threshold_text: "Un prestito è segnalato come in ritardo quando i giorni trascorsi dal prelievo superano questo valore (strettamente maggiore)."
+    provider_api_keys_summary: "Aiuto: chiavi API dei fornitori"
+    provider_api_keys_text: "Lascia una chiave vuota per saltare il fornitore nella catena dei metadati. Le chiavi diventano attive dalla richiesta successiva — non è necessario riavviare."
+  setup:
+    step_admin_summary: "Aiuto: account amministratore"
+    step_admin_text: "Crea il primo utente amministratore. Nome utente e password sono obbligatori; entrambi possono essere modificati in seguito dal pannello di amministrazione utenti."
+    step_providers_summary: "Aiuto: fornitori di metadati"
+    step_providers_text: "Chiavi API opzionali per fornitori esterni di metadati. Salta questo passaggio per usare solo BnF (sempre gratuito) e aggiungere le chiavi più tardi dalle impostazioni di sistema."
+    step_preferences_summary: "Aiuto: preferenze"
+    step_preferences_text: "Lingua predefinita e soglia di ritardo per i nuovi prestiti. Entrambe possono essere modificate in seguito dalle impostazioni di sistema."
+  borrower:
+    email_summary: "Aiuto: email del lettore"
+    email_text: "Facoltativo. L'email è memorizzata in chiaro — usata per promemoria di scadenza se li abiliti in seguito."
+    phone_summary: "Aiuto: telefono del lettore"
+    phone_text: "Facoltativo. Il telefono è memorizzato in chiaro — nessuna validazione di formato. Usato come contatto di riserva quando l'email manca."
+shortcuts:
+  cheat_sheet:
+    heading: "Scorciatoie da tastiera"
+    category_navigation: "Navigazione"
+    category_catalog: "Catalogo"
+    category_modal: "Finestre & menu"
+    shortcut_help: "Apri questa scheda di scorciatoie"
+    shortcut_escape: "Chiudi qualsiasi finestra o menu aperto"
+    shortcut_go_home: "Vai alla home"
+    shortcut_go_catalog: "Vai al catalogo"
+    shortcut_go_loans: "Vai ai prestiti"
+    shortcut_go_borrowers: "Vai ai lettori"
+    shortcut_go_admin: "Vai all'amministrazione"
+    shortcut_focus_scan: "Metti a fuoco il campo di scansione"
+    shortcut_new_title: "Aggiungi un nuovo titolo"
+    then_label: "poi"
+    close_label: "Chiudi"
+  footer_link: "Premi ? per le scorciatoie"
+browse:
+  list_view: Vista elenco
+  grid_view: Vista griglia
+  display_mode: Modalità di visualizzazione
+  sort_by: "Ordina per"
+home:
+  title: mybibli
+  subtitle: La tua biblioteca multimediale personale
+  search_placeholder: "Cerca titoli, autori, serie…"
+  searching_announcement: "Ricerca in corso…"
+  scanning_announcement: "Scansione rilevata, in elaborazione…"
+  scan_failed_fallback: "Scansione fallita. Riprova o usa la pagina del catalogo."
+  remove_filter_aria: "Rimuovi filtro"
+  filter:
+    uncategorized: "Senza categoria"
+    no_volumes: "Titoli senza esemplari"
+  genre_filter_no_longer_exists: "Questo genere non esiste più — vengono mostrati tutti i titoli."
+catalog:
+  title: Catalogo
+  scan_placeholder: "Scansiona o digita: ISBN, codice V, codice L, o ricerca…"
+  scan_label: Scansiona codice a barre o digita codice
+  scan_received: "Scansione ricevuta: %{code}"
+  new_title_button: Nuovo titolo
+  session_counter: "%{count} elementi in questa sessione"
+  session_counter_aria: "%{count} elementi catalogati in questa sessione"
+nav:
+  catalog: Catalogo
+  loans: Prestiti
+  admin: Amministrazione
+  locations: Ubicazioni
+  series: Serie
+  borrowers: Lettori
+  wishlist: "Lista dei desideri"
+  login: Accedi
+  logout: Esci
+  menu_open: Apri menu
+  skip_to_content: Vai al contenuto principale
+  theme_toggle: Cambia tema
+  language_toggle_aria: Cambia lingua
+title:
+  created: "Titolo creato: %{title}"
+  exists: "Il titolo esiste già: %{title}"
+  current_banner: "Corrente: %{title}"
+  current_banner_with_volumes: "Corrente: %{title} — %{count} es."
+  current_banner_with_author: "Corrente: %{title} — %{author} — %{count} es."
+  delete_title_button: "Elimina titolo"
+  delete_modal_title: "Eliminare «%{title}»?"
+  delete_modal_body: "Questo titolo non ha esemplari collegati. L'eliminazione lo rimuove dal catalogo (recuperabile dal Cestino entro 30 giorni)."
+  delete_modal_confirm: "Elimina titolo"
+  delete_blocked_has_volumes: "Impossibile eliminare: questo titolo ora ha esemplari collegati. Ricarica la pagina per vederli."
+  form:
+    heading: Nuovo titolo
+    title_label: Titolo
+    media_type: Tipo di supporto
+    genre: Genere
+    language: Lingua
+    subtitle: Sottotitolo
+    publisher: Editore
+    publication_date: Data di pubblicazione
+    isbn: ISBN
+    issn: ISSN
+    upc: UPC
+    page_count: Numero di pagine
+    track_count: Numero di tracce
+    total_duration: "Durata totale (secondi)"
+    age_rating: Classificazione per età
+    issue_number: Numero del fascicolo
+    submit: Crea titolo
+    cancel: Annulla
+  media_types:
+    book: Libro
+    bd: Fumetto / Graphic novel
+    cd: CD
+    dvd: DVD
+    magazine: Rivista
+    report: Relazione
+feedback:
+  title_created: "Titolo creato con successo."
+  title_created_suggestion: "Scansiona un codice V per collegare un esemplare, oppure un altro ISBN."
+  title_exists: "Questo titolo è già nel catalogo."
+  title_exists_suggestion: "Scansiona un codice V per collegare un esemplare."
+  code_unsupported: "Disambiguazione del tipo di supporto non ancora disponibile. Usa la creazione manuale del titolo per codici non ISBN."
+  isbn_invalid: "Questo codice non sembra un ISBN valido. Controlla il codice a barre e ripeti la scansione."
+  volume_created: "Esemplare %{label} collegato a %{title}."
+  volume_created_suggestion: "Scansiona un codice L per collocare, oppure un altro codice V."
+  volume_duplicate: "L'etichetta %{label} è già assegnata a %{title}. Scansiona un'etichetta diversa."
+  volume_no_title: "Nessun titolo selezionato. Scansiona prima un ISBN per stabilire un titolo di contesto."
+  volume_shelved: "Esemplare %{label} collocato in %{path}."
+  vcode_invalid: "Formato codice V non valido. Atteso V seguito da 4 cifre (es. V0042)."
+  lcode_not_found: "Ubicazione %{label} non trovata."
+  # CR #280 — scan-shelve flow refusing an organizational location.
+  location_organizational: "L'ubicazione %{label} è organizzativa — può contenere solo sotto-ubicazioni, non esemplari. Scegli un'ubicazione di scaffale."
+  location_stub: "Contenuto dell'ubicazione — prossimamente."
+  active_location: "Ubicazione attiva: %{path}. Scansiona codici V per collocare qui."
+  scan_vcode_to_shelve: "Scansiona un codice V per collocare in questa ubicazione."
+  volume_created_and_shelved: "Esemplare %{label} collegato a %{title} e collocato in %{path}."
+  metadata_fetching: "Titolo creato da ISBN %{isbn} — Recupero dei metadati…"
+  metadata_resolved: "Metadati trovati: %{title} di %{author}."
+  metadata_resolved_no_author: "Metadati trovati: %{title}."
+  metadata_failed: "Nessun metadato trovato per ISBN %{isbn}. Modifica il titolo manualmente."
+  metadata_cached: "Titolo creato con metadati dalla cache: %{title}."
+  edit_manually: "[Modifica manualmente]"
+  retry: Riprova
+  deleted: "Elemento eliminato."
+validation:
+  required: "Questo campo è obbligatorio."
+  negative_number: "I campi numerici non possono essere negativi."
+  invalid_date_format: "Formato data non valido. Usa AAAA, AAAA-MM o AAAA-MM-GG."
+contributor:
+  added: "%{name} aggiunto come %{role} a %{title}."
+  duplicate: "%{name} è già %{role} di questo titolo."
+  updated: Collaboratore aggiornato.
+  deleted: Collaboratore eliminato.
+  removed: Collaboratore rimosso dal titolo.
+  delete_modal_title: "Eliminare il collaboratore %{name}?"
+  delete_modal_body: "I titoli collegati perderanno questo collaboratore se non ri-assegnato."
+  delete_modal_confirm: Elimina
+  error:
+    name_required: Il nome del collaboratore è obbligatorio.
+    name_too_long: Il nome del collaboratore deve essere al massimo 255 caratteri.
+    role_not_found: Il ruolo selezionato non esiste.
+  form:
+    name: Nome
+    role: Ruolo
+    biography: Biografia
+    submit: Aggiungi collaboratore
+    add_button: Aggiungi collaboratore
+search:
+  results_count: "%{count} risultati trovati"
+  col:
+    title: Titolo
+    contributor: Collaboratore
+    genre: Genere
+    volumes: Esemplari
+    dewey: Dewey
+  sort_aria_asc: "Ordina per %{column} crescente"
+  sort_aria_desc: "Ordina per %{column} decrescente"
+  connection_lost: "Connessione persa — verifica la rete."
+pagination:
+  previous: Precedente
+  next: Successivo
+  aria_label: Impaginazione
+title_detail:
+  contributors: Collaboratori
+  volumes: Esemplari
+  genre: Genere
+  publisher: Editore
+  published: Pubblicato
+  similar_titles: Titoli simili
+  volumes_section_heading: Esemplari di questo titolo
+  no_volumes: "Ancora nessun esemplare per questo titolo."
+  add_volume_cta: "Scansiona un nuovo esemplare"
+  col_vcode: Codice V
+  col_location: Ubicazione
+  col_condition: Condizione
+  col_actions: Azioni
+  action_edit: Modifica
+  action_delete: Elimina
+  field_unset: "—"
+contributor_detail:
+  titles: Titoli
+  biography: Biografia
+  delete: Elimina
+series:
+  list_title: Serie
+  add: Aggiungi serie
+  name: Nome
+  description: Descrizione
+  type: Tipo
+  type_open: Aperta
+  type_closed: Chiusa
+  total_count: Totale esemplari
+  owned_count: Posseduti
+  gap_count: Mancanti
+  edit: Modifica
+  delete: Elimina
+  created: "Serie creata: %{name}"
+  updated: Serie aggiornata.
+  deleted: Serie eliminata.
+  name_required: Il nome della serie è obbligatorio.
+  name_duplicate: "Esiste già una serie con il nome «%{name}»."
+  total_required_for_closed: Il numero totale di esemplari è obbligatorio per le serie chiuse.
+  total_below_owned: "Il totale (%{total}) non può essere inferiore al numero posseduto (%{owned})."
+  detail_title: Dettagli della serie
+  save: Salva
+  cancel: Annulla
+  back_to_list: Torna alle serie
+  prev: Precedente
+  next: Successivo
+  assign: Aggiungi alla serie
+  unassign: Rimuovi dalla serie
+  position: Posizione
+  position_taken: "La posizione %{position} è già occupata in questa serie."
+  position_invalid: "La posizione deve essere almeno 1."
+  position_exceeds_total: "La posizione %{position} supera il totale degli esemplari (%{total})."
+  assigned: "Assegnato a %{series} alla posizione %{position}."
+  unassigned: "Rimosso dalla serie."
+  missing_volume: "Esemplare mancante n."
+  ongoing: "in corso, ultimo noto: n.%{position}"
+  no_assignments: "Non assegnato ad alcuna serie."
+  sort:
+    position: Posizione
+    dewey_code: Codice Dewey
+    title: Titolo
+  delete_has_titles: "Impossibile eliminare %{name}: %{count} titolo(i) assegnato(i). Rimuovi prima tutte le assegnazioni."
+  delete_modal_title: "Eliminare la serie %{name}?"
+  delete_modal_body: "I titoli assegnati devono prima essere ri-assegnati o staccati."
+  delete_modal_confirm: "Elimina"
+  omnibus: Omnibus
+  end_position: Posizione finale
+  omnibus_assigned: "Omnibus assegnato a %{series} che copre le posizioni %{start}-%{end}."
+  omnibus_help_summary: "Aiuto: omnibus"
+  omnibus_help_text: "Seleziona questa casella quando il libro raggruppa più volumi della serie (es. un omnibus che raccoglie i volumi 1–3). Il modulo mostrerà allora un campo «Posizione finale» in modo che il titolo copra un intervallo di posizioni invece di una sola."
+  select_series: "Seleziona una serie…"
+error:
+  internal: Si è verificato un errore interno
+  not_found: La risorsa richiesta non è stata trovata
+  bad_request: Richiesta non valida
+  unauthorized: Autenticazione richiesta
+  forbidden:
+    title: Accesso negato
+    body: Il tuo account non ha i permessi per eseguire questa azione. Chiedi a un amministratore se hai bisogno dell'accesso.
+  csrf_rejected_title: Sessione scaduta
+  csrf_rejected_message: Il tuo token CSRF è mancante o scaduto. Ricarica la pagina e riprova l'azione.
+  csrf_session_drifted_title: Sessione scaduta — ricaricare
+  csrf_session_drifted_message: La tua azione è stata respinta perché il token di sicurezza della sessione è scaduto. Capita tipicamente quando una scheda resta aperta per diversi giorni. Clicca Ricarica per rinfrescare la sessione e riprovare.
+  csrf_session_drifted_reload_button: Ricarica la pagina
+  csrf_payload_too_large_title: Richiesta troppo grande
+  csrf_payload_too_large_message: Il modulo inviato supera il limite di dimensione del server. Riduci il contenuto e riprova.
+  title:
+    creation_failed: Creazione del titolo fallita
+    required: Il titolo è obbligatorio
+  isbn:
+    invalid_checksum: Checksum ISBN non valido
+    invalid_format: "Formato ISBN non valido — devono essere 13 cifre"
+    already_used: "Un altro titolo usa già questo ISBN — non viene creato un duplicato"
+    not_found: ISBN non trovato
+  genre:
+    required: Il genere è obbligatorio
+  media_type:
+    required: Il tipo di supporto è obbligatorio
+  language:
+    required: La lingua è obbligatoria
+  conflict: "Questo record è stato modificato da un altro utente. Ricarica e riprova."
+  delete_has_references: "Impossibile eliminare: l'elemento è referenziato da record attivi."
+  contributor:
+    has_titles: "Impossibile eliminare %{name}. Questo collaboratore è associato a %{count} titolo(i). Rimuovi prima il collaboratore da tutti i titoli."
+  user:
+    username_empty: Il nome utente è obbligatorio
+    username_taken: "Il nome utente «%{username}» è già in uso"
+    password_too_short: La password deve avere almeno 8 caratteri
+    password_too_long: La password deve avere al massimo 72 caratteri
+    role_invalid: Il ruolo deve essere Bibliotecario o Amministratore
+    self_deactivate: Non puoi disattivare il tuo stesso account
+    last_admin: Deve restare almeno un amministratore attivo
+    last_admin_demote: "Sei l'unico amministratore attivo — creane un altro prima di cambiare ruolo"
+    not_found: Utente non trovato
+    version_mismatch: "L'utente è stato modificato da un altro amministratore — ricarica e riprova"
+  reference_data:
+    name_empty: Il nome è obbligatorio
+    name_too_long: Il nome deve avere al massimo 255 caratteri
+    name_taken: "«%{name}» esiste già"
+    in_use_with_link: "Impossibile eliminare: %{count} %{plural} utilizza(no) questo(a) %{singular}. %{link_html}"
+    in_use_no_link: "Impossibile eliminare: %{count} %{plural} utilizza(no) questo(a) %{singular}."
+    version_mismatch: "La voce è stata modificata da un altro amministratore — ricarica e riprova"
+    not_found: Voce non trovata
+    invalid_version: "Versione non valida — ricarica la pagina e riprova"
+    node_type_name_too_long_for_cascade: "Il nome deve avere al massimo %{max} caratteri (i tipi di ubicazione si propagano a storage_locations)"
+    name_invalid_chars: "Il nome contiene caratteri Unicode invisibili o direzionali non consentiti"
+  system:
+    overdue_threshold_invalid: "La soglia deve essere ≥ 1 giorno"
+    overdue_threshold_too_large: "La soglia deve essere ≤ 365 giorni"
+    default_language_invalid: "La lingua deve essere FR, EN, DE o IT"
+    default_currency_invalid: "La valuta predefinita deve essere un codice ISO 4217 a 3 lettere (es. CHF, EUR)."
+    version_mismatch: "Le impostazioni sono state modificate da un altro amministratore — ricarica e riprova"
+    provider_version_mismatch: "%{provider} è stato modificato da un altro amministratore — ricarica e riprova"
+  code:
+    unsupported_type: Tipo di codice non supportato
+guide:
+  initial: "Scansiona un ISBN per iniziare a catalogare, oppure un codice L per impostare un'ubicazione di scaffale."
+  title_active: "Titolo attivo: %{title}. Scansiona un codice V per aggiungere un esemplare."
+  volume_ready: "Esemplare %{label} pronto. Scansiona un codice L per collocare, oppure un altro codice V."
+  shelved: "Collocato! Scansiona un altro ISBN, codice V o codice L."
+  batch_active: "Ubicazione attiva: %{path}. Scansiona codici V per collocare qui."
+volume:
+  detail_title: Dettagli esemplare
+  edit_title: Modifica esemplare
+  condition_label: Condizione
+  edition_label: Edizione
+  not_shelved: Non collocato
+  submit: Salva
+  # CR #237 — shelf-audit affordance on the volume detail page.
+  under_audit_chip: "Da controllare"
+  mark_under_audit: "Segna da controllare"
+  mark_checked: "Controllato"
+  valuation_section: "Valutazione (opzionale)"
+  purchase_price: "Prezzo di acquisto"
+  current_value: "Valore attuale stimato"
+  currency_label: "Valuta"
+  valuation_help: "Opzionale — lascia vuoto per saltare. La valuta predefinita è quella configurata dall'amministratore, ma può essere sovrascritta per esemplare."
+  currently_on_loan: "Impossibile eliminare: questo esemplare è attualmente prestato."
+  loan_status_field: "Stato del prestito:"
+  on_loan_since: "In prestito dal %{date}"
+  on_loan_to_prefix: "In prestito a "
+  on_loan_to_since_suffix: " dal %{date}"
+  delete_modal_title: "Eliminare l'esemplare %{label}?"
+  delete_modal_body: "L'esemplare viene rimosso dal catalogo. L'azione è reversibile entro 30 giorni dal pannello Cestino dell'amministrazione."
+  delete_modal_confirm: "Elimina"
+location:
+  tree_title: Ubicazioni
+  add_root: Aggiungi ubicazione principale
+  add_child: Aggiungi sotto-ubicazione
+  edit: Modifica ubicazione
+  delete: Elimina
+  name_label: Nome
+  type_label: Tipo
+  lcode_label: Codice L
+  parent_label: Ubicazione genitore
+  submit: Salva
+  none: "(nessuna — livello principale)"
+  # CR #280 — organizational location flag.
+  organizational_label: "Ubicazione organizzativa (non può contenere esemplari direttamente)"
+  organizational_help: "Seleziona se l'ubicazione raggruppa solo sotto-ubicazioni (es. «Soggiorno» contiene «Libreria A» e «Libreria B» ma non contiene esemplari direttamente). Gli esemplari non possono essere assegnati a un'ubicazione organizzativa — il flusso di scansione-collocazione la rifiuta, e il modulo di modifica rifiuta di convertire una riga che ha ancora esemplari collegati."
+  organizational_blocked_has_volumes: "Impossibile contrassegnare come organizzativa — %{count} esemplare(i) usano attualmente questa ubicazione. Ricollocali prima."
+  bulk_audit_button: "Segna tutti gli esemplari per la verifica"
+  empty_state: "Crea la tua prima ubicazione per iniziare a organizzare!"
+  created: "%{name} creata (%{label})."
+  updated: Ubicazione aggiornata.
+  deleted: Ubicazione eliminata.
+  has_volumes: "Impossibile eliminare: %{count} esemplari sono qui. Spostali prima."
+  has_children: "Impossibile eliminare: contiene sotto-ubicazioni. Eliminale o spostale prima."
+  cycle_detected: "Impossibile spostare: si creerebbe una gerarchia circolare."
+  lcode_invalid: "Formato codice L non valido. Atteso L seguito da 4 cifre (es. L0042)."
+  lcode_duplicate: "Questo codice L è già in uso."
+  lcode_exhausted: "Tutti i codici L (L0001–L9999) sono in uso."
+  invalid_node_type: "Tipo di ubicazione non valido."
+  volumes_count: "%{count} esemplari"
+  breadcrumb_label: Percorso ubicazione
+  tree:
+    toggle: Espandi/comprimi sotto-albero
+  contents_title: Contenuto dello scaffale
+  empty_volumes: "Nessun esemplare in questa ubicazione."
+  col_title: Titolo
+  col_author: Autore
+  col_genre: Genere
+  col_dewey: Dewey
+  col_condition: Condizione
+  col_status: Stato
+login:
+  title: Accedi
+  username_label: Nome utente
+  password_label: Password
+  submit: Accedi
+  error_invalid: "Nome utente o password non validi."
+  back_to_home: Torna alla home
+metadata:
+  provider_failed: "Fornitore di metadati %{provider} fallito."
+  no_result: "Nessun metadato trovato per questo codice."
+  cached_result: "Uso dei metadati dalla cache."
+  chain_timeout: "Tempo scaduto per la ricerca dei metadati."
+  edit_metadata: Modifica metadati
+  redownload: Riscarica metadati
+  save_changes: Salva modifiche
+  cancel: Annulla
+  redownloading: "Riscaricamento dei metadati in corso…"
+  confirm_title: Conferma modifiche dei metadati
+  field_conflict: "%{field} è stato modificato manualmente. Accettare il nuovo valore?"
+  current_value: Attuale
+  new_value: Nuovo
+  apply_changes: Applica le modifiche selezionate
+  update_success: "Aggiornati %{updated} campo(i), mantenute %{kept} modifica(che) manuale(i)."
+  redownload_failed: "Riscaricamento fallito: nessun metadato trovato da alcun fornitore."
+  all_updated: "Tutti i campi dei metadati aggiornati dal fornitore."
+  no_changes: "Nessuna modifica — i metadati corrispondono già a quelli del fornitore."
+  auto_updated: "Sarà aggiornato automaticamente"
+  field_label: Campo
+  accept_cover: "Accetta la nuova immagine di copertina"
+  field:
+    title: Titolo
+    subtitle: Sottotitolo
+    description: Descrizione
+    language: Lingua
+    genre: Genere
+    publisher: Editore
+    publication_date: Data di pubblicazione
+    dewey_code: Codice Dewey
+    page_count: Numero di pagine
+    track_count: Numero di tracce
+    total_duration: "Durata (min)"
+    age_rating: Classificazione per età
+    issue_number: Numero del fascicolo
+    identifiers: Identificatori
+    identifiers_help: "L'ISBN-13 deve avere 13 cifre con un codice di controllo valido. ISSN / UPC sono accettati così come sono. Lascia vuoto per cancellare un campo."
+    isbn: ISBN
+    issn: ISSN
+    upc: UPC
+media_type:
+  book: Libro
+  bd: BD
+  cd: CD
+  dvd: DVD
+  magazine: Rivista
+  report: Relazione
+scan:
+  select_media_type: "Di che tipo di supporto si tratta?"
+cover:
+  alt_text: "Copertina di %{title}"
+  no_cover: "Copertina non disponibile"
+audio:
+  enable: Attiva suoni di scansione
+  disable: Disattiva suoni di scansione
+genre:
+  # Fix #107: rendered in place of `genre_name` when the title's genre row
+  # has been soft-deleted (orphan FK).
+  placeholder:
+    deleted: "(Genere eliminato)"
+# CR #237 — shelf-audit list view.
+audit:
+  heading: "Verifica scaffali"
+  intro: "Esemplari attualmente segnalati da controllare, ordinati per ubicazione → codice V così puoi percorrere lo scaffale in ordine. Clicca Controllato accanto a una riga man mano che confermi ogni esemplare."
+  empty_state: "Niente da controllare al momento. Segna uno scaffale o un singolo esemplare per avviare una verifica."
+  col_volume: "Codice V"
+  col_title: "Titolo"
+  col_location: "Ubicazione"
+  col_action: "Azione"
+  btn_clear_all: "Cancella tutte le segnalazioni"
+stats:
+  value:
+    heading: "Valore della biblioteca"
+    intro: "Somma del valore attuale di ogni esemplare del catalogo, suddivisa per valuta / per genere / per serie. Esemplari e titoli eliminati sono esclusi; gli esemplari senza valore impostato vengono saltati."
+    section_totals: "Per valuta"
+    section_by_genre: "Per genere"
+    section_by_series: "Per serie"
+    col_currency: "Valuta"
+    col_total_value: "Valore totale"
+    col_total_purchase: "Costo d'acquisto totale"
+    col_count: "Valutati / costo registrato"
+    col_genre: "Genere"
+    col_series: "Serie"
+    col_volumes: "Esemplari"
+    empty_state: "Nessun esemplare ha ancora un valore registrato. Modifica un esemplare per inserire un prezzo d'acquisto o un valore stimato."
+    deleted_genre: "(Genere eliminato)"
+dashboard:
+  metadata_errors: "%{count} titolo(i) con errori nei metadati"
+  glance:
+    heading: La collezione in sintesi
+    titles_one: "%{count} titolo"
+    titles_other: "%{count} titoli"
+    volumes_one: "%{count} esemplare"
+    volumes_other: "%{count} esemplari"
+    active_loans_one: "%{count} prestito attivo"
+    active_loans_other: "%{count} prestiti attivi"
+    signin_to_view_loans: Accedi per vedere i prestiti
+  recent_additions:
+    heading: Aggiunte recenti
+    empty_state: "Ancora nessuna aggiunta recente — inizia a catalogare!"
+  stats_by_genre:
+    heading: Per genere
+    titles_one: "%{count} titolo"
+    titles_other: "%{count} titoli"
+    other_label: Altri
+    other_heading: "Meno del 5 % del catalogo"
+    center_caption: titoli
+    aria_summary: "Catalogo per genere: %{summary}"
+  attention:
+    heading: Da attenzionare
+    unshelved_label: Esemplari non collocati
+    unshelved_clear_aria: "Rimuovi filtro: esemplari non collocati"
+    unshelved_empty: Nessun esemplare non collocato
+    overdue_label: Prestiti in ritardo
+    overdue_clear_aria: "Rimuovi filtro: prestiti in ritardo"
+    overdue_heading: Prestiti in ritardo
+    overdue_empty: "Nessun prestito in ritardo — ottimo lavoro!"
+    gaps_label: Serie con lacune
+    gaps_clear_aria: "Rimuovi filtro: serie con lacune"
+    gaps_heading: Serie con lacune
+    gaps_empty: "Nessuna serie incompleta — la tua collezione è completa!"
+    recent_cataloged_label: Catalogati di recente
+    recent_cataloged_clear_aria: "Rimuovi filtro: catalogati di recente"
+    recent_cataloged_heading: "Catalogati di recente (ultimi 7 giorni)"
+    recent_cataloged_empty: "Nessuna aggiunta negli ultimi 7 giorni — niente di nuovo da catalogare"
+    recent_returns_label: Restituzioni recenti
+    recent_returns_clear_aria: "Rimuovi filtro: restituzioni recenti"
+    recent_returns_heading: "Restituiti di recente (ultimi 7 giorni)"
+    recent_returns_empty: "Nessuna restituzione negli ultimi 7 giorni — settimana tranquilla!"
+  value_indicator:
+    label: "Valore stimato della biblioteca"
+    cta: "Vedi suddivisione"
+  audit_indicator:
+    label: "Esemplari da controllare"
+    cta: "Apri verifica"
+borrower:
+  list_title: Lettori
+  add: Aggiungi lettore
+  name: Nome
+  address: Indirizzo
+  email: Email
+  phone: Telefono
+  edit: Modifica lettore
+  delete: Elimina
+  created: "Lettore creato: %{name}"
+  updated: Lettore aggiornato.
+  deleted: Lettore eliminato.
+  delete_has_loans: "Impossibile eliminare: %{name} ha %{count} prestito(i) attivo(i)."
+  name_required: Il nome del lettore è obbligatorio.
+  save: Salva
+  cancel: Annulla
+  detail_title: Dettagli lettore
+  active_loans: Prestiti attivi
+  no_active_loans: "Questo lettore non ha prestiti attivi."
+  delete_modal_title: "Eliminare il lettore %{name}?"
+  delete_modal_body: "Il record verrà spostato nel Cestino. Il lettore può essere ripristinato dal pannello Cestino dell'amministrazione entro 30 giorni."
+  delete_modal_confirm: Elimina
+loan:
+  list_title: Prestiti attivi
+  new: Nuovo prestito
+  volume_label: Etichetta esemplare
+  borrower: Lettore
+  loaned_at: Prestato il
+  duration: Durata
+  days: giorni
+  created: "Prestito registrato: %{label} a %{borrower}"
+  already_on_loan: "Questo esemplare è già in prestito."
+  not_loanable: "Lo stato di questo esemplare non consente il prestito."
+  volume_not_found: "Esemplare non trovato."
+  not_on_loan: "Questo esemplare non è attualmente in prestito."
+  scan_placeholder: "Scansiona codice V per trovare il prestito…"
+  col_borrower: Lettore
+  col_volume: Esemplare
+  col_title: Titolo
+  col_date: Data
+  col_duration: Durata
+  register: Registra prestito
+  borrower_search: "Cerca lettore…"
+  return: Restituisci
+  returned: "Prestito restituito: %{label} ricollocato in %{path}"
+  returned_no_location: "Prestito restituito: %{label} (nessuna ubicazione precedente)"
+  already_returned: "Questo prestito è già stato restituito."
+  overdue: In ritardo
+  return_modal_title: "Segnare il prestito come restituito?"
+  return_modal_body: "L'esemplare sarà di nuovo disponibile."
+  return_modal_confirm: "Segna come restituito"
+  not_found: "Prestito non trovato."
+  col_action: Azione
+session:
+  expiry_soon: "La tua sessione sta per scadere."
+  expiry_in_minutes: "La tua sessione scadrà tra %{minutes} min."
+  stay_connected: Resta connesso
+  dismiss_aria: Chiudi
+admin:
+  page_title: Amministrazione
+  tabs_aria: Schede di amministrazione
+  tabs:
+    health: Stato
+    users: Utenti
+    reference_data: Dati di riferimento
+    trash: Cestino
+    system: Sistema
+    api_keys: Chiavi API
+  trash:
+    badge_aria: "Cestino, %{count} elementi"
+    heading: Cestino (elementi eliminati)
+    empty_state: "Nessun elemento eliminato."
+    filter_entity_label: "Filtra per tipo"
+    filter_entity_all: "Tutti i tipi"
+    filter_entity_titles: "Titoli"
+    filter_entity_volumes: "Esemplari"
+    filter_entity_contributors: "Collaboratori"
+    filter_entity_borrowers: "Lettori"
+    filter_entity_series: "Serie"
+    filter_entity_storage_locations: "Ubicazioni"
+    search_placeholder: "Cerca per nome…"
+    pagination_aria: "Impaginazione del Cestino"
+    col_item_name: Elemento
+    col_type: Tipo
+    col_deleted_at: Eliminato
+    col_days_remaining: Giorni rimasti
+    col_actions: Azioni
+    btn_restore: Ripristina
+    btn_delete_permanently: Elimina definitivamente
+    days_remaining_warning: "%{days} giorno"
+    days_remaining_critical: "<7 giorni"
+    restore_success: "Ripristinato: %{name}"
+    delete_permanent_success: "Eliminato definitivamente: %{name}"
+    delete_permanent_modal_title: "Eliminare definitivamente?"
+    delete_permanent_modal_warning: "Questa azione non può essere annullata."
+    delete_permanent_modal_confirm_label: "Digita il nome dell'elemento per confermare:"
+    modal_confirmation_instruction: "Digita il nome dell'elemento mostrato sopra per confermare l'eliminazione definitiva."
+    delete_permanent_modal_confirm_button: "Elimina definitivamente"
+    delete_permanent_modal_cancel: "Annulla"
+    delete_permanent_error_not_found: "Elemento già rimosso"
+    delete_permanent_error_version: "L'elemento è stato modificato"
+    delete_permanent_error_name_mismatch: "Il nome dell'elemento non corrisponde. Riprova."
+    restore_modal_title: "Conflitti di ripristino"
+    restore_modal_explanation: "Alcune relazioni sono cambiate mentre l'elemento era eliminato."
+    restore_modal_conflicts: "Conflitti:"
+    restore_modal_clear_conflicts: "Ripristina (rimuovi relazioni in conflitto)"
+    restore_modal_cancel: "Lascia eliminato"
+  health:
+    versions_heading: Versioni
+    app_version: Versione applicazione
+    db_version: Versione database
+    disk_usage: Utilizzo disco
+    disk_usage_format: "%{used} / %{total} usati (%{pct} %)"
+    disk_usage_unknown: Sconosciuto
+    counts_heading: Conteggio elementi
+    count_titles: Titoli
+    count_volumes: Esemplari
+    count_contributors: Collaboratori
+    count_borrowers: Lettori
+    count_active_loans: Prestiti attivi
+    providers_heading: Fornitori di metadati
+    provider_status_up: Raggiungibile
+    provider_status_down: Non raggiungibile
+    provider_status_unknown: Sconosciuto
+    provider_status_na: n/d
+    last_checked: "Ultimo controllo: %{when}"
+    last_checked_never: Mai
+    maintenance_heading: Manutenzione
+    bulk_cover_fetch:
+      missing_covers_label: "Titoli con copertina mancante"
+      button: "Riscarica copertine mancanti"
+      idle: "Inattivo"
+      running: "In corso: %{processed} / %{total} elaborati"
+      last_run: "Ultima esecuzione: %{processed} / %{total} elaborati"
+      started: "Riscaricamento delle copertine avviato per %{total} titoli. Il progresso è registrato nei log; aggiorna il pannello per vedere gli aggiornamenti."
+      empty: "Nessun titolo ha bisogno di un nuovo recupero copertina — tutto ciò che era recuperabile è stato recuperato."
+      already_running: "Un riscaricamento delle copertine è già in corso. Attendi il suo completamento."
+  users:
+    heading: Account utenti
+    empty_state: "Solo tu qui! Crea un account Bibliotecario per i membri della famiglia."
+    pagination_aria: Impaginazione lista utenti
+    filter_role_label: Filtra per ruolo
+    filter_status_label: Filtra per stato
+    filter_role_all: Tutti i ruoli
+    filter_status_active: Attivo
+    filter_status_deactivated: Disattivato
+    filter_status_all: Tutti
+    col_username: Nome utente
+    col_role: Ruolo
+    col_status: Stato
+    col_created: Creato
+    col_last_login: Ultimo accesso
+    col_actions: Azioni
+    role_librarian: Bibliotecario
+    role_admin: Amministratore
+    status_active: Attivo
+    status_deactivated: Disattivato
+    last_login_never: Mai
+    btn_new: Nuovo utente
+    btn_edit: Modifica
+    btn_deactivate: Disattiva
+    btn_reactivate: Riattiva
+    btn_save: Salva
+    btn_cancel: Annulla
+    form_label_username: Nome utente
+    form_label_password: Password
+    form_label_password_edit: "Password (lascia vuoto per mantenere quella attuale)"
+    form_label_role: Ruolo
+    deactivate_modal_title: "Disattivare l'utente %{username}?"
+    deactivate_modal_body: "Sarà disconnesso immediatamente e non potrà accedere finché non sarà riattivato."
+    deactivate_modal_confirm: "Disattiva"
+    success_created: "Utente %{username} creato"
+    success_updated: "Utente %{username} aggiornato"
+    success_deactivated: "Utente %{username} disattivato (%{count} sessione(i) terminata(e))"
+    success_reactivated: "Utente %{username} riattivato"
+    error_cannot_delete_self: "Non puoi eliminare te stesso. Chiedi a un altro amministratore di eliminare il tuo account."
+    error_cannot_delete_last_admin: "Impossibile eliminare l'ultimo amministratore attivo. Crea prima un altro amministratore."
+  placeholder:
+    coming_in_story: "In arrivo nella storia %{story}"
+    trash_preview: "Anteprima degli elementi eliminati — lista completa e UI di ripristino in storia 8-5."
+  reference_data:
+    panel_heading: Dati di riferimento
+    section_genres: Generi
+    section_volume_states: Stati degli esemplari
+    section_contributor_roles: Ruoli dei collaboratori
+    section_node_types: Tipi di ubicazione
+    btn_add_genre: Aggiungi genere
+    btn_add_state: Aggiungi stato
+    btn_add_role: Aggiungi ruolo
+    btn_add_node_type: Aggiungi tipo
+    btn_save: Salva
+    btn_cancel: Annulla
+    btn_delete: Elimina
+    btn_apply_anyway: Applica comunque
+    loanable_label: Prestabile
+    usage_count_chip: "%{count} in uso"
+    delete_modal_heading: "Eliminare %{entity}?"
+    delete_modal_body: "Eliminare «%{name}»? Questa azione può essere annullata ricreando la voce."
+    loanable_warning_heading: "%{count} prestito(i) attivo(i)"
+    loanable_warning_body: "Gli esemplari con stato «%{name}» hanno %{count} prestito(i) attivo(i). I prestiti esistenti proseguono normalmente; i nuovi prestiti di questo stato saranno bloccati."
+    loanable_warning_sample_heading: "Prestiti coinvolti"
+    empty_state: "Ancora nessuna voce."
+    entity_genre: genere
+    entity_state: stato di esemplare
+    entity_role: ruolo di collaboratore
+    entity_node_type: tipo di ubicazione
+    plural_genre: titoli
+    plural_state: esemplari
+    plural_role: collaboratori di titolo
+    plural_node_type: ubicazioni
+    edit_aria: "Modifica %{name}"
+    delete_aria: "Elimina %{name}"
+    in_use_link_label: Vedi lista
+  system:
+    panel_heading: Impostazioni di sistema
+    section_loans: Prestiti
+    section_providers: Fornitori di metadati
+    section_language: Lingua
+    section_valuation: Valore della biblioteca
+    overdue_threshold_label: "Soglia di ritardo per i prestiti (giorni)"
+    overdue_threshold_help: "Un prestito è segnalato come in ritardo quando la sua durata supera questo numero di giorni."
+    provider_key_label_google_books: "Chiave API Google Books"
+    provider_key_label_omdb: "Chiave API OMDb"
+    provider_key_label_tmdb: "Chiave API TMDb"
+    provider_key_set: "Impostata: %{mask}"
+    provider_key_not_set: "Non impostata"
+    provider_key_clear_label: "Cancella questa chiave al salvataggio"
+    default_language_label: "Lingua predefinita"
+    default_language_help: "Usata per i nuovi visitatori anonimi senza cookie e senza Accept-Language corrispondente."
+    btn_save_loans: "Salva impostazioni prestiti"
+    btn_save_providers: "Salva chiavi fornitori"
+    btn_save_language: "Salva impostazioni lingua"
+    default_currency_label: "Valuta predefinita"
+    default_currency_help: "Usata come valuta pre-compilata per le nuove valutazioni di esemplari. Codice ISO 4217 a 3 lettere; gli utenti possono comunque scegliere una valuta diversa per esemplare."
+    show_value_indicators_label: "Mostra l'indicatore di valore nel dashboard home"
+    show_value_indicators_help: "Aggiunge una scheda «Valore stimato della biblioteca» nella pagina home che rimanda a /stats/value. Disattivato per impostazione predefinita — attivalo se desideri vedere il valore monetario nel dashboard home."
+    btn_save_valuation: "Salva impostazioni di valutazione"
+  api_keys:
+    panel_heading: "Chiavi API"
+    intro: "Le chiavi API autenticano chiamanti esterni all'API JSON HTTP sotto /api/v1/*. Le chiavi di lettura possono elencare e recuperare i record; le chiavi di scrittura possono anche modificare via PATCH i campi del titolo abilitati. Ogni chiave è mostrata UNA SOLA volta alla creazione — copiala subito o revocala e ricreala."
+    tooltip_aria: "Informazioni sulle chiavi API"
+    tooltip_text: "Passa la chiave come `Authorization: Bearer <chiave>` o `X-API-Key: <chiave>`. La CSRF è bypassata per /api/* perché l'autenticazione Bearer non usa i cookie. Le chiavi non vengono mai esportate nei log; qui compare solo il prefisso di 12 caratteri."
+    section_create: "Nuova chiave API"
+    section_list: "Chiavi esistenti"
+    label_field: "Etichetta"
+    label_help: "Un nome visibile solo a te — es. «classificatore IA» o «script di backup»."
+    scope_field: "Ambito"
+    scope_read: "Sola lettura"
+    scope_read_help: "GET /api/v1/* — elenca e recupera risorse. Non può modificare."
+    scope_write: "Lettura + scrittura"
+    scope_write_help: "Aggiunge PATCH /api/v1/titles/{id} per genre_id, dewey_code, description, subtitle."
+    btn_create: "Crea chiave"
+    col_label: "Etichetta"
+    col_scope: "Ambito"
+    col_prefix: "Prefisso"
+    col_created: "Creata"
+    col_last_used: "Ultimo uso"
+    col_status: "Stato"
+    col_actions: "Azioni"
+    btn_revoke: "Revoca"
+    btn_revoke_confirm: "Revoca chiave"
+    revoke_aria: "Revoca chiave API %{label}"
+    revoke_modal_heading: "Revocare questa chiave API?"
+    revoke_modal_body: "La chiave «%{label}» smetterà di autenticare immediatamente. Le richieste in volo riceveranno 401 al prossimo tentativo. Questa azione non può essere annullata — sarà necessario creare una nuova chiave."
+    status_active: "Attiva"
+    status_revoked: "Revocata"
+    last_used_never: "Mai"
+    empty_state: "Ancora nessuna chiave API. Creane una per iniziare a usare /api/v1/*."
+    created_modal_heading: "Chiave creata — copiala subito"
+    created_modal_body: "Questa è l'unica volta in cui vedrai la chiave completa. Una volta chiusa questa finestra non potrà essere recuperata — solo revocata e sostituita."
+    created_copy_hint: "Fai triplo clic nel campo sopra per selezionare, poi copia con Ctrl+C / Cmd+C."
+    created_btn_close: "L'ho copiata"
+    feedback_created: "Chiave API creata. Copia il testo in chiaro prima di chiudere la finestra."
+    feedback_revoked: "Chiave API revocata."
+    btn_delete: "Elimina"
+    btn_delete_confirm: "Elimina chiave"
+    delete_aria: "Elimina chiave API %{label}"
+    delete_modal_heading: "Eliminare questa chiave revocata?"
+    delete_modal_body: "La chiave revocata «%{label}» verrà rimossa dalla lista. La cronologia di audit dell'uso passato (attribuzione per chiamata in admin_audit) è preservata. Questa azione non può essere annullata."
+    feedback_deleted: "Chiave API eliminata."
+    error_delete_active: "Le chiavi attive non possono essere eliminate — revoca prima la chiave."
+    error_label_required: "L'etichetta è obbligatoria."
+    error_label_too_long: "L'etichetta deve avere al massimo 120 caratteri."
+    error_invalid_scope: "L'ambito deve essere «read» o «write»."
+    error_not_found: "Chiave API non trovata."
+    error_already_revoked: "Questa chiave è già stata revocata."
+    error_version_conflict: "Questa chiave è stata modificata da un altro amministratore. Ricarica il pannello."
+success:
+  reference_data:
+    created: "Aggiunto %{name}"
+    reactivated: "Riattivato %{name}"
+    renamed: "Rinominato in %{name}"
+    deleted: "Eliminato %{name}"
+    loanable_on: "%{name} è ora prestabile"
+    loanable_off: "%{name} non è più prestabile. I prestiti esistenti proseguono."
+    node_type_renamed_cascaded_one: "Rinominato in %{name} — 1 ubicazione aggiornata"
+    node_type_renamed_cascaded_other: "Rinominato in %{name} — %{count} ubicazioni aggiornate"
+  system:
+    loans_saved: "Impostazioni prestiti salvate"
+    providers_saved: "Chiavi fornitori salvate"
+    language_saved: "Lingua predefinita salvata"
+    valuation_saved: "Impostazioni di valutazione salvate"
+    no_changes: "Nessuna modifica"
+    provider_set: "Chiave %{provider} salvata"
+    provider_cleared: "Chiave %{provider} cancellata"
+
+# Story 8-8: First-launch setup wizard.
+setup:
+  title: "Configurazione"
+  step_1_title: "Passo 1 — Account amministratore"
+  step_2_title: "Passo 2 — Fornitori di metadati"
+  step_3_title: "Passo 3 — Preferenze"
+  step_4_title: "Passo 4 — Conferma e completa"
+  step_1_short: "Admin"
+  step_2_short: "Fornitori"
+  step_3_short: "Preferenze"
+  step_4_short: "Fatto"
+  progress_aria: "Avanzamento della procedura guidata"
+  step_1_username_label: "Nome utente dell'amministratore"
+  step_1_password_label: "Password"
+  step_1_password_hint: "Minimo 8 caratteri."
+  step_1_create_button: "Crea account amministratore"
+  step_1_update_button: "Aggiorna amministratore"
+  step_1_admin_exists_hint: "Un account amministratore è già configurato. Lascia vuoto il campo password per mantenerla, o inserisci una nuova per aggiornarla."
+  step_2_intro: "Chiavi API opzionali per fornitori esterni di metadati. Puoi aggiungerle o cambiarle in seguito da Amministrazione → Sistema."
+  step_2_skip_label: "Lascia un campo vuoto per saltare un fornitore — le sue ricerche restituiranno semplicemente nessun risultato."
+  step_2_skip_row_label: "Salta questo fornitore"
+  step_2_label_google_books: "Chiave API Google Books"
+  step_2_label_omdb: "Chiave API OMDb"
+  step_2_label_tmdb: "Chiave API TMDb"
+  step_2_placeholder: "Incolla la chiave API…"
+  step_2_helper_set: "Attualmente configurata."
+  step_2_helper_not_set: "Non configurata."
+  step_3_language_label: "Lingua predefinita dell'interfaccia"
+  step_3_language_fr: "Français"
+  step_3_language_en: "English"
+  step_3_language_de: "Deutsch"
+  step_3_language_it: "Italiano"
+  step_3_overdue_label: "Soglia di ritardo (giorni)"
+  step_3_overdue_help: "I prestiti che superano questo numero di giorni vengono segnalati come in ritardo."
+  step_3_overdue_unit: "giorni"
+  step_4_intro: "Rivedi le scelte qui sotto — potrai modificare tutto in seguito dal pannello di amministrazione."
+  step_4_recap_admin_label: "Nome utente amministratore"
+  step_4_recap_providers_label: "Fornitori di metadati"
+  step_4_recap_provider_configured: "configurato"
+  step_4_recap_provider_not_set: "non impostato"
+  step_4_recap_language_label: "Lingua predefinita"
+  step_4_recap_overdue_label: "Soglia di ritardo"
+  previous_button: "Indietro"
+  next_button: "Avanti"
+  complete_button: "Completa la configurazione"
+  errors:
+    username_required: "Scegli un nome utente per l'amministratore."
+    username_too_long: "Il nome utente è troppo lungo (massimo 100 caratteri)."
+    username_taken: "Questo nome utente è già in uso — scegline un altro."
+    password_too_short: "La password deve avere almeno 8 caratteri."
+    invalid_language: "Scegli FR, EN, DE o IT."
+    overdue_must_be_positive: "La soglia di ritardo deve essere un numero intero positivo."
+    admin_already_created: "Un account amministratore è stato creato da un altro browser. Ricarica."
+    admin_already_created_by_other_browser: "Un altro browser ha già creato l'account amministratore. Ti abbiamo portato al passo successivo — se necessario, puoi tornare al passo precedente per aggiornare i dati dell'amministratore."

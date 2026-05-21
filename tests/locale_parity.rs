@@ -17,8 +17,8 @@ use std::collections::BTreeSet;
 use std::fs;
 
 // Extend this list when shipping a new translation YAML. CR #275 (DE) added
-// `"de"`; CR #276 (IT) will add `"it"` in the follow-up PR.
-const LOCALES_TO_CHECK: &[&str] = &["de"];
+// `"de"`; CR #276 (IT) added `"it"` (v1.7.0 bundle).
+const LOCALES_TO_CHECK: &[&str] = &["de", "it"];
 
 /// Flatten a nested YAML mapping to a sorted set of dot-joined paths,
 /// keeping only paths that resolve to a scalar value. Missing intermediate
