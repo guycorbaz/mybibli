@@ -1,7 +1,10 @@
 # Rust
 /target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock is COMMITTED — mybibli ships as a binary application (not a
+# library), so a frozen lockfile gives reproducible builds across the
+# Dockerfile, the release workflow, and `git checkout vX.Y.Z` checkouts.
+# See ROADMAP.md / v1.6.2 notes for the rationale.
 
 # Node.js (Playwright tests)
 node_modules/
