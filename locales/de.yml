@@ -398,6 +398,7 @@ error:
     overdue_threshold_too_large: "Die Grenze darf höchstens 365 Tage betragen"
     default_language_invalid: "Sprache muss FR, EN, DE oder IT sein"
     default_currency_invalid: "Die Standardwährung muss ein 3-Buchstaben-Code nach ISO 4217 sein (z. B. CHF, EUR)."
+    log_level_invalid: "Die Protokollebene muss eine einfache Ebene (trace/debug/info/warn/error) oder eine Liste von tracing-subscriber EnvFilter-Direktiven sein (z. B. mybibli=debug,sqlx::query=warn)."
     version_mismatch: "Die Einstellungen wurden durch einen anderen Administrator geändert — neu laden und erneut versuchen"
     provider_version_mismatch: "%{provider} wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
   code:
@@ -859,6 +860,11 @@ admin:
     show_value_indicators_label: "Wertanzeige im Home-Dashboard einblenden"
     show_value_indicators_help: "Fügt eine Karte \"Geschätzter Bibliothekswert\" auf der Startseite hinzu, die auf /stats/value verlinkt. Standardmäßig AUS — aktivieren Sie dies, wenn der Geldwert auf dem Home-Dashboard sichtbar sein soll."
     btn_save_valuation: "Bewertungseinstellungen speichern"
+    # v1.7.1 fix #308 — Schlüssel für den Bereich Protokollierung.
+    section_logging: Protokollierung
+    log_level_label: "Protokollebene"
+    log_level_help: "Akzeptiert eine einfache Ebene (trace / debug / info / warn / error) oder eine Liste von tracing-subscriber EnvFilter-Direktiven (z. B. mybibli=debug,sqlx::query=warn). Sofort wirksam — kein Neustart. Standardmäßig „info“, produktionssicher."
+    btn_save_log_level: "Protokollierungseinstellungen speichern"
   api_keys:
     panel_heading: "API-Schlüssel"
     intro: "API-Schlüssel authentifizieren externe Aufrufer an der HTTP-JSON-API unter /api/v1/*. Lese-Schlüssel können Datensätze auflisten und abrufen; Schreib-Schlüssel können zusätzlich freigegebene Titelfelder per PATCH bearbeiten. Jeder Schlüssel wird genau EINMAL beim Anlegen angezeigt — jetzt kopieren oder widerrufen und neu erstellen."
@@ -925,6 +931,7 @@ success:
     providers_saved: "Anbieter-Schlüssel gespeichert"
     language_saved: "Standardsprache gespeichert"
     valuation_saved: "Bewertungseinstellungen gespeichert"
+    log_level_saved: "Protokollebene gespeichert — sofort wirksam, kein Neustart erforderlich"
     no_changes: "Keine Änderungen"
     provider_set: "%{provider}-Schlüssel gespeichert"
     provider_cleared: "%{provider}-Schlüssel gelöscht"

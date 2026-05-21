@@ -27,4 +27,12 @@
         <h3 id="admin-system-valuation-heading" class="text-lg font-semibold mb-3">{{ section_valuation }}</h3>
         {{ valuation_form_html|safe }}
     </section>
+
+    {# v1.7.1 fix #308 — Logging section. Closes the v1.7.0 #301 gap:
+       runtime log-level control without a redeploy. Single setting
+       (log_level), free-form EnvFilter directive text input. #}
+    <section aria-labelledby="admin-system-log-heading">
+        <h3 id="admin-system-log-heading" class="text-lg font-semibold mb-3">{{ section_logging }}</h3>
+        {{ log_form_html|safe }}
+    </section>
 </section>

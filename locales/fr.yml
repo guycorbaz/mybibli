@@ -400,6 +400,7 @@ error:
     overdue_threshold_too_large: "Le seuil ne peut dépasser 365 jours"
     default_language_invalid: "La langue doit être FR ou EN"
     default_currency_invalid: "La devise par défaut doit être un code ISO 4217 à 3 lettres (ex. CHF, EUR)."
+    log_level_invalid: "Le niveau doit être un niveau simple (trace/debug/info/warn/error) ou une liste de directives tracing-subscriber EnvFilter (ex. mybibli=debug,sqlx::query=warn)."
     version_mismatch: "Les paramètres ont été modifiés par un autre administrateur — rechargez et réessayez"
     provider_version_mismatch: "%{provider} a été modifié par un autre administrateur — rechargez et réessayez"
   code:
@@ -866,6 +867,11 @@ admin:
     show_value_indicators_label: "Afficher l'indicateur de valeur sur l'accueil"
     show_value_indicators_help: "Ajoute une carte « Valeur estimée de la bibliothèque » sur la page d'accueil avec un lien vers /stats/value. Désactivé par défaut — activez si vous voulez voir les montants sur l'accueil."
     btn_save_valuation: "Enregistrer la valorisation"
+    # v1.7.1 fix #308 — clés de la section Journalisation.
+    section_logging: Journalisation
+    log_level_label: "Niveau de journalisation"
+    log_level_help: "Accepte un niveau simple (trace / debug / info / warn / error) ou une liste de directives tracing-subscriber EnvFilter (ex. mybibli=debug,sqlx::query=warn). Appliqué immédiatement — pas de redémarrage. Par défaut « info », sûr en production."
+    btn_save_log_level: "Enregistrer la journalisation"
   api_keys:
     panel_heading: "Clés d'API"
     intro: "Les clés d'API authentifient les appelants externes à l'API JSON HTTP sous /api/v1/*. Les clés en lecture peuvent lister et consulter ; les clés en écriture peuvent aussi modifier les champs autorisés (PATCH). Chaque clé n'est affichée QU'UNE FOIS à la création — copiez-la maintenant ou révoquez-la et recréez-en une."
@@ -932,6 +938,7 @@ success:
     providers_saved: "Clés de fournisseur enregistrées"
     language_saved: "Langue par défaut enregistrée"
     valuation_saved: "Paramètres de valorisation enregistrés"
+    log_level_saved: "Niveau de journalisation enregistré — appliqué immédiatement, pas de redémarrage requis"
     no_changes: "Aucune modification"
     provider_set: "Clé %{provider} enregistrée"
     provider_cleared: "Clé %{provider} effacée"

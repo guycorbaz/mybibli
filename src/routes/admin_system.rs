@@ -34,9 +34,9 @@ use crate::routes::catalog::feedback_html_pub;
 // `save_setting` / `reload_settings_cache` / `validate_*` definitions have
 // been deleted in favour of the canonical implementations.
 use crate::services::admin_system::{
-    KEY_DEFAULT_CURRENCY, KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_OMDB,
+    KEY_DEFAULT_CURRENCY, KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_LOG_LEVEL, KEY_OMDB,
     KEY_OVERDUE_THRESHOLD, KEY_SHOW_VALUE_INDICATORS, KEY_TMDB, reload_settings_cache,
-    save_setting, validate_default_currency, validate_default_language,
+    save_setting, validate_default_currency, validate_default_language, validate_log_level,
     validate_overdue_threshold,
 };
 
@@ -93,6 +93,16 @@ pub struct LibraryValuationSettingsForm {
     pub _csrf_token: String,
 }
 
+// v1.7.1 fix #308 — Logging section. Single setting (log_level)
+// accepting either a plain level or a `tracing-subscriber`
+// `EnvFilter` directive list.
+#[derive(Deserialize)]
+pub struct LogLevelSettingsForm {
+    pub log_level: String,
+    pub log_level_version: i32,
+    pub _csrf_token: String,
+}
+
 // ─── Template structs ────────────────────────────────────────────
 
 #[derive(Template)]
@@ -103,10 +113,12 @@ pub(crate) struct AdminSystemPanel {
     pub section_providers: String,
     pub section_language: String,
     pub section_valuation: String,
+    pub section_logging: String,
     pub loans_form_html: String,
     pub providers_form_html: String,
     pub language_form_html: String,
     pub valuation_form_html: String,
+    pub log_form_html: String,
 }
 
 #[derive(Template)]
@@ -147,6 +159,20 @@ struct AdminSystemLanguageForm {
     default_language_help: String,
     default_language_value: String,
     default_language_version: i32,
+    btn_save: String,
+}
+
+// v1.7.1 fix #308 — Logging form. Single setting, free-form text
+// input so admins can enter any tracing-subscriber EnvFilter
+// directive string.
+#[derive(Template)]
+#[template(path = "fragments/admin_system_log_form.html")]
+struct AdminSystemLogForm {
+    csrf_token: String,
+    log_level_label: String,
+    log_level_help: String,
+    log_level_value: String,
+    log_level_version: i32,
     btn_save: String,
 }
 
@@ -377,6 +403,27 @@ fn render_valuation_form(
     .map_err(|_| AppError::Internal("valuation form render failed".to_string()))
 }
 
+// v1.7.1 fix #308 — Logging form renderer.
+fn render_log_form(
+    csrf: &str,
+    loc: &'static str,
+    log_level: &str,
+    log_level_version: i32,
+) -> Result<String, AppError> {
+    AdminSystemLogForm {
+        csrf_token: csrf.to_string(),
+        log_level_label: rust_i18n::t!("admin.system.log_level_label", locale = loc)
+            .to_string(),
+        log_level_help: rust_i18n::t!("admin.system.log_level_help", locale = loc)
+            .to_string(),
+        log_level_value: log_level.to_string(),
+        log_level_version,
+        btn_save: rust_i18n::t!("admin.system.btn_save_log_level", locale = loc).to_string(),
+    }
+    .render()
+    .map_err(|_| AppError::Internal("log form render failed".to_string()))
+}
+
 /// Public panel renderer — called by `admin.rs::render_panel` on the
 /// `AdminTab::System` branch. Pulls the 5 setting rows and assembles the
 /// three sections. The session's `csrf_token` is threaded into every form
@@ -418,6 +465,13 @@ pub async fn render_panel_html(
         .cloned()
         .unwrap_or_else(|| (if show_indicators { "true" } else { "false" }.to_string(), 1));
 
+    // v1.7.1 fix #308 — log_level row + current value from settings cache.
+    let log_level = state.log_level();
+    let (_, log_level_version) = rows
+        .get(KEY_LOG_LEVEL)
+        .cloned()
+        .unwrap_or_else(|| (log_level.clone(), 1));
+
     let csrf = session.csrf_token.as_str();
     let loans_form_html = render_loans_form(csrf, loc, threshold, threshold_version)?;
     let providers_form_html = render_providers_form(csrf, loc, &rows)?;
@@ -430,6 +484,7 @@ pub async fn render_panel_html(
         show_indicators,
         indicators_version,
     )?;
+    let log_form_html = render_log_form(csrf, loc, &log_level, log_level_version)?;
 
     AdminSystemPanel {
         panel_heading: rust_i18n::t!("admin.system.panel_heading", locale = loc).to_string(),
@@ -439,10 +494,12 @@ pub async fn render_panel_html(
         section_language: rust_i18n::t!("admin.system.section_language", locale = loc).to_string(),
         section_valuation: rust_i18n::t!("admin.system.section_valuation", locale = loc)
             .to_string(),
+        section_logging: rust_i18n::t!("admin.system.section_logging", locale = loc).to_string(),
         loans_form_html,
         providers_form_html,
         language_form_html,
         valuation_form_html,
+        log_form_html,
     }
     .render()
     .map_err(|_| AppError::Internal("admin system panel render failed".to_string()))
@@ -695,6 +752,71 @@ pub async fn save_library_valuation_settings(
         ind_version,
     )?;
     let feedback = success_feedback(loc, "success.system.valuation_saved");
+    Ok(HtmxResponse {
+        main,
+        oob: vec![OobUpdate {
+            target: "feedback-list".to_string(),
+            content: feedback,
+        }],
+    })
+}
+
+// v1.7.1 fix #308 — Logging save handler. Validates the directive,
+// persists the setting row, reloads the AppSettings cache, AND
+// triggers the `LogLevelReloader` closure (which calls
+// `tracing_subscriber::reload::Handle::modify` on the global
+// subscriber). Effect: the next log line written by any task uses
+// the new filter — no `docker compose up -d` required.
+//
+// Audit-row not added here: the `log_level` setting is operator-
+// facing diagnostics, not a security-sensitive change. Mirrors the
+// existing `save_loans_settings` / `save_language_settings` choice
+// (no audit row).
+pub async fn save_log_level(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    Form(form): Form<LogLevelSettingsForm>,
+) -> Result<HtmxResponse, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=system", locale.0)?;
+    let loc = locale.0;
+
+    let trimmed = form.log_level.trim().to_string();
+    validate_log_level(&trimmed, loc)?;
+
+    save_setting(&state.pool, KEY_LOG_LEVEL, &trimmed, form.log_level_version).await?;
+    reload_settings_cache(&state).await?;
+
+    // Apply the new directive to the live tracing subscriber. On a
+    // reloader failure (subscriber dropped, shouldn't happen) we log
+    // and continue — the setting is already persisted, so a process
+    // restart picks it up correctly.
+    if let Err(e) = (state.log_level_reloader)(&trimmed) {
+        tracing::warn!(
+            directive = %trimmed,
+            error = %e,
+            "Fix #308: subscriber reload failed; setting persisted, restart will pick it up"
+        );
+    } else {
+        tracing::info!(
+            new_log_level = %trimmed,
+            "Fix #308: log level reloaded at runtime"
+        );
+    }
+
+    let rows = fetch_setting_rows(&state.pool).await?;
+    let (current_value, current_version) = rows
+        .get(KEY_LOG_LEVEL)
+        .cloned()
+        .unwrap_or_else(|| (trimmed.clone(), 2));
+
+    let main = render_log_form(
+        &session.csrf_token,
+        loc,
+        &current_value,
+        current_version,
+    )?;
+    let feedback = success_feedback(loc, "success.system.log_level_saved");
     Ok(HtmxResponse {
         main,
         oob: vec![OobUpdate {

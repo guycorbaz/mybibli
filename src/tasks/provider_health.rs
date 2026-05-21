@@ -195,7 +195,7 @@ mod tests {
         // of headroom on top of a slow handshake while keeping a round
         // of 8 providers comfortably under the 5-min PING_INTERVAL_SECS.
         // If you tighten this constant below 10 you re-introduce the bug.
-        assert!(REQUEST_TIMEOUT_SECS_DEFAULT >= 10);
+        const { assert!(REQUEST_TIMEOUT_SECS_DEFAULT >= 10) }
     }
 
     #[test]
