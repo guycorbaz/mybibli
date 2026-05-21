@@ -29,10 +29,26 @@ pub(super) fn render_search_fragment(
 
     match results {
         Some(paginated) if !paginated.items.is_empty() => {
-            // Render tbody rows
+            // Fix #315 — the page-level template wraps the cards in a
+            // `.browse-cards` div, which `static/css/browse.css` keys
+            // off (`.browse-grid .browse-cards { display: grid; … }`)
+            // to render the multi-column card grid. Without this
+            // wrapper, the HTMX search-fragment swap leaves bare
+            // `<article>` siblings inside `#browse-results` and the
+            // grid layout never engages — articles fall back to block
+            // flow (one per row) and the `aspect-ratio: 2/3` cover
+            // spans the container width (huge per-card cover).
+            //
+            // Latent since CR #250 (v1.6.0) introduced the sortable
+            // table wrapper alongside the existing card grid in
+            // home.html — the page-level template was updated but
+            // the fragment renderer was not. List-mode (table) after
+            // search is still broken; see #315 for the deeper fix.
+            html.push_str("<div class=\"browse-cards\">");
             for item in &paginated.items {
                 html.push_str(&render_search_row(item));
             }
+            html.push_str("</div>");
 
             // OOB pagination update
             html.push_str(&render_pagination_oob(
@@ -209,6 +225,50 @@ fn render_empty_state(query: &str, has_filter: bool, is_librarian: bool, loc: &s
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Fix #315 — locks the `.browse-cards` wrapper around the
+    /// article loop. Without it, the HTMX search swap leaves bare
+    /// `<article>` siblings inside `#browse-results` and the grid
+    /// layout (`.browse-grid .browse-cards { display: grid; … }`)
+    /// in `static/css/browse.css` has no element to target —
+    /// articles stack vertically with full-width covers.
+    #[test]
+    fn fragment_wraps_results_in_browse_cards_div() {
+        let item = SearchResult {
+            id: 1,
+            title: "Anything".to_string(),
+            subtitle: None,
+            media_type: "book".to_string(),
+            genre_name: "Roman".to_string(),
+            primary_contributor: None,
+            volume_count: 1,
+            cover_image_url: None,
+            publication_date: None,
+            dewey_code: None,
+        };
+        let paginated = crate::models::PaginatedList::new(
+            vec![item],
+            1,
+            1,
+            None,
+            None,
+            None,
+        );
+        let session = crate::middleware::auth::Session::anonymous_with_token(
+            "test-csrf".to_string(),
+        );
+
+        let html = render_search_fragment(&Some(paginated), "", &None, &None, &None, &session, "en");
+
+        assert!(
+            html.contains(r#"<div class="browse-cards">"#),
+            "fragment must wrap items in .browse-cards so the grid CSS rule engages; got: {html}"
+        );
+        assert!(
+            html.contains("</div>"),
+            "wrapper must be closed; got: {html}"
+        );
+    }
 
     #[test]
     fn test_render_search_row() {
