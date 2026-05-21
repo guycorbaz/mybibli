@@ -345,7 +345,27 @@ async fn main() {
     // Spawn provider-health background task AFTER AppState is built so we
     // don't borrow fields before they're in place. Pings run on a dedicated
     // 5-min cadence with a 10 s warm-up delay.
-    provider_health::spawn(http_client, registry, provider_health_map);
+    //
+    // Fix #310: the per-probe HEAD timeout is configurable via
+    // MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS (default
+    // `REQUEST_TIMEOUT_SECS_DEFAULT`, currently 10 s). The previous
+    // hardcoded 3 s was too tight for typical home-NAS DNS + TLS
+    // handshake, making every probe time out on the user's prod NAS.
+    let probe_timeout_secs: u64 = std::env::var("MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&s: &u64| s > 0)
+        .unwrap_or(provider_health::REQUEST_TIMEOUT_SECS_DEFAULT);
+    tracing::info!(
+        probe_timeout_secs = probe_timeout_secs,
+        "Provider health probe timeout configured"
+    );
+    provider_health::spawn(
+        http_client,
+        registry,
+        provider_health_map,
+        probe_timeout_secs,
+    );
 
     // Story 8-2: daily purge of anonymous session rows older than 7 days.
     // Bounded accumulation — unauthenticated visitors now get a DB row

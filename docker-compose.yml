@@ -43,6 +43,11 @@ services:
       # are auto-purged by a background task. Override the path if
       # you want logs somewhere other than the default container path.
       MYBIBLI_LOG_DIR: ${MYBIBLI_LOG_DIR:-/var/log/mybibli}
+      # Fix #310 (v1.7.1): per-probe timeout for the /admin > Health
+      # reachability check. Default 10 s is conservative for home-NAS
+      # networks (DNS + TLS to fresh providers often >3 s). Tighten
+      # only on fast, stable infra; bump on fragile uplinks.
+      MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS: ${MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS:-10}
       APP_LANGUAGE: ${APP_LANGUAGE:-en}
       MYBIBLI_COOKIE_SECURE: ${MYBIBLI_COOKIE_SECURE:-false}
     volumes:
