@@ -110,6 +110,229 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.0}\label{sec:whats-new-1.7.0}
+
+La version 1.7.0 est la cinquième mineure thématique de l'ère
+post-v1 \string— \textbf{Atteindre plus d'utilisateurs, déboguer
+plus facilement}. Pas de migration de schéma, pas de changement
+cassant \string— mise à jour routinière \texttt{docker compose
+pull \&\& docker compose up -d}. Les opérateurs qui veulent
+conserver leurs journaux entre redémarrages doivent monter un
+répertoire hôte sur \texttt{/var/log/mybibli} (voir chapitre 12)
+; sans le montage, les journaux fonctionnent toujours mais sont
+éphémères, exactement comme avant.
+
+Trois CR, plus une tranche de fondation non visible par
+l'utilisateur :
+
+\begin{itemize}
+  \item \textbf{Traduction allemande de l'interface (\#275).}
+        \string~900 clés traduites de \texttt{en.yml} vers un
+        nouveau \texttt{de.yml}. Sie-Form (vouvoiement formel)
+        tout du long \string— approprié pour les déploiements
+        bibliothèque / petite association. Les données de
+        référence (noms de genres, types d'emplacements,
+        états) restent dans la langue saisie par l'opérateur
+        \string— seul le chrome d'interface est localisé.
+  \item \textbf{Traduction italienne de l'interface (\#276).}
+        \string~900 clés traduites vers un nouveau
+        \texttt{it.yml}. Tutoiement informel partout
+        \string— approprié pour la forme bibliothèque de
+        maison / petite association. Guillemets italiens
+        \string«\string…\string» (U+00AB / U+00BB) utilisés
+        pour les citations inline.
+  \item \textbf{Répertoire de logs persistant + rotation +
+        niveau contrôlé par l'admin (\#301).} Les journaux
+        s'écrivent désormais dans \texttt{/var/log/mybibli/}
+        (montable sur un répertoire hôte) avec rotation
+        quotidienne et rétention configurable. L'admin peut
+        changer le niveau de log (\texttt{trace} /
+        \texttt{debug} / \texttt{info} / \texttt{warn} /
+        \texttt{error}) depuis l'onglet Paramètres système
+        sans redéploiement. Le nouveau chapitre 12
+        ("Exploitation \string& débogage") documente toute la
+        configuration.
+\end{itemize}
+
+\textbf{Tranche de fondation} (prérequis pour les deux
+traductions d'interface, livrée dans la PR \#302) :
+\texttt{src/i18n/resolve.rs},
+\texttt{src/middleware/locale.rs}, le sélecteur admin
+\string→ Système \string→ Langue par défaut et le sélecteur
+de langue de la barre de nav ont été généralisés pour gérer
+trois langues ou plus. Un nouveau test de parité des locales
+(\texttt{tests/locale\_parity.rs}) garantit que les quatre
+fichiers de locale restent alignés sur les mêmes clés à
+chaque exécution CI.
+
+\textbf{Hors scope} (reporté à une mineure ultérieure) :
+traductions allemande et italienne du présent manuel.
+L'interface est en quatre langues ; le manuel reste en anglais
+et français.
+
+\section{Nouveautés de la 1.6.2}\label{sec:whats-new-1.6.2}
+
+La version 1.6.2 est un correctif d'hygiène en deux parties
+posé sur v1.6.1. \emph{Aucun changement de code.} Mise à jour
+routinière \texttt{docker compose pull \&\& docker compose
+up -d}.
+
+\textbf{Partie 1 \string— bump de dépendances.} \texttt{cargo
+update} a appliqué 74 montées de version compatibles
+caret à travers l'arbre des dépendances :
+
+\begin{itemize}
+  \item \texttt{axum} 0.8.8 \string→ 0.8.9
+  \item \texttt{tokio} 1.50.0 \string→ 1.52.3
+  \item \texttt{openssl} 0.10.76 \string→ 0.10.80 (sécurité)
+  \item \texttt{rustls} 0.23.37 \string→ 0.23.40
+  \item \texttt{hyper} 1.8.1 \string→ 1.9.0
+  \item \texttt{tower-http} 0.6.8 \string→ 0.6.11
+  \item \texttt{wasm-bindgen} 0.2.115 \string→ 0.2.121
+  \item les piles \texttt{icu\_*} / \texttt{rustls-*} /
+        \texttt{zerocopy}
+  \item (liste complète dans le diff de \texttt{Cargo.lock}
+        contre \texttt{v1.6.1})
+\end{itemize}
+
+\texttt{cargo audit} ne signale aucun nouveau CVE. Deux
+avis pré-existants bloqués upstream subsistent :
+\texttt{rsa} 0.9.10 (RUSTSEC-2023-0071, sévérité moyenne, pas
+de version corrigée \string— vient via sqlx-mysql) et
+\texttt{time} 0.2.27 (RUSTSEC-2020-0056, vient via genpdf
+\string→ printpdf \string→ lopdf).
+
+\textbf{Partie 2 \string— builds reproductibles.}
+\texttt{Cargo.lock} retiré de \texttt{.gitignore} et
+versionné pour la première fois. mybibli est livré comme une
+application binaire, pas une bibliothèque, et la convention
+Rust est de versionner le lockfile dans ce cas. Le pinning
+donne des builds reproductibles à travers (a) la construction
+multi-stage du Dockerfile, (b) le workflow GitHub Actions de
+release, et (c) \texttt{git checkout vX.Y.Z} \string— le
+build d'un tag correspond déterministement à l'image Docker
+publiée. Auparavant, le lockfile était git-ignoré et le
+build Docker re-résolvait les versions au build time
+\string— deux images \texttt{:1.6.x} construites à une
+semaine d'intervalle pouvaient tirer silencieusement des
+patches upstream différents. Correction structurelle
+ponctuelle ; les futurs bumps apparaîtront comme des diffs
+\texttt{Cargo.lock} dans les revues de PR.
+
+909 tests unitaires + suite d'intégration +
+\texttt{sqlx-prepare --check} tous verts ;
+\texttt{cargo clippy --all-targets -- -D warnings} propre.
+
+\section{Nouveautés de la 1.6.1}\label{sec:whats-new-1.6.1}
+
+La version 1.6.1 est un hotfix d'une seule correction livré
+quelques heures après la mise à niveau v1.6.0 du NAS. Mise à
+jour routinière \texttt{docker compose pull \&\& docker
+compose up -d}, pas de migration de schéma.
+
+\textbf{\texttt{parent\_id} vide en édition d'emplacement
+racine ne fait plus 400 (\#296).} Repro : cocher la nouvelle
+case "Emplacement organisationnel" sur un emplacement
+\emph{racine}, soumettre \string→ \texttt{400 Failed to
+deserialize form body: parent\_id: cannot parse integer from
+empty string}. Fonctionnait sans souci sur les emplacements
+non-racine.
+
+La cause racine est pré-existante \string— latente depuis
+que la fonctionnalité d'édition d'emplacement a été livrée.
+Le \texttt{<select name="parent\_id"><option
+value="">Aucun</option>\string…</select>} du formulaire
+soumet \texttt{parent\_id=} (chaîne vide) quand l'utilisateur
+conserve l'option racine. \texttt{\#[serde(default)]
+Option<u64>} ne court-circuite que les champs
+\emph{absents} ; une chaîne vide passe quand même par le
+parser u64, qui échoue. La CR \#280 a simplement donné aux
+utilisateurs une nouvelle raison d'éditer des emplacements
+racine, exposant le bug latent.
+
+Le correctif reflète le pattern existant pour
+\texttt{deserialize\_optional\_i32} /
+\texttt{deserialize\_optional\_f64} dans
+\texttt{routes::series} :
+
+\begin{itemize}
+  \item Nouvelle aide \texttt{deserialize\_optional\_u64}
+        qui traite \texttt{""} / espaces / absence comme
+        \texttt{None} et parse les valeurs non vides comme
+        u64.
+  \item Câblée à \texttt{CreateLocationForm.parent\_id},
+        \texttt{UpdateLocationForm.parent\_id} ET
+        \texttt{VolumeEditForm.condition\_state\_id} (même
+        forme \texttt{<option value="">\string—</option>},
+        même bug latent \string— choisir "aucun état" sur
+        un volume aurait planté à 400 de la même manière).
+\end{itemize}
+
+12 nouveaux tests unitaires + round-trip de struct de
+formulaire ; nouveau spec E2E qui parcourt création racine
+\string→ édition \string→ cocher organisationnel \string→
+soumettre \string→ \texttt{/locations}. Un contournement
+client-side antérieur qui retirait l'attribut
+\texttt{name="parent\_id"} du formulaire d'édition pour
+esquiver le 422 a été supprimé.
+
+\section{Nouveautés de la 1.6.0}\label{sec:whats-new-1.6.0}
+
+La version 1.6.0 est la quatrième mineure thématique de
+l'ère post-v1 \string— \textbf{Resserrer le catalogue}. Une
+migration de schéma additive
+(\texttt{volumes.under\_audit\_since DATETIME NULL}) ; pas
+de changement cassant \string— mise à jour routinière
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+Quatre CR ciblant l'hygiène du catalogue :
+
+\begin{itemize}
+  \item \textbf{Emplacements organisationnels (\#280).} Un
+        emplacement de rangement peut être marqué
+        "organisationnel" pour refuser l'assignation de
+        volumes \string— des dossiers, pas des étagères.
+        Case à cocher sur le formulaire de création / édition,
+        garde-fou anti-bascule avec volumes (impossible de
+        marquer organisationnel un emplacement qui héberge
+        déjà des volumes), le sélecteur d'édition de volume
+        rejette les cibles organisationnelles à la soumission
+        avec une entrée de feedback localisée.
+  \item \textbf{Workflow d'audit d'étagère (\#237).} Marquer
+        un volume "À contrôler" \string— à l'unité ou en lot
+        pour une étagère entière. Un indicateur ambre sur le
+        tableau de bord d'accueil compte les audits en
+        attente ; une liste dédiée \texttt{/audit} (triée
+        par emplacement \string→ V-code) les affiche tous.
+        La nouvelle colonne \texttt{volumes.under\_audit\_since}
+        capture l'horodatage du marquage ; des lignes
+        \texttt{admin\_audit} sont écrites pour chaque
+        marquage et chaque effacement. La détection de
+        surplus (emplacements avec des volumes que
+        l'opérateur n'attendait pas) est reportée à un
+        suivi.
+  \item \textbf{Filtre "Titres sans volumes" (\#279).}
+        Nouveau filtre rapide sur le tableau de bord
+        d'accueil qui fait remonter les titres sans aucune
+        ligne de volume active \string— soit tous supprimés
+        en doux, soit catalogués mais jamais mis en rayon.
+        Réservé aux librarians et au-dessus. Le garde SQL
+        est un \texttt{NOT EXISTS} contre la table
+        \texttt{volumes} avec le prédicat \texttt{deleted\_at
+        IS NULL}, donc les volumes supprimés en doux
+        n'empêchent pas leur titre d'apparaître.
+  \item \textbf{Vue liste triable sur l'accueil (\#250).} La
+        vue liste de la page d'accueil devient un tableau
+        triable \string— Titre \string· Auteur \string·
+        Genre \string· Dewey \string· Volumes. Remplace la
+        disposition "cartes empilées verticalement"
+        antérieure. Les en-têtes de colonne émettent
+        \texttt{hx-get} HTMX + \texttt{hx-push-url=true} en
+        miroir du pattern \texttt{/location/:id}. Vue grille
+        inchangée ; le menu déroulant de tri est masqué en
+        mode liste (les clics sur colonne possèdent le tri).
+\end{itemize}
+
 \section{Nouveautés de la 1.5.2}\label{sec:whats-new-1.5.2}
 
 La version 1.5.2 est un hotfix d'une seule correction sur la
