@@ -74,9 +74,12 @@ async fn seed_admin_session(pool: &MySqlPool) -> String {
 }
 
 async fn insert_api_key(pool: &MySqlPool, label: &str, revoked: bool) -> u64 {
+    // `scope` is an ENUM('read','write') — `ro`/`rw` is only the
+    // plaintext-prefix form (see `ApiKeyScope::short` in
+    // `src/models/api_key.rs`), the DB stores `read`/`write`.
     let r = sqlx::query(
         "INSERT INTO api_keys (label, key_hash, key_prefix, scope, created_by, revoked_at) \
-         VALUES (?, ?, ?, 'ro', \
+         VALUES (?, ?, ?, 'read', \
                  (SELECT id FROM users WHERE username='admin' AND deleted_at IS NULL), \
                  IF(?, NOW(), NULL))",
     )
