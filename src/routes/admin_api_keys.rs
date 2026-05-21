@@ -536,17 +536,18 @@ pub async fn admin_api_keys_delete_modal(
 /// row. Goes through `SoftDeleteService::soft_delete("api_keys", id)`.
 /// Active keys are refused: Revoke is the prerequisite, mirrors the
 /// two-step destructive flow used everywhere else in the admin UI.
-#[derive(Deserialize)]
-pub struct DeleteApiKeyForm {
-    pub _csrf_token: String,
-}
-
+///
+/// Fix #309 — no `Form<>` extractor: HTMX `hx-delete` encodes form
+/// values into the query string (GET-style), not the body, so a body
+/// `Form<>` extractor returns 422 Unprocessable Entity on every
+/// request. The CSRF token is validated by the CSRF middleware via
+/// the `X-CSRF-Token` header (set by `static/js/csrf.js`'s
+/// `htmx:configRequest` listener), not by a per-handler form parse.
 pub async fn admin_api_keys_delete(
     State(state): State<AppState>,
     session: Session,
     Extension(locale): Extension<Locale>,
     Path(id): Path<u64>,
-    Form(_form): Form<DeleteApiKeyForm>,
 ) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=api_keys", locale.0)?;
     let loc = locale.0;
