@@ -32,11 +32,27 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.6.1`](https://github.com/guycorbaz/mybibli/releases/tag/v1.6.1)** — published 2026-05-20. One-fix hotfix on the v1.6.0 minor "Tighten the catalog" (organizational locations, shelf-audit workflow, titles-without-volumes filter chip, home list-view sortable table). The originally-planned feature build for v1.1 through v1.6 is complete; the project is now in **GH-issue-driven polish mode** — no next themed minor is currently scoped. Patches ship independently for production bugs; new feature CRs are queued in the parking lot until a coherent theme emerges or a roadmap-slotted candidate (e.g., the v2.0 classification refactor) is greenlit.
+**Current stable: [`v1.7.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.7.0)** — published 2026-05-21. Themed minor "Reach more users, debug more easily": German + Italian UI translations on top of the existing English/French pair, plus persistent log directory with rotation and admin-controlled log-level. Brings mybibli's UI to four languages and gives NAS operators the observability they need to debug production deployments. The originally-planned feature build for v1.1 through v1.6 is complete; the project is now in **GH-issue-driven polish mode** — no next themed minor is currently scoped beyond v1.7. Patches ship independently for production bugs; new feature CRs are queued in the parking lot until a coherent theme emerges or a roadmap-slotted candidate (e.g., the v2.0 classification refactor) is greenlit.
 
-Patch-line work currently open against the live line `1.6.x` (will ship as patches, not bundled into a future minor):
+Patch-line work currently open against the live line `1.7.x`:
 
 - [#196](https://github.com/guycorbaz/mybibli/issues/196) — Flake in `home-search.spec.ts:224` under default-worker parallel mode (a long-standing known-failure; downgraded to fix-when-convenient).
+- [#300](https://github.com/guycorbaz/mybibli/issues/300) — Volume-count mismatch — title shows multiple volumes when user owns only 1 (silent data corruption, pending triage).
+
+## v1.7.0 — "Reach more users, debug more easily" *(shipped)*
+
+Three CRs bundled together: two new UI languages and one operations
+slice for production debuggability.
+
+- [#275](https://github.com/guycorbaz/mybibli/issues/275) — **German (de) UI translation**. ~900 keys translated from `en.yml` to a new `de.yml`. Sie-form throughout (formal "you" — appropriate for library / small-association deployments).
+- [#276](https://github.com/guycorbaz/mybibli/issues/276) — **Italian (it) UI translation**. ~900 keys translated from `en.yml` to a new `it.yml`. Tu-form informal throughout — appropriate for a home-library tool. Italian guillemets «…» used for inline quotes.
+- [#301](https://github.com/guycorbaz/mybibli/issues/301) — **Persistent log directory + rotation + admin-controlled level**. Logs now persist across container restarts in a mounted volume; daily rotation with configurable retention; admin can flip log level (trace/debug/info/warn/error) from the System settings tab without a redeploy. New manual chapter 12 ("Operations & debugging") in EN + FR.
+
+Foundation slice (not user-visible, prerequisite for the two UI translations):
+
+- Extended `src/i18n/resolve.rs`, `src/middleware/locale.rs`, the admin → System → Default language selector, and the nav-bar language toggle to handle ≥3 languages. Locale parity test (`tests/locale_parity.rs`) ensures all four locale files stay key-aligned.
+
+**Out of scope** (deferred — may land in a future minor): German and Italian translations of the user manual (`docs/manual/{de,it}/`). The UI is in four languages; the manual remains in EN + FR.
 
 ## v1.6.0 — "Tighten the catalog" *(shipped)*
 
@@ -125,11 +141,6 @@ happen to fit a theme.
 - [#147](https://github.com/guycorbaz/mybibli/issues/147) — `nav.js` `getBurstThresholdMs` accepts `n=1` (1ms) — pathological admin-config protection.
 - [#146](https://github.com/guycorbaz/mybibli/issues/146) — E2E `navbar-hamburger` Test 5 — `simulateScan` trailing Enter race on `/login`.
 - [#145](https://github.com/guycorbaz/mybibli/issues/145) — `nav.js` burst threshold (50ms) may be tight for very fast typists / mechanical keyboards.
-
-### Localisation
-
-- [#275](https://github.com/guycorbaz/mybibli/issues/275) — German (de) UI translation.
-- [#276](https://github.com/guycorbaz/mybibli/issues/276) — Italian (it) UI translation.
 
 ### Larger CRs awaiting prioritization
 

@@ -104,6 +104,188 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.0}\label{sec:whats-new-1.7.0}
+
+Version 1.7.0 is the fifth themed minor of the post-v1 era \string—
+\textbf{Reach more users, debug more easily}. No schema migration, no
+breaking changes \string— routine \texttt{docker compose pull \&\&
+docker compose up -d}. Operators who want to keep their logs across
+container restarts should bind-mount a host directory to
+\texttt{/var/log/mybibli} (see chapter 12); without the mount, logs
+still work but are ephemeral, exactly as before.
+
+Three CRs, plus a non-user-visible foundation slice:
+
+\begin{itemize}
+  \item \textbf{German UI translation (\#275).} \string~900 keys
+        translated from \texttt{en.yml} to a new \texttt{de.yml}.
+        Sie-form throughout (formal "you" \string— appropriate for
+        library / small-association deployments). Reference data
+        (genre names, location-type names, condition states) stays
+        in whatever language operators entered \string— only UI
+        chrome is localized.
+  \item \textbf{Italian UI translation (\#276).} \string~900 keys
+        translated to a new \texttt{it.yml}. Tu-form informal
+        throughout \string— appropriate for the home-library /
+        small-association deployment shape. Italian guillemets
+        \string«\string…\string» (U+00AB / U+00BB) used for inline
+        quotes.
+  \item \textbf{Persistent log directory + rotation + admin-controlled
+        level (\#301).} Logs now write to \texttt{/var/log/mybibli/}
+        (bind-mountable to a host directory) with daily rotation
+        and configurable retention. Admins can change the log level
+        (\texttt{trace} / \texttt{debug} / \texttt{info} / \texttt{warn}
+        / \texttt{error}) from the System settings tab without a
+        redeploy. New chapter 12 ("Operations \string& debugging")
+        documents the full setup.
+\end{itemize}
+
+\textbf{Foundation slice} (prerequisite for the two UI translations,
+shipped under PR \#302): \texttt{src/i18n/resolve.rs},
+\texttt{src/middleware/locale.rs}, the admin \string→ System
+\string→ Default language selector, and the nav-bar language toggle
+were generalized to handle three or more languages. A new locale
+parity test (\texttt{tests/locale\_parity.rs}) ensures all four
+locale files stay key-aligned on every CI run.
+
+\textbf{Out of scope} (deferred to a future minor): German and
+Italian translations of this manual. The UI is in four languages;
+the manual remains in English + French.
+
+\section{What's new in 1.6.2}\label{sec:whats-new-1.6.2}
+
+Version 1.6.2 is a two-part hygiene patch on top of v1.6.1. \emph{No
+code changes.} Routine \texttt{docker compose pull \&\& docker
+compose up -d}.
+
+\textbf{Part 1 \string— dependency bump.} \texttt{cargo update} applied
+74 caret-compatible bumps across the dependency tree:
+
+\begin{itemize}
+  \item \texttt{axum} 0.8.8 \string→ 0.8.9
+  \item \texttt{tokio} 1.50.0 \string→ 1.52.3
+  \item \texttt{openssl} 0.10.76 \string→ 0.10.80 (security-relevant)
+  \item \texttt{rustls} 0.23.37 \string→ 0.23.40
+  \item \texttt{hyper} 1.8.1 \string→ 1.9.0
+  \item \texttt{tower-http} 0.6.8 \string→ 0.6.11
+  \item \texttt{wasm-bindgen} 0.2.115 \string→ 0.2.121
+  \item the \texttt{icu\_*} / \texttt{rustls-*} / \texttt{zerocopy}
+        stacks
+  \item (full list in the \texttt{Cargo.lock} diff against
+        \texttt{v1.6.1})
+\end{itemize}
+
+\texttt{cargo audit} reports no new CVEs. Two pre-existing
+upstream-blocked advisories remain: \texttt{rsa} 0.9.10 (RUSTSEC-2023-0071,
+medium, no fixed upgrade \string— comes via sqlx-mysql) and \texttt{time}
+0.2.27 (RUSTSEC-2020-0056, comes via genpdf \string→ printpdf
+\string→ lopdf).
+
+\textbf{Part 2 \string— reproducible builds.} \texttt{Cargo.lock}
+removed from \texttt{.gitignore} and committed for the first time.
+mybibli ships as a binary application, not a library, so the standard
+Rust guidance is to commit the lockfile. Pinning gives reproducible
+builds across (a) the Dockerfile multi-stage build, (b) the GitHub
+Actions release workflow, and (c) \texttt{git checkout vX.Y.Z}
+\string— a tag's build deterministically matches the shipped Docker
+image. Previously the lockfile was git-ignored and the Docker build
+re-resolved versions at build time \string— two \texttt{:1.6.x}
+images built a week apart could silently pull different upstream
+patches. One-time structural fix; future bumps will surface as
+\texttt{Cargo.lock} diffs in PR reviews.
+
+909 unit tests + integration suite + \texttt{sqlx-prepare --check}
+all green; \texttt{cargo clippy --all-targets -- -D warnings} clean.
+
+\section{What's new in 1.6.1}\label{sec:whats-new-1.6.1}
+
+Version 1.6.1 is a one-fix hotfix shipped hours after the v1.6.0 NAS
+upgrade. Routine \texttt{docker compose pull \&\& docker compose up
+-d}, no schema migration.
+
+\textbf{Empty \texttt{parent\_id} on root-location edit no longer
+400s (\#296).} Repro: tick the new "Emplacement organisationnel"
+checkbox on a \emph{root} location, submit \string→ \texttt{400
+Failed to deserialize form body: parent\_id: cannot parse integer
+from empty string}. Worked fine on non-root locations.
+
+Root cause is pre-existing \string— latent since the location-edit
+feature shipped. The form's
+\texttt{<select name="parent\_id"><option value="">None</option>\string…</select>}
+submits \texttt{parent\_id=} (empty string) when the user keeps the
+root option. \texttt{\#[serde(default)] Option<u64>} only
+short-circuits \emph{absent} fields; an empty string still hits the
+u64 parser, which bails. CR \#280 just gave users a new reason to
+edit root locations, exposing the latent bug.
+
+Fix mirrors the existing pattern for
+\texttt{deserialize\_optional\_i32} /
+\texttt{deserialize\_optional\_f64} in \texttt{routes::series}:
+
+\begin{itemize}
+  \item New \texttt{deserialize\_optional\_u64} helper treats
+        \texttt{""} / whitespace / absent as \texttt{None}, parses
+        non-empty values as u64.
+  \item Wired to \texttt{CreateLocationForm.parent\_id},
+        \texttt{UpdateLocationForm.parent\_id}, AND
+        \texttt{VolumeEditForm.condition\_state\_id} (same
+        \texttt{<option value="">\string—</option>} shape, same
+        latent bug \string— picking "no condition" on a volume would
+        have 400'd the same way).
+\end{itemize}
+
+12 new unit + form round-trip tests; new E2E spec walks through
+create root \string→ edit \string→ tick organisationnel \string→
+submit \string→ \texttt{/locations}. Earlier client-side workaround
+that stripped the \texttt{name="parent\_id"} attribute in the
+location-edit form to dodge the 422 was removed.
+
+\section{What's new in 1.6.0}\label{sec:whats-new-1.6.0}
+
+Version 1.6.0 is the fourth themed minor of the post-v1 era \string—
+\textbf{Tighten the catalog}. One additive schema migration
+(\texttt{volumes.under\_audit\_since DATETIME NULL}); no breaking
+changes \string— routine \texttt{docker compose pull \&\& docker
+compose up -d}.
+
+Four CRs aimed at catalog hygiene:
+
+\begin{itemize}
+  \item \textbf{Organizational storage locations (\#280).} A storage
+        location can be marked "organizational" to refuse volume
+        assignments \string— folders, not shelves. Checkbox on the
+        create/edit form, flip-with-volumes guard (cannot mark
+        organizational a location that already holds volumes),
+        volume-edit picker rejects organizational targets at submit
+        time with a localized feedback entry.
+  \item \textbf{Shelf-audit workflow (\#237).} Mark a volume "À
+        contrôler" \string— single or bulk for an entire shelf. An
+        amber home-dashboard indicator counts pending audits; a
+        dedicated \texttt{/audit} list (sorted by location \string→
+        V-code) shows them all. New
+        \texttt{volumes.under\_audit\_since} column captures the
+        mark timestamp; \texttt{admin\_audit} rows are written for
+        every mark and every clear. Surplus-detection (locations
+        with volumes the operator didn't expect) deferred to a
+        follow-up.
+  \item \textbf{"Titles without volumes" filter chip (\#279).} New
+        chip on the home dashboard surfaces titles that have no
+        active volume row \string— either all soft-deleted away or
+        catalogued but never shelved. Librarian+ only. SQL guard is
+        \texttt{NOT EXISTS} against the \texttt{volumes} table with
+        the \texttt{deleted\_at IS NULL} predicate, so soft-deleted
+        volumes don't keep their title from appearing.
+  \item \textbf{Sortable home list view (\#250).} The home page's
+        list view becomes a sortable table \string— Title \string·
+        Author \string· Genre \string· Dewey \string· Volumes.
+        Replaces the previous cards-stacked-vertically layout.
+        Column headers issue HTMX \texttt{hx-get} +
+        \texttt{hx-push-url=true} mirroring the
+        \texttt{/location/:id} pattern. Grid view unchanged; the
+        sort dropdown is hidden in list mode (column clicks own
+        sorting).
+\end{itemize}
+
 \section{What's new in 1.5.2}\label{sec:whats-new-1.5.2}
 
 Version 1.5.2 is a one-fix hotfix on top of v1.5.1: the v1.5.0 \#243
