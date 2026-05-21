@@ -78,18 +78,33 @@ Live production install (`v1.6.2`, household NAS, ~88 titles cataloged):
 
 Pre-built images are published to Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli) — `:latest` tracks the highest semver, individual tags pin to the exact release. Honor the **1.1.0 minimum** banner above. For development against the source tree, see **Development** below.
 
-### Persistent storage — both volumes are mandatory
+### Persistent storage — volumes you need
 
-`docker-compose.yml` declares **two named volumes** that MUST survive container upgrades:
+`docker-compose.yml` declares **three named volumes**. The first two MUST survive container upgrades; the third is forensic-only:
 
-- `mybibli_db_data` → `/var/lib/mysql` — your catalog (titles, volumes, loans, etc.)
-- `mybibli_covers` → `/app/covers` — downloaded cover JPGs (issue [#213](https://github.com/guycorbaz/mybibli/issues/213))
+- `mybibli_db_data` → `/var/lib/mysql` — your catalog (titles, volumes, loans, etc.) — **mandatory**
+- `mybibli_covers` → `/app/covers` — downloaded cover JPGs (issue [#213](https://github.com/guycorbaz/mybibli/issues/213)) — **mandatory**
+- `mybibli_logs` → `/var/log/mybibli` — daily-rotating log files (CR [#301](https://github.com/guycorbaz/mybibli/issues/301), v1.7.0+) — **optional but recommended** for production debuggability; can be wiped at any time
 
-If you deploy `docker-compose.yml` from the repo unchanged, you already have both. Back them up together — losing one without the other leaves DB references pointing at missing files (or vice versa).
+If you deploy `docker-compose.yml` from the repo unchanged (v1.7.0+), you already have all three. Back the data + covers volumes up together — losing one without the other leaves DB references pointing at missing files (or vice versa). The logs volume is forensic-only; it doesn't need backup.
 
 **Upgrading from a pre-1.1.4 install?** Pre-1.1.4 `docker-compose.yml` did not declare `mybibli_covers`, so the cover JPGs lived inside the container's writable layer and were lost on every `docker compose up -d` after a `pull`. Adding the volume now preserves covers fetched from this point forward, but does NOT restore the ones that disappeared on prior upgrades. To recover, re-trigger metadata fetch from each affected title's detail page (the "Re-fetch metadata" button). A bulk-fetch admin action is tracked at issue [#214](https://github.com/guycorbaz/mybibli/issues/214).
 
-**Synology DSM / bind-mount users:** comment out the `mybibli_covers:/app/covers` line in `docker-compose.yml` and uncomment the bind-mount line right below it, then set `COVERS_HOST_PATH` in your `.env` to the host path you want — Synology File Station / your rsync routine will see the covers directly.
+**Upgrading from a pre-1.7.0 install?** The `mybibli_logs` volume is new in v1.7.0. Without it, log files write to the container's ephemeral writable layer and are lost on every `docker compose up -d` after a `pull` — which defeats the purpose of CR [#301](https://github.com/guycorbaz/mybibli/issues/301)'s persistent-log feature. Add this block to your existing `docker-compose.yml`:
+
+```yaml
+services:
+  mybibli:
+    volumes:
+      - mybibli_logs:/var/log/mybibli   # ← add this line
+
+volumes:
+  mybibli_logs:                          # ← and this declaration
+```
+
+(Or use a bind mount: `- /your/host/path:/var/log/mybibli` if you prefer logs visible directly in DSM File Station / your journald shipper. See chapter 12 of the manual.)
+
+**Synology DSM / bind-mount users:** comment out the `mybibli_covers:/app/covers` line in `docker-compose.yml` and uncomment the bind-mount line right below it, then set `COVERS_HOST_PATH` in your `.env` to the host path you want — Synology File Station / your rsync routine will see the covers directly. The same pattern applies to `mybibli_logs` via `LOGS_HOST_PATH`.
 
 ## Configuration
 
@@ -111,13 +126,18 @@ The variables are grouped in seven sections:
    used by the bundled `db` service.
 2. **HTTP server** — `HOST`, `PORT`, `HOST_PORT` (the host-side port
    published by Docker).
-3. **Application** — `RUST_LOG` (tracing filter; prod-safe default
-   `mybibli=info`), `APP_LANGUAGE` (`en` or `fr`), `COVERS_DIR`
-   (filesystem path for downloaded cover images — in Docker, the
-   `/app/covers` directory is mapped to the persistent `mybibli_covers`
-   named volume; see "Persistent storage" above. `COVERS_HOST_PATH`
-   is an optional bind-mount override for users who prefer a host path
-   visible in their file manager).
+3. **Application** — `MYBIBLI_LOG_LEVEL` (v1.7.0+, tracing filter;
+   prod-safe default `info`; also flippable at runtime from
+   `/admin > System` without a redeploy), `MYBIBLI_LOG_DIR` (v1.7.0+,
+   in-container path for daily-rotating log files; default
+   `/var/log/mybibli`; mapped to the `mybibli_logs` named volume — see
+   "Persistent storage" above. `LOGS_HOST_PATH` is an optional
+   bind-mount override), `RUST_LOG` (legacy fallback, honored when
+   `MYBIBLI_LOG_LEVEL` is unset), `APP_LANGUAGE` (`en`, `fr`, `de`, or
+   `it` — v1.7.0 added DE + IT), `COVERS_DIR` (filesystem path for
+   downloaded cover images — in Docker, the `/app/covers` directory is
+   mapped to the persistent `mybibli_covers` named volume.
+   `COVERS_HOST_PATH` is an optional bind-mount override).
 4. **Cookie & CSP hardening** — `MYBIBLI_COOKIE_SECURE` (set to `true`
    only behind HTTPS, see issue
    [#94](https://github.com/guycorbaz/mybibli/issues/94)),
