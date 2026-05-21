@@ -25,6 +25,21 @@ simultaneously:
 Files are named \texttt{mybibli.log.YYYY-MM-DD} (one per UTC day).
 A background task purges files older than 30 days automatically.
 
+\subsection*{Changing the in-container log path}
+\label{sec:log-dir-override}
+
+The default in-container log directory \texttt{/var/log/mybibli/} is
+controlled by the \texttt{MYBIBLI\_LOG\_DIR} environment variable.
+Change it only if you remount the volume elsewhere — the shipped
+\texttt{docker-compose.yml} maps the \texttt{mybibli\_logs} named
+volume (or a bind mount via \texttt{LOGS\_HOST\_PATH}) onto
+\texttt{/var/log/mybibli}, so changing one without the other lands
+logs in the writable layer where they get wiped on every
+\texttt{docker compose up -d} after a \texttt{pull}.
+
+See section~\ref{sec:install-logs-bind} for the bind-mount setup
+(host-visible logs for DSM Log Center / journald shipping).
+
 \section{Tailing logs from the host}
 
 \begin{lstlisting}
@@ -42,8 +57,8 @@ docker compose exec mybibli sh -c "grep ERROR /var/log/mybibli/mybibli.log.*"
 \end{lstlisting}
 
 If you mounted the volume as a bind mount (\texttt{LOGS\_HOST\_PATH}
-in \texttt{.env}, see chapter~\ref{ch:installation}), the files are
-visible directly on the host without needing
+in \texttt{.env}, see section~\ref{sec:install-logs-bind}), the files
+are visible directly on the host without needing
 \texttt{docker compose exec}.
 
 \section{Log levels}

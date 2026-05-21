@@ -61,6 +61,16 @@ Avant de commencer :
         un chemin sur l'hôte (par exemple
         \texttt{/volume1/docker/mybibli/covers}); vous basculerez le
         compose vers un bind mount à l'étape~3 plus bas.
+  \item Choisissez comment stocker les
+        journaux\index{journaux!répertoire} (v1.7.0+). Le fichier
+        \texttt{docker-compose.yml} fourni déclare un troisième volume
+        nommé (\texttt{mybibli\_logs}) pour les fichiers de journaux
+        à rotation quotidienne. Comme pour les couvertures, vous
+        pouvez garder le volume géré par Docker (sans configuration)
+        ou basculer vers un bind mount visible côté hôte pour
+        acheminer les journaux vers DSM Log Center, journald ou un
+        collecteur externe. Voir
+        section~\ref{sec:install-logs-bind}.
   \item Choisissez un mot de passe fort pour les utilisateurs
         \texttt{root} et applicatif de la MariaDB embarquée — ou,
         pour une base de données externe, créez à l'avance une base
@@ -83,8 +93,8 @@ le tag correspondant) :
 
 \begin{lstlisting}
 mkdir -p /srv/mybibli && cd /srv/mybibli
-curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/docker-compose.yml
-curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/.env.example
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.7.0/docker-compose.yml
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.7.0/.env.example
 cp .env.example .env
 \end{lstlisting}
 
@@ -114,6 +124,39 @@ etc.), éditez le fichier compose :
         (\texttt{mkdir -p}) pour éviter que Docker ne le crée
         automatiquement avec le propriétaire root.
 \end{itemize}
+
+\subsection*{1c. (Optionnel) Basculer les journaux vers un bind mount}\label{sec:install-logs-bind}
+
+Nouveau en \textbf{v1.7.0}. Par défaut, mybibli écrit ses fichiers de
+journaux à rotation quotidienne dans le volume nommé Docker
+\texttt{mybibli\_logs} monté sur \texttt{/var/log/mybibli} dans le
+conteneur. Les fichiers sont nommés \texttt{mybibli.log.YYYY-MM-DD}
+et l'appender en-process purge automatiquement les fichiers de plus
+de 30 jours.
+
+Si vous souhaitez voir les journaux directement côté hôte (DSM Log
+Center, journald, agrégateur de logs externe, \texttt{tail} manuel),
+éditez le fichier compose :
+
+\begin{itemize}
+  \item Dans le bloc \texttt{volumes:} du service \texttt{mybibli},
+        commentez la ligne
+        \texttt{- mybibli\_logs:/var/log/mybibli} et décommentez la
+        ligne
+        \texttt{- \$\{LOGS\_HOST\_PATH:-./logs-host\}:/var/log/mybibli}
+        juste en-dessous.
+  \item Dans \texttt{.env}, définissez \texttt{LOGS\_HOST\_PATH}
+        sur le chemin hôte voulu (par exemple
+        \texttt{LOGS\_HOST\_PATH=/volume1/docker/mybibli/logs}).
+  \item Créez le répertoire avant de démarrer la pile
+        (\texttt{mkdir -p}) pour éviter que Docker ne le crée
+        automatiquement avec le propriétaire root.
+\end{itemize}
+
+Le volume de journaux est uniquement médico-légal — vous pouvez le
+vider à tout moment sans affecter les données du catalogue. Voir
+chapitre~\ref{ch:operations-debugging} pour le suivi et le contrôle
+du niveau de journalisation.
 
 \subsection*{2. Éditer \texttt{.env}}
 
@@ -290,9 +333,13 @@ se lit comme « positionnée » et bascule silencieusement un opt-out.
 \texttt{HOST\_PORT}           & \texttt{8080}    & Port publié par Docker sur l'hôte. \\
 \midrule
 \multicolumn{3}{l}{\emph{Application}} \\
-\texttt{RUST\_LOG}            & \texttt{mybibli=info} & Filtre tracing. \texttt{mybibli=debug} pour des logs verbeux. \\
-\texttt{APP\_LANGUAGE}        & \texttt{en}     & Langue d'interface par défaut pour les visiteurs anonymes. \\
+\texttt{MYBIBLI\_LOG\_LEVEL}  & \texttt{info}   & v1.7.0+. Niveau de journalisation à l'exécution. Niveau simple (\texttt{trace}/\texttt{debug}/\texttt{info}/\texttt{warn}/\texttt{error}) ou liste de directives \texttt{EnvFilter}. Prioritaire sur \texttt{RUST\_LOG}. Aussi modifiable depuis \texttt{/admin > Système}. \\
+\texttt{MYBIBLI\_LOG\_DIR}    & \texttt{/var/log/mybibli} & v1.7.0+. Répertoire des fichiers de journaux à rotation quotidienne dans le conteneur. Mappé sur le volume nommé \texttt{mybibli\_logs}. \\
+\texttt{LOGS\_HOST\_PATH}     & \texttt{./logs-host} & v1.7.0+. Chemin hôte optionnel pour bind mount ; utilisé uniquement si vous décommentez la ligne bind-mount dans \texttt{docker-compose.yml}. \\
+\texttt{RUST\_LOG}            & \texttt{mybibli=info} & Filtre tracing hérité. Pris en compte si \texttt{MYBIBLI\_LOG\_LEVEL} n'est pas défini. \\
+\texttt{APP\_LANGUAGE}        & \texttt{en}     & Langue d'interface par défaut pour les visiteurs anonymes. v1.7.0 ajoute \texttt{de} + \texttt{it} à \texttt{en} / \texttt{fr}. \\
 \texttt{COVERS\_DIR}          & \texttt{./covers} & Chemin de stockage des images de couverture. \\
+\texttt{COVERS\_HOST\_PATH}   & \texttt{./covers-host} & Chemin hôte optionnel pour bind mount ; utilisé uniquement si vous décommentez la ligne bind-mount dans \texttt{docker-compose.yml}. \\
 \midrule
 \multicolumn{3}{l}{\emph{Durcissement}} \\
 \texttt{MYBIBLI\_COOKIE\_SECURE} & \texttt{false} & Mettre à \texttt{true} uniquement derrière HTTPS. \\

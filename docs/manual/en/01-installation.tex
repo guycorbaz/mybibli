@@ -51,6 +51,13 @@ Before you start:
         path now (e.g.\ \texttt{/volume1/docker/mybibli/covers}) and
         you will switch the compose file to a bind mount in step~3
         below.
+  \item Decide how logs are stored\index{logs!directory} (v1.7.0+).
+        The shipped \texttt{docker-compose.yml} declares a third
+        named volume (\texttt{mybibli\_logs}) for the daily-rotating
+        log files. Like for covers, you can keep the Docker-managed
+        volume (zero-config) or switch to a host-visible bind mount
+        for shipping logs to DSM Log Center, journald, or an external
+        log collector. See section~\ref{sec:install-logs-bind}.
   \item Choose a strong password for the bundled MariaDB
         \texttt{root} and application users — or, for an external
         database, create a dedicated database and user up front (see
@@ -71,8 +78,8 @@ at the matching tag):
 
 \begin{lstlisting}
 mkdir -p /srv/mybibli && cd /srv/mybibli
-curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/docker-compose.yml
-curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.1.0/.env.example
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.7.0/docker-compose.yml
+curl -O https://raw.githubusercontent.com/guycorbaz/mybibli/v1.7.0/.env.example
 cp .env.example .env
 \end{lstlisting}
 
@@ -100,6 +107,36 @@ File Station, manual rsync backups, etc.), edit the compose file:
         (\texttt{mkdir -p}) so Docker doesn't auto-create it owned by
         root.
 \end{itemize}
+
+\subsection*{1c. (Optional) Switch logs to a bind mount}\label{sec:install-logs-bind}
+
+New in \textbf{v1.7.0}. By default, mybibli writes its daily-rotating
+log files to the Docker-managed named volume \texttt{mybibli\_logs}
+mounted at \texttt{/var/log/mybibli} inside the container. Files are
+named \texttt{mybibli.log.YYYY-MM-DD} and the in-process appender
+purges files older than 30 days automatically.
+
+If you want logs visible directly on the host (Synology DSM Log
+Center, journald shipping, external log aggregator, manual
+\texttt{tail}), edit the compose file:
+
+\begin{itemize}
+  \item In the \texttt{mybibli} service's \texttt{volumes:} block,
+        comment out the \texttt{- mybibli\_logs:/var/log/mybibli} line
+        and uncomment the
+        \texttt{- \$\{LOGS\_HOST\_PATH:-./logs-host\}:/var/log/mybibli}
+        line right below it.
+  \item In \texttt{.env}, set \texttt{LOGS\_HOST\_PATH} to the host
+        path you want (e.g.\
+        \texttt{LOGS\_HOST\_PATH=/volume1/docker/mybibli/logs}).
+  \item Create the directory before starting the stack
+        (\texttt{mkdir -p}) so Docker doesn't auto-create it owned by
+        root.
+\end{itemize}
+
+The logs volume is forensic-only — you can wipe it at any time
+without affecting catalog data. See chapter~\ref{ch:operations-debugging}
+for log-tailing and log-level controls.
 
 \subsection*{2. Edit \texttt{.env}}
 
@@ -271,9 +308,13 @@ and silently flips an opt-out.
 \texttt{HOST\_PORT}           & \texttt{8080}    & Port published by Docker on the host. \\
 \midrule
 \multicolumn{3}{l}{\emph{Application}} \\
-\texttt{RUST\_LOG}            & \texttt{mybibli=info} & Tracing filter. Use \texttt{mybibli=debug} for verbose logs. \\
-\texttt{APP\_LANGUAGE}        & \texttt{en}     & Default UI language for anonymous visitors. \\
+\texttt{MYBIBLI\_LOG\_LEVEL}  & \texttt{info}   & v1.7.0+. Runtime log level. Plain level (\texttt{trace}/\texttt{debug}/\texttt{info}/\texttt{warn}/\texttt{error}) or an \texttt{EnvFilter} directive list. Takes precedence over \texttt{RUST\_LOG}. Also flippable from \texttt{/admin > System}. \\
+\texttt{MYBIBLI\_LOG\_DIR}    & \texttt{/var/log/mybibli} & v1.7.0+. Directory for daily-rotating log files inside the container. Mapped to the \texttt{mybibli\_logs} named volume. \\
+\texttt{LOGS\_HOST\_PATH}     & \texttt{./logs-host} & v1.7.0+. Optional bind-mount host path; used only when you uncomment the bind-mount line in \texttt{docker-compose.yml}. \\
+\texttt{RUST\_LOG}            & \texttt{mybibli=info} & Legacy tracing filter. Honored when \texttt{MYBIBLI\_LOG\_LEVEL} is unset. \\
+\texttt{APP\_LANGUAGE}        & \texttt{en}     & Default UI language for anonymous visitors. v1.7.0 adds \texttt{de} + \texttt{it} to \texttt{en} / \texttt{fr}. \\
 \texttt{COVERS\_DIR}          & \texttt{./covers} & Filesystem path for cover-image storage. \\
+\texttt{COVERS\_HOST\_PATH}   & \texttt{./covers-host} & Optional bind-mount host path; used only when you uncomment the bind-mount line in \texttt{docker-compose.yml}. \\
 \midrule
 \multicolumn{3}{l}{\emph{Hardening}} \\
 \texttt{MYBIBLI\_COOKIE\_SECURE} & \texttt{false} & Set to \texttt{true} only behind HTTPS. \\

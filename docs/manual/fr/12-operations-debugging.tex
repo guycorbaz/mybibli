@@ -27,6 +27,23 @@ Les fichiers sont nommés \texttt{mybibli.log.AAAA-MM-JJ} (un par jour
 UTC). Une tâche en arrière-plan purge automatiquement les fichiers de
 plus de 30 jours.
 
+\subsection*{Changer le chemin des journaux dans le conteneur}
+\label{sec:log-dir-override}
+
+Le répertoire de journaux par défaut \texttt{/var/log/mybibli/} dans
+le conteneur est contrôlé par la variable d'environnement
+\texttt{MYBIBLI\_LOG\_DIR}. Ne le changez que si vous remontez le
+volume ailleurs — le fichier \texttt{docker-compose.yml} fourni
+mappe le volume nommé \texttt{mybibli\_logs} (ou un bind mount via
+\texttt{LOGS\_HOST\_PATH}) sur \texttt{/var/log/mybibli}, et changer
+l'un sans l'autre fait atterrir les journaux dans la couche
+inscriptible où ils sont effacés à chaque
+\texttt{docker compose up -d} suivant un \texttt{pull}.
+
+Voir section~\ref{sec:install-logs-bind} pour la configuration du
+bind mount (journaux visibles côté hôte pour DSM Log Center /
+journald shipping).
+
 \section{Lire les journaux depuis l'hôte}
 
 \begin{lstlisting}
@@ -44,8 +61,8 @@ docker compose exec mybibli sh -c "grep ERROR /var/log/mybibli/mybibli.log.*"
 \end{lstlisting}
 
 Si vous avez monté le volume comme un bind mount
-(\texttt{LOGS\_HOST\_PATH} dans \texttt{.env}, voir le
-chapitre~\ref{ch:installation}), les fichiers sont visibles
+(\texttt{LOGS\_HOST\_PATH} dans \texttt{.env}, voir
+section~\ref{sec:install-logs-bind}), les fichiers sont visibles
 directement depuis l'hôte sans passer par \texttt{docker compose
 exec}.
 
