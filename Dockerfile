@@ -22,6 +22,13 @@ RUN npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --mini
 # Stage 3: Runtime
 FROM alpine:latest
 RUN apk add --no-cache ca-certificates
+# CR #301 (v1.7.0): pre-create the log directory inside the image so a
+# fresh deployment doesn't need `mkdir -p` permission at runtime — the
+# tracing-appender writer fails-open and silently falls back to
+# stdout-only if it can't create the dir, but pre-creating gives us
+# correct ownership + visibility from `docker exec` even before the
+# named volume is mounted.
+RUN mkdir -p /var/log/mybibli && chmod 0755 /var/log/mybibli
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/mybibli /usr/local/bin/
 COPY --from=css /app/static/css/output.css /app/static/css/output.css
 COPY static/css/browse.css /app/static/css/browse.css

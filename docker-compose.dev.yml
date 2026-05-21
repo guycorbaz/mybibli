@@ -8,6 +8,10 @@ services:
       HOST: "0.0.0.0"
       PORT: "8080"
       RUST_LOG: mybibli=debug,tower_http=debug
+      # CR #301 (v1.7.0) — dev stack runs at `debug` level by default;
+      # bump to `mybibli=trace,sqlx::query=warn` for a deep one-shot
+      # investigation. MYBIBLI_LOG_LEVEL takes precedence over RUST_LOG.
+      MYBIBLI_LOG_LEVEL: mybibli=debug,tower_http=debug
       APP_LANGUAGE: "en"
       # Story 8-8: skip the first-launch setup wizard for the integrated
       # dev stack — the seed migrations already create admin + librarian.

@@ -2,12 +2,14 @@
 #
 # All configuration values live in .env — nothing in this file needs editing.
 #
-# Persistent state lives in two named volumes (both survive `docker compose
+# Persistent state lives in three named volumes (all survive `docker compose
 # down` AND `docker compose up -d` after a `pull`):
 #   - `mybibli_db_data`  — MariaDB data directory
 #   - `mybibli_covers`   — downloaded cover JPGs (issue #213)
-# Back them up together — losing one without the other will surface as
-# half-broken (DB references that point at missing covers or vice versa).
+#   - `mybibli_logs`     — rotated daily log files (CR #301, v1.7.0)
+# Back the data + covers volumes up together — losing one without the other
+# will surface as half-broken (DB references that point at missing covers or
+# vice versa). The logs volume is forensic-only, can be wiped at any time.
 #
 # To use an EXTERNAL database instead:
 #   1. Comment out (or delete) the `db:` service.
@@ -28,6 +30,19 @@ services:
       HOST: ${HOST:-0.0.0.0}
       PORT: ${PORT:-8080}
       RUST_LOG: ${RUST_LOG:-mybibli=info}
+      # CR #301 (v1.7.0): runtime log-level control. Takes precedence
+      # over RUST_LOG. Accepts a plain level (trace / debug / info /
+      # warn / error) or a tracing-subscriber EnvFilter directive list
+      # like `mybibli=debug,sqlx=warn`. Default `info` is
+      # production-safe. For an active investigation, set
+      # `MYBIBLI_LOG_LEVEL=mybibli=debug` (or `mybibli=trace` for the
+      # deepest level) and restart the container.
+      MYBIBLI_LOG_LEVEL: ${MYBIBLI_LOG_LEVEL:-info}
+      # CR #301: directory where the daily-rotating log files land.
+      # Files are named `mybibli.log.YYYY-MM-DD`. Older than 30 days
+      # are auto-purged by a background task. Override the path if
+      # you want logs somewhere other than the default container path.
+      MYBIBLI_LOG_DIR: ${MYBIBLI_LOG_DIR:-/var/log/mybibli}
       APP_LANGUAGE: ${APP_LANGUAGE:-en}
       MYBIBLI_COOKIE_SECURE: ${MYBIBLI_COOKIE_SECURE:-false}
     volumes:
@@ -43,6 +58,16 @@ services:
       # rsync backups), comment the line below and uncomment the second:
       - mybibli_covers:/app/covers
       # - ${COVERS_HOST_PATH:-./covers-host}:/app/covers
+      # CR #301 (v1.7.0) — persistent log directory. Survives
+      # `docker compose pull && up -d` so a NAS operator can
+      # `tail -f` historical logs after an upgrade. Daily rotation
+      # is in-process via `tracing-appender::rolling::daily`; files
+      # older than 30 days are purged by a background task. Wipe
+      # this volume at any time — it's forensic-only.
+      - mybibli_logs:/var/log/mybibli
+      # Or a bind mount if you want logs visible in the host
+      # filesystem (Synology DSM Log Center, journald shipping):
+      # - ${LOGS_HOST_PATH:-./logs-host}:/var/log/mybibli
     depends_on:
       db:
         condition: service_healthy
@@ -72,3 +97,4 @@ services:
 volumes:
   mybibli_db_data:
   mybibli_covers:
+  mybibli_logs:
