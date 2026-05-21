@@ -24,12 +24,100 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
-    // Initialize structured JSON logging
-    tracing_subscriber::fmt()
+    // CR #301 (v1.7.0) — dual-output structured logging:
+    // - stdout (kept as-is so `docker logs` still works, journald still works,
+    //   the existing E2E `docker compose logs` step still works);
+    // - a daily-rotating file under `MYBIBLI_LOG_DIR` (default
+    //   `/var/log/mybibli`) so a NAS operator can `tail -f` historical logs
+    //   after a `docker compose pull && up -d` that would otherwise drop the
+    //   stdout buffer.
+    //
+    // `tracing-appender`'s rolling writer is non-blocking — the returned
+    // `_log_guard` MUST stay in scope for the lifetime of the process,
+    // otherwise the background flush thread is dropped and the most recent
+    // lines never hit disk on graceful shutdown.
+    let log_dir = std::env::var("MYBIBLI_LOG_DIR")
+        .unwrap_or_else(|_| "/var/log/mybibli".to_string());
+    let log_dir_path = std::path::PathBuf::from(&log_dir);
+
+    // The file writer can fail to open (read-only filesystem, missing
+    // directory, permission denied) — never panic the whole binary over
+    // logging. If it fails, fall back to stdout-only and surface the reason.
+    let (file_writer, _log_guard): (
+        Option<tracing_appender::non_blocking::NonBlocking>,
+        Option<tracing_appender::non_blocking::WorkerGuard>,
+    ) = match std::fs::create_dir_all(&log_dir_path) {
+        Ok(()) => {
+            let appender = tracing_appender::rolling::daily(&log_dir_path, "mybibli.log");
+            let (nb, guard) = tracing_appender::non_blocking(appender);
+            (Some(nb), Some(guard))
+        }
+        Err(e) => {
+            eprintln!(
+                "[mybibli] could not initialize file log writer at {} ({}). Falling back to stdout-only.",
+                log_dir_path.display(),
+                e
+            );
+            (None, None)
+        }
+    };
+
+    // Build the subscriber. Both layers emit the same structured JSON shape;
+    // the file layer drops ANSI escape codes so a `grep` over the rotated
+    // files isn't littered with control characters.
+    //
+    // CR #301 — `MYBIBLI_LOG_LEVEL` env var controls verbosity. Accepts
+    // either a plain level (`trace` / `debug` / `info` / `warn` / `error`)
+    // or a `tracing-subscriber::EnvFilter` directive list
+    // (e.g. `mybibli=debug,sqlx::query=warn`). `RUST_LOG` is honored as a
+    // legacy fallback (tracing-subscriber's idiomatic env var). Default is
+    // `info` — production-safe (info-level + warn + error, no per-query SQL
+    // noise, no per-request trace floods). For active debugging of a
+    // specific subsystem, set `MYBIBLI_LOG_LEVEL=mybibli=debug` on the
+    // NAS's `docker-compose.yml` `environment:` block and restart the
+    // container; for a deep one-shot investigation, `mybibli=trace`.
+    use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+    let log_level_directive: String = std::env::var("MYBIBLI_LOG_LEVEL")
+        .or_else(|_| std::env::var("RUST_LOG"))
+        .unwrap_or_else(|_| "info".to_string());
+    // `EnvFilter::try_new` rejects garbage; fall back to `info` so a typo
+    // can't silence the subscriber entirely.
+    let env_filter = match EnvFilter::try_new(&log_level_directive) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!(
+                "[mybibli] invalid MYBIBLI_LOG_LEVEL/RUST_LOG directive {:?} ({}). Falling back to `info`.",
+                log_level_directive, e
+            );
+            EnvFilter::new("info")
+        }
+    };
+    let stdout_layer = tracing_subscriber::fmt::layer()
         .json()
         .with_target(true)
-        .with_timer(tracing_subscriber::fmt::time::UtcTime::rfc_3339())
-        .init();
+        .with_timer(tracing_subscriber::fmt::time::UtcTime::rfc_3339());
+    let registry = tracing_subscriber::registry().with(env_filter).with(stdout_layer);
+    if let Some(file_writer) = file_writer {
+        let file_layer = tracing_subscriber::fmt::layer()
+            .json()
+            .with_target(true)
+            .with_ansi(false)
+            .with_timer(tracing_subscriber::fmt::time::UtcTime::rfc_3339())
+            .with_writer(file_writer);
+        registry.with(file_layer).init();
+        tracing::info!(
+            log_dir = %log_dir,
+            log_level = %log_level_directive,
+            "File logging enabled (daily rotation)"
+        );
+    } else {
+        registry.init();
+        tracing::warn!(
+            log_dir = %log_dir,
+            log_level = %log_level_directive,
+            "File logging disabled — stdout-only fallback"
+        );
+    }
 
     // Load configuration from environment
     let config = Config::from_env().expect("Failed to load configuration");
@@ -268,6 +356,18 @@ async fn main() {
     // Cadence is read from `AppSettings::auto_purge_interval_seconds`
     // (default 86400 = 24h) with a 1-minute delay after startup.
     auto_purge_scheduler::spawn(state.pool.clone(), state.settings.clone());
+
+    // CR #301 (v1.7.0): daily purge of rotated log files older than
+    // `DEFAULT_RETENTION_DAYS` (30). Only runs when file logging was
+    // successfully initialized — there's nothing to purge in stdout-only
+    // fallback mode. Hardcoded retention in v1.7.0; admin-configurable in
+    // a follow-up CR.
+    if _log_guard.is_some() {
+        mybibli::tasks::log_purge::spawn(
+            log_dir_path.clone(),
+            mybibli::tasks::log_purge::DEFAULT_RETENTION_DAYS,
+        );
+    }
 
     let app = routes::build_router(state).layer(logging::trace_layer());
 

@@ -1,0 +1,171 @@
+\chapter{Opérations \& débogage}
+\label{ch:operations-debugging}
+
+Ce chapitre documente l'emplacement des journaux sur disque, leur
+niveau de verbosité configurable, et les commandes courantes utiles
+quand un utilisateur signale un comportement étrange et que vous
+voulez voir ce que l'application a réellement fait.
+
+\section{Où sont les journaux}
+\label{sec:logs-location}
+
+Depuis la \textbf{v1.7.0}, mybibli écrit ses journaux à deux endroits
+simultanément :
+
+\begin{itemize}
+  \item \textbf{stdout} (inchangé) — accessible via
+        \texttt{docker compose logs mybibli}. Idéal pour suivre le
+        flux en direct pendant une session active.
+  \item \textbf{Un fichier rotatif quotidien sur disque}, par défaut
+        sous \texttt{/var/log/mybibli/} dans le conteneur, monté sur
+        un volume nommé (\texttt{mybibli\_logs}) côté hôte pour que
+        les fichiers survivent à \texttt{docker compose pull \&\&
+        up -d}. Idéal pour le débogage \emph{post-mortem}.
+\end{itemize}
+
+Les fichiers sont nommés \texttt{mybibli.log.AAAA-MM-JJ} (un par jour
+UTC). Une tâche en arrière-plan purge automatiquement les fichiers de
+plus de 30 jours.
+
+\section{Lire les journaux depuis l'hôte}
+
+\begin{lstlisting}
+# Suivre en temps réel le fichier du jour
+docker compose exec mybibli tail -f /var/log/mybibli/mybibli.log.$(date -u +%Y-%m-%d)
+
+# Dernières 100 lignes du fichier du jour
+docker compose exec mybibli tail -n 100 /var/log/mybibli/mybibli.log.$(date -u +%Y-%m-%d)
+
+# Lister tous les jours disponibles
+docker compose exec mybibli ls /var/log/mybibli/
+
+# Rechercher un mot-clé sur tous les jours conservés
+docker compose exec mybibli sh -c "grep ERROR /var/log/mybibli/mybibli.log.*"
+\end{lstlisting}
+
+Si vous avez monté le volume comme un bind mount
+(\texttt{LOGS\_HOST\_PATH} dans \texttt{.env}, voir le
+chapitre~\ref{ch:installation}), les fichiers sont visibles
+directement depuis l'hôte sans passer par \texttt{docker compose
+exec}.
+
+\section{Niveaux de journalisation}
+\label{sec:log-levels}
+
+Deux variables d'environnement contrôlent la verbosité :
+
+\begin{itemize}
+  \item \texttt{MYBIBLI\_LOG\_LEVEL} (recommandée, v1.7.0+) —
+        accepte soit un niveau simple (\texttt{trace}, \texttt{debug},
+        \texttt{info}, \texttt{warn}, \texttt{error}) soit une liste
+        de directives \texttt{tracing-subscriber}
+        \texttt{EnvFilter}, par exemple
+        \texttt{mybibli=debug,sqlx::query=warn}.
+  \item \texttt{RUST\_LOG} — fallback historique, même format.
+        Pris en compte si \texttt{MYBIBLI\_LOG\_LEVEL} est absent.
+\end{itemize}
+
+La valeur par défaut est \texttt{info} — sûre en production (info,
+warn, error ; pas de bruit SQL par requête, pas de flot de traces
+par requête HTTP).
+
+\subsection*{Niveaux recommandés}
+
+\begin{description}
+  \item[\texttt{info}] Défaut production. Capture les événements
+        d'authentification, les récupérations de métadonnées, les
+        tâches planifiées, les erreurs visibles utilisateur. Environ
+        10 à 100 lignes par jour pour une instance familiale.
+  \item[\texttt{mybibli=debug}] Investigation active d'une
+        fonctionnalité mybibli. Ajoute le routage des requêtes, les
+        cache hits/misses, les décisions du dispatcher de scan.
+        Environ 10$\times$ le volume \texttt{info}.
+  \item[\texttt{mybibli=trace}] Investigation profonde ponctuelle.
+        Inclut le tracing par appel dans le code mybibli. Très
+        verbeux ; à utiliser brièvement puis revenir à
+        \texttt{info}.
+  \item[\texttt{mybibli=debug,sqlx::query=info}] Investigation active
+        ET voir chaque instruction SQL (utile quand une requête est
+        suspecte).
+\end{description}
+
+\subsection*{Comment changer le niveau}
+
+Modifier le \texttt{docker-compose.yml} ou le \texttt{.env}, fixer
+\texttt{MYBIBLI\_LOG\_LEVEL}, puis :
+
+\begin{lstlisting}
+docker compose up -d
+\end{lstlisting}
+
+Le conteneur redémarre et le nouveau niveau prend effet dès la
+prochaine ligne de journal.
+
+\section{Lire le JSON structuré}
+
+Les journaux sont émis en JSON ligne par ligne. Chaque ligne porte :
+
+\begin{itemize}
+  \item \texttt{timestamp} — ISO~8601 UTC.
+  \item \texttt{level} — \texttt{TRACE} / \texttt{DEBUG} /
+        \texttt{INFO} / \texttt{WARN} / \texttt{ERROR}.
+  \item \texttt{target} — le module Rust qui a émis la ligne
+        (par ex. \texttt{mybibli::routes::catalog}). Filtrer sur ce
+        champ pour restreindre une recherche à un sous-système.
+  \item \texttt{fields.message} — le résumé lisible.
+  \item d'autres \texttt{fields.*} — clés de contexte comme
+        \texttt{user\_id}, \texttt{volume\_id}, \texttt{isbn},
+        \texttt{title\_id}.
+\end{itemize}
+
+Pour un affichage lisible :
+
+\begin{lstlisting}
+docker compose exec mybibli tail -n 50 /var/log/mybibli/mybibli.log.$(date -u +%Y-%m-%d) \
+  | jq -r '[.timestamp, .level, .fields.message] | @tsv'
+\end{lstlisting}
+
+\section{Joindre un extrait de log à un rapport de bug}
+
+Lors de l'ouverture d'une issue sur
+\url{https://github.com/guycorbaz/mybibli/issues} :
+
+\begin{enumerate}
+  \item Notez l'heure murale où le bug s'est produit (par ex.
+        ``autour de 14h30 UTC aujourd'hui'').
+  \item Extrayez la fenêtre de 5 minutes concernée :
+  \begin{lstlisting}
+  # Remplacer 14:25 / 14:35 par votre fenêtre.
+  docker compose exec mybibli sh -c \
+    "awk '/\"timestamp\":\"$(date -u +%Y-%m-%d)T14:2[5-9]/,/\"timestamp\":\"$(date -u +%Y-%m-%d)T14:3[0-5]/' \
+       /var/log/mybibli/mybibli.log.$(date -u +%Y-%m-%d)"
+  \end{lstlisting}
+  \item Copiez le résultat dans le corps de l'issue, balisé en
+        \texttt{```json}.
+\end{enumerate}
+
+Caviardez ce que vous estimez sensible — les lignes de journal
+peuvent contenir des noms d'emprunteurs, des ISBN de titres que vous
+possédez, ou des préfixes de jeton de session (mais jamais les jetons
+de session complets ni les hashs de mot de passe ; ils sont
+intentionnellement exclus de l'émission de journaux).
+
+\section{Rétention et rotation}
+
+\begin{itemize}
+  \item La rotation se fait \textbf{automatiquement} à minuit UTC,
+        gérée en interne par \texttt{tracing-appender::rolling}.
+  \item Les fichiers de plus de \textbf{30 jours} sont purgés une
+        fois par jour par une tâche en arrière-plan. La fenêtre de
+        rétention est codée en dur dans la v1.7.0 ; une version
+        future l'exposera comme paramètre admin.
+  \item Le fichier du jour n'est jamais supprimé (la coupure est
+        stricte).
+\end{itemize}
+
+Pour conserver les journaux plus de 30 jours, copiez les fichiers
+rotatifs hors du volume vers du stockage long terme :
+
+\begin{lstlisting}
+docker compose cp mybibli:/var/log/mybibli/. ./logs-archive/
+\end{lstlisting}

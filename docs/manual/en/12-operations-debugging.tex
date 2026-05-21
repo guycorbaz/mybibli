@@ -1,0 +1,160 @@
+\chapter{Operations \& debugging}
+\label{ch:operations-debugging}
+
+This chapter documents where logs live on disk, how to control their
+verbosity, and the commands you typically need when a user reports
+odd behavior and you want to see what the app actually did.
+
+\section{Where the logs live}
+\label{sec:logs-location}
+
+Starting with \textbf{v1.7.0}, mybibli writes its logs to two places
+simultaneously:
+
+\begin{itemize}
+  \item \textbf{stdout} (unchanged) — visible via
+        \texttt{docker compose logs mybibli}. Best for live-tailing
+        during an active session.
+  \item \textbf{A daily-rotating file on disk}, by default under
+        \texttt{/var/log/mybibli/} inside the container, mounted on a
+        named volume (\texttt{mybibli\_logs}) on the host so files
+        survive \texttt{docker compose pull \&\& up -d}. Best for
+        \emph{post-mortem} debugging.
+\end{itemize}
+
+Files are named \texttt{mybibli.log.YYYY-MM-DD} (one per UTC day).
+A background task purges files older than 30 days automatically.
+
+\section{Tailing logs from the host}
+
+\begin{lstlisting}
+# Tail the current day's file in real time
+docker compose exec mybibli tail -f /var/log/mybibli/mybibli.log.$(date -u +%Y-%m-%d)
+
+# Last 100 lines of the current day's file
+docker compose exec mybibli tail -n 100 /var/log/mybibli/mybibli.log.$(date -u +%Y-%m-%d)
+
+# Show all available days
+docker compose exec mybibli ls /var/log/mybibli/
+
+# Search across all retained days for a keyword
+docker compose exec mybibli sh -c "grep ERROR /var/log/mybibli/mybibli.log.*"
+\end{lstlisting}
+
+If you mounted the volume as a bind mount (\texttt{LOGS\_HOST\_PATH}
+in \texttt{.env}, see chapter~\ref{ch:installation}), the files are
+visible directly on the host without needing
+\texttt{docker compose exec}.
+
+\section{Log levels}
+\label{sec:log-levels}
+
+Two environment variables control verbosity:
+
+\begin{itemize}
+  \item \texttt{MYBIBLI\_LOG\_LEVEL} (preferred, v1.7.0+) — accepts
+        either a plain level (\texttt{trace}, \texttt{debug},
+        \texttt{info}, \texttt{warn}, \texttt{error}) or a
+        \texttt{tracing-subscriber} \texttt{EnvFilter} directive
+        list, e.g. \texttt{mybibli=debug,sqlx::query=warn}.
+  \item \texttt{RUST\_LOG} — legacy fallback, same format. Honored
+        when \texttt{MYBIBLI\_LOG\_LEVEL} is unset.
+\end{itemize}
+
+Default is \texttt{info} — production-safe (info + warn + error,
+no per-query SQL noise, no per-request trace floods).
+
+\subsection*{Recommended levels}
+
+\begin{description}
+  \item[\texttt{info}] Production default. Catches authentication
+        events, metadata fetches, scheduled-task runs, user-facing
+        errors. Roughly 10--100 lines per day on a single-household
+        install.
+  \item[\texttt{mybibli=debug}] Active investigation of an mybibli
+        feature. Adds request-routing, cache hits/misses, scan
+        dispatch decisions. Roughly 10$\times$ the info volume.
+  \item[\texttt{mybibli=trace}] Deepest one-shot investigation.
+        Includes per-call tracing within mybibli's own code. Very
+        noisy; use briefly and bump back to \texttt{info}.
+  \item[\texttt{mybibli=debug,sqlx::query=info}] Active investigation
+        AND see every SQL statement (useful when a query is suspect).
+\end{description}
+
+\subsection*{How to change the level}
+
+Edit your \texttt{docker-compose.yml} or \texttt{.env}, set
+\texttt{MYBIBLI\_LOG\_LEVEL}, then:
+
+\begin{lstlisting}
+docker compose up -d
+\end{lstlisting}
+
+The container restarts and the new level takes effect from the next
+log line.
+
+\section{Reading the structured JSON}
+
+Logs are emitted as line-delimited JSON. Each line carries:
+
+\begin{itemize}
+  \item \texttt{timestamp} — ISO~8601 UTC.
+  \item \texttt{level} — \texttt{TRACE} / \texttt{DEBUG} /
+        \texttt{INFO} / \texttt{WARN} / \texttt{ERROR}.
+  \item \texttt{target} — the Rust module that emitted the line
+        (e.g. \texttt{mybibli::routes::catalog}). Filter on this to
+        narrow a search to a subsystem.
+  \item \texttt{fields.message} — the human-readable summary.
+  \item additional \texttt{fields.*} — contextual keys like
+        \texttt{user\_id}, \texttt{volume\_id}, \texttt{isbn},
+        \texttt{title\_id}.
+\end{itemize}
+
+To pretty-print:
+
+\begin{lstlisting}
+docker compose exec mybibli tail -n 50 /var/log/mybibli/mybibli.log.$(date -u +%Y-%m-%d) \
+  | jq -r '[.timestamp, .level, .fields.message] | @tsv'
+\end{lstlisting}
+
+\section{Sharing a log excerpt for a bug report}
+
+When opening an issue at \url{https://github.com/guycorbaz/mybibli/issues}:
+
+\begin{enumerate}
+  \item Note the wall-clock time when the bug occurred (e.g.
+        ``around 14:30 UTC today'').
+  \item Extract the relevant 5-minute window:
+  \begin{lstlisting}
+  # Replace 14:25 / 14:35 with your window.
+  docker compose exec mybibli sh -c \
+    "awk '/\"timestamp\":\"$(date -u +%Y-%m-%d)T14:2[5-9]/,/\"timestamp\":\"$(date -u +%Y-%m-%d)T14:3[0-5]/' \
+       /var/log/mybibli/mybibli.log.$(date -u +%Y-%m-%d)"
+  \end{lstlisting}
+  \item Paste the output into the issue body, fenced as
+        \texttt{```json}.
+\end{enumerate}
+
+Redact anything you consider sensitive — log lines may contain
+borrower names, ISBNs of titles you own, or session-token prefixes
+(but never full session tokens or password hashes; those are kept
+out of log emission by design).
+
+\section{Retention \& rotation}
+
+\begin{itemize}
+  \item Rotation happens \textbf{automatically} at UTC midnight,
+        handled in-process by \texttt{tracing-appender::rolling}.
+  \item Files older than \textbf{30 days} are purged once per day by
+        a background task. The retention window is hardcoded in
+        v1.7.0; a future release will expose it as an admin setting.
+  \item The current day's file is never deleted (the cutoff is
+        strict).
+\end{itemize}
+
+If you want to keep logs longer than 30 days, copy the rotated files
+out of the volume to long-term storage:
+
+\begin{lstlisting}
+docker compose cp mybibli:/var/log/mybibli/. ./logs-archive/
+\end{lstlisting}

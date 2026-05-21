@@ -13,7 +13,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json", "time"] }
+# CR #301 (v1.7.0) — `env-filter` enables the `MYBIBLI_LOG_LEVEL` /
+# `RUST_LOG` runtime control of which targets and levels are emitted.
+tracing-subscriber = { version = "0.3", features = ["json", "time", "env-filter"] }
+# CR #301 (v1.7.0) — production debuggability on NAS deployments.
+# `tracing-appender` provides a non-blocking, daily-rotating file writer
+# that pairs with the existing stdout subscriber so `docker logs` AND
+# `tail -f /var/log/mybibli/mybibli.log.YYYY-MM-DD` both work.
+tracing-appender = "0.2"
 tower-http = { version = "0.6", features = ["fs", "cors", "compression-gzip", "timeout", "trace"] }
 reqwest = { version = "0.12", features = ["json"] }
 argon2 = "0.5"
@@ -45,3 +52,6 @@ regex = "1"
 # Captures tracing events emitted during a test so we can assert on
 # security-audit warnings (story 8-2 §Ships 16 — CSRF-rejection warn log).
 tracing-test = "0.2"
+# CR #301 (v1.7.0) — temp directories for the log_purge retention tests.
+# Pure unit tests; no DB needed.
+tempfile = "3"
