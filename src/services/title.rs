@@ -3,6 +3,16 @@ use crate::error::AppError;
 use crate::models::media_type::{CodeType, MediaType};
 use crate::models::title::{NewTitle, TitleModel};
 
+/// Name of the seeded placeholder genre row used as the default genre
+/// for titles created without an explicit classification (e.g., when a
+/// metadata provider returns no genre, or the user catalogs by ISBN
+/// before assigning a real genre). NOT translated per NFR41 (reference
+/// data stays in whatever language operators entered) — the value
+/// "Non classé" is the canonical literal everywhere in the codebase.
+/// Exported so `routes::home` can strip it from the genre filter-chip
+/// list (Fix #314 — dedupe with the "Sans genre" #205 affordance).
+pub const DEFAULT_GENRE_NAME: &str = "Non classé";
+
 pub struct TitleService;
 
 impl TitleService {
@@ -238,8 +248,9 @@ impl TitleService {
 
     pub async fn find_default_genre_id(pool: &DbPool) -> Result<u64, AppError> {
         if let Some((id,)) = sqlx::query_as::<_, (u64,)>(
-            "SELECT id FROM genres WHERE name = 'Non classé' AND deleted_at IS NULL LIMIT 1",
+            "SELECT id FROM genres WHERE name = ? AND deleted_at IS NULL LIMIT 1",
         )
+        .bind(DEFAULT_GENRE_NAME)
         .fetch_optional(pool)
         .await?
         {
@@ -249,8 +260,9 @@ impl TitleService {
         // Reactivate soft-deleted row if present — the UNIQUE constraint on
         // `genres.name` would otherwise block the INSERT below.
         if let Some((id,)) = sqlx::query_as::<_, (u64,)>(
-            "SELECT id FROM genres WHERE name = 'Non classé' AND deleted_at IS NOT NULL LIMIT 1",
+            "SELECT id FROM genres WHERE name = ? AND deleted_at IS NOT NULL LIMIT 1",
         )
+        .bind(DEFAULT_GENRE_NAME)
         .fetch_optional(pool)
         .await?
         {
@@ -260,18 +272,19 @@ impl TitleService {
                 .await?;
             tracing::warn!(
                 genre_id = id,
-                "Reactivated soft-deleted 'Non classé' default genre"
+                "Reactivated soft-deleted default genre"
             );
             return Ok(id);
         }
 
-        let result = sqlx::query("INSERT INTO genres (name) VALUES ('Non classé')")
+        let result = sqlx::query("INSERT INTO genres (name) VALUES (?)")
+            .bind(DEFAULT_GENRE_NAME)
             .execute(pool)
             .await?;
         let id = result.last_insert_id();
         tracing::warn!(
             genre_id = id,
-            "Default genre 'Non classé' was missing — re-seeded"
+            "Default genre was missing — re-seeded"
         );
         Ok(id)
     }
@@ -501,6 +514,19 @@ fn non_empty_option(s: &Option<String>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_genre_name_constant_is_non_classe() {
+        // Fix #314 — locks the literal so `routes::home::home_handler`'s
+        // chip-strip filter and the SQL self-heal in
+        // `find_default_genre_id` agree on the exact placeholder name.
+        // Changing this requires a migration to rename the seeded row
+        // in `migrations/20260330000001_seed_default_genres.sql`, NOT
+        // just a code edit — otherwise the next `find_default_genre_id`
+        // call would think the seeded row is missing and re-seed a
+        // second placeholder, leaving the catalog with two placeholders.
+        assert_eq!(DEFAULT_GENRE_NAME, "Non classé");
+    }
 
     #[test]
     fn test_valid_isbn_9782070360246() {

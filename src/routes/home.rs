@@ -421,8 +421,22 @@ pub async fn home(
         }
     }
 
-    // Load genres and volume states for filter tags
-    let genres = GenreModel::list_active(pool).await?;
+    // Load genres and volume states for filter tags.
+    //
+    // Fix #314: strip the "Non classé" placeholder genre from the chip
+    // list — it's the seeded default for titles without a real
+    // classification (see `services::title::DEFAULT_GENRE_NAME`), and
+    // the dedicated `?filter=uncategorized` chip below (Fix #205) is
+    // the canonical one-click affordance for that bucket. Without this
+    // filter, users see two chips ("Non classé" and "Sans genre") that
+    // return the same titles — the template comment at home.html:92-96
+    // already encodes the intended invariant ("genre chips list named
+    // genres only").
+    let genres: Vec<GenreModel> = GenreModel::list_active(pool)
+        .await?
+        .into_iter()
+        .filter(|g| g.name != crate::services::title::DEFAULT_GENRE_NAME)
+        .collect();
     let volume_states = VolumeStateModel::list_active(pool).await?;
 
     if is_htmx && (!query.trim().is_empty() || has_filter) {
