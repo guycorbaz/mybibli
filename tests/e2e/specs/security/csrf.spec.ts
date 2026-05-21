@@ -31,10 +31,12 @@ test.describe("Story 8-2 smoke — CSRF", () => {
     expect(token, "base.html must emit a non-empty csrf-token meta tag").toBeTruthy();
     expect(token!.length).toBeGreaterThanOrEqual(20);
 
-    // Submit the nav-bar language-toggle FR button — this carries the
-    // hidden _csrf_token input and must succeed (303 → back to /catalog).
-    const frButton = page.getByRole("button", { name: "FR", exact: true }).first();
-    await frButton.click();
+    // v1.7.0: the nav-bar language toggle is now a `<select>` dropdown
+    // (id `lang-select`). `selectOption` fires `change` → form submit via
+    // `mybibli.js::initAutoSubmitSelects`. The hidden `_csrf_token` input
+    // is carried unchanged. Picking the OTHER locale forces a real submit
+    // (selecting the already-selected option is a no-op in some browsers).
+    await page.locator("#lang-select").selectOption("en");
     await expect(page).toHaveURL(/\/catalog/);
   });
 
@@ -125,8 +127,9 @@ test.describe("Story 8-2 smoke — CSRF", () => {
     expect(token!.length).toBeGreaterThanOrEqual(20);
 
     // And the language toggle (anonymous-allowed mutation) accepts the token.
-    const frButton = page.getByRole("button", { name: "FR", exact: true }).first();
-    await frButton.click();
+    // v1.7.0: nav-bar lang toggle is now a <select>; selecting EN (we
+    // landed in FR via Accept-Language) fires the auto-submit handler.
+    await page.locator("#lang-select").selectOption("en");
     await expect(page).toHaveURL(/\/$/);
   });
 

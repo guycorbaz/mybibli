@@ -117,11 +117,13 @@ test.describe("Story 9-17 — NavBar hamburger menu", () => {
 
     // Walk Tab forward to reach the last focusable inside the panel.
     // The panel contains: catalog, locations, series links, then the
-    // language form (FR + EN buttons). On /catalog as anonymous, those
-    // are 3 links + 2 buttons = 5 focusable items, plus 2 hidden inputs
-    // that are excluded by the [type="hidden"] guard.
+    // language `<select>` dropdown (v1.7.0 — was originally FR + EN
+    // buttons). On /catalog as anonymous, those are 3 links + 1 select =
+    // 4 focusable items, plus 2 hidden inputs (excluded by the
+    // [type="hidden"] guard) and a `<noscript><button>` fallback that is
+    // not rendered with JS enabled.
     const focusableCount = await page.locator(
-      "#mobile-nav a[href], #mobile-nav button:not([disabled])",
+      "#mobile-nav a[href], #mobile-nav button:not([disabled]), #mobile-nav select",
     ).count();
     expect(focusableCount).toBeGreaterThan(0);
 
