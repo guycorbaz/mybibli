@@ -1,0 +1,985 @@
+app:
+  name: mybibli
+common:
+  cancel: Abbrechen
+# CR #242 — Wunschliste (v1.3)
+wishlist:
+  list_title: "Wunschliste"
+  add_button: "Zur Wunschliste hinzufügen"
+  add_to_wishlist: "Zur Wunschliste hinzufügen"
+  print_button: "Drucken"
+  empty_heading: "Ihre Wunschliste ist leer"
+  empty_body: "Fügen Sie Bücher hinzu, die Sie kaufen möchten. Scannen Sie eine ISBN oder geben Sie einen freien Titel ein."
+  form_title: "Neuer Wunschlisteneintrag"
+  mode_isbn: "Per ISBN"
+  mode_freeform: "Frei eingeben"
+  field_isbn: "ISBN (13-stellig)"
+  field_title: "Titel"
+  field_authors: "Autoren"
+  field_publisher: "Verlag"
+  field_year: "Jahr"
+  field_notes: "Notizen"
+  notes_placeholder: "z. B. nur gebunden, gebraucht OK"
+  lookup_button: "Suchen"
+  confirm_add: "Zur Wunschliste hinzufügen"
+  isbn_invalid: "Ungültige ISBN — muss 13 Ziffern mit gültiger Prüfziffer enthalten."
+  title_required: "Titel ist erforderlich."
+  resolved_intro: "Bei den Metadaten-Anbietern gefunden:"
+  no_metadata: "Keine Metadaten für diese ISBN gefunden. Wechseln Sie in den freien Modus, um das Buch manuell hinzuzufügen."
+  col_title: "Titel"
+  col_isbn: "ISBN"
+  col_authors: "Autoren"
+  col_publisher: "Verlag"
+  col_added: "Hinzugefügt"
+  col_actions: "Aktionen"
+  col_notes: "Notizen"
+  action_bought: "Gekauft"
+  action_remove: "Entfernen"
+  back_to_list: "Zurück zur Wunschliste"
+  delete_modal_title: "%{title} als gekauft markieren?"
+  delete_modal_body: "Der Eintrag wird aus der Wunschliste entfernt. Die Aktion ist innerhalb von 30 Tagen über den Admin-Papierkorb umkehrbar."
+  print_title: "Meine Wunschliste"
+  print_count_one: "%{count} Buch"
+  print_count_other: "%{count} Bücher"
+  # CR #266 — server-rendered PDF export. Layout: header line + a
+  # date line, then one block per entry, then "(no entries)" if empty.
+  pdf:
+    doc_title: "Wunschliste"
+    header_one: "Meine Wunschliste — %{count} Buch"
+    header_other: "Meine Wunschliste — %{count} Bücher"
+    generated_on: "Erstellt am %{date}"
+    empty: "(Noch keine Einträge auf der Wunschliste.)"
+  # Auto-link banner shown on catalog scan when the ISBN matches an active wishlist row.
+  autolink_banner_title: "Auf Ihrer Wunschliste"
+  autolink_banner_body: "Diese ISBN steht auf Ihrer Wunschliste. Entfernen?"
+  autolink_remove: "Von der Wunschliste entfernen"
+  autolink_keep: "Auf der Wunschliste behalten"
+  # Home-dashboard counter (UX-DR4 zero-count rule)
+  home_counter_label: "Auf der Wunschliste"
+connection:
+  lost_heading: "Verbindung verloren"
+  lost_body: "Versuche, die Verbindung wiederherzustellen…"
+  lost_retry: "Jetzt erneut versuchen"
+  restored_toast: "Verbindung wiederhergestellt"
+empty:
+  loans_heading: "Keine aktiven Ausleihen"
+  loans_body: "Ausleihen erscheinen hier, sobald ein Entleiher ein Exemplar ausleiht."
+  borrowers_heading: "Noch keine Entleiher"
+  borrowers_body: "Fügen Sie einen Entleiher hinzu, um Exemplare zu verleihen."
+  borrowers_cta: "Entleiher hinzufügen"
+  series_heading: "Noch keine Serien"
+  series_body: "Erstellen Sie eine Serie, um zusammengehörige Titel zu gruppieren."
+  series_cta: "Serie erstellen"
+  search_heading: "Keine Treffer"
+  search_body: "Keine Treffer für \"%{query}\". Versuchen Sie einen weniger spezifischen Begriff oder scannen Sie einen Barcode."
+  search_cta: "Diesen Titel hinzufügen"
+  filter_heading: "Keine Treffer"
+  filter_body: "Aktuell entspricht nichts diesem Filter. Löschen Sie den Filter, um alles zu sehen."
+help:
+  catalog:
+    scan_field_text: "Scannen oder geben Sie eine ISBN (10 oder 13 Ziffern), einen V-Code (Format V0001) oder einen L-Code (Format L01.A) ein, um zu navigieren."
+  home:
+    search_field_text: "Tippen, um nach Titeln, Autoren und Serien zu suchen. Scannen Sie einen Barcode, um direkt zum passenden Datensatz zu springen."
+  volume:
+    condition_summary: "Hilfe: Zustand des Exemplars"
+    condition_text: "Wird von einem Administrator unter Stammdaten konfiguriert. Das \"Ausleihbar\"-Kennzeichen legt fest, ob Exemplare in diesem Zustand ausgeliehen werden dürfen."
+  series:
+    type_summary: "Hilfe: Serientyp"
+    type_text: "Abgeschlossene Serien haben eine deklarierte Gesamtzahl — die Lückenerkennung läuft nur gegen abgeschlossene Serien. Offene Serien können beliebig wachsen."
+  admin:
+    overdue_threshold_summary: "Hilfe: Überfälligkeitsgrenze"
+    overdue_threshold_text: "Eine Ausleihe gilt als überfällig, sobald die Tage seit der Ausleihe diesen Wert überschreiten (strikt größer als)."
+    provider_api_keys_summary: "Hilfe: API-Schlüssel der Anbieter"
+    provider_api_keys_text: "Lassen Sie einen Schlüssel leer, um den Anbieter aus der Metadaten-Kette auszuschließen. Schlüssel wirken ab der nächsten Anfrage — kein Neustart nötig."
+  setup:
+    step_admin_summary: "Hilfe: Admin-Konto"
+    step_admin_text: "Erstellt den ersten Admin-Benutzer. Benutzername und Passwort sind erforderlich; beide können später im Benutzerverwaltungspanel geändert werden."
+    step_providers_summary: "Hilfe: Metadaten-Anbieter"
+    step_providers_text: "Optionale API-Schlüssel für externe Metadaten-Quellen. Diesen Schritt überspringen, um nur BnF (immer kostenlos) zu nutzen; Schlüssel können später über die Systemeinstellungen hinzugefügt werden."
+    step_preferences_summary: "Hilfe: Einstellungen"
+    step_preferences_text: "Standardsprache und Überfälligkeitsgrenze für neue Ausleihen. Beide lassen sich später in den Systemeinstellungen ändern."
+  borrower:
+    email_summary: "Hilfe: E-Mail des Entleihers"
+    email_text: "Optional. Die E-Mail wird im Klartext gespeichert — bei Aktivierung später für Fälligkeitserinnerungen genutzt."
+    phone_summary: "Hilfe: Telefon des Entleihers"
+    phone_text: "Optional. Die Telefonnummer wird im Klartext gespeichert — keine Formatvalidierung. Wird als Ersatzkontakt genutzt, wenn keine E-Mail vorhanden ist."
+shortcuts:
+  cheat_sheet:
+    heading: "Tastaturkürzel"
+    category_navigation: "Navigation"
+    category_catalog: "Katalog"
+    category_modal: "Dialoge & Menüs"
+    shortcut_help: "Diese Übersicht öffnen"
+    shortcut_escape: "Offenen Dialog oder offenes Menü schließen"
+    shortcut_go_home: "Zur Startseite"
+    shortcut_go_catalog: "Zum Katalog"
+    shortcut_go_loans: "Zu den Ausleihen"
+    shortcut_go_borrowers: "Zu den Entleihern"
+    shortcut_go_admin: "Zur Verwaltung"
+    shortcut_focus_scan: "Scanfeld fokussieren"
+    shortcut_new_title: "Neuen Titel hinzufügen"
+    then_label: "dann"
+    close_label: "Schließen"
+  footer_link: "Drücken Sie ? für Tastaturkürzel"
+browse:
+  list_view: Listenansicht
+  grid_view: Rasteransicht
+  display_mode: Anzeigemodus
+  sort_by: "Sortieren nach"
+home:
+  title: mybibli
+  subtitle: Ihre persönliche Medienbibliothek
+  search_placeholder: "Titel, Autoren, Serien suchen…"
+  searching_announcement: "Suche läuft…"
+  scanning_announcement: "Scan erkannt, wird verarbeitet…"
+  scan_failed_fallback: "Scan fehlgeschlagen. Erneut versuchen oder die Katalogseite verwenden."
+  remove_filter_aria: "Filter entfernen"
+  filter:
+    uncategorized: "Ohne Kategorie"
+    no_volumes: "Titel ohne Exemplar"
+  genre_filter_no_longer_exists: "Dieses Genre existiert nicht mehr — alle Titel werden angezeigt."
+catalog:
+  title: Katalog
+  scan_placeholder: "Scannen oder eingeben: ISBN, V-Code, L-Code oder Suche…"
+  scan_label: Barcode scannen oder Code eingeben
+  scan_received: "Scan empfangen: %{code}"
+  new_title_button: Neuer Titel
+  session_counter: "%{count} Einträge in dieser Sitzung"
+  session_counter_aria: "%{count} Einträge in dieser Sitzung katalogisiert"
+nav:
+  catalog: Katalog
+  loans: Ausleihen
+  admin: Verwaltung
+  locations: Standorte
+  series: Serien
+  borrowers: Entleiher
+  wishlist: "Wunschliste"
+  login: Anmelden
+  logout: Abmelden
+  menu_open: Menü öffnen
+  skip_to_content: Zum Hauptinhalt springen
+  theme_toggle: Thema umschalten
+  language_toggle_aria: Sprache wechseln
+title:
+  created: "Titel angelegt: %{title}"
+  exists: "Titel ist bereits vorhanden: %{title}"
+  current_banner: "Aktuell: %{title}"
+  current_banner_with_volumes: "Aktuell: %{title} — %{count} Ex."
+  current_banner_with_author: "Aktuell: %{title} — %{author} — %{count} Ex."
+  # CR #271 — delete a title that has no volumes.
+  delete_title_button: "Titel löschen"
+  delete_modal_title: "\"%{title}\" löschen?"
+  delete_modal_body: "Dieser Titel hat keine angehängten Exemplare. Beim Löschen wird der Eintrag aus dem Katalog entfernt (innerhalb von 30 Tagen über den Papierkorb wiederherstellbar)."
+  delete_modal_confirm: "Titel löschen"
+  delete_blocked_has_volumes: "Löschen nicht möglich: Dieser Titel hat jetzt Exemplare. Laden Sie die Seite neu, um sie zu sehen."
+  form:
+    heading: Neuer Titel
+    title_label: Titel
+    media_type: Medientyp
+    genre: Genre
+    language: Sprache
+    subtitle: Untertitel
+    publisher: Verlag
+    publication_date: Erscheinungsdatum
+    isbn: ISBN
+    issn: ISSN
+    upc: UPC
+    page_count: Seitenzahl
+    track_count: Anzahl Titel
+    total_duration: "Gesamtdauer (Sekunden)"
+    age_rating: Altersfreigabe
+    issue_number: Ausgabennummer
+    submit: Titel erstellen
+    cancel: Abbrechen
+  media_types:
+    book: Buch
+    bd: Comic / Graphic Novel
+    cd: CD
+    dvd: DVD
+    magazine: Zeitschrift
+    report: Bericht
+feedback:
+  title_created: "Titel erfolgreich angelegt."
+  title_created_suggestion: "Scannen Sie einen V-Code, um ein Exemplar anzuhängen, oder eine weitere ISBN."
+  title_exists: "Dieser Titel ist bereits in Ihrem Katalog."
+  title_exists_suggestion: "Scannen Sie einen V-Code, um ein Exemplar anzuhängen."
+  code_unsupported: "Medientyp-Auswahl noch nicht verfügbar. Verwenden Sie das manuelle Anlegen für Nicht-ISBN-Codes."
+  isbn_invalid: "Dieser Code scheint keine gültige ISBN zu sein. Bitte den Barcode prüfen und erneut scannen."
+  volume_created: "Exemplar %{label} an %{title} angehängt."
+  volume_created_suggestion: "L-Code scannen zum Einsortieren, oder weiteren V-Code scannen."
+  volume_duplicate: "Etikett %{label} ist bereits %{title} zugeordnet. Bitte ein anderes Etikett scannen."
+  volume_no_title: "Kein Titel ausgewählt. Scannen Sie zuerst eine ISBN, um einen Titelkontext aufzubauen."
+  volume_shelved: "Exemplar %{label} am Standort %{path} eingestellt."
+  vcode_invalid: "Ungültiges V-Code-Format. Erwartet wird V gefolgt von 4 Ziffern (z. B. V0042)."
+  lcode_not_found: "Standort %{label} nicht gefunden."
+  # CR #280 — scan-shelve flow refusing an organizational location.
+  location_organizational: "Standort %{label} ist organisatorisch — er kann nur Unterstandorte enthalten, keine Exemplare. Wählen Sie stattdessen einen Aufstellungsort."
+  location_stub: "Standort-Inhalt — folgt in Kürze."
+  active_location: "Aktiver Standort: %{path}. Scannen Sie V-Codes, um hier einzustellen."
+  scan_vcode_to_shelve: "Scannen Sie einen V-Code, um an diesem Standort einzustellen."
+  volume_created_and_shelved: "Exemplar %{label} an %{title} angehängt und am Standort %{path} eingestellt."
+  metadata_fetching: "Titel aus ISBN %{isbn} angelegt — Metadaten werden geladen…"
+  metadata_resolved: "Metadaten gefunden: %{title} von %{author}."
+  metadata_resolved_no_author: "Metadaten gefunden: %{title}."
+  metadata_failed: "Keine Metadaten für ISBN %{isbn} gefunden. Bitte den Titel manuell bearbeiten."
+  metadata_cached: "Titel mit zwischengespeicherten Metadaten angelegt: %{title}."
+  edit_manually: "[Manuell bearbeiten]"
+  retry: Erneut versuchen
+  deleted: "Eintrag gelöscht."
+validation:
+  required: "Dieses Feld ist erforderlich."
+  negative_number: "Zahlenfelder dürfen nicht negativ sein."
+  invalid_date_format: "Ungültiges Datumsformat. Verwenden Sie JJJJ, JJJJ-MM oder JJJJ-MM-TT."
+contributor:
+  added: "%{name} als %{role} zu %{title} hinzugefügt."
+  duplicate: "%{name} ist bereits %{role} dieses Titels."
+  updated: Mitwirkender aktualisiert.
+  deleted: Mitwirkender gelöscht.
+  removed: Mitwirkender vom Titel entfernt.
+  delete_modal_title: "Mitwirkenden %{name} löschen?"
+  delete_modal_body: "Verknüpfte Titel verlieren diesen Mitwirkenden, sofern er nicht neu zugeordnet wird."
+  delete_modal_confirm: Löschen
+  error:
+    name_required: Der Name des Mitwirkenden ist erforderlich.
+    name_too_long: Der Name darf höchstens 255 Zeichen lang sein.
+    role_not_found: Die ausgewählte Rolle existiert nicht.
+  form:
+    name: Name
+    role: Rolle
+    biography: Biografie
+    submit: Mitwirkenden hinzufügen
+    add_button: Mitwirkenden hinzufügen
+search:
+  results_count: "%{count} Ergebnisse gefunden"
+  col:
+    title: Titel
+    contributor: Mitwirkender
+    genre: Genre
+    volumes: Exemplare
+    dewey: Dewey
+  sort_aria_asc: "Sortieren nach %{column} aufsteigend"
+  sort_aria_desc: "Sortieren nach %{column} absteigend"
+  connection_lost: "Verbindung verloren — bitte das Netzwerk prüfen."
+pagination:
+  previous: Zurück
+  next: Weiter
+  aria_label: Seitennavigation
+title_detail:
+  contributors: Mitwirkende
+  volumes: Exemplare
+  genre: Genre
+  publisher: Verlag
+  published: Erschienen
+  similar_titles: Ähnliche Titel
+  # CR #209: per-volume table inserted between contributors and similar-titles.
+  volumes_section_heading: Exemplare dieses Titels
+  no_volumes: "Noch keine Exemplare für diesen Titel."
+  add_volume_cta: "Neues Exemplar scannen"
+  col_vcode: V-Code
+  col_location: Standort
+  col_condition: Zustand
+  col_actions: Aktionen
+  action_edit: Bearbeiten
+  action_delete: Löschen
+  field_unset: "—"
+contributor_detail:
+  titles: Titel
+  biography: Biografie
+  delete: Löschen
+series:
+  list_title: Serien
+  add: Serie hinzufügen
+  name: Name
+  description: Beschreibung
+  type: Typ
+  type_open: Offen
+  type_closed: Abgeschlossen
+  total_count: Gesamtzahl der Exemplare
+  owned_count: Im Besitz
+  gap_count: Fehlend
+  edit: Bearbeiten
+  delete: Löschen
+  created: "Serie erstellt: %{name}"
+  updated: Serie aktualisiert.
+  deleted: Serie gelöscht.
+  name_required: Der Name der Serie ist erforderlich.
+  name_duplicate: "Eine Serie mit dem Namen \"%{name}\" existiert bereits."
+  total_required_for_closed: Die Gesamtzahl ist für abgeschlossene Serien erforderlich.
+  total_below_owned: "Die Gesamtzahl (%{total}) darf nicht kleiner sein als die Anzahl im Besitz (%{owned})."
+  detail_title: Seriendetails
+  save: Speichern
+  cancel: Abbrechen
+  back_to_list: Zurück zur Serienliste
+  prev: Zurück
+  next: Weiter
+  assign: Zur Serie hinzufügen
+  unassign: Aus der Serie entfernen
+  position: Position
+  position_taken: "Position %{position} ist in dieser Serie bereits belegt."
+  position_invalid: "Die Position muss mindestens 1 sein."
+  position_exceeds_total: "Position %{position} übersteigt die Gesamtzahl (%{total})."
+  assigned: "%{series} auf Position %{position} zugeordnet."
+  unassigned: "Aus der Serie entfernt."
+  missing_volume: "Fehlendes Exemplar Nr."
+  ongoing: "laufend, zuletzt bekannt: Nr. %{position}"
+  no_assignments: "Keiner Serie zugeordnet."
+  sort:
+    position: Position
+    dewey_code: Dewey-Code
+    title: Titel
+  delete_has_titles: "%{name} kann nicht gelöscht werden: %{count} Titel zugeordnet. Bitte zuerst alle Titelzuordnungen entfernen."
+  delete_modal_title: "Serie %{name} löschen?"
+  delete_modal_body: "Zugeordnete Titel müssen zuvor neu zugeordnet oder gelöst werden."
+  delete_modal_confirm: "Löschen"
+  omnibus: Sammelband
+  end_position: Endposition
+  omnibus_assigned: "Sammelband %{series} umfasst die Positionen %{start}–%{end}."
+  # CR #259 — tooltip explaining what the Omnibus checkbox does.
+  omnibus_help_summary: "Hilfe: Sammelband"
+  omnibus_help_text: "Aktivieren, wenn das Buch mehrere Bände der Serie bündelt (z. B. ein Sammelband mit den Bänden 1–3). Das Formular zeigt dann ein Feld \"Endposition\", damit der Titel einen Bereich von Serienpositionen abdeckt anstatt nur einer."
+  select_series: "Eine Serie auswählen…"
+error:
+  internal: Ein interner Fehler ist aufgetreten
+  not_found: Die angeforderte Ressource wurde nicht gefunden
+  bad_request: Ungültige Anfrage
+  unauthorized: Anmeldung erforderlich
+  forbidden:
+    title: Zugriff verweigert
+    body: Ihr Konto verfügt nicht über die nötigen Rechte, um diese Aktion auszuführen. Wenden Sie sich an einen Administrator, wenn Sie Zugang benötigen.
+  csrf_rejected_title: Sitzung abgelaufen
+  csrf_rejected_message: Ihr CSRF-Token fehlt oder ist abgelaufen. Bitte laden Sie die Seite neu und wiederholen Sie Ihre Aktion.
+  csrf_session_drifted_title: Sitzung abgelaufen — bitte neu laden
+  csrf_session_drifted_message: Ihre Aktion wurde abgewiesen, weil das Sicherheits-Token Ihrer Sitzung abgelaufen ist. Das passiert typischerweise, wenn ein Tab mehrere Tage offen geblieben ist. Klicken Sie auf Neu laden, um die Sitzung aufzufrischen und es erneut zu versuchen.
+  csrf_session_drifted_reload_button: Seite neu laden
+  csrf_payload_too_large_title: Anfrage zu groß
+  csrf_payload_too_large_message: Das übermittelte Formular überschreitet die Server-Größenbeschränkung. Bitte kürzen Sie die Eingabe und versuchen Sie es erneut.
+  title:
+    creation_failed: Titel-Erstellung fehlgeschlagen
+    required: Titel ist erforderlich
+  isbn:
+    invalid_checksum: Ungültige ISBN-Prüfsumme
+    invalid_format: "Ungültiges ISBN-Format — muss 13 Ziffern enthalten"
+    already_used: "Diese ISBN wird bereits von einem anderen Titel verwendet — Duplikat wird nicht angelegt"
+    not_found: ISBN nicht gefunden
+  genre:
+    required: Genre ist erforderlich
+  media_type:
+    required: Medientyp ist erforderlich
+  language:
+    required: Sprache ist erforderlich
+  conflict: "Dieser Datensatz wurde durch einen anderen Benutzer geändert. Bitte neu laden und erneut versuchen."
+  delete_has_references: "Löschen nicht möglich: Der Eintrag wird durch aktive Datensätze referenziert."
+  contributor:
+    has_titles: "%{name} kann nicht gelöscht werden. Dieser Mitwirkende ist mit %{count} Titel(n) verknüpft. Bitte zuerst alle Verknüpfungen entfernen."
+  user:
+    username_empty: Benutzername ist erforderlich
+    username_taken: "Benutzername \"%{username}\" ist bereits vergeben"
+    password_too_short: Das Passwort muss mindestens 8 Zeichen lang sein
+    password_too_long: Das Passwort darf höchstens 72 Zeichen lang sein
+    role_invalid: Die Rolle muss Bibliothekar oder Administrator sein
+    self_deactivate: Sie können Ihr eigenes Konto nicht deaktivieren
+    last_admin: Mindestens ein aktiver Administrator muss verbleiben
+    last_admin_demote: "Sie sind der einzige aktive Administrator — erstellen Sie einen weiteren, bevor Sie Ihre Rolle ändern"
+    not_found: Benutzer nicht gefunden
+    version_mismatch: "Der Benutzer wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
+  reference_data:
+    name_empty: Name ist erforderlich
+    name_too_long: Der Name darf höchstens 255 Zeichen lang sein
+    name_taken: "\"%{name}\" existiert bereits"
+    in_use_with_link: "Löschen nicht möglich: %{count} %{plural} verwenden dieses %{singular}. %{link_html}"
+    in_use_no_link: "Löschen nicht möglich: %{count} %{plural} verwenden dieses %{singular}."
+    version_mismatch: "Der Eintrag wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
+    not_found: Eintrag nicht gefunden
+    invalid_version: "Ungültige Version — bitte Seite neu laden und erneut versuchen"
+    node_type_name_too_long_for_cascade: "Der Name darf höchstens %{max} Zeichen lang sein (Standorttypen werden in storage_locations kaskadiert)"
+    name_invalid_chars: "Der Name enthält unsichtbare oder bidirektionale Unicode-Zeichen, die nicht zulässig sind"
+  system:
+    overdue_threshold_invalid: "Die Grenze muss ≥ 1 Tag sein"
+    overdue_threshold_too_large: "Die Grenze darf höchstens 365 Tage betragen"
+    default_language_invalid: "Sprache muss FR, EN, DE oder IT sein"
+    default_currency_invalid: "Die Standardwährung muss ein 3-Buchstaben-Code nach ISO 4217 sein (z. B. CHF, EUR)."
+    version_mismatch: "Die Einstellungen wurden durch einen anderen Administrator geändert — neu laden und erneut versuchen"
+    provider_version_mismatch: "%{provider} wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
+  code:
+    unsupported_type: Nicht unterstützter Code-Typ
+guide:
+  initial: "Scannen Sie eine ISBN, um mit dem Katalogisieren zu beginnen, oder einen L-Code, um einen Aufstellungsort festzulegen."
+  title_active: "Titel aktiv: %{title}. Scannen Sie einen V-Code, um ein Exemplar hinzuzufügen."
+  volume_ready: "Exemplar %{label} bereit. Scannen Sie einen L-Code zum Einstellen oder einen weiteren V-Code."
+  shelved: "Eingestellt! Scannen Sie eine weitere ISBN, einen V-Code oder einen L-Code."
+  batch_active: "Aktiver Standort: %{path}. Scannen Sie V-Codes, um hier einzustellen."
+volume:
+  detail_title: Exemplardetails
+  edit_title: Exemplar bearbeiten
+  condition_label: Zustand
+  edition_label: Ausgabe
+  not_shelved: Nicht eingestellt
+  submit: Speichern
+  # CR #237 — shelf-audit affordance on the volume detail page.
+  under_audit_chip: "Zu prüfen"
+  mark_under_audit: "Zur Prüfung markieren"
+  mark_checked: "Geprüft"
+  # CR #243 — volume value-entry fields (purchase price + current value).
+  valuation_section: "Bewertung (optional)"
+  purchase_price: "Kaufpreis"
+  current_value: "Geschätzter aktueller Wert"
+  currency_label: "Währung"
+  valuation_help: "Optional — leer lassen zum Überspringen. Die Währung wird auf den vom Administrator konfigurierten Wert vorbelegt, kann aber pro Exemplar überschrieben werden."
+  currently_on_loan: "Löschen nicht möglich: Dieses Exemplar ist aktuell ausgeliehen."
+  loan_status_field: "Ausleihstatus:"
+  on_loan_since: "Ausgeliehen seit %{date}"
+  on_loan_to_prefix: "Ausgeliehen an "
+  on_loan_to_since_suffix: " seit %{date}"
+  # CR #209: volume delete confirmation modal.
+  delete_modal_title: "Exemplar %{label} löschen?"
+  delete_modal_body: "Dieses Exemplar wird aus dem Katalog entfernt. Die Aktion ist innerhalb von 30 Tagen über den Admin-Papierkorb umkehrbar."
+  delete_modal_confirm: "Löschen"
+location:
+  tree_title: Standorte
+  add_root: Hauptstandort hinzufügen
+  add_child: Unterstandort hinzufügen
+  edit: Standort bearbeiten
+  delete: Löschen
+  name_label: Name
+  type_label: Typ
+  lcode_label: L-Code
+  parent_label: Übergeordneter Standort
+  submit: Speichern
+  none: "(keiner — Hauptebene)"
+  # CR #280 — organizational location flag.
+  organizational_label: "Organisatorischer Standort (kann keine Exemplare direkt aufnehmen)"
+  organizational_help: "Aktivieren, wenn der Standort nur Unterstandorte gruppiert (z. B. \"Wohnzimmer\" enthält \"Regal A\" und \"Regal B\", aber selbst keine Exemplare). Exemplare können einem organisatorischen Standort nicht zugewiesen werden — der Einsortier-Workflow weist ab, und das Bearbeitungsformular lehnt das Umstellen eines Standorts mit angehängten Exemplaren ab."
+  organizational_blocked_has_volumes: "Kann nicht als organisatorisch markiert werden — %{count} Exemplar(e) verwenden diesen Standort aktuell. Bitte zuerst umsortieren."
+  # CR #237 — bulk-mark all volumes on a shelf "to check".
+  bulk_audit_button: "Alle Exemplare zur Prüfung markieren"
+  empty_state: "Erstellen Sie Ihren ersten Standort, um mit der Organisation zu beginnen!"
+  created: "%{name} erstellt (%{label})."
+  updated: Standort aktualisiert.
+  deleted: Standort gelöscht.
+  has_volumes: "Löschen nicht möglich: %{count} Exemplare hier gelagert. Bitte zuerst die Exemplare verschieben."
+  has_children: "Löschen nicht möglich: Es gibt Unterstandorte. Bitte zuerst löschen oder verschieben."
+  cycle_detected: "Verschieben nicht möglich: Würde eine zyklische Hierarchie erzeugen."
+  lcode_invalid: "Ungültiges L-Code-Format. Erwartet wird L gefolgt von 4 Ziffern (z. B. L0042)."
+  lcode_duplicate: "Dieser L-Code wird bereits verwendet."
+  lcode_exhausted: "Alle L-Codes (L0001–L9999) sind bereits in Verwendung."
+  invalid_node_type: "Ungültiger Standorttyp."
+  volumes_count: "%{count} Exemplare"
+  breadcrumb_label: Standort-Pfad
+  tree:
+    toggle: Teilbaum umschalten
+  contents_title: Regalinhalt
+  empty_volumes: "Keine Exemplare an diesem Standort."
+  col_title: Titel
+  col_author: Autor
+  col_genre: Genre
+  col_dewey: Dewey
+  col_condition: Zustand
+  col_status: Status
+login:
+  title: Anmelden
+  username_label: Benutzername
+  password_label: Passwort
+  submit: Anmelden
+  error_invalid: "Ungültiger Benutzername oder ungültiges Passwort."
+  back_to_home: Zurück zur Startseite
+metadata:
+  provider_failed: "Metadaten-Anbieter %{provider} fehlgeschlagen."
+  no_result: "Keine Metadaten für diesen Code gefunden."
+  cached_result: "Verwende zwischengespeicherte Metadaten."
+  chain_timeout: "Metadaten-Suche hat das Zeitlimit überschritten."
+  edit_metadata: Metadaten bearbeiten
+  redownload: Metadaten erneut herunterladen
+  save_changes: Änderungen speichern
+  cancel: Abbrechen
+  redownloading: "Metadaten werden erneut geladen…"
+  confirm_title: Metadaten-Änderungen bestätigen
+  field_conflict: "%{field} wurde manuell bearbeitet. Neuen Wert übernehmen?"
+  current_value: Aktuell
+  new_value: Neu
+  apply_changes: Ausgewählte Änderungen übernehmen
+  update_success: "%{updated} Feld(er) aktualisiert, %{kept} manuelle Bearbeitung(en) beibehalten."
+  redownload_failed: "Erneutes Laden fehlgeschlagen: kein Anbieter lieferte Metadaten."
+  all_updated: "Alle Metadatenfelder vom Anbieter aktualisiert."
+  no_changes: "Keine Änderungen — die Metadaten entsprechen bereits den Anbieterdaten."
+  auto_updated: "Wird automatisch aktualisiert"
+  field_label: Feld
+  accept_cover: "Neues Coverbild übernehmen"
+  field:
+    title: Titel
+    subtitle: Untertitel
+    description: Beschreibung
+    language: Sprache
+    genre: Genre
+    publisher: Verlag
+    publication_date: Erscheinungsdatum
+    dewey_code: Dewey-Code
+    page_count: Seitenzahl
+    track_count: Anzahl Titel
+    total_duration: "Dauer (Min.)"
+    age_rating: Altersfreigabe
+    issue_number: Ausgabennummer
+    # CR #272 — editable identifier fields in the metadata-edit form.
+    identifiers: Kennungen
+    identifiers_help: "Die ISBN-13 muss 13 Ziffern mit gültiger Prüfsumme enthalten. ISSN / UPC werden unverändert übernommen. Leer lassen, um ein Feld zu löschen."
+    isbn: ISBN
+    issn: ISSN
+    upc: UPC
+media_type:
+  book: Buch
+  bd: BD
+  cd: CD
+  dvd: DVD
+  magazine: Zeitschrift
+  report: Bericht
+scan:
+  select_media_type: "Um welchen Medientyp handelt es sich?"
+cover:
+  alt_text: "Cover von %{title}"
+  no_cover: "Kein Cover verfügbar"
+audio:
+  enable: Scan-Töne aktivieren
+  disable: Scan-Töne deaktivieren
+genre:
+  # Fix #107: rendered in place of `genre_name` when the title's genre row
+  # has been soft-deleted (orphan FK).
+  placeholder:
+    deleted: "(Gelöschtes Genre)"
+# CR #237 — shelf-audit list view.
+audit:
+  heading: "Regal-Prüfung"
+  intro: "Aktuell zur Prüfung markierte Exemplare, sortiert nach Standort → V-Code, damit Sie das Regal der Reihe nach abarbeiten können. Klicken Sie neben einer Zeile auf Geprüft, sobald Sie das Exemplar bestätigt haben."
+  empty_state: "Aktuell ist nichts zu prüfen. Markieren Sie ein Regal oder ein einzelnes Exemplar, um eine Prüfrunde zu starten."
+  col_volume: "V-Code"
+  col_title: "Titel"
+  col_location: "Standort"
+  col_action: "Aktion"
+  btn_clear_all: "Alle Markierungen entfernen"
+stats:
+  value:
+    heading: "Bibliothekswert"
+    intro: "Summe des aktuellen Werts jedes Exemplars im Katalog, aufgeschlüsselt nach Währung / nach Genre / nach Serie. Gelöschte Exemplare und Titel werden ausgeschlossen; Exemplare ohne hinterlegten Wert werden übersprungen."
+    section_totals: "Pro Währung"
+    section_by_genre: "Nach Genre"
+    section_by_series: "Nach Serie"
+    col_currency: "Währung"
+    col_total_value: "Gesamtwert"
+    col_total_purchase: "Gesamter Kaufpreis"
+    col_count: "Bewertet / Kaufpreis erfasst"
+    col_genre: "Genre"
+    col_series: "Serie"
+    col_volumes: "Exemplare"
+    empty_state: "Noch kein Exemplar hat einen erfassten Wert. Bearbeiten Sie ein Exemplar, um einen Kaufpreis oder einen geschätzten Wert einzutragen."
+    deleted_genre: "(Gelöschtes Genre)"
+dashboard:
+  metadata_errors: "%{count} Titel mit Metadatenfehlern"
+  glance:
+    heading: Sammlung auf einen Blick
+    titles_one: "%{count} Titel"
+    titles_other: "%{count} Titel"
+    volumes_one: "%{count} Exemplar"
+    volumes_other: "%{count} Exemplare"
+    active_loans_one: "%{count} aktive Ausleihe"
+    active_loans_other: "%{count} aktive Ausleihen"
+    signin_to_view_loans: Anmelden, um Ausleihen zu sehen
+  recent_additions:
+    heading: Neueste Hinzufügungen
+    empty_state: "Noch keine neuen Hinzufügungen — beginnen Sie mit dem Katalogisieren!"
+  stats_by_genre:
+    heading: Nach Genre
+    titles_one: "%{count} Titel"
+    titles_other: "%{count} Titel"
+    other_label: Andere
+    other_heading: "Weniger als 5 % des Katalogs"
+    center_caption: Titel
+    aria_summary: "Katalog nach Genre: %{summary}"
+  attention:
+    heading: Erfordert Aufmerksamkeit
+    unshelved_label: Nicht eingestellte Exemplare
+    unshelved_clear_aria: "Filter aufheben: Nicht eingestellte Exemplare"
+    unshelved_empty: Keine nicht eingestellten Exemplare
+    overdue_label: Überfällige Ausleihen
+    overdue_clear_aria: "Filter aufheben: Überfällige Ausleihen"
+    overdue_heading: Überfällige Ausleihen
+    overdue_empty: "Keine überfälligen Ausleihen — gut gemacht!"
+    gaps_label: Serien mit Lücken
+    gaps_clear_aria: "Filter aufheben: Serien mit Lücken"
+    gaps_heading: Serien mit Lücken
+    gaps_empty: "Keine unvollständigen Serien — Ihre Sammlung ist komplett!"
+    recent_cataloged_label: Kürzlich katalogisiert
+    recent_cataloged_clear_aria: "Filter aufheben: Kürzlich katalogisiert"
+    recent_cataloged_heading: "Kürzlich katalogisiert (letzte 7 Tage)"
+    recent_cataloged_empty: "Keine neuen Hinzufügungen in den letzten 7 Tagen — noch nichts Neues zu katalogisieren"
+    recent_returns_label: Kürzliche Rückgaben
+    recent_returns_clear_aria: "Filter aufheben: Kürzliche Rückgaben"
+    recent_returns_heading: "Kürzlich zurückgegeben (letzte 7 Tage)"
+    recent_returns_empty: "Keine Rückgaben in den letzten 7 Tagen — eine ruhige Woche!"
+  # CR #243 — opt-in "Library estimated value" card on the home page.
+  value_indicator:
+    label: "Geschätzter Bibliothekswert"
+    cta: "Aufschlüsselung ansehen"
+  # CR #237 — shelf-audit indicator on home.
+  audit_indicator:
+    label: "Zu prüfende Exemplare"
+    cta: "Prüfung öffnen"
+borrower:
+  list_title: Entleiher
+  add: Entleiher hinzufügen
+  name: Name
+  address: Adresse
+  email: E-Mail
+  phone: Telefon
+  edit: Entleiher bearbeiten
+  delete: Löschen
+  created: "Entleiher angelegt: %{name}"
+  updated: Entleiher aktualisiert.
+  deleted: Entleiher gelöscht.
+  delete_has_loans: "Löschen nicht möglich: %{name} hat %{count} aktive Ausleihe(n)."
+  name_required: Der Name des Entleihers ist erforderlich.
+  save: Speichern
+  cancel: Abbrechen
+  detail_title: Entleiher-Details
+  active_loans: Aktive Ausleihen
+  no_active_loans: "Dieser Entleiher hat keine aktiven Ausleihen."
+  delete_modal_title: "Entleiher %{name} löschen?"
+  delete_modal_body: "Der Datensatz wird in den Papierkorb verschoben. Der Entleiher kann innerhalb von 30 Tagen über den Admin-Papierkorb wiederhergestellt werden."
+  delete_modal_confirm: Löschen
+loan:
+  list_title: Aktive Ausleihen
+  new: Neue Ausleihe
+  volume_label: Exemplar-Etikett
+  borrower: Entleiher
+  loaned_at: Ausgeliehen am
+  duration: Dauer
+  days: Tage
+  created: "Ausleihe erfasst: %{label} an %{borrower}"
+  already_on_loan: "Dieses Exemplar ist bereits ausgeliehen."
+  not_loanable: "Der Zustand dieses Exemplars erlaubt keine Ausleihe."
+  volume_not_found: "Exemplar nicht gefunden."
+  not_on_loan: "Dieses Exemplar ist aktuell nicht ausgeliehen."
+  scan_placeholder: "V-Code scannen, um die Ausleihe zu finden…"
+  col_borrower: Entleiher
+  col_volume: Exemplar
+  col_title: Titel
+  col_date: Datum
+  col_duration: Dauer
+  register: Ausleihe erfassen
+  borrower_search: "Entleiher suchen…"
+  return: Rückgabe
+  returned: "Rückgabe erfasst: %{label} wieder an %{path}"
+  returned_no_location: "Rückgabe erfasst: %{label} (kein vorheriger Standort)"
+  already_returned: "Diese Ausleihe wurde bereits zurückgegeben."
+  overdue: Überfällig
+  return_modal_title: "Ausleihe als zurückgegeben markieren?"
+  return_modal_body: "Das Exemplar wird wieder verfügbar."
+  return_modal_confirm: "Als zurückgegeben markieren"
+  not_found: "Ausleihe nicht gefunden."
+  col_action: Aktion
+session:
+  expiry_soon: "Ihre Sitzung läuft bald ab."
+  expiry_in_minutes: "Ihre Sitzung läuft in %{minutes} Min. ab."
+  stay_connected: Angemeldet bleiben
+  dismiss_aria: Schließen
+admin:
+  page_title: Verwaltung
+  tabs_aria: Verwaltungsregister
+  tabs:
+    health: Status
+    users: Benutzer
+    reference_data: Stammdaten
+    trash: Papierkorb
+    system: System
+    api_keys: API-Schlüssel
+  trash:
+    badge_aria: "Papierkorb, %{count} Einträge"
+    heading: Papierkorb (gelöschte Einträge)
+    empty_state: "Keine gelöschten Einträge."
+    filter_entity_label: "Nach Typ filtern"
+    filter_entity_all: "Alle Typen"
+    filter_entity_titles: "Titel"
+    filter_entity_volumes: "Exemplare"
+    filter_entity_contributors: "Mitwirkende"
+    filter_entity_borrowers: "Entleiher"
+    filter_entity_series: "Serien"
+    filter_entity_storage_locations: "Standorte"
+    search_placeholder: "Nach Namen suchen…"
+    pagination_aria: "Seitennavigation Papierkorb"
+    col_item_name: Eintrag
+    col_type: Typ
+    col_deleted_at: Gelöscht
+    col_days_remaining: Tage übrig
+    col_actions: Aktionen
+    btn_restore: Wiederherstellen
+    btn_delete_permanently: Endgültig löschen
+    days_remaining_warning: "%{days} Tage"
+    days_remaining_critical: "<7 Tage"
+    restore_success: "Wiederhergestellt: %{name}"
+    delete_permanent_success: "Endgültig gelöscht: %{name}"
+    delete_permanent_modal_title: "Endgültig löschen?"
+    delete_permanent_modal_warning: "Dies kann nicht rückgängig gemacht werden."
+    delete_permanent_modal_confirm_label: "Zum Bestätigen den Namen des Eintrags eingeben:"
+    modal_confirmation_instruction: "Geben Sie den oben angezeigten Namen ein, um die endgültige Löschung zu bestätigen."
+    delete_permanent_modal_confirm_button: "Endgültig löschen"
+    delete_permanent_modal_cancel: "Abbrechen"
+    delete_permanent_error_not_found: "Eintrag bereits weg"
+    delete_permanent_error_version: "Eintrag wurde geändert"
+    delete_permanent_error_name_mismatch: "Der Name stimmt nicht überein. Bitte erneut versuchen."
+    restore_modal_title: "Konflikte bei Wiederherstellung"
+    restore_modal_explanation: "Einige Beziehungen haben sich geändert, während dieser Eintrag gelöscht war."
+    restore_modal_conflicts: "Konflikte:"
+    restore_modal_clear_conflicts: "Wiederherstellen (Konfliktbeziehungen löschen)"
+    restore_modal_cancel: "Gelöscht lassen"
+  health:
+    versions_heading: Versionen
+    app_version: Anwendungsversion
+    db_version: Datenbankversion
+    disk_usage: Speicherbelegung
+    disk_usage_format: "%{used} / %{total} belegt (%{pct} %)"
+    disk_usage_unknown: Unbekannt
+    counts_heading: Anzahl Einträge
+    count_titles: Titel
+    count_volumes: Exemplare
+    count_contributors: Mitwirkende
+    count_borrowers: Entleiher
+    count_active_loans: Aktive Ausleihen
+    providers_heading: Metadaten-Anbieter
+    provider_status_up: Erreichbar
+    provider_status_down: Nicht erreichbar
+    provider_status_unknown: Unbekannt
+    provider_status_na: nicht zutreffend
+    last_checked: "Zuletzt geprüft: %{when}"
+    last_checked_never: Nie
+    maintenance_heading: Wartung
+    bulk_cover_fetch:
+      missing_covers_label: "Titel mit fehlendem Cover"
+      button: "Fehlende Cover erneut laden"
+      idle: "Inaktiv"
+      running: "Läuft: %{processed} / %{total} verarbeitet"
+      last_run: "Letzter Lauf: %{processed} / %{total} verarbeitet"
+      started: "Massenhafter Cover-Nachzug für %{total} Titel gestartet. Fortschritt steht im Log; aktualisieren Sie das Panel für Updates."
+      empty: "Keine Titel benötigen einen Cover-Nachzug — alles, was abrufbar war, ist abgerufen."
+      already_running: "Ein Cover-Nachzug läuft bereits. Bitte warten Sie auf den Abschluss."
+  users:
+    heading: Benutzerkonten
+    empty_state: "Nur Sie hier! Erstellen Sie ein Bibliothekar-Konto für andere Haushaltsmitglieder."
+    pagination_aria: Seitennavigation Benutzerliste
+    filter_role_label: Nach Rolle filtern
+    filter_status_label: Nach Status filtern
+    filter_role_all: Alle Rollen
+    filter_status_active: Aktiv
+    filter_status_deactivated: Deaktiviert
+    filter_status_all: Alle
+    col_username: Benutzername
+    col_role: Rolle
+    col_status: Status
+    col_created: Erstellt
+    col_last_login: Letzte Anmeldung
+    col_actions: Aktionen
+    role_librarian: Bibliothekar
+    role_admin: Administrator
+    status_active: Aktiv
+    status_deactivated: Deaktiviert
+    last_login_never: Nie
+    btn_new: Neuer Benutzer
+    btn_edit: Bearbeiten
+    btn_deactivate: Deaktivieren
+    btn_reactivate: Reaktivieren
+    btn_save: Speichern
+    btn_cancel: Abbrechen
+    form_label_username: Benutzername
+    form_label_password: Passwort
+    form_label_password_edit: "Passwort (leer lassen, um es beizubehalten)"
+    form_label_role: Rolle
+    deactivate_modal_title: "Benutzer %{username} deaktivieren?"
+    deactivate_modal_body: "Der Benutzer wird sofort abgemeldet und kann sich erst nach einer Reaktivierung wieder anmelden."
+    deactivate_modal_confirm: "Deaktivieren"
+    success_created: "Benutzer %{username} erstellt"
+    success_updated: "Benutzer %{username} aktualisiert"
+    success_deactivated: "Benutzer %{username} deaktiviert (%{count} Sitzung(en) beendet)"
+    success_reactivated: "Benutzer %{username} reaktiviert"
+    error_cannot_delete_self: "Sie können sich nicht selbst löschen. Bitten Sie einen anderen Administrator, Ihr Konto zu löschen."
+    error_cannot_delete_last_admin: "Der letzte aktive Administrator kann nicht gelöscht werden. Erstellen Sie zuerst einen weiteren Administrator."
+  placeholder:
+    coming_in_story: "Folgt in Story %{story}"
+    trash_preview: "Vorschau gelöschter Einträge — vollständige Liste und Wiederherstellungs-UI in Story 8-5."
+  reference_data:
+    panel_heading: Stammdaten
+    section_genres: Genres
+    section_volume_states: Exemplarzustände
+    section_contributor_roles: Rollen der Mitwirkenden
+    section_node_types: Standorttypen
+    btn_add_genre: Genre hinzufügen
+    btn_add_state: Zustand hinzufügen
+    btn_add_role: Rolle hinzufügen
+    btn_add_node_type: Standorttyp hinzufügen
+    btn_save: Speichern
+    btn_cancel: Abbrechen
+    btn_delete: Löschen
+    btn_apply_anyway: Trotzdem anwenden
+    loanable_label: Ausleihbar
+    usage_count_chip: "%{count} in Verwendung"
+    delete_modal_heading: "%{entity} löschen?"
+    delete_modal_body: "\"%{name}\" löschen? Dies kann durch erneutes Anlegen des Eintrags rückgängig gemacht werden."
+    loanable_warning_heading: "%{count} aktive Ausleihe(n)"
+    loanable_warning_body: "Exemplare im Zustand \"%{name}\" haben %{count} aktive Ausleihe(n). Bestehende Ausleihen laufen normal weiter; neue Ausleihen in diesem Zustand werden blockiert."
+    loanable_warning_sample_heading: "Betroffene Ausleihen"
+    empty_state: "Noch keine Einträge."
+    entity_genre: Genre
+    entity_state: Exemplarzustand
+    entity_role: Rolle des Mitwirkenden
+    entity_node_type: Standorttyp
+    plural_genre: Titel
+    plural_state: Exemplare
+    plural_role: Titel-Mitwirkende
+    plural_node_type: Standorte
+    edit_aria: "%{name} bearbeiten"
+    delete_aria: "%{name} löschen"
+    in_use_link_label: Liste ansehen
+  system:
+    panel_heading: Systemeinstellungen
+    section_loans: Ausleihen
+    section_providers: Metadaten-Anbieter
+    section_language: Sprache
+    section_valuation: Bibliothekswert
+    overdue_threshold_label: "Überfälligkeitsgrenze (Tage)"
+    overdue_threshold_help: "Eine Ausleihe gilt als überfällig, sobald ihre Dauer diese Anzahl Tage überschreitet."
+    provider_key_label_google_books: "Google Books API-Schlüssel"
+    provider_key_label_omdb: "OMDb API-Schlüssel"
+    provider_key_label_tmdb: "TMDb API-Schlüssel"
+    provider_key_set: "Gesetzt: %{mask}"
+    provider_key_not_set: "Nicht gesetzt"
+    provider_key_clear_label: "Diesen Schlüssel beim Speichern löschen"
+    default_language_label: "Standardsprache"
+    default_language_help: "Wird für neue anonyme Besucher ohne Cookie und ohne passenden Accept-Language-Eintrag verwendet."
+    btn_save_loans: "Ausleihe-Einstellungen speichern"
+    btn_save_providers: "Anbieter-Schlüssel speichern"
+    btn_save_language: "Spracheinstellungen speichern"
+    # v1.5.1 fix #283 — Library valuation section keys.
+    default_currency_label: "Standardwährung"
+    default_currency_help: "Wird als vorbelegte Währung für neue Exemplarbewertungen verwendet. 3-Buchstaben-Code nach ISO 4217; Benutzer können pro Exemplar eine andere Währung wählen."
+    show_value_indicators_label: "Wertanzeige im Home-Dashboard einblenden"
+    show_value_indicators_help: "Fügt eine Karte \"Geschätzter Bibliothekswert\" auf der Startseite hinzu, die auf /stats/value verlinkt. Standardmäßig AUS — aktivieren Sie dies, wenn der Geldwert auf dem Home-Dashboard sichtbar sein soll."
+    btn_save_valuation: "Bewertungseinstellungen speichern"
+  api_keys:
+    panel_heading: "API-Schlüssel"
+    intro: "API-Schlüssel authentifizieren externe Aufrufer an der HTTP-JSON-API unter /api/v1/*. Lese-Schlüssel können Datensätze auflisten und abrufen; Schreib-Schlüssel können zusätzlich freigegebene Titelfelder per PATCH bearbeiten. Jeder Schlüssel wird genau EINMAL beim Anlegen angezeigt — jetzt kopieren oder widerrufen und neu erstellen."
+    tooltip_aria: "Über API-Schlüssel"
+    tooltip_text: "Übergeben Sie den Schlüssel als `Authorization: Bearer <key>` oder `X-API-Key: <key>`. CSRF wird für /api/* umgangen, weil Bearer-Authentifizierung nicht über Cookies läuft. Schlüssel erscheinen nie in Logs; nur das 12-Zeichen-Präfix ist hier sichtbar."
+    section_create: "Neuer API-Schlüssel"
+    section_list: "Bestehende Schlüssel"
+    label_field: "Bezeichnung"
+    label_help: "Ein Name, den nur Sie sehen — z. B. \"KI-Klassifikator\" oder \"Sicherungsskript\"."
+    scope_field: "Geltungsbereich"
+    scope_read: "Nur lesen"
+    scope_read_help: "GET /api/v1/* — Ressourcen auflisten und abrufen. Keine Änderungen."
+    scope_write: "Lesen + schreiben"
+    scope_write_help: "Fügt PATCH /api/v1/titles/{id} für genre_id, dewey_code, description, subtitle hinzu."
+    btn_create: "Schlüssel erstellen"
+    col_label: "Bezeichnung"
+    col_scope: "Bereich"
+    col_prefix: "Präfix"
+    col_created: "Erstellt"
+    col_last_used: "Zuletzt verwendet"
+    col_status: "Status"
+    col_actions: "Aktionen"
+    btn_revoke: "Widerrufen"
+    btn_revoke_confirm: "Schlüssel widerrufen"
+    revoke_aria: "API-Schlüssel %{label} widerrufen"
+    revoke_modal_heading: "Diesen API-Schlüssel widerrufen?"
+    revoke_modal_body: "Der Schlüssel \"%{label}\" wird sofort die Authentifizierung verweigern. Laufende Anfragen erhalten 401 beim nächsten Aufruf. Diese Aktion kann nicht rückgängig gemacht werden — Sie müssen einen neuen Schlüssel erstellen."
+    status_active: "Aktiv"
+    status_revoked: "Widerrufen"
+    last_used_never: "Nie"
+    empty_state: "Noch keine API-Schlüssel. Erstellen Sie einen, um /api/v1/* zu nutzen."
+    created_modal_heading: "Schlüssel erstellt — jetzt kopieren"
+    created_modal_body: "Dies ist das einzige Mal, dass Sie den vollständigen Schlüssel sehen. Sobald Sie dieses Dialogfenster schließen, ist er nicht mehr wiederherstellbar — nur widerrufbar und ersetzbar."
+    created_copy_hint: "Klicken Sie dreimal in das Feld oben, um auszuwählen, dann mit Strg+C / Cmd+C kopieren."
+    created_btn_close: "Ich habe ihn kopiert"
+    feedback_created: "API-Schlüssel erstellt. Bitte den Klartext kopieren, bevor Sie das Fenster schließen."
+    feedback_revoked: "API-Schlüssel widerrufen."
+    # v1.5.1 fix #284 — hard-delete a revoked key.
+    btn_delete: "Löschen"
+    btn_delete_confirm: "Schlüssel löschen"
+    delete_aria: "API-Schlüssel %{label} löschen"
+    delete_modal_heading: "Diesen widerrufenen Schlüssel löschen?"
+    delete_modal_body: "Der widerrufene Schlüssel \"%{label}\" wird aus der Liste entfernt. Die Audit-Historie der bisherigen Nutzung (pro Aufruf zugeordnet in admin_audit) bleibt erhalten. Diese Aktion kann nicht rückgängig gemacht werden."
+    feedback_deleted: "API-Schlüssel gelöscht."
+    error_delete_active: "Aktive Schlüssel können nicht gelöscht werden — zuerst widerrufen."
+    error_label_required: "Eine Bezeichnung ist erforderlich."
+    error_label_too_long: "Die Bezeichnung darf höchstens 120 Zeichen lang sein."
+    error_invalid_scope: "Der Geltungsbereich muss \"read\" oder \"write\" sein."
+    error_not_found: "API-Schlüssel nicht gefunden."
+    error_already_revoked: "Dieser Schlüssel wurde bereits widerrufen."
+    error_version_conflict: "Dieser Schlüssel wurde durch einen anderen Administrator geändert. Bitte das Panel neu laden."
+success:
+  reference_data:
+    created: "%{name} hinzugefügt"
+    reactivated: "%{name} reaktiviert"
+    renamed: "Umbenannt in %{name}"
+    deleted: "%{name} gelöscht"
+    loanable_on: "%{name} ist jetzt ausleihbar"
+    loanable_off: "%{name} ist jetzt nicht mehr ausleihbar. Bestehende Ausleihen laufen weiter."
+    node_type_renamed_cascaded_one: "Umbenannt in %{name} — 1 Standort aktualisiert"
+    node_type_renamed_cascaded_other: "Umbenannt in %{name} — %{count} Standorte aktualisiert"
+  system:
+    loans_saved: "Ausleihe-Einstellungen gespeichert"
+    providers_saved: "Anbieter-Schlüssel gespeichert"
+    language_saved: "Standardsprache gespeichert"
+    valuation_saved: "Bewertungseinstellungen gespeichert"
+    no_changes: "Keine Änderungen"
+    provider_set: "%{provider}-Schlüssel gespeichert"
+    provider_cleared: "%{provider}-Schlüssel gelöscht"
+
+# Story 8-8: First-launch setup wizard.
+setup:
+  title: "Einrichtung"
+  step_1_title: "Schritt 1 — Admin-Konto"
+  step_2_title: "Schritt 2 — Metadaten-Anbieter"
+  step_3_title: "Schritt 3 — Einstellungen"
+  step_4_title: "Schritt 4 — Bestätigen und abschließen"
+  step_1_short: "Admin"
+  step_2_short: "Anbieter"
+  step_3_short: "Einstellungen"
+  step_4_short: "Fertig"
+  progress_aria: "Fortschritt des Einrichtungsassistenten"
+  step_1_username_label: "Benutzername des Administrators"
+  step_1_password_label: "Passwort"
+  step_1_password_hint: "Mindestens 8 Zeichen."
+  step_1_create_button: "Admin-Konto erstellen"
+  step_1_update_button: "Admin aktualisieren"
+  step_1_admin_exists_hint: "Es ist bereits ein Admin-Konto konfiguriert. Lassen Sie das Passwort leer, um es beizubehalten, oder geben Sie ein neues ein, um es zu aktualisieren."
+  step_2_intro: "Optionale API-Schlüssel für externe Metadaten-Anbieter. Sie können sie später unter Verwaltung → System hinzufügen oder ändern."
+  step_2_skip_label: "Lassen Sie ein Feld leer, um einen Anbieter zu überspringen — seine Abfragen liefern dann einfach kein Ergebnis."
+  step_2_skip_row_label: "Diesen Anbieter überspringen"
+  step_2_label_google_books: "Google Books API-Schlüssel"
+  step_2_label_omdb: "OMDb API-Schlüssel"
+  step_2_label_tmdb: "TMDb API-Schlüssel"
+  step_2_placeholder: "API-Schlüssel einfügen…"
+  step_2_helper_set: "Aktuell konfiguriert."
+  step_2_helper_not_set: "Nicht konfiguriert."
+  step_3_language_label: "Standardsprache der Oberfläche"
+  step_3_language_fr: "Français"
+  step_3_language_en: "English"
+  step_3_language_de: "Deutsch"
+  step_3_language_it: "Italiano"
+  step_3_overdue_label: "Überfälligkeitsgrenze (Tage)"
+  step_3_overdue_help: "Ausleihen, die diese Anzahl Tage überschreiten, werden als überfällig markiert."
+  step_3_overdue_unit: "Tage"
+  step_4_intro: "Überprüfen Sie die folgenden Auswahlen — Sie können später alles über die Verwaltung anpassen."
+  step_4_recap_admin_label: "Admin-Benutzername"
+  step_4_recap_providers_label: "Metadaten-Anbieter"
+  step_4_recap_provider_configured: "konfiguriert"
+  step_4_recap_provider_not_set: "nicht gesetzt"
+  step_4_recap_language_label: "Standardsprache"
+  step_4_recap_overdue_label: "Überfälligkeitsgrenze"
+  previous_button: "Zurück"
+  next_button: "Weiter"
+  complete_button: "Einrichtung abschließen"
+  errors:
+    username_required: "Bitte wählen Sie einen Admin-Benutzernamen."
+    username_too_long: "Der Benutzername ist zu lang (maximal 100 Zeichen)."
+    username_taken: "Dieser Benutzername ist bereits vergeben — bitte wählen Sie einen anderen."
+    password_too_short: "Das Passwort muss mindestens 8 Zeichen lang sein."
+    invalid_language: "Bitte FR, EN, DE oder IT wählen."
+    overdue_must_be_positive: "Die Überfälligkeitsgrenze muss eine positive ganze Zahl sein."
+    admin_already_created: "Ein Admin-Konto wurde durch einen anderen Browser erstellt. Bitte neu laden."
+    admin_already_created_by_other_browser: "Ein anderer Browser hat das Admin-Konto bereits erstellt. Sie wurden zum nächsten Schritt weitergeleitet — bei Bedarf können Sie zum vorherigen Schritt zurück, um die Admin-Daten zu aktualisieren."
