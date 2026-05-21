@@ -22,20 +22,27 @@
     </div>
 
     <div class="flex items-center gap-4 ml-auto">
+        {# CR #275 / #276 (v1.7.0) — the language toggle is a <select>
+           dropdown to scale beyond the original FR/EN pair to FR/EN/DE/IT
+           (and future locales) without nav-bar layout churn. Submission is
+           wired by `static/js/mybibli.js` via the `data-auto-submit`
+           attribute (delegated `change` listener — CSP-clean, no inline
+           handler). Browsers without JS get a noscript fallback Submit
+           button. #}
         <form action="/language" method="post" class="flex items-center gap-1" aria-label="{{ lang_toggle_aria }}">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
             <input type="hidden" name="next" value="{{ current_url }}">
-            {% if lang == "fr" %}
-            <button type="submit" name="lang" value="fr" lang="fr" aria-pressed="true" class="font-bold text-indigo-600 dark:text-indigo-400 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2">FR</button>
-            {% else %}
-            <button type="submit" name="lang" value="fr" lang="fr" aria-pressed="false" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2">FR</button>
-            {% endif %}
-            <span aria-hidden="true" class="text-stone-400">|</span>
-            {% if lang == "en" %}
-            <button type="submit" name="lang" value="en" lang="en" aria-pressed="true" class="font-bold text-indigo-600 dark:text-indigo-400 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2">EN</button>
-            {% else %}
-            <button type="submit" name="lang" value="en" lang="en" aria-pressed="false" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2">EN</button>
-            {% endif %}
+            <label for="lang-select" class="sr-only">{{ lang_toggle_aria }}</label>
+            <select id="lang-select" name="lang" data-auto-submit="true"
+                    class="text-sm bg-transparent text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-600 rounded px-2 py-1 focus-visible:outline-2 focus-visible:outline-indigo-500">
+                <option value="fr" lang="fr" {% if lang == "fr" %}selected{% endif %}>FR</option>
+                <option value="en" lang="en" {% if lang == "en" %}selected{% endif %}>EN</option>
+                <option value="de" lang="de" {% if lang == "de" %}selected{% endif %}>DE</option>
+                <option value="it" lang="it" {% if lang == "it" %}selected{% endif %}>IT</option>
+            </select>
+            <noscript>
+                <button type="submit" class="text-xs text-indigo-600 dark:text-indigo-400 underline">OK</button>
+            </noscript>
         </form>
         <button id="theme-toggle" type="button" aria-label="Toggle theme" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 p-2">
             <svg class="w-5 h-5 hidden dark:block" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/></svg>
@@ -70,20 +77,22 @@
     {% if role == "admin" %}
     <a href="/admin" {% if current_page == "admin" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ nav_admin }}</a>
     {% endif %}
+    {# CR #275 / #276 (v1.7.0) — mobile-nav copy of the language dropdown.
+       Same wiring as the desktop variant above. #}
     <form action="/language" method="post" class="mt-2 flex items-center gap-2 py-2" aria-label="{{ lang_toggle_aria }}">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
         <input type="hidden" name="next" value="{{ current_url }}">
-        {% if lang == "fr" %}
-        <button type="submit" name="lang" value="fr" lang="fr" aria-pressed="true" class="font-bold text-indigo-600 dark:text-indigo-400 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2">FR</button>
-        {% else %}
-        <button type="submit" name="lang" value="fr" lang="fr" aria-pressed="false" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2">FR</button>
-        {% endif %}
-        <span aria-hidden="true" class="text-stone-400">|</span>
-        {% if lang == "en" %}
-        <button type="submit" name="lang" value="en" lang="en" aria-pressed="true" class="font-bold text-indigo-600 dark:text-indigo-400 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2">EN</button>
-        {% else %}
-        <button type="submit" name="lang" value="en" lang="en" aria-pressed="false" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2">EN</button>
-        {% endif %}
+        <label for="lang-select-mobile" class="sr-only">{{ lang_toggle_aria }}</label>
+        <select id="lang-select-mobile" name="lang" data-auto-submit="true"
+                class="text-sm bg-transparent text-stone-600 dark:text-stone-400 border border-stone-300 dark:border-stone-600 rounded px-2 py-1 focus-visible:outline-2 focus-visible:outline-indigo-500">
+            <option value="fr" lang="fr" {% if lang == "fr" %}selected{% endif %}>FR</option>
+            <option value="en" lang="en" {% if lang == "en" %}selected{% endif %}>EN</option>
+            <option value="de" lang="de" {% if lang == "de" %}selected{% endif %}>DE</option>
+            <option value="it" lang="it" {% if lang == "it" %}selected{% endif %}>IT</option>
+        </select>
+        <noscript>
+            <button type="submit" class="text-xs text-indigo-600 dark:text-indigo-400 underline">OK</button>
+        </noscript>
     </form>
     {# Issue #150 — mobile parity with desktop login/logout (lines 40-47 above).
        Without this block, an authenticated user on a ≤768px viewport cannot

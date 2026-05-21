@@ -168,6 +168,10 @@ struct StepPreferences {
     language_value: String,
     label_fr: String,
     label_en: String,
+    // v1.7.0 (CR #275 / #276) — DE + IT added to the setup-wizard
+    // language picker. Same shape as FR + EN.
+    label_de: String,
+    label_it: String,
     overdue_label: String,
     overdue_help: String,
     overdue_value: i32,
@@ -349,6 +353,8 @@ fn render_step_preferences(
         language_value: values.language.clone(),
         label_fr: rust_i18n::t!("setup.step_3_language_fr", locale = lang).to_string(),
         label_en: rust_i18n::t!("setup.step_3_language_en", locale = lang).to_string(),
+        label_de: rust_i18n::t!("setup.step_3_language_de", locale = lang).to_string(),
+        label_it: rust_i18n::t!("setup.step_3_language_it", locale = lang).to_string(),
         overdue_label: rust_i18n::t!("setup.step_3_overdue_label", locale = lang).to_string(),
         overdue_help: rust_i18n::t!("setup.step_3_overdue_help", locale = lang).to_string(),
         overdue_value: values.overdue_threshold_days,

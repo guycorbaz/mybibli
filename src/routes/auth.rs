@@ -294,8 +294,10 @@ pub struct LanguageForm {
 
 /// `POST /language` — toggle UI language durably.
 ///
-/// - Validates `lang` ∈ `{fr, en}` — anything else falls through silently (no
-///   cookie write, 303 to `next`).
+/// - Validates `lang` ∈ `{fr, en, de, it}` — anything else falls through
+///   silently (no cookie write, 303 to `next`). DE + IT added in v1.7.0
+///   (CR #275 / #276); translation YAML files for those locales ship in
+///   subsequent v1.7.x patches.
 /// - Validates `next` via `is_safe_next`; falls back to `/` otherwise.
 /// - Writes `lang=` cookie (Path=/, SameSite=Lax, Max-Age=1y, not HttpOnly so
 ///   JS can read it if a future feature needs the active locale).
@@ -325,6 +327,8 @@ pub async fn change_language(
     let requested: &str = match form.lang.as_str() {
         "fr" => "fr",
         "en" => "en",
+        "de" => "de",
+        "it" => "it",
         // Bogus value — 303 with no cookie write.
         _ => {
             return (

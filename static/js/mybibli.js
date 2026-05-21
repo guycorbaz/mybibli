@@ -245,6 +245,21 @@
         });
     }
 
+    // CR #275 / #276 (v1.7.0) — auto-submit `<select data-auto-submit>` on
+    // change, so the language dropdown in the nav bar saves immediately
+    // without a separate Submit button. Delegated at document level so
+    // HTMX-injected forms work too. CSP-clean — no inline `onchange`
+    // handler (which would be blocked by `script-src 'self'`). The
+    // <noscript> fallback in the template surfaces a manual Submit button
+    // for JS-disabled clients.
+    function initAutoSubmitSelects() {
+        document.body.addEventListener("change", function (e) {
+            var sel = e.target;
+            if (!sel || !sel.dataset || sel.dataset.autoSubmit !== "true") return;
+            if (sel.form) sel.form.submit();
+        });
+    }
+
     // Title-detail page: omnibus checkbox toggles the end-position field.
     // Pre-CSP this was an inline `onchange="...style.display=..."`.
     function initOmnibusToggle() {
@@ -355,6 +370,7 @@
         initLocationsTreeToggle();
         initConfirmationNameValidation();
         initOpacityResetCleanup();
+        initAutoSubmitSelects();
     }
 
     if (document.readyState === "loading") {
