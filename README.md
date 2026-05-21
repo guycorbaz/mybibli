@@ -6,6 +6,8 @@
 </p>
 
 ![CI](https://github.com/guycorbaz/mybibli/actions/workflows/ci.yml/badge.svg?branch=main)
+[![Version](https://img.shields.io/github/v/tag/guycorbaz/mybibli?label=version&sort=semver&color=blue)](https://github.com/guycorbaz/mybibli/releases)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-lightgrey)](LICENSE)
 
 > Personal library cataloging for home collectors.
 
