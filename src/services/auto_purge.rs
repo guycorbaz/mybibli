@@ -340,6 +340,37 @@ mod tests {
     use crate::services::soft_delete::ALLOWED_TABLES;
     use sqlx::Row;
 
+    /// Fix #63 — `ALLOWED_TABLES` (the soft-delete API surface
+    /// whitelist) and `PURGE_DELETION_ORDER` (the FK-safe deletion
+    /// sequence used by auto-purge) used to drift silently: adding
+    /// a new soft-deletable table to `ALLOWED_TABLES` without also
+    /// listing it in `PURGE_DELETION_ORDER` meant that table was
+    /// never auto-purged after the 30-day window. No compile-time
+    /// enforcement caught it.
+    ///
+    /// The full refactor proposed in #63 (collapse both into a
+    /// `PurgeableTable` enum) is a wider architectural change.
+    /// This test ships the safety net: every `ALLOWED_TABLES`
+    /// entry MUST also appear in `PURGE_DELETION_ORDER`. The
+    /// reverse is NOT required (junction tables like
+    /// `title_contributors` / `title_series` are auto-purged but
+    /// not in the soft-delete API).
+    ///
+    /// Catches the drift on every CI run — converts the silent
+    /// future-maintainer failure mode into a noisy CI red.
+    #[test]
+    fn allowed_tables_is_subset_of_purge_deletion_order() {
+        for &t in ALLOWED_TABLES {
+            assert!(
+                PURGE_DELETION_ORDER.contains(&t),
+                "table {t:?} is in ALLOWED_TABLES but missing from PURGE_DELETION_ORDER. \
+                 Adding a soft-deletable table without auto-purge coverage means it \
+                 accumulates soft-deleted rows forever. See #63 for the durable fix \
+                 (collapse both lists into a single PurgeableTable enum)."
+            );
+        }
+    }
+
     #[sqlx::test(migrations = "./migrations")]
     async fn test_purge_stats_empty_when_no_old_rows(
         pool: sqlx::Pool<sqlx::MySql>,
