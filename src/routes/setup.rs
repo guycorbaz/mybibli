@@ -380,9 +380,17 @@ fn render_step_done(
     let configured = rust_i18n::t!("setup.step_4_recap_provider_configured", locale = lang)
         .to_string();
     let not_set = rust_i18n::t!("setup.step_4_recap_provider_not_set", locale = lang).to_string();
+    // Fix #97 — explicit arms for every supported language; fall back
+    // to English (the project's `rust_i18n::i18n!(fallback = "en")`
+    // convention) for any unknown value rather than silently
+    // misrepresenting it as French. v1.7.0 #275/#276 added DE + IT;
+    // the original match silently routed both to FR.
     let language_display = match recap.language.as_str() {
-        "en" => rust_i18n::t!("setup.step_3_language_en", locale = lang).to_string(),
-        _ => rust_i18n::t!("setup.step_3_language_fr", locale = lang).to_string(),
+        "fr" => rust_i18n::t!("setup.step_3_language_fr", locale = lang).to_string(),
+        "de" => rust_i18n::t!("setup.step_3_language_de", locale = lang).to_string(),
+        "it" => rust_i18n::t!("setup.step_3_language_it", locale = lang).to_string(),
+        // EN is the canonical fallback (matches `lib.rs`'s `fallback = "en"`).
+        _ => rust_i18n::t!("setup.step_3_language_en", locale = lang).to_string(),
     };
     StepDone {
         csrf_token: csrf.to_string(),
