@@ -266,6 +266,11 @@ pagination:
   aria_label: Seitennavigation
 title_detail:
   contributors: Mitwirkende
+  # Fix #318 — Hinzufügen / Entfernen-Affordance für Mitwirkende auf der Titel-Detailseite.
+  contributor_add: "Mitwirkenden hinzufügen"
+  contributor_remove: Entfernen
+  contributor_remove_aria: "Mitwirkenden entfernen"
+  no_contributors: "Noch keine Mitwirkenden."
   volumes: Exemplare
   genre: Genre
   publisher: Verlag

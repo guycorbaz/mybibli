@@ -1819,6 +1819,58 @@ pub async fn contributor_form_page(
     }
 }
 
+/// Fix #318 — render the contributor "Add" form for a specific
+/// title taken from the URL path (NOT the catalog-flow session).
+/// Used by the title detail page so a librarian can add a
+/// contributor to an already-cataloged title without going
+/// through the /catalog scan flow. Shares the form template
+/// (`templates/components/contributor_form.html`) — same
+/// `hx-post="/catalog/contributors/add"` + OOB-into-`#contributor-list`
+/// contract.
+pub async fn contributor_form_for_title(
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    State(state): State<AppState>,
+    uri: axum::http::Uri,
+    axum::extract::Path(title_id): axum::extract::Path<u64>,
+) -> Result<impl IntoResponse, AppError> {
+    session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
+
+    let pool = &state.pool;
+
+    // Guard: the title must exist (no soft-delete) — otherwise an
+    // admin-typed deep link to a deleted title's slot would silently
+    // render a form for a phantom id and the subsequent POST would
+    // surface a confusing FK error.
+    if crate::models::title::TitleModel::find_by_id(pool, title_id)
+        .await?
+        .is_none()
+    {
+        return Err(AppError::NotFound(
+            rust_i18n::t!("error.not_found", locale = locale.0).to_string(),
+        ));
+    }
+
+    let roles = ContributorRoleModel::find_all(pool).await?;
+
+    let template = ContributorFormTemplate {
+        form_heading: rust_i18n::t!("contributor.form.add_button").to_string(),
+        label_name: rust_i18n::t!("contributor.form.name").to_string(),
+        label_role: rust_i18n::t!("contributor.form.role").to_string(),
+        label_submit: rust_i18n::t!("contributor.form.submit").to_string(),
+        title_id,
+        roles,
+    };
+
+    match template.render() {
+        Ok(html) => Ok(Html(html).into_response()),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to render contributor form for title");
+            Err(AppError::Internal("Template rendering failed".to_string()))
+        }
+    }
+}
+
 fn contributor_list_html(contributors: &[TitleContributorModel]) -> String {
     if contributors.is_empty() {
         return String::new();
