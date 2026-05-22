@@ -65,6 +65,14 @@ pub struct PurgeStats {
     /// some rows (mid-drain failure) — see `errors` for the per-table
     /// detail string. (R3-N2 + R3-N11.)
     pub tables_errored: usize,
+    /// Fix #77 — Tables whose drain reached `MAX_DRAIN_ITERATIONS` and
+    /// stopped without erroring. These were previously double-counted
+    /// (as `tables_succeeded` AND pushed into `errors`), which made
+    /// `errors_count > 0` ambiguous: was it a real failure, or just a
+    /// backlog deferred to the next run? Splitting them out keeps the
+    /// alarm signal clean (`tables_errored` = real failures; `tables_capped`
+    /// = "remaining rows will be cleared on the next scheduled run").
+    pub tables_capped: usize,
     pub rows_deleted: u64,
     /// Per-table deletion counts, keyed by table name. Every whitelisted
     /// table that was attempted appears here (R3-N7) — value is `0` if
@@ -221,11 +229,21 @@ impl AutoPurgeService {
             } else {
                 stats.tables_succeeded += 1;
             }
+            // Fix #77 — drain-cap is NOT an error. The previous code
+            // double-classified a capped run as both "succeeded" AND
+            // pushed a string into `stats.errors` (which bumps
+            // `errors_count` in the audit row), producing false alarms
+            // for operators monitoring `errors_count > 0`. Now we
+            // route the signal to a dedicated `tables_capped` counter,
+            // log at warn (already done above), and leave `errors`
+            // for actual transaction failures.
             if drain_capped {
-                stats.errors.push(format!(
-                    "{} drain capped at {} iterations ({} rows deleted, more remain — will retry next run)",
-                    table, MAX_DRAIN_ITERATIONS, table_total
-                ));
+                stats.tables_capped += 1;
+                tracing::warn!(
+                    table = %table,
+                    rows_deleted = table_total,
+                    "Auto-purge drain reached MAX_DRAIN_ITERATIONS; remaining rows deferred to next run"
+                );
             }
             // R3-N7: every attempted table appears in `per_table`, even
             // with `0` when nothing was deleted or the first batch errored.
@@ -270,6 +288,12 @@ impl AutoPurgeService {
             "tables_attempted": stats.tables_attempted,
             "tables_succeeded": stats.tables_succeeded,
             "tables_errored": stats.tables_errored,
+            // Fix #77 — surface drain-cap occurrences as their own
+            // counter so operators can distinguish "real failure"
+            // (`tables_errored > 0` or `errors_count > 0`) from
+            // "deferred backlog" (`tables_capped > 0`, retries
+            // automatically on the next scheduled run).
+            "tables_capped": stats.tables_capped,
             "tables_processed": stats.tables_succeeded,
             "rows_deleted": stats.rows_deleted,
             "errors_count": stats.errors.len(),
@@ -468,6 +492,7 @@ mod tests {
             tables_attempted: 5,
             tables_succeeded: 5,
             tables_errored: 0,
+            tables_capped: 0,
             rows_deleted: 10,
             per_table,
             errors: vec![],
