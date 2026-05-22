@@ -896,6 +896,10 @@ async fn apply_provider_action(
     }
 }
 
+/// #90 — thin wrapper around `services::admin_system::save_setting` that
+/// substitutes the generic version-mismatch error with a per-provider
+/// localized message so the admin sees WHICH key was stale. The SQL is
+/// otherwise identical and lives in `save_setting` — keep DRY.
 async fn run_provider_update(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
     key: &str,
@@ -904,28 +908,19 @@ async fn run_provider_update(
     provider_label: &str,
     loc: &'static str,
 ) -> Result<(), AppError> {
-    let result = sqlx::query(
-        "UPDATE settings SET setting_value = ?, version = version + 1 \
-         WHERE setting_key = ? AND version = ? AND deleted_at IS NULL",
-    )
-    .bind(new_value)
-    .bind(key)
-    .bind(expected_version)
-    .execute(&mut **tx)
-    .await?;
-    if result.rows_affected() == 0 {
-        // Per-provider 409 with the provider name interpolated so the admin
-        // sees WHICH key was stale.
-        return Err(AppError::Conflict(
-            rust_i18n::t!(
-                "error.system.provider_version_mismatch",
-                locale = loc,
-                provider = provider_label
-            )
-            .to_string(),
-        ));
-    }
-    Ok(())
+    save_setting(&mut **tx, key, new_value, expected_version)
+        .await
+        .map_err(|e| match e {
+            AppError::Conflict(_) => AppError::Conflict(
+                rust_i18n::t!(
+                    "error.system.provider_version_mismatch",
+                    locale = loc,
+                    provider = provider_label
+                )
+                .to_string(),
+            ),
+            other => other,
+        })
 }
 
 // ─── Feedback helper ──────────────────────────────────────────────

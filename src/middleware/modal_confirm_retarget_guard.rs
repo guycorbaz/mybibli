@@ -82,8 +82,10 @@ fn request_is_modal_confirm(headers: &HeaderMap) -> bool {
 /// sync.
 ///
 /// #220 — HTMX supports two HX-Trigger header shapes:
+///
 ///   1. Comma-separated event names: `HX-Trigger: csrf-rejected, foo`
 ///   2. JSON object with payloads:   `HX-Trigger: {"csrf-rejected": ...}`
+///
 /// The current emitter (`src/middleware/csrf.rs:363`) uses shape #1, so the
 /// comma path is the hot path. Shape #2 support is defensive — if a future
 /// emitter switches forms, the modal-confirm retarget whitelist continues
@@ -92,17 +94,17 @@ fn response_has_csrf_rejected_trigger(headers: &HeaderMap) -> bool {
     let Some(value) = headers.get(TRIGGER_HEADER).and_then(|v| v.to_str().ok()) else {
         return false;
     };
-    let trimmed = value.trim_start();
-    if trimmed.starts_with('{') {
-        if let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(value)
-        {
-            return map
-                .keys()
-                .any(|k| k.eq_ignore_ascii_case("csrf-rejected"));
-        }
-        // Malformed JSON — fall through to the comma-split heuristic
-        // rather than silently swallowing the trigger.
+    if value.trim_start().starts_with('{')
+        && let Ok(serde_json::Value::Object(map)) =
+            serde_json::from_str::<serde_json::Value>(value)
+    {
+        return map
+            .keys()
+            .any(|k| k.eq_ignore_ascii_case("csrf-rejected"));
     }
+    // Comma-separated path (hot path), AND fallback for malformed JSON
+    // that started with `{` — we'd rather salvage a partial match than
+    // silently drop the trigger.
     value
         .split(',')
         .map(str::trim)
