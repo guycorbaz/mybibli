@@ -485,6 +485,12 @@ pub fn build_router(state: AppState) -> Router {
             "/admin/system/valuation",
             axum::routing::post(admin_system::save_library_valuation_settings),
         )
+        // v1.7.1 fix #308 — Logging section save endpoint. Closes the
+        // v1.7.0 #301 gap (runtime log-level admin UI).
+        .route(
+            "/admin/system/log-level",
+            axum::routing::post(admin_system::save_log_level),
+        )
         // CR #241 — Admin → API keys (v1.4.0). 4 routes: 1 GET panel +
         // 1 POST create + 1 GET revoke-modal + 1 POST revoke. All
         // Admin-gated. CSRF-protected via the 8-2 middleware.

@@ -392,6 +392,7 @@ error:
     overdue_threshold_too_large: "La soglia deve essere ≤ 365 giorni"
     default_language_invalid: "La lingua deve essere FR, EN, DE o IT"
     default_currency_invalid: "La valuta predefinita deve essere un codice ISO 4217 a 3 lettere (es. CHF, EUR)."
+    log_level_invalid: "Il livello di log deve essere un livello semplice (trace/debug/info/warn/error) o un elenco di direttive tracing-subscriber EnvFilter (es. mybibli=debug,sqlx::query=warn)."
     version_mismatch: "Le impostazioni sono state modificate da un altro amministratore — ricarica e riprova"
     provider_version_mismatch: "%{provider} è stato modificato da un altro amministratore — ricarica e riprova"
   code:
@@ -846,6 +847,11 @@ admin:
     show_value_indicators_label: "Mostra l'indicatore di valore nel dashboard home"
     show_value_indicators_help: "Aggiunge una scheda «Valore stimato della biblioteca» nella pagina home che rimanda a /stats/value. Disattivato per impostazione predefinita — attivalo se desideri vedere il valore monetario nel dashboard home."
     btn_save_valuation: "Salva impostazioni di valutazione"
+    # v1.7.1 fix #308 — chiavi della sezione Registrazione.
+    section_logging: Registrazione
+    log_level_label: "Livello di log"
+    log_level_help: "Accetta un livello semplice (trace / debug / info / warn / error) o un elenco di direttive tracing-subscriber EnvFilter (es. mybibli=debug,sqlx::query=warn). Applicato immediatamente — nessun riavvio. Predefinito «info», sicuro per la produzione."
+    btn_save_log_level: "Salva impostazioni di registrazione"
   api_keys:
     panel_heading: "Chiavi API"
     intro: "Le chiavi API autenticano chiamanti esterni all'API JSON HTTP sotto /api/v1/*. Le chiavi di lettura possono elencare e recuperare i record; le chiavi di scrittura possono anche modificare via PATCH i campi del titolo abilitati. Ogni chiave è mostrata UNA SOLA volta alla creazione — copiala subito o revocala e ricreala."
@@ -911,6 +917,7 @@ success:
     providers_saved: "Chiavi fornitori salvate"
     language_saved: "Lingua predefinita salvata"
     valuation_saved: "Impostazioni di valutazione salvate"
+    log_level_saved: "Livello di log salvato — applicato immediatamente, nessun riavvio richiesto"
     no_changes: "Nessuna modifica"
     provider_set: "Chiave %{provider} salvata"
     provider_cleared: "Chiave %{provider} cancellata"

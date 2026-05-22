@@ -54,6 +54,7 @@ fn state_with_pool(pool: DbPool) -> AppState {
         bulk_cover_fetch: Arc::new(RwLock::new(
             mybibli::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
         )),
+        log_level_reloader: mybibli::noop_log_level_reloader(),
     }
 }
 

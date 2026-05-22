@@ -110,6 +110,78 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.1}\label{sec:whats-new-1.7.1}
+
+La version 1.7.1 est un patch qui referme la lacune du \#301 de la
+v1.7.0 et regroupe quatre correctifs de bugs remontés par
+l'utilisateur après la mise à jour v1.7.0 sur son NAS. \emph{Aucune
+migration affectant les données du catalogue} ; \texttt{docker
+compose pull \&\& docker compose up -d} habituel. Une nouvelle ligne
+de \texttt{settings} est insérée (\texttt{log\_level}) par une
+migration idempotente.
+
+Six correctifs :
+
+\begin{itemize}
+  \item \textbf{Contrôle du niveau de log depuis l'interface admin
+        (\#308).} Termine proprement la fonctionnalité v1.7.0
+        \#301. \texttt{/admin > Système} gagne une section
+        \textbf{Journalisation} avec un champ libre acceptant
+        n'importe quelle directive \texttt{EnvFilter}. Cliquez
+        Enregistrer et la prochaine ligne de log utilise le nouveau
+        niveau \string— sans \texttt{docker compose up -d}, sans
+        redémarrage. Persisté en table \texttt{settings} pour
+        survivre aux redémarrages. Les notes de version v1.7.0
+        annonçaient cette surface mais seuls le bootstrap par
+        variable d'environnement + la rotation avaient été
+        livrés ; cette version livre la pièce manquante.
+  \item \textbf{Erreur 422 sur la suppression définitive d'une clé
+        d'API (\#309).} Le handler
+        \texttt{DELETE /admin/api-keys/\{id\}} retournait 422
+        Unprocessable Entity car il exigeait un corps de
+        formulaire, alors que HTMX \texttt{hx-delete} met les
+        champs dans la query string. Suppression de l'extracteur
+        de body ; le middleware CSRF valide déjà l'en-tête
+        \texttt{X-CSRF-Token}. Régression latente depuis v1.5.1
+        \#284.
+  \item \textbf{Timeout du probe Health configurable, défaut
+        3 s \string→ 10 s (\#310).} Le timeout de 3 s codé en dur
+        était trop tendu pour la latence DNS + TLS typique d'un
+        NAS domestique ; chaque probe expirait, rendant
+        \texttt{/admin > Health} rouge en permanence même quand
+        les fournisseurs étaient joignables pour le metadata-fetch
+        normal. Nouvelle variable d'environnement
+        \texttt{MYBIBLI\_PROVIDER\_HEALTH\_TIMEOUT\_SECS}
+        (défaut 10) permet aux opérateurs de monter à 20\string–30 s
+        sur une liaison fragile ou descendre à 4\string–5 s sur
+        infra rapide.
+  \item \textbf{Re-fetch des couvertures interroge réellement les
+        fournisseurs (\#311).} L'action admin "Re-fetcher les
+        couvertures manquantes" était un no-op silencieux pour les
+        titres mis en cache, car la chaîne de fournisseurs
+        court-circuitait sur le cache hit posé au catalogage
+        initial. Le nouveau chemin \texttt{force\_refresh}
+        invalide le cache avant de relancer la chaîne, donc Google
+        Books / BDGest / etc. sont à nouveau interrogés pour une
+        URL de couverture.
+  \item \textbf{Taille du pool DB 10 \string→ 20 (\#312).} Un
+        \texttt{pool timed out while waiting for an open
+        connection} transitoire a été observé sur la prod
+        utilisateur pendant un re-fetch sur 64 titres. Le défaut
+        sqlx 10 était trop tendu pour les handlers HTTP + 3 tâches
+        de fond toujours actives + le polling HTMX du progrès
+        admin + les requêtes DB par titre du worker bulk. 20
+        donne du jeu confortable pour la charge
+        domestique / petite association.
+  \item \textbf{Page principale, tags : suppression du doublon "Non
+        classé" (\#314).} La page principale affichait à la fois
+        un tag "Non classé" (auto-généré depuis la ligne du genre
+        marqueur) et un tag "Sans genre" (l'affordance dédiée
+        \#205) \string— les deux retournant les mêmes titres.
+        Retrait du marqueur dans la liste des tags ; le tag dédié
+        reste.
+\end{itemize}
+
 \section{Nouveautés de la 1.7.0}\label{sec:whats-new-1.7.0}
 
 La version 1.7.0 est la cinquième mineure thématique de l'ère

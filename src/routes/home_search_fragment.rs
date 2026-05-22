@@ -29,7 +29,19 @@ pub(super) fn render_search_fragment(
 
     match results {
         Some(paginated) if !paginated.items.is_empty() => {
-            // Render tbody rows
+            // NOTE — pre-#315 behaviour deliberately restored. Wrapping
+            // these bare articles in `.browse-cards` correctly engages
+            // the grid CSS, BUT also engages the
+            // `.browse-list .browse-cards { display: none }` rule that
+            // hides cards in list mode (the default). Since this
+            // fragment doesn't emit `<table class="browse-table">`
+            // markup yet, list mode then has nothing visible after an
+            // HTMX search swap and 3 E2E specs go red.
+            //
+            // The proper fix emits BOTH wrappers (`.browse-cards`
+            // for grid mode + `.browse-table-wrap > .browse-table`
+            // for list mode), so the CSS toggle picks the right
+            // surface. Scoped to v1.7.2 — see #315.
             for item in &paginated.items {
                 html.push_str(&render_search_row(item));
             }

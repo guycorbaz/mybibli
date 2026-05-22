@@ -497,6 +497,15 @@ pub async fn admin_bulk_cover_refetch(
 
     tokio::spawn(async move {
         for title in titles {
+            // Fix #311 — force_refresh=true: this is the bulk-cover-
+            // refetch path, whose whole point is "try the providers
+            // again, maybe a cover URL is available now". Without
+            // this, the chain short-circuits on the cache hit set
+            // when the title was originally cataloged (often via BnF,
+            // which never returns cover URLs in its UNIMARC payload)
+            // and the only "try harder" step left is the OpenLibrary
+            // Covers ISBN fallback — which 404s for most French /
+            // Swiss / academic titles.
             crate::tasks::metadata_fetch::fetch_metadata_chain(
                 pool_clone.clone(),
                 title.id,
@@ -510,6 +519,7 @@ pub async fn admin_bulk_cover_refetch(
                 timeout_secs,
                 http_client_clone.clone(),
                 covers_dir_clone.clone(),
+                true,
             )
             .await;
             crate::services::bulk_cover_fetch::increment_processed(&status_clone);

@@ -16,6 +16,22 @@ pub type DbPool = MySqlPool;
 /// reads and Rust-side comparisons drift by the local offset.
 pub async fn create_pool(database_url: &str) -> Result<DbPool, sqlx::Error> {
     MySqlPoolOptions::new()
+        // Fix #312: bump max connections from sqlx default 10 → 20.
+        // The default was too tight for the realistic shape of this app:
+        // HTTP request handlers + 3 always-on background tasks
+        // (anonymous_session_purge, auto_purge_scheduler,
+        // provider_health) + occasional bursts of per-title DB hits
+        // during the admin bulk-cover-refetch loop + concurrent admin
+        // UI HTMX polling on the progress indicator. On the user's prod
+        // NAS, one title in a 64-title bulk-refetch saw a 30 s pool
+        // acquire timeout (= sqlx default) — the wait happened with no
+        // single hot-spot holding connections; it was the sum of all
+        // sources pinging the pool simultaneously. 20 is a conservative
+        // headroom that handles single-tenant household / small-
+        // association load without rebooting the question every release.
+        // The matching MariaDB-side floor is `max_connections=151` in
+        // MariaDB 10.x default, well above our ceiling.
+        .max_connections(20)
         .after_connect(|conn, _meta| {
             Box::pin(async move {
                 conn.execute("SET time_zone = '+00:00'").await?;

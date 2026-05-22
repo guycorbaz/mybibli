@@ -609,6 +609,7 @@ mod language_tests {
             bulk_cover_fetch: std::sync::Arc::new(std::sync::RwLock::new(
                 crate::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
             )),
+        log_level_reloader: crate::noop_log_level_reloader(),
         };
         Router::new()
             .route("/language", axum::routing::post(change_language))
@@ -855,6 +856,7 @@ mod language_tests {
             bulk_cover_fetch: std::sync::Arc::new(std::sync::RwLock::new(
                 crate::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
             )),
+        log_level_reloader: crate::noop_log_level_reloader(),
         };
         let app = axum::Router::new()
             .route("/login", axum::routing::post(login))

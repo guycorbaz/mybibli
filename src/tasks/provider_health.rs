@@ -61,16 +61,26 @@ const PING_INTERVAL_SECS: u64 = 300; // 5 min
 /// Delay before the first ping round so the initial admin load has a fresh
 /// (though possibly pre-ping) map to render without blocking.
 const INITIAL_DELAY_SECS: u64 = 10;
-/// Per-request timeout. Short enough that a hung provider doesn't stall the
-/// whole ping round; long enough to tolerate normal TCP handshake variance.
-const REQUEST_TIMEOUT_SECS: u64 = 3;
+/// Per-request timeout default — generous enough to tolerate a typical
+/// home-NAS DNS + TLS handshake to a fresh provider host (often 3–5 s on
+/// a Synology behind a consumer router), short enough that one hung
+/// provider doesn't stall the round. Fix #310: was hardcoded to 3 s,
+/// which made every probe time out on the user's prod NAS — logs showed
+/// the rounds spaced exactly 3.001 s apart. The runtime override is
+/// `MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS` (set in `.env`); see `main.rs`
+/// for the parse path.
+pub const REQUEST_TIMEOUT_SECS_DEFAULT: u64 = 10;
 
 /// Spawn the background ping task. Swallows all errors — diagnostic display
 /// must never crash the app. Call from `main.rs` once per process.
+///
+/// `request_timeout_secs` is the per-probe HEAD timeout. See
+/// [`REQUEST_TIMEOUT_SECS_DEFAULT`] for rationale.
 pub fn spawn(
     http_client: reqwest::Client,
     registry: Arc<ProviderRegistry>,
     map: ProviderHealthMap,
+    request_timeout_secs: u64,
 ) {
     tokio::spawn(async move {
         // Seed the map so the Health tab can render every provider row
@@ -91,7 +101,7 @@ pub fn spawn(
         tokio::time::sleep(Duration::from_secs(INITIAL_DELAY_SECS)).await;
 
         loop {
-            ping_all(&http_client, &registry, &map).await;
+            ping_all(&http_client, &registry, &map, request_timeout_secs).await;
             tokio::time::sleep(Duration::from_secs(PING_INTERVAL_SECS)).await;
         }
     });
@@ -104,6 +114,7 @@ async fn ping_all(
     http_client: &reqwest::Client,
     registry: &ProviderRegistry,
     map: &ProviderHealthMap,
+    request_timeout_secs: u64,
 ) {
     for provider in registry.iter() {
         let name = provider.name().to_string();
@@ -114,7 +125,7 @@ async fn ping_all(
             continue;
         };
 
-        let status = probe_once(http_client, url).await;
+        let status = probe_once(http_client, url, request_timeout_secs).await;
         if let Ok(mut guard) = map.write() {
             guard.insert(
                 name,
@@ -139,11 +150,15 @@ async fn ping_all(
 /// (Cloudflare / WAF / anti-bot). The actual metadata-fetch path
 /// sails through with a User-Agent — we now mirror that header
 /// here so we measure "host is up" rather than "WAF likes us".
-async fn probe_once(http_client: &reqwest::Client, url: &str) -> ProviderStatus {
+async fn probe_once(
+    http_client: &reqwest::Client,
+    url: &str,
+    request_timeout_secs: u64,
+) -> ProviderStatus {
     match http_client
         .head(url)
         .header(reqwest::header::USER_AGENT, USER_AGENT)
-        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(request_timeout_secs))
         .send()
         .await
     {
@@ -169,6 +184,18 @@ mod tests {
         let h = ProviderHealth::default();
         assert_eq!(h.status, ProviderStatus::Unknown);
         assert!(h.last_checked.is_none());
+    }
+
+    #[test]
+    fn request_timeout_default_is_at_least_10_seconds() {
+        // Locks fix #310 — the previous 3 s default was too tight for
+        // typical home-NAS DNS + TLS handshake to fresh provider hosts,
+        // causing every probe to time out on the user's prod (logs
+        // showed rounds spaced exactly 3.001 s apart). 10 s gives ~3 s
+        // of headroom on top of a slow handshake while keeping a round
+        // of 8 providers comfortably under the 5-min PING_INTERVAL_SECS.
+        // If you tighten this constant below 10 you re-introduce the bug.
+        const { assert!(REQUEST_TIMEOUT_SECS_DEFAULT >= 10) }
     }
 
     #[test]

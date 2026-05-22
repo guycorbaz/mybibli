@@ -15,10 +15,23 @@ use crate::services::cover::{CoverService, resolve_cover_url_with_fallback};
 /// This function is meant to be called via `tokio::spawn`.
 ///
 /// Flow:
-/// 1. ChainExecutor checks cache, then tries providers in order
-/// 2. Uses code_type to determine lookup method (isbn vs upc)
-/// 3. On success: update title fields + download cover + mark resolved
-/// 4. On failure/no result: mark failed
+/// 1. If `force_refresh`, invalidate the metadata cache row for this
+///    code (Fix #311 — without this the chain short-circuits on the
+///    cache hit set at original catalog time and re-fetching is a
+///    no-op for cached titles).
+/// 2. ChainExecutor checks cache, then tries providers in order
+/// 3. Uses code_type to determine lookup method (isbn vs upc)
+/// 4. On success: update title fields + download cover + mark resolved
+/// 5. On failure/no result: mark failed
+///
+/// `force_refresh` is `false` for the catalog-time scan paths (cache
+/// hit is the legitimate fast path on a re-scan of an already-known
+/// ISBN) and `true` for the admin bulk-cover-refetch loop (whose
+/// whole point is "try the providers again, maybe one has updated
+/// info now"). Mirrors the existing pattern in
+/// `routes::titles::admin_redownload_metadata`, which already calls
+/// `TitleService::invalidate_metadata_cache` before its synchronous
+/// `ChainExecutor::execute` call.
 #[allow(clippy::too_many_arguments)]
 pub async fn fetch_metadata_chain(
     pool: DbPool,
@@ -30,8 +43,32 @@ pub async fn fetch_metadata_chain(
     timeout_secs: u64,
     http_client: reqwest::Client,
     covers_dir: PathBuf,
+    force_refresh: bool,
 ) {
-    tracing::info!(title_id = title_id, code = %code, code_type = %code_type, media_type = %media_type, "Starting async metadata fetch");
+    tracing::info!(
+        title_id = title_id,
+        code = %code,
+        code_type = %code_type,
+        media_type = %media_type,
+        force_refresh = force_refresh,
+        "Starting async metadata fetch"
+    );
+
+    if force_refresh
+        && let Err(e) = crate::services::title::TitleService::invalidate_metadata_cache(&pool, &code).await
+    {
+        // Non-fatal — log and continue. A stale cache row will then
+        // short-circuit the chain, which is the pre-fix behaviour, so
+        // the worst outcome is the user gets the old result back. The
+        // surrounding bulk-refetch worker logs success regardless of
+        // this branch's outcome.
+        tracing::warn!(
+            title_id = title_id,
+            code = %code,
+            error = %e,
+            "force_refresh: failed to invalidate metadata cache; chain may still hit stale row"
+        );
+    }
 
     match ChainExecutor::execute(
         &registry,

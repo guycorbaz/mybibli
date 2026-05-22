@@ -295,6 +295,18 @@ pub struct AppSettings {
     /// users who don't track money. Flipping the admin setting
     /// (System tab) brings the indicator back.
     pub show_value_indicators: bool,
+    // === Fix #308 (v1.7.1) — Runtime log level ===
+    /// `tracing-subscriber` `EnvFilter` directive string controlling
+    /// the global log level. Accepts a plain level (`info`, `debug`,
+    /// etc.) or a directive list (`mybibli=debug,sqlx=warn`). Seeded
+    /// to `info` by migration 20260522000000. The
+    /// `routes/admin_system.rs::save_log_level` handler writes this
+    /// AND triggers the `Arc<reload::Handle<EnvFilter>>` stored in
+    /// `AppState` so the `tracing` subscriber actually swaps without
+    /// a redeploy. Closes the v1.7.0 #301 gap: the release notes
+    /// promised this surface but only the env var + persistent file
+    /// shipped.
+    pub log_level: String,
 }
 
 impl Default for AppSettings {
@@ -318,6 +330,9 @@ impl Default for AppSettings {
             // matches the household-NAS Swiss context. Admin-overridable.
             default_currency: "CHF".to_string(),
             show_value_indicators: false,
+            // Fix #308 (v1.7.1): same default as MYBIBLI_LOG_LEVEL env
+            // var in main.rs — `info` is production-safe.
+            log_level: "info".to_string(),
         }
     }
 }
@@ -493,6 +508,26 @@ impl AppSettings {
                         value.trim().to_ascii_lowercase().as_str(),
                         "1" | "true" | "yes"
                     );
+                }
+                // Fix #308 (v1.7.1): runtime log-level. Validate
+                // server-side at load time too — if a previous save
+                // landed an invalid directive (shouldn't happen because
+                // the handler validates, but defense in depth), fall
+                // back to `info` rather than carrying a broken setting
+                // across boots.
+                "log_level" => {
+                    let trimmed = value.trim();
+                    if trimmed.is_empty()
+                        || tracing_subscriber::EnvFilter::try_new(trimmed).is_err()
+                    {
+                        tracing::warn!(
+                            key = %key,
+                            value = %value,
+                            "log_level setting failed EnvFilter parse, using default 'info'"
+                        );
+                    } else {
+                        settings.log_level = trimmed.to_string();
+                    }
                 }
                 _ => {} // Ignore unknown keys
             }
@@ -688,6 +723,7 @@ mod tests {
             setup_step_3_done: false,
             default_currency: "CHF".to_string(),
             show_value_indicators: false,
+            log_level: "info".to_string(),
         };
         let cloned = settings.clone();
         assert_eq!(cloned.overdue_threshold_days, 60);

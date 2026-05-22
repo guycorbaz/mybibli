@@ -27,6 +27,23 @@ use tasks::provider_health::ProviderHealthMap;
 
 rust_i18n::i18n!("locales", fallback = "en");
 
+/// Fix #308 (v1.7.1) — type-erased closure that swaps the global
+/// `tracing-subscriber::EnvFilter` at runtime. Stored in [`AppState`]
+/// so admin handlers can flip the log level without restarting the
+/// process. Built in `main.rs` after the subscriber is initialized;
+/// the underlying machinery is `tracing_subscriber::reload::Handle`.
+/// Returns `Err(String)` on parse failure of the directive so the
+/// handler can surface the message to the admin.
+pub type LogLevelReloader = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
+/// No-op reloader used by integration tests that build `AppState`
+/// directly (no real `tracing::reload::Handle` is wired up). Accepts
+/// any directive and returns `Ok(())` without touching the global
+/// subscriber. Production `main.rs` builds a real reloader instead.
+pub fn noop_log_level_reloader() -> LogLevelReloader {
+    Arc::new(|_directive: &str| Ok(()))
+}
+
 /// Shared application state passed to all handlers.
 #[derive(Clone)]
 pub struct AppState {
@@ -51,6 +68,9 @@ pub struct AppState {
     /// `RwLock`-guarded state is the single-instance gate, plus a small
     /// progress counter that the admin Health panel renders.
     pub bulk_cover_fetch: Arc<RwLock<BulkCoverFetchStatus>>,
+    /// Fix #308 (v1.7.1): runtime log-level swap closure. See
+    /// [`LogLevelReloader`].
+    pub log_level_reloader: LogLevelReloader,
 }
 
 impl AppState {
@@ -135,5 +155,15 @@ impl AppState {
             .read()
             .map(|s| s.show_value_indicators)
             .unwrap_or(false)
+    }
+
+    /// Fix #308 (v1.7.1): currently-configured log-level directive
+    /// (the `EnvFilter` string). Clones the owned String out of the
+    /// lock so callers never hold the guard across `.await` points.
+    pub fn log_level(&self) -> String {
+        self.settings
+            .read()
+            .map(|s| s.log_level.clone())
+            .unwrap_or_else(|_| AppSettings::default().log_level)
     }
 }

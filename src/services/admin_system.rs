@@ -32,6 +32,41 @@ pub const KEY_SETUP_STEP_3_DONE: &str = "setup_step_3_done";
 pub const KEY_DEFAULT_CURRENCY: &str = "default_currency";
 pub const KEY_SHOW_VALUE_INDICATORS: &str = "show_value_indicators";
 
+// v1.7.1 fix #308 — runtime log-level. CR #301 (v1.7.0) advertised
+// "flip log level from /admin > System without a redeploy", but the
+// admin form + runtime reload were never implemented. Seeded by
+// migration 20260522000000; the `routes/admin_system.rs::save_log_level`
+// handler writes it through `save_setting` AND triggers the
+// `Arc<reload::Handle<EnvFilter>>` stored in `AppState` so the
+// `tracing` subscriber actually swaps its filter.
+pub const KEY_LOG_LEVEL: &str = "log_level";
+
+/// Validate the log-level setting. Accepts:
+///   - a plain level: `trace`, `debug`, `info`, `warn`, `error`
+///   - a `tracing-subscriber` `EnvFilter` directive list, e.g.
+///     `mybibli=debug,sqlx::query=warn`
+///
+/// Strategy: try `EnvFilter::try_new` (the same parser the runtime
+/// reload uses) and translate parse errors into a localized
+/// `BadRequest`. Defers to the upstream library's grammar so admins
+/// can use the full directive syntax (per-target levels, span filters,
+/// etc.) — anything `RUST_LOG=<value>` accepts on a fresh start, this
+/// form accepts too.
+pub fn validate_log_level(value: &str, loc: &'static str) -> Result<(), AppError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.system.log_level_invalid", locale = loc).to_string(),
+        ));
+    }
+    tracing_subscriber::EnvFilter::try_new(trimmed).map_err(|_| {
+        AppError::BadRequest(
+            rust_i18n::t!("error.system.log_level_invalid", locale = loc).to_string(),
+        )
+    })?;
+    Ok(())
+}
+
 /// Validate the default-currency setting. 3-letter ISO 4217 code,
 /// alphabetic, accepted both cases (normalized to upper on write).
 pub fn validate_default_currency(value: &str, loc: &'static str) -> Result<(), AppError> {
@@ -177,6 +212,50 @@ mod tests {
         assert!(validate_default_language("en", "en").is_ok());
         assert!(validate_default_language("de", "en").is_ok());
         assert!(validate_default_language("it", "en").is_ok());
+    }
+
+    // ─── Fix #308 (v1.7.1) — validate_log_level ───────────────────
+
+    #[test]
+    fn validate_log_level_accepts_plain_levels() {
+        for lvl in &["trace", "debug", "info", "warn", "error"] {
+            assert!(
+                validate_log_level(lvl, "en").is_ok(),
+                "plain level {lvl} must validate"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_log_level_accepts_envfilter_directives() {
+        for dir in &[
+            "mybibli=debug",
+            "mybibli=trace",
+            "mybibli=debug,sqlx::query=warn",
+            "info,mybibli::routes=trace",
+        ] {
+            assert!(
+                validate_log_level(dir, "en").is_ok(),
+                "EnvFilter directive {dir:?} must validate"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_log_level_rejects_empty_or_garbage() {
+        assert!(matches!(
+            validate_log_level("", "en"),
+            Err(AppError::BadRequest(_))
+        ));
+        assert!(matches!(
+            validate_log_level("   ", "en"),
+            Err(AppError::BadRequest(_))
+        ));
+        // Bogus per-target directive — keyword `quiet` isn't a level.
+        assert!(matches!(
+            validate_log_level("mybibli=quiet", "en"),
+            Err(AppError::BadRequest(_))
+        ));
     }
 
     #[test]

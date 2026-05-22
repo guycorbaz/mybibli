@@ -547,6 +547,7 @@ pub async fn handle_scan(
                             timeout_secs,
                             state.http_client.clone(),
                             state.covers_dir.clone(),
+                            false,
                         ));
 
                         let guide =
@@ -971,6 +972,7 @@ pub async fn handle_scan(
                             timeout_secs,
                             state.http_client.clone(),
                             state.covers_dir.clone(),
+                            false,
                         ));
 
                         let guide =
@@ -1025,6 +1027,7 @@ pub async fn handle_scan(
                                 timeout_secs,
                                 state.http_client.clone(),
                                 state.covers_dir.clone(),
+                                false,
                             ));
                             Ok(HtmxResponse {
                                 main: skeleton_feedback_html(title.id, &code),
@@ -1248,6 +1251,7 @@ pub async fn handle_scan_with_type(
                     timeout_secs,
                     state.http_client.clone(),
                     state.covers_dir.clone(),
+                    false,
                 ));
             }
 

@@ -1,0 +1,33 @@
+{# Admin → System → Logging form (v1.7.1 fix #308). Closes the v1.7.0
+   #301 gap: the release notes advertised runtime log-level control
+   without a redeploy, but the form was never shipped. Mirrors the
+   language-form shape: CSRF first, hidden `_version`, hx-post to a
+   dedicated endpoint, swap-self on success. #}
+<form id="admin-system-log-form"
+      method="POST"
+      action="/admin/system/log-level"
+      hx-post="/admin/system/log-level"
+      hx-target="#admin-system-log-form"
+      hx-swap="outerHTML"
+      class="border border-stone-200 dark:border-stone-700 rounded-lg p-4 bg-stone-50 dark:bg-stone-900">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+    <input type="hidden" name="log_level_version" value="{{ log_level_version }}">
+
+    <div class="mb-4">
+        <label for="admin-system-log-level" class="block text-sm font-medium mb-1">{{ log_level_label }}</label>
+        <p class="text-xs text-stone-500 dark:text-stone-400 mb-2">{{ log_level_help }}</p>
+        <input id="admin-system-log-level"
+               name="log_level"
+               type="text"
+               value="{{ log_level_value|e }}"
+               placeholder="info"
+               autocomplete="off"
+               spellcheck="false"
+               class="w-full max-w-md rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2 text-sm font-mono">
+    </div>
+
+    <div>
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm">{{ btn_save }}</button>
+    </div>
+</form>

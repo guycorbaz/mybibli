@@ -399,6 +399,7 @@ error:
     overdue_threshold_too_large: "Threshold must be ≤ 365 days"
     default_language_invalid: "Language must be FR or EN"
     default_currency_invalid: "Default currency must be a 3-letter ISO 4217 code (e.g. CHF, EUR)."
+    log_level_invalid: "Log level must be a plain level (trace/debug/info/warn/error) or a tracing-subscriber EnvFilter directive list (e.g. mybibli=debug,sqlx::query=warn)."
     version_mismatch: "Settings were modified by another admin — reload and retry"
     provider_version_mismatch: "%{provider} was modified by another admin — reload and retry"
   code:
@@ -864,6 +865,11 @@ admin:
     show_value_indicators_label: "Show value indicator on home dashboard"
     show_value_indicators_help: "Adds a 'Library estimated value' card to the home page linking to /stats/value. Default OFF — turn this on if you want money visible on the home dashboard."
     btn_save_valuation: "Save valuation settings"
+    # v1.7.1 fix #308 — Logging section keys.
+    section_logging: Logging
+    log_level_label: "Log level"
+    log_level_help: "Accepts a plain level (trace / debug / info / warn / error) or a tracing-subscriber EnvFilter directive list (e.g. mybibli=debug,sqlx::query=warn). Applied immediately — no redeploy. Default 'info' is production-safe."
+    btn_save_log_level: "Save logging settings"
   api_keys:
     panel_heading: "API keys"
     intro: "API keys authenticate external callers to the HTTP JSON API under /api/v1/*. Read keys can list and fetch records; write keys can also PATCH whitelisted title fields. Each key is shown ONCE at creation — copy it now or revoke and re-create."
@@ -930,6 +936,7 @@ success:
     providers_saved: "Provider keys saved"
     language_saved: "Default language saved"
     valuation_saved: "Library valuation settings saved"
+    log_level_saved: "Log level saved — applied immediately, no restart required"
     no_changes: "No changes"
     provider_set: "%{provider} key saved"
     provider_cleared: "%{provider} key cleared"

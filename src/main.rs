@@ -92,11 +92,18 @@ async fn main() {
             EnvFilter::new("info")
         }
     };
+    // Fix #308 (v1.7.1): wrap the EnvFilter in a `reload::Layer` so the
+    // admin "Log level" form (System tab) can swap it at runtime via
+    // the handle stored in AppState. Closes the v1.7.0 #301 gap — the
+    // release notes promised this surface but only the env-var
+    // bootstrap shipped.
+    let (filter_layer, filter_reload_handle) =
+        tracing_subscriber::reload::Layer::new(env_filter);
     let stdout_layer = tracing_subscriber::fmt::layer()
         .json()
         .with_target(true)
         .with_timer(tracing_subscriber::fmt::time::UtcTime::rfc_3339());
-    let registry = tracing_subscriber::registry().with(env_filter).with(stdout_layer);
+    let registry = tracing_subscriber::registry().with(filter_layer).with(stdout_layer);
     if let Some(file_writer) = file_writer {
         let file_layer = tracing_subscriber::fmt::layer()
             .json()
@@ -325,6 +332,47 @@ async fn main() {
             .expect("setup-gate: cannot determine wizard state from DB at boot"),
     ));
 
+    // Fix #308 (v1.7.1): build the runtime log-level reloader closure
+    // around the `filter_reload_handle` returned by
+    // `reload::Layer::new(env_filter)` above. Stored in `AppState` so
+    // admin handlers can swap the global tracing filter without
+    // restarting the process. Closure validates via `EnvFilter::try_new`
+    // and translates any parse error to a `String` for the handler to
+    // surface in a localized BadRequest feedback.
+    let log_level_reloader: mybibli::LogLevelReloader = {
+        let handle = filter_reload_handle.clone();
+        std::sync::Arc::new(move |directive: &str| -> Result<(), String> {
+            let new_filter = tracing_subscriber::EnvFilter::try_new(directive)
+                .map_err(|e| format!("invalid directive: {e}"))?;
+            handle
+                .modify(|f| *f = new_filter)
+                .map_err(|e| format!("subscriber reload failed: {e}"))
+        })
+    };
+
+    // Reconcile the boot-time env-var filter with whatever's persisted
+    // in the `settings` table. The DB value wins (admin saves are
+    // durable). If they differ, swap via the reloader so the very next
+    // log line uses the persisted level.
+    let persisted_level = {
+        let guard = settings_arc.read().expect("settings RwLock not poisoned");
+        guard.log_level.clone()
+    };
+    if persisted_level != log_level_directive {
+        match log_level_reloader(&persisted_level) {
+            Ok(()) => tracing::info!(
+                from_env = %log_level_directive,
+                to_db = %persisted_level,
+                "Fix #308: reconciled tracing filter to DB-persisted log_level"
+            ),
+            Err(e) => tracing::warn!(
+                error = %e,
+                persisted_level = %persisted_level,
+                "Fix #308: persisted log_level failed to apply; keeping env-var filter"
+            ),
+        }
+    }
+
     // Build application
     let state = AppState {
         pool,
@@ -340,12 +388,33 @@ async fn main() {
         bulk_cover_fetch: std::sync::Arc::new(std::sync::RwLock::new(
             mybibli::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
         )),
+        log_level_reloader,
     };
 
     // Spawn provider-health background task AFTER AppState is built so we
     // don't borrow fields before they're in place. Pings run on a dedicated
     // 5-min cadence with a 10 s warm-up delay.
-    provider_health::spawn(http_client, registry, provider_health_map);
+    //
+    // Fix #310: the per-probe HEAD timeout is configurable via
+    // MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS (default
+    // `REQUEST_TIMEOUT_SECS_DEFAULT`, currently 10 s). The previous
+    // hardcoded 3 s was too tight for typical home-NAS DNS + TLS
+    // handshake, making every probe time out on the user's prod NAS.
+    let probe_timeout_secs: u64 = std::env::var("MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&s: &u64| s > 0)
+        .unwrap_or(provider_health::REQUEST_TIMEOUT_SECS_DEFAULT);
+    tracing::info!(
+        probe_timeout_secs = probe_timeout_secs,
+        "Provider health probe timeout configured"
+    );
+    provider_health::spawn(
+        http_client,
+        registry,
+        provider_health_map,
+        probe_timeout_secs,
+    );
 
     // Story 8-2: daily purge of anonymous session rows older than 7 days.
     // Bounded accumulation — unauthenticated visitors now get a DB row
