@@ -39,15 +39,28 @@
     // force-swap if compared with strict equality. Parse as a list.
     document.body.addEventListener("htmx:beforeSwap", function (evt) {
         var xhr = evt.detail.xhr;
-        if (!xhr || xhr.status !== 403) {
+        if (!xhr) {
             return;
         }
         var triggerHeader = xhr.getResponseHeader("HX-Trigger") || "";
-        var hasCsrfRejected = triggerHeader
+        var triggers = triggerHeader
             .split(",")
-            .map(function (s) { return s.trim(); })
-            .indexOf("csrf-rejected") !== -1;
-        if (hasCsrfRejected) {
+            .map(function (s) { return s.trim(); });
+
+        // 403 + csrf-rejected → land the "Session expired" FeedbackEntry
+        // in #feedback-list (story 8-2 / story 10-2).
+        if (xhr.status === 403 && triggers.indexOf("csrf-rejected") !== -1) {
+            evt.detail.shouldSwap = true;
+            evt.detail.isError = false;
+            return;
+        }
+
+        // #91 — 400 + validation-error → swap the re-rendered form body
+        // into its original hx-target so the user's submitted value is
+        // preserved alongside the OOB error FeedbackEntry. Without this
+        // opt-in, HTMX 2.0's default responseHandling drops 4xx bodies
+        // (`[45]..` → swap:false) and the user sees no inline error.
+        if (xhr.status === 400 && triggers.indexOf("validation-error") !== -1) {
             evt.detail.shouldSwap = true;
             evt.detail.isError = false;
         }
