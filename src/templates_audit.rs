@@ -508,6 +508,61 @@ fn forms_include_csrf_token() {
     }
 }
 
+/// #325 — guards against the v1.7.2 regression where a page-template
+/// referenced `hx-target="#feedback-list"` without declaring the matching
+/// `<div id="feedback-list">` slot. HTMX raises `htmx:targetError` on
+/// submission and the action silently fails from the user's POV.
+///
+/// Scoped to `templates/pages/*.html`. Components/fragments are exempt:
+/// they're rendered INTO a page that owns the slot.
+#[test]
+fn pages_using_feedback_list_target_declare_slot() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let pages_dir = root.join("templates").join("pages");
+
+    let target_re =
+        Regex::new(r#"(?is)hx-target\s*=\s*["']#feedback-list["']"#).unwrap();
+    let slot_re = Regex::new(r#"(?is)\bid\s*=\s*["']feedback-list["']"#).unwrap();
+
+    let mut violations: Vec<String> = Vec::new();
+    visit(&pages_dir, &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let raw = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let content = strip_html_comments(&raw);
+        if !target_re.is_match(&content) {
+            return;
+        }
+        if slot_re.is_match(&content) {
+            return;
+        }
+        let rel = path.strip_prefix(&root).unwrap_or(path);
+        let rel_str = rel
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/");
+        violations.push(format!(
+            "  {} — references hx-target=\"#feedback-list\" but does not declare \
+             id=\"feedback-list\"",
+            rel_str
+        ));
+    });
+
+    if !violations.is_empty() {
+        let header = "feedback-list slot audit failed (#325):\n\
+                      Every page template that uses hx-target=\"#feedback-list\" \
+                      (directly or via a button/form on that page) must declare \
+                      `<div id=\"feedback-list\">` somewhere in the page. \
+                      Without the slot, HTMX raises htmx:targetError on submission \
+                      and the action silently fails.\n";
+        let report = format!("{}{}", header, violations.join("\n"));
+        panic!("{report}");
+    }
+}
+
 #[test]
 fn csrf_exempt_routes_frozen() {
     use crate::middleware::csrf::CSRF_EXEMPT_ROUTES;
