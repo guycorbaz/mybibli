@@ -502,6 +502,94 @@ fn forms_include_csrf_token() {
     }
 }
 
+/// #48 — companion to `forms_include_csrf_token`: scans `src/**/*.rs`
+/// for `<form method="POST">` HTML literals emitted from Rust code
+/// (`format!()`, `push_str()`, etc.) and panics if the same string
+/// region does not also contain `name="_csrf_token"` nearby. The
+/// runtime CSRF middleware would 403 a submission from such a form,
+/// but without this audit the regression surfaces only at user
+/// runtime — long after the offending change merged.
+///
+/// Skips `templates_audit.rs` itself (its own regex contains the
+/// literal `<form method=…>` for documentation/audit purposes).
+#[test]
+fn rust_emitted_post_forms_include_csrf_token() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let src = root.join("src");
+    assert!(
+        src.is_dir(),
+        "src directory not found at {}",
+        src.display()
+    );
+
+    // Match `<form` followed by attrs containing `method="POST"` in
+    // any quoting style (Rust escaped `\"POST\"`, raw `"POST"`, single
+    // quotes). Case-insensitive.
+    let form_post = Regex::new(
+        r#"(?is)<form\b[^>]*\bmethod\s*=\s*\\?["']post\\?["'][^>]*>"#,
+    )
+    .unwrap();
+    // Window — give the form ~1500 bytes to declare its CSRF hidden
+    // input. Real Rust-emitted forms are short (locations.rs:301 is
+    // ~800 bytes), so 1500 is a comfortable margin without crossing
+    // into unrelated literal regions.
+    let csrf_input = Regex::new(
+        r#"(?is)\bname\s*=\s*\\?["']_csrf_token\\?["']"#,
+    )
+    .unwrap();
+
+    let mut violations: Vec<String> = Vec::new();
+    visit(&src, &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            return;
+        }
+        // Skip the audit module itself — its source contains a
+        // documentation reference to `<form method="POST">`.
+        if path.file_name().and_then(|s| s.to_str()) == Some("templates_audit.rs") {
+            return;
+        }
+        let raw = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        for m in form_post.find_iter(&raw) {
+            // Skip matches that live in a Rust line comment (`//`).
+            // Doc comments (`///`, `//!`) frequently reference the
+            // `<form method="POST">` shape in module-level docs and
+            // would otherwise produce false positives.
+            let line_start = raw[..m.start()].rfind('\n').map(|p| p + 1).unwrap_or(0);
+            let line_prefix = &raw[line_start..m.start()];
+            if line_prefix.trim_start().starts_with("//") {
+                continue;
+            }
+            let window_end = (m.end() + 1500).min(raw.len());
+            let window = &raw[m.start()..window_end];
+            if csrf_input.is_match(window) {
+                continue;
+            }
+            let line = 1 + raw[..m.start()].matches('\n').count();
+            let rel = path.strip_prefix(&root).unwrap_or(path);
+            let rel_str = rel
+                .to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "/");
+            violations.push(format!(
+                "  {}:{} — Rust-emitted <form method=\"POST\"> without `name=\"_csrf_token\"` within the next 1500 bytes",
+                rel_str, line
+            ));
+        }
+    });
+
+    if !violations.is_empty() {
+        let header = "Rust-emitted CSRF form-input audit failed (#48):\n\
+                      Every `<form method=\"POST\">` literal in src/**/*.rs must \
+                      declare `<input type=\"hidden\" name=\"_csrf_token\" value=\"…\">` \
+                      within the same string region. Without it, the global CSRF \
+                      middleware rejects the submission with 403 at user runtime.\n";
+        let report = format!("{}{}", header, violations.join("\n"));
+        panic!("{report}");
+    }
+}
+
 /// #325 — guards against the v1.7.2 regression where a page-template
 /// referenced `hx-target="#feedback-list"` without declaring the matching
 /// `<div id="feedback-list">` slot. HTMX raises `htmx:targetError` on
