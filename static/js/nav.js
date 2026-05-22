@@ -65,11 +65,20 @@
             .filter(function (e) { return e.offsetParent !== null; });
     }
 
+    // Fix #147 — admin-configurable burst threshold lives on the
+    // search field's `data-scanner-threshold` attribute. The previous
+    // guard rejected only NaN / ≤0 values, so a pathological admin
+    // config of n=1ms (or even 5ms) would classify every human
+    // keystroke as a scanner burst and short-circuit the nav-menu
+    // hotkey detection. Clamp to a sane floor of 10ms — well below
+    // the project's real-world threshold envelope (default 50ms, USB
+    // scanner ≤20ms) but above any plausible keyboard repeat rate.
+    var MIN_BURST_THRESHOLD_MS = 10;
     function getBurstThresholdMs() {
         var search = document.getElementById(SEARCH_FIELD_ID);
         if (search && search.dataset && search.dataset.scannerThreshold) {
             var n = parseInt(search.dataset.scannerThreshold, 10);
-            if (!isNaN(n) && n > 0) return n;
+            if (!isNaN(n) && n >= MIN_BURST_THRESHOLD_MS) return n;
         }
         return DEFAULT_BURST_THRESHOLD_MS;
     }
