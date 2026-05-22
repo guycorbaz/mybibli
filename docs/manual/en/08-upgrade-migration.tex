@@ -151,8 +151,7 @@ Six fixes:
         the title was originally cataloged. New \texttt{force\_refresh}
         path invalidates the cache before re-running the chain,
         so Google Books / BDGest / etc. get re-asked for a cover
-        URL. List-mode after HTMX search swap also restored
-        (\#315).
+        URL.
   \item \textbf{DB pool size 10 \string→ 20 (\#312).} A transient
         \texttt{pool timed out while waiting for an open
         connection} was observed on the user's prod NAS during a
