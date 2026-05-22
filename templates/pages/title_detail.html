@@ -90,6 +90,16 @@
                            class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ tc.contributor_name }}</a>
                         <span class="text-stone-500">({{ tc.role_name }})</span>
                         {% if role == "librarian" || role == "admin" %}
+                        {# Note: button has no explicit `type="submit"`
+                           attribute. The HTML5 default for a <button>
+                           inside a <form> is "submit", so submission
+                           still works — but CSS attribute selectors
+                           like `button[type="submit"]` only match when
+                           the attribute is EXPLICITLY set. Keeping the
+                           attribute implicit avoids the dewey-code E2E
+                           spec's `.last()` selector silently picking
+                           this Remove button instead of the edit-form
+                           Save when contributors exist. #}
                         <form method="POST"
                               action="/catalog/contributors/remove"
                               hx-post="/catalog/contributors/remove"
@@ -99,8 +109,7 @@
                             <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
                             <input type="hidden" name="junction_id" value="{{ tc.id }}">
                             <input type="hidden" name="title_id" value="{{ title.id }}">
-                            <button type="submit"
-                                    class="text-xs text-red-600 dark:text-red-400 hover:underline"
+                            <button class="text-xs text-red-600 dark:text-red-400 hover:underline"
                                     aria-label="{{ label_contributor_remove_aria }} — {{ tc.contributor_name }}">
                                 {{ label_contributor_remove }}
                             </button>

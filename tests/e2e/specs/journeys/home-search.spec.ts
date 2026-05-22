@@ -261,9 +261,22 @@ test.describe("Home page scanner detection — scan to navigate", () => {
     // Path-and-param assertion (NOT byte equality) — hx-include on the
     // search field appends filter=, sort=, dir= to the pushed URL, so we
     // can't pin the full querystring.
-    const pageUrl = new URL(page.url());
-    expect(pageUrl.pathname).toBe("/");
-    expect(pageUrl.searchParams.get("q")).toBe("test");
+    //
+    // Use `expect.poll` here instead of a one-shot read: under the
+    // larger #315 dual-wrapper search-fragment payload (v1.7.2+), HTMX's
+    // hx-push-url update for the LAST debounced search-fire occasionally
+    // lands a few ms AFTER the visible-row assertion settled, so a
+    // single `expect(...).toBe(...)` could see the URL still at an
+    // intermediate `q=tes` state. Polling lets the URL converge to the
+    // final `q=test` without changing semantics.
+    await expect
+      .poll(() => new URL(page.url()).pathname, { timeout: 2000 })
+      .toBe("/");
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("q"), {
+        timeout: 2000,
+      })
+      .toBe("test");
   });
 
   /**
