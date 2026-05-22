@@ -28,6 +28,41 @@ use crate::services::admin_system::{
 };
 use crate::services::password::hash_password;
 
+// ─── setup_completed_at parser ────────────────────────────────────
+
+/// Fix #95 — single source of truth for parsing the
+/// `setup_completed_at` settings row.
+///
+/// The row's TEXT value is either an RFC 3339 timestamp (written by
+/// `complete_setup` at Step 4) or an empty string (never written, or
+/// cleared). Pre-fix, three call sites parsed it independently:
+///   * `services::setup::fetch_predicate_inputs` (this module)
+///   * `middleware::setup_gate::fetch_active`
+///   * `config::AppSettings::load_from_db`
+///
+/// They agreed on the parser (RFC 3339, fail-safe to None) but the
+/// duplication invited drift. Centralised here.
+///
+/// Returns `None` for an empty value OR an unparseable string;
+/// emits a `tracing::warn!` only for the second case so the boot
+/// log can surface a corrupt row without spamming the empty-row
+/// fast path.
+pub fn parse_setup_completed_at(value: &str) -> Option<DateTime<Utc>> {
+    if value.is_empty() {
+        return None;
+    }
+    match DateTime::parse_from_rfc3339(value) {
+        Ok(dt) => Some(dt.with_timezone(&Utc)),
+        Err(_) => {
+            tracing::warn!(
+                value = %value,
+                "setup_completed_at not parseable as RFC 3339; treating as not-completed"
+            );
+            None
+        }
+    }
+}
+
 // ─── SetupStep ────────────────────────────────────────────────────
 
 /// Four wizard steps. Resolved server-side on every `GET /setup` —
@@ -173,13 +208,8 @@ pub async fn fetch_predicate_inputs(pool: &DbPool) -> Result<SetupPredicateInput
         }
     }
 
-    let setup_completed_at = if completed_value.is_empty() {
-        None
-    } else {
-        DateTime::parse_from_rfc3339(&completed_value)
-            .ok()
-            .map(|dt| dt.with_timezone(&Utc))
-    };
+    // Fix #95 — delegate to the shared parser.
+    let setup_completed_at = parse_setup_completed_at(&completed_value);
 
     Ok(SetupPredicateInputs {
         active_admin_count: admin_count.0,

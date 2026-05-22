@@ -464,25 +464,16 @@ impl AppSettings {
                 // parse failure so a corrupted row is observable, but treat as
                 // `None` (fail-safe: the gate fires on next request, which is
                 // the correct behavior for "wizard incomplete").
+                // Fix #95 — delegate to the shared
+                // `parse_setup_completed_at` helper so this and the
+                // two other parse sites (setup-gate middleware,
+                // wizard's `fetch_predicate_inputs`) stay
+                // structurally identical. The helper already emits
+                // the warn on parse failure and returns None for
+                // both the empty-row and unparseable cases.
                 "setup_completed_at" => {
-                    if value.is_empty() {
-                        settings.setup_completed_at = None;
-                    } else {
-                        match chrono::DateTime::parse_from_rfc3339(value) {
-                            Ok(dt) => {
-                                settings.setup_completed_at =
-                                    Some(dt.with_timezone(&chrono::Utc));
-                            }
-                            Err(_) => {
-                                tracing::warn!(
-                                    key = %key,
-                                    value = %value,
-                                    "setup_completed_at not parseable as RFC 3339; treating as not-completed"
-                                );
-                                settings.setup_completed_at = None;
-                            }
-                        }
-                    }
+                    settings.setup_completed_at =
+                        crate::services::setup::parse_setup_completed_at(value);
                 }
                 "setup_step_3_done" => {
                     settings.setup_step_3_done = value == "1";

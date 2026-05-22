@@ -118,15 +118,16 @@ async fn fetch_active(pool: &DbPool) -> Result<bool, AppError> {
     .fetch_optional(pool)
     .await?;
 
-    // Strict RFC3339 parse — matches `services::setup::fetch_predicate_inputs`.
-    // A garbage / malformed timestamp value is treated as "wizard NOT yet
-    // completed" so the gate keeps firing and `/setup` stays reachable.
-    // Story 8-8 review P10 aligned this with the resolver's parser.
+    // Fix #95 — delegate to the shared `parse_setup_completed_at`
+    // helper. A None result here means either "row empty" or
+    // "value not RFC 3339 parseable" — both treated as "wizard NOT
+    // yet completed" so the gate keeps firing and `/setup` stays
+    // reachable. Centralising the parser prevents the 3 sites from
+    // drifting (story 8-8 review P10 aligned them; this DRY pass
+    // makes the alignment structural).
     let setup_completed = match completed_row {
-        Some((v,)) if !v.is_empty() => {
-            chrono::DateTime::parse_from_rfc3339(&v).is_ok()
-        }
-        _ => false,
+        Some((v,)) => crate::services::setup::parse_setup_completed_at(&v).is_some(),
+        None => false,
     };
 
     Ok(admin_count.0 == 0 && !setup_completed)
