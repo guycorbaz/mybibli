@@ -126,7 +126,16 @@ pub async fn audit_list_page(
     // sorted location → V-code so the user walks the shelf in order.
     // The location join is LEFT — an unshelved flagged volume still
     // surfaces, just with an empty path.
-    let rows = sqlx::query_as::<_, (u64, String, u64, String, Option<u64>)>(
+    //
+    // Fix #321 — location_id is `BIGINT UNSIGNED NULL` but we project
+    // it as `CAST(... AS SIGNED)`. Per CLAUDE.md MariaDB type gotcha
+    // #2 the decoder MUST be `Option<i64>`, then convert to `u64` for
+    // the downstream `LocationModel::get_path(pool, u64)` call. The
+    // original `Option<u64>` triggered a sqlx 0.8 type-mismatch and a
+    // 500 the moment a flagged-volume row actually existed in prod.
+    // Latent since v1.6.0 (#237) — covered by the empty-state branch
+    // in CI but never exercised on a non-empty result set.
+    let rows = sqlx::query_as::<_, (u64, String, u64, String, Option<i64>)>(
         "SELECT v.id, v.label, t.id, t.title, CAST(v.location_id AS SIGNED) AS location_id \
          FROM volumes v \
          JOIN titles t ON t.id = v.title_id AND t.deleted_at IS NULL \
@@ -139,7 +148,7 @@ pub async fn audit_list_page(
     let mut items: Vec<AuditRowDisplay> = Vec::with_capacity(rows.len());
     for (vol_id, vol_label, title_id, title_name, location_id) in rows {
         let location_path = match location_id {
-            Some(lid) => crate::models::location::LocationModel::get_path(pool, lid)
+            Some(lid) => crate::models::location::LocationModel::get_path(pool, lid as u64)
                 .await
                 .unwrap_or_default(),
             None => String::new(),

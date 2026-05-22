@@ -104,6 +104,37 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.3}\label{sec:whats-new-1.7.3}
+
+Version 1.7.3 is a one-fix hotfix for a latent regression that
+shipped silently in every release from v1.6.0 to v1.7.2 \string—
+the \texttt{/audit} page returned a 500 the moment a flagged
+volume actually existed in the database. \emph{No schema
+migration, no breaking changes}; routine \texttt{docker compose
+pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#321 \string— /audit returns 500 with at least one
+        flagged volume.} \texttt{src/routes/audit.rs} projected
+        \texttt{CAST(v.location\_id AS SIGNED) AS location\_id}
+        (SQL type \texttt{BIGINT}) but the tuple decoder typed it
+        as \texttt{Option<u64>} (SQL type \texttt{BIGINT UNSIGNED}).
+        sqlx 0.8 refused the type mismatch \string— textbook
+        violation of \texttt{CLAUDE.md} MariaDB gotcha \#2 ("use
+        \texttt{Option<i64>}, then convert"). Latent since v1.6.0
+        (\#237) because the empty-result branch never decoded a row
+        and the CI E2E coverage seeded zero flagged volumes. Surfaced
+        in production on 2026-05-22 the moment the user actually
+        flagged a volume "À contrôler" on the v1.7.2 NAS.
+        \textbf{Also closes \#317} \string— the "large black circle
+        with cross" mystery icon the user reported earlier was the
+        browser's default error glyph rendered on the 500 page.
+        New integration test \texttt{tests/audit\_list\_non\_empty.rs}
+        seeds a flagged volume + location and asserts the page
+        renders 200 with the volume label + location path \string—
+        exactly the path that crashed in prod.
+\end{itemize}
+
 \section{What's new in 1.7.2}\label{sec:whats-new-1.7.2}
 
 Version 1.7.2 is a UX-completeness patch that closes two
