@@ -29,22 +29,35 @@ pub(super) fn render_search_fragment(
 
     match results {
         Some(paginated) if !paginated.items.is_empty() => {
-            // NOTE — pre-#315 behaviour deliberately restored. Wrapping
-            // these bare articles in `.browse-cards` correctly engages
-            // the grid CSS, BUT also engages the
-            // `.browse-list .browse-cards { display: none }` rule that
-            // hides cards in list mode (the default). Since this
-            // fragment doesn't emit `<table class="browse-table">`
-            // markup yet, list mode then has nothing visible after an
-            // HTMX search swap and 3 E2E specs go red.
-            //
-            // The proper fix emits BOTH wrappers (`.browse-cards`
-            // for grid mode + `.browse-table-wrap > .browse-table`
-            // for list mode), so the CSS toggle picks the right
-            // surface. Scoped to v1.7.2 — see #315.
+            // Fix #315 — emit BOTH wrappers (grid + list mode), so
+            // the CSS toggle in `static/css/browse.css` picks the
+            // right surface in either mode:
+            //   - `.browse-grid .browse-cards { display: grid }`
+            //   - `.browse-list .browse-table-wrap { display: block }`
+            // Pre-fix the fragment emitted bare `<article>` siblings
+            // which were visible in BOTH modes (a latent bug — grid
+            // mode showed one huge card per row because the grid CSS
+            // had no `.browse-cards` element to target). The first
+            // attempted fix (v1.7.1 candidate 82ec438) wrapped only
+            // in `.browse-cards`, which then engaged the
+            // `.browse-list .browse-cards { display: none }` rule
+            // and hid everything in list mode — 3 E2E specs went red.
+            // This commit emits both surfaces so neither mode is
+            // empty post-swap.
+            html.push_str("<div class=\"browse-table-wrap overflow-x-auto\">");
+            html.push_str(
+                r#"<table class="browse-table w-full text-sm text-left"><tbody>"#,
+            );
+            for item in &paginated.items {
+                html.push_str(&render_search_table_row(item));
+            }
+            html.push_str("</tbody></table></div>");
+
+            html.push_str("<div class=\"browse-cards\">");
             for item in &paginated.items {
                 html.push_str(&render_search_row(item));
             }
+            html.push_str("</div>");
 
             // OOB pagination update
             html.push_str(&render_pagination_oob(
@@ -101,6 +114,47 @@ fn render_search_row(item: &SearchResult) -> String {
         media = escaped_media,
         vols = item.volume_count,
         year = year,
+    )
+}
+
+/// Fix #315 — list-mode `<tr>` for the HTMX search-fragment swap.
+/// Mirrors `templates/pages/home.html`'s table-row markup (icon /
+/// title / contributor / genre / dewey / volume_count) so the
+/// post-swap DOM contains real rows in list mode (the default),
+/// matching the page-level template's initial render. Without this,
+/// the search swap left list mode empty and 3 E2E specs went red
+/// in the first v1.7.1 attempt.
+fn render_search_table_row(item: &SearchResult) -> String {
+    let escaped_title = html_escape(&item.title);
+    let escaped_contributor = item
+        .primary_contributor
+        .as_deref()
+        .map(html_escape)
+        .unwrap_or_default();
+    let escaped_genre = html_escape(&item.genre_name);
+    let escaped_media = html_escape(&item.media_type);
+    let dewey_cell = match &item.dewey_code {
+        Some(d) => format!(
+            r#"<code class="font-mono text-xs">{}</code>"#,
+            html_escape(d)
+        ),
+        None => "—".to_string(),
+    };
+    let contributor_cell = if escaped_contributor.is_empty() {
+        "—".to_string()
+    } else {
+        escaped_contributor
+    };
+
+    format!(
+        r##"<tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50"><td class="px-3 py-2"><img src="/static/icons/{media}.svg" alt="" class="w-5 h-5" aria-hidden="true"></td><td class="px-3 py-2"><a href="/title/{id}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{title}</a></td><td class="px-3 py-2 text-stone-600 dark:text-stone-400">{contributor}</td><td class="px-3 py-2 text-stone-600 dark:text-stone-400">{genre}</td><td class="px-3 py-2 text-stone-600 dark:text-stone-400">{dewey}</td><td class="px-3 py-2 text-right tabular-nums text-stone-600 dark:text-stone-400">{vols}</td></tr>"##,
+        id = item.id,
+        media = escaped_media,
+        title = escaped_title,
+        contributor = contributor_cell,
+        genre = escaped_genre,
+        dewey = dewey_cell,
+        vols = item.volume_count,
     )
 }
 
@@ -221,6 +275,59 @@ fn render_empty_state(query: &str, has_filter: bool, is_librarian: bool, loc: &s
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Fix #315 — locks the dual-wrapper invariant: every non-empty
+    /// search result emits BOTH `.browse-table-wrap` (list mode,
+    /// default) AND `.browse-cards` (grid mode), in that order. The
+    /// CSS toggle in `static/css/browse.css` then hides one based on
+    /// the parent class on `#browse-results`. If either wrapper is
+    /// dropped, the search swap leaves the corresponding mode with
+    /// nothing visible.
+    #[test]
+    fn fragment_emits_both_table_and_cards_wrappers() {
+        let item = SearchResult {
+            id: 1,
+            title: "Anything".to_string(),
+            subtitle: None,
+            media_type: "book".to_string(),
+            genre_name: "Roman".to_string(),
+            primary_contributor: Some("Anonyme".to_string()),
+            volume_count: 1,
+            cover_image_url: None,
+            publication_date: None,
+            dewey_code: None,
+        };
+        let paginated =
+            crate::models::PaginatedList::new(vec![item], 1, 1, None, None, None);
+        let session = crate::middleware::auth::Session::anonymous_with_token(
+            "test-csrf".to_string(),
+        );
+        let html =
+            render_search_fragment(&Some(paginated), "", &None, &None, &None, &session, "en");
+
+        assert!(
+            html.contains(r#"<div class="browse-table-wrap"#),
+            "fragment must emit .browse-table-wrap for list mode"
+        );
+        assert!(
+            html.contains(r#"<table class="browse-table"#),
+            "fragment must emit .browse-table for list mode"
+        );
+        assert!(
+            html.contains(r#"<div class="browse-cards"#),
+            "fragment must emit .browse-cards for grid mode"
+        );
+        // Order matters: the table-wrap goes first so a single
+        // `.first()` Playwright selector lands on the list-mode row
+        // (visible in default mode); both wrappers' contents render,
+        // CSS picks which is shown.
+        let table_idx = html.find("browse-table-wrap").expect("must contain table-wrap");
+        let cards_idx = html.find("browse-cards").expect("must contain cards wrapper");
+        assert!(
+            table_idx < cards_idx,
+            "list-mode .browse-table-wrap must precede grid-mode .browse-cards"
+        );
+    }
 
     #[test]
     fn test_render_search_row() {
