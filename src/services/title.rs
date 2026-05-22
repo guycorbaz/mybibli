@@ -306,6 +306,16 @@ impl TitleService {
 }
 
 /// Form data for manual title creation.
+///
+/// Fix #323 (v1.7.4) — the four `Option<i32>` numeric fields route
+/// through the project-wide `deserialize_optional_i32` helper (sibling
+/// of the same wiring on `TitleEditForm` since v1.1.9 #238, and on
+/// `VolumeEditForm.condition_state_id` since v1.6.1 #296). HTML
+/// `<input type="number">` with an empty value posts as
+/// `name=` (empty string), NOT as absent — plain `#[serde(default)]`
+/// then tries to parse the empty string as i32 and surfaces as a 422.
+/// This is the third recurrence of the same gotcha; the helper has
+/// been in `routes::series` since v1.1.9 and just needed wiring.
 #[derive(Debug, serde::Deserialize)]
 pub struct TitleForm {
     pub title: String,
@@ -325,15 +335,27 @@ pub struct TitleForm {
     pub issn: Option<String>,
     #[serde(default)]
     pub upc: Option<String>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::series::deserialize_optional_i32"
+    )]
     pub page_count: Option<i32>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::series::deserialize_optional_i32"
+    )]
     pub track_count: Option<i32>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::series::deserialize_optional_i32"
+    )]
     pub total_duration: Option<i32>,
     #[serde(default)]
     pub age_rating: Option<String>,
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::series::deserialize_optional_i32"
+    )]
     pub issue_number: Option<i32>,
 }
 
@@ -514,6 +536,66 @@ fn non_empty_option(s: &Option<String>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Fix #323 — locks the empty-string handling on the four
+    /// `Option<i32>` form fields on the manual title-create form.
+    /// HTML `<input type="number">` with an empty value posts as
+    /// `name=` (empty string), NOT as absent. Plain
+    /// `#[serde(default)] Option<i32>` only short-circuits ABSENT
+    /// fields — the empty string still hits the i32 parser and
+    /// surfaces as Axum 422. This test exercises the four affected
+    /// fields end-to-end via `serde_urlencoded::from_str`, the same
+    /// path Axum's `Form<>` extractor takes.
+    ///
+    /// Mirrors the v1.1.9 `title_edit_form_accepts_empty_numeric_fields`
+    /// unit test in `src/routes/titles.rs::tests` — the title-EDIT
+    /// form had the same bug, fixed by #238. This is the manual
+    /// title-CREATE form catching up.
+    #[test]
+    fn title_form_accepts_empty_numeric_fields() {
+        // page_count empty
+        let form: TitleForm = serde_urlencoded::from_str(
+            "title=T&media_type=book&genre_id=1&page_count=",
+        )
+        .expect("empty page_count must deserialize as None");
+        assert_eq!(form.page_count, None);
+
+        // track_count empty
+        let form: TitleForm = serde_urlencoded::from_str(
+            "title=T&media_type=cd&genre_id=1&track_count=",
+        )
+        .expect("empty track_count must deserialize as None");
+        assert_eq!(form.track_count, None);
+
+        // total_duration empty
+        let form: TitleForm = serde_urlencoded::from_str(
+            "title=T&media_type=cd&genre_id=1&total_duration=",
+        )
+        .expect("empty total_duration must deserialize as None");
+        assert_eq!(form.total_duration, None);
+
+        // issue_number empty
+        let form: TitleForm = serde_urlencoded::from_str(
+            "title=T&media_type=magazine&genre_id=1&issue_number=",
+        )
+        .expect("empty issue_number must deserialize as None");
+        assert_eq!(form.issue_number, None);
+    }
+
+    #[test]
+    fn title_form_parses_valid_numeric_fields() {
+        // Lock the happy path so a future change that swaps the
+        // helper for something more permissive can't accidentally
+        // accept garbage in the same surface.
+        let form: TitleForm = serde_urlencoded::from_str(
+            "title=T&media_type=book&genre_id=1&page_count=235&track_count=12&total_duration=3600&issue_number=42",
+        )
+        .expect("valid numeric fields must deserialize");
+        assert_eq!(form.page_count, Some(235));
+        assert_eq!(form.track_count, Some(12));
+        assert_eq!(form.total_duration, Some(3600));
+        assert_eq!(form.issue_number, Some(42));
+    }
 
     #[test]
     fn default_genre_name_constant_is_non_classe() {

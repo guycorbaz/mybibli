@@ -110,6 +110,71 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.4}\label{sec:whats-new-1.7.4}
+
+La version 1.7.4 est un patch de finition qui livre un correctif
+visible utilisateur, un test de vérification utilisateur, et huit
+nettoyages de code-review-findings qui attendaient dans le tracker.
+\emph{Aucune migration de schéma, aucune cassure} ; \texttt{docker
+compose pull \&\& docker compose up -d} habituel.
+
+\textbf{Visible utilisateur :}
+
+\begin{itemize}
+  \item \textbf{\#323 \string— création manuelle de titre,
+        erreur 422.} Les quatre champs numériques du formulaire
+        "Ajouter à la main" (\texttt{page\_count},
+        \texttt{track\_count}, \texttt{total\_duration},
+        \texttt{issue\_number}) rejetaient les soumissions vides
+        avec 422 Unprocessable Entity. Troisième récurrence du
+        même pattern (après \#238 en v1.1.9 pour le formulaire
+        d'édition de titre, et \#296 en v1.6.1 pour le formulaire
+        de localisation). Câblé sur le helper projet-wide
+        \texttt{deserialize\_optional\_i32}.
+\end{itemize}
+
+\textbf{Vérification \string& ménage (pas de changement visible
+utilisateur) :}
+
+\begin{itemize}
+  \item \textbf{\#320 \string— verrou Dewey-preserve-on-refetch.}
+        Confirme par test d'intégration qu'un code Dewey édité à
+        la main survit à une nouvelle récupération de métadonnées
+        (c'est le cas par conception \string— la machinerie
+        \texttt{manually\_edited\_fields} le suit depuis la story
+        6-3). Le test verrouille le contrat pour qu'un futur
+        refactor ne puisse pas le casser silencieusement.
+  \item \textbf{\#97} \string— le récap de l'assistant
+        d'installation tombe en EN, plus en FR, pour les langues
+        inconnues (v1.7.0 \#275/\#276 a ajouté DE + IT ; le match
+        d'origine routait silencieusement les deux vers FR).
+  \item \textbf{\#78} \string— retirer le \texttt{version=N}
+        dupliqué de l'URL POST de la modal de suppression
+        définitive de la Corbeille.
+  \item \textbf{\#77} \string— l'événement drain-cap de
+        l'auto-purge incrémente désormais un compteur
+        \texttt{tables\_capped} dédié au lieu de gonfler
+        \texttt{errors\_count}.
+  \item \textbf{\#76} \string— validation du filtre
+        \texttt{entity\_type} dans
+        \texttt{permanent\_delete\_confirm} (3ᵉ point d'entrée
+        que R3-N14 avait manqué).
+  \item \textbf{\#95} \string— helper unique
+        \texttt{parse\_setup\_completed\_at} pour les 3 sites qui
+        parsaient le même row indépendamment.
+  \item \textbf{\#63} \string— filet de sécurité CI : un test
+        unitaire vérifie que \texttt{ALLOWED\_TABLES} est un
+        sous-ensemble de \texttt{PURGE\_DELETION\_ORDER}.
+  \item \textbf{\#72} \string— supprimer
+        \texttt{AdminAuditModel::list()} inutilisé.
+  \item \textbf{\#147} \string— clamper
+        \texttt{nav.js getBurstThresholdMs} à un minimum de
+        10 ms.
+  \item \textbf{\#106} \string— nouvelle CI grep gate contre les
+        sélecteurs \texttt{a[href\^=/title/]} non scopés dans
+        les specs E2E.
+\end{itemize}
+
 \section{Nouveautés de la 1.7.3}\label{sec:whats-new-1.7.3}
 
 La version 1.7.3 est un hotfix d'une seule correction pour une

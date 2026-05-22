@@ -104,6 +104,79 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.4}\label{sec:whats-new-1.7.4}
+
+Version 1.7.4 is a polish patch that ships one user-visible bug
+fix, one user-verification test, and eight code-review-finding
+clean-ups that were waiting in the issue tracker. \emph{No schema
+migration, no breaking changes}; routine \texttt{docker compose
+pull \&\& docker compose up -d}.
+
+\textbf{User-visible:}
+
+\begin{itemize}
+  \item \textbf{\#323 \string— manual title creation 422.}
+        The four numeric fields on the "Add manually" form
+        (\texttt{page\_count}, \texttt{track\_count},
+        \texttt{total\_duration}, \texttt{issue\_number}) rejected
+        empty submissions with 422 Unprocessable Entity. Third
+        recurrence of the same gotcha pattern (after \#238 in
+        v1.1.9 for the title-edit form, and \#296 in v1.6.1 for
+        the location form). Wired through the project-wide
+        \texttt{deserialize\_optional\_i32} helper.
+\end{itemize}
+
+\textbf{Verification \string& housekeeping (no user-visible
+behaviour change):}
+
+\begin{itemize}
+  \item \textbf{\#320 \string— Dewey-preserve-on-refetch verrou
+        test.} Confirms by integration test that a manually-edited
+        Dewey code survives a metadata re-fetch (it does, by
+        design \string— the \texttt{manually\_edited\_fields}
+        machinery has tracked it since story 6-3). The test
+        locks the contract so a future refactor can't silently
+        regress it.
+  \item \textbf{\#97} \string— setup wizard recap falls back to
+        EN, not FR, for unknown locales (v1.7.0 \#275/\#276 added
+        DE + IT; the original match silently routed both to FR).
+  \item \textbf{\#78} \string— drop duplicate \texttt{version=N}
+        from trash permanent-delete modal POST URL (was
+        belt-and-suspenders that could conflict if axum extractor
+        precedence changes).
+  \item \textbf{\#77} \string— auto-purge drain-cap event now
+        increments a dedicated \texttt{tables\_capped} counter
+        instead of inflating \texttt{errors\_count}. Operator
+        monitoring on \texttt{errors\_count > 0} no longer
+        false-alarms on deferred backlogs.
+  \item \textbf{\#76} \string— validate \texttt{entity\_type}
+        query filter in \texttt{permanent\_delete\_confirm} (3ʳᵈ
+        entry point that R3-N14 had missed).
+  \item \textbf{\#95} \string— single
+        \texttt{parse\_setup\_completed\_at} helper across the 3
+        sites that previously parsed it independently (setup
+        service / setup-gate middleware / AppSettings loader).
+  \item \textbf{\#63} \string— CI safety net: unit test asserts
+        \texttt{ALLOWED\_TABLES} is a subset of
+        \texttt{PURGE\_DELETION\_ORDER}, catching the silent
+        future-maintainer failure mode (add a soft-deletable
+        table but forget the auto-purge entry → it accumulates
+        soft-deleted rows forever).
+  \item \textbf{\#72} \string— delete unused
+        \texttt{AdminAuditModel::list()} (Story 8-7 DF2 dead code;
+        keeps invitation to wire into a half-baked admin UI off
+        the codebase).
+  \item \textbf{\#147} \string— clamp
+        \texttt{nav.js getBurstThresholdMs} to a 10 ms floor
+        (pathological admin config of 1 ms could misclassify
+        keystrokes as scanner bursts).
+  \item \textbf{\#106} \string— new CI grep gate against
+        unscoped \texttt{a[href\^=/title/]} selectors in E2E
+        specs (catches the \string"\string\#recent-additions
+        above \string\#browse-results\string" footgun from story
+        9-2 at PR time, before CI burns a Playwright run).
+\end{itemize}
+
 \section{What's new in 1.7.3}\label{sec:whats-new-1.7.3}
 
 Version 1.7.3 is a one-fix hotfix for a latent regression that

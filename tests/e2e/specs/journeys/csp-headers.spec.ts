@@ -112,8 +112,17 @@ test.describe("Story 7-4 — CSP headers", () => {
     // Open a title detail page — pick whichever title is on the catalog page
     // first. If the catalog is empty (fresh test DB), skip the detail step
     // gracefully so this spec doesn't depend on prior seed data.
+    //
+    // Fix #106 — scope to `main` so the new CI grep gate
+    // ("no unscoped title-link selector") doesn't bite. /catalog
+    // doesn't currently render #recent-additions, but future
+    // additions could surface a second `<a href="/title/...">` in
+    // the nav / header / sidebar. Scoping makes the test robust.
     await page.goto("/catalog");
-    const firstTitleLink = page.locator('a[href^="/title/"]').first();
+    const firstTitleLink = page
+      .locator('main')
+      .locator('a[href^="/title/"]')
+      .first();
     if ((await firstTitleLink.count()) > 0) {
       const href = await firstTitleLink.getAttribute("href");
       if (href) await assertCsp(page, href);

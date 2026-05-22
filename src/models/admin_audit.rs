@@ -104,79 +104,15 @@ impl AdminAuditModel {
         })
     }
 
-    /// Fetch audit entries with optional filtering.
-    ///
-    /// `details` is read with `CAST(... AS CHAR)` because MariaDB stores JSON
-    /// columns as `BLOB` underneath; without the cast SQLx can't decode it
-    /// into a `String` (CLAUDE.md MariaDB type gotcha #1) — Patch P14.
-    pub async fn list(
-        pool: &DbPool,
-        user_id: Option<u64>,
-        action: Option<&str>,
-        limit: i64,
-        offset: i64,
-    ) -> Result<Vec<AdminAuditEntry>, AppError> {
-        let mut query_builder = String::from(
-            "SELECT CAST(id AS SIGNED) as id, CAST(user_id AS SIGNED) as user_id, action, \
-             entity_type, CAST(entity_id AS SIGNED) as entity_id, \
-             CAST(timestamp AS DATETIME) as timestamp, CAST(details AS CHAR) as details \
-             FROM admin_audit WHERE 1=1",
-        );
-
-        if user_id.is_some() {
-            query_builder.push_str(" AND user_id = ?");
-        }
-        if action.is_some() {
-            query_builder.push_str(" AND action = ?");
-        }
-        query_builder.push_str(" ORDER BY timestamp DESC LIMIT ? OFFSET ?");
-
-        let mut query = sqlx::query(&query_builder);
-
-        if let Some(uid) = user_id {
-            query = query.bind(uid as i64);
-        }
-        if let Some(act) = action {
-            query = query.bind(act);
-        }
-        query = query.bind(limit).bind(offset);
-
-        let rows = query.fetch_all(pool).await?;
-
-        Ok(rows
-            .iter()
-            .map(|r| {
-                let id = r.get::<i64, _>("id") as u64;
-                AdminAuditEntry {
-                    id,
-                    // Issue #70: user_id is NULLable post-migration
-                    // `20260513000002_admin_audit_fk_set_null.sql`.
-                    user_id: r.get::<Option<i64>, _>("user_id").map(|v| v as u64),
-                    action: r.get::<String, _>("action"),
-                    entity_type: r.get::<Option<String>, _>("entity_type"),
-                    entity_id: r.get::<Option<i64>, _>("entity_id").map(|id| id as u64),
-                    timestamp: r.get::<NaiveDateTime, _>("timestamp"),
-                    // R3-N13: log parse failures instead of swallowing them.
-                    // A NULL `details` column is a normal None; invalid JSON
-                    // (which "shouldn't happen" because INSERTs only ever go
-                    // through `create()`) deserves visibility.
-                    details: r.get::<Option<String>, _>("details").and_then(|s| {
-                        match serde_json::from_str(&s) {
-                            Ok(v) => Some(v),
-                            Err(e) => {
-                                tracing::warn!(
-                                    audit_id = id,
-                                    error = %e,
-                                    "admin_audit.details JSON parse failed; row will surface with details = None"
-                                );
-                                None
-                            }
-                        }
-                    }),
-                }
-            })
-            .collect())
-    }
+    // Fix #72 — `AdminAuditModel::list` was added during story 8-7
+    // (Story 8-7 DF2) but no acceptance criterion / production caller
+    // ever required it. The audit list is purely append-only forensics
+    // accessed via direct SQL when needed (or the admin Trash panel,
+    // which goes through `TrashModel`, not this model). Keeping the
+    // method as dead-code invited future maintainers to wire it into
+    // an admin UI without first deciding pagination / filtering UX
+    // (Story 8-7 P21 deliberately deferred that work). Deleted, along
+    // with `test_admin_audit_list` which only existed to exercise it.
 }
 
 #[cfg(test)]
@@ -227,18 +163,7 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test(migrations = "./migrations")]
-    async fn test_admin_audit_list(pool: sqlx::Pool<sqlx::MySql>) -> Result<(), Box<dyn std::error::Error>> {
-        AdminAuditModel::create(&pool, 1, "test_action", Some("titles"), Some(1), None).await?;
-        AdminAuditModel::create(&pool, 1, "test_action", Some("volumes"), Some(2), None).await?;
-        AdminAuditModel::create(&pool, 2, "other_action", Some("titles"), Some(3), None).await?;
-
-        let user_1_entries = AdminAuditModel::list(&pool, Some(1), None, 10, 0).await?;
-        assert_eq!(user_1_entries.len(), 2);
-
-        let action_entries = AdminAuditModel::list(&pool, None, Some("test_action"), 10, 0).await?;
-        assert_eq!(action_entries.len(), 2);
-
-        Ok(())
-    }
+    // Fix #72 — `test_admin_audit_list` removed along with the
+    // `AdminAuditModel::list` method it exercised (see comment in
+    // the impl block).
 }
