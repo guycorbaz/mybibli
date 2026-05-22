@@ -16,14 +16,17 @@ If you ran a pre-1.1.0 build, wipe the database before pulling 1.1.0+. See [the 
 
 ## What it is
 
-- **Barcode-first cataloging.** Scan ISBN / EAN-13 → metadata resolves asynchronously through a provider chain (BnF → Google Books → Open Library → MusicBrainz → OMDb → TMDB → BDGest) with cover-image download and similar-title detection.
+- **Barcode-first cataloging.** Scan ISBN / EAN-13 → metadata resolves asynchronously through a provider chain (BDGest → BnF → Google Books → Library of Congress → Open Library → MusicBrainz → OMDb → TMDB) with cover-image download and similar-title detection.
 - **Multi-media.** Books, BD/comics with multi-position omnibus volumes, audio, films/series — each typed correctly with the right provider chosen automatically.
 - **Series + collection awareness.** Gap detection on series volumes, Dewey-based browsing, similar-titles section.
-- **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow, per-location volume list.
+- **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow, per-location volume list, optional organizational containers (folders, not shelves), shelf-audit workflow ("À contrôler") with home-dashboard indicator.
 - **Loan management.** Borrower CRUD, loan registration with automatic location restoration on return, overdue threshold (admin-configurable), per-borrower history.
-- **Multi-role auth.** Anonymous (read-only) · Librarian (catalog + loans) · Admin (everything). Session inactivity timeout with keep-alive toast. FR/EN language toggle with per-user preference.
+- **Wishlist + valuation.** First-class `/wishlist` with provider-chain ISBN preview + free-form add, mark-as-bought, server-rendered PDF export. Optional per-volume `purchase_price` + `current_value` with per-currency totals and a `/stats/value` page (default OFF, admin opt-in).
+- **JSON HTTP API.** `/api/v1/*` with API-key auth (argon2-hashed, `Authorization: Bearer` or `X-API-Key`), read-only and read-write scopes. Mint / revoke / hard-delete keys from `/admin?tab=api_keys`. CSRF short-circuits on `/api/*` because bearer auth doesn't ride on cookies.
+- **Multi-role auth.** Anonymous (read-only) · Librarian (catalog + loans) · Admin (everything). Session inactivity timeout with keep-alive toast. **Four UI languages** — English, French, German, Italian — with per-user preference toggle.
 - **Hardened by construction.** Strict CSP (no `unsafe-inline`/`unsafe-eval`), CSRF synchronizer-token middleware on every state-changing request with server-rendered "session expired" feedback, scanner-guard against burst-keyboard input leaking into modals.
-- **Admin panel.** Health dashboard (entity counts, MariaDB version, disk usage, provider reachability), user management with last-active-admin guard, editable reference data (genres, volume states, contributor roles, location node types), system settings, trash view + restore + permanent delete, configurable auto-purge after 30 days.
+- **Admin panel.** Health dashboard (entity counts, MariaDB version, disk usage, provider reachability), user management with last-active-admin guard, editable reference data (genres, volume states, contributor roles, location node types), system settings (loans / providers / language / valuation / **logging level**), trash view + restore + permanent delete, configurable auto-purge after 30 days.
+- **Production observability** (v1.7.0+, completed in v1.7.1). Persistent daily-rotating log files with 30-day in-process purge. Admin-controlled log level (`trace` / `debug` / `info` / `warn` / `error` or full `tracing-subscriber` `EnvFilter` directives) flippable from `/admin > System` without a redeploy.
 - **First-launch setup wizard.** Fresh installs walk through Admin → Providers → Preferences → Done.
 - **Mobile-aware + WCAG 2.2 AA accessible.** Dual-surface mobile UX (desktop tables collapse into cards, admin tabs into `<select>`), full keyboard navigation with shortcuts cheat-sheet (`?`), contextual help-icon tooltips, axe-core CI gate over every reachable surface.
 
@@ -41,11 +44,25 @@ services:
       DATABASE_URL: mysql://mybibli:mybibli@db:3306/mybibli?charset=utf8mb4
       HOST: "0.0.0.0"
       PORT: "8080"
+      # v1.7.0+: persistent file logging + admin-controlled level.
+      # Defaults below are production-safe; admins can flip the live
+      # filter from /admin > System without restarting the container.
+      MYBIBLI_LOG_LEVEL: info
+      MYBIBLI_LOG_DIR: /var/log/mybibli
+      # v1.7.1+: per-probe timeout for the /admin > Health
+      # reachability check. Bump on fragile uplinks (default 10s
+      # is conservative for home-NAS networks).
+      MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS: "10"
     volumes:
       # Issue #213 — cover JPGs MUST persist across container upgrades.
       # Without this mount, every `docker compose up -d` after a pull
       # destroys the writable layer and the cataloged covers vanish.
       - mybibli-covers:/app/covers
+      # v1.7.0+ — persistent daily-rotating log files (Operator can
+      # `docker compose exec mybibli tail -f /var/log/mybibli/mybibli.log.$(date -u +%Y-%m-%d)`).
+      # Forensic-only; safe to wipe at any time. Drop this mount if
+      # you only need `docker compose logs` (no on-disk retention).
+      - mybibli-logs:/var/log/mybibli
     depends_on:
       db:
         condition: service_healthy
@@ -68,6 +85,7 @@ services:
 volumes:
   mybibli-db:
   mybibli-covers:
+  mybibli-logs:
 ```
 
 Run it:
@@ -81,18 +99,23 @@ Open `http://localhost:8080`. The first-launch wizard greets you. Create the adm
 
 ### Environment reference
 
-All deployment-time settings are environment variables — no config file. The canonical reference with every variable commented is [`.env.example`](https://github.com/guycorbaz/mybibli/blob/main/.env.example) in the repo. Seven sections: database, http, language, auth, metadata providers, paths, runtime.
+All deployment-time settings are environment variables — no config file. The canonical reference with every variable commented is [`.env.example`](https://github.com/guycorbaz/mybibli/blob/main/.env.example) in the repo. Grouped sections: database, HTTP server, application (incl. logging — `MYBIBLI_LOG_LEVEL` / `MYBIBLI_LOG_DIR` / `LOGS_HOST_PATH` / `MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS`), cookie & CSP hardening, metadata providers, dev / test overrides.
+
+### Bind-mount alternatives (Synology DSM, journald shipping, etc.)
+
+Both `mybibli-covers` and `mybibli-logs` can be swapped from Docker-named volumes to host bind mounts. Pick a host directory (e.g. `/volume1/docker/mybibli/covers`, `/volume1/docker/mybibli/logs`) and replace the volume line with `- /your/host/path:/app/covers` / `- /your/host/path:/var/log/mybibli`. The full operator manual (chapter 1 install + chapter 12 operations) walks through it — see [the GitHub release page](https://github.com/guycorbaz/mybibli/releases/latest) for the PDF.
 
 ## Tags
 
 - `:latest` — tracks the highest semver release tag.
-- `:1.6.2` (current), `:1.6.1`, `:1.6.0`, `:1.5.2`, `:1.5.1`, `:1.5.0`, `:1.4.0`, `:1.3.1`, `:1.3.0`, `:1.2.2`, `:1.2.1`, `:1.2.0`, `:1.1.9`, `:1.1.8`, `:1.1.7`, `:1.1.6`, `:1.1.5`, `:1.1.4`, `:1.1.3`, `:1.1.2`, `:1.1.1`, `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; track `:latest` is reasonable for homelab.
+- `:1.7.1` (current), `:1.7.0`, `:1.6.2`, `:1.6.1`, `:1.6.0`, `:1.5.2`, `:1.5.1`, `:1.5.0`, `:1.4.0`, `:1.3.1`, `:1.3.0`, `:1.2.2`, `:1.2.1`, `:1.2.0`, `:1.1.9`, `:1.1.8`, `:1.1.7`, `:1.1.6`, `:1.1.5`, `:1.1.4`, `:1.1.3`, `:1.1.2`, `:1.1.1`, `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; tracking `:latest` is reasonable for homelab.
 - **No `:dev`, no `:main`, no `:beta` published** — tagged releases only.
 
 ## Docs
 
-- **End-user manual** (PDF, EN + FR) — attached to each [GitHub Release](https://github.com/guycorbaz/mybibli/releases).
+- **End-user manual** (PDF, EN + FR) — attached to each [GitHub Release](https://github.com/guycorbaz/mybibli/releases), and committed to the repo at `docs/manual/mybibli-manual-{en,fr}.pdf` so a `git checkout vX.Y.Z` always carries the matching manual.
 - **Operator README** — [github.com/guycorbaz/mybibli](https://github.com/guycorbaz/mybibli) — install + configure + run-locally + dev-stack.
+- **Operations & debugging** (chapter 12 of the manual) — log location, tailing, log levels, structured JSON parsing, post-mortem grepping.
 - **Auth threat model** — [docs/auth-threat-model.md](https://github.com/guycorbaz/mybibli/blob/main/docs/auth-threat-model.md) — what CSRF protects, what session cookies do, why the single-tenant LAN/NAS shape lets us simplify some auth surfaces.
 - **Roadmap + release timeline** — [guycorbaz.github.io/mybibli/roadmap.html](https://guycorbaz.github.io/mybibli/roadmap.html).
 

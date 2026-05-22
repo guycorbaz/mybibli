@@ -50,7 +50,7 @@ Built for collectors who want more than a spreadsheet:
 
 ## Screenshots
 
-Live production install (`v1.6.2`, household NAS, ~88 titles cataloged):
+Live production install (`v1.7.0`, household NAS, ~88 titles cataloged):
 
 <p align="center">
   <img src="docs/screenshots/home.png" alt="mybibli home page — search bar, genre filters, dashboard counters, and a recent-additions strip with cover thumbnails." width="780">

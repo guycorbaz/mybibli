@@ -262,6 +262,11 @@ pagination:
   aria_label: Impaginazione
 title_detail:
   contributors: Collaboratori
+  # Fix #318 — affordance Aggiungi / Rimuovi collaboratore nella pagina di dettaglio del titolo.
+  contributor_add: "Aggiungi collaboratore"
+  contributor_remove: Rimuovi
+  contributor_remove_aria: "Rimuovi il collaboratore"
+  no_contributors: "Ancora nessun collaboratore."
   volumes: Esemplari
   genre: Genere
   publisher: Editore

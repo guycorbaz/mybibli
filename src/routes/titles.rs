@@ -66,6 +66,12 @@ pub struct TitleDetailTemplate {
     pub label_placeholder_empty: String,
     pub contributors: Vec<TitleContributorModel>,
     pub label_contributors: String,
+    // Fix #318 — labels for the Add/Remove contributor affordance
+    // on the title detail page (Librarian+).
+    pub label_contributor_add: String,
+    pub label_contributor_remove: String,
+    pub label_contributor_remove_aria: String,
+    pub label_no_contributors: String,
     pub label_vol: String,
     pub label_no_cover: String,
     pub label_edit: String,
@@ -170,6 +176,17 @@ pub async fn title_detail(
             label_placeholder_empty: rust_i18n::t!("title_detail.field_unset", locale = loc).to_string(),
             contributors,
             label_contributors: rust_i18n::t!("title_detail.contributors", locale = loc).to_string(),
+            label_contributor_add: rust_i18n::t!("title_detail.contributor_add", locale = loc)
+                .to_string(),
+            label_contributor_remove: rust_i18n::t!("title_detail.contributor_remove", locale = loc)
+                .to_string(),
+            label_contributor_remove_aria: rust_i18n::t!(
+                "title_detail.contributor_remove_aria",
+                locale = loc
+            )
+            .to_string(),
+            label_no_contributors: rust_i18n::t!("title_detail.no_contributors", locale = loc)
+                .to_string(),
             label_vol: rust_i18n::t!("title_detail.volumes", locale = loc).to_string(),
             label_no_cover: rust_i18n::t!("cover.no_cover", locale = loc).to_string(),
             label_edit: rust_i18n::t!("metadata.edit_metadata", locale = loc).to_string(),
@@ -1717,6 +1734,10 @@ mod tests {
             label_placeholder_empty: "—".to_string(),
             contributors: vec![],
             label_contributors: "Contributors".to_string(),
+            label_contributor_add: "Add contributor".to_string(),
+            label_contributor_remove: "Remove".to_string(),
+            label_contributor_remove_aria: "Remove contributor".to_string(),
+            label_no_contributors: "No contributors yet.".to_string(),
             label_vol: "Volumes".to_string(),
             label_no_cover: "No cover available".to_string(),
             label_edit: "Edit metadata".to_string(),
@@ -1841,6 +1862,10 @@ mod tests {
             label_placeholder_empty: "—".to_string(),
             contributors: vec![],
             label_contributors: "Contributors".to_string(),
+            label_contributor_add: "Add contributor".to_string(),
+            label_contributor_remove: "Remove".to_string(),
+            label_contributor_remove_aria: "Remove contributor".to_string(),
+            label_no_contributors: "No contributors yet.".to_string(),
             label_vol: "Volumes".to_string(),
             label_no_cover: "No cover available".to_string(),
             label_edit: "Edit metadata".to_string(),

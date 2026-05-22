@@ -73,20 +73,69 @@
                 {% endif %}
             </div>
 
-            {% if !contributors.is_empty() %}
+            {# Fix #318 — contributor block on title detail. Now
+               always rendered (even when empty) because the
+               Librarian+ "Add contributor" affordance lives here.
+               The `<ul id="contributor-list">` is also the OOB
+               swap target used by /catalog/contributors/add and
+               /catalog/contributors/remove so a successful submit
+               replaces this list in-place. #}
             <div class="mt-6">
                 <h2 class="text-lg font-semibold text-stone-800 dark:text-stone-200">{{ label_contributors }}</h2>
-                <ul class="mt-2 space-y-1">
+                {% if !contributors.is_empty() %}
+                <ul id="contributor-list" class="mt-2 space-y-1">
                     {% for tc in contributors %}
-                    <li>
+                    <li class="flex items-baseline gap-2">
                         <a href="/contributor/{{ tc.contributor_id }}"
                            class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ tc.contributor_name }}</a>
                         <span class="text-stone-500">({{ tc.role_name }})</span>
+                        {% if role == "librarian" || role == "admin" %}
+                        {# Note: button has no explicit `type="submit"`
+                           attribute. The HTML5 default for a <button>
+                           inside a <form> is "submit", so submission
+                           still works — but CSS attribute selectors
+                           like `button[type="submit"]` only match when
+                           the attribute is EXPLICITLY set. Keeping the
+                           attribute implicit avoids the dewey-code E2E
+                           spec's `.last()` selector silently picking
+                           this Remove button instead of the edit-form
+                           Save when contributors exist. #}
+                        <form method="POST"
+                              action="/catalog/contributors/remove"
+                              hx-post="/catalog/contributors/remove"
+                              hx-target="#feedback-list"
+                              hx-swap="afterbegin"
+                              class="inline">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+                            <input type="hidden" name="junction_id" value="{{ tc.id }}">
+                            <input type="hidden" name="title_id" value="{{ title.id }}">
+                            <button class="text-xs text-red-600 dark:text-red-400 hover:underline"
+                                    aria-label="{{ label_contributor_remove_aria }} — {{ tc.contributor_name }}">
+                                {{ label_contributor_remove }}
+                            </button>
+                        </form>
+                        {% endif %}
                     </li>
                     {% endfor %}
                 </ul>
+                {% else %}
+                <ul id="contributor-list" class="mt-2 space-y-1"></ul>
+                <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ label_no_contributors }}</p>
+                {% endif %}
+
+                {% if role == "librarian" || role == "admin" %}
+                <div class="mt-3">
+                    <button type="button"
+                            hx-get="/title/{{ title.id }}/contributor-form"
+                            hx-target="#contributor-form-slot"
+                            hx-swap="innerHTML"
+                            class="px-3 py-1 text-sm font-medium text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
+                        + {{ label_contributor_add }}
+                    </button>
+                    <div id="contributor-form-slot" class="mt-3"></div>
+                </div>
+                {% endif %}
             </div>
-            {% endif %}
 
             <div class="mt-6">
                 <h2 class="text-lg font-semibold text-stone-800 dark:text-stone-200">{{ label_series }}</h2>

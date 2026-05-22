@@ -104,6 +104,55 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.2}\label{sec:whats-new-1.7.2}
+
+Version 1.7.2 is a UX-completeness patch that closes two
+production-surfaced workflow gaps. \emph{No schema migration, no
+breaking changes}; routine \texttt{docker compose pull \&\& docker
+compose up -d}.
+
+\begin{itemize}
+  \item \textbf{Add / remove contributors on an existing title
+        (\#316, \#318).} The contributor block on \texttt{/title/:id}
+        was strictly read-only \string— a list of links to each
+        contributor's own page, no affordance to add a new one or
+        remove an existing one. Editing a title's authors meant
+        re-cataloging from scratch (losing manual edits) or
+        hand-editing the DB. The page now gains, for Librarian+
+        users, a \string"+ Add contributor\string" button (loads
+        the existing form inline via HTMX) plus a per-row
+        \string"Remove\string" button. The backend routes already
+        existed (\texttt{POST /catalog/contributors/add} /
+        \texttt{/remove}) since v1.0 \string— they were only wired
+        into the catalog scan flow. The contributor section is
+        now always rendered (even when empty) so the affordance
+        stays discoverable on a fresh title.
+  \item \textbf{Grid view after HTMX search: 3-4 cards per row,
+        not 1 huge (\#315, completed).} The first attempt to fix
+        the grid layout shipped in v1.7.1 was reverted (it broke
+        list mode). This release ships the proper fix: the
+        search-fragment renderer emits BOTH \texttt{.browse-cards}
+        (grid mode) AND \texttt{.browse-table-wrap > table}
+        (list mode) so the CSS toggle in
+        \texttt{static/css/browse.css} picks the right surface
+        based on the user's selected mode. Both surfaces are
+        always in the DOM after a swap; CSS hides whichever
+        isn't active.
+\end{itemize}
+
+\textbf{Known carry-overs} \string— not addressed in this release,
+tracked on GitHub:
+
+\begin{itemize}
+  \item \textbf{\#300 Volume-count mismatch} \string— silent data
+        corruption, suspected duplicate scan flow. Needs prod
+        debug-level logs over a few days to capture the offending
+        sequence.
+  \item \textbf{\#317 Audit page shows large circle-with-cross
+        icon} \string— needs a browser-side repro from the user
+        (screenshot + console errors).
+\end{itemize}
+
 \section{What's new in 1.7.1}\label{sec:whats-new-1.7.1}
 
 Version 1.7.1 is a patch release that closes the v1.7.0 \#301 gap

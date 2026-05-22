@@ -65,6 +65,14 @@ pub fn build_router(state: AppState) -> Router {
             "/catalog/contributors/form",
             axum::routing::get(catalog::contributor_form_page),
         )
+        // Fix #318 — title-detail-page entry point for the "Add
+        // contributor" form. Same template as the catalog flow but
+        // sources title_id from the URL path rather than the
+        // session's current_title_id.
+        .route(
+            "/title/{id}/contributor-form",
+            axum::routing::get(catalog::contributor_form_for_title),
+        )
         .route(
             "/catalog/contributors/search",
             axum::routing::get(catalog::contributor_search),

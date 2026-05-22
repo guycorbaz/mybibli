@@ -267,6 +267,11 @@ pagination:
   aria_label: Pagination
 title_detail:
   contributors: Contributeurs
+  # Fix #318 — affordance Ajouter / Retirer contributeur sur la page de détail du titre.
+  contributor_add: "Ajouter un contributeur"
+  contributor_remove: Retirer
+  contributor_remove_aria: "Retirer le contributeur"
+  no_contributors: "Aucun contributeur pour le moment."
   volumes: Volumes
   genre: Genre
   publisher: Éditeur

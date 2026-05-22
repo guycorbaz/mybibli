@@ -110,6 +110,58 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.2}\label{sec:whats-new-1.7.2}
+
+La version 1.7.2 est un patch de finition UX qui referme deux
+trous de workflow remontés en production. \emph{Aucune migration
+de schéma, aucune cassure} ; \texttt{docker compose pull \&\&
+docker compose up -d} habituel.
+
+\begin{itemize}
+  \item \textbf{Ajout / retrait de contributeurs sur un titre
+        existant (\#316, \#318).} Le bloc des contributeurs sur
+        \texttt{/title/:id} était strictement en lecture seule
+        \string— une liste de liens vers chaque page contributeur,
+        aucune affordance pour ajouter un nouveau ou retirer un
+        existant. Éditer les auteurs d'un titre signifiait
+        recataloguer depuis zéro (perte des modifications
+        manuelles) ou éditer la base à la main. La page gagne
+        désormais, pour les Librarian+, un bouton
+        \string"+ Ajouter un contributeur\string" (charge le
+        formulaire existant en ligne via HTMX) plus un bouton
+        \string"Retirer\string" par ligne. Les routes backend
+        existaient déjà (\texttt{POST /catalog/contributors/add} /
+        \texttt{/remove}) depuis v1.0 \string— elles n'étaient
+        câblées que dans le flux scan du catalogue. La section
+        contributeurs est désormais toujours rendue (même vide)
+        pour que l'affordance reste découvrable sur un titre
+        fraîchement créé.
+  \item \textbf{Mode grille après recherche HTMX : 3-4 cartes par
+        ligne, plus une seule géante (\#315, terminé).} La première
+        tentative de fix livrée en v1.7.1 candidat avait été
+        rétropédalée (elle cassait le mode liste). Cette version
+        livre le fix correct : le rendu du fragment de recherche
+        émet À LA FOIS \texttt{.browse-cards} (mode grille) ET
+        \texttt{.browse-table-wrap > table} (mode liste) pour
+        que la bascule CSS dans \texttt{static/css/browse.css}
+        prenne le bon mode selon le choix utilisateur. Les deux
+        surfaces sont toujours dans le DOM après un swap ; CSS
+        cache celle qui n'est pas active.
+\end{itemize}
+
+\textbf{Carry-overs connus} \string— non traités dans cette
+version, suivis sur GitHub :
+
+\begin{itemize}
+  \item \textbf{\#300 Décompte de volumes erroné} \string— corruption
+        silencieuse, suspicion d'un flow de scan dupliqué. Il faut
+        plusieurs jours de logs en niveau debug en prod pour
+        capturer la séquence fautive.
+  \item \textbf{\#317 Page audit affiche un grand cercle-avec-croix}
+        \string— besoin d'une repro côté navigateur (capture
+        d'écran + erreurs console).
+\end{itemize}
+
 \section{Nouveautés de la 1.7.1}\label{sec:whats-new-1.7.1}
 
 La version 1.7.1 est un patch qui referme la lacune du \#301 de la
