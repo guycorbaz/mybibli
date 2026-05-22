@@ -462,35 +462,29 @@ fn forms_include_csrf_token() {
                 violations.push(format!("  {}:{} — POST form without `_csrf_token` hidden input", rel_str, line));
                 continue;
             }
-            // Bonus: make sure _csrf_token is near the top of the
-            // form (within the first ~5 inputs) so the audit stays
-            // strict. Walk at most ~500 chars / 5 inputs of body.
-            let mut seen_inputs = 0usize;
-            let mut found_at: Option<usize> = None;
-            let mut cursor = 0usize;
-            while cursor < body.len().min(2000) && seen_inputs < 5 {
-                let rest = &body[cursor..];
-                let Some(m) = any_input.find(rest) else { break };
-                seen_inputs += 1;
-                let abs_start = cursor + m.start();
-                let abs_end = cursor + m.end();
-                // Read to the next `>` to inspect this input's attrs.
-                let tag_end_rel = body[abs_end..].find('>').unwrap_or(0);
-                let attrs = &body[abs_start..abs_end + tag_end_rel];
-                if csrf_token_input.is_match(attrs) {
-                    found_at = Some(seen_inputs);
-                    break;
-                }
-                cursor = abs_end + tag_end_rel + 1;
-            }
-            if found_at.is_none() {
+            // #42 — strict first-child placement. The FIRST <input> after
+            // <form method="POST"> must be _csrf_token. Anything else
+            // (hidden version, plain text input, etc.) coming before
+            // _csrf_token is a violation: a future refactor that moves
+            // the token mid-form would silently relax the contract
+            // otherwise. Inspect ONLY the first input we encounter.
+            let Some(first_m) = any_input.find(body) else {
+                // No input in this form. Pure-button POST form with
+                // no body fields — already caught above as missing
+                // CSRF, would not reach here.
+                continue;
+            };
+            let abs_end = first_m.end();
+            let tag_end_rel = body[abs_end..].find('>').unwrap_or(0);
+            let first_attrs = &body[first_m.start()..abs_end + tag_end_rel];
+            if !csrf_token_input.is_match(first_attrs) {
                 let line = 1 + content[..open.start()].matches('\n').count();
                 let rel = path.strip_prefix(&root).unwrap_or(path);
                 let rel_str = rel
                     .to_string_lossy()
                     .replace(std::path::MAIN_SEPARATOR, "/");
                 violations.push(format!(
-                    "  {}:{} — `_csrf_token` input not among the first 5 inputs of this POST form",
+                    "  {}:{} — first <input> in this POST form is NOT `_csrf_token` (strict first-child rule, #42)",
                     rel_str, line
                 ));
             }
