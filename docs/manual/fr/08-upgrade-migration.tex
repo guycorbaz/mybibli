@@ -110,6 +110,39 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.3}\label{sec:whats-new-1.7.3}
+
+La version 1.7.3 est un hotfix d'une seule correction pour une
+régression latente présente dans toutes les versions de v1.6.0 à
+v1.7.2 \string— la page \texttt{/audit} retournait un 500 dès
+qu'un volume était effectivement marqué "à contrôler" dans la
+base. \emph{Aucune migration de schéma, aucune cassure} ;
+\texttt{docker compose pull \&\& docker compose up -d} habituel.
+
+\begin{itemize}
+  \item \textbf{\#321 \string— /audit retourne 500 avec au moins
+        un volume marqué.} \texttt{src/routes/audit.rs} projette
+        \texttt{CAST(v.location\_id AS SIGNED) AS location\_id}
+        (type SQL \texttt{BIGINT}) mais le décodeur tuple typait
+        \texttt{Option<u64>} (type SQL \texttt{BIGINT UNSIGNED}).
+        sqlx 0.8 refuse l'incompatibilité \string— violation
+        manuel de \texttt{CLAUDE.md} gotcha MariaDB \#2
+        ("utiliser \texttt{Option<i64>} puis convertir"). Latent
+        depuis v1.6.0 (\#237) parce que la branche résultat-vide
+        ne décodait jamais de ligne et que la couverture E2E CI
+        ne seedait aucun volume marqué. Apparu en production le
+        2026-05-22 dès que l'utilisateur a marqué un premier
+        volume "À contrôler" sur le NAS v1.7.2. \textbf{Ferme aussi
+        \#317} \string— le mystérieux "gros cercle noir avec
+        croix" rapporté plus tôt était le glyphe d'erreur par
+        défaut du navigateur rendu sur la page 500. Nouveau test
+        d'intégration \texttt{tests/audit\_list\_non\_empty.rs}
+        seede un volume marqué + une localisation et vérifie que
+        la page rend 200 avec le label du volume + le chemin de
+        localisation \string— exactement le chemin qui crashait
+        en prod.
+\end{itemize}
+
 \section{Nouveautés de la 1.7.2}\label{sec:whats-new-1.7.2}
 
 La version 1.7.2 est un patch de finition UX qui referme deux
