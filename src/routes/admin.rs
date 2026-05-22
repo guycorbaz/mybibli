@@ -1035,11 +1035,17 @@ pub async fn admin_trash_permanent_delete_confirm(
     let entity_type_filter = params.entity_type.unwrap_or_default();
     let search_query = params.search.unwrap_or_default();
     let current_page = params.page.unwrap_or(1).max(1);
+    // Fix #78 — `version` is carried in the form body as a hidden
+    // input by the UX-DR8 modal macro (line 45 of
+    // `templates/components/modal.html`), where `Form<PermanentDeleteForm>`
+    // strictly types it. Duplicating it in the query string was
+    // defensive belt-and-suspenders from the R3-N1 introduction but
+    // becomes fragility if a future patch broadens TrashQuery to also
+    // claim `version`. Keep only filter / page state in the URL.
     let action_url = format!(
-        "/admin/trash/{}/{}/permanent-delete?version={}&entity_type={}&search={}&page={}",
+        "/admin/trash/{}/{}/permanent-delete?entity_type={}&search={}&page={}",
         crate::utils::html_escape(&table),
         id,
-        version,
         crate::utils::url_encode(&entity_type_filter),
         crate::utils::url_encode(&search_query),
         current_page,
