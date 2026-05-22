@@ -319,6 +319,79 @@ test.describe("scanner-guard — unit", () => {
     ).toBe(true);
     expect(await page.locator("#scan-field").inputValue()).toBe("");
   });
+
+  // #31 sub-item 1 — maxLength honored.
+  test("Test 9: scan burst respects maxLength on the focused modal input", async ({
+    page,
+  }) => {
+    await loadGuard(page);
+
+    await page.evaluate(() => {
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        '<input id="scan-field" type="text" />' +
+          '<dialog id="m9" open>' +
+          '<input id="m9-input" type="text" maxlength="5" />' +
+          "</dialog>",
+      );
+      document.getElementById("m9-input")!.focus();
+      window.__mybibliScannerGuardTestHooks.refreshStack();
+    });
+
+    // 10-char ISBN prefix burst into an input capped at maxlength=5 —
+    // the guard must stop forwarding once the limit is reached. Before
+    // #31's fix, .value was appended unbounded, so all 10 chars landed.
+    await page.keyboard.type("9782070360", { delay: 20 });
+
+    expect(await page.locator("#m9-input").inputValue()).toBe("97820");
+    expect(
+      await page.locator("#m9-input").inputValue().then((v) => v.length),
+    ).toBe(5);
+    expect(await page.locator("#scan-field").inputValue()).toBe("");
+  });
+
+  // #31 sub-item 1 — IME composition skipped. Synthesize a keydown with
+  // isComposing=true and assert no .value mutation occurs. The real-world
+  // race is too narrow to provoke with Playwright's IME APIs (no first-
+  // class composition simulation), so we drive the listener directly.
+  test("Test 10: scan burst skipped while IME composition is active", async ({
+    page,
+  }) => {
+    await loadGuard(page);
+
+    const valueAfter = await page.evaluate(() => {
+      document.body.insertAdjacentHTML(
+        "beforeend",
+        '<dialog id="m10" open>' +
+          '<input id="m10-input" type="text" />' +
+          "</dialog>",
+      );
+      const input = document.getElementById("m10-input") as HTMLInputElement;
+      input.focus();
+      window.__mybibliScannerGuardTestHooks.refreshStack();
+
+      // Dispatch a keydown on document, mimicking the scanner — but with
+      // isComposing=true to assert the guard early-returns. Without
+      // the fix, the .value would be set to "a".
+      const ev = new KeyboardEvent("keydown", {
+        key: "a",
+        code: "KeyA",
+        bubbles: true,
+        cancelable: true,
+        isComposing: true,
+      });
+      // KeyboardEvent's isComposing is read-only in some browsers; if it
+      // didn't take, fall back to defining it on the instance for the
+      // duration of dispatch.
+      if (!ev.isComposing) {
+        Object.defineProperty(ev, "isComposing", { value: true });
+      }
+      document.dispatchEvent(ev);
+      return input.value;
+    });
+
+    expect(valueAfter).toBe("");
+  });
 });
 
 test.describe("scanner-guard — E2E", () => {

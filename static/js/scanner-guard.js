@@ -115,10 +115,27 @@
         }
 
         if (event.key && event.key.length === 1) {
+            // #31 sub-item 1 — respect IME composition. Forwarding chars
+            // while a CJK / dead-key IME is mid-compose races with the
+            // browser's composition pipeline and corrupts the resulting
+            // text. A USB scanner burst can't realistically arrive while
+            // IME is composing (the user would have to be both typing
+            // and scanning at once), but the guard is cheap.
+            if (event.isComposing) return;
+
             if (active.isContentEditable) {
                 active.textContent = (active.textContent || "") + event.key;
             } else {
-                active.value = (active.value || "") + event.key;
+                var current = active.value || "";
+                // #31 sub-item 1 — honor maxLength so a scan burst can't
+                // accumulate beyond a declared bound (defensive: no
+                // modal input declares maxLength today, but a future
+                // type-to-confirm-with-cap form should not silently
+                // exceed its contract from a stray scan).
+                var maxAttr = active.getAttribute("maxlength");
+                var maxLen = maxAttr === null ? NaN : parseInt(maxAttr, 10);
+                if (!Number.isNaN(maxLen) && current.length >= maxLen) return;
+                active.value = current + event.key;
             }
             // Setting .value in JS does NOT auto-fire `input` — dispatch
             // explicitly so downstream validators / autocomplete / debouncers
