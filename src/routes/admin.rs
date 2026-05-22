@@ -1032,7 +1032,29 @@ pub async fn admin_trash_permanent_delete_confirm(
         instruction = crate::utils::html_escape(&confirmation_instruction),
     );
 
-    let entity_type_filter = params.entity_type.unwrap_or_default();
+    // Fix #76 — R3-N14 added `entity_type` validation against
+    // `ALLOWED_TABLES` in the panel render handler + model layer.
+    // This third entry point (R3-N1 threaded `entity_type` from the
+    // URL into the modal's POST template) was left without the same
+    // guard, so a garbage `?entity_type=invalid_table` URL parameter
+    // got passed through to the modal's POST URL — the model-layer
+    // guard then surfaced a confusing "invalid filter" warning on
+    // post-modal re-render. Validate here so the modal opens with a
+    // clean (cleared) filter and the post-action panel render
+    // doesn't have to apologise for the operator's URL typo.
+    let entity_type_filter = match params.entity_type {
+        Some(s) if !s.is_empty()
+            && !crate::services::soft_delete::ALLOWED_TABLES.contains(&s.as_str()) =>
+        {
+            tracing::warn!(
+                entity_type = %s,
+                "permanent_delete_confirm received unknown entity_type filter; clearing"
+            );
+            String::new()
+        }
+        Some(s) => s,
+        None => String::new(),
+    };
     let search_query = params.search.unwrap_or_default();
     let current_page = params.page.unwrap_or(1).max(1);
     // Fix #78 — `version` is carried in the form body as a hidden
