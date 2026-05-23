@@ -74,6 +74,41 @@ pub fn generate_csrf_token() -> String {
     crate::middleware::auth::generate_csrf_token()
 }
 
+/// Normalize a request path for exempt-route comparison so that URI variants
+/// Axum's router would dispatch to the same handler (trailing `/`, repeated
+/// `/`) also bypass CSRF.
+///
+/// Conservative scope by design:
+/// - Strip a single trailing `/` (but keep the root `/` untouched).
+/// - Collapse runs of `/` into one — e.g. `//login` → `/login`.
+///
+/// We deliberately do NOT percent-decode here. Percent-decoding raw input
+/// before pattern matching is a classic gotcha: `/login%2F..%2Fadmin` would
+/// decode to `/login/../admin`, and a downstream `..` resolver could escape
+/// the `/login` prefix. The legitimate-client cost of skipping decode is
+/// negligible (browsers and `<form action="/login">` never produce
+/// percent-encoded `/login` in practice), while the security cost of doing
+/// it wrong would be a CSRF-validation bypass on a non-login route. (#40)
+pub(crate) fn normalize_exempt_path(path: &str) -> String {
+    let mut normalized = String::with_capacity(path.len());
+    let mut prev_slash = false;
+    for c in path.chars() {
+        if c == '/' {
+            if !prev_slash {
+                normalized.push(c);
+            }
+            prev_slash = true;
+        } else {
+            normalized.push(c);
+            prev_slash = false;
+        }
+    }
+    if normalized.len() > 1 && normalized.ends_with('/') {
+        normalized.pop();
+    }
+    normalized
+}
+
 pub async fn csrf_middleware(
     State(state): State<AppState>,
     req: Request,
@@ -89,8 +124,12 @@ pub async fn csrf_middleware(
     }
 
     // Exempt-route short-circuit. Only POST /login for now — policed at
-    // the templates_audit level.
-    let path = req.uri().path().to_string();
+    // the templates_audit level. Normalize the URI path so that variants
+    // Axum's router would dispatch identically (trailing `/`, repeated `/`)
+    // also bypass — see `normalize_exempt_path` doc for the security
+    // trade-off (#40).
+    let raw_path = req.uri().path();
+    let path = normalize_exempt_path(raw_path);
     if CSRF_EXEMPT_ROUTES
         .iter()
         .any(|(m, p)| *m == method.as_str() && *p == path)
@@ -435,6 +474,60 @@ mod tests {
     fn test_csrf_exempt_routes_contains_only_login() {
         assert_eq!(CSRF_EXEMPT_ROUTES.len(), 1);
         assert_eq!(CSRF_EXEMPT_ROUTES[0], ("POST", "/login"));
+    }
+
+    /// Issue #40 — exempt-route comparison must catch variants Axum's router
+    /// would dispatch to the same handler. Without normalization, a client
+    /// posting to `/login/` or `//login` would hit the handler but be
+    /// rejected by CSRF first — the exempt-list intent broken by literal
+    /// string compare.
+    #[test]
+    fn normalize_exempt_path_strips_trailing_slash() {
+        assert_eq!(normalize_exempt_path("/login/"), "/login");
+        assert_eq!(normalize_exempt_path("/login"), "/login");
+    }
+
+    #[test]
+    fn normalize_exempt_path_collapses_repeated_slashes() {
+        assert_eq!(normalize_exempt_path("//login"), "/login");
+        assert_eq!(normalize_exempt_path("///login"), "/login");
+        assert_eq!(normalize_exempt_path("/api//v1/titles"), "/api/v1/titles");
+    }
+
+    #[test]
+    fn normalize_exempt_path_combined_variants() {
+        // `//login/` exercises both rules in one pass.
+        assert_eq!(normalize_exempt_path("//login/"), "/login");
+    }
+
+    #[test]
+    fn normalize_exempt_path_preserves_root() {
+        // Root `/` must NOT be stripped to empty — it's a valid path on its own
+        // and Axum routes `GET /` (home). The `len() > 1` guard in the helper
+        // protects against this corner case.
+        assert_eq!(normalize_exempt_path("/"), "/");
+    }
+
+    #[test]
+    fn normalize_exempt_path_does_not_decode_percent_encoding() {
+        // Security guard: percent-encoded variants must NOT be decoded — see
+        // helper doc for the `/login%2F..%2Fadmin` rationale. The matcher
+        // staying literal here is intentional, not an oversight.
+        let encoded = "/lo%67in";
+        assert_eq!(normalize_exempt_path(encoded), encoded);
+        let bypass_attempt = "/login%2F..%2Fadmin";
+        assert_eq!(normalize_exempt_path(bypass_attempt), bypass_attempt);
+    }
+
+    #[test]
+    fn normalize_exempt_path_passthrough_for_normal_paths() {
+        // Defensive: paths the router wouldn't fold (no leading/trailing oddities)
+        // must come out unchanged.
+        assert_eq!(normalize_exempt_path("/admin/users"), "/admin/users");
+        assert_eq!(
+            normalize_exempt_path("/title/42/edit"),
+            "/title/42/edit"
+        );
     }
 
     #[test]
