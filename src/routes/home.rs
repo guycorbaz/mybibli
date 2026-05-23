@@ -1405,6 +1405,27 @@ pub(crate) mod tests {
         }
     }
 
+    fn fake_search_result_full(
+        id: u64,
+        title: &str,
+        contributor: &str,
+        year: i32,
+        cover_url: &str,
+    ) -> crate::models::title::SearchResult {
+        crate::models::title::SearchResult {
+            id,
+            title: title.to_string(),
+            subtitle: Some("Le sous-titre".to_string()),
+            media_type: "book".to_string(),
+            genre_name: "Roman".to_string(),
+            primary_contributor: Some(contributor.to_string()),
+            volume_count: 1,
+            cover_image_url: Some(cover_url.to_string()),
+            publication_date: chrono::NaiveDate::from_ymd_opt(year, 6, 15),
+            dewey_code: None,
+        }
+    }
+
     /// Story 9-3 (CR #265 reshape) — build a HomeTemplate with
     /// `stats_by_genre` from a pre-built Vec of visible slices. Caller
     /// can flip `lang` post-construction for FR-formatting tests.
@@ -1713,6 +1734,45 @@ pub(crate) mod tests {
         assert!(
             section.contains("py-12"),
             "empty-state must use py-12 padding (project convention)"
+        );
+    }
+
+    /// Issue #109 — exercise the `{% if let Some(d) = item.publication_date %}`
+    /// branch in the recent-additions card template. The lean factory leaves
+    /// all three optionals `None`; without this test a future change that
+    /// broke the `Some(d)` rendering (wrong format string, missing escape)
+    /// would slip past the existing render tests.
+    #[test]
+    fn home_renders_recent_additions_with_full_metadata() {
+        let recent = vec![fake_search_result_full(
+            42,
+            "Pleine métadonnée",
+            "J. Dupont",
+            2024,
+            "/covers/cache/full-title.jpg",
+        )];
+        let template = make_test_home_template_with_recent("anonymous", recent);
+        let html = template.render().expect("render");
+        let section = recent_additions_slice(&html);
+
+        // publication_date Some-branch — `· YYYY` separator appears in the meta line.
+        assert!(
+            section.contains("· 2024"),
+            "publication_date Some-branch must render the `· YYYY` separator"
+        );
+
+        // cover_image_url Some-branch — the URL ends up in the rendered HTML
+        // (the cover macro emits an <img src="..."> when the URL is non-empty).
+        assert!(
+            section.contains("/covers/cache/full-title.jpg"),
+            "cover_image_url Some-branch must propagate the URL into the markup"
+        );
+
+        // primary_contributor Some-branch — name appears (already covered by
+        // the lean factory, but re-asserted here to keep the test self-contained).
+        assert!(
+            section.contains("J. Dupont"),
+            "primary_contributor Some-branch must render the name"
         );
     }
 

@@ -76,6 +76,9 @@ pub struct TitleDetailTemplate {
     pub label_no_cover: String,
     pub label_edit: String,
     pub label_redownload: String,
+    // Issue #335 — manual cover upload affordance below the cover image
+    // (Librarian+ only). Modal HX-loaded into `#modal-slot`.
+    pub label_upload_cover: String,
     // CR #271 — Delete-title button shown only when volume_count == 0.
     pub label_delete_title: String,
     pub has_code: bool,
@@ -191,6 +194,7 @@ pub async fn title_detail(
             label_no_cover: rust_i18n::t!("cover.no_cover", locale = loc).to_string(),
             label_edit: rust_i18n::t!("metadata.edit_metadata", locale = loc).to_string(),
             label_redownload: rust_i18n::t!("metadata.redownload", locale = loc).to_string(),
+            label_upload_cover: rust_i18n::t!("cover.upload_button", locale = loc).to_string(),
             label_delete_title: rust_i18n::t!("title.delete_title_button", locale = loc).to_string(),
             has_code,
             series_assignments,
@@ -496,6 +500,15 @@ struct TitleEditFormTemplate {
     label_age_rating: String,
     label_issue_number: String,
     label_media_type: String,
+    // Issue #331 — media_type is now editable (select). Pre-fix, the field
+    // was rendered read-only and BD scanned via ISBN stayed locked as "book".
+    label_media_type_help: String,
+    mt_book: String,
+    mt_bd: String,
+    mt_cd: String,
+    mt_dvd: String,
+    mt_magazine: String,
+    mt_report: String,
     // CR #272 — editable ISBN/ISSN/UPC fields in the metadata-edit form.
     label_identifiers: String,
     label_identifiers_help: String,
@@ -539,6 +552,17 @@ pub async fn title_edit_form(
         label_age_rating: rust_i18n::t!("metadata.field.age_rating", locale = loc).to_string(),
         label_issue_number: rust_i18n::t!("metadata.field.issue_number", locale = loc).to_string(),
         label_media_type: rust_i18n::t!("title.form.media_type", locale = loc).to_string(),
+        label_media_type_help: rust_i18n::t!(
+            "title.form.media_type_edit_help",
+            locale = loc
+        )
+        .to_string(),
+        mt_book: rust_i18n::t!("media_type.book", locale = loc).to_string(),
+        mt_bd: rust_i18n::t!("media_type.bd", locale = loc).to_string(),
+        mt_cd: rust_i18n::t!("media_type.cd", locale = loc).to_string(),
+        mt_dvd: rust_i18n::t!("media_type.dvd", locale = loc).to_string(),
+        mt_magazine: rust_i18n::t!("media_type.magazine", locale = loc).to_string(),
+        mt_report: rust_i18n::t!("media_type.report", locale = loc).to_string(),
         // CR #272 — identifier fields are editable; help text explains the
         // ISBN-13 checksum guard so the user knows why a typo'd value
         // bounces back as 400.
@@ -607,6 +631,12 @@ pub struct TitleEditForm {
     pub issn: Option<String>,
     #[serde(default)]
     pub upc: Option<String>,
+    // Issue #331 — editable media_type. Empty / absent → keep the current
+    // value (handler short-circuits). Validated against the `MediaType`
+    // enum in `crate::models::media_type::MediaType::from_str`; invalid
+    // strings bounce as 400 with i18n'd copy.
+    #[serde(default)]
+    pub media_type: Option<String>,
 }
 
 fn default_language() -> String {
@@ -761,6 +791,30 @@ pub async fn update_title(
     let old_issn = old_title.issn.clone();
     let old_upc = old_title.upc.clone();
 
+    // Issue #331 — media_type bascule (book ↔ bd ↔ cd ↔ dvd ↔ magazine ↔ report).
+    // Absent / empty form field → keep the existing value (back-compat with
+    // existing automated tests that built `TitleEditForm` without this field
+    // and with the create-and-conflict-confirm flow that doesn't touch it).
+    // A non-empty value MUST parse as a known `MediaType` variant; otherwise
+    // the user gets a localized 400 instead of a silent write of garbage.
+    let resolved_media_type = match form
+        .media_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(s) => match s.parse::<crate::models::media_type::MediaType>() {
+            Ok(mt) => mt.to_string(),
+            Err(_) => {
+                return Err(AppError::BadRequest(
+                    rust_i18n::t!("error.media_type.invalid", locale = loc).to_string(),
+                ));
+            }
+        },
+        None => old_title.media_type.clone(),
+    };
+
+
     let updated = TitleModel::update_full(
         pool,
         id,
@@ -782,8 +836,29 @@ pub async fn update_title(
         isbn.as_deref(),
         issn.as_deref(),
         upc.as_deref(),
+        &resolved_media_type,
     )
     .await?;
+
+    // Issue #331 — audit any media_type bascule so the change is forensic-
+    // visible alongside identifier edits. Skipped when the type is byte-
+    // identical to what was in the row before this PATCH.
+    if old_title.media_type != updated.media_type
+        && let Err(e) = crate::models::admin_audit::AdminAuditModel::create(
+            pool,
+            session.user_id.unwrap_or(0),
+            "title_media_type_edit",
+            Some("title"),
+            Some(id),
+            Some(serde_json::json!({
+                "before": old_title.media_type,
+                "after": updated.media_type,
+            })),
+        )
+        .await
+    {
+        tracing::warn!(error = %e, title_id = id, "Failed to log title_media_type_edit audit");
+    }
 
     // CR #272 — audit any identifier change. Skipped when the
     // identifier columns are byte-identical to what was in the row
@@ -1057,6 +1132,188 @@ pub struct MetadataConfirmForm {
     pub accept_dewey_code: Option<String>,
     #[serde(default)]
     pub accept_cover: Option<String>,
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Issue #335 — Manual cover upload
+//
+// The provider-chain cover-fetch fallback (Open Library Covers API) misses
+// most French BDs / mangas / technical books — see #333 for the prod
+// diagnostic. The manual-upload route is the safety net: a librarian can
+// pick a JPG/PNG/WebP from disk and attach it to the title. The image goes
+// through the EXACT same decode/resize/JPEG-encode pipeline as
+// provider-downloaded covers (`CoverService::process_and_save_bytes`), so
+// the on-disk artifact (`/covers/{title_id}.jpg`) is byte-compatible with
+// the rest of the catalog and re-uploads atomically replace the prior file.
+//
+// The cover URL is marked manually-edited in `manually_edited_fields` so
+// the bulk-refetch admin action (#214 / #311) does NOT clobber a librarian-
+// curated cover with a provider-downloaded one on a subsequent run.
+// ────────────────────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "fragments/cover_upload_modal.html")]
+struct CoverUploadModalTemplate {
+    title_id: u64,
+    title: String,
+    csrf_token: String,
+    label_heading: String,
+    label_intro: String,
+    label_file_picker: String,
+    label_accepted_formats: String,
+    label_max_size: String,
+    label_submit: String,
+    label_cancel: String,
+}
+
+/// GET `/title/:id/cover/upload-modal` — Librarian+. Returns the modal
+/// HTML, intended to be HX-swapped into the global `#modal-slot` declared
+/// in `layouts/base.html` by the trigger button on `/title/:id`.
+pub async fn cover_upload_modal(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    Path(id): Path<u64>,
+) -> Result<impl IntoResponse, AppError> {
+    session.require_role(crate::middleware::auth::Role::Librarian, locale.0)?;
+    let pool = &state.pool;
+    let loc = locale.0;
+
+    let title = TitleModel::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
+
+    let template = CoverUploadModalTemplate {
+        title_id: id,
+        title: title.title.clone(),
+        csrf_token: session.csrf_token.clone(),
+        label_heading: rust_i18n::t!("cover_upload.heading", locale = loc).to_string(),
+        label_intro: rust_i18n::t!("cover_upload.intro", locale = loc).to_string(),
+        label_file_picker: rust_i18n::t!("cover_upload.file_picker", locale = loc).to_string(),
+        label_accepted_formats: rust_i18n::t!("cover_upload.accepted_formats", locale = loc)
+            .to_string(),
+        label_max_size: rust_i18n::t!("cover_upload.max_size", locale = loc).to_string(),
+        label_submit: rust_i18n::t!("cover_upload.submit", locale = loc).to_string(),
+        label_cancel: rust_i18n::t!("cover_upload.cancel", locale = loc).to_string(),
+    };
+    Ok(Html(template.render().map_err(|e| AppError::Internal(e.to_string()))?))
+}
+
+/// POST `/title/:id/cover` — Librarian+. Accepts a multipart upload with
+/// a single `file` part (JPG / PNG / WebP / GIF, ≤ 10 MiB). The image is
+/// decoded, validated (magic bytes via the `image` crate — Content-Type
+/// header is NOT trusted), resized to ≤ 400 px width Lanczos3, re-encoded
+/// as JPEG 80, and saved at `/covers/{title_id}.jpg`. Atomically replaces
+/// any prior cover (provider-downloaded or manual). The `cover_image_url`
+/// is added to `manually_edited_fields` so a subsequent metadata re-fetch
+/// or bulk-refetch will NOT clobber it.
+pub async fn upload_cover(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    Path(id): Path<u64>,
+    mut multipart: axum::extract::Multipart,
+) -> Result<impl IntoResponse, AppError> {
+    session.require_role(crate::middleware::auth::Role::Librarian, locale.0)?;
+    let pool = &state.pool;
+    let loc = locale.0;
+
+    let title = TitleModel::find_by_id(pool, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
+
+    // Pull the `file` field out of the multipart stream. Other fields (like
+    // the CSRF token already validated by the middleware) are ignored.
+    let mut file_bytes: Option<axum::body::Bytes> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("multipart error: {e}")))?
+    {
+        if field.name() == Some("file") {
+            file_bytes = Some(
+                field
+                    .bytes()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("multipart bytes: {e}")))?,
+            );
+            break;
+        }
+    }
+    let bytes = file_bytes.ok_or_else(|| {
+        AppError::BadRequest(
+            rust_i18n::t!("cover_upload.error.no_file", locale = loc).to_string(),
+        )
+    })?;
+
+    // Process via the shared CoverService pipeline (magic-byte detection +
+    // resize + JPEG re-encode + atomic write to `{id}.jpg`).
+    let cover_url = crate::services::cover::CoverService::process_and_save_bytes(
+        &bytes,
+        id,
+        &state.covers_dir,
+    )
+    .await
+    .map_err(|e| match e {
+        crate::services::cover::CoverError::InvalidImage(msg) => AppError::BadRequest(format!(
+            "{}: {msg}",
+            rust_i18n::t!("cover_upload.error.invalid_image", locale = loc)
+        )),
+        crate::services::cover::CoverError::Io(msg) => AppError::Internal(msg),
+        crate::services::cover::CoverError::Network(msg) => AppError::Internal(msg),
+    })?;
+
+    // Persist the new URL + mark cover as manually-edited so future
+    // re-fetches don't overwrite it (idempotent — adding "cover_image_url"
+    // to the set when already present is a no-op).
+    let mut edited: std::collections::HashSet<String> = title
+        .parsed_manually_edited_fields()
+        .into_iter()
+        .collect();
+    edited.insert("cover_image_url".to_string());
+    let mut v: Vec<String> = edited.into_iter().collect();
+    v.sort();
+    let edited_json = serde_json::to_string(&v).unwrap_or_default();
+
+    sqlx::query(
+        "UPDATE titles SET cover_image_url = ?, manually_edited_fields = ?, \
+         version = version + 1, updated_at = NOW() \
+         WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(&cover_url)
+    .bind(&edited_json)
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    if let Err(e) = crate::models::admin_audit::AdminAuditModel::create(
+        pool,
+        session.user_id.unwrap_or(0),
+        "title_cover_upload",
+        Some("title"),
+        Some(id),
+        Some(serde_json::json!({
+            "title": title.title,
+            "size_bytes": bytes.len(),
+            "cover_url": cover_url,
+        })),
+    )
+    .await
+    {
+        tracing::warn!(error = %e, title_id = id, "Failed to log title_cover_upload audit");
+    }
+
+    // HTMX path (modal submit): emit HX-Redirect so the browser navigates
+    // back to /title/:id, the modal disappears, and the new cover renders.
+    // Direct-form fallback (no HTMX): standard 303 redirect.
+    let _ = cover_url; // already on disk; URL kept for audit completeness
+    Ok((
+        [
+            (axum::http::header::LOCATION, format!("/title/{id}")),
+            ("HX-Redirect".parse().unwrap(), format!("/title/{id}")),
+        ],
+        axum::http::StatusCode::SEE_OTHER,
+    ))
 }
 
 pub async fn confirm_metadata(
@@ -1650,6 +1907,42 @@ mod tests {
         assert_eq!(form.issue_number, None);
     }
 
+    /// Issue #331 — the edit form now carries `media_type` so users can
+    /// fix a BD that got classified as a book at scan time. Absence /
+    /// empty string must deserialize as `None` (handler then keeps the
+    /// existing value); a valid string lands in the option intact.
+    #[test]
+    fn title_edit_form_parses_media_type() {
+        // Absent → None (back-compat with create-and-conflict-confirm flow).
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1",
+        )
+        .expect("missing media_type must deserialize");
+        assert_eq!(form.media_type, None);
+
+        // Empty string → Some("") (handler treats as "keep existing").
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&media_type=",
+        )
+        .expect("empty media_type must deserialize");
+        assert_eq!(form.media_type.as_deref(), Some(""));
+
+        // Real value lands intact.
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&media_type=bd",
+        )
+        .expect("media_type=bd must deserialize");
+        assert_eq!(form.media_type.as_deref(), Some("bd"));
+
+        // Unknown value still deserializes (string is opaque to serde);
+        // the handler's `MediaType::from_str` is what rejects garbage as 400.
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&media_type=garbage",
+        )
+        .expect("any string deserializes; runtime validates");
+        assert_eq!(form.media_type.as_deref(), Some("garbage"));
+    }
+
     #[test]
     fn title_edit_form_parses_valid_numeric_fields() {
         let form: TitleEditForm = serde_urlencoded::from_str(
@@ -1742,6 +2035,7 @@ mod tests {
             label_no_cover: "No cover available".to_string(),
             label_edit: "Edit metadata".to_string(),
             label_redownload: "Re-download".to_string(),
+            label_upload_cover: "Upload cover".to_string(),
             label_delete_title: "Delete title".to_string(),
             has_code: true,
             series_assignments: vec![],
@@ -1870,6 +2164,7 @@ mod tests {
             label_no_cover: "No cover available".to_string(),
             label_edit: "Edit metadata".to_string(),
             label_redownload: "Re-download".to_string(),
+            label_upload_cover: "Upload cover".to_string(),
             label_delete_title: "Delete title".to_string(),
             has_code: false,
             series_assignments: vec![],

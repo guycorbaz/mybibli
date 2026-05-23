@@ -139,6 +139,75 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.6}\label{sec:whats-new-1.7.6}
+
+Version 1.7.6 is a focused patch with two user-visible feature fixes
+and three code-review-finding hardening commits. \emph{No schema
+migration, no breaking changes}; routine \texttt{docker compose pull
+\&\& docker compose up -d}.
+
+\textbf{User-visible:}
+
+\begin{itemize}
+  \item \textbf{\#331 \string— media type now editable on
+        \texttt{/title/:id}.} A BD or comic catalogued via its ISBN
+        used to lock as a "book" forever — the metadata edit form
+        displayed \texttt{media\_type} read-only. The edit form now
+        renders a dropdown with the six variants (\texttt{book},
+        \texttt{bd}, \texttt{cd}, \texttt{dvd}, \texttt{magazine},
+        \texttt{report}); changing it triggers an
+        \texttt{admin\_audit} entry (\texttt{title\_media\_type\_edit})
+        with the before/after pair. Useful for fixing a BD that
+        the BnF resolved as a book at scan time, or for any
+        misclassification.
+  \item \textbf{\#335 \string— manual cover upload.} The
+        provider-chain fallback (Open Library Covers API) misses
+        most French BDs, mangas, and small-publisher technical books
+        because that index is English-publishing-heavy. Click
+        \emph{Upload cover} under the cover thumbnail on
+        \texttt{/title/:id} (Librarian+) to drop a JPG / PNG / WebP /
+        GIF from disk (≤ 10\,MiB). The image goes through the exact
+        same decode/resize/JPEG-encode pipeline as provider-downloaded
+        covers, so the on-disk artifact stays byte-compatible.
+        \texttt{cover\_image\_url} is added to
+        \texttt{manually\_edited\_fields}, which makes the bulk-refetch
+        admin action \emph{skip} the manually-curated title on
+        subsequent runs — your hand-picked cover is preserved.
+\end{itemize}
+
+\textbf{Hardening (no user-visible behaviour change):}
+
+\begin{itemize}
+  \item \textbf{\#109 \string— recent-additions card test coverage.}
+        The home-page render tests previously left
+        \texttt{publication\_date} and \texttt{cover\_image\_url}
+        as \texttt{None}, never exercising the corresponding
+        \texttt{\{\% if let Some(d) = \dots \%\}} branches. A
+        wrong format string or stray tag in those branches would
+        have slipped past unit tests. A new factory
+        \texttt{fake\_search\_result\_full} and a new render test
+        close the gap.
+  \item \textbf{\#40 \string— CSRF exempt-route normalisation.}
+        The exempt-list comparison was a literal string compare;
+        \texttt{POST /login/} or \texttt{POST //login} (variants
+        Axum's router dispatches identically to \texttt{POST /login})
+        would have hit CSRF validation instead of bypassing. New
+        \texttt{normalize\_exempt\_path} helper strips trailing
+        slashes and collapses repeated slashes — percent-encoded
+        forms are intentionally \emph{not} decoded (a
+        \texttt{/login\%2F..\%2Fadmin} bypass attempt stays
+        rejected).
+  \item \textbf{\#36 \string— skip session resolver on static
+        assets.} \texttt{session\_resolve\_middleware} previously
+        walked the resolver on every request, including
+        \texttt{/static/*}, \texttt{/covers/*}, and \texttt{/logo/*}.
+        A single home-page load fanned out dozens of asset fetches,
+        each triggering a session-row read (and an anonymous-row
+        INSERT on a fresh tab). The middleware now short-circuits
+        on those prefixes alongside the existing \texttt{/health}
+        liveness-probe bypass.
+\end{itemize}
+
 \section{What's new in 1.7.5}\label{sec:whats-new-1.7.5}
 
 Version 1.7.5 is a focused patch bundling one user-visible bug fix

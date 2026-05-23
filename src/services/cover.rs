@@ -161,12 +161,37 @@ impl CoverService {
             )));
         }
 
+        Self::process_and_save_bytes(&bytes, title_id, covers_dir).await
+    }
+
+    /// Issue #335 — decode + resize + JPEG-encode + persist raw image bytes.
+    /// Factored out of [`Self::download_and_resize`] so the upload-manual
+    /// handler (`POST /title/:id/cover`) shares the EXACT same pipeline as
+    /// the provider-chain download: magic-byte format detection (the
+    /// claimed `Content-Type` / extension is ignored — the actual decoder
+    /// is the only authority), max width 400 px Lanczos3, JPEG 80, fixed
+    /// `{title_id}.jpg` filename so re-uploads atomically replace the
+    /// previous file with no orphan accumulation.
+    ///
+    /// Max input size 10 MiB (same as `MAX_COVER_SIZE` in download).
+    pub async fn process_and_save_bytes(
+        bytes: &[u8],
+        title_id: u64,
+        covers_dir: &Path,
+    ) -> Result<String, CoverError> {
+        const MAX_COVER_SIZE: usize = 10 * 1024 * 1024;
         if bytes.is_empty() {
-            return Err(CoverError::InvalidImage("Empty response body".to_string()));
+            return Err(CoverError::InvalidImage("Empty upload".to_string()));
+        }
+        if bytes.len() > MAX_COVER_SIZE {
+            return Err(CoverError::InvalidImage(format!(
+                "Image too large: {} bytes (max {MAX_COVER_SIZE})",
+                bytes.len()
+            )));
         }
 
         // Decode image (auto-detect format: JPEG, PNG, GIF, WebP, etc.)
-        let img = ImageReader::new(Cursor::new(&bytes))
+        let img = ImageReader::new(Cursor::new(bytes))
             .with_guessed_format()
             .map_err(|e| CoverError::InvalidImage(e.to_string()))?
             .decode()
@@ -439,6 +464,86 @@ mod tests {
 
         // Cleanup
         let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&temp_dir);
+    }
+
+    /// Issue #335 — `process_and_save_bytes` is the shared pipeline used
+    /// by both the provider-chain download and the manual-upload handler.
+    /// Empty input is the fast-fail case the upload handler hits when a
+    /// user submits the form with no file selected.
+    #[tokio::test]
+    async fn process_and_save_bytes_rejects_empty_input() {
+        let temp_dir = std::env::temp_dir().join("mybibli_cover_test_335_empty");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let result = CoverService::process_and_save_bytes(&[], 1, &temp_dir).await;
+        assert!(matches!(result, Err(CoverError::InvalidImage(_))));
+
+        let _ = std::fs::remove_dir(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn process_and_save_bytes_rejects_oversize_input() {
+        let temp_dir = std::env::temp_dir().join("mybibli_cover_test_335_big");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // 11 MiB of zeros — exceeds the 10 MiB cap.
+        let big = vec![0u8; 11 * 1024 * 1024];
+        let result = CoverService::process_and_save_bytes(&big, 1, &temp_dir).await;
+        match result {
+            Err(CoverError::InvalidImage(msg)) => {
+                assert!(msg.contains("too large"), "expected 'too large' got: {msg}");
+            }
+            other => panic!("expected InvalidImage(too large), got {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn process_and_save_bytes_rejects_non_image_garbage() {
+        let temp_dir = std::env::temp_dir().join("mybibli_cover_test_335_garbage");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Random bytes that aren't a valid image of any format.
+        let garbage = b"this is not an image, just some bytes";
+        let result = CoverService::process_and_save_bytes(garbage, 1, &temp_dir).await;
+        assert!(matches!(result, Err(CoverError::InvalidImage(_))));
+
+        let _ = std::fs::remove_dir(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn process_and_save_bytes_round_trips_a_real_image() {
+        // Build a 100x150 RGB image (purple), encode as PNG (the manual-
+        // upload accept-list), feed those bytes through the pipeline, and
+        // assert it lands on disk as a valid JPEG at the expected path.
+        let temp_dir = std::env::temp_dir().join("mybibli_cover_test_335_roundtrip");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let img = image::RgbImage::from_pixel(100, 150, image::Rgb([128, 0, 128]));
+        let dynamic = image::DynamicImage::ImageRgb8(img);
+        let mut png_bytes = Vec::new();
+        dynamic
+            .write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png)
+            .unwrap();
+
+        let out = CoverService::process_and_save_bytes(&png_bytes, 4242, &temp_dir)
+            .await
+            .expect("valid PNG must round-trip through the pipeline");
+        assert_eq!(out, "/covers/4242.jpg");
+
+        let on_disk = temp_dir.join("4242.jpg");
+        assert!(on_disk.exists(), "JPEG must be written to {on_disk:?}");
+        // First bytes of any JPEG are FF D8 FF.
+        let bytes = std::fs::read(&on_disk).unwrap();
+        assert!(
+            bytes.len() >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff,
+            "expected JPEG magic FF D8 FF, got {:02X?}",
+            &bytes[..3.min(bytes.len())]
+        );
+
+        let _ = std::fs::remove_file(&on_disk);
         let _ = std::fs::remove_dir(&temp_dir);
     }
 }

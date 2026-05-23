@@ -484,6 +484,7 @@ impl TitleModel {
         isbn: Option<&str>,
         issn: Option<&str>,
         upc: Option<&str>,
+        media_type: &str,
     ) -> Result<TitleModel, AppError> {
         let result = sqlx::query(
             "UPDATE titles SET title = ?, subtitle = ?, description = ?, \
@@ -493,6 +494,7 @@ impl TitleModel {
              age_rating = ?, issue_number = ?, \
              manually_edited_fields = ?, \
              isbn = ?, issn = ?, upc = ?, \
+             media_type = ?, \
              version = version + 1, updated_at = NOW() \
              WHERE id = ? AND version = ? AND deleted_at IS NULL",
         )
@@ -513,6 +515,7 @@ impl TitleModel {
         .bind(isbn)
         .bind(issn)
         .bind(upc)
+        .bind(media_type)
         .bind(id)
         .bind(version)
         .execute(pool)

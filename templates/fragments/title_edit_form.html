@@ -130,7 +130,21 @@
         </div>
         <p class="mt-2 text-xs text-stone-500 dark:text-stone-400">{{ label_identifiers_help }}</p>
     </fieldset>
-    <p class="text-xs text-stone-400">{{ label_media_type }}: {{ title.media_type }}</p>
+    <div>
+        <label for="edit-media-type" class="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1">
+            {{ label_media_type }}
+        </label>
+        <select id="edit-media-type" name="media_type"
+                class="w-full md:w-auto px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-700 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[44px] md:min-h-[36px] text-sm">
+            <option value="book" {% if title.media_type == "book" %}selected{% endif %}>{{ mt_book }}</option>
+            <option value="bd" {% if title.media_type == "bd" %}selected{% endif %}>{{ mt_bd }}</option>
+            <option value="cd" {% if title.media_type == "cd" %}selected{% endif %}>{{ mt_cd }}</option>
+            <option value="dvd" {% if title.media_type == "dvd" %}selected{% endif %}>{{ mt_dvd }}</option>
+            <option value="magazine" {% if title.media_type == "magazine" %}selected{% endif %}>{{ mt_magazine }}</option>
+            <option value="report" {% if title.media_type == "report" %}selected{% endif %}>{{ mt_report }}</option>
+        </select>
+        <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ label_media_type_help }}</p>
+    </div>
 
     <div class="flex justify-end gap-3 pt-2">
         <button type="button" id="cancel-edit"
