@@ -154,6 +154,14 @@ pub fn build_router(state: AppState) -> Router {
             axum::routing::post(titles::redownload_metadata),
         )
         .route(
+            "/title/{id}/cover/upload-modal",
+            axum::routing::get(titles::cover_upload_modal),
+        )
+        .route(
+            "/title/{id}/cover",
+            axum::routing::post(titles::upload_cover),
+        )
+        .route(
             "/title/{id}/confirm-metadata",
             axum::routing::post(titles::confirm_metadata),
         )

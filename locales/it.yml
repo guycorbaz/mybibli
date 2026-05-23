@@ -534,6 +534,19 @@ scan:
 cover:
   alt_text: "Copertina di %{title}"
   no_cover: "Copertina non disponibile"
+  upload_button: "Carica una copertina"
+cover_upload:
+  heading: "Carica un'immagine di copertina"
+  intro: "Scegli un file JPG / PNG / WebP / GIF da allegare come copertina di"
+  file_picker: "File immagine"
+  accepted_formats: "JPG, PNG, WebP, GIF"
+  max_size: "max 10 MiB"
+  submit: "Carica"
+  cancel: "Annulla"
+  error:
+    no_file: "Nessun file caricato — seleziona un'immagine."
+    invalid_image: "Il file caricato non è un'immagine valida"
+  success: "Copertina caricata con successo."
 audio:
   enable: Attiva suoni di scansione
   disable: Disattiva suoni di scansione

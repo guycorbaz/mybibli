@@ -10,7 +10,20 @@
        Distinct from #title-feedback below, which receives OOB swaps from title delete/redownload flows. #}
     <div id="feedback-list" aria-live="polite" aria-relevant="additions" class="space-y-2 mb-4"></div>
     <div class="flex flex-col md:flex-row gap-8">
-        {% call cover::cover(title.cover_image_url.as_deref().unwrap_or_default(), title.title, title.media_type, "w-[200px] h-[300px]", "eager", label_no_cover) %}{% endcall %}
+        <div class="flex flex-col items-center gap-2">
+            {% call cover::cover(title.cover_image_url.as_deref().unwrap_or_default(), title.title, title.media_type, "w-[200px] h-[300px]", "eager", label_no_cover) %}{% endcall %}
+            {# Issue #335 — manual cover upload (Librarian+). Pulls the modal
+               fragment into the global `#modal-slot` mounted by base.html. #}
+            {% if role == "librarian" || role == "admin" %}
+            <button type="button"
+                    hx-get="/title/{{ title.id }}/cover/upload-modal"
+                    hx-target="#modal-slot"
+                    hx-swap="innerHTML"
+                    class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                {{ label_upload_cover }}
+            </button>
+            {% endif %}
+        </div>
         <div class="flex-1">
             <div id="title-metadata">
                 <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ title.title }}</h1>

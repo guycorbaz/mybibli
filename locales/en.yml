@@ -545,6 +545,19 @@ scan:
 cover:
   alt_text: "Cover of %{title}"
   no_cover: "No cover available"
+  upload_button: "Upload cover"
+cover_upload:
+  heading: "Upload a cover image"
+  intro: "Pick a JPG / PNG / WebP / GIF file to attach as the cover of"
+  file_picker: "Image file"
+  accepted_formats: "JPG, PNG, WebP, GIF"
+  max_size: "max 10 MiB"
+  submit: "Upload"
+  cancel: "Cancel"
+  error:
+    no_file: "No file was uploaded — please pick an image."
+    invalid_image: "The uploaded file is not a valid image"
+  success: "Cover uploaded successfully."
 audio:
   enable: Enable scan sounds
   disable: Disable scan sounds

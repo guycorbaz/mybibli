@@ -224,6 +224,50 @@ pub async fn csrf_middleware(
         })
         .unwrap_or(false);
 
+    // Multipart bypass (issue #335) — multipart/form-data POSTs are used for
+    // file uploads where the body can be up to 10 MiB (cover image upload).
+    // Buffering that into RAM defeats `MAX_CSRF_BODY_BYTES` (1 MiB) and would
+    // 413 every upload. The CSRF token on a multipart form is ALWAYS supplied
+    // through the `X-CSRF-Token` header (HTMX `hx-post` sets it via
+    // `static/js/csrf.js`'s `htmx:configRequest` listener, reading the
+    // `<meta name="csrf-token">`). When the header is present AND the
+    // content-type is multipart, skip the body buffer and pass the body
+    // through untouched.
+    let is_multipart: bool = parts
+        .headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| {
+            s.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case("multipart/form-data")
+        })
+        .unwrap_or(false);
+
+    if is_multipart && header_token.is_some() {
+        let client_token = header_token.unwrap_or_default();
+        if !ct_eq(session.csrf_token.as_bytes(), client_token.as_bytes()) {
+            tracing::warn!(
+                method = %method,
+                path = %path,
+                reason = "csrf_token_mismatch_multipart",
+                "CSRF validation failed"
+            );
+            let locale: &str = parts
+                .extensions
+                .get::<Locale>()
+                .map(|l| l.0)
+                .unwrap_or("fr");
+            return build_rejection_response(locale, &parts, false, Some(&session));
+        }
+        // Token OK — hand the ORIGINAL body to the handler. Multipart
+        // parsing happens downstream via `axum::extract::Multipart`.
+        let req = Request::from_parts(parts, body);
+        return next.run(req).await;
+    }
+
     // Buffer body once. Needed on the form-field path (so we can parse
     // `_csrf_token` out) and on the success path (so we can hand the
     // handler the same body). For JSON / multipart we still buffer —

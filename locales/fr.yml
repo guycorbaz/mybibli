@@ -547,6 +547,19 @@ scan:
 cover:
   alt_text: "Couverture de %{title}"
   no_cover: "Pas de couverture disponible"
+  upload_button: "Téléverser une couverture"
+cover_upload:
+  heading: "Téléverser une image de couverture"
+  intro: "Choisissez un fichier JPG / PNG / WebP / GIF à attacher comme couverture de"
+  file_picker: "Fichier image"
+  accepted_formats: "JPG, PNG, WebP, GIF"
+  max_size: "max 10 Mio"
+  submit: "Téléverser"
+  cancel: "Annuler"
+  error:
+    no_file: "Aucun fichier téléversé — sélectionnez une image."
+    invalid_image: "Le fichier téléversé n'est pas une image valide"
+  success: "Couverture téléversée avec succès."
 audio:
   enable: "Activer les sons de scan"
   disable: "Désactiver les sons de scan"

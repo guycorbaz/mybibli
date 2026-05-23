@@ -544,6 +544,19 @@ scan:
 cover:
   alt_text: "Cover von %{title}"
   no_cover: "Kein Cover verfügbar"
+  upload_button: "Cover hochladen"
+cover_upload:
+  heading: "Cover hochladen"
+  intro: "Wählen Sie eine JPG / PNG / WebP / GIF-Datei als Cover für"
+  file_picker: "Bilddatei"
+  accepted_formats: "JPG, PNG, WebP, GIF"
+  max_size: "max. 10 MiB"
+  submit: "Hochladen"
+  cancel: "Abbrechen"
+  error:
+    no_file: "Keine Datei hochgeladen — bitte ein Bild auswählen."
+    invalid_image: "Die hochgeladene Datei ist kein gültiges Bild"
+  success: "Cover erfolgreich hochgeladen."
 audio:
   enable: Scan-Töne aktivieren
   disable: Scan-Töne deaktivieren

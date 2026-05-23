@@ -5,7 +5,7 @@ edition = "2024"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
-axum = "0.8.8"
+axum = { version = "0.8.8", features = ["multipart"] }
 askama = { version = "0.15.4", features = ["urlencode"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio", "mysql", "chrono", "json", "migrate"] }
 tokio = { version = "1", features = ["full"] }
