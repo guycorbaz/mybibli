@@ -128,18 +128,40 @@ fn generate_session_token() -> String {
 ///
 /// When a new anonymous session is minted, the cookie is set on the
 /// response on the way out.
+/// Paths the session resolver must NOT walk:
+///
+/// - `/health` — passive liveness probe (story 9-16). 5s polling during
+///   a connection-lost overlay; resolver work + anonymous-row mint would
+///   burn ~720 DB writes/hour per stuck tab.
+/// - `/static/*`, `/covers/*`, `/logo/*` — `ServeDir` mounts in
+///   `routes::build_router`. A single home-page load fans out dozens of
+///   asset fetches; running the resolver on each one is wasted DB
+///   bandwidth and can saturate the pool under realistic browser
+///   concurrency (issue #36).
+///
+/// Uses `csrf::normalize_exempt_path` (issue #40) so that router-equivalent
+/// variants (`//static/app.css`, `/static/`) are caught alongside the
+/// canonical forms.
+pub(crate) fn should_skip_session_resolve(uri_path: &str) -> bool {
+    let path = crate::middleware::csrf::normalize_exempt_path(uri_path);
+    if path == "/health" {
+        return true;
+    }
+    matches!(path.as_str(), "/static" | "/covers" | "/logo")
+        || path.starts_with("/static/")
+        || path.starts_with("/covers/")
+        || path.starts_with("/logo/")
+}
+
 pub async fn session_resolve_middleware(
     State(state): State<AppState>,
     mut request: Request,
     next: Next,
 ) -> Response {
-    // Story 9-16 — `/health` is a passive liveness probe used by
-    // `static/js/connection-monitor.js`'s 5s polling during a
-    // connection-lost overlay. Without this short-circuit, every poll
-    // walks the session-resolution path and may extend / mint a session
-    // row — burning ~720 DB writes per hour during an outage. The
-    // probe must be DB-side-effect-free.
-    if request.uri().path() == "/health" {
+    // Story 9-16 / Issue #36 — bypass session resolution for paths that
+    // don't need it: the `/health` liveness probe and the static-asset
+    // mounts. See `should_skip_session_resolve` doc for rationale.
+    if should_skip_session_resolve(request.uri().path()) {
         return next.run(request).await;
     }
 
@@ -404,6 +426,56 @@ mod tests {
     fn test_role_ordering() {
         assert!(Role::Anonymous < Role::Librarian);
         assert!(Role::Librarian < Role::Admin);
+    }
+
+    /// Issue #36 — session resolver must not run on static-asset fetches
+    /// (`/static`, `/covers`, `/logo`) nor on the `/health` liveness probe.
+    /// Pre-fix, a single home-page load fanned out dozens of `ServeDir` hits,
+    /// each triggering a session row read + potential anonymous-row INSERT.
+    #[test]
+    fn should_skip_session_resolve_static_assets() {
+        assert!(should_skip_session_resolve("/static/app.css"));
+        assert!(should_skip_session_resolve("/static/js/htmx.min.js"));
+        assert!(should_skip_session_resolve("/covers/cache/abc.jpg"));
+        assert!(should_skip_session_resolve("/logo/svg/mybibli-icon.svg"));
+    }
+
+    #[test]
+    fn should_skip_session_resolve_static_root() {
+        // Mount-point roots themselves — Axum's ServeDir handles a bare
+        // request to the mount root; bypass the resolver here too.
+        assert!(should_skip_session_resolve("/static"));
+        assert!(should_skip_session_resolve("/covers"));
+        assert!(should_skip_session_resolve("/logo"));
+    }
+
+    #[test]
+    fn should_skip_session_resolve_health_probe() {
+        // Story 9-16 invariant: `/health` is DB-side-effect-free.
+        assert!(should_skip_session_resolve("/health"));
+    }
+
+    #[test]
+    fn should_skip_session_resolve_handles_normalized_variants() {
+        // Issue #40 normalization composes: `//static/app.css` and
+        // `/static/app.css/` both route to the same asset and must bypass.
+        assert!(should_skip_session_resolve("//static/app.css"));
+        assert!(should_skip_session_resolve("/static/app.css/"));
+        assert!(should_skip_session_resolve("//health"));
+    }
+
+    #[test]
+    fn should_skip_session_resolve_runs_for_dynamic_routes() {
+        // Negative cases — these MUST hit the resolver (or login redirect / etc.).
+        assert!(!should_skip_session_resolve("/"));
+        assert!(!should_skip_session_resolve("/catalog"));
+        assert!(!should_skip_session_resolve("/title/42"));
+        assert!(!should_skip_session_resolve("/admin"));
+        assert!(!should_skip_session_resolve("/login"));
+        // Defense against path-prefix attacks pretending to be static.
+        assert!(!should_skip_session_resolve("/staticfoo"));
+        assert!(!should_skip_session_resolve("/static-bypass"));
+        assert!(!should_skip_session_resolve("/coverstuff"));
     }
 
     #[test]
