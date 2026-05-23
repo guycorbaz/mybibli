@@ -19,7 +19,7 @@
 
 Built for collectors who want more than a spreadsheet:
 
-- **Barcode-first cataloging.** Scan an ISBN / EAN-13 and the title resolves asynchronously through a metadata provider chain (BnF, Google Books, Open Library, MusicBrainz, OMDb, TMDB, BDGest), with cover-image download and similar-title detection.
+- **Barcode-first cataloging.** Scan an ISBN / EAN-13 and the title resolves asynchronously through a metadata provider chain (BnF, Google Books, Open Library, Library of Congress, MusicBrainz, OMDb, TMDb, BDGest), with cover-image download and similar-title detection.
 - **Multi-media support.** Books, BD/comics (with multi-position omnibus volumes), audio releases, films/series — each typed correctly and with the right metadata provider chosen automatically.
 - **Series + collection awareness.** Gap detection on series volumes, Dewey-based browsing, similar-titles section.
 - **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow.
@@ -32,7 +32,7 @@ Built for collectors who want more than a spreadsheet:
 
 ## Screenshots
 
-Live production install (`v1.7.0`, household NAS, ~88 titles cataloged):
+Live production install (`v1.7.5`, household NAS, 200+ volumes catalogued and growing):
 
 <p align="center">
   <img src="docs/screenshots/home.png" alt="mybibli home page — search bar, genre filters, dashboard counters, and a recent-additions strip with cover thumbnails." width="780">
