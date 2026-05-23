@@ -18,7 +18,7 @@
 use askama::Template;
 use axum::Extension;
 use axum::extract::{Form, OriginalUri, State};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -547,10 +547,32 @@ pub async fn save_loans_settings(
     session: Session,
     Extension(locale): Extension<Locale>,
     Form(form): Form<LoansSettingsForm>,
-) -> Result<HtmxResponse, AppError> {
+) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=system", locale.0)?;
     let loc = locale.0;
-    validate_overdue_threshold(form.overdue_threshold_days, loc)?;
+
+    // #91 — validation error must re-render the form with the user's
+    // submitted value (preserve typed input) + fresh version, plus an OOB
+    // error FeedbackEntry. Previously propagated as bare AppError::BadRequest
+    // which HTMX 2.0 drops on the floor (default 4xx responseHandling
+    // is `swap:false`). Now returns 400 + form body + HX-Trigger:
+    // validation-error so csrf.js's beforeSwap listener opts the swap in.
+    if let Err(e) = validate_overdue_threshold(form.overdue_threshold_days, loc) {
+        let error_msg = match e {
+            AppError::BadRequest(msg) => msg,
+            other => return Err(other),
+        };
+        return Ok(validation_error_response(
+            render_loans_form(
+                &session.csrf_token,
+                loc,
+                form.overdue_threshold_days,
+                form.overdue_threshold_version,
+            )?,
+            error_msg,
+        ));
+    }
+
     save_setting(
         &state.pool,
         KEY_OVERDUE_THRESHOLD,
@@ -578,7 +600,35 @@ pub async fn save_loans_settings(
             target: "feedback-list".to_string(),
             content: feedback,
         }],
-    })
+    }
+    .into_response())
+}
+
+/// #91 — build a 400 response that re-renders the form body (preserves
+/// the user's submitted value) + an OOB error FeedbackEntry. Carries
+/// `HX-Trigger: validation-error` so `static/js/csrf.js`'s `htmx:beforeSwap`
+/// listener flips `shouldSwap = true` despite HTMX 2.0's 4xx-no-swap default.
+/// Caller passes the rendered form fragment and the validation error message.
+fn validation_error_response(form_html: String, error_msg: String) -> Response {
+    use axum::http::StatusCode;
+    use axum::http::header;
+    let feedback = feedback_html_pub("error", &error_msg, "");
+    let htmx_response = HtmxResponse {
+        main: form_html,
+        oob: vec![OobUpdate {
+            target: "feedback-list".to_string(),
+            content: feedback,
+        }],
+    };
+    (
+        StatusCode::BAD_REQUEST,
+        [(
+            header::HeaderName::from_static("hx-trigger"),
+            "validation-error",
+        )],
+        htmx_response,
+    )
+        .into_response()
 }
 
 pub async fn save_provider_keys(
@@ -666,10 +716,27 @@ pub async fn save_language_settings(
     session: Session,
     Extension(locale): Extension<Locale>,
     Form(form): Form<LanguageSettingsForm>,
-) -> Result<HtmxResponse, AppError> {
+) -> Result<Response, AppError> {
     session.require_role_with_return(Role::Admin, "/admin?tab=system", locale.0)?;
     let loc = locale.0;
-    validate_default_language(&form.default_language, loc)?;
+
+    // #91 — see save_loans_settings for the rationale.
+    if let Err(e) = validate_default_language(&form.default_language, loc) {
+        let error_msg = match e {
+            AppError::BadRequest(msg) => msg,
+            other => return Err(other),
+        };
+        return Ok(validation_error_response(
+            render_language_form(
+                &session.csrf_token,
+                loc,
+                &form.default_language,
+                form.default_language_version,
+            )?,
+            error_msg,
+        ));
+    }
+
     save_setting(
         &state.pool,
         KEY_DEFAULT_LANGUAGE,
@@ -692,7 +759,8 @@ pub async fn save_language_settings(
             target: "feedback-list".to_string(),
             content: feedback,
         }],
-    })
+    }
+    .into_response())
 }
 
 // v1.5.1 fix #283 — Library valuation save handler. Two settings on
@@ -896,6 +964,10 @@ async fn apply_provider_action(
     }
 }
 
+/// #90 — thin wrapper around `services::admin_system::save_setting` that
+/// substitutes the generic version-mismatch error with a per-provider
+/// localized message so the admin sees WHICH key was stale. The SQL is
+/// otherwise identical and lives in `save_setting` — keep DRY.
 async fn run_provider_update(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
     key: &str,
@@ -904,28 +976,19 @@ async fn run_provider_update(
     provider_label: &str,
     loc: &'static str,
 ) -> Result<(), AppError> {
-    let result = sqlx::query(
-        "UPDATE settings SET setting_value = ?, version = version + 1 \
-         WHERE setting_key = ? AND version = ? AND deleted_at IS NULL",
-    )
-    .bind(new_value)
-    .bind(key)
-    .bind(expected_version)
-    .execute(&mut **tx)
-    .await?;
-    if result.rows_affected() == 0 {
-        // Per-provider 409 with the provider name interpolated so the admin
-        // sees WHICH key was stale.
-        return Err(AppError::Conflict(
-            rust_i18n::t!(
-                "error.system.provider_version_mismatch",
-                locale = loc,
-                provider = provider_label
-            )
-            .to_string(),
-        ));
-    }
-    Ok(())
+    save_setting(&mut **tx, key, new_value, expected_version)
+        .await
+        .map_err(|e| match e {
+            AppError::Conflict(_) => AppError::Conflict(
+                rust_i18n::t!(
+                    "error.system.provider_version_mismatch",
+                    locale = loc,
+                    provider = provider_label
+                )
+                .to_string(),
+            ),
+            other => other,
+        })
 }
 
 // ─── Feedback helper ──────────────────────────────────────────────

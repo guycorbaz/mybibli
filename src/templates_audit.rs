@@ -462,35 +462,29 @@ fn forms_include_csrf_token() {
                 violations.push(format!("  {}:{} — POST form without `_csrf_token` hidden input", rel_str, line));
                 continue;
             }
-            // Bonus: make sure _csrf_token is near the top of the
-            // form (within the first ~5 inputs) so the audit stays
-            // strict. Walk at most ~500 chars / 5 inputs of body.
-            let mut seen_inputs = 0usize;
-            let mut found_at: Option<usize> = None;
-            let mut cursor = 0usize;
-            while cursor < body.len().min(2000) && seen_inputs < 5 {
-                let rest = &body[cursor..];
-                let Some(m) = any_input.find(rest) else { break };
-                seen_inputs += 1;
-                let abs_start = cursor + m.start();
-                let abs_end = cursor + m.end();
-                // Read to the next `>` to inspect this input's attrs.
-                let tag_end_rel = body[abs_end..].find('>').unwrap_or(0);
-                let attrs = &body[abs_start..abs_end + tag_end_rel];
-                if csrf_token_input.is_match(attrs) {
-                    found_at = Some(seen_inputs);
-                    break;
-                }
-                cursor = abs_end + tag_end_rel + 1;
-            }
-            if found_at.is_none() {
+            // #42 — strict first-child placement. The FIRST <input> after
+            // <form method="POST"> must be _csrf_token. Anything else
+            // (hidden version, plain text input, etc.) coming before
+            // _csrf_token is a violation: a future refactor that moves
+            // the token mid-form would silently relax the contract
+            // otherwise. Inspect ONLY the first input we encounter.
+            let Some(first_m) = any_input.find(body) else {
+                // No input in this form. Pure-button POST form with
+                // no body fields — already caught above as missing
+                // CSRF, would not reach here.
+                continue;
+            };
+            let abs_end = first_m.end();
+            let tag_end_rel = body[abs_end..].find('>').unwrap_or(0);
+            let first_attrs = &body[first_m.start()..abs_end + tag_end_rel];
+            if !csrf_token_input.is_match(first_attrs) {
                 let line = 1 + content[..open.start()].matches('\n').count();
                 let rel = path.strip_prefix(&root).unwrap_or(path);
                 let rel_str = rel
                     .to_string_lossy()
                     .replace(std::path::MAIN_SEPARATOR, "/");
                 violations.push(format!(
-                    "  {}:{} — `_csrf_token` input not among the first 5 inputs of this POST form",
+                    "  {}:{} — first <input> in this POST form is NOT `_csrf_token` (strict first-child rule, #42)",
                     rel_str, line
                 ));
             }
@@ -503,6 +497,149 @@ fn forms_include_csrf_token() {
                       `<input type=\"hidden\" name=\"_csrf_token\" value=\"{{ csrf_token|e }}\">` \
                       as one of its first children. Without it, the global CSRF \
                       middleware rejects the submission with 403.\n";
+        let report = format!("{}{}", header, violations.join("\n"));
+        panic!("{report}");
+    }
+}
+
+/// #48 — companion to `forms_include_csrf_token`: scans `src/**/*.rs`
+/// for `<form method="POST">` HTML literals emitted from Rust code
+/// (`format!()`, `push_str()`, etc.) and panics if the same string
+/// region does not also contain `name="_csrf_token"` nearby. The
+/// runtime CSRF middleware would 403 a submission from such a form,
+/// but without this audit the regression surfaces only at user
+/// runtime — long after the offending change merged.
+///
+/// Skips `templates_audit.rs` itself (its own regex contains the
+/// literal `<form method=…>` for documentation/audit purposes).
+#[test]
+fn rust_emitted_post_forms_include_csrf_token() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let src = root.join("src");
+    assert!(
+        src.is_dir(),
+        "src directory not found at {}",
+        src.display()
+    );
+
+    // Match `<form` followed by attrs containing `method="POST"` in
+    // any quoting style (Rust escaped `\"POST\"`, raw `"POST"`, single
+    // quotes). Case-insensitive.
+    let form_post = Regex::new(
+        r#"(?is)<form\b[^>]*\bmethod\s*=\s*\\?["']post\\?["'][^>]*>"#,
+    )
+    .unwrap();
+    // Window — give the form ~1500 bytes to declare its CSRF hidden
+    // input. Real Rust-emitted forms are short (locations.rs:301 is
+    // ~800 bytes), so 1500 is a comfortable margin without crossing
+    // into unrelated literal regions.
+    let csrf_input = Regex::new(
+        r#"(?is)\bname\s*=\s*\\?["']_csrf_token\\?["']"#,
+    )
+    .unwrap();
+
+    let mut violations: Vec<String> = Vec::new();
+    visit(&src, &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            return;
+        }
+        // Skip the audit module itself — its source contains a
+        // documentation reference to `<form method="POST">`.
+        if path.file_name().and_then(|s| s.to_str()) == Some("templates_audit.rs") {
+            return;
+        }
+        let raw = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        for m in form_post.find_iter(&raw) {
+            // Skip matches that live in a Rust line comment (`//`).
+            // Doc comments (`///`, `//!`) frequently reference the
+            // `<form method="POST">` shape in module-level docs and
+            // would otherwise produce false positives.
+            let line_start = raw[..m.start()].rfind('\n').map(|p| p + 1).unwrap_or(0);
+            let line_prefix = &raw[line_start..m.start()];
+            if line_prefix.trim_start().starts_with("//") {
+                continue;
+            }
+            let window_end = (m.end() + 1500).min(raw.len());
+            let window = &raw[m.start()..window_end];
+            if csrf_input.is_match(window) {
+                continue;
+            }
+            let line = 1 + raw[..m.start()].matches('\n').count();
+            let rel = path.strip_prefix(&root).unwrap_or(path);
+            let rel_str = rel
+                .to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "/");
+            violations.push(format!(
+                "  {}:{} — Rust-emitted <form method=\"POST\"> without `name=\"_csrf_token\"` within the next 1500 bytes",
+                rel_str, line
+            ));
+        }
+    });
+
+    if !violations.is_empty() {
+        let header = "Rust-emitted CSRF form-input audit failed (#48):\n\
+                      Every `<form method=\"POST\">` literal in src/**/*.rs must \
+                      declare `<input type=\"hidden\" name=\"_csrf_token\" value=\"…\">` \
+                      within the same string region. Without it, the global CSRF \
+                      middleware rejects the submission with 403 at user runtime.\n";
+        let report = format!("{}{}", header, violations.join("\n"));
+        panic!("{report}");
+    }
+}
+
+/// #325 — guards against the v1.7.2 regression where a page-template
+/// referenced `hx-target="#feedback-list"` without declaring the matching
+/// `<div id="feedback-list">` slot. HTMX raises `htmx:targetError` on
+/// submission and the action silently fails from the user's POV.
+///
+/// Scoped to `templates/pages/*.html`. Components/fragments are exempt:
+/// they're rendered INTO a page that owns the slot.
+#[test]
+fn pages_using_feedback_list_target_declare_slot() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let pages_dir = root.join("templates").join("pages");
+
+    let target_re =
+        Regex::new(r#"(?is)hx-target\s*=\s*["']#feedback-list["']"#).unwrap();
+    let slot_re = Regex::new(r#"(?is)\bid\s*=\s*["']feedback-list["']"#).unwrap();
+
+    let mut violations: Vec<String> = Vec::new();
+    visit(&pages_dir, &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let raw = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let content = strip_html_comments(&raw);
+        if !target_re.is_match(&content) {
+            return;
+        }
+        if slot_re.is_match(&content) {
+            return;
+        }
+        let rel = path.strip_prefix(&root).unwrap_or(path);
+        let rel_str = rel
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/");
+        violations.push(format!(
+            "  {} — references hx-target=\"#feedback-list\" but does not declare \
+             id=\"feedback-list\"",
+            rel_str
+        ));
+    });
+
+    if !violations.is_empty() {
+        let header = "feedback-list slot audit failed (#325):\n\
+                      Every page template that uses hx-target=\"#feedback-list\" \
+                      (directly or via a button/form on that page) must declare \
+                      `<div id=\"feedback-list\">` somewhere in the page. \
+                      Without the slot, HTMX raises htmx:targetError on submission \
+                      and the action silently fails.\n";
         let report = format!("{}{}", header, violations.join("\n"));
         panic!("{report}");
     }

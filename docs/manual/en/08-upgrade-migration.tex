@@ -104,6 +104,74 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.5}\label{sec:whats-new-1.7.5}
+
+Version 1.7.5 is a focused patch bundling one user-visible bug fix
+and seven code-review-finding hardening commits. \emph{No schema
+migration, no breaking changes}; routine \texttt{docker compose
+pull \&\& docker compose up -d}.
+
+\textbf{User-visible:}
+
+\begin{itemize}
+  \item \textbf{\#325 \string— add / remove contributor silently
+        failed on \texttt{/title/:id}.} Clicking
+        \emph{+ Add contributor} on a title detail page opened the
+        form, accepted name and role, but \emph{Save} produced no
+        observable effect. Root cause: the contributor form
+        hardcodes \texttt{hx-target="\#feedback-list"}, but the
+        slot was only declared on \texttt{/catalog} and
+        \texttt{/admin} — not on \texttt{/title/:id}. The same
+        defect silently affected the contributor \emph{Remove}
+        button. Regression of the v1.7.2 fix that added the title-
+        detail flow without porting the slot. Added a
+        templates-audit guard that panics if any page references
+        \texttt{hx-target="\#feedback-list"} without declaring
+        \texttt{id="feedback-list"}.
+\end{itemize}
+
+\textbf{Hardening (no user-visible behaviour change):}
+
+\begin{itemize}
+  \item \textbf{\#91 \string— form re-render on validation
+        error.} Admin → System → Loans/Language saves return 400
+        with the form body re-rendered (preserves the typed
+        value) + an inline error feedback entry, instead of an
+        empty bare 400 that HTMX 2.0 silently dropped.
+  \item \textbf{\#42 \string— strict first-child CSRF token.}
+        The \texttt{forms\_include\_csrf\_token} audit now
+        requires \texttt{\_csrf\_token} as the very first
+        \texttt{<input>} of every POST form, not just within the
+        first five.
+  \item \textbf{\#48 \string— audit Rust HTML literals.} New
+        sibling test \texttt{rust\_emitted\_post\_forms\_include\_csrf\_token}
+        walks \texttt{src/**/*.rs} and refuses any
+        \texttt{<form method="POST">} string literal that does
+        not declare its CSRF input nearby. Locks the existing
+        \texttt{src/routes/locations.rs:301} site; any new Rust-
+        emitted form must also declare its hidden token.
+  \item \textbf{\#220 \string— JSON-object HX-Trigger.}
+        \texttt{modal\_confirm\_retarget\_guard} now tolerates the
+        HTMX JSON-object \texttt{HX-Trigger} shape in addition to
+        the comma-separated shape. Defensive: the current emitter
+        uses comma-separated.
+  \item \textbf{\#31 \string— scanner-guard pipeline respect.}
+        The scanner-guard JavaScript that forwards USB-scanner
+        bursts to a focused modal text input now honors
+        \texttt{maxLength} and skips while an IME composition is
+        active. Sub-items 3/4/5 were already closed as N/A to
+        the current modal shape.
+  \item \textbf{\#90 \string— DRY admin\_system.} The duplicated
+        optimistic-lock UPDATE SQL between \texttt{save\_setting}
+        and \texttt{run\_provider\_update} is consolidated; the
+        latter now delegates and map\_errs the conflict message
+        to interpolate the provider label.
+  \item \textbf{\#152 \string— anonymous \texttt{/series} test.}
+        Adds the missing role-gate test that locks FR95's
+        anonymous-readable contract for \texttt{/series}
+        (mirrors \texttt{/catalog} and \texttt{/locations}).
+\end{itemize}
+
 \section{What's new in 1.7.4}\label{sec:whats-new-1.7.4}
 
 Version 1.7.4 is a polish patch that ships one user-visible bug

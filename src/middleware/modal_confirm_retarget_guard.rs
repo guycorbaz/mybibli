@@ -76,13 +76,35 @@ fn request_is_modal_confirm(headers: &HeaderMap) -> bool {
     header_is_true(headers, MODAL_CONFIRM_HEADER) && header_is_true(headers, HX_REQUEST_HEADER)
 }
 
-/// True when the response carries `HX-Trigger: csrf-rejected` (literal value
-/// or comma-separated list item). Parses the header the same way
-/// `static/js/csrf.js` does so server and client stay in sync.
+/// True when the response carries `HX-Trigger: csrf-rejected` (literal value,
+/// comma-separated list item, or JSON-object key per HTMX spec). Parses the
+/// header the same way `static/js/csrf.js` does so server and client stay in
+/// sync.
+///
+/// #220 — HTMX supports two HX-Trigger header shapes:
+///
+///   1. Comma-separated event names: `HX-Trigger: csrf-rejected, foo`
+///   2. JSON object with payloads:   `HX-Trigger: {"csrf-rejected": ...}`
+///
+/// The current emitter (`src/middleware/csrf.rs:363`) uses shape #1, so the
+/// comma path is the hot path. Shape #2 support is defensive — if a future
+/// emitter switches forms, the modal-confirm retarget whitelist continues
+/// to work without a coupled change.
 fn response_has_csrf_rejected_trigger(headers: &HeaderMap) -> bool {
     let Some(value) = headers.get(TRIGGER_HEADER).and_then(|v| v.to_str().ok()) else {
         return false;
     };
+    if value.trim_start().starts_with('{')
+        && let Ok(serde_json::Value::Object(map)) =
+            serde_json::from_str::<serde_json::Value>(value)
+    {
+        return map
+            .keys()
+            .any(|k| k.eq_ignore_ascii_case("csrf-rejected"));
+    }
+    // Comma-separated path (hot path), AND fallback for malformed JSON
+    // that started with `{` — we'd rather salvage a partial match than
+    // silently drop the trigger.
     value
         .split(',')
         .map(str::trim)
@@ -207,5 +229,45 @@ mod tests {
     fn response_has_csrf_rejected_absent_is_false() {
         let h = HeaderMap::new();
         assert!(!response_has_csrf_rejected_trigger(&h));
+    }
+
+    /// #220 — JSON-object HX-Trigger shape (HTMX alternative form). The
+    /// current server emitter uses comma-separated, but parser must
+    /// tolerate JSON so a future emitter swap doesn't break the
+    /// modal-confirm retarget whitelist.
+    #[test]
+    fn response_has_csrf_rejected_json_object_value() {
+        let mut h = HeaderMap::new();
+        h.insert(TRIGGER_HEADER, header_value(r#"{"csrf-rejected":""}"#));
+        assert!(response_has_csrf_rejected_trigger(&h));
+    }
+
+    #[test]
+    fn response_has_csrf_rejected_json_object_with_payload() {
+        let mut h = HeaderMap::new();
+        h.insert(
+            TRIGGER_HEADER,
+            header_value(r#"{"csrf-rejected":{"reason":"expired"},"foo":1}"#),
+        );
+        assert!(response_has_csrf_rejected_trigger(&h));
+    }
+
+    #[test]
+    fn response_has_csrf_rejected_json_object_case_insensitive() {
+        let mut h = HeaderMap::new();
+        h.insert(TRIGGER_HEADER, header_value(r#"{"CSRF-Rejected":""}"#));
+        assert!(response_has_csrf_rejected_trigger(&h));
+    }
+
+    #[test]
+    fn response_has_csrf_rejected_malformed_json_falls_back_to_comma_split() {
+        // Looks like JSON but is not parseable — must not swallow.
+        // The comma-split heuristic still finds csrf-rejected here.
+        let mut h = HeaderMap::new();
+        h.insert(
+            TRIGGER_HEADER,
+            header_value("{not-json-but-comma-split-still-finds, csrf-rejected"),
+        );
+        assert!(response_has_csrf_rejected_trigger(&h));
     }
 }

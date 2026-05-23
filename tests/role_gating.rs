@@ -121,6 +121,24 @@ async fn anonymous_gets_200_on_locations(pool: MySqlPool) {
     );
 }
 
+/// #152 — locks FR95: `/series` is anonymous-readable. Mirrors the
+/// existing `/catalog` + `/locations` tests so a regression breaking
+/// /series anonymous access is caught directly, not indirectly via
+/// the nav-link render path.
+#[sqlx::test(migrations = "./migrations")]
+async fn anonymous_gets_200_on_series(pool: MySqlPool) {
+    let app = build_router(build_state(pool));
+    let resp = app
+        .oneshot(req(Method::GET, "/series", None))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "AC #1: /series is anonymous-readable (FR95)"
+    );
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn anonymous_loans_redirects_to_login_with_next(pool: MySqlPool) {
     let app = build_router(build_state(pool));

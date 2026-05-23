@@ -341,6 +341,73 @@ test.describe("Contributor Management", () => {
   });
 });
 
+test.describe("#325 — Add contributor from /title/:id", () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page);
+  });
+
+  test("add contributor from title detail page surfaces success feedback", async ({
+    page,
+  }) => {
+    const ISBN = specIsbn("CC", 20);
+    const NAME = `CC-TD-${Date.now()}`;
+
+    // Step 1: catalog the title via scan flow.
+    await page.goto("/catalog");
+    const scanField = page.locator("#scan-field");
+    await scanField.fill(ISBN);
+    await scanField.press("Enter");
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", {
+      timeout: 10000,
+    });
+
+    // Step 2: navigate to /title/{id} via home search.
+    await page.goto(`/?q=${ISBN}`);
+    const titleLink = page
+      .locator(
+        '#browse-results table.browse-table tbody tr td a[href^="/title/"]',
+      )
+      .first();
+    await expect(titleLink).toBeVisible({ timeout: 15000 });
+    const titleHref = (await titleLink.getAttribute("href"))!;
+    await page.goto(titleHref);
+    await page.waitForURL(/\/title\/\d+/);
+
+    // Step 3: the page must declare the #feedback-list slot — this is
+    // the regression #325 fixed. Without it, the next form submit raises
+    // htmx:targetError and the user sees nothing.
+    await expect(page.locator("#feedback-list")).toBeAttached();
+
+    // Step 4: click "+ Add contributor" → form loads into the slot.
+    const addBtn = page.getByRole("button", {
+      name: /\+\s*(add contributor|ajouter.*contributeur)/i,
+    });
+    await expect(addBtn).toBeVisible();
+    await addBtn.click();
+
+    const form = page.locator("#contributor-form-slot form");
+    await expect(form).toBeVisible({ timeout: 5000 });
+
+    // Step 5: fill name + role.
+    await form.locator("#contributor-name-input").fill(NAME);
+    const roleSelect = form.locator("#contributor-role-select");
+    await expect(roleSelect.locator("option")).not.toHaveCount(0);
+    await roleSelect.selectOption({ index: 1 });
+
+    // Step 6: submit → success FeedbackEntry must land in #feedback-list.
+    await form.locator('button[type="submit"]').click();
+    const feedback = page
+      .locator("#feedback-list .feedback-entry")
+      .filter({ hasText: NAME });
+    await expect(feedback).toBeVisible({ timeout: 5000 });
+
+    // Step 7: contributor must appear in the #contributor-list OOB swap.
+    await expect(
+      page.locator("#contributor-list").filter({ hasText: NAME }),
+    ).toBeVisible({ timeout: 5000 });
+  });
+});
+
 test.describe("Contributor accessibility", () => {
   test.beforeEach(async ({ page }) => {
     await loginAs(page);

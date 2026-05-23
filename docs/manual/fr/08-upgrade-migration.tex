@@ -110,6 +110,80 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.5}\label{sec:whats-new-1.7.5}
+
+La version 1.7.5 est un patch ciblé qui groupe un correctif visible
+utilisateur et sept commits de durcissement issus de
+code-review-findings. \emph{Aucune migration de schéma, aucune
+cassure} ; \texttt{docker compose pull \&\& docker compose up -d}
+habituel.
+
+\textbf{Visible utilisateur :}
+
+\begin{itemize}
+  \item \textbf{\#325 \string— ajout / retrait de contributeur
+        silencieusement cassé sur \texttt{/title/:id}.} Cliquer
+        sur \emph{+ Ajouter un contributeur} sur la page de
+        détail d'un titre ouvrait bien le formulaire et acceptait
+        le nom et le rôle, mais \emph{Enregistrer} ne produisait
+        aucun effet visible. Cause racine : le formulaire pointe
+        \texttt{hx-target="\#feedback-list"}, mais le slot était
+        déclaré uniquement sur \texttt{/catalog} et
+        \texttt{/admin} — pas sur \texttt{/title/:id}. Le même
+        défaut affectait silencieusement le bouton
+        \emph{Retirer}. Régression du fix v1.7.2 qui avait ajouté
+        le flux de détail sans porter le slot. Un garde-fou
+        d'audit templates panique désormais si une page référence
+        \texttt{hx-target="\#feedback-list"} sans déclarer
+        \texttt{id="feedback-list"}.
+\end{itemize}
+
+\textbf{Durcissement (aucune cassure utilisateur) :}
+
+\begin{itemize}
+  \item \textbf{\#91 \string— re-rendu du formulaire sur erreur
+        de validation.} Admin → Système → Prêts/Langue
+        retournent 400 avec le formulaire re-rendu (la valeur
+        saisie est préservée) et un retour d'erreur inline, au
+        lieu d'un 400 vide silencieusement avalé par HTMX 2.0.
+  \item \textbf{\#42 \string— jeton CSRF en premier-enfant
+        strict.} L'audit \texttt{forms\_include\_csrf\_token}
+        exige désormais \texttt{\_csrf\_token} comme tout premier
+        \texttt{<input>} de chaque formulaire POST, pas
+        seulement parmi les cinq premiers.
+  \item \textbf{\#48 \string— audit des littéraux HTML Rust.}
+        Nouveau test frère
+        \texttt{rust\_emitted\_post\_forms\_include\_csrf\_token}
+        parcourt \texttt{src/**/*.rs} et refuse tout
+        \texttt{<form method="POST">} en chaîne littérale qui ne
+        déclare pas son jeton CSRF à proximité. Verrouille le
+        site existant \texttt{src/routes/locations.rs:301} ;
+        tout nouveau formulaire émis depuis Rust devra déclarer
+        son jeton.
+  \item \textbf{\#220 \string— HX-Trigger en forme JSON.}
+        \texttt{modal\_confirm\_retarget\_guard} tolère désormais
+        la forme JSON-objet du header \texttt{HX-Trigger} en
+        plus de la forme virgule-séparée. Défensif : l'émetteur
+        actuel utilise la forme virgule.
+  \item \textbf{\#31 \string— scanner-guard respect du pipeline
+        d'entrée.} Le JavaScript scanner-guard qui transmet les
+        rafales de scanner USB vers le champ texte d'un modal
+        ouvert respecte désormais \texttt{maxLength} et passe
+        outre pendant une composition IME active. Les sous-items
+        3/4/5 étaient déjà classés N/A à la forme actuelle des
+        modaux.
+  \item \textbf{\#90 \string— DRY admin\_system.} La requête
+        UPDATE de verrou optimiste dupliquée entre
+        \texttt{save\_setting} et \texttt{run\_provider\_update}
+        est consolidée ; le second délègue désormais et
+        map\_errs le message de conflit pour interpoler le label
+        du provider.
+  \item \textbf{\#152 \string— test \texttt{/series} anonyme.}
+        Ajoute le test de garde de rôle manquant qui verrouille
+        le contrat FR95 d'accès anonyme à \texttt{/series}
+        (miroir de \texttt{/catalog} et \texttt{/locations}).
+\end{itemize}
+
 \section{Nouveautés de la 1.7.4}\label{sec:whats-new-1.7.4}
 
 La version 1.7.4 est un patch de finition qui livre un correctif

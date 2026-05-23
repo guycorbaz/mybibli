@@ -199,6 +199,37 @@ async fn save_loans_settings_rejects_zero_and_leaves_row_unchanged(pool: DbPool)
         .unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 
+    // #91 — validation-error response must:
+    //   (a) carry HX-Trigger: validation-error so csrf.js force-swaps
+    //       the form body despite HTMX 2.0's 4xx-no-swap default,
+    //   (b) include the re-rendered form (NOT just bare error text)
+    //       so the user's submitted value is preserved on screen,
+    //   (c) include the OOB error FeedbackEntry into #feedback-list.
+    let trigger_header = res
+        .headers()
+        .get("hx-trigger")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        trigger_header.contains("validation-error"),
+        "expected HX-Trigger: validation-error, got: {trigger_header:?}"
+    );
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body_str = std::str::from_utf8(&bytes).unwrap();
+    assert!(
+        body_str.contains("overdue_threshold_days"),
+        "expected re-rendered form body (overdue_threshold_days input) — got first 200 chars:\n{}",
+        &body_str[..body_str.len().min(200)]
+    );
+    assert!(
+        body_str.contains("hx-swap-oob")
+            && body_str.contains("feedback-list"),
+        "expected OOB feedback-list update — got first 200 chars:\n{}",
+        &body_str[..body_str.len().min(200)]
+    );
+
     // DB row unchanged (still default seed "30").
     let row: (String,) = sqlx::query_as(
         "SELECT setting_value FROM settings WHERE setting_key = 'overdue_loan_threshold_days'",
