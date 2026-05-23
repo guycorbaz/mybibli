@@ -46,6 +46,18 @@ Live production install (`v1.7.5`, household NAS, 140+ volumes catalogued and gr
   <em>Locations — configurable hierarchy (room → bookcase → shelf …), per-node volume counts, inline create / edit / delete.</em>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/09-audit-desktop.png" alt="mybibli shelf-audit page — list of volumes flagged for physical verification, with resolved location and V-code per row." width="780">
+  <br>
+  <em>Shelf-audit — volumes flagged "À contrôler" (single or bulk-per-shelf), sorted by location → V-code, with one-click clear per row.</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/10-admin-health-desktop.png" alt="mybibli admin Health tab — entity counts, MariaDB version, disk usage, and per-provider reachability probes." width="780">
+  <br>
+  <em>Admin &gt; Health — entity counts, MariaDB version, disk usage, and metadata-provider reachability probes refreshed every 5 minutes in the background.</em>
+</p>
+
 ## Tech stack
 
 - **Backend:** Rust 2024 edition + [Axum](https://github.com/tokio-rs/axum) 0.8
