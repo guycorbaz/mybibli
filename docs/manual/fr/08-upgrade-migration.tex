@@ -148,6 +148,76 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.6}\label{sec:whats-new-1.7.6}
+
+La version 1.7.6 est un patch ciblé : deux corrections de fonctionnalités
+visibles utilisateur et trois durcissements issus du backlog de revue de
+code. \emph{Pas de migration de schéma, pas de breaking change} ;
+\texttt{docker compose pull \&\& docker compose up -d} suffit.
+
+\textbf{Visible utilisateur :}
+
+\begin{itemize}
+  \item \textbf{\#331 \string— type de média modifiable sur
+        \texttt{/title/:id}.} Une BD ou un manga catalogué via son
+        ISBN restait verrouillé en « livre » à vie — le formulaire
+        d'édition affichait \texttt{media\_type} en lecture seule.
+        Le formulaire propose maintenant un menu déroulant avec
+        les six valeurs (\texttt{book}, \texttt{bd}, \texttt{cd},
+        \texttt{dvd}, \texttt{magazine}, \texttt{report}) ; tout
+        changement déclenche une entrée \texttt{admin\_audit}
+        (\texttt{title\_media\_type\_edit}) avec le couple
+        avant/après. Pratique pour corriger une BD que la BnF
+        a résolue comme livre au moment du scan.
+  \item \textbf{\#335 \string— téléversement manuel de couverture.}
+        Le fallback de la chaîne (Open Library Covers API) rate la
+        plupart des BDs francophones, des mangas et des livres
+        techniques de petits éditeurs : son index est centré sur le
+        marché anglophone. Cliquez \emph{Téléverser une couverture}
+        sous la vignette sur \texttt{/title/:id} (rôle
+        Bibliothécaire+) pour déposer un JPG / PNG / WebP / GIF
+        (≤ 10\,Mio). L'image passe par exactement la même chaîne
+        de décodage / redimensionnement / encodage JPEG que les
+        couvertures téléchargées par les providers ; le fichier sur
+        disque reste compatible. \texttt{cover\_image\_url} est
+        ajouté à \texttt{manually\_edited\_fields}, ce qui exclut
+        le titre de la prochaine action « Récupérer les couvertures
+        manquantes » \string— votre couverture choisie est conservée.
+\end{itemize}
+
+\textbf{Durcissement (sans changement visible) :}
+
+\begin{itemize}
+  \item \textbf{\#109 \string— couverture de test des cartes
+        « ajouts récents ».} Les tests de rendu de la page d'accueil
+        laissaient \texttt{publication\_date} et
+        \texttt{cover\_image\_url} à \texttt{None}, n'exerçant jamais
+        les branches \texttt{\{\% if let Some(d) = \dots \%\}}. Un
+        mauvais format de date ou une balise oubliée serait passé
+        inaperçu en unitaire. Nouvelle factory
+        \texttt{fake\_search\_result\_full} et nouveau test de rendu.
+  \item \textbf{\#40 \string— normalisation des routes exemptées
+        CSRF.} La comparaison contre la liste exemptée était littérale ;
+        \texttt{POST /login/} ou \texttt{POST //login} (variantes
+        que le routeur Axum dispatche identiquement vers
+        \texttt{POST /login}) passaient par la validation CSRF au
+        lieu d'être contournées. Nouvelle fonction
+        \texttt{normalize\_exempt\_path} qui retire le slash final
+        et fusionne les slashes répétés \string— les formes
+        percent-encodées ne sont volontairement \emph{pas} décodées
+        (la tentative de bypass \texttt{/login\%2F..\%2Fadmin} reste
+        rejetée).
+  \item \textbf{\#36 \string— bypass du résolveur de session sur
+        les routes statiques.} \texttt{session\_resolve\_middleware}
+        traversait le résolveur sur \emph{chaque} requête, y compris
+        \texttt{/static/*}, \texttt{/covers/*} et \texttt{/logo/*}.
+        Un seul chargement de la page d'accueil déclenchait des
+        dizaines de requêtes d'assets, chacune lisant une ligne
+        \texttt{sessions} (et insérant une ligne anonyme sur un
+        onglet vierge). Le middleware court-circuite désormais ces
+        préfixes en plus du bypass \texttt{/health} existant.
+\end{itemize}
+
 \section{Nouveautés de la 1.7.5}\label{sec:whats-new-1.7.5}
 
 La version 1.7.5 est un patch ciblé qui groupe un correctif visible
