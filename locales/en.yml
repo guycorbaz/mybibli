@@ -176,6 +176,7 @@ title:
     heading: New title
     title_label: Title
     media_type: Media type
+    media_type_edit_help: "Switch the type if the title was wrongly classified at scan time (e.g. a BD catalogued as a book because it had an ISBN)."
     genre: Genre
     language: Language
     subtitle: Subtitle
@@ -371,6 +372,7 @@ error:
     required: Genre is required
   media_type:
     required: Media type is required
+    invalid: "Invalid media type — must be one of: book, bd, cd, dvd, magazine, report"
   language:
     required: Language is required
   conflict: "This record was modified by another user. Please reload and try again."

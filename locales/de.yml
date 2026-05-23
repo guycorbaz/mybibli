@@ -176,6 +176,7 @@ title:
     heading: Neuer Titel
     title_label: Titel
     media_type: Medientyp
+    media_type_edit_help: "Ändern Sie den Typ, falls der Titel beim Scannen falsch klassifiziert wurde (z. B. ein BD, das als Buch erfasst wurde, weil es eine ISBN hatte)."
     genre: Genre
     language: Sprache
     subtitle: Untertitel
@@ -370,6 +371,7 @@ error:
     required: Genre ist erforderlich
   media_type:
     required: Medientyp ist erforderlich
+    invalid: "Ungültiger Medientyp — muss einer von sein: book, bd, cd, dvd, magazine, report"
   language:
     required: Sprache ist erforderlich
   conflict: "Dieser Datensatz wurde durch einen anderen Benutzer geändert. Bitte neu laden und erneut versuchen."

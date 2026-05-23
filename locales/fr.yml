@@ -177,6 +177,7 @@ title:
     heading: Nouveau titre
     title_label: Titre
     media_type: Type de média
+    media_type_edit_help: "Changez le type si le titre a été mal classé au moment du scan (ex. une BD enregistrée comme un livre parce qu'elle avait un ISBN)."
     genre: Genre
     language: Langue
     subtitle: Sous-titre
@@ -372,6 +373,7 @@ error:
     required: Le genre est obligatoire
   media_type:
     required: Le type de média est obligatoire
+    invalid: "Type de média invalide — doit être l'un de : book, bd, cd, dvd, magazine, report"
   language:
     required: La langue est obligatoire
   conflict: "Cet enregistrement a été modifié par un autre utilisateur. Veuillez recharger et réessayer."

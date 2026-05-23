@@ -172,6 +172,7 @@ title:
     heading: Nuovo titolo
     title_label: Titolo
     media_type: Tipo di supporto
+    media_type_edit_help: "Cambia il tipo se il titolo è stato classificato in modo errato durante la scansione (es. un BD catalogato come libro perché aveva un ISBN)."
     genre: Genere
     language: Lingua
     subtitle: Sottotitolo
@@ -364,6 +365,7 @@ error:
     required: Il genere è obbligatorio
   media_type:
     required: Il tipo di supporto è obbligatorio
+    invalid: "Tipo di supporto non valido — deve essere uno tra: book, bd, cd, dvd, magazine, report"
   language:
     required: La lingua è obbligatoria
   conflict: "Questo record è stato modificato da un altro utente. Ricarica e riprova."

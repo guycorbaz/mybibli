@@ -496,6 +496,15 @@ struct TitleEditFormTemplate {
     label_age_rating: String,
     label_issue_number: String,
     label_media_type: String,
+    // Issue #331 — media_type is now editable (select). Pre-fix, the field
+    // was rendered read-only and BD scanned via ISBN stayed locked as "book".
+    label_media_type_help: String,
+    mt_book: String,
+    mt_bd: String,
+    mt_cd: String,
+    mt_dvd: String,
+    mt_magazine: String,
+    mt_report: String,
     // CR #272 — editable ISBN/ISSN/UPC fields in the metadata-edit form.
     label_identifiers: String,
     label_identifiers_help: String,
@@ -539,6 +548,17 @@ pub async fn title_edit_form(
         label_age_rating: rust_i18n::t!("metadata.field.age_rating", locale = loc).to_string(),
         label_issue_number: rust_i18n::t!("metadata.field.issue_number", locale = loc).to_string(),
         label_media_type: rust_i18n::t!("title.form.media_type", locale = loc).to_string(),
+        label_media_type_help: rust_i18n::t!(
+            "title.form.media_type_edit_help",
+            locale = loc
+        )
+        .to_string(),
+        mt_book: rust_i18n::t!("media_type.book", locale = loc).to_string(),
+        mt_bd: rust_i18n::t!("media_type.bd", locale = loc).to_string(),
+        mt_cd: rust_i18n::t!("media_type.cd", locale = loc).to_string(),
+        mt_dvd: rust_i18n::t!("media_type.dvd", locale = loc).to_string(),
+        mt_magazine: rust_i18n::t!("media_type.magazine", locale = loc).to_string(),
+        mt_report: rust_i18n::t!("media_type.report", locale = loc).to_string(),
         // CR #272 — identifier fields are editable; help text explains the
         // ISBN-13 checksum guard so the user knows why a typo'd value
         // bounces back as 400.
@@ -607,6 +627,12 @@ pub struct TitleEditForm {
     pub issn: Option<String>,
     #[serde(default)]
     pub upc: Option<String>,
+    // Issue #331 — editable media_type. Empty / absent → keep the current
+    // value (handler short-circuits). Validated against the `MediaType`
+    // enum in `crate::models::media_type::MediaType::from_str`; invalid
+    // strings bounce as 400 with i18n'd copy.
+    #[serde(default)]
+    pub media_type: Option<String>,
 }
 
 fn default_language() -> String {
@@ -761,6 +787,30 @@ pub async fn update_title(
     let old_issn = old_title.issn.clone();
     let old_upc = old_title.upc.clone();
 
+    // Issue #331 — media_type bascule (book ↔ bd ↔ cd ↔ dvd ↔ magazine ↔ report).
+    // Absent / empty form field → keep the existing value (back-compat with
+    // existing automated tests that built `TitleEditForm` without this field
+    // and with the create-and-conflict-confirm flow that doesn't touch it).
+    // A non-empty value MUST parse as a known `MediaType` variant; otherwise
+    // the user gets a localized 400 instead of a silent write of garbage.
+    let resolved_media_type = match form
+        .media_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(s) => match s.parse::<crate::models::media_type::MediaType>() {
+            Ok(mt) => mt.to_string(),
+            Err(_) => {
+                return Err(AppError::BadRequest(
+                    rust_i18n::t!("error.media_type.invalid", locale = loc).to_string(),
+                ));
+            }
+        },
+        None => old_title.media_type.clone(),
+    };
+
+
     let updated = TitleModel::update_full(
         pool,
         id,
@@ -782,8 +832,29 @@ pub async fn update_title(
         isbn.as_deref(),
         issn.as_deref(),
         upc.as_deref(),
+        &resolved_media_type,
     )
     .await?;
+
+    // Issue #331 — audit any media_type bascule so the change is forensic-
+    // visible alongside identifier edits. Skipped when the type is byte-
+    // identical to what was in the row before this PATCH.
+    if old_title.media_type != updated.media_type
+        && let Err(e) = crate::models::admin_audit::AdminAuditModel::create(
+            pool,
+            session.user_id.unwrap_or(0),
+            "title_media_type_edit",
+            Some("title"),
+            Some(id),
+            Some(serde_json::json!({
+                "before": old_title.media_type,
+                "after": updated.media_type,
+            })),
+        )
+        .await
+    {
+        tracing::warn!(error = %e, title_id = id, "Failed to log title_media_type_edit audit");
+    }
 
     // CR #272 — audit any identifier change. Skipped when the
     // identifier columns are byte-identical to what was in the row
@@ -1648,6 +1719,42 @@ mod tests {
         )
         .expect("empty issue_number must deserialize as None");
         assert_eq!(form.issue_number, None);
+    }
+
+    /// Issue #331 — the edit form now carries `media_type` so users can
+    /// fix a BD that got classified as a book at scan time. Absence /
+    /// empty string must deserialize as `None` (handler then keeps the
+    /// existing value); a valid string lands in the option intact.
+    #[test]
+    fn title_edit_form_parses_media_type() {
+        // Absent → None (back-compat with create-and-conflict-confirm flow).
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1",
+        )
+        .expect("missing media_type must deserialize");
+        assert_eq!(form.media_type, None);
+
+        // Empty string → Some("") (handler treats as "keep existing").
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&media_type=",
+        )
+        .expect("empty media_type must deserialize");
+        assert_eq!(form.media_type.as_deref(), Some(""));
+
+        // Real value lands intact.
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&media_type=bd",
+        )
+        .expect("media_type=bd must deserialize");
+        assert_eq!(form.media_type.as_deref(), Some("bd"));
+
+        // Unknown value still deserializes (string is opaque to serde);
+        // the handler's `MediaType::from_str` is what rejects garbage as 400.
+        let form: TitleEditForm = serde_urlencoded::from_str(
+            "version=3&title=Test&genre_id=1&media_type=garbage",
+        )
+        .expect("any string deserializes; runtime validates");
+        assert_eq!(form.media_type.as_deref(), Some("garbage"));
     }
 
     #[test]
