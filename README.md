@@ -35,13 +35,13 @@ Built for collectors who want more than a spreadsheet:
 Live production install (`v1.7.5`, household NAS, 140+ volumes catalogued and growing):
 
 <p align="center">
-  <img src="docs/screenshots/home.png" alt="mybibli home page — search bar, genre filters, dashboard counters, and a recent-additions strip with cover thumbnails." width="780">
+  <img src="docs/screenshots/01-home-desktop.png" alt="mybibli home page — search bar, genre filters, dashboard counters, and a recent-additions strip with cover thumbnails." width="780">
   <br>
   <em>Home — search, genre filters, dashboard counters ("À traiter" / "Aperçu de la collection"), recent additions with cover thumbnails.</em>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/locations.png" alt="mybibli locations page — hierarchical tree of rooms, bookcases and shelves with per-node volume counts and edit/delete affordances." width="780">
+  <img src="docs/screenshots/04-locations-desktop.png" alt="mybibli locations page — hierarchical tree of rooms, bookcases and shelves with per-node volume counts and edit/delete affordances." width="780">
   <br>
   <em>Locations — configurable hierarchy (room → bookcase → shelf …), per-node volume counts, inline create / edit / delete.</em>
 </p>
