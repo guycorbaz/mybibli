@@ -32,7 +32,7 @@ Built for collectors who want more than a spreadsheet:
 
 ## Screenshots
 
-Live production install (`v1.7.5`, household NAS, 200+ volumes catalogued and growing):
+Live production install (`v1.7.5`, household NAS, 140+ volumes catalogued and growing):
 
 <p align="center">
   <img src="docs/screenshots/home.png" alt="mybibli home page — search bar, genre filters, dashboard counters, and a recent-additions strip with cover thumbnails." width="780">
