@@ -148,6 +148,78 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.7}\label{sec:whats-new-1.7.7}
+
+La version 1.7.7 est un patch « rigueur de test » qui apporte une
+amélioration visible et sept clean-ups de code-review fermant des
+patterns E2E silencieux et verrouillant des contrats de concurrence
+et de résolution de locale. \emph{Aucune migration de schéma, aucun
+breaking change}~; mise à jour de routine \texttt{docker compose
+pull \&\& docker compose up -d}.
+
+\textbf{Visible côté utilisateur~:}
+
+\begin{itemize}
+  \item \textbf{\#336 \string— vue série en cartes.} La page
+        \texttt{/series/:id} listait chaque position comme une
+        petite case colorée ne portant que le numéro de volume.
+        Désormais chaque position remplie est rendue comme une
+        carte avec la couverture en haut (ou l'icône de type média
+        par défaut si aucune couverture n'a encore été téléchargée),
+        un préfixe « Vol.\ N » en couleur accent, le titre
+        (tronqué) et le contributeur principal. Les positions
+        manquantes sont rendues comme des cartes en pointillés
+        portant aussi « Vol.\ N » pour que les collectionneurs
+        repèrent d'un coup d'œil les volumes manquants. La grille
+        est responsive (2 colonnes sur mobile jusqu'à 6 colonnes
+        sur écran très large) et préserve le contrat ARIA
+        \texttt{role="grid"} / \texttt{role="gridcell"} pour que
+        la navigation au lecteur d'écran reste identique.
+\end{itemize}
+
+\textbf{Rigueur de test (aucun changement visible) :}
+
+\begin{itemize}
+  \item \textbf{\#43 \string— helper DB-snapshot sur le rejet POST
+        contributeur.} Un nouveau helper Playwright
+        \texttt{captureEntityCounts()} prouve qu'un rejet 403/303
+        d'un POST anonyme a bien laissé la DB intacte (l'assertion
+        de status code seule pourrait laisser passer une future
+        régression où le middleware rejette avec le bon status
+        tout en laissant la mutation s'exécuter).
+  \item \textbf{\#62 \string— vraies assertions dans le spec admin
+        permanent-delete.} Le spec précédent enrobait chaque
+        assertion dans \texttt{if (tableExists) \{ \dots \}}, ne
+        testant rien silencieusement sur une DB CI vierge. La
+        réécriture seed des entités soft-deleted par-test et
+        exerce le flux « tape pour confirmer » de bout en bout.
+  \item \textbf{\#88, \#89 \string— concurrence + résolution de
+        locale dans System.} Deux branches de test manquantes
+        autour du design optimistic-locking partitionné (deux
+        lignes de réglages distinctes ne se collisionnent pas) et
+        de la chaîne de résolution de locale (Accept-Language et
+        préférence utilisateur authentifiée gagnent toutes deux
+        sur le default global).
+  \item \textbf{\#96 \string— race du premier-lancement concurrent
+        (test d'intégration).} Deux POSTs Step 1 lancés par
+        \texttt{tokio::spawn} racent le garde « premier admin » et
+        assertent qu'il n'existe exactement qu'une ligne admin
+        après — l'invariant AC13 qui était unit-testé par forme
+        mais jamais exercé bout-à-bout.
+  \item \textbf{\#119 \string— le spec dashboard seed son propre
+        volume non-rangé.} Le smoke « What needs attention »
+        ressortait silencieusement sur une DB vierge. L'indicateur
+        unshelved est désormais correctement seedé via
+        \texttt{scanTitleAndVolume()}~; l'indicateur overdue
+        nécessite de pré-dater un prêt et est suivi séparément.
+  \item \textbf{\#120 \string— contrat single-active-filter.} Deux
+        nouveaux tests de rendu verrouillent le contrat selon
+        lequel \texttt{?filter=overdue\&q=X\&sort=Y} court-circuite
+        la branche search-fragment (la liste-indicateur possède la
+        réponse~; \texttt{\#browse-results} reste dans le DOM comme
+        cible HTMX mais ne porte aucun contenu de recherche).
+\end{itemize}
+
 \section{Nouveautés de la 1.7.6}\label{sec:whats-new-1.7.6}
 
 La version 1.7.6 est un patch ciblé : deux corrections de fonctionnalités
