@@ -233,4 +233,111 @@ test.describe("Story 8-5 — Admin System Settings", () => {
     const location = resp.headers()["location"];
     expect(location).toMatch(/^\/login\?next=/);
   });
+
+  // CR #88 — Story 8-5 subtask 8.5 was prematurely checked off and
+  // reverted in code review; this E2E was never written. Validates
+  // **AC #6**: the partitioned optimistic-locking design (one `version`
+  // column PER settings row) means concurrent admin edits to DIFFERENT
+  // settings rows MUST NOT collide. A whole-table lock would have
+  // bounced one of them with 409 "modified by another admin"; a
+  // per-row lock lets both succeed.
+  test("cross-row concurrent edits to different settings don't collide (AC #6)", async ({
+    browser,
+  }) => {
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+
+    try {
+      await loginAs(pageA, "admin");
+      await loginAs(pageB, "admin");
+
+      await pageA.goto("/admin?tab=system");
+      await pageB.goto("/admin?tab=system");
+
+      // Context A: queue the loans-form change (overdue threshold row)
+      const thresholdInput = pageA.locator(
+        'form#admin-system-loans-form input[name="overdue_threshold_days"]',
+      );
+      await expect(thresholdInput).toBeVisible();
+      await thresholdInput.fill("21");
+
+      // Context B: queue the providers-form change (Google Books key row)
+      const newKey = uniqueSlug("CR88_AAAA");
+      const gbInput = pageB.locator(
+        'form#admin-system-providers-form input[name="google_books_api_key"]',
+      );
+      await expect(gbInput).toBeVisible();
+      await gbInput.fill(newKey);
+
+      // Submit both nearly concurrently. Promise.all guarantees the two
+      // POSTs are dispatched before either resolves — a serialized
+      // whole-table lock would bounce one of them with 409.
+      await Promise.all([
+        pageA
+          .locator('form#admin-system-loans-form button[type="submit"]')
+          .click(),
+        pageB
+          .locator('form#admin-system-providers-form button[type="submit"]')
+          .click(),
+      ]);
+
+      // Both success feedbacks visible — proves neither was rejected
+      // with 409 / "modified by another admin".
+      await expect(
+        pageA
+          .locator("#feedback-list")
+          .getByText(/Loans settings saved|Préférences de prêt enregistrées/i),
+      ).toBeVisible({ timeout: 10000 });
+      await expect(
+        pageB
+          .locator("#feedback-list")
+          .getByText(/Google Books key saved|Clé Google Books enregistrée/i),
+      ).toBeVisible({ timeout: 10000 });
+
+      // Persistence proof — reload each context and verify the value
+      // (or mask, for the Google Books key) survived.
+      await pageA.goto("/admin?tab=system");
+      await expect(thresholdInput).toHaveValue("21");
+
+      await pageB.goto("/admin?tab=system");
+      const last4 = newKey.slice(-4);
+      await expect(
+        pageB
+          .locator("form#admin-system-providers-form")
+          .getByText(new RegExp(`••••${last4}`)),
+      ).toBeVisible();
+
+      // Reset both rows to keep cross-test isolation (loans → 30 days,
+      // Google Books key → cleared via the checkbox).
+      await thresholdInput.fill("30");
+      await pageA
+        .locator('form#admin-system-loans-form button[type="submit"]')
+        .click();
+      await expect(
+        pageA
+          .locator("#feedback-list")
+          .getByText(/Loans settings saved|Préférences de prêt enregistrées/i)
+          .last(),
+      ).toBeVisible({ timeout: 10000 });
+
+      await pageB
+        .locator(
+          'form#admin-system-providers-form input[name="_clear_google_books"]',
+        )
+        .check();
+      await pageB
+        .locator('form#admin-system-providers-form button[type="submit"]')
+        .click();
+      await expect(
+        pageB
+          .locator("#feedback-list")
+          .getByText(/Google Books key cleared|Clé Google Books effacée/i),
+      ).toBeVisible({ timeout: 10000 });
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+    }
+  });
 });
