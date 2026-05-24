@@ -52,3 +52,9 @@ static/css/output.css
 # Tailwind build (root level, not tests/)
 /package.json
 .claude/scheduled_tasks.lock
+
+# Marketing — drafts, ideas, channel notes, outreach trackers.
+# Intentionally local-only per memory [[feedback-marketing-drafts-stay-local]];
+# any published material lands on the project's public surfaces (README,
+# website, manual) via a regular PR, not from inside this directory.
+/marketing/
