@@ -139,6 +139,72 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.7}\label{sec:whats-new-1.7.7}
+
+Version 1.7.7 is a test-rigor patch bundling one user-visible
+enhancement and seven code-review-finding clean-ups closing
+silent-no-op E2E patterns and locking concurrency / locale-resolution
+contracts. \emph{No schema migration, no breaking changes}; routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\textbf{User-visible:}
+
+\begin{itemize}
+  \item \textbf{\#336 \string— series detail card layout.} The
+        \texttt{/series/:id} page used to list each position as a
+        compact coloured cell that only carried the volume number.
+        Now every filled position renders as a card with the cover
+        thumbnail at top (or the media-type icon fallback when no
+        cover has been downloaded), a "Vol.\ N" prefix in the
+        accent color, the title (truncated), and the primary
+        contributor. Missing positions render as dashed-border gap
+        cards that still carry the "Vol.\ N" so collectors see at a
+        glance which slots are still gaps. The grid is responsive
+        (2 columns on mobile scaling to 6 columns on extra-wide
+        screens) and preserves the ARIA \texttt{role="grid"} /
+        \texttt{role="gridcell"} contract so screen-reader navigation
+        is unchanged.
+\end{itemize}
+
+\textbf{Test rigor (no user-visible behaviour change):}
+
+\begin{itemize}
+  \item \textbf{\#43 \string— DB-snapshot helper on contributor POST
+        rejection.} A new \texttt{captureEntityCounts()} Playwright
+        helper proves that an anonymous-POST 403/303 rejection left
+        the DB untouched (status-code assertion alone could miss a
+        future regression where the middleware rejects with the
+        right status while the mutation also fires).
+  \item \textbf{\#62 \string— real assertions in the admin permanent-
+        delete spec.} The previous spec wrapped every assertion in
+        \texttt{if (tableExists) \{ \dots \}}, silently no-op'ing
+        on a clean CI DB. The rewrite seeds soft-deleted entities
+        per-test and exercises the full type-to-confirm friction.
+  \item \textbf{\#88, \#89 \string— admin system settings concurrency
+        + locale resolution.} Two missing test branches around the
+        partitioned optimistic-locking design (different settings
+        rows don't collide) and the locale-resolution chain
+        (Accept-Language and authenticated user preference both
+        win over the global default).
+  \item \textbf{\#96 \string— concurrent first-launch race
+        (integration test).} Two \texttt{tokio::spawn} Step 1 POSTs
+        race the first-admin guard and assert exactly one admin row
+        afterwards — the AC13 invariant that was unit-tested by
+        shape but never exercised end-to-end.
+  \item \textbf{\#119 \string— dashboard indicator E2E seeds its own
+        unshelved volume.} The "What needs attention" smoke used to
+        early-return on a clean DB. The unshelved indicator is now
+        properly seeded via \texttt{scanTitleAndVolume()}; the
+        overdue indicator requires backdating a loan timestamp and
+        is tracked separately as a follow-up.
+  \item \textbf{\#120 \string— single-active-filter contract.} Two
+        new render unit tests lock the contract that
+        \texttt{?filter=overdue\&q=X\&sort=Y} short-circuits the
+        search-fragment branch (the indicator-list owns the
+        response; \texttt{\#browse-results} stays in the DOM as the
+        HTMX target but carries no search content).
+\end{itemize}
+
 \section{What's new in 1.7.6}\label{sec:whats-new-1.7.6}
 
 Version 1.7.6 is a focused patch with two user-visible feature fixes
