@@ -255,6 +255,105 @@ async fn step_1_rejects_short_password(pool: DbPool) {
     assert_eq!(count.0, 0, "no active admin row after rejected Step 1");
 }
 
+/// CR #96 — AC13 concurrent first-launch race. Two browsers race
+/// through Step 1 with the SAME username; the in-tx COUNT-and-INSERT
+/// guard (defense-in-depth) AND the underlying `uq_users_username`
+/// constraint (the actual enforcement) together must produce exactly
+/// one admin row.
+///
+/// Different-username races (where both browsers happen to pick
+/// non-colliding names) are NOT covered here — under MariaDB
+/// REPEATABLE READ both COUNTs see the pre-INSERT snapshot, both
+/// INSERTs succeed on distinct usernames, and the COUNT guard is
+/// circumvented. That's a known scope limitation of the explicit
+/// guard; the underlying correctness comes from the UNIQUE
+/// constraint which only catches identical names.
+///
+/// `#[sqlx::test]` provisions a multi-connection pool (default 10),
+/// so `tokio::spawn` × 2 against `router.clone()` exercises true
+/// concurrent execution.
+#[sqlx::test(migrations = "./migrations")]
+async fn step_1_concurrent_same_username_produces_one_admin(pool: DbPool) {
+    ensure_no_admin(&pool).await;
+    let router = app(state_with_pool(pool.clone()));
+
+    // Each "browser" needs its own anonymous session + CSRF — the
+    // sessions are minted sequentially because session-resolve
+    // middleware writes to `sessions` and we want both rows landed
+    // before the race begins.
+    let (cookie_a, csrf_a) = anonymous_session(&router, &pool).await;
+    let (cookie_b, csrf_b) = anonymous_session(&router, &pool).await;
+    assert_ne!(cookie_a, cookie_b, "browsers must hold distinct sessions");
+
+    let body_a = format!(
+        "_csrf_token={csrf_a}&username=race_admin&password=race_pass_8chars&_back=0"
+    );
+    let body_b = format!(
+        "_csrf_token={csrf_b}&username=race_admin&password=race_pass_8chars&_back=0"
+    );
+
+    let router_a = router.clone();
+    let router_b = router.clone();
+    let handle_a = tokio::spawn(async move {
+        router_a
+            .oneshot(
+                Request::post("/setup/step-1")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .header("cookie", &cookie_a)
+                    .body(Body::from(body_a))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    });
+    let handle_b = tokio::spawn(async move {
+        router_b
+            .oneshot(
+                Request::post("/setup/step-1")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .header("cookie", &cookie_b)
+                    .body(Body::from(body_b))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    });
+    let (res_a, res_b) = (handle_a.await.unwrap(), handle_b.await.unwrap());
+
+    // Exactly ONE 303 winner. The other is either:
+    //   - 409 from `username_taken` when both txs raced past the COUNT
+    //     and the UNIQUE caught the second INSERT, OR
+    //   - 303 from `admin_already_created` when the second tx began
+    //     AFTER the first committed (count = 1 → ROLLBACK + flash).
+    // We tolerate both loser shapes; what matters is the row count.
+    let statuses = [res_a.status(), res_b.status()];
+    let count_303 = statuses.iter().filter(|s| **s == StatusCode::SEE_OTHER).count();
+    let count_409 = statuses.iter().filter(|s| **s == StatusCode::CONFLICT).count();
+    assert!(
+        count_303 >= 1,
+        "at least one Step 1 POST must be the 303 winner; got {statuses:?}"
+    );
+    assert_eq!(
+        count_303 + count_409,
+        2,
+        "both responses must be 303 or 409; got {statuses:?}"
+    );
+
+    // The AC13 invariant: regardless of which loser shape fired,
+    // exactly ONE active admin row exists.
+    let count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM users \
+         WHERE role = 'admin' AND active = TRUE AND deleted_at IS NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        count.0, 1,
+        "AC13: exactly one admin row after concurrent Step 1 race"
+    );
+}
+
 /// AC8 — once `setup_completed_at` is written, GET /setup returns 404.
 #[sqlx::test(migrations = "./migrations")]
 async fn setup_returns_404_after_completion(pool: DbPool) {
