@@ -1,0 +1,13 @@
+# mybibli — https://guycorbaz.github.io/mybibli/
+#
+# Note: this file lives at the project Pages subpath. Google honors robots.txt
+# only at the root of the host, which we do not control on guycorbaz.github.io.
+# Per-page <meta name="robots" content="index, follow"> tags are the canonical
+# signal for project Pages and are honored by all major crawlers.
+#
+# This file is kept as a best-effort signal of intent + sitemap pointer.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://guycorbaz.github.io/mybibli/sitemap.xml
