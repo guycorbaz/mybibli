@@ -327,6 +327,10 @@ series:
   assigned: "Assigned to %{series} at position %{position}."
   unassigned: "Removed from series."
   missing_volume: "Missing volume #"
+  # CR #336 — short prefix for the volume number on series-detail cards
+  # (e.g. "Vol. 3"). Stays untranslated in DE/IT below because "Vol." is
+  # a borrowed abbreviation in those languages too.
+  volume_short: "Vol."
   ongoing: "ongoing, last known: #%{position}"
   no_assignments: "Not assigned to any series."
   sort:

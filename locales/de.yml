@@ -327,6 +327,7 @@ series:
   assigned: "%{series} auf Position %{position} zugeordnet."
   unassigned: "Aus der Serie entfernt."
   missing_volume: "Fehlendes Exemplar Nr."
+  volume_short: "Bd."
   ongoing: "laufend, zuletzt bekannt: Nr. %{position}"
   no_assignments: "Keiner Serie zugeordnet."
   sort:

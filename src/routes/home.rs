@@ -2337,6 +2337,95 @@ pub(crate) mod tests {
         assert!(html.contains("href=\"/title/2\""));
     }
 
+    // CR #120 — AC5 single-active-filter contract: when `?filter=overdue`
+    // (or `?filter=unshelved`) is active, concurrent `?q=X&sort=Y` params
+    // are ignored — the indicator-list slot drives the response and the
+    // legacy search-fragment branch short-circuits. The handler enforces
+    // this by setting `query = String::new()` and `has_filter = false`
+    // when an indicator filter is active (see home.rs:376-379), which
+    // keeps `results = None`. These tests lock the symptom at the
+    // template layer: when `results = None` and the indicator is active,
+    // #browse-results renders only its empty shell — no `.browse-table`
+    // and no `.title-card` content — and #recent-additions does not
+    // coexist with the indicator list. A future handler regression that
+    // accidentally populates `results` would fire these.
+    #[test]
+    fn home_overdue_filter_active_with_concurrent_query_does_not_render_search_results() {
+        let mut t = make_test_home_template_with_counts("librarian", true, 10, 20, 5);
+        t.overdue_filter_active = true;
+        t.overdue_loans = vec![fake_loan_with_details(
+            1, "Alice", "V0001", "Sample Title", 35,
+        )];
+        // Simulate the post-handler state on `?filter=overdue&q=foo&sort=date`:
+        // handler cleared query, never ran search → results stays None.
+        t.query = String::new();
+        t.active_filter = String::new();
+        t.results = None;
+
+        let html = t.render().expect("render");
+
+        // Indicator path is the one that wins.
+        assert!(
+            html.contains("id=\"overdue-list\""),
+            "AC5: overdue-list must render when filter is active"
+        );
+        assert!(html.contains("Alice"));
+        assert!(html.contains("V0001"));
+        assert!(html.contains("Sample Title"));
+
+        // 3-way mutual exclusion guard.
+        assert!(
+            !html.contains("id=\"recent-additions\""),
+            "AC5: recent-additions MUST NOT coexist with overdue-list"
+        );
+
+        // AC5 short-circuit lock: #browse-results stays in the DOM (it's
+        // the HTMX swap target), but NO search-content children render.
+        assert!(
+            html.contains("id=\"browse-results\""),
+            "browse-results shell stays in DOM (HTMX target)"
+        );
+        assert!(
+            !html.contains("class=\"browse-table\""),
+            "AC5: no .browse-table when overdue filter is active (results=None)"
+        );
+        assert!(
+            !html.contains("class=\"title-card\""),
+            "AC5: no .title-card when overdue filter is active (results=None)"
+        );
+    }
+
+    #[test]
+    fn home_unshelved_filter_active_with_concurrent_query_does_not_render_search_results() {
+        // Symmetric of the overdue test above — same AC5 contract,
+        // unshelved branch.
+        let tags = vec![fake_indicator_tag("Unshelved volumes", 1, "unshelved", true)];
+        let mut t = make_test_home_template_with_indicators(
+            "librarian",
+            tags,
+            true,
+            vec![fake_unshelved_row(101, "V8001", 1, "Sample Title", "Sample Author")],
+        );
+        t.query = String::new();
+        t.active_filter = String::new();
+        t.results = None;
+
+        let html = t.render().expect("render");
+
+        assert!(html.contains("id=\"unshelved-list\""));
+        assert!(html.contains("V8001"));
+        assert!(!html.contains("id=\"recent-additions\""));
+        assert!(html.contains("id=\"browse-results\""));
+        assert!(
+            !html.contains("class=\"browse-table\""),
+            "AC5: no .browse-table when unshelved filter is active"
+        );
+        assert!(
+            !html.contains("class=\"title-card\""),
+            "AC5: no .title-card when unshelved filter is active"
+        );
+    }
+
     /// AC6 defensive empty-state: `unshelved_filter_active=true` AND
     /// `unshelved_volumes.is_empty()` (count > 0 but a race emptied the
     /// list) renders the inline empty-state copy inside `#unshelved-list`,

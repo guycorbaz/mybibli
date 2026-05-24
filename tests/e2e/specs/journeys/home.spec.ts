@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { specIsbn } from "../../helpers/isbn";
+import { scanTitleAndVolume } from "../../helpers/loans";
 
 test.describe("Home page", () => {
   test("should display mybibli title", async ({ page }) => {
@@ -181,18 +183,22 @@ test.describe("Home page — What needs attention / Unshelved indicator", () => 
     page,
   }) => {
     await loginAs(page, "librarian");
+
+    // CR #119 — seed an unshelved volume INSIDE the test (catalog scan
+    // creates a volume with NULL location_id, which IS unshelved by AC3
+    // definition). Without this seed, the original test silently
+    // no-op'd on a clean CI DB and a regression breaking the
+    // #unshelved-list rendering would NOT be caught (Foundation Rule
+    // #7 violation).
+    const isbn = specIsbn("UH", 1);
+    // 4-digit V-code unique per test run; helper expects `V` prefix.
+    const vcode = `V${(Date.now() % 9000 + 1000).toString()}`;
+    await scanTitleAndVolume(page, isbn, vcode);
+
     await page.goto("/");
 
     const section = page.locator("#what-needs-attention");
-    const sectionCount = await section.count();
-    if (sectionCount === 0) {
-      // Seed DB has zero unshelved volumes — section is hidden by AC3
-      // zero-count rule. Same defensive empty-DB short-circuit pattern
-      // as 9-2/9-3 E2E tests.
-      return;
-    }
-
-    await expect(section).toBeVisible();
+    await expect(section).toBeVisible({ timeout: 5000 });
     await expect(section.getByRole("heading", { level: 2 })).toContainText(
       /What needs attention|À traiter/i,
     );
@@ -243,15 +249,25 @@ test.describe("Home page — Overdue loans indicator", () => {
     await loginAs(page, "librarian");
     await page.goto("/");
 
-    // Conditional empty-DB short-circuit — same defensive pattern as
-    // the 9-4 unshelved smoke test. Seed DB may or may not contain
-    // overdue loans depending on fixture freshness.
+    // CR #119 — Foundation Rule #7 partial fix. The unshelved indicator
+    // (9-4) is now properly seeded above via scanTitleAndVolume. The
+    // overdue indicator requires backdating `loans.loaned_at` past the
+    // overdue threshold (default 30 days) — UI-only seeding cannot
+    // travel time, and the test DB does not expose port 3306 for
+    // direct SQL. Properly closing this gap needs either:
+    //   (a) a TEST_MODE-gated POST /debug/seed-overdue-loan endpoint, or
+    //   (b) port-exposing the test DB + a mysql2 npm dep.
+    // Both expand scope beyond the v1.7.7 test-rigor bundle; tracking
+    // separately as a follow-up. Until then, this test runs an
+    // assertion path only when seeded data happens to exist (skipped
+    // explicitly via test.skip on empty so the CI report shows the
+    // gap, not a silent green).
     const tag = page.locator("#filter-tag-overdue");
     const tagCount = await tag.count();
-    if (tagCount === 0) {
-      // No overdue loans seeded — AC3 zero-count rule hides the tag.
-      return;
-    }
+    test.skip(
+      tagCount === 0,
+      "Overdue-loan seeding requires TEST_MODE endpoint or DB exposure — tracked as follow-up to #119.",
+    );
 
     await expect(tag).toBeVisible();
     // Default state — href targets the indicator filter URL.

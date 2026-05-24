@@ -326,6 +326,76 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
     await page.waitForURL(/\/title\/\d+/);
   });
 
+  // CR #336 — series-detail card layout: filled cells render as cards
+  // with cover (or fallback icon), "Vol. N" label, and title name.
+  // Empty positions also surface "Vol. N" alongside the missing marker.
+  test("series detail renders card grid with covers, Vol. N, and title", async ({
+    page,
+  }) => {
+    const SERIES_NAME = `SE-Cards-${Date.now()}`;
+    // seq=40 to avoid collision with positions used by the surrounding tests
+    const ISBN = specIsbn("SE", 40);
+
+    // Create closed series with total=3
+    await page.goto("/series/new");
+    await page.locator("#series-name").fill(SERIES_NAME);
+    await page.locator("#series-type").selectOption("closed");
+    await page.locator("#series-total").fill("3");
+    await page.locator('main button[type="submit"]').last().click();
+    await page.waitForURL(/\/series\/\d+/);
+    const seriesUrl = page.url();
+
+    // Create a title via scan
+    await page.goto("/catalog");
+    await page.locator("#scan-field").fill(ISBN);
+    await page.locator("#scan-field").press("Enter");
+    await expect(
+      page.locator(".feedback-entry, .feedback-skeleton"),
+    ).toBeVisible({ timeout: 10000 });
+
+    // Navigate to the title via home search and assign to position 2
+    await page.goto(`/?q=${ISBN}`);
+    const titleLink = page
+      .locator(
+        "#browse-results table.browse-table tbody tr td a[href^='/title/']",
+      )
+      .first();
+    await expect(titleLink).toBeVisible({ timeout: 15000 });
+    const titleHref = (await titleLink.getAttribute("href"))!;
+    await page.goto(titleHref);
+    await page.waitForURL(/\/title\/\d+/);
+
+    await page.locator("#assign-series").selectOption({ label: SERIES_NAME });
+    await page.locator("#assign-position").fill("2");
+    await page.locator("#assign-series-submit").click();
+    await page.waitForURL(/\/title\/\d+/);
+
+    // Visit series detail and inspect the card grid
+    await page.goto(seriesUrl);
+    const grid = page.locator('[role="grid"]');
+    await expect(grid).toBeVisible({ timeout: 5000 });
+
+    // All 3 positions render as cells (preserves existing ARIA contract)
+    const cells = grid.locator('[role="gridcell"]');
+    await expect(cells).toHaveCount(3);
+
+    // The filled position (#2) is an <a> card and contains an <img>
+    // (either the downloaded cover or the media-type SVG fallback)
+    const filledCard = grid.locator("a[role='gridcell']");
+    await expect(filledCard).toHaveCount(1);
+    await expect(filledCard.locator("img")).toHaveCount(1);
+
+    // The card surfaces "Vol. 2" (EN+FR+IT) or "Bd. 2" (DE)
+    await expect(filledCard).toContainText(/Vol\.\s*2|Bd\.\s*2/);
+
+    // Gap cards (#1 and #3) also surface "Vol. 1" / "Vol. 3" so the
+    // collector can see which slots are missing at a glance
+    const gapCards = grid.locator("div[role='gridcell']");
+    await expect(gapCards).toHaveCount(2);
+    await expect(gapCards.nth(0)).toContainText(/Vol\.\s*1|Bd\.\s*1/);
+    await expect(gapCards.nth(1)).toContainText(/Vol\.\s*3|Bd\.\s*3/);
+  });
+
   // AC6: Omnibus covering 3 positions fills gap grid
   test("omnibus assignment fills multiple positions in gap grid", async ({
     page,

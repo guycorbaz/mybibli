@@ -343,6 +343,12 @@ pub struct TitleSeriesRow {
     /// Fix #235: surfaced so the series-detail page can sort positions
     /// by Dewey, alongside the existing default sort by position number.
     pub dewey_code: Option<String>,
+    /// CR #336: card layout on series detail. None ⇒ media-type fallback icon.
+    pub cover_image_url: Option<String>,
+    /// CR #336: card layout on series detail. Resolved via the same
+    /// LIMIT 1 ordered subquery the title-list queries use, so the
+    /// "primary contributor" choice stays consistent across surfaces.
+    pub primary_contributor: Option<String>,
 }
 
 /// A series assignment as seen from a title (for title detail page).
@@ -437,7 +443,14 @@ impl TitleSeriesModel {
     ) -> Result<Vec<TitleSeriesRow>, AppError> {
         let rows = sqlx::query(
             "SELECT ts.id, ts.title_id, ts.series_id, ts.position_number, ts.is_omnibus, \
-             t.title AS title_name, t.media_type, t.dewey_code \
+             t.title AS title_name, t.media_type, t.dewey_code, t.cover_image_url, \
+             (SELECT c.name FROM title_contributors tc \
+              JOIN contributors c ON tc.contributor_id = c.id \
+              JOIN contributor_roles cr ON tc.role_id = cr.id \
+              WHERE tc.title_id = t.id AND tc.deleted_at IS NULL \
+                AND c.deleted_at IS NULL AND cr.deleted_at IS NULL \
+              ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC \
+              LIMIT 1) AS primary_contributor \
              FROM title_series ts \
              JOIN titles t ON ts.title_id = t.id \
              WHERE ts.series_id = ? AND ts.deleted_at IS NULL AND t.deleted_at IS NULL \
@@ -458,6 +471,8 @@ impl TitleSeriesModel {
                     title_name: r.try_get("title_name")?,
                     media_type: r.try_get("media_type")?,
                     dewey_code: r.try_get("dewey_code")?,
+                    cover_image_url: r.try_get("cover_image_url").unwrap_or(None),
+                    primary_contributor: r.try_get("primary_contributor").unwrap_or(None),
                 })
             })
             .collect::<Result<Vec<_>, sqlx::Error>>()
