@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { captureEntityCounts } from "../../helpers/db-snapshot";
 
 const VALID_ISBN = specIsbn("CC", 1);
 
@@ -321,10 +322,21 @@ test.describe("Contributor Management", () => {
   // token POSTs with a 403 BEFORE the auth layer can issue its 303. The
   // end user still cannot mutate anything (DB snapshot unchanged) —
   // either outcome satisfies the original AC #1 + #3 assertion.
-  test("anonymous user cannot POST to contributor endpoints", async ({
+  //
+  // CR #43: the status-code assertion alone cannot catch a future
+  // regression where CSRF / auth silently passes through while the
+  // mutation also runs. The before/after `captureEntityCounts` snapshot
+  // PROVES the DB was untouched.
+  test("anonymous user cannot POST to contributor endpoints (DB unchanged)", async ({
     context,
     page,
-  }) => {
+  }, testInfo) => {
+    const baseURL = testInfo.project.use.baseURL!;
+
+    // Snapshot key entity counts BEFORE — via a separate admin-authenticated
+    // APIRequestContext so the upcoming clearCookies() doesn't strip it.
+    const before = await captureEntityCounts(baseURL);
+
     await context.clearCookies();
     const resp = await page.request.post("/catalog/contributors/add", {
       form: { title_id: "1", contributor_name: "Anon", role_id: "1" },
@@ -338,6 +350,10 @@ test.describe("Contributor Management", () => {
     // a fully-rendered page rather than a bare feedback fragment. Either
     // outcome satisfies AC #1 + #3 — the request did not mutate anything.
     expect([303, 403]).toContain(resp.status());
+
+    // CR #43 DB-snapshot proof: counts unchanged after the rejected POST.
+    const after = await captureEntityCounts(baseURL);
+    expect(after).toEqual(before);
   });
 });
 
