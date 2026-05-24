@@ -1,20 +1,43 @@
 <div role="grid" aria-label="{{ grid_label }}" class="mt-6">
-    <div class="grid grid-cols-4 lg:grid-cols-8 gap-2">
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
         {% for pos in positions %}
         {% if let Some(tid) = pos.title_id %}
         <a href="/title/{{ tid }}"
            role="gridcell"
-           aria-label="{{ pos.title_name.as_deref().unwrap_or("") }}, {{ position_label }} {{ pos.position }}"
-           title="{{ position_label }} {{ pos.position }}: {{ pos.title_name.as_deref().unwrap_or("") }}"
-           class="flex flex-col items-center justify-center p-2 rounded border border-green-300 dark:border-green-700 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors cursor-pointer min-h-[3rem]">
-            <span class="text-xs font-medium">{{ pos.position }}</span>
+           aria-label="{{ volume_short_label }} {{ pos.position }} — {{ pos.title_name.as_deref().unwrap_or("") }}"
+           title="{{ volume_short_label }} {{ pos.position }} — {{ pos.title_name.as_deref().unwrap_or("") }}"
+           class="series-card flex flex-col rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 overflow-hidden hover:border-indigo-400 dark:hover:border-indigo-600 hover:shadow-md transition-all">
+            <div class="aspect-[2/3] bg-stone-100 dark:bg-stone-800 flex items-center justify-center overflow-hidden">
+                {% if let Some(cover) = pos.cover_image_url %}
+                <img src="{{ cover }}" alt="" loading="lazy" class="w-full h-full object-cover" />
+                {% else %}
+                <img src="/static/icons/{% if pos.media_type == "bd" %}bd{% else if pos.media_type == "cd" %}cd{% else if pos.media_type == "dvd" %}dvd{% else if pos.media_type == "magazine" %}magazine{% else %}book{% endif %}.svg"
+                     alt=""
+                     class="w-12 h-12 opacity-50" />
+                {% endif %}
+            </div>
+            <div class="p-2 flex flex-col gap-0.5">
+                <span class="text-lg font-bold text-indigo-700 dark:text-indigo-300 leading-tight">{{ volume_short_label }} {{ pos.position }}</span>
+                <span class="text-sm font-medium text-stone-900 dark:text-stone-100 truncate" title="{{ pos.title_name.as_deref().unwrap_or("") }}">{{ pos.title_name.as_deref().unwrap_or("") }}</span>
+                {% if let Some(author) = pos.primary_contributor %}
+                <span class="text-xs text-stone-500 dark:text-stone-400 truncate" title="{{ author }}">{{ author }}</span>
+                {% endif %}
+            </div>
         </a>
         {% else %}
         <div role="gridcell"
-             aria-label="{{ missing_label }} {{ pos.position }}"
-             title="{{ missing_label }} {{ pos.position }}"
-             class="series-gap-stripes flex flex-col items-center justify-center p-2 rounded border border-dashed border-red-300 dark:border-red-700 text-red-400 dark:text-red-500 min-h-[3rem]">
-            <span class="text-xs">{{ pos.position }}</span>
+             aria-label="{{ missing_label }}{{ pos.position }}"
+             title="{{ missing_label }}{{ pos.position }}"
+             class="series-card-gap series-gap-stripes flex flex-col rounded-md border border-dashed border-red-300 dark:border-red-700 overflow-hidden">
+            <div class="aspect-[2/3] flex items-center justify-center text-red-400 dark:text-red-500">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+            </div>
+            <div class="p-2 flex flex-col gap-0.5">
+                <span class="text-lg font-bold text-red-600 dark:text-red-400 leading-tight">{{ volume_short_label }} {{ pos.position }}</span>
+                <span class="text-xs text-red-500 dark:text-red-500">{{ missing_label }}{{ pos.position }}</span>
+            </div>
         </div>
         {% endif %}
         {% endfor %}

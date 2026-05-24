@@ -194,6 +194,8 @@ pub struct SeriesDetailTemplate {
     pub positions: Vec<SeriesPositionInfo>,
     pub position_label: String,
     pub missing_label: String,
+    /// CR #336: short prefix for volume number on series-detail cards.
+    pub volume_short_label: String,
     pub grid_label: String,
     pub no_assignments_label: String,
     pub current_url: String,
@@ -280,6 +282,7 @@ pub async fn series_detail_page(
         positions,
         position_label: rust_i18n::t!("series.position", locale = loc).to_string(),
         missing_label: rust_i18n::t!("series.missing_volume", locale = loc).to_string(),
+        volume_short_label: rust_i18n::t!("series.volume_short", locale = loc).to_string(),
         grid_label: format!(
             "{} — {}",
             rust_i18n::t!("series.list_title", locale = loc),

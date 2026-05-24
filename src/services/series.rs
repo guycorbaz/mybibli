@@ -13,6 +13,17 @@ pub struct SeriesPositionInfo {
     /// for unassigned grid gaps. Used by `sort_positions` to support
     /// `?sort=dewey_code` on the series-detail page.
     pub dewey_code: Option<String>,
+    /// CR #336: card layout on series detail. `None` for both gaps
+    /// and titles without a cover (template falls back to a media-type
+    /// icon in the latter case).
+    pub cover_image_url: Option<String>,
+    /// CR #336: card layout on series detail. `None` for gaps; `None`
+    /// for filled positions whose title has no contributor row yet.
+    pub primary_contributor: Option<String>,
+    /// CR #336: media type ("book" / "bd" / etc.) used by the template
+    /// to pick the right `/static/icons/{media_type}.svg` fallback when
+    /// `cover_image_url` is None. Empty string for gaps.
+    pub media_type: String,
 }
 
 pub struct SeriesService;
@@ -261,6 +272,9 @@ impl SeriesService {
                     title_name: Some(a.title_name),
                     is_omnibus: a.is_omnibus,
                     dewey_code: a.dewey_code,
+                    cover_image_url: a.cover_image_url,
+                    primary_contributor: a.primary_contributor,
+                    media_type: a.media_type,
                 })
                 .collect());
         }
@@ -285,6 +299,9 @@ fn build_position_grid(
             title_name: assignment.map(|a| a.title_name.clone()),
             is_omnibus: assignment.is_some_and(|a| a.is_omnibus),
             dewey_code: assignment.and_then(|a| a.dewey_code.clone()),
+            cover_image_url: assignment.and_then(|a| a.cover_image_url.clone()),
+            primary_contributor: assignment.and_then(|a| a.primary_contributor.clone()),
+            media_type: assignment.map(|a| a.media_type.clone()).unwrap_or_default(),
         });
     }
     Ok(positions)
@@ -449,6 +466,9 @@ mod tests {
             title_name: name.map(String::from),
             is_omnibus: false,
             dewey_code: dewey.map(String::from),
+            cover_image_url: None,
+            primary_contributor: None,
+            media_type: String::new(),
         }
     }
 
@@ -591,6 +611,8 @@ mod tests {
             title_name: name.to_string(),
             media_type: "book".to_string(),
             dewey_code: None,
+            cover_image_url: None,
+            primary_contributor: None,
         }
     }
 
@@ -604,6 +626,8 @@ mod tests {
             title_name: name.to_string(),
             media_type: "book".to_string(),
             dewey_code: None,
+            cover_image_url: None,
+            primary_contributor: None,
         }
     }
 
@@ -639,6 +663,37 @@ mod tests {
         let grid = build_position_grid(5, &[]).unwrap();
         assert_eq!(grid.len(), 5);
         assert!(grid.iter().all(|p| p.title_id.is_none()));
+    }
+
+    // CR #336 regression — cover_image_url + primary_contributor +
+    // media_type must propagate from TitleSeriesRow → SeriesPositionInfo
+    // so the series-detail card grid can render them. Gaps must carry
+    // None / empty media_type so the template branches correctly.
+    #[test]
+    fn build_position_grid_propagates_cover_author_media_type() {
+        let filled = TitleSeriesRow {
+            id: 1,
+            title_id: 10,
+            series_id: 1,
+            position_number: 1,
+            is_omnibus: false,
+            title_name: "T1".to_string(),
+            media_type: "bd".to_string(),
+            dewey_code: None,
+            cover_image_url: Some("/covers/10.jpg".to_string()),
+            primary_contributor: Some("Hergé".to_string()),
+        };
+        let grid = build_position_grid(2, &[filled]).unwrap();
+        assert_eq!(grid.len(), 2);
+        assert_eq!(grid[0].cover_image_url.as_deref(), Some("/covers/10.jpg"));
+        assert_eq!(grid[0].primary_contributor.as_deref(), Some("Hergé"));
+        assert_eq!(grid[0].media_type, "bd");
+        // Position 2 is a gap — must have None / empty defaults so the
+        // template's `{% if let Some(cover) = ... %}` branch picks the
+        // gap rendering path.
+        assert!(grid[1].cover_image_url.is_none());
+        assert!(grid[1].primary_contributor.is_none());
+        assert_eq!(grid[1].media_type, "");
     }
 
     #[test]

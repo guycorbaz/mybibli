@@ -328,6 +328,7 @@ series:
   assigned: "Assigné à %{series} à la position %{position}."
   unassigned: "Retiré de la série."
   missing_volume: "Volume manquant #"
+  volume_short: "Vol."
   ongoing: "en cours, dernier connu : #%{position}"
   no_assignments: "Non assigné à aucune série."
   sort:
