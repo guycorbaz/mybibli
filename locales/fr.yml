@@ -350,6 +350,7 @@ series:
 error:
   internal: Une erreur interne est survenue
   not_found: La ressource demandée est introuvable
+  already_deleted_by_another_session: "Cet élément a déjà été supprimé par une autre session — rafraîchissez la page pour voir l'état actuel."
   bad_request: Requête invalide
   unauthorized: Authentification requise
   forbidden:

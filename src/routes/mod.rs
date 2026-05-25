@@ -32,6 +32,34 @@ pub mod wishlist;
 use axum::Router;
 use tower_http::services::ServeDir;
 
+/// CR #136 — build a 200 OK response carrying an inline "already
+/// deleted by another session" feedback fragment + HX-Retarget so the
+/// HTMX swap lands in the caller's chosen feedback slot (rather than
+/// the `AppError::NotFound` default `#feedback-list`, which the
+/// borrower / contributor / loan detail pages do not declare).
+///
+/// `retarget` must be a valid CSS selector for HTMX — typically
+/// `"#borrower-feedback"`, `"#contributor-feedback"`, or the
+/// `?target=` resolution on the return-loan modal handler.
+pub(crate) fn build_already_deleted_response(
+    locale: &'static str,
+    retarget: &str,
+) -> axum::response::Response {
+    use axum::http::{HeaderValue, StatusCode};
+    use axum::response::{Html, IntoResponse};
+
+    let title =
+        rust_i18n::t!("error.already_deleted_by_another_session", locale = locale).to_string();
+    let html = crate::routes::catalog::feedback_html_pub("error", &title, "");
+    let mut response: axum::response::Response = (StatusCode::OK, Html(html)).into_response();
+    let headers = response.headers_mut();
+    if let Ok(v) = HeaderValue::from_str(retarget) {
+        headers.insert("HX-Retarget", v);
+    }
+    headers.insert("HX-Reswap", HeaderValue::from_static("innerHTML"));
+    response
+}
+
 use crate::AppState;
 use crate::middleware::auth::session_resolve_middleware;
 use crate::middleware::csp::apply_csp_layer;

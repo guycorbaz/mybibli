@@ -289,8 +289,14 @@ async fn get_return_modal_returns_303_for_anonymous_request(pool: MySqlPool) {
     assert_eq!(loc, "/login?next=%2Floans");
 }
 
+/// CR #136 — missing-loan path returns 200 + inline feedback +
+/// HX-Retarget to the `?target=` slot so the second librarian sees
+/// the "already returned by another session" message instead of a
+/// silent HTMX no-op. The handler resolves `?target=` against the
+/// FEEDBACK_TARGETS allowlist BEFORE checking the row, so the
+/// retarget always lands on a valid page slot.
 #[sqlx::test(migrations = "./migrations")]
-async fn get_return_modal_returns_404_for_nonexistent_loan(pool: MySqlPool) {
+async fn get_return_modal_already_gone_returns_inline_feedback(pool: MySqlPool) {
     let lib_cookie = seed_session(&pool, "librarian").await;
     let app = build_router(build_state(pool));
 
@@ -303,7 +309,39 @@ async fn get_return_modal_returns_404_for_nonexistent_loan(pool: MySqlPool) {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("HX-Retarget").map(|v| v.to_str().unwrap()),
+        Some("#loan-feedback"),
+    );
+    assert_eq!(
+        resp.headers().get("HX-Reswap").map(|v| v.to_str().unwrap()),
+        Some("innerHTML"),
+    );
+}
+
+/// CR #136 — same fix when invoked from /borrower/:id, which passes
+/// `?target=borrower-feedback`. Retarget must follow the caller's
+/// slot, not the default.
+#[sqlx::test(migrations = "./migrations")]
+async fn get_return_modal_already_gone_retargets_to_borrower_feedback(pool: MySqlPool) {
+    let lib_cookie = seed_session(&pool, "librarian").await;
+    let app = build_router(build_state(pool));
+
+    let resp = app
+        .oneshot(req_htmx(
+            Method::GET,
+            "/loans/99999/return-modal?target=borrower-feedback",
+            Some(&lib_cookie),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("HX-Retarget").map(|v| v.to_str().unwrap()),
+        Some("#borrower-feedback"),
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]

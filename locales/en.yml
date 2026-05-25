@@ -352,6 +352,10 @@ series:
 error:
   internal: An internal error occurred
   not_found: The requested resource was not found
+  # CR #136 — friendly "your tab is stale" message surfaced when a
+  # modal-trigger GET 404s because another session already deleted the
+  # row. Generic enough to cover borrower / contributor / loan modals.
+  already_deleted_by_another_session: "This item was already deleted by another session — refresh the page to see the current state."
   bad_request: Invalid request
   unauthorized: Authentication required
   forbidden:
