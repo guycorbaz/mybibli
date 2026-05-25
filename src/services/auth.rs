@@ -19,7 +19,6 @@
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::middleware::auth::generate_csrf_token;
-use crate::models::session::SessionModel;
 
 /// 32-byte STANDARD base64 token (44 chars w/ padding, matches the
 /// existing `routes/auth.rs::generate_session_token` and the project
@@ -43,6 +42,16 @@ fn generate_session_token() -> String {
 /// presenting, if any) is soft-deleted in the same call so the
 /// anonymous-session purge does not have to wait 7 days. Pass `None`
 /// when there is no prior session.
+///
+/// CR #39: the INSERT and the soft-delete are wrapped in a single
+/// `sqlx::Transaction`. Before the fix the two queries ran as
+/// independent round-trips, and a partial failure between them — DB
+/// timeout, connection drop, app panic — left an orphaned live
+/// anonymous session row alongside the new authenticated one. Both
+/// carried valid CSRF tokens for the same browser, which is a real
+/// (if low-probability) anonymity-mixing risk. The transactional
+/// rewrite makes the outcome atomic: either BOTH rows transition
+/// (new active, old soft-deleted) or NEITHER.
 pub async fn authenticate_session(
     pool: &DbPool,
     user_id: u64,
@@ -51,6 +60,8 @@ pub async fn authenticate_session(
     let session_token = generate_session_token();
     let csrf_token = generate_csrf_token();
 
+    let mut tx = pool.begin().await?;
+
     sqlx::query(
         "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
          VALUES (?, ?, ?, '{}', UTC_TIMESTAMP())",
@@ -58,21 +69,27 @@ pub async fn authenticate_session(
     .bind(&session_token)
     .bind(user_id)
     .bind(&csrf_token)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     if let Some(old_token) = previous_session_token
         && old_token != session_token
     {
-        // Best-effort: a failure here is non-fatal — the purge task
-        // will pick the row up after 7 days. Logging a warn is enough.
-        if let Err(e) = SessionModel::soft_delete(pool, old_token).await {
-            tracing::warn!(
-                error = %e,
-                "authenticate_session: failed to soft-delete previous session row"
-            );
-        }
+        // Inside the same transaction now — a failure here rolls back
+        // the INSERT above, so we never end up with two live session
+        // rows for the same browser. The 7-day purge task is still
+        // the long-term safety net for orphaned rows that escape
+        // (e.g., older rows from before this fix).
+        sqlx::query(
+            "UPDATE sessions SET deleted_at = UTC_TIMESTAMP() \
+             WHERE token = ? AND deleted_at IS NULL",
+        )
+        .bind(old_token)
+        .execute(&mut *tx)
+        .await?;
     }
+
+    tx.commit().await?;
 
     Ok((session_token, csrf_token))
 }
