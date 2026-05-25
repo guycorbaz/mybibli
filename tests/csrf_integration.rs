@@ -596,3 +596,233 @@ async fn login_soft_deletes_prior_anonymous_row(pool: DbPool) {
         "authenticated session must carry a freshly-minted CSRF token"
     );
 }
+
+// ─── CR #47 — high-value coverage gaps from Pass 2 review ────────────
+//
+// The four tests below address the issue's C-M1 through C-M4 items.
+// The C-M5..C-M9 items (E2E selector tightening + parallel-pollution
+// teardown for the Playwright spec) are out of scope of this Rust
+// integration suite; they belong in a follow-up E2E pass.
+
+/// CR #47 C-M1 — twin of `language_post_with_valid_token_accepts` with
+/// the `hx-request: true` header so the HTMX form path runs end-to-end.
+/// The plain-form path was the only one covered before.
+#[sqlx::test(migrations = "./migrations")]
+async fn language_post_with_valid_token_accepts_via_htmx(pool: DbPool) {
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+    let first = router
+        .clone()
+        .oneshot(Request::get("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let cookie = extract_cookie(&first, "session").unwrap();
+    let csrf: String = sqlx::query_scalar("SELECT csrf_token FROM sessions WHERE token = ?")
+        .bind(&cookie)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // HTMX path — header set to true mirrors what htmx.js emits on
+    // every XHR. The form body still carries the token (matches
+    // the nav_bar.html shape).
+    let body = format!("_csrf_token={csrf}&lang=en&next=/");
+    let res = router
+        .oneshot(
+            Request::post("/language")
+                .header("cookie", format!("session={cookie}"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("hx-request", "true")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+}
+
+/// CR #47 C-M2 — logout via form-field token (no `X-CSRF-Token`
+/// header). The nav-bar logout form submits the token as `_csrf_token`
+/// in the body — the pre-existing test only exercised the header path.
+#[sqlx::test(migrations = "./migrations")]
+async fn logout_with_valid_form_field_token_succeeds(pool: DbPool) {
+    let (username, _) = seed_librarian(&pool).await;
+    let user_id: u64 = sqlx::query_scalar("SELECT id FROM users WHERE username = ?")
+        .bind(&username)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let token = "CSRFLOGOUTFORMTOKEN000000000000000000000body";
+    let csrf = "form_field_csrf_token_xxxxxxxxxxxxxxxxxxxxx";
+    assert_eq!(csrf.len(), 43);
+    sqlx::query(
+        "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
+         VALUES (?, ?, ?, '{}', UTC_TIMESTAMP())",
+    )
+    .bind(token)
+    .bind(user_id)
+    .bind(csrf)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = state_with_pool(pool);
+    let body = format!("_csrf_token={csrf}");
+    let res = app(state)
+        .oneshot(
+            Request::post("/logout")
+                .header("cookie", format!("session={token}"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.headers().get("location").unwrap(), "/");
+}
+
+/// CR #47 C-M3 — stale-token replay against a rotated session.
+/// `login_rotates_csrf_on_reauth` proves the tokens differ, but the
+/// adversarial step — attempting a mutation with the FIRST token after
+/// the SECOND login — was not directly exercised. This nails it: the
+/// stale `(session_1, csrf_1)` pair must produce a 403 because the
+/// session row was soft-deleted on re-login (the resolver no longer
+/// finds it; the request is treated as anonymous and CSRF rejects).
+#[sqlx::test(migrations = "./migrations")]
+async fn stale_token_replay_after_rotation_is_rejected(pool: DbPool) {
+    let (username, _) = seed_librarian(&pool).await;
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+
+    // First login.
+    let res1 = router
+        .clone()
+        .oneshot(
+            Request::post("/login")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!(
+                    "username={username}&password=librarian&next=/"
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res1.status(), StatusCode::SEE_OTHER);
+    let session_1 = extract_cookie(&res1, "session").unwrap();
+    let csrf_1: String = sqlx::query_scalar("SELECT csrf_token FROM sessions WHERE token = ?")
+        .bind(&session_1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // Second login from the same browser — rotates session + csrf.
+    let res2 = router
+        .clone()
+        .oneshot(
+            Request::post("/login")
+                .header("cookie", format!("session={session_1}"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!(
+                    "username={username}&password=librarian&next=/"
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res2.status(), StatusCode::SEE_OTHER);
+
+    // Replay attempt: cookie + CSRF token from the FIRST login. The
+    // first session row is now soft-deleted; the request looks
+    // anonymous to the resolver, and CSRF middleware rejects.
+    // `hx-request: true` selects the 403 + envelope branch (the
+    // plain-form branch redirects to /login with 303 — also a valid
+    // rejection but not the one we want to pin here).
+    let body = format!("_csrf_token={csrf_1}&lang=en&next=/");
+    let replay = router
+        .oneshot(
+            Request::post("/language")
+                .header("cookie", format!("session={session_1}"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("hx-request", "true")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        replay.status(),
+        StatusCode::FORBIDDEN,
+        "stale (session, csrf) pair must be rejected after rotation"
+    );
+}
+
+/// CR #47 C-M4 — the 403 response body must be non-empty and carry
+/// the server-rendered FeedbackEntry markup so `csrf.js`'s
+/// `htmx:beforeSwap` listener has something to land in
+/// `#feedback-list` (it sets `shouldSwap = true` on the
+/// `HX-Trigger: csrf-rejected` signal, then HTMX swaps the body
+/// HTML). An empty body would silently drop the user feedback even
+/// though every header is correct.
+#[sqlx::test(migrations = "./migrations")]
+async fn csrf_403_body_contains_feedback_entry_markup(pool: DbPool) {
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+
+    // First-hit GET mints an anonymous session row so we can craft a
+    // request whose ONLY problem is the missing CSRF token.
+    let first = router
+        .clone()
+        .oneshot(Request::get("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let cookie = extract_cookie(&first, "session").unwrap();
+
+    // POST /language WITHOUT the CSRF token → 403 with FeedbackEntry body.
+    // `hx-request: true` selects the 403 + envelope branch — the
+    // plain-form branch redirects to /login with 303 instead.
+    let res = router
+        .oneshot(
+            Request::post("/language")
+                .header("cookie", format!("session={cookie}"))
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("hx-request", "true")
+                .body(Body::from("lang=en&next=/"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        res.headers().get("HX-Trigger").unwrap(),
+        "csrf-rejected",
+        "HX-Trigger header drives csrf.js's beforeSwap opt-in"
+    );
+    assert_eq!(
+        res.headers().get("HX-Retarget").unwrap(),
+        "#feedback-list",
+        "HX-Retarget routes the body to the visible slot"
+    );
+
+    let bytes = axum::body::to_bytes(res.into_body(), 1024 * 1024)
+        .await
+        .expect("body to_bytes");
+    assert!(!bytes.is_empty(), "403 body must not be empty");
+    let html = String::from_utf8_lossy(&bytes);
+    // `feedback-entry` class is the locale-agnostic anchor — emitted by
+    // `feedback_html_pub()` regardless of which locale resolved.
+    assert!(
+        html.contains("feedback-entry"),
+        "403 body must carry the FeedbackEntry markup so the HTMX swap shows something — got: {html}"
+    );
+    // Title must surface in at least one of the 4 supported locales —
+    // the default locale resolution path depends on env / AppSettings,
+    // so we accept any.
+    assert!(
+        html.contains("Session expired")
+            || html.contains("Session expirée")
+            || html.contains("Sitzung abgelaufen")
+            || html.contains("Sessione scaduta"),
+        "403 body must carry the localized 'session expired' title in one of the 4 supported locales; got: {html}"
+    );
+}

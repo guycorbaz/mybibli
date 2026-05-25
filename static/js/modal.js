@@ -206,10 +206,22 @@
     // from error responses so the body lands in our data-modal-error
     // region instead of being retargeted behind the backdrop. Same
     // isConfirm detection shape used by every modal.js listener.
+    //
+    // CR #217: the predicate previously returned true for ANY descendant
+    // FORM of state.dialog. That was correct for today's UX-DR8 macro
+    // (the macro emits exactly one form — the Confirm action), but if a
+    // future modal ever ships a nested form (e.g., an inline edit-mode
+    // form inside the dialog), its submissions would also carry the
+    // X-Modal-Confirm header and trigger the retarget-strip middleware
+    // server-side. Tightened to match ONLY the dialog's primary form
+    // (the first FORM descendant — `querySelector` is document-order)
+    // and the explicit `[data-modal-confirm]` button hook.
     function originatesFromConfirm(elt) {
         if (!elt || !state || !state.dialog || !state.dialog.contains(elt)) return false;
-        return elt.tagName === "FORM"
-            || (elt.matches && elt.matches("[data-modal-confirm]"))
+        if (elt.tagName === "FORM") {
+            return elt === state.dialog.querySelector("form");
+        }
+        return (elt.matches && elt.matches("[data-modal-confirm]"))
             || (elt.closest && elt.closest("[data-modal-confirm]"));
     }
     document.body.addEventListener("htmx:configRequest", function (evt) {

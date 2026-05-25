@@ -346,3 +346,78 @@ test.describe("polish-1 — admin ref-data modal lifecycle (Pattern B, #admin-mo
     ).toHaveCount(0);
   });
 });
+
+// CR #217 — `originatesFromConfirm` in modal.js used to return true for
+// ANY <form> descendant of the open dialog. That was correct for the
+// UX-DR8 macro (one form, the Confirm action), but a future modal that
+// ships a nested form (e.g., inline edit-mode inside a confirm dialog)
+// would also tag those nested-form requests with X-Modal-Confirm: true
+// and trigger the server-side ModalConfirmRetargetGuard on responses
+// that should NOT be retarget-stripped. The fix tightens the predicate
+// to `elt === state.dialog.querySelector("form")` (i.e. the dialog's
+// FIRST form descendant, which is the Confirm form by macro
+// construction).
+test.describe("CR #217 — modal Confirm scope (nested-form regression guard)", () => {
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page, "admin");
+  });
+
+  test("nested form inside open modal does NOT carry X-Modal-Confirm", async ({
+    page,
+  }) => {
+    // Seed + open a modal that has a primary Confirm form.
+    const name = `cr217-${Date.now()}`;
+    await seedSoftDeletedBorrower(page, name);
+    await page.goto("/admin?tab=trash");
+    const trashRow = page.locator(`tr:has-text("${name}")`);
+    await trashRow
+      .getByRole("button", { name: /Delete permanently|Supprimer d[ée]finitivement/i })
+      .click();
+    const modal = page.locator("#modal-slot dialog[open]");
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    // Inject a NESTED form into the open dialog with a unique probe URL.
+    // `htmx.process()` wires up the new form so submitting it fires an
+    // htmx XHR that reaches the configRequest listener under test.
+    await page.evaluate(() => {
+      const dialog = document.querySelector("#modal-slot dialog[open]");
+      if (!dialog) throw new Error("CR #217 test: no open dialog");
+      const nested = document.createElement("form");
+      nested.id = "cr217-nested-form";
+      nested.setAttribute("hx-post", "/__cr217_probe__");
+      nested.setAttribute("hx-target", "body");
+      nested.setAttribute("hx-swap", "none");
+      const btn = document.createElement("button");
+      btn.id = "cr217-nested-btn";
+      btn.type = "submit";
+      btn.textContent = "nested submit";
+      nested.appendChild(btn);
+      dialog.appendChild(nested);
+      htmx.process(nested);
+    });
+
+    // Intercept the probe URL — the request never reaches the server.
+    let probeHeaders: Record<string, string> | null = null;
+    await page.route("**/__cr217_probe__", async (route) => {
+      probeHeaders = route.request().headers();
+      await route.fulfill({ status: 200, body: "" });
+    });
+
+    // Click the nested form's submit button → htmx fires the probe.
+    await page.locator("#cr217-nested-btn").click();
+    await expect
+      .poll(() => probeHeaders, { timeout: 5000 })
+      .not.toBeNull();
+
+    // CR #217 fix: the nested form is NOT the dialog's first <form>, so
+    // the tightened predicate returns false and X-Modal-Confirm stays
+    // off the request. A regression would re-tag it and trip the
+    // server-side retarget-strip middleware.
+    expect(probeHeaders!["x-modal-confirm"]).toBeUndefined();
+
+    // The positive control (Confirm button still tags the header) is
+    // already covered by the existing "X-Modal-Confirm tagged on the
+    // Confirm request" assertions earlier in this describe block — re-
+    // exercising it here would be duplicative.
+  });
+});

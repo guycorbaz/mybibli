@@ -203,8 +203,13 @@ async fn get_delete_modal_redirects_anonymous_to_login(pool: MySqlPool) {
     assert_eq!(loc, format!("/login?next=%2Fborrower%2F{id}"));
 }
 
+/// CR #136 — the soft-deleted-row path used to 404, which retargeted
+/// to `#feedback-list` (a slot this page does not declare) and the
+/// HTMX swap silently dropped. The handler now returns 200 + an
+/// inline feedback fragment + `HX-Retarget: #borrower-feedback` so
+/// the concurrent-delete UX is visible to the second librarian.
 #[sqlx::test(migrations = "./migrations")]
-async fn get_delete_modal_returns_404_for_soft_deleted_borrower(pool: MySqlPool) {
+async fn get_delete_modal_already_deleted_returns_inline_feedback(pool: MySqlPool) {
     let id = insert_borrower(&pool, "Dave Trash").await;
     soft_delete_borrower(&pool, id).await;
     let admin_cookie = seed_session(&pool, "admin").await;
@@ -219,11 +224,28 @@ async fn get_delete_modal_returns_404_for_soft_deleted_borrower(pool: MySqlPool)
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("HX-Retarget").map(|v| v.to_str().unwrap()),
+        Some("#borrower-feedback"),
+        "must retarget to the page's declared feedback slot"
+    );
+    assert_eq!(
+        resp.headers().get("HX-Reswap").map(|v| v.to_str().unwrap()),
+        Some("innerHTML"),
+    );
+    let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+    let html = String::from_utf8_lossy(&bytes);
+    assert!(
+        html.contains("feedback-entry"),
+        "body must carry the feedback-entry markup: {html}"
+    );
 }
 
+/// CR #136 — same fix applies for IDs that never existed (e.g., a
+/// stale bookmark from a long-purged row).
 #[sqlx::test(migrations = "./migrations")]
-async fn get_delete_modal_returns_404_for_nonexistent_borrower(pool: MySqlPool) {
+async fn get_delete_modal_nonexistent_id_returns_inline_feedback(pool: MySqlPool) {
     let admin_cookie = seed_session(&pool, "admin").await;
     let app = build_router(build_state(pool));
 
@@ -236,7 +258,11 @@ async fn get_delete_modal_returns_404_for_nonexistent_borrower(pool: MySqlPool) 
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("HX-Retarget").map(|v| v.to_str().unwrap()),
+        Some("#borrower-feedback"),
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]

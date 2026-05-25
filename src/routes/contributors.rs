@@ -175,11 +175,19 @@ pub async fn delete_modal(
         return Ok(axum::http::StatusCode::METHOD_NOT_ALLOWED.into_response());
     }
 
-    let contributor = ContributorModel::find_by_id(pool, id)
-        .await?
-        .ok_or_else(|| {
-            AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
-        })?;
+    // CR #136: see borrowers::delete_modal — same concurrent-delete UX
+    // gap. The contributor-detail page declares `#contributor-feedback`,
+    // not `#feedback-list`, so the AppError::NotFound default retarget
+    // would land nowhere.
+    let contributor = match ContributorModel::find_by_id(pool, id).await? {
+        Some(c) => c,
+        None => {
+            return Ok(crate::routes::build_already_deleted_response(
+                loc,
+                "#contributor-feedback",
+            ));
+        }
+    };
 
     // Title carries the contributor name via `%{name}` interpolation. Pass
     // the RAW name through `t!()` and let Askama's default auto-escape

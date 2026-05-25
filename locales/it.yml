@@ -342,6 +342,7 @@ series:
 error:
   internal: Si è verificato un errore interno
   not_found: La risorsa richiesta non è stata trovata
+  already_deleted_by_another_session: "Questo elemento è già stato eliminato da un'altra sessione — aggiorna la pagina per vedere lo stato attuale."
   bad_request: Richiesta non valida
   unauthorized: Autenticazione richiesta
   forbidden:

@@ -253,8 +253,15 @@ async fn get_contributor_delete_modal_redirects_anonymous_to_login(pool: MySqlPo
     assert_eq!(loc, format!("/login?next=%2Fcontributor%2F{id}"));
 }
 
+/// CR #136 — soft-deleted-row path returns 200 + inline feedback +
+/// HX-Retarget=#contributor-feedback so the concurrent-delete UX is
+/// visible to the second librarian (was silently dropped by HTMX
+/// when the AppError::NotFound default retargeted to #feedback-list,
+/// which this page does not declare).
 #[sqlx::test(migrations = "./migrations")]
-async fn get_contributor_delete_modal_returns_404_for_soft_deleted_contributor(pool: MySqlPool) {
+async fn get_contributor_delete_modal_already_deleted_returns_inline_feedback(
+    pool: MySqlPool,
+) {
     let id = insert_contributor(&pool, "Dave Trash").await;
     soft_delete_contributor(&pool, id).await;
     let lib_cookie = seed_session(&pool, "librarian").await;
@@ -269,11 +276,20 @@ async fn get_contributor_delete_modal_returns_404_for_soft_deleted_contributor(p
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("HX-Retarget").map(|v| v.to_str().unwrap()),
+        Some("#contributor-feedback"),
+    );
+    assert_eq!(
+        resp.headers().get("HX-Reswap").map(|v| v.to_str().unwrap()),
+        Some("innerHTML"),
+    );
 }
 
+/// CR #136 — same fix for never-existed IDs.
 #[sqlx::test(migrations = "./migrations")]
-async fn get_contributor_delete_modal_returns_404_for_nonexistent_contributor(pool: MySqlPool) {
+async fn get_contributor_delete_modal_nonexistent_id_returns_inline_feedback(pool: MySqlPool) {
     let lib_cookie = seed_session(&pool, "librarian").await;
     let app = build_router(build_state(pool));
 
@@ -286,7 +302,11 @@ async fn get_contributor_delete_modal_returns_404_for_nonexistent_contributor(po
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("HX-Retarget").map(|v| v.to_str().unwrap()),
+        Some("#contributor-feedback"),
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]

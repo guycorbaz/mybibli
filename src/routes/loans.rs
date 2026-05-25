@@ -347,24 +347,36 @@ pub async fn return_modal_handler(
         return Ok(StatusCode::METHOD_NOT_ALLOWED.into_response());
     }
 
-    // 404 if the loan row is missing; 409 Conflict if it exists but has
-    // already been returned — the row exists, the action is just a no-op
-    // given current state. 409 is the standard HTTP semantics for "exists
-    // but state forbids the action" (see #133/#134-adjacent review notes).
-    let loan = LoanModel::find_by_id(pool, loan_id).await?.ok_or_else(|| {
-        AppError::NotFound(rust_i18n::t!("loan.not_found", locale = loc).to_string())
-    })?;
-    if loan.returned_at.is_some() {
-        return Err(AppError::Conflict(
-            rust_i18n::t!("loan.already_returned", locale = loc).to_string(),
-        ));
-    }
-
+    // Resolve the feedback target FIRST so we can route both the
+    // missing-row (#136) response and the modal template to the right
+    // slot (`?target=` query, allowlisted to FEEDBACK_TARGETS).
     let target = match query.target.as_deref() {
         Some(t) if FEEDBACK_TARGETS.contains(&t) => t,
         _ => DEFAULT_FEEDBACK_TARGET,
     };
     let hx_target = format!("#{target}");
+
+    // CR #136: when the loan row is gone (another librarian returned
+    // and deleted it from a parallel tab), don't 404 silently. The
+    // default `AppError::NotFound` retargets to `#feedback-list`, which
+    // /loans + /borrower/:id don't declare. Return 200 + inline
+    // feedback + HX-Retarget to the resolved page-specific slot so the
+    // user actually sees what happened.
+    //
+    // 409 Conflict on "already returned" is preserved — the row exists
+    // but state forbids the action, AppError::Conflict has its own
+    // retarget semantics that DO work on these pages.
+    let loan = match LoanModel::find_by_id(pool, loan_id).await? {
+        Some(l) => l,
+        None => {
+            return Ok(crate::routes::build_already_deleted_response(loc, &hx_target));
+        }
+    };
+    if loan.returned_at.is_some() {
+        return Err(AppError::Conflict(
+            rust_i18n::t!("loan.already_returned", locale = loc).to_string(),
+        ));
+    }
 
     let title = rust_i18n::t!("loan.return_modal_title", locale = loc).to_string();
     let body_text = rust_i18n::t!("loan.return_modal_body", locale = loc).to_string();

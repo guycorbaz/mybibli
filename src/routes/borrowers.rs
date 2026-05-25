@@ -466,11 +466,20 @@ pub async fn delete_modal(
             .into_response());
     }
 
-    let borrower = BorrowerModel::find_by_id(pool, id)
-        .await?
-        .ok_or_else(|| {
-            AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
-        })?;
+    // CR #136: when the row is gone (another librarian deleted it from
+    // a parallel tab), don't 404 silently. The default `AppError::NotFound`
+    // retargets to `#feedback-list`, which this page doesn't have. Return
+    // 200 + an inline feedback fragment + `HX-Retarget: #borrower-feedback`
+    // (the slot this page DOES declare) so the user sees what happened.
+    let borrower = match BorrowerModel::find_by_id(pool, id).await? {
+        Some(b) => b,
+        None => {
+            return Ok(crate::routes::build_already_deleted_response(
+                loc,
+                "#borrower-feedback",
+            ));
+        }
+    };
 
     // Title carries the borrower name via `%{name}` interpolation. Pass
     // the RAW name through `t!()` and let Askama's default auto-escape
