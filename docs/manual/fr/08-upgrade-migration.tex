@@ -148,6 +148,74 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.8}\label{sec:whats-new-1.7.8}
+
+La version 1.7.8 est un patch « durcissement » apportant une
+correction UX visible et trois clean-ups de code-review. \emph{Aucune
+migration de schéma, aucun breaking change}~; mise à jour de routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\textbf{Visible côté utilisateur~:}
+
+\begin{itemize}
+  \item \textbf{\#136 \string— les modales de suppression
+        concurrente affichent un retour au lieu de disparaître en
+        silence.} Avec deux bibliothécaires sur la même page
+        \texttt{/borrower/:id}, \texttt{/contributor/:id} ou la
+        modale de retour de prêt, le clic du second sur Supprimer
+        disparaissait silencieusement~: la handler renvoyait 404,
+        le défaut \texttt{AppError::NotFound} reciblait sur
+        \texttt{\#feedback-list} et ces pages ne déclarent pas ce
+        slot — le swap HTMX échouait sans message. Les trois
+        handlers GET de déclenchement de modale renvoient
+        désormais 200 + un fragment de feedback en ligne +
+        \texttt{HX-Retarget} vers le slot existant de la page
+        (\texttt{\#borrower-feedback},
+        \texttt{\#contributor-feedback} ou la résolution
+        \texttt{?target=} pour le flux retour-prêt). Le second
+        bibliothécaire voit un toast localisé «~déjà supprimé par
+        une autre session~» dans les 4 langues supportées.
+\end{itemize}
+
+\textbf{Durcissement (aucun changement visible) :}
+
+\begin{itemize}
+  \item \textbf{\#39 \string— bascule de session de login
+        atomique.} \texttt{services::auth::authenticate\_session}
+        exécutait l'INSERT de la nouvelle session et le UPDATE de
+        l'ancienne session anonyme comme deux requêtes
+        indépendantes. Une défaillance partielle entre les deux
+        laissait une ligne anonyme orpheline à côté de la
+        nouvelle ligne authentifiée (les deux portaient des
+        jetons CSRF valides pour le même navigateur). Les deux
+        requêtes tournent maintenant dans une seule
+        \texttt{sqlx::Transaction} — bascule atomique ou rollback
+        complet.
+  \item \textbf{\#47 \string— combler 4 trous de couverture du
+        suite de tests CSRF.} Quatre tests d'intégration Rust à
+        forte valeur ajoutés~: branche HTMX du POST language,
+        logout via le jeton en champ de formulaire (la forme
+        utilisée par la nav-bar), rejouement d'un jeton périmé
+        contre une session rotée, et une assertion sur le corps
+        de la 403 prouvant que l'enveloppe de rejet porte bien le
+        markup FeedbackEntry. Les 5 autres éléments E2E
+        (parallèle-pollution + sélecteurs) sont reportés à une
+        passe E2E ultérieure.
+  \item \textbf{\#217 \string— resserrement du scope de confirmation
+        modal.} \texttt{modal.js::originatesFromConfirm}
+        retournait vrai pour N'IMPORTE QUEL \texttt{<form>}
+        descendant de la dialog ouverte. Une future modale avec
+        un formulaire imbriqué aurait étiqueté ses soumissions
+        avec \texttt{X-Modal-Confirm: true} et déclenché à tort
+        le \texttt{ModalConfirmRetargetGuard} côté serveur. Le
+        prédicat correspond désormais seulement au premier
+        formulaire de la dialog
+        (\texttt{dialog.querySelector("form")}) — qui est le
+        formulaire Confirm par construction du macro. Une E2E
+        regression-guard injecte un second formulaire dans une
+        dialog ouverte et assert que l'en-tête n'est PAS envoyé.
+\end{itemize}
+
 \section{Nouveautés de la 1.7.7}\label{sec:whats-new-1.7.7}
 
 La version 1.7.7 est un patch « rigueur de test » qui apporte une

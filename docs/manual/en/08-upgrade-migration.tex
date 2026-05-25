@@ -139,6 +139,67 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.8}\label{sec:whats-new-1.7.8}
+
+Version 1.7.8 is a hardening patch with one user-visible UX fix and
+three code-review-finding hardenings. \emph{No schema migration, no
+breaking changes}; routine \texttt{docker compose pull \&\& docker
+compose up -d}.
+
+\textbf{User-visible:}
+
+\begin{itemize}
+  \item \textbf{\#136 \string— concurrent-delete modals surface
+        feedback instead of silently no-op'ing.} Two librarians with
+        the same \texttt{/borrower/:id}, \texttt{/contributor/:id},
+        or return-loan modal open used to see the loser's Delete
+        click vanish silently: the modal handler returned 404, the
+        default \texttt{AppError::NotFound} retargeted to
+        \texttt{\#feedback-list}, and these pages don't declare that
+        slot — HTMX swap silently dropped. The three modal-trigger
+        GET handlers now return 200 + inline feedback fragment +
+        \texttt{HX-Retarget} to the page's existing slot
+        (\texttt{\#borrower-feedback}, \texttt{\#contributor-feedback},
+        or the \texttt{?target=} resolution for the return-loan
+        flow). The second librarian sees a localized "already
+        deleted by another session" toast in all four supported
+        locales.
+\end{itemize}
+
+\textbf{Hardening (no user-visible behaviour change):}
+
+\begin{itemize}
+  \item \textbf{\#39 \string— atomic login session swap.}
+        \texttt{services::auth::authenticate\_session} previously
+        ran the INSERT new session row and the UPDATE prior
+        anonymous session row as two independent queries. A
+        partial failure between them left an orphan anonymous
+        session row alongside the new authenticated one (both
+        carried valid CSRF tokens for the same browser). Both
+        queries now run inside a single \texttt{sqlx::Transaction}
+        — atomic swap or full rollback.
+  \item \textbf{\#47 \string— CSRF test suite coverage gaps.}
+        Four high-value Rust integration tests added: HTMX-branch
+        language POST, form-field-token logout (the nav-bar shape),
+        stale-token replay against a rotated session, and a 403
+        body assertion proving the rejection envelope carries the
+        FeedbackEntry markup. The remaining 5 E2E items
+        (parallel-pollution teardown + selector tightening) are
+        deferred to a follow-up E2E pass.
+  \item \textbf{\#217 \string— modal Confirm scope tightening.}
+        \texttt{modal.js::originatesFromConfirm} used to return
+        true for ANY \texttt{<form>} descendant of the open
+        dialog. A future modal with a nested form would have
+        tagged the nested form's submissions with
+        \texttt{X-Modal-Confirm: true} and tripped the
+        server-side \texttt{ModalConfirmRetargetGuard}. The
+        predicate now matches only the dialog's primary form
+        (\texttt{dialog.querySelector("form")}) — the macro's
+        Confirm form by construction. An E2E regression-guard
+        injects a secondary form into an open dialog and asserts
+        the header is NOT sent.
+\end{itemize}
+
 \section{What's new in 1.7.7}\label{sec:whats-new-1.7.7}
 
 Version 1.7.7 is a test-rigor patch bundling one user-visible
