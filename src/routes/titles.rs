@@ -948,6 +948,7 @@ pub async fn redownload_metadata(
         let settings = state.settings.read().unwrap();
         settings.metadata_fetch_timeout_secs
     };
+    let per_provider_timeout_secs = state.metadata_chain_per_provider_timeout_secs();
 
     // Execute chain synchronously (user is waiting for result)
     let metadata_opt = ChainExecutor::execute(
@@ -957,6 +958,7 @@ pub async fn redownload_metadata(
         &code_type,
         &media_type,
         timeout_secs,
+        per_provider_timeout_secs,
     )
     .await;
 

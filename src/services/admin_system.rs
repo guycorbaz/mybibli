@@ -41,6 +41,33 @@ pub const KEY_SHOW_VALUE_INDICATORS: &str = "show_value_indicators";
 // `tracing` subscriber actually swaps its filter.
 pub const KEY_LOG_LEVEL: &str = "log_level";
 
+// v1.7.9 fix #334 — runtime metadata-chain + provider-health timeouts.
+// Seeded by migration 20260526075659; surfaced in the same /admin > System
+// "Metadata Providers" block as the API keys. Bounded to 1..=60 s by
+// `validate_provider_timeout_secs`.
+pub const KEY_METADATA_CHAIN_TIMEOUT: &str = "metadata_chain_per_provider_timeout_secs";
+pub const KEY_PROVIDER_HEALTH_TIMEOUT: &str = "provider_health_probe_timeout_secs";
+
+/// Inclusive bounds for both timeout settings. Below 1 s would race typical
+/// HTTPS handshakes; above 60 s a stalled provider would block the chain
+/// longer than any plausible user-facing latency budget.
+pub const PROVIDER_TIMEOUT_MIN_SECS: u64 = 1;
+pub const PROVIDER_TIMEOUT_MAX_SECS: u64 = 60;
+
+/// Validate one of the two #334 timeouts. Returns a `BadRequest` with the
+/// same i18n message regardless of which setting failed (the form field
+/// label disambiguates for the user); callers pass the localized error
+/// for re-rendering.
+pub fn validate_provider_timeout_secs(value: u64, loc: &'static str) -> Result<(), AppError> {
+    if (PROVIDER_TIMEOUT_MIN_SECS..=PROVIDER_TIMEOUT_MAX_SECS).contains(&value) {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest(
+            rust_i18n::t!("error.system.provider_timeout_invalid", locale = loc).to_string(),
+        ))
+    }
+}
+
 /// Validate the log-level setting. Accepts:
 ///   - a plain level: `trace`, `debug`, `info`, `warn`, `error`
 ///   - a `tracing-subscriber` `EnvFilter` directive list, e.g.
@@ -289,5 +316,44 @@ mod tests {
     fn setup_keys_match_migration_strings() {
         assert_eq!(KEY_SETUP_COMPLETED_AT, "setup_completed_at");
         assert_eq!(KEY_SETUP_STEP_3_DONE, "setup_step_3_done");
+    }
+
+    // ─── Fix #334 (v1.7.9) — validate_provider_timeout_secs ──────
+
+    #[test]
+    fn validate_provider_timeout_accepts_inclusive_bounds() {
+        assert!(validate_provider_timeout_secs(PROVIDER_TIMEOUT_MIN_SECS, "en").is_ok());
+        assert!(validate_provider_timeout_secs(PROVIDER_TIMEOUT_MAX_SECS, "en").is_ok());
+        for v in [3, 5, 10, 20, 45] {
+            assert!(
+                validate_provider_timeout_secs(v, "en").is_ok(),
+                "{v} should validate inside 1..=60"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_provider_timeout_rejects_out_of_range() {
+        for v in [0_u64, 61, 120, 3600] {
+            assert!(
+                matches!(
+                    validate_provider_timeout_secs(v, "en"),
+                    Err(AppError::BadRequest(_))
+                ),
+                "{v} should fail validation"
+            );
+        }
+    }
+
+    #[test]
+    fn provider_timeout_keys_match_migration_strings() {
+        assert_eq!(
+            KEY_METADATA_CHAIN_TIMEOUT,
+            "metadata_chain_per_provider_timeout_secs"
+        );
+        assert_eq!(
+            KEY_PROVIDER_HEALTH_TIMEOUT,
+            "provider_health_probe_timeout_secs"
+        );
     }
 }

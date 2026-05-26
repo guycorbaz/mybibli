@@ -41,6 +41,7 @@ pub async fn fetch_metadata_chain(
     media_type: MediaType,
     registry: Arc<ProviderRegistry>,
     timeout_secs: u64,
+    per_provider_timeout_secs: u64,
     http_client: reqwest::Client,
     covers_dir: PathBuf,
     force_refresh: bool,
@@ -77,6 +78,7 @@ pub async fn fetch_metadata_chain(
         &code_type,
         &media_type,
         timeout_secs,
+        per_provider_timeout_secs,
     )
     .await
     {

@@ -415,6 +415,7 @@ error:
     default_language_invalid: "Language must be FR or EN"
     default_currency_invalid: "Default currency must be a 3-letter ISO 4217 code (e.g. CHF, EUR)."
     log_level_invalid: "Log level must be a plain level (trace/debug/info/warn/error) or a tracing-subscriber EnvFilter directive list (e.g. mybibli=debug,sqlx::query=warn)."
+    provider_timeout_invalid: "Timeout must be between 1 and 60 seconds."
     version_mismatch: "Settings were modified by another admin — reload and retry"
     provider_version_mismatch: "%{provider} was modified by another admin — reload and retry"
   code:
@@ -898,6 +899,12 @@ admin:
     log_level_label: "Log level"
     log_level_help: "Accepts a plain level (trace / debug / info / warn / error) or a tracing-subscriber EnvFilter directive list (e.g. mybibli=debug,sqlx::query=warn). Applied immediately — no redeploy. Default 'info' is production-safe."
     btn_save_log_level: "Save logging settings"
+    # v1.7.9 fix #334 — Metadata-chain + provider-health timeouts.
+    metadata_chain_timeout_label: "Per-provider metadata timeout (seconds)"
+    metadata_chain_timeout_help: "Maximum time the chain waits for one provider before falling through to the next. Default 5. Raise if your DNS or TLS handshake is slow (rural fiber, VPN, satellite). Bounded 1–60. Applied on the next scan — no restart."
+    provider_health_timeout_label: "Provider-health probe timeout (seconds)"
+    provider_health_timeout_help: "Maximum time the 5-min reachability ping waits for each provider HEAD response. Default 10. Bounded 1–60. Applied on the next round — no restart."
+    btn_save_timeouts: "Save timeout settings"
   api_keys:
     panel_heading: "API keys"
     intro: "API keys authenticate external callers to the HTTP JSON API under /api/v1/*. Read keys can list and fetch records; write keys can also PATCH whitelisted title fields. Each key is shown ONCE at creation — copy it now or revoke and re-create."
@@ -965,6 +972,7 @@ success:
     language_saved: "Default language saved"
     valuation_saved: "Library valuation settings saved"
     log_level_saved: "Log level saved — applied immediately, no restart required"
+    timeouts_saved: "Timeouts saved — applied on the next chain run / ping round, no restart required"
     no_changes: "No changes"
     provider_set: "%{provider} key saved"
     provider_cleared: "%{provider} key cleared"

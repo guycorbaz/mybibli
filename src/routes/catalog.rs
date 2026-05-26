@@ -526,6 +526,8 @@ pub async fn handle_scan(
                             .read()
                             .map(|s| s.metadata_fetch_timeout_secs)
                             .unwrap_or(30);
+                        let per_provider_timeout_secs =
+                            state.metadata_chain_per_provider_timeout_secs();
 
                         let media_type = title
                             .media_type
@@ -545,6 +547,7 @@ pub async fn handle_scan(
                             media_type,
                             state.registry.clone(),
                             timeout_secs,
+                            per_provider_timeout_secs,
                             state.http_client.clone(),
                             state.covers_dir.clone(),
                             false,
@@ -962,6 +965,8 @@ pub async fn handle_scan(
                             .read()
                             .map(|s| s.metadata_fetch_timeout_secs)
                             .unwrap_or(30);
+                        let per_provider_timeout_secs =
+                            state.metadata_chain_per_provider_timeout_secs();
                         tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
                             pool.clone(),
                             title.id,
@@ -970,6 +975,7 @@ pub async fn handle_scan(
                             MediaType::Magazine,
                             state.registry.clone(),
                             timeout_secs,
+                            per_provider_timeout_secs,
                             state.http_client.clone(),
                             state.covers_dir.clone(),
                             false,
@@ -1017,6 +1023,8 @@ pub async fn handle_scan(
                                 .read()
                                 .map(|s| s.metadata_fetch_timeout_secs)
                                 .unwrap_or(30);
+                            let per_provider_timeout_secs =
+                                state.metadata_chain_per_provider_timeout_secs();
                             tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
                                 pool.clone(),
                                 title.id,
@@ -1025,6 +1033,7 @@ pub async fn handle_scan(
                                 media_type,
                                 state.registry.clone(),
                                 timeout_secs,
+                                per_provider_timeout_secs,
                                 state.http_client.clone(),
                                 state.covers_dir.clone(),
                                 false,
@@ -1241,6 +1250,8 @@ pub async fn handle_scan_with_type(
                     .read()
                     .map(|s| s.metadata_fetch_timeout_secs)
                     .unwrap_or(30);
+                let per_provider_timeout_secs =
+                    state.metadata_chain_per_provider_timeout_secs();
                 tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
                     pool.clone(),
                     title.id,
@@ -1249,6 +1260,7 @@ pub async fn handle_scan_with_type(
                     media_type,
                     state.registry.clone(),
                     timeout_secs,
+                    per_provider_timeout_secs,
                     state.http_client.clone(),
                     state.covers_dir.clone(),
                     false,

@@ -535,6 +535,14 @@ pub fn build_router(state: AppState) -> Router {
             "/admin/system/log-level",
             axum::routing::post(admin_system::save_log_level),
         )
+        // v1.7.9 fix #334 — Metadata-chain + provider-health timeouts
+        // save endpoint. Surfaced inside the existing System / Metadata
+        // Providers section. Both timeouts hot-reload (chain reads per
+        // fetch, provider_health task reads per ping round).
+        .route(
+            "/admin/system/timeouts",
+            axum::routing::post(admin_system::save_metadata_timeouts),
+        )
         // CR #241 — Admin → API keys (v1.4.0). 4 routes: 1 GET panel +
         // 1 POST create + 1 GET revoke-modal + 1 POST revoke. All
         // Admin-gated. CSRF-protected via the 8-2 middleware.

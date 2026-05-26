@@ -34,10 +34,11 @@ use crate::routes::catalog::feedback_html_pub;
 // `save_setting` / `reload_settings_cache` / `validate_*` definitions have
 // been deleted in favour of the canonical implementations.
 use crate::services::admin_system::{
-    KEY_DEFAULT_CURRENCY, KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_LOG_LEVEL, KEY_OMDB,
-    KEY_OVERDUE_THRESHOLD, KEY_SHOW_VALUE_INDICATORS, KEY_TMDB, reload_settings_cache,
-    save_setting, validate_default_currency, validate_default_language, validate_log_level,
-    validate_overdue_threshold,
+    KEY_DEFAULT_CURRENCY, KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_LOG_LEVEL,
+    KEY_METADATA_CHAIN_TIMEOUT, KEY_OMDB, KEY_OVERDUE_THRESHOLD, KEY_PROVIDER_HEALTH_TIMEOUT,
+    KEY_SHOW_VALUE_INDICATORS, KEY_TMDB, reload_settings_cache, save_setting,
+    validate_default_currency, validate_default_language, validate_log_level,
+    validate_overdue_threshold, validate_provider_timeout_secs,
 };
 
 // ─── Form structs ─────────────────────────────────────────────────
@@ -103,6 +104,18 @@ pub struct LogLevelSettingsForm {
     pub _csrf_token: String,
 }
 
+// v1.7.9 fix #334 — Metadata-chain + provider-health timeouts. Two
+// settings on one form so admins flip both in a single round-trip.
+// Validation 1..=60 per `validate_provider_timeout_secs`.
+#[derive(Deserialize)]
+pub struct MetadataTimeoutsForm {
+    pub metadata_chain_timeout_secs: u64,
+    pub metadata_chain_timeout_version: i32,
+    pub provider_health_timeout_secs: u64,
+    pub provider_health_timeout_version: i32,
+    pub _csrf_token: String,
+}
+
 // ─── Template structs ────────────────────────────────────────────
 
 #[derive(Template)]
@@ -116,6 +129,7 @@ pub(crate) struct AdminSystemPanel {
     pub section_logging: String,
     pub loans_form_html: String,
     pub providers_form_html: String,
+    pub timeouts_form_html: String,
     pub language_form_html: String,
     pub valuation_form_html: String,
     pub log_form_html: String,
@@ -173,6 +187,26 @@ struct AdminSystemLogForm {
     log_level_help: String,
     log_level_value: String,
     log_level_version: i32,
+    btn_save: String,
+}
+
+// v1.7.9 fix #334 — Metadata-chain + provider-health timeouts form.
+// Rendered just below the API-keys form inside the existing
+// "Metadata Providers" section so admins find both knobs together.
+#[derive(Template)]
+#[template(path = "fragments/admin_system_timeouts_form.html")]
+struct AdminSystemTimeoutsForm {
+    csrf_token: String,
+    metadata_chain_label: String,
+    metadata_chain_help: String,
+    metadata_chain_value: u64,
+    metadata_chain_version: i32,
+    provider_health_label: String,
+    provider_health_help: String,
+    provider_health_value: u64,
+    provider_health_version: i32,
+    timeout_min: u64,
+    timeout_max: u64,
     btn_save: String,
 }
 
@@ -403,6 +437,45 @@ fn render_valuation_form(
     .map_err(|_| AppError::Internal("valuation form render failed".to_string()))
 }
 
+// v1.7.9 fix #334 — Metadata-chain + provider-health timeouts renderer.
+#[allow(clippy::too_many_arguments)]
+fn render_timeouts_form(
+    csrf: &str,
+    loc: &'static str,
+    metadata_chain_value: u64,
+    metadata_chain_version: i32,
+    provider_health_value: u64,
+    provider_health_version: i32,
+) -> Result<String, AppError> {
+    use crate::services::admin_system::{PROVIDER_TIMEOUT_MAX_SECS, PROVIDER_TIMEOUT_MIN_SECS};
+    AdminSystemTimeoutsForm {
+        csrf_token: csrf.to_string(),
+        metadata_chain_label: rust_i18n::t!("admin.system.metadata_chain_timeout_label", locale = loc)
+            .to_string(),
+        metadata_chain_help: rust_i18n::t!("admin.system.metadata_chain_timeout_help", locale = loc)
+            .to_string(),
+        metadata_chain_value,
+        metadata_chain_version,
+        provider_health_label: rust_i18n::t!(
+            "admin.system.provider_health_timeout_label",
+            locale = loc
+        )
+        .to_string(),
+        provider_health_help: rust_i18n::t!(
+            "admin.system.provider_health_timeout_help",
+            locale = loc
+        )
+        .to_string(),
+        provider_health_value,
+        provider_health_version,
+        timeout_min: PROVIDER_TIMEOUT_MIN_SECS,
+        timeout_max: PROVIDER_TIMEOUT_MAX_SECS,
+        btn_save: rust_i18n::t!("admin.system.btn_save_timeouts", locale = loc).to_string(),
+    }
+    .render()
+    .map_err(|_| AppError::Internal("timeouts form render failed".to_string()))
+}
+
 // v1.7.1 fix #308 — Logging form renderer.
 fn render_log_form(
     csrf: &str,
@@ -472,9 +545,29 @@ pub async fn render_panel_html(
         .cloned()
         .unwrap_or_else(|| (log_level.clone(), 1));
 
+    // v1.7.9 fix #334 — both timeout rows + current values from settings cache.
+    let chain_timeout = state.metadata_chain_per_provider_timeout_secs();
+    let (_, chain_timeout_version) = rows
+        .get(KEY_METADATA_CHAIN_TIMEOUT)
+        .cloned()
+        .unwrap_or_else(|| (chain_timeout.to_string(), 1));
+    let probe_timeout = state.provider_health_probe_timeout_secs();
+    let (_, probe_timeout_version) = rows
+        .get(KEY_PROVIDER_HEALTH_TIMEOUT)
+        .cloned()
+        .unwrap_or_else(|| (probe_timeout.to_string(), 1));
+
     let csrf = session.csrf_token.as_str();
     let loans_form_html = render_loans_form(csrf, loc, threshold, threshold_version)?;
     let providers_form_html = render_providers_form(csrf, loc, &rows)?;
+    let timeouts_form_html = render_timeouts_form(
+        csrf,
+        loc,
+        chain_timeout,
+        chain_timeout_version,
+        probe_timeout,
+        probe_timeout_version,
+    )?;
     let language_form_html = render_language_form(csrf, loc, &default_lang, lang_version)?;
     let valuation_form_html = render_valuation_form(
         csrf,
@@ -497,6 +590,7 @@ pub async fn render_panel_html(
         section_logging: rust_i18n::t!("admin.system.section_logging", locale = loc).to_string(),
         loans_form_html,
         providers_form_html,
+        timeouts_form_html,
         language_form_html,
         valuation_form_html,
         log_form_html,
@@ -892,6 +986,107 @@ pub async fn save_log_level(
             content: feedback,
         }],
     })
+}
+
+// v1.7.9 fix #334 — Metadata-chain + provider-health timeouts save
+// handler. Two settings updated transactionally so we never end up
+// with one new + one stale value on partial failure. Both are read
+// fresh by the metadata chain (per-fetch) and the provider_health
+// task (per-round) from `Arc<RwLock<AppSettings>>` — no restart
+// needed. Audit-row not added: timeouts are operator-tuning
+// diagnostics, not security-sensitive (mirrors log_level choice).
+pub async fn save_metadata_timeouts(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    Form(form): Form<MetadataTimeoutsForm>,
+) -> Result<Response, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=system", locale.0)?;
+    let loc = locale.0;
+
+    // #91 pattern — validation errors re-render the form with the
+    // submitted values (preserve the typed input) + HX-Trigger so
+    // csrf.js opts the 400 swap in. Validate both fields up-front
+    // so the user sees a single error per save attempt.
+    if let Err(e) = validate_provider_timeout_secs(form.metadata_chain_timeout_secs, loc) {
+        let error_msg = match e {
+            AppError::BadRequest(msg) => msg,
+            other => return Err(other),
+        };
+        return Ok(validation_error_response(
+            render_timeouts_form(
+                &session.csrf_token,
+                loc,
+                form.metadata_chain_timeout_secs,
+                form.metadata_chain_timeout_version,
+                form.provider_health_timeout_secs,
+                form.provider_health_timeout_version,
+            )?,
+            error_msg,
+        ));
+    }
+    if let Err(e) = validate_provider_timeout_secs(form.provider_health_timeout_secs, loc) {
+        let error_msg = match e {
+            AppError::BadRequest(msg) => msg,
+            other => return Err(other),
+        };
+        return Ok(validation_error_response(
+            render_timeouts_form(
+                &session.csrf_token,
+                loc,
+                form.metadata_chain_timeout_secs,
+                form.metadata_chain_timeout_version,
+                form.provider_health_timeout_secs,
+                form.provider_health_timeout_version,
+            )?,
+            error_msg,
+        ));
+    }
+
+    let mut tx = state.pool.begin().await?;
+    save_setting(
+        &mut *tx,
+        KEY_METADATA_CHAIN_TIMEOUT,
+        &form.metadata_chain_timeout_secs.to_string(),
+        form.metadata_chain_timeout_version,
+    )
+    .await?;
+    save_setting(
+        &mut *tx,
+        KEY_PROVIDER_HEALTH_TIMEOUT,
+        &form.provider_health_timeout_secs.to_string(),
+        form.provider_health_timeout_version,
+    )
+    .await?;
+    tx.commit().await?;
+    reload_settings_cache(&state).await?;
+
+    let rows = fetch_setting_rows(&state.pool).await?;
+    let (chain_value, chain_version) = rows
+        .get(KEY_METADATA_CHAIN_TIMEOUT)
+        .cloned()
+        .unwrap_or_else(|| (form.metadata_chain_timeout_secs.to_string(), 2));
+    let (probe_value, probe_version) = rows
+        .get(KEY_PROVIDER_HEALTH_TIMEOUT)
+        .cloned()
+        .unwrap_or_else(|| (form.provider_health_timeout_secs.to_string(), 2));
+    let main = render_timeouts_form(
+        &session.csrf_token,
+        loc,
+        chain_value.parse().unwrap_or(form.metadata_chain_timeout_secs),
+        chain_version,
+        probe_value.parse().unwrap_or(form.provider_health_timeout_secs),
+        probe_version,
+    )?;
+    let feedback = success_feedback(loc, "success.system.timeouts_saved");
+    Ok(HtmxResponse {
+        main,
+        oob: vec![OobUpdate {
+            target: "feedback-list".to_string(),
+            content: feedback,
+        }],
+    }
+    .into_response())
 }
 
 // ─── Provider-key action machinery ────────────────────────────────

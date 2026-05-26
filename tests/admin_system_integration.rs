@@ -690,3 +690,146 @@ async fn load_from_db_rejects_invalid_default_language(pool: DbPool) {
         "invalid value falls back to the Default impl ('fr')"
     );
 }
+
+// ─── Fix #334 (v1.7.9) — metadata-chain + provider-health timeouts ──
+
+#[sqlx::test(migrations = "./migrations")]
+async fn load_from_db_picks_up_timeout_settings(pool: DbPool) {
+    sqlx::query(
+        "UPDATE settings SET setting_value = '8' \
+         WHERE setting_key = 'metadata_chain_per_provider_timeout_secs'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE settings SET setting_value = '15' \
+         WHERE setting_key = 'provider_health_probe_timeout_secs'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let s = mybibli::config::AppSettings::load_from_db(&pool)
+        .await
+        .unwrap();
+    assert_eq!(s.metadata_chain_per_provider_timeout_secs, 8);
+    assert_eq!(s.provider_health_probe_timeout_secs, 15);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn load_from_db_clamps_out_of_range_timeouts_to_default(pool: DbPool) {
+    // Out-of-range row (manual SQL edit, env-var migration with bogus value).
+    // The defense-in-depth load_from_db guard falls back to Default rather
+    // than carrying a broken setting across boots.
+    sqlx::query(
+        "UPDATE settings SET setting_value = '0' \
+         WHERE setting_key = 'metadata_chain_per_provider_timeout_secs'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE settings SET setting_value = '999' \
+         WHERE setting_key = 'provider_health_probe_timeout_secs'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let s = mybibli::config::AppSettings::load_from_db(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        s.metadata_chain_per_provider_timeout_secs, 5,
+        "value 0 is out of 1..=60 so the Default (5) wins"
+    );
+    assert_eq!(
+        s.provider_health_probe_timeout_secs, 10,
+        "value 999 is out of 1..=60 so the Default (10) wins"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn migrate_legacy_env_vars_copies_timeout_env_vars_when_row_is_seeded_default(
+    pool: DbPool,
+) {
+    use std::env;
+    // Set both env vars, leave both rows at the seeded defaults (5 / 10).
+    // SAFETY: same single-threaded-test contract as the API-key cases above —
+    // setenv contends with other threads that read the same vars, but no other
+    // sqlx::test in this suite touches MYBIBLI_*_TIMEOUT_SECS.
+    unsafe {
+        env::set_var("MYBIBLI_METADATA_CHAIN_PROVIDER_TIMEOUT_SECS", "20");
+        env::set_var("MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS", "30");
+    }
+    let result = mybibli::config::migrate_legacy_env_vars(&pool).await;
+    unsafe {
+        env::remove_var("MYBIBLI_METADATA_CHAIN_PROVIDER_TIMEOUT_SECS");
+        env::remove_var("MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS");
+    }
+    result.unwrap();
+
+    let s = mybibli::config::AppSettings::load_from_db(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        s.metadata_chain_per_provider_timeout_secs, 20,
+        "env var overrides seeded default"
+    );
+    assert_eq!(
+        s.provider_health_probe_timeout_secs, 30,
+        "env var overrides seeded default"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn migrate_legacy_env_vars_preserves_admin_change_against_env_var(pool: DbPool) {
+    use std::env;
+    // Simulate an admin save that already moved the row off the seeded default.
+    sqlx::query(
+        "UPDATE settings SET setting_value = '12' \
+         WHERE setting_key = 'metadata_chain_per_provider_timeout_secs'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    unsafe {
+        env::set_var("MYBIBLI_METADATA_CHAIN_PROVIDER_TIMEOUT_SECS", "20");
+    }
+    let result = mybibli::config::migrate_legacy_env_vars(&pool).await;
+    unsafe {
+        env::remove_var("MYBIBLI_METADATA_CHAIN_PROVIDER_TIMEOUT_SECS");
+    }
+    result.unwrap();
+
+    let s = mybibli::config::AppSettings::load_from_db(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        s.metadata_chain_per_provider_timeout_secs, 12,
+        "admin-saved value sticks; env-var migration only fires when the row is still the seeded default"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn migrate_legacy_env_vars_ignores_out_of_range_timeout_env_var(pool: DbPool) {
+    use std::env;
+    unsafe {
+        env::set_var("MYBIBLI_METADATA_CHAIN_PROVIDER_TIMEOUT_SECS", "0");
+        env::set_var("MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS", "99999");
+    }
+    let result = mybibli::config::migrate_legacy_env_vars(&pool).await;
+    unsafe {
+        env::remove_var("MYBIBLI_METADATA_CHAIN_PROVIDER_TIMEOUT_SECS");
+        env::remove_var("MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS");
+    }
+    result.unwrap();
+
+    let s = mybibli::config::AppSettings::load_from_db(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        s.metadata_chain_per_provider_timeout_secs, 5,
+        "out-of-range env var is ignored, seeded default stays"
+    );
+    assert_eq!(s.provider_health_probe_timeout_secs, 10);
+}

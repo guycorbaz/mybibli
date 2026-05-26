@@ -25,6 +25,7 @@ impl ChainExecutor {
         code_type: &CodeType,
         media_type: &MediaType,
         timeout_secs: u64,
+        per_provider_timeout_secs: u64,
     ) -> Option<MetadataResult> {
         tracing::info!(code = %code, code_type = %code_type, media_type = %media_type, "Starting metadata chain");
 
@@ -60,7 +61,7 @@ impl ChainExecutor {
                     limiter.acquire().await;
                 }
 
-                let per_provider_timeout = Duration::from_secs(5);
+                let per_provider_timeout = Duration::from_secs(per_provider_timeout_secs);
                 let lookup_future = match code_type {
                     CodeType::Upc => provider.lookup_by_upc(code),
                     CodeType::Isbn | CodeType::Issn => provider.lookup_by_isbn(code),

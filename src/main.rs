@@ -395,25 +395,16 @@ async fn main() {
     // don't borrow fields before they're in place. Pings run on a dedicated
     // 5-min cadence with a 10 s warm-up delay.
     //
-    // Fix #310: the per-probe HEAD timeout is configurable via
-    // MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS (default
-    // `REQUEST_TIMEOUT_SECS_DEFAULT`, currently 10 s). The previous
-    // hardcoded 3 s was too tight for typical home-NAS DNS + TLS
-    // handshake, making every probe time out on the user's prod NAS.
-    let probe_timeout_secs: u64 = std::env::var("MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .filter(|&s: &u64| s > 0)
-        .unwrap_or(provider_health::REQUEST_TIMEOUT_SECS_DEFAULT);
-    tracing::info!(
-        probe_timeout_secs = probe_timeout_secs,
-        "Provider health probe timeout configured"
-    );
+    // Fix #334 (v1.7.9): the per-probe HEAD timeout is now read fresh from
+    // `AppSettings::provider_health_probe_timeout_secs` on every round
+    // (admin-tunable via /admin > System). The legacy env var
+    // `MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS` is honored on boot via
+    // `config::migrate_legacy_env_vars` (one-shot copy into the DB row).
     provider_health::spawn(
         http_client,
         registry,
         provider_health_map,
-        probe_timeout_secs,
+        state.settings.clone(),
     );
 
     // Story 8-2: daily purge of anonymous session rows older than 7 days.

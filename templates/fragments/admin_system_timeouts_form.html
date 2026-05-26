@@ -1,0 +1,50 @@
+{# Admin → System → Metadata-chain + provider-health timeouts (v1.7.9 fix #334).
+   Two settings on one form so the admin flips both in a single round-trip.
+   Mirrors the loans-form shape: CSRF first, hidden version per field, hx-post
+   to a dedicated endpoint, outerHTML swap on the form id. Both inputs are
+   number-typed with min/max attributes that mirror the server-side
+   `validate_provider_timeout_secs` bounds (1..=60). #}
+<form id="admin-system-timeouts-form"
+      method="POST"
+      action="/admin/system/timeouts"
+      hx-post="/admin/system/timeouts"
+      hx-target="#admin-system-timeouts-form"
+      hx-swap="outerHTML"
+      class="border border-stone-200 dark:border-stone-700 rounded-lg p-4 bg-stone-50 dark:bg-stone-900 mt-4">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+    <input type="hidden" name="metadata_chain_timeout_version" value="{{ metadata_chain_version }}">
+    <input type="hidden" name="provider_health_timeout_version" value="{{ provider_health_version }}">
+
+    <div class="mb-4">
+        <label for="admin-system-metadata-chain-timeout" class="block text-sm font-medium mb-1">{{ metadata_chain_label }}</label>
+        <p class="text-xs text-stone-500 dark:text-stone-400 mb-2">{{ metadata_chain_help }}</p>
+        <input id="admin-system-metadata-chain-timeout"
+               name="metadata_chain_timeout_secs"
+               type="number"
+               min="{{ timeout_min }}"
+               max="{{ timeout_max }}"
+               step="1"
+               value="{{ metadata_chain_value }}"
+               required
+               class="w-32 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2 text-sm">
+    </div>
+
+    <div class="mb-4">
+        <label for="admin-system-provider-health-timeout" class="block text-sm font-medium mb-1">{{ provider_health_label }}</label>
+        <p class="text-xs text-stone-500 dark:text-stone-400 mb-2">{{ provider_health_help }}</p>
+        <input id="admin-system-provider-health-timeout"
+               name="provider_health_timeout_secs"
+               type="number"
+               min="{{ timeout_min }}"
+               max="{{ timeout_max }}"
+               step="1"
+               value="{{ provider_health_value }}"
+               required
+               class="w-32 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2 text-sm">
+    </div>
+
+    <div>
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm">{{ btn_save }}</button>
+    </div>
+</form>
