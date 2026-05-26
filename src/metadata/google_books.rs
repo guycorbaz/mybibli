@@ -59,6 +59,14 @@ impl GoogleBooksProvider {
         })
     }
 
+    /// Pick the highest-resolution variant Google Books returned in `imageLinks`
+    /// so the downstream 400px Lanczos resize works from the best source pixels.
+    fn select_best_image_link(image_links: &serde_json::Value) -> Option<&str> {
+        ["extraLarge", "large", "medium", "small", "thumbnail", "smallThumbnail"]
+            .iter()
+            .find_map(|key| image_links.get(key).and_then(|v| v.as_str()))
+    }
+
     /// Parse Google Books API JSON response into MetadataResult.
     pub fn parse_response(json: &serde_json::Value) -> Option<MetadataResult> {
         let item = json.get("items")?.as_array()?.first()?;
@@ -96,8 +104,7 @@ impl GoogleBooksProvider {
                 .map(String::from),
             cover_url: info
                 .get("imageLinks")
-                .and_then(|il| il.get("thumbnail"))
-                .and_then(|v| v.as_str())
+                .and_then(Self::select_best_image_link)
                 .map(|url| url.replacen("http://", "https://", 1)),
             language: info
                 .get("language")
@@ -238,6 +245,70 @@ mod tests {
         assert!(result.publisher.is_none());
         assert!(result.page_count.is_none());
         assert!(result.cover_url.is_none());
+    }
+
+    #[test]
+    fn test_parse_response_prefers_highest_resolution_image_link() {
+        let json = serde_json::json!({
+            "items": [{
+                "volumeInfo": {
+                    "title": "Best Resolution Wins",
+                    "imageLinks": {
+                        "smallThumbnail": "http://example.com/st.jpg",
+                        "thumbnail":      "http://example.com/t.jpg",
+                        "small":          "http://example.com/s.jpg",
+                        "medium":         "http://example.com/m.jpg",
+                        "large":          "http://example.com/l.jpg",
+                        "extraLarge":     "http://example.com/xl.jpg"
+                    }
+                }
+            }]
+        });
+        let result = GoogleBooksProvider::parse_response(&json).unwrap();
+        assert_eq!(
+            result.cover_url.as_deref(),
+            Some("https://example.com/xl.jpg")
+        );
+    }
+
+    #[test]
+    fn test_parse_response_falls_back_when_higher_variants_absent() {
+        let json = serde_json::json!({
+            "items": [{
+                "volumeInfo": {
+                    "title": "Only Medium Available",
+                    "imageLinks": {
+                        "smallThumbnail": "http://example.com/st.jpg",
+                        "thumbnail":      "http://example.com/t.jpg",
+                        "medium":         "http://example.com/m.jpg"
+                    }
+                }
+            }]
+        });
+        let result = GoogleBooksProvider::parse_response(&json).unwrap();
+        assert_eq!(
+            result.cover_url.as_deref(),
+            Some("https://example.com/m.jpg")
+        );
+    }
+
+    #[test]
+    fn test_parse_response_falls_back_to_smallthumbnail_when_only_one_present() {
+        let json = serde_json::json!({
+            "items": [{
+                "volumeInfo": {
+                    "title": "Last Resort",
+                    "imageLinks": {
+                        "smallThumbnail": "http://example.com/st.jpg"
+                    }
+                }
+            }]
+        });
+        let result = GoogleBooksProvider::parse_response(&json).unwrap();
+        assert_eq!(
+            result.cover_url.as_deref(),
+            Some("https://example.com/st.jpg")
+        );
     }
 
     #[test]

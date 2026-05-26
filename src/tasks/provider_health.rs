@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 
+use crate::config::AppSettings;
 use crate::metadata::registry::ProviderRegistry;
 
 /// Per-provider reachability status exposed to the Admin → Health tab.
@@ -74,13 +75,16 @@ pub const REQUEST_TIMEOUT_SECS_DEFAULT: u64 = 10;
 /// Spawn the background ping task. Swallows all errors — diagnostic display
 /// must never crash the app. Call from `main.rs` once per process.
 ///
-/// `request_timeout_secs` is the per-probe HEAD timeout. See
-/// [`REQUEST_TIMEOUT_SECS_DEFAULT`] for rationale.
+/// `settings` lets the task read the current per-probe HEAD timeout from
+/// `AppSettings::provider_health_probe_timeout_secs` on every ping round.
+/// Fix #334 (v1.7.9): was a `u64` scalar snapshot taken at spawn time;
+/// admin saves via /admin > System now take effect on the very next round
+/// without a restart.
 pub fn spawn(
     http_client: reqwest::Client,
     registry: Arc<ProviderRegistry>,
     map: ProviderHealthMap,
-    request_timeout_secs: u64,
+    settings: Arc<RwLock<AppSettings>>,
 ) {
     tokio::spawn(async move {
         // Seed the map so the Health tab can render every provider row
@@ -101,6 +105,10 @@ pub fn spawn(
         tokio::time::sleep(Duration::from_secs(INITIAL_DELAY_SECS)).await;
 
         loop {
+            let request_timeout_secs = settings
+                .read()
+                .map(|s| s.provider_health_probe_timeout_secs)
+                .unwrap_or(REQUEST_TIMEOUT_SECS_DEFAULT);
             ping_all(&http_client, &registry, &map, request_timeout_secs).await;
             tokio::time::sleep(Duration::from_secs(PING_INTERVAL_SECS)).await;
         }

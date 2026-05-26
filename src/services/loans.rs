@@ -66,6 +66,7 @@ impl LoanService {
         borrower_id: u64,
     ) -> Result<LoanModel, AppError> {
         let mut attempt: usize = 0;
+        let mut prior_transient_retries: usize = 0;
         loop {
             attempt += 1;
             match Self::register_loan_attempt(pool, volume_id, borrower_id).await {
@@ -82,6 +83,7 @@ impl LoanService {
                             attempt = attempt,
                             "loan create hit MariaDB transient conflict, retrying"
                         );
+                        prior_transient_retries += 1;
                         continue;
                     }
                     if is_transient {
@@ -90,6 +92,21 @@ impl LoanService {
                             borrower_id = borrower_id,
                             attempts = attempt,
                             "loan create exhausted retries on MariaDB transient conflict"
+                        );
+                    } else if prior_transient_retries > 0 {
+                        // Fix #28 (v1.7.9): without this line a non-transient
+                        // failure that follows a retry (e.g., concurrent soft-
+                        // delete of the volume between attempts that flips the
+                        // second attempt into a BadRequest) reads in the log
+                        // trail as if the retry caused the business-rule
+                        // error. Surface the retry context so the trail is
+                        // self-explanatory.
+                        tracing::info!(
+                            volume_id = volume_id,
+                            borrower_id = borrower_id,
+                            attempt = attempt,
+                            prior_transient_retries = prior_transient_retries,
+                            "loan create failed with non-transient error after prior transient retry — likely concurrent state change between attempts"
                         );
                     }
                     return Err(err);

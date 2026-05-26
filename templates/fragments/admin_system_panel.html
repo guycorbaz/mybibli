@@ -13,6 +13,10 @@
     <section aria-labelledby="admin-system-providers-heading">
         <h3 id="admin-system-providers-heading" class="text-lg font-semibold mb-3">{{ section_providers }}</h3>
         {{ providers_form_html|safe }}
+        {# v1.7.9 fix #334 — metadata-chain + provider-health timeouts
+           live in the same Metadata Providers section so admins find
+           both knobs together. #}
+        {{ timeouts_form_html|safe }}
     </section>
 
     <section aria-labelledby="admin-system-language-heading">

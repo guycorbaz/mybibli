@@ -307,6 +307,19 @@ pub struct AppSettings {
     /// promised this surface but only the env var + persistent file
     /// shipped.
     pub log_level: String,
+    // === Fix #334 (v1.7.9) — Metadata-chain + provider-health timeouts ===
+    /// Per-provider call timeout inside `ChainExecutor::execute` (seconds).
+    /// Was hardcoded `5` in `src/metadata/chain.rs` until v1.7.9. Bounded
+    /// to `1..=60` by `validate_provider_timeout_secs` server-side and on
+    /// load. Read fresh by handlers on every fetch so admin saves take
+    /// effect on the very next chain run.
+    pub metadata_chain_per_provider_timeout_secs: u64,
+    /// Per-probe HEAD timeout for the background provider-reachability
+    /// task (seconds). Was env-var-only (`MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS`)
+    /// until v1.7.9; persisting in DB lets admins flip it from /admin > System
+    /// without a restart, and the task reads through `Arc<RwLock<AppSettings>>`
+    /// on each ping round.
+    pub provider_health_probe_timeout_secs: u64,
 }
 
 impl Default for AppSettings {
@@ -333,6 +346,10 @@ impl Default for AppSettings {
             // Fix #308 (v1.7.1): same default as MYBIBLI_LOG_LEVEL env
             // var in main.rs — `info` is production-safe.
             log_level: "info".to_string(),
+            // Fix #334 (v1.7.9): match prior hardcoded values so upgraded
+            // installs behave identically until the admin tunes them.
+            metadata_chain_per_provider_timeout_secs: 5,
+            provider_health_probe_timeout_secs: 10,
         }
     }
 }
@@ -506,6 +523,43 @@ impl AppSettings {
                 // the handler validates, but defense in depth), fall
                 // back to `info` rather than carrying a broken setting
                 // across boots.
+                // Fix #334 (v1.7.9): runtime metadata-chain and provider-health
+                // timeouts. Same `1..=60` bounds as the admin form validation —
+                // an out-of-range row (manual SQL edit, env-var migration with
+                // a bogus value) falls back to the Default rather than carrying
+                // a broken setting across boots.
+                "metadata_chain_per_provider_timeout_secs" => match value.parse::<u64>() {
+                    Ok(v) if (1..=60).contains(&v) => {
+                        settings.metadata_chain_per_provider_timeout_secs = v
+                    }
+                    Ok(v) => tracing::warn!(
+                        key = %key,
+                        value = %value,
+                        parsed = v,
+                        "metadata_chain_per_provider_timeout_secs out of range (1..=60), using default"
+                    ),
+                    Err(_) => tracing::warn!(
+                        key = %key,
+                        value = %value,
+                        "Invalid setting value, using default"
+                    ),
+                },
+                "provider_health_probe_timeout_secs" => match value.parse::<u64>() {
+                    Ok(v) if (1..=60).contains(&v) => {
+                        settings.provider_health_probe_timeout_secs = v
+                    }
+                    Ok(v) => tracing::warn!(
+                        key = %key,
+                        value = %value,
+                        parsed = v,
+                        "provider_health_probe_timeout_secs out of range (1..=60), using default"
+                    ),
+                    Err(_) => tracing::warn!(
+                        key = %key,
+                        value = %value,
+                        "Invalid setting value, using default"
+                    ),
+                },
                 "log_level" => {
                     let trimmed = value.trim();
                     if trimmed.is_empty()
@@ -597,6 +651,64 @@ pub async fn migrate_legacy_env_vars(pool: &DbPool) -> Result<(), sqlx::Error> {
             );
         }
     }
+
+    // Fix #334 (v1.7.9): two timeout env vars with their own seeded defaults.
+    // Migration shape: overwrite only when the row still holds the seeded
+    // default. That mirrors the API-key "row currently empty" semantic —
+    // admin saves stick, but "reset to default in the UI" plus a still-set
+    // env var re-copies the deployment-time intent on the next boot.
+    for (env_var, key, seeded_default) in &[
+        (
+            "MYBIBLI_METADATA_CHAIN_PROVIDER_TIMEOUT_SECS",
+            "metadata_chain_per_provider_timeout_secs",
+            "5",
+        ),
+        (
+            "MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS",
+            "provider_health_probe_timeout_secs",
+            "10",
+        ),
+    ] {
+        let raw = match std::env::var(env_var) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let trimmed = raw.trim();
+        let parsed: u64 = match trimmed.parse() {
+            Ok(v) if (1..=60).contains(&v) => v,
+            _ => {
+                tracing::warn!(
+                    env_var = %env_var,
+                    value = %trimmed,
+                    "Legacy timeout env-var must parse as 1..=60; ignoring"
+                );
+                continue;
+            }
+        };
+        let current: Option<(String,)> = sqlx::query_as(
+            "SELECT setting_value FROM settings WHERE setting_key = ? AND deleted_at IS NULL",
+        )
+        .bind(key)
+        .fetch_optional(pool)
+        .await?;
+        if matches!(current, Some((ref v,)) if v == seeded_default) {
+            sqlx::query(
+                "UPDATE settings SET setting_value = ?, version = version + 1 \
+                 WHERE setting_key = ? AND deleted_at IS NULL",
+            )
+            .bind(parsed.to_string())
+            .bind(key)
+            .execute(pool)
+            .await?;
+            tracing::info!(
+                env_var = %env_var,
+                setting_key = %key,
+                value = parsed,
+                "Migrated legacy timeout env-var into settings table"
+            );
+        }
+    }
+
     Ok(())
 }
 
@@ -715,6 +827,8 @@ mod tests {
             default_currency: "CHF".to_string(),
             show_value_indicators: false,
             log_level: "info".to_string(),
+            metadata_chain_per_provider_timeout_secs: 7,
+            provider_health_probe_timeout_secs: 15,
         };
         let cloned = settings.clone();
         assert_eq!(cloned.overdue_threshold_days, 60);
@@ -727,6 +841,8 @@ mod tests {
         assert_eq!(cloned.google_books_api_key, "gb-key");
         assert_eq!(cloned.omdb_api_key, "omdb-key");
         assert_eq!(cloned.tmdb_api_key, "tmdb-key");
+        assert_eq!(cloned.metadata_chain_per_provider_timeout_secs, 7);
+        assert_eq!(cloned.provider_health_probe_timeout_secs, 15);
     }
 
     // ─── Story 8-8: setup wizard sentinels ──────────────────────

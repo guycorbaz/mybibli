@@ -166,4 +166,26 @@ impl AppState {
             .map(|s| s.log_level.clone())
             .unwrap_or_else(|_| AppSettings::default().log_level)
     }
+
+    /// Fix #334 (v1.7.9): per-provider timeout (seconds) for
+    /// `ChainExecutor::execute`. Read per fetch so admin saves take
+    /// effect on the very next chain run.
+    pub fn metadata_chain_per_provider_timeout_secs(&self) -> u64 {
+        self.settings
+            .read()
+            .map(|s| s.metadata_chain_per_provider_timeout_secs)
+            .unwrap_or_else(|_| AppSettings::default().metadata_chain_per_provider_timeout_secs)
+    }
+
+    /// Fix #334 (v1.7.9): per-probe timeout (seconds) for the background
+    /// provider-reachability ping task. The task reads through
+    /// `Arc<RwLock<AppSettings>>` directly on each round (see
+    /// `tasks::provider_health::spawn`) — this accessor is for any other
+    /// site that needs the current value.
+    pub fn provider_health_probe_timeout_secs(&self) -> u64 {
+        self.settings
+            .read()
+            .map(|s| s.provider_health_probe_timeout_secs)
+            .unwrap_or_else(|_| AppSettings::default().provider_health_probe_timeout_secs)
+    }
 }

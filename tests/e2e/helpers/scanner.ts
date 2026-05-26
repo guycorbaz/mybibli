@@ -34,11 +34,21 @@ export async function simulateScan(
  * Simulate a human typing into the selected field at **100 ms** inter-key —
  * slow enough to cross the `scanner_burst_threshold` so `search.js` and
  * `scan-field.js` classify the input as typing, not a scan.
+ *
+ * Fix #196 (v1.7.9): was `pressSequentially` which under default-worker
+ * parallelism (14 workers on the author's machine) occasionally dropped a
+ * keystroke — the trailing `t` in `"test"` would never reach the field and
+ * the URL assertion saw `q=tes` instead of `q=test`. `keyboard.type` after
+ * an explicit `focus()` matches the simulateScan pattern (battle-tested
+ * across the suite) and does not re-focus between keys, eliminating the
+ * race. The 6-retro-old flake stays closed in CI at 2 workers AND on a
+ * local default-worker run.
  */
 export async function simulateTyping(
   page: Page,
   selector: string,
   text: string,
 ): Promise<void> {
-  await page.locator(selector).pressSequentially(text, { delay: 100 });
+  await page.locator(selector).focus();
+  await page.keyboard.type(text, { delay: 100 });
 }

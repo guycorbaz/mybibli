@@ -494,6 +494,7 @@ pub async fn admin_bulk_cover_refetch(
             .map(|s| s.metadata_fetch_timeout_secs)
             .unwrap_or(30)
     };
+    let per_provider_timeout_secs = state.metadata_chain_per_provider_timeout_secs();
 
     tokio::spawn(async move {
         for title in titles {
@@ -517,6 +518,7 @@ pub async fn admin_bulk_cover_refetch(
                     .unwrap_or(crate::models::media_type::MediaType::Book),
                 registry_clone.clone(),
                 timeout_secs,
+                per_provider_timeout_secs,
                 http_client_clone.clone(),
                 covers_dir_clone.clone(),
                 true,
