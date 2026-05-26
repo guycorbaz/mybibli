@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -10,6 +11,33 @@ use crate::metadata::registry::ProviderRegistry;
 use crate::models::media_type::{CodeType, MediaType};
 use crate::models::title::TitleModel;
 use crate::services::cover::{CoverService, resolve_cover_url_with_fallback};
+
+/// Spawn a background metadata-fetch future and ensure that a panic inside it
+/// surfaces as a `tracing::error!` instead of being silently dropped with the
+/// `JoinHandle`. Fix #28 (v1.7.9): the call sites used to `tokio::spawn(...)`
+/// directly and discard the handle, so any panic from a provider parser, an
+/// HTTP middleware deserializer, etc. vanished without a log line. The
+/// watcher task awaits the join handle and logs panics with the supplied
+/// context (typically the title id + code) so failed fetches are
+/// post-mortem-able.
+pub fn spawn_fetch<F>(context: &'static str, title_id: u64, future: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    let handle = tokio::spawn(future);
+    tokio::spawn(async move {
+        if let Err(join_err) = handle.await
+            && join_err.is_panic()
+        {
+            tracing::error!(
+                context = context,
+                title_id = title_id,
+                error = ?join_err,
+                "spawned metadata-fetch task panicked; runtime kept alive"
+            );
+        }
+    });
+}
 
 /// Fetch metadata asynchronously for a title using the provider chain.
 /// This function is meant to be called via `tokio::spawn`.
@@ -426,5 +454,40 @@ mod tests {
         };
         // Empty title should not trigger an update
         assert!(metadata.title.as_deref().unwrap_or("").is_empty());
+    }
+
+    // ─── Fix #28 (v1.7.9) — spawn_fetch panic capture ────────────
+
+    /// Verifies that a panic inside the spawned future is captured by the
+    /// watcher task instead of being swallowed silently. Before the fix,
+    /// `tokio::spawn(fetch_metadata_chain(...))` dropped the join handle
+    /// immediately, so any panic just vanished. We can't observe the
+    /// tracing::error! call directly without a subscriber, but we CAN
+    /// assert that the surrounding runtime stays alive (i.e. our second
+    /// task scheduled on the same runtime still completes) and that the
+    /// panic didn't escape out of `spawn_fetch` itself.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn spawn_fetch_recovers_from_panic_in_inner_future() {
+        super::spawn_fetch("test_panic", 42, async {
+            panic!("simulated panic inside fetch_metadata_chain");
+        });
+        // Give the watcher task a chance to observe the panic and log.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        // Runtime is still alive — we can schedule and complete a second task.
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            tx.send("alive").unwrap();
+        });
+        assert_eq!(rx.await.unwrap(), "alive");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn spawn_fetch_normal_completion_is_silent() {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        super::spawn_fetch("test_ok", 7, async move {
+            tx.send(()).unwrap();
+        });
+        // Future ran to completion; nothing should panic.
+        rx.await.unwrap();
     }
 }

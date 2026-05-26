@@ -539,19 +539,23 @@ pub async fn handle_scan(
                             .inferred_code_type
                             .unwrap_or(crate::models::media_type::CodeType::Isbn);
 
-                        tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
-                            pool.clone(),
+                        crate::tasks::metadata_fetch::spawn_fetch(
+                            "catalog_isbn_scan",
                             title.id,
-                            code.clone(),
-                            fetch_code_type,
-                            media_type,
-                            state.registry.clone(),
-                            timeout_secs,
-                            per_provider_timeout_secs,
-                            state.http_client.clone(),
-                            state.covers_dir.clone(),
-                            false,
-                        ));
+                            crate::tasks::metadata_fetch::fetch_metadata_chain(
+                                pool.clone(),
+                                title.id,
+                                code.clone(),
+                                fetch_code_type,
+                                media_type,
+                                state.registry.clone(),
+                                timeout_secs,
+                                per_provider_timeout_secs,
+                                state.http_client.clone(),
+                                state.covers_dir.clone(),
+                                false,
+                            ),
+                        );
 
                         let guide =
                             rust_i18n::t!("guide.title_active", title = &title.title).to_string();
@@ -967,19 +971,23 @@ pub async fn handle_scan(
                             .unwrap_or(30);
                         let per_provider_timeout_secs =
                             state.metadata_chain_per_provider_timeout_secs();
-                        tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
-                            pool.clone(),
+                        crate::tasks::metadata_fetch::spawn_fetch(
+                            "catalog_issn_scan",
                             title.id,
-                            code.clone(),
-                            CodeType::Issn,
-                            MediaType::Magazine,
-                            state.registry.clone(),
-                            timeout_secs,
-                            per_provider_timeout_secs,
-                            state.http_client.clone(),
-                            state.covers_dir.clone(),
-                            false,
-                        ));
+                            crate::tasks::metadata_fetch::fetch_metadata_chain(
+                                pool.clone(),
+                                title.id,
+                                code.clone(),
+                                CodeType::Issn,
+                                MediaType::Magazine,
+                                state.registry.clone(),
+                                timeout_secs,
+                                per_provider_timeout_secs,
+                                state.http_client.clone(),
+                                state.covers_dir.clone(),
+                                false,
+                            ),
+                        );
 
                         let guide =
                             rust_i18n::t!("guide.title_active", title = &title.title).to_string();
@@ -1025,19 +1033,23 @@ pub async fn handle_scan(
                                 .unwrap_or(30);
                             let per_provider_timeout_secs =
                                 state.metadata_chain_per_provider_timeout_secs();
-                            tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
-                                pool.clone(),
+                            crate::tasks::metadata_fetch::spawn_fetch(
+                                "catalog_upc_session_pref",
                                 title.id,
-                                code.clone(),
-                                CodeType::Upc,
-                                media_type,
-                                state.registry.clone(),
-                                timeout_secs,
-                                per_provider_timeout_secs,
-                                state.http_client.clone(),
-                                state.covers_dir.clone(),
-                                false,
-                            ));
+                                crate::tasks::metadata_fetch::fetch_metadata_chain(
+                                    pool.clone(),
+                                    title.id,
+                                    code.clone(),
+                                    CodeType::Upc,
+                                    media_type,
+                                    state.registry.clone(),
+                                    timeout_secs,
+                                    per_provider_timeout_secs,
+                                    state.http_client.clone(),
+                                    state.covers_dir.clone(),
+                                    false,
+                                ),
+                            );
                             Ok(HtmxResponse {
                                 main: skeleton_feedback_html(title.id, &code),
                                 oob: vec![],
@@ -1252,19 +1264,23 @@ pub async fn handle_scan_with_type(
                     .unwrap_or(30);
                 let per_provider_timeout_secs =
                     state.metadata_chain_per_provider_timeout_secs();
-                tokio::spawn(crate::tasks::metadata_fetch::fetch_metadata_chain(
-                    pool.clone(),
+                crate::tasks::metadata_fetch::spawn_fetch(
+                    "catalog_upc_post_media_select",
                     title.id,
-                    code.clone(),
-                    CodeType::Upc,
-                    media_type,
-                    state.registry.clone(),
-                    timeout_secs,
-                    per_provider_timeout_secs,
-                    state.http_client.clone(),
-                    state.covers_dir.clone(),
-                    false,
-                ));
+                    crate::tasks::metadata_fetch::fetch_metadata_chain(
+                        pool.clone(),
+                        title.id,
+                        code.clone(),
+                        CodeType::Upc,
+                        media_type,
+                        state.registry.clone(),
+                        timeout_secs,
+                        per_provider_timeout_secs,
+                        state.http_client.clone(),
+                        state.covers_dir.clone(),
+                        false,
+                    ),
+                );
             }
 
             let guide = rust_i18n::t!("guide.title_active", title = &title.title).to_string();
