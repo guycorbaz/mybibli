@@ -270,11 +270,17 @@ test.describe("Home page scanner detection — scan to navigate", () => {
     // intermediate `q=tes` state. Polling lets the URL converge to the
     // final `q=test` without changing semantics.
     await expect
-      .poll(() => new URL(page.url()).pathname, { timeout: 2000 })
+      .poll(() => new URL(page.url()).pathname, { timeout: 5000 })
       .toBe("/");
+    // Fix #196 (v1.7.9): bumped 2 s → 5 s alongside the simulateTyping
+    // helper switch (pressSequentially → keyboard.type) to give the
+    // debounced search + HTMX swap + hx-push-url chain headroom under
+    // default-worker parallelism. The previous 2 s ceiling occasionally
+    // observed `q=tes` (last keystroke dropped by pressSequentially) and
+    // gave up before the URL converged.
     await expect
       .poll(() => new URL(page.url()).searchParams.get("q"), {
-        timeout: 2000,
+        timeout: 5000,
       })
       .toBe("test");
   });
