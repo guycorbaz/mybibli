@@ -139,6 +139,119 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.9}\label{sec:whats-new-1.7.9}
+
+Version 1.7.9 is a cover-quality + admin-UX + 4-hardening bundle. One
+user-visible cover-quality fix, one admin-visible config surface, and
+four code-review-finding hardenings. \emph{Two new K/V settings rows
+(seeded at the prior hardcoded defaults), no breaking changes}; routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\textbf{User-visible:}
+
+\begin{itemize}
+  \item \textbf{\#333 piste 1 \string— Google Books cover URL prefers
+        the highest-resolution \texttt{imageLinks} variant.} The
+        provider used to read only \texttt{thumbnail} from the Google
+        Books response, even when the payload also carried
+        \texttt{small} / \texttt{medium} / \texttt{large} /
+        \texttt{extraLarge}. The downstream 400\,px Lanczos resize in
+        \texttt{CoverService::process\_and\_save\_bytes} then worked
+        from a lossy source. The new fallback chain
+        (\texttt{extraLarge \string-> large \string-> medium
+        \string-> small \string-> thumbnail \string-> smallThumbnail})
+        picks the best available variant per title, so existing titles
+        attach a sharper cover after re-fetch and the rare title that
+        only ships \texttt{medium} upward but no \texttt{thumbnail}
+        finally attaches a cover at all. Closes the (1) audit piste of
+        the 50\,\% prod miss-rate investigation; piste 3 manual upload
+        already shipped in v1.7.6 \#335; piste 2 BDGest cover-only
+        fetch by ISBN remains open as a separate cycle.
+\end{itemize}
+
+\textbf{Admin-visible:}
+
+\begin{itemize}
+  \item \textbf{\#334 \string— metadata-chain + provider-health
+        timeouts in \texttt{/admin > System}.} Two timeouts that were
+        previously hardcoded (per-provider chain timeout) or env-var-only
+        (provider-health probe timeout) now appear inside the Metadata
+        Providers block of the System tab. Both are bounded
+        1..=60 seconds, persisted in the K/V \texttt{settings} table
+        (migration \texttt{20260526075659}), and hot-reload through
+        \texttt{Arc<RwLock<AppSettings>{}>} so the next chain run /
+        next ping round picks up the new value with no restart. The
+        legacy environment variables
+        \texttt{MYBIBLI\_METADATA\_CHAIN\_PROVIDER\_TIMEOUT\_SECS} and
+        \texttt{MYBIBLI\_PROVIDER\_HEALTH\_TIMEOUT\_SECS} are honored
+        as one-shot bootstrap via
+        \texttt{config::migrate\_legacy\_env\_vars} (mirrors the
+        v1.7.1 \#308 log-level pattern). Useful for deployments with
+        slow DNS+TLS (rural fiber, VPN, satellite).
+\end{itemize}
+
+\textbf{Hardening (no user-visible behaviour change):}
+
+\begin{itemize}
+  \item \textbf{\#46 \string— anonymous-session purge survives
+        crash-loops.} The daily purge of anonymous-session rows older
+        than 7 days previously slept a fixed 24\,h after every boot.
+        On a host that crash-looped or rolling-deployed faster than
+        24\,h the purge never fired and the \texttt{sessions} table
+        grew unbounded. The next-run delay is now computed from a
+        persisted \texttt{last\_anonymous\_session\_purge\_at} K/V row
+        (migration \texttt{20260526075700}): if 24\,h have already
+        elapsed since the previous run, the purge fires immediately
+        (catch-up); otherwise it sleeps the remainder. Spec §Task 4.3
+        contract preserved for fresh installs.
+  \item \textbf{\#28 \string— observability trio.} (a)
+        \texttt{LoanService::register\_loan} retry trail now
+        distinguishes a non-transient business-rule failure that
+        follows a transient retry (e.g.\ concurrent soft-delete
+        between attempts that flips the second attempt into a
+        BadRequest) — it used to read in the log as
+        ``\texttt{warn!("retrying")}'' immediately followed by the
+        business-rule error, implying the retry caused it. (b) The
+        4 catalog ``fire-and-forget'' \texttt{fetch\_metadata\_chain}
+        spawn sites now go through a new
+        \texttt{tasks::metadata\_fetch::spawn\_fetch} wrapper that
+        captures panics from the inner future and logs them via
+        \texttt{tracing::error!} instead of dropping the JoinHandle
+        silently. (c) CLAUDE.md single-tenant retry note now explicit
+        that \texttt{sqlx::Error::PoolTimedOut} is intentionally
+        \emph{not} retried.
+  \item \textbf{\#24 \string— \texttt{templates\_audit} hardening
+        pass.} Five edge cases closed: (a) \texttt{strip\_html\_comments}
+        rewritten as a state machine — an unterminated \texttt{<!--}
+        no longer consumes the rest of the source file (previously
+        any inline-markup violation past an accidentally-truncated
+        comment was invisible to the audit). (b) The same function
+        now slices the source \texttt{\&str} instead of casting
+        UTF-8 bytes to \texttt{char}, so accented characters in
+        failure-report snippets render correctly. (c) New
+        \texttt{strip\_svg\_inner\_blocks} masks SVG inner content
+        so an inline \texttt{<svg><style>...</style></svg>} can no
+        longer false-positive the bare-\texttt{<style>} check. (d)
+        The \texttt{<script>} and \texttt{<style>} attribute regex
+        now uses a quote-aware grammar
+        \texttt{(?:[\textasciicircum>"']|"[\textasciicircum"]*"|'[\textasciicircum']*')*}
+        so a literal \texttt{>} inside a quoted attribute value
+        cannot terminate the match early. (e) The
+        \texttt{src=}/\texttt{type=} script-bypass filter behaviour
+        was acknowledged as imprecise but not exploitable; no code
+        change needed.
+  \item \textbf{\#196 \string— home-search typing-race flake.} The
+        long-standing flake at \texttt{tests/e2e/specs/journeys/home-search.spec.ts:224}
+        (6 epic retrospectives in a row) finally closed.
+        \texttt{simulateTyping} switched from
+        \texttt{locator.pressSequentially} to \texttt{keyboard.type}
+        after an explicit \texttt{focus()} — the former re-focuses the
+        element between key actions and could drop a keystroke under
+        default-worker parallelism. The URL-state poll on the test
+        was bumped from 2\,s to 5\,s to give the debounced search +
+        HTMX swap + \texttt{hx-push-url} chain headroom under load.
+\end{itemize}
+
 \section{What's new in 1.7.8}\label{sec:whats-new-1.7.8}
 
 Version 1.7.8 is a hardening patch with one user-visible UX fix and

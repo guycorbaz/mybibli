@@ -1890,7 +1890,7 @@ dependencies = [
 
 [[package]]
 name = "mybibli"
-version = "1.7.8"
+version = "1.7.9"
 dependencies = [
  "argon2",
  "askama",

@@ -148,6 +148,133 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.9}\label{sec:whats-new-1.7.9}
+
+La version 1.7.9 est un bundle « qualité couvertures + UX admin + 4
+durcissements ». Une correction visible côté utilisateur (qualité des
+couvertures), une nouvelle surface admin, et quatre clean-ups de
+code-review. \emph{Deux nouvelles lignes K/V dans la table
+\texttt{settings} (initialisées aux anciennes valeurs codées en dur),
+aucun breaking change}~; mise à jour de routine \texttt{docker compose
+pull \&\& docker compose up -d}.
+
+\textbf{Visible côté utilisateur~:}
+
+\begin{itemize}
+  \item \textbf{\#333 piste 1 \string— Google Books~: la chaîne
+        privilégie désormais la variante \texttt{imageLinks} la plus
+        haute résolution disponible.} Le provider ne lisait que
+        \texttt{thumbnail}, même quand la réponse Google Books portait
+        aussi \texttt{small} / \texttt{medium} / \texttt{large} /
+        \texttt{extraLarge}. Le redimensionnement Lanczos 400\,px aval
+        dans \texttt{CoverService::process\_and\_save\_bytes}
+        partait alors d'une source dégradée. La nouvelle chaîne de
+        repli (\texttt{extraLarge \string-> large \string-> medium
+        \string-> small \string-> thumbnail \string-> smallThumbnail})
+        prend la meilleure variante disponible par titre~: les titres
+        existants gagnent une couverture plus nette après re-fetch, et
+        le titre rare qui n'expose que \texttt{medium} et plus mais
+        pas \texttt{thumbnail} reçoit enfin une couverture. Clôt la
+        piste (1) de l'enquête sur le taux d'échec couverture de
+        50\,\% en production~; la piste 3 (upload manuel) a déjà
+        été livrée en v1.7.6 \#335~; la piste 2 (BDGest fetch cover
+        par ISBN) reste ouverte pour un cycle séparé.
+\end{itemize}
+
+\textbf{Visible côté admin~:}
+
+\begin{itemize}
+  \item \textbf{\#334 \string— délais d'attente metadata-chain +
+        provider-health dans \texttt{/admin > Système}.} Deux délais
+        précédemment codés en dur (timeout par fournisseur dans la
+        chaîne) ou disponibles uniquement par variable
+        d'environnement (timeout de la sonde provider-health) sont
+        maintenant configurables depuis le bloc « Fournisseurs de
+        métadonnées » de l'onglet Système. Bornés à 1..=60 secondes,
+        persistés dans la table K/V \texttt{settings} (migration
+        \texttt{20260526075659}), rechargés à chaud via
+        \texttt{Arc<RwLock<AppSettings>{}>} — la prochaine exécution
+        de la chaîne / le prochain tour de ping prend la nouvelle
+        valeur sans redémarrage. Les variables d'environnement
+        historiques
+        \texttt{MYBIBLI\_METADATA\_CHAIN\_PROVIDER\_TIMEOUT\_SECS} et
+        \texttt{MYBIBLI\_PROVIDER\_HEALTH\_TIMEOUT\_SECS} restent
+        valables en bootstrap one-shot via
+        \texttt{config::migrate\_legacy\_env\_vars} (mêlme schéma que
+        \#308 v1.7.1 pour le niveau de log). Utile pour les
+        déploiements à DNS+TLS lents (fibre rurale, VPN, satellite).
+\end{itemize}
+
+\textbf{Durcissement (aucun changement visible) :}
+
+\begin{itemize}
+  \item \textbf{\#46 \string— la purge des sessions anonymes survit
+        aux crash-loops.} La purge quotidienne des lignes
+        anonymes de plus de 7 jours dormait précédemment 24\,h fixes
+        après chaque démarrage. Sur une instance qui boucle en crash
+        ou redéploie plus vite que 24\,h, la purge ne se déclenchait
+        jamais et la table \texttt{sessions} grossissait sans limite.
+        Le délai du prochain run est désormais calculé depuis une
+        ligne K/V persistée
+        \texttt{last\_anonymous\_session\_purge\_at} (migration
+        \texttt{20260526075700})~: si 24\,h se sont déjà écoulées
+        depuis le run précédent, la purge se déclenche immédiatement
+        (rattrapage)~; sinon elle dort le reste. Le contrat
+        §Task 4.3 est préservé pour les installations fraîches.
+  \item \textbf{\#28 \string— trio observabilité.} (a) La trace de
+        retry de \texttt{LoanService::register\_loan} distingue
+        désormais une défaillance business non-transitoire qui
+        suit un retry transitoire (par ex.\ un soft-delete
+        concurrent entre les tentatives qui fait basculer la
+        seconde en BadRequest) — la log lisait précédemment
+        «~\texttt{warn!("retrying")}~» suivi immédiatement de
+        l'erreur business, donnant l'impression que le retry
+        causait l'erreur. (b) Les 4 sites « fire-and-forget »
+        catalog qui spawnent \texttt{fetch\_metadata\_chain}
+        passent désormais par un nouveau wrapper
+        \texttt{tasks::metadata\_fetch::spawn\_fetch} qui capture
+        les panics dans la future interne et les loggue via
+        \texttt{tracing::error!} au lieu de les laisser disparaître
+        avec le JoinHandle. (c) Le rappel single-tenant dans
+        CLAUDE.md est désormais explicite~: \texttt{sqlx::Error::PoolTimedOut}
+        n'est volontairement \emph{pas} retried.
+  \item \textbf{\#24 \string— passe de durcissement
+        \texttt{templates\_audit}.} Cinq cas-limites traités~:
+        (a) \texttt{strip\_html\_comments} réécrite en machine à
+        états — un \texttt{<!--} non terminé ne consomme plus le
+        reste du fichier source (précédemment toute violation
+        d'inline markup située après un commentaire tronqué était
+        invisible pour l'audit). (b) La même fonction utilise
+        désormais des tranches \texttt{\&str} au lieu de caster
+        chaque octet en \texttt{char}, ce qui préserve l'UTF-8
+        dans les snippets de rapport d'échec. (c) Nouvelle
+        \texttt{strip\_svg\_inner\_blocks} qui masque le contenu
+        interne des SVG, de sorte qu'un
+        \texttt{<svg><style>...</style></svg>} inline ne déclenche
+        plus de faux positif sur la détection bare-\texttt{<style>}.
+        (d) Les regex d'attributs de \texttt{<script>} et
+        \texttt{<style>} utilisent désormais une grammaire
+        consciente des guillemets
+        \texttt{(?:[\textasciicircum>"']|"[\textasciicircum"]*"|'[\textasciicircum']*')*}
+        de sorte qu'un \texttt{>} littéral à l'intérieur d'une
+        valeur d'attribut entre guillemets ne termine plus le
+        match prématurément. (e) Le filtre de bypass
+        \texttt{src=}/\texttt{type=} est reconnu comme imprécis
+        mais non exploitable~; pas de changement de code.
+  \item \textbf{\#196 \string— flake « course de saisie » du test
+        home-search.} Le flake historique sur
+        \texttt{tests/e2e/specs/journeys/home-search.spec.ts:224}
+        (6 rétrospectives d'épopée d'affilée) est enfin clos.
+        \texttt{simulateTyping} passe de
+        \texttt{locator.pressSequentially} à \texttt{keyboard.type}
+        après un \texttt{focus()} explicite~: la première API
+        re-focusait l'élément entre les actions de touche et
+        pouvait perdre une frappe sous le parallélisme par défaut.
+        Le poll d'état d'URL passe de 2\,s à 5\,s pour donner de la
+        marge à la chaîne recherche debouncée + swap HTMX +
+        \texttt{hx-push-url} sous charge.
+\end{itemize}
+
 \section{Nouveautés de la 1.7.8}\label{sec:whats-new-1.7.8}
 
 La version 1.7.8 est un patch « durcissement » apportant une
