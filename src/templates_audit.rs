@@ -68,15 +68,24 @@ fn no_inline_markup_in_templates() {
     //   - type="application/json" / "application/ld+json" / "text/x-template" → data island, not executed
     //   - empty / whitespace-only block → no body to execute
     // Requires at least one non-whitespace char after the opening tag.
+    //
+    // Fix #24 (v1.7.9) sub-item 5: the `attrs` group walks attribute
+    // chars as either a non-special char, a complete double-quoted
+    // value, or a complete single-quoted value. Without this, a
+    // literal `>` inside a quoted attr (e.g. `<script attr="a > b">`)
+    // would terminate the match prematurely and the regex would
+    // re-anchor on the next `<script>` token. No current template
+    // hits this, but the regex now matches the HTML spec.
     let inline_script = Regex::new(
-        r#"<script\b(?P<attrs>[^>]*)>(?P<body>\s*\S[\s\S]*?)</script>"#,
+        r#"<script\b(?P<attrs>(?:[^>"']|"[^"]*"|'[^']*')*)>(?P<body>\s*\S[\s\S]*?)</script>"#,
     )
     .unwrap();
     let script_src_or_safe_type = Regex::new(
         r#"\bsrc\s*=|\btype\s*=\s*"(application/json|application/ld\+json|text/x-template)""#,
     )
     .unwrap();
-    let style_block = Regex::new(r#"<style\b[^>]*>"#).unwrap();
+    // Same quote-aware attrs grammar as inline_script (sub-item 5).
+    let style_block = Regex::new(r#"<style\b(?:[^>"']|"[^"]*"|'[^']*')*>"#).unwrap();
     let style_attr = Regex::new(r#"\bstyle\s*=\s*""#).unwrap();
 
     let mut violations: Vec<(PathBuf, usize, &'static str, String)> = Vec::new();
@@ -90,9 +99,11 @@ fn no_inline_markup_in_templates() {
         };
         // Strip HTML comments before scanning so prose mentions of
         // `<style>` / `onclick=` / etc. inside `<!-- ... -->` don't trip
-        // the regexes. Whitespace replacement keeps line numbers aligned
-        // with the original file.
-        let content = strip_html_comments(&raw);
+        // the regexes. Then mask SVG inner content so an inline
+        // `<svg><style>...</style></svg>` (sub-item 4) doesn't false-
+        // positive the bare-`<style>` check. Whitespace replacement keeps
+        // line numbers aligned with the original file in both passes.
+        let content = strip_svg_inner_blocks(&strip_html_comments(&raw));
 
         // Inline scripts: regex spans multiple lines, so we map match
         // start offset → 1-indexed line number for reporting.
@@ -165,31 +176,73 @@ fn no_inline_markup_in_templates() {
     }
 }
 
-/// Replace every `<!-- ... -->` block with same-length whitespace
+/// Replace every `<!-- ... -->` block with same-width whitespace
 /// (preserving newlines), so the rest of the audit scans only live markup
 /// while line-number reporting still maps back to the original file.
+///
+/// Fix #24 (v1.7.9):
+///   * Unterminated `<!--` no longer consumes the rest of the file —
+///     pre-fix any inline-markup violation past an accidentally-truncated
+///     comment was invisible to the audit.
+///   * Operates on `&str` slices instead of byte-by-byte `as char`, so
+///     accented characters in the failure-report snippets render
+///     correctly instead of producing `Ã©`-style mojibake.
 fn strip_html_comments(input: &str) -> String {
-    let bytes = input.as_bytes();
     let mut out = String::with_capacity(input.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if i + 4 <= bytes.len() && &bytes[i..i + 4] == b"<!--" {
-            let mut j = i + 4;
-            while j + 3 <= bytes.len() && &bytes[j..j + 3] != b"-->" {
-                j += 1;
+    let mut rest = input;
+    while let Some(start) = rest.find("<!--") {
+        out.push_str(&rest[..start]);
+        let after_open = &rest[start + 4..];
+        match after_open.find("-->") {
+            Some(end) => {
+                let span = &rest[start..start + 4 + end + 3];
+                for ch in span.chars() {
+                    out.push(if ch == '\n' { '\n' } else { ' ' });
+                }
+                rest = &rest[start + 4 + end + 3..];
             }
-            // Replace comment span (including delimiters) with whitespace,
-            // preserving any newlines inside it.
-            let end = (j + 3).min(bytes.len());
-            for &b in bytes.iter().take(end).skip(i) {
-                out.push(if b == b'\n' { '\n' } else { ' ' });
+            None => {
+                // Unterminated comment: keep the rest verbatim. The
+                // template will fail to render anyway, but the audit
+                // must not silently swallow later violations on top.
+                out.push_str(&rest[start..]);
+                return out;
             }
-            i = end;
-        } else {
-            out.push(bytes[i] as char);
-            i += 1;
         }
     }
+    out.push_str(rest);
+    out
+}
+
+/// Replace every `<svg ...>...</svg>` block's inner content with same-width
+/// whitespace so an inline `<svg><style>...</style></svg>` does not false-
+/// positive the bare-`<style>` check. The opening `<svg>` tag itself is
+/// preserved unchanged so its attributes (`class="..."` etc.) still scan.
+/// Fix #24 (v1.7.9) sub-item 4 — defensive; no current SVG ships inline
+/// `<style>`, but a future contributor pasting one in would land a CSP
+/// hole that the audit silently misses.
+fn strip_svg_inner_blocks(input: &str) -> String {
+    let open_re = Regex::new(r"<svg\b[^>]*>").unwrap();
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(m) = open_re.find(rest) {
+        out.push_str(&rest[..m.end()]);
+        let after_open = &rest[m.end()..];
+        match after_open.find("</svg>") {
+            Some(end) => {
+                for ch in after_open[..end].chars() {
+                    out.push(if ch == '\n' { '\n' } else { ' ' });
+                }
+                out.push_str("</svg>");
+                rest = &after_open[end + 6..];
+            }
+            None => {
+                out.push_str(after_open);
+                return out;
+            }
+        }
+    }
+    out.push_str(rest);
     out
 }
 
@@ -643,6 +696,76 @@ fn pages_using_feedback_list_target_declare_slot() {
         let report = format!("{}{}", header, violations.join("\n"));
         panic!("{report}");
     }
+}
+
+// ─── Fix #24 (v1.7.9) — strip_html_comments + SVG masking ─────────
+
+#[test]
+fn strip_html_comments_replaces_closed_blocks_with_whitespace() {
+    let input = "a<!-- skip -->b\n<!-- also -->c";
+    let out = strip_html_comments(input);
+    // Each comment span becomes spaces (newlines preserved). Live chars
+    // outside the comments survive verbatim.
+    assert!(out.starts_with('a'));
+    assert!(out.contains('b'));
+    assert!(out.ends_with('c'));
+    assert!(
+        !out.contains("skip") && !out.contains("also"),
+        "comment bodies must be masked"
+    );
+}
+
+#[test]
+fn strip_html_comments_preserves_line_count() {
+    let input = "line1\n<!--\n still in comment\n-->line4";
+    let out = strip_html_comments(input);
+    // Output must carry the same 4 line breaks as the input so error
+    // reports point at the right source line.
+    assert_eq!(input.matches('\n').count(), out.matches('\n').count());
+}
+
+#[test]
+fn strip_html_comments_does_not_consume_rest_on_unterminated_open() {
+    // Regression for fix #24 sub-item 1: pre-fix this input would have
+    // had the trailing `<script>` swallowed into whitespace because the
+    // comment loop walked to end-of-file looking for `-->` and then
+    // erased the whole tail.
+    let input = "<!-- bad comment\n<script>alert(1)</script>";
+    let out = strip_html_comments(input);
+    assert!(
+        out.contains("<script>"),
+        "unterminated comment must NOT consume the rest of the file: {out:?}"
+    );
+}
+
+#[test]
+fn strip_html_comments_preserves_utf8_outside_comments() {
+    // Regression for fix #24 sub-item 2: pre-fix the byte-by-byte
+    // `as char` cast turned `é` (UTF-8 0xC3 0xA9) into `Ã©`. The new
+    // implementation slices the source `&str` so the snippet stays
+    // readable in the failure report.
+    let input = "déjà <!-- skip --> vu";
+    let out = strip_html_comments(input);
+    assert!(out.starts_with("déjà"));
+    assert!(out.ends_with(" vu"));
+}
+
+#[test]
+fn strip_svg_inner_blocks_masks_inline_style_inside_svg() {
+    let input = "<svg viewBox=\"0 0 1 1\"><style>g { fill: red }</style></svg>";
+    let out = strip_svg_inner_blocks(input);
+    // The opening tag survives (so its attributes still scan) but the
+    // inner `<style>` is whitespace-erased, so the bare-`<style>` check
+    // above won't false-positive on this fragment.
+    assert!(out.starts_with("<svg viewBox=\"0 0 1 1\">"));
+    assert!(out.ends_with("</svg>"));
+    assert!(!out.contains("<style>"));
+}
+
+#[test]
+fn strip_svg_inner_blocks_passes_through_when_no_svg() {
+    let input = "<div>plain</div>";
+    assert_eq!(strip_svg_inner_blocks(input), input);
 }
 
 #[test]
