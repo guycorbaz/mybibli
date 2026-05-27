@@ -42,7 +42,7 @@ export function specIsbn(specId: string, seq: number = 1): string {
 function computeEan13CheckDigit(first12: string): string {
   let sum = 0;
   for (let i = 0; i < 12; i++) {
-    const digit = parseInt(first12[i], 10);
+    const digit = parseInt(first12[i]!, 10);
     sum += i % 2 === 0 ? digit : digit * 3;
   }
   const remainder = sum % 10;

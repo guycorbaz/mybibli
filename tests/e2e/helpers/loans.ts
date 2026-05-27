@@ -1,4 +1,4 @@
-import { expect, Page } from "@playwright/test";
+import { expect, Page, request } from "@playwright/test";
 
 /**
  * Loan-related E2E helpers — canonical patterns for Epic 4 specs.
@@ -247,4 +247,83 @@ export async function returnLoanFromBorrowerDetail(
   await expect(activeLoans).not.toContainText(volumeLabel, {
     timeout: 10000,
   });
+}
+
+/**
+ * Seed an overdue loan via the TEST_MODE `/debug/seed-overdue-loan` endpoint.
+ *
+ * Mirror of the `setSessionTimeoutSecs` helper in session-inactivity-timeout.spec.ts:
+ * opens a private `APIRequestContext`, logs in as admin (the route is admin-only
+ * defense-in-depth), grabs the post-login CSRF token off `/catalog`'s meta tag
+ * (login rotates the token per story 8-2), and posts the form. The caller's
+ * `Page` and its cookie/role state are untouched — useful when the test wants
+ * to assert what `librarian` sees after `admin` seeded backdated history.
+ *
+ * Resolves `volumeLabel` and `borrowerName` to ids server-side (the endpoint
+ * does the lookup) so callers can reuse the names they already passed to
+ * `scanTitleAndVolume` + `createBorrower`, no extra UI scraping for ids.
+ *
+ * Throws on auth failure, missing entity, or non-2xx response — failing loud
+ * here is better than producing a silent green when the seed didn't land.
+ *
+ * @param baseURL  passed via `testInfo.project.use.baseURL` or `request`'s baseURL
+ * @param opts.volumeLabel   V-code that was passed to `scanTitleAndVolume`
+ * @param opts.borrowerName  exact name that was passed to `createBorrower`
+ * @param opts.daysOverdue   `loaned_at = NOW() - INTERVAL ? DAY`; pick > the
+ *                           default 30-day overdue threshold (e.g. 60)
+ */
+export async function seedOverdueLoan(
+  baseURL: string,
+  opts: {
+    volumeLabel: string;
+    borrowerName: string;
+    daysOverdue: number;
+  },
+): Promise<void> {
+  const ctx = await request.newContext({ baseURL });
+  try {
+    const loginHtml = await (await ctx.get("/login")).text();
+    const csrfMatch = /name="_csrf_token"\s+value="([^"]+)"/.exec(loginHtml);
+    if (!csrfMatch) {
+      throw new Error("seedOverdueLoan: _csrf_token not found on /login");
+    }
+    const csrf = csrfMatch[1]!;
+    const username = process.env.TEST_ADMIN_USERNAME ?? "admin";
+    const password = process.env.TEST_ADMIN_PASSWORD ?? "admin";
+    const loginResp = await ctx.post("/login", {
+      form: { _csrf_token: csrf, username, password },
+      maxRedirects: 0,
+      failOnStatusCode: false,
+    });
+    if (loginResp.status() !== 303) {
+      throw new Error(
+        `seedOverdueLoan: admin login failed (status ${loginResp.status()})`,
+      );
+    }
+    // Story 8-2 — login rotates the CSRF token. Read the new one off any
+    // authenticated page's <meta name="csrf-token">.
+    const pageHtml = await (await ctx.get("/catalog")).text();
+    const csrf2Match = /<meta name="csrf-token" content="([^"]+)"/.exec(pageHtml);
+    if (!csrf2Match) {
+      throw new Error("seedOverdueLoan: post-login csrf-token meta not found");
+    }
+    const csrf2 = csrf2Match[1]!;
+    const res = await ctx.post("/debug/seed-overdue-loan", {
+      form: {
+        _csrf_token: csrf2,
+        volume_label: opts.volumeLabel,
+        borrower_name: opts.borrowerName,
+        days_overdue: String(opts.daysOverdue),
+      },
+    });
+    if (!res.ok()) {
+      const body = await res.text();
+      throw new Error(
+        `seedOverdueLoan failed (status ${res.status()}): ${body.slice(0, 300)}. ` +
+          `Ensure the app is started with TEST_MODE=1.`,
+      );
+    }
+  } finally {
+    await ctx.dispose();
+  }
 }

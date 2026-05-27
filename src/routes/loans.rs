@@ -14,7 +14,7 @@ use crate::models::PaginatedList;
 use crate::models::loan::{LoanModel, LoanWithDetails};
 use crate::models::volume::VolumeModel;
 use crate::services::loans::LoanService;
-use crate::utils::current_url;
+use crate::utils::base_context;
 
 // ─── List page ──────────────────────────────────────────
 
@@ -101,25 +101,28 @@ pub async fn loans_page(
     let current_sort = loans.sort.clone().unwrap_or_else(|| "date".to_string());
     let current_dir = loans.dir.clone().unwrap_or_else(|| "desc".to_string());
 
+    // CR #35 (v1.7.11 slice): shared page-template fields built via the
+    // base_context helper. The remaining fields are page-specific.
+    let base = base_context(&session, loc, "loans", &uri, state.session_timeout_secs());
     let template = LoansTemplate {
-        lang: loc.to_string(),
-        role: session.role.to_string(),
-        current_page: "loans",
-        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
-        connection_status: crate::utils::ConnectionStatusContext::new(loc),
-        shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
-        session_timeout_secs: state.session_timeout_secs(),
-        csrf_token: session.csrf_token.clone(),
-        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
-        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
-        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
-        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
-        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
-        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
-        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
-        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
-        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
+        lang: base.lang,
+        role: base.role,
+        current_page: base.current_page,
+        skip_label: base.skip_label,
+        connection_status: base.connection_status,
+        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
+        session_timeout_secs: base.session_timeout_secs,
+        csrf_token: base.csrf_token,
+        nav_catalog: base.nav_catalog,
+        nav_loans: base.nav_loans,
+        nav_wishlist: base.nav_wishlist,
+        nav_locations: base.nav_locations,
+        nav_series: base.nav_series,
+        nav_borrowers: base.nav_borrowers,
+        nav_admin: base.nav_admin,
+        nav_login: base.nav_login,
+        nav_logout: base.nav_logout,
+        nav_menu_open: base.nav_menu_open,
         list_title: rust_i18n::t!("loan.list_title", locale = loc).to_string(),
         new_loan_label: rust_i18n::t!("loan.new", locale = loc).to_string(),
         volume_label_label: rust_i18n::t!("loan.volume_label", locale = loc).to_string(),
@@ -146,8 +149,8 @@ pub async fn loans_page(
         current_dir,
         loans,
         highlight_loan_id: None,
-        current_url: current_url(&uri),
-        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        current_url: base.current_url,
+        lang_toggle_aria: base.lang_toggle_aria,
     };
 
     match template.render() {
@@ -507,6 +510,91 @@ fn loan_row_html(loan: &LoanWithDetails, highlight: bool, loc: &str) -> String {
         days = days,
         return_label = return_label,
     )
+}
+
+// ─── #340 — TEST_MODE seed-overdue-loan ─────────────────────────
+//
+// Mirror of `catalog::debug_set_session_timeout` — same TEST_MODE
+// gate + Admin role enforcement. Lets the home E2E spec
+// (`tests/e2e/specs/journeys/home.spec.ts`) create a loan whose
+// `loaned_at` is already backdated past the overdue threshold,
+// which UI-only seeding (POST /loans + the catalog scan path)
+// cannot do because they always insert `loaned_at = NOW()`.
+//
+// NEVER enable `TEST_MODE=1` in production: combined with stolen
+// admin credentials this lets a caller fabricate past-loan
+// history at will.
+#[derive(Deserialize)]
+pub struct SeedOverdueLoanForm {
+    /// Volume label (V-code, e.g. "V0042") — looked up to volume id
+    /// so the Playwright caller passes the same label it already used
+    /// in `scanTitleAndVolume`, no UI scraping for ids.
+    pub volume_label: String,
+    /// Borrower name (exact match) — same lookup convenience as above.
+    pub borrower_name: String,
+    pub days_overdue: u32,
+}
+
+pub async fn debug_seed_overdue_loan(
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    State(state): State<AppState>,
+    axum::Form(form): axum::Form<SeedOverdueLoanForm>,
+) -> Result<impl IntoResponse, AppError> {
+    if std::env::var("TEST_MODE").as_deref() != Ok("1") {
+        return Err(AppError::NotFound("disabled".to_string()));
+    }
+    session.require_role(Role::Admin, locale.0)?;
+    if form.days_overdue == 0 {
+        return Err(AppError::BadRequest(
+            "days_overdue must be >= 1".to_string(),
+        ));
+    }
+    // Resolve volume + borrower by their label/name. Fail-loud with a
+    // clear error so a typo in the test surfaces here instead of as
+    // a silent FK violation downstream.
+    let volume_id: u64 = sqlx::query_scalar(
+        "SELECT id FROM volumes WHERE label = ? AND deleted_at IS NULL LIMIT 1",
+    )
+    .bind(&form.volume_label)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(format!("volume not found: {}", form.volume_label))
+    })?;
+    let borrower_id: u64 = sqlx::query_scalar(
+        "SELECT id FROM borrowers WHERE name = ? AND deleted_at IS NULL LIMIT 1",
+    )
+    .bind(&form.borrower_name)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(format!("borrower not found: {}", form.borrower_name))
+    })?;
+    // Direct INSERT bypassing LoanService — we WANT a backdated
+    // loaned_at, which `register_loan` cannot produce. Mirror of
+    // the pattern used in `models::loan` integration tests
+    // (line 749-756) that already exercises this shape.
+    let result = sqlx::query(
+        "INSERT INTO loans (volume_id, borrower_id, loaned_at) \
+         VALUES (?, ?, NOW() - INTERVAL ? DAY)",
+    )
+    .bind(volume_id)
+    .bind(borrower_id)
+    .bind(form.days_overdue)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| AppError::Internal(format!("Failed to seed overdue loan: {e}")))?;
+    let loan_id = result.last_insert_id();
+    tracing::warn!(
+        loan_id = loan_id,
+        volume_id = volume_id,
+        borrower_id = borrower_id,
+        days_overdue = form.days_overdue,
+        user_id = session.user_id,
+        "TEST_MODE seed-overdue-loan inserted"
+    );
+    Ok(axum::http::StatusCode::OK)
 }
 
 #[cfg(test)]

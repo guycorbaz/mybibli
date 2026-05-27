@@ -354,10 +354,10 @@ fn render_node_at_depth(
 <div class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 group">
 {toggle_html}
 <a href="/location/{id}" class="flex items-center gap-2 flex-1 min-w-0 no-underline">
-<span class="text-stone-400" aria-hidden="true">{icon}</span>
+<span class="text-stone-500 dark:text-stone-400" aria-hidden="true">{icon}</span>
 <span class="font-medium text-stone-900 dark:text-stone-100">{name}</span>
-<span class="text-xs text-stone-400 font-mono">{label}</span>
-<span class="text-xs text-stone-500 dark:text-stone-400">({node_type})</span>{vol}
+<span class="text-xs text-stone-600 dark:text-stone-400 font-mono">{label}</span>
+<span class="text-xs text-stone-600 dark:text-stone-400">({node_type})</span>{vol}
 </a>
 {mutation_controls}
 </div>

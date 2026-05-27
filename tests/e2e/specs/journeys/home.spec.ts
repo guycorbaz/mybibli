@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
-import { scanTitleAndVolume } from "../../helpers/loans";
+import { scanTitleAndVolume, createBorrower, seedOverdueLoan } from "../../helpers/loans";
 
 test.describe("Home page", () => {
   test("should display mybibli title", async ({ page }) => {
@@ -245,30 +245,31 @@ test.describe("Home page — Overdue loans indicator", () => {
 
   test("librarian: tag visible iff count > 0; click → overdue-list, ✕ → home", async ({
     page,
+    baseURL,
   }) => {
+    // CR #340 (closes the follow-up to #119, shipped v1.7.11) — seed an
+    // overdue loan via the TEST_MODE `/debug/seed-overdue-loan` endpoint.
+    // UI-only seeding can't travel time (POST /loans inserts loaned_at =
+    // NOW()), so we backdate with a direct SQL INSERT exposed only when
+    // TEST_MODE=1 is set in the environment (already baked into
+    // tests/e2e/docker-compose.test.yml). Pre-fix the test used
+    // test.skip on empty, which silently green'd a missing-indicator
+    // regression.
     await loginAs(page, "librarian");
+    const seq = Math.floor(Math.random() * 99999);
+    const isbn = specIsbn("OV", seq);
+    const vcode = `V${(Date.now() % 9000 + 1000).toString()}`;
+    const borrowerName = `OV-Overdue Borrower ${seq}`;
+    await scanTitleAndVolume(page, isbn, vcode);
+    await createBorrower(page, borrowerName);
+    await seedOverdueLoan(baseURL!, {
+      volumeLabel: vcode,
+      borrowerName,
+      daysOverdue: 60,
+    });
+
     await page.goto("/");
-
-    // CR #119 — Foundation Rule #7 partial fix. The unshelved indicator
-    // (9-4) is now properly seeded above via scanTitleAndVolume. The
-    // overdue indicator requires backdating `loans.loaned_at` past the
-    // overdue threshold (default 30 days) — UI-only seeding cannot
-    // travel time, and the test DB does not expose port 3306 for
-    // direct SQL. Properly closing this gap needs either:
-    //   (a) a TEST_MODE-gated POST /debug/seed-overdue-loan endpoint, or
-    //   (b) port-exposing the test DB + a mysql2 npm dep.
-    // Both expand scope beyond the v1.7.7 test-rigor bundle; tracking
-    // separately as a follow-up. Until then, this test runs an
-    // assertion path only when seeded data happens to exist (skipped
-    // explicitly via test.skip on empty so the CI report shows the
-    // gap, not a silent green).
     const tag = page.locator("#filter-tag-overdue");
-    const tagCount = await tag.count();
-    test.skip(
-      tagCount === 0,
-      "Overdue-loan seeding requires TEST_MODE endpoint or DB exposure — tracked as follow-up to #119.",
-    );
-
     await expect(tag).toBeVisible();
     // Default state — href targets the indicator filter URL.
     await expect(tag).toHaveAttribute("href", "/?filter=overdue");

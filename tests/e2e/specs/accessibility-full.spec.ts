@@ -182,7 +182,7 @@ test.describe("Story 10-5 — entity-detail routes WCAG 2.2 AA", () => {
       if (!m) {
         throw new Error(`Series seed: could not parse id from Location "${location}"`);
       }
-      ids.series = parseInt(m[1], 10);
+      ids.series = parseInt(m[1]!, 10);
     } finally {
       await ctx.close();
     }
