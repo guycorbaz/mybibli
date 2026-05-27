@@ -376,11 +376,36 @@ async fn add_author_contributor(
 }
 
 /// Update cover_image_url for a title (set to local path or NULL).
-async fn update_cover_image_url(
+///
+/// Honors `manually_edited_fields`: if the user uploaded a cover manually
+/// (which inserts `"cover_image_url"` into the set, see #335 + #347), the
+/// refetch path skips the UPDATE entirely — applies to BOTH success
+/// (`Some(path)`) and download-failure (`None`) paths, so a failed provider
+/// download cannot blank out a manually uploaded cover.
+///
+/// `pub` to allow the integration test in `tests/cover_manual_survives_refetch.rs`
+/// to call this directly (mirrors the `do_update` carve-out for `metadata_fetch_race.rs`).
+pub async fn update_cover_image_url(
     pool: &DbPool,
     title_id: u64,
     local_path: Option<&str>,
 ) -> Result<(), AppError> {
+    let snapshot = match TitleModel::find_by_id(pool, title_id).await? {
+        Some(t) => t,
+        None => return Ok(()),
+    };
+    if snapshot
+        .parsed_manually_edited_fields()
+        .iter()
+        .any(|f| f == "cover_image_url")
+    {
+        tracing::debug!(
+            title_id = title_id,
+            "cover_image_url is manually edited; skipping refetch update"
+        );
+        return Ok(());
+    }
+
     sqlx::query(
         "UPDATE titles SET cover_image_url = ?, updated_at = NOW() \
          WHERE id = ? AND deleted_at IS NULL",
