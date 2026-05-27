@@ -52,11 +52,11 @@ test.describe("Title edit after no metadata (#203)", () => {
       /name="version" value="(\d+)"/
     );
     expect(versionMatch).toBeTruthy();
-    const version = versionMatch![1];
+    const version = versionMatch![1]!;
 
     const romanMatch = editFormHtml.match(/<option value="(\d+)"[^>]*>Roman</);
     expect(romanMatch, "Roman genre must exist in the edit form").toBeTruthy();
-    const romanId = romanMatch![1];
+    const romanId = romanMatch![1]!;
 
     // Save: emulate the form's POST. Use a real genre + a real title so the
     // assertion below distinguishes success from "form unchanged".
@@ -115,7 +115,7 @@ test.describe("Title edit after no metadata (#203)", () => {
     const versionMatch = (await editFormResp.text()).match(
       /name="version" value="(\d+)"/
     );
-    const version = versionMatch![1];
+    const version = versionMatch![1]!;
 
     // genre_id intentionally omitted from the form — `#[serde(default)] u64`
     // makes it 0 server-side, exercising the fallback.

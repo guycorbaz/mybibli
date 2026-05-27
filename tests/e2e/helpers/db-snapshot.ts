@@ -40,7 +40,7 @@ export async function captureEntityCounts(baseURL: string): Promise<EntityCounts
     if (!csrfMatch) {
       throw new Error("captureEntityCounts: _csrf_token not found on /login");
     }
-    const csrf = csrfMatch[1];
+    const csrf = csrfMatch[1]!;
 
     const username = process.env.TEST_ADMIN_USERNAME ?? "admin";
     const password = process.env.TEST_ADMIN_PASSWORD ?? "admin";
@@ -70,7 +70,7 @@ export async function captureEntityCounts(baseURL: string): Promise<EntityCounts
     const matches: number[] = [];
     let m: RegExpExecArray | null;
     while ((m = re.exec(html)) !== null) {
-      matches.push(parseInt(m[1].replace(/,/g, ""), 10));
+      matches.push(parseInt(m[1]!.replace(/,/g, ""), 10));
     }
     if (matches.length < 5) {
       throw new Error(
@@ -78,11 +78,11 @@ export async function captureEntityCounts(baseURL: string): Promise<EntityCounts
       );
     }
     return {
-      titles: matches[0],
-      volumes: matches[1],
-      contributors: matches[2],
-      borrowers: matches[3],
-      active_loans: matches[4],
+      titles: matches[0]!,
+      volumes: matches[1]!,
+      contributors: matches[2]!,
+      borrowers: matches[3]!,
+      active_loans: matches[4]!,
     };
   } finally {
     await ctx.dispose();
