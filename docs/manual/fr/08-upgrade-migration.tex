@@ -148,6 +148,85 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.11}\label{sec:whats-new-1.7.11}
+
+La version 1.7.11 groupe une correction d'accessibilité WCAG~AA
+visible et trois clean-ups de code-review, plus une correction de
+contraste compagnon découverte pendant le local Rule~13 gate.
+\emph{Aucune migration de schéma, aucun changement de paramètres}~;
+mise à jour de routine \texttt{docker compose pull \&\& docker compose
+up -d}.
+
+\textbf{Visible côté utilisateur (accessibilité)~:}
+
+\begin{itemize}
+  \item \textbf{\#345 \string— le badge compteur de la corbeille admin
+        passe la WCAG~AA.} Le badge dans
+        \texttt{templates/components/admin\_tabs.html} associait
+        \texttt{bg-red-500} (\#fb2c36) à \texttt{text-white}, soit
+        seulement 3.8:1 — sous le seuil WCAG~2.2~AA de 4.5:1 pour
+        le texte normal. Passage à \texttt{bg-red-700} (\#b91c1c,
+        6.61:1) — confortablement au-dessus de AA et au-dessus du
+        seuil AAA 7.0. Le badge reste visuellement un «~rouge
+        d'alerte~». Nouveau garde-fou de régression
+        \texttt{templates\_audit::templates\_forbid\_bg\_red\_500\_with\_text\_white}
+        qui pète sur tout futur template associant les deux — la
+        combinaison est intrinsèquement inaccessible, donc un audit
+        statique est le bon niveau d'enforcement.
+  \item \textbf{\#352 (compagnon) \string— contraste des spans L-code
+        + type de l'arbre des emplacements.} Même forme que \#345,
+        élément différent. Le span L-code sur \texttt{/locations}
+        (par ex. \texttt{L1004}) et le span V-code sur
+        \texttt{/location/:id} utilisaient \texttt{text-stone-400}
+        nu (\#a8a29e) sur fond \texttt{bg-stone-50} (\#fafaf9) en
+        mode clair \string= 2.41:1. Passage à
+        \texttt{text-stone-600 dark:text-stone-400} pour 7.5:1 en
+        clair et 8:1 en sombre.
+\end{itemize}
+
+\textbf{Clean-ups code-review (visible côté dev)~:}
+
+\begin{itemize}
+  \item \textbf{\#30 \string— CI/outillage.} \texttt{.github/workflows/release.yml}
+        extrait désormais la version Cargo.toml via la stdlib Python
+        \texttt{tomllib} (3.11+, présent sur ubuntu-latest) au lieu
+        de \texttt{grep}, robuste contre BOM UTF-8, CRLF, valeurs
+        en simples quotes, et une future section
+        \texttt{[workspace.package]}. \texttt{tests/e2e/tsconfig.json}
+        ajoute \texttt{noUncheckedIndexedAccess} +
+        \texttt{exactOptionalPropertyTypes}~; les 12 erreurs
+        surfacées sont corrigées via assertions non-null étroites
+        sur les indexations regex. Le typecheck CI (job e2e)
+        attrape maintenant toute violation future. Sous-items 2
+        (smoke test de tag-mismatch) et 3 (audit de drift seed)
+        différés à leurs propres issues focalisées.
+  \item \textbf{\#340 \string— endpoint TEST\_MODE seed-overdue-loan.}
+        Nouveau \texttt{POST /debug/seed-overdue-loan}
+        (gated par TEST\_MODE, role Admin, miroir de
+        \texttt{debug\_set\_session\_timeout}) qui backdate
+        \texttt{loans.loaned\_at} via SQL direct — un seeding via
+        l'UI ne peut pas voyager dans le temps. Ferme la branche
+        overdue du CR \#119~: \texttt{home.spec.ts} peut enfin
+        seeder un vrai prêt en retard et asserter l'indicateur de
+        bout en bout, supprimant le \texttt{test.skip} silencieux
+        qui validait une régression manquante.
+  \item \textbf{\#35 slice \string— helper DRY \texttt{base\_context()}.}
+        Nouveau struct \texttt{BaseContextFields} dans
+        \texttt{src/utils.rs} portant les 20 champs que chaque struct
+        de template page répète (lang, role, csrf\_token, 10 strings
+        de nav, …). Construit par \texttt{base\_context(\&session,
+        locale, current\_page, \&uri, session\_timeout\_secs)} et
+        appliqué aux handlers \texttt{loans\_page} /
+        \texttt{borrowers\_page} / \texttt{series\_index} en
+        proof-of-pattern. Réduit la duplication des clés i18n~: une
+        coquille sur \texttt{nav.catalog} surface désormais à un seul
+        endroit, pas 17. Les $\sim$14 handlers page-complète
+        restants + les sous-items différés (dédoublonnage de
+        \texttt{generate\_session\_token}, suppression du fallback
+        \texttt{Session::anonymous\_with\_token}) sont suivis dans
+        une issue de follow-up pour migration incrémentale.
+\end{itemize}
+
 \section{Nouveautés de la 1.7.10}\label{sec:whats-new-1.7.10}
 
 La version 1.7.10 est un patch d'une seule correction qui ferme une
