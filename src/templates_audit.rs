@@ -768,6 +768,60 @@ fn strip_svg_inner_blocks_passes_through_when_no_svg() {
     assert_eq!(strip_svg_inner_blocks(input), input);
 }
 
+/// Issue #345 (v1.7.11) — `bg-red-500` (Tailwind oklch `#fb2c36`) on
+/// `text-white` is 3.8:1, below the WCAG 2.2 AA 4.5:1 threshold for normal
+/// text. The trash count badge in `templates/components/admin_tabs.html`
+/// hit this in `accessibility-full.spec.ts` whenever a prior spec
+/// soft-deleted an entity so the badge rendered. Switching to `bg-red-700`
+/// (#b91c1c, 6.61:1) is the canonical fix.
+///
+/// This audit pins the combination class-wide: any template that pairs
+/// `bg-red-500` with `text-white` on the same element fails the test.
+/// The combination is intrinsically inaccessible — there is no DB or
+/// runtime state in which it becomes acceptable, so a static audit is the
+/// right enforcement level.
+#[test]
+fn templates_forbid_bg_red_500_with_text_white() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let tpl_dir = root.join("templates");
+    // Match a class= attribute (single or double quoted) whose value
+    // contains BOTH bg-red-500 and text-white in any order.
+    let combo_re = Regex::new(
+        r#"(?is)class\s*=\s*(?:"[^"]*\bbg-red-500\b[^"]*\btext-white\b[^"]*"|"[^"]*\btext-white\b[^"]*\bbg-red-500\b[^"]*"|'[^']*\bbg-red-500\b[^']*\btext-white\b[^']*'|'[^']*\btext-white\b[^']*\bbg-red-500\b[^']*')"#,
+    )
+    .unwrap();
+
+    let mut violations: Vec<String> = Vec::new();
+    visit(&tpl_dir, &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let raw = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let content = strip_html_comments(&raw);
+        for m in combo_re.find_iter(&content) {
+            let rel = path.strip_prefix(&root).unwrap_or(path);
+            let rel_str = rel
+                .to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "/");
+            let snippet: String = m.as_str().chars().take(120).collect();
+            violations.push(format!("  {rel_str} — {snippet}"));
+        }
+    });
+
+    if !violations.is_empty() {
+        let header = "WCAG AA contrast audit failed (#345):\n\
+                      `bg-red-500` paired with `text-white` is 3.8:1, below \
+                      the WCAG 2.2 AA 4.5:1 threshold for normal text.\n\
+                      Use `bg-red-700` (6.61:1) or darker for badge backgrounds \
+                      with white text.\n";
+        let report = format!("{}{}", header, violations.join("\n"));
+        panic!("{report}");
+    }
+}
+
 #[test]
 fn csrf_exempt_routes_frozen() {
     use crate::middleware::csrf::CSRF_EXEMPT_ROUTES;
