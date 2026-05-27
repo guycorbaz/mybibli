@@ -148,6 +148,46 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.7.10}\label{sec:whats-new-1.7.10}
+
+La version 1.7.10 est un patch d'une seule correction qui ferme une
+vulnérabilité de perte de données silencieuse. \emph{Aucune migration
+de schéma, aucun changement de paramètres}~; mise à jour de routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\textbf{Visible côté utilisateur~:}
+
+\begin{itemize}
+  \item \textbf{\#347 \string— les couvertures uploadées manuellement
+        ne sont plus écrasées par la chaîne de récupération de
+        métadonnées.} Le fetch asynchrone en arrière-plan après le scan
+        initial, ainsi que l'action de bulk-refetch en cours pendant un
+        upload manuel concurrent, pouvaient silencieusement écraser
+        une couverture uploadée manuellement (le filet de sécurité
+        v1.7.6 \#335) parce que \texttt{update\_cover\_image\_url}
+        faisait un UPDATE inconditionnel qui ignorait
+        \texttt{manually\_edited\_fields}. Le chemin d'échec était
+        tout aussi vulnérable~: il mettait la couverture manuelle à
+        NULL quand le téléchargement provider échouait. La correction
+        est un guard de 22 lignes identique à celui de
+        \texttt{do\_update}, avec 4 tests d'intégration couvrant les
+        chemins succès / échec download / régression / spécificité.
+\end{itemize}
+
+\textbf{Constat associé (sans changement de code)~:}
+
+Le gros gisement de couvertures manquantes sur la NAS prod (73/147
+titres, \textasciitilde50\,\%) est structurel et non résolvable par
+la chaîne de providers. Google Books renvoie
+\texttt{totalItems\,=\,0} pour les éditeurs FR/CH/DE tech dominants
+(Dunod, Eyrolles, Slatkine, Mardaga), et Open Library Covers
+n'indexe pas leurs ISBN non plus. La piste 1 v1.7.9 (variante
+\texttt{imageLinks} en plus haute résolution) a été prod-validée
+comme inefficace pour faire baisser ce compteur. L'upload manuel
+(\#335) reste le seul filet réaliste pour ces titres. Un track UX
+v1.8 pour rendre l'affordance d'upload plus visible est en cours de
+cadrage.
+
 \section{Nouveautés de la 1.7.9}\label{sec:whats-new-1.7.9}
 
 La version 1.7.9 est un bundle « qualité couvertures + UX admin + 4

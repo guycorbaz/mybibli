@@ -139,6 +139,42 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.10}\label{sec:whats-new-1.7.10}
+
+Version 1.7.10 is a single-fix patch closing a silent-data-loss
+vulnerability. \emph{No schema migration, no settings change}; routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\textbf{User-visible:}
+
+\begin{itemize}
+  \item \textbf{\#347 \string— manually uploaded covers are no longer
+        overwritten by the metadata-fetch chain.} The async background
+        fetch after the initial scan, and the bulk-refetch admin action
+        in a race with a fresh upload, could silently overwrite a
+        manually uploaded cover (the v1.7.6 \#335 safety net) because
+        \texttt{update\_cover\_image\_url} did an unconditional UPDATE
+        that ignored \texttt{manually\_edited\_fields}. The failure
+        path was equally vulnerable, blanking the manual cover to NULL
+        when the provider download failed. The fix is a 22-line guard
+        pattern identical to \texttt{do\_update}'s with 4 integration
+        tests covering success / download-failure / regression /
+        specificity.
+\end{itemize}
+
+\textbf{Companion finding (no code change):}
+
+The broader cover-miss gap on the production NAS (73/147 titles,
+\textasciitilde50\,\%) is structural and not closable from the
+provider chain. Google Books returns
+\texttt{totalItems\,=\,0} for the dominant FR/CH/DE tech publishers
+(Dunod, Eyrolles, Slatkine, Mardaga), and Open Library Covers does
+not index their ISBNs either. The v1.7.9 piste-1 fix
+(highest-resolution \texttt{imageLinks} variant) was prod-validated
+as ineffective at moving that count. Manual upload (\#335) remains
+the only realistic safety net for those titles. A v1.8 UX track to
+make the upload affordance more visible is being scoped.
+
 \section{What's new in 1.7.9}\label{sec:whats-new-1.7.9}
 
 Version 1.7.9 is a cover-quality + admin-UX + 4-hardening bundle. One
