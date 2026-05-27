@@ -139,6 +139,78 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.7.11}\label{sec:whats-new-1.7.11}
+
+Version 1.7.11 bundles one user-visible WCAG AA contrast fix and three
+code-review-finding clean-ups, plus a companion contrast fix surfaced
+during the v1.7.11 local Rule~13 gate. \emph{No schema migration, no
+settings change}; routine \texttt{docker compose pull \&\& docker compose
+up -d}.
+
+\textbf{User-visible (accessibility):}
+
+\begin{itemize}
+  \item \textbf{\#345 \string— trash count admin badge contrast bumped
+        to WCAG~AA.} The badge in \texttt{templates/components/admin\_tabs.html}
+        paired \texttt{bg-red-500} (\#fb2c36) with \texttt{text-white},
+        yielding only 3.8:1 — below the WCAG~2.2~AA 4.5:1 threshold for
+        normal text. Switched to \texttt{bg-red-700} (\#b91c1c, 6.61:1)
+        — comfortably above AA and above the AAA 7.0 threshold. Badge
+        stays visually a ``warning red''. New
+        \texttt{templates\_audit::templates\_forbid\_bg\_red\_500\_with\_text\_white}
+        regression guard panics on any future template pairing the two
+        — the combination is intrinsically inaccessible, so a static
+        audit is the right enforcement level.
+  \item \textbf{\#352 (companion) \string— locations tree L-code + node-type
+        spans contrast.} Same shape as \#345, different element. The
+        L-code span on \texttt{/locations} (e.g. \texttt{L1004}) and
+        the V-code span on \texttt{/location/:id} used naked
+        \texttt{text-stone-400} (\#a8a29e) on \texttt{bg-stone-50}
+        (\#fafaf9) light mode \string= 2.41:1. Switched to
+        \texttt{text-stone-600 dark:text-stone-400} for 7.5:1 on light
+        and 8:1 on dark.
+\end{itemize}
+
+\textbf{Code-review-finding clean-ups (developer-visible):}
+
+\begin{itemize}
+  \item \textbf{\#30 \string— CI/tooling.} \texttt{.github/workflows/release.yml}
+        now extracts the Cargo.toml version via Python's stdlib
+        \texttt{tomllib} (3.11+, available on ubuntu-latest) instead of
+        \texttt{grep}, making it robust against UTF-8 BOM, CRLF,
+        single-quoted values, and a future \texttt{[workspace.package]}
+        section. \texttt{tests/e2e/tsconfig.json} adds
+        \texttt{noUncheckedIndexedAccess} +
+        \texttt{exactOptionalPropertyTypes}; the 12 surfaced narrow
+        non-null assertions on regex-match indexing are backfilled.
+        The CI typecheck (e2e job) now catches any future violation.
+        Sub-items 2 (tag-mismatch smoke test) and 3 (seed-migration
+        drift audit) deferred to their own focused issues.
+  \item \textbf{\#340 \string— TEST\_MODE seed-overdue-loan endpoint.}
+        New \texttt{POST /debug/seed-overdue-loan} (TEST\_MODE-gated,
+        Admin role check, mirror of \texttt{debug\_set\_session\_timeout})
+        that backdates \texttt{loans.loaned\_at} via direct SQL — UI
+        seeding cannot travel time. Closes the overdue branch of CR
+        \#119: \texttt{home.spec.ts} can finally seed a real overdue
+        loan and assert the indicator end-to-end, removing the silent
+        \texttt{test.skip} that previously green'd a missing-indicator
+        regression.
+  \item \textbf{\#35 slice \string— \texttt{base\_context()} DRY helper.}
+        New \texttt{BaseContextFields} struct in \texttt{src/utils.rs}
+        carries the 20 fields every full-page template struct repeats
+        (lang, role, csrf\_token, 10 nav strings, …). Built by
+        \texttt{base\_context(\&session, locale, current\_page, \&uri,
+        session\_timeout\_secs)} and applied to the
+        \texttt{loans\_page} / \texttt{borrowers\_page} /
+        \texttt{series\_index} handlers as proof-of-pattern. Reduces
+        i18n key duplication: a typo on \texttt{nav.catalog} now
+        surfaces in one place, not 17. Remaining $\sim$14 full-page
+        handlers + the deferred sub-items
+        (\texttt{generate\_session\_token} dedup,
+        \texttt{Session::anonymous\_with\_token} fallback removal) are
+        tracked in a follow-up issue for incremental migration.
+\end{itemize}
+
 \section{What's new in 1.7.10}\label{sec:whats-new-1.7.10}
 
 Version 1.7.10 is a single-fix patch closing a silent-data-loss
