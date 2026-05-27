@@ -157,6 +157,10 @@ pub fn build_router(state: AppState) -> Router {
             "/debug/session-timeout",
             axum::routing::post(catalog::debug_set_session_timeout),
         )
+        .route(
+            "/debug/seed-overdue-loan",
+            axum::routing::post(loans::debug_seed_overdue_loan),
+        )
         .merge(catalog_routes)
         // Detail pages
         .route(

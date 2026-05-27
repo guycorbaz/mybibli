@@ -509,6 +509,91 @@ fn loan_row_html(loan: &LoanWithDetails, highlight: bool, loc: &str) -> String {
     )
 }
 
+// ─── #340 — TEST_MODE seed-overdue-loan ─────────────────────────
+//
+// Mirror of `catalog::debug_set_session_timeout` — same TEST_MODE
+// gate + Admin role enforcement. Lets the home E2E spec
+// (`tests/e2e/specs/journeys/home.spec.ts`) create a loan whose
+// `loaned_at` is already backdated past the overdue threshold,
+// which UI-only seeding (POST /loans + the catalog scan path)
+// cannot do because they always insert `loaned_at = NOW()`.
+//
+// NEVER enable `TEST_MODE=1` in production: combined with stolen
+// admin credentials this lets a caller fabricate past-loan
+// history at will.
+#[derive(Deserialize)]
+pub struct SeedOverdueLoanForm {
+    /// Volume label (V-code, e.g. "V0042") — looked up to volume id
+    /// so the Playwright caller passes the same label it already used
+    /// in `scanTitleAndVolume`, no UI scraping for ids.
+    pub volume_label: String,
+    /// Borrower name (exact match) — same lookup convenience as above.
+    pub borrower_name: String,
+    pub days_overdue: u32,
+}
+
+pub async fn debug_seed_overdue_loan(
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    State(state): State<AppState>,
+    axum::Form(form): axum::Form<SeedOverdueLoanForm>,
+) -> Result<impl IntoResponse, AppError> {
+    if std::env::var("TEST_MODE").as_deref() != Ok("1") {
+        return Err(AppError::NotFound("disabled".to_string()));
+    }
+    session.require_role(Role::Admin, locale.0)?;
+    if form.days_overdue == 0 {
+        return Err(AppError::BadRequest(
+            "days_overdue must be >= 1".to_string(),
+        ));
+    }
+    // Resolve volume + borrower by their label/name. Fail-loud with a
+    // clear error so a typo in the test surfaces here instead of as
+    // a silent FK violation downstream.
+    let volume_id: u64 = sqlx::query_scalar(
+        "SELECT id FROM volumes WHERE label = ? AND deleted_at IS NULL LIMIT 1",
+    )
+    .bind(&form.volume_label)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(format!("volume not found: {}", form.volume_label))
+    })?;
+    let borrower_id: u64 = sqlx::query_scalar(
+        "SELECT id FROM borrowers WHERE name = ? AND deleted_at IS NULL LIMIT 1",
+    )
+    .bind(&form.borrower_name)
+    .fetch_optional(&state.pool)
+    .await?
+    .ok_or_else(|| {
+        AppError::BadRequest(format!("borrower not found: {}", form.borrower_name))
+    })?;
+    // Direct INSERT bypassing LoanService — we WANT a backdated
+    // loaned_at, which `register_loan` cannot produce. Mirror of
+    // the pattern used in `models::loan` integration tests
+    // (line 749-756) that already exercises this shape.
+    let result = sqlx::query(
+        "INSERT INTO loans (volume_id, borrower_id, loaned_at) \
+         VALUES (?, ?, NOW() - INTERVAL ? DAY)",
+    )
+    .bind(volume_id)
+    .bind(borrower_id)
+    .bind(form.days_overdue)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| AppError::Internal(format!("Failed to seed overdue loan: {e}")))?;
+    let loan_id = result.last_insert_id();
+    tracing::warn!(
+        loan_id = loan_id,
+        volume_id = volume_id,
+        borrower_id = borrower_id,
+        days_overdue = form.days_overdue,
+        user_id = session.user_id,
+        "TEST_MODE seed-overdue-loan inserted"
+    );
+    Ok(axum::http::StatusCode::OK)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
