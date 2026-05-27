@@ -14,7 +14,7 @@ use crate::models::PaginatedList;
 use crate::models::loan::{LoanModel, LoanWithDetails};
 use crate::models::volume::VolumeModel;
 use crate::services::loans::LoanService;
-use crate::utils::current_url;
+use crate::utils::base_context;
 
 // ─── List page ──────────────────────────────────────────
 
@@ -101,25 +101,28 @@ pub async fn loans_page(
     let current_sort = loans.sort.clone().unwrap_or_else(|| "date".to_string());
     let current_dir = loans.dir.clone().unwrap_or_else(|| "desc".to_string());
 
+    // CR #35 (v1.7.11 slice): shared page-template fields built via the
+    // base_context helper. The remaining fields are page-specific.
+    let base = base_context(&session, loc, "loans", &uri, state.session_timeout_secs());
     let template = LoansTemplate {
-        lang: loc.to_string(),
-        role: session.role.to_string(),
-        current_page: "loans",
-        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
-        connection_status: crate::utils::ConnectionStatusContext::new(loc),
-        shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
-        session_timeout_secs: state.session_timeout_secs(),
-        csrf_token: session.csrf_token.clone(),
-        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
-        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
-        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
-        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
-        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
-        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
-        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
-        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
-        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
+        lang: base.lang,
+        role: base.role,
+        current_page: base.current_page,
+        skip_label: base.skip_label,
+        connection_status: base.connection_status,
+        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
+        session_timeout_secs: base.session_timeout_secs,
+        csrf_token: base.csrf_token,
+        nav_catalog: base.nav_catalog,
+        nav_loans: base.nav_loans,
+        nav_wishlist: base.nav_wishlist,
+        nav_locations: base.nav_locations,
+        nav_series: base.nav_series,
+        nav_borrowers: base.nav_borrowers,
+        nav_admin: base.nav_admin,
+        nav_login: base.nav_login,
+        nav_logout: base.nav_logout,
+        nav_menu_open: base.nav_menu_open,
         list_title: rust_i18n::t!("loan.list_title", locale = loc).to_string(),
         new_loan_label: rust_i18n::t!("loan.new", locale = loc).to_string(),
         volume_label_label: rust_i18n::t!("loan.volume_label", locale = loc).to_string(),
@@ -146,8 +149,8 @@ pub async fn loans_page(
         current_dir,
         loans,
         highlight_loan_id: None,
-        current_url: current_url(&uri),
-        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        current_url: base.current_url,
+        lang_toggle_aria: base.lang_toggle_aria,
     };
 
     match template.render() {

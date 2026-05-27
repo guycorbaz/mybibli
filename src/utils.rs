@@ -178,6 +178,82 @@ impl ShortcutsCheatSheetContext {
     }
 }
 
+/// Issue #35 (v1.7.11 slice) — shared fields carried by every full-page
+/// template struct. Today each handler re-builds these inline; this
+/// helper centralizes the i18n key lookups and field construction so a
+/// future addition (e.g. a feature-flag field, a new nav entry) is a
+/// single-site edit instead of a 17-handler rewrite.
+///
+/// Askama does not support struct-flattening or partial-struct macros,
+/// so per-handler conversion still spells out each field — but each
+/// line becomes a short `nav_catalog: base.nav_catalog,` instead of a
+/// verbose `rust_i18n::t!("nav.catalog", locale = loc).to_string()`.
+/// The DRY win is on i18n key strings + connection_status / shortcuts
+/// constructor calls, not on raw line count.
+///
+/// V1.7.11 ships the helper + 2 representative handler conversions
+/// (`loans_page`, `borrowers_page`). Remaining ~14 handlers tracked in
+/// a follow-up issue — incremental migration.
+pub struct BaseContextFields {
+    pub lang: String,
+    pub role: String,
+    pub current_page: &'static str,
+    pub skip_label: String,
+    pub connection_status: ConnectionStatusContext,
+    pub shortcuts_cheat_sheet: ShortcutsCheatSheetContext,
+    pub session_timeout_secs: u64,
+    pub csrf_token: String,
+    pub nav_catalog: String,
+    pub nav_loans: String,
+    pub nav_wishlist: String,
+    pub nav_locations: String,
+    pub nav_series: String,
+    pub nav_borrowers: String,
+    pub nav_admin: String,
+    pub nav_login: String,
+    pub nav_logout: String,
+    pub nav_menu_open: String,
+    pub current_url: String,
+    pub lang_toggle_aria: String,
+}
+
+/// Build the shared fields for a full-page render. Caller provides the
+/// page-specific `current_page` slug + the original request URI (used
+/// for the language-toggle hidden input and the lang-toggle aria label),
+/// plus the `session_timeout_secs` scalar (handler reads it off
+/// `AppState.session_timeout_secs()` and passes it in — keeping the
+/// helper pool-free so it stays unit-testable without a live DbPool).
+pub fn base_context(
+    session: &crate::middleware::auth::Session,
+    locale: &str,
+    current_page: &'static str,
+    uri: &axum::http::Uri,
+    session_timeout_secs: u64,
+) -> BaseContextFields {
+    BaseContextFields {
+        lang: locale.to_string(),
+        role: session.role.to_string(),
+        current_page,
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = locale).to_string(),
+        connection_status: ConnectionStatusContext::new(locale),
+        shortcuts_cheat_sheet: ShortcutsCheatSheetContext::new(locale),
+        session_timeout_secs,
+        csrf_token: session.csrf_token.clone(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = locale).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = locale).to_string(),
+        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = locale).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = locale).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = locale).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = locale).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = locale).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = locale).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = locale).to_string(),
+        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
+        current_url: current_url(uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = locale).to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,5 +395,80 @@ mod tests {
     fn format_percent_unknown_locale_falls_back_to_en() {
         assert_eq!(format_percent(42.5, "de"), "42.5%");
         assert_eq!(format_percent(42.5, ""), "42.5%");
+    }
+
+    // ─── #35 slice — base_context helper coverage ──────────────────
+
+    fn test_uri() -> axum::http::Uri {
+        "/some/path?q=test".parse().expect("valid uri")
+    }
+
+    #[test]
+    fn base_context_carries_session_role_and_csrf_token() {
+        let session = crate::middleware::auth::Session::anonymous_with_token(
+            "csrf-token-abc".to_string(),
+        );
+        let ctx = base_context(&session, "en", "loans", &test_uri(), 7200);
+        assert_eq!(ctx.role, "anonymous");
+        assert_eq!(ctx.csrf_token, "csrf-token-abc");
+        assert_eq!(ctx.current_page, "loans");
+        assert_eq!(ctx.session_timeout_secs, 7200);
+    }
+
+    #[test]
+    fn base_context_current_url_reflects_uri() {
+        let session = crate::middleware::auth::Session::anonymous_with_token(String::new());
+        let ctx = base_context(&session, "en", "x", &test_uri(), 0);
+        assert_eq!(ctx.current_url, "/some/path?q=test");
+    }
+
+    #[test]
+    fn base_context_resolves_i18n_keys_per_locale() {
+        let session = crate::middleware::auth::Session::anonymous_with_token(String::new());
+        let en = base_context(&session, "en", "x", &test_uri(), 0);
+        let fr = base_context(&session, "fr", "x", &test_uri(), 0);
+        // lang field reflects the requested locale.
+        assert_eq!(en.lang, "en");
+        assert_eq!(fr.lang, "fr");
+        // The nav.* keys exist in every locale; the EN + FR strings differ
+        // for at least one of them (nav.borrowers is "Borrowers" vs
+        // "Emprunteurs"). If both came back identical, the i18n key
+        // lookup is failing silently.
+        assert_ne!(
+            en.nav_borrowers, fr.nav_borrowers,
+            "EN and FR translations must differ — check that locale files \
+             ship the nav.borrowers key in both"
+        );
+        // skip_to_content + language_toggle_aria similarly differ.
+        assert_ne!(en.skip_label, fr.skip_label);
+        assert_ne!(en.lang_toggle_aria, fr.lang_toggle_aria);
+    }
+
+    #[test]
+    fn base_context_populates_all_nav_fields() {
+        // Regression guard: if a future refactor drops a nav field from
+        // base_context, this test fails because the field would be empty.
+        // Every nav.* i18n key exists in en.yml — silent miss would
+        // surface as empty string here.
+        let session = crate::middleware::auth::Session::anonymous_with_token(String::new());
+        let ctx = base_context(&session, "en", "x", &test_uri(), 0);
+        for (name, value) in [
+            ("nav_catalog", &ctx.nav_catalog),
+            ("nav_loans", &ctx.nav_loans),
+            ("nav_wishlist", &ctx.nav_wishlist),
+            ("nav_locations", &ctx.nav_locations),
+            ("nav_series", &ctx.nav_series),
+            ("nav_borrowers", &ctx.nav_borrowers),
+            ("nav_admin", &ctx.nav_admin),
+            ("nav_login", &ctx.nav_login),
+            ("nav_logout", &ctx.nav_logout),
+            ("nav_menu_open", &ctx.nav_menu_open),
+        ] {
+            assert!(!value.is_empty(), "{name} must not be empty");
+            assert!(
+                !value.contains('.'),
+                "{name} resolved to the raw i18n key {value} — missing en.yml entry?"
+            );
+        }
     }
 }
