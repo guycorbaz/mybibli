@@ -382,7 +382,10 @@ async fn add_author_contributor(
 /// refetch path skips the UPDATE entirely — applies to BOTH success
 /// (`Some(path)`) and download-failure (`None`) paths, so a failed provider
 /// download cannot blank out a manually uploaded cover.
-async fn update_cover_image_url(
+///
+/// `pub` to allow the integration test in `tests/cover_manual_survives_refetch.rs`
+/// to call this directly (mirrors the `do_update` carve-out for `metadata_fetch_race.rs`).
+pub async fn update_cover_image_url(
     pool: &DbPool,
     title_id: u64,
     local_path: Option<&str>,
