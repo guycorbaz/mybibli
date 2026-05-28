@@ -22,7 +22,7 @@ use crate::routes::catalog::feedback_html_pub;
 use crate::services::cover::{CoverService, resolve_cover_url_with_fallback};
 use crate::services::series::SeriesService;
 use crate::services::title::{FieldConflict, TitleService};
-use crate::utils::{current_url, html_escape};
+use crate::utils::html_escape;
 
 #[derive(Template)]
 #[template(path = "pages/title_detail.html")]
@@ -142,25 +142,26 @@ pub async fn title_detail(
         Ok(Html(html).into_response())
     } else {
         let similar_titles = TitleModel::find_similar(pool, title.id).await?;
+        let base = crate::utils::base_context(&session, loc, "title", &uri, state.session_timeout_secs());
         let template = TitleDetailTemplate {
-            lang: loc.to_string(),
-            role: session.role.to_string(),
-            current_page: "title",
-            skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
-            connection_status: crate::utils::ConnectionStatusContext::new(loc),
-            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
-            session_timeout_secs: state.session_timeout_secs(),
-            csrf_token: session.csrf_token.clone(),
-            nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
-            nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
-            nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
-            nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
-            nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
-            nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
-            nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
-            nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
-            nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
+            lang: base.lang,
+            role: base.role,
+            current_page: base.current_page,
+            skip_label: base.skip_label,
+            connection_status: base.connection_status,
+            shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
+            session_timeout_secs: base.session_timeout_secs,
+            csrf_token: base.csrf_token,
+            nav_catalog: base.nav_catalog,
+            nav_loans: base.nav_loans,
+            nav_wishlist: base.nav_wishlist,
+            nav_locations: base.nav_locations,
+            nav_series: base.nav_series,
+            nav_borrowers: base.nav_borrowers,
+            nav_admin: base.nav_admin,
+            nav_login: base.nav_login,
+            nav_logout: base.nav_logout,
+            nav_menu_open: base.nav_menu_open,
             title,
             genre_name,
             volume_count,
@@ -215,8 +216,8 @@ pub async fn title_detail(
             similar_titles,
             label_similar_titles: rust_i18n::t!("title_detail.similar_titles", locale = loc).to_string(),
             label_dewey_code: rust_i18n::t!("metadata.field.dewey_code", locale = loc).to_string(),
-            current_url: current_url(&uri),
-            lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+            current_url: base.current_url,
+            lang_toggle_aria: base.lang_toggle_aria,
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),

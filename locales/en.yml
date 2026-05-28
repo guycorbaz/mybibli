@@ -427,6 +427,8 @@ guide:
   shelved: "Shelved! Scan another ISBN, V-code, or L-code."
   batch_active: "Active location: %{path}. Scan V-codes to shelve here."
 volume:
+  # Issue #108 — short "vol" badge label on title cards, i18n'd out of the templates.
+  short_label: "vol"
   detail_title: Volume details
   edit_title: Edit volume
   condition_label: Condition

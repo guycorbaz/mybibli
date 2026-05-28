@@ -34,7 +34,7 @@ use crate::middleware::locale::Locale;
 use crate::models::media_type::{CodeType, MediaType};
 use crate::models::wishlist::{WishlistItem, WishlistItemDraft, WishlistItemModel};
 use crate::services::title::TitleService;
-use crate::utils::current_url;
+use crate::utils::base_context;
 
 // ─── List page ───────────────────────────────────────────────────
 
@@ -92,25 +92,26 @@ pub async fn wishlist_page(
 
     let items = WishlistItemModel::list_active(pool).await?;
 
+    let base = base_context(&session, loc, "wishlist", &uri, state.session_timeout_secs());
     let template = WishlistPageTemplate {
-        lang: loc.to_string(),
-        role: session.role.to_string(),
-        current_page: "wishlist",
-        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
-        connection_status: crate::utils::ConnectionStatusContext::new(loc),
-        shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
-        session_timeout_secs: state.session_timeout_secs(),
-        csrf_token: session.csrf_token.clone(),
-        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
-        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
-        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
-        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
-        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
-        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
-        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
-        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
-        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
+        lang: base.lang,
+        role: base.role,
+        current_page: base.current_page,
+        skip_label: base.skip_label,
+        connection_status: base.connection_status,
+        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
+        session_timeout_secs: base.session_timeout_secs,
+        csrf_token: base.csrf_token,
+        nav_catalog: base.nav_catalog,
+        nav_loans: base.nav_loans,
+        nav_wishlist: base.nav_wishlist,
+        nav_locations: base.nav_locations,
+        nav_series: base.nav_series,
+        nav_borrowers: base.nav_borrowers,
+        nav_admin: base.nav_admin,
+        nav_login: base.nav_login,
+        nav_logout: base.nav_logout,
+        nav_menu_open: base.nav_menu_open,
         items,
         can_edit: session.role >= Role::Librarian,
         label_list_title: rust_i18n::t!("wishlist.list_title", locale = loc).to_string(),
@@ -126,8 +127,8 @@ pub async fn wishlist_page(
         label_col_actions: rust_i18n::t!("wishlist.col_actions", locale = loc).to_string(),
         label_action_bought: rust_i18n::t!("wishlist.action_bought", locale = loc).to_string(),
         label_placeholder_empty: rust_i18n::t!("title_detail.field_unset", locale = loc).to_string(),
-        current_url: current_url(&uri),
-        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        current_url: base.current_url,
+        lang_toggle_aria: base.lang_toggle_aria,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -182,25 +183,26 @@ pub async fn wishlist_new_page(
     session.require_role_with_return(Role::Librarian, uri.path(), locale.0)?;
     let loc = locale.0;
 
+    let base = base_context(&session, loc, "wishlist", &uri, state.session_timeout_secs());
     let template = WishlistNewTemplate {
-        lang: loc.to_string(),
-        role: session.role.to_string(),
-        current_page: "wishlist",
-        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
-        connection_status: crate::utils::ConnectionStatusContext::new(loc),
-        shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
-        session_timeout_secs: state.session_timeout_secs(),
-        csrf_token: session.csrf_token.clone(),
-        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
-        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
-        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
-        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
-        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
-        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
-        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
-        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
-        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
+        lang: base.lang,
+        role: base.role,
+        current_page: base.current_page,
+        skip_label: base.skip_label,
+        connection_status: base.connection_status,
+        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
+        session_timeout_secs: base.session_timeout_secs,
+        csrf_token: base.csrf_token,
+        nav_catalog: base.nav_catalog,
+        nav_loans: base.nav_loans,
+        nav_wishlist: base.nav_wishlist,
+        nav_locations: base.nav_locations,
+        nav_series: base.nav_series,
+        nav_borrowers: base.nav_borrowers,
+        nav_admin: base.nav_admin,
+        nav_login: base.nav_login,
+        nav_logout: base.nav_logout,
+        nav_menu_open: base.nav_menu_open,
         label_form_title: rust_i18n::t!("wishlist.form_title", locale = loc).to_string(),
         label_mode_isbn: rust_i18n::t!("wishlist.mode_isbn", locale = loc).to_string(),
         label_mode_freeform: rust_i18n::t!("wishlist.mode_freeform", locale = loc).to_string(),
@@ -212,8 +214,8 @@ pub async fn wishlist_new_page(
         label_notes: rust_i18n::t!("wishlist.field_notes", locale = loc).to_string(),
         label_add: rust_i18n::t!("wishlist.add_to_wishlist", locale = loc).to_string(),
         label_cancel: rust_i18n::t!("common.cancel", locale = loc).to_string(),
-        current_url: current_url(&uri),
-        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        current_url: base.current_url,
+        lang_toggle_aria: base.lang_toggle_aria,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -479,25 +481,26 @@ pub async fn wishlist_detail(
         AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string())
     })?;
 
+    let base = base_context(&session, loc, "wishlist", &uri, state.session_timeout_secs());
     let template = WishlistDetailTemplate {
-        lang: loc.to_string(),
-        role: session.role.to_string(),
-        current_page: "wishlist",
-        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
-        connection_status: crate::utils::ConnectionStatusContext::new(loc),
-        shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
-        session_timeout_secs: state.session_timeout_secs(),
-        csrf_token: session.csrf_token.clone(),
-        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
-        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
-        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
-        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
-        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
-        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
-        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
-        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
-        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
+        lang: base.lang,
+        role: base.role,
+        current_page: base.current_page,
+        skip_label: base.skip_label,
+        connection_status: base.connection_status,
+        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
+        session_timeout_secs: base.session_timeout_secs,
+        csrf_token: base.csrf_token,
+        nav_catalog: base.nav_catalog,
+        nav_loans: base.nav_loans,
+        nav_wishlist: base.nav_wishlist,
+        nav_locations: base.nav_locations,
+        nav_series: base.nav_series,
+        nav_borrowers: base.nav_borrowers,
+        nav_admin: base.nav_admin,
+        nav_login: base.nav_login,
+        nav_logout: base.nav_logout,
+        nav_menu_open: base.nav_menu_open,
         item,
         can_edit: session.role >= Role::Librarian,
         label_isbn: rust_i18n::t!("wishlist.col_isbn", locale = loc).to_string(),
@@ -510,8 +513,8 @@ pub async fn wishlist_detail(
         label_action_bought: rust_i18n::t!("wishlist.action_bought", locale = loc).to_string(),
         label_placeholder_empty: rust_i18n::t!("title_detail.field_unset", locale = loc).to_string(),
         label_no_cover: rust_i18n::t!("cover.no_cover", locale = loc).to_string(),
-        current_url: current_url(&uri),
-        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        current_url: base.current_url,
+        lang_toggle_aria: base.lang_toggle_aria,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),

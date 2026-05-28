@@ -53,9 +53,15 @@ pub(super) fn render_search_fragment(
             }
             html.push_str("</tbody></table></div>");
 
+            let label_no_cover = rust_i18n::t!("cover.no_cover", locale = loc);
+            let volume_short_label = rust_i18n::t!("volume.short_label", locale = loc);
             html.push_str("<div class=\"browse-cards\">");
             for item in &paginated.items {
-                html.push_str(&render_search_row(item));
+                html.push_str(&render_search_row(
+                    item,
+                    &label_no_cover,
+                    &volume_short_label,
+                ));
             }
             html.push_str("</div>");
 
@@ -78,43 +84,31 @@ pub(super) fn render_search_fragment(
     html
 }
 
-fn render_search_row(item: &SearchResult) -> String {
-    let escaped_title = html_escape(&item.title);
-    let escaped_contributor = item
-        .primary_contributor
-        .as_ref()
-        .map(|c| html_escape(c))
-        .unwrap_or_default();
-    let escaped_genre = html_escape(&item.genre_name);
-    let escaped_media = html_escape(&item.media_type);
+/// Issue #108 — the search-fragment card now renders the SAME
+/// `templates/components/title_card.html` partial as the page-level
+/// browse-results / recent-cataloged / recent-additions loops, so the
+/// HTMX fragment can never drift from the page render. Askama auto-escapes
+/// the interpolated fields, so no manual `html_escape` is needed here.
+#[derive(Template)]
+#[template(path = "components/title_card.html")]
+struct TitleCardTemplate<'a> {
+    item: &'a SearchResult,
+    label_no_cover: &'a str,
+    volume_short_label: &'a str,
+}
 
-    let cover_html = match &item.cover_image_url {
-        Some(url) => format!(
-            r#"<img src="{}" alt="" class="w-full h-full object-cover" loading="lazy">"#,
-            html_escape(url)
-        ),
-        None => format!(
-            r#"<div class="w-full h-full bg-stone-100 dark:bg-stone-800 flex items-center justify-center"><img src="/static/icons/{}.svg" alt="" class="w-8 h-8 opacity-50"></div>"#,
-            escaped_media
-        ),
-    };
-
-    let year = item
-        .publication_date
-        .map(|d| format!(" · {}", d.format("%Y")))
-        .unwrap_or_default();
-
-    format!(
-        r##"<article class="title-card group"><a href="/title/{id}" class="title-card-link" aria-label="{title} — {contributor}"><div class="title-card-cover">{cover}<div class="title-card-overlay"><img src="/static/icons/{media}.svg" alt="" class="w-5 h-5 opacity-80"><span class="text-xs">{vols} vol</span></div></div><div class="title-card-info"><p class="title-card-title">{title}</p><p class="title-card-contributor">{contributor}</p><p class="title-card-meta">{genre}{year}</p><p class="title-card-volumes">{vols} vol</p></div></a></article>"##,
-        id = item.id,
-        cover = cover_html,
-        title = escaped_title,
-        contributor = escaped_contributor,
-        genre = escaped_genre,
-        media = escaped_media,
-        vols = item.volume_count,
-        year = year,
-    )
+fn render_search_row(
+    item: &SearchResult,
+    label_no_cover: &str,
+    volume_short_label: &str,
+) -> String {
+    TitleCardTemplate {
+        item,
+        label_no_cover,
+        volume_short_label,
+    }
+    .render()
+    .unwrap_or_default()
 }
 
 /// Fix #315 — list-mode `<tr>` for the HTMX search-fragment swap.
@@ -343,7 +337,7 @@ mod tests {
             publication_date: None,
             dewey_code: None,
         };
-        let html = render_search_row(&item);
+        let html = render_search_row(&item, "No cover available", "vol");
         assert!(html.contains("/title/42"));
         assert!(html.contains("Albert Camus"));
         assert!(html.contains("Roman"));
@@ -377,7 +371,7 @@ mod tests {
             publication_date: Some(chrono::NaiveDate::from_ymd_opt(1942, 1, 1).unwrap()),
             dewey_code: None,
         };
-        let html = render_search_row(&item);
+        let html = render_search_row(&item, "No cover available", "vol");
         assert!(html.contains("1942"), "Should display publication year");
         assert!(
             html.contains("/covers/test.jpg"),

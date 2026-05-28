@@ -822,6 +822,53 @@ fn templates_forbid_bg_red_500_with_text_white() {
     }
 }
 
+/// Issue #108 — the TitleCard `<article class="title-card">` block was
+/// extracted into the single `templates/components/title_card.html` partial
+/// (previously duplicated across 3 home.html loops + the Rust search-fragment
+/// builder). This audit pins the single-source-of-truth: any re-duplication
+/// of the `<article class="title-card"` markup into another template fails
+/// the test, catching silent structural/i18n drift before it ships.
+#[test]
+fn exactly_one_title_card_article_site() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let tpl_dir = root.join("templates");
+    let needle = "<article class=\"title-card";
+
+    let mut sites: Vec<String> = Vec::new();
+    visit(&tpl_dir, &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let raw = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let content = strip_html_comments(&raw);
+        let count = content.matches(needle).count();
+        if count > 0 {
+            let rel = path.strip_prefix(&root).unwrap_or(path);
+            let rel_str = rel
+                .to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "/");
+            sites.push(format!("  {rel_str} — {count} occurrence(s)"));
+        }
+    });
+
+    assert_eq!(
+        sites.len(),
+        1,
+        "Expected exactly ONE template with `<article class=\"title-card\"` \
+         (the shared components/title_card.html partial, issue #108). Found:\n{}",
+        sites.join("\n")
+    );
+    assert!(
+        sites[0].contains("components/title_card.html"),
+        "The single `<article class=\"title-card\"` site must be the shared \
+         partial, got:\n{}",
+        sites.join("\n")
+    );
+}
+
 #[test]
 fn csrf_exempt_routes_frozen() {
     use crate::middleware::csrf::CSRF_EXEMPT_ROUTES;

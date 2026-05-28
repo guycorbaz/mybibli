@@ -420,6 +420,8 @@ guide:
   shelved: "Eingestellt! Scannen Sie eine weitere ISBN, einen V-Code oder einen L-Code."
   batch_active: "Aktiver Standort: %{path}. Scannen Sie V-Codes, um hier einzustellen."
 volume:
+  # Issue #108 — short volume badge label on title cards, i18n'd out of the templates.
+  short_label: "Ex."
   detail_title: Exemplardetails
   edit_title: Exemplar bearbeiten
   condition_label: Zustand

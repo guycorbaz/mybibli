@@ -414,6 +414,8 @@ guide:
   shelved: "Collocato! Scansiona un altro ISBN, codice V o codice L."
   batch_active: "Ubicazione attiva: %{path}. Scansiona codici V per collocare qui."
 volume:
+  # Issue #108 — short "vol" badge label on title cards, i18n'd out of the templates.
+  short_label: "vol"
   detail_title: Dettagli esemplare
   edit_title: Modifica esemplare
   condition_label: Condizione
