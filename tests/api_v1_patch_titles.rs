@@ -59,7 +59,7 @@ async fn seed_write_key(pool: &DbPool) -> String {
 
 async fn first_genre_id(pool: &DbPool) -> i64 {
     let (g,): (i64,) =
-        sqlx::query_as("SELECT MIN(id) FROM genres WHERE deleted_at IS NULL")
+        sqlx::query_as("SELECT CAST(MIN(id) AS SIGNED) FROM genres WHERE deleted_at IS NULL")
             .fetch_one(pool)
             .await
             .unwrap();
@@ -110,7 +110,7 @@ async fn patch_single_field_bumps_version_and_audits(pool: DbPool) {
         &router,
         &key,
         id,
-        serde_json::json!({"version": 0, "dewey_code": "813.54"}),
+        serde_json::json!({"version": 1, "dewey_code": "813.54"}),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -118,7 +118,7 @@ async fn patch_single_field_bumps_version_and_audits(pool: DbPool) {
     let bytes = axum::body::to_bytes(res.into_body(), 64 * 1024).await.unwrap();
     let dto: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(dto["dewey_code"], "813.54");
-    assert_eq!(dto["version"], 1, "version must bump from 0 → 1");
+    assert_eq!(dto["version"], 2, "version must bump from 1 → 2");
 
     // Audit row recorded.
     let (n,): (i64,) = sqlx::query_as(
@@ -147,7 +147,7 @@ async fn patch_explicit_null_clears_nullable_field(pool: DbPool) {
         &router,
         &key,
         id,
-        serde_json::json!({"version": 0, "subtitle": null}),
+        serde_json::json!({"version": 1, "subtitle": null}),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -172,7 +172,7 @@ async fn patch_omitted_field_untouched(pool: DbPool) {
         &router,
         &key,
         id,
-        serde_json::json!({"version": 0, "dewey_code": "100"}),
+        serde_json::json!({"version": 1, "dewey_code": "100"}),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -199,7 +199,7 @@ async fn patch_version_mismatch_returns_409(pool: DbPool) {
     let bytes = axum::body::to_bytes(res.into_body(), 4096).await.unwrap();
     let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["error"], "version_mismatch");
-    assert_eq!(body["expected"], 0);
+    assert_eq!(body["expected"], 1);
     assert_eq!(body["supplied"], 99);
 }
 
@@ -213,7 +213,7 @@ async fn patch_invalid_genre_returns_400(pool: DbPool) {
         &router,
         &key,
         id,
-        serde_json::json!({"version": 0, "genre_id": 999_999}),
+        serde_json::json!({"version": 1, "genre_id": 999_999}),
     )
     .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -232,7 +232,7 @@ async fn patch_invalid_dewey_returns_400(pool: DbPool) {
         &router,
         &key,
         id,
-        serde_json::json!({"version": 0, "dewey_code": "abc; DROP TABLE titles"}),
+        serde_json::json!({"version": 1, "dewey_code": "abc; DROP TABLE titles"}),
     )
     .await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
@@ -250,7 +250,7 @@ async fn patch_missing_title_returns_404(pool: DbPool) {
         &router,
         &key,
         999_999_999,
-        serde_json::json!({"version": 0, "dewey_code": "100"}),
+        serde_json::json!({"version": 1, "dewey_code": "100"}),
     )
     .await;
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
@@ -267,7 +267,7 @@ async fn patch_no_changes_is_idempotent(pool: DbPool) {
         &router,
         &key,
         id,
-        serde_json::json!({"version": 0}),
+        serde_json::json!({"version": 1}),
     )
     .await;
     assert_eq!(res.status(), StatusCode::OK);
@@ -278,7 +278,7 @@ async fn patch_no_changes_is_idempotent(pool: DbPool) {
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(version, 0, "no-op PATCH must not bump version");
+    assert_eq!(version, 1, "no-op PATCH must not bump version");
 
     let (n,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM admin_audit WHERE action = 'api_patch_title' AND entity_id = ?",
