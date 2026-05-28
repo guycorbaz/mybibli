@@ -952,6 +952,11 @@ impl TitleModel {
         // which collides with the DISTINCT shape the data query
         // already needs.
         no_volumes_only: bool,
+        // CR #355 — when `true`, restrict to titles with no cover image.
+        // Same predicate the bulk cover-refetch uses (#214), minus the
+        // identifier clause: titles WITHOUT an ISBN/ISSN/UPC can never be
+        // auto-fetched, so they most need the manual-upload safety net.
+        no_cover_only: bool,
     ) -> Result<PaginatedList<SearchResult>, AppError> {
         let sort_col = validated_sort(sort);
         let sort_dir = validated_dir(dir);
@@ -1022,6 +1027,12 @@ impl TitleModel {
                  AND v_no.deleted_at IS NULL)"
                     .to_string(),
             );
+        }
+
+        if no_cover_only {
+            // CR #355 — title with no cover image (NULL or empty string).
+            // No bind value: self-contained predicate on the titles table.
+            conditions.push("(t.cover_image_url IS NULL OR t.cover_image_url = '')".to_string());
         }
 
         if let Some(ref state_name) = volume_state {

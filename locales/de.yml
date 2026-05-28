@@ -137,6 +137,7 @@ home:
   filter:
     uncategorized: "Ohne Kategorie"
     no_volumes: "Titel ohne Exemplar"
+    no_cover: "Titel ohne Cover"
   genre_filter_no_longer_exists: "Dieses Genre existiert nicht mehr — alle Titel werden angezeigt."
 catalog:
   title: Katalog

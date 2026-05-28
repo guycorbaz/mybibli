@@ -63,7 +63,7 @@ async fn empty_query_with_genre_filter_returns_filtered_titles(pool: MySqlPool) 
     let _ = seed_title(&pool, "Matching Two", genre_a).await;
     let _ = seed_title(&pool, "Other genre", genre_b).await;
 
-    let outcome = SearchService::search(&pool, "", Some(genre_a), None, &None, &None, 1, false)
+    let outcome = SearchService::search(&pool, "", Some(genre_a), None, &None, &None, 1, false, false)
         .await
         .expect("search must succeed");
 
@@ -92,7 +92,7 @@ async fn empty_query_without_filter_returns_empty(pool: MySqlPool) {
     let genre_a = first_genre_id(&pool).await;
     let _ = seed_title(&pool, "Something", genre_a).await;
 
-    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, false)
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, false, false)
         .await
         .expect("search must succeed");
 
@@ -114,7 +114,7 @@ async fn whitespace_query_with_filter_is_treated_as_filter_only_browse(pool: MyS
     let genre_a = first_genre_id(&pool).await;
     let _ = seed_title(&pool, "Matching", genre_a).await;
 
-    let outcome = SearchService::search(&pool, "   ", Some(genre_a), None, &None, &None, 1, false)
+    let outcome = SearchService::search(&pool, "   ", Some(genre_a), None, &None, &None, 1, false, false)
         .await
         .expect("search must succeed");
 
@@ -159,7 +159,7 @@ async fn no_volumes_only_filters_titles_with_active_volumes(pool: MySqlPool) {
         .await
         .expect("insert soft-deleted volume");
 
-    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, true)
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, true, false)
         .await
         .expect("search must succeed");
 
@@ -194,7 +194,7 @@ async fn no_volumes_only_disables_empty_query_short_circuit(pool: MySqlPool) {
     let genre = first_genre_id(&pool).await;
     let _ = seed_title(&pool, "Bare", genre).await;
 
-    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, true)
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, true, false)
         .await
         .expect("search must succeed");
 
@@ -203,6 +203,79 @@ async fn no_volumes_only_disables_empty_query_short_circuit(pool: MySqlPool) {
             assert!(
                 paginated.total_items >= 1,
                 "no_volumes filter must override the empty-query short-circuit"
+            );
+        }
+        SearchOutcome::Redirect(_) => panic!("unexpected redirect"),
+    }
+}
+
+/// CR #355 — the `no_cover_only` flag restricts results to titles whose
+/// `cover_image_url` is NULL or empty string. Seeds 3 titles: one with a
+/// real cover URL, one left NULL, one set to empty string. The NULL and
+/// empty-string titles must surface; the title with a cover must NOT.
+#[sqlx::test(migrations = "./migrations")]
+async fn no_cover_only_filters_titles_with_cover(pool: MySqlPool) {
+    let genre = first_genre_id(&pool).await;
+
+    let with_cover = seed_title(&pool, "Has Cover", genre).await;
+    let _null_cover = seed_title(&pool, "Null Cover", genre).await; // cover defaults to NULL
+    let empty_cover = seed_title(&pool, "Empty Cover", genre).await;
+
+    sqlx::query("UPDATE titles SET cover_image_url = '/covers/has-cover.jpg' WHERE id = ?")
+        .bind(with_cover)
+        .execute(&pool)
+        .await
+        .expect("set cover url");
+    sqlx::query("UPDATE titles SET cover_image_url = '' WHERE id = ?")
+        .bind(empty_cover)
+        .execute(&pool)
+        .await
+        .expect("set empty cover");
+
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, false, true)
+        .await
+        .expect("search must succeed");
+
+    match outcome {
+        SearchOutcome::Results(paginated) => {
+            let titles: Vec<&str> = paginated.items.iter().map(|i| i.title.as_str()).collect();
+            assert!(
+                titles.contains(&"Null Cover"),
+                "NULL-cover title must surface, got {:?}",
+                titles
+            );
+            assert!(
+                titles.contains(&"Empty Cover"),
+                "empty-string-cover title must surface, got {:?}",
+                titles
+            );
+            assert!(
+                !titles.contains(&"Has Cover"),
+                "title with a cover must NOT surface, got {:?}",
+                titles
+            );
+        }
+        SearchOutcome::Redirect(_) => panic!("unexpected redirect for no_cover browse"),
+    }
+}
+
+/// CR #355 — when `no_cover_only` is `true`, the empty-query short-circuit
+/// must NOT fire (mirror of the no_volumes case). `?filter=no_cover` lands
+/// with no query and no genre filter set.
+#[sqlx::test(migrations = "./migrations")]
+async fn no_cover_only_disables_empty_query_short_circuit(pool: MySqlPool) {
+    let genre = first_genre_id(&pool).await;
+    let _ = seed_title(&pool, "Coverless", genre).await; // cover defaults to NULL
+
+    let outcome = SearchService::search(&pool, "", None, None, &None, &None, 1, false, true)
+        .await
+        .expect("search must succeed");
+
+    match outcome {
+        SearchOutcome::Results(paginated) => {
+            assert!(
+                paginated.total_items >= 1,
+                "no_cover filter must override the empty-query short-circuit"
             );
         }
         SearchOutcome::Redirect(_) => panic!("unexpected redirect"),

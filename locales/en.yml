@@ -137,6 +137,7 @@ home:
   filter:
     uncategorized: "Uncategorized"
     no_volumes: "Titles without volumes"
+    no_cover: "Titles without cover"
   genre_filter_no_longer_exists: "This genre no longer exists — showing all titles."
 catalog:
   title: Catalog
