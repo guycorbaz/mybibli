@@ -188,6 +188,13 @@ pub struct HomeTemplate {
     pub show_no_volumes_chip: bool,
     pub no_volumes_filter_active: bool,
     pub label_no_volumes: String,
+    // CR #355 — "Titles without a cover" filter chip. Librarian+ only
+    // (discovery path to the manual-upload safety net for the FR/CH/DE
+    // tech-publisher titles no free provider indexes). Same shape as the
+    // no_volumes chip.
+    pub show_no_cover_chip: bool,
+    pub no_cover_filter_active: bool,
+    pub label_no_cover_filter: String,
 }
 
 /// One row of the "By genre" dashboard section.
@@ -340,7 +347,13 @@ pub async fn home(
     // Librarian+ — Anonymous shouldn't see catalog-cleanup affordances.
     let no_volumes_filter_active = params.filter.as_deref() == Some("no_volumes")
         && session.role >= crate::middleware::auth::Role::Librarian;
-    let (genre_id, volume_state) = if parsed_indicator.is_some() || no_volumes_filter_active {
+    // CR #355 — `?filter=no_cover` short-circuit, same shape as no_volumes.
+    let no_cover_filter_active = params.filter.as_deref() == Some("no_cover")
+        && session.role >= crate::middleware::auth::Role::Librarian;
+    let (genre_id, volume_state) = if parsed_indicator.is_some()
+        || no_volumes_filter_active
+        || no_cover_filter_active
+    {
         (None, None)
     } else if params.filter.as_deref() == Some("uncategorized") {
         let default_genre_id = TitleService::find_default_genre_id(pool).await?;
@@ -390,6 +403,7 @@ pub async fn home(
             &params.dir,
             page,
             no_volumes_filter_active,
+            no_cover_filter_active,
         )
         .await?;
 
@@ -911,6 +925,9 @@ pub async fn home(
         show_no_volumes_chip: session.role >= crate::middleware::auth::Role::Librarian,
         no_volumes_filter_active,
         label_no_volumes: rust_i18n::t!("home.filter.no_volumes", locale = loc).to_string(),
+        show_no_cover_chip: session.role >= crate::middleware::auth::Role::Librarian,
+        no_cover_filter_active,
+        label_no_cover_filter: rust_i18n::t!("home.filter.no_cover", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -1378,6 +1395,9 @@ pub(crate) mod tests {
             show_no_volumes_chip: false,
             no_volumes_filter_active: false,
             label_no_volumes: "Titles without volumes".to_string(),
+            show_no_cover_chip: false,
+            no_cover_filter_active: false,
+            label_no_cover_filter: "Titles without cover".to_string(),
         }
     }
 

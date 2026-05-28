@@ -81,12 +81,19 @@ impl SearchService {
         page: u32,
         // CR #279 — title without any active volume.
         no_volumes_only: bool,
+        // CR #355 — title without a cover image.
+        no_cover_only: bool,
     ) -> Result<SearchOutcome, AppError> {
         let trimmed = query.trim();
         // Browse-without-query path: empty query + no filter → no results.
         // Empty query WITH a genre/state filter falls through to `fulltext_search`
         // (pill-driven browse, e.g. clicking "BD" on the home page).
-        if trimmed.is_empty() && genre_id.is_none() && volume_state.is_none() && !no_volumes_only {
+        if trimmed.is_empty()
+            && genre_id.is_none()
+            && volume_state.is_none()
+            && !no_volumes_only
+            && !no_cover_only
+        {
             return Ok(SearchOutcome::Results(PaginatedList::new(
                 vec![],
                 1,
@@ -108,6 +115,7 @@ impl SearchService {
                 dir,
                 page,
                 no_volumes_only,
+                no_cover_only,
             )
             .await;
         }
@@ -139,6 +147,7 @@ impl SearchService {
                             dir,
                             page,
                             no_volumes_only,
+                            no_cover_only,
                         )
                         .await
                     }
@@ -160,6 +169,7 @@ impl SearchService {
                             dir,
                             page,
                             no_volumes_only,
+                            no_cover_only,
                         )
                         .await
                     }
@@ -190,6 +200,7 @@ impl SearchService {
                             dir,
                             page,
                             no_volumes_only,
+                            no_cover_only,
                         )
                         .await
                     }
@@ -205,6 +216,7 @@ impl SearchService {
                     dir,
                     page,
                     no_volumes_only,
+                    no_cover_only,
                 )
                 .await
             }
@@ -221,6 +233,7 @@ impl SearchService {
         dir: &Option<String>,
         page: u32,
         no_volumes_only: bool,
+        no_cover_only: bool,
     ) -> Result<SearchOutcome, AppError> {
         let results = TitleModel::active_search(
             pool,
@@ -231,6 +244,7 @@ impl SearchService {
             dir,
             page,
             no_volumes_only,
+            no_cover_only,
         )
         .await?;
         Ok(SearchOutcome::Results(results))

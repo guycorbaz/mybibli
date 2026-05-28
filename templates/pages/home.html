@@ -143,6 +143,33 @@
         {% endif %}
         {% endif %}
 
+        {# CR #355 — "Titles without a cover" filter chip. Librarian+ only
+           (discovery path to the manual-upload safety net). Same shape as
+           the no_volumes chip above; distinct sky color. #}
+        {% if show_no_cover_chip %}
+        {% if no_cover_filter_active %}
+        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 text-sm" role="status" aria-label="Active filter: {{ label_no_cover_filter }}. Press to remove filter">
+            {{ label_no_cover_filter }}
+            <button type="button"
+                    hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+                    hx-target="#browse-results"
+                    hx-swap="innerHTML"
+                    hx-push-url="true"
+                    class="ml-1 text-sky-600 hover:text-sky-800"
+                    aria-label="{{ remove_filter_aria }}">&times;</button>
+        </span>
+        {% else %}
+        <a href="/?q={{ query_encoded }}&amp;filter=no_cover&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+           hx-get="/?q={{ query_encoded }}&amp;filter=no_cover&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+           hx-target="#browse-results"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           class="px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 text-sm hover:bg-stone-200 dark:hover:bg-stone-700"
+           role="link"
+           aria-label="Filter by: {{ label_no_cover_filter }}">{{ label_no_cover_filter }}</a>
+        {% endif %}
+        {% endif %}
+
         <input type="hidden" name="filter" id="filter-hidden" value="{{ active_filter }}">
         <input type="hidden" name="sort" value="{{ current_sort }}">
         <input type="hidden" name="dir" value="{{ current_dir }}">
