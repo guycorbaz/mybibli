@@ -110,13 +110,17 @@ fn extract_desktop_nav(html: &str) -> String {
     // Walk PAST the opening `<nav` (4 bytes) so the depth-1 starting state
     // correctly accounts for the strip's own opening tag.
     let tail = &html[start + 4..];
+    // Scan over bytes — the nav HTML contains multi-byte UTF-8 (e.g. the `—`
+    // em-dash in "mybibli — home"), so byte-indexed `&str` slicing would panic
+    // on a non-char-boundary. All markers are ASCII, so byte comparison is exact.
+    let bytes = tail.as_bytes();
     let mut depth: i32 = 1;
     let mut pos = 0;
-    while pos < tail.len() {
-        if tail[pos..].starts_with("<nav") {
+    while pos < bytes.len() {
+        if bytes[pos..].starts_with(b"<nav") {
             depth += 1;
             pos += 4;
-        } else if tail[pos..].starts_with("</nav>") {
+        } else if bytes[pos..].starts_with(b"</nav>") {
             depth -= 1;
             pos += "</nav>".len();
             if depth == 0 {
@@ -141,13 +145,16 @@ fn extract_mobile_panel(html: &str) -> String {
         .find(start_marker)
         .expect("rendered HTML must contain the mobile-nav panel id");
     let tail = &html[start..];
+    // Byte-indexed scan — see extract_desktop_nav: multi-byte UTF-8 in the
+    // panel would make `&str` slicing panic on a non-char-boundary.
+    let bytes = tail.as_bytes();
     let mut depth: i32 = 1;
     let mut pos = 0;
-    while pos < tail.len() {
-        if tail[pos..].starts_with("<div") {
+    while pos < bytes.len() {
+        if bytes[pos..].starts_with(b"<div") {
             depth += 1;
             pos += 4;
-        } else if tail[pos..].starts_with("</div>") {
+        } else if bytes[pos..].starts_with(b"</div>") {
             depth -= 1;
             pos += "</div>".len();
             if depth == 0 {

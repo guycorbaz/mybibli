@@ -75,7 +75,7 @@ async fn seed_title(pool: &DbPool, title: &str) -> u64 {
     // default "Other" / "Roman" — but `migrations/` also runs a fresh
     // sequence per sqlx::test. Pick any active genre id by SELECT MIN.
     let (genre_id,): (i64,) = sqlx::query_as(
-        "SELECT MIN(id) FROM genres WHERE deleted_at IS NULL",
+        "SELECT CAST(MIN(id) AS SIGNED) FROM genres WHERE deleted_at IS NULL",
     )
     .fetch_one(pool)
     .await

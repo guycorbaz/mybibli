@@ -104,18 +104,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run DB-backed integration tests
-        run: |
-          cargo test \
-            --test admin_audit_fk_set_null \
-            --test find_similar \
-            --test find_by_location_dewey \
-            --test metadata_fetch_dewey \
-            --test metadata_fetch_race \
-            --test seed_gate \
-            --test seeded_users \
-            --test setup_wizard \
-            --test system_user \
-            --test users_in_allowed_tables
+        # Auto-discover ALL integration test binaries (`--tests`) instead of a
+        # hardcoded `--test X` allowlist — a stale allowlist silently skipped 36
+        # of 46 tests/*.rs files, hiding real failures (see issue #357).
+        # --no-fail-fast so one red binary doesn't mask failures in later ones.
+        run: cargo test --tests --no-fail-fast
 
       - name: Collect MariaDB logs on failure
         if: failure() || cancelled()
