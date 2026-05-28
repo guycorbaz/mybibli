@@ -13,7 +13,6 @@ use crate::models::PaginatedList;
 use crate::models::series::{SeriesModel, SeriesType};
 use crate::routes::catalog::feedback_html_pub;
 use crate::services::series::{SeriesPositionInfo, SeriesService};
-use crate::utils::current_url;
 
 /// Compute gap count for a closed series: total - owned, clamped to 0.
 fn compute_gap(series: &SeriesModel, owned: u64) -> u64 {
@@ -251,25 +250,26 @@ pub async fn series_detail_page(
     let sort_dir = crate::services::series::SortDir::from_param(params.dir.as_deref());
     crate::services::series::sort_positions(&mut positions, sort_key, sort_dir);
 
+    let base = crate::utils::base_context(&session, loc, "series", &uri, state.session_timeout_secs());
     let template = SeriesDetailTemplate {
-        lang: loc.to_string(),
-        role: session.role.to_string(),
-        current_page: "series",
-        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
-        connection_status: crate::utils::ConnectionStatusContext::new(loc),
-        shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
-        session_timeout_secs: state.session_timeout_secs(),
-        csrf_token: session.csrf_token.clone(),
-        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
-        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
-        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
-        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
-        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
-        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
-        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
-        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
-        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
+        lang: base.lang,
+        role: base.role,
+        current_page: base.current_page,
+        skip_label: base.skip_label,
+        connection_status: base.connection_status,
+        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
+        session_timeout_secs: base.session_timeout_secs,
+        csrf_token: base.csrf_token,
+        nav_catalog: base.nav_catalog,
+        nav_loans: base.nav_loans,
+        nav_wishlist: base.nav_wishlist,
+        nav_locations: base.nav_locations,
+        nav_series: base.nav_series,
+        nav_borrowers: base.nav_borrowers,
+        nav_admin: base.nav_admin,
+        nav_login: base.nav_login,
+        nav_logout: base.nav_logout,
+        nav_menu_open: base.nav_menu_open,
         series,
         owned_count: owned,
         gap_count: gap,
@@ -291,8 +291,8 @@ pub async fn series_detail_page(
             series_name_for_grid
         ),
         no_assignments_label: rust_i18n::t!("series.no_assignments", locale = loc).to_string(),
-        current_url: current_url(&uri),
-        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        current_url: base.current_url,
+        lang_toggle_aria: base.lang_toggle_aria,
         current_sort: sort_key.as_str(),
         current_dir: sort_dir.as_str(),
         label_sort_by: rust_i18n::t!("browse.sort_by", locale = loc).to_string(),
@@ -357,27 +357,28 @@ fn form_template_labels(
     session: &Session,
     session_timeout_secs: u64,
     loc: &str,
-    current_url_value: String,
+    uri: &axum::http::Uri,
 ) -> SeriesFormTemplate {
+    let base = crate::utils::base_context(session, loc, "series", uri, session_timeout_secs);
     SeriesFormTemplate {
-        lang: loc.to_string(),
-        role: session.role.to_string(),
-        current_page: "series",
-        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
-        connection_status: crate::utils::ConnectionStatusContext::new(loc),
-        shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
-        session_timeout_secs,
-        csrf_token: session.csrf_token.clone(),
-        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
-        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
-        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
-        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
-        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
-        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
-        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
-        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
-        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
+        lang: base.lang,
+        role: base.role,
+        current_page: base.current_page,
+        skip_label: base.skip_label,
+        connection_status: base.connection_status,
+        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
+        session_timeout_secs: base.session_timeout_secs,
+        csrf_token: base.csrf_token,
+        nav_catalog: base.nav_catalog,
+        nav_loans: base.nav_loans,
+        nav_wishlist: base.nav_wishlist,
+        nav_locations: base.nav_locations,
+        nav_series: base.nav_series,
+        nav_borrowers: base.nav_borrowers,
+        nav_admin: base.nav_admin,
+        nav_login: base.nav_login,
+        nav_logout: base.nav_logout,
+        nav_menu_open: base.nav_menu_open,
         is_edit: false,
         create_title: rust_i18n::t!("series.add", locale = loc).to_string(),
         edit_title: rust_i18n::t!("series.edit", locale = loc).to_string(),
@@ -396,8 +397,8 @@ fn form_template_labels(
         description_value: String::new(),
         type_value: "open".to_string(),
         total_value: String::new(),
-        current_url: current_url_value,
-        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        current_url: base.current_url,
+        lang_toggle_aria: base.lang_toggle_aria,
         series_type_help: crate::utils::TooltipData::with_icon(
             "tip-series-type",
             &rust_i18n::t!("help.series.type_summary", locale = loc),
@@ -418,7 +419,7 @@ pub async fn create_series_form(
         &session,
         state.session_timeout_secs(),
         locale.0,
-        current_url(&uri),
+        &uri,
     );
 
     match template.render() {
@@ -548,7 +549,7 @@ pub async fn edit_series_form(
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
     let mut template =
-        form_template_labels(&session, state.session_timeout_secs(), loc, current_url(&uri));
+        form_template_labels(&session, state.session_timeout_secs(), loc, &uri);
     template.is_edit = true;
     template.series_id = series.id;
     template.version = series.version;

@@ -13,7 +13,6 @@ use crate::models::PaginatedList;
 use crate::models::borrower::BorrowerModel;
 use crate::models::loan::{LoanModel, LoanWithDetails};
 use crate::services::borrowers::BorrowerService;
-use crate::utils::current_url;
 
 // ─── List page ──────────────────────────────────────────
 
@@ -233,29 +232,31 @@ pub async fn borrower_detail(
     let active_loans = LoanModel::list_active_by_borrower(pool, borrower.id).await?;
     let threshold = state.settings.read().unwrap().overdue_threshold_days;
 
+    // "borrower-detail" (not "borrowers") so the body[data-page] hook in
+    // mybibli.js (initBorrowerDetailReload) only fires here, while the
+    // nav highlight stays on /borrowers via the `borrowers` aria-current
+    // matcher in nav_bar.html (no other code keys off this string).
+    let base =
+        crate::utils::base_context(&session, loc, "borrower-detail", &uri, state.session_timeout_secs());
     let template = BorrowerDetailTemplate {
-        lang: loc.to_string(),
-        role: session.role.to_string(),
-        // "borrower-detail" (not "borrowers") so the body[data-page] hook in
-        // mybibli.js (initBorrowerDetailReload) only fires here, while the
-        // nav highlight stays on /borrowers via the `borrowers` aria-current
-        // matcher in nav_bar.html (no other code keys off this string).
-        current_page: "borrower-detail",
-        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
-        connection_status: crate::utils::ConnectionStatusContext::new(loc),
-        shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
-        session_timeout_secs: state.session_timeout_secs(),
-        csrf_token: session.csrf_token.clone(),
-        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
-        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
-        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
-        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
-        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
-        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
-        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
-        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
-        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
+        lang: base.lang,
+        role: base.role,
+        current_page: base.current_page,
+        skip_label: base.skip_label,
+        connection_status: base.connection_status,
+        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
+        session_timeout_secs: base.session_timeout_secs,
+        csrf_token: base.csrf_token,
+        nav_catalog: base.nav_catalog,
+        nav_loans: base.nav_loans,
+        nav_wishlist: base.nav_wishlist,
+        nav_locations: base.nav_locations,
+        nav_series: base.nav_series,
+        nav_borrowers: base.nav_borrowers,
+        nav_admin: base.nav_admin,
+        nav_login: base.nav_login,
+        nav_logout: base.nav_logout,
+        nav_menu_open: base.nav_menu_open,
         borrower,
         address_label: rust_i18n::t!("borrower.address", locale = loc).to_string(),
         email_label: rust_i18n::t!("borrower.email", locale = loc).to_string(),
@@ -274,8 +275,8 @@ pub async fn borrower_detail(
         col_date: rust_i18n::t!("loan.col_date", locale = loc).to_string(),
         col_duration: rust_i18n::t!("loan.col_duration", locale = loc).to_string(),
         col_action: rust_i18n::t!("loan.col_action", locale = loc).to_string(),
-        current_url: current_url(&uri),
-        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        current_url: base.current_url,
+        lang_toggle_aria: base.lang_toggle_aria,
     };
 
     match template.render() {
@@ -338,25 +339,26 @@ pub async fn edit_borrower_page(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
+    let base = crate::utils::base_context(&session, loc, "borrowers", &uri, state.session_timeout_secs());
     let template = BorrowerEditTemplate {
-        lang: loc.to_string(),
-        role: session.role.to_string(),
-        current_page: "borrowers",
-        skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
-        connection_status: crate::utils::ConnectionStatusContext::new(loc),
-        shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
-        session_timeout_secs: state.session_timeout_secs(),
-        csrf_token: session.csrf_token.clone(),
-        nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
-        nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
-        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
-        nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
-        nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
-        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
-        nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
-        nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
-        nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
-        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
+        lang: base.lang,
+        role: base.role,
+        current_page: base.current_page,
+        skip_label: base.skip_label,
+        connection_status: base.connection_status,
+        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
+        session_timeout_secs: base.session_timeout_secs,
+        csrf_token: base.csrf_token,
+        nav_catalog: base.nav_catalog,
+        nav_loans: base.nav_loans,
+        nav_wishlist: base.nav_wishlist,
+        nav_locations: base.nav_locations,
+        nav_series: base.nav_series,
+        nav_borrowers: base.nav_borrowers,
+        nav_admin: base.nav_admin,
+        nav_login: base.nav_login,
+        nav_logout: base.nav_logout,
+        nav_menu_open: base.nav_menu_open,
         borrower,
         edit_title: rust_i18n::t!("borrower.edit", locale = loc).to_string(),
         name_label: rust_i18n::t!("borrower.name", locale = loc).to_string(),
@@ -365,8 +367,8 @@ pub async fn edit_borrower_page(
         address_label: rust_i18n::t!("borrower.address", locale = loc).to_string(),
         save_label: rust_i18n::t!("borrower.save", locale = loc).to_string(),
         cancel_label: rust_i18n::t!("borrower.cancel", locale = loc).to_string(),
-        current_url: current_url(&uri),
-        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+        current_url: base.current_url,
+        lang_toggle_aria: base.lang_toggle_aria,
         email_help: crate::utils::TooltipData::with_icon(
             "tip-borrower-email-edit",
             &rust_i18n::t!("help.borrower.email_summary", locale = loc),
