@@ -85,6 +85,9 @@ pub struct HomeTemplate {
     pub col_dewey: String,
     pub connection_lost: String,
     pub label_no_cover: String,
+    // Issue #108 — short "vol" badge label on title cards, shared with the
+    // title_card.html partial and the HTMX search fragment.
+    pub volume_short_label: String,
     pub metadata_error_count: u64,
     pub label_metadata_errors: String,
     // CR #242: wishlist counter on the home dashboard (UX-DR4 zero-count
@@ -810,6 +813,7 @@ pub async fn home(
         col_dewey: rust_i18n::t!("search.col.dewey", locale = loc).to_string(),
         connection_lost: rust_i18n::t!("search.connection_lost", locale = loc).to_string(),
         label_no_cover: rust_i18n::t!("cover.no_cover", locale = loc).to_string(),
+        volume_short_label: rust_i18n::t!("volume.short_label", locale = loc).to_string(),
         metadata_error_count,
         label_metadata_errors: rust_i18n::t!(
             "dashboard.metadata_errors",
@@ -1304,6 +1308,7 @@ pub(crate) mod tests {
             col_dewey: "Dewey".to_string(),
             connection_lost: "Connection lost".to_string(),
             label_no_cover: "No cover available".to_string(),
+            volume_short_label: "vol".to_string(),
             metadata_error_count: 0,
             label_metadata_errors: String::new(),
             wishlist_count: 0,

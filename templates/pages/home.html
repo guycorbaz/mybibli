@@ -310,24 +310,7 @@
                            swap that class on `#browse-results`. #}
                         <div class="browse-cards">
                         {% for item in paginated.items %}
-                        <article class="title-card group">
-                            <a href="/title/{{ item.id }}" class="title-card-link"
-                               aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
-                                <div class="title-card-cover">
-                                    {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
-                                    <div class="title-card-overlay">
-                                        <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
-                                        <span class="text-xs">{{ item.volume_count }} vol</span>
-                                    </div>
-                                </div>
-                                <div class="title-card-info">
-                                    <p class="title-card-title">{{ item.title }}</p>
-                                    <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
-                                    <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
-                                    <p class="title-card-volumes">{{ item.volume_count }} vol</p>
-                                </div>
-                            </a>
-                        </article>
+                        {% include "components/title_card.html" %}
                         {% endfor %}
                         </div>
 
@@ -553,24 +536,7 @@
         {% else %}
             <div class="browse-list mt-3">
                 {% for item in recent_cataloged_titles %}
-                <article class="title-card group">
-                    <a href="/title/{{ item.id }}" class="title-card-link"
-                       aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
-                        <div class="title-card-cover">
-                            {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
-                            <div class="title-card-overlay">
-                                <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
-                                <span class="text-xs">{{ item.volume_count }} vol</span>
-                            </div>
-                        </div>
-                        <div class="title-card-info">
-                            <p class="title-card-title">{{ item.title }}</p>
-                            <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
-                            <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
-                            <p class="title-card-volumes">{{ item.volume_count }} vol</p>
-                        </div>
-                    </a>
-                </article>
+                {% include "components/title_card.html" %}
                 {% endfor %}
             </div>
         {% endif %}
@@ -634,24 +600,7 @@
                    The class isn't decorative — it's load-bearing for AC2 visual parity. #}
                 <div class="browse-list mt-3">
                     {% for item in recent_additions %}
-                    <article class="title-card group">
-                        <a href="/title/{{ item.id }}" class="title-card-link"
-                           aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
-                            <div class="title-card-cover">
-                                {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
-                                <div class="title-card-overlay">
-                                    <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
-                                    <span class="text-xs">{{ item.volume_count }} vol</span>
-                                </div>
-                            </div>
-                            <div class="title-card-info">
-                                <p class="title-card-title">{{ item.title }}</p>
-                                <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
-                                <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
-                                <p class="title-card-volumes">{{ item.volume_count }} vol</p>
-                            </div>
-                        </a>
-                    </article>
+                    {% include "components/title_card.html" %}
                     {% endfor %}
                 </div>
             {% endif %}

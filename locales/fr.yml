@@ -422,6 +422,8 @@ guide:
   shelved: "Rangé ! Scannez un autre ISBN, code V ou code L."
   batch_active: "Emplacement actif : %{path}. Scannez des codes V pour ranger ici."
 volume:
+  # Issue #108 — short "vol" badge label on title cards, i18n'd out of the templates.
+  short_label: "vol"
   detail_title: Détails du volume
   edit_title: Modifier le volume
   condition_label: État

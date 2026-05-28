@@ -1,0 +1,40 @@
+{# Shared TitleCard partial (issue #108). Single source of truth for the
+   `<article class="title-card">` block, previously duplicated across the
+   home browse-results grid, the recent-cataloged list, the recent-additions
+   list (all in pages/home.html) and the Rust HTMX search-fragment builder
+   (routes/home_search_fragment.rs::render_search_row).
+
+   Calling convention:
+   - Askama include: `{% for item in … %}{% include "components/title_card.html" %}{% endfor %}`
+     where `label_no_cover` + `volume_short_label` are fields on the parent
+     page struct (HomeTemplate) and `item` is the loop variable (a SearchResult).
+   - Rust standalone: `TitleCardTemplate { item, label_no_cover, volume_short_label }.render()`
+     in routes/home_search_fragment.rs, which reuses this exact file so the
+     HTMX search fragment can never drift from the page render.
+
+   `vol` is i18n'd via `volume_short_label` (#108). The volume count appears
+   in TWO places that are MODE-EXCLUSIVE, not redundant: the overlay badge is
+   shown only in grid mode (on hover) while `.title-card-volumes` is shown only
+   in list mode — see static/css/browse.css (`.browse-grid .title-card-volumes
+   { display:none }` vs `.browse-list .title-card-overlay { display:none }`).
+   The issue #108 "drop the duplicated count" note predates CR #250's list/grid
+   split that made these mutually exclusive, so both are deliberately kept. #}
+{% import "components/cover.html" as cover %}
+<article class="title-card group">
+    <a href="/title/{{ item.id }}" class="title-card-link"
+       aria-label="{{ item.title }}{% if let Some(c) = item.primary_contributor %} — {{ c }}{% endif %}">
+        <div class="title-card-cover">
+            {% call cover::cover(item.cover_image_url.as_deref().unwrap_or_default(), item.title, item.media_type, "w-full h-full object-cover", "lazy", label_no_cover) %}{% endcall %}
+            <div class="title-card-overlay">
+                <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5 opacity-80">
+                <span class="text-xs">{{ item.volume_count }} {{ volume_short_label }}</span>
+            </div>
+        </div>
+        <div class="title-card-info">
+            <p class="title-card-title">{{ item.title }}</p>
+            <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
+            <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
+            <p class="title-card-volumes">{{ item.volume_count }} {{ volume_short_label }}</p>
+        </div>
+    </a>
+</article>
