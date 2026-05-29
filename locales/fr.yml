@@ -554,6 +554,7 @@ cover:
   alt_text: "Couverture de %{title}"
   no_cover: "Pas de couverture disponible"
   upload_button: "Téléverser une couverture"
+  upload_cta_explainer: "Beaucoup d'éditeurs ne sont pas indexés par Google Books ni Open Library — téléversez la vôtre (JPG/PNG/WebP, max 10 Mio)."
 cover_upload:
   heading: "Téléverser une image de couverture"
   intro: "Choisissez un fichier JPG / PNG / WebP / GIF à attacher comme couverture de"
@@ -792,6 +793,7 @@ admin:
       started: "Récupération en lot lancée pour %{total} titres. La progression est journalisée ; rafraîchissez le panneau pour voir les mises à jour."
       empty: "Aucun titre n'a besoin d'être re-fetché — tout ce qui peut être récupéré l'a été."
       already_running: "Une récupération en lot est déjà en cours. Attendez sa fin."
+      review_cta: "Voir les titres sans couverture"
   users:
     heading: "Comptes utilisateurs"
     empty_state: "Vous êtes seul·e ! Créez un compte Bibliothécaire pour les membres du foyer."

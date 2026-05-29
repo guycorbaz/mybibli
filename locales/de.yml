@@ -551,6 +551,7 @@ cover:
   alt_text: "Cover von %{title}"
   no_cover: "Kein Cover verfügbar"
   upload_button: "Cover hochladen"
+  upload_cta_explainer: "Viele Verlage sind nicht bei Google Books oder Open Library indexiert — laden Sie Ihr eigenes Cover hoch (JPG/PNG/WebP, max. 10 MiB)."
 cover_upload:
   heading: "Cover hochladen"
   intro: "Wählen Sie eine JPG / PNG / WebP / GIF-Datei als Cover für"
@@ -785,6 +786,7 @@ admin:
       started: "Massenhafter Cover-Nachzug für %{total} Titel gestartet. Fortschritt steht im Log; aktualisieren Sie das Panel für Updates."
       empty: "Keine Titel benötigen einen Cover-Nachzug — alles, was abrufbar war, ist abgerufen."
       already_running: "Ein Cover-Nachzug läuft bereits. Bitte warten Sie auf den Abschluss."
+      review_cta: "Titel ohne Cover ansehen"
   users:
     heading: Benutzerkonten
     empty_state: "Nur Sie hier! Erstellen Sie ein Bibliothekar-Konto für andere Haushaltsmitglieder."

@@ -56,6 +56,33 @@ pas fourni de \texttt{cover\_url}, de sorte qu'un titre dont
 aucun fournisseur n'a la couverture finit sans image, sans rafale
 d'essais inutiles.
 
+\subsection*{Quand aucun fournisseur n'a la couverture : téléversez la vôtre}
+
+Certains titres ne recevront jamais de couverture par la chaîne
+automatique. En pratique, il s'agit surtout d'éditeurs français,
+suisses et allemands, grand public comme universitaires (Dunod,
+Eyrolles, Slatkine, Mardaga, Kana, Casterman, etc.) : Google Books
+ne renvoie rien pour leurs ISBN et l'index Open Library Covers ne
+les contient pas davantage. C'est une lacune structurelle des
+sources de données gratuites, pas un bogue --- aucune récupération
+répétée ne la comblera.
+
+Pour ces titres, \textbf{le téléversement manuel est la voie
+réaliste}. Sur la page de détail d'un titre, un bibliothécaire (ou
+administrateur) voit un bouton \emph{Téléverser une couverture} sous
+la zone de couverture ; les titres sans couverture reçoivent un
+appel à l'action plus visible et un rappel d'une ligne sur cette
+lacune. Les formats acceptés sont JPG, PNG, WebP et GIF, jusqu'à
+10\,Mio. L'image est redimensionnée et stockée localement, et une
+couverture téléversée manuellement est protégée contre tout
+écrasement par une récupération automatique ultérieure.
+
+Pour trouver les titres qui ont encore besoin d'une couverture,
+utilisez le filtre \emph{Titres sans couverture} sur la page
+d'accueil (bibliothécaire et plus), ou suivez le lien \emph{Voir les
+titres sans couverture} affiché sous l'onglet Santé de la page
+d'administration après une récupération en lot.
+
 \section{Clés d'API}
 
 Trois fournisseurs requièrent une clé d'API :
