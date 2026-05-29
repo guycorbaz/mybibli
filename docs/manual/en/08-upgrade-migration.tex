@@ -139,6 +139,41 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.8.0}\label{sec:whats-new-1.8.0}
+
+Version 1.8.0 is the seventh themed minor, ``Covers, honestly''. It makes
+the manual cover-upload path discoverable for the titles that no free
+metadata provider will ever cover, and completes the internal
+\texttt{base\_context()} refactor begun in 1.7.11. \emph{No schema
+migration, no settings change}; routine \texttt{docker compose pull \&\&
+docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#350 \string— the manual cover-upload affordance is now
+        visible.} A title's detail page shows a prominent ``Upload a
+        cover'' button plus a one-line explainer when it has no cover:
+        many French, Swiss and German publishers (Dunod, Eyrolles,
+        Slatkine, Mardaga, Kana, Casterman) are indexed by neither Google
+        Books nor Open Library, so manual upload is the realistic path. A
+        manually uploaded cover is protected from being overwritten by a
+        later automatic re-fetch. See chapter~5 (\emph{Metadata providers})
+        for the full background on this publisher gap.
+  \item \textbf{\#355 \string— ``Titles without cover'' filter on the home
+        page} (Librarian and above). Lists every title with no cover so you
+        can walk them one by one and upload manually. It deliberately
+        includes titles with no ISBN/ISSN/UPC --- those can never be
+        auto-fetched, so they need manual upload most.
+  \item \textbf{Admin Health follow-up.} After a bulk cover re-fetch, the
+        Health tab shows a ``Review titles without a cover'' link straight
+        to that filtered list.
+  \item \textbf{\#108 / \#354 \string— internal quality.} The title-card
+        markup is now a single shared partial (no more three-site
+        duplication), and every full-page handler builds its shared
+        header/navigation fields through one helper --- an
+        invisible-to-you change that keeps the four UI languages and the
+        navigation bar consistent across every page.
+\end{itemize}
+
 \section{What's new in 1.7.11}\label{sec:whats-new-1.7.11}
 
 Version 1.7.11 bundles one user-visible WCAG AA contrast fix and three
