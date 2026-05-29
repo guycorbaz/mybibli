@@ -541,6 +541,7 @@ cover:
   alt_text: "Copertina di %{title}"
   no_cover: "Copertina non disponibile"
   upload_button: "Carica una copertina"
+  upload_cta_explainer: "Molti editori non sono indicizzati da Google Books o Open Library — carica la tua copertina (JPG/PNG/WebP, max 10 MiB)."
 cover_upload:
   heading: "Carica un'immagine di copertina"
   intro: "Scegli un file JPG / PNG / WebP / GIF da allegare come copertina di"
@@ -773,6 +774,7 @@ admin:
       started: "Riscaricamento delle copertine avviato per %{total} titoli. Il progresso è registrato nei log; aggiorna il pannello per vedere gli aggiornamenti."
       empty: "Nessun titolo ha bisogno di un nuovo recupero copertina — tutto ciò che era recuperabile è stato recuperato."
       already_running: "Un riscaricamento delle copertine è già in corso. Attendi il suo completamento."
+      review_cta: "Vedi i titoli senza copertina"
   users:
     heading: Account utenti
     empty_state: "Solo tu qui! Crea un account Bibliotecario per i membri della famiglia."

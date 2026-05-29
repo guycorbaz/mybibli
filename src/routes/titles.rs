@@ -79,6 +79,9 @@ pub struct TitleDetailTemplate {
     // Issue #335 — manual cover upload affordance below the cover image
     // (Librarian+ only). Modal HX-loaded into `#modal-slot`.
     pub label_upload_cover: String,
+    // CR #350 — one-line explainer shown under the prominent upload CTA when
+    // the title has no cover (honest about the FR/CH/DE publisher gap).
+    pub label_cover_gap_explainer: String,
     // CR #271 — Delete-title button shown only when volume_count == 0.
     pub label_delete_title: String,
     pub has_code: bool,
@@ -196,6 +199,7 @@ pub async fn title_detail(
             label_edit: rust_i18n::t!("metadata.edit_metadata", locale = loc).to_string(),
             label_redownload: rust_i18n::t!("metadata.redownload", locale = loc).to_string(),
             label_upload_cover: rust_i18n::t!("cover.upload_button", locale = loc).to_string(),
+            label_cover_gap_explainer: rust_i18n::t!("cover.upload_cta_explainer", locale = loc).to_string(),
             label_delete_title: rust_i18n::t!("title.delete_title_button", locale = loc).to_string(),
             has_code,
             series_assignments,
@@ -2039,6 +2043,7 @@ mod tests {
             label_edit: "Edit metadata".to_string(),
             label_redownload: "Re-download".to_string(),
             label_upload_cover: "Upload cover".to_string(),
+            label_cover_gap_explainer: "Upload your own cover".to_string(),
             label_delete_title: "Delete title".to_string(),
             has_code: true,
             series_assignments: vec![],
@@ -2075,6 +2080,130 @@ mod tests {
         assert!(
             !rendered.contains("aria-label=\"Similar titles\""),
             "Expected empty similar_titles to render NO <section> element"
+        );
+    }
+
+    // CR #350 — a Librarian viewing a title with NO cover gets the prominent
+    // upload CTA plus the FR-publisher-gap explainer; a title WITH a cover
+    // shows only the modest replace link (no explainer). Locks the cover-empty
+    // branch in title_detail.html.
+    #[test]
+    fn test_title_detail_coverless_shows_prominent_upload_cta() {
+        let title = TitleModel {
+            id: 1,
+            title: "Sans couverture".to_string(),
+            subtitle: None,
+            description: None,
+            language: "fr".to_string(),
+            media_type: "book".to_string(),
+            publication_date: None,
+            publisher: None,
+            isbn: Some("9782070360246".to_string()),
+            issn: None,
+            upc: None,
+            cover_image_url: None,
+            genre_id: 1,
+            dewey_code: None,
+            page_count: None,
+            track_count: None,
+            total_duration: None,
+            age_rating: None,
+            issue_number: None,
+            manually_edited_fields: None,
+            version: 1,
+        };
+        let mut template = TitleDetailTemplate {
+            lang: "en".to_string(),
+            role: "librarian".to_string(),
+            current_page: "title",
+            skip_label: "Skip".to_string(),
+            connection_status: crate::utils::ConnectionStatusContext::new("en"),
+            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new("en"),
+            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
+            csrf_token: "tok".to_string(),
+            nav_catalog: "Catalog".to_string(),
+            nav_loans: "Loans".to_string(),
+            nav_wishlist: "Wish list".to_string(),
+            nav_locations: "Locations".to_string(),
+            nav_series: "Series".to_string(),
+            nav_borrowers: "Borrowers".to_string(),
+            nav_admin: "Admin".to_string(),
+            nav_login: "Log in".to_string(),
+            nav_logout: "Log out".to_string(),
+            nav_menu_open: "Open menu".to_string(),
+            title,
+            genre_name: "Roman".to_string(),
+            volume_count: 0,
+            volumes: vec![],
+            can_edit: true,
+            label_volumes_heading: "Volumes of this title".to_string(),
+            label_volumes_empty: "No volumes yet.".to_string(),
+            label_volumes_empty_cta: "Scan".to_string(),
+            label_volumes_empty_cta_url: "/catalog".to_string(),
+            label_col_vcode: "V-code".to_string(),
+            label_col_location: "Location".to_string(),
+            label_col_condition: "Condition".to_string(),
+            label_col_actions: "Actions".to_string(),
+            label_action_edit: "Edit".to_string(),
+            label_action_delete: "Delete".to_string(),
+            label_placeholder_empty: "—".to_string(),
+            contributors: vec![],
+            label_contributors: "Contributors".to_string(),
+            label_contributor_add: "Add contributor".to_string(),
+            label_contributor_remove: "Remove".to_string(),
+            label_contributor_remove_aria: "Remove contributor".to_string(),
+            label_no_contributors: "No contributors yet.".to_string(),
+            label_vol: "Volumes".to_string(),
+            label_no_cover: "No cover available".to_string(),
+            label_edit: "Edit metadata".to_string(),
+            label_redownload: "Re-download".to_string(),
+            label_upload_cover: "Upload cover".to_string(),
+            label_cover_gap_explainer: "PUBLISHER-GAP-EXPLAINER".to_string(),
+            label_delete_title: "Delete title".to_string(),
+            has_code: true,
+            series_assignments: vec![],
+            all_series: vec![],
+            label_series: "Series".to_string(),
+            label_assign: "Add to series".to_string(),
+            label_position: "Position".to_string(),
+            label_unassign: "Remove".to_string(),
+            label_no_series: "Not assigned".to_string(),
+            label_select_series: "Select a series...".to_string(),
+            label_omnibus: "Omnibus".to_string(),
+            label_end_position: "End position".to_string(),
+            omnibus_help: crate::utils::TooltipData::with_icon(
+                "tip-series-omnibus",
+                "Help: omnibus",
+                "Check this if the book bundles multiple series volumes.",
+            ),
+            similar_titles: vec![],
+            label_similar_titles: "Similar titles".to_string(),
+            label_dewey_code: "Dewey code".to_string(),
+            current_url: "/title/1".to_string(),
+            lang_toggle_aria: "Change language".to_string(),
+        };
+
+        // No cover → prominent CTA branch: explainer + upload-modal trigger.
+        let no_cover = template.render().unwrap();
+        assert!(
+            no_cover.contains("PUBLISHER-GAP-EXPLAINER"),
+            "coverless title must surface the FR-publisher-gap explainer"
+        );
+        assert!(
+            no_cover.contains("/title/1/cover/upload-modal"),
+            "coverless title must surface the upload-modal trigger"
+        );
+
+        // With a cover → modest replace link only, no explainer.
+        template.title.cover_image_url = Some("/covers/1.jpg".to_string());
+        let with_cover = template.render().unwrap();
+        assert!(
+            !with_cover.contains("PUBLISHER-GAP-EXPLAINER"),
+            "title with a cover must NOT show the gap explainer"
+        );
+        assert!(
+            with_cover.contains("/title/1/cover/upload-modal"),
+            "title with a cover keeps the (modest) replace-cover trigger"
         );
     }
 
@@ -2168,6 +2297,7 @@ mod tests {
             label_edit: "Edit metadata".to_string(),
             label_redownload: "Re-download".to_string(),
             label_upload_cover: "Upload cover".to_string(),
+            label_cover_gap_explainer: "Upload your own cover".to_string(),
             label_delete_title: "Delete title".to_string(),
             has_code: false,
             series_assignments: vec![],

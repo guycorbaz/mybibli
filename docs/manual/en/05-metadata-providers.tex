@@ -51,6 +51,29 @@ when (a) the chain succeeded \emph{and} (b) the resolving provider
 gave no \texttt{cover\_url}, so a title for which no provider has a
 cover anywhere will land cover-less without retry storms.
 
+\subsection*{When no provider has a cover: upload your own}
+
+Some titles will never receive a cover from the automatic chain. In
+practice this is dominated by French, Swiss, and German trade and
+academic publishers (Dunod, Eyrolles, Slatkine, Mardaga, Kana,
+Casterman, and the like): Google Books returns nothing for their
+ISBNs and the Open Library Covers index does not hold them either.
+This is a structural gap in the free data sources, not a bug --- no
+amount of re-fetching will fill it.
+
+For those titles, \textbf{manual upload is the realistic path}. On a
+title's detail page a Librarian (or Admin) sees an \emph{Upload
+cover} button under the cover area; titles with no cover get a more
+prominent call-to-action and a one-line reminder of this gap.
+Accepted formats are JPG, PNG, WebP and GIF, up to 10\,MiB. The
+image is resized and stored locally, and a manually uploaded cover
+is protected from being overwritten by a later automatic re-fetch.
+
+To find the titles that still need a cover, use the \emph{Titles
+without cover} filter on the home page (Librarian and above), or
+follow the \emph{Review titles without a cover} link shown on the
+Admin page's Health tab after a bulk cover re-fetch.
+
 \section{API keys}
 
 Three providers require an API key:

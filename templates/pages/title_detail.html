@@ -13,8 +13,22 @@
         <div class="flex flex-col items-center gap-2">
             {% call cover::cover(title.cover_image_url.as_deref().unwrap_or_default(), title.title, title.media_type, "w-[200px] h-[300px]", "eager", label_no_cover) %}{% endcall %}
             {# Issue #335 — manual cover upload (Librarian+). Pulls the modal
-               fragment into the global `#modal-slot` mounted by base.html. #}
+               fragment into the global `#modal-slot` mounted by base.html.
+               CR #350 — when the title has NO cover, surface a prominent CTA
+               plus an honest one-line explainer (many FR/CH/DE publishers are
+               not indexed by Google Books / Open Library, so manual upload is
+               the realistic path). With a cover, keep the modest replace link. #}
             {% if role == "librarian" || role == "admin" %}
+            {% if title.cover_image_url.as_deref().unwrap_or_default().is_empty() %}
+            <button type="button"
+                    hx-get="/title/{{ title.id }}/cover/upload-modal"
+                    hx-target="#modal-slot"
+                    hx-swap="innerHTML"
+                    class="mt-1 inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                {{ label_upload_cover }}
+            </button>
+            <p class="mt-1 max-w-[200px] text-xs text-stone-500 dark:text-stone-400 text-center">{{ label_cover_gap_explainer }}</p>
+            {% else %}
             <button type="button"
                     hx-get="/title/{{ title.id }}/cover/upload-modal"
                     hx-target="#modal-slot"
@@ -22,6 +36,7 @@
                     class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
                 {{ label_upload_cover }}
             </button>
+            {% endif %}
             {% endif %}
         </div>
         <div class="flex-1">

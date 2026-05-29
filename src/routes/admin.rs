@@ -221,6 +221,10 @@ struct AdminHealthPanel {
     bulk_cover_fetch_can_start: bool,
     bulk_cover_fetch_running: bool,
     bulk_cover_fetch_status_label: String,
+    // CR #350 — link to the home "no cover" filter (#355) so an admin whose
+    // bulk-refetch left titles uncovered (the FR/CH/DE publisher gap) has a
+    // direct path to the manual-upload review list. Shown when count > 0.
+    bulk_cover_fetch_review_cta: String,
 }
 
 struct ProviderHealthRow {
@@ -1753,6 +1757,11 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
         bulk_cover_fetch_can_start: !bulk_status.running && missing_covers_count > 0,
         bulk_cover_fetch_running: bulk_status.running,
         bulk_cover_fetch_status_label,
+        bulk_cover_fetch_review_cta: rust_i18n::t!(
+            "admin.health.bulk_cover_fetch.review_cta",
+            locale = loc
+        )
+        .to_string(),
     };
 
     panel

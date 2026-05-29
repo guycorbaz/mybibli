@@ -74,6 +74,13 @@
         <p class="text-sm {% if bulk_cover_fetch_running %}text-amber-700 dark:text-amber-300{% else %}text-stone-500 dark:text-stone-400{% endif %}">
             {{ bulk_cover_fetch_status_label }}
         </p>
+        {# CR #350 — when titles remain without a cover, point the admin at the
+           home "no cover" filter (#355) to upload manually. #}
+        {% if missing_covers_count > 0 %}
+        <p class="mt-2 text-sm">
+            <a href="/?filter=no_cover" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ bulk_cover_fetch_review_cta }}</a>
+        </p>
+        {% endif %}
     </div>
 
     <div id="admin-panel-feedback" class="mt-4" aria-live="polite"></div>
