@@ -148,6 +148,46 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.8.0}\label{sec:whats-new-1.8.0}
+
+La version 1.8.0 est la septième version mineure thématique, «~Les
+couvertures, franchement~». Elle rend le téléversement manuel de
+couverture découvrable pour les titres qu'aucun fournisseur gratuit ne
+couvrira jamais, et achève le refactor interne \texttt{base\_context()}
+entamé en 1.7.11. \emph{Aucune migration de schéma, aucun changement de
+réglage}~; mise à jour de routine \texttt{docker compose pull \&\& docker
+compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#350 \string— l'option de téléversement manuel est
+        désormais visible.} La page de détail d'un titre affiche un bouton
+        «~Téléverser une couverture~» bien visible et une phrase
+        d'explication quand le titre n'a pas de couverture~: beaucoup
+        d'éditeurs français, suisses et allemands (Dunod, Eyrolles,
+        Slatkine, Mardaga, Kana, Casterman) ne sont indexés ni par Google
+        Books ni par Open Library, le téléversement manuel est donc la
+        voie réaliste. Une couverture téléversée manuellement est protégée
+        contre tout écrasement par une récupération automatique
+        ultérieure. Voir le chapitre~5 (\emph{Fournisseurs de
+        métadonnées}) pour le contexte complet de cette lacune éditeurs.
+  \item \textbf{\#355 \string— filtre «~Titres sans couverture~» sur la
+        page d'accueil} (bibliothécaire et plus). Liste tous les titres
+        sans couverture pour les parcourir un par un et téléverser
+        manuellement. Il inclut volontairement les titres sans
+        ISBN/ISSN/UPC --- ceux-ci ne peuvent jamais être récupérés
+        automatiquement, ce sont donc eux qui en ont le plus besoin.
+  \item \textbf{Suivi côté admin (Santé).} Après une récupération en lot
+        des couvertures, l'onglet Santé affiche un lien «~Voir les titres
+        sans couverture~» pointant directement vers cette liste filtrée.
+  \item \textbf{\#108 / \#354 \string— qualité interne.} Le balisage des
+        fiches de titre est maintenant un partial partagé unique (fini la
+        triple duplication), et chaque page complète construit ses champs
+        d'en-tête/navigation partagés via un seul assistant --- un
+        changement invisible pour vous qui garde les quatre langues
+        d'interface et la barre de navigation cohérentes sur toutes les
+        pages.
+\end{itemize}
+
 \section{Nouveautés de la 1.7.11}\label{sec:whats-new-1.7.11}
 
 La version 1.7.11 groupe une correction d'accessibilité WCAG~AA
