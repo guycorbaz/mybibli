@@ -10,7 +10,6 @@ use crate::error::{AppError, is_safe_next};
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::HxRequest;
 use crate::middleware::locale::Locale;
-use crate::utils::current_url;
 
 // ─── Login form template ─────────────────────────────────────────
 
@@ -50,35 +49,40 @@ impl LoginTemplate {
     fn new(
         error_message: &str,
         next: &str,
+        session: &Session,
         loc: &str,
-        current_url_value: String,
-        csrf_token: String,
+        uri: &axum::http::Uri,
     ) -> Self {
         let next = if is_safe_next(next) {
             next.to_string()
         } else {
             String::new()
         };
+        // CR #354: build the 20 shared full-page fields via base_context()
+        // instead of inline t!() calls — the last page handler still doing so.
+        // Login is always anonymous (authenticated users are redirected before
+        // render), so session_timeout_secs is irrelevant (guarded in base.html)
+        // — pass 0. role + csrf_token come off the (anonymous) session.
+        let base = crate::utils::base_context(session, loc, "login", uri, 0);
         LoginTemplate {
-            lang: loc.to_string(),
-            role: "anonymous".to_string(),
-            current_page: "login",
-            skip_label: rust_i18n::t!("nav.skip_to_content", locale = loc).to_string(),
-            connection_status: crate::utils::ConnectionStatusContext::new(loc),
-            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new(loc),
-            // Login page is anonymous — value is not rendered (guarded in base.html).
-            session_timeout_secs: 0,
-            csrf_token,
-            nav_catalog: rust_i18n::t!("nav.catalog", locale = loc).to_string(),
-            nav_loans: rust_i18n::t!("nav.loans", locale = loc).to_string(),
-            nav_wishlist: rust_i18n::t!("nav.wishlist", locale = loc).to_string(),
-            nav_locations: rust_i18n::t!("nav.locations", locale = loc).to_string(),
-            nav_series: rust_i18n::t!("nav.series", locale = loc).to_string(),
-            nav_borrowers: rust_i18n::t!("nav.borrowers", locale = loc).to_string(),
-            nav_admin: rust_i18n::t!("nav.admin", locale = loc).to_string(),
-            nav_login: rust_i18n::t!("nav.login", locale = loc).to_string(),
-            nav_logout: rust_i18n::t!("nav.logout", locale = loc).to_string(),
-            nav_menu_open: rust_i18n::t!("nav.menu_open", locale = loc).to_string(),
+            lang: base.lang,
+            role: base.role,
+            current_page: base.current_page,
+            skip_label: base.skip_label,
+            connection_status: base.connection_status,
+            shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
+            session_timeout_secs: base.session_timeout_secs,
+            csrf_token: base.csrf_token,
+            nav_catalog: base.nav_catalog,
+            nav_loans: base.nav_loans,
+            nav_wishlist: base.nav_wishlist,
+            nav_locations: base.nav_locations,
+            nav_series: base.nav_series,
+            nav_borrowers: base.nav_borrowers,
+            nav_admin: base.nav_admin,
+            nav_login: base.nav_login,
+            nav_logout: base.nav_logout,
+            nav_menu_open: base.nav_menu_open,
             login_title: rust_i18n::t!("login.title", locale = loc).to_string(),
             username_label: rust_i18n::t!("login.username_label", locale = loc).to_string(),
             password_label: rust_i18n::t!("login.password_label", locale = loc).to_string(),
@@ -86,8 +90,8 @@ impl LoginTemplate {
             back_to_home: rust_i18n::t!("login.back_to_home", locale = loc).to_string(),
             error_message: error_message.to_string(),
             next,
-            current_url: current_url_value,
-            lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = loc).to_string(),
+            current_url: base.current_url,
+            lang_toggle_aria: base.lang_toggle_aria,
         }
     }
 }
@@ -117,13 +121,7 @@ pub async fn login_page(
         return Ok(Redirect::to(target).into_response());
     }
 
-    let template = LoginTemplate::new(
-        "",
-        &query.next,
-        locale.0,
-        current_url(&uri),
-        session.csrf_token.clone(),
-    );
+    let template = LoginTemplate::new("", &query.next, &session, locale.0, &uri);
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
         Err(e) => {
@@ -154,7 +152,6 @@ pub async fn login(
     let pool = &state.pool;
     let username = form.username.trim();
     let password = form.password.as_str();
-    let url_for_toggle = current_url(&uri);
 
     // Look up user (widened to read preferred_language for cookie sync — AC 5, 15).
     // Issue #68: explicitly restrict to the two human-login roles. The
@@ -172,25 +169,13 @@ pub async fn login(
 
     let Some((user_id, password_hash, role, preferred_language)) = user_row else {
         tracing::info!(username = %username, "Login failed: user not found");
-        return render_login_error(
-            jar,
-            &form.next,
-            locale.0,
-            url_for_toggle,
-            session.csrf_token.clone(),
-        );
+        return render_login_error(jar, &form.next, &session, locale.0, &uri);
     };
 
     // Verify password with Argon2
     if !crate::services::password::verify_password(password, &password_hash) {
         tracing::info!(username = %username, "Login failed: invalid password");
-        return render_login_error(
-            jar,
-            &form.next,
-            locale.0,
-            url_for_toggle,
-            session.csrf_token.clone(),
-        );
+        return render_login_error(jar, &form.next, &session, locale.0, &uri);
     }
 
     // Generate session + CSRF tokens. Story 8-2: CSRF token rotates on
@@ -268,12 +253,12 @@ pub async fn login(
 fn render_login_error(
     jar: CookieJar,
     next: &str,
+    session: &Session,
     loc: &str,
-    current_url_value: String,
-    csrf_token: String,
+    uri: &axum::http::Uri,
 ) -> Result<(CookieJar, axum::response::Response), AppError> {
     let error_msg = rust_i18n::t!("login.error_invalid", locale = loc).to_string();
-    let template = LoginTemplate::new(&error_msg, next, loc, current_url_value, csrf_token);
+    let template = LoginTemplate::new(&error_msg, next, session, loc, uri);
     match template.render() {
         Ok(html) => Ok((jar, Html(html).into_response())),
         Err(e) => {
@@ -529,7 +514,9 @@ mod tests {
 
     #[test]
     fn test_login_template_renders() {
-        let template = LoginTemplate::new("", "", "en", "/login".to_string(), "tok".to_string());
+        let session = Session::anonymous_with_token("tok".to_string());
+        let uri: axum::http::Uri = "/login".parse().unwrap();
+        let template = LoginTemplate::new("", "", &session, "en", &uri);
         let result = template.render();
         assert!(result.is_ok());
         let html = result.unwrap();
@@ -540,20 +527,18 @@ mod tests {
 
     #[test]
     fn test_login_template_with_error() {
-        let template = LoginTemplate::new(
-            "Invalid credentials",
-            "",
-            "en",
-            "/login".to_string(),
-            "tok".to_string(),
-        );
+        let session = Session::anonymous_with_token("tok".to_string());
+        let uri: axum::http::Uri = "/login".parse().unwrap();
+        let template = LoginTemplate::new("Invalid credentials", "", &session, "en", &uri);
         let html = template.render().unwrap();
         assert!(html.contains("Invalid credentials"));
     }
 
     #[test]
     fn test_login_template_renders_next_hidden_field() {
-        let template = LoginTemplate::new("", "/loans", "en", "/login".to_string(), "tok".to_string());
+        let session = Session::anonymous_with_token("tok".to_string());
+        let uri: axum::http::Uri = "/login".parse().unwrap();
+        let template = LoginTemplate::new("", "/loans", &session, "en", &uri);
         let html = template.render().unwrap();
         assert!(html.contains(r#"name="next""#));
         assert!(html.contains(r#"value="/loans""#));
@@ -561,14 +546,10 @@ mod tests {
 
     #[test]
     fn test_login_template_drops_unsafe_next() {
+        let session = Session::anonymous_with_token("tok".to_string());
+        let uri: axum::http::Uri = "/login".parse().unwrap();
         let template =
-            LoginTemplate::new(
-                "",
-                "https://evil.example.com/",
-                "en",
-                "/login".to_string(),
-                "tok".to_string(),
-            );
+            LoginTemplate::new("", "https://evil.example.com/", &session, "en", &uri);
         let html = template.render().unwrap();
         // The unsafe value must be gone…
         assert!(!html.contains("evil.example.com"));

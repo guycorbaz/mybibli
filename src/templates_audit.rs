@@ -445,6 +445,56 @@ fn hx_confirm_in_rust_strings_matches_allowlist() {
     }
 }
 
+/// CR #354 — every full-page handler in `src/routes/` must build the 20 shared
+/// base fields (lang, role, csrf_token, nav_*, current_url, …) via
+/// `crate::utils::base_context()`, never inline. The tell of an inline builder
+/// is a template-struct literal assigning `nav_catalog: rust_i18n::t!(...)`
+/// directly. After the migration that pattern lives ONLY in `base_context()`
+/// itself (`src/utils.rs`, outside this walk), so any match under `src/routes/`
+/// is a regression — a new page handler hand-rolling the shared fields.
+#[test]
+fn routes_build_base_context_via_helper() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let routes = root.join("src").join("routes");
+    assert!(
+        routes.is_dir(),
+        "src/routes directory not found at {}",
+        routes.display()
+    );
+
+    let mut offenders: Vec<String> = Vec::new();
+    visit(&routes, &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            return;
+        }
+        let raw = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let n = raw.matches("nav_catalog: rust_i18n::t!").count();
+        if n == 0 {
+            return;
+        }
+        let rel = path.strip_prefix(&root).unwrap_or(path);
+        offenders.push(format!(
+            "  {}: {} inline base-field builder(s)",
+            rel.to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "/"),
+            n
+        ));
+    });
+
+    if !offenders.is_empty() {
+        panic!(
+            "CR #354 — inline base-context builder(s) found under src/routes/.\n\
+             A full-page handler is hand-rolling the 20 shared fields instead of \
+             calling crate::utils::base_context(). Build them via base_context() \
+             and spread `base.*` into the template struct.\n{}",
+            offenders.join("\n")
+        );
+    }
+}
+
 // ─── Story 8-2 — CSRF audit guards ─────────────────────────────────
 //
 // Two gates, one per audit target:
