@@ -351,7 +351,7 @@
                                 <thead class="text-xs text-stone-500 dark:text-stone-400 uppercase border-b border-stone-200 dark:border-stone-700">
                                     <tr>
                                         <th class="px-3 py-2 w-10" aria-hidden="true"></th>
-                                        <th class="px-3 py-2">
+                                        <th class="px-3 py-2" aria-sort="{% if current_sort == "title" %}{% if current_dir == "asc" %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
                                             <a href="/?q={{ query_encoded }}&amp;sort=title&amp;dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
                                                hx-get="/?q={{ query_encoded }}&amp;sort=title&amp;dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
                                                hx-target="#browse-results"
@@ -361,7 +361,7 @@
                                                 {{ col_title }} {% if current_sort == "title" %}{% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
                                             </a>
                                         </th>
-                                        <th class="px-3 py-2">
+                                        <th class="px-3 py-2" aria-sort="{% if current_sort == "primary_contributor" %}{% if current_dir == "asc" %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
                                             <a href="/?q={{ query_encoded }}&amp;sort=primary_contributor&amp;dir={% if current_sort == "primary_contributor" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
                                                hx-get="/?q={{ query_encoded }}&amp;sort=primary_contributor&amp;dir={% if current_sort == "primary_contributor" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
                                                hx-target="#browse-results"
@@ -371,7 +371,7 @@
                                                 {{ col_contributor }} {% if current_sort == "primary_contributor" %}{% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
                                             </a>
                                         </th>
-                                        <th class="px-3 py-2">
+                                        <th class="px-3 py-2" aria-sort="{% if current_sort == "genre_name" %}{% if current_dir == "asc" %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
                                             <a href="/?q={{ query_encoded }}&amp;sort=genre_name&amp;dir={% if current_sort == "genre_name" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
                                                hx-get="/?q={{ query_encoded }}&amp;sort=genre_name&amp;dir={% if current_sort == "genre_name" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
                                                hx-target="#browse-results"
@@ -381,7 +381,7 @@
                                                 {{ col_genre }} {% if current_sort == "genre_name" %}{% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
                                             </a>
                                         </th>
-                                        <th class="px-3 py-2">
+                                        <th class="px-3 py-2" aria-sort="{% if current_sort == "dewey_code" %}{% if current_dir == "asc" %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
                                             <a href="/?q={{ query_encoded }}&amp;sort=dewey_code&amp;dir={% if current_sort == "dewey_code" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
                                                hx-get="/?q={{ query_encoded }}&amp;sort=dewey_code&amp;dir={% if current_sort == "dewey_code" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
                                                hx-target="#browse-results"
@@ -391,7 +391,7 @@
                                                 {{ col_dewey }} {% if current_sort == "dewey_code" %}{% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
                                             </a>
                                         </th>
-                                        <th class="px-3 py-2 text-right">
+                                        <th class="px-3 py-2 text-right" aria-sort="{% if current_sort == "volume_count" %}{% if current_dir == "asc" %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
                                             <a href="/?q={{ query_encoded }}&amp;sort=volume_count&amp;dir={% if current_sort == "volume_count" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
                                                hx-get="/?q={{ query_encoded }}&amp;sort=volume_count&amp;dir={% if current_sort == "volume_count" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
                                                hx-target="#browse-results"
