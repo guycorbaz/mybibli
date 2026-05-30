@@ -139,6 +139,52 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.8.1}\label{sec:whats-new-1.8.1}
+
+Version 1.8.1 is a focused polish patch on v1.8.0. It closes one
+production-surfaced bug and four code-quality cleanups carried from the
+issue queue. \emph{No schema migration that needs operator action}; the
+migration to add the new \texttt{is\_primary} column on
+\texttt{contributor\_roles} runs automatically at boot. Routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#300 \string— phantom-volume guard.} A subtle bug since
+        v1.0: the catalog session keeps the last-scanned ISBN's title in
+        a sticky \emph{current title} slot that was never cleared. If you
+        scanned a V-code for a different physical book without first
+        re-scanning its ISBN, the new volume was silently attached to the
+        previous title \string— so a title could end up with two or three
+        volumes you didn't actually own. The fix surfaces a confirmation
+        modal the moment you scan a V-code for a title that already has
+        volumes: \emph{``Add another copy of \string<title\string> ?''}.
+        Click \emph{Add another copy} for the legitimate multi-exemplaire
+        flow; \emph{Cancel} to discard the scan and re-scan the new
+        book's ISBN first.
+  \item \textbf{\#216 \string— readable error pages from direct
+        navigation.} Until now, navigating directly to a URL that errors
+        (e.g.\ a stale bookmark to a deleted title) rendered the error
+        feedback fragment as a styleless block on a blank page. A new
+        middleware wraps these responses in a minimal HTML shell so
+        direct-nav errors are now legible and offer a Home link to
+        backtrack. HTMX requests (in-app interactions) are unaffected.
+  \item \textbf{\#19 \string— rename-resilient author role.} The
+        author-first sort on contributor lists and the metadata-fetch
+        author lookup used to match on the literal name ``Auteur'', so
+        renaming the role from the admin reference-data panel silently
+        broke them. A new \texttt{is\_primary} marker on the seeded role
+        replaces the string check \string— rename freely.
+  \item \textbf{\#87 \string— per-target OOB swap mode.} Forms that
+        update multiple things in one save (e.g.\ the provider-keys form
+        updating Google Books, OMDb and TMDb together) can now stack their
+        per-sub-action feedbacks instead of overwriting them. Default
+        behaviour is unchanged.
+  \item \textbf{\#18 \string— sortable column headers announce sort
+        state.} The five sortable columns on the home browse table now
+        carry the \texttt{aria-sort} attribute, so screen-reader users
+        hear which column is sorted and in which direction.
+\end{itemize}
+
 \section{What's new in 1.8.0}\label{sec:whats-new-1.8.0}
 
 Version 1.8.0 is the seventh themed minor, ``Covers, honestly''. It makes
