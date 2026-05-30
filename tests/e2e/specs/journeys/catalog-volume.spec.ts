@@ -1,10 +1,24 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { createLocation } from "../../helpers/locations";
 
-const VALID_ISBN = specIsbn("CV", 1);
 const COUNTER_ISBN = specIsbn("CV", 2);
+
+// CR #300: when a test intentionally adds a second volume to the same title,
+// the V-code scan returns the phantom-volume confirmation modal. Click
+// Confirm to bypass the guard (the multi-copy flow). No-op if no modal is
+// open — only the "two V-codes" test below needs it.
+async function dismissPhantomConfirm(page: Page) {
+  const confirm = page
+    .locator("#modal-slot dialog[open]")
+    .getByRole("button", {
+      name: /Add another copy|Ajouter un exemplaire|Exemplar hinzufügen|Aggiungi una copia/i,
+    });
+  if (await confirm.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await confirm.click();
+  }
+}
 
 test.describe("Volume Management", () => {
   test.beforeEach(async ({ page }) => {
@@ -15,11 +29,12 @@ test.describe("Volume Management", () => {
   test("scan ISBN then V-code creates volume with success feedback", async ({
     page,
   }) => {
+    const isbn = specIsbn("CV", 3);
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
     // First scan ISBN to set current title
-    await scanField.fill(VALID_ISBN);
+    await scanField.fill(isbn);
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry");
 
@@ -39,10 +54,11 @@ test.describe("Volume Management", () => {
 
   // AC2: Reject duplicate V-code
   test("scan same V-code again shows error feedback", async ({ page }) => {
+    const isbn = specIsbn("CV", 4);
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
-    await scanField.fill(VALID_ISBN);
+    await scanField.fill(isbn);
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry");
 
@@ -117,14 +133,16 @@ test.describe("Volume Management", () => {
     expect(serverCalled).toBe(false);
   });
 
-  // AC5: Volume count in banner
+  // AC5: Volume count in banner — legitimately adds 2 volumes to one title,
+  // so the 2nd scan hits the CR #300 confirmation modal that we Confirm.
   test("scan ISBN then two V-codes shows banner with 2 vol", async ({
     page,
   }) => {
+    const isbn = specIsbn("CV", 5);
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
-    await scanField.fill(VALID_ISBN);
+    await scanField.fill(isbn);
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry");
 
@@ -136,6 +154,8 @@ test.describe("Volume Management", () => {
 
     await scanField.fill("V0045");
     await scanField.press("Enter");
+    // 2nd volume on a title that already has V0044 → confirm modal opens.
+    await dismissPhantomConfirm(page);
 
     const banner = page.locator("#context-banner");
     await expect(banner).toContainText("vol", { timeout: 5000 });
@@ -162,6 +182,7 @@ test.describe("Volume Management", () => {
 
   // AC6: L-code assigns location (needs location data in DB)
   test("scan V-code then L-code shelves volume", async ({ page }) => {
+    const isbn = specIsbn("CV", 6);
     // Create a location and capture its L-code dynamically
     const lcode = await createLocation(page, "CV-ShelveLoc", "L3001");
 
@@ -169,7 +190,7 @@ test.describe("Volume Management", () => {
     const scanField = page.locator("#scan-field");
 
     // Set up title and volume
-    await scanField.fill(VALID_ISBN);
+    await scanField.fill(isbn);
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry");
 
@@ -230,10 +251,11 @@ test.describe("Volume accessibility", () => {
       return;
     }
 
+    const isbn = specIsbn("CV", 7);
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
-    await scanField.fill(VALID_ISBN);
+    await scanField.fill(isbn);
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry");
 

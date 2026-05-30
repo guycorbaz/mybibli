@@ -212,6 +212,11 @@ feedback:
   volume_created_suggestion: "Scannez un code L pour ranger, ou scannez un autre code V."
   volume_duplicate: "Le label %{label} est déjà assigné à %{title}. Scannez un autre label."
   volume_no_title: "Aucun titre sélectionné. Scannez d'abord un ISBN pour établir un contexte."
+  volume_confirm:
+    title: "Ajouter un autre exemplaire ?"
+    body: "<em>%{title}</em> a déjà %{count} exemplaire(s) attaché(s). Ajouter un autre exemplaire de ce titre, ou scanner d'abord l'ISBN du nouveau livre ?"
+    confirm: "Ajouter un exemplaire"
+    cancel: "Annuler"
   volume_shelved: "Volume %{label} rangé à %{path}."
   vcode_invalid: "Format de code volume invalide. Attendu : V suivi de 4 chiffres (ex. V0042)."
   lcode_not_found: "Emplacement %{label} introuvable."

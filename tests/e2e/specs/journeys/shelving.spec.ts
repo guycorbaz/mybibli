@@ -3,7 +3,10 @@ import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { createLocation } from "../../helpers/locations";
 
-const VALID_ISBN = specIsbn("SH", 1);
+// CR #300: VALID_ISBN was shared across 4 tests, leaving each one's title
+// with prior volumes → the V-code scan returned the phantom-volume modal.
+// Per-test unique ISBNs (specIsbn("SH", 4..7)) restore independence. The
+// _2 / _3 constants are kept since they only ever sourced a single test.
 const VALID_ISBN_2 = specIsbn("SH", 2);
 const VALID_ISBN_3 = specIsbn("SH", 3);
 
@@ -18,7 +21,7 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
     const scanField = page.locator("#scan-field");
 
     // Create a title first
-    await scanField.fill(VALID_ISBN);
+    await scanField.fill(specIsbn("SH", 4));
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 
@@ -52,7 +55,7 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
     const scanField = page.locator("#scan-field");
 
     // Book 1: ISBN → V-code
-    await scanField.fill(VALID_ISBN);
+    await scanField.fill(specIsbn("SH", 5));
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 
@@ -109,7 +112,7 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
     await expect(page.locator(".feedback-entry").first()).toBeVisible({ timeout: 5000 });
 
     // Clear last_volume_label by scanning another ISBN
-    await scanField.fill(VALID_ISBN);
+    await scanField.fill(specIsbn("SH", 6));
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 
@@ -151,7 +154,7 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
     const scanField = page.locator("#scan-field");
 
     // Create title + volume
-    await scanField.fill(VALID_ISBN);
+    await scanField.fill(specIsbn("SH", 7));
     await scanField.press("Enter");
     await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
 

@@ -9,7 +9,8 @@ import {
 } from "../../helpers/loans";
 import { simulateScan } from "../../helpers/scanner";
 
-const VALID_ISBN = specIsbn("LR", 1);
+// CR #300: per-test unique ISBNs — each test gets a fresh title so the
+// V-code scan never hits the phantom-volume confirmation modal.
 
 test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
   test.beforeEach(async ({ page }) => {
@@ -17,15 +18,20 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
   });
 
   // Helper: create the full title+volume+borrower+loan chain for a single test
-  async function setupLoan(page: any, volumeLabel: string, borrowerName: string) {
-    await scanTitleAndVolume(page, VALID_ISBN, volumeLabel);
+  async function setupLoan(
+    page: any,
+    isbn: string,
+    volumeLabel: string,
+    borrowerName: string,
+  ) {
+    await scanTitleAndVolume(page, isbn, volumeLabel);
     await createBorrower(page, borrowerName);
     await createLoan(page, volumeLabel, borrowerName);
   }
 
   // AC1: Return a loan
   test("return a loan → loan disappears from list", async ({ page }) => {
-    await setupLoan(page, "V0070", "LR-Return Borrower");
+    await setupLoan(page, specIsbn("LR", 3), "V0070", "LR-Return Borrower");
 
     // Loan is already visible in /loans (createLoan leaves us on the loans page
     // with the row asserted). Perform the return via the canonical helper.
@@ -40,7 +46,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
   // AC4: Volume deletion guard
   test("try to delete volume on loan → blocked with error", async ({ page }) => {
-    await setupLoan(page, "V0071", "LR-Delete Guard Borrower");
+    await setupLoan(page, specIsbn("LR", 4), "V0071", "LR-Delete Guard Borrower");
 
     // Verify loan is live
     await page.goto("/loans");
@@ -86,7 +92,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
   // AC3: Overdue highlighting (styling check for a fresh loan — no threshold change)
   test("overdue loan shows red styling and badge", async ({ page }) => {
-    await setupLoan(page, "V0074", "LR-Overdue Borrower");
+    await setupLoan(page, specIsbn("LR", 5), "V0074", "LR-Overdue Borrower");
 
     // Brand-new loan (0 days) should NOT be overdue with the default threshold
     await page.goto("/loans");
@@ -118,7 +124,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
 
   // AC6: Scan V-code → return from scan result card
   test("scan V-code → return from scan result", async ({ page }) => {
-    await setupLoan(page, "V0072", "LR-Scan Return Borrower");
+    await setupLoan(page, specIsbn("LR", 6), "V0072", "LR-Scan Return Borrower");
 
     await page.goto("/loans");
     const scanField = page.locator("#loan-scan-field");
@@ -164,7 +170,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
   // burst against `body` MUST NOT leak Enter through to Cancel (which would
   // close the modal). Mirror of the 9-10 PR #129 fix pattern.
   test("scanner-guard suppresses scanner burst while modal open", async ({ page }) => {
-    await setupLoan(page, "V0075", "LR-Scanner Guard Borrower");
+    await setupLoan(page, specIsbn("LR", 7), "V0075", "LR-Scanner Guard Borrower");
 
     await page.goto("/loans");
     const loanRow = page
@@ -204,7 +210,7 @@ test.describe("Loan Return & Location Restoration (Story 4-3)", () => {
     await loginAs(page);
 
     // Create title + volume + borrower + loan via canonical helpers
-    await scanTitleAndVolume(page, VALID_ISBN, "V0073");
+    await scanTitleAndVolume(page, specIsbn("LR", 8), "V0073");
     await createBorrower(page, "LR-Smoke Return Borrower");
     await createLoan(page, "V0073", "LR-Smoke Return Borrower");
 

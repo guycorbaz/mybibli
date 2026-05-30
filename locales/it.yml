@@ -207,6 +207,11 @@ feedback:
   volume_created_suggestion: "Scansiona un codice L per collocare, oppure un altro codice V."
   volume_duplicate: "L'etichetta %{label} è già assegnata a %{title}. Scansiona un'etichetta diversa."
   volume_no_title: "Nessun titolo selezionato. Scansiona prima un ISBN per stabilire un titolo di contesto."
+  volume_confirm:
+    title: "Aggiungere un'altra copia?"
+    body: "<em>%{title}</em> ha già %{count} esemplare/i. Aggiungere un'altra copia di questo titolo, o scansionare prima l'ISBN del nuovo libro?"
+    confirm: "Aggiungi una copia"
+    cancel: "Annulla"
   volume_shelved: "Esemplare %{label} collocato in %{path}."
   vcode_invalid: "Formato codice V non valido. Atteso V seguito da 4 cifre (es. V0042)."
   lcode_not_found: "Ubicazione %{label} non trovata."

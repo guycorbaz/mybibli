@@ -356,6 +356,13 @@ pub async fn catalog_page(
 #[derive(Deserialize)]
 pub struct ScanForm {
     pub code: String,
+    /// CR #300: librarian explicitly confirmed adding another copy to a title
+    /// that already has ≥1 volume. Set by the volume-confirm modal's Confirm
+    /// button — bypasses the phantom-volume guard. Absent in the normal scan
+    /// path, in which case the V-code branch returns the modal instead of
+    /// silently creating a volume on a possibly-stale `current_title_id`.
+    #[serde(default)]
+    pub confirmed: bool,
 }
 
 /// Result of barcode prefix detection.
@@ -592,7 +599,9 @@ pub async fn handle_scan(
                 }
 
                 // If volume already exists and batch location is active, shelve it
-                if let Some(existing_vol) = VolumeModel::find_by_label(pool, &code).await? {
+                let existing_vol_lookup = VolumeModel::find_by_label(pool, &code).await?;
+                let existing_vol_was_some = existing_vol_lookup.is_some();
+                if let Some(existing_vol) = existing_vol_lookup {
                     let active_loc = match &session.token {
                         Some(token) => SessionModel::get_active_location(pool, token)
                             .await
@@ -662,6 +671,76 @@ pub async fn handle_scan(
                     let message = rust_i18n::t!("feedback.volume_no_title").to_string();
                     return Ok(Html(feedback_html("warning", &message, "")).into_response());
                 };
+
+                // CR #300: phantom-volume guard. `current_title_id` is sticky
+                // (set on ISBN scan, never cleared) — scanning a fresh V-code
+                // for ANOTHER physical book without re-scanning its ISBN would
+                // silently attach a new volume to the previous title. When the
+                // active title already has volumes and the librarian hasn't
+                // explicitly confirmed via the modal, return the UX-DR8
+                // confirmation modal instead of creating blind. Multi-copy
+                // titles (legitimate N volumes under one ISBN) just click
+                // Confirm; accidental stale-title attaches click Cancel.
+                // Only fires when the V-code is genuinely NEW (a re-scan of an
+                // existing V-code keeps its DUPLICATE_LABEL error path).
+                if !existing_vol_was_some && !form.confirmed {
+                    let already_has =
+                        VolumeModel::count_by_title(pool, title_id).await.unwrap_or(0);
+                    if already_has >= 1 {
+                        let title_name = crate::models::title::TitleModel::find_by_id(
+                            pool, title_id,
+                        )
+                        .await?
+                        .map(|t| t.title)
+                        .unwrap_or_else(|| "?".to_string());
+                        let escaped_title = crate::utils::html_escape(&title_name);
+                        let escaped_code = crate::utils::html_escape(&code);
+                        let body_html = rust_i18n::t!(
+                            "feedback.volume_confirm.body",
+                            locale = loc,
+                            title = &escaped_title,
+                            count = &already_has.to_string()
+                        )
+                        .to_string();
+                        let inner_form_html = format!(
+                            r#"<input type="hidden" name="code" value="{escaped_code}"><input type="hidden" name="confirmed" value="true">"#
+                        );
+                        let modal = VolumeConfirmAddModalTemplate {
+                            title: rust_i18n::t!(
+                                "feedback.volume_confirm.title",
+                                locale = loc
+                            )
+                            .to_string(),
+                            body_html,
+                            confirm_label: rust_i18n::t!(
+                                "feedback.volume_confirm.confirm",
+                                locale = loc
+                            )
+                            .to_string(),
+                            cancel_label: rust_i18n::t!(
+                                "feedback.volume_confirm.cancel",
+                                locale = loc
+                            )
+                            .to_string(),
+                            csrf_token: session.csrf_token.clone(),
+                            inner_form_html,
+                        };
+                        let html = modal.render().map_err(|_| {
+                            AppError::Internal(
+                                "volume confirm modal render failed".to_string(),
+                            )
+                        })?;
+                        return Ok((
+                            axum::http::StatusCode::OK,
+                            [
+                                ("HX-Retarget", "#modal-slot"),
+                                ("HX-Reswap", "innerHTML"),
+                            ],
+                            Html(html),
+                        )
+                            .into_response());
+                    }
+                }
 
                 match VolumeService::create_volume(pool, &code, title_id).await {
                     Ok(volume) => {
@@ -810,7 +889,13 @@ pub async fn handle_scan(
                                     },
                                 ],
                             };
-                            return Ok(resp.into_response());
+                            // CR #300: when the create was confirmed via the
+                            // phantom-volume modal, close the modal on success.
+                            return Ok(if form.confirmed {
+                                resp.into_response_with_hx_trigger("modal-close")
+                            } else {
+                                resp.into_response()
+                            });
                         }
                         // Unreachable: session.token is always present for authenticated users
                         // (require_role(Librarian) already validated the session)
@@ -2052,6 +2137,22 @@ pub struct VolumeDeleteModalTemplate {
     pub csrf_token: String,
 }
 
+/// CR #300 — confirmation modal returned by the V-code scan when the active
+/// title already has ≥1 volume. The librarian explicitly confirms before a
+/// new volume is attached, defeating the phantom-volume mechanism (a stale
+/// `current_title_id` silently accumulating volumes from other physical
+/// books during a shelve batch).
+#[derive(Template)]
+#[template(path = "fragments/volume_confirm_add_modal.html")]
+pub struct VolumeConfirmAddModalTemplate {
+    pub title: String,
+    pub body_html: String,
+    pub confirm_label: String,
+    pub cancel_label: String,
+    pub csrf_token: String,
+    pub inner_form_html: String,
+}
+
 /// `GET /volume/:id/delete-modal` — returns the UX-DR8 destructive
 /// modal for the per-volume table's Delete button (CR #209). Mirrors
 /// the series-delete-modal pattern (story 9-13). Librarian-gated,
@@ -2616,6 +2717,35 @@ pub async fn debug_set_session_timeout(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// CR #300 — the phantom-volume confirmation modal renders, surfaces the
+    /// title + count + locale labels, and embeds the bypass hidden inputs
+    /// (`code` + `confirmed=true`) that re-POST `/catalog/scan` on Confirm.
+    #[test]
+    fn test_volume_confirm_add_modal_renders() {
+        let modal = VolumeConfirmAddModalTemplate {
+            title: "Add another copy?".to_string(),
+            body_html: "<em>L'\u{00c9}tranger</em> already has 2 volume(s) attached.".to_string(),
+            confirm_label: "Add another copy".to_string(),
+            cancel_label: "Cancel".to_string(),
+            csrf_token: "tok123".to_string(),
+            inner_form_html: r#"<input type="hidden" name="code" value="V0099"><input type="hidden" name="confirmed" value="true">"#.to_string(),
+        };
+        let html = modal.render().expect("modal must render");
+        // Title + labels surfaced
+        assert!(html.contains("Add another copy?"), "title missing");
+        assert!(html.contains("Add another copy"), "confirm label missing");
+        assert!(html.contains("Cancel"), "cancel label missing");
+        // Body rendered as HTML (the <em> survives the |safe pipe)
+        assert!(html.contains("<em>L'\u{00c9}tranger</em>"), "body html not preserved");
+        // Bypass inputs present so Confirm re-POSTs with confirmed=true
+        assert!(html.contains(r#"name="confirmed" value="true""#), "confirmed bypass input missing");
+        assert!(html.contains(r#"name="code" value="V0099""#), "code input missing");
+        // POSTs to /catalog/scan (the canonical scan endpoint)
+        assert!(html.contains("/catalog/scan"), "action URL missing");
+        // CSRF token threaded through
+        assert!(html.contains("tok123"), "csrf token missing");
+    }
 
     #[test]
     fn test_detect_code_type_isbn_978() {

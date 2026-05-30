@@ -211,6 +211,11 @@ feedback:
   volume_created_suggestion: "L-Code scannen zum Einsortieren, oder weiteren V-Code scannen."
   volume_duplicate: "Etikett %{label} ist bereits %{title} zugeordnet. Bitte ein anderes Etikett scannen."
   volume_no_title: "Kein Titel ausgewählt. Scannen Sie zuerst eine ISBN, um einen Titelkontext aufzubauen."
+  volume_confirm:
+    title: "Weiteres Exemplar hinzufügen?"
+    body: "<em>%{title}</em> hat bereits %{count} Exemplar(e). Weiteres Exemplar dieses Titels hinzufügen, oder zuerst die ISBN des neuen Buchs scannen?"
+    confirm: "Exemplar hinzufügen"
+    cancel: "Abbrechen"
   volume_shelved: "Exemplar %{label} am Standort %{path} eingestellt."
   vcode_invalid: "Ungültiges V-Code-Format. Erwartet wird V gefolgt von 4 Ziffern (z. B. V0042)."
   lcode_not_found: "Standort %{label} nicht gefunden."

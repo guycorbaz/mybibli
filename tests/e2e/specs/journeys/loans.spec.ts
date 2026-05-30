@@ -7,7 +7,8 @@ import {
   scanTitleAndVolume,
 } from "../../helpers/loans";
 
-const VALID_ISBN = specIsbn("LN", 1);
+// CR #300: per-test unique ISBNs — each test gets a fresh title so the
+// V-code scan never hits the phantom-volume confirmation modal.
 
 test.describe("Loan Registration & Validation (Story 4-2)", () => {
   test.beforeEach(async ({ page }) => {
@@ -29,7 +30,7 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
   // AC2: Register a loan
   test("register a loan → verify loan appears in list", async ({ page }) => {
-    await scanTitleAndVolume(page, VALID_ISBN, "V0060");
+    await scanTitleAndVolume(page, specIsbn("LN", 3), "V0060");
     await createBorrower(page, "LN-Loan Test Borrower");
     await createLoan(page, "V0060", "LN-Loan Test Borrower");
 
@@ -42,7 +43,7 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
   // AC3: Prevent loan of non-loanable volume
   test("attempt to lend non-loanable volume → verify error", async ({ page }) => {
-    await scanTitleAndVolume(page, VALID_ISBN, "V0063");
+    await scanTitleAndVolume(page, specIsbn("LN", 4), "V0063");
 
     // Find the volume ID by scanning volume detail pages for label V0063.
     // The range is bounded by the number of volumes seeded in this test run.
@@ -109,7 +110,7 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
 
   // AC4: Prevent double loan
   test("attempt to lend volume already on loan → verify error", async ({ page }) => {
-    await scanTitleAndVolume(page, VALID_ISBN, "V0061");
+    await scanTitleAndVolume(page, specIsbn("LN", 5), "V0061");
     await createBorrower(page, "LN-Double Loan Borrower");
 
     // Register first loan (idempotent — may already be on loan from a prior
@@ -195,7 +196,7 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
     await loginAs(page);
 
     // Create the loan chain via canonical helpers
-    await scanTitleAndVolume(page, VALID_ISBN, "V0062");
+    await scanTitleAndVolume(page, specIsbn("LN", 6), "V0062");
     await createBorrower(page, "LN-Smoke Loan Borrower");
     await createLoan(page, "V0062", "LN-Smoke Loan Borrower");
 
@@ -209,7 +210,7 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
   // Bug: dynamic sqlx::query() could not decode MariaDB TIMESTAMP into NaiveDateTime.
   // Fix: CAST(loaned_at AS DATETIME) in all dynamic loan queries.
   test("regression: loans page renders with active loan (TIMESTAMP fix)", async ({ page }) => {
-    await scanTitleAndVolume(page, VALID_ISBN, "V0090");
+    await scanTitleAndVolume(page, specIsbn("LN", 7), "V0090");
     await createBorrower(page, "LN-TIMESTAMP Borrower");
     await createLoan(page, "V0090", "LN-TIMESTAMP Borrower");
 

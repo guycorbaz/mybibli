@@ -92,11 +92,14 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
   test("already assigned V-code shows error with title name", async ({
     page,
   }) => {
+    // CR #300: unique ISBN so the title has no prior volumes and the V0055
+    // scan path doesn't hit the phantom-volume confirmation modal.
+    const isbn = specIsbn("CM", 3);
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
 
     // First: create a title
-    await scanField.fill(VALID_ISBN);
+    await scanField.fill(isbn);
     await scanField.press("Enter");
     await expect(page.locator("#feedback-list .feedback-skeleton, #feedback-list .feedback-entry").first()).toBeVisible({ timeout: 5000 });
 
