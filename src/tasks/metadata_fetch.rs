@@ -349,9 +349,10 @@ async fn add_author_contributor(
         }
     };
 
-    // Find "Auteur" role
+    // CR #19: find the canonical primary-author role by stable flag, not by
+    // its display name — the admin reference-data CRUD can rename roles.
     let role_id: u64 = match sqlx::query_as::<_, (u64,)>(
-        "SELECT id FROM contributor_roles WHERE name = 'Auteur' AND deleted_at IS NULL LIMIT 1",
+        "SELECT id FROM contributor_roles WHERE is_primary AND deleted_at IS NULL LIMIT 1",
     )
     .fetch_optional(pool)
     .await?
