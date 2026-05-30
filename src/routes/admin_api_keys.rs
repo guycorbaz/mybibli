@@ -357,11 +357,11 @@ pub async fn admin_api_keys_create(
     Ok(HtmxResponse {
         main: list_html,
         oob: vec![
-            OobUpdate {
+            OobUpdate { swap_mode: Default::default(),
                 target: "feedback-list".to_string(),
                 content: feedback,
             },
-            OobUpdate {
+            OobUpdate { swap_mode: Default::default(),
                 target: "admin-modal-slot".to_string(),
                 content: modal_html,
             },
@@ -477,7 +477,7 @@ pub async fn admin_api_keys_revoke(
 
     let resp = HtmxResponse {
         main: list_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -616,7 +616,7 @@ pub async fn admin_api_keys_delete(
 
     let resp = HtmxResponse {
         main: list_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],

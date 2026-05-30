@@ -23,10 +23,40 @@ impl<S: Send + Sync> FromRequestParts<S> for HxRequest {
     }
 }
 
+/// CR #87 — per-target swap-mode for an OOB update.
+///
+/// - `Replace` (default): emits `hx-swap-oob="true"` — flushes the entire
+///   container on every save. Best for the per-form "latest feedback"
+///   UX (admin-users save, reference-data save).
+/// - `Append`: emits `hx-swap-oob="beforeend"` — stacks every entry in
+///   the container so multi-action saves (e.g. the provider-keys form
+///   updating Google Books + OMDb + TMDb in one submit) surface every
+///   sub-action's result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OobSwapMode {
+    #[default]
+    Replace,
+    Append,
+}
+
+impl OobSwapMode {
+    fn as_hx_attr(self) -> &'static str {
+        match self {
+            OobSwapMode::Replace => "true",
+            OobSwapMode::Append => "beforeend",
+        }
+    }
+}
+
 /// An out-of-band update to be appended to the response.
+#[derive(Debug, Clone, Default)]
 pub struct OobUpdate {
     pub target: String,
     pub content: String,
+    /// CR #87 — defaults to `Replace` to preserve the project-wide pattern
+    /// (story 8-3 / 8-4 admin saves). Opt into `Append` per save handler
+    /// where a feedback log makes sense.
+    pub swap_mode: OobSwapMode,
 }
 
 /// Response type for HTMX handlers that may include OOB swaps.
@@ -44,8 +74,10 @@ impl HtmxResponse {
         let mut body = self.main;
         for update in &self.oob {
             body.push_str(&format!(
-                r#"<div id="{}" hx-swap-oob="true">{}</div>"#,
-                update.target, update.content
+                r#"<div id="{}" hx-swap-oob="{}">{}</div>"#,
+                update.target,
+                update.swap_mode.as_hx_attr(),
+                update.content
             ));
         }
         body
@@ -83,6 +115,36 @@ impl IntoResponse for HtmxResponse {
 mod tests {
     use super::*;
 
+    /// CR #87 — Replace mode emits `hx-swap-oob="true"` (project-wide
+    /// default, preserves story 8-3 / 8-4 behavior); Append emits
+    /// `hx-swap-oob="beforeend"` so the OOB content stacks into the target
+    /// container instead of replacing it. Locks the per-target opt-in.
+    #[test]
+    fn test_oob_swap_mode_emits_correct_hx_attribute() {
+        let resp = HtmxResponse {
+            main: String::new(),
+            oob: vec![
+                OobUpdate { swap_mode: OobSwapMode::Replace,
+                    target: "context-banner".to_string(),
+                    content: "<span>R</span>".to_string(),
+                },
+                OobUpdate { swap_mode: OobSwapMode::Append,
+                    target: "feedback-list".to_string(),
+                    content: "<span>A</span>".to_string(),
+                },
+            ],
+        };
+        let body = resp.body();
+        assert!(
+            body.contains(r#"<div id="context-banner" hx-swap-oob="true"><span>R</span></div>"#),
+            "Replace mode must emit hx-swap-oob=\"true\""
+        );
+        assert!(
+            body.contains(r#"<div id="feedback-list" hx-swap-oob="beforeend"><span>A</span></div>"#),
+            "Append mode must emit hx-swap-oob=\"beforeend\""
+        );
+    }
+
     #[test]
     fn test_htmx_response_no_oob() {
         let resp = HtmxResponse {
@@ -98,11 +160,11 @@ mod tests {
         let resp = HtmxResponse {
             main: "<p>Main</p>".to_string(),
             oob: vec![
-                OobUpdate {
+                OobUpdate { swap_mode: Default::default(),
                     target: "counter".to_string(),
                     content: "42".to_string(),
                 },
-                OobUpdate {
+                OobUpdate { swap_mode: Default::default(),
                     target: "banner".to_string(),
                     content: "Updated".to_string(),
                 },
@@ -123,7 +185,7 @@ mod tests {
         use axum::body::to_bytes;
         let resp = HtmxResponse {
             main: "<p>Main</p>".to_string(),
-            oob: vec![OobUpdate {
+            oob: vec![OobUpdate { swap_mode: Default::default(),
                 target: "admin-modal-slot".to_string(),
                 content: String::new(),
             }],
