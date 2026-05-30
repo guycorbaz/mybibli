@@ -6,5 +6,6 @@ pub mod htmx;
 pub mod locale;
 pub mod logging;
 pub mod modal_confirm_retarget_guard;
+pub mod non_htmx_error_wrapper;
 pub mod pending_updates;
 pub mod setup_gate;
