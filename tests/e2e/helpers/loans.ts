@@ -49,6 +49,19 @@ export async function scanTitleAndVolume(
   });
   await scanField.fill(volumeLabel);
   await scanField.press("Enter");
+  // CR #300: many specs share an ISBN across multiple tests, so by the 2nd
+  // test the title already has ≥1 volume and the V-code scan returns the
+  // phantom-volume confirmation modal. The helper documents the "attach
+  // this volume to this title" intent — Confirm and proceed. No-op when no
+  // modal is open (typical first-test or unique-ISBN-per-test case).
+  const phantomConfirm = page
+    .locator("#modal-slot dialog[open]")
+    .getByRole("button", {
+      name: /Add another copy|Ajouter un exemplaire|Exemplar hinzufügen|Aggiungi una copia/i,
+    });
+  if (await phantomConfirm.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await phantomConfirm.click();
+  }
   // Volume scan is synchronous; wait for a feedback entry containing the
   // exact volume label. Filter first, then assert visibility — do not use
   // `.first()` on the unfiltered list, which can lock onto a stale ISBN
