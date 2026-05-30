@@ -66,6 +66,7 @@ use crate::middleware::csp::apply_csp_layer;
 use crate::middleware::csrf::csrf_middleware;
 use crate::middleware::locale::locale_resolve_middleware;
 use crate::middleware::modal_confirm_retarget_guard::modal_confirm_retarget_guard;
+use crate::middleware::non_htmx_error_wrapper::non_htmx_error_wrapper;
 use crate::middleware::pending_updates::pending_updates_middleware;
 use crate::middleware::setup_gate::setup_gate_middleware;
 
@@ -619,6 +620,12 @@ pub fn build_router(state: AppState) -> Router {
         // polish-1 AC4.b — wraps CSRF + handler, so it sees CSRF's
         // response on token-drift 403. No state dep → plain `from_fn`.
         .layer(axum::middleware::from_fn(modal_confirm_retarget_guard))
+        // CR #216 / #26: wrap HTML error fragments in a minimal HTML5 shell
+        // when the request was a direct browser navigation (no HX-Request),
+        // so 4xx/5xx surfaces aren't a styleless fragment on a blank page.
+        // Layered outside the modal-confirm guard so it sees the final body
+        // after retarget-strip already ran.
+        .layer(axum::middleware::from_fn(non_htmx_error_wrapper))
         // Locale middleware runs on every request (before the state-consuming
         // `.with_state(state)` call) so handlers can read `Extension<Locale>`
         // without per-route wiring. Registered here after route mounting —
