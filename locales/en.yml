@@ -211,6 +211,11 @@ feedback:
   volume_created_suggestion: "Scan L-code to shelve, or scan another V-code."
   volume_duplicate: "Label %{label} is already assigned to %{title}. Scan a different label."
   volume_no_title: "No title selected. Scan an ISBN first to establish a title context."
+  volume_confirm:
+    title: "Add another copy?"
+    body: "<em>%{title}</em> already has %{count} volume(s) attached. Add another copy of this title, or scan the new book's ISBN first?"
+    confirm: "Add another copy"
+    cancel: "Cancel"
   volume_shelved: "Volume %{label} shelved at %{path}."
   vcode_invalid: "Invalid volume code format. Expected V followed by 4 digits (e.g., V0042)."
   lcode_not_found: "Location %{label} not found."

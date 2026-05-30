@@ -1,0 +1,22 @@
+{# CR #300 — confirmation modal returned by the V-code scan when the active
+   current_title_id already has ≥1 volume. The librarian explicitly confirms
+   before a new volume is attached, defeating the phantom-volume mechanism
+   (a stale current_title_id silently accumulating volumes from other
+   physical books during a shelve batch). Inner hidden inputs re-POST
+   /catalog/scan with the same code and confirmed=true to bypass the guard.
+   CSP-clean. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "warning",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    "/catalog/scan",
+    "POST",
+    csrf_token,
+    "#feedback-list",
+    "innerHTML",
+    0,
+    inner_form_html,
+) %}{% endcall %}
