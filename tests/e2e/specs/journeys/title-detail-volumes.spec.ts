@@ -43,6 +43,17 @@ test.describe("CR #209 — per-volume table on /title/:id", () => {
     ).toBeVisible({ timeout: 10000 });
     await scanField.fill(V_DROP);
     await scanField.press("Enter");
+    // CR #300: the title now has 1 volume → the V-code scan returns the
+    // phantom-volume confirmation modal. This test documents the legitimate
+    // multi-volume flow, so Confirm to bypass the guard.
+    const phantomConfirm = page
+      .locator("#modal-slot dialog[open]")
+      .getByRole("button", {
+        name: /Add another copy|Ajouter un exemplaire|Exemplar hinzufügen|Aggiungi una copia/i,
+      });
+    if (await phantomConfirm.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await phantomConfirm.click();
+    }
     await expect(
       page.locator(".feedback-entry").filter({ hasText: V_DROP }),
     ).toBeVisible({ timeout: 10000 });

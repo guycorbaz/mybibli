@@ -8,7 +8,8 @@ import {
   scanTitleAndVolume,
 } from "../../helpers/loans";
 
-const VALID_ISBN = specIsbn("BL", 1);
+// CR #300: per-test unique ISBNs so the V-code scan never hits the
+// phantom-volume confirmation modal (each test gets a fresh title).
 
 test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
   test.beforeEach(async ({ page }) => {
@@ -39,7 +40,7 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
   // AC2: Loan details shown on borrower page
   test("borrower with loan shows loan details", async ({ page }) => {
     await createBorrower(page, "BL-Loan Detail Borrower");
-    await scanTitleAndVolume(page, VALID_ISBN, "V0080");
+    await scanTitleAndVolume(page, specIsbn("BL", 3), "V0080");
     await createLoan(page, "V0080", "BL-Loan Detail Borrower");
 
     // Navigate to borrower detail
@@ -63,7 +64,7 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
   // AC3: Return loan from borrower detail
   test("return loan from borrower detail → loan disappears", async ({ page }) => {
     await createBorrower(page, "BL-Return Detail Borrower");
-    await scanTitleAndVolume(page, VALID_ISBN, "V0081");
+    await scanTitleAndVolume(page, specIsbn("BL", 4), "V0081");
     await createLoan(page, "V0081", "BL-Return Detail Borrower");
 
     // Navigate to borrower detail
@@ -98,7 +99,7 @@ test.describe("Borrower Detail & Loan History (Story 4-4)", () => {
 
     // Create borrower + title + volume + loan
     await createBorrower(page, "BL-Smoke Detail Borrower");
-    await scanTitleAndVolume(page, VALID_ISBN, "V0082");
+    await scanTitleAndVolume(page, specIsbn("BL", 5), "V0082");
     await createLoan(page, "V0082", "BL-Smoke Detail Borrower");
 
     // Navigate to borrower detail — should see loan
