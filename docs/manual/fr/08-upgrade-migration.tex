@@ -148,6 +148,59 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.8.1}\label{sec:whats-new-1.8.1}
+
+La version 1.8.1 est un patch ciblé de polish sur la 1.8.0. Elle ferme un
+bogue remonté en production et quatre nettoyages issus du queue de
+revue. \emph{Aucune migration de schéma demandant une action de
+l'opérateur}~; la migration qui ajoute la colonne \texttt{is\_primary} sur
+\texttt{contributor\_roles} s'exécute automatiquement au démarrage. Mise
+à jour de routine~: \texttt{docker compose pull \&\& docker compose
+up -d}.
+
+\begin{itemize}
+  \item \textbf{\#300 \string— garde contre les volumes fantômes.} Un
+        bogue subtil présent depuis la v1.0~: la session de catalogue
+        garde le titre de la dernière ISBN scannée dans un emplacement
+        \emph{titre courant} collant, jamais effacé. Si vous scanniez un
+        V-code pour un autre livre physique sans d'abord re-scanner son
+        ISBN, le nouveau volume était silencieusement rattaché au titre
+        précédent \string— d'où des titres affichant deux ou trois
+        volumes qu'on ne possède pas vraiment. Le correctif fait
+        apparaître une modale de confirmation dès qu'on scanne un V-code
+        pour un titre qui a déjà des volumes~: \emph{«~Ajouter un autre
+        exemplaire de \string<titre\string>~?~»}. Cliquez \emph{Ajouter
+        un exemplaire} pour le flux multi-exemplaires légitime~;
+        \emph{Annuler} pour abandonner le scan et re-scanner d'abord
+        l'ISBN du nouveau livre.
+  \item \textbf{\#216 \string— pages d'erreur lisibles en navigation
+        directe.} Jusqu'ici, naviguer directement vers une URL qui
+        renvoie une erreur (p.~ex.\ un signet vers un titre supprimé)
+        affichait le fragment de feedback sans style sur une page
+        blanche. Un nouveau middleware enveloppe ces réponses dans une
+        coque HTML minimale~: les erreurs en nav directe sont désormais
+        lisibles avec un lien Accueil pour revenir. Les interactions
+        HTMX dans l'app ne sont pas touchées.
+  \item \textbf{\#19 \string— rôle auteur résilient au renommage.} Le
+        tri auteur-d'abord sur les listes de contributeurs et la
+        recherche d'auteur de la chaîne de métadonnées matchaient le nom
+        littéral «~Auteur~», donc renommer le rôle depuis le panneau
+        admin des données de référence cassait silencieusement les deux.
+        Un nouveau marqueur \texttt{is\_primary} sur le rôle seedé
+        remplace ce check par nom \string— renommez librement.
+  \item \textbf{\#87 \string— mode de swap OOB par cible.} Les
+        formulaires qui mettent à jour plusieurs choses en une seule
+        soumission (p.~ex.\ le formulaire des clés providers mettant à
+        jour Google Books, OMDb et TMDb ensemble) peuvent désormais
+        empiler leurs feedbacks par sous-action au lieu de les écraser.
+        Le comportement par défaut est inchangé.
+  \item \textbf{\#18 \string— les en-têtes de colonnes triables
+        annoncent l'état de tri.} Les cinq colonnes triables du tableau
+        d'accueil portent désormais l'attribut \texttt{aria-sort}, pour
+        que les utilisateurs de lecteur d'écran entendent quelle colonne
+        est triée et dans quel sens.
+\end{itemize}
+
 \section{Nouveautés de la 1.8.0}\label{sec:whats-new-1.8.0}
 
 La version 1.8.0 est la septième version mineure thématique, «~Les
