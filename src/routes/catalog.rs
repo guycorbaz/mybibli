@@ -180,7 +180,7 @@ fn skeleton_feedback_html(title_id: u64, isbn: &str) -> String {
 }
 
 fn push_guide_oob(oob: &mut Vec<OobUpdate>, message: &str) {
-    oob.push(OobUpdate {
+    oob.push(OobUpdate { swap_mode: Default::default(),
         target: "guide-strip".to_string(),
         content: guide_strip_html(message),
     });
@@ -487,7 +487,7 @@ pub async fn handle_scan(
                             .unwrap_or(0);
 
                         // Build OOB updates: context banner + session counter
-                        let mut oob = vec![OobUpdate {
+                        let mut oob = vec![OobUpdate { swap_mode: Default::default(),
                             target: "context-banner".to_string(),
                             content: {
                                 let author =
@@ -507,7 +507,7 @@ pub async fn handle_scan(
                             && let Ok(counter) =
                                 SessionModel::increment_session_counter(pool, token).await
                         {
-                            oob.push(OobUpdate {
+                            oob.push(OobUpdate { swap_mode: Default::default(),
                                 target: "session-counter".to_string(),
                                 content: session_counter_html(counter),
                             });
@@ -644,7 +644,7 @@ pub async fn handle_scan(
                                     let guide = rust_i18n::t!("guide.shelved").to_string();
                                     let resp = HtmxResponse {
                                         main: feedback_html("success", &message, ""),
-                                        oob: vec![OobUpdate {
+                                        oob: vec![OobUpdate { swap_mode: Default::default(),
                                             target: "guide-strip".to_string(),
                                             content: guide_strip_html(&guide),
                                         }],
@@ -862,7 +862,7 @@ pub async fn handle_scan(
                             let resp = HtmxResponse {
                                 main: feedback_html("success", &message, &suggestion),
                                 oob: vec![
-                                    OobUpdate {
+                                    OobUpdate { swap_mode: Default::default(),
                                         target: "context-banner".to_string(),
                                         content: {
                                             let author =
@@ -879,11 +879,11 @@ pub async fn handle_scan(
                                             )
                                         },
                                     },
-                                    OobUpdate {
+                                    OobUpdate { swap_mode: Default::default(),
                                         target: "session-counter".to_string(),
                                         content: session_counter_html(counter),
                                     },
-                                    OobUpdate {
+                                    OobUpdate { swap_mode: Default::default(),
                                         target: "guide-strip".to_string(),
                                         content: guide_strip_html(&guide_msg),
                                     },
@@ -961,7 +961,7 @@ pub async fn handle_scan(
                                 rust_i18n::t!("guide.batch_active", path = &loc_path).to_string();
                             let resp = HtmxResponse {
                                 main: feedback_html("success", &message, &suggestion),
-                                oob: vec![OobUpdate {
+                                oob: vec![OobUpdate { swap_mode: Default::default(),
                                     target: "guide-strip".to_string(),
                                     content: guide_strip_html(&guide),
                                 }],
@@ -985,7 +985,7 @@ pub async fn handle_scan(
                     let guide = rust_i18n::t!("guide.batch_active", path = &loc_path).to_string();
                     let resp = HtmxResponse {
                         main: feedback_html("info", &message, &suggestion),
-                        oob: vec![OobUpdate {
+                        oob: vec![OobUpdate { swap_mode: Default::default(),
                             target: "guide-strip".to_string(),
                             content: guide_strip_html(&guide),
                         }],
@@ -1019,7 +1019,7 @@ pub async fn handle_scan(
                         let vol_count = VolumeModel::count_by_title(pool, title.id)
                             .await
                             .unwrap_or(0);
-                        let mut oob = vec![OobUpdate {
+                        let mut oob = vec![OobUpdate { swap_mode: Default::default(),
                             target: "context-banner".to_string(),
                             content: {
                                 let author =
@@ -1039,7 +1039,7 @@ pub async fn handle_scan(
                             && let Ok(counter) =
                                 SessionModel::increment_session_counter(pool, token).await
                         {
-                            oob.push(OobUpdate {
+                            oob.push(OobUpdate { swap_mode: Default::default(),
                                 target: "session-counter".to_string(),
                                 content: session_counter_html(counter),
                             });
@@ -1327,7 +1327,7 @@ pub async fn handle_scan_with_type(
             let vol_count = VolumeModel::count_by_title(pool, title.id)
                 .await
                 .unwrap_or(0);
-            let mut oob = vec![OobUpdate {
+            let mut oob = vec![OobUpdate { swap_mode: Default::default(),
                 target: "context-banner".to_string(),
                 content: {
                     let author = TitleContributorModel::get_primary_contributor(pool, title.id)
@@ -1345,7 +1345,7 @@ pub async fn handle_scan_with_type(
                 && let Some(token) = &session.token
                 && let Ok(counter) = SessionModel::increment_session_counter(pool, token).await
             {
-                oob.push(OobUpdate {
+                oob.push(OobUpdate { swap_mode: Default::default(),
                     target: "session-counter".to_string(),
                     content: session_counter_html(counter),
                 });
@@ -1544,11 +1544,11 @@ pub async fn create_title(
                 let resp = HtmxResponse {
                     main: feedback_html("success", &message, &suggestion),
                     oob: vec![
-                        OobUpdate {
+                        OobUpdate { swap_mode: Default::default(),
                             target: "context-banner".to_string(),
                             content: context_banner_html(&title.title, &title.media_type, 0, None),
                         },
-                        OobUpdate {
+                        OobUpdate { swap_mode: Default::default(),
                             target: "title-form-container".to_string(),
                             content: String::new(), // Close the form
                         },
@@ -1712,13 +1712,13 @@ pub async fn add_contributor(
                 .await
                 .unwrap_or(None);
 
-            let mut oob = vec![OobUpdate {
+            let mut oob = vec![OobUpdate { swap_mode: Default::default(),
                 target: "contributor-list".to_string(),
                 content: list_html,
             }];
 
             if let Some(t) = &title {
-                oob.push(OobUpdate {
+                oob.push(OobUpdate { swap_mode: Default::default(),
                     target: "context-banner".to_string(),
                     content: context_banner_html(
                         &t.title,
@@ -1777,13 +1777,13 @@ pub async fn remove_contributor(
         .await
         .unwrap_or(None);
 
-    let mut oob = vec![OobUpdate {
+    let mut oob = vec![OobUpdate { swap_mode: Default::default(),
         target: "contributor-list".to_string(),
         content: list_html,
     }];
 
     if let Some(t) = &title {
-        oob.push(OobUpdate {
+        oob.push(OobUpdate { swap_mode: Default::default(),
             target: "context-banner".to_string(),
             content: context_banner_html(&t.title, &t.media_type, vol_count, author.as_deref()),
         });
@@ -1826,7 +1826,7 @@ pub async fn update_contributor(
                 let list_html = contributor_list_html(&contributors);
                 let resp = HtmxResponse {
                     main: feedback_html("success", &message, ""),
-                    oob: vec![OobUpdate {
+                    oob: vec![OobUpdate { swap_mode: Default::default(),
                         target: "contributor-list".to_string(),
                         content: list_html,
                     }],

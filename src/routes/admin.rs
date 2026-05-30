@@ -924,7 +924,7 @@ pub async fn admin_users_deactivate(
     let row_html = render_user_row(&state, loc, &session, &user).await?;
     Ok(HtmxResponse {
         main: row_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -956,7 +956,7 @@ pub async fn admin_users_reactivate(
     let row_html = render_user_row(&state, loc, &session, &user).await?;
     Ok(HtmxResponse {
         main: row_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -1200,7 +1200,7 @@ pub async fn admin_trash_permanent_delete(
     // this trigger then drives modal.js's close() listener.
     Ok(HtmxResponse {
         main: panel_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],

@@ -690,7 +690,7 @@ pub async fn save_loans_settings(
     let feedback = success_feedback(loc, "success.system.loans_saved");
     Ok(HtmxResponse {
         main,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -709,7 +709,7 @@ fn validation_error_response(form_html: String, error_msg: String) -> Response {
     let feedback = feedback_html_pub("error", &error_msg, "");
     let htmx_response = HtmxResponse {
         main: form_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -798,7 +798,7 @@ pub async fn save_provider_keys(
     let feedback_html = feedback_html_pub("success", &feedback_msg, "");
     Ok(HtmxResponse {
         main,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback_html,
         }],
@@ -849,7 +849,7 @@ pub async fn save_language_settings(
     let feedback = success_feedback(loc, "success.system.language_saved");
     Ok(HtmxResponse {
         main,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -916,7 +916,7 @@ pub async fn save_library_valuation_settings(
     let feedback = success_feedback(loc, "success.system.valuation_saved");
     Ok(HtmxResponse {
         main,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -981,7 +981,7 @@ pub async fn save_log_level(
     let feedback = success_feedback(loc, "success.system.log_level_saved");
     Ok(HtmxResponse {
         main,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -1081,7 +1081,7 @@ pub async fn save_metadata_timeouts(
     let feedback = success_feedback(loc, "success.system.timeouts_saved");
     Ok(HtmxResponse {
         main,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],

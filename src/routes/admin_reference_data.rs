@@ -607,7 +607,7 @@ pub async fn genres_create(
     let list_html = render_genres_list(entries, loc)?;
     Ok(HtmxResponse {
         main: list_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -638,7 +638,7 @@ pub async fn genres_rename(
     let feedback = success_feedback(loc, "success.reference_data.renamed", &name);
     Ok(HtmxResponse {
         main: row_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -700,11 +700,11 @@ pub async fn genres_delete(
     Ok(HtmxResponse {
         main: list_html,
         oob: vec![
-            OobUpdate {
+            OobUpdate { swap_mode: Default::default(),
                 target: "feedback-list".to_string(),
                 content: feedback,
             },
-            OobUpdate {
+            OobUpdate { swap_mode: Default::default(),
                 target: "admin-modal-slot".to_string(),
                 content: String::new(),
             },
@@ -750,7 +750,7 @@ pub async fn volume_states_create(
     let list_html = render_volume_states_list(entries, &session.csrf_token, loc)?;
     Ok(HtmxResponse {
         main: list_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -784,7 +784,7 @@ pub async fn volume_states_rename(
     let feedback = success_feedback(loc, "success.reference_data.renamed", &name);
     Ok(HtmxResponse {
         main: row_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -841,11 +841,11 @@ pub async fn volume_states_delete(
     Ok(HtmxResponse {
         main: list_html,
         oob: vec![
-            OobUpdate {
+            OobUpdate { swap_mode: Default::default(),
                 target: "feedback-list".to_string(),
                 content: feedback,
             },
-            OobUpdate {
+            OobUpdate { swap_mode: Default::default(),
                 target: "admin-modal-slot".to_string(),
                 content: String::new(),
             },
@@ -985,12 +985,12 @@ async fn apply_loanable_toggle(
         "success.reference_data.loanable_off"
     };
     let feedback = success_feedback(loc, feedback_key, &row.name);
-    let mut oob = vec![OobUpdate {
+    let mut oob = vec![OobUpdate { swap_mode: Default::default(),
         target: "feedback-list".to_string(),
         content: feedback,
     }];
     if close_modal {
-        oob.push(OobUpdate {
+        oob.push(OobUpdate { swap_mode: Default::default(),
             target: "admin-modal-slot".to_string(),
             content: String::new(),
         });
@@ -1070,7 +1070,7 @@ pub async fn roles_create(
     let list_html = render_roles_list(entries, loc)?;
     Ok(HtmxResponse {
         main: list_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -1101,7 +1101,7 @@ pub async fn roles_rename(
     let feedback = success_feedback(loc, "success.reference_data.renamed", &name);
     Ok(HtmxResponse {
         main: row_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -1158,11 +1158,11 @@ pub async fn roles_delete(
     Ok(HtmxResponse {
         main: list_html,
         oob: vec![
-            OobUpdate {
+            OobUpdate { swap_mode: Default::default(),
                 target: "feedback-list".to_string(),
                 content: feedback,
             },
-            OobUpdate {
+            OobUpdate { swap_mode: Default::default(),
                 target: "admin-modal-slot".to_string(),
                 content: String::new(),
             },
@@ -1207,7 +1207,7 @@ pub async fn node_types_create(
     let list_html = render_node_types_list(entries, loc)?;
     Ok(HtmxResponse {
         main: list_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -1280,7 +1280,7 @@ pub async fn node_types_rename(
 
     Ok(HtmxResponse {
         main: row_html,
-        oob: vec![OobUpdate {
+        oob: vec![OobUpdate { swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
@@ -1337,11 +1337,11 @@ pub async fn node_types_delete(
     Ok(HtmxResponse {
         main: list_html,
         oob: vec![
-            OobUpdate {
+            OobUpdate { swap_mode: Default::default(),
                 target: "feedback-list".to_string(),
                 content: feedback,
             },
-            OobUpdate {
+            OobUpdate { swap_mode: Default::default(),
                 target: "admin-modal-slot".to_string(),
                 content: String::new(),
             },
