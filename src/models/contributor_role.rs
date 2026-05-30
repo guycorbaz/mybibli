@@ -234,6 +234,27 @@ mod tests {
         assert_eq!(r.to_string(), "Auteur");
     }
 
+    /// CR #19 — the migration `20260530000000_contributor_role_is_primary`
+    /// adds an `is_primary` column and flips it to TRUE for the seeded
+    /// `Auteur` row. The 3 hardcoded `cr.name = 'Auteur'` SQL sites (in
+    /// `models/contributor.rs`, `middleware/pending_updates.rs`,
+    /// `tasks/metadata_fetch.rs`) now query `cr.is_primary` instead.
+    /// This regression locks the seed wiring so a future migration that
+    /// loses the UPDATE silently breaks the author-first sort.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn auteur_seed_row_is_marked_primary(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT COUNT(*) FROM contributor_roles \
+             WHERE name = 'Auteur' AND is_primary = TRUE AND deleted_at IS NULL",
+        )
+        .fetch_optional(&pool)
+        .await?;
+        assert_eq!(row.expect("count row").0, 1, "Auteur seed row must be flagged is_primary");
+        Ok(())
+    }
+
     #[sqlx::test(migrations = "./migrations")]
     async fn test_role_create_and_find(
         pool: sqlx::Pool<sqlx::MySql>,

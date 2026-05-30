@@ -338,7 +338,7 @@ impl TitleContributorModel {
                JOIN contributors c ON tc.contributor_id = c.id
                JOIN contributor_roles cr ON tc.role_id = cr.id
                WHERE tc.title_id = ? AND tc.deleted_at IS NULL AND c.deleted_at IS NULL AND cr.deleted_at IS NULL
-               ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC
+               ORDER BY CASE WHEN cr.is_primary THEN 0 ELSE 1 END, tc.id ASC
                LIMIT 1"#,
         )
         .bind(title_id)

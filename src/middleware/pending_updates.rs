@@ -122,7 +122,7 @@ async fn fetch_resolved_updates(
          (SELECT c.name FROM title_contributors tc \
           JOIN contributors c ON c.id = tc.contributor_id AND c.deleted_at IS NULL \
           JOIN contributor_roles cr ON cr.id = tc.role_id AND cr.deleted_at IS NULL \
-          WHERE tc.title_id = p.title_id AND tc.deleted_at IS NULL AND cr.name = 'Auteur' \
+          WHERE tc.title_id = p.title_id AND tc.deleted_at IS NULL AND cr.is_primary \
           LIMIT 1) as author_name, \
          t.isbn \
          FROM pending_metadata_updates p \
