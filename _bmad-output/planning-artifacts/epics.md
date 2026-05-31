@@ -1518,7 +1518,7 @@ The dashboard shows actionable indicators with counts. Every page has encouragin
 **UX-DRs:** UX-DR6 (role visibility polish — completion of Epic 1's basic nav)
 
 **Acceptance Criteria:**
-- Given the nav bar (desktop or hamburger), when rendered for an anonymous user, then the visible links are exactly: Home (/), Catalog (read-only — clicking takes them to `/login` per existing gate), Sign in (/login), Theme toggle, Language toggle — NO Loans, NO Borrowers, NO Admin, NO Sign out
+- Given the nav bar (desktop or hamburger), when rendered for an anonymous user, then the visible links are exactly: Home (/), Catalog (read-only), Locations (read-only), Series (read-only), Sign in (/login), Theme toggle, Language toggle — NO Loans, NO Borrowers, NO Admin, NO Sign out
 - Given the nav bar, when rendered for a librarian, then the visible links are: Home, Catalog, Loans, Borrowers, Theme, Language, Sign out — NO Admin
 - Given the nav bar, when rendered for an admin, then the visible links are: Home, Catalog, Loans, Borrowers, Admin, Theme, Language, Sign out (all links)
 - Given a role downgrade (e.g., admin demoted to librarian by another admin via 8-3), when the next page is rendered, then the nav reflects the new role on the very next request — no stale "Admin" link from a cached template
