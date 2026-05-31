@@ -64,5 +64,28 @@
             evt.detail.shouldSwap = true;
             evt.detail.isError = false;
         }
+
+        // #37 — long-lived tabs detect a server-side session-row mint
+        // (anonymous-session purge, soft-delete cleanup, expired-auth
+        // cleanup post-#41) via `HX-Trigger: csrf-rotated` paired with
+        // `X-CSRF-Token-Rotated: <new-token>`. Re-sync the new token
+        // into `<meta name="csrf-token">` and every `_csrf_token`
+        // hidden input so the NEXT mutation carries the fresh token
+        // instead of 403'ing against the stale one still embedded in
+        // the page. No swap behaviour change — purely a sibling effect
+        // alongside the regular response.
+        if (triggers.indexOf("csrf-rotated") !== -1) {
+            var newToken = xhr.getResponseHeader("X-CSRF-Token-Rotated");
+            if (typeof newToken === "string" && newToken.length > 0) {
+                var meta = document.querySelector('meta[name="csrf-token"]');
+                if (meta) {
+                    meta.setAttribute("content", newToken);
+                }
+                var inputs = document.querySelectorAll('input[name="_csrf_token"]');
+                for (var i = 0; i < inputs.length; i++) {
+                    inputs[i].value = newToken;
+                }
+            }
+        }
     });
 })();
