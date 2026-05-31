@@ -25,7 +25,7 @@
     "applicationCategory": "BusinessApplication",
     "applicationSubCategory": "Library Management",
     "operatingSystem": "Docker (Linux, Windows, macOS, ARM64)",
-    "softwareVersion": "1.8.2",
+    "softwareVersion": "1.8.3",
     "license": "https://www.gnu.org/licenses/agpl-3.0.html",
     "downloadUrl": "https://github.com/guycorbaz/mybibli",
     "codeRepository": "https://github.com/guycorbaz/mybibli",
@@ -85,7 +85,7 @@
       <a href="./index.html" class="flex items-center gap-2 font-semibold text-stone-900 dark:text-stone-100">
         <img src="./logo/svg/mybibli-icon.svg" alt="" aria-hidden="true" class="w-7 h-7">
         <span>mybibli</span>
-        <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-200/60 dark:ring-emerald-800/50">v1.8.2</span>
+        <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-200/60 dark:ring-emerald-800/50">v1.8.3</span>
       </a>
 
       <nav aria-label="Primary" class="hidden md:flex items-center gap-1 text-sm">
@@ -132,7 +132,7 @@
         <div class="max-w-3xl">
           <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-600/10 dark:bg-indigo-400/10 ring-1 ring-indigo-600/20 dark:ring-indigo-400/30 text-indigo-700 dark:text-indigo-300 text-xs font-medium">
             <span class="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400"></span>
-            v1.8.2 · current
+            v1.8.3 · current
           </span>
           <h1 class="mt-5 text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-stone-900 dark:text-stone-50">
             Your home library,<br class="hidden sm:block" />
@@ -417,9 +417,9 @@
         <div class="reveal relative overflow-hidden rounded-2xl p-10 sm:p-14 bg-gradient-to-br from-indigo-600 via-indigo-700 to-pink-600 text-white shadow-xl">
           <div class="absolute inset-0 grid-pattern opacity-20" aria-hidden="true"></div>
           <div class="relative">
-            <h2 class="text-2xl sm:text-3xl font-bold">v1.8.2 is live.</h2>
+            <h2 class="text-2xl sm:text-3xl font-bold">v1.8.3 is live.</h2>
             <p class="mt-3 text-indigo-100 max-w-2xl">
-              <strong class="text-white">v1.8.2 — open-issue closure sweep on v1.8.1</strong> retires 7 GitHub issues in one patch with zero user-visible behavior change. <strong>#151</strong> — UX spec + Epic 9.18 nav-link tables aligned with the shipped anonymous nav set. <strong>#365</strong> — three drift-prone <code class="font-mono text-xs bg-white/15 px-1 rounded">generate_session_token</code> copies collapsed to one in <code class="font-mono text-xs bg-white/15 px-1 rounded">src/utils.rs</code>; the historic empty-CSRF fallback in the <code class="font-mono text-xs bg-white/15 px-1 rounded">Session</code> extractor now mints an ephemeral token. <strong>#370</strong> — typed <code class="font-mono text-xs bg-white/15 px-1 rounded">AppError::VersionMismatch</code> / <code class="font-mono text-xs bg-white/15 px-1 rounded">SoftDeleted</code> / <code class="font-mono text-xs bg-white/15 px-1 rounded">TemplateRenderFailed</code> variants render their own localized body instead of a generic Conflict copy; <code class="font-mono text-xs bg-white/15 px-1 rounded">feedback_html</code> re-homed out of <code class="font-mono text-xs bg-white/15 px-1 rounded">routes::catalog</code>; closes #26. <strong>#374</strong> — Python tomllib parser smoke test + seed-drift Rust audit + 8 home filter aria-labels i18n'd into <code class="font-mono text-xs bg-white/15 px-1 rounded">locales/{en,fr,de,it}.yml::home.aria.*</code> + axe-core <code class="font-mono text-xs bg-white/15 px-1 rounded">color-contrast</code> rule re-enabled on the 3 catalog form specs after a global CSS placeholder contrast bump; closes #30 and #18. Pre-built Docker images on Docker Hub.
+              <strong class="text-white">v1.8.3 — second consecutive open-issue closure on v1.8.2</strong> retires 5 GitHub issues in one patch. <strong>#41</strong> — session resolver's `(user_id, role, expired)` decision matrix is now an explicit four-arm match; inconsistent states (soft-deleted user, expired auth) soft-delete the orphan row and mint a fresh anonymous one so `session.user_id.is_some() ⟺ live authenticated user` holds end-to-end. <strong>#20</strong> — windowed pagination on home `/` (at most 11 anchors regardless of total pages; a 10 000-title catalog renders cleanly, and a hostile `?page=999999` clamps). <strong>#37</strong> — when the session resolver mints a fresh row, the response carries <code class="font-mono text-xs bg-white/15 px-1 rounded">HX-Trigger: csrf-rotated</code> + <code class="font-mono text-xs bg-white/15 px-1 rounded">X-CSRF-Token-Rotated</code>; <code class="font-mono text-xs bg-white/15 px-1 rounded">csrf.js</code> re-syncs <code class="font-mono text-xs bg-white/15 px-1 rounded">&lt;meta name="csrf-token"&gt;</code> + every <code class="font-mono text-xs bg-white/15 px-1 rounded">_csrf_token</code> input so long-lived tabs don't 403 on the next mutation. <strong>#23</strong> — typed <code class="font-mono text-xs bg-white/15 px-1 rounded">MetadataError::RateLimited</code> (replaces drift-prone string-match on 429), 0-hour timeout guard (silent-logout-every-request misconfiguration), empty-string normalization at the chain boundary. <strong>#29</strong> — swap <code class="font-mono text-xs bg-white/15 px-1 rounded">serde_yaml 0.9</code> (RUSTSEC-2024-0320) for <code class="font-mono text-xs bg-white/15 px-1 rounded">serde_yaml_ng 0.10</code> + new locale HTML-safety audit. Pre-built Docker images on Docker Hub.
             </p>
             <div class="mt-6 flex flex-wrap gap-3">
               <a href="https://github.com/guycorbaz/mybibli" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-md bg-white text-indigo-700 font-medium hover:bg-indigo-50">

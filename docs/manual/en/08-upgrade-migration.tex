@@ -139,6 +139,58 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.8.3}\label{sec:whats-new-1.8.3}
+
+Version 1.8.3 is a second consecutive open-issue closure sweep on
+v1.8.2, retiring five GitHub issues. \emph{No schema migration that
+needs operator action}; routine \texttt{docker compose pull \&\&
+docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#41 \string— session resolver consistency.} When an
+        admin soft-deletes a user while that user is browsing, or when
+        an authenticated session is past its inactivity timeout, the
+        underlying database row was previously left intact and the
+        Session in memory ended up in a half-state (an authenticated
+        identity that nonetheless denied authentication). The resolver
+        now soft-deletes the orphan row in both cases and mints a
+        fresh anonymous session, so the next request always sees a
+        consistent state.
+  \item \textbf{\#20 \string— shorter pagination on the home page.}
+        Previously every page number from 1 to N was rendered. On a
+        large catalog (10\,000 titles \string= 400 pages) this filled
+        the page with 400 anchors and made the tab order useless. The
+        nav now shows at most eleven links: first, last, the current
+        page \string± 3, and a literal \texttt{...} where a gap was
+        collapsed.
+  \item \textbf{\#37 \string— long-lived tabs no longer 403 after a
+        background session rotation.} When the background anonymous-
+        session purge (or the new \#41 cleanup) runs, the tab's stored
+        CSRF token used to drift from the server's stored token, and
+        the very next form submission failed with a \emph{session
+        expired} feedback. The server now signals the rotation on its
+        next response; the JavaScript layer rewrites the page's CSRF
+        token in place, and the next mutation succeeds.
+  \item \textbf{\#23 \string— metadata provider robustness.} A
+        configuration of \texttt{session\_inactivity\_timeout\_hours
+        = 0} (silently accepted before) would have logged everyone
+        out on every request; the loader now refuses zero. Provider
+        rate-limit detection (HTTP 429) uses a structured signal
+        instead of pattern-matching the error message, so future
+        provider message changes can't slip past unnoticed. And a
+        sloppy upstream response that returns an empty string for a
+        missing field no longer overwrites a real value in the
+        database.
+  \item \textbf{\#29 \string— security and i18n hygiene.} Replaced
+        the unmaintained YAML parser dependency
+        (\texttt{serde\_yaml} 0.9, security advisory
+        RUSTSEC-2024-0320) with its actively maintained fork
+        (\texttt{serde\_yaml\_ng} 0.10). New continuous-integration
+        check rejects any future translation that accidentally
+        introduces raw HTML markup into the locale files, closing a
+        latent cross-site-scripting surface.
+\end{itemize}
+
 \section{What's new in 1.8.2}\label{sec:whats-new-1.8.2}
 
 Version 1.8.2 is an open-issue closure sweep on v1.8.1 with \emph{zero
