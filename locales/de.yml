@@ -383,6 +383,8 @@ error:
   language:
     required: Sprache ist erforderlich
   conflict: "Dieser Datensatz wurde durch einen anderen Benutzer geändert. Bitte neu laden und erneut versuchen."
+  version_mismatch: "Ein anderer Benutzer hat dieses %{entity} gerade geändert. Bitte laden Sie die Seite neu, damit Sie die aktuelle Fassung sehen, und versuchen Sie es erneut."
+  soft_deleted: "Dieses %{entity} wurde soeben gelöscht. Bitte laden Sie die Seite neu, um die Liste zu aktualisieren."
   delete_has_references: "Löschen nicht möglich: Der Eintrag wird durch aktive Datensätze referenziert."
   contributor:
     has_titles: "%{name} kann nicht gelöscht werden. Dieser Mitwirkende ist mit %{count} Titel(n) verknüpft. Bitte zuerst alle Verknüpfungen entfernen."

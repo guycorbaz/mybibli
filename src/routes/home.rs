@@ -931,7 +931,7 @@ pub async fn home(
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "home" }),
     }
 }
 

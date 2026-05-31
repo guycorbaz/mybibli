@@ -88,7 +88,7 @@ pub async fn contributor_detail(
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),
-            Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+            Err(_) => Err(AppError::TemplateRenderFailed { template: "contributors" }),
         }
     }
 }

@@ -51,7 +51,7 @@ impl TrashService {
             tx.commit().await?;
 
             if exists.is_some() {
-                return Err(AppError::Conflict("version_mismatch".to_string()));
+                return Err(AppError::VersionMismatch { entity: "item" });
             } else {
                 return Err(AppError::NotFound("Item not found in trash".to_string()));
             }
@@ -223,7 +223,7 @@ impl TrashService {
 
         if result.rows_affected() == 0 {
             tx.rollback().await?;
-            return Err(AppError::Conflict("version_mismatch".to_string()));
+            return Err(AppError::VersionMismatch { entity: "item" });
         }
 
         tx.commit().await?;
@@ -383,7 +383,7 @@ impl TrashService {
                 .await?;
 
             if exists.is_some() {
-                return Err(AppError::Conflict("version_mismatch".to_string()));
+                return Err(AppError::VersionMismatch { entity: "item" });
             } else {
                 return Err(AppError::NotFound("Item already gone".to_string()));
             }
@@ -430,8 +430,8 @@ mod tests {
 
         let result = TrashService::restore(&pool, "titles", 1, 1).await;
         assert!(
-            matches!(result, Err(AppError::Conflict(msg)) if msg == "version_mismatch"),
-            "Expected Conflict error with version_mismatch"
+            matches!(result, Err(AppError::VersionMismatch { entity: "item" })),
+            "Expected VersionMismatch error"
         );
 
         Ok(())
@@ -481,7 +481,7 @@ mod tests {
 
         let result = TrashService::permanent_delete(&pool, "titles", 1, 1).await;
         assert!(
-            matches!(result, Err(AppError::Conflict(msg)) if msg == "version_mismatch"),
+            matches!(result, Err(AppError::VersionMismatch { entity: "item" })),
             "Expected Conflict error"
         );
 

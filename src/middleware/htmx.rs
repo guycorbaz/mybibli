@@ -51,12 +51,33 @@ impl OobSwapMode {
 /// An out-of-band update to be appended to the response.
 #[derive(Debug, Clone, Default)]
 pub struct OobUpdate {
+    /// CSS-id selector for the target element. Server-controlled today
+    /// (every call site passes a literal), but #370 sub-item 4 adds a
+    /// defensive sanitization step in `HtmxResponse::body` — if a future
+    /// change ever wires user input into a target field, the sanitizer
+    /// strips the dangerous chars (`<`, `>`, `"`, `'`, `&`) so the
+    /// resulting `<div id="…">` cannot be broken out of.
     pub target: String,
+    /// Pre-rendered HTML fragment that replaces (or appends to) the
+    /// target. Must already be HTML-safe — callers build it through the
+    /// same templates / `feedback_html` helpers as the main response body
+    /// and are responsible for escaping any user data they interpolate.
     pub content: String,
     /// CR #87 — defaults to `Replace` to preserve the project-wide pattern
     /// (story 8-3 / 8-4 admin saves). Opt into `Append` per save handler
     /// where a feedback log makes sense.
     pub swap_mode: OobSwapMode,
+}
+
+/// Defensive sanitizer for `OobUpdate::target` — strips the five
+/// HTML-significant chars so the surrounding `<div id="…">` cannot be
+/// broken out of even if a regression ever lets user input flow into a
+/// target field. Server-only data today; the sanitizer is belt-and-
+/// braces defense in depth (#370 sub-item 4).
+fn sanitize_oob_target(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| !matches!(c, '<' | '>' | '"' | '\'' | '&'))
+        .collect()
 }
 
 /// Response type for HTMX handlers that may include OOB swaps.
@@ -70,12 +91,19 @@ impl HtmxResponse {
     /// `<div id="..." hx-swap-oob="true">` markers for each OOB update.
     /// Factored out of `into_response` so the same body shape can be
     /// re-used by `into_response_with_hx_trigger` (polish-1 AC2).
+    ///
+    /// #370 sub-item 4: every OOB target is run through
+    /// `sanitize_oob_target` so the rendered `id="…"` attribute stays
+    /// scalar even if a future caller wires user input through. `content`
+    /// stays unsanitized by design — it IS HTML and goes through the
+    /// templates / `feedback_html` helpers that escape their own
+    /// interpolated data.
     fn body(self) -> String {
         let mut body = self.main;
         for update in &self.oob {
             body.push_str(&format!(
                 r#"<div id="{}" hx-swap-oob="{}">{}</div>"#,
-                update.target,
+                sanitize_oob_target(&update.target),
                 update.swap_mode.as_hx_attr(),
                 update.content
             ));
@@ -114,6 +142,54 @@ impl IntoResponse for HtmxResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #370 sub-item 4: defensive sanitization on OobUpdate.target.
+    /// Server-controlled today (every call site passes a literal), but
+    /// the sanitizer protects against a future regression that wires
+    /// user input through — the resulting `<div id="…">` attribute
+    /// cannot be broken out of with `<`, `>`, `"`, `'`, or `&`.
+    #[test]
+    fn sanitize_oob_target_strips_html_meta_chars() {
+        assert_eq!(
+            sanitize_oob_target("feedback-list"),
+            "feedback-list",
+            "safe ids pass through unchanged",
+        );
+        assert_eq!(
+            sanitize_oob_target(r#"x"><script>"#),
+            "xscript",
+            "html meta chars stripped",
+        );
+        assert_eq!(
+            sanitize_oob_target("a&b'c"),
+            "abc",
+            "single quote + ampersand stripped",
+        );
+    }
+
+    /// Regression guard: a hostile `target` value cannot inject anything
+    /// outside the `id` attribute. The rendered fragment for an unsafe
+    /// target must still be a single well-formed `<div>`.
+    #[test]
+    fn oob_body_neutralizes_injection_in_target() {
+        let resp = HtmxResponse {
+            main: String::new(),
+            oob: vec![OobUpdate {
+                target: r#"x"><script>alert(1)</script><div id="y"#.to_string(),
+                content: "<span>ok</span>".to_string(),
+                swap_mode: OobSwapMode::Replace,
+            }],
+        };
+        let body = resp.body();
+        assert!(
+            body.contains(r#"<div id="xscriptalert(1)/scriptdiv id=y" hx-swap-oob="true">"#),
+            "target sanitized — no raw `<`/`>`/`\"` survive into the id attr; got: {body}",
+        );
+        assert!(
+            !body.contains("<script>"),
+            "no script tag survives in the rendered fragment: {body}",
+        );
+    }
 
     /// CR #87 — Replace mode emits `hx-swap-oob="true"` (project-wide
     /// default, preserves story 8-3 / 8-4 behavior); Append emits

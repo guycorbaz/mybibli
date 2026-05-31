@@ -144,7 +144,7 @@ pub async fn location_detail(
         Ok(html) => Ok(Html(html).into_response()),
         Err(e) => {
             tracing::error!(error = %e, "Failed to render location detail template");
-            Err(AppError::Internal("Template rendering failed".to_string()))
+            Err(AppError::TemplateRenderFailed { template: "locations" })
         }
     }
 }
@@ -505,7 +505,7 @@ pub async fn locations_page(
         Ok(html) => Ok(Html(html).into_response()),
         Err(e) => {
             tracing::error!(error = %e, "Failed to render locations template");
-            Err(AppError::Internal("Template rendering failed".to_string()))
+            Err(AppError::TemplateRenderFailed { template: "locations" })
         }
     }
 }
@@ -658,7 +658,7 @@ pub async fn edit_location_page(
         Ok(html) => Ok(Html(html).into_response()),
         Err(e) => {
             tracing::error!(error = %e, "Failed to render location edit template");
-            Err(AppError::Internal("Template rendering failed".to_string()))
+            Err(AppError::TemplateRenderFailed { template: "locations" })
         }
     }
 }

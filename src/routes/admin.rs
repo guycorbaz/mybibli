@@ -29,7 +29,7 @@ use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
 use crate::middleware::locale::Locale;
 use crate::models::user::UserModel;
-use crate::routes::catalog::feedback_html_pub;
+use crate::utils::feedback_html;
 use crate::services::admin_health;
 use crate::services::password;
 use crate::tasks::provider_health::{ProviderHealthMap, ProviderStatus};
@@ -458,7 +458,7 @@ pub async fn admin_bulk_cover_refetch(
     if total == 0 {
         // Nothing to do — surface a friendly message, don't lock the
         // status, don't audit-log.
-        return Ok(crate::routes::catalog::feedback_html_pub(
+        return Ok(crate::utils::feedback_html(
             "info",
             &rust_i18n::t!("admin.health.bulk_cover_fetch.empty", locale = loc),
             "",
@@ -544,7 +544,7 @@ pub async fn admin_bulk_cover_refetch(
         total = total
     )
     .to_string();
-    Ok(crate::routes::catalog::feedback_html_pub("success", &message, "")
+    Ok(crate::utils::feedback_html("success", &message, "")
         .into_response())
 }
 
@@ -651,7 +651,7 @@ pub async fn admin_users_create(
     // Render feedback and updated users list
     let success_msg = rust_i18n::t!("admin.users.success_created", locale = loc, username = &username)
         .to_string();
-    let feedback = feedback_html_pub("success", &success_msg, "");
+    let feedback = feedback_html("success", &success_msg, "");
 
     // Fetch fresh users list for the panel (page 1)
     let users_panel_html = render_users_panel(&state, loc, &session, None, None).await?;
@@ -884,7 +884,7 @@ pub async fn admin_users_update(
 
     let success_msg = rust_i18n::t!("admin.users.success_updated", locale = loc, username = &username)
         .to_string();
-    let feedback = feedback_html_pub("success", &success_msg, "");
+    let feedback = feedback_html("success", &success_msg, "");
 
     let row_html = render_user_row(&state, loc, &session, &user).await?;
 
@@ -919,7 +919,7 @@ pub async fn admin_users_deactivate(
 
     let success_msg = rust_i18n::t!("admin.users.success_deactivated", locale = loc, username = &user.username, count = sessions_killed)
         .to_string();
-    let feedback = feedback_html_pub("success", &success_msg, "");
+    let feedback = feedback_html("success", &success_msg, "");
 
     let row_html = render_user_row(&state, loc, &session, &user).await?;
     Ok(HtmxResponse {
@@ -951,7 +951,7 @@ pub async fn admin_users_reactivate(
 
     let success_msg = rust_i18n::t!("admin.users.success_reactivated", locale = loc, username = &user.username)
         .to_string();
-    let feedback = feedback_html_pub("success", &success_msg, "");
+    let feedback = feedback_html("success", &success_msg, "");
 
     let row_html = render_user_row(&state, loc, &session, &user).await?;
     Ok(HtmxResponse {
@@ -1122,7 +1122,7 @@ pub async fn admin_trash_permanent_delete(
     // Guard: prevent self-deletion of users
     if table == "users" && id == user_id {
         let msg = rust_i18n::t!("admin.users.error_cannot_delete_self", locale = loc).to_string();
-        let feedback = feedback_html_pub("error", &msg, "");
+        let feedback = feedback_html("error", &msg, "");
         return Ok((StatusCode::FORBIDDEN, Html(feedback)).into_response());
     }
 
@@ -1136,7 +1136,7 @@ pub async fn admin_trash_permanent_delete(
 
         if active_admin_count <= 1 {
             let msg = rust_i18n::t!("admin.users.error_cannot_delete_last_admin", locale = loc).to_string();
-            let feedback = feedback_html_pub("error", &msg, "");
+            let feedback = feedback_html("error", &msg, "");
             return Ok((StatusCode::FORBIDDEN, Html(feedback)).into_response());
         }
     }
@@ -1144,7 +1144,7 @@ pub async fn admin_trash_permanent_delete(
     // Verify user typed the correct item name (with trim for whitespace normalization)
     if form.confirmed_name.trim() != entry.item_name.trim() {
         let msg = rust_i18n::t!("admin.trash.delete_permanent_error_name_mismatch", locale = loc).to_string();
-        let feedback = feedback_html_pub("error", &msg, "");
+        let feedback = feedback_html("error", &msg, "");
         return Ok((StatusCode::BAD_REQUEST, Html(feedback)).into_response());
     }
 
@@ -1185,7 +1185,7 @@ pub async fn admin_trash_permanent_delete(
 
     let success_msg = rust_i18n::t!("admin.trash.delete_permanent_success", locale = loc, name = &entry.item_name)
         .to_string();
-    let feedback = feedback_html_pub("success", &success_msg, "");
+    let feedback = feedback_html("success", &success_msg, "");
 
     // Patch P12: re-render the panel with the SAME filters/pagination the
     // admin was viewing — previously this hard-reset to page 1 with no

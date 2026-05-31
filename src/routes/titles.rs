@@ -18,7 +18,7 @@ use crate::models::genre::GenreModel;
 use crate::models::series::{SeriesModel, TitleSeriesAssignment};
 use crate::models::title::{SimilarTitle, TitleModel, detect_edited_fields};
 use crate::models::volume::VolumeModel;
-use crate::routes::catalog::feedback_html_pub;
+use crate::utils::feedback_html;
 use crate::services::cover::{CoverService, resolve_cover_url_with_fallback};
 use crate::services::series::SeriesService;
 use crate::services::title::{FieldConflict, TitleService};
@@ -225,7 +225,7 @@ pub async fn title_detail(
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),
-            Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+            Err(_) => Err(AppError::TemplateRenderFailed { template: "titles" }),
         }
     }
 }
@@ -583,7 +583,7 @@ pub async fn title_edit_form(
 
     match template.render() {
         Ok(html) => Ok(Html(html)),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "titles" }),
     }
 }
 
@@ -897,7 +897,7 @@ pub async fn update_title(
     let mut html = metadata_display_html(&updated, &genre_name, &session, has_code, loc);
 
     // Append success feedback as OOB swap
-    let feedback = feedback_html_pub(
+    let feedback = feedback_html(
         "success",
         &rust_i18n::t!("metadata.save_changes", locale = loc),
         "",
@@ -973,7 +973,7 @@ pub async fn redownload_metadata(
             let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
             let has_code = true;
             let mut html = metadata_display_html(&title, &genre_name, &session, has_code, loc);
-            let feedback = feedback_html_pub(
+            let feedback = feedback_html(
                 "error",
                 &rust_i18n::t!("metadata.redownload_failed", locale = loc),
                 "",
@@ -1006,7 +1006,7 @@ pub async fn redownload_metadata(
         let genre_name = GenreModel::find_name_by_id(pool, updated.genre_id).await?;
         let has_code = true;
         let mut html = metadata_display_html(&updated, &genre_name, &session, has_code, loc);
-        let feedback = feedback_html_pub(
+        let feedback = feedback_html(
             "success",
             &rust_i18n::t!("metadata.all_updated", locale = loc),
             "",
@@ -1029,7 +1029,7 @@ pub async fn redownload_metadata(
         // No actual changes
         let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
         let mut html = metadata_display_html(&title, &genre_name, &session, true, loc);
-        let feedback = feedback_html_pub(
+        let feedback = feedback_html(
             "info",
             &rust_i18n::t!("metadata.no_changes", locale = loc),
             "",
@@ -1077,7 +1077,7 @@ pub async fn redownload_metadata(
 
     match confirm.render() {
         Ok(html) => Ok(Html(html)),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "titles" }),
     }
 }
 
@@ -1628,7 +1628,7 @@ pub async fn confirm_metadata(
         kept = kept_count
     )
     .to_string();
-    let feedback = feedback_html_pub("success", &message, "");
+    let feedback = feedback_html("success", &message, "");
     html.push_str(&format!(
         r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
     ));

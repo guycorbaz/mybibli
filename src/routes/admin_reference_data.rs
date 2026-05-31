@@ -26,7 +26,7 @@ use crate::models::genre::GenreModel;
 use crate::models::location_node_type::LocationNodeTypeModel;
 use crate::models::volume_state::VolumeStateModel;
 use crate::models::{CONFLICT_NAME_TAKEN, CreateOutcome, DeleteOutcome};
-use crate::routes::catalog::feedback_html_pub;
+use crate::utils::feedback_html;
 
 /// Storage_locations.node_type column is VARCHAR(50). Renaming a node type
 /// to a longer name would fail the cascade UPDATE with a Data-too-long DB
@@ -563,12 +563,12 @@ pub async fn admin_reference_data_panel(
 
 fn success_feedback(loc: &'static str, key: &str, name: &str) -> String {
     let msg = rust_i18n::t!(key, locale = loc, name = name).to_string();
-    feedback_html_pub("success", &msg, "")
+    feedback_html("success", &msg, "")
 }
 
 fn success_feedback_with_count(loc: &'static str, key: &str, name: &str, count: u64) -> String {
     let msg = rust_i18n::t!(key, locale = loc, name = name, count = count).to_string();
-    feedback_html_pub("success", &msg, "")
+    feedback_html("success", &msg, "")
 }
 
 // ─── Genres CRUD ───────────────────────────────────────────────────

@@ -385,6 +385,8 @@ error:
   language:
     required: La langue est obligatoire
   conflict: "Cet enregistrement a été modifié par un autre utilisateur. Veuillez recharger et réessayer."
+  version_mismatch: "Un autre utilisateur vient de modifier ce %{entity}. Rechargez la page pour voir la dernière version, puis réessayez."
+  soft_deleted: "Ce %{entity} vient d'être supprimé. Rechargez la page pour rafraîchir la liste."
   delete_has_references: "Suppression impossible : l'élément est référencé par des enregistrements actifs."
   contributor:
     has_titles: "Impossible de supprimer %{name}. Ce contributeur est associé à %{count} titre(s). Retirez d'abord le contributeur de tous les titres."

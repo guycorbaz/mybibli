@@ -68,6 +68,85 @@ pub fn html_escape(s: &str) -> String {
         .replace('\'', "&#x27;")
 }
 
+/// Render a FeedbackEntry HTML fragment for HTMX swap into `#feedback-list`.
+///
+/// Re-homed from `src/routes/catalog.rs` (#370 sub-item 2) — the prior
+/// `pub fn feedback_html_pub` was a thin wrapper that crossed module
+/// boundaries (the error layer depended on a `routes::catalog::` symbol
+/// just to render its body). Centralizing in `utils` matches the layering
+/// of `html_escape` above and removes the spurious dependency.
+///
+/// `variant` ∈ `{"success", "info", "warning", "error"}` (anything else
+/// renders as `error`). `message` and `suggestion` are HTML-escaped here
+/// — callers MUST NOT pre-escape. `suggestion = ""` suppresses the second
+/// paragraph. `warning` / `error` carry a dismiss button bound to the
+/// CSP-clean `data-action="dismiss-feedback"` delegated handler in
+/// `static/js/mybibli.js`; `success` / `info` are auto-fade only.
+pub fn feedback_html(variant: &str, message: &str, suggestion: &str) -> String {
+    let (border_color, bg_color, icon_color, icon_path) = match variant {
+        "success" => (
+            "border-green-500",
+            "bg-green-50 dark:bg-green-900/20",
+            "text-green-600 dark:text-green-400",
+            r#"<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />"#,
+        ),
+        "info" => (
+            "border-blue-500",
+            "bg-blue-50 dark:bg-blue-900/20",
+            "text-blue-600 dark:text-blue-400",
+            r#"<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" />"#,
+        ),
+        "warning" => (
+            "border-amber-500",
+            "bg-amber-50 dark:bg-amber-900/20",
+            "text-amber-600 dark:text-amber-400",
+            r#"<path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />"#,
+        ),
+        _ => (
+            "border-red-500",
+            "bg-red-50 dark:bg-red-900/20",
+            "text-red-600 dark:text-red-400",
+            r#"<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />"#,
+        ),
+    };
+
+    let suggestion_html = if suggestion.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"<p class="text-sm text-stone-500 dark:text-stone-400 mt-1">{}</p>"#,
+            html_escape(suggestion)
+        )
+    };
+
+    let dismiss_html = if variant == "warning" || variant == "error" {
+        r#"<button type="button" class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1 min-w-[44px] min-h-[44px] md:min-w-[36px] md:min-h-[36px] flex items-center justify-center" aria-label="Dismiss" data-action="dismiss-feedback"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg></button>"#
+    } else {
+        ""
+    };
+
+    format!(
+        r#"<div class="p-3 border-l-4 {} {} rounded-r feedback-entry" role="status" data-feedback-variant="{}">
+  <div class="flex items-start gap-2">
+    <svg class="{} w-5 h-5 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">{}</svg>
+    <div class="flex-1">
+      <p class="text-stone-700 dark:text-stone-300">{}</p>
+      {}
+    </div>
+    {}
+  </div>
+</div>"#,
+        border_color,
+        bg_color,
+        variant,
+        icon_color,
+        icon_path,
+        html_escape(message),
+        suggestion_html,
+        dismiss_html
+    )
+}
+
 /// Locale-aware percentage formatter (story 9-3).
 ///
 /// EN: `"33.3%"` — period decimal, no space before `%`.

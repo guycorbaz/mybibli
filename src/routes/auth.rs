@@ -126,7 +126,7 @@ pub async fn login_page(
         Ok(html) => Ok(Html(html).into_response()),
         Err(e) => {
             tracing::error!(error = %e, "Failed to render login template");
-            Err(AppError::Internal("Template rendering failed".to_string()))
+            Err(AppError::TemplateRenderFailed { template: "auth" })
         }
     }
 }
@@ -263,7 +263,7 @@ fn render_login_error(
         Ok(html) => Ok((jar, Html(html).into_response())),
         Err(e) => {
             tracing::error!(error = %e, "Failed to render login template");
-            Err(AppError::Internal("Template rendering failed".to_string()))
+            Err(AppError::TemplateRenderFailed { template: "auth" })
         }
     }
 }
