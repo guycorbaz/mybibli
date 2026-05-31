@@ -26,6 +26,53 @@ pub struct MetadataResult {
     pub dewey_code: Option<String>,
 }
 
+/// Trim a metadata string and treat the empty / whitespace-only result
+/// as `None`. #23 sub-item 7: pre-fix providers occasionally produced
+/// `Some("".to_string())` for missing-but-emitted fields (e.g. an empty
+/// `<dc:subject>` in a SRU response), and the downstream merge then
+/// COALESCEd that empty string into the DB column — visually identical
+/// to NULL but distinct in queries and silently displacing
+/// `manually_edited_fields`-protected values.
+pub fn normalize_empty(s: Option<String>) -> Option<String> {
+    s.and_then(|v| {
+        let trimmed = v.trim();
+        if trimmed.is_empty() {
+            None
+        } else if trimmed.len() == v.len() {
+            // Avoid the allocation when the input is already trimmed.
+            Some(v)
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+impl MetadataResult {
+    /// Drop empty / whitespace-only strings on every `Option<String>`
+    /// field and filter empty entries from `authors`. Providers should
+    /// call this right before returning so the downstream merge never
+    /// sees an empty string masquerading as a real value. #23 sub-item 7.
+    pub fn normalize_empty_strings(mut self) -> Self {
+        self.title = normalize_empty(self.title);
+        self.subtitle = normalize_empty(self.subtitle);
+        self.description = normalize_empty(self.description);
+        self.publisher = normalize_empty(self.publisher);
+        self.publication_date = normalize_empty(self.publication_date);
+        self.cover_url = normalize_empty(self.cover_url);
+        self.language = normalize_empty(self.language);
+        self.total_duration = normalize_empty(self.total_duration);
+        self.age_rating = normalize_empty(self.age_rating);
+        self.issue_number = normalize_empty(self.issue_number);
+        self.dewey_code = normalize_empty(self.dewey_code);
+        self.authors = self
+            .authors
+            .into_iter()
+            .filter_map(|a| normalize_empty(Some(a)))
+            .collect();
+        self
+    }
+}
+
 /// Trait for external metadata providers (BnF, Google Books, Open Library, etc.).
 #[async_trait]
 pub trait MetadataProvider: Send + Sync {
@@ -69,6 +116,14 @@ pub enum MetadataError {
     Network(String),
     Parse(String),
     Timeout,
+    /// #23 — typed rate-limit signal. Providers that detect HTTP 429
+    /// `TOO_MANY_REQUESTS` MUST return this variant rather than wrapping
+    /// the 429 status into a `Network(String)` message containing the
+    /// literal "429". The chain in `metadata/chain.rs` matches on this
+    /// variant for cleaner log triage (`provider_rate_limited` field on
+    /// the tracing span) and so a future "back off and retry the next
+    /// provider in the chain" policy has a structured signal to gate on.
+    RateLimited,
 }
 
 impl std::fmt::Display for MetadataError {
@@ -77,6 +132,9 @@ impl std::fmt::Display for MetadataError {
             MetadataError::Network(msg) => write!(f, "Network error: {msg}"),
             MetadataError::Parse(msg) => write!(f, "Parse error: {msg}"),
             MetadataError::Timeout => write!(f, "Request timed out"),
+            MetadataError::RateLimited => {
+                write!(f, "Rate limited by provider (HTTP 429)")
+            }
         }
     }
 }
@@ -86,6 +144,85 @@ impl std::error::Error for MetadataError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ─── #23 — typed RateLimited + normalize_empty_strings ──────────
+
+    #[test]
+    fn metadata_error_rate_limited_display() {
+        let e = MetadataError::RateLimited;
+        let s = e.to_string();
+        assert!(s.contains("Rate limited"), "got {s:?}");
+        // The pre-#23 chain matched `err_str.contains("429")`. The new
+        // Display still includes 429 so logs stay grep-friendly.
+        assert!(s.contains("429"), "Display should still mention HTTP 429 for log grep: got {s:?}");
+    }
+
+    #[test]
+    fn normalize_empty_string_helper_strips_empties() {
+        assert_eq!(normalize_empty(None), None);
+        assert_eq!(normalize_empty(Some(String::new())), None);
+        assert_eq!(normalize_empty(Some("   ".to_string())), None);
+        assert_eq!(normalize_empty(Some("\t\n".to_string())), None);
+        assert_eq!(
+            normalize_empty(Some("  Gallimard  ".to_string())),
+            Some("Gallimard".to_string()),
+        );
+        assert_eq!(
+            normalize_empty(Some("Gallimard".to_string())),
+            Some("Gallimard".to_string()),
+        );
+    }
+
+    #[test]
+    fn metadata_result_normalize_drops_empty_optional_strings() {
+        // Mix of empty / whitespace / real values across every
+        // Option<String> field. The normalized result must keep the real
+        // values and turn every empty/whitespace one into None.
+        let result = MetadataResult {
+            title: Some("Real title".to_string()),
+            subtitle: Some(String::new()),
+            description: Some("   ".to_string()),
+            authors: vec![
+                "Real author".to_string(),
+                String::new(),
+                "  ".to_string(),
+                "  Trimmed  ".to_string(),
+            ],
+            publisher: Some(String::new()),
+            publication_date: Some("\t".to_string()),
+            cover_url: Some("https://example.com/cover.jpg".to_string()),
+            language: Some(String::new()),
+            page_count: Some(123), // u32 fields are untouched
+            total_duration: Some(String::new()),
+            age_rating: Some(String::new()),
+            issue_number: Some(String::new()),
+            dewey_code: Some(String::new()),
+            ..MetadataResult::default()
+        }
+        .normalize_empty_strings();
+
+        assert_eq!(result.title.as_deref(), Some("Real title"));
+        assert!(result.subtitle.is_none());
+        assert!(result.description.is_none());
+        assert_eq!(
+            result.authors,
+            vec!["Real author".to_string(), "Trimmed".to_string()],
+            "empty authors stripped, whitespace trimmed",
+        );
+        assert!(result.publisher.is_none());
+        assert!(result.publication_date.is_none());
+        assert_eq!(
+            result.cover_url.as_deref(),
+            Some("https://example.com/cover.jpg"),
+            "real URL must survive",
+        );
+        assert!(result.language.is_none());
+        assert_eq!(result.page_count, Some(123), "numeric fields untouched");
+        assert!(result.total_duration.is_none());
+        assert!(result.age_rating.is_none());
+        assert!(result.issue_number.is_none());
+        assert!(result.dewey_code.is_none());
+    }
 
     #[test]
     fn test_metadata_result_default() {

@@ -162,8 +162,8 @@ impl MetadataProvider for OpenLibraryProvider {
         if status.as_u16() == 404 {
             return Ok(None);
         }
-        if status.as_u16() == 429 {
-            return Err(MetadataError::Network("429 Too Many Requests".to_string()));
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(MetadataError::RateLimited);
         }
         if !status.is_success() {
             return Err(MetadataError::Network(format!(
