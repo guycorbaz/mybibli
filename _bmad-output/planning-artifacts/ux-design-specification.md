@@ -1769,7 +1769,7 @@ Before specifying individual components, behavioral analysis identified 5 groups
 | Link | Anonymous | Librarian | Admin |
 |------|-----------|-----------|-------|
 | Home (/) | ✅ (logo) | ✅ (logo) | ✅ (logo) |
-| Catalog (/catalog) | — | ✅ | ✅ |
+| Catalog (/catalog) | ✅ (read-only) | ✅ | ✅ |
 | Loans (/loans) | — | ✅ | ✅ |
 | Series (/series) | ✅ | ✅ | ✅ |
 | Locations (/locations) | ✅ | ✅ | ✅ |
