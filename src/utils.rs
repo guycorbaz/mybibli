@@ -1,3 +1,33 @@
+/// Generate a STANDARD-base64-encoded 32-byte session token (44 chars
+/// w/ padding). Canonical implementation for `sessions.token`. Earlier
+/// versions of the codebase duplicated this function across
+/// `routes/auth.rs`, `services/auth.rs`, and `middleware/auth.rs`; the
+/// three copies drifted with comments and contracts. Centralized here
+/// (the `utils` layer depends on nothing else inside the crate, so no
+/// module dependency cycle is introduced).
+///
+/// STANDARD (not URL-safe) base64 matches the historic on-disk format;
+/// the `+`/`/`/`=` chars get percent-encoded inside `Set-Cookie` values
+/// and decoded by the session resolver on the way back in. CSRF tokens
+/// use URL_SAFE_NO_PAD — see `generate_csrf_token` below.
+pub fn generate_session_token() -> String {
+    use base64::Engine;
+    let bytes: [u8; 32] = rand::random();
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+/// Generate a URL_SAFE_NO_PAD-base64-encoded 32-byte CSRF token (43
+/// chars). Canonical implementation for `sessions.csrf_token`. Previously
+/// duplicated across `middleware/auth.rs` (canonical) and re-exported
+/// from `middleware/csrf.rs`; centralizing in `utils` lets callers
+/// (`services/auth.rs`, `services/setup.rs`, `routes/auth.rs`) import
+/// directly instead of routing through middleware modules.
+pub fn generate_csrf_token() -> String {
+    use base64::Engine;
+    let bytes: [u8; 32] = rand::random();
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
 /// Return `/path` or `/path?query` from an `axum::http::Uri`, stripping the
 /// scheme, host, and fragment. Used to populate the `current_url` hidden
 /// field on the language-toggle form (story 7-3 AC 8) so clicking FR/EN
@@ -257,6 +287,47 @@ pub fn base_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generate_session_token_length_is_44() {
+        // 32 bytes → STANDARD base64 with padding → 44 chars. Locks the
+        // wire format expected by the `sessions.token` schema (VARCHAR(64))
+        // and by `tasks/anonymous_session_purge.rs` (which assumes 44-char
+        // tokens when crafting LIKE patterns).
+        assert_eq!(generate_session_token().len(), 44);
+    }
+
+    #[test]
+    fn generate_session_token_is_unique() {
+        assert_ne!(generate_session_token(), generate_session_token());
+    }
+
+    #[test]
+    fn generate_csrf_token_length_is_43() {
+        // 32 bytes → URL_SAFE_NO_PAD base64 → 43 chars (no `=` padding).
+        // Matches the existing CSRF wire format read by
+        // `templates/layouts/base.html` (the `<meta name="csrf-token">`
+        // value) and `static/js/csrf.js` (the `X-CSRF-Token` header).
+        assert_eq!(generate_csrf_token().len(), 43);
+    }
+
+    #[test]
+    fn generate_csrf_token_is_unique() {
+        assert_ne!(generate_csrf_token(), generate_csrf_token());
+    }
+
+    #[test]
+    fn generate_csrf_token_is_url_safe_charset() {
+        // Sanity: URL_SAFE base64 uses `[A-Za-z0-9_-]` only — no `+`/`/`/`=`.
+        // A regression that swapped to STANDARD here would silently break
+        // the `X-CSRF-Token` header on Set-Cookie + Cookie round-trips.
+        let tok = generate_csrf_token();
+        assert!(
+            tok.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'),
+            "CSRF token must use URL-safe charset: {tok:?}"
+        );
+    }
 
     #[test]
     fn test_current_url_path_only() {

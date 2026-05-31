@@ -99,24 +99,6 @@ impl Session {
     }
 }
 
-/// Generate a URL-safe base64-encoded 32-byte CSRF token. Co-located with
-/// the auth middleware so the session resolver can mint anonymous-session
-/// tokens without pulling in the CSRF-middleware module (which would
-/// create a circular dependency).
-pub fn generate_csrf_token() -> String {
-    use base64::Engine;
-    let bytes: [u8; 32] = rand::random();
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
-}
-
-/// Generate a session token matching the 44-char base64 format used by
-/// `src/routes/auth.rs::generate_session_token`.
-fn generate_session_token() -> String {
-    use base64::Engine;
-    let bytes: [u8; 32] = rand::random();
-    base64::engine::general_purpose::STANDARD.encode(bytes)
-}
-
 /// Session resolver middleware. Runs on every request. Reads the
 /// `session` cookie, resolves the session row (authenticated OR
 /// anonymous) via `SessionModel::find_resolved`, and mints a fresh
@@ -279,8 +261,8 @@ async fn resolve_or_mint(
     // down, unique-collision, etc.) fall back to an in-memory session
     // so the request still completes; the client gets a fresh token on
     // the next request.
-    let new_session_token = generate_session_token();
-    let new_csrf_token = generate_csrf_token();
+    let new_session_token = crate::utils::generate_session_token();
+    let new_csrf_token = crate::utils::generate_csrf_token();
     match SessionModel::insert_anonymous(&state.pool, &new_session_token, &new_csrf_token).await {
         Ok(()) => (
             Session {
@@ -366,12 +348,25 @@ impl FromRequestParts<crate::AppState> for Session {
         // middleware still need a Session. Read the cookie and look up
         // the authenticated session (anonymous-DB-row minting is
         // middleware-only; the extractor never writes cookies).
+        //
+        // #365: when the fallback returns an anonymous session, mint a
+        // fresh ephemeral CSRF token instead of the historic
+        // `String::new()` placeholder. The empty-string fallback was a
+        // latent footgun — two anonymous sessions both carrying `""`
+        // would treat the empty form-input as a valid CSRF match in the
+        // constant-time compare. Production never reaches this path (the
+        // resolver middleware always runs first and populates the
+        // Extension), but tests that exercise CSRF-protected POSTs
+        // without wiring the resolver would otherwise observe the
+        // empty-matches-empty surprise.
         let jar = CookieJar::from_request_parts(parts, state)
             .await
             .unwrap_or_default();
 
         let Some(cookie) = jar.get("session") else {
-            return Ok(Session::anonymous_with_token(String::new()));
+            return Ok(Session::anonymous_with_token(
+                crate::utils::generate_csrf_token(),
+            ));
         };
 
         let token = cookie.value();
@@ -395,7 +390,9 @@ impl FromRequestParts<crate::AppState> for Session {
                     preferred_language: row.preferred_language,
                 })
             }
-            _ => Ok(Session::anonymous_with_token(String::new())),
+            _ => Ok(Session::anonymous_with_token(
+                crate::utils::generate_csrf_token(),
+            )),
         }
     }
 }
@@ -667,25 +664,9 @@ mod tests {
         assert!(session.require_role(Role::Librarian, "fr").is_ok());
     }
 
-    #[test]
-    fn test_generate_csrf_token_length_and_charset() {
-        let tok = generate_csrf_token();
-        // URL-safe base64 of 32 bytes, no padding = 43 chars.
-        assert_eq!(tok.len(), 43);
-        for c in tok.chars() {
-            assert!(
-                c.is_ascii_alphanumeric() || c == '-' || c == '_',
-                "unexpected char {c:?} in CSRF token"
-            );
-        }
-    }
-
-    #[test]
-    fn test_generate_csrf_token_unique() {
-        let a = generate_csrf_token();
-        let b = generate_csrf_token();
-        assert_ne!(a, b, "token generator must produce distinct values");
-    }
+    // generate_csrf_token / generate_session_token live in src/utils.rs
+    // post-#365 and carry their own length / charset / uniqueness tests
+    // there. No duplicated coverage here.
 
     #[test]
     fn test_anonymous_with_token_preserves_token() {
