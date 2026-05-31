@@ -215,45 +215,81 @@ async fn resolve_or_mint(
         let now = chrono::Utc::now();
         let expired = SessionModel::is_expired(row.last_activity, now, timeout_secs);
 
-        if row.user_id.is_some() && !expired {
-            // Authenticated + fresh — refresh last_activity fire-and-forget.
-            let token_clone = row.token.clone();
-            let pool_clone = state.pool.clone();
-            tokio::spawn(async move {
-                let _ = SessionModel::update_last_activity(&pool_clone, &token_clone).await;
-            });
-            let role = row
-                .role
-                .as_deref()
-                .map(Role::from_db)
-                .unwrap_or(Role::Anonymous);
-            return (
-                Session {
-                    token: Some(row.token),
-                    user_id: row.user_id,
-                    role,
-                    csrf_token: row.csrf_token,
-                    preferred_language: row.preferred_language,
-                },
-                None,
-            );
-        }
+        match (row.user_id, row.role.as_deref(), expired) {
+            // Happy path — authenticated, user still active, session fresh.
+            // Refresh last_activity fire-and-forget.
+            (Some(_), Some(role_str), false) => {
+                let token_clone = row.token.clone();
+                let pool_clone = state.pool.clone();
+                tokio::spawn(async move {
+                    let _ = SessionModel::update_last_activity(&pool_clone, &token_clone).await;
+                });
+                return (
+                    Session {
+                        token: Some(row.token),
+                        user_id: row.user_id,
+                        role: Role::from_db(role_str),
+                        csrf_token: row.csrf_token,
+                        preferred_language: row.preferred_language,
+                    },
+                    None,
+                );
+            }
 
-        // Anonymous row, OR authenticated-but-expired. Reuse the row's
-        // CSRF token so the synchronizer-pattern stays stable across
-        // requests. Do NOT refresh last_activity — an expired
-        // authenticated session must stay expired (cannot revive
-        // itself) and anonymous rows decay via the daily purge task.
-        return (
-            Session {
-                token: Some(row.token),
-                user_id: None,
-                role: Role::Anonymous,
-                csrf_token: row.csrf_token,
-                preferred_language: None,
-            },
-            None,
-        );
+            // #41 — inconsistent state. Two shapes share one cleanup:
+            //   - `user_id = Some(N)` + `role = None`: the LEFT JOIN
+            //     excluded the user because `u.deleted_at IS NOT NULL`,
+            //     i.e. the user was soft-deleted while the browser kept
+            //     using its old cookie. Pre-fix, the resolver kept
+            //     `user_id = Some(N)` on the Session while flipping
+            //     `role` to Anonymous via `unwrap_or` — leaving downstream
+            //     code that gates on `user_id.is_some()` looking at a
+            //     stale identity.
+            //   - `user_id = Some(N)` + `expired = true`: the
+            //     authenticated session timed out but the live DB row
+            //     still references the user. Pre-fix, the resolver
+            //     returned `user_id = None, token = Some(row.token)` —
+            //     a token still pointing at a LIVE authenticated row
+            //     while the Session denied authentication.
+            //
+            // Single cleanup for both: soft-delete the orphan row, fall
+            // through to mint a fresh anonymous session. After this
+            // change `session.user_id.is_some() ⟺ row references a live
+            // authenticated user` holds as a clean invariant.
+            (Some(_), _, _) => {
+                if let Err(e) = SessionModel::soft_delete(&state.pool, &row.token).await {
+                    // Best-effort cleanup. If the delete fails (DB hiccup,
+                    // FK trouble), the next request will retry — meanwhile
+                    // we still mint a fresh anonymous row below so the
+                    // current request doesn't end up returning the
+                    // inconsistent Session.
+                    tracing::warn!(
+                        error = %e,
+                        token = %row.token,
+                        "failed to soft-delete inconsistent session row (#41) — falling through to anonymous mint",
+                    );
+                }
+                // intentionally fall through to anonymous mint
+            }
+
+            // Genuinely anonymous row (user_id = None) — reuse it. The
+            // row's CSRF token stays stable across requests so the
+            // synchronizer-pattern keeps working without rotation.
+            // No `last_activity` refresh: anonymous rows decay via the
+            // 7-day daily purge.
+            (None, _, _) => {
+                return (
+                    Session {
+                        token: Some(row.token),
+                        user_id: None,
+                        role: Role::Anonymous,
+                        csrf_token: row.csrf_token,
+                        preferred_language: None,
+                    },
+                    None,
+                );
+            }
+        }
     }
 
     // No cookie, unparseable cookie, or cookie points to a soft-deleted
@@ -675,6 +711,227 @@ mod tests {
         assert_eq!(s.role, Role::Anonymous);
         assert!(s.token.is_none());
         assert!(s.user_id.is_none());
+    }
+
+    // ─── #41 — resolver-invariant tests ────────────────────────────
+    //
+    // After #41, `resolve_or_mint` upholds the invariant
+    //   `session.user_id.is_some() ⟺ row references a live, fresh
+    //    authenticated user`.
+    // The two inconsistency shapes the issue called out are:
+    //   1. session row references a user whose `deleted_at IS NOT NULL`
+    //      (admin soft-deleted the user while the user was browsing),
+    //   2. session row is authenticated but `last_activity` is older
+    //      than the configured timeout.
+    // Both must produce a fresh anonymous session AND soft-delete the
+    // stale row so the next request can't pick it up again.
+
+    fn build_test_state(pool: crate::db::DbPool) -> AppState {
+        AppState {
+            pool,
+            settings: std::sync::Arc::new(std::sync::RwLock::new(
+                crate::config::AppSettings::default(),
+            )),
+            http_client: reqwest::Client::new(),
+            registry: std::sync::Arc::new(crate::metadata::registry::ProviderRegistry::new()),
+            covers_dir: std::path::PathBuf::from("/tmp"),
+            provider_health: crate::tasks::provider_health::new_provider_health_map(),
+            mariadb_version_cache:
+                crate::services::admin_health::new_mariadb_version_cache(),
+            setup_gate: std::sync::Arc::new(std::sync::RwLock::new(
+                crate::middleware::setup_gate::SetupGateState::default(),
+            )),
+            bulk_cover_fetch: std::sync::Arc::new(std::sync::RwLock::new(
+                crate::services::bulk_cover_fetch::BulkCoverFetchStatus::default(),
+            )),
+            log_level_reloader: crate::noop_log_level_reloader(),
+        }
+    }
+
+    /// Returns true iff the row exists and `deleted_at IS NULL`.
+    async fn session_row_is_live(pool: &crate::db::DbPool, token: &str) -> bool {
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT 1 FROM sessions WHERE token = ? AND deleted_at IS NULL")
+                .bind(token)
+                .fetch_optional(pool)
+                .await
+                .expect("query ok");
+        row.is_some()
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn resolver_cleans_up_session_referencing_soft_deleted_user(
+        pool: crate::db::DbPool,
+    ) {
+        // Insert a librarian, an auth session referencing the user,
+        // then soft-delete the user.
+        let user_id: u64 = sqlx::query(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'librarian')",
+        )
+        .bind("alice-41")
+        .bind("hash")
+        .execute(&pool)
+        .await
+        .expect("insert user")
+        .last_insert_id();
+
+        let stale_token = "stale-tok-soft-deleted-user-41";
+        sqlx::query(
+            "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
+             VALUES (?, ?, 'csrf-stale-41', '{}', UTC_TIMESTAMP())",
+        )
+        .bind(stale_token)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .expect("insert session");
+
+        sqlx::query("UPDATE users SET deleted_at = UTC_TIMESTAMP() WHERE id = ?")
+            .bind(user_id)
+            .execute(&pool)
+            .await
+            .expect("soft-delete user");
+
+        // Sanity: the stale row is live before the resolver runs.
+        assert!(
+            session_row_is_live(&pool, stale_token).await,
+            "precondition: the stale session row should still be live",
+        );
+
+        let state = build_test_state(pool.clone());
+        let (session, new_cookie) =
+            resolve_or_mint(&state, Some(stale_token), 7200).await;
+
+        // The Session is Anonymous and carries a fresh token (NOT the
+        // stale one). The new cookie is set on the response so the
+        // browser swaps the stale value out.
+        assert_eq!(session.role, Role::Anonymous);
+        assert!(session.user_id.is_none());
+        let new_tok = new_cookie.expect("resolver should mint a new anonymous row");
+        assert_ne!(session.token.as_deref(), Some(stale_token));
+        assert_eq!(session.token.as_deref(), Some(new_tok.as_str()));
+
+        // Invariant verification: the stale row is now soft-deleted, and
+        // the fresh row is live. The next request cannot resurrect the
+        // soft-deleted-user identity.
+        assert!(
+            !session_row_is_live(&pool, stale_token).await,
+            "the stale session row must be soft-deleted after the resolver runs",
+        );
+        assert!(session_row_is_live(&pool, &new_tok).await);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn resolver_cleans_up_expired_authenticated_session(pool: crate::db::DbPool) {
+        let user_id: u64 = sqlx::query(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
+        )
+        .bind("bob-41")
+        .bind("hash")
+        .execute(&pool)
+        .await
+        .expect("insert user")
+        .last_insert_id();
+
+        let stale_token = "stale-tok-expired-auth-41";
+        // last_activity 4 hours ago, timeout 7200s (2h) → expired.
+        sqlx::query(
+            "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
+             VALUES (?, ?, 'csrf-stale-exp-41', '{}', UTC_TIMESTAMP() - INTERVAL 4 HOUR)",
+        )
+        .bind(stale_token)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .expect("insert session");
+
+        let state = build_test_state(pool.clone());
+        let (session, new_cookie) = resolve_or_mint(&state, Some(stale_token), 7200).await;
+
+        // Same shape as the soft-deleted-user case: anonymous + fresh
+        // row + stale row soft-deleted. The previous (pre-#41) behavior
+        // returned `token: Some(row.token)` with `user_id: None`,
+        // leaving a live authenticated DB row that the Session denied.
+        assert_eq!(session.role, Role::Anonymous);
+        assert!(session.user_id.is_none());
+        let new_tok = new_cookie.expect("resolver should mint a new anonymous row");
+        assert_ne!(session.token.as_deref(), Some(stale_token));
+        assert_eq!(session.token.as_deref(), Some(new_tok.as_str()));
+
+        assert!(
+            !session_row_is_live(&pool, stale_token).await,
+            "the expired authenticated row must be soft-deleted",
+        );
+        assert!(session_row_is_live(&pool, &new_tok).await);
+    }
+
+    /// Genuine anonymous row — the resolver MUST reuse it (no fresh
+    /// mint, no soft-delete). Locks the third match arm against a
+    /// future refactor that "simplifies" the inconsistency cleanup and
+    /// accidentally captures anonymous rows too.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn resolver_reuses_genuine_anonymous_row(pool: crate::db::DbPool) {
+        let anon_token = "anon-tok-reuse-41";
+        sqlx::query(
+            "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
+             VALUES (?, NULL, 'csrf-anon-41', '{}', UTC_TIMESTAMP())",
+        )
+        .bind(anon_token)
+        .execute(&pool)
+        .await
+        .expect("insert anonymous session");
+
+        let state = build_test_state(pool.clone());
+        let (session, new_cookie) = resolve_or_mint(&state, Some(anon_token), 7200).await;
+
+        assert_eq!(session.role, Role::Anonymous);
+        assert!(session.user_id.is_none());
+        assert_eq!(
+            session.token.as_deref(),
+            Some(anon_token),
+            "anonymous row must be reused, not regenerated",
+        );
+        assert_eq!(session.csrf_token, "csrf-anon-41");
+        assert!(
+            new_cookie.is_none(),
+            "no new cookie should be set on the response for an existing anonymous row",
+        );
+        assert!(session_row_is_live(&pool, anon_token).await);
+    }
+
+    /// Happy path regression: authenticated + fresh stays authenticated.
+    /// Locks the first match arm.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn resolver_returns_fresh_authenticated_session(pool: crate::db::DbPool) {
+        let user_id: u64 = sqlx::query(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
+        )
+        .bind("carol-41")
+        .bind("hash")
+        .execute(&pool)
+        .await
+        .expect("insert user")
+        .last_insert_id();
+
+        let token = "auth-fresh-tok-41";
+        sqlx::query(
+            "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
+             VALUES (?, ?, 'csrf-fresh-41', '{}', UTC_TIMESTAMP())",
+        )
+        .bind(token)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .expect("insert session");
+
+        let state = build_test_state(pool.clone());
+        let (session, new_cookie) = resolve_or_mint(&state, Some(token), 7200).await;
+
+        assert_eq!(session.role, Role::Admin);
+        assert_eq!(session.user_id, Some(user_id));
+        assert_eq!(session.token.as_deref(), Some(token));
+        assert_eq!(session.csrf_token, "csrf-fresh-41");
+        assert!(new_cookie.is_none(), "fresh auth path must not mint a new row");
     }
 
     #[test]
