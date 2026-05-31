@@ -153,6 +153,14 @@ pub async fn session_resolve_middleware(
     let (session, new_cookie_token) =
         resolve_or_mint(&state, cookie_token.as_deref(), timeout_secs).await;
 
+    // #37 — Capture the rotated CSRF token BEFORE moving the session into
+    // the extension so long-lived tabs can re-sync after a resolver mint
+    // (purge, soft-delete, expired auth). Headers go out alongside the
+    // Set-Cookie below so the client receives token + cookie together.
+    let rotated_csrf_token = new_cookie_token
+        .as_ref()
+        .map(|_| session.csrf_token.clone());
+
     request.extensions_mut().insert(session);
     let mut response = next.run(request).await;
 
@@ -194,6 +202,35 @@ pub async fn session_resolve_middleware(
                 response
                     .headers_mut()
                     .append(axum::http::header::SET_COOKIE, value);
+            }
+        }
+
+        // #37 — emit the `csrf-rotated` trigger + the new token on a
+        // sibling header so long-lived tabs can re-sync their in-memory
+        // `<meta name="csrf-token">` + every `_csrf_token` hidden input
+        // without a hard reload. Without this, the very next mutation
+        // after a session-row mint (anonymous-session purge, soft-delete
+        // race, expired-auth cleanup post-#41) would 403 against the
+        // stale token still embedded in the page.
+        //
+        // Two-header shape (rather than a JSON HX-Trigger payload):
+        //   - `HX-Trigger: csrf-rotated` is comma-mergeable with any
+        //     trigger a downstream handler already emitted (modal-close,
+        //     validation-error, …) — append works without JSON-parse
+        //     conflict.
+        //   - `X-CSRF-Token-Rotated: <new-token>` carries the token
+        //     itself; `static/js/csrf.js`'s `htmx:beforeSwap` listener
+        //     reads it off the XHR and propagates to the DOM.
+        if let Some(new_csrf) = rotated_csrf_token {
+            response.headers_mut().append(
+                axum::http::HeaderName::from_static("hx-trigger"),
+                axum::http::HeaderValue::from_static("csrf-rotated"),
+            );
+            if let Ok(token_header) = axum::http::HeaderValue::from_str(&new_csrf) {
+                response.headers_mut().insert(
+                    axum::http::HeaderName::from_static("x-csrf-token-rotated"),
+                    token_header,
+                );
             }
         }
     }
@@ -725,6 +762,11 @@ mod tests {
     //      than the configured timeout.
     // Both must produce a fresh anonymous session AND soft-delete the
     // stale row so the next request can't pick it up again.
+    //
+    // #37 adds two middleware-level tests on top that exercise the
+    // `csrf-rotated` HX-Trigger + `X-CSRF-Token-Rotated` sibling header
+    // pair through the full `session_resolve_middleware` (rather than
+    // calling `resolve_or_mint` directly).
 
     fn build_test_state(pool: crate::db::DbPool) -> AppState {
         AppState {
@@ -932,6 +974,110 @@ mod tests {
         assert_eq!(session.token.as_deref(), Some(token));
         assert_eq!(session.csrf_token, "csrf-fresh-41");
         assert!(new_cookie.is_none(), "fresh auth path must not mint a new row");
+    }
+
+    // ─── #37 — `csrf-rotated` HX-Trigger + X-CSRF-Token-Rotated ─────
+
+    fn build_resolver_test_app(pool: crate::db::DbPool) -> axum::Router {
+        let state = build_test_state(pool);
+        axum::Router::new()
+            .route("/", axum::routing::get(|| async { "ok" }))
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                session_resolve_middleware,
+            ))
+            .with_state(state)
+    }
+
+    /// First-hit visitor (no cookie) — the resolver mints a fresh
+    /// anonymous row and emits both `HX-Trigger: csrf-rotated` and
+    /// `X-CSRF-Token-Rotated: <new-token>`. The two headers together let
+    /// `static/js/csrf.js` re-sync the in-memory token without a reload.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn middleware_emits_csrf_rotated_on_first_visit(pool: crate::db::DbPool) {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        let app = build_resolver_test_app(pool);
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let headers = response.headers();
+        let trigger = headers
+            .get("hx-trigger")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            trigger
+                .split(',')
+                .map(str::trim)
+                .any(|t| t == "csrf-rotated"),
+            "HX-Trigger must contain `csrf-rotated` when the resolver mints a new row; got {trigger:?}",
+        );
+
+        let rotated = headers
+            .get("x-csrf-token-rotated")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert_eq!(
+            rotated.len(),
+            43,
+            "X-CSRF-Token-Rotated must carry the canonical 43-char URL-safe-no-pad CSRF token; got {rotated:?}",
+        );
+    }
+
+    /// Reusable anonymous row — when the cookie still resolves to a
+    /// live anonymous session, the resolver returns it as-is. No new
+    /// row, no HX-Trigger, no X-CSRF-Token-Rotated.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn middleware_does_not_rotate_when_session_is_reused(pool: crate::db::DbPool) {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        let token = "reuse-tok-37";
+        sqlx::query(
+            "INSERT INTO sessions (token, user_id, csrf_token, data, last_activity) \
+             VALUES (?, NULL, 'csrf-reuse-37', '{}', UTC_TIMESTAMP())",
+        )
+        .bind(token)
+        .execute(&pool)
+        .await
+        .expect("insert session");
+
+        let app = build_resolver_test_app(pool);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header("cookie", format!("session={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let headers = response.headers();
+        let trigger = headers
+            .get("hx-trigger")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            !trigger
+                .split(',')
+                .map(str::trim)
+                .any(|t| t == "csrf-rotated"),
+            "HX-Trigger must NOT contain `csrf-rotated` when the resolver reuses an existing row; got {trigger:?}",
+        );
+        assert!(
+            headers.get("x-csrf-token-rotated").is_none(),
+            "X-CSRF-Token-Rotated must be absent on a reused row",
+        );
     }
 
     #[test]
