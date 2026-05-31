@@ -134,6 +134,10 @@ home:
   scanning_announcement: "Scan detected, processing…"
   scan_failed_fallback: "Scan failed. Try again or use the catalog page."
   remove_filter_aria: "Remove filter"
+  aria:
+    active_filter: "Active filter: "
+    filter_by: "Filter by: "
+    press_to_remove: ". Press to remove filter"
   filter:
     uncategorized: "Uncategorized"
     no_volumes: "Titles without volumes"

@@ -266,7 +266,6 @@ test.describe("Volume accessibility", () => {
     );
 
     const results = await new AxeBuilder({ page })
-      .disableRules(["color-contrast"]) // Known issue: placeholder text contrast
       .analyze();
     expect(results.violations).toEqual([]);
   });

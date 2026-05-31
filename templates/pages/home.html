@@ -67,7 +67,7 @@
     <div class="flex flex-wrap gap-2 mt-4 max-w-xl justify-center" id="filter-tags">
         {% for genre in genres %}
         {% if active_filter == format!("genre:{}", genre.id) %}
-        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-sm" role="status" aria-label="Active filter: {{ genre.name }}. Press to remove filter">
+        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-sm" role="status" aria-label="{{ aria_active_filter }}{{ genre.name }}{{ aria_press_to_remove }}">
             {{ genre.name }}
             <button type="button"
                     hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
@@ -85,7 +85,7 @@
            hx-push-url="true"
            class="px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 text-sm hover:bg-stone-200 dark:hover:bg-stone-700"
            role="link"
-           aria-label="Filter by: {{ genre.name }}">{{ genre.name }}</a>
+           aria-label="{{ aria_filter_by }}{{ genre.name }}">{{ genre.name }}</a>
         {% endif %}
         {% endfor %}
 
@@ -95,7 +95,7 @@
            the default genre is conceptually "no real classification yet"
            and deserves a one-click filter. #}
         {% if active_filter == "uncategorized" %}
-        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-sm" role="status" aria-label="Active filter: {{ label_uncategorized }}. Press to remove filter">
+        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-sm" role="status" aria-label="{{ aria_active_filter }}{{ label_uncategorized }}{{ aria_press_to_remove }}">
             {{ label_uncategorized }}
             <button type="button"
                     hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
@@ -113,7 +113,7 @@
            hx-push-url="true"
            class="px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 text-sm hover:bg-stone-200 dark:hover:bg-stone-700"
            role="link"
-           aria-label="Filter by: {{ label_uncategorized }}">{{ label_uncategorized }}</a>
+           aria-label="{{ aria_filter_by }}{{ label_uncategorized }}">{{ label_uncategorized }}</a>
         {% endif %}
 
         {# CR #279 — "Titles without any volume" filter chip. Librarian+
@@ -121,7 +121,7 @@
            Same shape as the Uncategorized chip above. #}
         {% if show_no_volumes_chip %}
         {% if no_volumes_filter_active %}
-        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 text-sm" role="status" aria-label="Active filter: {{ label_no_volumes }}. Press to remove filter">
+        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 text-sm" role="status" aria-label="{{ aria_active_filter }}{{ label_no_volumes }}{{ aria_press_to_remove }}">
             {{ label_no_volumes }}
             <button type="button"
                     hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
@@ -139,7 +139,7 @@
            hx-push-url="true"
            class="px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 text-sm hover:bg-stone-200 dark:hover:bg-stone-700"
            role="link"
-           aria-label="Filter by: {{ label_no_volumes }}">{{ label_no_volumes }}</a>
+           aria-label="{{ aria_filter_by }}{{ label_no_volumes }}">{{ label_no_volumes }}</a>
         {% endif %}
         {% endif %}
 
@@ -148,7 +148,7 @@
            the no_volumes chip above; distinct sky color. #}
         {% if show_no_cover_chip %}
         {% if no_cover_filter_active %}
-        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 text-sm" role="status" aria-label="Active filter: {{ label_no_cover_filter }}. Press to remove filter">
+        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 text-sm" role="status" aria-label="{{ aria_active_filter }}{{ label_no_cover_filter }}{{ aria_press_to_remove }}">
             {{ label_no_cover_filter }}
             <button type="button"
                     hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
@@ -166,7 +166,7 @@
            hx-push-url="true"
            class="px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 text-sm hover:bg-stone-200 dark:hover:bg-stone-700"
            role="link"
-           aria-label="Filter by: {{ label_no_cover_filter }}">{{ label_no_cover_filter }}</a>
+           aria-label="{{ aria_filter_by }}{{ label_no_cover_filter }}">{{ label_no_cover_filter }}</a>
         {% endif %}
         {% endif %}
 

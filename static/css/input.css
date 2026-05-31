@@ -75,6 +75,28 @@
     --transition-slow: 500ms;
 }
 
+/*
+ * #374 / #18: ensure form-input placeholder text meets WCAG 2.2 AA contrast.
+ *
+ * Tailwind 4's preflight resets placeholder to `color-mix(currentcolor 50%,
+ * transparent)`, which against a stone-700 input text colour resolves to
+ * roughly 50% opacity grey — fails the 4.5:1 AA threshold against white by
+ * a hair on the three catalog form surfaces (title / volume / contributor
+ * "create" forms). Wrapping in `@layer utilities` puts the rule AFTER the
+ * preflight base layer in the cascade so it wins. We use stone-600 on light
+ * backgrounds (#57534e, ≈ 6.36:1 against white) and stone-400 on dark
+ * (#a8a29e, ≈ 6.51:1 against stone-900). One rule, every form benefits.
+ */
+::placeholder {
+    color: var(--color-stone-600) !important;
+    opacity: 1 !important;
+}
+@media (prefers-color-scheme: dark) {
+    ::placeholder {
+        color: var(--color-stone-400) !important;
+    }
+}
+
 /* Respect prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
     *,

@@ -134,6 +134,10 @@ home:
   scanning_announcement: "Scan erkannt, wird verarbeitet…"
   scan_failed_fallback: "Scan fehlgeschlagen. Erneut versuchen oder die Katalogseite verwenden."
   remove_filter_aria: "Filter entfernen"
+  aria:
+    active_filter: "Aktiver Filter: "
+    filter_by: "Filtern nach: "
+    press_to_remove: ". Drücken zum Entfernen des Filters"
   filter:
     uncategorized: "Ohne Kategorie"
     no_volumes: "Titel ohne Exemplar"
