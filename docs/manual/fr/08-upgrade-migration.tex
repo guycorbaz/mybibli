@@ -148,6 +148,54 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.8.2}\label{sec:whats-new-1.8.2}
+
+La version 1.8.2 est une session ciblée de fermeture d'issues sur la
+1.8.1, \emph{sans aucun changement visible côté utilisateur}. L'objectif
+est de faire baisser la liste des issues ouvertes~: sept issues GitHub
+fermées en un seul patch (\#151, \#365, \#370, \#374 directement, plus les
+parents \#26, \#30 et \#18 via les issues porteuses). Aucune migration
+de schéma, aucun changement de paramètres~; mise à jour de routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#151 \string— alignement spécification / implémentation
+        de la barre de navigation.} Trois sources de planning divergeaient
+        sur les liens visibles par les utilisateurs Anonymes. Le story
+        9-18 avait déjà livré l'option A~; ce patch aligne la spécification
+        UX et les critères d'acceptation de l'épopée 9.18 pour que les
+        futurs lecteurs ne rouvrent pas le débat. Documentation uniquement.
+  \item \textbf{\#365 \string— hygiène des jetons de session et CSRF.} La
+        fonction qui génère les jetons de session était définie à trois
+        endroits différents, avec des commentaires qui divergeaient
+        subtilement. C'est maintenant une seule implémentation canonique.
+        Même opération pour le générateur de jeton CSRF. Un piège latent
+        dans le chemin d'extracteur \texttt{Session} (utilisé uniquement
+        par les tests) qui renvoyait un jeton CSRF vide est refermé.
+  \item \textbf{\#370 \string— variantes d'erreur typées.} Quand deux
+        utilisateurs modifient le même enregistrement en parallèle, le
+        message 409 résultant indique maintenant «~Un autre utilisateur
+        vient de modifier ce \string<entité\string>~» (ou «~Ce
+        \string<entité\string> vient d'être supprimé~» si la ligne a été
+        soft-supprimée entre la lecture et l'écriture) au lieu d'un
+        générique «~Cet enregistrement a été modifié par un autre
+        utilisateur~». Nettoyage interne~: le constructeur du fragment
+        FeedbackEntry sort d'un module de routes, la couche d'erreur
+        n'en dépend plus.
+  \item \textbf{\#374 \string— filets CI + accessibilité restante.} Deux
+        nouveaux tests automatisés protègent le pipeline de release~:
+        l'un reproduit le parseur Python qui extrait la version du
+        Cargo.toml depuis le tag de release, l'autre rejoue toutes les
+        migrations sur une base fraîche et vérifie que les données seed
+        satisfont toujours les contraintes NOT NULL / unique / clés
+        étrangères du schéma. Côté utilisateur, huit chaînes
+        \texttt{aria-label} anglaises codées en dur sur les pastilles de
+        filtre de la page d'accueil sont maintenant livrées dans les
+        quatre langues d'interface, et les pages de formulaire du
+        catalogue réactivent l'audit de contraste WCAG après un relèvement
+        global de la couleur des placeholders.
+\end{itemize}
+
 \section{Nouveautés de la 1.8.1}\label{sec:whats-new-1.8.1}
 
 La version 1.8.1 est un patch ciblé de polish sur la 1.8.0. Elle ferme un

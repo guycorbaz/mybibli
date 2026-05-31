@@ -139,6 +139,47 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.8.2}\label{sec:whats-new-1.8.2}
+
+Version 1.8.2 is an open-issue closure sweep on v1.8.1 with \emph{zero
+user-visible behaviour change}. The driving objective is shrinking the
+open-issue list: seven GitHub issues retired in one patch (\#151, \#365,
+\#370, \#374 directly, plus parents \#26, \#30 and \#18 via the carrier
+issues). No schema migration, no settings change; routine
+\texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#151 \string— spec / impl alignment for the nav bar.}
+        Three planning sources disagreed on which links Anonymous users
+        see. Story 9-18 had already shipped Option A; this patch aligns
+        the UX specification and the Epic 9.18 acceptance criteria so
+        future readers don't reopen the debate. Doc-only.
+  \item \textbf{\#365 \string— session and CSRF token hygiene.} The
+        function that mints session tokens was defined in three
+        different places, with subtly drifting comments. They are now
+        one canonical implementation. Same move for the CSRF token
+        generator. A latent footgun in the test-only \texttt{Session}
+        extractor path that returned an empty CSRF token is closed.
+  \item \textbf{\#370 \string— typed error variants.} When two users edit
+        the same record at once, the resulting 409 message now reads
+        ``Another user just modified this \string<entity\string>'' (or
+        ``This \string<entity\string> was just deleted'' if the row was
+        soft-deleted between read and write) instead of a generic ``This
+        record was modified by another user''. Internal cleanup also
+        moves the FeedbackEntry HTML builder out of a routes module so
+        the error layer no longer depends on it.
+  \item \textbf{\#374 \string— CI guards + accessibility leftover.}
+        Two new automated tests guard the release pipeline: one
+        reproduces the Python parser that extracts the Cargo.toml version
+        from the release tag, the other replays every database migration
+        on a fresh DB and asserts the seed data still satisfies the
+        schema's NOT NULL / unique / foreign-key constraints. On the user
+        side, eight hardcoded English \texttt{aria-label} strings on the
+        home-page filter chips now ship in all four UI languages, and the
+        catalog form pages re-enable the WCAG colour-contrast audit after
+        a global placeholder colour bump.
+\end{itemize}
+
 \section{What's new in 1.8.1}\label{sec:whats-new-1.8.1}
 
 Version 1.8.1 is a focused polish patch on v1.8.0. It closes one
