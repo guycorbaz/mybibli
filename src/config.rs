@@ -397,12 +397,21 @@ impl AppSettings {
                     }
                 },
                 "session_inactivity_timeout_hours" => match value.parse::<u64>() {
-                    Ok(v) => match v.checked_mul(3600) {
+                    // #23 — refuse 0. A 0-second session timeout flips
+                    // is_expired to true on EVERY request (saturating
+                    // arithmetic in SessionModel::is_expired), so every
+                    // request silently logs the user out. Sibling
+                    // `session_inactivity_timeout_seconds` already had
+                    // this guard; mirroring it here closes the gap.
+                    Ok(v) if v >= 1 => match v.checked_mul(3600) {
                         Some(secs) => settings.session_timeout_secs = secs,
                         None => {
                             tracing::warn!(key = %key, value = %value, "Timeout overflow (hours * 3600), using default")
                         }
                     },
+                    Ok(_) => {
+                        tracing::warn!(key = %key, value = %value, "Timeout must be >= 1h, using default")
+                    }
                     Err(_) => {
                         tracing::warn!(key = %key, value = %value, "Invalid setting value, using default")
                     }
@@ -745,6 +754,50 @@ mod tests {
                 app_language,
             })
         }
+    }
+
+    /// #23 sub-item 1 — `session_inactivity_timeout_hours = 0` is a
+    /// pathological setting: combined with the saturating arithmetic in
+    /// `SessionModel::is_expired`, a 0-second timeout flips expiry to
+    /// true on every request and the user is silently logged out. The
+    /// pre-fix code accepted the 0 unconditionally; the `if v >= 1`
+    /// guard mirrors the sibling `session_inactivity_timeout_seconds`
+    /// guard so the default 4h timeout survives.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn load_from_db_rejects_session_timeout_zero_hours(pool: DbPool) {
+        sqlx::query(
+            "INSERT INTO settings (setting_key, setting_value, version) \
+             VALUES ('session_inactivity_timeout_hours', '0', 1) \
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)",
+        )
+        .execute(&pool)
+        .await
+        .expect("seed setting");
+
+        let settings = AppSettings::load_from_db(&pool).await.expect("load ok");
+        assert_eq!(
+            settings.session_timeout_secs,
+            AppSettings::default().session_timeout_secs,
+            "0h must NOT clobber the default (4h = 14400s); got {}s",
+            settings.session_timeout_secs,
+        );
+    }
+
+    /// Same setting, valid non-zero value: it MUST take effect. Locks
+    /// the asymmetry — the guard only refuses 0, not non-zero values.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn load_from_db_accepts_session_timeout_eight_hours(pool: DbPool) {
+        sqlx::query(
+            "INSERT INTO settings (setting_key, setting_value, version) \
+             VALUES ('session_inactivity_timeout_hours', '8', 1) \
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)",
+        )
+        .execute(&pool)
+        .await
+        .expect("seed setting");
+
+        let settings = AppSettings::load_from_db(&pool).await.expect("load ok");
+        assert_eq!(settings.session_timeout_secs, 8 * 3600);
     }
 
     #[test]

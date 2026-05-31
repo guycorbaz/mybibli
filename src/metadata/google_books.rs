@@ -151,8 +151,11 @@ impl MetadataProvider for GoogleBooksProvider {
             .map_err(|e| MetadataError::Network(e.to_string()))?;
 
         let status = response.status();
-        if status.as_u16() == 429 {
-            return Err(MetadataError::Network("429 Too Many Requests".to_string()));
+        // #23 — typed rate-limit signal. Pre-fix the chain matched
+        // `err_str.contains("429")` to identify rate limits — a string
+        // match that drifts the moment the provider changes its message.
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(MetadataError::RateLimited);
         }
         if !status.is_success() {
             return Err(MetadataError::Network(format!(

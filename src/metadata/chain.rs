@@ -4,7 +4,7 @@ use crate::db::DbPool;
 use crate::models::media_type::{CodeType, MediaType};
 use crate::models::metadata_cache::MetadataCacheModel;
 
-use super::provider::MetadataResult;
+use super::provider::{MetadataError, MetadataResult};
 use super::registry::ProviderRegistry;
 
 /// Executes metadata lookups through a chain of providers with fallback.
@@ -78,7 +78,12 @@ impl ChainExecutor {
                             duration_ms = duration_ms,
                             "Provider returned result"
                         );
-                        return Some(metadata);
+                        // #23 sub-item 7 — drop empty-string fields
+                        // before the downstream merge sees them. A
+                        // `Some("")` from a sloppy upstream response
+                        // would otherwise displace a real value via
+                        // COALESCE / `manually_edited_fields` updates.
+                        return Some(metadata.normalize_empty_strings());
                     }
                     Ok(Ok(None)) => {
                         tracing::info!(
@@ -88,25 +93,27 @@ impl ChainExecutor {
                             "Provider returned no result"
                         );
                     }
+                    Ok(Err(MetadataError::RateLimited)) => {
+                        // #23 — structured rate-limit match. Was
+                        // `err_str.contains("429")` which drifts the
+                        // moment a provider changes its error message;
+                        // now we read the typed variant straight off the
+                        // provider's return.
+                        tracing::warn!(
+                            code = %code,
+                            provider = provider_name,
+                            duration_ms = duration_ms,
+                            "Provider rate limited (HTTP 429), skipping"
+                        );
+                    }
                     Ok(Err(e)) => {
-                        // Check for rate limit (HTTP 429 pattern in error message)
-                        let err_str = e.to_string();
-                        if err_str.contains("429") {
-                            tracing::warn!(
-                                code = %code,
-                                provider = provider_name,
-                                duration_ms = duration_ms,
-                                "Provider rate limited (429), skipping"
-                            );
-                        } else {
-                            tracing::warn!(
-                                code = %code,
-                                provider = provider_name,
-                                duration_ms = duration_ms,
-                                error = %e,
-                                "Provider failed"
-                            );
-                        }
+                        tracing::warn!(
+                            code = %code,
+                            provider = provider_name,
+                            duration_ms = duration_ms,
+                            error = %e,
+                            "Provider failed"
+                        );
                     }
                     Err(_) => {
                         tracing::warn!(
@@ -251,7 +258,7 @@ mod tests {
             &self,
             _isbn: &str,
         ) -> Result<Option<MetadataResult>, MetadataError> {
-            Err(MetadataError::Network("429 Too Many Requests".to_string()))
+            Err(MetadataError::RateLimited)
         }
     }
 
