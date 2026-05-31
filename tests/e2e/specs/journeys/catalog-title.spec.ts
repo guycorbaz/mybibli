@@ -296,7 +296,6 @@ test.describe("Catalog accessibility", () => {
     await page.waitForSelector("#title-form-container form");
 
     const results = await new AxeBuilder({ page })
-      .disableRules(["color-contrast"]) // Known issue: placeholder text contrast
       .analyze();
     expect(results.violations).toEqual([]);
   });

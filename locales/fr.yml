@@ -135,6 +135,10 @@ home:
   scanning_announcement: "Scan détecté, traitement…"
   scan_failed_fallback: "Échec du scan. Veuillez réessayer ou utiliser la page catalogue."
   remove_filter_aria: "Retirer le filtre"
+  aria:
+    active_filter: "Filtre actif : "
+    filter_by: "Filtrer par : "
+    press_to_remove: ". Appuyez pour retirer le filtre"
   filter:
     uncategorized: "Sans genre"
     no_volumes: "Titres sans exemplaire"

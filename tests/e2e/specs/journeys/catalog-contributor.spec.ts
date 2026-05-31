@@ -454,7 +454,6 @@ test.describe("Contributor accessibility", () => {
     await page.waitForSelector("#contributor-form-container form");
 
     const results = await new AxeBuilder({ page })
-      .disableRules(["color-contrast"]) // Known issue: placeholder text contrast
       .withTags(["wcag2a", "wcag2aa"]) // Only check WCAG 2 AA compliance
       .analyze();
     expect(results.violations).toEqual([]);

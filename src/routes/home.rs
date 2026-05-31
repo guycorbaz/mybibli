@@ -74,6 +74,13 @@ pub struct HomeTemplate {
     pub pagination_next: String,
     pub pagination_aria_label: String,
     pub remove_filter_aria: String,
+    // #374 — i18n the filter-chip aria-labels (previously hardcoded
+    // English on 8 home.html positions). The chip aria pattern is
+    // `{{ active_filter }}{{ name }}{{ press_to_remove }}` for the
+    // active state and `{{ filter_by }}{{ name }}` for the link state.
+    pub aria_active_filter: String,
+    pub aria_filter_by: String,
+    pub aria_press_to_remove: String,
     // Fix #205: label for the dedicated "uncategorized" filter chip
     // (titles whose genre is the default "Non classé"). Localized.
     pub label_uncategorized: String,
@@ -820,6 +827,9 @@ pub async fn home(
         pagination_next: rust_i18n::t!("pagination.next", locale = loc).to_string(),
         pagination_aria_label: rust_i18n::t!("pagination.aria_label", locale = loc).to_string(),
         remove_filter_aria: rust_i18n::t!("home.remove_filter_aria", locale = loc).to_string(),
+        aria_active_filter: rust_i18n::t!("home.aria.active_filter", locale = loc).to_string(),
+        aria_filter_by: rust_i18n::t!("home.aria.filter_by", locale = loc).to_string(),
+        aria_press_to_remove: rust_i18n::t!("home.aria.press_to_remove", locale = loc).to_string(),
         label_uncategorized: rust_i18n::t!("home.filter.uncategorized", locale = loc).to_string(),
         col_title: rust_i18n::t!("search.col.title", locale = loc).to_string(),
         col_contributor: rust_i18n::t!("search.col.contributor", locale = loc).to_string(),
@@ -1318,6 +1328,9 @@ pub(crate) mod tests {
             pagination_next: "Next".to_string(),
             pagination_aria_label: "Pagination".to_string(),
             remove_filter_aria: "Remove filter".to_string(),
+            aria_active_filter: "Active filter: ".to_string(),
+            aria_filter_by: "Filter by: ".to_string(),
+            aria_press_to_remove: ". Press to remove filter".to_string(),
             label_uncategorized: "Uncategorized".to_string(),
             col_title: "Title".to_string(),
             col_contributor: "Contributor".to_string(),

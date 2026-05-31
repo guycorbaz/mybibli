@@ -70,6 +70,15 @@ jobs:
       - name: Check SQLx offline metadata
         run: cargo sqlx prepare --check --workspace -- --all-targets
 
+      # #374 / #30 sub-item 2 — guard the Python `tomllib` version-
+      # extraction logic in `release.yml::verify-version`. Tests 5 cases
+      # (real Cargo.toml, CRLF, [workspace.package] precedence, single-
+      # quoted version, abort-on-mismatch) so a future Python upgrade or
+      # Cargo.toml restructure that breaks the parser trips this gate
+      # instead of silently mislabelling a release.
+      - name: Test the release version parser
+        run: bash scripts/test-release-version-parser.sh
+
   db-integration:
     name: DB integration tests
     runs-on: ubuntu-latest

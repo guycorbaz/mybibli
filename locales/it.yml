@@ -131,6 +131,10 @@ home:
   scanning_announcement: "Scansione rilevata, in elaborazione…"
   scan_failed_fallback: "Scansione fallita. Riprova o usa la pagina del catalogo."
   remove_filter_aria: "Rimuovi filtro"
+  aria:
+    active_filter: "Filtro attivo: "
+    filter_by: "Filtra per: "
+    press_to_remove: ". Premi per rimuovere il filtro"
   filter:
     uncategorized: "Senza categoria"
     no_volumes: "Titoli senza esemplari"
