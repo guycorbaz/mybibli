@@ -12,7 +12,7 @@
 //!
 //! New locales should be added to `LOCALES_TO_CHECK` as they ship.
 
-use serde_yaml::Value;
+use serde_yaml_ng::Value;
 use std::collections::BTreeSet;
 use std::fs;
 
@@ -50,7 +50,7 @@ fn load_keys(locale: &str) -> BTreeSet<String> {
     let path = format!("locales/{locale}.yml");
     let raw = fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read {}: {}", path, e));
-    let parsed: Value = serde_yaml::from_str(&raw)
+    let parsed: Value = serde_yaml_ng::from_str(&raw)
         .unwrap_or_else(|e| panic!("parse {}: {}", path, e));
     let mut out = BTreeSet::new();
     flatten_keys("", &parsed, &mut out);
@@ -122,14 +122,14 @@ fn placeholder_set_matches_en_for_every_translation() {
     }
 
     let en_raw = fs::read_to_string("locales/en.yml").expect("read en.yml");
-    let en_parsed: Value = serde_yaml::from_str(&en_raw).expect("parse en.yml");
+    let en_parsed: Value = serde_yaml_ng::from_str(&en_raw).expect("parse en.yml");
     let mut en_strings = std::collections::BTreeMap::new();
     walk("", &en_parsed, &mut en_strings);
 
     for locale in LOCALES_TO_CHECK.iter().chain(std::iter::once(&"fr")) {
         let raw = fs::read_to_string(format!("locales/{locale}.yml"))
             .unwrap_or_else(|e| panic!("read {}.yml: {}", locale, e));
-        let parsed: Value = serde_yaml::from_str(&raw)
+        let parsed: Value = serde_yaml_ng::from_str(&raw)
             .unwrap_or_else(|e| panic!("parse {}.yml: {}", locale, e));
         let mut strings = std::collections::BTreeMap::new();
         walk("", &parsed, &mut strings);

@@ -47,7 +47,12 @@ genpdf = "0.2"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
-serde_yaml = "0.9"
+# #29 sub-item 3 — `serde_yaml` 0.9 is unmaintained (RUSTSEC-2024-0320).
+# `serde_yaml_ng` is the community fork that keeps shipping fixes against
+# the same 0.9 API surface, so the switch is one-line in code (the type
+# names live under `serde_yaml_ng::*` instead of `serde_yaml::*`).
+# Dev-dep only — used by i18n audit and the locale_parity integration test.
+serde_yaml_ng = "0.10"
 regex = "1"
 # Captures tracing events emitted during a test so we can assert on
 # security-audit warnings (story 8-2 §Ships 16 — CSRF-rejection warn log).
