@@ -148,6 +148,62 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.8.3}\label{sec:whats-new-1.8.3}
+
+La version 1.8.3 est une deuxième session consécutive de fermeture
+d'issues sur la 1.8.2, fermant cinq issues GitHub. \emph{Aucune
+migration de schéma demandant une action de l'opérateur}~; mise à
+jour de routine \texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#41 \string— cohérence du résolveur de session.}
+        Quand un administrateur désactive un compte utilisateur
+        pendant qu'il est en train de naviguer, ou quand une session
+        authentifiée dépasse son délai d'inactivité, la ligne en
+        base de données restait intacte et la Session en mémoire se
+        retrouvait dans un demi-état (une identité authentifiée mais
+        qui refusait l'authentification). Le résolveur supprime
+        désormais en doux la ligne orpheline dans les deux cas et
+        ouvre une nouvelle session anonyme~; la requête suivante voit
+        un état cohérent.
+  \item \textbf{\#20 \string— pagination plus courte sur la page
+        d'accueil.} Auparavant tous les numéros de page de 1 à N
+        étaient rendus. Sur un grand catalogue (10\,000 titres
+        \string= 400 pages) cela remplissait la page de 400 ancres
+        et rendait l'ordre de tabulation inutilisable. La navigation
+        affiche désormais au maximum onze liens~: premier, dernier,
+        la page courante \string± 3 et un \texttt{...} littéral
+        quand un intervalle a été replié.
+  \item \textbf{\#37 \string— les onglets ouverts depuis longtemps
+        ne renvoient plus 403 après une rotation de session en
+        arrière-plan.} Quand la tâche de purge des sessions
+        anonymes (ou le nettoyage \#41) tournait, le jeton CSRF en
+        mémoire dans l'onglet divergeait de celui stocké
+        côté serveur~; la soumission de formulaire suivante échouait
+        avec un retour \emph{session expirée}. Le serveur signale
+        désormais la rotation sur sa prochaine réponse~; la couche
+        JavaScript réécrit le jeton CSRF de la page sur place et la
+        mutation suivante passe.
+  \item \textbf{\#23 \string— robustesse des fournisseurs de
+        métadonnées.} Une configuration de
+        \texttt{session\_inactivity\_timeout\_hours = 0} (acceptée
+        en silence avant) aurait déconnecté tout le monde à chaque
+        requête~; le chargeur refuse maintenant zéro. La détection
+        de limitation de débit (HTTP 429) côté fournisseur utilise
+        un signal typé au lieu d'une recherche de motif dans le
+        message d'erreur, et un futur changement de phrasé ne peut
+        plus passer inaperçu. Une réponse en amont qui renvoie une
+        chaîne vide pour un champ manquant n'écrase plus une vraie
+        valeur en base.
+  \item \textbf{\#29 \string— hygiène sécurité et i18n.} Remplacé la
+        dépendance YAML non maintenue (\texttt{serde\_yaml} 0.9,
+        bulletin RUSTSEC-2024-0320) par son fork activement maintenu
+        (\texttt{serde\_yaml\_ng} 0.10). Nouvelle vérification
+        d'intégration continue~: rejet de toute traduction qui
+        introduirait accidentellement du HTML brut dans les fichiers
+        de locale, fermant une surface latente d'attaque XSS.
+\end{itemize}
+
 \section{Nouveautés de la 1.8.2}\label{sec:whats-new-1.8.2}
 
 La version 1.8.2 est une session ciblée de fermeture d'issues sur la
