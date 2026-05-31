@@ -117,12 +117,12 @@ mod tests {
 
     /// Check whether a dotted key (e.g. `nav.catalog`) resolves to a leaf in the
     /// YAML tree. Leaves are scalars; maps are rejected.
-    fn key_exists(value: &serde_yaml::Value, dotted: &str) -> bool {
+    fn key_exists(value: &serde_yaml_ng::Value, dotted: &str) -> bool {
         let mut current = value;
         for segment in dotted.split('.') {
             match current {
-                serde_yaml::Value::Mapping(map) => {
-                    let k = serde_yaml::Value::String(segment.to_string());
+                serde_yaml_ng::Value::Mapping(map) => {
+                    let k = serde_yaml_ng::Value::String(segment.to_string());
                     match map.get(&k) {
                         Some(v) => current = v,
                         None => return false,
@@ -131,7 +131,7 @@ mod tests {
                 _ => return false,
             }
         }
-        !matches!(current, serde_yaml::Value::Mapping(_))
+        !matches!(current, serde_yaml_ng::Value::Mapping(_))
     }
 
     fn project_root() -> PathBuf {
@@ -206,8 +206,8 @@ mod tests {
 
         let en_text = fs::read_to_string(root.join("locales/en.yml")).expect("read en.yml");
         let fr_text = fs::read_to_string(root.join("locales/fr.yml")).expect("read fr.yml");
-        let en: serde_yaml::Value = serde_yaml::from_str(&en_text).expect("parse en.yml");
-        let fr: serde_yaml::Value = serde_yaml::from_str(&fr_text).expect("parse fr.yml");
+        let en: serde_yaml_ng::Value = serde_yaml_ng::from_str(&en_text).expect("parse en.yml");
+        let fr: serde_yaml_ng::Value = serde_yaml_ng::from_str(&fr_text).expect("parse fr.yml");
 
         let mut missing_en = Vec::new();
         let mut missing_fr = Vec::new();
@@ -271,15 +271,15 @@ mod tests {
 
     #[test]
     fn key_exists_accepts_leaf() {
-        let v: serde_yaml::Value =
-            serde_yaml::from_str("nav:\n  catalog: Catalogue\n  loans: Prêts").unwrap();
+        let v: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str("nav:\n  catalog: Catalogue\n  loans: Prêts").unwrap();
         assert!(key_exists(&v, "nav.catalog"));
         assert!(key_exists(&v, "nav.loans"));
     }
 
     #[test]
     fn key_exists_rejects_missing_path() {
-        let v: serde_yaml::Value = serde_yaml::from_str("nav:\n  catalog: Catalogue").unwrap();
+        let v: serde_yaml_ng::Value = serde_yaml_ng::from_str("nav:\n  catalog: Catalogue").unwrap();
         assert!(!key_exists(&v, "nav.missing"));
         assert!(!key_exists(&v, "other.foo"));
     }
@@ -287,7 +287,7 @@ mod tests {
     #[test]
     fn key_exists_rejects_mapping_as_leaf() {
         // `nav` itself is a mapping, not a leaf string, so it must not match.
-        let v: serde_yaml::Value = serde_yaml::from_str("nav:\n  catalog: Catalogue").unwrap();
+        let v: serde_yaml_ng::Value = serde_yaml_ng::from_str("nav:\n  catalog: Catalogue").unwrap();
         assert!(!key_exists(&v, "nav"));
     }
 }
