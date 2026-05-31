@@ -439,15 +439,23 @@
                        hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
                        class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">&laquo; {{ pagination_previous }}</a>
                     {% endif %}
-                    {% for p in 1..=paginated.total_pages %}
-                        {% if p == paginated.page %}
-                        <span class="px-3 py-1 rounded bg-indigo-600 text-white text-sm" aria-current="page">{{ p }}</span>
-                        {% else %}
-                        <a href="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                           hx-get="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                           hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
-                           class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">{{ p }}</a>
-                        {% endif %}
+                    {# #20 — windowed pagination: First | … | window | … | Last,
+                       capped at ≤11 entries so a 10 000-title catalog (400 pages)
+                       does NOT render 400 anchors. See PaginatedList::windowed_pages. #}
+                    {% for entry in paginated.windowed_pages() %}
+                        {% match entry %}
+                        {% when crate::models::PageEntry::Page with (p) %}
+                            {% if *p == paginated.page %}
+                            <span class="px-3 py-1 rounded bg-indigo-600 text-white text-sm" aria-current="page">{{ p }}</span>
+                            {% else %}
+                            <a href="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+                               hx-get="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+                               hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
+                               class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">{{ p }}</a>
+                            {% endif %}
+                        {% when crate::models::PageEntry::Ellipsis %}
+                            <span class="px-3 py-1 text-stone-500 dark:text-stone-400 text-sm" aria-hidden="true">…</span>
+                        {% endmatch %}
                     {% endfor %}
                     {% if paginated.has_next() %}
                     <a href="/?q={{ query_encoded }}&amp;page={{ paginated.page + 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
