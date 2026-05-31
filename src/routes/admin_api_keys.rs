@@ -23,7 +23,7 @@ use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
 use crate::middleware::locale::Locale;
 use crate::models::api_key::{ApiKey, ApiKeyModel, ApiKeyScope, mint_plaintext_key};
-use crate::routes::catalog::feedback_html_pub;
+use crate::utils::feedback_html;
 use crate::services::password::hash_password;
 
 // ─── Forms ────────────────────────────────────────────────────────
@@ -338,7 +338,7 @@ pub async fn admin_api_keys_create(
     let keys = ApiKeyModel::list_for_admin(&state.pool).await?;
     let list_html = render_list_html(loc, &session.csrf_token, &keys)?;
 
-    let feedback = feedback_html_pub(
+    let feedback = feedback_html(
         "success",
         rust_i18n::t!("admin.api_keys.feedback_created", locale = loc).as_ref(),
         "",
@@ -469,7 +469,7 @@ pub async fn admin_api_keys_revoke(
     let keys = ApiKeyModel::list_for_admin(&state.pool).await?;
     let list_html = render_list_html(loc, &session.csrf_token, &keys)?;
 
-    let feedback = feedback_html_pub(
+    let feedback = feedback_html(
         "success",
         rust_i18n::t!("admin.api_keys.feedback_revoked", locale = loc).as_ref(),
         "",
@@ -608,7 +608,7 @@ pub async fn admin_api_keys_delete(
     let keys = ApiKeyModel::list_for_admin(pool).await?;
     let list_html = render_list_html(loc, &session.csrf_token, &keys)?;
 
-    let feedback = feedback_html_pub(
+    let feedback = feedback_html(
         "success",
         rust_i18n::t!("admin.api_keys.feedback_deleted", locale = loc).as_ref(),
         "",

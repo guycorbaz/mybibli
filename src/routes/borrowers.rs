@@ -134,7 +134,7 @@ pub async fn borrowers_page(
 
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "borrowers" }),
     }
 }
 
@@ -281,7 +281,7 @@ pub async fn borrower_detail(
 
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "borrowers" }),
     }
 }
 
@@ -383,7 +383,7 @@ pub async fn edit_borrower_page(
 
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "borrowers" }),
     }
 }
 

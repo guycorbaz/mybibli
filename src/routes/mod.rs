@@ -50,7 +50,7 @@ pub(crate) fn build_already_deleted_response(
 
     let title =
         rust_i18n::t!("error.already_deleted_by_another_session", locale = locale).to_string();
-    let html = crate::routes::catalog::feedback_html_pub("error", &title, "");
+    let html = crate::utils::feedback_html("error", &title, "");
     let mut response: axum::response::Response = (StatusCode::OK, Html(html)).into_response();
     let headers = response.headers_mut();
     if let Ok(v) = HeaderValue::from_str(retarget) {

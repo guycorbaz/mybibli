@@ -377,6 +377,8 @@ error:
   language:
     required: La lingua è obbligatoria
   conflict: "Questo record è stato modificato da un altro utente. Ricarica e riprova."
+  version_mismatch: "Un altro utente ha appena modificato questo %{entity}. Ricarica la pagina per vedere l'ultima versione, poi riprova."
+  soft_deleted: "Questo %{entity} è stato appena eliminato. Ricarica la pagina per aggiornare l'elenco."
   delete_has_references: "Impossibile eliminare: l'elemento è referenziato da record attivi."
   contributor:
     has_titles: "Impossibile eliminare %{name}. Questo collaboratore è associato a %{count} titolo(i). Rimuovi prima il collaboratore da tutti i titoli."

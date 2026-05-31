@@ -165,7 +165,7 @@ where
     .bind(expected_version)
     .execute(executor)
     .await?;
-    check_update_result(result.rows_affected(), &format!("setting:{key}"))
+    check_update_result(result.rows_affected(), "setting")
 }
 
 /// Re-SELECT every settings row and swap the `Arc<RwLock<AppSettings>>`

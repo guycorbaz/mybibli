@@ -10,9 +10,34 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 #[derive(Debug)]
 pub enum AppError {
     Internal(String),
+    /// Askama / template render failure — carries the failing template
+    /// name (compile-time `&'static str`) so the log line names the
+    /// template directly instead of a generic "Template rendering failed"
+    /// string. #370 sub-item 3.
+    TemplateRenderFailed { template: &'static str },
     NotFound(String),
     BadRequest(String),
+    /// Generic 409 — caller supplies the message. Used for cases that
+    /// are neither a clean version mismatch nor a soft-delete race
+    /// (e.g. "username taken", "last admin can't deactivate self",
+    /// "volume already on loan").
     Conflict(String),
+    /// Optimistic-lock failure on an UPDATE — the row's version moved
+    /// between the read and the write because another user (or another
+    /// browser tab) committed first. #370 sub-item 1: previously
+    /// conflated with the soft-delete race under a single
+    /// `Conflict("version_mismatch")` shape — both produce
+    /// `rows_affected = 0` and were indistinguishable. The split lets
+    /// the UI render the right localized message ("reload to see the
+    /// latest version" vs "this item was just deleted").
+    VersionMismatch { entity: &'static str },
+    /// Operation targeted a row whose `deleted_at` got set between the
+    /// caller's read and write. Same DB symptom as `VersionMismatch`
+    /// (zero rows touched by the optimistic UPDATE) but a different
+    /// user remediation — the row is gone, not stale. Callers that can
+    /// distinguish (e.g. by re-querying the row's `deleted_at`) should
+    /// prefer this variant; others stay on `VersionMismatch`.
+    SoftDeleted { entity: &'static str },
     /// Anonymous user tried to access a protected resource. Redirects to `/login`.
     Unauthorized,
     /// Same as `Unauthorized` but preserves a post-login return path (`/login?next=<encoded>`).
@@ -29,9 +54,14 @@ impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AppError::Internal(msg) => write!(f, "Internal error: {msg}"),
+            AppError::TemplateRenderFailed { template } => {
+                write!(f, "Template render failed: {template}")
+            }
             AppError::NotFound(msg) => write!(f, "Not found: {msg}"),
             AppError::BadRequest(msg) => write!(f, "Bad request: {msg}"),
             AppError::Conflict(msg) => write!(f, "Conflict: {msg}"),
+            AppError::VersionMismatch { entity } => write!(f, "Version mismatch on {entity}"),
+            AppError::SoftDeleted { entity } => write!(f, "Soft-deleted {entity}"),
             AppError::Unauthorized => write!(f, "Unauthorized"),
             AppError::UnauthorizedWithReturn(next) => write!(f, "Unauthorized (next={next})"),
             AppError::Forbidden(loc) => write!(f, "Forbidden (locale={loc})"),
@@ -115,7 +145,7 @@ impl IntoResponse for AppError {
             AppError::Forbidden(loc) => {
                 let title = rust_i18n::t!("error.forbidden.title", locale = loc).to_string();
                 let body = rust_i18n::t!("error.forbidden.body", locale = loc).to_string();
-                let html = crate::routes::catalog::feedback_html_pub("error", &title, &body);
+                let html = crate::utils::feedback_html("error", &title, &body);
                 // polish-1 AC4.e: retarget to `#feedback-list`. The previous
                 // target `#feedback-container` was a latent dead-retarget bug
                 // — the selector existed nowhere in templates, so HTMX
@@ -142,8 +172,49 @@ impl IntoResponse for AppError {
             // default behavior on non-2xx is no-swap). Without this, admin
             // delete handlers' "in use" or version-mismatch conflicts looked
             // like silent failures.
+            //
+            // #370 sub-item 1: the typed `VersionMismatch` / `SoftDeleted`
+            // variants reuse the same 409 + retarget shape but pull their
+            // user-facing message from the i18n key matching the failure
+            // kind, parameterized by the (`&'static str`) entity name —
+            // no more shared "this record was modified" copy for both
+            // optimistic-lock failures and soft-delete races.
             AppError::Conflict(msg) => {
-                let html = crate::routes::catalog::feedback_html_pub("error", msg, "");
+                let html = crate::utils::feedback_html("error", msg, "");
+                return (
+                    StatusCode::CONFLICT,
+                    [
+                        (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                        (
+                            header::HeaderName::from_static("hx-retarget"),
+                            "#feedback-list",
+                        ),
+                        (header::HeaderName::from_static("hx-reswap"), "beforeend"),
+                    ],
+                    html,
+                )
+                    .into_response();
+            }
+            AppError::VersionMismatch { entity } => {
+                let msg = rust_i18n::t!("error.version_mismatch", entity = entity).to_string();
+                let html = crate::utils::feedback_html("error", &msg, "");
+                return (
+                    StatusCode::CONFLICT,
+                    [
+                        (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                        (
+                            header::HeaderName::from_static("hx-retarget"),
+                            "#feedback-list",
+                        ),
+                        (header::HeaderName::from_static("hx-reswap"), "beforeend"),
+                    ],
+                    html,
+                )
+                    .into_response();
+            }
+            AppError::SoftDeleted { entity } => {
+                let msg = rust_i18n::t!("error.soft_deleted", entity = entity).to_string();
+                let html = crate::utils::feedback_html("error", &msg, "");
                 return (
                     StatusCode::CONFLICT,
                     [
@@ -167,6 +238,11 @@ impl IntoResponse for AppError {
                 msg.clone(),
                 "An internal error occurred".to_string(),
             ),
+            AppError::TemplateRenderFailed { template } => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("template render failed: {template}"),
+                "An internal error occurred".to_string(),
+            ),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone(), msg.clone()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone(), msg.clone()),
             AppError::Database(err) => (
@@ -177,7 +253,9 @@ impl IntoResponse for AppError {
             AppError::Unauthorized
             | AppError::UnauthorizedWithReturn(_)
             | AppError::Forbidden(_)
-            | AppError::Conflict(_) => {
+            | AppError::Conflict(_)
+            | AppError::VersionMismatch { .. }
+            | AppError::SoftDeleted { .. } => {
                 unreachable!()
             }
         };
@@ -193,7 +271,7 @@ impl IntoResponse for AppError {
         // established by story 8-4 P18. Modal-Confirm requests get the
         // retarget stripped by the ModalConfirmRetargetGuard middleware (AC4.b)
         // so the body lands in the modal's data-modal-error region instead.
-        let html = crate::routes::catalog::feedback_html_pub("error", &client_message, "");
+        let html = crate::utils::feedback_html("error", &client_message, "");
         (
             status,
             [
@@ -231,6 +309,65 @@ mod tests {
         let err = AppError::Conflict("record modified".to_string());
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    /// #370 sub-item 1 — typed VersionMismatch produces 409 + the
+    /// localized `error.version_mismatch` body interpolated with the
+    /// entity name. The body must NOT contain the generic
+    /// "modified by another user" string from `error.conflict`.
+    #[tokio::test]
+    async fn test_version_mismatch_renders_typed_body() {
+        let err = AppError::VersionMismatch { entity: "title" };
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            response.headers().get("hx-retarget").unwrap(),
+            "#feedback-list"
+        );
+        let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            body.contains("title") && body.contains("latest version"),
+            "VersionMismatch body must interpolate entity + render localized copy; got: {body}",
+        );
+    }
+
+    /// #370 sub-item 1 — typed SoftDeleted produces 409 + the localized
+    /// `error.soft_deleted` body, distinct from VersionMismatch.
+    #[tokio::test]
+    async fn test_soft_deleted_renders_typed_body() {
+        let err = AppError::SoftDeleted { entity: "volume" };
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            body.contains("volume") && body.contains("just deleted"),
+            "SoftDeleted body must interpolate entity + render localized copy; got: {body}",
+        );
+    }
+
+    /// #370 sub-item 3 — TemplateRenderFailed { template } produces a 500
+    /// + Display impl names the failing template so the log line is
+    /// triageable without manually inspecting the source. The client body
+    /// stays a generic "internal error occurred" (no template leakage).
+    #[tokio::test]
+    async fn test_template_render_failed_names_template_in_display() {
+        let err = AppError::TemplateRenderFailed {
+            template: "catalog",
+        };
+        assert_eq!(err.to_string(), "Template render failed: catalog");
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        let body = String::from_utf8(bytes.to_vec()).unwrap();
+        // Client message stays generic — no internal template name in
+        // the response body (leakage would be a low-severity info disclosure).
+        assert!(!body.contains("catalog"), "no template name leaked to client: {body}");
+        assert!(
+            body.contains("internal error"),
+            "generic 500 body shown; got: {body}",
+        );
     }
 
     #[test]

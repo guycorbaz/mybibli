@@ -331,7 +331,7 @@ mod tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let id = GenreModel::create(&pool, "Z-rename-stale").await?.id();
         let res = GenreModel::rename(&pool, id, 999, "Z-rename-stale-new").await;
-        assert!(matches!(res, Err(AppError::Conflict(_))));
+        assert!(matches!(res, Err(AppError::VersionMismatch { entity: "genre" })));
         Ok(())
     }
 

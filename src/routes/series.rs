@@ -11,7 +11,7 @@ use crate::middleware::htmx::HxRequest;
 use crate::middleware::locale::Locale;
 use crate::models::PaginatedList;
 use crate::models::series::{SeriesModel, SeriesType};
-use crate::routes::catalog::feedback_html_pub;
+use crate::utils::feedback_html;
 use crate::services::series::{SeriesPositionInfo, SeriesService};
 
 /// Compute gap count for a closed series: total - owned, clamped to 0.
@@ -154,7 +154,7 @@ pub async fn series_list_page(
 
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "series" }),
     }
 }
 
@@ -303,7 +303,7 @@ pub async fn series_detail_page(
 
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "series" }),
     }
 }
 
@@ -424,7 +424,7 @@ pub async fn create_series_form(
 
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "series" }),
     }
 }
 
@@ -563,7 +563,7 @@ pub async fn edit_series_form(
 
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "series" }),
     }
 }
 
@@ -725,7 +725,7 @@ pub async fn delete_series(
                 AppError::NotFound(msg) | AppError::Conflict(msg) => msg.clone(),
                 _ => rust_i18n::t!("error.internal", locale = loc).to_string(),
             };
-            Ok(Html(feedback_html_pub("error", &message, "")).into_response())
+            Ok(Html(feedback_html("error", &message, "")).into_response())
         }
     }
 }

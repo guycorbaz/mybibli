@@ -390,6 +390,8 @@ error:
   language:
     required: Language is required
   conflict: "This record was modified by another user. Please reload and try again."
+  version_mismatch: "Another user just modified this %{entity}. Reload the page so you see the latest version, then try again."
+  soft_deleted: "This %{entity} was just deleted. Reload the page to refresh the list."
   delete_has_references: "Cannot delete: item is referenced by active records."
   contributor:
     has_titles: "Cannot delete %{name}. This contributor is associated with %{count} title(s). Remove the contributor from all titles first."

@@ -155,7 +155,7 @@ pub async fn loans_page(
 
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
-        Err(_) => Err(AppError::Internal("Template rendering failed".to_string())),
+        Err(_) => Err(AppError::TemplateRenderFailed { template: "loans" }),
     }
 }
 
@@ -186,7 +186,7 @@ pub async fn create_loan(
         Some(v) => v,
         None if is_htmx => {
             let message = rust_i18n::t!("loan.volume_not_found", locale = loc).to_string();
-            let feedback = crate::routes::catalog::feedback_html_pub("error", &message, "");
+            let feedback = crate::utils::feedback_html("error", &message, "");
             return Ok(Html(feedback).into_response());
         }
         None => {
@@ -216,7 +216,7 @@ pub async fn create_loan(
             .to_string();
 
             if is_htmx {
-                let feedback = crate::routes::catalog::feedback_html_pub("success", &message, "");
+                let feedback = crate::utils::feedback_html("success", &message, "");
                 Ok(HtmxResponse {
                     main: feedback,
                     oob: vec![],
@@ -227,7 +227,7 @@ pub async fn create_loan(
             }
         }
         Err(AppError::BadRequest(msg)) if is_htmx => {
-            let feedback = crate::routes::catalog::feedback_html_pub("error", &msg, "");
+            let feedback = crate::utils::feedback_html("error", &msg, "");
             Ok(Html(feedback).into_response())
         }
         Err(e) => Err(e),
@@ -264,7 +264,7 @@ pub async fn return_loan_handler(
     };
 
     if is_htmx {
-        let feedback = crate::routes::catalog::feedback_html_pub("success", &message, "");
+        let feedback = crate::utils::feedback_html("success", &message, "");
         Ok(HtmxResponse {
             main: feedback,
             oob: vec![],
@@ -430,7 +430,7 @@ pub async fn scan_on_loans(
     // Check if V-code format
     if !crate::services::volume::VolumeService::validate_vcode(&code) {
         let message = rust_i18n::t!("feedback.vcode_invalid", locale = loc).to_string();
-        return Ok(Html(crate::routes::catalog::feedback_html_pub(
+        return Ok(Html(crate::utils::feedback_html(
             "warning", &message, "",
         ))
         .into_response());
@@ -440,7 +440,7 @@ pub async fn scan_on_loans(
     let volume = VolumeModel::find_by_label(pool, &code).await?;
     if volume.is_none() {
         let message = rust_i18n::t!("loan.volume_not_found", locale = loc).to_string();
-        return Ok(Html(crate::routes::catalog::feedback_html_pub(
+        return Ok(Html(crate::utils::feedback_html(
             "warning", &message, "",
         ))
         .into_response());
@@ -455,7 +455,7 @@ pub async fn scan_on_loans(
         }
         None => {
             let message = rust_i18n::t!("loan.not_on_loan", locale = loc).to_string();
-            Ok(Html(crate::routes::catalog::feedback_html_pub(
+            Ok(Html(crate::utils::feedback_html(
                 "info", &message, "",
             ))
             .into_response())

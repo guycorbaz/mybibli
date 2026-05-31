@@ -435,7 +435,7 @@ fn build_rejection_response(
 
     let title = rust_i18n::t!("error.csrf_rejected_title", locale = locale).to_string();
     let body = rust_i18n::t!("error.csrf_rejected_message", locale = locale).to_string();
-    let html = crate::routes::catalog::feedback_html_pub("error", &title, &body);
+    let html = crate::utils::feedback_html("error", &title, &body);
 
     let mut response: Response = (StatusCode::FORBIDDEN, html).into_response();
     let headers = response.headers_mut();
@@ -453,7 +453,7 @@ fn build_rejection_response(
 fn build_payload_too_large_response(locale: &str) -> Response {
     let title = rust_i18n::t!("error.csrf_payload_too_large_title", locale = locale).to_string();
     let body = rust_i18n::t!("error.csrf_payload_too_large_message", locale = locale).to_string();
-    let html = crate::routes::catalog::feedback_html_pub("error", &title, &body);
+    let html = crate::utils::feedback_html("error", &title, &body);
     let mut response: Response = (StatusCode::PAYLOAD_TOO_LARGE, html).into_response();
     let headers = response.headers_mut();
     headers.insert(

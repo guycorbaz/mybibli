@@ -492,7 +492,7 @@ mod tests {
         let user = UserModel::find_by_id(&pool, id).await?.unwrap();
         // Try update with stale version - should fail with conflict
         let result = UserModel::update(&pool, id, user.version - 1, "grace", "admin", None).await;
-        assert!(matches!(result, Err(AppError::Conflict(_))));
+        assert!(matches!(result, Err(AppError::VersionMismatch { entity: "user" })));
         Ok(())
     }
 

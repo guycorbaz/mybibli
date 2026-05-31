@@ -28,7 +28,7 @@ use crate::error::AppError;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
 use crate::middleware::locale::Locale;
-use crate::routes::catalog::feedback_html_pub;
+use crate::utils::feedback_html;
 // Story 8-8 review P4: use the shared K/V helpers from `services::admin_system`
 // instead of the in-route duplicates that this file used to carry. The local
 // `save_setting` / `reload_settings_cache` / `validate_*` definitions have
@@ -706,7 +706,7 @@ pub async fn save_loans_settings(
 fn validation_error_response(form_html: String, error_msg: String) -> Response {
     use axum::http::StatusCode;
     use axum::http::header;
-    let feedback = feedback_html_pub("error", &error_msg, "");
+    let feedback = feedback_html("error", &error_msg, "");
     let htmx_response = HtmxResponse {
         main: form_html,
         oob: vec![OobUpdate { swap_mode: Default::default(),
@@ -795,7 +795,7 @@ pub async fn save_provider_keys(
     } else {
         rust_i18n::t!("success.system.no_changes", locale = loc).to_string()
     };
-    let feedback_html = feedback_html_pub("success", &feedback_msg, "");
+    let feedback_html = feedback_html("success", &feedback_msg, "");
     Ok(HtmxResponse {
         main,
         oob: vec![OobUpdate { swap_mode: Default::default(),
@@ -1190,7 +1190,7 @@ async fn run_provider_update(
 
 fn success_feedback(loc: &'static str, key: &str) -> String {
     let msg = rust_i18n::t!(key, locale = loc).to_string();
-    feedback_html_pub("success", &msg, "")
+    feedback_html("success", &msg, "")
 }
 
 #[cfg(test)]
