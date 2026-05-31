@@ -67,13 +67,6 @@ pub const CSRF_EXEMPT_ROUTES: &[(&str, &str)] = &[("POST", "/login")];
 /// does not pay for reading megabytes before rejecting.
 const MAX_CSRF_BODY_BYTES: usize = 1024 * 1024;
 
-/// URL-safe base64 32-byte token, re-exported so callers outside the
-/// middleware (login handler, session resolver) can mint matching
-/// tokens from one place.
-pub fn generate_csrf_token() -> String {
-    crate::middleware::auth::generate_csrf_token()
-}
-
 /// Normalize a request path for exempt-route comparison so that URI variants
 /// Axum's router would dispatch to the same handler (trailing `/`, repeated
 /// `/`) also bypass CSRF.
@@ -608,15 +601,8 @@ mod tests {
         assert!(!ct_eq(stored, b""));
     }
 
-    #[test]
-    fn test_generate_csrf_token_is_43_chars() {
-        assert_eq!(generate_csrf_token().len(), 43);
-    }
-
-    #[test]
-    fn test_generate_csrf_token_is_unique() {
-        assert_ne!(generate_csrf_token(), generate_csrf_token());
-    }
+    // generate_csrf_token moved to src/utils.rs post-#365 — length and
+    // uniqueness coverage now lives there.
 
     #[sqlx::test(migrations = "./migrations")]
     async fn get_requests_bypass_csrf(pool: crate::db::DbPool) {

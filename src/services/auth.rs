@@ -18,21 +18,7 @@
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::middleware::auth::generate_csrf_token;
-
-/// 32-byte STANDARD base64 token (44 chars w/ padding, matches the
-/// existing `routes/auth.rs::generate_session_token` and the project
-/// convention for session tokens — CSRF tokens use `URL_SAFE_NO_PAD`,
-/// session tokens use `STANDARD`; the `+/=` chars get percent-encoded
-/// in cookie values and decoded by the session resolver). Kept here
-/// (rather than re-exporting from `routes/auth.rs`) so the `services`
-/// layer never depends on `routes`. Story 8-8 review P15 corrected the
-/// previous "URL-safe" doc-comment.
-fn generate_session_token() -> String {
-    use base64::Engine;
-    let bytes: [u8; 32] = rand::random();
-    base64::engine::general_purpose::STANDARD.encode(bytes)
-}
+use crate::utils::{generate_csrf_token, generate_session_token};
 
 /// Mint a fresh authenticated session for `user_id`. Returns
 /// `(session_token, csrf_token)` so the caller can set the cookie and
@@ -94,19 +80,5 @@ pub async fn authenticate_session(
     Ok((session_token, csrf_token))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn generate_session_token_length_is_44() {
-        // Match the existing `routes/auth.rs::generate_session_token`
-        // contract — base64 of 32 bytes with padding.
-        assert_eq!(generate_session_token().len(), 44);
-    }
-
-    #[test]
-    fn generate_session_token_is_unique() {
-        assert_ne!(generate_session_token(), generate_session_token());
-    }
-}
+// generate_session_token + generate_csrf_token now live in src/utils.rs
+// (#365) and own their length/charset/uniqueness coverage there.

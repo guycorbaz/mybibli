@@ -19,7 +19,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use crate::AppState;
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::middleware::auth::generate_csrf_token;
+use crate::utils::generate_csrf_token;
 use crate::models::user::UserModel;
 use crate::services::admin_system::{
     KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_OMDB, KEY_SETUP_COMPLETED_AT,

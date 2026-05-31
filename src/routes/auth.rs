@@ -181,8 +181,8 @@ pub async fn login(
     // Generate session + CSRF tokens. Story 8-2: CSRF token rotates on
     // every login so a pre-login anonymous token cannot be replayed
     // against the authenticated session.
-    let token = generate_session_token();
-    let csrf_token = crate::middleware::csrf::generate_csrf_token();
+    let token = crate::utils::generate_session_token();
+    let csrf_token = crate::utils::generate_csrf_token();
 
     // Insert session into database. Explicitly UTC_TIMESTAMP so the
     // expiry check (Rust-side `Utc::now()`) cannot drift vs a server
@@ -440,49 +440,14 @@ pub async fn logout(
     Ok((jar.remove(cookie), Redirect::to("/").into_response()))
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────
-
-pub fn generate_session_token() -> String {
-    use base64::Engine;
-    let bytes: [u8; 32] = rand::random();
-    base64::engine::general_purpose::STANDARD.encode(bytes)
-}
-
 // ─── Tests ───────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_generate_session_token_length() {
-        let token = generate_session_token();
-        assert_eq!(
-            token.len(),
-            44,
-            "Token should be 44 chars (32 bytes base64)"
-        );
-    }
-
-    #[test]
-    fn test_generate_session_token_is_base64() {
-        use base64::Engine;
-        let token = generate_session_token();
-        let decoded = base64::engine::general_purpose::STANDARD.decode(&token);
-        assert!(decoded.is_ok(), "Token should be valid base64");
-        assert_eq!(
-            decoded.unwrap().len(),
-            32,
-            "Decoded token should be 32 bytes"
-        );
-    }
-
-    #[test]
-    fn test_generate_session_token_unique() {
-        let t1 = generate_session_token();
-        let t2 = generate_session_token();
-        assert_ne!(t1, t2, "Tokens should be unique");
-    }
+    // generate_session_token moved to src/utils.rs post-#365; length /
+    // base64 / uniqueness coverage now lives there.
 
     #[test]
     fn test_verify_password_valid() {
@@ -542,6 +507,35 @@ mod tests {
         let html = template.render().unwrap();
         assert!(html.contains(r#"name="next""#));
         assert!(html.contains(r#"value="/loans""#));
+    }
+
+    /// #365 sub-item 3 — confirm the login GET page rendered through
+    /// `LoginTemplate::new` carries the session's CSRF token into the
+    /// form's hidden `_csrf_token` input. In production the session comes
+    /// off `session_resolve_middleware` and therefore always carries a
+    /// DB-backed token; this test locks the contract on the template
+    /// layer so a future refactor that loses the wiring (e.g. drops
+    /// `base_context`) trips here instead of failing at the next POST
+    /// /login round-trip with a 403.
+    #[test]
+    fn login_template_emits_session_csrf_token_in_form() {
+        let session = Session::anonymous_with_token("real-csrf-abc123".to_string());
+        let uri: axum::http::Uri = "/login".parse().unwrap();
+        let template = LoginTemplate::new("", "", &session, "en", &uri);
+        let html = template.render().unwrap();
+        assert!(
+            html.contains(r#"name="_csrf_token""#)
+                && html.contains(r#"value="real-csrf-abc123""#),
+            "login form must echo the session CSRF token as a hidden input \
+             — the next POST /login depends on it",
+        );
+        // The meta tag also has to carry the token so HTMX-mediated POSTs
+        // from any page rendered under base.html (e.g. lang toggle, nav
+        // logout) can populate `X-CSRF-Token`.
+        assert!(
+            html.contains(r#"<meta name="csrf-token" content="real-csrf-abc123""#),
+            "base layout must inject the same token via <meta csrf-token>",
+        );
     }
 
     #[test]
