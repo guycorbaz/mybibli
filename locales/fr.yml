@@ -396,6 +396,8 @@ error:
     has_titles: "Impossible de supprimer %{name}. Ce contributeur est associé à %{count} titre(s). Retirez d'abord le contributeur de tous les titres."
   user:
     username_empty: "Le nom d'utilisateur est requis"
+    username_too_short: "Le nom d'utilisateur doit contenir au moins 3 caractères"
+    username_too_long: "Le nom d'utilisateur doit contenir au plus 255 caractères"
     username_taken: "Le nom d'utilisateur « %{username} » est déjà pris"
     password_too_short: "Le mot de passe doit contenir au moins 8 caractères"
     password_too_long: "Le mot de passe ne peut dépasser 72 caractères"

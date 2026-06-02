@@ -489,6 +489,57 @@ async fn deactivate_user_via_existing_handler_still_works(pool: MySqlPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn deactivate_self_returns_localized_self_deactivate_conflict(pool: MySqlPool) {
+    // #55 HIGH #6: the self-deactivate guard previously bubbled the raw
+    // conflict key "self_deactivate_blocked" to the user. The handler now maps
+    // it to the localized error.user.self_deactivate copy. Acting admin == target
+    // → the self-deactivate guard fires before the (unreachable-in-practice)
+    // last-admin guard.
+    let admin_id = admin_user_id(&pool, "admin").await;
+    let admin_version = user_version(&pool, admin_id).await;
+    let admin_cookie = seed_session(&pool, "admin").await;
+    let app = build_router(build_state(pool.clone()));
+
+    let body = format!("version={admin_version}&_csrf_token={TEST_CSRF_TOKEN}");
+    let resp = app
+        .oneshot(req_form(
+            Method::POST,
+            &format!("/admin/users/{admin_id}/deactivate"),
+            body,
+            Some(&admin_cookie),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        resp.status(),
+        StatusCode::CONFLICT,
+        "self-deactivate must be a 409 Conflict"
+    );
+    let text = body_text(resp).await;
+    assert!(
+        text.contains("cannot deactivate your own account")
+            || text.contains("propre compte"),
+        "body must carry the localized self-deactivate copy, not the raw \
+         'self_deactivate_blocked' key; got: {text}"
+    );
+    assert!(
+        !text.contains("self_deactivate_blocked"),
+        "raw conflict key must not leak to the user; got: {text}"
+    );
+
+    // And the admin row is untouched (guard fired before any UPDATE).
+    let (still_active,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM users WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(admin_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(still_active, 1, "self-deactivate must not soft-delete the row");
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn admin_users_panel_renders_row_target_div_for_each_active_user(pool: MySqlPool) {
     // Load-bearing assertion for the modal's hardcoded
     // `hx_target="#admin-users-row-{id}"` (templates/fragments/admin_user_deactivate_modal.html).
