@@ -388,6 +388,8 @@ error:
     has_titles: "Impossibile eliminare %{name}. Questo collaboratore è associato a %{count} titolo(i). Rimuovi prima il collaboratore da tutti i titoli."
   user:
     username_empty: Il nome utente è obbligatorio
+    username_too_short: Il nome utente deve contenere almeno 3 caratteri
+    username_too_long: Il nome utente deve contenere al massimo 255 caratteri
     username_taken: "Il nome utente «%{username}» è già in uso"
     password_too_short: La password deve avere almeno 8 caratteri
     password_too_long: La password deve avere al massimo 72 caratteri
