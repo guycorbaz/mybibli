@@ -606,6 +606,31 @@ pub async fn admin_users_create_form(
     Ok(Html(html))
 }
 
+/// Shared username validation for the admin create + update handlers (#55
+/// MEDIUM #2). Bounds are in characters: empty → `username_empty`, `<3` →
+/// `username_too_short`, `>255` → `username_too_long`. The upper bound matches
+/// the `users.username VARCHAR(255)` column, so an over-long value surfaces as
+/// a clean localized 400 instead of a MariaDB truncation error (500).
+fn validate_username(username: &str, loc: &'static str) -> Result<(), AppError> {
+    if username.is_empty() {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.user.username_empty", locale = loc).to_string(),
+        ));
+    }
+    let char_count = username.chars().count();
+    if char_count < 3 {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.user.username_too_short", locale = loc).to_string(),
+        ));
+    }
+    if char_count > 255 {
+        return Err(AppError::BadRequest(
+            rust_i18n::t!("error.user.username_too_long", locale = loc).to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub async fn admin_users_create(
     State(state): State<AppState>,
     session: Session,
@@ -615,13 +640,9 @@ pub async fn admin_users_create(
     session.require_role_with_return(Role::Admin, "/admin?tab=users", locale.0)?;
     let loc = locale.0;
 
-    // Validate username (trim whitespace, check not empty)
+    // Validate username (trim whitespace; empty / length bounds — #55 MEDIUM #2)
     let username = form.username.trim().to_string();
-    if username.is_empty() {
-        return Err(AppError::BadRequest(
-            rust_i18n::t!("error.user.username_empty", locale = loc).to_string(),
-        ));
-    }
+    validate_username(&username, loc)?;
 
     // Validate password length (8-72 chars)
     if form.password.len() < 8 {
@@ -691,24 +712,6 @@ pub async fn admin_users_edit_form(
     let html = form
         .render()
         .map_err(|_| AppError::Internal("admin users edit form render failed".to_string()))?;
-    Ok(Html(html))
-}
-
-pub async fn admin_users_row_view(
-    State(state): State<AppState>,
-    session: Session,
-    Extension(locale): Extension<Locale>,
-    axum::extract::Path(id): axum::extract::Path<u64>,
-) -> Result<Html<String>, AppError> {
-    session.require_role_with_return(Role::Admin, "/admin?tab=users", locale.0)?;
-    let loc = locale.0;
-
-    // Fetch user
-    let user = UserModel::find_by_id(&state.pool, id)
-        .await?
-        .ok_or(AppError::NotFound("User not found".to_string()))?;
-
-    let html = render_user_row(&state, loc, &session, &user).await?;
     Ok(Html(html))
 }
 
@@ -805,13 +808,9 @@ pub async fn admin_users_update(
     session.require_role_with_return(Role::Admin, "/admin?tab=users", locale.0)?;
     let loc = locale.0;
 
-    // Validate username (trim whitespace, check not empty)
+    // Validate username (trim whitespace; empty / length bounds — #55 MEDIUM #2)
     let username = form.username.trim().to_string();
-    if username.is_empty() {
-        return Err(AppError::BadRequest(
-            rust_i18n::t!("error.user.username_empty", locale = loc).to_string(),
-        ));
-    }
+    validate_username(&username, loc)?;
 
     // Validate role
     if form.role != "admin" && form.role != "librarian" {
@@ -908,8 +907,25 @@ pub async fn admin_users_deactivate(
         AppError::Internal("admin session missing user_id".to_string())
     })?;
 
-    // Deactivate the user (guards handled by UserModel::deactivate)
-    let sessions_killed = UserModel::deactivate(&state.pool, id, form.version, acting_admin_id).await?;
+    // Deactivate the user (guards handled by UserModel::deactivate). Map the
+    // raw guard conflict keys to localized copy (#55 HIGH #6). VersionMismatch
+    // is already localized by AppError::IntoResponse (#370), so it falls
+    // through the catch-all unchanged.
+    let sessions_killed =
+        match UserModel::deactivate(&state.pool, id, form.version, acting_admin_id).await {
+            Ok(n) => n,
+            Err(AppError::Conflict(ref msg)) if msg == "self_deactivate_blocked" => {
+                return Err(AppError::Conflict(
+                    rust_i18n::t!("error.user.self_deactivate", locale = loc).to_string(),
+                ));
+            }
+            Err(AppError::Conflict(ref msg)) if msg == "last_admin_blocked" => {
+                return Err(AppError::Conflict(
+                    rust_i18n::t!("error.user.last_admin", locale = loc).to_string(),
+                ));
+            }
+            Err(e) => return Err(e),
+        };
     tracing::info!(user_id = id, sessions_killed, "user deactivated");
 
     // Fetch updated user and render row
@@ -1408,6 +1424,22 @@ fn render_shell(
         .map_err(|_| AppError::Internal("admin shell render failed".to_string()))
 }
 
+/// Upper bound on the `?page=` query param for the users panel (#55 HIGH #4).
+/// The offset is `(page - 1) * 25`, so an unclamped attacker-supplied page
+/// (e.g. `?page=4000000000`) overflows the `u32` multiply — a debug panic /
+/// release wrap — before the later `min(total_pages)` display clamp can run.
+/// 10 000 pages × 25 rows = 250 000 users, far beyond any single-tenant
+/// library, so clamping here is purely defensive and never truncates a real
+/// result set.
+const MAX_USERS_PAGE: u32 = 10_000;
+
+/// Normalize the users-panel `?page=` param to `1..=MAX_USERS_PAGE` (#55 HIGH
+/// #4). Pure + testable: `None`/`0` → 1, oversized → `MAX_USERS_PAGE`, so the
+/// `(page - 1) * 25` offset can never overflow `u32`.
+fn clamp_users_page(page: Option<u32>) -> u32 {
+    page.unwrap_or(1).clamp(1, MAX_USERS_PAGE)
+}
+
 async fn render_users_panel(
     state: &AppState,
     loc: &'static str,
@@ -1416,7 +1448,10 @@ async fn render_users_panel(
     filters: Option<UsersFilters>,
 ) -> Result<String, AppError> {
     let pool = &state.pool;
-    let current_page = page.unwrap_or(1).max(1);
+    // Clamp BEFORE computing the offset so a huge `?page=` can't overflow the
+    // `(current_page - 1) * 25` multiply (#55 HIGH #4). The display-time
+    // `min(total_pages)` clamp below still narrows this to the real last page.
+    let current_page = clamp_users_page(page);
 
     // Extract and normalize filters
     let filters = filters.unwrap_or(UsersFilters { role: None, status: None, page: None });
@@ -1955,6 +1990,45 @@ mod tests {
                 .require_role_with_return(Role::Admin, "/admin", "fr")
                 .is_ok()
         );
+    }
+
+    // ─── #55: username validation + pagination clamp ────────
+
+    #[test]
+    fn validate_username_rejects_empty_short_and_overlong() {
+        // Empty, below the 3-char floor, and above the 255-char ceiling all
+        // map to a BadRequest (localized copy) rather than reaching the DB.
+        assert!(matches!(
+            validate_username("", "en"),
+            Err(AppError::BadRequest(_))
+        ));
+        assert!(matches!(
+            validate_username("ab", "en"),
+            Err(AppError::BadRequest(_))
+        ));
+        let too_long = "x".repeat(256);
+        assert!(matches!(
+            validate_username(&too_long, "en"),
+            Err(AppError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn validate_username_accepts_in_range() {
+        assert!(validate_username("abc", "en").is_ok());
+        assert!(validate_username(&"x".repeat(255), "en").is_ok());
+    }
+
+    #[test]
+    fn clamp_users_page_normalizes_bounds_and_prevents_offset_overflow() {
+        assert_eq!(clamp_users_page(None), 1);
+        assert_eq!(clamp_users_page(Some(0)), 1);
+        assert_eq!(clamp_users_page(Some(5)), 5);
+        assert_eq!(clamp_users_page(Some(u32::MAX)), MAX_USERS_PAGE);
+        // The whole point of the clamp: the `(page - 1) * 25` offset built in
+        // render_users_panel can never overflow u32 for any input.
+        let offset = (clamp_users_page(Some(u32::MAX)) - 1).checked_mul(25);
+        assert!(offset.is_some(), "clamped offset must not overflow u32");
     }
 
     // ─── Story 10-4: admin tabs mobile dropdown ─────────────
