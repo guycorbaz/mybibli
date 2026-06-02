@@ -659,38 +659,54 @@ pub fn build_router(state: AppState) -> Router {
     apply_csp_layer(app, report_only)
 }
 
-async fn health_check() -> &'static str {
-    "ok"
+/// Liveness + DB-readiness probe (#21). Returns `200 "ok"` only when a
+/// `SELECT 1` against the pool succeeds; `503 "db unavailable"` otherwise.
+/// Promoting `/health` from a bare process-alive stub to a DB-readiness
+/// check lets the deployment's external monitor distinguish a live process
+/// from one that has lost its database — the relevant failure mode on the
+/// single-tenant NAS where app and MariaDB are separate containers.
+async fn health_check(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> axum::response::Response {
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    if db_is_healthy(&state.pool).await {
+        (StatusCode::OK, "ok").into_response()
+    } else {
+        (StatusCode::SERVICE_UNAVAILABLE, "db unavailable").into_response()
+    }
+}
+
+/// Run a cheap `SELECT 1` to confirm the pool can reach the database.
+/// Extracted so the readiness decision is unit-testable against a
+/// deliberately-unreachable lazy pool without standing up a full router.
+async fn db_is_healthy(pool: &crate::db::DbPool) -> bool {
+    sqlx::query("SELECT 1").execute(pool).await.is_ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use tower::ServiceExt;
 
-    fn test_app() -> Router {
-        Router::new().route("/health", axum::routing::get(health_check))
-    }
-
+    /// #21 (DB hardening): the `/health` probe now reports DB readiness, not
+    /// just process liveness. A pool that cannot reach its database must make
+    /// `db_is_healthy` return `false` (the handler maps that to `503`). We
+    /// exercise the failure path against a lazy pool pointed at an
+    /// unreachable address — `connect_lazy` never blocks at construction, and
+    /// the first `SELECT 1` fails fast with a connection-refused error, so the
+    /// test needs no live database and stays in the default `cargo test` run.
+    /// The happy path (`200 "ok"` against a real MariaDB) is covered by the
+    /// E2E suite, which runs the binary against a live database.
     #[tokio::test]
-    async fn test_health_check_returns_ok() {
-        let app = test_app();
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        assert_eq!(&body[..], b"ok");
+    async fn db_is_healthy_returns_false_on_unreachable_db() {
+        // Short acquire_timeout so the test fails fast: sqlx retries the
+        // connection within the acquire window, so the pool default (30s)
+        // would otherwise stall this unit test for the full timeout.
+        let pool = sqlx::mysql::MySqlPoolOptions::new()
+            .acquire_timeout(std::time::Duration::from_millis(300))
+            .connect_lazy("mysql://invalid:invalid@127.0.0.1:1/nonexistent")
+            .expect("connect_lazy builds a pool without connecting");
+        assert!(!db_is_healthy(&pool).await);
     }
 }

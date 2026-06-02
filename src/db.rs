@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use sqlx::Executor;
 use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
 
@@ -32,6 +34,21 @@ pub async fn create_pool(database_url: &str) -> Result<DbPool, sqlx::Error> {
         // The matching MariaDB-side floor is `max_connections=151` in
         // MariaDB 10.x default, well above our ceiling.
         .max_connections(20)
+        // #21 (DB hardening): make the acquire + idle timeouts explicit
+        // rather than silently inheriting sqlx defaults, so the pool's
+        // failure and recycling behaviour is documented at the call site.
+        //   * acquire_timeout(30s): a handler waiting on a saturated pool
+        //     fails fast with a clear pool-timeout error instead of hanging
+        //     the request indefinitely. 30s deliberately matches the prior
+        //     sqlx default, so fix #312's max_connections bump stays the
+        //     load lever — this change is documentation, not a tuning shift.
+        //   * idle_timeout(10min): a NAS that idles overnight reclaims idle
+        //     connections instead of holding 20 handles open against a
+        //     MariaDB that may itself drop them (its own `wait_timeout`),
+        //     which would otherwise surface as a stale-connection error on
+        //     the next request after a quiet period.
+        .acquire_timeout(Duration::from_secs(30))
+        .idle_timeout(Duration::from_secs(600))
         .after_connect(|conn, _meta| {
             Box::pin(async move {
                 conn.execute("SET time_zone = '+00:00'").await?;

@@ -748,15 +748,24 @@ async fn load_from_db_clamps_out_of_range_timeouts_to_default(pool: DbPool) {
     );
 }
 
+#[allow(clippy::await_holding_lock)]
 #[sqlx::test(migrations = "./migrations")]
 async fn migrate_legacy_env_vars_copies_timeout_env_vars_when_row_is_seeded_default(
     pool: DbPool,
 ) {
     use std::env;
+    // Serialize against every other env-var-touching test in this binary.
+    // `migrate_legacy_env_vars` reads ALL env keys at once, and the three
+    // MYBIBLI_*_TIMEOUT_SECS tests set/remove the same two vars, so without
+    // this shared lock a sibling's `remove_var` can land between this test's
+    // `set_var` and `migrate`, dropping the value back to the seeded default.
+    // (That race flaked CI on 2026-06-02 — got 10 instead of 30.)
+    let _guard = ENV_VAR_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+
     // Set both env vars, leave both rows at the seeded defaults (5 / 10).
-    // SAFETY: same single-threaded-test contract as the API-key cases above —
-    // setenv contends with other threads that read the same vars, but no other
-    // sqlx::test in this suite touches MYBIBLI_*_TIMEOUT_SECS.
+    // SAFETY: the lock above serializes all env-var manipulation in this binary.
     unsafe {
         env::set_var("MYBIBLI_METADATA_CHAIN_PROVIDER_TIMEOUT_SECS", "20");
         env::set_var("MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS", "30");
@@ -781,9 +790,15 @@ async fn migrate_legacy_env_vars_copies_timeout_env_vars_when_row_is_seeded_defa
     );
 }
 
+#[allow(clippy::await_holding_lock)]
 #[sqlx::test(migrations = "./migrations")]
 async fn migrate_legacy_env_vars_preserves_admin_change_against_env_var(pool: DbPool) {
     use std::env;
+    // Shared env-var lock — see the sibling timeout test for the race detail.
+    let _guard = ENV_VAR_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+
     // Simulate an admin save that already moved the row off the seeded default.
     sqlx::query(
         "UPDATE settings SET setting_value = '12' \
@@ -810,9 +825,15 @@ async fn migrate_legacy_env_vars_preserves_admin_change_against_env_var(pool: Db
     );
 }
 
+#[allow(clippy::await_holding_lock)]
 #[sqlx::test(migrations = "./migrations")]
 async fn migrate_legacy_env_vars_ignores_out_of_range_timeout_env_var(pool: DbPool) {
     use std::env;
+    // Shared env-var lock — see the sibling timeout test for the race detail.
+    let _guard = ENV_VAR_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+
     unsafe {
         env::set_var("MYBIBLI_METADATA_CHAIN_PROVIDER_TIMEOUT_SECS", "0");
         env::set_var("MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS", "99999");
