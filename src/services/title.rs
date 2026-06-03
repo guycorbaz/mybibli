@@ -39,6 +39,31 @@ impl TitleService {
         check_digit == digits[12]
     }
 
+    /// Validate a UPC-A checksum using the modulo-10 algorithm (#384).
+    /// UPC-A is 12 digits with weights 3 and 1 — the mirror of EAN-13's 1/3
+    /// (odd 1-indexed positions ×3, even ×1). Catches fat-fingered manual
+    /// UPC entries before they reach the provider chain.
+    pub fn validate_upc12_checksum(upc: &str) -> bool {
+        if upc.len() != 12 {
+            return false;
+        }
+
+        let digits: Vec<u32> = match upc.chars().map(|c| c.to_digit(10)).collect() {
+            Some(d) => d,
+            None => return false,
+        };
+
+        let sum: u32 = digits
+            .iter()
+            .enumerate()
+            .take(11)
+            .map(|(i, &d)| if i % 2 == 0 { d * 3 } else { d })
+            .sum();
+
+        let check_digit = (10 - (sum % 10)) % 10;
+        check_digit == digits[11]
+    }
+
     /// Create a new title from a scanned ISBN.
     /// Returns (title, is_new) where is_new indicates if it was just created.
     /// Note: There is a theoretical TOCTOU race between find_by_isbn and create,
@@ -117,6 +142,21 @@ impl TitleService {
         if code_type == CodeType::Isbn && !Self::validate_isbn13_checksum(code) {
             return Err(AppError::BadRequest(
                 rust_i18n::t!("error.isbn.invalid_checksum").to_string(),
+            ));
+        }
+
+        // Validate UPC-A checksum for 12-digit codes (#384). `CodeType::Upc`
+        // is a catch-all for 8–13 digit product barcodes (EAN-8, UPC-A,
+        // EAN-13 — see routes::catalog::detect_code_type), so the mod-10 guard
+        // is scoped to the 12-digit UPC-A case. Running the UPC-A algorithm on
+        // a 13-digit EAN would reject valid product codes; those lengths keep
+        // their pre-#384 (unvalidated) behaviour.
+        if code_type == CodeType::Upc
+            && code.len() == 12
+            && !Self::validate_upc12_checksum(code)
+        {
+            return Err(AppError::BadRequest(
+                rust_i18n::t!("error.upc.invalid_checksum").to_string(),
             ));
         }
 
@@ -653,6 +693,52 @@ mod tests {
     #[test]
     fn test_isbn_all_zeros() {
         assert!(TitleService::validate_isbn13_checksum("0000000000000"));
+    }
+
+    // ─── #384: UPC-A checksum ───────────────────────────────
+
+    #[test]
+    fn test_valid_upc_036000291452() {
+        // Classic UPC-A example (check digit 2).
+        assert!(TitleService::validate_upc12_checksum("036000291452"));
+    }
+
+    #[test]
+    fn test_valid_upc_012345678905() {
+        // Another well-known valid UPC-A (check digit 5).
+        assert!(TitleService::validate_upc12_checksum("012345678905"));
+    }
+
+    #[test]
+    fn test_invalid_upc_wrong_checksum() {
+        // Last digit flipped 2 → 3.
+        assert!(!TitleService::validate_upc12_checksum("036000291453"));
+    }
+
+    #[test]
+    fn test_invalid_upc_too_short() {
+        assert!(!TitleService::validate_upc12_checksum("03600029145"));
+    }
+
+    #[test]
+    fn test_invalid_upc_too_long() {
+        // 13 digits is an EAN-13, not a UPC-A.
+        assert!(!TitleService::validate_upc12_checksum("0360002914521"));
+    }
+
+    #[test]
+    fn test_invalid_upc_non_numeric() {
+        assert!(!TitleService::validate_upc12_checksum("03600029145X"));
+    }
+
+    #[test]
+    fn test_invalid_upc_empty() {
+        assert!(!TitleService::validate_upc12_checksum(""));
+    }
+
+    #[test]
+    fn test_upc_all_zeros() {
+        assert!(TitleService::validate_upc12_checksum("000000000000"));
     }
 
     #[test]
