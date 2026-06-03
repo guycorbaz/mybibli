@@ -139,6 +139,38 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.8.4}\label{sec:whats-new-1.8.4}
+
+Version 1.8.4 is a three-issue hardening and quality closure on v1.8.3.
+\emph{No operator action required}; the one bookkeeping migration runs
+automatically. Routine \texttt{docker compose pull \&\& docker compose
+up -d}.
+
+\begin{itemize}
+  \item \textbf{\#21 \string— database-layer hardening.} The connection
+        pool now sets explicit acquire and idle timeouts, so a request
+        waiting on a saturated pool fails fast instead of hanging and a
+        NAS that idles overnight reclaims stale connections. The
+        \texttt{/health} endpoint was promoted from a bare ``process is
+        alive'' stub to a real readiness probe: it runs a \texttt{SELECT
+        1} and returns \texttt{503} when the database is unreachable, so
+        an external monitor (or your container healthcheck) can tell a
+        live process from one that has lost its database.
+  \item \textbf{\#55 \string— admin users-panel hardening.} The user
+        list's page parameter is now bounds-checked (a hostile or
+        accidental \texttt{?page=} value can no longer overflow the
+        offset calculation); attempting to deactivate your own account
+        or the last remaining admin now shows a properly translated
+        message instead of an internal key; and the create/edit forms
+        validate username length (3\,–\,255 characters) up front rather
+        than surfacing a database error.
+  \item \textbf{\#22 \string— internal test-suite quality.} A
+        consolidation pass on the end-to-end test suite (shared login
+        and lookup helpers, deterministic record resolution, and
+        parallel-safe unique test data). No user-visible change \string—
+        listed for completeness.
+\end{itemize}
+
 \section{What's new in 1.8.3}\label{sec:whats-new-1.8.3}
 
 Version 1.8.3 is a second consecutive open-issue closure sweep on
