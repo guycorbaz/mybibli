@@ -350,11 +350,11 @@ series:
   omnibus_help_text: "Seleziona questa casella quando il libro raggruppa più volumi della serie (es. un omnibus che raccoglie i volumi 1–3). Il modulo mostrerà allora un campo «Posizione finale» in modo che il titolo copra un intervallo di posizioni invece di una sola."
   select_series: "Seleziona una serie…"
 error:
-  internal: Si è verificato un errore interno
-  not_found: La risorsa richiesta non è stata trovata
+  internal: "Si è verificato un errore dalla nostra parte. Riprova; se il problema persiste, contatta il tuo amministratore."
+  not_found: "Impossibile trovare ciò che cercavi — potrebbe essere stato spostato o eliminato."
   already_deleted_by_another_session: "Questo elemento è già stato eliminato da un'altra sessione — aggiorna la pagina per vedere lo stato attuale."
-  bad_request: Richiesta non valida
-  unauthorized: Autenticazione richiesta
+  bad_request: "Impossibile elaborare la richiesta. Controlla i dati inseriti e riprova."
+  unauthorized: "Accedi per continuare."
   forbidden:
     title: Accesso negato
     body: Il tuo account non ha i permessi per eseguire questa azione. Chiedi a un amministratore se hai bisogno dell'accesso.
@@ -366,7 +366,7 @@ error:
   csrf_payload_too_large_title: Richiesta troppo grande
   csrf_payload_too_large_message: Il modulo inviato supera il limite di dimensione del server. Riduci il contenuto e riprova.
   title:
-    creation_failed: Creazione del titolo fallita
+    creation_failed: "Impossibile creare il titolo. Riprova; se il problema persiste, contatta il tuo amministratore."
     required: Il titolo è obbligatorio
   isbn:
     invalid_checksum: Checksum ISBN non valido
@@ -385,7 +385,7 @@ error:
   conflict: "Questo record è stato modificato da un altro utente. Ricarica e riprova."
   version_mismatch: "Un altro utente ha appena modificato questo %{entity}. Ricarica la pagina per vedere l'ultima versione, poi riprova."
   soft_deleted: "Questo %{entity} è stato appena eliminato. Ricarica la pagina per aggiornare l'elenco."
-  delete_has_references: "Impossibile eliminare: l'elemento è referenziato da record attivi."
+  delete_has_references: "Questo elemento non può essere eliminato perché altri record lo utilizzano ancora. Rimuovi prima questi collegamenti, poi riprova."
   contributor:
     has_titles: "Impossibile eliminare %{name}. Questo collaboratore è associato a %{count} titolo(i). Rimuovi prima il collaboratore da tutti i titoli."
   user:
@@ -422,7 +422,7 @@ error:
     version_mismatch: "Le impostazioni sono state modificate da un altro amministratore — ricarica e riprova"
     provider_version_mismatch: "%{provider} è stato modificato da un altro amministratore — ricarica e riprova"
   code:
-    unsupported_type: Tipo di codice non supportato
+    unsupported_type: "Questo tipo di codice a barre non è supportato. Scansiona un ISBN, UPC o ISSN."
 guide:
   initial: "Scansiona un ISBN per iniziare a catalogare, oppure un codice L per impostare un'ubicazione di scaffale."
   title_active: "Titolo attivo: %{title}. Scansiona un codice V per aggiungere un esemplare."

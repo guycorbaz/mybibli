@@ -499,8 +499,8 @@ async fn delete_series_with_assigned_titles_returns_inline_conflict_feedback(poo
         "inline feedback must carry the meaningful series.delete_has_titles payload; got: {html}"
     );
     assert!(
-        !html.contains("An internal error occurred")
-            && !html.contains("Une erreur interne est survenue"),
+        !html.contains("Something went wrong on our end")
+            && !html.contains("Une erreur est survenue de notre côté"),
         "feedback must NOT carry the generic error.internal copy; got: {html}"
     );
 
