@@ -148,6 +148,44 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.8.4}\label{sec:whats-new-1.8.4}
+
+La version 1.8.4 ferme trois issues de durcissement et de qualité sur
+la 1.8.3. \emph{Aucune action de l'opérateur requise}~; l'unique
+migration de documentation s'applique automatiquement. Mise à jour de
+routine \texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#21 \string— durcissement de la couche base de
+        données.} Le pool de connexions définit désormais des délais
+        d'acquisition et d'inactivité explicites~: une requête en
+        attente sur un pool saturé échoue rapidement au lieu de rester
+        bloquée, et un NAS inactif la nuit recycle les connexions
+        périmées. Le point d'accès \texttt{/health} passe d'un simple
+        témoin «~le processus tourne~» à une véritable sonde de
+        disponibilité~: il exécute un \texttt{SELECT 1} et renvoie
+        \texttt{503} quand la base est injoignable, pour qu'un
+        moniteur externe (ou le \emph{healthcheck} du conteneur)
+        distingue un processus vivant d'un processus ayant perdu sa
+        base.
+  \item \textbf{\#55 \string— durcissement de l'onglet utilisateurs.}
+        Le paramètre de page de la liste des utilisateurs est désormais
+        borné (une valeur \texttt{?page=} hostile ou accidentelle ne
+        peut plus provoquer de débordement du calcul d'offset)~; tenter
+        de désactiver son propre compte ou le dernier administrateur
+        affiche maintenant un message correctement traduit plutôt
+        qu'une clé interne~; et les formulaires de création/édition
+        valident la longueur du nom d'utilisateur (3 à 255 caractères)
+        en amont au lieu de laisser remonter une erreur de base de
+        données.
+  \item \textbf{\#22 \string— qualité interne de la suite de tests.}
+        Une passe de consolidation de la suite de tests bout-en-bout
+        (assistants de connexion et de recherche partagés, résolution
+        déterministe des enregistrements, données de test uniques
+        compatibles avec l'exécution parallèle). Aucun changement
+        visible par l'utilisateur \string— mentionné pour être complet.
+\end{itemize}
+
 \section{Nouveautés de la 1.8.3}\label{sec:whats-new-1.8.3}
 
 La version 1.8.3 est une deuxième session consécutive de fermeture
