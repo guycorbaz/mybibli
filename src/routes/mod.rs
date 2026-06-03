@@ -5,6 +5,7 @@ pub mod stats;
 pub mod title_lifecycle;
 pub mod admin_reference_data;
 pub mod admin_system;
+pub mod admin_users;
 pub mod api_v1;
 pub mod auth;
 pub mod borrowers;
@@ -408,16 +409,16 @@ pub fn build_router(state: AppState) -> Router {
             "/admin/health/bulk-cover-refetch",
             axum::routing::post(admin::admin_bulk_cover_refetch),
         )
-        .route("/admin/users", axum::routing::get(admin::admin_users_panel).post(admin::admin_users_create))
-        .route("/admin/users/new", axum::routing::get(admin::admin_users_create_form))
-        .route("/admin/users/{id}/edit", axum::routing::get(admin::admin_users_edit_form))
-        .route("/admin/users/{id}", axum::routing::post(admin::admin_users_update))
-        .route("/admin/users/{id}/deactivate", axum::routing::post(admin::admin_users_deactivate))
+        .route("/admin/users", axum::routing::get(admin_users::admin_users_panel).post(admin_users::admin_users_create))
+        .route("/admin/users/new", axum::routing::get(admin_users::admin_users_create_form))
+        .route("/admin/users/{id}/edit", axum::routing::get(admin_users::admin_users_edit_form))
+        .route("/admin/users/{id}", axum::routing::post(admin_users::admin_users_update))
+        .route("/admin/users/{id}/deactivate", axum::routing::post(admin_users::admin_users_deactivate))
         .route(
             "/admin/users/{id}/deactivate-modal",
-            axum::routing::get(admin::admin_users_deactivate_modal),
+            axum::routing::get(admin_users::admin_users_deactivate_modal),
         )
-        .route("/admin/users/{id}/reactivate", axum::routing::post(admin::admin_users_reactivate))
+        .route("/admin/users/{id}/reactivate", axum::routing::post(admin_users::admin_users_reactivate))
         // Admin → Reference data CRUD (story 8-4). 20 routes across 4
         // sub-sections (genres, volume_states, contributor_roles, node_types):
         // 1 panel + 4 sections × (list / create / rename / delete-modal /
