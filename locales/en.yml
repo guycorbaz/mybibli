@@ -386,6 +386,8 @@ error:
     invalid_format: "Invalid ISBN format — must be 13 digits"
     already_used: "Another title already uses this ISBN — refusing to create a duplicate"
     not_found: ISBN not found
+  upc:
+    invalid_checksum: Invalid UPC checksum
   genre:
     required: Genre is required
   media_type:

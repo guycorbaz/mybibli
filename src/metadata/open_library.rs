@@ -1,8 +1,17 @@
 use async_trait::async_trait;
+use futures::stream::StreamExt;
 
 use crate::models::media_type::MediaType;
 
 use super::provider::{MetadataError, MetadataProvider, MetadataResult};
+
+/// Cap on how many author keys a single book lookup will resolve.
+const MAX_AUTHORS: usize = 5;
+
+/// Cap on concurrent `/authors/{key}.json` lookups (#384). Open Library has
+/// soft per-IP rate limits, so we parallelize author resolution but bound it
+/// to avoid burst-rate-limiting ourselves within the per-provider timeout.
+const MAX_CONCURRENT_AUTHOR_LOOKUPS: usize = 4;
 
 /// Open Library metadata provider.
 /// Free API, no API key required.
@@ -26,31 +35,64 @@ impl OpenLibraryProvider {
         }
     }
 
+    /// SSRF guard + cap: keep only well-formed `/authors/OL…` keys, at most
+    /// `MAX_AUTHORS`, preserving input order. Extracted as a pure helper so
+    /// the validation/cap contract is unit-testable without live HTTP (#384).
+    /// `take(MAX_AUTHORS)` runs BEFORE the filter so the window matches the
+    /// pre-#384 sequential loop exactly.
+    fn valid_author_keys(author_keys: &[String]) -> Vec<&String> {
+        author_keys
+            .iter()
+            .take(MAX_AUTHORS)
+            .filter(|key| {
+                if key.starts_with("/authors/OL") {
+                    true
+                } else {
+                    // Reject crafted keys that could drive an SSRF.
+                    tracing::warn!(author_key = %key, "Skipping invalid Open Library author key");
+                    false
+                }
+            })
+            .collect()
+    }
+
     /// Resolve author keys to names by calling the authors API.
+    ///
+    /// #384: author lookups run concurrently (bounded by
+    /// `MAX_CONCURRENT_AUTHOR_LOOKUPS`) instead of sequentially, shaving
+    /// round-trips for multi-author books inside the per-provider timeout
+    /// budget. `buffered` preserves input order, so the resolved-name order
+    /// is unchanged from the pre-#384 sequential loop.
     async fn resolve_authors(&self, author_keys: &[String]) -> Vec<String> {
-        const MAX_AUTHORS: usize = 5;
-        let mut names = Vec::new();
-        for key in author_keys.iter().take(MAX_AUTHORS) {
-            // Validate key format to prevent SSRF via crafted author keys
-            if !key.starts_with("/authors/OL") {
-                tracing::warn!(author_key = %key, "Skipping invalid Open Library author key");
-                continue;
-            }
-            let url = format!("{}{}.json", self.base_url, key);
-            match self.client.get(&url).send().await {
-                Ok(resp) if resp.status().is_success() => {
-                    if let Ok(json) = resp.json::<serde_json::Value>().await
-                        && let Some(name) = json.get("name").and_then(|v| v.as_str())
-                    {
-                        names.push(name.to_string());
+        // Own the keys so each buffered future moves its `String` in (a
+        // borrowed `&String` trips the higher-ranked-lifetime check on the
+        // `buffered` closure). At most MAX_AUTHORS short strings — cheap.
+        let valid_keys: Vec<String> = Self::valid_author_keys(author_keys)
+            .into_iter()
+            .cloned()
+            .collect();
+
+        futures::stream::iter(valid_keys)
+            .map(|key| async move {
+                let url = format!("{}{}.json", self.base_url, key);
+                match self.client.get(&url).send().await {
+                    Ok(resp) if resp.status().is_success() => resp
+                        .json::<serde_json::Value>()
+                        .await
+                        .ok()
+                        .and_then(|json| {
+                            json.get("name").and_then(|v| v.as_str()).map(String::from)
+                        }),
+                    _ => {
+                        tracing::warn!(author_key = %key, "Failed to resolve Open Library author");
+                        None
                     }
                 }
-                _ => {
-                    tracing::warn!(author_key = %key, "Failed to resolve Open Library author");
-                }
-            }
-        }
-        names
+            })
+            .buffered(MAX_CONCURRENT_AUTHOR_LOOKUPS)
+            .filter_map(|name| async move { name })
+            .collect::<Vec<String>>()
+            .await
     }
 
     /// Parse Open Library book JSON response into MetadataResult.
@@ -350,5 +392,36 @@ mod tests {
         });
         let parsed = OpenLibraryProvider::parse_response(&json).unwrap();
         assert_eq!(parsed.author_keys.len(), 2);
+    }
+
+    #[test]
+    fn valid_author_keys_filters_invalid_and_caps_window_preserving_order() {
+        // #384: the SSRF guard (reject non-`/authors/OL…` keys) and the
+        // MAX_AUTHORS cap must survive the move to concurrent resolution.
+        // `take(MAX_AUTHORS)` runs BEFORE the filter, so the window is the
+        // first 5 entries — `/evil/path` inside it is dropped (→ 4 keys),
+        // and OL6A (6th) is outside the window entirely. Order preserved.
+        let keys = vec![
+            "/authors/OL1A".to_string(),
+            "/evil/path".to_string(),
+            "/authors/OL2A".to_string(),
+            "/authors/OL3A".to_string(),
+            "/authors/OL4A".to_string(),
+            "/authors/OL5A".to_string(),
+            "/authors/OL6A".to_string(),
+        ];
+        let valid: Vec<&str> = OpenLibraryProvider::valid_author_keys(&keys)
+            .into_iter()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            valid,
+            vec!["/authors/OL1A", "/authors/OL2A", "/authors/OL3A", "/authors/OL4A"]
+        );
+    }
+
+    #[test]
+    fn valid_author_keys_empty_input_is_empty() {
+        assert!(OpenLibraryProvider::valid_author_keys(&[]).is_empty());
     }
 }

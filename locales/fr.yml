@@ -381,6 +381,8 @@ error:
     invalid_format: "Format ISBN invalide — doit contenir 13 chiffres"
     already_used: "Un autre titre utilise déjà cet ISBN — refus de créer un doublon"
     not_found: ISBN introuvable
+  upc:
+    invalid_checksum: Checksum UPC invalide
   genre:
     required: Le genre est obligatoire
   media_type:

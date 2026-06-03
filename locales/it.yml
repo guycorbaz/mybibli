@@ -373,6 +373,8 @@ error:
     invalid_format: "Formato ISBN non valido — devono essere 13 cifre"
     already_used: "Un altro titolo usa già questo ISBN — non viene creato un duplicato"
     not_found: ISBN non trovato
+  upc:
+    invalid_checksum: Checksum UPC non valido
   genre:
     required: Il genere è obbligatorio
   media_type:
