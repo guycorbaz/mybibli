@@ -365,7 +365,7 @@ mod tests {
         // the response body (leakage would be a low-severity info disclosure).
         assert!(!body.contains("catalog"), "no template name leaked to client: {body}");
         assert!(
-            body.contains("internal error"),
+            body.contains("Something went wrong on our end"),
             "generic 500 body shown; got: {body}",
         );
     }
