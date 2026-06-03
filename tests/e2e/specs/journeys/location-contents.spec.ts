@@ -1,12 +1,10 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
+import { specLcode } from "../../helpers/isbn";
 
 test.describe("Browse Shelf Contents (Story 2-3)", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/login");
-    await page.locator("#username").fill("admin");
-    await page.locator("#password").fill("admin");
-    await page.locator('#login-submit').click();
-    await expect(page).toHaveURL(/\/catalog/, { timeout: 5000 });
+    await loginAs(page);
   });
 
   test("location detail shows breadcrumb and heading", async ({ page }) => {
@@ -14,7 +12,7 @@ test.describe("Browse Shelf Contents (Story 2-3)", () => {
     await page.goto("/locations");
     await page.locator("summary").filter({ hasText: /add root|ajouter/i }).click();
     await page.locator("#new-name").fill("LC-ContentTest");
-    await page.locator("#new-lcode").fill("L4001");
+    await page.locator("#new-lcode").fill(specLcode(4, 1));
     await page.locator("#add-root-submit").click();
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
     await expect(page.locator("text=LC-ContentTest")).toBeVisible({ timeout: 5000 });
@@ -35,7 +33,7 @@ test.describe("Browse Shelf Contents (Story 2-3)", () => {
     await page.goto("/locations");
     await page.locator("summary").filter({ hasText: /add root|ajouter/i }).click();
     await page.locator("#new-name").fill("LC-EmptyShelf");
-    await page.locator("#new-lcode").fill("L4002");
+    await page.locator("#new-lcode").fill(specLcode(4, 2));
     await page.locator("#add-root-submit").click();
     await expect(page).toHaveURL(/\/locations/, { timeout: 5000 });
     await expect(page.locator("text=LC-EmptyShelf")).toBeVisible({ timeout: 5000 });

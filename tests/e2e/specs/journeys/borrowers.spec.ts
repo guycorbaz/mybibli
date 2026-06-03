@@ -1,12 +1,9 @@
 import { test, expect } from "@playwright/test";
+import { loginAs } from "../../helpers/auth";
 
 test.describe("Borrower CRUD & Search (Story 4-1)", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/login");
-    await page.locator("#username").fill("admin");
-    await page.locator("#password").fill("admin");
-    await page.locator("#login-submit").click();
-    await expect(page).toHaveURL(/\/catalog/, { timeout: 5000 });
+    await loginAs(page);
   });
 
   // AC1: Borrowers list page

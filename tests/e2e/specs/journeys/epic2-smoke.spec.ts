@@ -74,9 +74,9 @@ test.describe("Epic 2 Smoke Test — Full Shelving Journey", () => {
     await searchField.fill(TEST_ISBN.substring(0, 5));
     await searchField.press("Enter");
     const resultsBody = page.locator("#browse-results");
+    // Results may or may not contain matches depending on FULLTEXT index
+    // timing, so we assert the results region renders rather than its content.
     await expect(resultsBody).toBeVisible({ timeout: 5000 });
-    const resultsHtml = await resultsBody.innerHTML().catch(() => "");
-    // Results may or may not contain matches depending on FULLTEXT index timing
   });
 
   test("batch shelving: scan L-code first → then V-codes auto-shelve", async ({

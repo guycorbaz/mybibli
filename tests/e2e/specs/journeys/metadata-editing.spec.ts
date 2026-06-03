@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { titleIdFromSkeleton } from "../../helpers/catalog";
 
 const ISBN_EDIT = specIsbn("ME", 1);
 const ISBN_CANCEL = specIsbn("ME", 2);
@@ -19,13 +20,8 @@ test.describe("Metadata Editing & Re-Download (Story 3-5)", () => {
     await scanField.fill(ISBN_EDIT);
     await scanField.press("Enter");
 
-    // Wait for any scan feedback
-    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 10000 });
-
-    // Extract title ID from skeleton element (id="feedback-entry-{N}")
-    const feedbackEl = page.locator("[id^='feedback-entry-']").first();
-    const feedbackId = await feedbackEl.getAttribute("id");
-    const titleId = feedbackId?.replace("feedback-entry-", "");
+    // Resolve the title id from the scan skeleton (#22 — shared helper).
+    const titleId = await titleIdFromSkeleton(page);
 
     // Navigate directly to title detail page
     await page.goto(`/title/${titleId}`);
@@ -72,13 +68,8 @@ test.describe("Metadata Editing & Re-Download (Story 3-5)", () => {
     await scanField.fill(ISBN_CANCEL);
     await scanField.press("Enter");
 
-    // Wait for any scan feedback
-    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 10000 });
-
-    // Extract title ID from skeleton element (id="feedback-entry-{N}")
-    const feedbackEl = page.locator("[id^='feedback-entry-']").first();
-    const feedbackId = await feedbackEl.getAttribute("id");
-    const titleId = feedbackId?.replace("feedback-entry-", "");
+    // Resolve the title id from the scan skeleton (#22 — shared helper).
+    const titleId = await titleIdFromSkeleton(page);
 
     // Navigate directly to title detail page
     await page.goto(`/title/${titleId}`);
@@ -112,13 +103,8 @@ test.describe("Metadata Editing & Re-Download (Story 3-5)", () => {
     await scanField.fill(ISBN_SMOKE);
     await scanField.press("Enter");
 
-    // Wait for any scan feedback
-    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 10000 });
-
-    // Extract title ID from skeleton element (id="feedback-entry-{N}")
-    const feedbackEl = page.locator("[id^='feedback-entry-']").first();
-    const feedbackId = await feedbackEl.getAttribute("id");
-    const titleId = feedbackId?.replace("feedback-entry-", "");
+    // Resolve the title id from the scan skeleton (#22 — shared helper).
+    const titleId = await titleIdFromSkeleton(page);
 
     // Navigate directly to title detail page
     await page.goto(`/title/${titleId}`);
