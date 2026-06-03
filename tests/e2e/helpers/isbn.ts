@@ -35,6 +35,31 @@ export function specIsbn(specId: string, seq: number = 1): string {
 }
 
 /**
+ * Per-spec unique location code (L-code) generator (#22).
+ *
+ * L-codes are validated as exactly `"L"` + 4 ASCII digits
+ * (`LocationService::validate_lcode`), so the addressable space is only 4
+ * digits. This helper formalizes the convention the specs already follow by
+ * hand: the leading digit is a per-spec bucket (1-9) and the trailing 3 digits
+ * are a sequence (0-999), e.g. `specLcode(4, 1) === "L4001"`. Pass a bucket
+ * that is unique to your spec file to keep labels collision-free under
+ * `fullyParallel: true`.
+ *
+ * @param bucket - Per-spec bucket digit, 1-9
+ * @param seq - Sequence within the spec, 0-999 (default 1)
+ * @returns A valid 5-character L-code
+ */
+export function specLcode(bucket: number, seq: number = 1): string {
+  if (!Number.isInteger(bucket) || bucket < 1 || bucket > 9) {
+    throw new Error(`L-code bucket must be an integer 1-9, got ${bucket}`);
+  }
+  if (!Number.isInteger(seq) || seq < 0 || seq > 999) {
+    throw new Error(`L-code seq must be an integer 0-999, got ${seq}`);
+  }
+  return `L${bucket}${seq.toString().padStart(3, "0")}`;
+}
+
+/**
  * Compute EAN-13 check digit (modulo 10 algorithm).
  * @param first12 - First 12 digits of the ISBN
  * @returns Single check digit character (0-9)

@@ -6,6 +6,7 @@ import {
   createLoan,
   scanTitleAndVolume,
 } from "../../helpers/loans";
+import { titleIdFromSkeleton, volumeIdByLabel } from "../../helpers/catalog";
 
 // CR #300: per-test unique ISBNs — each test gets a fresh title so the
 // V-code scan never hits the phantom-volume confirmation modal.
@@ -45,28 +46,27 @@ test.describe("Loan Registration & Validation (Story 4-2)", () => {
   test("attempt to lend non-loanable volume → verify error", async ({ page }) => {
     await scanTitleAndVolume(page, specIsbn("LN", 4), "V0063");
 
-    // Find the volume ID by scanning volume detail pages for label V0063.
-    // The range is bounded by the number of volumes seeded in this test run.
-    const volumeId = await page.evaluate(async () => {
-      for (let id = 1; id <= 100; id++) {
-        try {
-          const resp = await fetch(`/volume/${id}`);
-          if (!resp.ok) continue;
-          const html = await resp.text();
-          if (html.includes("V0063")) return id;
-        } catch {
-          continue;
-        }
-      }
-      return null;
-    });
-    expect(volumeId).not.toBeNull();
+    // Resolve the volume id deterministically from the title detail page's
+    // volume link, instead of brute-force scanning /volume/{1..N} (#22).
+    const titleId = await titleIdFromSkeleton(page);
+    const volumeId = await volumeIdByLabel(page, titleId, "V0063");
 
-    // Set the volume condition to "Endommagé" (non-loanable)
+    // Set the volume condition to the damaged (non-loanable) state. Select by
+    // the value of whichever option's label matches in either language rather
+    // than hardcoding the French "Endommagé" string (#22). Reference-data
+    // values aren't localized (NFR41), so the bilingual regex tolerates either
+    // a French- or English-seeded state name without depending on the option
+    // ordering or the UI locale.
     await page.goto(`/volume/${volumeId}/edit`);
     const conditionSelect = page.locator('select[name="condition_state_id"]');
     await expect(conditionSelect).toBeVisible({ timeout: 3000 });
-    await conditionSelect.selectOption({ label: "Endommagé" });
+    const damagedValue = await conditionSelect
+      .locator("option")
+      .filter({ hasText: /Damaged|Endommagé/i })
+      .first()
+      .getAttribute("value");
+    expect(damagedValue).toBeTruthy();
+    await conditionSelect.selectOption(damagedValue!);
     await page.locator('main button[type="submit"]').last().click();
     // Positive assertion on the volume detail URL — the handler returns
     // `Redirect::to("/volume/{id}")` on success (src/routes/catalog.rs).
@@ -267,29 +267,19 @@ test.describe("Volume detail — loan status role-aware (FR59)", () => {
     const volumeLabel = uniqueVcode();
     const ANON_ISBN = specIsbn("LN", 8);
 
-    // Seed: title + volume + borrower + active loan.
+    // Seed: title + volume + borrower + active loan. Capture the title id from
+    // the scan skeleton up front — createBorrower/createLoan navigate away, so
+    // the skeleton is gone by the time we need the volume id.
     await scanTitleAndVolume(page, ANON_ISBN, volumeLabel);
+    const titleId = await titleIdFromSkeleton(page);
     await createBorrower(page, borrowerName);
     await createLoan(page, volumeLabel, borrowerName);
 
-    // Find the volume ID by brute-force scanning /volume/<id> for the
-    // V-code (matches the pattern used by the "non-loanable" test
-    // earlier in this file). The loans table renders V-codes as plain
-    // text, NOT as links — that's why we can't extract the href there.
-    const volumeId = await page.evaluate(async (label) => {
-      for (let id = 1; id <= 200; id++) {
-        try {
-          const resp = await fetch(`/volume/${id}`);
-          if (!resp.ok) continue;
-          const html = await resp.text();
-          if (html.includes(label)) return id;
-        } catch {
-          continue;
-        }
-      }
-      return null;
-    }, volumeLabel);
-    expect(volumeId).not.toBeNull();
+    // Resolve the volume id deterministically from the title detail page's
+    // volume link instead of brute-force scanning /volume/{1..N} (#22). The
+    // loans table renders V-codes as plain text, so the title detail page is
+    // the stable source for the id.
+    const volumeId = await volumeIdByLabel(page, titleId, volumeLabel);
     const volumeUrl = `/volume/${volumeId}`;
 
     // 1. Anonymous render via a FRESH browser context — defeats the

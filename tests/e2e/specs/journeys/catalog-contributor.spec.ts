@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { captureEntityCounts } from "../../helpers/db-snapshot";
+import { selectFirstRealOption } from "../../helpers/catalog";
 
 const VALID_ISBN = specIsbn("CC", 1);
 
@@ -61,15 +62,15 @@ test.describe("Contributor Management", () => {
     const form = page.locator("#contributor-form-container form");
     await expect(form).toBeVisible({ timeout: 5000 });
 
-    // Fill contributor name
-    await form.locator("#contributor-name-input").fill("Albert Camus");
+    // Fill contributor name — unique per run to avoid parallel collisions (#22)
+    await form.locator("#contributor-name-input").fill(`CC-AC2 Camus ${Date.now()}`);
 
     // Select first role (Auteur should be first alphabetically)
     const roleSelect = form.locator("#contributor-role-select");
     const options = roleSelect.locator("option");
     const optCount = await options.count();
     if (optCount > 1) {
-      await roleSelect.selectOption({ index: 1 });
+      await selectFirstRealOption(roleSelect);
     }
 
     await form.locator('button[type="submit"]').click();
@@ -98,10 +99,13 @@ test.describe("Contributor Management", () => {
     let form = page.locator("#contributor-form-container form");
     await expect(form).toBeVisible({ timeout: 5000 });
 
-    await form.locator("#contributor-name-input").fill("Boris Vian");
+    // Same contributor name reused below to trigger the duplicate-role error;
+    // unique per run to avoid parallel collisions (#22).
+    const dupContributor = `CC-AC3 Vian ${Date.now()}`;
+    await form.locator("#contributor-name-input").fill(dupContributor);
     const roleSelect = form.locator("#contributor-role-select");
     if ((await roleSelect.locator("option").count()) > 1) {
-      await roleSelect.selectOption({ index: 1 });
+      await selectFirstRealOption(roleSelect);
     }
     await form.locator('button[type="submit"]').click();
     // Wait for success feedback before retrying
@@ -118,10 +122,10 @@ test.describe("Contributor Management", () => {
     form = page.locator("#contributor-form-container form");
     await expect(form).toBeVisible({ timeout: 5000 });
 
-    await form.locator("#contributor-name-input").fill("Boris Vian");
+    await form.locator("#contributor-name-input").fill(dupContributor);
     const roleSelect2 = form.locator("#contributor-role-select");
     if ((await roleSelect2.locator("option").count()) > 1) {
-      await roleSelect2.selectOption({ index: 1 });
+      await selectFirstRealOption(roleSelect2);
     }
     await form.locator('button[type="submit"]').click();
 
@@ -157,7 +161,7 @@ test.describe("Contributor Management", () => {
     await form.locator("#contributor-name-input").fill(CONTRIBUTOR_NAME);
     const roleSelect = form.locator("#contributor-role-select");
     if ((await roleSelect.locator("option").count()) > 1) {
-      await roleSelect.selectOption({ index: 1 });
+      await selectFirstRealOption(roleSelect);
     }
     await form.locator('button[type="submit"]').click();
     // Wait for success feedback confirming contributor was added (appears at top of feedback list)
@@ -304,10 +308,10 @@ test.describe("Contributor Management", () => {
     const form = page.locator("#contributor-form-container form");
     await expect(form).toBeVisible({ timeout: 5000 });
 
-    await form.locator("#contributor-name-input").fill("Test Author");
+    await form.locator("#contributor-name-input").fill(`CC-AC8 Author ${Date.now()}`);
     const roleSelect = form.locator("#contributor-role-select");
     if ((await roleSelect.locator("option").count()) > 1) {
-      await roleSelect.selectOption({ index: 1 });
+      await selectFirstRealOption(roleSelect);
     }
     await form.locator('button[type="submit"]').click();
 
@@ -408,7 +412,7 @@ test.describe("#325 — Add contributor from /title/:id", () => {
     await form.locator("#contributor-name-input").fill(NAME);
     const roleSelect = form.locator("#contributor-role-select");
     await expect(roleSelect.locator("option")).not.toHaveCount(0);
-    await roleSelect.selectOption({ index: 1 });
+    await selectFirstRealOption(roleSelect);
 
     // Step 6: submit → success FeedbackEntry must land in #feedback-list.
     await form.locator('button[type="submit"]').click();
