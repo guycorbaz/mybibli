@@ -4,11 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Roadmap — mybibli — self-hosted library catalog</title>
-  <meta name="description" content="mybibli roadmap — current stable v1.8.5, and v2.0 'Classification, reinvented' in exploration. Full plan in ROADMAP.md." />
+  <meta name="description" content="mybibli roadmap — current stable v1.8.6, and v2.0 'Classification, reinvented' in exploration. Full plan in ROADMAP.md." />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://guycorbaz.github.io/mybibli/roadmap.html" />
   <meta property="og:title" content="Roadmap — mybibli" />
-  <meta property="og:description" content="mybibli release history and what's coming next — current stable v1.8.5, v2.0 'Classification, reinvented' in exploration." />
+  <meta property="og:description" content="mybibli release history and what's coming next — current stable v1.8.6, v2.0 'Classification, reinvented' in exploration." />
   <meta property="og:type" content="article" />
   <meta property="og:url" content="https://guycorbaz.github.io/mybibli/roadmap.html" />
   <meta property="og:image" content="https://guycorbaz.github.io/mybibli/screenshots/01-home-desktop.png" />
@@ -19,7 +19,7 @@
     "@context": "https://schema.org",
     "@type": "WebPage",
     "name": "mybibli Roadmap",
-    "description": "Release history and what's coming next for mybibli — current stable v1.8.5, v2.0 in exploration.",
+    "description": "Release history and what's coming next for mybibli — current stable v1.8.6, v2.0 in exploration.",
     "url": "https://guycorbaz.github.io/mybibli/roadmap.html",
     "inLanguage": "en",
     "isPartOf": {
@@ -31,7 +31,7 @@
       "@type": "SoftwareApplication",
       "name": "mybibli",
       "url": "https://guycorbaz.github.io/mybibli/",
-      "softwareVersion": "1.8.5"
+      "softwareVersion": "1.8.6"
     }
   }
   </script>
@@ -63,7 +63,7 @@
       <a href="./index.html" class="flex items-center gap-2 font-semibold text-stone-900 dark:text-stone-100">
         <img src="./logo/svg/mybibli-icon.svg" alt="" aria-hidden="true" class="w-7 h-7">
         <span>mybibli</span>
-        <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-200/60 dark:ring-emerald-800/50">v1.8.5</span>
+        <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-200/60 dark:ring-emerald-800/50">v1.8.6</span>
       </a>
       <nav aria-label="Primary" class="hidden md:flex items-center gap-1 text-sm">
         <a href="./index.html" class="px-3 py-1.5 rounded-md text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-stone-800/60">Home</a>
@@ -147,7 +147,7 @@
               <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300">Unscheduled</span>
             </div>
             <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">
-              The originally-planned v1.1–v1.7 build is complete; v1.8.0 ("Covers, honestly") shipped the seventh themed minor, v1.8.1 followed as a focused polish patch (phantom-volume guard, direct-nav error pages, stable author-role flag, OOB swap mode, sortable-header aria-sort), v1.8.2 is a 7-issue closure sweep (spec/impl alignment, session+CSRF dedup, typed error variants, CI parser+seed-drift guards, home aria-label i18n, color-contrast a11y), and v1.8.3 continues with another 5-issue closure (session-resolver inconsistency cleanup, windowed pagination, csrf-rotated trigger for long-lived tabs, typed RateLimited + 0h-timeout guard + empty-string normalization on the provider chain, RUSTSEC-2024-0320 mitigation + locale HTML-safety audit), v1.8.4 follows as a 3-issue hardening + quality closure (DB-layer hardening with connection-pool timeouts and a <code class="font-mono text-xs">/health</code> DB-readiness probe, admin users-panel pagination/i18n/validation hardening, and an E2E test-suite hygiene pass), and v1.8.5 is a 3-issue closure patch (error-message style guide + cryptic-copy rewrite across all four locales, Open Library author resolution parallelized via <code class="font-mono text-xs">join_all</code> + UPC-A checksum validation, and the admin users handlers extracted into <code class="font-mono text-xs">src/routes/admin_users.rs</code>). mybibli is now in <strong>GH-issue-driven polish mode</strong> — new CRs are queued here until a coherent theme emerges (or until enough land to bundle into the next themed minor). Patches ship independently for production bugs.
+              The originally-planned v1.1–v1.7 build is complete; v1.8.0 ("Covers, honestly") shipped the seventh themed minor, v1.8.1 followed as a focused polish patch (phantom-volume guard, direct-nav error pages, stable author-role flag, OOB swap mode, sortable-header aria-sort), v1.8.2 is a 7-issue closure sweep (spec/impl alignment, session+CSRF dedup, typed error variants, CI parser+seed-drift guards, home aria-label i18n, color-contrast a11y), and v1.8.3 continues with another 5-issue closure (session-resolver inconsistency cleanup, windowed pagination, csrf-rotated trigger for long-lived tabs, typed RateLimited + 0h-timeout guard + empty-string normalization on the provider chain, RUSTSEC-2024-0320 mitigation + locale HTML-safety audit), v1.8.4 follows as a 3-issue hardening + quality closure (DB-layer hardening with connection-pool timeouts and a <code class="font-mono text-xs">/health</code> DB-readiness probe, admin users-panel pagination/i18n/validation hardening, and an E2E test-suite hygiene pass), v1.8.5 is a 3-issue closure patch (error-message style guide + cryptic-copy rewrite across all four locales, Open Library author resolution parallelized via <code class="font-mono text-xs">join_all</code> + UPC-A checksum validation, and the admin users handlers extracted into <code class="font-mono text-xs">src/routes/admin_users.rs</code>), and v1.8.6 is a 2-issue tech-debt closure (page-template structs embed the ~20 shared base-context fields as one <code class="font-mono text-xs">base</code> field — net −1000 lines — and client JS reads localized strings from a single server-rendered i18n bundle instead of hand-synced <code class="font-mono text-xs">{en, fr}</code> objects, closing the de/it gap on the session-timeout toast). mybibli is now in <strong>GH-issue-driven polish mode</strong> — new CRs are queued here until a coherent theme emerges (or until enough land to bundle into the next themed minor). Patches ship independently for production bugs.
             </p>
             <ul class="mt-2 text-sm text-stone-600 dark:text-stone-400 list-disc list-inside space-y-1">
               <li>Volume-count mismatch — title shows multiple volumes when user owns only 1 (<a href="https://github.com/guycorbaz/mybibli/issues/300" class="underline decoration-stone-400 hover:decoration-indigo-500">#300</a>) — silent data corruption, pending triage; still open after v1.7.5.</li>

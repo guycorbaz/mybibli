@@ -139,6 +139,31 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.8.6}\label{sec:whats-new-1.8.6}
+
+Version 1.8.6 is a two-issue internal tech-debt closure on v1.8.5.
+\emph{No operator action required, and no visible change in how the
+application behaves.} Routine \texttt{docker compose pull \&\& docker
+compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#398 \string— internal maintainability.} Every full-page
+        template now shares its common header/navigation context through a
+        single bundled value instead of repeating roughly twenty fields on
+        each page. This removes about a thousand lines of duplicated code
+        and means a future site-wide interface addition is a one-line
+        change rather than a sweep across two dozen pages. No visible
+        change \string— listed for completeness.
+  \item \textbf{\#386 \string— groundwork for fuller translations.} The
+        small pieces of text shown by in-browser scripts (such as the
+        ``your session is about to expire'' warning) are now delivered to
+        the browser already translated for the active language, from the
+        same central translation files as the rest of the interface,
+        rather than from a separate hand-maintained copy that only knew
+        English and French. As a direct result, that session-timeout
+        warning now also appears in German and Italian.
+\end{itemize}
+
 \section{What's new in 1.8.5}\label{sec:whats-new-1.8.5}
 
 Version 1.8.5 is a three-issue closure patch on v1.8.4. \emph{No
