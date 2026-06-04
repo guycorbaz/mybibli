@@ -148,6 +148,34 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.8.5}\label{sec:whats-new-1.8.5}
+
+La version 1.8.5 est un correctif de fermeture de trois issues sur la
+1.8.4. \emph{Aucune action de l'opérateur requise.} Mise à jour de
+routine \texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#10 \string— messages d'erreur plus clairs.} Le texte
+        affiché lorsqu'une opération échoue a été réécrit dans un style
+        en langage clair~: ce qui s'est passé, pourquoi, et ce que vous
+        pouvez faire \string— sans code d'erreur, sans jargon technique,
+        sans détail interne qui transparaît. La refonte couvre les
+        quatre langues de l'interface (allemand, anglais, français,
+        italien).
+  \item \textbf{\#384 \string— recherches de métadonnées plus rapides et
+        plus strictes.} Quand un titre compte plusieurs auteurs, leurs
+        fiches sont désormais récupérées en parallèle depuis Open Library
+        au lieu d'être traitées l'une après l'autre, ce qui accélère
+        nettement les titres multi-auteurs. Un code-barres UPC-A scanné
+        ou saisi est maintenant validé par sa somme de contrôle~: un code
+        à 12 chiffres mal saisi est rejeté immédiatement plutôt que de
+        déclencher une recherche infructueuse.
+  \item \textbf{\#391 \string— maintenabilité interne.} Le code de
+        l'onglet utilisateurs a été déplacé dans son propre module pour
+        la maintenabilité. Aucun changement visible par l'utilisateur
+        \string— mentionné pour être complet.
+\end{itemize}
+
 \section{Nouveautés de la 1.8.4}\label{sec:whats-new-1.8.4}
 
 La version 1.8.4 ferme trois issues de durcissement et de qualité sur
