@@ -148,6 +148,33 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.8.6}\label{sec:whats-new-1.8.6}
+
+La version 1.8.6 est un correctif de dette technique interne fermant
+deux issues sur la 1.8.5. \emph{Aucune action de l'opérateur requise, et
+aucun changement visible dans le comportement de l'application.} Mise à
+jour de routine \texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#398 \string— maintenabilité interne.} Chaque page
+        complète partage désormais son contexte commun
+        d'en-tête/navigation via une seule valeur regroupée au lieu de
+        répéter une vingtaine de champs sur chaque page. Cela supprime
+        environ mille lignes de code dupliqué et fait qu'un futur ajout
+        d'interface valable sur tout le site devient une modification
+        d'une ligne plutôt qu'une passe sur deux douzaines de pages.
+        Aucun changement visible \string— mentionné pour être complet.
+  \item \textbf{\#386 \string— préparation à des traductions plus
+        complètes.} Les petits textes affichés par les scripts du
+        navigateur (comme l'avertissement «~votre session va bientôt
+        expirer~») sont maintenant transmis au navigateur déjà traduits
+        pour la langue active, depuis les mêmes fichiers de traduction
+        centraux que le reste de l'interface, au lieu d'une copie
+        séparée maintenue à la main qui ne connaissait que l'anglais et
+        le français. Conséquence directe~: cet avertissement de fin de
+        session s'affiche désormais aussi en allemand et en italien.
+\end{itemize}
+
 \section{Nouveautés de la 1.8.5}\label{sec:whats-new-1.8.5}
 
 La version 1.8.5 est un correctif de fermeture de trois issues sur la
