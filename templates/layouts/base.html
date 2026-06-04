@@ -4,6 +4,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ base.csrf_token|e }}">
+    {# Issue #386 — i18n bundle for client-side JS modules. Resolved
+       server-side in the request locale; read once via JSON.parse in
+       static/js/*.js. `< > &` are \uXXXX-escaped in build_js_i18n_bundle
+       so the data island can't be broken out of. CSP-clean (the
+       templates_audit no-inline-markup gate allowlists application/json). #}
+    <script type="application/json" id="i18n-bundle">{{ base.js_i18n|safe }}</script>
     <title>{% block title %}mybibli{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/output.css">
     <link rel="stylesheet" href="/static/css/browse.css">

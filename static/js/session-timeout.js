@@ -13,6 +13,22 @@
     var timerId = null;
     var toastEl = null;
 
+    // Issue #386 — read the server-rendered i18n bundle once. Strings are
+    // already resolved in the request locale (en/fr/de/it), so this module
+    // no longer carries a hand-synced {en, fr} object that drifted from
+    // locales/*.yml and never covered de/it. Returns the `session` subtree
+    // (or {} if the data island is missing/malformed — degrades to blank
+    // text rather than throwing).
+    function getSessionStrings() {
+        try {
+            var el = document.getElementById("i18n-bundle");
+            var bundle = el ? JSON.parse(el.textContent) : {};
+            return bundle.session || {};
+        } catch (e) {
+            return {};
+        }
+    }
+
     function getTimeoutSecs() {
         var attr = document.body.getAttribute("data-session-timeout");
         return attr ? parseInt(attr, 10) : 0;
@@ -51,36 +67,25 @@
         // i18n: detect language from <html lang> and use appropriate strings
         var msgEl = toastEl.querySelector("#session-timeout-message");
         var btnEl = toastEl.querySelector("#session-keepalive-btn");
-        var lang = document.documentElement.lang || "en";
-        // Mirrored in locales/{en,fr}.yml under `session.*` — keep in sync.
-        // `expiry_soon` = short/parameterless form when remaining < 1 min.
+        // i18n: strings come from the server-rendered #i18n-bundle data
+        // island (issue #386), already localized for the request locale.
+        // `expiry_soon` = short/parameterless form when remaining < 1 min;
         // `expiry_in_minutes` = parameterized on %{minutes}.
-        var i18n = {
-            en: {
-                expiry_soon: "Your session is about to expire.",
-                expiry_in_minutes: "Your session will expire in %{minutes} min.",
-                stay: "Stay connected",
-                dismiss: "Dismiss",
-            },
-            fr: {
-                expiry_soon: "Votre session va bientôt expirer.",
-                expiry_in_minutes: "Votre session expirera dans %{minutes} min.",
-                stay: "Rester connecté",
-                dismiss: "Fermer",
-            },
-        };
-        var strings = i18n[lang] || i18n.en;
+        var strings = getSessionStrings();
         var minutes = Math.round(warningBeforeSecs / 60);
         var msg =
             minutes >= 1
-                ? strings.expiry_in_minutes.replace("%{minutes}", String(minutes))
-                : strings.expiry_soon;
+                ? (strings.expiry_in_minutes || "").replace(
+                      "%{minutes}",
+                      String(minutes),
+                  )
+                : strings.expiry_soon || "";
         msgEl.textContent = msg;
-        btnEl.textContent = strings.stay;
+        btnEl.textContent = strings.stay_connected || "";
         btnEl.addEventListener("click", keepAlive);
         var dismissBtn = toastEl.querySelector("#session-timeout-dismiss");
         if (dismissBtn) {
-            dismissBtn.setAttribute("aria-label", strings.dismiss);
+            dismissBtn.setAttribute("aria-label", strings.dismiss_aria || "");
             dismissBtn.addEventListener("click", hideWarning);
         }
         document.body.appendChild(toastEl);
