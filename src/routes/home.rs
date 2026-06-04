@@ -33,24 +33,7 @@ pub struct SearchParams {
 #[derive(Template)]
 #[template(path = "pages/home.html")]
 pub struct HomeTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub subtitle: String,
     pub search_placeholder: String,
     pub searching_announcement: String,
@@ -111,8 +94,6 @@ pub struct HomeTemplate {
     pub browse_grid_label: String,
     pub browse_mode_label: String,
     pub browse_sort_label: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
     pub home_search_help: crate::utils::TooltipData,
     // "Collection at a glance" card (story 9-1)
     pub glance_heading: String,
@@ -780,24 +761,7 @@ pub async fn home(
 
     let base = base_context(&session, loc, "home", &uri, state.session_timeout_secs());
     let template = HomeTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
+        base,
         subtitle: rust_i18n::t!("home.subtitle", locale = loc).to_string(),
         search_placeholder: rust_i18n::t!("home.search_placeholder", locale = loc).to_string(),
         searching_announcement: rust_i18n::t!("home.searching_announcement", locale = loc).to_string(),
@@ -863,8 +827,6 @@ pub async fn home(
         browse_grid_label: rust_i18n::t!("browse.grid_view", locale = loc).to_string(),
         browse_mode_label: rust_i18n::t!("browse.display_mode", locale = loc).to_string(),
         browse_sort_label: rust_i18n::t!("browse.sort_by", locale = loc).to_string(),
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
         home_search_help: crate::utils::TooltipData::placeholder_only(
             "tip-home-search-text",
             &rust_i18n::t!("help.home.search_field_text", locale = loc),
@@ -1283,24 +1245,7 @@ pub(crate) mod tests {
         let volumes_label = format!("{volumes} volumes");
         let active_loans_label = format!("{active_loans} active loans");
         HomeTemplate {
-            lang: "en".to_string(),
-            role: role.to_string(),
-            current_page: "home",
-            skip_label: "Skip to main content".to_string(),
-            connection_status: crate::utils::ConnectionStatusContext::new("en"),
-            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new("en"),
-            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
-            csrf_token: "tok".to_string(),
-            nav_catalog: "Catalog".to_string(),
-            nav_loans: "Loans".to_string(),
-            nav_wishlist: "Wish list".to_string(),
-            nav_locations: "Locations".to_string(),
-            nav_series: "Series".to_string(),
-            nav_borrowers: "Borrowers".to_string(),
-            nav_admin: "Admin".to_string(),
-            nav_login: "Log in".to_string(),
-            nav_logout: "Log out".to_string(),
-            nav_menu_open: "Open menu".to_string(),
+            base: crate::utils::test_base_context(role, "home", crate::config::AppSettings::default().session_timeout_secs),
             home_search_help: crate::utils::TooltipData::placeholder_only(
                 "tip-home-search-text",
                 "Type to search.",
@@ -1350,8 +1295,6 @@ pub(crate) mod tests {
             browse_grid_label: "Grid view".to_string(),
             browse_mode_label: "Display mode".to_string(),
             browse_sort_label: "Sort by".to_string(),
-            current_url: "/".to_string(),
-            lang_toggle_aria: "Change language".to_string(),
             glance_heading: "Collection at a glance".to_string(),
             glance_titles_label: titles_label,
             glance_volumes_label: volumes_label,
@@ -2015,7 +1958,7 @@ pub(crate) mod tests {
             fake_genre_stat_row(2, "BD", "8 titres", "40,0\u{00A0}%", 8),
         ];
         let mut template = make_test_home_template_with_stats("anonymous", stats);
-        template.lang = "fr".to_string();
+        template.base.lang = "fr".to_string();
         template.stats_by_genre_heading = "Par genre".to_string();
         let html = template.render().expect("render");
         let slice = stats_by_genre_slice(&html);

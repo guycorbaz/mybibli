@@ -7,7 +7,7 @@
 <div class="max-w-4xl mx-auto px-4 py-8">
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ list_title }}</h1>
-        {% if role == "librarian" || role == "admin" %}
+        {% if base.role == "librarian" || base.role == "admin" %}
         <a href="#add-form" id="borrowers-show-add-form"
            class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
             {{ add_label }}
@@ -15,10 +15,10 @@
         {% endif %}
     </div>
 
-    {% if role == "librarian" || role == "admin" %}
+    {% if base.role == "librarian" || base.role == "admin" %}
     <div id="add-form" class="hidden mb-6 p-4 bg-stone-50 dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700">
         <form method="POST" action="/borrowers" class="space-y-3">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
             <div>
                 <label for="new-name" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ name_label }} *</label>
                 <input type="text" id="new-name" name="name" required
@@ -65,7 +65,7 @@
         empty_cta,
         "#add-form",
         "librarian",
-        role,
+        base.role,
     ) %}{% endcall %}
     {% else %}
     {# Story 10-3 — mobile DataTable card mode (closes #159). #}

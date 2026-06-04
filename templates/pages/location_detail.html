@@ -30,7 +30,7 @@
            Anonymous. #}
         {% if can_audit %}
         <form method="POST" action="/location/{{ location.id }}/mark-audit" class="inline">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
             <button type="submit" class="px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20">
                 ⏳ {{ bulk_audit_button_label }}
             </button>

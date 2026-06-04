@@ -287,22 +287,20 @@ impl ShortcutsCheatSheetContext {
     }
 }
 
-/// Issue #35 (v1.7.11 slice) — shared fields carried by every full-page
-/// template struct. Today each handler re-builds these inline; this
-/// helper centralizes the i18n key lookups and field construction so a
-/// future addition (e.g. a feature-flag field, a new nav entry) is a
-/// single-site edit instead of a 17-handler rewrite.
+/// Issue #35 — shared fields carried by every full-page template struct,
+/// centralizing the i18n key lookups + `connection_status` / `shortcuts`
+/// constructor calls so a future global addition (a feature-flag field, a
+/// new nav entry) is a single-site edit here instead of a per-handler
+/// rewrite.
 ///
-/// Askama does not support struct-flattening or partial-struct macros,
-/// so per-handler conversion still spells out each field — but each
-/// line becomes a short `nav_catalog: base.nav_catalog,` instead of a
-/// verbose `rust_i18n::t!("nav.catalog", locale = loc).to_string()`.
-/// The DRY win is on i18n key strings + connection_status / shortcuts
-/// constructor calls, not on raw line count.
-///
-/// V1.7.11 ships the helper + 2 representative handler conversions
-/// (`loans_page`, `borrowers_page`). Remaining ~14 handlers tracked in
-/// a follow-up issue — incremental migration.
+/// Issue #398 — page-template structs now **embed** this as a single
+/// `base: BaseContextFields` field instead of flattening its ~20 fields,
+/// and `layouts/base.html` + `components/nav_bar.html` read them via
+/// `{{ base.lang }}` etc. (Askama nested-field access). Adding a
+/// document-wide field is now one line in this struct + one in
+/// `base_context()` — zero per-page churn. The handler still calls
+/// `base_context()` and assigns the result as the page struct's `base`
+/// field via field-init shorthand (`base,`).
 pub struct BaseContextFields {
     pub lang: String,
     pub role: String,
@@ -359,6 +357,45 @@ pub fn base_context(
         nav_logout: rust_i18n::t!("nav.logout", locale = locale).to_string(),
         nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
         current_url: current_url(uri),
+        lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = locale).to_string(),
+    }
+}
+
+/// Test-only constructor for [`BaseContextFields`]. Issue #398 collapsed
+/// the per-test flat base-field blocks (lang / role / nav_* / …) into this
+/// single call: callers pass the role, current_page slug, and
+/// session-timeout that matter to their assertions; the nav labels +
+/// skip_label + lang_toggle_aria resolve from the real `en` locale (so a
+/// label tweak doesn't silently desync a hand-copied test literal),
+/// csrf_token is the conventional `"tok"` stub, and current_url is `"/"`
+/// (no test asserts on it — it only feeds the nav language-toggle form).
+#[cfg(test)]
+pub(crate) fn test_base_context(
+    role: &str,
+    current_page: &'static str,
+    session_timeout_secs: u64,
+) -> BaseContextFields {
+    let locale = "en";
+    BaseContextFields {
+        lang: locale.to_string(),
+        role: role.to_string(),
+        current_page,
+        skip_label: rust_i18n::t!("nav.skip_to_content", locale = locale).to_string(),
+        connection_status: ConnectionStatusContext::new(locale),
+        shortcuts_cheat_sheet: ShortcutsCheatSheetContext::new(locale),
+        session_timeout_secs,
+        csrf_token: "tok".to_string(),
+        nav_catalog: rust_i18n::t!("nav.catalog", locale = locale).to_string(),
+        nav_loans: rust_i18n::t!("nav.loans", locale = locale).to_string(),
+        nav_wishlist: rust_i18n::t!("nav.wishlist", locale = locale).to_string(),
+        nav_locations: rust_i18n::t!("nav.locations", locale = locale).to_string(),
+        nav_series: rust_i18n::t!("nav.series", locale = locale).to_string(),
+        nav_borrowers: rust_i18n::t!("nav.borrowers", locale = locale).to_string(),
+        nav_admin: rust_i18n::t!("nav.admin", locale = locale).to_string(),
+        nav_login: rust_i18n::t!("nav.login", locale = locale).to_string(),
+        nav_logout: rust_i18n::t!("nav.logout", locale = locale).to_string(),
+        nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
+        current_url: "/".to_string(),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = locale).to_string(),
     }
 }

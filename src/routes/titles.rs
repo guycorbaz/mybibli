@@ -27,24 +27,7 @@ use crate::utils::html_escape;
 #[derive(Template)]
 #[template(path = "pages/title_detail.html")]
 pub struct TitleDetailTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub title: TitleModel,
     pub genre_name: String,
     pub volume_count: u64,
@@ -100,8 +83,6 @@ pub struct TitleDetailTemplate {
     pub similar_titles: Vec<SimilarTitle>,
     pub label_similar_titles: String,
     pub label_dewey_code: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
 }
 
 pub async fn title_detail(
@@ -147,24 +128,7 @@ pub async fn title_detail(
         let similar_titles = TitleModel::find_similar(pool, title.id).await?;
         let base = crate::utils::base_context(&session, loc, "title", &uri, state.session_timeout_secs());
         let template = TitleDetailTemplate {
-            lang: base.lang,
-            role: base.role,
-            current_page: base.current_page,
-            skip_label: base.skip_label,
-            connection_status: base.connection_status,
-            shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-            session_timeout_secs: base.session_timeout_secs,
-            csrf_token: base.csrf_token,
-            nav_catalog: base.nav_catalog,
-            nav_loans: base.nav_loans,
-            nav_wishlist: base.nav_wishlist,
-            nav_locations: base.nav_locations,
-            nav_series: base.nav_series,
-            nav_borrowers: base.nav_borrowers,
-            nav_admin: base.nav_admin,
-            nav_login: base.nav_login,
-            nav_logout: base.nav_logout,
-            nav_menu_open: base.nav_menu_open,
+            base,
             title,
             genre_name,
             volume_count,
@@ -220,8 +184,6 @@ pub async fn title_detail(
             similar_titles,
             label_similar_titles: rust_i18n::t!("title_detail.similar_titles", locale = loc).to_string(),
             label_dewey_code: rust_i18n::t!("metadata.field.dewey_code", locale = loc).to_string(),
-            current_url: base.current_url,
-            lang_toggle_aria: base.lang_toggle_aria,
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),
@@ -1998,24 +1960,7 @@ mod tests {
             version: 1,
         };
         let template = TitleDetailTemplate {
-            lang: "en".to_string(),
-            role: "anonymous".to_string(),
-            current_page: "title",
-            skip_label: "Skip".to_string(),
-            connection_status: crate::utils::ConnectionStatusContext::new("en"),
-            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new("en"),
-            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
-            csrf_token: "tok".to_string(),
-            nav_catalog: "Catalog".to_string(),
-            nav_loans: "Loans".to_string(),
-            nav_wishlist: "Wish list".to_string(),
-            nav_locations: "Locations".to_string(),
-            nav_series: "Series".to_string(),
-            nav_borrowers: "Borrowers".to_string(),
-            nav_admin: "Admin".to_string(),
-            nav_login: "Log in".to_string(),
-            nav_logout: "Log out".to_string(),
-            nav_menu_open: "Open menu".to_string(),
+            base: crate::utils::test_base_context("anonymous", "title", crate::config::AppSettings::default().session_timeout_secs),
             title,
             genre_name: "Roman".to_string(),
             volume_count: 2,
@@ -2064,8 +2009,6 @@ mod tests {
             similar_titles: vec![],
             label_similar_titles: "Similar titles".to_string(),
             label_dewey_code: "Dewey code".to_string(),
-            current_url: "/title/1".to_string(),
-            lang_toggle_aria: "Change language".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(
@@ -2113,24 +2056,7 @@ mod tests {
             version: 1,
         };
         let mut template = TitleDetailTemplate {
-            lang: "en".to_string(),
-            role: "librarian".to_string(),
-            current_page: "title",
-            skip_label: "Skip".to_string(),
-            connection_status: crate::utils::ConnectionStatusContext::new("en"),
-            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new("en"),
-            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
-            csrf_token: "tok".to_string(),
-            nav_catalog: "Catalog".to_string(),
-            nav_loans: "Loans".to_string(),
-            nav_wishlist: "Wish list".to_string(),
-            nav_locations: "Locations".to_string(),
-            nav_series: "Series".to_string(),
-            nav_borrowers: "Borrowers".to_string(),
-            nav_admin: "Admin".to_string(),
-            nav_login: "Log in".to_string(),
-            nav_logout: "Log out".to_string(),
-            nav_menu_open: "Open menu".to_string(),
+            base: crate::utils::test_base_context("librarian", "title", crate::config::AppSettings::default().session_timeout_secs),
             title,
             genre_name: "Roman".to_string(),
             volume_count: 0,
@@ -2179,8 +2105,6 @@ mod tests {
             similar_titles: vec![],
             label_similar_titles: "Similar titles".to_string(),
             label_dewey_code: "Dewey code".to_string(),
-            current_url: "/title/1".to_string(),
-            lang_toggle_aria: "Change language".to_string(),
         };
 
         // No cover → prominent CTA branch: explainer + upload-modal trigger.
@@ -2252,24 +2176,7 @@ mod tests {
             },
         ];
         let template = TitleDetailTemplate {
-            lang: "en".to_string(),
-            role: "anonymous".to_string(),
-            current_page: "title",
-            skip_label: "Skip".to_string(),
-            connection_status: crate::utils::ConnectionStatusContext::new("en"),
-            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new("en"),
-            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
-            csrf_token: "tok".to_string(),
-            nav_catalog: "Catalog".to_string(),
-            nav_loans: "Loans".to_string(),
-            nav_wishlist: "Wish list".to_string(),
-            nav_locations: "Locations".to_string(),
-            nav_series: "Series".to_string(),
-            nav_borrowers: "Borrowers".to_string(),
-            nav_admin: "Admin".to_string(),
-            nav_login: "Log in".to_string(),
-            nav_logout: "Log out".to_string(),
-            nav_menu_open: "Open menu".to_string(),
+            base: crate::utils::test_base_context("anonymous", "title", crate::config::AppSettings::default().session_timeout_secs),
             title,
             genre_name: "Roman".to_string(),
             volume_count: 1,
@@ -2318,8 +2225,6 @@ mod tests {
             similar_titles: similar,
             label_similar_titles: "Similar titles".to_string(),
             label_dewey_code: "Dewey code".to_string(),
-            current_url: "/title/1".to_string(),
-            lang_toggle_aria: "Change language".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(

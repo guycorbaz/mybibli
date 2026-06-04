@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="{{ lang }}" class="h-full">
+<html lang="{{ base.lang }}" class="h-full">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="csrf-token" content="{{ csrf_token|e }}">
+    <meta name="csrf-token" content="{{ base.csrf_token|e }}">
     <title>{% block title %}mybibli{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/output.css">
     <link rel="stylesheet" href="/static/css/browse.css">
@@ -23,8 +23,8 @@
     <script src="/static/js/theme.js"></script>
     {% block head %}{% endblock %}
 </head>
-<body class="{% block body_class %}bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 min-h-full{% endblock %}" data-page="{{ current_page }}" data-user-role="{{ role }}"{% if role != "anonymous" %} data-session-timeout="{{ session_timeout_secs }}"{% endif %}>
-    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:px-4 focus:py-2 focus:rounded focus:shadow">{{ skip_label }}</a>
+<body class="{% block body_class %}bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 min-h-full{% endblock %}" data-page="{{ base.current_page }}" data-user-role="{{ base.role }}"{% if base.role != "anonymous" %} data-session-timeout="{{ base.session_timeout_secs }}"{% endif %}>
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:px-4 focus:py-2 focus:rounded focus:shadow">{{ base.skip_label }}</a>
     {% include "components/nav_bar.html" %}
     <main id="main-content">
         {% block content %}{% endblock %}
@@ -46,11 +46,11 @@
     <div id="connection-lost-overlay"
          role="alert" aria-live="assertive" aria-atomic="true"
          class="hidden fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center motion-safe:transition-opacity motion-safe:duration-200"
-         data-i18n-restored-toast="{{ connection_status.restored_toast|e }}">
+         data-i18n-restored-toast="{{ base.connection_status.restored_toast|e }}">
         <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-md w-full mx-4 p-6 border border-stone-200 dark:border-stone-700">
-            <h2 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ connection_status.lost_heading }}</h2>
-            <p class="text-stone-700 dark:text-stone-300 mb-4">{{ connection_status.lost_body }}</p>
-            <button type="button" data-action="retry" class="px-4 py-2 bg-indigo-600 text-white rounded-md font-semibold hover:bg-indigo-700">{{ connection_status.lost_retry }}</button>
+            <h2 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ base.connection_status.lost_heading }}</h2>
+            <p class="text-stone-700 dark:text-stone-300 mb-4">{{ base.connection_status.lost_body }}</p>
+            <button type="button" data-action="retry" class="px-4 py-2 bg-indigo-600 text-white rounded-md font-semibold hover:bg-indigo-700">{{ base.connection_status.lost_retry }}</button>
         </div>
     </div>
     {# Story 9-20: cheat-sheet <dialog> + footer link. Native showModal()
@@ -61,41 +61,41 @@
             aria-labelledby="shortcuts-cheat-sheet-title"
             class="rounded-lg shadow-xl max-w-md w-full p-6 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 border border-stone-200 dark:border-stone-700 backdrop:bg-black/50">
         <div>
-            <h2 id="shortcuts-cheat-sheet-title" class="text-lg font-bold mb-4">{{ shortcuts_cheat_sheet.heading }}</h2>
+            <h2 id="shortcuts-cheat-sheet-title" class="text-lg font-bold mb-4">{{ base.shortcuts_cheat_sheet.heading }}</h2>
             <dl class="space-y-3 text-sm">
                 <div>
-                    <dt class="font-semibold text-stone-700 dark:text-stone-300 mb-1">{{ shortcuts_cheat_sheet.category_modal }}</dt>
-                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">?</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_help }}</span></dd>
-                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Esc</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_escape }}</span></dd>
+                    <dt class="font-semibold text-stone-700 dark:text-stone-300 mb-1">{{ base.shortcuts_cheat_sheet.category_modal }}</dt>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">?</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ base.shortcuts_cheat_sheet.shortcut_help }}</span></dd>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Esc</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ base.shortcuts_cheat_sheet.shortcut_escape }}</span></dd>
                 </div>
                 <div>
-                    <dt class="font-semibold text-stone-700 dark:text-stone-300 mb-1">{{ shortcuts_cheat_sheet.category_navigation }}</dt>
-                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">h</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_home }}</span></dd>
-                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">c</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_catalog }}</span></dd>
-                    {% if role == "librarian" || role == "admin" %}
-                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">l</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_loans }}</span></dd>
-                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">b</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_borrowers }}</span></dd>
+                    <dt class="font-semibold text-stone-700 dark:text-stone-300 mb-1">{{ base.shortcuts_cheat_sheet.category_navigation }}</dt>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ base.shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">h</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ base.shortcuts_cheat_sheet.shortcut_go_home }}</span></dd>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ base.shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">c</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ base.shortcuts_cheat_sheet.shortcut_go_catalog }}</span></dd>
+                    {% if base.role == "librarian" || base.role == "admin" %}
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ base.shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">l</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ base.shortcuts_cheat_sheet.shortcut_go_loans }}</span></dd>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ base.shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">b</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ base.shortcuts_cheat_sheet.shortcut_go_borrowers }}</span></dd>
                     {% endif %}
-                    {% if role == "admin" %}
-                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">a</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_admin }}</span></dd>
+                    {% if base.role == "admin" %}
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">g</kbd> {{ base.shortcuts_cheat_sheet.then_label }} <kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">a</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ base.shortcuts_cheat_sheet.shortcut_go_admin }}</span></dd>
                     {% endif %}
                 </div>
-                {% if role == "librarian" || role == "admin" %}
+                {% if base.role == "librarian" || base.role == "admin" %}
                 <div>
-                    <dt class="font-semibold text-stone-700 dark:text-stone-300 mb-1">{{ shortcuts_cheat_sheet.category_catalog }}</dt>
-                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">K</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_focus_scan }}</span></dd>
-                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Shift</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">B</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_go_borrowers }}</span></dd>
-                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">N</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ shortcuts_cheat_sheet.shortcut_new_title }}</span></dd>
+                    <dt class="font-semibold text-stone-700 dark:text-stone-300 mb-1">{{ base.shortcuts_cheat_sheet.category_catalog }}</dt>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">K</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ base.shortcuts_cheat_sheet.shortcut_focus_scan }}</span></dd>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Shift</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">B</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ base.shortcuts_cheat_sheet.shortcut_go_borrowers }}</span></dd>
+                    <dd class="flex items-baseline justify-between gap-3 ml-2"><span><kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">Ctrl</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-xs font-mono">N</kbd></span><span class="text-stone-600 dark:text-stone-400">{{ base.shortcuts_cheat_sheet.shortcut_new_title }}</span></dd>
                 </div>
                 {% endif %}
             </dl>
             <div class="mt-6 flex justify-end">
-                <button type="button" data-cheat-sheet-close class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm">{{ shortcuts_cheat_sheet.close_label }}</button>
+                <button type="button" data-cheat-sheet-close class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm">{{ base.shortcuts_cheat_sheet.close_label }}</button>
             </div>
         </div>
     </dialog>
     <footer class="text-center text-xs text-stone-600 dark:text-stone-400 py-3">
-        <a href="#" data-shortcuts-help-link class="hover:text-stone-900 dark:hover:text-stone-100 underline-offset-2 hover:underline">{{ shortcuts_cheat_sheet.footer_link }}</a>
+        <a href="#" data-shortcuts-help-link class="hover:text-stone-900 dark:hover:text-stone-100 underline-offset-2 hover:underline">{{ base.shortcuts_cheat_sheet.footer_link }}</a>
     </footer>
     <script src="/static/js/scan-field.js"></script>
     <script src="/static/js/search.js"></script>

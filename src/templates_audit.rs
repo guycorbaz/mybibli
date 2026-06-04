@@ -527,7 +527,7 @@ fn forms_include_csrf_token() {
     // versa) and either `{{` or `{{-` (whitespace-control) template
     // delimiters.
     let csrf_token_input = Regex::new(
-        r#"(?is)<input\b(?:[^>]*\bname\s*=\s*["']_csrf_token["'][^>]*\bvalue\s*=\s*["']\{\{-?\s*csrf_token\b|[^>]*\bvalue\s*=\s*["']\{\{-?\s*csrf_token\b[^>]*\bname\s*=\s*["']_csrf_token["'])"#,
+        r#"(?is)<input\b(?:[^>]*\bname\s*=\s*["']_csrf_token["'][^>]*\bvalue\s*=\s*["']\{\{-?\s*(?:base\.)?csrf_token\b|[^>]*\bvalue\s*=\s*["']\{\{-?\s*(?:base\.)?csrf_token\b[^>]*\bname\s*=\s*["']_csrf_token["'])"#,
     )
     .unwrap();
     let any_input = Regex::new(r#"(?is)<input\b"#).unwrap();

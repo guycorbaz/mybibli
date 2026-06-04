@@ -33,24 +33,7 @@ fn default_page() -> u32 {
 #[derive(Template)]
 #[template(path = "pages/loans.html")]
 pub struct LoansTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub list_title: String,
     pub new_loan_label: String,
     pub volume_label_label: String,
@@ -77,8 +60,6 @@ pub struct LoansTemplate {
     pub current_dir: String,
     pub loans: PaginatedList<LoanWithDetails>,
     pub highlight_loan_id: Option<u64>,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
 }
 
 pub async fn loans_page(
@@ -105,24 +86,7 @@ pub async fn loans_page(
     // base_context helper. The remaining fields are page-specific.
     let base = base_context(&session, loc, "loans", &uri, state.session_timeout_secs());
     let template = LoansTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
+        base,
         list_title: rust_i18n::t!("loan.list_title", locale = loc).to_string(),
         new_loan_label: rust_i18n::t!("loan.new", locale = loc).to_string(),
         volume_label_label: rust_i18n::t!("loan.volume_label", locale = loc).to_string(),
@@ -149,8 +113,6 @@ pub async fn loans_page(
         current_dir,
         loans,
         highlight_loan_id: None,
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
     };
 
     match template.render() {
@@ -737,24 +699,7 @@ mod tests {
     fn build_loans_template_for_test(loan: LoanWithDetails) -> LoansTemplate {
         use crate::models::PaginatedList;
         LoansTemplate {
-            lang: "en".to_string(),
-            role: "librarian".to_string(),
-            current_page: "loans",
-            skip_label: "Skip".to_string(),
-            connection_status: crate::utils::ConnectionStatusContext::new("en"),
-            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new("en"),
-            session_timeout_secs: 1800,
-            csrf_token: "tok".to_string(),
-            nav_catalog: "Catalog".to_string(),
-            nav_loans: "Loans".to_string(),
-            nav_wishlist: "Wish list".to_string(),
-            nav_locations: "Locations".to_string(),
-            nav_series: "Series".to_string(),
-            nav_borrowers: "Borrowers".to_string(),
-            nav_admin: "Admin".to_string(),
-            nav_login: "Log in".to_string(),
-            nav_logout: "Log out".to_string(),
-            nav_menu_open: "Open menu".to_string(),
+            base: crate::utils::test_base_context("librarian", "loans", 1800),
             list_title: "Loans".to_string(),
             new_loan_label: "New".to_string(),
             volume_label_label: "V-code".to_string(),
@@ -781,8 +726,6 @@ mod tests {
             current_dir: "desc".to_string(),
             loans: PaginatedList::new(vec![loan], 1, 1, None, Some("date".to_string()), Some("desc".to_string())),
             highlight_loan_id: None,
-            current_url: "/loans".to_string(),
-            lang_toggle_aria: "Change language".to_string(),
         }
     }
 

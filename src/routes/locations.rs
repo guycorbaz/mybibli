@@ -35,24 +35,7 @@ fn default_page() -> u32 {
 #[derive(Template)]
 #[template(path = "pages/location_detail.html")]
 pub struct LocationDetailTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub location: LocationModel,
     pub breadcrumb_segments: Vec<(u64, String)>,
     pub volumes: PaginatedList<VolumeWithTitle>,
@@ -70,8 +53,6 @@ pub struct LocationDetailTemplate {
     // CR #237 — bulk-mark affordance.
     pub can_audit: bool,
     pub bulk_audit_button_label: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
 }
 
 pub async fn location_detail(
@@ -96,24 +77,7 @@ pub async fn location_detail(
 
     let base = base_context(&session, loc, "location", &uri, state.session_timeout_secs());
     let template = LocationDetailTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
+        base,
         contents_title: rust_i18n::t!("location.contents_title", locale = loc).to_string(),
         empty_volumes: rust_i18n::t!("location.empty_volumes", locale = loc).to_string(),
         col_title: rust_i18n::t!("location.col_title", locale = loc).to_string(),
@@ -137,8 +101,6 @@ pub async fn location_detail(
         location,
         breadcrumb_segments,
         volumes,
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -394,24 +356,7 @@ fn render_node_at_depth(
 #[derive(Template)]
 #[template(path = "pages/locations.html")]
 pub struct LocationsTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub tree_title: String,
     pub tree_html: String,
     pub node_types: Vec<(u64, String)>,
@@ -426,8 +371,6 @@ pub struct LocationsTemplate {
     // root-create form on the tree page).
     pub organizational_label: String,
     pub organizational_help: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
 }
 
 pub async fn locations_page(
@@ -466,24 +409,7 @@ pub async fn locations_page(
 
     let base = base_context(&session, loc, "locations", &uri, state.session_timeout_secs());
     let template = LocationsTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
+        base,
         tree_title: rust_i18n::t!("location.tree_title", locale = loc).to_string(),
         tree_html,
         node_types,
@@ -498,8 +424,6 @@ pub async fn locations_page(
             .to_string(),
         organizational_help: rust_i18n::t!("location.organizational_help", locale = loc)
             .to_string(),
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -562,24 +486,7 @@ pub async fn create_location(
 #[derive(Template)]
 #[template(path = "pages/location_edit.html")]
 pub struct LocationEditTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub edit_title: String,
     pub location: LocationModel,
     pub version: i32,
@@ -593,8 +500,6 @@ pub struct LocationEditTemplate {
     // CR #280 — organizational checkbox copy.
     pub organizational_label: String,
     pub organizational_help: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
 }
 
 pub async fn edit_location_page(
@@ -619,24 +524,7 @@ pub async fn edit_location_page(
 
     let base = base_context(&session, loc, "locations", &uri, state.session_timeout_secs());
     let template = LocationEditTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
+        base,
         edit_title: rust_i18n::t!("location.edit", locale = loc).to_string(),
         location,
         version,
@@ -651,8 +539,6 @@ pub async fn edit_location_page(
             .to_string(),
         organizational_help: rust_i18n::t!("location.organizational_help", locale = loc)
             .to_string(),
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -994,24 +880,7 @@ mod tests {
     #[test]
     fn test_location_detail_template_renders() {
         let template = LocationDetailTemplate {
-            lang: "en".to_string(),
-            role: "anonymous".to_string(),
-            current_page: "location",
-            skip_label: "Skip".to_string(),
-            connection_status: crate::utils::ConnectionStatusContext::new("en"),
-            shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext::new("en"),
-            session_timeout_secs: crate::config::AppSettings::default().session_timeout_secs,
-            csrf_token: "tok".to_string(),
-            nav_catalog: "Catalog".to_string(),
-            nav_loans: "Loans".to_string(),
-            nav_wishlist: "Wish list".to_string(),
-            nav_locations: "Locations".to_string(),
-            nav_series: "Series".to_string(),
-            nav_borrowers: "Borrowers".to_string(),
-            nav_admin: "Admin".to_string(),
-            nav_login: "Log in".to_string(),
-            nav_logout: "Log out".to_string(),
-            nav_menu_open: "Open menu".to_string(),
+            base: crate::utils::test_base_context("anonymous", "location", crate::config::AppSettings::default().session_timeout_secs),
             location: LocationModel {
                 id: 1,
                 parent_id: None,
@@ -1035,8 +904,6 @@ mod tests {
             pagination_aria: "Pagination".to_string(),
             can_audit: false,
             bulk_audit_button_label: "Mark all volumes for audit".to_string(),
-            current_url: "/location/1".to_string(),
-            lang_toggle_aria: "Change language".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(rendered.contains("Salon"));

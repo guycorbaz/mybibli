@@ -12,7 +12,7 @@
            can re-mark) and the count is small enough that the
            friction of a confirmation dialog isn't earned. #}
         <form method="POST" action="/audit/clear-all" class="inline">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
             <button type="submit" class="px-3 py-1.5 text-sm font-medium text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20">
                 {{ btn_clear_all }}
             </button>
@@ -46,7 +46,7 @@
                     <td class="px-3 py-2 text-xs text-stone-600 dark:text-stone-400">{{ row.location_path }}</td>
                     <td class="px-3 py-2 text-right">
                         <form method="POST" action="/volume/{{ row.volume_id }}/clear-audit" class="inline">
-                            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+                            <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
                             <button type="submit" class="px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
                                 ✓ {{ btn_check }}
                             </button>

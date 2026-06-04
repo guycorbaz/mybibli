@@ -41,24 +41,7 @@ use crate::utils::base_context;
 #[derive(Template)]
 #[template(path = "pages/wishlist.html")]
 pub struct WishlistPageTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub items: Vec<WishlistItem>,
     pub can_edit: bool,
     pub label_list_title: String,
@@ -74,8 +57,6 @@ pub struct WishlistPageTemplate {
     pub label_col_actions: String,
     pub label_action_bought: String,
     pub label_placeholder_empty: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
 }
 
 pub async fn wishlist_page(
@@ -94,24 +75,7 @@ pub async fn wishlist_page(
 
     let base = base_context(&session, loc, "wishlist", &uri, state.session_timeout_secs());
     let template = WishlistPageTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
+        base,
         items,
         can_edit: session.role >= Role::Librarian,
         label_list_title: rust_i18n::t!("wishlist.list_title", locale = loc).to_string(),
@@ -127,8 +91,6 @@ pub async fn wishlist_page(
         label_col_actions: rust_i18n::t!("wishlist.col_actions", locale = loc).to_string(),
         label_action_bought: rust_i18n::t!("wishlist.action_bought", locale = loc).to_string(),
         label_placeholder_empty: rust_i18n::t!("title_detail.field_unset", locale = loc).to_string(),
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -141,24 +103,7 @@ pub async fn wishlist_page(
 #[derive(Template)]
 #[template(path = "pages/wishlist_new.html")]
 pub struct WishlistNewTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub label_form_title: String,
     pub label_mode_isbn: String,
     pub label_mode_freeform: String,
@@ -170,8 +115,6 @@ pub struct WishlistNewTemplate {
     pub label_notes: String,
     pub label_add: String,
     pub label_cancel: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
 }
 
 pub async fn wishlist_new_page(
@@ -185,24 +128,7 @@ pub async fn wishlist_new_page(
 
     let base = base_context(&session, loc, "wishlist", &uri, state.session_timeout_secs());
     let template = WishlistNewTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
+        base,
         label_form_title: rust_i18n::t!("wishlist.form_title", locale = loc).to_string(),
         label_mode_isbn: rust_i18n::t!("wishlist.mode_isbn", locale = loc).to_string(),
         label_mode_freeform: rust_i18n::t!("wishlist.mode_freeform", locale = loc).to_string(),
@@ -214,8 +140,6 @@ pub async fn wishlist_new_page(
         label_notes: rust_i18n::t!("wishlist.field_notes", locale = loc).to_string(),
         label_add: rust_i18n::t!("wishlist.add_to_wishlist", locale = loc).to_string(),
         label_cancel: rust_i18n::t!("common.cancel", locale = loc).to_string(),
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -434,24 +358,7 @@ pub async fn wishlist_create(
 #[derive(Template)]
 #[template(path = "pages/wishlist_detail.html")]
 pub struct WishlistDetailTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub item: WishlistItem,
     pub can_edit: bool,
     pub label_isbn: String,
@@ -464,8 +371,6 @@ pub struct WishlistDetailTemplate {
     pub label_action_bought: String,
     pub label_placeholder_empty: String,
     pub label_no_cover: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
 }
 
 pub async fn wishlist_detail(
@@ -483,24 +388,7 @@ pub async fn wishlist_detail(
 
     let base = base_context(&session, loc, "wishlist", &uri, state.session_timeout_secs());
     let template = WishlistDetailTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
+        base,
         item,
         can_edit: session.role >= Role::Librarian,
         label_isbn: rust_i18n::t!("wishlist.col_isbn", locale = loc).to_string(),
@@ -513,8 +401,6 @@ pub async fn wishlist_detail(
         label_action_bought: rust_i18n::t!("wishlist.action_bought", locale = loc).to_string(),
         label_placeholder_empty: rust_i18n::t!("title_detail.field_unset", locale = loc).to_string(),
         label_no_cover: rust_i18n::t!("cover.no_cover", locale = loc).to_string(),
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),

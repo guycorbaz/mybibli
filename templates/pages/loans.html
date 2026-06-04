@@ -7,7 +7,7 @@
 <div class="max-w-5xl mx-auto px-4 py-8">
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ list_title }}</h1>
-        {% if role == "librarian" || role == "admin" %}
+        {% if base.role == "librarian" || base.role == "admin" %}
         <button type="button" id="loans-new-loan-toggle"
                 class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">
             {{ new_loan_label }}
@@ -16,7 +16,7 @@
     </div>
 
     <!-- Scan field -->
-    {% if role == "librarian" || role == "admin" %}
+    {% if base.role == "librarian" || base.role == "admin" %}
     <div class="mb-4">
         <input type="text" id="loan-scan-field"
                placeholder="{{ scan_placeholder }}"
@@ -40,13 +40,13 @@
     </div>
 
     <!-- New loan form -->
-    {% if role == "librarian" || role == "admin" %}
+    {% if base.role == "librarian" || base.role == "admin" %}
     <div id="new-loan-form" class="hidden mb-6 p-4 bg-stone-50 dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700">
         <form method="POST" action="/loans" id="loan-create-form"
               hx-post="/loans"
               hx-target="#loan-feedback"
               hx-swap="innerHTML">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                     <label for="loan-volume-label" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ volume_label_label }} *</label>
@@ -83,7 +83,7 @@
         "",
         "",
         "",
-        role,
+        base.role,
     ) %}{% endcall %}
     {% else %}
     {# Story 10-3 — mobile DataTable card mode (closes #159).
@@ -113,7 +113,7 @@
                     {% endif %}
                 </dd>
             </dl>
-            {% if role == "librarian" || role == "admin" %}
+            {% if base.role == "librarian" || base.role == "admin" %}
             <div class="mt-3 flex justify-end">
                 <button hx-get="/loans/{{ loan.id }}/return-modal?target=loan-feedback"
                         hx-target="#modal-slot"
@@ -151,7 +151,7 @@
                         <a href="/loans?sort=duration&dir={% if current_sort == "duration" && current_dir == "desc" %}asc{% else %}desc{% endif %}&page=1"
                            class="hover:underline">{{ col_duration }}{% if current_sort == "duration" %} {% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}</a>
                     </th>
-                    {% if role == "librarian" || role == "admin" %}
+                    {% if base.role == "librarian" || base.role == "admin" %}
                     <th class="px-4 py-3 text-stone-600 dark:text-stone-400">{{ col_action }}</th>
                     {% endif %}
                 </tr>
@@ -170,7 +170,7 @@
                         <span class="ml-1 inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">{{ overdue_label }}</span>
                         {% endif %}
                     </td>
-                    {% if role == "librarian" || role == "admin" %}
+                    {% if base.role == "librarian" || base.role == "admin" %}
                     <td class="px-4 py-3">
                         <button hx-get="/loans/{{ loan.id }}/return-modal?target=loan-feedback"
                                 hx-target="#modal-slot"
