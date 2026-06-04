@@ -322,6 +322,42 @@ pub struct BaseContextFields {
     pub nav_menu_open: String,
     pub current_url: String,
     pub lang_toggle_aria: String,
+    /// Issue #386 — JSON i18n bundle for client-side JS modules, emitted
+    /// by `layouts/base.html` as a `<script type="application/json"
+    /// id="i18n-bundle">` data island. See [`build_js_i18n_bundle`].
+    pub js_i18n: String,
+}
+
+/// Issue #386 — build the per-request i18n bundle that
+/// `layouts/base.html` emits as a `<script type="application/json"
+/// id="i18n-bundle">` data island. Client JS reads it once via
+/// `JSON.parse(document.getElementById("i18n-bundle").textContent)`
+/// instead of carrying hand-synced `{en: …, fr: …}` objects (which
+/// silently drifted from `locales/*.yml` and never covered de/it).
+///
+/// Strings are resolved server-side in the REQUEST locale, so JS picks
+/// up de/it for free. `%{minutes}`-style placeholders are preserved
+/// verbatim for client-side substitution.
+///
+/// `<`, `>`, and `&` in the serialized JSON are replaced with their
+/// `\uXXXX` escapes so a translated value containing `</script>` (or
+/// `<!--`) cannot break out of the data island — defense in depth on top
+/// of `tests/locale_html_safety.rs` (which already refuses markup in
+/// locale values).
+pub fn build_js_i18n_bundle(locale: &str) -> String {
+    let bundle = serde_json::json!({
+        "session": {
+            "expiry_soon": rust_i18n::t!("session.expiry_soon", locale = locale).to_string(),
+            "expiry_in_minutes": rust_i18n::t!("session.expiry_in_minutes", locale = locale).to_string(),
+            "stay_connected": rust_i18n::t!("session.stay_connected", locale = locale).to_string(),
+            "dismiss_aria": rust_i18n::t!("session.dismiss_aria", locale = locale).to_string(),
+        }
+    });
+    serde_json::to_string(&bundle)
+        .unwrap_or_else(|_| "{}".to_string())
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026")
 }
 
 /// Build the shared fields for a full-page render. Caller provides the
@@ -358,6 +394,7 @@ pub fn base_context(
         nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
         current_url: current_url(uri),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = locale).to_string(),
+        js_i18n: build_js_i18n_bundle(locale),
     }
 }
 
@@ -397,6 +434,7 @@ pub(crate) fn test_base_context(
         nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
         current_url: "/".to_string(),
         lang_toggle_aria: rust_i18n::t!("nav.language_toggle_aria", locale = locale).to_string(),
+        js_i18n: build_js_i18n_bundle(locale),
     }
 }
 
@@ -657,5 +695,60 @@ mod tests {
                 "{name} resolved to the raw i18n key {value} — missing en.yml entry?"
             );
         }
+    }
+
+    // ─── #386 — JS i18n bundle ─────────────────────────────────────
+
+    #[test]
+    fn js_i18n_bundle_carries_session_keys_as_valid_json() {
+        let json = build_js_i18n_bundle("en");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("bundle must be valid JSON");
+        let session = &parsed["session"];
+        for key in [
+            "expiry_soon",
+            "expiry_in_minutes",
+            "stay_connected",
+            "dismiss_aria",
+        ] {
+            assert!(
+                session[key].as_str().is_some_and(|s| !s.is_empty()),
+                "session.{key} must be a non-empty string in the bundle"
+            );
+        }
+        // The parameterized string keeps its client-substituted placeholder.
+        assert!(
+            session["expiry_in_minutes"]
+                .as_str()
+                .unwrap()
+                .contains("%{minutes}"),
+            "expiry_in_minutes must preserve the %{{minutes}} placeholder for client-side substitution"
+        );
+    }
+
+    #[test]
+    fn js_i18n_bundle_resolves_per_locale() {
+        let en = build_js_i18n_bundle("en");
+        let de = build_js_i18n_bundle("de");
+        // de/it were the gap the hand-synced JS objects never covered —
+        // prove the server-side bundle resolves them and differs from en.
+        let en_v: serde_json::Value = serde_json::from_str(&en).unwrap();
+        let de_v: serde_json::Value = serde_json::from_str(&de).unwrap();
+        assert_ne!(
+            en_v["session"]["stay_connected"], de_v["session"]["stay_connected"],
+            "de bundle must carry the German string, not the English fallback"
+        );
+    }
+
+    #[test]
+    fn js_i18n_bundle_escapes_angle_brackets_for_safe_embedding() {
+        // The serialized bundle must never contain a literal `<` or `>` —
+        // they're \uXXXX-escaped so a future translated value containing
+        // `</script>` can't break out of the data island.
+        let json = build_js_i18n_bundle("en");
+        assert!(
+            !json.contains('<') && !json.contains('>'),
+            "bundle must escape < and > to \\u003c / \\u003e: {json}"
+        );
     }
 }

@@ -722,9 +722,11 @@ loan:
   not_found: "Prêt introuvable."
   col_action: Action
 session:
-  # Reflété dans static/js/session-timeout.js (objet i18n) — garder synchronisé.
-  # Le JS choisit `expiry_in_minutes` si le délai restant >= 1 min,
-  # sinon il bascule sur `expiry_soon` (sans paramètre).
+  # Transmis au client via l'îlot de données #i18n-bundle
+  # (utils::build_js_i18n_bundle, issue #386) et lu par
+  # static/js/session-timeout.js — plus de copie JS synchronisée à la main.
+  # Le JS choisit `expiry_in_minutes` si le délai restant >= 1 min, sinon
+  # il bascule sur `expiry_soon` (sans paramètre).
   expiry_soon: "Votre session va bientôt expirer."
   expiry_in_minutes: "Votre session expirera dans %{minutes} min."
   stay_connected: Rester connecté

@@ -76,6 +76,13 @@ test.describe("Story 7-2 — session inactivity timeout", () => {
     await expect(toast).toBeVisible({ timeout: 15_000 });
     await expect(toast).toHaveAttribute("role", "alert");
 
+    // #386 — the warning + button copy come from the server-rendered
+    // #i18n-bundle data island (no hand-synced JS strings). Assert they
+    // actually populated, so a broken bundle wiring fails loudly instead
+    // of silently showing an empty toast.
+    await expect(page.locator("#session-timeout-message")).not.toHaveText("");
+    await expect(page.locator("#session-keepalive-btn")).not.toHaveText("");
+
     const stay = page.locator("#session-keepalive-btn");
     await stay.click();
 
