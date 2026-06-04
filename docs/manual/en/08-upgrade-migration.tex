@@ -139,6 +139,32 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.8.5}\label{sec:whats-new-1.8.5}
+
+Version 1.8.5 is a three-issue closure patch on v1.8.4. \emph{No
+operator action required.} Routine \texttt{docker compose pull \&\&
+docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#10 \string— clearer error messages.} The wording shown
+        when something goes wrong was rewritten to follow a plain-language
+        style: what happened, why, and what you can do about it \string—
+        no error codes, no technical jargon, no internal details leaking
+        through. The change covers all four interface languages
+        (German, English, French, Italian).
+  \item \textbf{\#384 \string— faster, stricter metadata lookups.} When a
+        title has several authors, their records are now fetched from
+        Open Library in parallel instead of one after another, so
+        multi-author titles resolve noticeably faster. A scanned or typed
+        UPC-A barcode is now checksum-validated, so a mistyped 12-digit
+        code is rejected immediately rather than triggering a fruitless
+        lookup.
+  \item \textbf{\#391 \string— internal maintainability.} The admin
+        users-panel code was split into its own module for
+        maintainability. No user-visible change \string— listed for
+        completeness.
+\end{itemize}
+
 \section{What's new in 1.8.4}\label{sec:whats-new-1.8.4}
 
 Version 1.8.4 is a three-issue hardening and quality closure on v1.8.3.

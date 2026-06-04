@@ -108,7 +108,7 @@ Both `mybibli-covers` and `mybibli-logs` can be swapped from Docker-named volume
 ## Tags
 
 - `:latest` — tracks the highest semver release tag.
-- `:1.8.4` (current), `:1.8.3`, `:1.8.2`, `:1.8.1`, `:1.8.0`, `:1.7.11`, `:1.7.10`, `:1.7.9`, `:1.7.8`, `:1.7.7`, `:1.7.6`, `:1.7.5`, `:1.7.4`, `:1.7.3`, `:1.7.2`, `:1.7.1`, `:1.7.0`, `:1.6.2`, `:1.6.1`, `:1.6.0`, `:1.5.2`, `:1.5.1`, `:1.5.0`, `:1.4.0`, `:1.3.1`, `:1.3.0`, `:1.2.2`, `:1.2.1`, `:1.2.0`, `:1.1.9`, `:1.1.8`, `:1.1.7`, `:1.1.6`, `:1.1.5`, `:1.1.4`, `:1.1.3`, `:1.1.2`, `:1.1.1`, `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; tracking `:latest` is reasonable for homelab.
+- `:1.8.5` (current), `:1.8.4`, `:1.8.3`, `:1.8.2`, `:1.8.1`, `:1.8.0`, `:1.7.11`, `:1.7.10`, `:1.7.9`, `:1.7.8`, `:1.7.7`, `:1.7.6`, `:1.7.5`, `:1.7.4`, `:1.7.3`, `:1.7.2`, `:1.7.1`, `:1.7.0`, `:1.6.2`, `:1.6.1`, `:1.6.0`, `:1.5.2`, `:1.5.1`, `:1.5.0`, `:1.4.0`, `:1.3.1`, `:1.3.0`, `:1.2.2`, `:1.2.1`, `:1.2.0`, `:1.1.9`, `:1.1.8`, `:1.1.7`, `:1.1.6`, `:1.1.5`, `:1.1.4`, `:1.1.3`, `:1.1.2`, `:1.1.1`, `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; tracking `:latest` is reasonable for homelab.
 - **No `:dev`, no `:main`, no `:beta` published** — tagged releases only.
 
 ## Docs
