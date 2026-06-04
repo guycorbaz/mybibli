@@ -358,11 +358,11 @@ series:
   omnibus_help_text: "Cochez quand le livre regroupe plusieurs volumes de la série (par ex. une intégrale tomes 1–3). Le formulaire révèle alors un champ 'Position de fin' pour que le titre couvre une plage de positions au lieu d'une seule."
   select_series: "Sélectionner une série..."
 error:
-  internal: Une erreur interne est survenue
-  not_found: La ressource demandée est introuvable
+  internal: "Une erreur est survenue de notre côté. Réessayez ; si le problème persiste, contactez votre administrateur."
+  not_found: "Introuvable — l'élément a peut-être été déplacé ou supprimé."
   already_deleted_by_another_session: "Cet élément a déjà été supprimé par une autre session — rafraîchissez la page pour voir l'état actuel."
-  bad_request: Requête invalide
-  unauthorized: Authentification requise
+  bad_request: "La requête n'a pas pu être traitée. Vérifiez votre saisie et réessayez."
+  unauthorized: "Connectez-vous pour continuer."
   forbidden:
     title: Accès refusé
     body: Votre compte ne dispose pas des droits nécessaires pour cette action. Contactez un administrateur si vous avez besoin d'un accès.
@@ -374,7 +374,7 @@ error:
   csrf_payload_too_large_title: Requête trop volumineuse
   csrf_payload_too_large_message: Le formulaire envoyé dépasse la limite de taille du serveur. Raccourcissez votre saisie et réessayez.
   title:
-    creation_failed: La création du titre a échoué
+    creation_failed: "Impossible de créer le titre. Réessayez ; si cela persiste, contactez votre administrateur."
     required: Le titre est obligatoire
   isbn:
     invalid_checksum: Checksum ISBN invalide
@@ -393,7 +393,7 @@ error:
   conflict: "Cet enregistrement a été modifié par un autre utilisateur. Veuillez recharger et réessayer."
   version_mismatch: "Un autre utilisateur vient de modifier ce %{entity}. Rechargez la page pour voir la dernière version, puis réessayez."
   soft_deleted: "Ce %{entity} vient d'être supprimé. Rechargez la page pour rafraîchir la liste."
-  delete_has_references: "Suppression impossible : l'élément est référencé par des enregistrements actifs."
+  delete_has_references: "Cet élément ne peut pas être supprimé car d'autres enregistrements l'utilisent encore. Retirez ces liens d'abord, puis réessayez."
   contributor:
     has_titles: "Impossible de supprimer %{name}. Ce contributeur est associé à %{count} titre(s). Retirez d'abord le contributeur de tous les titres."
   user:
@@ -430,7 +430,7 @@ error:
     version_mismatch: "Les paramètres ont été modifiés par un autre administrateur — rechargez et réessayez"
     provider_version_mismatch: "%{provider} a été modifié par un autre administrateur — rechargez et réessayez"
   code:
-    unsupported_type: Type de code non pris en charge
+    unsupported_type: "Ce type de code-barres n'est pas pris en charge. Scannez un ISBN, un UPC ou un ISSN."
 guide:
   initial: "Scannez un ISBN pour cataloguer, ou un code L pour définir un emplacement de rangement."
   title_active: "Titre actif : %{title}. Scannez un code V pour ajouter un volume."

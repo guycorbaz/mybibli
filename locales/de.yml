@@ -356,11 +356,11 @@ series:
   omnibus_help_text: "Aktivieren, wenn das Buch mehrere Bände der Serie bündelt (z. B. ein Sammelband mit den Bänden 1–3). Das Formular zeigt dann ein Feld \"Endposition\", damit der Titel einen Bereich von Serienpositionen abdeckt anstatt nur einer."
   select_series: "Eine Serie auswählen…"
 error:
-  internal: Ein interner Fehler ist aufgetreten
-  not_found: Die angeforderte Ressource wurde nicht gefunden
+  internal: "Auf unserer Seite ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut; wenn das Problem weiterhin besteht, wenden Sie sich an Ihren Administrator."
+  not_found: "Wir konnten nicht finden, wonach Sie gesucht haben — es wurde möglicherweise verschoben oder gelöscht."
   already_deleted_by_another_session: "Dieser Eintrag wurde bereits von einer anderen Sitzung gelöscht — laden Sie die Seite neu, um den aktuellen Stand zu sehen."
-  bad_request: Ungültige Anfrage
-  unauthorized: Anmeldung erforderlich
+  bad_request: "Die Anfrage konnte nicht verarbeitet werden. Überprüfen Sie Ihre Eingabe und versuchen Sie es erneut."
+  unauthorized: "Bitte melden Sie sich an, um fortzufahren."
   forbidden:
     title: Zugriff verweigert
     body: Ihr Konto verfügt nicht über die nötigen Rechte, um diese Aktion auszuführen. Wenden Sie sich an einen Administrator, wenn Sie Zugang benötigen.
@@ -372,7 +372,7 @@ error:
   csrf_payload_too_large_title: Anfrage zu groß
   csrf_payload_too_large_message: Das übermittelte Formular überschreitet die Server-Größenbeschränkung. Bitte kürzen Sie die Eingabe und versuchen Sie es erneut.
   title:
-    creation_failed: Titel-Erstellung fehlgeschlagen
+    creation_failed: "Der Titel konnte nicht erstellt werden. Bitte versuchen Sie es erneut; wenn das Problem weiterhin besteht, wenden Sie sich an Ihren Administrator."
     required: Titel ist erforderlich
   isbn:
     invalid_checksum: Ungültige ISBN-Prüfsumme
@@ -391,7 +391,7 @@ error:
   conflict: "Dieser Datensatz wurde durch einen anderen Benutzer geändert. Bitte neu laden und erneut versuchen."
   version_mismatch: "Ein anderer Benutzer hat dieses %{entity} gerade geändert. Bitte laden Sie die Seite neu, damit Sie die aktuelle Fassung sehen, und versuchen Sie es erneut."
   soft_deleted: "Dieses %{entity} wurde soeben gelöscht. Bitte laden Sie die Seite neu, um die Liste zu aktualisieren."
-  delete_has_references: "Löschen nicht möglich: Der Eintrag wird durch aktive Datensätze referenziert."
+  delete_has_references: "Dieses Element kann nicht gelöscht werden, da es noch von anderen Datensätzen verwendet wird. Entfernen Sie zuerst diese Verknüpfungen und versuchen Sie es dann erneut."
   contributor:
     has_titles: "%{name} kann nicht gelöscht werden. Dieser Mitwirkende ist mit %{count} Titel(n) verknüpft. Bitte zuerst alle Verknüpfungen entfernen."
   user:
@@ -428,7 +428,7 @@ error:
     version_mismatch: "Die Einstellungen wurden durch einen anderen Administrator geändert — neu laden und erneut versuchen"
     provider_version_mismatch: "%{provider} wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
   code:
-    unsupported_type: Nicht unterstützter Code-Typ
+    unsupported_type: "Dieser Barcode-Typ wird nicht unterstützt. Scannen Sie einen ISBN, UPC oder ISSN."
 guide:
   initial: "Scannen Sie eine ISBN, um mit dem Katalogisieren zu beginnen, oder einen L-Code, um einen Aufstellungsort festzulegen."
   title_active: "Titel aktiv: %{title}. Scannen Sie einen V-Code, um ein Exemplar hinzuzufügen."

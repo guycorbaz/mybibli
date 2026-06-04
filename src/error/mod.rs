@@ -236,19 +236,19 @@ impl IntoResponse for AppError {
             AppError::Internal(msg) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 msg.clone(),
-                "An internal error occurred".to_string(),
+                "Something went wrong on our end. Please try again; if the problem continues, contact your administrator.".to_string(),
             ),
             AppError::TemplateRenderFailed { template } => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("template render failed: {template}"),
-                "An internal error occurred".to_string(),
+                "Something went wrong on our end. Please try again; if the problem continues, contact your administrator.".to_string(),
             ),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone(), msg.clone()),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone(), msg.clone()),
             AppError::Database(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 err.to_string(),
-                "An internal error occurred".to_string(),
+                "Something went wrong on our end. Please try again; if the problem continues, contact your administrator.".to_string(),
             ),
             AppError::Unauthorized
             | AppError::UnauthorizedWithReturn(_)
@@ -365,7 +365,7 @@ mod tests {
         // the response body (leakage would be a low-severity info disclosure).
         assert!(!body.contains("catalog"), "no template name leaked to client: {body}");
         assert!(
-            body.contains("internal error"),
+            body.contains("Something went wrong on our end"),
             "generic 500 body shown; got: {body}",
         );
     }

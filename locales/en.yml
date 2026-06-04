@@ -360,14 +360,14 @@ series:
   omnibus_help_text: "Check this when the book bundles multiple volumes of the series (e.g. an omnibus collecting volumes 1–3). The form then reveals an 'End position' field so the title covers a range of series positions instead of just one."
   select_series: "Select a series..."
 error:
-  internal: An internal error occurred
-  not_found: The requested resource was not found
+  internal: "Something went wrong on our end. Please try again; if the problem continues, contact your administrator."
+  not_found: "We couldn't find what you were looking for — it may have been moved or deleted."
   # CR #136 — friendly "your tab is stale" message surfaced when a
   # modal-trigger GET 404s because another session already deleted the
   # row. Generic enough to cover borrower / contributor / loan modals.
   already_deleted_by_another_session: "This item was already deleted by another session — refresh the page to see the current state."
-  bad_request: Invalid request
-  unauthorized: Authentication required
+  bad_request: "The request couldn't be processed. Check your input and try again."
+  unauthorized: "Please sign in to continue."
   forbidden:
     title: Access denied
     body: Your account does not have permission to perform this action. Ask an administrator if you need access.
@@ -379,7 +379,7 @@ error:
   csrf_payload_too_large_title: Request too large
   csrf_payload_too_large_message: The submitted form exceeded the server's size limit. Please shorten your input and retry.
   title:
-    creation_failed: Title creation failed
+    creation_failed: "We couldn't create the title. Please try again; if it keeps happening, contact your administrator."
     required: Title is required
   isbn:
     invalid_checksum: Invalid ISBN checksum
@@ -398,7 +398,7 @@ error:
   conflict: "This record was modified by another user. Please reload and try again."
   version_mismatch: "Another user just modified this %{entity}. Reload the page so you see the latest version, then try again."
   soft_deleted: "This %{entity} was just deleted. Reload the page to refresh the list."
-  delete_has_references: "Cannot delete: item is referenced by active records."
+  delete_has_references: "This item can't be deleted because other records still use it. Remove those links first, then try again."
   contributor:
     has_titles: "Cannot delete %{name}. This contributor is associated with %{count} title(s). Remove the contributor from all titles first."
   user:
@@ -435,7 +435,7 @@ error:
     version_mismatch: "Settings were modified by another admin — reload and retry"
     provider_version_mismatch: "%{provider} was modified by another admin — reload and retry"
   code:
-    unsupported_type: Unsupported code type
+    unsupported_type: "This barcode type isn't supported. Scan an ISBN, UPC, or ISSN."
 guide:
   initial: "Scan an ISBN to start cataloging, or an L-code to set a shelving location."
   title_active: "Title active: %{title}. Scan a V-code to add a volume."
