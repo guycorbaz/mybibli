@@ -30,7 +30,7 @@
               hx-indicator="#wishlist-lookup-spinner"
               hx-disabled-elt="find button[type='submit']"
               class="space-y-3">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
             <div>
                 <label for="isbn-input" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_isbn }} *</label>
                 <input type="text" id="isbn-input" name="isbn" required
@@ -63,7 +63,7 @@
     <section id="wishlist-mode-freeform" aria-labelledby="wishlist-freeform-heading" hidden>
         <h2 id="wishlist-freeform-heading" class="sr-only">{{ label_mode_freeform }}</h2>
         <form method="POST" action="/wishlist" class="space-y-3">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
             <input type="hidden" name="mode" value="freeform">
             <div>
                 <label for="freeform-title" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_title }} *</label>

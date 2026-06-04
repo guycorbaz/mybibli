@@ -103,26 +103,7 @@ pub struct AdminQuery {
 #[template(path = "pages/admin.html")]
 struct AdminPageTemplate {
     // Base-layout context (matches the other page templates).
-    lang: String,
-    role: String,
-    current_page: &'static str,
-    skip_label: String,
-    connection_status: crate::utils::ConnectionStatusContext,
-    shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    session_timeout_secs: u64,
-    csrf_token: String,
-    nav_catalog: String,
-    nav_loans: String,
-    nav_wishlist: String,
-    nav_locations: String,
-    nav_series: String,
-    nav_borrowers: String,
-    nav_admin: String,
-    nav_login: String,
-    nav_logout: String,
-    nav_menu_open: String,
-    current_url: String,
-    lang_toggle_aria: String,
+    base: crate::utils::BaseContextFields,
 
     // Page-specific.
     admin_page_title: String,
@@ -782,26 +763,7 @@ pub(crate) async fn render_admin(
 
     let base = crate::utils::base_context(session, loc, "admin", uri, state.session_timeout_secs());
     let page = AdminPageTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
+        base,
         admin_page_title: rust_i18n::t!("admin.page_title", locale = loc).to_string(),
         shell_html: tabs_html,
     };

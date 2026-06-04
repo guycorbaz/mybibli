@@ -46,24 +46,7 @@ pub struct SeriesListRow {
 #[derive(Template)]
 #[template(path = "pages/series_list.html")]
 pub struct SeriesListTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub list_title: String,
     pub add_label: String,
     pub name_label: String,
@@ -81,8 +64,6 @@ pub struct SeriesListTemplate {
     pub pagination_aria: String,
     pub series: PaginatedList<SeriesModel>,
     pub series_rows: Vec<SeriesListRow>,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
 }
 
 pub async fn series_list_page(
@@ -113,24 +94,7 @@ pub async fn series_list_page(
     // CR #35 (v1.7.11 slice): shared page-template fields built via base_context.
     let base = crate::utils::base_context(&session, loc, "series", &uri, state.session_timeout_secs());
     let template = SeriesListTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
+        base,
         list_title: rust_i18n::t!("series.list_title", locale = loc).to_string(),
         add_label: rust_i18n::t!("series.add", locale = loc).to_string(),
         name_label: rust_i18n::t!("series.name", locale = loc).to_string(),
@@ -148,8 +112,6 @@ pub async fn series_list_page(
         pagination_aria: rust_i18n::t!("pagination.aria_label", locale = loc).to_string(),
         series,
         series_rows,
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
     };
 
     match template.render() {
@@ -163,24 +125,7 @@ pub async fn series_list_page(
 #[derive(Template)]
 #[template(path = "pages/series_detail.html")]
 pub struct SeriesDetailTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub series: SeriesModel,
     pub owned_count: u64,
     pub gap_count: u64,
@@ -199,8 +144,6 @@ pub struct SeriesDetailTemplate {
     pub volume_short_label: String,
     pub grid_label: String,
     pub no_assignments_label: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
     // Fix #235: surfaced for the sort UI (which key is currently
     // selected, which direction). Stable identifiers — see
     // `SeriesSortKey::as_str` / `SortDir::as_str` for the canonical
@@ -252,24 +195,7 @@ pub async fn series_detail_page(
 
     let base = crate::utils::base_context(&session, loc, "series", &uri, state.session_timeout_secs());
     let template = SeriesDetailTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
+        base,
         series,
         owned_count: owned,
         gap_count: gap,
@@ -291,8 +217,6 @@ pub async fn series_detail_page(
             series_name_for_grid
         ),
         no_assignments_label: rust_i18n::t!("series.no_assignments", locale = loc).to_string(),
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
         current_sort: sort_key.as_str(),
         current_dir: sort_dir.as_str(),
         label_sort_by: rust_i18n::t!("browse.sort_by", locale = loc).to_string(),
@@ -312,24 +236,7 @@ pub async fn series_detail_page(
 #[derive(Template)]
 #[template(path = "pages/series_form.html")]
 pub struct SeriesFormTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub is_edit: bool,
     pub create_title: String,
     pub edit_title: String,
@@ -348,8 +255,6 @@ pub struct SeriesFormTemplate {
     pub description_value: String,
     pub type_value: String,
     pub total_value: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
     pub series_type_help: crate::utils::TooltipData,
 }
 
@@ -361,24 +266,7 @@ fn form_template_labels(
 ) -> SeriesFormTemplate {
     let base = crate::utils::base_context(session, loc, "series", uri, session_timeout_secs);
     SeriesFormTemplate {
-        lang: base.lang,
-        role: base.role,
-        current_page: base.current_page,
-        skip_label: base.skip_label,
-        connection_status: base.connection_status,
-        shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-        session_timeout_secs: base.session_timeout_secs,
-        csrf_token: base.csrf_token,
-        nav_catalog: base.nav_catalog,
-        nav_loans: base.nav_loans,
-        nav_wishlist: base.nav_wishlist,
-        nav_locations: base.nav_locations,
-        nav_series: base.nav_series,
-        nav_borrowers: base.nav_borrowers,
-        nav_admin: base.nav_admin,
-        nav_login: base.nav_login,
-        nav_logout: base.nav_logout,
-        nav_menu_open: base.nav_menu_open,
+        base,
         is_edit: false,
         create_title: rust_i18n::t!("series.add", locale = loc).to_string(),
         edit_title: rust_i18n::t!("series.edit", locale = loc).to_string(),
@@ -397,8 +285,6 @@ fn form_template_labels(
         description_value: String::new(),
         type_value: "open".to_string(),
         total_value: String::new(),
-        current_url: base.current_url,
-        lang_toggle_aria: base.lang_toggle_aria,
         series_type_help: crate::utils::TooltipData::with_icon(
             "tip-series-type",
             &rust_i18n::t!("help.series.type_summary", locale = loc),

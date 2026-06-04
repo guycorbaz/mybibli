@@ -21,14 +21,14 @@
             {% if can_audit %}
             {% if volume.under_audit_since.is_some() %}
             <form method="POST" action="/volume/{{ volume.id }}/clear-audit" class="inline">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+                <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
                 <button type="submit" class="px-3 py-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded-md hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
                     ✓ {{ audit_button_label_clear }}
                 </button>
             </form>
             {% else %}
             <form method="POST" action="/volume/{{ volume.id }}/mark-audit" class="inline">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+                <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
                 <button type="submit" class="px-3 py-1.5 text-sm font-medium text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-stone-600 rounded-md hover:bg-stone-50 dark:hover:bg-stone-800">
                     ⏳ {{ audit_button_label_mark }}
                 </button>
@@ -86,11 +86,11 @@
            role-aware (anonymous: date only; librarian: borrower name
            link + date). #}
         {% if let Some(loan) = loan_status %}
-        {% call loan_status_badge::badge(role, loan_status_field_label, loan_status_label_anonymous, loan_status_label_prefix, loan_status_label_suffix, loan.borrower_id, loan.borrower_name.as_deref()) %}{% endcall %}
+        {% call loan_status_badge::badge(base.role, loan_status_field_label, loan_status_label_anonymous, loan_status_label_prefix, loan_status_label_suffix, loan.borrower_id, loan.borrower_name.as_deref()) %}{% endcall %}
         {% endif %}
     </div>
 
-    {% if role == "librarian" || role == "admin" %}
+    {% if base.role == "librarian" || base.role == "admin" %}
     <div class="mt-6">
         <a href="/volume/{{ volume.id }}/edit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">
             ✏️ Edit

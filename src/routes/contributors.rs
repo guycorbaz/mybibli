@@ -14,30 +14,11 @@ use crate::utils::html_escape;
 #[derive(Template)]
 #[template(path = "pages/contributor_detail.html")]
 pub struct ContributorDetailTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub contributor: ContributorModel,
     pub titles: Vec<ContributorTitleRow>,
     pub label_titles: String,
     pub delete_label: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
 }
 
 pub async fn contributor_detail(
@@ -61,30 +42,11 @@ pub async fn contributor_detail(
     } else {
         let base = crate::utils::base_context(&session, loc, "contributor", &uri, state.session_timeout_secs());
         let template = ContributorDetailTemplate {
-            lang: base.lang,
-            role: base.role,
-            current_page: base.current_page,
-            skip_label: base.skip_label,
-            connection_status: base.connection_status,
-            shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-            session_timeout_secs: base.session_timeout_secs,
-            csrf_token: base.csrf_token,
-            nav_catalog: base.nav_catalog,
-            nav_loans: base.nav_loans,
-            nav_wishlist: base.nav_wishlist,
-            nav_locations: base.nav_locations,
-            nav_series: base.nav_series,
-            nav_borrowers: base.nav_borrowers,
-            nav_admin: base.nav_admin,
-            nav_login: base.nav_login,
-            nav_logout: base.nav_logout,
-            nav_menu_open: base.nav_menu_open,
+            base,
             contributor,
             titles,
             label_titles: rust_i18n::t!("contributor_detail.titles", locale = loc).to_string(),
             delete_label: rust_i18n::t!("contributor_detail.delete", locale = loc).to_string(),
-            current_url: base.current_url,
-            lang_toggle_aria: base.lang_toggle_aria,
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),

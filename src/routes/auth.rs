@@ -16,24 +16,7 @@ use crate::middleware::locale::Locale;
 #[derive(Template)]
 #[template(path = "pages/login.html")]
 pub struct LoginTemplate {
-    pub lang: String,
-    pub role: String,
-    pub current_page: &'static str,
-    pub skip_label: String,
-    pub connection_status: crate::utils::ConnectionStatusContext,
-    pub shortcuts_cheat_sheet: crate::utils::ShortcutsCheatSheetContext,
-    pub session_timeout_secs: u64,
-    pub csrf_token: String,
-    pub nav_catalog: String,
-    pub nav_loans: String,
-    pub nav_wishlist: String,
-    pub nav_locations: String,
-    pub nav_series: String,
-    pub nav_borrowers: String,
-    pub nav_admin: String,
-    pub nav_login: String,
-    pub nav_logout: String,
-    pub nav_menu_open: String,
+    pub base: crate::utils::BaseContextFields,
     pub login_title: String,
     pub username_label: String,
     pub password_label: String,
@@ -41,8 +24,6 @@ pub struct LoginTemplate {
     pub back_to_home: String,
     pub error_message: String,
     pub next: String,
-    pub current_url: String,
-    pub lang_toggle_aria: String,
 }
 
 impl LoginTemplate {
@@ -65,24 +46,7 @@ impl LoginTemplate {
         // — pass 0. role + csrf_token come off the (anonymous) session.
         let base = crate::utils::base_context(session, loc, "login", uri, 0);
         LoginTemplate {
-            lang: base.lang,
-            role: base.role,
-            current_page: base.current_page,
-            skip_label: base.skip_label,
-            connection_status: base.connection_status,
-            shortcuts_cheat_sheet: base.shortcuts_cheat_sheet,
-            session_timeout_secs: base.session_timeout_secs,
-            csrf_token: base.csrf_token,
-            nav_catalog: base.nav_catalog,
-            nav_loans: base.nav_loans,
-            nav_wishlist: base.nav_wishlist,
-            nav_locations: base.nav_locations,
-            nav_series: base.nav_series,
-            nav_borrowers: base.nav_borrowers,
-            nav_admin: base.nav_admin,
-            nav_login: base.nav_login,
-            nav_logout: base.nav_logout,
-            nav_menu_open: base.nav_menu_open,
+            base,
             login_title: rust_i18n::t!("login.title", locale = loc).to_string(),
             username_label: rust_i18n::t!("login.username_label", locale = loc).to_string(),
             password_label: rust_i18n::t!("login.password_label", locale = loc).to_string(),
@@ -90,8 +54,6 @@ impl LoginTemplate {
             back_to_home: rust_i18n::t!("login.back_to_home", locale = loc).to_string(),
             error_message: error_message.to_string(),
             next,
-            current_url: base.current_url,
-            lang_toggle_aria: base.lang_toggle_aria,
         }
     }
 }
