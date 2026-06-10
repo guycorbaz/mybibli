@@ -77,21 +77,26 @@ async fn main() {
     // NAS's `docker-compose.yml` `environment:` block and restart the
     // container; for a deep one-shot investigation, `mybibli=trace`.
     use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
-    let log_level_directive: String = std::env::var("MYBIBLI_LOG_LEVEL")
+    let operator_directive: String = std::env::var("MYBIBLI_LOG_LEVEL")
         .or_else(|_| std::env::var("RUST_LOG"))
         .unwrap_or_else(|_| "info".to_string());
     // `EnvFilter::try_new` rejects garbage; fall back to `info` so a typo
-    // can't silence the subscriber entirely.
-    let env_filter = match EnvFilter::try_new(&log_level_directive) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!(
-                "[mybibli] invalid MYBIBLI_LOG_LEVEL/RUST_LOG directive {:?} ({}). Falling back to `info`.",
-                log_level_directive, e
-            );
-            EnvFilter::new("info")
-        }
+    // can't silence the subscriber entirely. Validate the operator directive
+    // alone first, then layer on the Fix #405 transport-crate noise caps via
+    // `combine_log_directives` so even a global `debug` keeps hyper/reqwest
+    // at `warn`.
+    let validated_operator = if EnvFilter::try_new(&operator_directive).is_ok() {
+        operator_directive.clone()
+    } else {
+        eprintln!(
+            "[mybibli] invalid MYBIBLI_LOG_LEVEL/RUST_LOG directive {:?}. Falling back to `info`.",
+            operator_directive
+        );
+        "info".to_string()
     };
+    let log_level_directive = mybibli::config::combine_log_directives(&validated_operator);
+    let env_filter = EnvFilter::try_new(&log_level_directive)
+        .unwrap_or_else(|_| EnvFilter::new("info"));
     // Fix #308 (v1.7.1): wrap the EnvFilter in a `reload::Layer` so the
     // admin "Log level" form (System tab) can swap it at runtime via
     // the handle stored in AppState. Closes the v1.7.0 #301 gap — the
@@ -339,10 +344,19 @@ async fn main() {
     // restarting the process. Closure validates via `EnvFilter::try_new`
     // and translates any parse error to a `String` for the handler to
     // surface in a localized BadRequest feedback.
+    // The closure validates the operator directive via `EnvFilter::try_new`,
+    // then layers on the Fix #405 noise caps via `combine_log_directives`
+    // before swapping — so a DB-reconciled or admin-saved `debug` keeps the
+    // transport crates at `warn`, identical to the boot path above.
     let log_level_reloader: mybibli::LogLevelReloader = {
         let handle = filter_reload_handle.clone();
         std::sync::Arc::new(move |directive: &str| -> Result<(), String> {
-            let new_filter = tracing_subscriber::EnvFilter::try_new(directive)
+            // Validate the operator directive alone so the error message
+            // points at what the operator actually typed.
+            tracing_subscriber::EnvFilter::try_new(directive)
+                .map_err(|e| format!("invalid directive: {e}"))?;
+            let combined = mybibli::config::combine_log_directives(directive);
+            let new_filter = tracing_subscriber::EnvFilter::try_new(&combined)
                 .map_err(|e| format!("invalid directive: {e}"))?;
             handle
                 .modify(|f| *f = new_filter)
@@ -358,10 +372,10 @@ async fn main() {
         let guard = settings_arc.read().expect("settings RwLock not poisoned");
         guard.log_level.clone()
     };
-    if persisted_level != log_level_directive {
+    if persisted_level != validated_operator {
         match log_level_reloader(&persisted_level) {
             Ok(()) => tracing::info!(
-                from_env = %log_level_directive,
+                from_env = %validated_operator,
                 to_db = %persisted_level,
                 "Fix #308: reconciled tracing filter to DB-persisted log_level"
             ),
