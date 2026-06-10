@@ -175,6 +175,103 @@ async fn save_loans_settings_updates_row_and_reloads_cache(pool: DbPool) {
     );
 }
 
+/// Extract the hidden `log_level_version` field value from the freshly
+/// rendered System panel — i.e. the version the form will actually POST.
+async fn fetch_log_level_version(router: &axum::Router, session_cookie: &str) -> i32 {
+    let res = router
+        .clone()
+        .oneshot(
+            Request::get("/admin/system")
+                .header("cookie", format!("session={}", session_cookie))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let html = String::from_utf8(bytes.to_vec()).unwrap();
+    let needle = "name=\"log_level_version\" value=\"";
+    let start = html.find(needle).expect("log_level_version hidden field") + needle.len();
+    let rest = &html[start..];
+    let end = rest.find('"').unwrap();
+    rest[..end].parse().expect("log_level_version is an integer")
+}
+
+/// Regression for #406: the System-tab "Log level" form must carry the
+/// *current* DB version, not a hardcoded fallback of 1. Before the fix,
+/// `fetch_setting_rows` omitted `log_level` from its `IN` list, so
+/// `render_panel_html` fell back to `version = 1`; once the row advanced
+/// past 1 (after the first successful save) every subsequent save POSTed a
+/// stale version → 0 rows matched → permanent 409. This test does two saves
+/// in a row using the version the panel actually renders — the second save
+/// would 409 under the bug.
+#[sqlx::test(migrations = "./migrations")]
+async fn save_log_level_twice_succeeds_version_round_trips(pool: DbPool) {
+    let username = seed_admin(&pool).await;
+    let state = state_with_pool(pool.clone());
+    let cache = state.settings.clone();
+    let router = app(state);
+    let (cookie, csrf) = login_and_extract(&router, &username, "librarian").await;
+
+    // First save: seed row is ('log_level', 'info', 1) → version 1 matches,
+    // DB row advances to version 2, value 'debug'.
+    let body = format!("log_level=debug&log_level_version=1&_csrf_token={}", csrf);
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/admin/system/log-level")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", format!("session={}", cookie))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK, "first log-level save returns 200");
+    assert_eq!(cache.read().unwrap().log_level, "debug");
+
+    // The freshly rendered panel must carry the NEW version (2), not the
+    // pre-fix fallback of 1 — this is the core of #406.
+    let rendered_version = fetch_log_level_version(&router, &cookie).await;
+    assert_eq!(
+        rendered_version, 2,
+        "System panel must render the current DB version, not the fallback 1 (#406)"
+    );
+
+    // Second save using the version the panel actually rendered — must NOT 409.
+    let body = format!(
+        "log_level=info&log_level_version={}&_csrf_token={}",
+        rendered_version, csrf
+    );
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/admin/system/log-level")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", format!("session={}", cookie))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "second consecutive log-level save must succeed, not 409 (#406)"
+    );
+
+    // DB reflects the second save; version advanced 1 → 2 → 3.
+    let row: (String, i32) = sqlx::query_as(
+        "SELECT setting_value, version FROM settings WHERE setting_key = 'log_level'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "info");
+    assert_eq!(row.1, 3, "version must advance across two consecutive saves");
+    assert_eq!(cache.read().unwrap().log_level, "info");
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn save_loans_settings_rejects_zero_and_leaves_row_unchanged(pool: DbPool) {
     let username = seed_admin(&pool).await;

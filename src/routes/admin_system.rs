@@ -263,15 +263,23 @@ fn helper_text_for(value: &str, loc: &'static str) -> String {
 // They have been removed; this file now imports the canonical
 // implementations at the top of the module.
 
-/// Collect the 5 setting rows we render in the panel. Versions come from the
+/// Collect every setting row the panel renders. Versions come from the
 /// DB (the `AppSettings` cache doesn't carry per-row versions); values can
 /// come either from the DB or the cache — they're the same after a save.
+///
+/// Fix #406: every key whose form carries a hidden `*_version` field for
+/// the optimistic-lock check MUST be in this `IN` list. A key omitted here
+/// makes `render_panel_html` fall back to `version = 1`, so once that row's
+/// DB version advances past 1 the form posts a stale version and every save
+/// 409s forever (`log_level` was stuck this way; the two #334 timeout keys
+/// carried the same latent bug — they only survived while their version was
+/// still 1).
 async fn fetch_setting_rows(
     pool: &DbPool,
 ) -> Result<HashMap<String, (String, i32)>, AppError> {
     let rows: Vec<(String, String, i32)> = sqlx::query_as(
         "SELECT setting_key, setting_value, version FROM settings \
-         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
+         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
     )
     .bind(KEY_OVERDUE_THRESHOLD)
     .bind(KEY_DEFAULT_LANGUAGE)
@@ -280,6 +288,9 @@ async fn fetch_setting_rows(
     .bind(KEY_TMDB)
     .bind(KEY_DEFAULT_CURRENCY)
     .bind(KEY_SHOW_VALUE_INDICATORS)
+    .bind(KEY_LOG_LEVEL)
+    .bind(KEY_METADATA_CHAIN_TIMEOUT)
+    .bind(KEY_PROVIDER_HEALTH_TIMEOUT)
     .fetch_all(pool)
     .await?;
     let mut map = HashMap::new();

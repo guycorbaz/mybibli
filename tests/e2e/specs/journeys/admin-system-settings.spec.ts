@@ -93,6 +93,50 @@ test.describe("Story 8-5 — Admin System Settings", () => {
     ).toBeVisible({ timeout: 10000 });
   });
 
+  test("log level saves twice in a row without a 409 (#406)", async ({
+    page,
+  }) => {
+    await loginAs(page, "admin");
+    await page.goto("/admin?tab=system");
+
+    const logInput = page.locator(
+      'form#admin-system-log-form input[name="log_level"]',
+    );
+    const logSubmit = page.locator(
+      'form#admin-system-log-form button[type="submit"]',
+    );
+    await expect(logInput).toBeVisible();
+
+    // First save: bumps the DB row's version (1 → 2).
+    await logInput.fill("debug");
+    await logSubmit.click();
+    await expect(
+      page
+        .locator("#feedback-list")
+        .getByText(
+          /Log level saved|Niveau de journalisation enregistré/i,
+        ),
+    ).toBeVisible({ timeout: 10000 });
+
+    // Second consecutive save. Before the #406 fix the swapped form still
+    // carried a stale version (always 1 — `log_level` was missing from
+    // `fetch_setting_rows`), so this POST 409'd and silently did nothing.
+    await logInput.fill("info");
+    await logSubmit.click();
+    await expect(
+      page
+        .locator("#feedback-list")
+        .getByText(/Log level saved|Niveau de journalisation enregistré/i)
+        .last(),
+    ).toBeVisible({ timeout: 10000 });
+
+    // Strongest proof the second save actually persisted: the reloaded form
+    // shows "info", not the stuck "debug" of the 409 path. Ends on the seed
+    // default ("info") so no reset is needed for isolation.
+    await page.goto("/admin?tab=system");
+    await expect(logInput).toHaveValue("info");
+  });
+
   test("provider key save renders mask after reload, clear wipes", async ({
     page,
   }) => {
