@@ -113,6 +113,77 @@ pub fn csp_report_only() -> bool {
     report_only
 }
 
+/// Transport-crate log targets that emit pure HTTP-connection DEBUG noise
+/// (connect/pool internals) with no diagnostic value for mybibli itself.
+/// Fix #405: capped to `warn` by default so that even a global `debug`
+/// directive — or a legitimate `mybibli=debug` — does not drag in the
+/// per-request hyper/reqwest firehose (~2 MB/day observed in prod when the
+/// dev `.env` shipped `MYBIBLI_LOG_LEVEL=debug`).
+const LOG_NOISE_CAPS: &str = "hyper_util=warn,reqwest=warn,hyper=warn";
+
+/// Combine the operator's log-level directive with the default noise caps.
+///
+/// The caps are placed FIRST and the operator directive LAST, so an explicit
+/// operator entry for the same target wins (`tracing-subscriber` keeps the
+/// last directive for a given target), while target-specific caps still beat
+/// a bare global level via longest-match specificity. Concretely:
+/// - `info`                 → caps + `info` (no transport noise)
+/// - `mybibli=debug`        → caps + `mybibli=debug` (app debug, no noise)
+/// - `debug`                → global debug, but transport crates stay `warn`
+/// - `hyper_util=trace`     → operator override wins, full transport trace
+pub fn combine_log_directives(operator: &str) -> String {
+    let operator = operator.trim();
+    if operator.is_empty() {
+        return LOG_NOISE_CAPS.to_string();
+    }
+    format!("{LOG_NOISE_CAPS},{operator}")
+}
+
+#[cfg(test)]
+mod combine_log_directives_tests {
+    use super::{LOG_NOISE_CAPS, combine_log_directives};
+    use tracing_subscriber::EnvFilter;
+
+    #[test]
+    fn caps_are_prepended_and_operator_appended() {
+        let combined = combine_log_directives("info");
+        assert_eq!(combined, format!("{LOG_NOISE_CAPS},info"));
+        // The caps come BEFORE the operator so a same-target operator entry
+        // (added later) wins in tracing-subscriber's last-wins semantics.
+        assert!(combined.starts_with(LOG_NOISE_CAPS));
+        assert!(combined.ends_with("info"));
+    }
+
+    #[test]
+    fn empty_operator_yields_caps_only() {
+        assert_eq!(combine_log_directives(""), LOG_NOISE_CAPS);
+        assert_eq!(combine_log_directives("   "), LOG_NOISE_CAPS);
+    }
+
+    #[test]
+    fn every_realistic_directive_combination_parses() {
+        // The combined string must always be a valid EnvFilter directive,
+        // for plain levels, app-scoped debug, global debug, and overrides.
+        for op in ["info", "debug", "warn", "mybibli=debug", "hyper_util=trace"] {
+            let combined = combine_log_directives(op);
+            assert!(
+                EnvFilter::try_new(&combined).is_ok(),
+                "combined directive {combined:?} must parse as a valid EnvFilter"
+            );
+        }
+    }
+
+    #[test]
+    fn operator_override_for_a_capped_target_is_last() {
+        // An operator that explicitly wants hyper_util=trace must have that
+        // directive AFTER the cap, so it wins (last-wins for same target).
+        let combined = combine_log_directives("hyper_util=trace");
+        let cap_pos = combined.find("hyper_util=warn").expect("cap present");
+        let override_pos = combined.find("hyper_util=trace").expect("override present");
+        assert!(override_pos > cap_pos, "operator override must come after the cap");
+    }
+}
+
 #[cfg(test)]
 mod csp_report_only_tests {
     use super::csp_report_only;
