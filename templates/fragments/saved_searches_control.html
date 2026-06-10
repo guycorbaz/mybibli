@@ -15,11 +15,15 @@
          class="hidden absolute left-0 mt-1 z-30 w-72 rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 shadow-lg p-3">
         <form hx-post="/saved-searches" hx-target="#saved-searches-list" hx-swap="outerHTML"
               class="flex flex-col gap-2 border-b border-stone-100 dark:border-stone-700 pb-3">
+            {# Inputs are `ss_*`-prefixed (NOT q/filter/sort/dir): the home
+               search field's hx-include grabs [name='filter'|'sort'|'dir'],
+               and this form is always in the DOM, so unprefixed names would
+               inject duplicate params into every browse search (#367). #}
             <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
-            <input type="hidden" name="q" value="{{ cur_q|e }}">
-            <input type="hidden" name="filter" value="{{ cur_filter|e }}">
-            <input type="hidden" name="sort" value="{{ cur_sort|e }}">
-            <input type="hidden" name="dir" value="{{ cur_dir|e }}">
+            <input type="hidden" name="ss_q" value="{{ cur_q|e }}">
+            <input type="hidden" name="ss_filter" value="{{ cur_filter|e }}">
+            <input type="hidden" name="ss_sort" value="{{ cur_sort|e }}">
+            <input type="hidden" name="ss_dir" value="{{ cur_dir|e }}">
             <label for="saved-search-name" class="sr-only">{{ name_label }}</label>
             <input id="saved-search-name" name="name" type="text" required maxlength="255"
                    placeholder="{{ name_placeholder }}"

@@ -29,9 +29,17 @@ const RETURN_PATH: &str = "/";
 #[derive(Deserialize)]
 pub struct CreateSavedSearchForm {
     pub name: String,
+    // `ss_*`-prefixed on the wire to avoid colliding with the home search
+    // field's `hx-include="[name='filter'],[name='sort'],[name='dir']"` —
+    // the save-form is always in the DOM, so unprefixed names would inject
+    // duplicate params into every browse search (#367 CI regression).
+    #[serde(rename = "ss_q")]
     pub q: Option<String>,
+    #[serde(rename = "ss_filter")]
     pub filter: Option<String>,
+    #[serde(rename = "ss_sort")]
     pub sort: Option<String>,
+    #[serde(rename = "ss_dir")]
     pub dir: Option<String>,
     pub _csrf_token: String,
 }

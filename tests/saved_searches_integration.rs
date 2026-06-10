@@ -145,7 +145,7 @@ async fn create_captures_state_and_renders_run_link_on_home(pool: DbPool) {
     let (cookie, csrf) = login_and_extract(&router, &user).await;
 
     let body = format!(
-        "name=Z-BD-no-cover&q=asterix&filter=no_cover&sort=title&dir=desc&_csrf_token={}",
+        "name=Z-BD-no-cover&ss_q=asterix&ss_filter=no_cover&ss_sort=title&ss_dir=desc&_csrf_token={}",
         csrf
     );
     let res = post_form(&router, "/saved-searches", &cookie, body).await;
@@ -183,7 +183,7 @@ async fn rename_then_delete_round_trip(pool: DbPool) {
         &router,
         "/saved-searches",
         &cookie,
-        format!("name=Z-orig&q=foo&_csrf_token={}", csrf),
+        format!("name=Z-orig&ss_q=foo&_csrf_token={}", csrf),
     )
     .await;
     let (id, version): (u64, i32) =
