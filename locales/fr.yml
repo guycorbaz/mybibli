@@ -974,7 +974,27 @@ admin:
     error_not_found: "Clé d'API introuvable."
     error_already_revoked: "Cette clé a déjà été révoquée."
     error_version_conflict: "Cette clé a été modifiée par un autre administrateur. Rechargez le panneau."
+saved_searches:
+  toggle_label: "Recherches sauvegardées"
+  name_label: "Nom de la recherche"
+  name_placeholder: "Nommer cette recherche"
+  save_label: "Sauver la recherche courante"
+  empty: "Aucune recherche sauvegardée"
+  run_aria: "Lancer la recherche sauvegardée : %{name}"
+  edit_aria: "Renommer la recherche sauvegardée : %{name}"
+  delete_aria: "Supprimer la recherche sauvegardée : %{name}"
+  rename_modal_heading: "Renommer la recherche sauvegardée"
+  delete_modal_heading: "Supprimer la recherche sauvegardée"
+  delete_modal_body: "Supprimer la recherche sauvegardée « %{name} » ? Vous pourrez la recréer plus tard en sauvegardant une recherche du même nom."
+  btn_rename: "Renommer"
+  btn_delete: "Supprimer"
+  btn_cancel: "Annuler"
 success:
+  saved_search:
+    created: "Recherche « %{name} » sauvegardée"
+    reactivated: "Recherche « %{name} » restaurée"
+    renamed: "Recherche renommée en « %{name} »"
+    deleted: "Recherche « %{name} » supprimée"
   reference_data:
     created: "Ajout de %{name}"
     reactivated: "Réactivation de %{name}"

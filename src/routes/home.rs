@@ -44,6 +44,9 @@ pub struct HomeTemplate {
     pub active_filter: String,
     pub current_sort: String,
     pub current_dir: String,
+    /// CR #367 — pre-rendered `#saved-searches-list` fragment for the
+    /// home search-bar dropdown. Built by `saved_searches::render_list_html`.
+    pub saved_searches_html: String,
     pub genres: Vec<GenreModel>,
     pub volume_states: Vec<VolumeStateModel>,
     pub results: Option<PaginatedList<SearchResult>>,
@@ -759,9 +762,38 @@ pub async fn home(
         0
     };
 
+    // CR #367 — pre-render the saved-searches control (toggle + dropdown +
+    // save-form + list). Librarian+ only, so the cheap indexed query is
+    // skipped for anonymous browsers. The save-form's hidden inputs carry the
+    // current browse state (q/filter/sort/dir).
+    let saved_searches_html = if session.role >= Role::Librarian {
+        let cur_filter = params.filter.clone().unwrap_or_default();
+        let cur_sort = results
+            .as_ref()
+            .and_then(|r| r.sort.clone())
+            .unwrap_or_else(|| "title".to_string());
+        let cur_dir = results
+            .as_ref()
+            .and_then(|r| r.dir.clone())
+            .unwrap_or_else(|| "asc".to_string());
+        crate::routes::saved_searches::render_control_html(
+            pool,
+            loc,
+            &session.csrf_token,
+            &query,
+            &cur_filter,
+            &cur_sort,
+            &cur_dir,
+        )
+        .await?
+    } else {
+        String::new()
+    };
+
     let base = base_context(&session, loc, "home", &uri, state.session_timeout_secs());
     let template = HomeTemplate {
         base,
+        saved_searches_html,
         subtitle: rust_i18n::t!("home.subtitle", locale = loc).to_string(),
         search_placeholder: rust_i18n::t!("home.search_placeholder", locale = loc).to_string(),
         searching_announcement: rust_i18n::t!("home.searching_announcement", locale = loc).to_string(),
@@ -1246,6 +1278,7 @@ pub(crate) mod tests {
         let active_loans_label = format!("{active_loans} active loans");
         HomeTemplate {
             base: crate::utils::test_base_context(role, "home", crate::config::AppSettings::default().session_timeout_secs),
+            saved_searches_html: String::new(),
             home_search_help: crate::utils::TooltipData::placeholder_only(
                 "tip-home-search-text",
                 "Type to search.",

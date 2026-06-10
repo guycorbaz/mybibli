@@ -1,0 +1,34 @@
+{# Saved-searches list (CR #367). Rendered into the home search-bar
+   dropdown by `routes::home` (initial) and re-rendered by every saved-search
+   mutation handler (create/rename/delete) targeting #saved-searches-list.
+   Each row: a run-link (full nav to the saved browse state) + rename/delete
+   buttons that load UX-DR8 modals into #modal-slot. CSP-clean. #}
+<div id="saved-searches-list" class="mt-2 max-h-72 overflow-y-auto">
+    {% if rows.is_empty() %}
+    <p class="px-3 py-2 text-sm text-stone-500 dark:text-stone-400">{{ empty_label }}</p>
+    {% else %}
+    <ul class="divide-y divide-stone-100 dark:divide-stone-700">
+        {% for row in rows %}
+        <li class="flex items-center justify-between gap-1 px-2 py-1.5">
+            <a href="{{ row.run_url }}"
+               aria-label="{{ row.run_aria }}"
+               class="flex-1 truncate text-sm text-stone-800 dark:text-stone-100 hover:underline">{{ row.name }}</a>
+            <button type="button"
+                    data-modal-trigger
+                    hx-get="/saved-searches/{{ row.id }}/rename-modal?version={{ row.version }}"
+                    hx-target="#modal-slot"
+                    hx-swap="innerHTML"
+                    aria-label="{{ row.edit_aria }}"
+                    class="shrink-0 px-2 py-1 text-xs text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white">{{ edit_label }}</button>
+            <button type="button"
+                    data-modal-trigger
+                    hx-get="/saved-searches/{{ row.id }}/delete-modal?version={{ row.version }}"
+                    hx-target="#modal-slot"
+                    hx-swap="innerHTML"
+                    aria-label="{{ row.delete_aria }}"
+                    class="shrink-0 px-2 py-1 text-xs text-red-600 hover:text-red-700">{{ delete_label }}</button>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>

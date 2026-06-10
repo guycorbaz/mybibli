@@ -1,0 +1,34 @@
+{# Saved-search rename modal (CR #367). Dedicated UX-DR8-shaped dialog (not
+   the shared macro) because it hosts a name <input> that must take initial
+   focus: `data-modal-default-focus` sits on the input, and static/js/modal.js
+   `findInitialFocus` returns the FIRST such element (rendered before the
+   button row). modal.js promotes the <dialog> via showModal(), installs the
+   Tab-cycle / Escape / backdrop guards, and the scanner-guard 7-5 observer
+   protects it. On success the `rename` handler returns the fresh
+   #saved-searches-list (form target) + HX-Trigger: modal-close. CSP-clean. #}
+<dialog open aria-modal="true" data-modal-variant="warning"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 rounded-lg">
+    <div class="bg-white dark:bg-stone-900 rounded-lg shadow-xl max-w-md w-full mx-4 border border-stone-200 dark:border-stone-700">
+        <div class="p-6">
+            <h3 class="text-lg font-bold text-stone-900 dark:text-white mb-2">{{ title }}</h3>
+            <div data-modal-error role="alert" class="hidden mb-4"></div>
+            <form hx-post="{{ action_url }}" hx-target="#saved-searches-list" hx-swap="outerHTML" class="flex flex-col gap-3">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+                <input type="hidden" name="version" value="{{ version }}">
+                <label for="saved-search-rename-input" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ name_label }}</label>
+                <input id="saved-search-rename-input"
+                       name="name"
+                       type="text"
+                       value="{{ current_name|e }}"
+                       maxlength="255"
+                       autocomplete="off"
+                       data-modal-default-focus
+                       class="w-full rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2 text-sm">
+                <div class="flex gap-2">
+                    <button type="button" data-modal-cancel class="flex-1 px-4 py-2 bg-stone-300 dark:bg-stone-700 rounded-md font-semibold hover:bg-stone-400 dark:hover:bg-stone-600">{{ cancel_label }}</button>
+                    <button type="submit" data-modal-confirm class="flex-1 px-4 py-2 text-white rounded-md font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">{{ confirm_label }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</dialog>

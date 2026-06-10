@@ -13,6 +13,7 @@ pub mod catalog;
 pub mod contributors;
 pub mod home;
 pub mod home_indicators;
+pub mod saved_searches;
 pub mod home_scan;
 mod home_search_fragment;
 #[cfg(test)]
@@ -337,6 +338,28 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/wishlist/{id}/delete-modal",
             axum::routing::get(wishlist::wishlist_delete_modal),
+        )
+        // CR #367 — saved searches (Librarian+). Run path is just a link
+        // to `/?q=...`; these routes cover create + rename/delete modals.
+        .route(
+            "/saved-searches",
+            axum::routing::post(saved_searches::create),
+        )
+        .route(
+            "/saved-searches/{id}/rename-modal",
+            axum::routing::get(saved_searches::rename_modal),
+        )
+        .route(
+            "/saved-searches/{id}/rename",
+            axum::routing::post(saved_searches::rename),
+        )
+        .route(
+            "/saved-searches/{id}/delete-modal",
+            axum::routing::get(saved_searches::delete_modal),
+        )
+        .route(
+            "/saved-searches/{id}/delete",
+            axum::routing::post(saved_searches::delete),
         )
         // CR #241 — JSON HTTP API under /api/v1/* (API-key auth).
         // CSRF middleware short-circuits on `/api/*` (see csrf.rs).

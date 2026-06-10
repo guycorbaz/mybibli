@@ -978,7 +978,27 @@ admin:
     error_not_found: "API key not found."
     error_already_revoked: "This key has already been revoked."
     error_version_conflict: "This key was modified by another administrator. Reload the panel."
+saved_searches:
+  toggle_label: "Saved searches"
+  name_label: "Search name"
+  name_placeholder: "Name this search"
+  save_label: "Save current search"
+  empty: "No saved searches yet"
+  run_aria: "Run saved search: %{name}"
+  edit_aria: "Rename saved search: %{name}"
+  delete_aria: "Delete saved search: %{name}"
+  rename_modal_heading: "Rename saved search"
+  delete_modal_heading: "Delete saved search"
+  delete_modal_body: "Delete the saved search \"%{name}\"? You can re-create it later by saving a search with the same name."
+  btn_rename: "Rename"
+  btn_delete: "Delete"
+  btn_cancel: "Cancel"
 success:
+  saved_search:
+    created: "Saved search '%{name}'"
+    reactivated: "Restored saved search '%{name}'"
+    renamed: "Renamed saved search to '%{name}'"
+    deleted: "Deleted saved search '%{name}'"
   reference_data:
     created: "Added %{name}"
     reactivated: "Reactivated %{name}"

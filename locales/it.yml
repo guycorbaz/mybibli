@@ -951,7 +951,27 @@ admin:
     error_not_found: "Chiave API non trovata."
     error_already_revoked: "Questa chiave è già stata revocata."
     error_version_conflict: "Questa chiave è stata modificata da un altro amministratore. Ricarica il pannello."
+saved_searches:
+  toggle_label: "Ricerche salvate"
+  name_label: "Nome della ricerca"
+  name_placeholder: "Assegna un nome a questa ricerca"
+  save_label: "Salva la ricerca corrente"
+  empty: "Nessuna ricerca salvata"
+  run_aria: "Esegui ricerca salvata: %{name}"
+  edit_aria: "Rinomina ricerca salvata: %{name}"
+  delete_aria: "Elimina ricerca salvata: %{name}"
+  rename_modal_heading: "Rinomina ricerca salvata"
+  delete_modal_heading: "Elimina ricerca salvata"
+  delete_modal_body: "Eliminare la ricerca salvata «%{name}»? Potrai ricrearla in seguito salvando una ricerca con lo stesso nome."
+  btn_rename: "Rinomina"
+  btn_delete: "Elimina"
+  btn_cancel: "Annulla"
 success:
+  saved_search:
+    created: "Ricerca «%{name}» salvata"
+    reactivated: "Ricerca salvata «%{name}» ripristinata"
+    renamed: "Ricerca rinominata in «%{name}»"
+    deleted: "Ricerca salvata «%{name}» eliminata"
   reference_data:
     created: "Aggiunto %{name}"
     reactivated: "Riattivato %{name}"

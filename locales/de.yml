@@ -965,7 +965,27 @@ admin:
     error_not_found: "API-Schlüssel nicht gefunden."
     error_already_revoked: "Dieser Schlüssel wurde bereits widerrufen."
     error_version_conflict: "Dieser Schlüssel wurde durch einen anderen Administrator geändert. Bitte das Panel neu laden."
+saved_searches:
+  toggle_label: "Gespeicherte Suchen"
+  name_label: "Name der Suche"
+  name_placeholder: "Diese Suche benennen"
+  save_label: "Aktuelle Suche speichern"
+  empty: "Noch keine gespeicherten Suchen"
+  run_aria: "Gespeicherte Suche ausführen: %{name}"
+  edit_aria: "Gespeicherte Suche umbenennen: %{name}"
+  delete_aria: "Gespeicherte Suche löschen: %{name}"
+  rename_modal_heading: "Gespeicherte Suche umbenennen"
+  delete_modal_heading: "Gespeicherte Suche löschen"
+  delete_modal_body: "Die gespeicherte Suche „%{name}“ löschen? Sie können sie später neu erstellen, indem Sie eine Suche mit demselben Namen speichern."
+  btn_rename: "Umbenennen"
+  btn_delete: "Löschen"
+  btn_cancel: "Abbrechen"
 success:
+  saved_search:
+    created: "Suche „%{name}“ gespeichert"
+    reactivated: "Gespeicherte Suche „%{name}“ wiederhergestellt"
+    renamed: "Suche umbenannt in „%{name}“"
+    deleted: "Gespeicherte Suche „%{name}“ gelöscht"
   reference_data:
     created: "%{name} hinzugefügt"
     reactivated: "%{name} reaktiviert"
