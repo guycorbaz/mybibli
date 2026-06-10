@@ -266,6 +266,13 @@
        additions) and the recent-cataloged / recent-returns / stats-by-
        genre rails now follow below, visible without scrolling past
        the actual search results. #}
+    {# CR #367 — feedback sink for saved-search actions (create/rename/delete).
+       The home page had no #feedback-list (unlike catalog/admin); without it
+       the saved-search success OOB swaps were silently dropped. #}
+    <div class="w-full max-w-4xl mt-4">
+        <div id="feedback-list" aria-live="polite" aria-relevant="additions" class="space-y-2"></div>
+    </div>
+
     <!-- Browse toggle + sort -->
     <div class="w-full max-w-4xl mt-6 flex items-center justify-between">
         <div class="flex items-center gap-3">

@@ -60,7 +60,10 @@
             return;
         }
 
-        // Click outside the whole control → close.
+        // Click outside the whole control → close. But ignore clicks inside
+        // a modal (rename/delete dialogs live in #modal-slot, outside the
+        // control) so the dropdown stays open behind the modal.
+        if (t.closest("#modal-slot") || t.closest("dialog")) return;
         if (isOpen() && !t.closest("#" + CONTROL_ID)) {
             close();
         }
