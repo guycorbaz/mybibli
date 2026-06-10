@@ -266,8 +266,20 @@
        additions) and the recent-cataloged / recent-returns / stats-by-
        genre rails now follow below, visible without scrolling past
        the actual search results. #}
+    {# CR #367 — feedback sink for saved-search actions (create/rename/delete).
+       The home page had no #feedback-list (unlike catalog/admin); without it
+       the saved-search success OOB swaps were silently dropped. #}
+    <div class="w-full max-w-4xl mt-4">
+        <div id="feedback-list" aria-live="polite" aria-relevant="additions" class="space-y-2"></div>
+    </div>
+
     <!-- Browse toggle + sort -->
     <div class="w-full max-w-4xl mt-6 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+        {# CR #367 — saved-searches control (Librarian+); the whole control
+           is server-rendered in routes::home so it carries the current
+           browse state + localized strings. #}
+        {% if base.role == "librarian" || base.role == "admin" %}{{ saved_searches_html|safe }}{% endif %}
         {# CR #250 — wrapped in #browse-sort-control so browse-mode.js
            can hide it in list mode (where the sortable column headers
            replace the <select>). Visible in grid mode (cards have no
@@ -283,6 +295,7 @@
                 <option value="genre_name:asc" {% if current_sort == "genre_name" && current_dir == "asc" %}selected{% endif %}>{{ col_genre }} &#9650;</option>
                 <option value="genre_name:desc" {% if current_sort == "genre_name" && current_dir == "desc" %}selected{% endif %}>{{ col_genre }} &#9660;</option>
             </select>
+        </div>
         </div>
         <div role="radiogroup" aria-label="{{ browse_mode_label }}" class="flex border border-stone-300 dark:border-stone-600 rounded-md overflow-hidden">
             <button type="button" data-browse-mode="list" role="radio" aria-checked="true" aria-label="{{ browse_list_label }}"

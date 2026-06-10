@@ -1,0 +1,37 @@
+{# Saved-searches home search-bar control (CR #367). Toggle button + dropdown
+   panel containing the "save current search" form (hidden inputs carry the
+   CURRENT browse state passed by routes::home) and the saved-searches list.
+   Shown to Librarian+ only (gated by the caller in home.html). The dropdown
+   open/close is driven by static/js/saved-searches.js (CSP-clean, delegated
+   data-action handler). The list is single-sourced via {% include %}. #}
+<div id="saved-searches-control" class="relative">
+    <button type="button" id="saved-searches-toggle"
+            data-action="toggle-saved-searches"
+            aria-haspopup="true" aria-expanded="false" aria-controls="saved-searches-panel"
+            class="flex items-center gap-1 text-xs border border-stone-300 dark:border-stone-600 rounded px-2 py-1 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700">
+        {{ toggle_label }}
+    </button>
+    <div id="saved-searches-panel"
+         class="hidden absolute left-0 mt-1 z-30 w-72 rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 shadow-lg p-3">
+        <form hx-post="/saved-searches" hx-target="#saved-searches-list" hx-swap="outerHTML"
+              class="flex flex-col gap-2 border-b border-stone-100 dark:border-stone-700 pb-3">
+            {# Inputs are `ss_*`-prefixed (NOT q/filter/sort/dir): the home
+               search field's hx-include grabs [name='filter'|'sort'|'dir'],
+               and this form is always in the DOM, so unprefixed names would
+               inject duplicate params into every browse search (#367). #}
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <input type="hidden" name="ss_q" value="{{ cur_q|e }}">
+            <input type="hidden" name="ss_filter" value="{{ cur_filter|e }}">
+            <input type="hidden" name="ss_sort" value="{{ cur_sort|e }}">
+            <input type="hidden" name="ss_dir" value="{{ cur_dir|e }}">
+            <label for="saved-search-name" class="sr-only">{{ name_label }}</label>
+            <input id="saved-search-name" name="name" type="text" required maxlength="255"
+                   placeholder="{{ name_placeholder }}"
+                   autocomplete="off"
+                   class="w-full rounded border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-2 py-1 text-sm">
+            <button type="submit"
+                    class="px-3 py-1 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-md">{{ save_label }}</button>
+        </form>
+        {% include "fragments/saved_searches_list.html" %}
+    </div>
+</div>

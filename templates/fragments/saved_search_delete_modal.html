@@ -1,0 +1,19 @@
+{# Saved-search delete confirm modal (CR #367) — UX-DR8 macro, `delete`
+   variant (soft-delete, reversible by re-saving the same name). On success
+   the `delete` handler returns the fresh #saved-searches-list (form target)
+   + HX-Trigger: modal-close so static/js/modal.js closes the dialog. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "delete",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "POST",
+    csrf_token,
+    "#saved-searches-list",
+    "outerHTML",
+    version,
+    "",
+) %}{% endcall %}
