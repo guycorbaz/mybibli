@@ -360,6 +360,10 @@ series:
   omnibus_help_text: "Check this when the book bundles multiple volumes of the series (e.g. an omnibus collecting volumes 1–3). The form then reveals an 'End position' field so the title covers a range of series positions instead of just one."
   select_series: "Select a series..."
 error:
+  # Issue #403 — emitted to the client via the #i18n-bundle data
+  # island and read by static/js/mybibli.js (htmx:responseError
+  # feedback). %{status} substituted client-side.
+  server_error_retry: "Server error (%{status}) — please try again."
   internal: "Something went wrong on our end. Please try again; if the problem continues, contact your administrator."
   not_found: "We couldn't find what you were looking for — it may have been moved or deleted."
   # CR #136 — friendly "your tab is stale" message surfaced when a
@@ -725,6 +729,11 @@ loan:
   return_modal_confirm: "Mark as returned"
   not_found: "Loan not found."
   col_action: Action
+inline_form:
+  # Issue #403 — emitted to the client via the #i18n-bundle data
+  # island and read by static/js/inline-form.js (single-modal-slot
+  # guard, see polish-1 modal lifecycle).
+  modal_busy: "Please close the current dialog before opening another."
 session:
   # Emitted to the client via the #i18n-bundle data island
   # (utils::build_js_i18n_bundle, issue #386) and read by

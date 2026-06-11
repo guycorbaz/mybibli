@@ -356,6 +356,10 @@ series:
   omnibus_help_text: "Aktivieren, wenn das Buch mehrere Bände der Serie bündelt (z. B. ein Sammelband mit den Bänden 1–3). Das Formular zeigt dann ein Feld \"Endposition\", damit der Titel einen Bereich von Serienpositionen abdeckt anstatt nur einer."
   select_series: "Eine Serie auswählen…"
 error:
+  # Issue #403 — über die #i18n-bundle-Dateninsel an den Client
+  # geliefert, gelesen von static/js/mybibli.js (htmx:responseError-
+  # Feedback). %{status} wird clientseitig ersetzt.
+  server_error_retry: "Serverfehler (%{status}) — bitte versuchen Sie es erneut."
   internal: "Auf unserer Seite ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut; wenn das Problem weiterhin besteht, wenden Sie sich an Ihren Administrator."
   not_found: "Wir konnten nicht finden, wonach Sie gesucht haben — es wurde möglicherweise verschoben oder gelöscht."
   already_deleted_by_another_session: "Dieser Eintrag wurde bereits von einer anderen Sitzung gelöscht — laden Sie die Seite neu, um den aktuellen Stand zu sehen."
@@ -717,6 +721,10 @@ loan:
   return_modal_confirm: "Als zurückgegeben markieren"
   not_found: "Ausleihe nicht gefunden."
   col_action: Aktion
+inline_form:
+  # Issue #403 — über die #i18n-bundle-Dateninsel an den Client
+  # geliefert, gelesen von static/js/inline-form.js (Ein-Modal-Slot-Wache).
+  modal_busy: "Bitte schließen Sie den aktuellen Dialog, bevor Sie einen weiteren öffnen."
 session:
   expiry_soon: "Ihre Sitzung läuft bald ab."
   expiry_in_minutes: "Ihre Sitzung läuft in %{minutes} Min. ab."
