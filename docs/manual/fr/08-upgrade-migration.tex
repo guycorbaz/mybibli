@@ -148,6 +148,42 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.9.0}\label{sec:whats-new-1.9.0}
+
+La version 1.9.0 regroupe les fonctionnalités et correctifs fusionnés
+depuis la 1.8.6. \emph{Aucune action de l'opérateur requise} — l'unique
+nouvelle migration de base de données s'applique automatiquement.
+\texttt{docker compose pull \&\& docker compose up -d} de routine.
+
+\begin{itemize}
+  \item \textbf{\#367 \string— recherches enregistrées.} Une composition
+        de recherche sur la page d'accueil (texte libre, filtre, colonne
+        et sens de tri) peut désormais être enregistrée sous un nom et
+        relancée en un clic depuis le menu \emph{Recherches enregistrées}
+        à côté du contrôle de tri. Les entrées peuvent être renommées et
+        supprimées depuis le même menu. Les recherches enregistrées sont
+        partagées par toute l'instance. Voir la
+        section~\ref{sec:saved-searches} du chapitre d'utilisation.
+  \item \textbf{\#396 \string— délais métadonnées par fournisseur.} Le
+        délai d'attente des consultations de métadonnées peut désormais
+        être surchargé \emph{par fournisseur} depuis \texttt{/admin >
+        Système > Fournisseurs de métadonnées} : un champ par fournisseur
+        enregistré, vide = valeur globale par défaut. Donnez plus de
+        marge à un fournisseur lent sans ralentir toute la chaîne.
+        Appliqué au prochain scan \string— sans redémarrage.
+  \item \textbf{\#406 \string— formulaire de niveau de journalisation
+        réparé.} Enregistrer le niveau de journalisation depuis
+        \texttt{/admin > Système} une seconde fois n'échoue plus
+        silencieusement sur un conflit de version ; le basculement du
+        filtre à chaud fonctionne désormais de façon fiable d'un
+        enregistrement à l'autre.
+  \item \textbf{\#405 \string— journaux debug plus silencieux.} Quand
+        l'opérateur règle un niveau global \texttt{debug}, les
+        bibliothèques de transport HTTP n'inondent plus le journal de
+        bavardage de pool de connexions ; une directive explicite par
+        bibliothèque garde la priorité si ce détail est nécessaire.
+\end{itemize}
+
 \section{Nouveautés de la 1.8.6}\label{sec:whats-new-1.8.6}
 
 La version 1.8.6 est un correctif de dette technique interne fermant
