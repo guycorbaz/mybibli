@@ -901,6 +901,9 @@ admin:
     provider_health_timeout_label: "Timeout della sonda provider-health (secondi)"
     provider_health_timeout_help: "Tempo massimo di attesa della risposta HEAD di ciascun fornitore al ping di raggiungibilità (ogni 5 minuti). Predefinito 10. Intervallo 1–60. Applicato al prossimo giro — nessun riavvio."
     btn_save_timeouts: "Salva timeout"
+    # CR #396 — timeout per fornitore (override).
+    provider_timeouts_help: "Sovrascrivi il timeout dei metadati per i singoli fornitori. Lascia un campo vuoto per usare il valore globale predefinito (%{default} s). Intervallo 1–60. Applicato alla prossima scansione — nessun riavvio."
+    btn_save_provider_timeouts: "Salva timeout per fornitore"
   api_keys:
     panel_heading: "Chiavi API"
     intro: "Le chiavi API autenticano chiamanti esterni all'API JSON HTTP sotto /api/v1/*. Le chiavi di lettura possono elencare e recuperare i record; le chiavi di scrittura possono anche modificare via PATCH i campi del titolo abilitati. Ogni chiave è mostrata UNA SOLA volta alla creazione — copiala subito o revocala e ricreala."
@@ -988,6 +991,7 @@ success:
     valuation_saved: "Impostazioni di valutazione salvate"
     log_level_saved: "Livello di log salvato — applicato immediatamente, nessun riavvio richiesto"
     timeouts_saved: "Timeout salvati — applicati alla prossima scansione / giro di ping, nessun riavvio richiesto"
+    provider_timeouts_saved: "Timeout per fornitore salvati — applicati alla prossima scansione, nessun riavvio richiesto"
     no_changes: "Nessuna modifica"
     provider_set: "Chiave %{provider} salvata"
     provider_cleared: "Chiave %{provider} cancellata"

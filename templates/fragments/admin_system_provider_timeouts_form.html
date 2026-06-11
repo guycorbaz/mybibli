@@ -1,0 +1,41 @@
+{# Admin → System → Per-provider metadata-timeout overrides (CR #396).
+   One number input per registered provider; an EMPTY field means "use
+   the global default" (the scalar from the form above), so inputs are
+   NOT `required` and carry the default as placeholder. Provider names
+   are proper nouns — rendered verbatim, never translated (NFR41).
+   Mirrors the timeouts-form shape: CSRF first, hidden version per
+   field, hx-post to a dedicated endpoint, outerHTML swap on the form
+   id. min/max mirror the server-side 1..=60 bounds. #}
+<form id="admin-system-provider-timeouts-form"
+      method="POST"
+      action="/admin/system/provider-timeouts"
+      hx-post="/admin/system/provider-timeouts"
+      hx-target="#admin-system-provider-timeouts-form"
+      hx-swap="outerHTML"
+      class="border border-stone-200 dark:border-stone-700 rounded-lg p-4 bg-stone-50 dark:bg-stone-900 mt-4">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+
+    <p class="text-xs text-stone-500 dark:text-stone-400 mb-3">{{ provider_timeouts_help }}</p>
+
+    {% for row in rows %}
+    <div class="mb-3 flex items-center gap-3">
+        <input type="hidden" name="timeout_{{ row.slug }}_version" value="{{ row.version }}">
+        <label for="admin-provider-timeout-{{ row.slug }}"
+               class="w-48 text-sm font-medium">{{ row.label }}</label>
+        <input id="admin-provider-timeout-{{ row.slug }}"
+               name="timeout_{{ row.slug }}"
+               type="number"
+               min="{{ timeout_min }}"
+               max="{{ timeout_max }}"
+               step="1"
+               value="{{ row.value }}"
+               placeholder="{{ default_secs }}"
+               class="w-32 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2 text-sm">
+    </div>
+    {% endfor %}
+
+    <div>
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm">{{ btn_save }}</button>
+    </div>
+</form>

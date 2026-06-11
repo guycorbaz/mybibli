@@ -572,6 +572,13 @@ pub fn build_router(state: AppState) -> Router {
             "/admin/system/timeouts",
             axum::routing::post(admin_system::save_metadata_timeouts),
         )
+        // CR #396 — per-provider metadata-timeout overrides save
+        // endpoint. One field pair per registered provider; empty
+        // value = use the scalar default from /admin/system/timeouts.
+        .route(
+            "/admin/system/provider-timeouts",
+            axum::routing::post(admin_system::save_provider_timeouts),
+        )
         // CR #241 — Admin → API keys (v1.4.0). 4 routes: 1 GET panel +
         // 1 POST create + 1 GET revoke-modal + 1 POST revoke. All
         // Admin-gated. CSRF-protected via the 8-2 middleware.

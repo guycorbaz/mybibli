@@ -1,11 +1,42 @@
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use crate::db::DbPool;
 use crate::models::media_type::{CodeType, MediaType};
 use crate::models::metadata_cache::MetadataCacheModel;
 
-use super::provider::{MetadataError, MetadataResult};
+use super::provider::{MetadataError, MetadataResult, provider_slug};
 use super::registry::ProviderRegistry;
+
+/// CR #396 — per-provider timeout resolution for the chain.
+/// `default_secs` carries the global scalar
+/// (`AppSettings::metadata_chain_per_provider_timeout_secs`, v1.7.9 #334);
+/// `overrides` maps provider slugs (see [`provider_slug`]) to a specific
+/// value set from /admin > System. A provider absent from the map uses
+/// the default.
+#[derive(Debug, Clone, Default)]
+pub struct ProviderTimeouts {
+    pub default_secs: u64,
+    pub overrides: HashMap<String, u64>,
+}
+
+impl ProviderTimeouts {
+    /// Uniform timeouts — no overrides. The pre-#396 behavior.
+    pub fn uniform(secs: u64) -> Self {
+        ProviderTimeouts {
+            default_secs: secs,
+            overrides: HashMap::new(),
+        }
+    }
+
+    /// Effective timeout (seconds) for the named provider.
+    pub fn for_provider(&self, provider_name: &str) -> u64 {
+        self.overrides
+            .get(&provider_slug(provider_name))
+            .copied()
+            .unwrap_or(self.default_secs)
+    }
+}
 
 /// Executes metadata lookups through a chain of providers with fallback.
 pub struct ChainExecutor;
@@ -25,7 +56,7 @@ impl ChainExecutor {
         code_type: &CodeType,
         media_type: &MediaType,
         timeout_secs: u64,
-        per_provider_timeout_secs: u64,
+        per_provider_timeouts: &ProviderTimeouts,
     ) -> Option<MetadataResult> {
         tracing::info!(code = %code, code_type = %code_type, media_type = %media_type, "Starting metadata chain");
 
@@ -61,7 +92,8 @@ impl ChainExecutor {
                     limiter.acquire().await;
                 }
 
-                let per_provider_timeout = Duration::from_secs(per_provider_timeout_secs);
+                let provider_timeout_secs = per_provider_timeouts.for_provider(provider_name);
+                let per_provider_timeout = Duration::from_secs(provider_timeout_secs);
                 let lookup_future = match code_type {
                     CodeType::Upc => provider.lookup_by_upc(code),
                     CodeType::Isbn | CodeType::Issn => provider.lookup_by_isbn(code),
@@ -120,7 +152,8 @@ impl ChainExecutor {
                             code = %code,
                             provider = provider_name,
                             duration_ms = duration_ms,
-                            "Provider timed out (5s)"
+                            timeout_secs = provider_timeout_secs,
+                            "Provider timed out"
                         );
                     }
                 }
@@ -260,6 +293,60 @@ mod tests {
         ) -> Result<Option<MetadataResult>, MetadataError> {
             Err(MetadataError::RateLimited)
         }
+    }
+
+    // ─── CR #396 — ProviderTimeouts resolution ────────────────────
+
+    #[test]
+    fn provider_timeouts_default_when_no_override() {
+        let timeouts = ProviderTimeouts::uniform(5);
+        assert_eq!(timeouts.for_provider("BnF"), 5);
+        assert_eq!(timeouts.for_provider("google_books"), 5);
+    }
+
+    #[test]
+    fn provider_timeouts_override_wins_and_resolves_via_slug() {
+        let mut timeouts = ProviderTimeouts::uniform(5);
+        timeouts.overrides.insert("bnf".to_string(), 12);
+        timeouts
+            .overrides
+            .insert("library_of_congress".to_string(), 3);
+        // Display names resolve through provider_slug to the override.
+        assert_eq!(timeouts.for_provider("BnF"), 12);
+        assert_eq!(timeouts.for_provider("Library of Congress"), 3);
+        // Untouched providers keep the default.
+        assert_eq!(timeouts.for_provider("open_library"), 5);
+    }
+
+    #[tokio::test]
+    async fn per_provider_override_timeout_skips_slow_provider() {
+        // SlowProvider sleeps 10 s; with a sub-second override it is
+        // skipped and the chain falls through to the fast provider.
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(SlowProvider));
+        registry.register(Box::new(SuccessProvider { name: "fast" }));
+
+        let mut timeouts = ProviderTimeouts::uniform(60);
+        timeouts
+            .overrides
+            .insert(provider_slug("slow_provider"), 1);
+
+        let chain = registry.chain_for(&MediaType::Book);
+        let mut result = None;
+        for provider in &chain {
+            // Millisecond-scale stand-in for the second-scale resolution
+            // ChainExecutor::execute performs — same for_provider call.
+            let per_provider = Duration::from_millis(timeouts.for_provider(provider.name()) * 100);
+            match tokio::time::timeout(per_provider, provider.lookup_by_isbn("123")).await {
+                Ok(Ok(Some(meta))) => {
+                    result = Some(meta);
+                    break;
+                }
+                _ => continue,
+            }
+        }
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().title.as_deref(), Some("Test Title"));
     }
 
     #[test]

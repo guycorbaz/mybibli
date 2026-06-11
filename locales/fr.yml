@@ -923,6 +923,9 @@ admin:
     provider_health_timeout_label: "Délai d'attente de la sonde provider-health (secondes)"
     provider_health_timeout_help: "Temps maximal d'attente de la réponse HEAD de chaque fournisseur lors du ping de joignabilité (toutes les 5 min). Par défaut 10. Bornes 1–60. Appliqué au prochain tour — sans redémarrage."
     btn_save_timeouts: "Enregistrer les délais d'attente"
+    # CR #396 — délais d'attente par fournisseur (surcharges).
+    provider_timeouts_help: "Surchargez le délai d'attente des métadonnées pour chaque fournisseur. Laissez un champ vide pour utiliser la valeur globale par défaut (%{default} s). Bornes 1–60. Appliqué au prochain scan — sans redémarrage."
+    btn_save_provider_timeouts: "Enregistrer les délais par fournisseur"
   api_keys:
     panel_heading: "Clés d'API"
     intro: "Les clés d'API authentifient les appelants externes à l'API JSON HTTP sous /api/v1/*. Les clés en lecture peuvent lister et consulter ; les clés en écriture peuvent aussi modifier les champs autorisés (PATCH). Chaque clé n'est affichée QU'UNE FOIS à la création — copiez-la maintenant ou révoquez-la et recréez-en une."
@@ -1011,6 +1014,7 @@ success:
     valuation_saved: "Paramètres de valorisation enregistrés"
     log_level_saved: "Niveau de journalisation enregistré — appliqué immédiatement, pas de redémarrage requis"
     timeouts_saved: "Délais d'attente enregistrés — appliqués au prochain scan / tour de ping, pas de redémarrage requis"
+    provider_timeouts_saved: "Délais par fournisseur enregistrés — appliqués au prochain scan, pas de redémarrage requis"
     no_changes: "Aucune modification"
     provider_set: "Clé %{provider} enregistrée"
     provider_cleared: "Clé %{provider} effacée"

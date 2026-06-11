@@ -927,6 +927,9 @@ admin:
     provider_health_timeout_label: "Provider-health probe timeout (seconds)"
     provider_health_timeout_help: "Maximum time the 5-min reachability ping waits for each provider HEAD response. Default 10. Bounded 1–60. Applied on the next round — no restart."
     btn_save_timeouts: "Save timeout settings"
+    # CR #396 — per-provider metadata-timeout overrides.
+    provider_timeouts_help: "Override the metadata timeout for individual providers. Leave a field empty to use the global default (%{default} s). Bounded 1–60. Applied on the next scan — no restart."
+    btn_save_provider_timeouts: "Save per-provider timeouts"
   api_keys:
     panel_heading: "API keys"
     intro: "API keys authenticate external callers to the HTTP JSON API under /api/v1/*. Read keys can list and fetch records; write keys can also PATCH whitelisted title fields. Each key is shown ONCE at creation — copy it now or revoke and re-create."
@@ -1015,6 +1018,7 @@ success:
     valuation_saved: "Library valuation settings saved"
     log_level_saved: "Log level saved — applied immediately, no restart required"
     timeouts_saved: "Timeouts saved — applied on the next chain run / ping round, no restart required"
+    provider_timeouts_saved: "Per-provider timeouts saved — applied on the next chain run, no restart required"
     no_changes: "No changes"
     provider_set: "%{provider} key saved"
     provider_cleared: "%{provider} key cleared"

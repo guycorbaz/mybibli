@@ -201,7 +201,7 @@ pub async fn wishlist_preview_isbn(
         .read()
         .map(|s| s.metadata_fetch_timeout_secs)
         .unwrap_or(30);
-    let per_provider_timeout_secs = state.metadata_chain_per_provider_timeout_secs();
+    let per_provider_timeouts = state.metadata_chain_provider_timeouts();
     let metadata = crate::metadata::chain::ChainExecutor::execute(
         &state.registry,
         pool,
@@ -209,7 +209,7 @@ pub async fn wishlist_preview_isbn(
         &CodeType::Isbn,
         &MediaType::Book,
         timeout_secs,
-        per_provider_timeout_secs,
+        &per_provider_timeouts,
     )
     .await;
 

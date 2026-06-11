@@ -431,8 +431,7 @@ pub async fn handle_scan(
                             .read()
                             .map(|s| s.metadata_fetch_timeout_secs)
                             .unwrap_or(30);
-                        let per_provider_timeout_secs =
-                            state.metadata_chain_per_provider_timeout_secs();
+                        let per_provider_timeouts = state.metadata_chain_provider_timeouts();
 
                         let media_type = title
                             .media_type
@@ -455,7 +454,7 @@ pub async fn handle_scan(
                                 media_type,
                                 state.registry.clone(),
                                 timeout_secs,
-                                per_provider_timeout_secs,
+                                per_provider_timeouts.clone(),
                                 state.http_client.clone(),
                                 state.covers_dir.clone(),
                                 false,
@@ -952,8 +951,7 @@ pub async fn handle_scan(
                             .read()
                             .map(|s| s.metadata_fetch_timeout_secs)
                             .unwrap_or(30);
-                        let per_provider_timeout_secs =
-                            state.metadata_chain_per_provider_timeout_secs();
+                        let per_provider_timeouts = state.metadata_chain_provider_timeouts();
                         crate::tasks::metadata_fetch::spawn_fetch(
                             "catalog_issn_scan",
                             title.id,
@@ -965,7 +963,7 @@ pub async fn handle_scan(
                                 MediaType::Magazine,
                                 state.registry.clone(),
                                 timeout_secs,
-                                per_provider_timeout_secs,
+                                per_provider_timeouts.clone(),
                                 state.http_client.clone(),
                                 state.covers_dir.clone(),
                                 false,
@@ -1014,8 +1012,7 @@ pub async fn handle_scan(
                                 .read()
                                 .map(|s| s.metadata_fetch_timeout_secs)
                                 .unwrap_or(30);
-                            let per_provider_timeout_secs =
-                                state.metadata_chain_per_provider_timeout_secs();
+                            let per_provider_timeouts = state.metadata_chain_provider_timeouts();
                             crate::tasks::metadata_fetch::spawn_fetch(
                                 "catalog_upc_session_pref",
                                 title.id,
@@ -1027,7 +1024,7 @@ pub async fn handle_scan(
                                     media_type,
                                     state.registry.clone(),
                                     timeout_secs,
-                                    per_provider_timeout_secs,
+                                    per_provider_timeouts.clone(),
                                     state.http_client.clone(),
                                     state.covers_dir.clone(),
                                     false,
@@ -1245,8 +1242,7 @@ pub async fn handle_scan_with_type(
                     .read()
                     .map(|s| s.metadata_fetch_timeout_secs)
                     .unwrap_or(30);
-                let per_provider_timeout_secs =
-                    state.metadata_chain_per_provider_timeout_secs();
+                let per_provider_timeouts = state.metadata_chain_provider_timeouts();
                 crate::tasks::metadata_fetch::spawn_fetch(
                     "catalog_upc_post_media_select",
                     title.id,
@@ -1258,7 +1254,7 @@ pub async fn handle_scan_with_type(
                         media_type,
                         state.registry.clone(),
                         timeout_secs,
-                        per_provider_timeout_secs,
+                        per_provider_timeouts.clone(),
                         state.http_client.clone(),
                         state.covers_dir.clone(),
                         false,

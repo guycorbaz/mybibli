@@ -177,6 +177,24 @@ impl AppState {
             .unwrap_or_else(|_| AppSettings::default().metadata_chain_per_provider_timeout_secs)
     }
 
+    /// CR #396: per-provider timeout resolution for `ChainExecutor::execute`
+    /// — the scalar default plus any per-provider overrides set from
+    /// /admin > System. Read per fetch so admin saves take effect on the
+    /// very next chain run.
+    pub fn metadata_chain_provider_timeouts(&self) -> crate::metadata::chain::ProviderTimeouts {
+        self.settings
+            .read()
+            .map(|s| crate::metadata::chain::ProviderTimeouts {
+                default_secs: s.metadata_chain_per_provider_timeout_secs,
+                overrides: s.metadata_chain_provider_timeout_overrides.clone(),
+            })
+            .unwrap_or_else(|_| {
+                crate::metadata::chain::ProviderTimeouts::uniform(
+                    AppSettings::default().metadata_chain_per_provider_timeout_secs,
+                )
+            })
+    }
+
     /// Fix #334 (v1.7.9): per-probe timeout (seconds) for the background
     /// provider-reachability ping task. The task reads through
     /// `Arc<RwLock<AppSettings>>` directly on each round (see

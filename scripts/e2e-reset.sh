@@ -22,7 +22,9 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${PROJECT_ROOT}/tests/e2e/docker-compose.test.yml"
-APP_URL="${E2E_APP_URL:-http://localhost:8080/login}"
+# E2E_HOST_PORT flows into docker-compose.test.yml's host-port mapping
+# (default 8080); the wait URL follows it unless E2E_APP_URL pins both.
+APP_URL="${E2E_APP_URL:-http://localhost:${E2E_HOST_PORT:-8080}/login}"
 WAIT_TIMEOUT="${E2E_WAIT_TIMEOUT:-120}"
 
 if [[ ! -f "${COMPOSE_FILE}" ]]; then

@@ -73,6 +73,31 @@ impl MetadataResult {
     }
 }
 
+/// CR #396 — normalize a provider's display name into the slug used as
+/// the K/V settings suffix (`provider_timeout.<slug>`) and the admin
+/// form field suffix. Lowercases ASCII and collapses every
+/// non-alphanumeric run into a single `_`, trimming leading/trailing
+/// separators: `"BnF"` → `"bnf"`, `"Library of Congress"` →
+/// `"library_of_congress"`. Must stay in sync with the row keys seeded
+/// by migration 20260611000000.
+pub fn provider_slug(name: &str) -> String {
+    let mut slug = String::with_capacity(name.len());
+    let mut last_was_sep = true; // suppress a leading separator
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() {
+            slug.push(c.to_ascii_lowercase());
+            last_was_sep = false;
+        } else if !last_was_sep {
+            slug.push('_');
+            last_was_sep = true;
+        }
+    }
+    if slug.ends_with('_') {
+        slug.pop();
+    }
+    slug
+}
+
 /// Trait for external metadata providers (BnF, Google Books, Open Library, etc.).
 #[async_trait]
 pub trait MetadataProvider: Send + Sync {
@@ -273,5 +298,29 @@ mod tests {
             "Parse error: invalid JSON"
         );
         assert_eq!(MetadataError::Timeout.to_string(), "Request timed out");
+    }
+
+    // ─── CR #396 — provider_slug ─────────────────────────────────
+
+    #[test]
+    fn provider_slug_matches_seeded_row_keys() {
+        // One assertion per provider registered in main.rs — must stay
+        // in sync with migration 20260611000000's row keys.
+        assert_eq!(provider_slug("bdgest"), "bdgest");
+        assert_eq!(provider_slug("BnF"), "bnf");
+        assert_eq!(provider_slug("google_books"), "google_books");
+        assert_eq!(provider_slug("Library of Congress"), "library_of_congress");
+        assert_eq!(provider_slug("open_library"), "open_library");
+        assert_eq!(provider_slug("musicbrainz"), "musicbrainz");
+        assert_eq!(provider_slug("omdb"), "omdb");
+        assert_eq!(provider_slug("tmdb"), "tmdb");
+    }
+
+    #[test]
+    fn provider_slug_collapses_separator_runs_and_trims() {
+        assert_eq!(provider_slug("  A -- B  "), "a_b");
+        assert_eq!(provider_slug("Comic Vine!"), "comic_vine");
+        assert_eq!(provider_slug(""), "");
+        assert_eq!(provider_slug("---"), "");
     }
 }
