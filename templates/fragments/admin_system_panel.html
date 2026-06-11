@@ -17,6 +17,9 @@
            live in the same Metadata Providers section so admins find
            both knobs together. #}
         {{ timeouts_form_html|safe }}
+        {# CR #396 — per-provider overrides of the metadata-chain
+           timeout; empty field = use the scalar default above. #}
+        {{ provider_timeouts_form_html|safe }}
     </section>
 
     <section aria-labelledby="admin-system-language-heading">

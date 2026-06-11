@@ -48,6 +48,18 @@ pub const KEY_LOG_LEVEL: &str = "log_level";
 pub const KEY_METADATA_CHAIN_TIMEOUT: &str = "metadata_chain_per_provider_timeout_secs";
 pub const KEY_PROVIDER_HEALTH_TIMEOUT: &str = "provider_health_probe_timeout_secs";
 
+// CR #396 — per-provider metadata-chain timeout overrides. One K/V row
+// per provider, keyed `provider_timeout.<slug>` where <slug> comes from
+// `metadata::provider::provider_slug`. Empty value = "use the scalar
+// default" (KEY_METADATA_CHAIN_TIMEOUT). Rows seeded by migration
+// 20260611000000; same 1..=60 bounds as the scalar.
+pub const PROVIDER_TIMEOUT_KEY_PREFIX: &str = "provider_timeout.";
+
+/// Build the settings row key for one provider's timeout override.
+pub fn provider_timeout_key(slug: &str) -> String {
+    format!("{PROVIDER_TIMEOUT_KEY_PREFIX}{slug}")
+}
+
 /// Inclusive bounds for both timeout settings. Below 1 s would race typical
 /// HTTPS handshakes; above 60 s a stalled provider would block the chain
 /// longer than any plausible user-facing latency budget.
@@ -355,5 +367,18 @@ mod tests {
             KEY_PROVIDER_HEALTH_TIMEOUT,
             "provider_health_probe_timeout_secs"
         );
+    }
+
+    // ─── CR #396 — per-provider timeout override keys ─────────────
+
+    #[test]
+    fn provider_timeout_override_key_matches_migration_strings() {
+        // Migration 20260611000000 seeds `provider_timeout.<slug>` rows.
+        assert_eq!(provider_timeout_key("bnf"), "provider_timeout.bnf");
+        assert_eq!(
+            provider_timeout_key("library_of_congress"),
+            "provider_timeout.library_of_congress"
+        );
+        assert_eq!(PROVIDER_TIMEOUT_KEY_PREFIX, "provider_timeout.");
     }
 }

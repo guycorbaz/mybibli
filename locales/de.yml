@@ -914,6 +914,9 @@ admin:
     provider_health_timeout_label: "Zeitüberschreitung der Provider-Health-Sonde (Sekunden)"
     provider_health_timeout_help: "Maximale Wartezeit für die HEAD-Antwort jedes Anbieters beim Erreichbarkeits-Ping (alle 5 Minuten). Standard 10. Grenzen 1–60. In der nächsten Runde wirksam — kein Neustart."
     btn_save_timeouts: "Zeitüberschreitungen speichern"
+    # CR #396 — Zeitüberschreitungs-Überschreibungen pro Anbieter.
+    provider_timeouts_help: "Überschreiben Sie die Metadaten-Zeitüberschreitung für einzelne Anbieter. Lassen Sie ein Feld leer, um den globalen Standard (%{default} s) zu verwenden. Grenzen 1–60. Beim nächsten Scan wirksam — kein Neustart."
+    btn_save_provider_timeouts: "Zeitüberschreitungen pro Anbieter speichern"
   api_keys:
     panel_heading: "API-Schlüssel"
     intro: "API-Schlüssel authentifizieren externe Aufrufer an der HTTP-JSON-API unter /api/v1/*. Lese-Schlüssel können Datensätze auflisten und abrufen; Schreib-Schlüssel können zusätzlich freigegebene Titelfelder per PATCH bearbeiten. Jeder Schlüssel wird genau EINMAL beim Anlegen angezeigt — jetzt kopieren oder widerrufen und neu erstellen."
@@ -1002,6 +1005,7 @@ success:
     valuation_saved: "Bewertungseinstellungen gespeichert"
     log_level_saved: "Protokollebene gespeichert — sofort wirksam, kein Neustart erforderlich"
     timeouts_saved: "Zeitüberschreitungen gespeichert — beim nächsten Scan / Ping wirksam, kein Neustart erforderlich"
+    provider_timeouts_saved: "Zeitüberschreitungen pro Anbieter gespeichert — beim nächsten Scan wirksam, kein Neustart erforderlich"
     no_changes: "Keine Änderungen"
     provider_set: "%{provider}-Schlüssel gespeichert"
     provider_cleared: "%{provider}-Schlüssel gelöscht"

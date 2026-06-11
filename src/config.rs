@@ -391,6 +391,14 @@ pub struct AppSettings {
     /// without a restart, and the task reads through `Arc<RwLock<AppSettings>>`
     /// on each ping round.
     pub provider_health_probe_timeout_secs: u64,
+    // === CR #396 — per-provider metadata-chain timeout overrides ===
+    /// Overrides for `metadata_chain_per_provider_timeout_secs`, keyed by
+    /// provider slug (see `metadata::provider::provider_slug`). Loaded from
+    /// the K/V rows `provider_timeout.<slug>` (migration 20260611000000);
+    /// an empty row value means "no override" and is absent from this map.
+    /// Same `1..=60` bounds as the scalar — out-of-range rows are skipped
+    /// with a warning at load time.
+    pub metadata_chain_provider_timeout_overrides: std::collections::HashMap<String, u64>,
 }
 
 impl Default for AppSettings {
@@ -421,6 +429,8 @@ impl Default for AppSettings {
             // installs behave identically until the admin tunes them.
             metadata_chain_per_provider_timeout_secs: 5,
             provider_health_probe_timeout_secs: 10,
+            // CR #396: no overrides — every provider uses the scalar above.
+            metadata_chain_provider_timeout_overrides: std::collections::HashMap::new(),
         }
     }
 }
@@ -652,6 +662,35 @@ impl AppSettings {
                         );
                     } else {
                         settings.log_level = trimmed.to_string();
+                    }
+                }
+                // CR #396: per-provider timeout overrides. Empty value =
+                // "use the scalar default" (the migration-seed state) —
+                // not an override. Same 1..=60 bounds as the scalar.
+                k if k.starts_with(crate::services::admin_system::PROVIDER_TIMEOUT_KEY_PREFIX) => {
+                    let slug =
+                        &k[crate::services::admin_system::PROVIDER_TIMEOUT_KEY_PREFIX.len()..];
+                    let trimmed = value.trim();
+                    if slug.is_empty() || trimmed.is_empty() {
+                        // Row with no slug is malformed; empty value is the
+                        // documented "no override" state — both are skipped
+                        // silently for the empty-value case.
+                        if slug.is_empty() {
+                            tracing::warn!(key = %key, "provider_timeout row with empty slug, ignoring");
+                        }
+                    } else {
+                        match trimmed.parse::<u64>() {
+                            Ok(v) if (1..=60).contains(&v) => {
+                                settings
+                                    .metadata_chain_provider_timeout_overrides
+                                    .insert(slug.to_string(), v);
+                            }
+                            _ => tracing::warn!(
+                                key = %key,
+                                value = %value,
+                                "provider_timeout override must parse as 1..=60, ignoring"
+                            ),
+                        }
                     }
                 }
                 _ => {} // Ignore unknown keys
@@ -953,6 +992,10 @@ mod tests {
             log_level: "info".to_string(),
             metadata_chain_per_provider_timeout_secs: 7,
             provider_health_probe_timeout_secs: 15,
+            metadata_chain_provider_timeout_overrides: HashMap::from([(
+                "bnf".to_string(),
+                12_u64,
+            )]),
         };
         let cloned = settings.clone();
         assert_eq!(cloned.overdue_threshold_days, 60);
@@ -967,6 +1010,13 @@ mod tests {
         assert_eq!(cloned.tmdb_api_key, "tmdb-key");
         assert_eq!(cloned.metadata_chain_per_provider_timeout_secs, 7);
         assert_eq!(cloned.provider_health_probe_timeout_secs, 15);
+        assert_eq!(
+            cloned
+                .metadata_chain_provider_timeout_overrides
+                .get("bnf")
+                .copied(),
+            Some(12)
+        );
     }
 
     // ─── Story 8-8: setup wizard sentinels ──────────────────────

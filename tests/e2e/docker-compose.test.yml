@@ -7,7 +7,12 @@ services:
       context: ../..
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      # Host port is overridable so a dev box with something else on 8080
+      # (e.g. another container) can still run the stack:
+      #   E2E_HOST_PORT=18080 ./scripts/e2e-reset.sh
+      #   BASE_URL=http://localhost:18080 npm test
+      # CI and the default dev loop keep 8080.
+      - "${E2E_HOST_PORT:-8080}:8080"
     environment:
       DATABASE_URL: mysql://mybibli:mybibli_test@db:3306/mybibli_test?charset=utf8mb4
       HOST: "0.0.0.0"

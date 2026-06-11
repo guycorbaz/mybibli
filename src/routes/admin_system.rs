@@ -36,9 +36,9 @@ use crate::utils::feedback_html;
 use crate::services::admin_system::{
     KEY_DEFAULT_CURRENCY, KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_LOG_LEVEL,
     KEY_METADATA_CHAIN_TIMEOUT, KEY_OMDB, KEY_OVERDUE_THRESHOLD, KEY_PROVIDER_HEALTH_TIMEOUT,
-    KEY_SHOW_VALUE_INDICATORS, KEY_TMDB, reload_settings_cache, save_setting,
-    validate_default_currency, validate_default_language, validate_log_level,
-    validate_overdue_threshold, validate_provider_timeout_secs,
+    KEY_SHOW_VALUE_INDICATORS, KEY_TMDB, PROVIDER_TIMEOUT_KEY_PREFIX, provider_timeout_key,
+    reload_settings_cache, save_setting, validate_default_currency, validate_default_language,
+    validate_log_level, validate_overdue_threshold, validate_provider_timeout_secs,
 };
 
 // ─── Form structs ─────────────────────────────────────────────────
@@ -130,6 +130,7 @@ pub(crate) struct AdminSystemPanel {
     pub loans_form_html: String,
     pub providers_form_html: String,
     pub timeouts_form_html: String,
+    pub provider_timeouts_form_html: String,
     pub language_form_html: String,
     pub valuation_form_html: String,
     pub log_form_html: String,
@@ -205,6 +206,31 @@ struct AdminSystemTimeoutsForm {
     provider_health_help: String,
     provider_health_value: u64,
     provider_health_version: i32,
+    timeout_min: u64,
+    timeout_max: u64,
+    btn_save: String,
+}
+
+// CR #396 — one rendered row per registered provider in the
+// per-provider-timeouts form. `value` is the raw setting string
+// ("" = no override, use the scalar default); `label` is the
+// provider's display name (a proper noun — never translated, NFR41).
+struct ProviderTimeoutRow {
+    label: String,
+    slug: String,
+    value: String,
+    version: i32,
+}
+
+// CR #396 — per-provider timeout overrides form. Rendered below the
+// scalar timeouts form inside the "Metadata Providers" section.
+#[derive(Template)]
+#[template(path = "fragments/admin_system_provider_timeouts_form.html")]
+struct AdminSystemProviderTimeoutsForm {
+    csrf_token: String,
+    provider_timeouts_help: String,
+    default_secs: u64,
+    rows: Vec<ProviderTimeoutRow>,
     timeout_min: u64,
     timeout_max: u64,
     btn_save: String,
@@ -298,6 +324,56 @@ async fn fetch_setting_rows(
         map.insert(key, (value, version));
     }
     Ok(map)
+}
+
+/// CR #396 — fetch every `provider_timeout.<slug>` row, keyed by slug.
+/// Kept separate from `fetch_setting_rows` because the provider set is
+/// open-ended (one row per registered provider) while that function's
+/// `IN` list is a fixed-key contract policed by fix #406.
+async fn fetch_provider_timeout_rows(
+    pool: &DbPool,
+) -> Result<HashMap<String, (String, i32)>, AppError> {
+    let rows: Vec<(String, String, i32)> = sqlx::query_as(
+        "SELECT setting_key, setting_value, version FROM settings \
+         WHERE setting_key LIKE CONCAT(?, '%') AND deleted_at IS NULL",
+    )
+    .bind(PROVIDER_TIMEOUT_KEY_PREFIX)
+    .fetch_all(pool)
+    .await?;
+    let mut map = HashMap::new();
+    for (key, value, version) in rows {
+        if let Some(slug) = key.strip_prefix(PROVIDER_TIMEOUT_KEY_PREFIX) {
+            map.insert(slug.to_string(), (value, version));
+        }
+    }
+    Ok(map)
+}
+
+/// CR #396 — build the rendered rows from the registry (the source of
+/// truth for which providers exist) joined with the settings rows. A
+/// provider whose row is missing (registered after the seed migration,
+/// before its own row migration) renders with version 1 — the existing
+/// fallback shape used across this module.
+fn provider_timeout_rows(
+    registry: &crate::metadata::registry::ProviderRegistry,
+    rows: &HashMap<String, (String, i32)>,
+) -> Vec<ProviderTimeoutRow> {
+    registry
+        .iter()
+        .map(|p| {
+            let slug = crate::metadata::provider::provider_slug(p.name());
+            let (value, version) = rows
+                .get(&slug)
+                .cloned()
+                .unwrap_or_else(|| (String::new(), 1));
+            ProviderTimeoutRow {
+                label: p.name().to_string(),
+                slug,
+                value,
+                version,
+            }
+        })
+        .collect()
 }
 
 // ─── Render helpers ──────────────────────────────────────────────
@@ -487,6 +563,33 @@ fn render_timeouts_form(
     .map_err(|_| AppError::Internal("timeouts form render failed".to_string()))
 }
 
+// CR #396 — per-provider timeout overrides form renderer.
+fn render_provider_timeouts_form(
+    csrf: &str,
+    loc: &'static str,
+    default_secs: u64,
+    rows: Vec<ProviderTimeoutRow>,
+) -> Result<String, AppError> {
+    use crate::services::admin_system::{PROVIDER_TIMEOUT_MAX_SECS, PROVIDER_TIMEOUT_MIN_SECS};
+    AdminSystemProviderTimeoutsForm {
+        csrf_token: csrf.to_string(),
+        provider_timeouts_help: rust_i18n::t!(
+            "admin.system.provider_timeouts_help",
+            locale = loc,
+            default = default_secs
+        )
+        .to_string(),
+        default_secs,
+        rows,
+        timeout_min: PROVIDER_TIMEOUT_MIN_SECS,
+        timeout_max: PROVIDER_TIMEOUT_MAX_SECS,
+        btn_save: rust_i18n::t!("admin.system.btn_save_provider_timeouts", locale = loc)
+            .to_string(),
+    }
+    .render()
+    .map_err(|_| AppError::Internal("provider timeouts form render failed".to_string()))
+}
+
 // v1.7.1 fix #308 — Logging form renderer.
 fn render_log_form(
     csrf: &str,
@@ -579,6 +682,14 @@ pub async fn render_panel_html(
         probe_timeout,
         probe_timeout_version,
     )?;
+    // CR #396 — per-provider override rows below the scalar timeouts.
+    let override_rows = fetch_provider_timeout_rows(&state.pool).await?;
+    let provider_timeouts_form_html = render_provider_timeouts_form(
+        csrf,
+        loc,
+        chain_timeout,
+        provider_timeout_rows(&state.registry, &override_rows),
+    )?;
     let language_form_html = render_language_form(csrf, loc, &default_lang, lang_version)?;
     let valuation_form_html = render_valuation_form(
         csrf,
@@ -602,6 +713,7 @@ pub async fn render_panel_html(
         loans_form_html,
         providers_form_html,
         timeouts_form_html,
+        provider_timeouts_form_html,
         language_form_html,
         valuation_form_html,
         log_form_html,
@@ -1100,6 +1212,131 @@ pub async fn save_metadata_timeouts(
     .into_response())
 }
 
+// CR #396 — parse one submitted per-provider override input.
+// `Ok(None)` = empty field (no override — store ""), `Ok(Some(v))` =
+// validated override, `Err` = not a number or out of the 1..=60 range
+// (same localized message as the scalar timeouts form).
+fn parse_provider_timeout_input(
+    raw: &str,
+    loc: &'static str,
+) -> Result<Option<u64>, AppError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let v: u64 = trimmed.parse().map_err(|_| {
+        AppError::BadRequest(
+            rust_i18n::t!("error.system.provider_timeout_invalid", locale = loc).to_string(),
+        )
+    })?;
+    validate_provider_timeout_secs(v, loc)?;
+    Ok(Some(v))
+}
+
+// CR #396 — per-provider timeout overrides save handler. The field set
+// is dynamic (one pair per registered provider), so the form
+// deserializes into a plain map; the registry is the source of truth
+// for which fields to read. Writes are transactional and only issued
+// for rows whose value actually changed, so untouched providers never
+// burn a version (and never spuriously conflict).
+pub async fn save_provider_timeouts(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    Form(form): Form<HashMap<String, String>>,
+) -> Result<Response, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=system", locale.0)?;
+    let loc = locale.0;
+
+    let current_rows = fetch_provider_timeout_rows(&state.pool).await?;
+    let default_secs = state.metadata_chain_per_provider_timeout_secs();
+
+    // First pass: validate every submitted field and derive the writes.
+    // On the first invalid field, re-render the form with the submitted
+    // values (#91 pattern — preserve typed input + HX-Trigger so csrf.js
+    // opts the 400 swap in).
+    let mut writes: Vec<(String, String, i32)> = Vec::new(); // (key, new_value, version)
+    let mut submitted_rows: Vec<ProviderTimeoutRow> = Vec::new();
+    let mut validation_error: Option<String> = None;
+
+    for provider in state.registry.iter() {
+        let slug = crate::metadata::provider::provider_slug(provider.name());
+        let raw = form
+            .get(&format!("timeout_{slug}"))
+            .map(String::as_str)
+            .unwrap_or("");
+        let (current_value, current_version) = current_rows
+            .get(&slug)
+            .cloned()
+            .unwrap_or_else(|| (String::new(), 1));
+        let version = form
+            .get(&format!("timeout_{slug}_version"))
+            .and_then(|v| v.trim().parse::<i32>().ok())
+            .unwrap_or(current_version);
+
+        submitted_rows.push(ProviderTimeoutRow {
+            label: provider.name().to_string(),
+            slug: slug.clone(),
+            value: raw.trim().to_string(),
+            version,
+        });
+
+        if validation_error.is_some() {
+            continue; // keep collecting rows for the re-render
+        }
+        match parse_provider_timeout_input(raw, loc) {
+            Ok(parsed) => {
+                let new_value = parsed.map(|v| v.to_string()).unwrap_or_default();
+                if new_value != current_value {
+                    writes.push((provider_timeout_key(&slug), new_value, version));
+                }
+            }
+            Err(AppError::BadRequest(msg)) => validation_error = Some(msg),
+            Err(other) => return Err(other),
+        }
+    }
+
+    if let Some(error_msg) = validation_error {
+        return Ok(validation_error_response(
+            render_provider_timeouts_form(&session.csrf_token, loc, default_secs, submitted_rows)?,
+            error_msg,
+        ));
+    }
+
+    let any_change = !writes.is_empty();
+    if any_change {
+        let mut tx = state.pool.begin().await?;
+        for (key, new_value, version) in &writes {
+            save_setting(&mut *tx, key, new_value, *version).await?;
+        }
+        tx.commit().await?;
+        reload_settings_cache(&state).await?;
+    }
+
+    let fresh_rows = fetch_provider_timeout_rows(&state.pool).await?;
+    let main = render_provider_timeouts_form(
+        &session.csrf_token,
+        loc,
+        state.metadata_chain_per_provider_timeout_secs(),
+        provider_timeout_rows(&state.registry, &fresh_rows),
+    )?;
+    let feedback_key = if any_change {
+        "success.system.provider_timeouts_saved"
+    } else {
+        "success.system.no_changes"
+    };
+    let feedback = success_feedback(loc, feedback_key);
+    Ok(HtmxResponse {
+        main,
+        oob: vec![OobUpdate {
+            swap_mode: Default::default(),
+            target: "feedback-list".to_string(),
+            content: feedback,
+        }],
+    }
+    .into_response())
+}
+
 // ─── Provider-key action machinery ────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -1315,5 +1552,45 @@ mod tests {
     fn action_for_whitespace_input_is_no_change() {
         let a = action_for("   \t  ", 5, &None);
         assert!(matches!(a, ProviderKeyAction::NoChange));
+    }
+
+    // ─── CR #396 — parse_provider_timeout_input ───────────────────
+
+    #[test]
+    fn parse_provider_timeout_input_empty_means_no_override() {
+        assert!(matches!(parse_provider_timeout_input("", "en"), Ok(None)));
+        assert!(matches!(
+            parse_provider_timeout_input("   ", "en"),
+            Ok(None)
+        ));
+    }
+
+    #[test]
+    fn parse_provider_timeout_input_accepts_in_range() {
+        assert!(matches!(
+            parse_provider_timeout_input("1", "en"),
+            Ok(Some(1))
+        ));
+        assert!(matches!(
+            parse_provider_timeout_input(" 12 ", "en"),
+            Ok(Some(12))
+        ));
+        assert!(matches!(
+            parse_provider_timeout_input("60", "en"),
+            Ok(Some(60))
+        ));
+    }
+
+    #[test]
+    fn parse_provider_timeout_input_rejects_garbage_and_out_of_range() {
+        for raw in ["0", "61", "abc", "-3", "5.5"] {
+            assert!(
+                matches!(
+                    parse_provider_timeout_input(raw, "en"),
+                    Err(AppError::BadRequest(_))
+                ),
+                "{raw:?} should be rejected"
+            );
+        }
     }
 }
