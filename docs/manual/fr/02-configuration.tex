@@ -280,6 +280,18 @@ retirez aussi la variable de \texttt{.env} (ou de
 \texttt{docker-compose.yml}).
 \end{note}
 
+La même section porte aussi les \textbf{délais d'attente} de
+consultation (depuis 1.7.9) : le délai par fournisseur de métadonnées
+(temps maximal d'attente d'un fournisseur avant de passer au suivant
+dans la chaîne, 5\,s par défaut) et le délai de la sonde de
+joignabilité (10\,s par défaut), tous deux bornés à 1--60\,s. Depuis
+la 1.9.0, le délai métadonnées peut en plus être \textbf{surchargé
+par fournisseur} : le formulaire liste chaque fournisseur enregistré
+avec son propre champ ; laissez un champ vide pour utiliser la valeur
+globale. Utile quand un fournisseur (une bibliothèque nationale lente,
+par exemple) a besoin de plus de marge sans ralentir toute la chaîne.
+Les changements s'appliquent au prochain scan — sans redémarrage.
+
 \subsection*{Langue}
 
 Fixe la langue d'interface par défaut pour les visiteurs

@@ -258,6 +258,17 @@ To make a Clear durable across reboots, also remove the variable
 from \texttt{.env} (or \texttt{docker-compose.yml}).
 \end{note}
 
+The same section also carries the lookup \textbf{timeouts} (since
+1.7.9): the per-provider metadata timeout (how long the lookup chain
+waits for one provider before falling through to the next, default
+5\,s) and the provider-health probe timeout (default 10\,s), both
+bounded 1--60\,s. Since 1.9.0 the metadata timeout can additionally be
+\textbf{overridden per provider}: the form lists every registered
+provider with its own field; leave a field empty to use the global
+default. Useful when one provider (say, a slow national library) needs
+more headroom without slowing the whole chain down. Changes apply on
+the next scan — no restart.
+
 \subsection*{Language}
 
 Sets the default UI language for \emph{anonymous} visitors.
