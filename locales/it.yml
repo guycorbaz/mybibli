@@ -350,6 +350,10 @@ series:
   omnibus_help_text: "Seleziona questa casella quando il libro raggruppa più volumi della serie (es. un omnibus che raccoglie i volumi 1–3). Il modulo mostrerà allora un campo «Posizione finale» in modo che il titolo copra un intervallo di posizioni invece di una sola."
   select_series: "Seleziona una serie…"
 error:
+  # Issue #403 — inviato al client tramite la data island #i18n-bundle
+  # e letto da static/js/mybibli.js (feedback htmx:responseError).
+  # %{status} sostituito lato client.
+  server_error_retry: "Errore del server (%{status}) — riprova."
   internal: "Si è verificato un errore dalla nostra parte. Riprova; se il problema persiste, contatta il tuo amministratore."
   not_found: "Impossibile trovare ciò che cercavi — potrebbe essere stato spostato o eliminato."
   already_deleted_by_another_session: "Questo elemento è già stato eliminato da un'altra sessione — aggiorna la pagina per vedere lo stato attuale."
@@ -705,6 +709,10 @@ loan:
   return_modal_confirm: "Segna come restituito"
   not_found: "Prestito non trovato."
   col_action: Azione
+inline_form:
+  # Issue #403 — inviato al client tramite la data island #i18n-bundle
+  # e letto da static/js/inline-form.js (guardia dello slot modale unico).
+  modal_busy: "Chiudi la finestra di dialogo corrente prima di aprirne un'altra."
 session:
   expiry_soon: "La tua sessione sta per scadere."
   expiry_in_minutes: "La tua sessione scadrà tra %{minutes} min."

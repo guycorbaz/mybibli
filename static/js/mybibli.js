@@ -134,9 +134,19 @@
             if (target) target.classList.add("htmx-opacity-reset");
 
             var status = e.detail.xhr ? e.detail.xhr.status : "unknown";
-            var message = document.documentElement.lang === "fr"
-                ? "Erreur serveur (" + status + ") — veuillez réessayer."
-                : "Server error (" + status + ") — please try again.";
+            // Issue #403 — template comes from the #i18n-bundle data island
+            // (request locale, en/fr/de/it); %{status} substituted here.
+            // Degrades to "" if the island is missing, same contract as
+            // session-timeout.js.
+            var template = "";
+            try {
+                var bundleEl = document.getElementById("i18n-bundle");
+                var bundle = bundleEl ? JSON.parse(bundleEl.textContent) : {};
+                template = (bundle.errors || {}).server_error_retry || "";
+            } catch (err) {
+                template = "";
+            }
+            var message = template.replace("%{status}", String(status));
             injectErrorFeedback(message);
             restoreScanField();
         });

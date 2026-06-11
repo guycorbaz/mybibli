@@ -25,15 +25,19 @@
     // `#admin-modal-slot` is a single global slot; opening modal B while A
     // is open silently destroyed A's state (incl. typed delete-confirmation
     // text). We block the second request at htmx:beforeRequest level and
-    // surface a localized feedback message. Localized strings follow the
-    // CLAUDE.md "read <html lang> and use embedded string map" idiom.
-    var MODAL_BUSY_MESSAGES = {
-        en: "Please close the current dialog before opening another.",
-        fr: "Veuillez fermer la fenêtre en cours avant d'en ouvrir une autre.",
-    };
+    // surface a localized feedback message. Issue #403 — the string comes
+    // from the server-rendered #i18n-bundle data island (resolved in the
+    // request locale, en/fr/de/it), replacing the hand-synced {en, fr}
+    // object that drifted from locales/*.yml. Degrades to "" if the data
+    // island is missing/malformed, same contract as session-timeout.js.
     function getModalBusyMessage() {
-        var lang = (document.documentElement.lang || "en").toLowerCase();
-        return MODAL_BUSY_MESSAGES[lang] || MODAL_BUSY_MESSAGES.en;
+        try {
+            var el = document.getElementById("i18n-bundle");
+            var bundle = el ? JSON.parse(el.textContent) : {};
+            return (bundle.inline_form || {}).modal_busy || "";
+        } catch (e) {
+            return "";
+        }
     }
     function modalSlotIsOccupied() {
         var slot = document.getElementById("admin-modal-slot");

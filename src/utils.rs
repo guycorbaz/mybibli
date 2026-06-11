@@ -351,6 +351,16 @@ pub fn build_js_i18n_bundle(locale: &str) -> String {
             "expiry_in_minutes": rust_i18n::t!("session.expiry_in_minutes", locale = locale).to_string(),
             "stay_connected": rust_i18n::t!("session.stay_connected", locale = locale).to_string(),
             "dismiss_aria": rust_i18n::t!("session.dismiss_aria", locale = locale).to_string(),
+        },
+        // Issue #403 — the two modules that still carried hand-synced
+        // {en, fr} objects after the #386 PoC. `%{status}` is preserved
+        // verbatim for client-side substitution (same contract as
+        // `%{minutes}` above).
+        "inline_form": {
+            "modal_busy": rust_i18n::t!("inline_form.modal_busy", locale = locale).to_string(),
+        },
+        "errors": {
+            "server_error_retry": rust_i18n::t!("error.server_error_retry", locale = locale).to_string(),
         }
     });
     serde_json::to_string(&bundle)
@@ -738,6 +748,56 @@ mod tests {
             en_v["session"]["stay_connected"], de_v["session"]["stay_connected"],
             "de bundle must carry the German string, not the English fallback"
         );
+    }
+
+    // ─── #403 — i18n-bundle sweep (inline-form.js + mybibli.js) ───
+
+    #[test]
+    fn js_i18n_bundle_carries_403_sweep_keys() {
+        let json = build_js_i18n_bundle("en");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("bundle must be valid JSON");
+        assert!(
+            parsed["inline_form"]["modal_busy"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty()),
+            "inline_form.modal_busy must be a non-empty string in the bundle"
+        );
+        let retry = parsed["errors"]["server_error_retry"]
+            .as_str()
+            .expect("errors.server_error_retry must be a string");
+        assert!(!retry.is_empty());
+        // The parameterized string keeps its client-substituted placeholder.
+        assert!(
+            retry.contains("%{status}"),
+            "server_error_retry must preserve the %{{status}} placeholder for client-side substitution"
+        );
+    }
+
+    #[test]
+    fn js_i18n_bundle_403_keys_resolve_in_de_and_it() {
+        // de/it copy is the net-new content of #403 — prove both resolve
+        // to a translated string, not the English fallback or the raw key.
+        let en: serde_json::Value =
+            serde_json::from_str(&build_js_i18n_bundle("en")).unwrap();
+        for loc in ["de", "it"] {
+            let v: serde_json::Value =
+                serde_json::from_str(&build_js_i18n_bundle(loc)).unwrap();
+            for (a, b) in [
+                (&v["inline_form"]["modal_busy"], &en["inline_form"]["modal_busy"]),
+                (
+                    &v["errors"]["server_error_retry"],
+                    &en["errors"]["server_error_retry"],
+                ),
+            ] {
+                assert_ne!(a, b, "{loc} bundle must differ from en");
+                assert!(
+                    !a.as_str().unwrap().contains("inline_form.")
+                        && !a.as_str().unwrap().contains("error."),
+                    "{loc} value must not be a raw i18n key: {a}"
+                );
+            }
+        }
     }
 
     #[test]
