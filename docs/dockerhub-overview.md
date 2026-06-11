@@ -108,7 +108,7 @@ Both `mybibli-covers` and `mybibli-logs` can be swapped from Docker-named volume
 ## Tags
 
 - `:latest` — tracks the highest semver release tag.
-- `:1.9.0` (current) and every prior release tag back to `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; tracking `:latest` is reasonable for homelab. The full tag list is on the [Tags tab](https://hub.docker.com/r/gcorbaz/mybibli/tags).
+- `:1.9.1` (current) and every prior release tag back to `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; tracking `:latest` is reasonable for homelab. The full tag list is on the [Tags tab](https://hub.docker.com/r/gcorbaz/mybibli/tags).
 - **No `:dev`, no `:main`, no `:beta` published** — tagged releases only.
 
 ## Docs
