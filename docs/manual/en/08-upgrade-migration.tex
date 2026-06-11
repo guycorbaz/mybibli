@@ -139,40 +139,30 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
-\section{What's new in 1.9.0}\label{sec:whats-new-1.9.0}
+\section{What's new in 1.9.1}\label{sec:whats-new-1.9.1}
 
-Version 1.9.0 bundles the feature and fix work merged since 1.8.6.
-\emph{No operator action required} — the one new database migration
-applies automatically. Routine \texttt{docker compose pull \&\& docker
-compose up -d}.
+Version 1.9.1 is a small patch on the 1.9.0 feature minor (saved
+searches, per-provider metadata timeouts, logging fixes — see the
+GitHub release notes for 1.9.0). \emph{No migration, no operator
+action.} Routine \texttt{docker compose pull \&\& docker compose
+up -d}.
 
 \begin{itemize}
-  \item \textbf{\#367 \string— saved searches.} A search composition on
-        the home page (free text, filter, sort column and direction) can
-        now be saved under a name and re-run in one click from the
-        \emph{Saved searches} dropdown next to the sort control. Entries
-        can be renamed and deleted from the same dropdown. Saved searches
-        are shared across the whole instance. See
-        section~\ref{sec:saved-searches} in the usage chapter.
-  \item \textbf{\#396 \string— per-provider metadata timeouts.} The
-        metadata lookup timeout can now be overridden \emph{per provider}
-        from \texttt{/admin > System > Metadata Providers}: one field per
-        registered provider, empty = use the global default. Give a slow
-        provider more headroom without slowing the whole chain. Applied
-        on the next scan \string— no restart.
-  \item \textbf{\#406 \string— admin log-level form fixed.} Saving the
-        log level from \texttt{/admin > System} a second time no longer
-        fails silently with a version conflict; the live filter swap now
-        works reliably across consecutive saves.
-  \item \textbf{\#405 \string— quieter debug logs.} When the operator
-        sets a global \texttt{debug} level, the HTTP transport libraries
-        no longer flood the log with connection-pool chatter; an explicit
-        per-library directive still wins if you need that detail.
+  \item \textbf{\#403 \string— German and Italian everywhere.} The
+        last two interface messages that only existed in English and
+        French — the ``please close the current dialog'' notice in the
+        admin reference-data screens and the ``server error, please
+        try again'' feedback — now follow the interface language like
+        everything else, including German and Italian.
+  \item \textbf{\#412 \string— test-suite reliability.} An internal
+        timing race in the automated test suite was fixed. No change
+        in how the application behaves \string— listed for
+        completeness.
 \end{itemize}
 
 \section{Older release notes}
 
-Release notes for 1.8.6 and earlier are published on the project's
+Release notes for 1.9.0 and earlier are published on the project's
 GitHub Releases page
 (\url{https://github.com/guycorbaz/mybibli/releases}), one entry per
 tag. The upgrade procedure is identical for every 1.y release: routine

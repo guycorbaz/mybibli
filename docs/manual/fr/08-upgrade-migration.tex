@@ -148,45 +148,31 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
-\section{Nouveautés de la 1.9.0}\label{sec:whats-new-1.9.0}
+\section{Nouveautés de la 1.9.1}\label{sec:whats-new-1.9.1}
 
-La version 1.9.0 regroupe les fonctionnalités et correctifs fusionnés
-depuis la 1.8.6. \emph{Aucune action de l'opérateur requise} — l'unique
-nouvelle migration de base de données s'applique automatiquement.
+La version 1.9.1 est un petit correctif sur la mineure 1.9.0
+(recherches enregistrées, délais métadonnées par fournisseur,
+correctifs de journalisation — voir les notes de release GitHub de la
+1.9.0). \emph{Aucune migration, aucune action de l'opérateur.}
 \texttt{docker compose pull \&\& docker compose up -d} de routine.
 
 \begin{itemize}
-  \item \textbf{\#367 \string— recherches enregistrées.} Une composition
-        de recherche sur la page d'accueil (texte libre, filtre, colonne
-        et sens de tri) peut désormais être enregistrée sous un nom et
-        relancée en un clic depuis le menu \emph{Recherches enregistrées}
-        à côté du contrôle de tri. Les entrées peuvent être renommées et
-        supprimées depuis le même menu. Les recherches enregistrées sont
-        partagées par toute l'instance. Voir la
-        section~\ref{sec:saved-searches} du chapitre d'utilisation.
-  \item \textbf{\#396 \string— délais métadonnées par fournisseur.} Le
-        délai d'attente des consultations de métadonnées peut désormais
-        être surchargé \emph{par fournisseur} depuis \texttt{/admin >
-        Système > Fournisseurs de métadonnées} : un champ par fournisseur
-        enregistré, vide = valeur globale par défaut. Donnez plus de
-        marge à un fournisseur lent sans ralentir toute la chaîne.
-        Appliqué au prochain scan \string— sans redémarrage.
-  \item \textbf{\#406 \string— formulaire de niveau de journalisation
-        réparé.} Enregistrer le niveau de journalisation depuis
-        \texttt{/admin > Système} une seconde fois n'échoue plus
-        silencieusement sur un conflit de version ; le basculement du
-        filtre à chaud fonctionne désormais de façon fiable d'un
-        enregistrement à l'autre.
-  \item \textbf{\#405 \string— journaux debug plus silencieux.} Quand
-        l'opérateur règle un niveau global \texttt{debug}, les
-        bibliothèques de transport HTTP n'inondent plus le journal de
-        bavardage de pool de connexions ; une directive explicite par
-        bibliothèque garde la priorité si ce détail est nécessaire.
+  \item \textbf{\#403 \string— allemand et italien partout.} Les
+        deux derniers messages d'interface qui n'existaient qu'en
+        anglais et en français — l'avis « veuillez fermer la fenêtre
+        en cours » des écrans de données de référence et le retour
+        « erreur serveur, veuillez réessayer » — suivent désormais la
+        langue de l'interface comme tout le reste, y compris en
+        allemand et en italien.
+  \item \textbf{\#412 \string— fiabilité de la suite de tests.}
+        Une course temporelle interne de la suite de tests automatisée
+        a été corrigée. Aucun changement de comportement de
+        l'application \string— mentionné par souci d'exhaustivité.
 \end{itemize}
 
 \section{Notes des versions antérieures}
 
-Les notes des versions 1.8.6 et antérieures sont publiées sur la page
+Les notes des versions 1.9.0 et antérieures sont publiées sur la page
 GitHub Releases du projet
 (\url{https://github.com/guycorbaz/mybibli/releases}), une entrée par
 tag. La procédure de mise à jour est identique pour toute version 1.y :
