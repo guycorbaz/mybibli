@@ -170,60 +170,9 @@ compose up -d}.
         per-library directive still wins if you need that detail.
 \end{itemize}
 
-\section{What's new in 1.8.6}\label{sec:whats-new-1.8.6}
-
-Version 1.8.6 is a two-issue internal tech-debt closure on v1.8.5.
-\emph{No operator action required, and no visible change in how the
-application behaves.} Routine \texttt{docker compose pull \&\& docker
-compose up -d}.
-
-\begin{itemize}
-  \item \textbf{\#398 \string— internal maintainability.} Every full-page
-        template now shares its common header/navigation context through a
-        single bundled value instead of repeating roughly twenty fields on
-        each page. This removes about a thousand lines of duplicated code
-        and means a future site-wide interface addition is a one-line
-        change rather than a sweep across two dozen pages. No visible
-        change \string— listed for completeness.
-  \item \textbf{\#386 \string— groundwork for fuller translations.} The
-        small pieces of text shown by in-browser scripts (such as the
-        ``your session is about to expire'' warning) are now delivered to
-        the browser already translated for the active language, from the
-        same central translation files as the rest of the interface,
-        rather than from a separate hand-maintained copy that only knew
-        English and French. As a direct result, that session-timeout
-        warning now also appears in German and Italian.
-\end{itemize}
-
-\section{What's new in 1.8.5}\label{sec:whats-new-1.8.5}
-
-Version 1.8.5 is a three-issue closure patch on v1.8.4. \emph{No
-operator action required.} Routine \texttt{docker compose pull \&\&
-docker compose up -d}.
-
-\begin{itemize}
-  \item \textbf{\#10 \string— clearer error messages.} The wording shown
-        when something goes wrong was rewritten to follow a plain-language
-        style: what happened, why, and what you can do about it \string—
-        no error codes, no technical jargon, no internal details leaking
-        through. The change covers all four interface languages
-        (German, English, French, Italian).
-  \item \textbf{\#384 \string— faster, stricter metadata lookups.} When a
-        title has several authors, their records are now fetched from
-        Open Library in parallel instead of one after another, so
-        multi-author titles resolve noticeably faster. A scanned or typed
-        UPC-A barcode is now checksum-validated, so a mistyped 12-digit
-        code is rejected immediately rather than triggering a fruitless
-        lookup.
-  \item \textbf{\#391 \string— internal maintainability.} The admin
-        users-panel code was split into its own module for
-        maintainability. No user-visible change \string— listed for
-        completeness.
-\end{itemize}
-
 \section{Older release notes}
 
-Release notes for 1.8.4 and earlier are published on the project's
+Release notes for 1.8.6 and earlier are published on the project's
 GitHub Releases page
 (\url{https://github.com/guycorbaz/mybibli/releases}), one entry per
 tag. The upgrade procedure is identical for every 1.y release: routine
