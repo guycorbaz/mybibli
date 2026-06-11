@@ -70,13 +70,36 @@ async fn insert_title_with_created_at(
     genre_id: u64,
     days_ago: i32,
 ) -> u64 {
+    insert_title_with_created_at_slack(pool, name, genre_id, days_ago, 0).await
+}
+
+/// #412 — backdate with clock-skew slack: `created_at = NOW() -
+/// days_ago DAY + slack_minutes MINUTE`. The backdate UPDATE and the
+/// count SELECT call `NOW()` at two different instants; a row placed
+/// EXACTLY on an inclusive `>=` boundary falls out of the window
+/// whenever the wall clock crosses a second between the two statements
+/// (loaded CI runner). Exact-equality inclusivity is therefore not
+/// deterministically testable across two `NOW()` calls at TIMESTAMP
+/// granularity — boundary-row call sites pass a small positive slack
+/// ("just inside the window") instead of exact equality.
+async fn insert_title_with_created_at_slack(
+    pool: &MySqlPool,
+    name: &str,
+    genre_id: u64,
+    days_ago: i32,
+    slack_minutes: i32,
+) -> u64 {
     let id = insert_title(pool, name, genre_id).await;
-    sqlx::query("UPDATE titles SET created_at = NOW() - INTERVAL ? DAY WHERE id = ?")
-        .bind(days_ago)
-        .bind(id)
-        .execute(pool)
-        .await
-        .expect("backdate title created_at");
+    sqlx::query(
+        "UPDATE titles SET created_at = NOW() - INTERVAL ? DAY + INTERVAL ? MINUTE \
+         WHERE id = ?",
+    )
+    .bind(days_ago)
+    .bind(slack_minutes)
+    .bind(id)
+    .execute(pool)
+    .await
+    .expect("backdate title created_at");
     id
 }
 
@@ -136,11 +159,23 @@ async fn insert_loan(pool: &MySqlPool, volume_id: u64, borrower_id: u64) -> u64 
 /// 2026-05-04 corrected the original doc-comment which falsely
 /// claimed both columns were updated.
 async fn mark_loan_returned_at(pool: &MySqlPool, loan_id: u64, days_ago: i32) {
+    mark_loan_returned_at_slack(pool, loan_id, days_ago, 0).await
+}
+
+/// #412 — returns twin of `insert_title_with_created_at_slack`; see
+/// that helper's doc-comment for the clock-skew rationale.
+async fn mark_loan_returned_at_slack(
+    pool: &MySqlPool,
+    loan_id: u64,
+    days_ago: i32,
+    slack_minutes: i32,
+) {
     sqlx::query(
-        "UPDATE loans SET returned_at = NOW() - INTERVAL ? DAY \
+        "UPDATE loans SET returned_at = NOW() - INTERVAL ? DAY + INTERVAL ? MINUTE \
          WHERE id = ?",
     )
     .bind(days_ago)
+    .bind(slack_minutes)
     .bind(loan_id)
     .execute(pool)
     .await
@@ -193,14 +228,16 @@ async fn count_recent_cataloged_excludes_soft_deleted(pool: MySqlPool) {
 }
 
 /// AC8 boundary semantic: **inclusive** `>=` per FR "last 7 days". A
-/// title created exactly at the 7-day boundary IS counted. The 8-day
-/// title falls outside. INTENTIONALLY ASYMMETRIC with overdue's strict
-/// `>` — see model doc-comment.
+/// title created at the 7-day boundary IS counted. The 8-day title
+/// falls outside. INTENTIONALLY ASYMMETRIC with overdue's strict `>` —
+/// see model doc-comment. #412: the boundary row carries 1 minute of
+/// clock-skew slack ("just inside") — exact equality races the second
+/// hand between the backdate UPDATE and the count SELECT.
 #[sqlx::test(migrations = "./migrations")]
 async fn count_recent_cataloged_window_boundary(pool: MySqlPool) {
     let g = first_genre_id(&pool).await;
     insert_title_with_created_at(&pool, "Z-6-day", g, 6).await;
-    insert_title_with_created_at(&pool, "Z-7-day", g, 7).await;
+    insert_title_with_created_at_slack(&pool, "Z-7-day", g, 7, 1).await;
     insert_title_with_created_at(&pool, "Z-8-day", g, 8).await;
 
     let n = TitleModel::count_recent_cataloged(&pool, 7)
@@ -219,7 +256,11 @@ async fn count_recent_cataloged_window_boundary(pool: MySqlPool) {
 #[sqlx::test(migrations = "./migrations")]
 async fn count_recent_cataloged_zero_days_excludes_one_day_old(pool: MySqlPool) {
     let g = first_genre_id(&pool).await;
-    insert_title_with_created_at(&pool, "Z-1-day", g, 1).await;
+    // #412: 1 day minus 1 hour of slack — safely outside the 0-day
+    // window AND safely inside the 1-day window, on both sides of the
+    // two-NOW()-calls clock skew. Exact 1-day backdate raced the
+    // second hand and flaked in CI (PR #411 run 27338926172).
+    insert_title_with_created_at_slack(&pool, "Z-1-day", g, 1, 60).await;
 
     let at_zero = TitleModel::count_recent_cataloged(&pool, 0)
         .await
@@ -312,9 +353,10 @@ async fn count_recent_returns_excludes_soft_deleted_loans(pool: MySqlPool) {
 }
 
 /// AC8 boundary semantic for returns: **inclusive** `>=` per FR "last 7
-/// days". A loan returned exactly at the 7-day boundary IS counted.
-/// Symmetric with count_recent_cataloged_window_boundary; asymmetric
-/// with count_overdue's strict `>` boundary.
+/// days". A loan returned at the 7-day boundary IS counted. Symmetric
+/// with count_recent_cataloged_window_boundary; asymmetric with
+/// count_overdue's strict `>` boundary. #412: boundary row carries
+/// 1 minute of clock-skew slack — see insert_title_with_created_at_slack.
 #[sqlx::test(migrations = "./migrations")]
 async fn count_recent_returns_window_boundary(pool: MySqlPool) {
     let (v6, b6) = make_loan_fixture(&pool, 6).await;
@@ -323,7 +365,7 @@ async fn count_recent_returns_window_boundary(pool: MySqlPool) {
 
     let (v7, b7) = make_loan_fixture(&pool, 7).await;
     let r7 = insert_loan(&pool, v7, b7).await;
-    mark_loan_returned_at(&pool, r7, 7).await;
+    mark_loan_returned_at_slack(&pool, r7, 7, 1).await;
 
     let (v8, b8) = make_loan_fixture(&pool, 8).await;
     let r8 = insert_loan(&pool, v8, b8).await;
