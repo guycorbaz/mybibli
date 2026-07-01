@@ -148,6 +148,24 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.10.0}\label{sec:whats-new-1.10.0}
+
+La version 1.10.0 est une mineure à fonctionnalité unique sur la
+1.9.1. \emph{Aucune migration, aucune action de l'opérateur.}
+\texttt{docker compose pull \&\& docker compose up -d} de routine.
+
+\begin{itemize}
+  \item \textbf{\#9 \string— annuler une action de scan.} Lorsque
+        vous rangez un volume ou activez un lieu de lot sur la page de
+        catalogage, le message de confirmation affiche désormais un
+        bouton \textbf{Annuler}. Cliquez-le dans les 30 secondes pour
+        annuler cette dernière action — le volume revient à son lieu
+        précédent, ou l'activation du lieu de lot est annulée. Seule
+        la dernière action peut être annulée, et l'annulation ne
+        supprime jamais un titre ou un volume que vous venez de
+        créer. Voir \autoref{sec:scan-undo} au chapitre d'utilisation.
+\end{itemize}
+
 \section{Nouveautés de la 1.9.1}\label{sec:whats-new-1.9.1}
 
 La version 1.9.1 est un petit correctif sur la mineure 1.9.0

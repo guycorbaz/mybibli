@@ -66,6 +66,12 @@
                     }
                 }
 
+                // polish-2 (#9): an entry still showing its Undo button is
+                // owned by initScanUndo for the full 30s undo window — do not
+                // fade or remove it here (the default 20s removal would kill
+                // the button 10s before the server window closes).
+                if (entry.querySelector("[data-action='undo-scan']")) return;
+
                 var age = now - parseInt(created, 10);
                 if (age >= 20000) {
                     entry.remove();
@@ -198,6 +204,52 @@
             var entry = btn.closest(".feedback-entry");
             if (entry) entry.remove();
         });
+    }
+
+    // polish-2 (#9): "Undo last scan action" affordance. The button posts to
+    // /catalog/undo via HTMX (hx-post on the button, CSRF auto-injected by
+    // csrf.js). This module only adds UX guards: (a) disable the button on
+    // click so a double-tap can't fire two undos, and (b) remove the button
+    // after the server-side 30-second window elapses, so a stale button can't
+    // invite a guaranteed-rejected click. The server stays authoritative on
+    // the window and on single-use semantics. CSP-clean — no inline handlers.
+    function initScanUndo() {
+        var list = document.getElementById("feedback-list");
+        if (!list) return;
+
+        document.addEventListener("click", function (e) {
+            var btn = e.target.closest && e.target.closest("[data-action='undo-scan']");
+            if (!btn) return;
+            btn.disabled = true;
+        });
+
+        var UNDO_WINDOW_MS = 30000;
+        var observer = new MutationObserver(function (mutations) {
+            mutations.forEach(function (mutation) {
+                mutation.addedNodes.forEach(function (node) {
+                    if (node.nodeType !== 1) return;
+                    var btn = (node.matches && node.matches("[data-action='undo-scan']"))
+                        ? node
+                        : (node.querySelector && node.querySelector("[data-action='undo-scan']"));
+                    if (!btn) return;
+                    // The server keeps only the LAST undoable action, so any
+                    // older undo button now refers to a superseded action —
+                    // remove them so a stale click can't reverse the wrong one.
+                    list.querySelectorAll("[data-action='undo-scan']").forEach(function (other) {
+                        if (other !== btn) other.remove();
+                    });
+                    // At the end of the server-authoritative window, remove the
+                    // whole entry (button + text). initFeedbackAutoDismiss skips
+                    // undo entries, so this is their sole dismissal path.
+                    setTimeout(function () {
+                        var entry = btn.closest(".feedback-entry");
+                        if (entry && entry.parentNode) entry.remove();
+                        else if (btn && btn.parentNode) btn.remove();
+                    }, UNDO_WINDOW_MS);
+                });
+            });
+        });
+        observer.observe(list, { childList: true });
     }
 
     // Story 8-5: System Settings → Metadata Providers form. Each row has a
@@ -372,6 +424,7 @@
         initAudioFeedback();
         initHtmxErrorRecovery();
         initFeedbackDismiss();
+        initScanUndo();
         initProviderKeyClearToggle();
         initBorrowerDetailReload();
         initTitleEditFormEscape();

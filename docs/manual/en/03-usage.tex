@@ -204,6 +204,28 @@ Confirming with the L-code is optional but recommended — it leaves
 a fresh entry in the volume's location history that the next audit
 can rely on.
 
+\subsection{Undoing a scan action}\label{sec:scan-undo}
+
+Barcode work is fast, and the occasional mis-scan happens — a volume
+shelved at the wrong location, or a batch location activated by
+mistake. When you shelve a volume or activate a batch location on the
+catalog page, the feedback message shows an \textbf{Undo} button.
+Click it within \textbf{30 seconds} and mybibli reverses that last
+action:
+
+\begin{itemize}
+  \item Undoing a shelving puts the volume back at its previous
+        location (or leaves it unshelved if it had no location before).
+  \item Undoing a batch-location activation restores the previously
+        active location.
+\end{itemize}
+
+Only the \emph{most recent} action can be undone, and the button
+disappears once the 30-second window closes. Undo only reverses the
+location change — it never deletes a title or volume you just
+created. If the window has passed, move the volume the usual way
+(\autoref{sec:move-volume}).
+
 \section{Wish list}\label{sec:wishlist}
 
 The \emph{wish list}\index{wish list} is a separate list of books

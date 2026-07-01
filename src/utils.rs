@@ -83,6 +83,38 @@ pub fn html_escape(s: &str) -> String {
 /// CSP-clean `data-action="dismiss-feedback"` delegated handler in
 /// `static/js/mybibli.js`; `success` / `info` are auto-fade only.
 pub fn feedback_html(variant: &str, message: &str, suggestion: &str) -> String {
+    feedback_html_action(variant, message, suggestion, "")
+}
+
+/// Like [`feedback_html`] but renders an "Undo" affordance inside the entry
+/// (polish-2 / #9). The button posts to `POST /catalog/undo` via HTMX —
+/// CSRF is auto-injected by `static/js/csrf.js`; `static/js/mybibli.js`
+/// disables it on click and removes it once the server-side undo window
+/// elapses. CSP-clean: no inline JS, no `hx-confirm`. `undo_label` is
+/// HTML-escaped here — callers MUST NOT pre-escape.
+pub fn feedback_html_undoable(
+    variant: &str,
+    message: &str,
+    suggestion: &str,
+    undo_label: &str,
+) -> String {
+    let label = html_escape(undo_label);
+    let button = format!(
+        r##"<button type="button" data-action="undo-scan" hx-post="/catalog/undo" hx-target="#feedback-list" hx-swap="afterbegin" class="mt-2 inline-flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:no-underline min-h-[44px] md:min-h-0" aria-label="{label}"><svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.793 2.232a.75.75 0 01-.026 1.06L3.622 7.25h10.003a5.375 5.375 0 010 10.75H10.75a.75.75 0 010-1.5h2.875a3.875 3.875 0 000-7.75H3.622l4.145 3.957a.75.75 0 01-1.036 1.085l-5.5-5.25a.75.75 0 010-1.085l5.5-5.25a.75.75 0 011.062.026z" clip-rule="evenodd" /></svg>{label}</button>"##
+    );
+    feedback_html_action(variant, message, suggestion, &button)
+}
+
+/// Shared renderer behind [`feedback_html`] and [`feedback_html_undoable`].
+/// `extra_action_html` is injected verbatim inside the entry body after the
+/// suggestion paragraph — callers are responsible for its safety (the only
+/// caller passes a server-built, escaped button).
+fn feedback_html_action(
+    variant: &str,
+    message: &str,
+    suggestion: &str,
+    extra_action_html: &str,
+) -> String {
     let (border_color, bg_color, icon_color, icon_path) = match variant {
         "success" => (
             "border-green-500",
@@ -132,6 +164,7 @@ pub fn feedback_html(variant: &str, message: &str, suggestion: &str) -> String {
     <div class="flex-1">
       <p class="text-stone-700 dark:text-stone-300">{}</p>
       {}
+      {}
     </div>
     {}
   </div>
@@ -143,6 +176,7 @@ pub fn feedback_html(variant: &str, message: &str, suggestion: &str) -> String {
         icon_path,
         html_escape(message),
         suggestion_html,
+        extra_action_html,
         dismiss_html
     )
 }

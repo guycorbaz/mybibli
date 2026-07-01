@@ -11,7 +11,7 @@
 
 > Personal library cataloging for home collectors.
 
-**Status:** in production since v1.1.1 (2026-05-14). 10 epics shipped; project is in GH-issue-driven polish mode. Current release: `v1.9.1`. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli). See [ROADMAP.md](ROADMAP.md) for what's coming next.
+**Status:** in production since v1.1.1 (2026-05-14). 10 epics shipped; project is in GH-issue-driven polish mode. Current release: `v1.10.0`. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli). See [ROADMAP.md](ROADMAP.md) for what's coming next.
 
 ## What it is
 
@@ -22,7 +22,7 @@ Built for collectors who want more than a spreadsheet:
 - **Barcode-first cataloging.** Scan an ISBN / EAN-13 and the title resolves asynchronously through a metadata provider chain (BnF, Google Books, Open Library, Library of Congress, MusicBrainz, OMDb, TMDb, BDGest), with cover-image download and similar-title detection.
 - **Multi-media support.** Books, BD/comics (with multi-position omnibus volumes), audio releases, films/series — each typed correctly and with the right metadata provider chosen automatically.
 - **Series + collection awareness.** Gap detection on series volumes, Dewey-based browsing, similar-titles section.
-- **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow.
+- **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow, with a 30-second **Undo** on the last shelving or batch-location action.
 - **Loan management.** Borrower CRUD, loan registration with automatic location restoration on return, overdue threshold (admin-configurable), per-borrower history.
 - **Multi-role auth.** Anonymous (read-only), Librarian (catalog + loans), Admin (everything). Session inactivity timeout with keep-alive toast. FR/EN language toggle with per-user preference.
 - **Hardened by construction.** Strict Content Security Policy (no `unsafe-inline`/`unsafe-eval`), CSRF synchronizer-token middleware on every state-changing request (with a server-rendered "session expired" feedback when the token drifts — see [`docs/auth-threat-model.md`](docs/auth-threat-model.md)), scanner-guard against burst-keyboard input leaking into modals.
@@ -32,7 +32,7 @@ Built for collectors who want more than a spreadsheet:
 
 ## Screenshots
 
-Live production install (`v1.9.1`, household NAS, 140+ volumes catalogued and growing):
+Live production install (`v1.10.0`, household NAS, 140+ volumes catalogued and growing):
 
 <p align="center">
   <img src="docs/screenshots/01-home-desktop.png" alt="mybibli home page — search bar, genre filters, dashboard counters, and a recent-additions strip with cover thumbnails." width="780">
@@ -366,7 +366,7 @@ Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](
 | 9 | Polish UX & Accessibilité | ✅ done |
 | 10 | Mobile UX & sécurité closeout | ✅ done |
 
-mybibli has been live in production since v1.1.1 (2026-05-14) on the household NAS that drove the project. v1.0.0 shipped after Epic 9 close (2026-05-10) as the first production-ready build; v1.1.0 added the seed-gate + audit trio (mandatory install floor — see "Installation notes" above); the themed minors v1.2 through v1.8 then delivered the original feature roadmap (browse & find, wishlist, HTTP API, valuation & stats, catalog hygiene, de/it locales + runtime logging, cover handling), each followed by production-driven patch trains. Since v1.8 the project runs in GH-issue-driven polish mode; the current line is v1.9 (2026-06-11): v1.9.0 is the first issue-driven feature minor — [#367](https://github.com/guycorbaz/mybibli/issues/367) saved custom searches, [#396](https://github.com/guycorbaz/mybibli/issues/396) per-provider metadata-timeout overrides, [#405](https://github.com/guycorbaz/mybibli/issues/405)/[#406](https://github.com/guycorbaz/mybibli/issues/406) runtime log-level fixes — patched the same day by v1.9.1 ([#403](https://github.com/guycorbaz/mybibli/issues/403) German/Italian localization of the last two client-side messages, [#412](https://github.com/guycorbaz/mybibli/issues/412) CI test de-flake). The full release-by-release history lives in [ROADMAP.md](ROADMAP.md) and on the [GitHub releases page](https://github.com/guycorbaz/mybibli/releases). See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the epic breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
+mybibli has been live in production since v1.1.1 (2026-05-14) on the household NAS that drove the project. v1.0.0 shipped after Epic 9 close (2026-05-10) as the first production-ready build; v1.1.0 added the seed-gate + audit trio (mandatory install floor — see "Installation notes" above); the themed minors v1.2 through v1.8 then delivered the original feature roadmap (browse & find, wishlist, HTTP API, valuation & stats, catalog hygiene, de/it locales + runtime logging, cover handling), each followed by production-driven patch trains. Since v1.8 the project runs in GH-issue-driven polish mode; the current release is v1.10.0 (2026-07-01) — a single-feature minor closing [#9](https://github.com/guycorbaz/mybibli/issues/9) (undo the last scan action from the catalog feedback list within a 30-second window). It follows the v1.9 line (2026-06-11): v1.9.0, the first issue-driven feature minor — [#367](https://github.com/guycorbaz/mybibli/issues/367) saved custom searches, [#396](https://github.com/guycorbaz/mybibli/issues/396) per-provider metadata-timeout overrides, [#405](https://github.com/guycorbaz/mybibli/issues/405)/[#406](https://github.com/guycorbaz/mybibli/issues/406) runtime log-level fixes — patched the same day by v1.9.1 ([#403](https://github.com/guycorbaz/mybibli/issues/403) German/Italian localization of the last two client-side messages, [#412](https://github.com/guycorbaz/mybibli/issues/412) CI test de-flake). The full release-by-release history lives in [ROADMAP.md](ROADMAP.md) and on the [GitHub releases page](https://github.com/guycorbaz/mybibli/releases). See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the epic breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
 
 ## License
 

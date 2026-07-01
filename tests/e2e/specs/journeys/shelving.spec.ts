@@ -133,6 +133,134 @@ test.describe("Shelving by Scan (Story 2-2 + batch fix)", () => {
     expect(feedbackText).not.toMatch(/already assigned|déjà assigné/i);
   });
 
+  // polish-2 (#9): undo a shelve from the feedback list
+  test("shelve existing V-code then Undo → volume unshelved", async ({
+    page,
+  }) => {
+    const lcode = await createLocation(page, "SH-UndoShelve", "L1010");
+
+    await page.goto("/catalog");
+    const scanField = page.locator("#scan-field");
+
+    // Create a title + volume
+    await scanField.fill(specIsbn("SH", 8));
+    await scanField.press("Enter");
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
+    await scanField.fill("V0060");
+    await scanField.press("Enter");
+    await expect(page.locator(".feedback-entry").first()).toContainText(/V0060/i, { timeout: 10000 });
+
+    // Clear the pending-volume label so the L-code just activates batch mode
+    await scanField.fill(specIsbn("SH", 9));
+    await scanField.press("Enter");
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
+
+    // Activate the location, then shelve the existing V-code
+    await scanField.fill(lcode);
+    await scanField.press("Enter");
+    await expect(page.locator(".feedback-entry").first()).toContainText(/active|actif/i, { timeout: 5000 });
+    await scanField.fill("V0060");
+    await scanField.press("Enter");
+
+    // The shelved feedback carries an Undo button
+    const shelved = page.locator(".feedback-entry").first();
+    await expect(shelved).toContainText(/shelved|rangé/i, { timeout: 10000 });
+    const undoBtn = shelved.locator('[data-action="undo-scan"]');
+    await expect(undoBtn).toBeVisible({ timeout: 5000 });
+
+    // Undo → "undone" feedback appears at the top of the list
+    await undoBtn.click();
+    await expect(page.locator(".feedback-entry").first()).toContainText(
+      /undone|annulé/i,
+      { timeout: 10000 }
+    );
+
+    // Verify the volume is no longer at that location: the location page
+    // should not list V0060 anymore.
+    await page.goto("/locations");
+    const editLink = page.locator(`a[href*="/edit"][aria-label*="SH-UndoShelve"]`).first();
+    if (await editLink.isVisible({ timeout: 2000 }).catch(() => false)) {
+      const href = await editLink.getAttribute("href");
+      const locId = href?.match(/\/locations\/(\d+)/)?.[1];
+      if (locId) {
+        await page.goto(`/location/${locId}`);
+        await expect(page.locator("body")).not.toContainText("V0060");
+      }
+    }
+  });
+
+  // polish-2 (#9, review P1): only the LATEST undo button survives a 2nd shelve
+  test("second shelve removes the earlier undo button", async ({ page }, testInfo) => {
+    // Retry-safe codes: a load-induced flake on attempt 1 must not leave
+    // colliding L-/V-codes that make every retry a duplicate hard-failure.
+    const r = testInfo.retry;
+    const va = `V00${61 + r * 10}`;
+    const vb = `V00${62 + r * 10}`;
+    const lcode = await createLocation(page, `SH-UndoLatest-${r}`, `L10${12 + r * 10}`);
+
+    await page.goto("/catalog");
+    const scanField = page.locator("#scan-field");
+
+    // Volume A
+    await scanField.fill(specIsbn("SH", 10 + r * 10));
+    await scanField.press("Enter");
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
+    await scanField.fill(va);
+    await scanField.press("Enter");
+    await expect(page.locator(".feedback-entry").first()).toContainText(new RegExp(va, "i"), { timeout: 10000 });
+
+    // Volume B (new ISBN clears the pending-label context)
+    await scanField.fill(specIsbn("SH", 11 + r * 10));
+    await scanField.press("Enter");
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", { timeout: 5000 });
+    await scanField.fill(vb);
+    await scanField.press("Enter");
+    await expect(page.locator(".feedback-entry").first()).toContainText(new RegExp(vb, "i"), { timeout: 10000 });
+
+    // L-code shelves the pending volume B (undo button #1 appears)
+    await scanField.fill(lcode);
+    await scanField.press("Enter");
+    await expect(page.locator(".feedback-entry").first()).toContainText(
+      new RegExp(vb + "|shelved|rangé", "i"),
+      { timeout: 10000 }
+    );
+    // Re-scan existing volume A in batch mode → shelves it (undo button #2,
+    // which must supersede and remove #1)
+    await scanField.fill(va);
+    await scanField.press("Enter");
+    await expect(page.locator(".feedback-entry").first()).toContainText(new RegExp(va, "i"), { timeout: 10000 });
+
+    // The server keeps only the last action, so only one undo button remains.
+    await expect(page.locator('[data-action="undo-scan"]')).toHaveCount(1, { timeout: 5000 });
+  });
+
+  // polish-2 (#9): undo a batch-location activation
+  test("activate location then Undo → activation reverted", async ({ page }) => {
+    const lcode = await createLocation(page, "SH-UndoActivate", "L1011");
+
+    await page.goto("/catalog");
+    const scanField = page.locator("#scan-field");
+
+    await scanField.fill(lcode);
+    await scanField.press("Enter");
+
+    const active = page.locator(".feedback-entry").first();
+    await expect(active).toContainText(/active|actif/i, { timeout: 5000 });
+    const undoBtn = active.locator('[data-action="undo-scan"]');
+    await expect(undoBtn).toBeVisible({ timeout: 5000 });
+
+    await undoBtn.click();
+    await expect(page.locator(".feedback-entry").first()).toContainText(
+      /undone|annulé/i,
+      { timeout: 10000 }
+    );
+    // The batch-shelving guide strip reverts (no longer "Active location …").
+    await expect(page.locator("#guide-strip")).toContainText(
+      /undone|annulée/i,
+      { timeout: 10000 }
+    );
+  });
+
   // AC3: L-code not found
   test("scan unknown L-code → warning feedback", async ({ page }) => {
     await page.goto("/catalog");

@@ -217,6 +217,28 @@ La confirmation par code L est optionnelle mais recommandée — elle
 laisse une entrée fraîche dans l'historique du volume sur laquelle
 le prochain audit pourra s'appuyer.
 
+\subsection{Annuler une action de scan}\label{sec:scan-undo}
+
+Le travail au code-barres va vite, et une erreur de scan arrive
+parfois — un volume rangé au mauvais lieu, ou un lieu de lot activé
+par mégarde. Lorsque vous rangez un volume ou activez un lieu de lot
+sur la page de catalogage, le message de confirmation affiche un
+bouton \textbf{Annuler}. Cliquez-le dans les \textbf{30 secondes} et
+mybibli annule cette dernière action :
+
+\begin{itemize}
+  \item Annuler un rangement remet le volume à son lieu précédent
+        (ou le laisse non rangé s'il n'avait pas de lieu auparavant).
+  \item Annuler l'activation d'un lieu de lot rétablit le lieu actif
+        précédent.
+\end{itemize}
+
+Seule la \emph{dernière} action peut être annulée, et le bouton
+disparaît une fois la fenêtre de 30 secondes écoulée. L'annulation ne
+touche que le changement de lieu — elle ne supprime jamais un titre
+ou un volume que vous venez de créer. Passé le délai, déplacez le
+volume de la manière habituelle (\autoref{sec:move-volume}).
+
 \section{Wish list}\label{sec:wishlist}
 
 La \emph{wish list}\index{wish list} est une liste séparée des

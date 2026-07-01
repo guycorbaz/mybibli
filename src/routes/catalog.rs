@@ -15,6 +15,7 @@ use crate::models::contributor::{ContributorModel, ContributorRoleModel, TitleCo
 use crate::models::session::SessionModel;
 use crate::models::volume::VolumeModel;
 use crate::services::contributor::ContributorService;
+use crate::services::scan_undo::UndoableAction;
 use crate::services::title::{TitleForm, TitleService};
 use crate::services::volume::VolumeService;
 
@@ -26,6 +27,7 @@ use crate::services::volume::VolumeService;
 // function via `crate::utils::feedback_html`; the inline `html_escape`
 // duplicate is now also reused from utils.
 use crate::utils::feedback_html;
+use crate::utils::feedback_html_undoable;
 use crate::utils::html_escape;
 
 fn context_banner_html(
@@ -112,7 +114,7 @@ fn push_guide_oob(oob: &mut Vec<OobUpdate>, message: &str) {
     });
 }
 
-fn guide_strip_html(message: &str) -> String {
+pub(crate) fn guide_strip_html(message: &str) -> String {
     format!(
         r#"<p class="text-sm text-stone-500 dark:text-stone-400 flex items-center gap-2"><svg class="w-4 h-4 text-indigo-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" /></svg>{}</p>"#,
         html_escape(message)
@@ -517,6 +519,24 @@ pub async fn handle_scan(
                                 .await
                             {
                                 Ok(()) => {
+                                    // polish-2 (#9): record the prior location
+                                    // (captured from `existing_vol` BEFORE the
+                                    // UPDATE) so this shelve can be undone.
+                                    if let Some(token) = &session.token {
+                                        let action = UndoableAction::shelve_volume(
+                                            existing_vol.id,
+                                            existing_vol.location_id,
+                                            None,
+                                            chrono::Utc::now().naive_utc(),
+                                        );
+                                        if let Err(e) = SessionModel::set_last_undoable_action(
+                                            pool, token, &action,
+                                        )
+                                        .await
+                                        {
+                                            tracing::warn!(error = %e, "Failed to record undoable shelve action");
+                                        }
+                                    }
                                     let path = crate::models::location::LocationModel::get_path(
                                         pool, loc_id,
                                     )
@@ -528,9 +548,13 @@ pub async fn handle_scan(
                                         path = &path
                                     )
                                     .to_string();
+                                    let undo_label =
+                                        rust_i18n::t!("feedback.undo_label").to_string();
                                     let guide = rust_i18n::t!("guide.shelved").to_string();
                                     let resp = HtmxResponse {
-                                        main: feedback_html("success", &message, ""),
+                                        main: feedback_html_undoable(
+                                            "success", &message, "", &undo_label,
+                                        ),
                                         oob: vec![OobUpdate { swap_mode: Default::default(),
                                             target: "guide-strip".to_string(),
                                             content: guide_strip_html(&guide),
@@ -673,6 +697,19 @@ pub async fn handle_scan(
                                         .await
                                         {
                                             Ok(()) => {
+                                                // polish-2 (#9): a freshly created
+                                                // volume was auto-shelved. Undo
+                                                // detaches it (prev location None);
+                                                // it never deletes the volume.
+                                                let action = UndoableAction::shelve_volume(
+                                                    volume.id,
+                                                    None,
+                                                    None,
+                                                    chrono::Utc::now().naive_utc(),
+                                                );
+                                                if let Err(e) = SessionModel::set_last_undoable_action(pool, token, &action).await {
+                                                    tracing::warn!(error = %e, "Failed to record undoable auto-shelve action");
+                                                }
                                                 let path = crate::models::location::LocationModel::get_path(pool, loc_id).await.unwrap_or_default();
                                                 Some(path)
                                             }
@@ -746,8 +783,19 @@ pub async fn handle_scan(
                                 rust_i18n::t!("guide.volume_ready", label = &volume.label)
                                     .to_string()
                             };
+                            // polish-2 (#9): offer Undo only when the volume was
+                            // actually shelved (creation itself is not undoable).
+                            let main_feedback = if shelved_path.is_some() {
+                                let undo_label =
+                                    rust_i18n::t!("feedback.undo_label").to_string();
+                                feedback_html_undoable(
+                                    "success", &message, &suggestion, &undo_label,
+                                )
+                            } else {
+                                feedback_html("success", &message, &suggestion)
+                            };
                             let resp = HtmxResponse {
-                                main: feedback_html("success", &message, &suggestion),
+                                main: main_feedback,
                                 oob: vec![
                                     OobUpdate { swap_mode: Default::default(),
                                         target: "context-banner".to_string(),
@@ -821,6 +869,16 @@ pub async fn handle_scan(
                     None => None,
                 };
 
+                // polish-2 (#9): capture the prior active location BEFORE we
+                // overwrite it, so it can be restored on undo. Kept as a
+                // Result — a read error skips undo-recording (P3) rather than
+                // recording a wrong `None` that would clear the active location.
+                let prev_active_location_read: Result<Option<u64>, AppError> = match &session.token
+                {
+                    Some(token) => SessionModel::get_active_location(pool, token).await,
+                    None => Ok(None),
+                };
+
                 // Always activate batch shelving mode when scanning L-code
                 let location = location.unwrap();
                 if let Some(token) = &session.token {
@@ -830,11 +888,40 @@ pub async fn handle_scan(
                     crate::models::location::LocationModel::get_path(pool, location.id).await?;
 
                 if let Some(vol_label) = last_volume {
+                    // polish-2 (#9): read the volume's prior location BEFORE the
+                    // assign overwrites it, so the shelve can be undone.
+                    let prev_volume_location_read =
+                        VolumeModel::find_by_label(pool, &vol_label).await;
                     match VolumeService::assign_location(pool, &vol_label, &code).await {
-                        Ok((_volume, path)) => {
+                        Ok((volume, path)) => {
                             // Clear last_volume_label to prevent re-shelving on next L-code
                             if let Some(token) = &session.token {
                                 let _ = SessionModel::set_last_volume_label(pool, token, "").await;
+                                // Record the shelve — undo restores the prior
+                                // location, the consumed volume label, AND the
+                                // prior active location (D1). Only record when
+                                // BOTH prior-state reads succeeded (P3).
+                                match (&prev_volume_location_read, &prev_active_location_read) {
+                                    (Ok(prev_vol), Ok(prev_active)) => {
+                                        let action = UndoableAction::shelve_volume_via_lcode(
+                                            volume.id,
+                                            prev_vol.as_ref().and_then(|v| v.location_id),
+                                            *prev_active,
+                                            Some(vol_label.clone()),
+                                            chrono::Utc::now().naive_utc(),
+                                        );
+                                        if let Err(e) = SessionModel::set_last_undoable_action(
+                                            pool, token, &action,
+                                        )
+                                        .await
+                                        {
+                                            tracing::warn!(error = %e, "Failed to record undoable L-code shelve action");
+                                        }
+                                    }
+                                    _ => {
+                                        tracing::warn!("Skipping undo record: prior-state read failed for L-code shelve");
+                                    }
+                                }
                             }
                             let message = rust_i18n::t!(
                                 "feedback.volume_shelved",
@@ -844,10 +931,13 @@ pub async fn handle_scan(
                             .to_string();
                             let suggestion =
                                 rust_i18n::t!("feedback.scan_vcode_to_shelve").to_string();
+                            let undo_label = rust_i18n::t!("feedback.undo_label").to_string();
                             let guide =
                                 rust_i18n::t!("guide.batch_active", path = &loc_path).to_string();
                             let resp = HtmxResponse {
-                                main: feedback_html("success", &message, &suggestion),
+                                main: feedback_html_undoable(
+                                    "success", &message, &suggestion, &undo_label,
+                                ),
                                 oob: vec![OobUpdate { swap_mode: Default::default(),
                                     target: "guide-strip".to_string(),
                                     content: guide_strip_html(&guide),
@@ -865,13 +955,35 @@ pub async fn handle_scan(
                         }
                     }
                 } else {
-                    // No volume context — just activate batch shelving mode
+                    // No volume context — just activate batch shelving mode.
+                    // polish-2 (#9): record so the activation can be undone.
+                    // Only record when the prior-active read succeeded (P3).
+                    if let Some(token) = &session.token {
+                        match &prev_active_location_read {
+                            Ok(prev_active) => {
+                                let action = UndoableAction::activate_location(
+                                    *prev_active,
+                                    chrono::Utc::now().naive_utc(),
+                                );
+                                if let Err(e) =
+                                    SessionModel::set_last_undoable_action(pool, token, &action)
+                                        .await
+                                {
+                                    tracing::warn!(error = %e, "Failed to record undoable location-activation");
+                                }
+                            }
+                            Err(_) => {
+                                tracing::warn!("Skipping undo record: active-location read failed");
+                            }
+                        }
+                    }
                     let message =
                         rust_i18n::t!("feedback.active_location", path = &loc_path).to_string();
                     let suggestion = rust_i18n::t!("feedback.scan_vcode_to_shelve").to_string();
+                    let undo_label = rust_i18n::t!("feedback.undo_label").to_string();
                     let guide = rust_i18n::t!("guide.batch_active", path = &loc_path).to_string();
                     let resp = HtmxResponse {
-                        main: feedback_html("info", &message, &suggestion),
+                        main: feedback_html_undoable("info", &message, &suggestion, &undo_label),
                         oob: vec![OobUpdate { swap_mode: Default::default(),
                             target: "guide-strip".to_string(),
                             content: guide_strip_html(&guide),

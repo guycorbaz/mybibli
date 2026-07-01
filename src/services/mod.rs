@@ -11,6 +11,7 @@ pub mod loans;
 pub mod locations;
 pub mod locking;
 pub mod password;
+pub mod scan_undo;
 pub mod search;
 pub mod seed_gate;
 pub mod series;
