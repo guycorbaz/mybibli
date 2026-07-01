@@ -139,6 +139,23 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.10.0}\label{sec:whats-new-1.10.0}
+
+Version 1.10.0 is a single-feature minor on 1.9.1. \emph{No
+migration, no operator action.} Routine \texttt{docker compose pull
+\&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#9 \string— undo a scan action.} When you shelve a
+        volume or activate a batch location on the catalog page, the
+        confirmation message now shows an \textbf{Undo} button. Click
+        it within 30 seconds to reverse that last action — the volume
+        goes back to its previous location, or the batch-location
+        activation is undone. Only the most recent action can be
+        undone, and undo never deletes a title or volume you just
+        created. See \autoref{sec:scan-undo} in the usage chapter.
+\end{itemize}
+
 \section{What's new in 1.9.1}\label{sec:whats-new-1.9.1}
 
 Version 1.9.1 is a small patch on the 1.9.0 feature minor (saved
