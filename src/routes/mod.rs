@@ -10,6 +10,7 @@ pub mod api_v1;
 pub mod auth;
 pub mod borrowers;
 pub mod catalog;
+pub mod catalog_undo;
 pub mod contributors;
 pub mod home;
 pub mod home_indicators;
@@ -79,6 +80,10 @@ pub fn build_router(state: AppState) -> Router {
     let catalog_routes = Router::new()
         .route("/catalog", axum::routing::get(catalog::catalog_page))
         .route("/catalog/scan", axum::routing::post(catalog::handle_scan))
+        .route(
+            "/catalog/undo",
+            axum::routing::post(catalog_undo::handle_undo),
+        )
         .route(
             "/catalog/scan-with-type",
             axum::routing::post(catalog::handle_scan_with_type),

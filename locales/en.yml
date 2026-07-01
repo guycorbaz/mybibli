@@ -228,6 +228,11 @@ feedback:
   location_stub: "Location contents — coming soon."
   active_location: "Active location: %{path}. Scan V-codes to shelve here."
   scan_vcode_to_shelve: "Scan a V-code to shelve at this location."
+  undo_label: "Undo"
+  undo_success_shelve: "Undone — the volume is back to its previous location."
+  undo_success_activate_location: "Undone — the previous active location is restored."
+  undo_too_late: "Too late to undo — the 30-second window has passed."
+  undo_nothing: "Nothing to undo."
   volume_created_and_shelved: "Volume %{label} attached to %{title} and shelved at %{path}."
   metadata_fetching: "Title created from ISBN %{isbn} — Fetching metadata..."
   metadata_resolved: "Metadata found: %{title} by %{author}."
@@ -446,6 +451,7 @@ guide:
   volume_ready: "Volume %{label} ready. Scan an L-code to shelve, or another V-code."
   shelved: "Shelved! Scan another ISBN, V-code, or L-code."
   batch_active: "Active location: %{path}. Scan V-codes to shelve here."
+  undone: "Action undone. Continue scanning."
 volume:
   # Issue #108 — short "vol" badge label on title cards, i18n'd out of the templates.
   short_label: "vol"

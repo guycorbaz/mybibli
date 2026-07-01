@@ -228,6 +228,11 @@ feedback:
   location_stub: "Standort-Inhalt — folgt in Kürze."
   active_location: "Aktiver Standort: %{path}. Scannen Sie V-Codes, um hier einzustellen."
   scan_vcode_to_shelve: "Scannen Sie einen V-Code, um an diesem Standort einzustellen."
+  undo_label: "Rückgängig"
+  undo_success_shelve: "Rückgängig gemacht — das Exemplar ist wieder an seinem vorherigen Standort."
+  undo_success_activate_location: "Rückgängig gemacht — der vorherige aktive Standort ist wiederhergestellt."
+  undo_too_late: "Zu spät zum Rückgängigmachen — das 30-Sekunden-Fenster ist abgelaufen."
+  undo_nothing: "Nichts rückgängig zu machen."
   volume_created_and_shelved: "Exemplar %{label} an %{title} angehängt und am Standort %{path} eingestellt."
   metadata_fetching: "Titel aus ISBN %{isbn} angelegt — Metadaten werden geladen…"
   metadata_resolved: "Metadaten gefunden: %{title} von %{author}."
@@ -439,6 +444,7 @@ guide:
   volume_ready: "Exemplar %{label} bereit. Scannen Sie einen L-Code zum Einstellen oder einen weiteren V-Code."
   shelved: "Eingestellt! Scannen Sie eine weitere ISBN, einen V-Code oder einen L-Code."
   batch_active: "Aktiver Standort: %{path}. Scannen Sie V-Codes, um hier einzustellen."
+  undone: "Aktion rückgängig gemacht. Weiter scannen."
 volume:
   # Issue #108 — short volume badge label on title cards, i18n'd out of the templates.
   short_label: "Ex."

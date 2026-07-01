@@ -200,6 +200,41 @@
         });
     }
 
+    // polish-2 (#9): "Undo last scan action" affordance. The button posts to
+    // /catalog/undo via HTMX (hx-post on the button, CSRF auto-injected by
+    // csrf.js). This module only adds UX guards: (a) disable the button on
+    // click so a double-tap can't fire two undos, and (b) remove the button
+    // after the server-side 30-second window elapses, so a stale button can't
+    // invite a guaranteed-rejected click. The server stays authoritative on
+    // the window and on single-use semantics. CSP-clean — no inline handlers.
+    function initScanUndo() {
+        var list = document.getElementById("feedback-list");
+        if (!list) return;
+
+        document.addEventListener("click", function (e) {
+            var btn = e.target.closest && e.target.closest("[data-action='undo-scan']");
+            if (!btn) return;
+            btn.disabled = true;
+        });
+
+        var UNDO_WINDOW_MS = 30000;
+        var observer = new MutationObserver(function (mutations) {
+            mutations.forEach(function (mutation) {
+                mutation.addedNodes.forEach(function (node) {
+                    if (node.nodeType !== 1) return;
+                    var btn = (node.matches && node.matches("[data-action='undo-scan']"))
+                        ? node
+                        : (node.querySelector && node.querySelector("[data-action='undo-scan']"));
+                    if (!btn) return;
+                    setTimeout(function () {
+                        if (btn && btn.parentNode) btn.remove();
+                    }, UNDO_WINDOW_MS);
+                });
+            });
+        });
+        observer.observe(list, { childList: true });
+    }
+
     // Story 8-5: System Settings → Metadata Providers form. Each row has a
     // text input and a "Clear this key on save" checkbox. When the checkbox
     // is checked, the sibling text input is disabled (and its value cleared)
@@ -372,6 +407,7 @@
         initAudioFeedback();
         initHtmxErrorRecovery();
         initFeedbackDismiss();
+        initScanUndo();
         initProviderKeyClearToggle();
         initBorrowerDetailReload();
         initTitleEditFormEscape();

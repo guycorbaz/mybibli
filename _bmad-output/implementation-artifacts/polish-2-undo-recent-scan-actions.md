@@ -1,6 +1,6 @@
 # Polish iteration 2: Undo for recent scan actions
 
-Status: ready-for-dev
+Status: review
 
 **Bundle type:** post-Epic-10 issue-driven polish iteration (per Epic 10 retro action A5 — production-driven polish, no formal epic). Single GitHub issue, single feature.
 
@@ -190,6 +190,54 @@ Before marking the implementation PR ready, invoke `/bmad-code-review` (3-layer 
 
 Same table as polish-1: Critical/High = in-branch blockers; Medium = blocker per Rule #6 unless action-irrelevant (split to a `type:code-review-finding` issue, documented in PR body); Low = file as deferred GH issue.
 
+## Tasks/Subtasks
+
+- [x] **Task 1 — Code map** of the 4 scan sites + OOB builders + role guard (done in spec; verified against source).
+- [x] **Task 2 — Session undo-log store (AC1):** `src/services/scan_undo.rs` (`UndoableAction`, `UndoKind`, `SCAN_UNDO_WINDOW_SECS`, pure `undo_is_within_window`) + `SessionModel::{set,get,clear}_last_undoable_action`; 6 pure unit tests.
+- [x] **Task 3 — Instrument the 4 call sites (AC2):** prior-state captured BEFORE each mutation at `catalog.rs` :516 / :668 / L-code-assign / L-code-activate; best-effort record.
+- [x] **Task 4 — Undo affordance (AC3):** `feedback_html_undoable` in `src/utils.rs` (shared inner `feedback_html_action`); wired to the shelve + activate feedback entries only.
+- [x] **Task 5 — `POST /catalog/undo` (AC4):** `src/routes/catalog_undo.rs::handle_undo` + route in `mod.rs`; window guard, reversal, deleted-prior guard, single-use clear, guide-strip OOB.
+- [x] **Task 6 — Client JS (AC5):** `initScanUndo` in `static/js/mybibli.js` (disable-on-click + 30s auto-remove observer).
+- [x] **Task 7 — i18n (AC6):** 6 keys × 4 locales (de/en/fr/it); `locale_parity` green.
+- [x] **Task 8 — Unit + integration tests (AC7):** `tests/scan_undo_integration.rs` (6 `#[sqlx::test]` cases) — all green.
+- [x] **Task 9 — E2E (AC8):** 2 undo journeys added to `tests/e2e/specs/journeys/shelving.spec.ts`. *(To be validated via `CI=true --workers=2` on the full stack before push — see Completion Notes.)*
+- [x] **Task 10 — Docs (AC9):** manual subsection (en+fr) + PDFs rebuilt + CLAUDE.md pattern note. *(Full v1.10.0 release doc sync deferred to the release cut — see Completion Notes.)*
+
 ## Dev Agent Record
 
-_(to be filled by the dev agent during implementation — decisions on: `:833` prior-location read path; timestamp clock source; whether OOB builders were lifted to `pub(crate)`; manual chapter number touched; any handler-guard extractor specifics.)_
+### Decisions
+
+- **`:833` prior-location read path** — read the volume's prior `location_id` in the handler via `VolumeModel::find_by_label(&vol_label)` BEFORE calling `VolumeService::assign_location` (the service overwrites it). The returned `volume.id` from `assign_location` is authoritative for the recorded `volume_id`.
+- **Timestamp clock source** — `chrono::Utc::now().naive_utc()` at each record site and in `handle_undo`; the window comparison is the pure `undo_is_within_window` helper so tests are wall-clock-independent.
+- **OOB scope on undo** — refresh only `guide-strip`. Deliberately NOT `context-banner` / `session-counter`: undoing a location change alters neither the active title context nor any counter, so re-rendering them would be a pointless DB round-trip and risk a drifting second copy of that markup. Made `guide_strip_html` `pub(crate)` for reuse (DRY).
+- **Handler placement** — `handle_undo` lives in a NEW `src/routes/catalog_undo.rs`, not `catalog.rs` (already 2800 lines, over Foundation-Rule-#12's 2000 budget). The 4 site instrumentations unavoidably edit `catalog.rs` but add only a handful of lines each.
+- **Role guard** — `session.require_role(Role::Librarian, locale.0)?`, identical to `handle_scan`.
+- **i18n placement** — new keys under the existing `feedback:` / `guide:` trees (there is no `action:` top-level group), so no new locale sub-tree.
+- **Raw-string gotcha** — the undo button literal contains `="#feedback-list"`, whose `"#` closes an `r#"…"#` raw string early; used `r##"…"##`.
+
+### Completion Notes
+
+- Rust green locally: `cargo clippy --workspace --all-targets -D warnings` clean; `cargo test --lib` 1055 passed; `tests/scan_undo_integration.rs` 6/6; `locale_parity` 3/3; `templates_audit` 16/16 (CSP no-inline + hx-confirm allowlist still empty + CSRF form coverage); adjacent suites (home_scan_redirect, csrf_integration, role_gating, saved_searches_integration, connection_lost_overlay) green — no regression from the `feedback_html` refactor.
+- **E2E validated on the full stack (Rule #13 §4).** Built the app image + fresh DB via `E2E_HOST_PORT=8091 ./scripts/e2e-reset.sh` (host 8080 was taken by an unrelated container). `CI=true --workers=2` shelving spec → 8/8 pass (6 existing + 2 new undo journeys). Full suite on a pristine DB → **294 passed**, 1 flaky (recovered), 1 pre-existing shared-state-flaky failure `title-detail-volumes.spec.ts:22` that PASSES in isolation and is unrelated to this change (doesn't touch feedback rendering).
+- **v1.10.0 release doc sync deferred to the release cut** (Rule 19): README status/version, ROADMAP (move #9 planned→shipped + add v1.10.0 section), `docs/dockerhub-overview.md`, `website/{index,roadmap}.html`, GitHub Release page, `Cargo.toml` bump, manual ch.1 version line + "What's new". The manual **source** subsection + rebuilt PDFs are already on-branch; the version-string bumps happen when the tag is cut.
+- **Bundling:** this branch (`polish-2/undo-recent-scan-actions`) also carries the pending `docs/scanner-hardware-confirmed` commit; docs + feature push together in one PR / one CI run (user decision).
+
+## File List
+
+- `src/services/scan_undo.rs` (new) — `UndoableAction`/`UndoKind`, window const + pure helper, 6 unit tests.
+- `src/services/mod.rs` — register `scan_undo`.
+- `src/models/session.rs` — `set/get/clear_last_undoable_action`.
+- `src/utils.rs` — `feedback_html_undoable` + shared `feedback_html_action`.
+- `src/routes/catalog.rs` — instrument 4 scan sites; `guide_strip_html` → `pub(crate)`; undoable feedback.
+- `src/routes/catalog_undo.rs` (new) — `POST /catalog/undo` handler.
+- `src/routes/mod.rs` — register module + route.
+- `static/js/mybibli.js` — `initScanUndo` (+ wired into `init`).
+- `locales/{de,en,fr,it}.yml` — 6 new keys each.
+- `tests/scan_undo_integration.rs` (new) — 6 `#[sqlx::test]` cases.
+- `tests/e2e/specs/journeys/shelving.spec.ts` — 2 undo journeys.
+- `docs/manual/{en,fr}/03-usage.tex` + rebuilt `docs/manual/*.pdf`.
+- `CLAUDE.md` — scan-undo pattern note.
+
+## Change Log
+
+- 2026-07-01 — Implemented undo for recent scan actions (#9). Server-authoritative 30s window via `sessions.data["last_undoable_action"]`, no migration. New `POST /catalog/undo`, undoable feedback affordance, 4-locale i18n, unit + DB-integration + E2E tests, manual + CLAUDE.md docs. Status → review.

@@ -229,6 +229,11 @@ feedback:
   location_stub: "Contenu de l'emplacement — bientôt disponible."
   active_location: "Emplacement actif : %{path}. Scannez des codes V pour ranger ici."
   scan_vcode_to_shelve: "Scannez un code V pour ranger à cet emplacement."
+  undo_label: "Annuler"
+  undo_success_shelve: "Annulé — le volume est revenu à son emplacement précédent."
+  undo_success_activate_location: "Annulé — l'emplacement actif précédent est rétabli."
+  undo_too_late: "Trop tard pour annuler — le délai de 30 secondes est écoulé."
+  undo_nothing: "Rien à annuler."
   volume_created_and_shelved: "Volume %{label} attaché à %{title} et rangé à %{path}."
   metadata_fetching: "Titre créé à partir de l'ISBN %{isbn} — Récupération des métadonnées..."
   metadata_resolved: "Métadonnées trouvées : %{title} par %{author}."
@@ -441,6 +446,7 @@ guide:
   volume_ready: "Volume %{label} prêt. Scannez un code L pour ranger, ou un autre code V."
   shelved: "Rangé ! Scannez un autre ISBN, code V ou code L."
   batch_active: "Emplacement actif : %{path}. Scannez des codes V pour ranger ici."
+  undone: "Action annulée. Continuez à scanner."
 volume:
   # Issue #108 — short "vol" badge label on title cards, i18n'd out of the templates.
   short_label: "vol"

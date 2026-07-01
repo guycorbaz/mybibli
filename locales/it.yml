@@ -224,6 +224,11 @@ feedback:
   location_stub: "Contenuto dell'ubicazione — prossimamente."
   active_location: "Ubicazione attiva: %{path}. Scansiona codici V per collocare qui."
   scan_vcode_to_shelve: "Scansiona un codice V per collocare in questa ubicazione."
+  undo_label: "Annulla"
+  undo_success_shelve: "Annullato — il volume è tornato alla sua ubicazione precedente."
+  undo_success_activate_location: "Annullato — l'ubicazione attiva precedente è ripristinata."
+  undo_too_late: "Troppo tardi per annullare — la finestra di 30 secondi è scaduta."
+  undo_nothing: "Niente da annullare."
   volume_created_and_shelved: "Esemplare %{label} collegato a %{title} e collocato in %{path}."
   metadata_fetching: "Titolo creato da ISBN %{isbn} — Recupero dei metadati…"
   metadata_resolved: "Metadati trovati: %{title} di %{author}."
@@ -433,6 +438,7 @@ guide:
   volume_ready: "Esemplare %{label} pronto. Scansiona un codice L per collocare, oppure un altro codice V."
   shelved: "Collocato! Scansiona un altro ISBN, codice V o codice L."
   batch_active: "Ubicazione attiva: %{path}. Scansiona codici V per collocare qui."
+  undone: "Azione annullata. Continua a scansionare."
 volume:
   # Issue #108 — short "vol" badge label on title cards, i18n'd out of the templates.
   short_label: "vol"

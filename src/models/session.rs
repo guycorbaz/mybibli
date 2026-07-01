@@ -228,6 +228,47 @@ impl SessionModel {
             .unwrap_or(0))
     }
 
+    // ─── Scan-undo log (polish-2 / #9) ────────────────────────────
+    // The most-recent undoable scan action, stored in the same session
+    // JSON blob as `active_location_id`. Single-action semantics: each
+    // set OVERWRITES the previous one, so only the last action is undoable.
+
+    pub async fn set_last_undoable_action(
+        pool: &DbPool,
+        token: &str,
+        action: &crate::services::scan_undo::UndoableAction,
+    ) -> Result<(), AppError> {
+        let mut data = Self::load_session_data(pool, token).await?;
+        data["last_undoable_action"] = serde_json::to_value(action)
+            .map_err(|e| AppError::Internal(format!("serialize undo action: {e}")))?;
+        Self::save_session_data(pool, token, &data).await
+    }
+
+    pub async fn get_last_undoable_action(
+        pool: &DbPool,
+        token: &str,
+    ) -> Result<Option<crate::services::scan_undo::UndoableAction>, AppError> {
+        let data = Self::load_session_data(pool, token).await?;
+        match data.get("last_undoable_action") {
+            Some(v) if !v.is_null() => match serde_json::from_value(v.clone()) {
+                Ok(action) => Ok(Some(action)),
+                Err(e) => {
+                    // Corrupt / stale-shape blob → behave as "nothing to undo".
+                    tracing::warn!(error = %e, "Corrupt last_undoable_action, ignoring");
+                    Ok(None)
+                }
+            },
+            _ => Ok(None),
+        }
+    }
+
+    pub async fn clear_last_undoable_action(pool: &DbPool, token: &str) -> Result<(), AppError> {
+        let mut data = Self::load_session_data(pool, token).await?;
+        data.as_object_mut()
+            .map(|o| o.remove("last_undoable_action"));
+        Self::save_session_data(pool, token, &data).await
+    }
+
     // ─── Internal helpers ─────────────────────────────────────────
 
     async fn load_session_data(pool: &DbPool, token: &str) -> Result<serde_json::Value, AppError> {
