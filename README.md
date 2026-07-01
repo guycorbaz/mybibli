@@ -22,7 +22,7 @@ Built for collectors who want more than a spreadsheet:
 - **Barcode-first cataloging.** Scan an ISBN / EAN-13 and the title resolves asynchronously through a metadata provider chain (BnF, Google Books, Open Library, Library of Congress, MusicBrainz, OMDb, TMDb, BDGest), with cover-image download and similar-title detection.
 - **Multi-media support.** Books, BD/comics (with multi-position omnibus volumes), audio releases, films/series — each typed correctly and with the right metadata provider chosen automatically.
 - **Series + collection awareness.** Gap detection on series volumes, Dewey-based browsing, similar-titles section.
-- **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow.
+- **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow, with a 30-second **Undo** on the last shelving or batch-location action.
 - **Loan management.** Borrower CRUD, loan registration with automatic location restoration on return, overdue threshold (admin-configurable), per-borrower history.
 - **Multi-role auth.** Anonymous (read-only), Librarian (catalog + loans), Admin (everything). Session inactivity timeout with keep-alive toast. FR/EN language toggle with per-user preference.
 - **Hardened by construction.** Strict Content Security Policy (no `unsafe-inline`/`unsafe-eval`), CSRF synchronizer-token middleware on every state-changing request (with a server-rendered "session expired" feedback when the token drifts — see [`docs/auth-threat-model.md`](docs/auth-threat-model.md)), scanner-guard against burst-keyboard input leaking into modals.
