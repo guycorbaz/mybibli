@@ -48,11 +48,20 @@ pub struct UndoableAction {
     /// `last_volume_label` cleared by the shelve, restored on undo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prev_last_volume_label: Option<String>,
+    /// When true, undo ALSO restores `prev_active_location` (set/clear). Used
+    /// by the L-code shelve path, which activates the batch location in the
+    /// same scan (D1): undoing that scan must revert BOTH the shelve and the
+    /// activation. False for the plain V-code shelves, which never touch the
+    /// active location — so `prev_active_location: None` there means "leave it
+    /// alone", NOT "clear it".
+    #[serde(default)]
+    pub revert_active_location: bool,
     /// When the action happened (UTC naive), for the window check.
     pub at: chrono::NaiveDateTime,
 }
 
 impl UndoableAction {
+    /// Plain V-code shelve (sites A1/A2) — does not touch the active location.
     pub fn shelve_volume(
         volume_id: u64,
         prev_location_id: Option<u64>,
@@ -65,6 +74,27 @@ impl UndoableAction {
             prev_location_id,
             prev_active_location: None,
             prev_last_volume_label,
+            revert_active_location: false,
+            at,
+        }
+    }
+
+    /// L-code shelve (site A3) — the same scan also activated the batch
+    /// location, so undo reverts BOTH (D1 = restore prior active location).
+    pub fn shelve_volume_via_lcode(
+        volume_id: u64,
+        prev_location_id: Option<u64>,
+        prev_active_location: Option<u64>,
+        prev_last_volume_label: Option<String>,
+        at: chrono::NaiveDateTime,
+    ) -> Self {
+        Self {
+            kind: UndoKind::ShelveVolume,
+            volume_id: Some(volume_id),
+            prev_location_id,
+            prev_active_location,
+            prev_last_volume_label,
+            revert_active_location: true,
             at,
         }
     }
@@ -76,6 +106,7 @@ impl UndoableAction {
             prev_location_id: None,
             prev_active_location,
             prev_last_volume_label: None,
+            revert_active_location: false,
             at,
         }
     }
@@ -159,6 +190,23 @@ mod tests {
         assert!(json.contains("\"shelve_volume\""));
         let back: UndoableAction = serde_json::from_str(&json).unwrap();
         assert_eq!(action, back);
+    }
+
+    #[test]
+    fn lcode_shelve_sets_revert_flag_and_carries_prior_active_location() {
+        // D1: the L-code shelve constructor must flag active-location revert
+        // and carry the prior active location, unlike the plain shelve.
+        let plain = UndoableAction::shelve_volume(1, Some(2), None, base());
+        assert!(!plain.revert_active_location);
+        assert_eq!(plain.prev_active_location, None);
+
+        let lcode =
+            UndoableAction::shelve_volume_via_lcode(1, Some(2), Some(9), Some("V0001".into()), base());
+        assert!(lcode.revert_active_location);
+        assert_eq!(lcode.prev_active_location, Some(9));
+        let back: UndoableAction =
+            serde_json::from_str(&serde_json::to_string(&lcode).unwrap()).unwrap();
+        assert_eq!(lcode, back);
     }
 
     #[test]

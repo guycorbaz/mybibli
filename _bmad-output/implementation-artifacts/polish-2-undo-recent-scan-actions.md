@@ -1,6 +1,6 @@
 # Polish iteration 2: Undo for recent scan actions
 
-Status: review
+Status: done
 
 **Bundle type:** post-Epic-10 issue-driven polish iteration (per Epic 10 retro action A5 — production-driven polish, no formal epic). Single GitHub issue, single feature.
 
@@ -238,6 +238,61 @@ Same table as polish-1: Critical/High = in-branch blockers; Medium = blocker per
 - `docs/manual/{en,fr}/03-usage.tex` + rebuilt `docs/manual/*.pdf`.
 - `CLAUDE.md` — scan-undo pattern note.
 
+## Review Findings (3-layer adversarial review, 2026-07-01)
+
+Blind Hunter + Edge Case Hunter + Acceptance Auditor. 12 raw → 8 unique after dedup. Triage per `bmad-code-review`.
+
+### Decision-needed (1)
+
+- [ ] [Review][Decision] D1: **Undo of an L-code shelve leaves the batch location activated** (`blind+edge`, Medium) — the L-code-with-pending-volume branch does TWO mutations (`set_active_location` at `catalog.rs:884` + the shelve) but records only `UndoableAction::shelve_volume`; `prev_active_location` captured at `:874` is discarded on this path. Undo restores the volume + label but leaves `active_location` pinned to the just-scanned L-code, so the next V-code auto-shelves elsewhere. Options: **(a)** also revert the activation (store `prev_active_location` in the shelve action + restore on undo) — most faithful "undo the whole scan"; **(b)** keep as-is (activation persists — intentional, the user may want to keep shelving there) and document it; **(c)** clear the active location on undo (don't restore prior, just deactivate).
+
+### Patch (7)
+
+- [ ] [Review][Patch] P1: **Stale undo buttons reverse the LATEST action, not their own** (`blind+edge`, High) — every shelve/activate appends its own action-agnostic `hx-post="/catalog/undo"` button (`utils.rs feedback_html_undoable`), each alive 30 s, but the server keeps ONE `last_undoable_action` slot. Shelve A then B within 30 s → clicking A's button undoes B and reports success. Fix (spec-aligned with single-action semantics): when a new undo button is inserted, remove/disable prior undo buttons client-side (`static/js/mybibli.js::initScanUndo`); optionally add a server nonce for defense-in-depth.
+- [ ] [Review][Patch] P2: **AC7 — 3 enumerated unit tests missing** (`auditor`, Medium) — no test asserts (a) a forward `POST /catalog/scan` shelve records the correct `prev_location_id`/`volume_id`; (b) `handle_undo` reverses an `ActivateLocation` action (asserts `get_active_location` restored/cleared); (c) `get_last_undoable_action` corrupt-JSON → `None`. Add to `tests/scan_undo_integration.rs`.
+- [ ] [Review][Patch] P3: **Prior-state capture swallows DB errors → wrong reversal** (`blind+edge`, Low) — `get_active_location(...).unwrap_or(None)` (`catalog.rs:874`) and `find_by_label(...).ok().flatten()` (`:892`) coerce a transient read error to `None`, so a later undo detaches / clears instead of restoring. Fix: on capture read error, skip recording the undoable action (degrade to "nothing to undo") rather than record a wrong `None`.
+- [ ] [Review][Patch] P4: **Undo re-attaches to a now-organizational location, bypassing the assignability guard** (`edge`, Low) — the forward shelve refuses organizational containers (`is_assignable()`), but `catalog_undo.rs` ShelveVolume only checks existence (`find_by_id(...).is_some()`). Add an `is_assignable()` check → detach if the prior location has become organizational.
+- [ ] [Review][Patch] P5: **Undo of a soft-deleted volume reports "Undone" on a 0-row update** (`edge`, Low) — `update_location` treats `rows_affected()==0` as success; if the volume was soft-deleted within the window, undo emits success feedback for a no-op. Fix: verify the volume exists (or check rows_affected) before claiming success.
+- [ ] [Review][Patch] P6: **Dead `prev_last_volume_label` restore in the ActivateLocation arm** (`blind`, Low) — `catalog_undo.rs` restores the label for `ActivateLocation`, but `activate_location(...)` hard-codes that field to `None`. Remove the dead branch.
+- [ ] [Review][Patch] P7: **activate→undo E2E doesn't assert the banner/guide reverts** (`auditor`, Low) — `shelving.spec.ts` only asserts the `undone` feedback text; strengthen to assert the active-location guide-strip actually reverts.
+
+### Resolution (round 1 — all applied 2026-07-01)
+
+D1 resolved as **option (a)** (user): undo of an L-code shelve restores the prior active location (new `UndoableAction::shelve_volume_via_lcode` + `revert_active_location` flag). All 7 patches applied and locked with tests:
+- P1 → `initScanUndo` removes older undo buttons on each new one (E2E `second shelve removes the earlier undo button`).
+- P2 → 3 tests added (`forward_scan_records_shelve_with_correct_prev_location`, `undo_reverses_activate_location`, `corrupt_undo_log_deserializes_to_none`).
+- P3 → prior-state reads kept as `Result`; recording skipped on read error (both L-code + activation paths).
+- P4 → undo re-attach guarded by `is_assignable()` (test `undo_detaches_when_prior_location_now_organizational`).
+- P5 → `find_by_id` existence check → "nothing to undo" on a deleted volume (test `undo_of_soft_deleted_volume_reports_nothing`).
+- P6 → dead label-restore removed from the ActivateLocation arm.
+- P7 → activate→undo E2E asserts `#guide-strip` reverts.
+- D1 → test `undo_lcode_shelve_restores_prior_active_location`.
+
+### Round 2 — re-review (2 layers: fix-verifier + fresh edge/blind)
+
+Fix-verifier: all 8 fixes **FIXED**, no new Critical/High/Medium. Fresh edge pass found **one new Medium** (missed in round 1) + Lows:
+
+- [x] [Review][Patch] R2-M1 (Medium, **fixed**): **Undo button removed at 20s, before the 30s window** — the button lives inside a success/info feedback entry that `initFeedbackAutoDismiss` fades at 10s / removes at 20s, so the button (and the 30s timer's target) died 10s early, contradicting the manual. Fix: `initFeedbackAutoDismiss` now skips entries containing `[data-action="undo-scan"]`; `initScanUndo`'s 30s timer removes the whole entry. (A real-time >20s E2E is impractical under the no-`waitForTimeout` flake gate; fix is deterministic + verified by re-review reasoning + 9/9 shelving E2E still green.)
+- [x] [Review][Patch] R2-L1 (Low, **fixed**): missing `volume_id` on a corrupt `ShelveVolume` blob returned a 500 instead of graceful degrade — now returns "nothing to undo" + clears the log (`catalog_undo.rs`).
+- R2-L2..L4 (Low, **accepted**): dead-affordance when P3 skips recording (harmless "nothing to undo" on click — best-effort contract); D1 guide-strip shows "undone" though batch mode was restored (cosmetic); active-location restore lacks the P4-style assignability guard (self-heals on next scan). Client same-tick-inversion concern was re-analyzed by the fix-verifier as a non-issue (newest node processed last survives).
+
+### Dismissed (4)
+
+- DSM1: `initScanUndo` no listener/observer teardown — `init()` runs once (DOMContentLoaded / immediate), consistent with every sibling `init*` fn in the file. Not a real leak.
+- DSM2: Non-atomic read-modify-write on `sessions.data` — pre-existing mechanism (all session-blob methods do load→mutate→save); accepted under the single-tenant / single-librarian model (same stance as #16), matches existing `active_location` handling.
+- DSM3: Future-dated `at` undoable indefinitely — requires clock skew backwards or a corrupt blob; corrupt JSON already degrades to `None` via deserialization. Negligible; clamping would break legitimate small skew (which the helper intentionally tolerates).
+- DSM4: AC4 OOB refreshes only `guide-strip`, not `#context-banner`/`#session-counter` — Acceptance Auditor VERIFIED this is correct: `session_item_count` counts *cataloged* items (only on `is_new`), not shelvings, and an undo of a location change alters neither the counter nor the active-title context. Working as intended (the Dev Agent Record decision holds).
+
+### Post-review test state (2026-07-01)
+
+- `cargo clippy --workspace --all-targets -D warnings` clean.
+- `cargo test --lib` 1056 passed (incl. `services::scan_undo` 7 unit tests).
+- `tests/scan_undo_integration.rs` **12 passed** (session store; forward-recording; reversal detach/restore/deleted-prior/organizational-guard/deleted-volume/activate-reversal; empty + expired; D1 L-code active-location restore; corrupt-JSON).
+- `locale_parity` + `templates_audit` green.
+- Full E2E on pristine stack: **294 passed** (shelving spec 9/9 incl. shelve→undo, activate→undo, and the retry-safe P1 "second shelve removes the earlier undo button"). Lone non-green = pre-existing shared-state flake `title-detail-volumes.spec.ts:22` (passes in isolation, unrelated to this change).
+- 3-layer adversarial review + 2 verification rounds → **0 surviving Medium+** (Foundation Rule #6 satisfied).
+
 ## Change Log
 
+- 2026-07-01 — Code review (3-layer) + 2 fix rounds: D1(a) L-code undo restores active location; P1 stale-button removal; P2 +3 tests; P3 skip-record-on-read-error; P4 assignability guard; P5 deleted-volume graceful; P6 dead-branch removal; P7 E2E; R2-M1 undo-button survives full 30s window (auto-dismiss exemption); R2-L1 graceful missing volume_id. Retry-safe E2E codes. Status → done.
 - 2026-07-01 — Implemented undo for recent scan actions (#9). Server-authoritative 30s window via `sessions.data["last_undoable_action"]`, no migration. New `POST /catalog/undo`, undoable feedback affordance, 4-locale i18n, unit + DB-integration + E2E tests, manual + CLAUDE.md docs. Status → review.

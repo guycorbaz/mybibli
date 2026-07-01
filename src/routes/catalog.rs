@@ -870,12 +870,13 @@ pub async fn handle_scan(
                 };
 
                 // polish-2 (#9): capture the prior active location BEFORE we
-                // overwrite it, so a pure location-activation can be undone.
-                let prev_active_location = match &session.token {
-                    Some(token) => SessionModel::get_active_location(pool, token)
-                        .await
-                        .unwrap_or(None),
-                    None => None,
+                // overwrite it, so it can be restored on undo. Kept as a
+                // Result — a read error skips undo-recording (P3) rather than
+                // recording a wrong `None` that would clear the active location.
+                let prev_active_location_read: Result<Option<u64>, AppError> = match &session.token
+                {
+                    Some(token) => SessionModel::get_active_location(pool, token).await,
+                    None => Ok(None),
                 };
 
                 // Always activate batch shelving mode when scanning L-code
@@ -889,29 +890,37 @@ pub async fn handle_scan(
                 if let Some(vol_label) = last_volume {
                     // polish-2 (#9): read the volume's prior location BEFORE the
                     // assign overwrites it, so the shelve can be undone.
-                    let prev_volume_location = VolumeModel::find_by_label(pool, &vol_label)
-                        .await
-                        .ok()
-                        .flatten()
-                        .and_then(|v| v.location_id);
+                    let prev_volume_location_read =
+                        VolumeModel::find_by_label(pool, &vol_label).await;
                     match VolumeService::assign_location(pool, &vol_label, &code).await {
                         Ok((volume, path)) => {
                             // Clear last_volume_label to prevent re-shelving on next L-code
                             if let Some(token) = &session.token {
                                 let _ = SessionModel::set_last_volume_label(pool, token, "").await;
-                                // Record the shelve; undo restores the prior
-                                // location AND the consumed volume label.
-                                let action = UndoableAction::shelve_volume(
-                                    volume.id,
-                                    prev_volume_location,
-                                    Some(vol_label.clone()),
-                                    chrono::Utc::now().naive_utc(),
-                                );
-                                if let Err(e) =
-                                    SessionModel::set_last_undoable_action(pool, token, &action)
+                                // Record the shelve — undo restores the prior
+                                // location, the consumed volume label, AND the
+                                // prior active location (D1). Only record when
+                                // BOTH prior-state reads succeeded (P3).
+                                match (&prev_volume_location_read, &prev_active_location_read) {
+                                    (Ok(prev_vol), Ok(prev_active)) => {
+                                        let action = UndoableAction::shelve_volume_via_lcode(
+                                            volume.id,
+                                            prev_vol.as_ref().and_then(|v| v.location_id),
+                                            *prev_active,
+                                            Some(vol_label.clone()),
+                                            chrono::Utc::now().naive_utc(),
+                                        );
+                                        if let Err(e) = SessionModel::set_last_undoable_action(
+                                            pool, token, &action,
+                                        )
                                         .await
-                                {
-                                    tracing::warn!(error = %e, "Failed to record undoable L-code shelve action");
+                                        {
+                                            tracing::warn!(error = %e, "Failed to record undoable L-code shelve action");
+                                        }
+                                    }
+                                    _ => {
+                                        tracing::warn!("Skipping undo record: prior-state read failed for L-code shelve");
+                                    }
                                 }
                             }
                             let message = rust_i18n::t!(
@@ -948,15 +957,24 @@ pub async fn handle_scan(
                 } else {
                     // No volume context — just activate batch shelving mode.
                     // polish-2 (#9): record so the activation can be undone.
+                    // Only record when the prior-active read succeeded (P3).
                     if let Some(token) = &session.token {
-                        let action = UndoableAction::activate_location(
-                            prev_active_location,
-                            chrono::Utc::now().naive_utc(),
-                        );
-                        if let Err(e) =
-                            SessionModel::set_last_undoable_action(pool, token, &action).await
-                        {
-                            tracing::warn!(error = %e, "Failed to record undoable location-activation");
+                        match &prev_active_location_read {
+                            Ok(prev_active) => {
+                                let action = UndoableAction::activate_location(
+                                    *prev_active,
+                                    chrono::Utc::now().naive_utc(),
+                                );
+                                if let Err(e) =
+                                    SessionModel::set_last_undoable_action(pool, token, &action)
+                                        .await
+                                {
+                                    tracing::warn!(error = %e, "Failed to record undoable location-activation");
+                                }
+                            }
+                            Err(_) => {
+                                tracing::warn!("Skipping undo record: active-location read failed");
+                            }
                         }
                     }
                     let message =

@@ -207,4 +207,4 @@ development_status:
   # Status flow: backlog → ready-for-dev → in-progress → done. Same as
   # stories. Lightweight "iteration retro" only if a new pattern emerges.
   polish-1-modal-lifecycle-hardening: backlog
-  polish-2-undo-recent-scan-actions: review
+  polish-2-undo-recent-scan-actions: done

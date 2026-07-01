@@ -66,6 +66,12 @@
                     }
                 }
 
+                // polish-2 (#9): an entry still showing its Undo button is
+                // owned by initScanUndo for the full 30s undo window — do not
+                // fade or remove it here (the default 20s removal would kill
+                // the button 10s before the server window closes).
+                if (entry.querySelector("[data-action='undo-scan']")) return;
+
                 var age = now - parseInt(created, 10);
                 if (age >= 20000) {
                     entry.remove();
@@ -226,8 +232,19 @@
                         ? node
                         : (node.querySelector && node.querySelector("[data-action='undo-scan']"));
                     if (!btn) return;
+                    // The server keeps only the LAST undoable action, so any
+                    // older undo button now refers to a superseded action —
+                    // remove them so a stale click can't reverse the wrong one.
+                    list.querySelectorAll("[data-action='undo-scan']").forEach(function (other) {
+                        if (other !== btn) other.remove();
+                    });
+                    // At the end of the server-authoritative window, remove the
+                    // whole entry (button + text). initFeedbackAutoDismiss skips
+                    // undo entries, so this is their sole dismissal path.
                     setTimeout(function () {
-                        if (btn && btn.parentNode) btn.remove();
+                        var entry = btn.closest(".feedback-entry");
+                        if (entry && entry.parentNode) entry.remove();
+                        else if (btn && btn.parentNode) btn.remove();
                     }, UNDO_WINDOW_MS);
                 });
             });
