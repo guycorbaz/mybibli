@@ -37,18 +37,31 @@ means: title present, at least one contributor, and a year. Partial
 matches are recorded but mybibli keeps walking the chain until it
 finds a clean one or runs out of providers.
 
-\subsection*{Cover-image fallback}
+\subsection*{Cover-image fallbacks}
 
 When the resolving provider returns metadata but no cover URL
 (BnF never carries image URLs in its UNIMARC payload; Google Books
 occasionally lacks \texttt{imageLinks} for self-published titles)
-mybibli falls back to the \emph{Open Library Covers API}
-(\url{https://covers.openlibrary.org/}) keyed by ISBN. That covers
-index is broad and independent of Open Library's catalogue
-completeness, so most books still get a cover even when their text
-metadata comes from a different provider. The fallback runs only
+mybibli tries three cover-only sources in order, keyed by ISBN:
+
+\begin{enumerate}
+  \item The \emph{BnF Couvertures} service (\url{https://api.bnf.fr})
+        — the Biblioth\`eque nationale de France's legal-deposit
+        cover scans. The strongest source for French and Swiss-French
+        publishers, typically at excellent image quality. Cover
+        images are reused under the BnF metadata license (source
+        attribution).
+  \item \emph{Inventaire.io} (\url{https://inventaire.io}) — a
+        libre, community-driven book database; particularly strong
+        on French-language comics and manga.
+  \item The \emph{Open Library Covers API}
+        (\url{https://covers.openlibrary.org/}) — broad English /
+        multilingual coverage.
+\end{enumerate}
+
+The first source that has an image wins; the fallbacks run only
 when (a) the chain succeeded \emph{and} (b) the resolving provider
-gave no \texttt{cover\_url}, so a title for which no provider has a
+gave no \texttt{cover\_url}, so a title for which no source has a
 cover anywhere will land cover-less without retry storms.
 
 \subsection*{When no provider has a cover: upload your own}

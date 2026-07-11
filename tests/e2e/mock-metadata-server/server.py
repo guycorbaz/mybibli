@@ -6,6 +6,11 @@ responses for known ISBNs.
 
 import http.server
 import json
+
+# #427 — 100x150 red JPEG (quality 80), pregenerated with PIL, always valid.
+TEST_COVER_JPEG_B64 = (
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCACWAGQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDk6KKK8I/VgooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD//Z"
+)
 import urllib.parse
 
 # --- BnF known ISBNs (returned by BnF endpoint) ---
@@ -166,11 +171,67 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
         elif path == "/test-cover.jpg":
             self._handle_test_cover()
 
+        # --- BnF Couvertures endpoint (#427) ---
+        elif path == "/couverture/image/image/recupererImage":
+            self._handle_bnf_cover(params)
+
+        # --- Inventaire.io entities endpoint (#427) ---
+        elif path == "/api/entities/by-uris":
+            self._handle_inventaire(params)
+
+        # --- Inventaire.io image host (#427) ---
+        elif path.startswith("/img/entities/"):
+            self._handle_test_cover()
+
         else:
             self.send_response(404)
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
             self.wfile.write(b"Not Found")
+
+    # --- #427 cover-fallback fixtures -------------------------------
+    # cover-fallbacks.spec.ts scans these two spec-unique ISBNs; the BnF
+    # SRU catch-all resolves their metadata (without a cover URL), then
+    # the cover-resolution fallbacks find an image here:
+    #   - 9786678000016 (specIsbn("BN", 1)) → BnF Couvertures serves it
+    #   - 9787386000015 (specIsbn("IV", 1)) → Inventaire serves it
+    BNF_COVER_EANS = {"9786678000016"}
+    INVENTAIRE_COVER_ISBNS = {"9787386000015"}
+
+    def _handle_bnf_cover(self, params):
+        """#427 — BnF Service Couvertures. Mirrors the REAL API's quirk:
+        'no cover' is an HTTP 500 with an HTML body, NOT a 404."""
+        ean = params.get("EAN", [""])[0]
+        if ean in self.BNF_COVER_EANS:
+            self._handle_test_cover()
+        else:
+            body = b"<html><body>Erreur interne</body></html>"
+            self.send_response(500)
+            self.send_header("Content-Type", "text/html;charset=utf-8")
+            self.end_headers()
+            self.wfile.write(body)
+
+    def _handle_inventaire(self, params):
+        """#427 — Inventaire.io by-uris. Exercises the redirect shape
+        (isbn: uri -> internal inv: uri), the common prod case."""
+        uris = params.get("uris", [""])[0]
+        isbn = uris.replace("isbn:", "").strip()
+        if isbn in self.INVENTAIRE_COVER_ISBNS:
+            response = {
+                "entities": {
+                    "inv:mock427entity": {
+                        "claims": {"invp:P2": ["mock427coverhash"]}
+                    }
+                },
+                "redirects": {f"isbn:{isbn}": "inv:mock427entity"},
+            }
+        else:
+            response = {"entities": {}, "redirects": {}, "notFound": [uris]}
+        body = json.dumps(response)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(body.encode("utf-8"))
 
     def _handle_bnf(self, params):
         query = params.get("query", [""])[0]
@@ -357,40 +418,18 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body.encode("utf-8"))
 
     def _handle_test_cover(self):
-        """Serve a small 100x150 red JPEG test image."""
-        import struct
-        # Minimal valid JPEG: 2x2 red pixels (smallest valid JPEG)
-        # Using PIL if available, otherwise return a minimal JPEG
-        try:
-            from PIL import Image
-            import io
-            img = Image.new("RGB", (100, 150), color=(200, 50, 50))
-            buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=80)
-            body = buf.getvalue()
-        except ImportError:
-            # Fallback: hardcoded minimal 1x1 JPEG
-            body = bytes([
-                0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
-                0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
-                0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08, 0x07, 0x07, 0x07, 0x09,
-                0x09, 0x08, 0x0A, 0x0C, 0x14, 0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12,
-                0x13, 0x0F, 0x14, 0x1D, 0x1A, 0x1F, 0x1E, 0x1D, 0x1A, 0x1C, 0x1C, 0x20,
-                0x24, 0x2E, 0x27, 0x20, 0x22, 0x2C, 0x23, 0x1C, 0x1C, 0x28, 0x37, 0x29,
-                0x2C, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27, 0x39, 0x3D, 0x38, 0x32,
-                0x3C, 0x2E, 0x33, 0x34, 0x32, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01,
-                0x00, 0x01, 0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4, 0x00, 0x1F, 0x00, 0x00,
-                0x01, 0x05, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                0x09, 0x0A, 0x0B, 0xFF, 0xC4, 0x00, 0xB5, 0x10, 0x00, 0x02, 0x01, 0x03,
-                0x03, 0x02, 0x04, 0x03, 0x05, 0x05, 0x04, 0x04, 0x00, 0x00, 0x01, 0x7D,
-                0x01, 0x02, 0x03, 0x00, 0x04, 0x11, 0x05, 0x12, 0x21, 0x31, 0x41, 0x06,
-                0x13, 0x51, 0x61, 0x07, 0x22, 0x71, 0x14, 0x32, 0x81, 0x91, 0xA1, 0x08,
-                0x23, 0x42, 0xB1, 0xC1, 0x15, 0x52, 0xD1, 0xF0, 0x24, 0x33, 0x62, 0x72,
-                0x82, 0x09, 0x0A, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x25, 0x26, 0x27, 0x28,
-                0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0x7B, 0x94,
-                0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xD9,
-            ])
+        """Serve a small 100x150 red JPEG test image.
+
+        #427: the image is a pregenerated, embedded, VALID JPEG. The
+        previous implementation depended on PIL (absent from the mock
+        container) and fell back to a truncated hand-rolled JPEG that
+        the app's `image` crate rejected — undetected for months
+        because the app's unconditional http->https rewrite meant no
+        mock-served cover was ever actually downloaded. Both bugs are
+        fixed together (see src/services/cover.rs #427).
+        """
+        import base64
+        body = base64.b64decode(TEST_COVER_JPEG_B64)
         self.send_response(200)
         self.send_header("Content-Type", "image/jpeg")
         self.send_header("Content-Length", str(len(body)))
