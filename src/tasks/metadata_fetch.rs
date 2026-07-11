@@ -39,6 +39,27 @@ where
     });
 }
 
+/// #419 — per-title outcome of a metadata-fetch run, consumed by the
+/// bulk cover-refetch loop for retry decisions and the completion
+/// summary. The scan-time call sites go through [`fetch_metadata_chain`]
+/// and discard it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FetchOutcome {
+    /// Metadata resolved AND a cover was downloaded + stored.
+    CoverRecovered,
+    /// Chain exhausted with providers answering 429/503 — transient;
+    /// the bulk loop retries this title with backoff.
+    Throttled,
+    /// A provider-side or internal error consumed the attempt (cover
+    /// download failed, DB update failed). Not retried within the run.
+    Failed,
+    /// Providers answered but no cover exists for this title (or the
+    /// chain genuinely found no metadata). The "legitimately nothing
+    /// there" bucket — per the 2026-05 audit most FR/CH/DE tech
+    /// publishers land here.
+    NotFound,
+}
+
 /// Fetch metadata asynchronously for a title using the provider chain.
 /// This function is meant to be called via `tokio::spawn`.
 ///
@@ -60,6 +81,9 @@ where
 /// `routes::titles::admin_redownload_metadata`, which already calls
 /// `TitleService::invalidate_metadata_cache` before its synchronous
 /// `ChainExecutor::execute` call.
+///
+/// Thin wrapper over [`fetch_metadata_chain_outcome`] for the
+/// scan-time call sites that don't consume the outcome.
 #[allow(clippy::too_many_arguments)]
 pub async fn fetch_metadata_chain(
     pool: DbPool,
@@ -74,6 +98,39 @@ pub async fn fetch_metadata_chain(
     covers_dir: PathBuf,
     force_refresh: bool,
 ) {
+    let _ = fetch_metadata_chain_outcome(
+        pool,
+        title_id,
+        code,
+        code_type,
+        media_type,
+        registry,
+        timeout_secs,
+        per_provider_timeouts,
+        http_client,
+        covers_dir,
+        force_refresh,
+    )
+    .await;
+}
+
+/// #419 — same as [`fetch_metadata_chain`] but reports the per-title
+/// [`FetchOutcome`] so the bulk cover-refetch loop can retry throttled
+/// titles and build its completion summary.
+#[allow(clippy::too_many_arguments)]
+pub async fn fetch_metadata_chain_outcome(
+    pool: DbPool,
+    title_id: u64,
+    code: String,
+    code_type: CodeType,
+    media_type: MediaType,
+    registry: Arc<ProviderRegistry>,
+    timeout_secs: u64,
+    per_provider_timeouts: crate::metadata::chain::ProviderTimeouts,
+    http_client: reqwest::Client,
+    covers_dir: PathBuf,
+    force_refresh: bool,
+) -> FetchOutcome {
     tracing::info!(
         title_id = title_id,
         code = %code,
@@ -99,7 +156,7 @@ pub async fn fetch_metadata_chain(
         );
     }
 
-    match ChainExecutor::execute(
+    let chain_outcome = ChainExecutor::execute_detailed(
         &registry,
         &pool,
         &code,
@@ -108,21 +165,22 @@ pub async fn fetch_metadata_chain(
         timeout_secs,
         &per_provider_timeouts,
     )
-    .await
-    {
+    .await;
+
+    match chain_outcome.result {
         Some(metadata) => {
             tracing::info!(title_id = title_id, code = %code, "Metadata fetch completed successfully");
             if let Err(e) = update_title_from_metadata(&pool, title_id, &metadata).await {
                 tracing::warn!(title_id = title_id, error = %e, "Failed to update title from metadata");
                 mark_failed(&pool, title_id).await;
-                return;
+                return FetchOutcome::Failed;
             }
 
             // Resolve cover URL via the shared fallback helper (fix #225 + #228).
             let cover_url =
                 resolve_cover_url_with_fallback(&http_client, &metadata, &code, &code_type).await;
 
-            if let Some(cover_url) = cover_url.as_deref() {
+            let outcome = if let Some(cover_url) = cover_url.as_deref() {
                 match CoverService::download_and_resize(
                     &http_client,
                     cover_url,
@@ -136,6 +194,9 @@ pub async fn fetch_metadata_chain(
                             update_cover_image_url(&pool, title_id, Some(&local_path)).await
                         {
                             tracing::warn!(title_id = title_id, error = %e, "Failed to update cover_image_url");
+                            FetchOutcome::Failed
+                        } else {
+                            FetchOutcome::CoverRecovered
                         }
                     }
                     Err(e) => {
@@ -143,15 +204,28 @@ pub async fn fetch_metadata_chain(
                         if let Err(db_err) = update_cover_image_url(&pool, title_id, None).await {
                             tracing::warn!(title_id = title_id, error = %db_err, "Failed to clear cover_image_url after download failure");
                         }
+                        FetchOutcome::Failed
                     }
                 }
-            }
+            } else {
+                // Metadata exists but no provider offers a cover — the
+                // "legitimately nothing there" bucket.
+                FetchOutcome::NotFound
+            };
 
             mark_resolved(&pool, title_id).await;
+            outcome
         }
         None => {
-            tracing::info!(title_id = title_id, code = %code, "No metadata found from providers");
-            mark_failed(&pool, title_id).await;
+            if chain_outcome.throttled {
+                tracing::info!(title_id = title_id, code = %code, "Metadata chain throttled (429/503), no result");
+                mark_failed(&pool, title_id).await;
+                FetchOutcome::Throttled
+            } else {
+                tracing::info!(title_id = title_id, code = %code, "No metadata found from providers");
+                mark_failed(&pool, title_id).await;
+                FetchOutcome::NotFound
+            }
         }
     }
 }

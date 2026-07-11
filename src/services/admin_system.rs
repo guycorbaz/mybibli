@@ -80,6 +80,30 @@ pub fn validate_provider_timeout_secs(value: u64, loc: &'static str) -> Result<(
     }
 }
 
+// Issue #419 — inter-title delay for the admin bulk cover-refetch loop
+// (milliseconds). Seeded by migration 20260711000000, default '1000'.
+// Surfaced in the same /admin > System "Metadata Providers" timeouts
+// block as the #334 scalars.
+pub const KEY_BULK_REFETCH_DELAY: &str = "bulk_refetch_delay_ms";
+
+/// Inclusive bounds for the bulk-refetch inter-title delay (ms). 0 is
+/// allowed (explicit "no pacing" opt-out); the 60 s ceiling keeps a
+/// fat-fingered value from stretching a 100-title run past 100 minutes.
+pub const BULK_REFETCH_DELAY_MIN_MS: u64 = 0;
+pub const BULK_REFETCH_DELAY_MAX_MS: u64 = 60_000;
+
+/// Validate the bulk-refetch inter-title delay (ms). Returns
+/// `BadRequest` with a localized message if out of range.
+pub fn validate_bulk_refetch_delay_ms(value: u64, loc: &'static str) -> Result<(), AppError> {
+    if (BULK_REFETCH_DELAY_MIN_MS..=BULK_REFETCH_DELAY_MAX_MS).contains(&value) {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest(
+            rust_i18n::t!("error.system.bulk_refetch_delay_invalid", locale = loc).to_string(),
+        ))
+    }
+}
+
 // Issue #418 — admin-configurable session inactivity timeout. The row
 // (seeded by the initial-schema migration, default '4') was already
 // parsed by `AppSettings::load_from_db` into `session_timeout_secs`;

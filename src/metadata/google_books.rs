@@ -157,6 +157,12 @@ impl MetadataProvider for GoogleBooksProvider {
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
             return Err(MetadataError::RateLimited);
         }
+        // #419 — Google Books signals burst throttling with 503 storms
+        // (prod evidence 2026-07-10), not 429. Typed so the bulk
+        // cover-refetch loop can back off and retry.
+        if status == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+            return Err(MetadataError::Unavailable);
+        }
         if !status.is_success() {
             return Err(MetadataError::Network(format!(
                 "Google Books API returned status {status}"

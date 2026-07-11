@@ -206,4 +206,14 @@ impl AppState {
             .map(|s| s.provider_health_probe_timeout_secs)
             .unwrap_or_else(|_| AppSettings::default().provider_health_probe_timeout_secs)
     }
+
+    /// Issue #419: inter-title delay (milliseconds) for the admin bulk
+    /// cover-refetch loop. Snapshotted once per bulk run — the run in
+    /// flight keeps its value; the next run picks up an admin change.
+    pub fn bulk_refetch_delay_ms(&self) -> u64 {
+        self.settings
+            .read()
+            .map(|s| s.bulk_refetch_delay_ms)
+            .unwrap_or_else(|_| AppSettings::default().bulk_refetch_delay_ms)
+    }
 }

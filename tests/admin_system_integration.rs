@@ -845,6 +845,145 @@ async fn load_from_db_clamps_out_of_range_timeouts_to_default(pool: DbPool) {
     );
 }
 
+// ─── Issue #419 — bulk cover-refetch delay on the timeouts form ──
+
+/// POST /admin/system/timeouts with the three fields (chain timeout,
+/// probe timeout, bulk-refetch delay): the new delay row is persisted
+/// and the AppSettings cache reloads it.
+#[sqlx::test(migrations = "./migrations")]
+async fn save_metadata_timeouts_persists_bulk_refetch_delay(pool: DbPool) {
+    let username = seed_admin(&pool).await;
+    let state = state_with_pool(pool.clone());
+    let cache = state.settings.clone();
+    let router = app(state);
+    let (cookie, csrf) = login_and_extract(&router, &username, "librarian").await;
+
+    // Pre: migration seed (1000) in cache after first load — the test
+    // state starts from Default (1000) anyway; assert to lock the base.
+    assert_eq!(cache.read().unwrap().bulk_refetch_delay_ms, 1000);
+
+    let body = format!(
+        "metadata_chain_timeout_secs=5&metadata_chain_timeout_version=1\
+         &provider_health_timeout_secs=10&provider_health_timeout_version=1\
+         &bulk_refetch_delay_ms=2500&bulk_refetch_delay_version=1\
+         &_csrf_token={}",
+        csrf
+    );
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/admin/system/timeouts")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", format!("session={}", cookie))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK, "save_timeouts returns 200");
+
+    let row: (String, i32) = sqlx::query_as(
+        "SELECT setting_value, version FROM settings WHERE setting_key = 'bulk_refetch_delay_ms'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "2500");
+    let version_after_first_save = row.1;
+
+    assert_eq!(
+        cache.read().unwrap().bulk_refetch_delay_ms,
+        2500,
+        "AppSettings cache must reflect the new value"
+    );
+
+    // Second save with the versions the re-rendered form carries — the
+    // fetch_setting_rows key list must include the new row, otherwise
+    // the form falls back to version 1 and every save after the first
+    // 409s forever (the log_level bug shape, #406). The first save also
+    // bumped the two sibling rows, so read all current versions.
+    let chain_v: (i32,) = sqlx::query_as(
+        "SELECT version FROM settings WHERE setting_key = 'metadata_chain_per_provider_timeout_secs'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let probe_v: (i32,) = sqlx::query_as(
+        "SELECT version FROM settings WHERE setting_key = 'provider_health_probe_timeout_secs'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let body = format!(
+        "metadata_chain_timeout_secs=5&metadata_chain_timeout_version={}\
+         &provider_health_timeout_secs=10&provider_health_timeout_version={}\
+         &bulk_refetch_delay_ms=3000&bulk_refetch_delay_version={}\
+         &_csrf_token={}",
+        chain_v.0, probe_v.0, version_after_first_save, csrf
+    );
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/admin/system/timeouts")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", format!("session={}", cookie))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "second save with the re-rendered version must not 409"
+    );
+    let row: (String,) = sqlx::query_as(
+        "SELECT setting_value FROM settings WHERE setting_key = 'bulk_refetch_delay_ms'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "3000");
+}
+
+/// Out-of-range delay (60001 > 60000) is rejected with 400 and the row
+/// keeps its seeded value.
+#[sqlx::test(migrations = "./migrations")]
+async fn save_metadata_timeouts_rejects_out_of_range_bulk_delay(pool: DbPool) {
+    let username = seed_admin(&pool).await;
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+    let (cookie, csrf) = login_and_extract(&router, &username, "librarian").await;
+
+    let body = format!(
+        "metadata_chain_timeout_secs=5&metadata_chain_timeout_version=1\
+         &provider_health_timeout_secs=10&provider_health_timeout_version=1\
+         &bulk_refetch_delay_ms=60001&bulk_refetch_delay_version=1\
+         &_csrf_token={}",
+        csrf
+    );
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/admin/system/timeouts")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", format!("session={}", cookie))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    let row: (String,) = sqlx::query_as(
+        "SELECT setting_value FROM settings WHERE setting_key = 'bulk_refetch_delay_ms'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "1000", "rejected save must not touch the row");
+}
+
 #[allow(clippy::await_holding_lock)]
 #[sqlx::test(migrations = "./migrations")]
 async fn migrate_legacy_env_vars_copies_timeout_env_vars_when_row_is_seeded_default(

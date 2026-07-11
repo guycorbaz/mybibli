@@ -1,9 +1,12 @@
-{# Admin → System → Metadata-chain + provider-health timeouts (v1.7.9 fix #334).
-   Two settings on one form so the admin flips both in a single round-trip.
-   Mirrors the loans-form shape: CSRF first, hidden version per field, hx-post
-   to a dedicated endpoint, outerHTML swap on the form id. Both inputs are
-   number-typed with min/max attributes that mirror the server-side
-   `validate_provider_timeout_secs` bounds (1..=60). #}
+{# Admin → System → Metadata-chain + provider-health timeouts (v1.7.9 fix #334)
+   + bulk cover-refetch inter-title delay (#419).
+   Settings paced against the same provider surface share one form so the
+   admin flips them in a single round-trip. Mirrors the loans-form shape:
+   CSRF first, hidden version per field, hx-post to a dedicated endpoint,
+   outerHTML swap on the form id. All inputs are number-typed with min/max
+   attributes that mirror the server-side bounds
+   (`validate_provider_timeout_secs` 1..=60 s,
+   `validate_bulk_refetch_delay_ms` 0..=60000 ms). #}
 <form id="admin-system-timeouts-form"
       method="POST"
       action="/admin/system/timeouts"
@@ -14,6 +17,7 @@
     <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
     <input type="hidden" name="metadata_chain_timeout_version" value="{{ metadata_chain_version }}">
     <input type="hidden" name="provider_health_timeout_version" value="{{ provider_health_version }}">
+    <input type="hidden" name="bulk_refetch_delay_version" value="{{ bulk_refetch_delay_version }}">
 
     <div class="mb-4">
         <label for="admin-system-metadata-chain-timeout" class="block text-sm font-medium mb-1">{{ metadata_chain_label }}</label>
@@ -39,6 +43,20 @@
                max="{{ timeout_max }}"
                step="1"
                value="{{ provider_health_value }}"
+               required
+               class="w-32 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2 text-sm">
+    </div>
+
+    <div class="mb-4">
+        <label for="admin-system-bulk-refetch-delay" class="block text-sm font-medium mb-1">{{ bulk_refetch_delay_label }}</label>
+        <p class="text-xs text-stone-500 dark:text-stone-400 mb-2">{{ bulk_refetch_delay_help }}</p>
+        <input id="admin-system-bulk-refetch-delay"
+               name="bulk_refetch_delay_ms"
+               type="number"
+               min="{{ bulk_delay_min }}"
+               max="{{ bulk_delay_max }}"
+               step="100"
+               value="{{ bulk_refetch_delay_value }}"
                required
                class="w-32 rounded-md border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2 text-sm">
     </div>

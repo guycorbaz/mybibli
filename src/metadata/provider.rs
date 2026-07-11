@@ -149,6 +149,25 @@ pub enum MetadataError {
     /// the tracing span) and so a future "back off and retry the next
     /// provider in the chain" policy has a structured signal to gate on.
     RateLimited,
+    /// #419 — typed transient-unavailability signal (HTTP 503). Google
+    /// Books answers a request burst with 503 Service Unavailable
+    /// storms rather than 429; providers that detect 503 MUST return
+    /// this variant so the bulk cover-refetch loop can back off and
+    /// retry instead of burning the title's only chance for the run.
+    Unavailable,
+}
+
+impl MetadataError {
+    /// #419 — true for the transient throttle signals (429 / 503) that
+    /// the bulk cover-refetch loop retries with backoff. Timeouts and
+    /// generic network errors are NOT throttles: retrying them
+    /// back-to-back against a struggling provider makes things worse.
+    pub fn is_throttle(&self) -> bool {
+        matches!(
+            self,
+            MetadataError::RateLimited | MetadataError::Unavailable
+        )
+    }
 }
 
 impl std::fmt::Display for MetadataError {
@@ -159,6 +178,9 @@ impl std::fmt::Display for MetadataError {
             MetadataError::Timeout => write!(f, "Request timed out"),
             MetadataError::RateLimited => {
                 write!(f, "Rate limited by provider (HTTP 429)")
+            }
+            MetadataError::Unavailable => {
+                write!(f, "Provider temporarily unavailable (HTTP 503)")
             }
         }
     }
@@ -180,6 +202,21 @@ mod tests {
         // The pre-#23 chain matched `err_str.contains("429")`. The new
         // Display still includes 429 so logs stay grep-friendly.
         assert!(s.contains("429"), "Display should still mention HTTP 429 for log grep: got {s:?}");
+    }
+
+    /// #419 — Unavailable (503) mirrors the RateLimited (429) contract:
+    /// grep-friendly Display, and both classify as transient throttles;
+    /// timeouts and generic network errors do not.
+    #[test]
+    fn metadata_error_unavailable_display_and_throttle_classification() {
+        let s = MetadataError::Unavailable.to_string();
+        assert!(s.contains("503"), "Display should mention HTTP 503 for log grep: got {s:?}");
+
+        assert!(MetadataError::RateLimited.is_throttle());
+        assert!(MetadataError::Unavailable.is_throttle());
+        assert!(!MetadataError::Timeout.is_throttle());
+        assert!(!MetadataError::Network("connection refused".into()).is_throttle());
+        assert!(!MetadataError::Parse("bad json".into()).is_throttle());
     }
 
     #[test]
