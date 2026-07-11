@@ -39,22 +39,36 @@ contributeur, et une année. Les correspondances partielles sont
 enregistrées mais mybibli continue à parcourir la chaîne jusqu'à
 trouver une correspondance propre ou épuiser les fournisseurs.
 
-\subsection*{Repli sur les couvertures}
+\subsection*{Replis sur les couvertures}
 
 Quand le fournisseur qui résout le titre renvoie ses métadonnées
 mais aucune URL de couverture (la BnF ne porte jamais d'URL
 d'image dans son UNIMARC ; Google Books n'a parfois pas
-d'\texttt{imageLinks} pour les titres auto-édités), mybibli se
-rabat sur l'API \emph{Open Library Covers}
-(\url{https://covers.openlibrary.org/}) indexée par ISBN. Cet
-index de couvertures est large et indépendant de l'exhaustivité
-du catalogue Open Library, donc la plupart des livres récupèrent
-une jaquette même si leurs métadonnées textuelles proviennent
-d'un autre fournisseur. Le repli ne s'enclenche que lorsque
-(a) la chaîne a réussi \emph{et} (b) le fournisseur résolvant n'a
-pas fourni de \texttt{cover\_url}, de sorte qu'un titre dont
-aucun fournisseur n'a la couverture finit sans image, sans rafale
-d'essais inutiles.
+d'\texttt{imageLinks} pour les titres auto-édités), mybibli essaie
+trois sources dédiées aux couvertures, dans l'ordre, indexées par
+ISBN :
+
+\begin{enumerate}
+  \item Le service \emph{Couvertures de la BnF}
+        (\url{https://api.bnf.fr}) — les numérisations de
+        couvertures du dépôt légal de la Bibliothèque nationale de
+        France. La source la plus riche pour les éditeurs français
+        et romands, avec une qualité d'image généralement
+        excellente. Les images sont réutilisées selon la licence
+        des métadonnées BnF (mention de la source).
+  \item \emph{Inventaire.io} (\url{https://inventaire.io}) — une
+        base de livres libre et communautaire ; particulièrement
+        fournie en BD et manga francophones.
+  \item L'API \emph{Open Library Covers}
+        (\url{https://covers.openlibrary.org/}) — large couverture
+        anglophone / multilingue.
+\end{enumerate}
+
+La première source qui possède une image l'emporte ; les replis ne
+s'enclenchent que lorsque (a) la chaîne a réussi \emph{et} (b) le
+fournisseur résolvant n'a pas fourni de \texttt{cover\_url}, de
+sorte qu'un titre dont aucune source n'a la couverture finit sans
+image, sans rafale d'essais inutiles.
 
 \subsection*{Quand aucun fournisseur n'a la couverture : téléversez la vôtre}
 

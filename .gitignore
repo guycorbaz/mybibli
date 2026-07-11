@@ -58,3 +58,4 @@ static/css/output.css
 # any published material lands on the project's public surfaces (README,
 # website, manual) via a regular PR, not from inside this directory.
 /marketing/
+__pycache__/

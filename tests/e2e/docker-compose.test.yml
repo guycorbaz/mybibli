@@ -20,6 +20,10 @@ services:
       RUST_LOG: mybibli=debug
       APP_LANGUAGE: "en"
       BNF_API_BASE_URL: "http://mock-metadata:9090"
+      # #427 — cover-resolution fallbacks point at the mock so E2E never
+      # calls the real BnF Couvertures / Inventaire.io services.
+      BNF_COVERS_BASE_URL: "http://mock-metadata:9090"
+      INVENTAIRE_API_BASE_URL: "http://mock-metadata:9090"
       GOOGLE_BOOKS_API_BASE_URL: "http://mock-metadata:9090"
       OPEN_LIBRARY_API_BASE_URL: "http://mock-metadata:9090"
       MUSICBRAINZ_API_BASE_URL: "http://mock-metadata:9090"
