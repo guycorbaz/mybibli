@@ -349,6 +349,9 @@ pub async fn admin_bulk_cover_refetch(
             .unwrap_or(30)
     };
     let per_provider_timeouts = state.metadata_chain_provider_timeouts();
+    // #419 — inter-title pacing, admin-configurable (was hardcoded
+    // 500 ms). Snapshotted once per run; the next run picks up changes.
+    let delay_ms = state.bulk_refetch_delay_ms();
 
     tokio::spawn(async move {
         for title in titles {
@@ -361,32 +364,69 @@ pub async fn admin_bulk_cover_refetch(
             // and the only "try harder" step left is the OpenLibrary
             // Covers ISBN fallback — which 404s for most French /
             // Swiss / academic titles.
-            crate::tasks::metadata_fetch::fetch_metadata_chain(
-                pool_clone.clone(),
-                title.id,
-                title.code.clone(),
-                title.code_type,
-                title
-                    .media_type
-                    .parse::<crate::models::media_type::MediaType>()
-                    .unwrap_or(crate::models::media_type::MediaType::Book),
-                registry_clone.clone(),
-                timeout_secs,
-                per_provider_timeouts.clone(),
-                http_client_clone.clone(),
-                covers_dir_clone.clone(),
-                true,
-            )
-            .await;
+            //
+            // #419 — a Throttled outcome (chain empty-handed with a
+            // provider answering 429/503) is retried per the
+            // THROTTLE_RETRY_BACKOFF schedule (5 s → 20 s) so a
+            // transient storm doesn't burn the title's only chance
+            // for the run.
+            let mut attempts_done = 0usize;
+            let outcome = loop {
+                let outcome = crate::tasks::metadata_fetch::fetch_metadata_chain_outcome(
+                    pool_clone.clone(),
+                    title.id,
+                    title.code.clone(),
+                    title.code_type,
+                    title
+                        .media_type
+                        .parse::<crate::models::media_type::MediaType>()
+                        .unwrap_or(crate::models::media_type::MediaType::Book),
+                    registry_clone.clone(),
+                    timeout_secs,
+                    per_provider_timeouts.clone(),
+                    http_client_clone.clone(),
+                    covers_dir_clone.clone(),
+                    true,
+                )
+                .await;
+
+                attempts_done += 1;
+                if outcome != crate::tasks::metadata_fetch::FetchOutcome::Throttled {
+                    break outcome;
+                }
+                match crate::services::bulk_cover_fetch::retry_backoff(attempts_done) {
+                    Some(backoff) => {
+                        tracing::info!(
+                            title_id = title.id,
+                            attempt = attempts_done,
+                            backoff_secs = backoff.as_secs(),
+                            "Bulk cover-refetch: provider throttled (429/503), backing off before retry"
+                        );
+                        tokio::time::sleep(backoff).await;
+                    }
+                    None => break outcome,
+                }
+            };
+
+            crate::services::bulk_cover_fetch::record_outcome(&status_clone, outcome);
             crate::services::bulk_cover_fetch::increment_processed(&status_clone);
             // Politeness toward external metadata providers. The
-            // chain has its own per-provider rate limiters, but a
-            // small inter-title gap helps when the chain runs short
-            // (e.g. cached BnF hits).
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            // chain has its own per-provider rate limiters, but the
+            // inter-title gap is what keeps a 100+-title run clear of
+            // Google Books' burst throttling (#419 prod evidence).
+            if delay_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            }
         }
+        let summary = crate::services::bulk_cover_fetch::snapshot(&status_clone);
         crate::services::bulk_cover_fetch::mark_complete(&status_clone);
-        tracing::info!("Bulk cover-refetch completed");
+        tracing::info!(
+            recovered = summary.recovered,
+            provider_failed = summary.provider_failed,
+            not_found = summary.not_found,
+            total = summary.total,
+            "Bulk cover-refetch completed"
+        );
     });
 
     let message = rust_i18n::t!(
@@ -1025,11 +1065,18 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
         )
         .to_string()
     } else if bulk_status.last_completed_at.is_some() {
+        // #419 — completion summary: recovered / provider-failed /
+        // not-found, so "run finished with 0 covers because the
+        // provider throttled" is distinguishable from "no covers
+        // exist for these titles".
         rust_i18n::t!(
             "admin.health.bulk_cover_fetch.last_run",
             locale = loc,
             processed = bulk_status.processed,
-            total = bulk_status.total
+            total = bulk_status.total,
+            recovered = bulk_status.recovered,
+            provider_failed = bulk_status.provider_failed,
+            not_found = bulk_status.not_found
         )
         .to_string()
     } else {

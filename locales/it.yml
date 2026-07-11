@@ -428,6 +428,7 @@ error:
     default_currency_invalid: "La valuta predefinita deve essere un codice ISO 4217 a 3 lettere (es. CHF, EUR)."
     log_level_invalid: "Il livello di log deve essere un livello semplice (trace/debug/info/warn/error) o un elenco di direttive tracing-subscriber EnvFilter (es. mybibli=debug,sqlx::query=warn)."
     provider_timeout_invalid: "Il timeout deve essere compreso tra 1 e 60 secondi."
+    bulk_refetch_delay_invalid: "La pausa del riscaricamento in blocco deve essere compresa tra 0 e 60000 millisecondi."
     session_timeout_invalid: "Il timeout di sessione deve essere compreso tra 1 e 720 ore."
     version_mismatch: "Le impostazioni sono state modificate da un altro amministratore — ricarica e riprova"
     provider_version_mismatch: "%{provider} è stato modificato da un altro amministratore — ricarica e riprova"
@@ -800,7 +801,7 @@ admin:
       button: "Riscarica copertine mancanti"
       idle: "Inattivo"
       running: "In corso: %{processed} / %{total} elaborati"
-      last_run: "Ultima esecuzione: %{processed} / %{total} elaborati"
+      last_run: "Ultima esecuzione: %{processed} / %{total} elaborati — %{recovered} copertine recuperate, %{provider_failed} errori del fornitore, %{not_found} senza copertina disponibile"
       started: "Riscaricamento delle copertine avviato per %{total} titoli. Il progresso è registrato nei log; aggiorna il pannello per vedere gli aggiornamenti."
       empty: "Nessun titolo ha bisogno di un nuovo recupero copertina — tutto ciò che era recuperabile è stato recuperato."
       already_running: "Un riscaricamento delle copertine è già in corso. Attendi il suo completamento."
@@ -920,6 +921,9 @@ admin:
     metadata_chain_timeout_help: "Tempo massimo di attesa per un fornitore prima che la catena passi al successivo. Predefinito 5. Aumenta se DNS o TLS sono lenti (fibra rurale, VPN, satellite). Intervallo 1–60. Applicato alla prossima scansione — nessun riavvio."
     provider_health_timeout_label: "Timeout della sonda provider-health (secondi)"
     provider_health_timeout_help: "Tempo massimo di attesa della risposta HEAD di ciascun fornitore al ping di raggiungibilità (ogni 5 minuti). Predefinito 10. Intervallo 1–60. Applicato al prossimo giro — nessun riavvio."
+    # Issue #419 — pausa tra i titoli nel riscaricamento copertine in blocco.
+    bulk_refetch_delay_label: "Pausa del riscaricamento copertine in blocco (millisecondi)"
+    bulk_refetch_delay_help: "Pausa tra un titolo e l'altro durante un riscaricamento copertine in blocco. Un ritmo troppo veloce fa sì che i fornitori blocchino l'intera esecuzione (Google Books risponde alle raffiche con errori e nessuna copertina viene recuperata). Predefinito 1000 ms — circa 2 minuti in più ogni 100 titoli. Intervallo 0–60000. Applicato alla prossima esecuzione — nessun riavvio."
     btn_save_timeouts: "Salva timeout"
     # CR #396 — timeout per fornitore (override).
     provider_timeouts_help: "Sovrascrivi il timeout dei metadati per i singoli fornitori. Lascia un campo vuoto per usare il valore globale predefinito (%{default} s). Intervallo 1–60. Applicato alla prossima scansione — nessun riavvio."

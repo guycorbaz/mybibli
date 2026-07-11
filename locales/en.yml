@@ -441,6 +441,7 @@ error:
     default_currency_invalid: "Default currency must be a 3-letter ISO 4217 code (e.g. CHF, EUR)."
     log_level_invalid: "Log level must be a plain level (trace/debug/info/warn/error) or a tracing-subscriber EnvFilter directive list (e.g. mybibli=debug,sqlx::query=warn)."
     provider_timeout_invalid: "Timeout must be between 1 and 60 seconds."
+    bulk_refetch_delay_invalid: "Bulk re-fetch delay must be between 0 and 60000 milliseconds."
     session_timeout_invalid: "Session timeout must be between 1 and 720 hours."
     version_mismatch: "Settings were modified by another admin — reload and retry"
     provider_version_mismatch: "%{provider} was modified by another admin — reload and retry"
@@ -826,7 +827,7 @@ admin:
       button: "Re-fetch missing covers"
       idle: "Idle"
       running: "Running: %{processed} / %{total} processed"
-      last_run: "Last run: %{processed} / %{total} processed"
+      last_run: "Last run: %{processed} / %{total} processed — %{recovered} covers recovered, %{provider_failed} provider errors, %{not_found} with no cover available"
       started: "Bulk cover-refetch started for %{total} titles. Progress is logged; refresh the panel to see updates."
       empty: "No titles need a cover refetch — everything that can be fetched has been."
       already_running: "A bulk cover-refetch is already in progress. Please wait for it to complete."
@@ -947,6 +948,9 @@ admin:
     metadata_chain_timeout_help: "Maximum time the chain waits for one provider before falling through to the next. Default 5. Raise if your DNS or TLS handshake is slow (rural fiber, VPN, satellite). Bounded 1–60. Applied on the next scan — no restart."
     provider_health_timeout_label: "Provider-health probe timeout (seconds)"
     provider_health_timeout_help: "Maximum time the 5-min reachability ping waits for each provider HEAD response. Default 10. Bounded 1–60. Applied on the next round — no restart."
+    # Issue #419 — bulk cover-refetch inter-title delay.
+    bulk_refetch_delay_label: "Bulk cover-refetch delay (milliseconds)"
+    bulk_refetch_delay_help: "Pause between titles during a bulk cover re-fetch. Too fast a pace makes providers throttle the whole run (Google Books answers bursts with errors and no covers come back). Default 1000 ms — about 2 extra minutes per 100 titles. Bounded 0–60000. Applied on the next run — no restart."
     btn_save_timeouts: "Save timeout settings"
     # CR #396 — per-provider metadata-timeout overrides.
     provider_timeouts_help: "Override the metadata timeout for individual providers. Leave a field empty to use the global default (%{default} s). Bounded 1–60. Applied on the next scan — no restart."

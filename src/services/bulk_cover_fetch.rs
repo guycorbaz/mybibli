@@ -28,8 +28,30 @@
 //! an `.await`.
 
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+
+use crate::tasks::metadata_fetch::FetchOutcome;
+
+/// #419 — backoff schedule for retrying a title whose chain run came
+/// back [`FetchOutcome::Throttled`] (429/503). Two retries per title:
+/// 5 s then 20 s. v1 freeze (mirrors `RECENT_ACTIVITY_DAYS` /
+/// `SCAN_UNDO_WINDOW_SECS`); a unit test locks the values.
+pub const THROTTLE_RETRY_BACKOFF: &[Duration] =
+    &[Duration::from_secs(5), Duration::from_secs(20)];
+
+/// #419 — backoff delay before retry attempt `attempts_done` (the
+/// number of attempts already burned for this title). `None` once the
+/// schedule is exhausted — the title is then recorded as
+/// provider-failed for the run.
+pub fn retry_backoff(attempts_done: usize) -> Option<Duration> {
+    // First attempt is not a retry — index 1 maps to the first backoff.
+    attempts_done
+        .checked_sub(1)
+        .and_then(|i| THROTTLE_RETRY_BACKOFF.get(i))
+        .copied()
+}
 
 /// Snapshot of where the bulk-cover-refetch currently is. Stored in
 /// `AppState.bulk_cover_fetch` as `Arc<RwLock<BulkCoverFetchStatus>>`.
@@ -47,6 +69,14 @@ pub struct BulkCoverFetchStatus {
     pub processed: usize,
     pub started_at: Option<DateTime<Utc>>,
     pub last_completed_at: Option<DateTime<Utc>>,
+    /// #419 — completion-summary counters. Reset by [`try_start`],
+    /// bumped per title via [`record_outcome`], kept after
+    /// [`mark_complete`] so the Health panel can render "what happened
+    /// last time". Invariant: recovered + provider_failed + not_found
+    /// == processed once the run completes.
+    pub recovered: usize,
+    pub provider_failed: usize,
+    pub not_found: usize,
 }
 
 /// Returned by [`try_start`] when a bulk fetch is already in flight.
@@ -75,6 +105,9 @@ pub fn try_start(
     guard.running = true;
     guard.total = total;
     guard.processed = 0;
+    guard.recovered = 0;
+    guard.provider_failed = 0;
+    guard.not_found = 0;
     guard.started_at = Some(Utc::now());
     Ok(())
 }
@@ -84,6 +117,25 @@ pub fn try_start(
 pub fn increment_processed(status: &Arc<RwLock<BulkCoverFetchStatus>>) {
     if let Ok(mut guard) = status.write() {
         guard.processed = guard.processed.saturating_add(1);
+    }
+}
+
+/// #419 — bucket a title's final [`FetchOutcome`] into the completion
+/// summary. Called once per title, after retries are exhausted:
+/// a still-`Throttled` outcome counts as provider-failed.
+pub fn record_outcome(status: &Arc<RwLock<BulkCoverFetchStatus>>, outcome: FetchOutcome) {
+    if let Ok(mut guard) = status.write() {
+        match outcome {
+            FetchOutcome::CoverRecovered => {
+                guard.recovered = guard.recovered.saturating_add(1)
+            }
+            FetchOutcome::Throttled | FetchOutcome::Failed => {
+                guard.provider_failed = guard.provider_failed.saturating_add(1)
+            }
+            FetchOutcome::NotFound => {
+                guard.not_found = guard.not_found.saturating_add(1)
+            }
+        }
     }
 }
 
@@ -160,6 +212,55 @@ mod tests {
         assert_eq!(snap.total, 5);
         assert_eq!(snap.processed, 2);
         assert!(snap.last_completed_at.is_some());
+    }
+
+    /// #419 — v1 freeze of the throttle-retry schedule: 2 retries,
+    /// 5 s then 20 s. Deliberate value lock, mirrors the
+    /// `RECENT_ACTIVITY_DAYS` test pattern.
+    #[test]
+    fn throttle_retry_backoff_schedule_is_locked() {
+        assert_eq!(
+            THROTTLE_RETRY_BACKOFF,
+            &[Duration::from_secs(5), Duration::from_secs(20)]
+        );
+        // Attempt 1 (nothing burned yet) is not a retry.
+        assert_eq!(retry_backoff(0), None);
+        // After the 1st failed attempt → wait 5 s; after the 2nd → 20 s.
+        assert_eq!(retry_backoff(1), Some(Duration::from_secs(5)));
+        assert_eq!(retry_backoff(2), Some(Duration::from_secs(20)));
+        // Schedule exhausted — the title is written off for this run.
+        assert_eq!(retry_backoff(3), None);
+        assert_eq!(retry_backoff(usize::MAX), None);
+    }
+
+    /// #419 — outcome bucketing: recovered / provider-failed (throttled
+    /// + failed) / not-found, and try_start resets all three.
+    #[test]
+    fn record_outcome_buckets_and_try_start_resets() {
+        let s = Arc::new(RwLock::new(BulkCoverFetchStatus::default()));
+        try_start(&s, 4).unwrap();
+        record_outcome(&s, FetchOutcome::CoverRecovered);
+        record_outcome(&s, FetchOutcome::Throttled);
+        record_outcome(&s, FetchOutcome::Failed);
+        record_outcome(&s, FetchOutcome::NotFound);
+
+        let snap = snapshot(&s);
+        assert_eq!(snap.recovered, 1);
+        assert_eq!(snap.provider_failed, 2, "Throttled + Failed share the bucket");
+        assert_eq!(snap.not_found, 1);
+
+        mark_complete(&s);
+        // Summary survives completion for the "last run" panel render…
+        let snap = snapshot(&s);
+        assert_eq!(snap.recovered, 1);
+        assert!(snap.last_completed_at.is_some());
+
+        // …and the next start wipes it.
+        try_start(&s, 2).unwrap();
+        let snap = snapshot(&s);
+        assert_eq!(snap.recovered, 0);
+        assert_eq!(snap.provider_failed, 0);
+        assert_eq!(snap.not_found, 0);
     }
 
     #[test]

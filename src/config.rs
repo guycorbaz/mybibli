@@ -391,6 +391,14 @@ pub struct AppSettings {
     /// without a restart, and the task reads through `Arc<RwLock<AppSettings>>`
     /// on each ping round.
     pub provider_health_probe_timeout_secs: u64,
+    // === Issue #419 — bulk cover-refetch pacing ===
+    /// Inter-title delay (milliseconds) in the admin bulk cover-refetch
+    /// loop. Was hardcoded 500 ms until #419; prod evidence (2026-07-10)
+    /// showed back-to-back runs over 113 titles tripping Google Books'
+    /// throttling (503 storm, ~0 covers recovered). Bounds 0..=60000,
+    /// default 1000. Read once per bulk run — the run in flight keeps
+    /// its snapshot; the next run picks up an admin change.
+    pub bulk_refetch_delay_ms: u64,
     // === CR #396 — per-provider metadata-chain timeout overrides ===
     /// Overrides for `metadata_chain_per_provider_timeout_secs`, keyed by
     /// provider slug (see `metadata::provider::provider_slug`). Loaded from
@@ -429,6 +437,10 @@ impl Default for AppSettings {
             // installs behave identically until the admin tunes them.
             metadata_chain_per_provider_timeout_secs: 5,
             provider_health_probe_timeout_secs: 10,
+            // Issue #419: 1s inter-title gap — doubles the pre-#419
+            // hardcoded 500 ms; keeps a 100+-title run clear of the
+            // Google Books 503 storm observed in prod.
+            bulk_refetch_delay_ms: 1000,
             // CR #396: no overrides — every provider uses the scalar above.
             metadata_chain_provider_timeout_overrides: std::collections::HashMap::new(),
         }
@@ -643,6 +655,22 @@ impl AppSettings {
                         value = %value,
                         parsed = v,
                         "provider_health_probe_timeout_secs out of range (1..=60), using default"
+                    ),
+                    Err(_) => tracing::warn!(
+                        key = %key,
+                        value = %value,
+                        "Invalid setting value, using default"
+                    ),
+                },
+                // Issue #419: bulk cover-refetch inter-title delay. Same
+                // 0..=60000 bounds as the admin form validation.
+                "bulk_refetch_delay_ms" => match value.parse::<u64>() {
+                    Ok(v) if v <= 60_000 => settings.bulk_refetch_delay_ms = v,
+                    Ok(v) => tracing::warn!(
+                        key = %key,
+                        value = %value,
+                        parsed = v,
+                        "bulk_refetch_delay_ms out of range (0..=60000), using default"
                     ),
                     Err(_) => tracing::warn!(
                         key = %key,
@@ -910,6 +938,40 @@ mod tests {
         assert_eq!(settings.session_timeout_secs, 8 * 3600);
     }
 
+    /// #419 — bulk_refetch_delay_ms: in-range value takes effect, the
+    /// migration seed (1000) is the default, and an out-of-range row
+    /// falls back to the default rather than stretching a 100-title
+    /// run past 100 minutes.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn load_from_db_bulk_refetch_delay_valid_and_clamped(pool: DbPool) {
+        // Migration seed: default 1000.
+        let settings = AppSettings::load_from_db(&pool).await.expect("load ok");
+        assert_eq!(settings.bulk_refetch_delay_ms, 1000);
+
+        // Valid custom value (0 = explicit no-pacing opt-out).
+        sqlx::query(
+            "UPDATE settings SET setting_value = '0' WHERE setting_key = 'bulk_refetch_delay_ms'",
+        )
+        .execute(&pool)
+        .await
+        .expect("update setting");
+        let settings = AppSettings::load_from_db(&pool).await.expect("load ok");
+        assert_eq!(settings.bulk_refetch_delay_ms, 0);
+
+        // Out-of-range row → default.
+        sqlx::query(
+            "UPDATE settings SET setting_value = '999999' WHERE setting_key = 'bulk_refetch_delay_ms'",
+        )
+        .execute(&pool)
+        .await
+        .expect("update setting");
+        let settings = AppSettings::load_from_db(&pool).await.expect("load ok");
+        assert_eq!(
+            settings.bulk_refetch_delay_ms, 1000,
+            "out-of-range value must fall back to the default"
+        );
+    }
+
     #[test]
     fn test_config_with_all_vars() {
         let vars = HashMap::from([
@@ -992,6 +1054,7 @@ mod tests {
             log_level: "info".to_string(),
             metadata_chain_per_provider_timeout_secs: 7,
             provider_health_probe_timeout_secs: 15,
+            bulk_refetch_delay_ms: 2000,
             metadata_chain_provider_timeout_overrides: HashMap::from([(
                 "bnf".to_string(),
                 12_u64,

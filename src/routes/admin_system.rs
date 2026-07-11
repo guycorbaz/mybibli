@@ -34,9 +34,10 @@ use crate::utils::feedback_html;
 // `save_setting` / `reload_settings_cache` / `validate_*` definitions have
 // been deleted in favour of the canonical implementations.
 use crate::services::admin_system::{
-    KEY_DEFAULT_CURRENCY, KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_LOG_LEVEL,
-    KEY_METADATA_CHAIN_TIMEOUT, KEY_OMDB, KEY_OVERDUE_THRESHOLD, KEY_PROVIDER_HEALTH_TIMEOUT,
-    KEY_SESSION_TIMEOUT_HOURS, KEY_SHOW_VALUE_INDICATORS, KEY_TMDB, PROVIDER_TIMEOUT_KEY_PREFIX,
+    KEY_BULK_REFETCH_DELAY, KEY_DEFAULT_CURRENCY, KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS,
+    KEY_LOG_LEVEL, KEY_METADATA_CHAIN_TIMEOUT, KEY_OMDB, KEY_OVERDUE_THRESHOLD,
+    KEY_PROVIDER_HEALTH_TIMEOUT, KEY_SESSION_TIMEOUT_HOURS, KEY_SHOW_VALUE_INDICATORS, KEY_TMDB,
+    PROVIDER_TIMEOUT_KEY_PREFIX,
     provider_timeout_key, reload_settings_cache, save_setting, validate_default_currency,
     validate_default_language, validate_log_level, validate_overdue_threshold,
     validate_provider_timeout_secs, validate_session_timeout_hours,
@@ -108,12 +109,17 @@ pub struct LogLevelSettingsForm {
 // v1.7.9 fix #334 — Metadata-chain + provider-health timeouts. Two
 // settings on one form so admins flip both in a single round-trip.
 // Validation 1..=60 per `validate_provider_timeout_secs`.
+// Issue #419 adds the bulk cover-refetch inter-title delay (ms,
+// 0..=60000 per `validate_bulk_refetch_delay_ms`) to the same form —
+// all three knobs pace the same provider surface.
 #[derive(Deserialize)]
 pub struct MetadataTimeoutsForm {
     pub metadata_chain_timeout_secs: u64,
     pub metadata_chain_timeout_version: i32,
     pub provider_health_timeout_secs: u64,
     pub provider_health_timeout_version: i32,
+    pub bulk_refetch_delay_ms: u64,
+    pub bulk_refetch_delay_version: i32,
     pub _csrf_token: String,
 }
 
@@ -234,8 +240,14 @@ struct AdminSystemTimeoutsForm {
     provider_health_help: String,
     provider_health_value: u64,
     provider_health_version: i32,
+    bulk_refetch_delay_label: String,
+    bulk_refetch_delay_help: String,
+    bulk_refetch_delay_value: u64,
+    bulk_refetch_delay_version: i32,
     timeout_min: u64,
     timeout_max: u64,
+    bulk_delay_min: u64,
+    bulk_delay_max: u64,
     btn_save: String,
 }
 
@@ -333,7 +345,7 @@ async fn fetch_setting_rows(
 ) -> Result<HashMap<String, (String, i32)>, AppError> {
     let rows: Vec<(String, String, i32)> = sqlx::query_as(
         "SELECT setting_key, setting_value, version FROM settings \
-         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
+         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
     )
     .bind(KEY_OVERDUE_THRESHOLD)
     .bind(KEY_DEFAULT_LANGUAGE)
@@ -346,6 +358,7 @@ async fn fetch_setting_rows(
     .bind(KEY_METADATA_CHAIN_TIMEOUT)
     .bind(KEY_PROVIDER_HEALTH_TIMEOUT)
     .bind(KEY_SESSION_TIMEOUT_HOURS)
+    .bind(KEY_BULK_REFETCH_DELAY)
     .fetch_all(pool)
     .await?;
     let mut map = HashMap::new();
@@ -562,8 +575,13 @@ fn render_timeouts_form(
     metadata_chain_version: i32,
     provider_health_value: u64,
     provider_health_version: i32,
+    bulk_refetch_delay_value: u64,
+    bulk_refetch_delay_version: i32,
 ) -> Result<String, AppError> {
-    use crate::services::admin_system::{PROVIDER_TIMEOUT_MAX_SECS, PROVIDER_TIMEOUT_MIN_SECS};
+    use crate::services::admin_system::{
+        BULK_REFETCH_DELAY_MAX_MS, BULK_REFETCH_DELAY_MIN_MS, PROVIDER_TIMEOUT_MAX_SECS,
+        PROVIDER_TIMEOUT_MIN_SECS,
+    };
     AdminSystemTimeoutsForm {
         csrf_token: csrf.to_string(),
         metadata_chain_label: rust_i18n::t!("admin.system.metadata_chain_timeout_label", locale = loc)
@@ -584,8 +602,22 @@ fn render_timeouts_form(
         .to_string(),
         provider_health_value,
         provider_health_version,
+        bulk_refetch_delay_label: rust_i18n::t!(
+            "admin.system.bulk_refetch_delay_label",
+            locale = loc
+        )
+        .to_string(),
+        bulk_refetch_delay_help: rust_i18n::t!(
+            "admin.system.bulk_refetch_delay_help",
+            locale = loc
+        )
+        .to_string(),
+        bulk_refetch_delay_value,
+        bulk_refetch_delay_version,
         timeout_min: PROVIDER_TIMEOUT_MIN_SECS,
         timeout_max: PROVIDER_TIMEOUT_MAX_SECS,
+        bulk_delay_min: BULK_REFETCH_DELAY_MIN_MS,
+        bulk_delay_max: BULK_REFETCH_DELAY_MAX_MS,
         btn_save: rust_i18n::t!("admin.system.btn_save_timeouts", locale = loc).to_string(),
     }
     .render()
@@ -724,6 +756,13 @@ pub async fn render_panel_html(
         .cloned()
         .unwrap_or_else(|| (probe_timeout.to_string(), 1));
 
+    // Issue #419 — bulk cover-refetch inter-title delay row.
+    let bulk_delay = state.bulk_refetch_delay_ms();
+    let (_, bulk_delay_version) = rows
+        .get(KEY_BULK_REFETCH_DELAY)
+        .cloned()
+        .unwrap_or_else(|| (bulk_delay.to_string(), 1));
+
     // Issue #418 — session timeout row. The form edits the HOURS key
     // directly (the E2E-only `session_inactivity_timeout_seconds`
     // override is deliberately not surfaced), so read the row value
@@ -744,6 +783,8 @@ pub async fn render_panel_html(
         chain_timeout_version,
         probe_timeout,
         probe_timeout_version,
+        bulk_delay,
+        bulk_delay_version,
     )?;
     // CR #396 — per-provider override rows below the scalar timeouts.
     let override_rows = fetch_provider_timeout_rows(&state.pool).await?;
@@ -1261,7 +1302,15 @@ pub async fn save_metadata_timeouts(
     // submitted values (preserve the typed input) + HX-Trigger so
     // csrf.js opts the 400 swap in. Validate both fields up-front
     // so the user sees a single error per save attempt.
-    if let Err(e) = validate_provider_timeout_secs(form.metadata_chain_timeout_secs, loc) {
+    let validation_result = validate_provider_timeout_secs(form.metadata_chain_timeout_secs, loc)
+        .and_then(|_| validate_provider_timeout_secs(form.provider_health_timeout_secs, loc))
+        .and_then(|_| {
+            crate::services::admin_system::validate_bulk_refetch_delay_ms(
+                form.bulk_refetch_delay_ms,
+                loc,
+            )
+        });
+    if let Err(e) = validation_result {
         let error_msg = match e {
             AppError::BadRequest(msg) => msg,
             other => return Err(other),
@@ -1274,23 +1323,8 @@ pub async fn save_metadata_timeouts(
                 form.metadata_chain_timeout_version,
                 form.provider_health_timeout_secs,
                 form.provider_health_timeout_version,
-            )?,
-            error_msg,
-        ));
-    }
-    if let Err(e) = validate_provider_timeout_secs(form.provider_health_timeout_secs, loc) {
-        let error_msg = match e {
-            AppError::BadRequest(msg) => msg,
-            other => return Err(other),
-        };
-        return Ok(validation_error_response(
-            render_timeouts_form(
-                &session.csrf_token,
-                loc,
-                form.metadata_chain_timeout_secs,
-                form.metadata_chain_timeout_version,
-                form.provider_health_timeout_secs,
-                form.provider_health_timeout_version,
+                form.bulk_refetch_delay_ms,
+                form.bulk_refetch_delay_version,
             )?,
             error_msg,
         ));
@@ -1311,6 +1345,13 @@ pub async fn save_metadata_timeouts(
         form.provider_health_timeout_version,
     )
     .await?;
+    save_setting(
+        &mut *tx,
+        KEY_BULK_REFETCH_DELAY,
+        &form.bulk_refetch_delay_ms.to_string(),
+        form.bulk_refetch_delay_version,
+    )
+    .await?;
     tx.commit().await?;
     reload_settings_cache(&state).await?;
 
@@ -1323,6 +1364,10 @@ pub async fn save_metadata_timeouts(
         .get(KEY_PROVIDER_HEALTH_TIMEOUT)
         .cloned()
         .unwrap_or_else(|| (form.provider_health_timeout_secs.to_string(), 2));
+    let (bulk_delay_value, bulk_delay_version) = rows
+        .get(KEY_BULK_REFETCH_DELAY)
+        .cloned()
+        .unwrap_or_else(|| (form.bulk_refetch_delay_ms.to_string(), 2));
     let main = render_timeouts_form(
         &session.csrf_token,
         loc,
@@ -1330,6 +1375,8 @@ pub async fn save_metadata_timeouts(
         chain_version,
         probe_value.parse().unwrap_or(form.provider_health_timeout_secs),
         probe_version,
+        bulk_delay_value.parse().unwrap_or(form.bulk_refetch_delay_ms),
+        bulk_delay_version,
     )?;
     let feedback = success_feedback(loc, "success.system.timeouts_saved");
     Ok(HtmxResponse {

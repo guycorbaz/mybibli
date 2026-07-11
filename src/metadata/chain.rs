@@ -38,6 +38,17 @@ impl ProviderTimeouts {
     }
 }
 
+/// #419 — result of a chain run plus the throttle signal the bulk
+/// cover-refetch loop retries on. `throttled` is true when at least one
+/// provider answered 429/503 during the run — only meaningful for
+/// retry decisions when `result` is `None` (a successful result from a
+/// later provider supersedes an earlier throttle).
+#[derive(Debug, Default)]
+pub struct ChainOutcome {
+    pub result: Option<MetadataResult>,
+    pub throttled: bool,
+}
+
 /// Executes metadata lookups through a chain of providers with fallback.
 pub struct ChainExecutor;
 
@@ -49,6 +60,9 @@ impl ChainExecutor {
     /// 3. Call appropriate lookup method based on code_type (isbn vs upc)
     /// 4. Cache first successful result
     /// 5. Return None if all providers fail/return nothing
+    ///
+    /// Thin wrapper over [`Self::execute_detailed`] for call sites that
+    /// don't care about the throttle signal.
     pub async fn execute(
         registry: &ProviderRegistry,
         pool: &DbPool,
@@ -58,13 +72,42 @@ impl ChainExecutor {
         timeout_secs: u64,
         per_provider_timeouts: &ProviderTimeouts,
     ) -> Option<MetadataResult> {
+        Self::execute_detailed(
+            registry,
+            pool,
+            code,
+            code_type,
+            media_type,
+            timeout_secs,
+            per_provider_timeouts,
+        )
+        .await
+        .result
+    }
+
+    /// #419 — same as [`Self::execute`] but also reports whether any
+    /// provider answered with a transient throttle (429/503) during the
+    /// run, so the bulk cover-refetch loop can back off and retry
+    /// instead of writing the title off as "no cover exists".
+    pub async fn execute_detailed(
+        registry: &ProviderRegistry,
+        pool: &DbPool,
+        code: &str,
+        code_type: &CodeType,
+        media_type: &MediaType,
+        timeout_secs: u64,
+        per_provider_timeouts: &ProviderTimeouts,
+    ) -> ChainOutcome {
         tracing::info!(code = %code, code_type = %code_type, media_type = %media_type, "Starting metadata chain");
 
         // 1. Check cache first
         match MetadataCacheModel::find_by_isbn(pool, code).await {
             Ok(Some(cached)) => {
                 tracing::info!(code = %code, "Metadata chain: cache hit");
-                return Some(cached);
+                return ChainOutcome {
+                    result: Some(cached),
+                    throttled: false,
+                };
             }
             Ok(None) => {
                 tracing::debug!(code = %code, "Metadata chain: cache miss");
@@ -78,9 +121,13 @@ impl ChainExecutor {
         let chain = registry.chain_for(media_type);
         if chain.is_empty() {
             tracing::info!(code = %code, media_type = %media_type, "No providers for media type");
-            return None;
+            return ChainOutcome::default();
         }
 
+        // #419 — set as soon as any provider answers 429/503; survives
+        // the global-timeout Err arm because it lives outside the
+        // timed future.
+        let mut throttled = false;
         let global_timeout = Duration::from_secs(timeout_secs);
         let chain_result = tokio::time::timeout(global_timeout, async {
             for provider in &chain {
@@ -131,11 +178,25 @@ impl ChainExecutor {
                         // moment a provider changes its error message;
                         // now we read the typed variant straight off the
                         // provider's return.
+                        throttled = true;
                         tracing::warn!(
                             code = %code,
                             provider = provider_name,
                             duration_ms = duration_ms,
                             "Provider rate limited (HTTP 429), skipping"
+                        );
+                    }
+                    Ok(Err(MetadataError::Unavailable)) => {
+                        // #419 — Google Books answers burst load with
+                        // 503 storms; same skip-to-next-provider flow as
+                        // 429, but the typed signal lets the bulk
+                        // refetch loop back off and retry the title.
+                        throttled = true;
+                        tracing::warn!(
+                            code = %code,
+                            provider = provider_name,
+                            duration_ms = duration_ms,
+                            "Provider temporarily unavailable (HTTP 503), skipping"
                         );
                     }
                     Ok(Err(e)) => {
@@ -162,7 +223,7 @@ impl ChainExecutor {
         })
         .await;
 
-        match chain_result {
+        let result = match chain_result {
             Ok(Some(metadata)) => {
                 // Cache the successful result
                 match serde_json::to_value(&metadata) {
@@ -186,7 +247,9 @@ impl ChainExecutor {
                 tracing::warn!(code = %code, timeout_secs = timeout_secs, "Metadata chain global timeout");
                 None
             }
-        }
+        };
+
+        ChainOutcome { result, throttled }
     }
 }
 
@@ -293,6 +356,126 @@ mod tests {
         ) -> Result<Option<MetadataResult>, MetadataError> {
             Err(MetadataError::RateLimited)
         }
+    }
+
+    struct UnavailableProvider;
+
+    #[async_trait]
+    impl MetadataProvider for UnavailableProvider {
+        fn name(&self) -> &str {
+            "unavailable_provider"
+        }
+        fn supports_media_type(&self, _media_type: &MediaType) -> bool {
+            true
+        }
+        async fn lookup_by_isbn(
+            &self,
+            _isbn: &str,
+        ) -> Result<Option<MetadataResult>, MetadataError> {
+            Err(MetadataError::Unavailable)
+        }
+    }
+
+    // ─── #419 — ChainOutcome.throttled propagation ────────────────
+
+    /// A chain that comes back empty-handed after a 503 storm must
+    /// carry `throttled = true` so the bulk refetch loop retries the
+    /// title instead of writing it off as "no cover exists".
+    #[sqlx::test(migrations = "./migrations")]
+    async fn execute_detailed_throttled_true_when_503_and_no_result(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(UnavailableProvider));
+
+        let outcome = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            "9799999990013",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await;
+        assert!(outcome.result.is_none());
+        assert!(outcome.throttled, "503 with no fallback result must set throttled");
+    }
+
+    /// 429 sets the flag through the same path.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn execute_detailed_throttled_true_when_429_and_no_result(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(RateLimitProvider));
+
+        let outcome = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            "9799999990020",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await;
+        assert!(outcome.result.is_none());
+        assert!(outcome.throttled);
+    }
+
+    /// A genuinely empty chain (providers answer, nothing found) is
+    /// NOT throttled — the bulk loop must not retry it.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn execute_detailed_not_throttled_on_genuine_no_result(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(EmptyProvider));
+        registry.register(Box::new(FailProvider));
+
+        let outcome = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            "9799999990037",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await;
+        assert!(outcome.result.is_none());
+        assert!(
+            !outcome.throttled,
+            "no-result + generic network error must not classify as throttle"
+        );
+    }
+
+    /// A later provider's success supersedes an earlier throttle: the
+    /// result lands AND the flag still reports the 503 (callers only
+    /// consult it when result is None).
+    #[sqlx::test(migrations = "./migrations")]
+    async fn execute_detailed_success_after_throttle_returns_result(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(UnavailableProvider));
+        registry.register(Box::new(SuccessProvider { name: "fallback" }));
+
+        let outcome = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            "9799999990044",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await;
+        assert_eq!(
+            outcome.result.and_then(|m| m.title).as_deref(),
+            Some("Test Title")
+        );
     }
 
     // ─── CR #396 — ProviderTimeouts resolution ────────────────────

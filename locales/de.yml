@@ -434,6 +434,7 @@ error:
     default_currency_invalid: "Die Standardwährung muss ein 3-Buchstaben-Code nach ISO 4217 sein (z. B. CHF, EUR)."
     log_level_invalid: "Die Protokollebene muss eine einfache Ebene (trace/debug/info/warn/error) oder eine Liste von tracing-subscriber EnvFilter-Direktiven sein (z. B. mybibli=debug,sqlx::query=warn)."
     provider_timeout_invalid: "Die Zeitüberschreitung muss zwischen 1 und 60 Sekunden liegen."
+    bulk_refetch_delay_invalid: "Die Pause beim Cover-Nachzug muss zwischen 0 und 60000 Millisekunden liegen."
     session_timeout_invalid: "Das Sitzungs-Zeitlimit muss zwischen 1 und 720 Stunden liegen."
     version_mismatch: "Die Einstellungen wurden durch einen anderen Administrator geändert — neu laden und erneut versuchen"
     provider_version_mismatch: "%{provider} wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
@@ -812,7 +813,7 @@ admin:
       button: "Fehlende Cover erneut laden"
       idle: "Inaktiv"
       running: "Läuft: %{processed} / %{total} verarbeitet"
-      last_run: "Letzter Lauf: %{processed} / %{total} verarbeitet"
+      last_run: "Letzter Lauf: %{processed} / %{total} verarbeitet — %{recovered} Cover wiederhergestellt, %{provider_failed} Anbieterfehler, %{not_found} ohne verfügbares Cover"
       started: "Massenhafter Cover-Nachzug für %{total} Titel gestartet. Fortschritt steht im Log; aktualisieren Sie das Panel für Updates."
       empty: "Keine Titel benötigen einen Cover-Nachzug — alles, was abrufbar war, ist abgerufen."
       already_running: "Ein Cover-Nachzug läuft bereits. Bitte warten Sie auf den Abschluss."
@@ -933,6 +934,9 @@ admin:
     metadata_chain_timeout_help: "Maximale Wartezeit für einen Anbieter, bevor die Kette zum nächsten übergeht. Standard 5. Erhöhen Sie den Wert, wenn DNS oder TLS langsam sind (ländliches Glasfasernetz, VPN, Satellit). Grenzen 1–60. Beim nächsten Scan wirksam — kein Neustart."
     provider_health_timeout_label: "Zeitüberschreitung der Provider-Health-Sonde (Sekunden)"
     provider_health_timeout_help: "Maximale Wartezeit für die HEAD-Antwort jedes Anbieters beim Erreichbarkeits-Ping (alle 5 Minuten). Standard 10. Grenzen 1–60. In der nächsten Runde wirksam — kein Neustart."
+    # Issue #419 — Pause zwischen Titeln beim massenhaften Cover-Nachzug.
+    bulk_refetch_delay_label: "Pause beim Cover-Nachzug (Millisekunden)"
+    bulk_refetch_delay_help: "Pause zwischen den Titeln bei einem massenhaften Cover-Nachzug. Ein zu schnelles Tempo führt dazu, dass Anbieter den gesamten Lauf drosseln (Google Books beantwortet Anfragesalven mit Fehlern, und keine Cover kommen zurück). Standard 1000 ms — etwa 2 Minuten mehr pro 100 Titel. Grenzen 0–60000. Beim nächsten Lauf wirksam — kein Neustart."
     btn_save_timeouts: "Zeitüberschreitungen speichern"
     # CR #396 — Zeitüberschreitungs-Überschreibungen pro Anbieter.
     provider_timeouts_help: "Überschreiben Sie die Metadaten-Zeitüberschreitung für einzelne Anbieter. Lassen Sie ein Feld leer, um den globalen Standard (%{default} s) zu verwenden. Grenzen 1–60. Beim nächsten Scan wirksam — kein Neustart."
