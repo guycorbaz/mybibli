@@ -39,13 +39,17 @@ pub(crate) const PURGE_DELETION_ORDER: &[&str] = &[
     "contributors",
     "genres",
     // Issue #69: deactivated users hard-deleted after 30 days.
-    // Sessions for deactivated users are wiped in the same transaction
-    // by `services::users::deactivate` (story 8-3), so by the time
-    // auto-purge visits the row the `sessions.user_id` RESTRICT FK has
-    // no rows to block the DELETE. `admin_audit.user_id` is SET NULL
-    // (migration 20260513000002 / issue #70), so audit history
-    // survives the hard delete with `user_username` + `user_role`
-    // preserved in the JSON details payload.
+    // `services::users::deactivate` (story 8-3) wipes the user's
+    // sessions rows, but that invariant only holds for users
+    // deactivated through that handler — seed/migration state, direct
+    // SQL, or pre-8-3 deactivations leave sessions rows that the
+    // `sessions.user_id` RESTRICT FK turns into a permanent DELETE
+    // blocker (issue #416). `run_purge` therefore deletes sessions
+    // rows for doomed users in the same transaction, right before the
+    // users batch. `admin_audit.user_id` is SET NULL (migration
+    // 20260513000002 / issue #70), so audit history survives the hard
+    // delete with `user_username` + `user_role` preserved in the JSON
+    // details payload.
     "users",
 ];
 
@@ -139,6 +143,7 @@ impl AutoPurgeService {
 
         for table in PURGE_DELETION_ORDER {
             let mut table_total: u64 = 0;
+            let mut sessions_total: u64 = 0;
             let mut iterations: usize = 0;
             let mut errored = false;
             let mut drain_capped = false;
@@ -160,6 +165,49 @@ impl AutoPurgeService {
                         break;
                     }
                 };
+
+                // Issue #416: sessions rows referencing a doomed user block
+                // its DELETE via the RESTRICT FK forever — nothing else
+                // purges stale authenticated sessions (anonymous_session_purge
+                // only touches user_id IS NULL; story 7-2 expiry is
+                // read-time only). Wipe them in the same transaction so the
+                // users drain is FK-self-sufficient instead of relying on
+                // the story 8-3 deactivation invariant.
+                if *table == "users" {
+                    match sqlx::query(
+                        "DELETE FROM sessions WHERE user_id IN (\
+                         SELECT id FROM users \
+                         WHERE deleted_at IS NOT NULL \
+                         AND deleted_at < NOW() - INTERVAL 30 DAY)",
+                    )
+                    .execute(&mut *tx)
+                    .await
+                    {
+                        Ok(r) => {
+                            let n = r.rows_affected();
+                            if n > 0 {
+                                tracing::info!(
+                                    "Auto-purge users: deleted {} orphan session row(s) referencing doomed users",
+                                    n
+                                );
+                                sessions_total += n;
+                            }
+                        }
+                        Err(e) => {
+                            let msg = format!(
+                                "Failed to delete orphan sessions before users batch {} ({} rows already committed): {}",
+                                iterations, table_total, e
+                            );
+                            tracing::error!("{}", msg);
+                            stats.errors.push(msg);
+                            if let Err(re) = tx.rollback().await {
+                                tracing::error!("Failed to rollback transaction for {}: {}", table, re);
+                            }
+                            errored = true;
+                            break;
+                        }
+                    }
+                }
 
                 // Hard-delete rows older than 30 days, bounded per batch so the
                 // implicit row-locks don't block concurrent writers.
@@ -248,6 +296,15 @@ impl AutoPurgeService {
             // R3-N7: every attempted table appears in `per_table`, even
             // with `0` when nothing was deleted or the first batch errored.
             stats.per_table.insert((*table).to_string(), table_total);
+            // Issue #416: orphan session deletions ride along with the
+            // users drain — surface them in the audit payload under their
+            // own key (only when non-zero, so the forensic row stays free
+            // of a permanent zero entry for a table auto-purge doesn't
+            // otherwise visit).
+            if sessions_total > 0 {
+                stats.rows_deleted += sessions_total;
+                stats.per_table.insert("sessions".to_string(), sessions_total);
+            }
         }
 
         // Audit the run — startup and scheduler both use this path so the
@@ -507,6 +564,96 @@ mod tests {
             child_left.is_none(),
             "child title_series row should be hard-deleted"
         );
+
+        Ok(())
+    }
+
+    /// Regression test for issue #416 — a soft-deleted user past the 30-day
+    /// window whose `sessions` rows were NOT wiped by the story 8-3
+    /// deactivation handler (seed state, direct SQL, pre-8-3 deactivation)
+    /// blocked the users drain forever via the `fk_sessions_user` RESTRICT
+    /// FK. The fix deletes the doomed users' sessions in the same
+    /// transaction, right before the users batch.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_purge_deletes_user_despite_orphan_sessions(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let user_id: u64 = sqlx::query(
+            "INSERT INTO users (username, password_hash, role, deleted_at) \
+             VALUES ('doomed_orphan_416', 'x', 'librarian', NOW() - INTERVAL 31 DAY)",
+        )
+        .execute(&pool)
+        .await?
+        .last_insert_id();
+
+        sqlx::query("INSERT INTO sessions (token, user_id, data) VALUES ('orphan-session-416', ?, '{}')")
+            .bind(user_id)
+            .execute(&pool)
+            .await?;
+
+        let stats = AutoPurgeService::run_purge(&pool).await?;
+        assert!(
+            stats.errors.is_empty(),
+            "purge must not FK-error on a doomed user with live sessions, got: {:?}",
+            stats.errors
+        );
+        assert_eq!(stats.tables_errored, 0);
+
+        let user_left: Option<u64> = sqlx::query_scalar("SELECT id FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(&pool)
+            .await?;
+        assert!(user_left.is_none(), "doomed user should be hard-deleted");
+
+        let session_left: Option<String> =
+            sqlx::query_scalar("SELECT token FROM sessions WHERE token = 'orphan-session-416'")
+                .fetch_optional(&pool)
+                .await?;
+        assert!(session_left.is_none(), "orphan session row should be hard-deleted");
+
+        assert!(
+            stats.per_table.get("sessions").copied().unwrap_or(0) >= 1,
+            "orphan session deletions should surface in per_table, got {:?}",
+            stats.per_table
+        );
+
+        Ok(())
+    }
+
+    /// Issue #416 boundary companion — sessions of a user soft-deleted for
+    /// LESS than 30 days are untouched: only users eligible for the hard
+    /// purge get their sessions wiped.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn test_purge_keeps_sessions_of_recently_deleted_user(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let user_id: u64 = sqlx::query(
+            "INSERT INTO users (username, password_hash, role, deleted_at) \
+             VALUES ('recent_delete_416', 'x', 'librarian', NOW() - INTERVAL 29 DAY)",
+        )
+        .execute(&pool)
+        .await?
+        .last_insert_id();
+
+        sqlx::query("INSERT INTO sessions (token, user_id, data) VALUES ('recent-session-416', ?, '{}')")
+            .bind(user_id)
+            .execute(&pool)
+            .await?;
+
+        let stats = AutoPurgeService::run_purge(&pool).await?;
+        assert!(stats.errors.is_empty(), "got: {:?}", stats.errors);
+
+        let user_left: Option<u64> = sqlx::query_scalar("SELECT id FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(&pool)
+            .await?;
+        assert!(user_left.is_some(), "29-day user must survive the purge");
+
+        let session_left: Option<String> =
+            sqlx::query_scalar("SELECT token FROM sessions WHERE token = 'recent-session-416'")
+                .fetch_optional(&pool)
+                .await?;
+        assert!(session_left.is_some(), "sessions of a not-yet-doomed user must survive");
 
         Ok(())
     }
