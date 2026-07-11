@@ -951,3 +951,103 @@ async fn migrate_legacy_env_vars_ignores_out_of_range_timeout_env_var(pool: DbPo
     );
     assert_eq!(s.provider_health_probe_timeout_secs, 10);
 }
+
+// ─── Issue #418 — Sessions section (inactivity timeout) ────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_sessions_settings_updates_row_and_reloads_cache(pool: DbPool) {
+    let username = seed_admin(&pool).await;
+    let state = state_with_pool(pool.clone());
+    let cache = state.settings.clone();
+    let router = app(state);
+    let (cookie, csrf) = login_and_extract(&router, &username, "librarian").await;
+
+    // Pre: cache holds the compiled default (4h = 14400s) until first save.
+    assert_eq!(cache.read().unwrap().session_timeout_secs, 14400);
+
+    let body = format!(
+        "session_timeout_hours=12&session_timeout_version=1&_csrf_token={}",
+        csrf
+    );
+    let res = router
+        .clone()
+        .oneshot(
+            Request::post("/admin/system/sessions")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("cookie", format!("session={}", cookie))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK, "save_sessions returns 200");
+
+    // DB updated.
+    let row: (String, i32) = sqlx::query_as(
+        "SELECT setting_value, version FROM settings \
+         WHERE setting_key = 'session_inactivity_timeout_hours'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "12");
+    assert_eq!(row.1, 2, "optimistic-lock version bumps on save");
+
+    // Cache reloaded — the resolver middleware reads this per request
+    // for both the expiry check and the cookie Max-Age.
+    assert_eq!(
+        cache.read().unwrap().session_timeout_secs,
+        12 * 3600,
+        "AppSettings cache must reflect the new value without restart"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn save_sessions_settings_rejects_out_of_range(pool: DbPool) {
+    let username = seed_admin(&pool).await;
+    let state = state_with_pool(pool.clone());
+    let router = app(state);
+    let (cookie, csrf) = login_and_extract(&router, &username, "librarian").await;
+
+    for bad in ["0", "721"] {
+        let body = format!(
+            "session_timeout_hours={}&session_timeout_version=1&_csrf_token={}",
+            bad, csrf
+        );
+        let res = router
+            .clone()
+            .oneshot(
+                Request::post("/admin/system/sessions")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .header("cookie", format!("session={}", cookie))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            res.status(),
+            StatusCode::BAD_REQUEST,
+            "out-of-range value {bad} must 400"
+        );
+        // #91 contract: validation errors carry HX-Trigger so csrf.js
+        // opts the swap in despite HTMX's 4xx no-swap default.
+        assert_eq!(
+            res.headers()
+                .get("hx-trigger")
+                .and_then(|v| v.to_str().ok()),
+            Some("validation-error")
+        );
+    }
+
+    // Row untouched: seeded default '4', version 1.
+    let row: (String, i32) = sqlx::query_as(
+        "SELECT setting_value, version FROM settings \
+         WHERE setting_key = 'session_inactivity_timeout_hours'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, "4");
+    assert_eq!(row.1, 1);
+}

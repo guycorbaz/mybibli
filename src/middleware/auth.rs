@@ -135,6 +135,51 @@ pub(crate) fn should_skip_session_resolve(uri_path: &str) -> bool {
         || path.starts_with("/logo/")
 }
 
+/// Build the authenticated-session cookie. Shared by the login handler
+/// (`routes/auth.rs::login`), the setup wizard's Step 1
+/// (`routes/setup.rs::step_1_submit`), and the rolling refresh in
+/// `session_resolve_middleware`.
+///
+/// Issue #418: the cookie carries `Max-Age` aligned with the configured
+/// inactivity timeout. Before the fix it was a pure session cookie (no
+/// `Max-Age`), which iPadOS Safari discards on screen-lock — the
+/// librarian was logged out between two scanning batches even though
+/// the server-side session was still fresh. The server stays
+/// authoritative (`SessionModel::is_expired` on `last_activity`); the
+/// `Max-Age` only stops the browser from evaporating the cookie early.
+/// Each authenticated response re-issues the cookie (rolling window),
+/// mirroring the server-side sliding `last_activity` semantics.
+pub fn authenticated_session_cookie(token: String, timeout_secs: u64) -> Cookie<'static> {
+    Cookie::build(("session", token))
+        .http_only(true)
+        .path("/")
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::seconds(
+            timeout_secs.min(i64::MAX as u64) as i64
+        ))
+        .secure(crate::config::cookie_secure())
+        .build()
+}
+
+/// Issue #81 guard, shared by the anonymous-mint and rolling-refresh
+/// branches of `session_resolve_middleware`: true when the handler
+/// already emitted a `session=` Set-Cookie via its own CookieJar
+/// (login, logout, setup step 1, …). Without this guard the
+/// middleware's cookie lands AFTER the handler's in the response, and
+/// clients (per RFC 6265 §5.4 "later cookie wins for same
+/// name/domain/path") pick up the wrong one.
+fn handler_set_session_cookie(response: &Response) -> bool {
+    response
+        .headers()
+        .get_all(axum::http::header::SET_COOKIE)
+        .iter()
+        .any(|v| {
+            v.to_str()
+                .map(|s| s.starts_with("session=") || s.starts_with("session ="))
+                .unwrap_or(false)
+        })
+}
+
 pub async fn session_resolve_middleware(
     State(state): State<AppState>,
     mut request: Request,
@@ -161,30 +206,28 @@ pub async fn session_resolve_middleware(
         .as_ref()
         .map(|_| session.csrf_token.clone());
 
+    // Issue #418 — rolling cookie refresh: when the request resolved to
+    // an existing AUTHENTICATED session (no mint), re-issue the session
+    // cookie with a fresh `Max-Age` so the browser-side lifetime slides
+    // alongside the server-side `last_activity` window. Captured before
+    // the session moves into request extensions.
+    let refresh_cookie_token = if new_cookie_token.is_none() && session.user_id.is_some() {
+        session.token.clone()
+    } else {
+        None
+    };
+
     request.extensions_mut().insert(session);
     let mut response = next.run(request).await;
 
     if let Some(new_token) = new_cookie_token {
         // Issue #81 fix: skip the anonymous cookie append if the handler
         // already emitted a `session=` Set-Cookie via its own CookieJar
-        // (login, logout, etc.). Without this guard the middleware's anon
-        // cookie lands AFTER the handler's auth cookie in the response,
-        // and clients (browsers + curl, per RFC 6265 §5.4 "later cookie
-        // wins for same name/domain/path") pick up the anon one — pointing
-        // at a session row the login handler just soft-deleted, so every
-        // subsequent request resolves as anonymous and authentication
-        // appears to silently fail.
-        let handler_already_set_session_cookie = response
-            .headers()
-            .get_all(axum::http::header::SET_COOKIE)
-            .iter()
-            .any(|v| {
-                v.to_str()
-                    .map(|s| s.starts_with("session=") || s.starts_with("session ="))
-                    .unwrap_or(false)
-            });
-
-        if !handler_already_set_session_cookie {
+        // (login, logout, etc.) — see `handler_set_session_cookie`. The
+        // anon cookie would otherwise point at a session row the login
+        // handler just soft-deleted, so every subsequent request would
+        // resolve as anonymous and authentication would silently fail.
+        if !handler_set_session_cookie(&response) {
             // Match cookie lifetime to the 7-day anonymous-purge window so
             // the browser discards a cookie whose DB row the purge task
             // will have deleted. Without Max-Age the cookie persists until
@@ -232,6 +275,21 @@ pub async fn session_resolve_middleware(
                     token_header,
                 );
             }
+        }
+    } else if let Some(token) = refresh_cookie_token
+        && !handler_set_session_cookie(&response)
+    {
+        // Issue #418 — rolling refresh of the authenticated cookie.
+        // Same #81 guard as the mint branch: login/logout/setup already
+        // emit their own `session=` cookie and must win. `.encoded()`
+        // (not `.to_string()`) so the value is byte-identical to what
+        // the login handler's CookieJar emitted — base64 tokens carry
+        // `/` and `=`, which the jar percent-encodes.
+        let cookie = authenticated_session_cookie(token, timeout_secs);
+        if let Ok(value) = cookie.encoded().to_string().parse() {
+            response
+                .headers_mut()
+                .append(axum::http::header::SET_COOKIE, value);
         }
     }
 

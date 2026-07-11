@@ -1,0 +1,30 @@
+{# Admin → System → Sessions form (issue #418). Single integer input for
+   the inactivity timeout in hours. Drives both the server-side expiry
+   check and the authenticated session cookie's Max-Age. CSRF token is
+   the FIRST input (audit invariant). #}
+<form id="admin-system-sessions-form"
+      method="POST"
+      action="/admin/system/sessions"
+      hx-post="/admin/system/sessions"
+      hx-target="#admin-system-sessions-form"
+      hx-swap="outerHTML"
+      class="border border-stone-200 dark:border-stone-700 rounded-lg p-4 bg-stone-50 dark:bg-stone-900">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+    <input type="hidden" name="session_timeout_version" value="{{ session_timeout_version }}">
+    <label class="block">
+        <span class="block text-sm font-medium mb-1">{{ session_timeout_label }}</span>
+        <input type="number"
+               name="session_timeout_hours"
+               min="{{ timeout_hours_min }}"
+               max="{{ timeout_hours_max }}"
+               step="1"
+               required
+               value="{{ session_timeout_value }}"
+               class="w-32 px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800">
+        <span class="block text-xs text-stone-500 dark:text-stone-400 mt-1">{{ session_timeout_help }}</span>
+    </label>
+    <div class="mt-3">
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm">{{ btn_save }}</button>
+    </div>
+</form>

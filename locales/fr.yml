@@ -436,6 +436,7 @@ error:
     default_currency_invalid: "La devise par défaut doit être un code ISO 4217 à 3 lettres (ex. CHF, EUR)."
     log_level_invalid: "Le niveau doit être un niveau simple (trace/debug/info/warn/error) ou une liste de directives tracing-subscriber EnvFilter (ex. mybibli=debug,sqlx::query=warn)."
     provider_timeout_invalid: "Le délai doit être compris entre 1 et 60 secondes."
+    session_timeout_invalid: "Le délai de session doit être compris entre 1 et 720 heures."
     version_mismatch: "Les paramètres ont été modifiés par un autre administrateur — rechargez et réessayez"
     provider_version_mismatch: "%{provider} a été modifié par un autre administrateur — rechargez et réessayez"
   code:
@@ -931,6 +932,11 @@ admin:
     log_level_label: "Niveau de journalisation"
     log_level_help: "Accepte un niveau simple (trace / debug / info / warn / error) ou une liste de directives tracing-subscriber EnvFilter (ex. mybibli=debug,sqlx::query=warn). Appliqué immédiatement — pas de redémarrage. Par défaut « info », sûr en production."
     btn_save_log_level: "Enregistrer la journalisation"
+    # Issue #418 — clés de la section Sessions.
+    section_sessions: Sessions
+    session_timeout_label: "Délai d'inactivité de session (heures)"
+    session_timeout_help: "Durée pendant laquelle une session connectée reste active sans activité, de 1 heure à 720 (30 jours). Définit aussi la durée de vie du cookie de session dans le navigateur. Appliqué à la prochaine requête — les sessions déjà ouvertes ne sont pas coupées rétroactivement. Par défaut : 4 heures."
+    btn_save_sessions: "Enregistrer les préférences de session"
     # v1.7.9 fix #334 — Délais d'attente metadata-chain + provider-health.
     metadata_chain_timeout_label: "Délai d'attente par fournisseur de métadonnées (secondes)"
     metadata_chain_timeout_help: "Temps maximal d'attente d'un fournisseur avant de passer au suivant dans la chaîne. Par défaut 5. Augmentez si votre DNS ou TLS est lent (fibre rurale, VPN, satellite). Bornes 1–60. Appliqué au prochain scan — sans redémarrage."
@@ -1029,6 +1035,7 @@ success:
     log_level_saved: "Niveau de journalisation enregistré — appliqué immédiatement, pas de redémarrage requis"
     timeouts_saved: "Délais d'attente enregistrés — appliqués au prochain scan / tour de ping, pas de redémarrage requis"
     provider_timeouts_saved: "Délais par fournisseur enregistrés — appliqués au prochain scan, pas de redémarrage requis"
+    sessions_saved: "Préférences de session enregistrées — appliquées à la prochaine requête, pas de redémarrage requis"
     no_changes: "Aucune modification"
     provider_set: "Clé %{provider} enregistrée"
     provider_cleared: "Clé %{provider} effacée"

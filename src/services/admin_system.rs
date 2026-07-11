@@ -80,6 +80,33 @@ pub fn validate_provider_timeout_secs(value: u64, loc: &'static str) -> Result<(
     }
 }
 
+// Issue #418 — admin-configurable session inactivity timeout. The row
+// (seeded by the initial-schema migration, default '4') was already
+// parsed by `AppSettings::load_from_db` into `session_timeout_secs`;
+// this surfaces it in /admin > System. Also drives the authenticated
+// session cookie's `Max-Age` (`middleware::auth::authenticated_session_cookie`).
+pub const KEY_SESSION_TIMEOUT_HOURS: &str = "session_inactivity_timeout_hours";
+
+/// Inclusive bounds for the session inactivity timeout (hours). The
+/// floor mirrors `load_from_db`'s ">= 1" guard (#23 — a 0-hour timeout
+/// expires every session on its very next request). The ceiling of 30
+/// days keeps a fat-fingered value from making sessions effectively
+/// immortal on a shared device.
+pub const SESSION_TIMEOUT_HOURS_MIN: u64 = 1;
+pub const SESSION_TIMEOUT_HOURS_MAX: u64 = 720;
+
+/// Validate the session inactivity timeout (hours). Returns `BadRequest`
+/// with a localized message if out of range.
+pub fn validate_session_timeout_hours(value: u64, loc: &'static str) -> Result<(), AppError> {
+    if (SESSION_TIMEOUT_HOURS_MIN..=SESSION_TIMEOUT_HOURS_MAX).contains(&value) {
+        Ok(())
+    } else {
+        Err(AppError::BadRequest(
+            rust_i18n::t!("error.system.session_timeout_invalid", locale = loc).to_string(),
+        ))
+    }
+}
+
 /// Validate the log-level setting. Accepts:
 ///   - a plain level: `trace`, `debug`, `info`, `warn`, `error`
 ///   - a `tracing-subscriber` `EnvFilter` directive list, e.g.
@@ -251,6 +278,41 @@ mod tests {
         assert!(validate_default_language("en", "en").is_ok());
         assert!(validate_default_language("de", "en").is_ok());
         assert!(validate_default_language("it", "en").is_ok());
+    }
+
+    // ─── Issue #418 — validate_session_timeout_hours ──────────────
+
+    #[test]
+    fn validate_session_timeout_hours_rejects_zero() {
+        // Mirrors #23's load_from_db guard: a 0-hour timeout expires
+        // every session on its next request.
+        assert!(matches!(
+            validate_session_timeout_hours(0, "en"),
+            Err(AppError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn validate_session_timeout_hours_rejects_above_720() {
+        assert!(matches!(
+            validate_session_timeout_hours(721, "en"),
+            Err(AppError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn validate_session_timeout_hours_accepts_in_range() {
+        assert!(validate_session_timeout_hours(1, "en").is_ok());
+        assert!(validate_session_timeout_hours(4, "en").is_ok());
+        assert!(validate_session_timeout_hours(720, "en").is_ok());
+    }
+
+    /// The form edits the same row `AppSettings::load_from_db` reads —
+    /// a key drift here silently disconnects the admin UI from the
+    /// runtime value.
+    #[test]
+    fn session_timeout_key_matches_load_from_db() {
+        assert_eq!(KEY_SESSION_TIMEOUT_HOURS, "session_inactivity_timeout_hours");
     }
 
     // ─── Fix #308 (v1.7.1) — validate_log_level ───────────────────

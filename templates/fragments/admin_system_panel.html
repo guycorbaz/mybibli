@@ -42,4 +42,11 @@
         <h3 id="admin-system-log-heading" class="text-lg font-semibold mb-3">{{ section_logging }}</h3>
         {{ log_form_html|safe }}
     </section>
+
+    {# Issue #418 — Sessions section. Inactivity timeout in hours; also
+       drives the authenticated cookie's Max-Age (rolling refresh). #}
+    <section aria-labelledby="admin-system-sessions-heading">
+        <h3 id="admin-system-sessions-heading" class="text-lg font-semibold mb-3">{{ section_sessions }}</h3>
+        {{ sessions_form_html|safe }}
+    </section>
 </section>

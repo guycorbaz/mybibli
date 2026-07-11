@@ -434,6 +434,7 @@ error:
     default_currency_invalid: "Die Standardwährung muss ein 3-Buchstaben-Code nach ISO 4217 sein (z. B. CHF, EUR)."
     log_level_invalid: "Die Protokollebene muss eine einfache Ebene (trace/debug/info/warn/error) oder eine Liste von tracing-subscriber EnvFilter-Direktiven sein (z. B. mybibli=debug,sqlx::query=warn)."
     provider_timeout_invalid: "Die Zeitüberschreitung muss zwischen 1 und 60 Sekunden liegen."
+    session_timeout_invalid: "Das Sitzungs-Zeitlimit muss zwischen 1 und 720 Stunden liegen."
     version_mismatch: "Die Einstellungen wurden durch einen anderen Administrator geändert — neu laden und erneut versuchen"
     provider_version_mismatch: "%{provider} wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
   code:
@@ -922,6 +923,11 @@ admin:
     log_level_label: "Protokollebene"
     log_level_help: "Akzeptiert eine einfache Ebene (trace / debug / info / warn / error) oder eine Liste von tracing-subscriber EnvFilter-Direktiven (z. B. mybibli=debug,sqlx::query=warn). Sofort wirksam — kein Neustart. Standardmäßig „info“, produktionssicher."
     btn_save_log_level: "Protokollierungseinstellungen speichern"
+    # Issue #418 — Schlüssel des Abschnitts Sitzungen.
+    section_sessions: Sitzungen
+    session_timeout_label: "Inaktivitäts-Zeitlimit der Sitzung (Stunden)"
+    session_timeout_help: "Wie lange eine angemeldete Sitzung ohne Aktivität bestehen bleibt, von 1 Stunde bis 720 (30 Tage). Bestimmt auch die Lebensdauer des Sitzungs-Cookies im Browser. Wirksam ab der nächsten Anfrage — bereits offene Sitzungen werden nicht rückwirkend beendet. Standard: 4 Stunden."
+    btn_save_sessions: "Sitzungseinstellungen speichern"
     # v1.7.9 fix #334 — Metadata-Chain + Provider-Health Zeitüberschreitungen.
     metadata_chain_timeout_label: "Zeitüberschreitung pro Metadaten-Anbieter (Sekunden)"
     metadata_chain_timeout_help: "Maximale Wartezeit für einen Anbieter, bevor die Kette zum nächsten übergeht. Standard 5. Erhöhen Sie den Wert, wenn DNS oder TLS langsam sind (ländliches Glasfasernetz, VPN, Satellit). Grenzen 1–60. Beim nächsten Scan wirksam — kein Neustart."
@@ -1020,6 +1026,7 @@ success:
     log_level_saved: "Protokollebene gespeichert — sofort wirksam, kein Neustart erforderlich"
     timeouts_saved: "Zeitüberschreitungen gespeichert — beim nächsten Scan / Ping wirksam, kein Neustart erforderlich"
     provider_timeouts_saved: "Zeitüberschreitungen pro Anbieter gespeichert — beim nächsten Scan wirksam, kein Neustart erforderlich"
+    sessions_saved: "Sitzungseinstellungen gespeichert — ab der nächsten Anfrage wirksam, kein Neustart erforderlich"
     no_changes: "Keine Änderungen"
     provider_set: "%{provider}-Schlüssel gespeichert"
     provider_cleared: "%{provider}-Schlüssel gelöscht"

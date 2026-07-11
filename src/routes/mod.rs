@@ -584,6 +584,13 @@ pub fn build_router(state: AppState) -> Router {
             "/admin/system/provider-timeouts",
             axum::routing::post(admin_system::save_provider_timeouts),
         )
+        // Issue #418 — Sessions section save endpoint (inactivity
+        // timeout, hours). Hot-reloads: the resolver middleware reads
+        // the cached value per request for expiry + cookie Max-Age.
+        .route(
+            "/admin/system/sessions",
+            axum::routing::post(admin_system::save_sessions_settings),
+        )
         // CR #241 — Admin → API keys (v1.4.0). 4 routes: 1 GET panel +
         // 1 POST create + 1 GET revoke-modal + 1 POST revoke. All
         // Admin-gated. CSRF-protected via the 8-2 middleware.
