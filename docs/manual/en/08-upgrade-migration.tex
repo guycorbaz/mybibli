@@ -139,6 +139,33 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.12.0}\label{sec:whats-new-1.12.0}
+
+Version 1.12.0 is a 2-issue feature minor on 1.11.0. \emph{No
+migration, no operator action.} Routine \texttt{docker compose pull
+\&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#427 \string— two new cover sources.} When metadata
+        resolves without a cover, mybibli now also asks the
+        \emph{BnF Couvertures} service (the national library's
+        legal-deposit cover scans — the strongest source for French
+        and Swiss-French publishers) and \emph{Inventaire.io}
+        (community-driven, strong on French-language comics and
+        manga) before the Open Library fallback. Live-tested against
+        a real production catalog: roughly half of the previously
+        unrecoverable covers become available. Run \emph{Re-fetch
+        missing covers} from the Health tab after upgrading to
+        collect them. See \autoref{ch:providers}.
+  \item \textbf{\#428 \string— label-printing helper.} The catalog
+        page now shows the highest V-code and L-code already in use
+        (including trashed items — a printed sticker never gets
+        reissued), so freshly printed label sheets can start right
+        after them.
+  \item Also fixed: covers served from hosts without TLS (e.g. a
+        LAN-local image server) no longer fail to download.
+\end{itemize}
+
 \section{What's new in 1.11.0}\label{sec:whats-new-1.11.0}
 
 Version 1.11.0 bundles the four issues raised by the July production-log
