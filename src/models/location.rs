@@ -35,6 +35,21 @@ impl std::fmt::Display for LocationModel {
 }
 
 impl LocationModel {
+    /// #428 — highest L-code ever used, for the label-printing info line
+    /// on /catalog. DELIBERATELY no `deleted_at IS NULL` filter (a printed
+    /// sticker on a shelf outlives the row's trash state) — intentionally
+    /// ASYMMETRIC with `LocationService::get_next_available_lcode`, which
+    /// proposes creation codes over live rows only. Same fixed-width
+    /// CHAR(5) reasoning as `VolumeModel::highest_label_any`.
+    pub async fn highest_label_any(pool: &DbPool) -> Result<Option<String>, AppError> {
+        let label = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT MAX(label) FROM storage_locations WHERE label REGEXP '^L[0-9]{4}$'",
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(label)
+    }
+
     pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<Option<LocationModel>, AppError> {
         tracing::debug!(id = id, "Looking up location by ID");
 
@@ -347,6 +362,32 @@ impl LocationModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #428 — highest L-code includes soft-deleted rows, deliberately
+    /// ASYMMETRIC with `LocationService::get_next_available_lcode`
+    /// (which proposes creation codes over live rows only).
+    #[sqlx::test(migrations = "./migrations")]
+    async fn highest_label_any_includes_soft_deleted(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        sqlx::query(
+            "INSERT INTO storage_locations (name, node_type, label) VALUES \
+             ('Salon', 'room', 'L0007'), ('Cave', 'room', 'L0042')",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query("UPDATE storage_locations SET deleted_at = NOW() WHERE label = 'L0042'")
+            .execute(&pool)
+            .await?;
+
+        assert_eq!(
+            LocationModel::highest_label_any(&pool).await?.as_deref(),
+            Some("L0042"),
+            "soft-deleted L-codes stay in the high-water mark"
+        );
+
+        Ok(())
+    }
 
     #[test]
     fn test_location_model_display() {

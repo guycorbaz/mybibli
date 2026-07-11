@@ -146,6 +146,8 @@ home:
 catalog:
   title: Katalog
   scan_placeholder: "Scannen oder eingeben: ISBN, V-Code, L-Code oder Suche…"
+  # #428 — Hilfszeile für den Etikettendruck (höchste V/L-Codes).
+  highest_codes: "Etiketten in Gebrauch bis %{codes} — drucken Sie neue Etikettenbögen ab den folgenden Nummern."
   scan_label: Barcode scannen oder Code eingeben
   scan_received: "Scan empfangen: %{code}"
   new_title_button: Neuer Titel
