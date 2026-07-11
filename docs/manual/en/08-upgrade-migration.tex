@@ -139,6 +139,39 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.11.0}\label{sec:whats-new-1.11.0}
+
+Version 1.11.0 bundles the four issues raised by the July production-log
+review — two bug fixes and two operator-facing improvements. \emph{One
+additive settings migration; applies automatically — no operator
+action.} Routine \texttt{docker compose pull \&\& docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#418 \string— sessions survive a tablet screen-lock.}
+        The session cookie is now persistent (its lifetime follows the
+        inactivity timeout) instead of a browser-session cookie, so
+        iPads and other devices that discard session cookies on lock no
+        longer log you out mid-cataloguing. The inactivity timeout
+        itself is now admin-configurable in hours (1--720, default 4)
+        under \texttt{/admin > System > Sessions} — see
+        \autoref{sec:system}.
+  \item \textbf{\#419 \string— bulk cover-refetch actually recovers
+        covers.} The \emph{Re-fetch missing covers} action paces its
+        requests (configurable delay, default 1\,s per title), retries
+        throttled lookups with increasing back-off, and finishes with a
+        summary on the Health tab — covers recovered, provider errors,
+        and titles with no cover available anywhere. Previously a
+        back-to-back run tripped Google Books' burst throttling and
+        silently recovered nothing.
+  \item \textbf{\#416 \string— daily auto-purge unblocked.} Leftover
+        session rows referencing a long-deactivated user no longer
+        block the 30-day hard-purge of that user (a daily error in the
+        logs since June). The purge now cleans those rows itself.
+  \item \textbf{\#417 \string— quieter logs.} Clicking the dashboard
+        \emph{Gaps} chips no longer emits a spurious warning line per
+        click.
+\end{itemize}
+
 \section{What's new in 1.10.0}\label{sec:whats-new-1.10.0}
 
 Version 1.10.0 is a single-feature minor on 1.9.1. \emph{No

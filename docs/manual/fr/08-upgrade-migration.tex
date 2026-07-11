@@ -148,6 +148,45 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.11.0}\label{sec:whats-new-1.11.0}
+
+La version 1.11.0 regroupe les quatre problèmes remontés par la revue
+des journaux de production de juillet — deux corrections de bugs et
+deux améliorations côté opérateur. \emph{Une migration additive de
+paramètres ; appliquée automatiquement — aucune action opérateur.}
+\texttt{docker compose pull \&\& docker compose up -d} de routine.
+
+\begin{itemize}
+  \item \textbf{\#418 \string— les sessions survivent au verrouillage
+        d'écran d'une tablette.} Le cookie de session est désormais
+        persistant (sa durée de vie suit le délai d'inactivité) au lieu
+        d'un cookie de session navigateur : les iPads et autres
+        appareils qui jettent les cookies de session au verrouillage ne
+        vous déconnectent plus en plein catalogage. Le délai
+        d'inactivité lui-même se règle désormais en heures (1--720,
+        défaut 4) dans \texttt{/admin > System > Sessions} — voir
+        \autoref{sec:system}.
+  \item \textbf{\#419 \string— le re-fetch de couvertures en lot
+        récupère vraiment des couvertures.} L'action \emph{Récupérer
+        les couvertures manquantes} espace désormais ses requêtes
+        (délai configurable, défaut 1\,s par titre), retente les
+        consultations bloquées avec un délai croissant, et se termine
+        par un résumé sur l'onglet Santé — couvertures récupérées,
+        erreurs fournisseur, et titres sans couverture disponible nulle
+        part. Auparavant, une exécution en rafale déclenchait le
+        blocage anti-rafale de Google Books et ne récupérait
+        silencieusement rien.
+  \item \textbf{\#416 \string— l'auto-purge quotidienne débloquée.}
+        Des lignes de session résiduelles pointant vers un utilisateur
+        désactivé de longue date ne bloquent plus la purge définitive à
+        30 jours de cet utilisateur (une erreur quotidienne dans les
+        journaux depuis juin). La purge nettoie désormais ces lignes
+        elle-même.
+  \item \textbf{\#417 \string— des journaux plus silencieux.} Cliquer
+        les puces \emph{Lacunes} du tableau de bord n'émet plus une
+        ligne d'avertissement parasite à chaque clic.
+\end{itemize}
+
 \section{Nouveautés de la 1.10.0}\label{sec:whats-new-1.10.0}
 
 La version 1.10.0 est une mineure à fonctionnalité unique sur la
