@@ -428,6 +428,7 @@ error:
     default_currency_invalid: "La valuta predefinita deve essere un codice ISO 4217 a 3 lettere (es. CHF, EUR)."
     log_level_invalid: "Il livello di log deve essere un livello semplice (trace/debug/info/warn/error) o un elenco di direttive tracing-subscriber EnvFilter (es. mybibli=debug,sqlx::query=warn)."
     provider_timeout_invalid: "Il timeout deve essere compreso tra 1 e 60 secondi."
+    session_timeout_invalid: "Il timeout di sessione deve essere compreso tra 1 e 720 ore."
     version_mismatch: "Le impostazioni sono state modificate da un altro amministratore — ricarica e riprova"
     provider_version_mismatch: "%{provider} è stato modificato da un altro amministratore — ricarica e riprova"
   code:
@@ -909,6 +910,11 @@ admin:
     log_level_label: "Livello di log"
     log_level_help: "Accetta un livello semplice (trace / debug / info / warn / error) o un elenco di direttive tracing-subscriber EnvFilter (es. mybibli=debug,sqlx::query=warn). Applicato immediatamente — nessun riavvio. Predefinito «info», sicuro per la produzione."
     btn_save_log_level: "Salva impostazioni di registrazione"
+    # Issue #418 — chiavi della sezione Sessioni.
+    section_sessions: Sessioni
+    session_timeout_label: "Timeout di inattività della sessione (ore)"
+    session_timeout_help: "Per quanto tempo una sessione connessa resta attiva senza attività, da 1 ora a 720 (30 giorni). Definisce anche la durata del cookie di sessione nel browser. Applicato alla prossima richiesta — le sessioni già aperte non vengono chiuse retroattivamente. Predefinito: 4 ore."
+    btn_save_sessions: "Salva impostazioni di sessione"
     # v1.7.9 fix #334 — timeout metadata-chain + provider-health.
     metadata_chain_timeout_label: "Timeout per fornitore di metadati (secondi)"
     metadata_chain_timeout_help: "Tempo massimo di attesa per un fornitore prima che la catena passi al successivo. Predefinito 5. Aumenta se DNS o TLS sono lenti (fibra rurale, VPN, satellite). Intervallo 1–60. Applicato alla prossima scansione — nessun riavvio."
@@ -1006,6 +1012,7 @@ success:
     log_level_saved: "Livello di log salvato — applicato immediatamente, nessun riavvio richiesto"
     timeouts_saved: "Timeout salvati — applicati alla prossima scansione / giro di ping, nessun riavvio richiesto"
     provider_timeouts_saved: "Timeout per fornitore salvati — applicati alla prossima scansione, nessun riavvio richiesto"
+    sessions_saved: "Impostazioni di sessione salvate — applicate alla prossima richiesta, nessun riavvio richiesto"
     no_changes: "Nessuna modifica"
     provider_set: "Chiave %{provider} salvata"
     provider_cleared: "Chiave %{provider} cancellata"

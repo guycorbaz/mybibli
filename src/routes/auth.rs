@@ -175,13 +175,15 @@ pub async fn login(
 
     tracing::info!(username = %username, role = %role, "Login successful");
 
-    // Set session cookie
-    let session_cookie = Cookie::build(("session", token))
-        .http_only(true)
-        .path("/")
-        .same_site(SameSite::Lax)
-        .secure(crate::config::cookie_secure())
-        .build();
+    // Set session cookie. Issue #418: carries Max-Age aligned with the
+    // configured inactivity timeout (rolling-refreshed by the resolver
+    // middleware on every authenticated request) so mobile browsers —
+    // iPadOS Safari discards pure session cookies on screen-lock —
+    // keep the session alive across scanning batches.
+    let session_cookie = crate::middleware::auth::authenticated_session_cookie(
+        token,
+        state.session_timeout_secs(),
+    );
 
     // Honor ?next= if safe and same-origin, else default to /catalog.
     let redirect_target = if is_safe_next(&form.next) {

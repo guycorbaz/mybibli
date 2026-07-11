@@ -81,6 +81,7 @@ An attacker gains LAN access (e.g., compromised guest device) and tries to escal
 | **CSRF synchronizer token** on every state-changing method | `src/middleware/csrf.rs` | `src/templates_audit.rs::forms_include_csrf_token` (every `<form method="POST">` in Askama templates carries `_csrf_token`); `csrf_exempt_routes_frozen` (allowlist is `[("POST", "/login")]` and nothing else) |
 | **SameSite=Lax** session cookie | `src/middleware/auth.rs` | Unit test on cookie attributes; rationale in CLAUDE.md (downgraded from Strict in 7-3 so the language-toggle POST works) |
 | **HttpOnly** session cookie | `src/middleware/auth.rs` | Same |
+| **Server-authoritative session expiry** — the cookie's `Max-Age` (issue #418, see § 5.5) is a browser-retention hint only; expiry is enforced by `SessionModel::is_expired` on `sessions.last_activity` | `src/middleware/auth.rs::resolve_or_mint` | `tests/session_cookie_collision.rs` (cookie attributes + rolling refresh) |
 | **Session rotation on login** — pre-login session token is invalidated, a fresh row is issued | `src/services/auth::authenticate_session` | Unit test in `services/auth.rs` |
 | **Last-active-admin guard** — refuses to deactivate the last admin or self-deactivate the current session's user | `src/services/users.rs` | Unit + DB-integration tests; defense against admin lockout via UI |
 | **Scanner-guard** — captures `keydown` while a modal is open to prevent USB scanner bursts from leaking into the modal's default-focused button | `static/js/scanner-guard.js` | Documented as story-7-5 invariant; no specific unit test (browser-side) |
@@ -123,7 +124,15 @@ The only ownership-style guard is the **self-deactivate** + **last-active-admin*
 
 Login throttling is delegated to the operator's reverse proxy (or absent if the proxy is also absent). Rationale: brute-forcing argon2id with `m=19456, t=2, p=1` parameters is computationally prohibitive at NAS-scale traffic; adding a token-bucket in Axum middleware would add complexity for marginal benefit and risk locking out the legitimate single user.
 
-### 5.5 No CSRF on `POST /login`
+### 5.5 Persistent (Max-Age) authenticated session cookie
+
+Since issue #418 the authenticated session cookie carries `Max-Age` equal to the configured inactivity timeout (`session_inactivity_timeout_hours`, default 4 h, admin-editable in `/admin?tab=system`), re-issued on every authenticated response (rolling window). Before #418 it was a pure session cookie (no `Max-Age`), and iPadOS Safari discards those on screen-lock — the reference operator was logged out between two barcode-scanning batches while the server-side session was still fresh.
+
+Accepted trade-off: a persistent cookie survives browser restarts within the timeout window, so a shared/stolen device stays signed in slightly longer than a pure session cookie would allow. This is acceptable for the single-tenant LAN shape because (a) the server remains authoritative — `SessionModel::is_expired` checks `sessions.last_activity` on every request, and an admin-side deactivation or timeout reduction takes effect on the next request regardless of what the browser holds; (b) the pure-session-cookie behavior it replaces was itself inconsistent across browsers (desktop browsers with "restore tabs" resurrect session cookies anyway); (c) the timeout ceiling is clamped to 720 h by `validate_session_timeout_hours`.
+
+Anonymous-session cookies are unaffected: they keep their fixed 7-day `Max-Age` aligned with the anonymous purge window (story 8-2) and do NOT roll.
+
+### 5.6 No CSRF on `POST /login`
 
 `POST /login` is the *only* member of the `CSRF_EXEMPT_ROUTES` allowlist. The freeze is policed by `csrf_exempt_routes_frozen`. Rationale: a pre-auth user has no session row yet, hence no token to validate; the login form is the bootstrap surface for the token chain. The token is rotated immediately on successful authentication.
 
@@ -148,7 +157,7 @@ A PR that touches any of the following must:
 
 - `src/middleware/auth.rs` or `csrf.rs` — re-read § 3 and § 4 of this doc and update if the threat surface changes
 - `src/services/auth.rs` — update § 4 row "Session rotation on login" if behavior shifts
-- The `CSRF_EXEMPT_ROUTES` constant — update § 5.5 with the new entry's rationale
+- The `CSRF_EXEMPT_ROUTES` constant — update § 5.6 with the new entry's rationale
 - The cookie attribute set in `auth.rs` or `csrf.rs` — update § 5.1 / § 5.2 if the default changes
 - The CSP header in `csrf.rs::csp` — update § 4 "Strict CSP" row
 

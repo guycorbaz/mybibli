@@ -511,4 +511,103 @@ test.describe("Story 8-5 — Admin System Settings", () => {
       await ctxB.close();
     }
   });
+
+  // ─── Issue #418 — Sessions section (inactivity timeout) ──────────
+
+  test("session cookie is persistent with Max-Age = configured timeout (#418)", async ({
+    page,
+  }) => {
+    await loginAs(page, "admin");
+    const cookies = await page.context().cookies();
+    const session = cookies.find((c) => c.name === "session");
+    expect(session, "session cookie present after login").toBeTruthy();
+    // A pure session cookie has expires === -1. #418: the cookie must
+    // carry Max-Age (persistent) so iPadOS Safari keeps it across
+    // screen-locks. Default timeout is 4h; the E2E stack may configure
+    // a different value, so assert "persistent and in the future"
+    // rather than an exact horizon.
+    expect(
+      session!.expires,
+      "authenticated session cookie must be persistent (Max-Age set), not a browser-session cookie",
+    ).toBeGreaterThan(Date.now() / 1000);
+  });
+
+  test("save session timeout persists and re-renders (#418)", async ({
+    page,
+  }) => {
+    await loginAs(page, "admin");
+    await page.goto("/admin?tab=system");
+
+    await expect(
+      page.getByRole("heading", { name: /Sessions|Sitzungen|Sessioni/i, level: 3 }),
+    ).toBeVisible();
+
+    const input = page.locator(
+      'form#admin-system-sessions-form input[name="session_timeout_hours"]',
+    );
+    await expect(input).toBeVisible();
+    await input.fill("6");
+    await page
+      .locator('form#admin-system-sessions-form button[type="submit"]')
+      .click();
+    await expect(
+      page
+        .locator("#feedback-list")
+        .getByText(
+          /Session settings saved|Préférences de session enregistrées/i,
+        ),
+    ).toBeVisible({ timeout: 10000 });
+
+    // Persisted value re-renders on a fresh page load.
+    await page.goto("/admin?tab=system");
+    await expect(
+      page.locator(
+        'form#admin-system-sessions-form input[name="session_timeout_hours"]',
+      ),
+    ).toHaveValue("6");
+
+    // Reset to the seeded default (4h) so the shared settings row does
+    // not leak into other specs (this describe is serial, but the
+    // settings table is stack-global).
+    const resetInput = page.locator(
+      'form#admin-system-sessions-form input[name="session_timeout_hours"]',
+    );
+    await resetInput.fill("4");
+    await page
+      .locator('form#admin-system-sessions-form button[type="submit"]')
+      .click();
+    await expect(
+      page
+        .locator("#feedback-list")
+        .getByText(
+          /Session settings saved|Préférences de session enregistrées/i,
+        )
+        .last(),
+    ).toBeVisible({ timeout: 10000 });
+  });
+
+  test("session timeout validation: 0 → 400 (#418)", async ({
+    page,
+    request,
+  }) => {
+    await loginAs(page, "admin");
+    await page.goto("/admin?tab=system");
+    const realToken = await page
+      .locator('meta[name="csrf-token"]')
+      .getAttribute("content");
+    expect(realToken).toBeTruthy();
+    const cookies = await page.context().cookies();
+    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+
+    const resp = await request.post("/admin/system/sessions", {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Cookie": cookieHeader,
+        "HX-Request": "true",
+      },
+      data: `session_timeout_hours=0&session_timeout_version=1&_csrf_token=${encodeURIComponent(realToken!)}`,
+      maxRedirects: 0,
+    });
+    expect(resp.status()).toBe(400);
+  });
 });

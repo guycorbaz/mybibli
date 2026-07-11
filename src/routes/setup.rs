@@ -28,7 +28,7 @@ use axum::Extension;
 use axum::extract::{Form, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
+use axum_extra::extract::cookie::{Cookie, CookieJar};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -878,16 +878,14 @@ pub async fn step_1_submit(
     let (new_token, _csrf) = authenticate_session(&state.pool, new_user_id, prev).await?;
 
     // Match the login flow's authenticated-session cookie semantics
-    // (`routes/auth.rs::login`): no Max-Age ⇒ session cookie that expires
-    // when the browser closes. Anonymous-session cookies get 7 days
-    // (`session_resolve_middleware`); authenticated sessions do NOT.
-    // Story 8-8 review P5.
-    let cookie = Cookie::build(("session", new_token))
-        .http_only(true)
-        .path("/")
-        .same_site(SameSite::Lax)
-        .secure(crate::config::cookie_secure())
-        .build();
+    // (`routes/auth.rs::login`): Max-Age aligned with the configured
+    // inactivity timeout (issue #418 — was a pure session cookie until
+    // then; story 8-8 review P5 documented the old shape). Anonymous
+    // cookies keep their own 7-day window in `session_resolve_middleware`.
+    let cookie = crate::middleware::auth::authenticated_session_cookie(
+        new_token,
+        state.session_timeout_secs(),
+    );
     let jar = jar.add(cookie);
 
     refresh_gate(&state.setup_gate, &state.pool).await;

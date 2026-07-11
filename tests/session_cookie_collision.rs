@@ -142,6 +142,145 @@ async fn login_emits_exactly_one_session_set_cookie(pool: DbPool) {
     );
 }
 
+// ─── Issue #418 — authenticated cookie Max-Age + rolling refresh ───
+//
+// The authenticated session cookie was a pure session cookie (no
+// Max-Age), which iPadOS Safari discards on screen-lock — the librarian
+// was logged out between two scanning batches. The cookie now carries
+// Max-Age aligned with the configured inactivity timeout (default 4h =
+// 14400s from `AppSettings::default().session_timeout_secs`), and the
+// resolver middleware re-issues it on every authenticated request so
+// the browser-side lifetime slides with the server-side
+// `last_activity` window.
+
+fn find_session_set_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers
+        .get_all(axum::http::header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|s| s.starts_with("session="))
+        .map(|s| s.to_string())
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn login_session_cookie_carries_max_age(pool: DbPool) {
+    let username = seed_user(&pool).await;
+    let app = app(state_with_pool(pool.clone()));
+
+    let body = format!("username={}&password=librarian", username);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/login")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+
+    let cookie = find_session_set_cookie(resp.headers()).expect("session Set-Cookie");
+    assert!(
+        cookie.contains("Max-Age=14400"),
+        "authenticated cookie must carry Max-Age = session timeout (4h default); got {cookie}"
+    );
+    assert!(cookie.contains("HttpOnly"), "cookie stays HttpOnly: {cookie}");
+    assert!(
+        cookie.to_lowercase().contains("samesite=lax"),
+        "cookie stays SameSite=Lax: {cookie}"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn authenticated_request_rolls_session_cookie_max_age(pool: DbPool) {
+    let username = seed_user(&pool).await;
+    let app = app(state_with_pool(pool.clone()));
+
+    // Login to obtain the authenticated cookie.
+    let body = format!("username={}&password=librarian", username);
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/login")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let token = extract_session_cookie_value(resp.headers()).expect("login cookie value");
+
+    // A plain authenticated GET must re-issue the SAME token with a
+    // fresh Max-Age (rolling window).
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/")
+                .header("cookie", format!("session={token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let count = count_session_set_cookies(resp.headers());
+    assert_eq!(count, 1, "authenticated GET re-issues exactly 1 session cookie");
+    let cookie = find_session_set_cookie(resp.headers()).unwrap();
+    assert!(
+        cookie.contains("Max-Age=14400"),
+        "rolled cookie carries a fresh Max-Age: {cookie}"
+    );
+    let rolled_token = extract_session_cookie_value(resp.headers()).unwrap();
+    assert_eq!(
+        rolled_token, token,
+        "rolling refresh must NOT rotate the token — same session, fresh lifetime"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anonymous_repeat_request_does_not_reissue_cookie(pool: DbPool) {
+    // The rolling refresh is authenticated-only: an anonymous session
+    // resolved from an existing cookie must NOT re-emit Set-Cookie
+    // (its 7-day Max-Age is aligned with the anonymous purge window
+    // and does not slide).
+    let app = app(state_with_pool(pool.clone()));
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let anon_token = extract_session_cookie_value(resp.headers()).expect("anon mint cookie");
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/")
+                .header("cookie", format!("session={anon_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        count_session_set_cookies(resp.headers()),
+        0,
+        "resolved anonymous session must not re-issue the cookie"
+    );
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn anonymous_first_hit_still_emits_exactly_one_session_cookie(pool: DbPool) {
     // Sanity: when no handler sets its own cookie, the middleware's anon

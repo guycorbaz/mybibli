@@ -36,9 +36,10 @@ use crate::utils::feedback_html;
 use crate::services::admin_system::{
     KEY_DEFAULT_CURRENCY, KEY_DEFAULT_LANGUAGE, KEY_GOOGLE_BOOKS, KEY_LOG_LEVEL,
     KEY_METADATA_CHAIN_TIMEOUT, KEY_OMDB, KEY_OVERDUE_THRESHOLD, KEY_PROVIDER_HEALTH_TIMEOUT,
-    KEY_SHOW_VALUE_INDICATORS, KEY_TMDB, PROVIDER_TIMEOUT_KEY_PREFIX, provider_timeout_key,
-    reload_settings_cache, save_setting, validate_default_currency, validate_default_language,
-    validate_log_level, validate_overdue_threshold, validate_provider_timeout_secs,
+    KEY_SESSION_TIMEOUT_HOURS, KEY_SHOW_VALUE_INDICATORS, KEY_TMDB, PROVIDER_TIMEOUT_KEY_PREFIX,
+    provider_timeout_key, reload_settings_cache, save_setting, validate_default_currency,
+    validate_default_language, validate_log_level, validate_overdue_threshold,
+    validate_provider_timeout_secs, validate_session_timeout_hours,
 };
 
 // ─── Form structs ─────────────────────────────────────────────────
@@ -116,6 +117,16 @@ pub struct MetadataTimeoutsForm {
     pub _csrf_token: String,
 }
 
+// Issue #418 — Sessions section. Single setting: the inactivity
+// timeout in hours. Drives both the server-side expiry check and the
+// authenticated cookie's Max-Age.
+#[derive(Deserialize)]
+pub struct SessionsSettingsForm {
+    pub session_timeout_hours: u64,
+    pub session_timeout_version: i32,
+    pub _csrf_token: String,
+}
+
 // ─── Template structs ────────────────────────────────────────────
 
 #[derive(Template)]
@@ -127,6 +138,7 @@ pub(crate) struct AdminSystemPanel {
     pub section_language: String,
     pub section_valuation: String,
     pub section_logging: String,
+    pub section_sessions: String,
     pub loans_form_html: String,
     pub providers_form_html: String,
     pub timeouts_form_html: String,
@@ -134,6 +146,7 @@ pub(crate) struct AdminSystemPanel {
     pub language_form_html: String,
     pub valuation_form_html: String,
     pub log_form_html: String,
+    pub sessions_form_html: String,
 }
 
 #[derive(Template)]
@@ -188,6 +201,21 @@ struct AdminSystemLogForm {
     log_level_help: String,
     log_level_value: String,
     log_level_version: i32,
+    btn_save: String,
+}
+
+// Issue #418 — Sessions form. Single integer input (hours) for the
+// inactivity timeout.
+#[derive(Template)]
+#[template(path = "fragments/admin_system_sessions_form.html")]
+struct AdminSystemSessionsForm {
+    csrf_token: String,
+    session_timeout_label: String,
+    session_timeout_help: String,
+    session_timeout_value: u64,
+    session_timeout_version: i32,
+    timeout_hours_min: u64,
+    timeout_hours_max: u64,
     btn_save: String,
 }
 
@@ -305,7 +333,7 @@ async fn fetch_setting_rows(
 ) -> Result<HashMap<String, (String, i32)>, AppError> {
     let rows: Vec<(String, String, i32)> = sqlx::query_as(
         "SELECT setting_key, setting_value, version FROM settings \
-         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
+         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
     )
     .bind(KEY_OVERDUE_THRESHOLD)
     .bind(KEY_DEFAULT_LANGUAGE)
@@ -317,6 +345,7 @@ async fn fetch_setting_rows(
     .bind(KEY_LOG_LEVEL)
     .bind(KEY_METADATA_CHAIN_TIMEOUT)
     .bind(KEY_PROVIDER_HEALTH_TIMEOUT)
+    .bind(KEY_SESSION_TIMEOUT_HOURS)
     .fetch_all(pool)
     .await?;
     let mut map = HashMap::new();
@@ -590,6 +619,30 @@ fn render_provider_timeouts_form(
     .map_err(|_| AppError::Internal("provider timeouts form render failed".to_string()))
 }
 
+// Issue #418 — Sessions form renderer.
+fn render_sessions_form(
+    csrf: &str,
+    loc: &'static str,
+    timeout_hours: u64,
+    version: i32,
+) -> Result<String, AppError> {
+    use crate::services::admin_system::{SESSION_TIMEOUT_HOURS_MAX, SESSION_TIMEOUT_HOURS_MIN};
+    AdminSystemSessionsForm {
+        csrf_token: csrf.to_string(),
+        session_timeout_label: rust_i18n::t!("admin.system.session_timeout_label", locale = loc)
+            .to_string(),
+        session_timeout_help: rust_i18n::t!("admin.system.session_timeout_help", locale = loc)
+            .to_string(),
+        session_timeout_value: timeout_hours,
+        session_timeout_version: version,
+        timeout_hours_min: SESSION_TIMEOUT_HOURS_MIN,
+        timeout_hours_max: SESSION_TIMEOUT_HOURS_MAX,
+        btn_save: rust_i18n::t!("admin.system.btn_save_sessions", locale = loc).to_string(),
+    }
+    .render()
+    .map_err(|_| AppError::Internal("sessions form render failed".to_string()))
+}
+
 // v1.7.1 fix #308 — Logging form renderer.
 fn render_log_form(
     csrf: &str,
@@ -671,6 +724,16 @@ pub async fn render_panel_html(
         .cloned()
         .unwrap_or_else(|| (probe_timeout.to_string(), 1));
 
+    // Issue #418 — session timeout row. The form edits the HOURS key
+    // directly (the E2E-only `session_inactivity_timeout_seconds`
+    // override is deliberately not surfaced), so read the row value
+    // rather than deriving from the cached seconds.
+    let (session_timeout_value, session_timeout_version) = rows
+        .get(KEY_SESSION_TIMEOUT_HOURS)
+        .cloned()
+        .unwrap_or_else(|| ("4".to_string(), 1));
+    let session_timeout_hours = session_timeout_value.parse::<u64>().unwrap_or(4);
+
     let csrf = session.csrf_token.as_str();
     let loans_form_html = render_loans_form(csrf, loc, threshold, threshold_version)?;
     let providers_form_html = render_providers_form(csrf, loc, &rows)?;
@@ -700,6 +763,8 @@ pub async fn render_panel_html(
         indicators_version,
     )?;
     let log_form_html = render_log_form(csrf, loc, &log_level, log_level_version)?;
+    let sessions_form_html =
+        render_sessions_form(csrf, loc, session_timeout_hours, session_timeout_version)?;
 
     AdminSystemPanel {
         panel_heading: rust_i18n::t!("admin.system.panel_heading", locale = loc).to_string(),
@@ -710,6 +775,7 @@ pub async fn render_panel_html(
         section_valuation: rust_i18n::t!("admin.system.section_valuation", locale = loc)
             .to_string(),
         section_logging: rust_i18n::t!("admin.system.section_logging", locale = loc).to_string(),
+        section_sessions: rust_i18n::t!("admin.system.section_sessions", locale = loc).to_string(),
         loans_form_html,
         providers_form_html,
         timeouts_form_html,
@@ -717,6 +783,7 @@ pub async fn render_panel_html(
         language_form_html,
         valuation_form_html,
         log_form_html,
+        sessions_form_html,
     }
     .render()
     .map_err(|_| AppError::Internal("admin system panel render failed".to_string()))
@@ -814,6 +881,69 @@ pub async fn save_loans_settings(
     Ok(HtmxResponse {
         main,
         oob: vec![OobUpdate { swap_mode: Default::default(),
+            target: "feedback-list".to_string(),
+            content: feedback,
+        }],
+    }
+    .into_response())
+}
+
+// Issue #418 — Sessions save handler. Same shape as
+// `save_loans_settings`: validate → optimistic-lock UPDATE → cache
+// reload → re-render form + OOB success FeedbackEntry. Takes effect on
+// the very next request: the resolver middleware reads
+// `state.session_timeout_secs()` per request for both the expiry check
+// and the rolling cookie Max-Age.
+pub async fn save_sessions_settings(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    Form(form): Form<SessionsSettingsForm>,
+) -> Result<Response, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=system", locale.0)?;
+    let loc = locale.0;
+
+    if let Err(e) = validate_session_timeout_hours(form.session_timeout_hours, loc) {
+        let error_msg = match e {
+            AppError::BadRequest(msg) => msg,
+            other => return Err(other),
+        };
+        return Ok(validation_error_response(
+            render_sessions_form(
+                &session.csrf_token,
+                loc,
+                form.session_timeout_hours,
+                form.session_timeout_version,
+            )?,
+            error_msg,
+        ));
+    }
+
+    save_setting(
+        &state.pool,
+        KEY_SESSION_TIMEOUT_HOURS,
+        &form.session_timeout_hours.to_string(),
+        form.session_timeout_version,
+    )
+    .await?;
+    reload_settings_cache(&state).await?;
+
+    let rows = fetch_setting_rows(&state.pool).await?;
+    let (_, version) = rows
+        .get(KEY_SESSION_TIMEOUT_HOURS)
+        .cloned()
+        .unwrap_or_else(|| (form.session_timeout_hours.to_string(), 2));
+    let main = render_sessions_form(
+        &session.csrf_token,
+        loc,
+        form.session_timeout_hours,
+        version,
+    )?;
+    let feedback = success_feedback(loc, "success.system.sessions_saved");
+    Ok(HtmxResponse {
+        main,
+        oob: vec![OobUpdate {
+            swap_mode: Default::default(),
             target: "feedback-list".to_string(),
             content: feedback,
         }],
