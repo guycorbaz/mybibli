@@ -257,15 +257,12 @@ impl TitleModel {
                 let issn: Option<String> = r.try_get("issn").ok().flatten();
                 let upc: Option<String> = r.try_get("upc").ok().flatten();
                 let media_type: String = r.try_get("media_type").ok()?;
-                let (code, code_type) = if let Some(c) = isbn {
-                    (c, crate::models::media_type::CodeType::Isbn)
-                } else if let Some(c) = upc {
-                    (c, crate::models::media_type::CodeType::Upc)
-                } else if let Some(c) = issn {
-                    (c, crate::models::media_type::CodeType::Issn)
-                } else {
-                    return None;
-                };
+                // Priority order: ISBN first (best provider coverage),
+                // then UPC, then ISSN.
+                let (code, code_type) = isbn
+                    .map(|c| (c, crate::models::media_type::CodeType::Isbn))
+                    .or_else(|| upc.map(|c| (c, crate::models::media_type::CodeType::Upc)))
+                    .or_else(|| issn.map(|c| (c, crate::models::media_type::CodeType::Issn)))?;
                 Some(MissingCoverTitle {
                     id,
                     code,
