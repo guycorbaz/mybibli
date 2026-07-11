@@ -147,6 +147,8 @@ home:
 catalog:
   title: Catalogue
   scan_placeholder: "Scanner ou taper : ISBN, code V, code L, ou recherche..."
+  # #428 — ligne d'aide impression d'étiquettes (plus hauts codes V/L).
+  highest_codes: "Étiquettes utilisées jusqu'à %{codes} — imprimez les nouvelles planches à partir des numéros suivants."
   scan_label: Scanner un code-barres ou taper un code
   scan_received: "Scan reçu : %{code}"
   new_title_button: Nouveau titre

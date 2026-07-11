@@ -146,6 +146,8 @@ home:
 catalog:
   title: Catalog
   scan_placeholder: "Scan or type: ISBN, V-code, L-code, or search..."
+  # #428 — label-printing helper line (V/L high-water marks).
+  highest_codes: "Labels in use up to %{codes} — print new label sheets starting after these numbers."
   scan_label: Scan barcode or type code
   scan_received: "Scan received: %{code}"
   new_title_button: New title

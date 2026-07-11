@@ -17,6 +17,15 @@
         </p>
     </div>
 
+    {# #428 — highest V-code / L-code in use, so freshly printed label
+       sheets start after them. Librarian workflow only; hidden when no
+       codes exist yet (empty line from the handler). #}
+    {% if !highest_codes_line.is_empty() && (base.role == "librarian" || base.role == "admin") %}
+    <p id="highest-codes-line" class="text-xs text-stone-500 dark:text-stone-400 px-3">
+        {{ highest_codes_line }}
+    </p>
+    {% endif %}
+
     <div class="flex items-center justify-between">
         <div id="contributor-list" class="text-sm">
             <!-- Contributor list populated via OOB swap -->

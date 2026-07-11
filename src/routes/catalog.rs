@@ -147,6 +147,29 @@ pub struct CatalogTemplate {
     pub audio_enable: String,
     pub audio_disable: String,
     pub catalog_scan_help: crate::utils::TooltipData,
+    /// #428 — "labels in use up to V0142 · L0037" info line for printing
+    /// fresh label sheets. Empty string = hidden (no codes yet, or the
+    /// best-effort lookup failed). Rendered for Librarian+ only.
+    pub highest_codes_line: String,
+}
+
+/// #428 — build the "labels in use up to …" info line. Best-effort: any
+/// lookup error degrades to an empty string (line hidden) — the catalog
+/// page must never fail to render because of a label-stat query.
+async fn build_highest_codes_line(pool: &crate::db::DbPool, loc: &str) -> String {
+    let v = crate::models::volume::VolumeModel::highest_label_any(pool)
+        .await
+        .unwrap_or_default();
+    let l = crate::models::location::LocationModel::highest_label_any(pool)
+        .await
+        .unwrap_or_default();
+    let codes = match (v, l) {
+        (Some(v), Some(l)) => format!("{v} · {l}"),
+        (Some(v), None) => v,
+        (None, Some(l)) => l,
+        (None, None) => return String::new(),
+    };
+    rust_i18n::t!("catalog.highest_codes", locale = loc, codes = codes).to_string()
 }
 
 impl CatalogTemplate {
@@ -156,6 +179,7 @@ impl CatalogTemplate {
         session_timeout_secs: u64,
         loc: &str,
         current_url_value: String,
+        highest_codes_line: String,
     ) -> Self {
         // CR #354: shared page-template fields built via base_context. The
         // builder keeps the pre-computed `current_url_value` string (some
@@ -181,6 +205,7 @@ impl CatalogTemplate {
                 "tip-catalog-scan-text",
                 &rust_i18n::t!("help.catalog.scan_field_text", locale = loc),
             ),
+            highest_codes_line,
         }
     }
 }
@@ -225,12 +250,14 @@ pub async fn catalog_page(
     // AC #1: catalog browsing is Anonymous-accessible. Template-layer gates edit affordances.
     let loc = locale.0;
     let guide = compute_guide_message(&state.pool, &session, loc).await;
+    let highest_codes = build_highest_codes_line(&state.pool, loc).await;
     let template = CatalogTemplate::new(
         &session,
         &guide,
         state.session_timeout_secs(),
         loc,
         crate::utils::current_url(&uri),
+        highest_codes,
     );
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
@@ -1177,6 +1204,7 @@ pub async fn handle_scan(
             state.session_timeout_secs(),
             loc,
             "/catalog".to_string(),
+            build_highest_codes_line(&state.pool, loc).await,
         );
         // Silence unused — `uri` is kept on the handler signature for
         // future non-fallback branches that may need it.
@@ -1492,6 +1520,7 @@ pub async fn title_form_page(
                     state.session_timeout_secs(),
                     loc,
                     crate::utils::current_url(&uri),
+                    build_highest_codes_line(&state.pool, loc).await,
                 );
                 match catalog.render() {
                     Ok(page_html) => Ok(Html(page_html).into_response()),
@@ -2801,6 +2830,7 @@ mod tests {
             crate::config::AppSettings::default().session_timeout_secs,
             "en",
             "/catalog".to_string(),
+            String::new(),
         );
         let rendered = template.render().unwrap();
         assert!(rendered.contains("scan-field"));
@@ -2825,6 +2855,7 @@ mod tests {
             crate::config::AppSettings::default().session_timeout_secs,
             "en",
             "/catalog".to_string(),
+            String::new(),
         );
         let rendered = template.render().unwrap();
         assert!(rendered.contains(r#"aria-current="page""#));

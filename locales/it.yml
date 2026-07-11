@@ -143,6 +143,8 @@ home:
 catalog:
   title: Catalogo
   scan_placeholder: "Scansiona o digita: ISBN, codice V, codice L, o ricerca…"
+  # #428 — riga di aiuto per la stampa di etichette (codici V/L più alti).
+  highest_codes: "Etichette in uso fino a %{codes} — stampa i nuovi fogli di etichette a partire dai numeri successivi."
   scan_label: Scansiona codice a barre o digita codice
   scan_received: "Scansione ricevuta: %{code}"
   new_title_button: Nuovo titolo

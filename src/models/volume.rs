@@ -37,6 +37,29 @@ impl std::fmt::Display for VolumeModel {
 }
 
 impl VolumeModel {
+    /// #428 — highest V-code ever used, for the label-printing info line
+    /// on /catalog ("print new sheets starting after this number").
+    ///
+    /// DELIBERATELY no `deleted_at IS NULL` filter (exception to the
+    /// project-wide rule): a label physically printed and stuck on a book
+    /// that later went to trash must never be re-proposed for a fresh
+    /// sheet — the sticker still exists in the real world. Known
+    /// limitation: once the 30-day auto-purge hard-deletes the row, its
+    /// number silently becomes reusable again (a durable high-water-mark
+    /// counter is out of scope at household scale).
+    ///
+    /// Labels are CHAR(5) `V` + 4 zero-padded digits (validated at
+    /// creation), so lexicographic MAX equals numeric MAX; the REGEXP is
+    /// belt-and-braces against any legacy free-form row.
+    pub async fn highest_label_any(pool: &DbPool) -> Result<Option<String>, AppError> {
+        let label = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT MAX(label) FROM volumes WHERE label REGEXP '^V[0-9]{4}$'",
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(label)
+    }
+
     /// Story 9-9 — narrow lookup returning ONLY the volume id for a
     /// given label. Used by the home-page scan-to-navigate handler
     /// (`/scan?code=…`) which only needs to redirect to `/volume/:id`.
@@ -803,6 +826,48 @@ impl VolumeModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #428 — highest V-code for the label-printing line: numeric order
+    /// via the fixed zero-padded width, and soft-deleted rows COUNT (a
+    /// printed sticker outlives the row's trash state).
+    #[sqlx::test(migrations = "./migrations")]
+    async fn highest_label_any_includes_soft_deleted(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Empty catalog → None.
+        assert_eq!(VolumeModel::highest_label_any(&pool).await?, None);
+
+        let title_id: u64 = sqlx::query(
+            "INSERT INTO titles (title, media_type, genre_id) VALUES ('T428', 'book', 1)",
+        )
+        .execute(&pool)
+        .await?
+        .last_insert_id();
+        sqlx::query("INSERT INTO volumes (title_id, label) VALUES (?, 'V0009'), (?, 'V0010')")
+            .bind(title_id)
+            .bind(title_id)
+            .execute(&pool)
+            .await?;
+
+        assert_eq!(
+            VolumeModel::highest_label_any(&pool).await?.as_deref(),
+            Some("V0010"),
+            "zero-padded width makes lexicographic MAX the numeric MAX"
+        );
+
+        // Soft-delete the max — it must STILL be reported (never reissue
+        // a printed number).
+        sqlx::query("UPDATE volumes SET deleted_at = NOW() WHERE label = 'V0010'")
+            .execute(&pool)
+            .await?;
+        assert_eq!(
+            VolumeModel::highest_label_any(&pool).await?.as_deref(),
+            Some("V0010"),
+            "soft-deleted labels stay in the high-water mark"
+        );
+
+        Ok(())
+    }
 
     #[test]
     fn test_volume_model_display() {
