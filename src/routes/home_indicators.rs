@@ -212,15 +212,23 @@ pub(crate) fn role_gated_indicator_filter(
     }
 }
 
+/// Bare-name `?filter=` values that are NOT indicator filters but are
+/// valid search-side filters handled elsewhere (`routes/home.rs` Gaps
+/// chips — fix #205 / #417). `parse_indicator_filter` must ignore them
+/// silently: they are neither typos nor stale links, and WARN-logging
+/// every chip click erodes the signal value of WARN (issue #417).
+const SEARCH_SIDE_BARE_FILTERS: &[&str] = &["uncategorized", "no_volumes", "no_cover"];
+
 /// Parse the bare-name closed-enum indicator filter from `?filter=…`.
 ///
 /// Returns `None` for legacy `genre:` / `state:` namespaced patterns
 /// (those route through `parse_filter`) and for anything else. The
 /// `':'` heuristic is the disambiguator: any value containing a colon
 /// is treated as a legacy-namespace filter and ignored here without
-/// noise. Bare-name values that don't match the closed enum are
-/// logged at WARN and ignored — surfaces a typo or a stale link
-/// without breaking the page.
+/// noise. Known search-side bare names (`SEARCH_SIDE_BARE_FILTERS`)
+/// are likewise ignored silently. Remaining bare-name values that
+/// don't match the closed enum are logged at WARN and ignored —
+/// surfaces a typo or a stale link without breaking the page.
 pub(crate) fn parse_indicator_filter(filter: &Option<String>) -> Option<IndicatorFilter> {
     match filter.as_deref() {
         Some("unshelved") => Some(IndicatorFilter::Unshelved),
@@ -228,6 +236,7 @@ pub(crate) fn parse_indicator_filter(filter: &Option<String>) -> Option<Indicato
         Some("gaps") => Some(IndicatorFilter::Gaps),
         Some("recent-cataloged") => Some(IndicatorFilter::RecentCataloged),
         Some("recent-returns") => Some(IndicatorFilter::RecentReturns),
+        Some(v) if SEARCH_SIDE_BARE_FILTERS.contains(&v) => None,
         Some(v) if !v.contains(':') && !v.is_empty() => {
             tracing::warn!(filter = %v, "Unknown indicator filter, ignoring");
             None
@@ -284,6 +293,41 @@ mod tests {
         assert_eq!(
             parse_indicator_filter(&Some("recent-returns".to_string())),
             Some(IndicatorFilter::RecentReturns)
+        );
+    }
+
+    /// Issue #417 — the dashboard Gaps chips (`?filter=uncategorized` /
+    /// `no_volumes` / `no_cover`) are valid search-side filters handled
+    /// by `routes/home.rs`, not typos. They must be ignored silently:
+    /// `None` result, zero WARN lines.
+    #[test]
+    #[tracing_test::traced_test]
+    fn parse_indicator_filter_search_side_names_silently_ignored() {
+        for v in ["uncategorized", "no_volumes", "no_cover"] {
+            assert_eq!(
+                parse_indicator_filter(&Some(v.to_string())),
+                None,
+                "search-side filter {v:?} must not map to an indicator"
+            );
+        }
+        assert!(
+            !logs_contain("Unknown indicator filter"),
+            "search-side bare filters must not WARN"
+        );
+    }
+
+    /// Issue #417 companion — a genuinely unknown bare value still
+    /// WARNs (the typo / stale-link signal must survive the fix).
+    #[test]
+    #[tracing_test::traced_test]
+    fn parse_indicator_filter_unknown_bare_value_still_warns() {
+        assert_eq!(
+            parse_indicator_filter(&Some("definitely-a-typo".to_string())),
+            None
+        );
+        assert!(
+            logs_contain("Unknown indicator filter"),
+            "genuinely unknown bare values must keep WARN-logging"
         );
     }
 
