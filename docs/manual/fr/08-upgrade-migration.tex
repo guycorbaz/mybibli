@@ -148,6 +148,35 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.12.0}\label{sec:whats-new-1.12.0}
+
+La version 1.12.0 est une mineure de fonctionnalités à 2 tickets sur
+la 1.11.0. \emph{Aucune migration, aucune action opérateur.}
+\texttt{docker compose pull \&\& docker compose up -d} de routine.
+
+\begin{itemize}
+  \item \textbf{\#427 \string— deux nouvelles sources de
+        couvertures.} Quand les métadonnées se résolvent sans
+        couverture, mybibli interroge désormais aussi le service
+        \emph{Couvertures de la BnF} (les numérisations du dépôt
+        légal — la source la plus riche pour les éditeurs français
+        et romands) et \emph{Inventaire.io} (communautaire, très
+        fourni en BD et manga francophones) avant le repli Open
+        Library. Testé en réel sur un catalogue de production :
+        environ la moitié des couvertures jusqu'ici irrécupérables
+        deviennent disponibles. Lancez \emph{Récupérer les
+        couvertures manquantes} depuis l'onglet Santé après la mise
+        à jour pour les collecter. Voir \autoref{ch:providers}.
+  \item \textbf{\#428 \string— aide à l'impression d'étiquettes.} La
+        page de catalogage affiche désormais les plus hauts codes V
+        et L déjà utilisés (corbeille comprise — une étiquette
+        imprimée n'est jamais réémise), pour que les nouvelles
+        planches d'étiquettes commencent juste après.
+  \item Corrigé au passage : les couvertures servies par des hôtes
+        sans TLS (p.\,ex.\ un serveur d'images local au LAN) ne
+        échouent plus au téléchargement.
+\end{itemize}
+
 \section{Nouveautés de la 1.11.0}\label{sec:whats-new-1.11.0}
 
 La version 1.11.0 regroupe les quatre problèmes remontés par la revue
