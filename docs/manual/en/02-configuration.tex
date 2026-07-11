@@ -245,7 +245,7 @@ translated.
 \section{System settings}\label{sec:system}
 
 The \texttt{/admin > System} tab groups every global setting. The
-panel is divided into three forms, each with its own save button:
+panel is divided into sections, each with its own save button:
 
 \subsection*{Loans}
 
@@ -253,13 +253,20 @@ panel is divided into three forms, each with its own save button:
   \item \textbf{Overdue threshold (days).} Defines how many days a
         loan can run before it surfaces as overdue on the dashboard.
         Default 30.
-  \item \textbf{Session inactivity timeout (seconds).} Idle time
-        after which an authenticated session is wiped. Default
-        1800\,s (30\,minutes).
   \item \textbf{Auto-purge interval (seconds).} How often the
         background scheduler hard-deletes items older than 30\,days
         in the trash. Default 86400\,s (24\,hours).
 \end{itemize}
+
+\subsection*{Sessions}
+
+Since 1.11.0 the \textbf{session inactivity timeout} is set here, in
+\emph{hours} (1--720, default 4). It controls two things at once: how
+long a signed-in session survives without activity, and the lifetime
+of the session cookie in the browser — so a tablet that locks its
+screen mid-cataloguing session no longer loses the login when the
+browser discards session-only cookies. Applied on the next request;
+already-open sessions are not cut off retroactively.
 
 \subsection*{Metadata providers}
 
@@ -285,6 +292,17 @@ provider with its own field; leave a field empty to use the global
 default. Useful when one provider (say, a slow national library) needs
 more headroom without slowing the whole chain down. Changes apply on
 the next scan — no restart.
+
+Since 1.11.0 the same form also carries the \textbf{bulk
+cover-refetch delay} (milliseconds, 0--60000, default 1000): the
+pause between titles when you run \emph{Re-fetch missing covers} from
+the Health tab. Too fast a pace makes providers throttle the whole
+run — Google Books answers request bursts with errors and no covers
+come back. The default adds about two minutes per hundred titles,
+which is irrelevant for a background action. The run now also retries
+a throttled title with increasing back-off before giving up on it,
+and finishes with a summary on the Health tab: covers recovered,
+provider errors, and titles for which no cover is available anywhere.
 
 \subsection*{Language}
 

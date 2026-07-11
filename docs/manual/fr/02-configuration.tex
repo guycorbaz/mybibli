@@ -264,8 +264,8 @@ l'interface en anglais. Seule l'ossature de l'interface\index{i18n}
 \section{Paramètres système}\label{sec:system}
 
 L'onglet \texttt{/admin > System} regroupe tous les paramètres
-globaux. Le panneau est divisé en trois formulaires, chacun avec
-son bouton de sauvegarde :
+globaux. Le panneau est divisé en sections, chacune avec son bouton
+de sauvegarde :
 
 \subsection*{Prêts}
 
@@ -273,14 +273,22 @@ son bouton de sauvegarde :
   \item \textbf{Seuil de retard (jours).} Définit combien de jours
         un prêt peut courir avant d'apparaître comme en retard sur
         le tableau de bord. Défaut : 30.
-  \item \textbf{Timeout d'inactivité de session (secondes).} Temps
-        d'inactivité après lequel une session authentifiée est
-        effacée. Défaut : 1800\,s (30\,minutes).
   \item \textbf{Intervalle d'auto-purge (secondes).} Cadence à
         laquelle le scheduler d'arrière-plan supprime
         définitivement les éléments soft-deleted depuis plus de
         30\,jours. Défaut : 86400\,s (24\,heures).
 \end{itemize}
+
+\subsection*{Sessions}
+
+Depuis la 1.11.0, le \textbf{délai d'inactivité de session} se règle
+ici, en \emph{heures} (1--720, défaut 4). Il pilote deux choses à la
+fois : la durée de survie d'une session connectée sans activité, et
+la durée de vie du cookie de session dans le navigateur — une
+tablette qui verrouille son écran en plein catalogage ne perd donc
+plus sa connexion quand le navigateur jette les cookies de session.
+Appliqué à la requête suivante ; les sessions déjà ouvertes ne sont
+pas coupées rétroactivement.
 
 \subsection*{Fournisseurs de métadonnées}
 
@@ -309,6 +317,19 @@ avec son propre champ ; laissez un champ vide pour utiliser la valeur
 globale. Utile quand un fournisseur (une bibliothèque nationale lente,
 par exemple) a besoin de plus de marge sans ralentir toute la chaîne.
 Les changements s'appliquent au prochain scan — sans redémarrage.
+
+Depuis la 1.11.0, le même formulaire porte aussi le \textbf{délai du
+re-fetch de couvertures en lot} (millisecondes, 0--60000, défaut
+1000) : la pause entre chaque titre lors d'une exécution de
+\emph{Récupérer les couvertures manquantes} depuis l'onglet Santé.
+Un rythme trop rapide fait bloquer toute l'exécution par les
+fournisseurs — Google Books répond aux rafales par des erreurs et
+aucune couverture ne revient. Le défaut ajoute environ deux minutes
+par centaine de titres, négligeable pour une action d'arrière-plan.
+L'exécution retente désormais un titre bloqué avec un délai croissant
+avant d'y renoncer, et se termine par un résumé sur l'onglet Santé :
+couvertures récupérées, erreurs fournisseur, et titres pour lesquels
+aucune couverture n'existe nulle part.
 
 \subsection*{Langue}
 
