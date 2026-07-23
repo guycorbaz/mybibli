@@ -8,6 +8,12 @@
 ![CI](https://github.com/guycorbaz/mybibli/actions/workflows/ci.yml/badge.svg?branch=main)
 [![Version](https://img.shields.io/github/v/tag/guycorbaz/mybibli?label=version&sort=semver&color=blue)](https://github.com/guycorbaz/mybibli/releases)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-lightgrey)](LICENSE)
+[![Docker Pulls](https://img.shields.io/docker/pulls/gcorbaz/mybibli?logo=docker&label=docker%20pulls)](https://hub.docker.com/r/gcorbaz/mybibli)
+[![Docker Image Size](https://img.shields.io/docker/image-size/gcorbaz/mybibli/1.12.0?logo=docker&label=image%20size)](https://hub.docker.com/r/gcorbaz/mybibli/tags)
+[![Open Issues](https://img.shields.io/github/issues/guycorbaz/mybibli?logo=github)](https://github.com/guycorbaz/mybibli/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/guycorbaz/mybibli/main?logo=github)](https://github.com/guycorbaz/mybibli/commits/main)
+[![Stars](https://img.shields.io/github/stars/guycorbaz/mybibli?logo=github&style=flat)](https://github.com/guycorbaz/mybibli/stargazers)
+[![Rust](https://img.shields.io/badge/rust-2024-orange?logo=rust)](https://www.rust-lang.org/)
 
 > Personal library cataloging for home collectors.
 
