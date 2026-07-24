@@ -262,6 +262,27 @@ pub async fn update_title_from_metadata(
             title_id = title_id,
             "Background fetch lost race with concurrent manual edit; column UPDATE no-op"
         );
+    } else {
+        // #434 — cataloging observability. One structured line summarizing
+        // the outcome of this metadata resolution (no per-field values).
+        let unimarc_zones_populated = [
+            metadata.statement_of_responsibility.is_some(),
+            metadata.edition_statement.is_some(),
+            metadata.collection_title.is_some(),
+            metadata.collection_number.is_some(),
+            metadata.general_note.is_some(),
+            metadata.original_title.is_some(),
+        ]
+        .iter()
+        .filter(|present| **present)
+        .count();
+        tracing::info!(
+            title_id = title_id,
+            isbn = snapshot.isbn.as_deref().unwrap_or(""),
+            cover_resolved = metadata.cover_url.is_some(),
+            unimarc_zones_populated = unimarc_zones_populated,
+            "Title metadata resolved"
+        );
     }
 
     // Add primary author as contributor if available (skip empty/whitespace names).
@@ -326,6 +347,12 @@ pub async fn do_update(
          total_duration = COALESCE(?, total_duration), \
          age_rating = COALESCE(?, age_rating), \
          issue_number = COALESCE(?, issue_number), \
+         statement_of_responsibility = COALESCE(?, statement_of_responsibility), \
+         edition_statement = COALESCE(?, edition_statement), \
+         collection_title = COALESCE(?, collection_title), \
+         collection_number = COALESCE(?, collection_number), \
+         general_note = COALESCE(?, general_note), \
+         original_title = COALESCE(?, original_title), \
          version = version + 1, \
          updated_at = NOW() \
          WHERE id = ? AND version = ? AND deleted_at IS NULL",
@@ -389,6 +416,36 @@ pub async fn do_update(
         None
     } else {
         metadata.issue_number.clone()
+    })
+    .bind(if g("statement_of_responsibility") {
+        None
+    } else {
+        metadata.statement_of_responsibility.clone()
+    })
+    .bind(if g("edition_statement") {
+        None
+    } else {
+        metadata.edition_statement.clone()
+    })
+    .bind(if g("collection_title") {
+        None
+    } else {
+        metadata.collection_title.clone()
+    })
+    .bind(if g("collection_number") {
+        None
+    } else {
+        metadata.collection_number.clone()
+    })
+    .bind(if g("general_note") {
+        None
+    } else {
+        metadata.general_note.clone()
+    })
+    .bind(if g("original_title") {
+        None
+    } else {
+        metadata.original_title.clone()
     })
     .bind(title_id)
     .bind(snapshot.version)

@@ -115,6 +115,14 @@ impl BnfProvider {
             language: Self::extract_subfield(xml, "101", "a"),
             description: Self::extract_subfield(xml, "330", "a"),
             dewey_code: Self::extract_subfield(xml, "676", "a"),
+            // #389 Palier 1 — UNIMARC pragmatic-subset zones. Note 200$f is
+            // also read above as an author fallback; both uses coexist.
+            statement_of_responsibility: Self::extract_subfield(xml, "200", "f"),
+            edition_statement: Self::extract_subfield(xml, "205", "a"),
+            collection_title: Self::extract_subfield(xml, "225", "a"),
+            collection_number: Self::extract_subfield(xml, "225", "v"),
+            general_note: Self::extract_subfield(xml, "300", "a"),
+            original_title: Self::extract_subfield(xml, "500", "a"),
             authors,
             page_count,
             ..MetadataResult::default()
@@ -399,6 +407,60 @@ mod tests {
     fn test_parse_sru_response_without_dewey_returns_none() {
         let result = BnfProvider::parse_sru_response(SAMPLE_BNF_RESPONSE).unwrap();
         assert!(result.dewey_code.is_none());
+    }
+
+    #[test]
+    fn test_parse_sru_response_unimarc_palier1_zones() {
+        // #389 Palier 1 — 205$a, 225$a, 225$v, 300$a, 500$a plus 200$f
+        // (statement of responsibility, which also feeds the author fallback).
+        let xml = r#"<record>
+          <mxc:datafield tag="200" ind1="1" ind2=" ">
+            <mxc:subfield code="a">Fondation</mxc:subfield>
+            <mxc:subfield code="f">Isaac Asimov ; traduit de l'anglais</mxc:subfield>
+          </mxc:datafield>
+          <mxc:datafield tag="205" ind1=" " ind2=" ">
+            <mxc:subfield code="a">Nouvelle édition revue</mxc:subfield>
+          </mxc:datafield>
+          <mxc:datafield tag="225" ind1=" " ind2=" ">
+            <mxc:subfield code="a">Folio SF</mxc:subfield>
+            <mxc:subfield code="v">42</mxc:subfield>
+          </mxc:datafield>
+          <mxc:datafield tag="300" ind1=" " ind2=" ">
+            <mxc:subfield code="a">Traduction de : Foundation</mxc:subfield>
+          </mxc:datafield>
+          <mxc:datafield tag="500" ind1="1" ind2=" ">
+            <mxc:subfield code="a">Foundation</mxc:subfield>
+          </mxc:datafield>
+        </record>"#;
+        let meta = BnfProvider::parse_sru_response(xml).unwrap();
+        assert_eq!(meta.title.as_deref(), Some("Fondation"));
+        assert_eq!(
+            meta.statement_of_responsibility.as_deref(),
+            Some("Isaac Asimov ; traduit de l'anglais")
+        );
+        assert_eq!(meta.edition_statement.as_deref(), Some("Nouvelle édition revue"));
+        assert_eq!(meta.collection_title.as_deref(), Some("Folio SF"));
+        assert_eq!(meta.collection_number.as_deref(), Some("42"));
+        assert_eq!(
+            meta.general_note.as_deref(),
+            Some("Traduction de : Foundation")
+        );
+        assert_eq!(meta.original_title.as_deref(), Some("Foundation"));
+        // 200$f still feeds the author fallback (no 700 field present).
+        assert_eq!(meta.authors, vec!["Isaac Asimov ; traduit de l'anglais"]);
+    }
+
+    #[test]
+    fn test_parse_sru_response_without_palier1_zones_returns_none() {
+        // The base sample has none of the Palier 1 zones except 200$f.
+        let meta = BnfProvider::parse_sru_response(SAMPLE_BNF_RESPONSE).unwrap();
+        assert!(meta.edition_statement.is_none());
+        assert!(meta.collection_title.is_none());
+        assert!(meta.collection_number.is_none());
+        assert!(meta.general_note.is_none());
+        assert!(meta.original_title.is_none());
+        // 200$f IS present in the sample, so statement_of_responsibility carries it.
+        assert_eq!(meta.statement_of_responsibility.as_deref(), Some("Boris Vian"));
     }
 
     #[test]
