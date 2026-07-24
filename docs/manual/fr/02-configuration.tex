@@ -331,6 +331,17 @@ avant d'y renoncer, et se termine par un résumé sur l'onglet Santé :
 couvertures récupérées, erreurs fournisseur, et titres pour lesquels
 aucune couverture n'existe nulle part.
 
+Depuis la 1.13.0, l'onglet Santé porte une seconde action en lot à
+côté du re-fetch de couvertures : \textbf{Compléter les métadonnées
+via BnF}. Elle relance la recherche de métadonnées pour \emph{tous}
+les titres catalogués disposant d'un code — pas seulement ceux sans
+couverture — afin de remplir les champs alignés UNIMARC introduits
+en 1.13.0 sur les titres catalogués avant la mise à jour. Elle ne
+fait que combler les manques : une valeur déjà présente, ou modifiée
+à la main, n'est jamais écrasée. Les deux actions en lot partagent
+le même délai de rythme, le même back-off anti-blocage et le même
+verrou d'exécution unique — une seule peut tourner à la fois.
+
 \subsection*{Langue}
 
 Fixe la langue d'interface par défaut pour les visiteurs

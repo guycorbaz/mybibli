@@ -304,6 +304,16 @@ a throttled title with increasing back-off before giving up on it,
 and finishes with a summary on the Health tab: covers recovered,
 provider errors, and titles for which no cover is available anywhere.
 
+Since 1.13.0 the Health tab carries a second bulk action next to the
+cover refetch: \textbf{Backfill metadata from BnF}. It re-runs the
+metadata lookup for \emph{every} cataloged title that has a lookup
+code — not just the cover-less ones — to fill the UNIMARC-aligned
+fields introduced in 1.13.0 on titles cataloged before the upgrade.
+It only ever fills gaps: a value already present, or one you edited
+by hand, is never overwritten. Both bulk actions share the same
+pacing delay, throttle back-off and single-run lock, so only one of
+them can run at a time.
+
 \subsection*{Language}
 
 Sets the default UI language for \emph{anonymous} visitors.

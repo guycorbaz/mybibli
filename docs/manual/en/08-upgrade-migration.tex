@@ -139,6 +139,39 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.13.0}\label{sec:whats-new-1.13.0}
+
+Version 1.13.0 is a feature minor on 1.12.0 centered on one theme:
+aligning the catalog with the \textbf{UNIMARC} bibliographic
+standard. \emph{One automatic, additive database migration — no
+operator action required.} Routine \texttt{docker compose pull \&\&
+docker compose up -d}.
+
+\begin{itemize}
+  \item \textbf{\#389 \string— UNIMARC-aligned cataloging fields.}
+        Titles now carry six additional bibliographic fields mapped
+        to their UNIMARC zones: statement of responsibility
+        (200\$f), edition statement (205\$a), collection title and
+        number (225\$a/\$v), general note (300\$a) and original
+        title (500\$a). They are captured automatically from the
+        BnF when a book is scanned, and shown on the title page
+        whenever present. The authoritative field-to-zone mapping
+        ships in the repository as
+        \texttt{docs/unimarc-mapping.md}; record import/export
+        (ISO~2709 / UNIMARC XML) is a separate, later work package.
+  \item \textbf{New Health-tab action: \emph{Backfill metadata from
+        BnF}.} Re-runs the metadata lookup for every already-cataloged
+        title that has a lookup code, filling the new UNIMARC fields
+        (and anything else the providers have learned since) without
+        ever overwriting a value you edited by hand. Shares the
+        pacing, throttle back-off and single-run lock of the cover
+        refetch action.
+  \item \textbf{\#434 \string— cataloging log summary.} Every
+        metadata resolution now logs a single \texttt{info} summary
+        line (cover found? how many UNIMARC fields filled?), which
+        makes a backfill run easy to audit from the log file.
+\end{itemize}
+
 \section{What's new in 1.12.0}\label{sec:whats-new-1.12.0}
 
 Version 1.12.0 is a 2-issue feature minor on 1.11.0. \emph{No
