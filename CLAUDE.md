@@ -85,6 +85,7 @@ These apply to ALL sessions without exception.
     - **GitHub Release page** — Created from the tag via `gh release create` with release notes summarizing the bundle; not just a tag.
     - **`_bmad-output/implementation-artifacts/sprint-status.yaml`** — `last_updated` header if it carries version semantics.
     - Any other doc file that mentions the previous version (grep `vX.Y.Z` of the previous version before merging — `grep -r "v1.7.5" docs/ website/ README.md ROADMAP.md` for a v1.7.5→v1.7.6 cut).
+    - **Grep ALL stale versions, not just the immediately-previous one** — `grep -rnE "v?1\.[0-9]+\.[0-9]+" website/ docs/ README.md ROADMAP.md` and review every hit that is not a deliberate historical reference (shipped-release sections, What's-new chapters). Lesson from the v1.13.0 cut (2026-07-24): `website/about.html`'s nav badge sat at `v1.7.1` through six releases because each cut only grepped for its own predecessor; `sitemap.xml` `lastmod` had likewise been stale since May. Version-bearing surfaces easy to forget: `website/about.html` badge, `website/sitemap.xml` lastmod, JSON-LD `softwareVersion` blocks in every `website/*.html`.
 
     A version bump that leaves any of these showing the previous version is a broken release. The recurring failure mode is forgetting `ROADMAP.md` / `dockerhub-overview.md` / `website/` because the release-cut PR focused on the manual + README — those three are the load-bearing follow-up checklist.
 
