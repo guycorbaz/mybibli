@@ -1770,6 +1770,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 0,
         };
         let session = crate::middleware::auth::Session {
@@ -1819,6 +1825,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 0,
         };
         let session = crate::middleware::auth::Session {
@@ -1957,6 +1969,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         let template = TitleDetailTemplate {
@@ -2053,6 +2071,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         let mut template = TitleDetailTemplate {
@@ -2155,6 +2179,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         let similar = vec![
@@ -2273,6 +2303,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         let metadata = MetadataResult {
@@ -2310,6 +2346,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         let metadata = MetadataResult {

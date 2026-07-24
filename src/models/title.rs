@@ -11,12 +11,24 @@ use crate::models::{DEFAULT_PAGE_SIZE, PaginatedList};
 pub struct TitleModel {
     pub id: u64,
     pub title: String,
+    /// UNIMARC 454/500 — title of the original work (for translations).
+    pub original_title: Option<String>,
     pub subtitle: Option<String>,
+    /// UNIMARC 200$f — statement of responsibility.
+    pub statement_of_responsibility: Option<String>,
     pub description: Option<String>,
+    /// UNIMARC 300$a — general note.
+    pub general_note: Option<String>,
     pub language: String,
     pub media_type: String,
     pub publication_date: Option<NaiveDate>,
     pub publisher: Option<String>,
+    /// UNIMARC 205$a — edition statement.
+    pub edition_statement: Option<String>,
+    /// UNIMARC 225$a — collection (series) title.
+    pub collection_title: Option<String>,
+    /// UNIMARC 225$v — collection (series) number.
+    pub collection_number: Option<String>,
     pub isbn: Option<String>,
     pub issn: Option<String>,
     pub upc: Option<String>,
@@ -66,18 +78,31 @@ pub struct NewTitle {
     pub total_duration: Option<i32>,
     pub age_rating: Option<String>,
     pub issue_number: Option<i32>,
+    // UNIMARC Palier 1 (#389) zones — populated by the BnF backfill.
+    pub statement_of_responsibility: Option<String>,
+    pub edition_statement: Option<String>,
+    pub collection_title: Option<String>,
+    pub collection_number: Option<String>,
+    pub general_note: Option<String>,
+    pub original_title: Option<String>,
 }
 
 fn row_to_title(row: sqlx::mysql::MySqlRow) -> Result<TitleModel, sqlx::Error> {
     Ok(TitleModel {
         id: row.try_get("id")?,
         title: row.try_get("title")?,
+        original_title: row.try_get("original_title")?,
         subtitle: row.try_get("subtitle")?,
+        statement_of_responsibility: row.try_get("statement_of_responsibility")?,
         description: row.try_get("description")?,
+        general_note: row.try_get("general_note")?,
         language: row.try_get("language")?,
         media_type: row.try_get("media_type")?,
         publication_date: row.try_get("publication_date")?,
         publisher: row.try_get("publisher")?,
+        edition_statement: row.try_get("edition_statement")?,
+        collection_title: row.try_get("collection_title")?,
+        collection_number: row.try_get("collection_number")?,
         isbn: row.try_get("isbn")?,
         issn: row.try_get("issn")?,
         upc: row.try_get("upc")?,
@@ -99,8 +124,11 @@ impl TitleModel {
         tracing::debug!(isbn = %isbn, "Looking up title by ISBN");
 
         let row = sqlx::query(
-            r#"SELECT id, title, subtitle, description, language,
-                      media_type, publication_date, publisher, isbn, issn, upc,
+            r#"SELECT id, title, original_title, subtitle, statement_of_responsibility,
+                      description, general_note, language,
+                      media_type, publication_date, publisher,
+                      edition_statement, collection_title, collection_number,
+                      isbn, issn, upc,
                       cover_image_url, genre_id, dewey_code,
                       page_count, track_count, total_duration,
                       age_rating, issue_number,
@@ -140,8 +168,11 @@ impl TitleModel {
         tracing::debug!(upc = %upc, "Looking up title by UPC");
 
         let row = sqlx::query(
-            r#"SELECT id, title, subtitle, description, language,
-                      media_type, publication_date, publisher, isbn, issn, upc,
+            r#"SELECT id, title, original_title, subtitle, statement_of_responsibility,
+                      description, general_note, language,
+                      media_type, publication_date, publisher,
+                      edition_statement, collection_title, collection_number,
+                      isbn, issn, upc,
                       cover_image_url, genre_id, dewey_code,
                       page_count, track_count, total_duration,
                       age_rating, issue_number,
@@ -164,8 +195,11 @@ impl TitleModel {
         tracing::debug!(issn = %issn, "Looking up title by ISSN");
 
         let row = sqlx::query(
-            r#"SELECT id, title, subtitle, description, language,
-                      media_type, publication_date, publisher, isbn, issn, upc,
+            r#"SELECT id, title, original_title, subtitle, statement_of_responsibility,
+                      description, general_note, language,
+                      media_type, publication_date, publisher,
+                      edition_statement, collection_title, collection_number,
+                      isbn, issn, upc,
                       cover_image_url, genre_id, dewey_code,
                       page_count, track_count, total_duration,
                       age_rating, issue_number,
@@ -188,8 +222,11 @@ impl TitleModel {
         tracing::debug!(id = id, "Looking up title by ID");
 
         let row = sqlx::query(
-            r#"SELECT id, title, subtitle, description, language,
-                      media_type, publication_date, publisher, isbn, issn, upc,
+            r#"SELECT id, title, original_title, subtitle, statement_of_responsibility,
+                      description, general_note, language,
+                      media_type, publication_date, publisher,
+                      edition_statement, collection_title, collection_number,
+                      isbn, issn, upc,
                       cover_image_url, genre_id, dewey_code,
                       page_count, track_count, total_duration,
                       age_rating, issue_number,
@@ -388,8 +425,11 @@ impl TitleModel {
         let result = sqlx::query(
             r#"INSERT INTO titles (title, subtitle, language, media_type, publication_date,
                                    publisher, isbn, issn, upc, genre_id, page_count,
-                                   track_count, total_duration, age_rating, issue_number)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+                                   track_count, total_duration, age_rating, issue_number,
+                                   statement_of_responsibility, edition_statement,
+                                   collection_title, collection_number, general_note,
+                                   original_title)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
         )
         .bind(&new_title.title)
         .bind(&new_title.subtitle)
@@ -406,6 +446,12 @@ impl TitleModel {
         .bind(new_title.total_duration)
         .bind(&new_title.age_rating)
         .bind(new_title.issue_number)
+        .bind(&new_title.statement_of_responsibility)
+        .bind(&new_title.edition_statement)
+        .bind(&new_title.collection_title)
+        .bind(&new_title.collection_number)
+        .bind(&new_title.general_note)
+        .bind(&new_title.original_title)
         .execute(pool)
         .await?;
 
@@ -413,6 +459,51 @@ impl TitleModel {
         TitleModel::find_by_id(pool, id)
             .await?
             .ok_or_else(|| AppError::Internal("Failed to retrieve created title".to_string()))
+    }
+
+    /// Backfill the six UNIMARC Palier 1 (#389) zones on an existing title.
+    ///
+    /// Best-effort, gap-filling update: each column is wrapped in
+    /// `COALESCE(?, col)` so passing `None` for an argument leaves the
+    /// existing value untouched (backfill only fills gaps — it never
+    /// wipes data). Intentionally does NOT do optimistic-lock version
+    /// checking; the BnF backfill path is best-effort and must not fail
+    /// on a concurrent edit.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_unimarc_zones(
+        pool: &DbPool,
+        id: u64,
+        statement_of_responsibility: Option<&str>,
+        edition_statement: Option<&str>,
+        collection_title: Option<&str>,
+        collection_number: Option<&str>,
+        general_note: Option<&str>,
+        original_title: Option<&str>,
+    ) -> Result<(), AppError> {
+        tracing::debug!(id = id, "Backfilling UNIMARC zones on title");
+
+        sqlx::query(
+            "UPDATE titles SET \
+             statement_of_responsibility = COALESCE(?, statement_of_responsibility), \
+             edition_statement = COALESCE(?, edition_statement), \
+             collection_title = COALESCE(?, collection_title), \
+             collection_number = COALESCE(?, collection_number), \
+             general_note = COALESCE(?, general_note), \
+             original_title = COALESCE(?, original_title), \
+             version = version + 1, updated_at = NOW() \
+             WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(statement_of_responsibility)
+        .bind(edition_statement)
+        .bind(collection_title)
+        .bind(collection_number)
+        .bind(general_note)
+        .bind(original_title)
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+        Ok(())
     }
 
     /// Update a title with optimistic locking (version check).
@@ -1381,6 +1472,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         assert_eq!(title.to_string(), "L'Étranger (book)");
@@ -1409,6 +1506,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         assert_eq!(title.to_string(), "Kind of Blue (cd)");
@@ -1436,6 +1539,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         }
     }
