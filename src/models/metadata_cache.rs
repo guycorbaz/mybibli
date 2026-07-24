@@ -118,6 +118,31 @@ impl MetadataCacheModel {
                 .get("dewey_code")
                 .and_then(|v| v.as_str())
                 .map(String::from),
+            // #389 Palier 1 — UNIMARC pragmatic-subset zones.
+            statement_of_responsibility: obj
+                .get("statement_of_responsibility")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            edition_statement: obj
+                .get("edition_statement")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            collection_title: obj
+                .get("collection_title")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            collection_number: obj
+                .get("collection_number")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            general_note: obj
+                .get("general_note")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            original_title: obj
+                .get("original_title")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         })
     }
 
@@ -138,6 +163,13 @@ impl MetadataCacheModel {
             "age_rating": result.age_rating,
             "issue_number": result.issue_number,
             "dewey_code": result.dewey_code,
+            // #389 Palier 1 — UNIMARC pragmatic-subset zones.
+            "statement_of_responsibility": result.statement_of_responsibility,
+            "edition_statement": result.edition_statement,
+            "collection_title": result.collection_title,
+            "collection_number": result.collection_number,
+            "general_note": result.general_note,
+            "original_title": result.original_title,
         })
     }
 }

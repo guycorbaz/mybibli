@@ -563,6 +563,12 @@ metadata:
     publisher: Publisher
     publication_date: Publication date
     dewey_code: Dewey code
+    # #389 — UNIMARC-zone metadata labels (palier 1) surfaced on title detail.
+    statement_of_responsibility: Statement of responsibility
+    edition_statement: Edition
+    collection: Collection
+    general_note: Note
+    original_title: Original title
     page_count: Page count
     track_count: Track count
     total_duration: "Duration (min)"
@@ -834,6 +840,11 @@ admin:
       empty: "No titles need a cover refetch — everything that can be fetched has been."
       already_running: "A bulk cover-refetch is already in progress. Please wait for it to complete."
       review_cta: "Review titles without a cover"
+    bulk_metadata_backfill:
+      button: "Backfill metadata from BnF"
+      started: "Bulk metadata backfill started for %{total} titles. Progress is logged; refresh the panel to see updates."
+      empty: "No titles with a lookup code to backfill."
+      already_running: "A bulk BnF operation is already in progress. Please wait for it to complete."
   users:
     heading: User accounts
     empty_state: "Only you here! Create a Librarian account for household members."

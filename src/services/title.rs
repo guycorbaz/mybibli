@@ -105,6 +105,12 @@ impl TitleService {
             total_duration: None,
             age_rating: None,
             issue_number: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
         };
 
         let created = TitleModel::create(pool, &new_title).await?;
@@ -184,6 +190,12 @@ impl TitleService {
             total_duration: None,
             age_rating: None,
             issue_number: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
         };
 
         let created = TitleModel::create(pool, &new_title).await?;
@@ -281,6 +293,12 @@ impl TitleService {
             total_duration: form.total_duration,
             age_rating: non_empty_option(&form.age_rating),
             issue_number: form.issue_number,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
         };
 
         TitleModel::create(pool, &new_title).await
@@ -797,6 +815,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: manually_edited.map(|s| s.to_string()),
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         }
     }

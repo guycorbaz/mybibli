@@ -83,6 +83,13 @@ pub struct TitleDetailTemplate {
     pub similar_titles: Vec<SimilarTitle>,
     pub label_similar_titles: String,
     pub label_dewey_code: String,
+    // #389 — UNIMARC-zone metadata labels (palier 1). One label per zone;
+    // collection_title + collection_number share the single "Collection" label.
+    pub label_statement_of_responsibility: String,
+    pub label_edition_statement: String,
+    pub label_collection: String,
+    pub label_general_note: String,
+    pub label_original_title: String,
 }
 
 pub async fn title_detail(
@@ -184,6 +191,17 @@ pub async fn title_detail(
             similar_titles,
             label_similar_titles: rust_i18n::t!("title_detail.similar_titles", locale = loc).to_string(),
             label_dewey_code: rust_i18n::t!("metadata.field.dewey_code", locale = loc).to_string(),
+            label_statement_of_responsibility: rust_i18n::t!(
+                "metadata.field.statement_of_responsibility",
+                locale = loc
+            )
+            .to_string(),
+            label_edition_statement: rust_i18n::t!("metadata.field.edition_statement", locale = loc)
+                .to_string(),
+            label_collection: rust_i18n::t!("metadata.field.collection", locale = loc).to_string(),
+            label_general_note: rust_i18n::t!("metadata.field.general_note", locale = loc).to_string(),
+            label_original_title: rust_i18n::t!("metadata.field.original_title", locale = loc)
+                .to_string(),
         };
         match template.render() {
             Ok(html) => Ok(Html(html).into_response()),
@@ -1770,6 +1788,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 0,
         };
         let session = crate::middleware::auth::Session {
@@ -1819,6 +1843,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 0,
         };
         let session = crate::middleware::auth::Session {
@@ -1957,6 +1987,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         let template = TitleDetailTemplate {
@@ -2009,6 +2045,11 @@ mod tests {
             similar_titles: vec![],
             label_similar_titles: "Similar titles".to_string(),
             label_dewey_code: "Dewey code".to_string(),
+            label_statement_of_responsibility: "Statement of responsibility".to_string(),
+            label_edition_statement: "Edition".to_string(),
+            label_collection: "Collection".to_string(),
+            label_general_note: "Note".to_string(),
+            label_original_title: "Original title".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(
@@ -2053,6 +2094,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         let mut template = TitleDetailTemplate {
@@ -2105,6 +2152,11 @@ mod tests {
             similar_titles: vec![],
             label_similar_titles: "Similar titles".to_string(),
             label_dewey_code: "Dewey code".to_string(),
+            label_statement_of_responsibility: "Statement of responsibility".to_string(),
+            label_edition_statement: "Edition".to_string(),
+            label_collection: "Collection".to_string(),
+            label_general_note: "Note".to_string(),
+            label_original_title: "Original title".to_string(),
         };
 
         // No cover → prominent CTA branch: explainer + upload-modal trigger.
@@ -2155,6 +2207,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         let similar = vec![
@@ -2225,6 +2283,11 @@ mod tests {
             similar_titles: similar,
             label_similar_titles: "Similar titles".to_string(),
             label_dewey_code: "Dewey code".to_string(),
+            label_statement_of_responsibility: "Statement of responsibility".to_string(),
+            label_edition_statement: "Edition".to_string(),
+            label_collection: "Collection".to_string(),
+            label_general_note: "Note".to_string(),
+            label_original_title: "Original title".to_string(),
         };
         let rendered = template.render().unwrap();
         assert!(
@@ -2273,6 +2336,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         let metadata = MetadataResult {
@@ -2310,6 +2379,12 @@ mod tests {
             age_rating: None,
             issue_number: None,
             manually_edited_fields: None,
+            statement_of_responsibility: None,
+            edition_statement: None,
+            collection_title: None,
+            collection_number: None,
+            general_note: None,
+            original_title: None,
             version: 1,
         };
         let metadata = MetadataResult {

@@ -68,6 +68,22 @@
                 {% if let Some(upc) = title.upc %}
                     <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">UPC: {{ upc }}</p>
                 {% endif %}
+                {# #389 — UNIMARC-zone metadata (palier 1). Each row renders only when present. #}
+                {% if let Some(sor) = title.statement_of_responsibility %}
+                    <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">{{ label_statement_of_responsibility }}: {{ sor }}</p>
+                {% endif %}
+                {% if let Some(edition) = title.edition_statement %}
+                    <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">{{ label_edition_statement }}: {{ edition }}</p>
+                {% endif %}
+                {% if let Some(coll) = title.collection_title %}
+                    <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">{{ label_collection }}: {{ coll }}{% if let Some(coll_num) = title.collection_number %} {{ coll_num }}{% endif %}</p>
+                {% endif %}
+                {% if let Some(orig) = title.original_title %}
+                    <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">{{ label_original_title }}: {{ orig }}</p>
+                {% endif %}
+                {% if let Some(note) = title.general_note %}
+                    <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ label_general_note }}: {{ note }}</p>
+                {% endif %}
                 {% if let Some(desc) = title.description %}
                 <div class="mt-4">
                     <p class="text-stone-700 dark:text-stone-300 text-sm">{{ desc }}</p>

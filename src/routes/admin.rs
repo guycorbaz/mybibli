@@ -166,6 +166,11 @@ struct AdminHealthPanel {
     // bulk-refetch left titles uncovered (the FR/CH/DE publisher gap) has a
     // direct path to the manual-upload review list. Shown when count > 0.
     bulk_cover_fetch_review_cta: String,
+    // #389 Palier 1 — "Backfill metadata from BnF": re-fetch metadata for
+    // every coded title so the new UNIMARC zones populate on existing rows.
+    // Shares the cover-refetch status lock (mutual exclusion).
+    bulk_metadata_backfill_button_label: String,
+    bulk_metadata_backfill_can_start: bool,
 }
 
 struct ProviderHealthRow {
@@ -333,9 +338,38 @@ pub async fn admin_bulk_cover_refetch(
         "Bulk cover-refetch started"
     );
 
-    // Spawn the detached worker. Clones what it needs from AppState
-    // (cheap — all Arc-wrapped); no shared mutable references.
-    let pool_clone = pool.clone();
+    // Spawn the shared detached BnF worker (#389 factored it out — see
+    // `spawn_bulk_bnf_worker`). The `bulk_cover_fetch` status lock has
+    // already been armed by `try_start` above.
+    spawn_bulk_bnf_worker(&state, titles, "Bulk cover-refetch");
+
+    let message = rust_i18n::t!(
+        "admin.health.bulk_cover_fetch.started",
+        locale = loc,
+        total = total
+    )
+    .to_string();
+    Ok(crate::utils::feedback_html("success", &message, "")
+        .into_response())
+}
+
+/// #389 Palier 1 — shared detached worker for the two bulk-BnF admin
+/// actions (cover-refetch #214 and metadata-backfill #389). Both loop over
+/// a [`crate::models::title::MissingCoverTitle`] projection calling
+/// [`crate::tasks::metadata_fetch::fetch_metadata_chain_outcome`] with
+/// `force_refresh=true`, retry on `Throttled` per the backoff schedule,
+/// pace between titles with the admin-configured delay, and report progress
+/// into the shared `bulk_cover_fetch` status lock (which the caller has
+/// already armed via `try_start`). `log_label` distinguishes the two runs
+/// in the tracing stream.
+fn spawn_bulk_bnf_worker(
+    state: &AppState,
+    titles: Vec<crate::models::title::MissingCoverTitle>,
+    log_label: &'static str,
+) {
+    // Clone what the worker needs from AppState (cheap — all Arc-wrapped);
+    // no shared mutable references.
+    let pool_clone = state.pool.clone();
     let registry_clone = state.registry.clone();
     let http_client_clone = state.http_client.clone();
     let covers_dir_clone = state.covers_dir.clone();
@@ -355,15 +389,12 @@ pub async fn admin_bulk_cover_refetch(
 
     tokio::spawn(async move {
         for title in titles {
-            // Fix #311 — force_refresh=true: this is the bulk-cover-
-            // refetch path, whose whole point is "try the providers
-            // again, maybe a cover URL is available now". Without
-            // this, the chain short-circuits on the cache hit set
-            // when the title was originally cataloged (often via BnF,
-            // which never returns cover URLs in its UNIMARC payload)
-            // and the only "try harder" step left is the OpenLibrary
-            // Covers ISBN fallback — which 404s for most French /
-            // Swiss / academic titles.
+            // Fix #311 — force_refresh=true: the whole point of these
+            // bulk actions is "try the providers again". Without it the
+            // chain short-circuits on the cache hit set at catalog time
+            // (often via BnF, which never returns cover URLs in its
+            // UNIMARC payload) — and for #389 the point is precisely to
+            // re-run the chain so the newly-added UNIMARC zones backfill.
             //
             // #419 — a Throttled outcome (chain empty-handed with a
             // provider answering 429/503) is retried per the
@@ -397,10 +428,11 @@ pub async fn admin_bulk_cover_refetch(
                 match crate::services::bulk_cover_fetch::retry_backoff(attempts_done) {
                     Some(backoff) => {
                         tracing::info!(
+                            label = log_label,
                             title_id = title.id,
                             attempt = attempts_done,
                             backoff_secs = backoff.as_secs(),
-                            "Bulk cover-refetch: provider throttled (429/503), backing off before retry"
+                            "Bulk BnF task: provider throttled (429/503), backing off before retry"
                         );
                         tokio::time::sleep(backoff).await;
                     }
@@ -421,16 +453,82 @@ pub async fn admin_bulk_cover_refetch(
         let summary = crate::services::bulk_cover_fetch::snapshot(&status_clone);
         crate::services::bulk_cover_fetch::mark_complete(&status_clone);
         tracing::info!(
+            label = log_label,
             recovered = summary.recovered,
             provider_failed = summary.provider_failed,
             not_found = summary.not_found,
             total = summary.total,
-            "Bulk cover-refetch completed"
+            "Bulk BnF task completed"
         );
     });
+}
+
+/// #389 Palier 1 — admin action: re-fetch metadata (force_refresh) for
+/// EVERY active title that carries a lookup code, so the six new UNIMARC
+/// zones populate on already-cataloged titles. Mirrors
+/// [`admin_bulk_cover_refetch`] but targets the broader `list_all_with_code`
+/// set (no cover filter). Shares the SAME `bulk_cover_fetch` status lock —
+/// the two bulk-BnF operations are mutually exclusive; a second click while
+/// one is in flight returns 409. Work runs in a detached `tokio::spawn`;
+/// the handler returns immediately with a feedback snippet for HTMX.
+pub async fn admin_bulk_metadata_backfill(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+) -> Result<Response, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=health", locale.0)?;
+    let pool = &state.pool;
+    let loc = locale.0;
+
+    let titles = crate::models::title::TitleModel::list_all_with_code(pool).await?;
+    let total = titles.len();
+
+    if total == 0 {
+        // Nothing to do — surface a friendly message, don't lock the
+        // status, don't audit-log.
+        return Ok(crate::utils::feedback_html(
+            "info",
+            &rust_i18n::t!("admin.health.bulk_metadata_backfill.empty", locale = loc),
+            "",
+        )
+        .into_response());
+    }
+
+    if crate::services::bulk_cover_fetch::try_start(&state.bulk_cover_fetch, total).is_err() {
+        return Err(AppError::Conflict(
+            rust_i18n::t!(
+                "admin.health.bulk_metadata_backfill.already_running",
+                locale = loc
+            )
+            .to_string(),
+        ));
+    }
+
+    let admin_id = session.user_id.unwrap_or(0);
+    tracing::info!(admin_id, total, "Bulk metadata backfill started");
+
+    // Forensic audit trail: who kicked off the backfill and over how many
+    // titles. Best-effort — a failed audit insert must NOT abort the run
+    // (the status lock is already armed).
+    if let Err(e) = crate::models::admin_audit::AdminAuditModel::create(
+        &state.pool,
+        admin_id,
+        "bulk_metadata_backfill",
+        None,
+        None,
+        Some(serde_json::json!({ "total": total })),
+    )
+    .await
+    {
+        tracing::warn!(error = %e, "Failed to record bulk_metadata_backfill in admin_audit");
+    }
+
+    // Spawn the shared detached BnF worker (force_refresh=true, throttle
+    // retry, inter-title delay). The status lock has already been armed.
+    spawn_bulk_bnf_worker(&state, titles, "Bulk metadata backfill");
 
     let message = rust_i18n::t!(
-        "admin.health.bulk_cover_fetch.started",
+        "admin.health.bulk_metadata_backfill.started",
         locale = loc,
         total = total
     )
@@ -1054,6 +1152,9 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
     // cover + bulk-fetch status. Cheap query (single SELECT COUNT) and
     // a lock-only status read; no extra DB round-trip beyond the count.
     let missing_covers_count = crate::models::title::TitleModel::count_missing_covers(pool).await?;
+    // #389 Palier 1: count of coded titles eligible for the metadata
+    // backfill (all active titles with a lookup code, cover or not).
+    let coded_titles_count = crate::models::title::TitleModel::count_all_with_code(pool).await?;
     let bulk_status =
         crate::services::bulk_cover_fetch::snapshot(&state.bulk_cover_fetch);
     let bulk_cover_fetch_status_label = if bulk_status.running {
@@ -1130,6 +1231,15 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
             locale = loc
         )
         .to_string(),
+        // #389 Palier 1 — bulk metadata backfill. Shares the same status
+        // lock as the cover-refetch, so the button is disabled while EITHER
+        // bulk-BnF run is in flight.
+        bulk_metadata_backfill_button_label: rust_i18n::t!(
+            "admin.health.bulk_metadata_backfill.button",
+            locale = loc
+        )
+        .to_string(),
+        bulk_metadata_backfill_can_start: !bulk_status.running && coded_titles_count > 0,
     };
 
     panel

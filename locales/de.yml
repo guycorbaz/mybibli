@@ -556,6 +556,12 @@ metadata:
     publisher: Verlag
     publication_date: Erscheinungsdatum
     dewey_code: Dewey-Code
+    # #389 — UNIMARC-zone metadata labels (palier 1) surfaced on title detail.
+    statement_of_responsibility: Verfasserangabe
+    edition_statement: Ausgabe
+    collection: Reihe
+    general_note: Anmerkung
+    original_title: Originaltitel
     page_count: Seitenzahl
     track_count: Anzahl Titel
     total_duration: "Dauer (Min.)"
@@ -820,6 +826,11 @@ admin:
       empty: "Keine Titel benötigen einen Cover-Nachzug — alles, was abrufbar war, ist abgerufen."
       already_running: "Ein Cover-Nachzug läuft bereits. Bitte warten Sie auf den Abschluss."
       review_cta: "Titel ohne Cover ansehen"
+    bulk_metadata_backfill:
+      button: "Metadaten von der BnF nachladen"
+      started: "Massenhaftes Metadaten-Nachladen für %{total} Titel gestartet. Fortschritt steht im Log; aktualisieren Sie das Panel für Updates."
+      empty: "Keine Titel mit einem Suchcode zum Nachladen."
+      already_running: "Ein BnF-Massenvorgang läuft bereits. Bitte warten Sie auf den Abschluss."
   users:
     heading: Benutzerkonten
     empty_state: "Nur Sie hier! Erstellen Sie ein Bibliothekar-Konto für andere Haushaltsmitglieder."

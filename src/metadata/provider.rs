@@ -24,6 +24,13 @@ pub struct MetadataResult {
     pub age_rating: Option<String>,
     pub issue_number: Option<String>,
     pub dewey_code: Option<String>,
+    // #389 Palier 1 — UNIMARC pragmatic-subset zones.
+    pub statement_of_responsibility: Option<String>,
+    pub edition_statement: Option<String>,
+    pub collection_title: Option<String>,
+    pub collection_number: Option<String>,
+    pub general_note: Option<String>,
+    pub original_title: Option<String>,
 }
 
 /// Trim a metadata string and treat the empty / whitespace-only result
@@ -64,6 +71,12 @@ impl MetadataResult {
         self.age_rating = normalize_empty(self.age_rating);
         self.issue_number = normalize_empty(self.issue_number);
         self.dewey_code = normalize_empty(self.dewey_code);
+        self.statement_of_responsibility = normalize_empty(self.statement_of_responsibility);
+        self.edition_statement = normalize_empty(self.edition_statement);
+        self.collection_title = normalize_empty(self.collection_title);
+        self.collection_number = normalize_empty(self.collection_number);
+        self.general_note = normalize_empty(self.general_note);
+        self.original_title = normalize_empty(self.original_title);
         self.authors = self
             .authors
             .into_iter()

@@ -547,6 +547,12 @@ metadata:
     publisher: Editore
     publication_date: Data di pubblicazione
     dewey_code: Codice Dewey
+    # #389 — UNIMARC-zone metadata labels (palier 1) surfaced on title detail.
+    statement_of_responsibility: Formulazione di responsabilità
+    edition_statement: Edizione
+    collection: Collana
+    general_note: Nota
+    original_title: Titolo originale
     page_count: Numero di pagine
     track_count: Numero di tracce
     total_duration: "Durata (min)"
@@ -808,6 +814,11 @@ admin:
       empty: "Nessun titolo ha bisogno di un nuovo recupero copertina — tutto ciò che era recuperabile è stato recuperato."
       already_running: "Un riscaricamento delle copertine è già in corso. Attendi il suo completamento."
       review_cta: "Vedi i titoli senza copertina"
+    bulk_metadata_backfill:
+      button: "Recupera metadati dalla BnF"
+      started: "Recupero massivo dei metadati avviato per %{total} titoli. Il progresso è registrato nei log; aggiorna il pannello per vedere gli aggiornamenti."
+      empty: "Nessun titolo con un codice da completare."
+      already_running: "Un'operazione BnF massiva è già in corso. Attendi il suo completamento."
   users:
     heading: Account utenti
     empty_state: "Solo tu qui! Crea un account Bibliotecario per i membri della famiglia."
