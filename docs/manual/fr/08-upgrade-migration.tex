@@ -148,6 +148,43 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.13.0}\label{sec:whats-new-1.13.0}
+
+La version 1.13.0 est une mineure de fonctionnalités sur la 1.12.0,
+centrée sur un thème : l'alignement du catalogue sur la norme
+bibliographique \textbf{UNIMARC}. \emph{Une migration de base
+automatique et additive — aucune action opérateur.} \texttt{docker
+compose pull \&\& docker compose up -d} de routine.
+
+\begin{itemize}
+  \item \textbf{\#389 \string— champs de catalogage alignés
+        UNIMARC.} Les titres portent désormais six champs
+        bibliographiques supplémentaires, mappés sur leurs zones
+        UNIMARC : mention de responsabilité (200\$f), mention
+        d'édition (205\$a), titre et numéro de collection
+        (225\$a/\$v), note générale (300\$a) et titre original
+        (500\$a). Ils sont capturés automatiquement depuis la BnF au
+        scan d'un livre, et affichés sur la fiche titre dès qu'ils
+        sont renseignés. La table de correspondance de référence est
+        livrée dans le dépôt (\texttt{docs/unimarc-mapping.md}) ;
+        l'import/export de notices (ISO~2709 / UNIMARC XML) fera
+        l'objet d'un chantier ultérieur distinct.
+  \item \textbf{Nouvelle action de l'onglet Santé :
+        \emph{Compléter les métadonnées via BnF}.} Relance la
+        recherche de métadonnées pour chaque titre déjà catalogué
+        disposant d'un code, remplissant les nouveaux champs UNIMARC
+        (et tout ce que les fournisseurs ont appris depuis) sans
+        jamais écraser une valeur modifiée à la main. Partage le
+        rythme, le back-off anti-blocage et le verrou d'exécution
+        unique du re-fetch de couvertures.
+  \item \textbf{\#434 \string— résumé de catalogage dans les
+        journaux.} Chaque résolution de métadonnées journalise
+        désormais une ligne \texttt{info} de synthèse (couverture
+        trouvée ? combien de champs UNIMARC remplis ?), ce qui rend
+        une exécution de complément facile à auditer depuis le
+        fichier de log.
+\end{itemize}
+
 \section{Nouveautés de la 1.12.0}\label{sec:whats-new-1.12.0}
 
 La version 1.12.0 est une mineure de fonctionnalités à 2 tickets sur
