@@ -558,6 +558,12 @@ metadata:
     publisher: Éditeur
     publication_date: Date de publication
     dewey_code: Code Dewey
+    # #389 — UNIMARC-zone metadata labels (palier 1) surfaced on title detail.
+    statement_of_responsibility: Mention de responsabilité
+    edition_statement: Édition
+    collection: Collection
+    general_note: Note
+    original_title: Titre original
     page_count: Nombre de pages
     track_count: Nombre de pistes
     total_duration: "Durée (min)"
