@@ -61,7 +61,7 @@ fn base_new_title(title: &str, isbn: &str) -> NewTitle {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn create_persists_and_reads_back_all_unimarc_zones(pool: MySqlPool) {
-    let mut new_title = base_new_title("Zone Round-Trip", "UNIMARC-CREATE-9782000000001");
+    let mut new_title = base_new_title("Zone Round-Trip", "9782000000001");
     new_title.statement_of_responsibility = Some("par Victor Hugo".to_string());
     new_title.edition_statement = Some("3e édition revue".to_string());
     new_title.collection_title = Some("Le Livre de Poche".to_string());
@@ -114,7 +114,7 @@ async fn create_persists_and_reads_back_all_unimarc_zones(pool: MySqlPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn update_unimarc_zones_coalesce_fills_gaps_without_overwriting(pool: MySqlPool) {
-    let mut new_title = base_new_title("Coalesce Guard", "UNIMARC-COALESCE-9782000000002");
+    let mut new_title = base_new_title("Coalesce Guard", "9782000000002");
     new_title.statement_of_responsibility = Some("original SOR".to_string());
     // The other 5 zones remain None.
 
@@ -159,7 +159,7 @@ async fn update_unimarc_zones_coalesce_fills_gaps_without_overwriting(pool: MySq
 #[sqlx::test(migrations = "./migrations")]
 async fn do_update_writes_unimarc_zones_from_metadata(pool: MySqlPool) {
     // Bare title — all zones start None.
-    let new_title = base_new_title("Metadata Zones", "UNIMARC-METADATA-9782000000003");
+    let new_title = base_new_title("Metadata Zones", "9782000000003");
     let created = TitleModel::create(&pool, &new_title)
         .await
         .expect("create should succeed");
