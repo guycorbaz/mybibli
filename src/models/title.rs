@@ -311,6 +311,80 @@ impl TitleModel {
         Ok(titles)
     }
 
+    /// #389 Palier 1 — count of active titles that carry any lookup code
+    /// (ISBN / ISSN / UPC). Drives the "Backfill metadata from BnF" admin
+    /// action, which re-fetches metadata for the whole coded-title set so
+    /// the newly-added UNIMARC zones populate on already-cataloged titles.
+    /// Unlike [`count_missing_covers`], there is NO `cover_image_url` filter
+    /// — every coded title is a candidate regardless of cover state.
+    pub async fn count_all_with_code(pool: &DbPool) -> Result<i64, AppError> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM titles \
+             WHERE deleted_at IS NULL \
+               AND ((isbn IS NOT NULL AND isbn <> '') \
+                 OR (issn IS NOT NULL AND issn <> '') \
+                 OR (upc IS NOT NULL AND upc <> ''))",
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(row.0)
+    }
+
+    /// #389 Palier 1 — list every active title that carries a lookup code,
+    /// for the bulk metadata backfill. Reuses the [`MissingCoverTitle`]
+    /// projection and the same ISBN → UPC → ISSN priority as
+    /// [`list_missing_covers`], but WITHOUT the `cover_image_url IS NULL`
+    /// filter: the goal here is to re-run the metadata chain over the whole
+    /// coded catalog so new UNIMARC zones backfill on existing titles.
+    ///
+    /// Ordered by `created_at ASC` so the oldest titles fill in first.
+    pub async fn list_all_with_code(
+        pool: &DbPool,
+    ) -> Result<Vec<MissingCoverTitle>, AppError> {
+        let rows = sqlx::query(
+            "SELECT id, isbn, issn, upc, media_type FROM titles \
+             WHERE deleted_at IS NULL \
+               AND ((isbn IS NOT NULL AND isbn <> '') \
+                 OR (issn IS NOT NULL AND issn <> '') \
+                 OR (upc IS NOT NULL AND upc <> '')) \
+             ORDER BY created_at ASC",
+        )
+        .fetch_all(pool)
+        .await?;
+
+        let titles = rows
+            .into_iter()
+            .filter_map(|r| {
+                let id: u64 = r.try_get("id").ok()?;
+                let isbn: Option<String> = r.try_get("isbn").ok().flatten();
+                let issn: Option<String> = r.try_get("issn").ok().flatten();
+                let upc: Option<String> = r.try_get("upc").ok().flatten();
+                let media_type: String = r.try_get("media_type").ok()?;
+                // Priority order: ISBN first (best provider coverage),
+                // then UPC, then ISSN. Empty strings are treated as absent
+                // to match the SQL `<> ''` filter.
+                let (code, code_type) = isbn
+                    .filter(|c| !c.is_empty())
+                    .map(|c| (c, crate::models::media_type::CodeType::Isbn))
+                    .or_else(|| {
+                        upc.filter(|c| !c.is_empty())
+                            .map(|c| (c, crate::models::media_type::CodeType::Upc))
+                    })
+                    .or_else(|| {
+                        issn.filter(|c| !c.is_empty())
+                            .map(|c| (c, crate::models::media_type::CodeType::Issn))
+                    })?;
+                Some(MissingCoverTitle {
+                    id,
+                    code,
+                    code_type,
+                    media_type,
+                })
+            })
+            .collect();
+        Ok(titles)
+    }
+
     /// Count of active (non-soft-deleted) titles in the catalog.
     /// Used by `services::dashboard::collection_glance` for the home-page
     /// "Collection at a glance" card and reusable by other dashboard surfaces.

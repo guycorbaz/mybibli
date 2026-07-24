@@ -437,6 +437,10 @@ pub fn build_router(state: AppState) -> Router {
             "/admin/health/bulk-cover-refetch",
             axum::routing::post(admin::admin_bulk_cover_refetch),
         )
+        .route(
+            "/admin/health/bulk-metadata-backfill",
+            axum::routing::post(admin::admin_bulk_metadata_backfill),
+        )
         .route("/admin/users", axum::routing::get(admin_users::admin_users_panel).post(admin_users::admin_users_create))
         .route("/admin/users/new", axum::routing::get(admin_users::admin_users_create_form))
         .route("/admin/users/{id}/edit", axum::routing::get(admin_users::admin_users_edit_form))
