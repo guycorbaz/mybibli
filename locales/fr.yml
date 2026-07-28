@@ -217,6 +217,9 @@ feedback:
   volume_created: "Volume %{label} attaché à %{title}."
   volume_created_suggestion: "Scannez un code L pour ranger, ou scannez un autre code V."
   volume_duplicate: "Le label %{label} est déjà assigné à %{title}. Scannez un autre label."
+  volume_label_reused: "Label %{label} réutilisé pour %{title}. Il appartenait à un volume supprimé, dont l'état, l'emplacement et les informations d'achat ont été écartés."
+  volume_label_in_trash_with_loans: "Le label %{label} appartient à un volume supprimé qui a un historique de prêts, il ne peut donc pas être réutilisé. Restaurez ce volume, ou supprimez-le définitivement depuis la corbeille."
+  volume_label_race: "Le label %{label} a été modifié au même moment. Scannez-le à nouveau."
   volume_no_title: "Aucun titre sélectionné. Scannez d'abord un ISBN pour établir un contexte."
   volume_confirm:
     title: "Ajouter un autre exemplaire ?"

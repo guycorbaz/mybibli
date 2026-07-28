@@ -212,6 +212,9 @@ feedback:
   volume_created: "Esemplare %{label} collegato a %{title}."
   volume_created_suggestion: "Scansiona un codice L per collocare, oppure un altro codice V."
   volume_duplicate: "L'etichetta %{label} è già assegnata a %{title}. Scansiona un'etichetta diversa."
+  volume_label_reused: "Etichetta %{label} riutilizzata per %{title}. Apparteneva a un esemplare eliminato, di cui stato, collocazione e dati di acquisto sono stati scartati."
+  volume_label_in_trash_with_loans: "L'etichetta %{label} appartiene a un esemplare eliminato che ha uno storico prestiti, quindi non può essere riutilizzata. Ripristina quell'esemplare oppure eliminalo definitivamente dal cestino."
+  volume_label_race: "L'etichetta %{label} è stata modificata nello stesso momento. Scansionala di nuovo."
   volume_no_title: "Nessun titolo selezionato. Scansiona prima un ISBN per stabilire un titolo di contesto."
   volume_confirm:
     title: "Aggiungere un'altra copia?"
