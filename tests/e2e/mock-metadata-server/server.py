@@ -502,7 +502,14 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = 9090
-    server = http.server.HTTPServer(("0.0.0.0", port), MockMetadataHandler)
+    # ThreadingHTTPServer, not HTTPServer (#439). The suite runs two Playwright
+    # workers, each scan spawns a background metadata fetch, and #439 added a
+    # second request per ISBN (the LoC SRU call) on top of the BnF one. A
+    # single-threaded server serialises all of that, and the added latency
+    # pushed the already-marginal 10 s waits in title-detail-volumes.spec.ts
+    # over budget — measured as a hard failure on the #439 branch where main
+    # only flaked. Threading removes the queue rather than papering over it.
+    server = http.server.ThreadingHTTPServer(("0.0.0.0", port), MockMetadataHandler)
     print(f"Mock metadata server running on port {port}")
     print(f"  BnF ISBNs: {list(BNF_KNOWN_ISBNS.keys())}")
     print(f"  Google Books ISBNs: {list(GOOGLE_BOOKS_KNOWN_ISBNS.keys())}")
