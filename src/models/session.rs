@@ -214,6 +214,18 @@ impl SessionModel {
         Ok(data.get("active_location_id").and_then(|v| v.as_u64()))
     }
 
+    /// Drop the active scan context (#441).
+    ///
+    /// `current_title_id` is written on every scan and was never removed, so a
+    /// session could keep pointing at a title that had since been deleted. The
+    /// V-code arm of `handle_scan` calls this the moment it notices, so the
+    /// next scan starts from a clean context instead of failing again.
+    pub async fn clear_current_title(pool: &DbPool, token: &str) -> Result<(), AppError> {
+        let mut data = Self::load_session_data(pool, token).await?;
+        data.as_object_mut().map(|o| o.remove("current_title_id"));
+        Self::save_session_data(pool, token, &data).await
+    }
+
     pub async fn clear_active_location(pool: &DbPool, token: &str) -> Result<(), AppError> {
         let mut data = Self::load_session_data(pool, token).await?;
         data.as_object_mut().map(|o| o.remove("active_location_id"));

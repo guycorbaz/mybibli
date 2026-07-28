@@ -650,6 +650,49 @@ pub async fn handle_scan(
                     return Ok(Html(feedback_html("warning", &message, "")).into_response());
                 };
 
+                // #441 — `current_title_id` is sticky: it is written on scan and
+                // never cleared, including when the title it points at is later
+                // deleted. Creating the volume anyway used to bubble a raw
+                // NotFound out of `VolumeService::create_volume`'s "verify title
+                // exists" guard, which the error arm below flattened into the
+                // generic internal-error copy — "Introuvable — l'élément a
+                // peut-être été déplacé ou supprimé". That blames the LABEL the
+                // librarian just scanned, when the real problem is that there is
+                // no active item any more. Detect it here instead, drop the
+                // stale pointer so the context recovers, and say what to do.
+                if crate::models::title::TitleModel::find_by_id(pool, title_id)
+                    .await?
+                    .is_none()
+                {
+                    if let Some(token) = &session.token {
+                        let _ = SessionModel::clear_current_title(pool, token).await;
+                    }
+                    tracing::info!(
+                        stale_title_id = title_id,
+                        code = %code,
+                        "V-code scanned with a deleted active title; context cleared"
+                    );
+                    let message = rust_i18n::t!("feedback.volume_no_title").to_string();
+                    let resp = HtmxResponse {
+                        main: feedback_html("warning", &message, ""),
+                        oob: vec![
+                            OobUpdate {
+                                swap_mode: Default::default(),
+                                target: "context-banner".to_string(),
+                                content: String::new(),
+                            },
+                            OobUpdate {
+                                swap_mode: Default::default(),
+                                target: "guide-strip".to_string(),
+                                content: guide_strip_html(
+                                    rust_i18n::t!("guide.initial", locale = loc).as_ref(),
+                                ),
+                            },
+                        ],
+                    };
+                    return Ok(resp.into_response());
+                }
+
                 // CR #300: phantom-volume guard. `current_title_id` is sticky
                 // (set on ISBN scan, never cleared) — scanning a fresh V-code
                 // for ANOTHER physical book without re-scanning its ISBN would
@@ -720,8 +763,13 @@ pub async fn handle_scan(
                     }
                 }
 
-                match VolumeService::create_volume(pool, &code, title_id).await {
-                    Ok(volume) => {
+                match VolumeService::create_volume(pool, &code, title_id, session.user_id).await {
+                    Ok(creation) => {
+                        // #442 — a reused label discards the previous copy's
+                        // data, so the librarian must be told in as many words.
+                        let reused_label =
+                            matches!(creation, crate::services::volume::VolumeCreation::ReusedLabel(_));
+                        let volume = creation.into_volume();
                         if let Some(token) = &session.token {
                             // Store last volume label for subsequent L-code scan
                             if let Err(e) =
@@ -821,7 +869,21 @@ pub async fn handle_scan(
                                     .map(|t| (t.title.clone(), t.media_type.clone()))
                                     .unwrap_or_else(|| ("?".to_string(), "book".to_string()));
 
-                            let (message, suggestion) = if let Some(ref path) = shelved_path {
+                            let (message, suggestion) = if reused_label {
+                                // #442 — reuse takes precedence over the
+                                // shelved/not-shelved split: discarding the
+                                // previous copy's data is the thing the
+                                // librarian most needs to read.
+                                (
+                                    rust_i18n::t!(
+                                        "feedback.volume_label_reused",
+                                        label = &volume.label,
+                                        title = &title.0
+                                    )
+                                    .to_string(),
+                                    String::new(),
+                                )
+                            } else if let Some(ref path) = shelved_path {
                                 (
                                     rust_i18n::t!(
                                         "feedback.volume_created_and_shelved",
@@ -911,11 +973,21 @@ pub async fn handle_scan(
                     }
                     Err(e) => {
                         tracing::error!(error = %e, code = %code, "V-code scan failed");
-                        let message = match &e {
-                            AppError::BadRequest(msg) => msg.clone(),
-                            _ => rust_i18n::t!("error.internal").to_string(),
+                        let (level, message) = match &e {
+                            AppError::BadRequest(msg) => ("error", msg.clone()),
+                            // #441 — defence in depth. The guard above catches
+                            // the deleted-active-title case before we get here,
+                            // but if a title is deleted between that check and
+                            // the INSERT, the librarian must still be told the
+                            // item is gone rather than that something unnamed
+                            // is "introuvable".
+                            AppError::NotFound(_) => (
+                                "warning",
+                                rust_i18n::t!("feedback.volume_no_title").to_string(),
+                            ),
+                            _ => ("error", rust_i18n::t!("error.internal").to_string()),
                         };
-                        Ok(Html(feedback_html("error", &message, "")).into_response())
+                        Ok(Html(feedback_html(level, &message, "")).into_response())
                     }
                 }
             }

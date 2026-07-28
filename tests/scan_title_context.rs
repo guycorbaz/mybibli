@@ -327,6 +327,91 @@ async fn rescanning_a_known_upc_reports_the_existing_title(pool: DbPool) {
     );
 }
 
+// ─── #441 — the active title was deleted under the librarian's feet ───
+
+/// `current_title_id` is sticky: written on every scan, never removed. When the
+/// title it points at is deleted, the V-code scan used to bubble a raw
+/// `NotFound` out of `VolumeService::create_volume`'s "verify title exists"
+/// guard, which the error arm flattened into the generic copy — "Introuvable —
+/// l'élément a peut-être été déplacé ou supprimé". That blames the label the
+/// librarian just scanned; the real problem is that there is no active item.
+#[sqlx::test(migrations = "./migrations")]
+async fn vcode_scan_with_a_deleted_active_title_reports_no_active_item(pool: DbPool) {
+    let username = seed_librarian(&pool).await;
+    let router = app(state_with_pool(pool.clone()));
+    let (cookie, csrf) = login(&router, &username).await;
+
+    post_scan(&router, &cookie, &csrf, ISBN_FIRST, None).await;
+    let title_id = title_id_for_code(&pool, "isbn", ISBN_FIRST).await;
+
+    // The librarian deletes the title — exactly what happened in production on
+    // 2026-07-27 — while the session still points at it.
+    sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+        .bind(title_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let res = post_scan(&router, &cookie, &csrf, "V9101", None).await;
+    let body = String::from_utf8(
+        axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
+
+    assert!(
+        body.contains("No title selected") || body.contains("Aucun titre sélectionné"),
+        "#441: the librarian must be told there is no active item; got: {body}"
+    );
+    assert!(
+        !body.contains("may have been moved or deleted")
+            && !body.contains("peut-être été déplacé ou supprimé"),
+        "#441 regression: the generic not-found copy blames the scanned label"
+    );
+    assert!(
+        !body.contains("Something went wrong on our end")
+            && !body.contains("erreur est survenue de notre côté"),
+        "#441 regression: a stale context is not an internal error"
+    );
+}
+
+/// Noticing the stale pointer is only half the fix — it must be dropped, so the
+/// next scan starts from a clean context instead of failing the same way.
+#[sqlx::test(migrations = "./migrations")]
+async fn vcode_scan_clears_the_stale_title_context(pool: DbPool) {
+    let username = seed_librarian(&pool).await;
+    let router = app(state_with_pool(pool.clone()));
+    let (cookie, csrf) = login(&router, &username).await;
+
+    post_scan(&router, &cookie, &csrf, ISBN_FIRST, None).await;
+    let title_id = title_id_for_code(&pool, "isbn", ISBN_FIRST).await;
+    sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+        .bind(title_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    post_scan(&router, &cookie, &csrf, "V9102", None).await;
+
+    assert_eq!(
+        SessionModel::get_current_title_id(&pool, &cookie)
+            .await
+            .unwrap(),
+        None,
+        "#441: the stale active title must be dropped from the session"
+    );
+
+    // And no phantom volume was created against the deleted title.
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM volumes WHERE label = ?")
+        .bind("V9102")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count.0, 0, "no volume may be created without an active title");
+}
+
 // ─── Non-regression on the arms that already worked ───────────────────
 
 /// The `"isbn"` arm was correct before #440 and is now routed through the
