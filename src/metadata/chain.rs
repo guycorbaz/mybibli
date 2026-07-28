@@ -205,13 +205,24 @@ impl ChainExecutor {
                                     tokio::time::timeout(filler_timeout, fut).await
                                 {
                                     let extra = extra.normalize_empty_strings();
-                                    let before = winner.has_missing_unimarc_zones();
+                                    let before = winner.filled_unimarc_zone_count();
                                     winner.fill_unimarc_zones_from(&extra);
-                                    if before && !winner.has_missing_unimarc_zones() {
+                                    let gained = winner.filled_unimarc_zone_count() - before;
+                                    // Log on any gain, not only when all six
+                                    // end up filled: 490 and 240 are absent
+                                    // from most records, so "all six" almost
+                                    // never happens and a completion-only log
+                                    // gated on it would be silent in practice.
+                                    // Production backfills are audited from the
+                                    // log file (#434), so a pass that
+                                    // contributed must say so.
+                                    if gained > 0 {
                                         tracing::info!(
                                             code = %code,
                                             filler = filler.name(),
-                                            "Zone completion filled the remaining UNIMARC zones"
+                                            zones_gained = gained,
+                                            zones_filled_total = winner.filled_unimarc_zone_count(),
+                                            "Zone completion contributed UNIMARC zones"
                                         );
                                     }
                                 }

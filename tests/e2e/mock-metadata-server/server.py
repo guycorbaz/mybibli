@@ -147,6 +147,15 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
         elif path == "/" or path == "" or "SRU" in path:
             self._handle_bnf(params)
 
+        # --- Library of Congress SRU (MARC 21) — #439 ---
+        elif path == "/LCDB":
+            self._handle_loc_sru(params)
+
+        # --- Library of Congress flat JSON search — #439 ---
+        # Must precede the Google Books arm: "/books/" vs "/books/v1/volumes".
+        elif path == "/books/":
+            self._handle_loc_json(params)
+
         # --- Google Books endpoint ---
         elif path == "/books/v1/volumes":
             self._handle_google_books(params)
@@ -357,6 +366,57 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
 
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(body.encode("utf-8"))
+
+    # --- Library of Congress mocks (#439) ---------------------------
+    # catalog-marc-zones.spec.ts scans this spec-unique ISBN. The BnF
+    # catch-all resolves it first (it answers for any ISBN) and supplies
+    # 200$f but no edition statement and no note — so the chain's
+    # zone-completion pass must reach LoC for those. That is exactly the
+    # cross-provider path the spec exercises.
+    LOC_MARC_ISBN = "9780449000014"
+
+    def _handle_loc_json(self, params):
+        """Flat ?fo=json search. Carries the cover URL; no MARC zones."""
+        q = params.get("q", [""])[0]
+        if q == self.LOC_MARC_ISBN:
+            body = json.dumps({"results": [{
+                "title": "Zone Completion Sample",
+                "contributor": ["Sample Author"],
+                "date": "2020",
+                "language": ["english"],
+            }]})
+        else:
+            body = json.dumps({"results": []})
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(body.encode("utf-8"))
+
+    def _handle_loc_sru(self, params):
+        """SRU searchRetrieve returning MARC 21. Supplies 250$a and 500$a."""
+        query = params.get("query", [""])[0]
+        isbn = query.replace("bath.isbn=", "")
+        if isbn == self.LOC_MARC_ISBN:
+            body = """<?xml version="1.0"?>
+<zs:searchRetrieveResponse xmlns:zs="http://www.loc.gov/zing/srw/"><zs:numberOfRecords>1</zs:numberOfRecords><zs:records><zs:record><zs:recordData><record xmlns="http://www.loc.gov/MARC21/slim">
+  <datafield tag="245" ind1="1" ind2="0">
+    <subfield code="a">Zone Completion Sample /</subfield>
+    <subfield code="c">Sample Author.</subfield>
+  </datafield>
+  <datafield tag="250" ind1=" " ind2=" ">
+    <subfield code="a">Congress Third edition.</subfield>
+  </datafield>
+  <datafield tag="500" ind1=" " ind2=" ">
+    <subfield code="a">Congress general note.</subfield>
+  </datafield>
+</record></zs:recordData></zs:record></zs:records></zs:searchRetrieveResponse>"""
+        else:
+            body = """<?xml version="1.0"?>
+<zs:searchRetrieveResponse xmlns:zs="http://www.loc.gov/zing/srw/"><zs:numberOfRecords>0</zs:numberOfRecords><zs:records/></zs:searchRetrieveResponse>"""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/xml; charset=utf-8")
         self.end_headers()
         self.wfile.write(body.encode("utf-8"))
 

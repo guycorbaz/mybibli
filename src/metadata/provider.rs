@@ -98,6 +98,27 @@ impl MetadataResult {
             || self.original_title.is_none()
     }
 
+    /// How many of the six UNIMARC-aligned zones currently carry a value (#439).
+    ///
+    /// Used by the chain to report what a completion pass actually contributed.
+    /// A boolean "are any missing" is useless for that: 490 (collection) and
+    /// 240 (uniform title) are absent from most records, so a log gated on
+    /// "all six now filled" would stay silent even on a pass that recovered
+    /// two zones.
+    pub fn filled_unimarc_zone_count(&self) -> usize {
+        [
+            &self.statement_of_responsibility,
+            &self.edition_statement,
+            &self.collection_title,
+            &self.collection_number,
+            &self.general_note,
+            &self.original_title,
+        ]
+        .iter()
+        .filter(|z| z.is_some())
+        .count()
+    }
+
     /// Fill this result's *empty* UNIMARC zones from `other`, leaving every
     /// value already present untouched (#439).
     ///

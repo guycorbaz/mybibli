@@ -2,13 +2,17 @@ import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 
 /**
- * #389 Palier 1 — admin "Backfill metadata from BnF" button.
+ * #389 Palier 1 — admin metadata-backfill button on the Health panel.
  *
  * Verifies the new admin action end-to-end: the button renders on the
  * Health panel (template + 4-locale label wiring) and POSTing to its
  * route runs the handler through CSRF and returns a valid feedback.
  *
- * The backfill shares the single stack-wide bulk-BnF status lock with
+ * #439 renamed the button: the action now draws on both national libraries
+ * (BnF and Library of Congress), so the copy no longer names a single one.
+ * The matcher below accepts the current wording in all four locales.
+ *
+ * The backfill shares the single stack-wide bulk-metadata status lock with
  * cover-refetch, so the button's enabled state is non-deterministic under
  * parallel execution. We therefore assert the button's PRESENCE via the UI
  * and drive the route via a direct POST (CSRF-authenticated) whose outcome
@@ -18,7 +22,7 @@ import { loginAs } from "../../helpers/auth";
  */
 test.describe("#389 — admin BnF metadata backfill", () => {
   const backfillButton =
-    /Backfill metadata from BnF|Compléter les métadonnées via BnF/i;
+    /Backfill metadata from libraries|Compléter les métadonnées via les bibliothèques|Metadaten von Bibliotheken nachladen|Recupera metadati dalle biblioteche/i;
 
   // Any of the three lock-state-dependent outcomes proves the handler ran.
   const validOutcome =
