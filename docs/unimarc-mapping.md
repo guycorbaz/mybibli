@@ -65,6 +65,47 @@ migration `20260724000000_titles_unimarc_zones.sql`), `related-table`.
 - **Cover image** (`cover_image_url`) has no standard UNIMARC bibliographic zone
   and is out of scope for conformity — it is a mybibli convenience field.
 
+## MARC 21 equivalence (#439)
+
+UNIMARC is the French/European standard; the Library of Congress catalogs in
+**MARC 21**. Both serialise identically — `<datafield tag><subfield code>` —
+so `src/metadata/marc.rs` reads either, and only the tag table below differs.
+The LoC provider uses it to fill the same six columns for anglophone titles
+that the BnF does not hold.
+
+| mybibli field | UNIMARC (BnF) | MARC 21 (LoC) | MARC 21 label |
+|---|---|---|---|
+| `statement_of_responsibility` | 200$f | **245$c** | Statement of responsibility |
+| `edition_statement` | 205$a | **250$a** | Edition statement |
+| `collection_title` | 225$a | **490$a** | Series statement |
+| `collection_number` | 225$v | **490$v** | Series volume number |
+| `general_note` | 300$a | **500$a** | General note |
+| `original_title` | 454 / 500$a | **240$a** | Uniform title |
+
+**Read that table carefully: `500` means opposite things in the two standards.**
+UNIMARC 500 is the uniform/original title; MARC 21 500 is the general note. The
+two rows are not a typo.
+
+Two further asymmetries worth knowing:
+
+- **MARC 21 500 repeats.** Real LoC records routinely carry several general
+  notes (confirmed on ISBN 9780134685991, which has two). `marc::extract_subfield`
+  returns the first; `marc::extract_subfields` returns all. We store the first —
+  a concatenated blob reads badly on the title-detail page.
+- **240$a is a uniform title, not strictly an original title.** For a translated
+  work it usually *is* the original title, which is why it is mapped here, but it
+  is also used to disambiguate works with generic titles. Treat it as a good
+  approximation rather than an exact equivalence.
+
+### Coverage reality
+
+Measured against the live LoC SRU endpoint on 2026-07-28 over the production
+catalog's zone-less titles, by ISBN prefix: 9780 → 6/6 recovered, 9781 → 4/6,
+and **zero** for 9782 (FR), 9783 (DE), 9791 and 9798. The two national-library
+providers are complementary, not redundant: BnF covers the francophone catalog,
+LoC the anglophone one, and a title in neither stays empty. French-prefix titles
+the BnF could not describe will **not** be rescued by LoC.
+
 ## Data migration for existing titles
 
 The migration is **additive** (all new columns NULLable) — the 207 titles already

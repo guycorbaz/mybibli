@@ -19,6 +19,9 @@ media type:
 \endhead
 BnF\index{BnF}                  & Books         & French
 Bibliothèque nationale catalogue; best for French-language titles. & no \\
+Library of Congress\index{Library of Congress} & Books & United
+States national library catalogue; the anglophone counterpart to the
+BnF. Also supplies MARC~21 zones. & no \\
 Open Library\index{Open Library} & Books         & Volunteer
 catalogue; broad English / multilingual coverage. & no \\
 Google Books\index{Google Books} & Books         & Commercial; good
@@ -36,6 +39,28 @@ The first provider to return a \emph{clean} record wins. ``Clean''
 means: title present, at least one contributor, and a year. Partial
 matches are recorded but mybibli keeps walking the chain until it
 finds a clean one or runs out of providers.
+
+\subsection*{Bibliographic zones: BnF and Library of Congress}
+
+Six detailed cataloguing fields — statement of responsibility,
+edition statement, collection title and number, general note,
+original title — come only from the \emph{national libraries}. No
+other provider carries them.
+
+The two catalogues are complementary rather than redundant: the BnF
+describes the French-language corpus, the Library of Congress the
+English-language one. A title held by neither will have none of these
+zones, and a French title the BnF could not describe will not be
+rescued by the Library of Congress.
+
+When the provider that resolved a title fills only some of the six
+zones, mybibli asks the other library to complete the ones left
+empty. The rule is \emph{first source wins}: a value already present
+is never overwritten. Only these six zones are merged — the title,
+authors and cover always come from a single provider.
+
+The \emph{Backfill metadata from libraries} button on the Health tab
+applies the same treatment to titles already in the catalogue.
 
 \subsection*{Cover-image fallbacks}
 

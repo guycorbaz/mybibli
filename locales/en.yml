@@ -844,10 +844,10 @@ admin:
       already_running: "A bulk cover-refetch is already in progress. Please wait for it to complete."
       review_cta: "Review titles without a cover"
     bulk_metadata_backfill:
-      button: "Backfill metadata from BnF"
+      button: "Backfill metadata from libraries"
       started: "Bulk metadata backfill started for %{total} titles. Progress is logged; refresh the panel to see updates."
       empty: "No titles with a lookup code to backfill."
-      already_running: "A bulk BnF operation is already in progress. Please wait for it to complete."
+      already_running: "A bulk metadata operation is already in progress. Please wait for it to complete."
   users:
     heading: User accounts
     empty_state: "Only you here! Create a Librarian account for household members."

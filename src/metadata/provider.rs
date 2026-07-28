@@ -84,6 +84,69 @@ impl MetadataResult {
             .collect();
         self
     }
+
+    /// Do any of the six UNIMARC-aligned zones still have no value? (#439)
+    ///
+    /// Drives the chain's zone-completion pass: a result that already carries
+    /// all six needs no second provider consulted.
+    pub fn has_missing_unimarc_zones(&self) -> bool {
+        self.statement_of_responsibility.is_none()
+            || self.edition_statement.is_none()
+            || self.collection_title.is_none()
+            || self.collection_number.is_none()
+            || self.general_note.is_none()
+            || self.original_title.is_none()
+    }
+
+    /// How many of the six UNIMARC-aligned zones currently carry a value (#439).
+    ///
+    /// Used by the chain to report what a completion pass actually contributed.
+    /// A boolean "are any missing" is useless for that: 490 (collection) and
+    /// 240 (uniform title) are absent from most records, so a log gated on
+    /// "all six now filled" would stay silent even on a pass that recovered
+    /// two zones.
+    pub fn filled_unimarc_zone_count(&self) -> usize {
+        [
+            &self.statement_of_responsibility,
+            &self.edition_statement,
+            &self.collection_title,
+            &self.collection_number,
+            &self.general_note,
+            &self.original_title,
+        ]
+        .iter()
+        .filter(|z| z.is_some())
+        .count()
+    }
+
+    /// Fill this result's *empty* UNIMARC zones from `other`, leaving every
+    /// value already present untouched (#439).
+    ///
+    /// This encodes the settled merge policy: field-by-field, **first source
+    /// wins**. Because the chain consults BnF before the Library of Congress
+    /// for books, that means BnF takes precedence where both answer, while a
+    /// French title the BnF only partly described can still have its remaining
+    /// zones completed from LoC. Provenance therefore becomes mixed within a
+    /// single record, which is accepted.
+    pub fn fill_unimarc_zones_from(&mut self, other: &MetadataResult) {
+        fn fill(target: &mut Option<String>, source: &Option<String>) {
+            if target.is_none()
+                && let Some(v) = source
+                && !v.trim().is_empty()
+            {
+                *target = Some(v.clone());
+            }
+        }
+        fill(
+            &mut self.statement_of_responsibility,
+            &other.statement_of_responsibility,
+        );
+        fill(&mut self.edition_statement, &other.edition_statement);
+        fill(&mut self.collection_title, &other.collection_title);
+        fill(&mut self.collection_number, &other.collection_number);
+        fill(&mut self.general_note, &other.general_note);
+        fill(&mut self.original_title, &other.original_title);
+    }
 }
 
 /// CR #396 — normalize a provider's display name into the slug used as
@@ -131,6 +194,42 @@ pub trait MetadataProvider: Send + Sync {
     /// Search by title string.
     async fn search_by_title(&self, _title: &str) -> Result<Option<MetadataResult>, MetadataError> {
         Ok(None) // Default: not supported
+    }
+
+    /// Does this provider serve structured MARC bibliographic zones? (#439)
+    ///
+    /// Only the two national-library providers do — BnF over UNIMARC and the
+    /// Library of Congress over MARC 21. Everything else (Google Books, Open
+    /// Library, MusicBrainz, OMDb, TMDb, Comic Vine) returns flat metadata with
+    /// no statement of responsibility, edition statement, collection or
+    /// uniform title.
+    ///
+    /// The chain's zone-completion pass consults **only** providers that return
+    /// `true` here. Without this gate the pass would sweep the entire chain on
+    /// almost every lookup: `has_missing_unimarc_zones` is true whenever any of
+    /// the six is empty, and 490 (collection) and 240 (uniform title) are
+    /// legitimately absent from most records — so "all six present" is the rare
+    /// case, not the common one.
+    fn supplies_marc_zones(&self) -> bool {
+        false
+    }
+
+    /// Fetch **only** the six MARC zones for an ISBN, for the chain's
+    /// zone-completion pass (#439).
+    ///
+    /// Separate from [`Self::lookup_by_isbn`] on purpose. The LoC provider's
+    /// normal lookup returns `None` when its flat JSON search finds nothing,
+    /// because zones with no title are not a usable primary result — but for
+    /// completion they are exactly what is wanted, and the JSON search and the
+    /// SRU catalogue are different indexes that do not always agree. Routing
+    /// completion through `lookup_by_isbn` would therefore silently discard
+    /// recoverable zones whenever the two disagree.
+    ///
+    /// Only providers whose [`Self::supplies_marc_zones`] is true need
+    /// implement this; the chain uses that as the cheap gate before calling.
+    /// The returned result is read for its six zone fields and nothing else.
+    async fn lookup_marc_zones(&self, _isbn: &str) -> Option<MetadataResult> {
+        None
     }
 
     /// Return the rate limiter for this provider, if any.

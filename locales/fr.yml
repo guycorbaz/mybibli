@@ -839,10 +839,10 @@ admin:
       already_running: "Une récupération en lot est déjà en cours. Attendez sa fin."
       review_cta: "Voir les titres sans couverture"
     bulk_metadata_backfill:
-      button: "Compléter les métadonnées via BnF"
+      button: "Compléter les métadonnées via les bibliothèques"
       started: "Complément des métadonnées en lot lancé pour %{total} titres. La progression est journalisée ; rafraîchissez le panneau pour voir les mises à jour."
       empty: "Aucun titre avec un code à compléter."
-      already_running: "Une opération BnF en lot est déjà en cours. Attendez sa fin."
+      already_running: "Une opération de métadonnées en lot est déjà en cours. Attendez sa fin."
   users:
     heading: "Comptes utilisateurs"
     empty_state: "Vous êtes seul·e ! Créez un compte Bibliothécaire pour les membres du foyer."

@@ -432,7 +432,7 @@ fn spawn_bulk_bnf_worker(
                             title_id = title.id,
                             attempt = attempts_done,
                             backoff_secs = backoff.as_secs(),
-                            "Bulk BnF task: provider throttled (429/503), backing off before retry"
+                            "Bulk metadata task: provider throttled (429/503), backing off before retry"
                         );
                         tokio::time::sleep(backoff).await;
                     }
@@ -458,7 +458,7 @@ fn spawn_bulk_bnf_worker(
             provider_failed = summary.provider_failed,
             not_found = summary.not_found,
             total = summary.total,
-            "Bulk BnF task completed"
+            "Bulk metadata task completed"
         );
     });
 }
