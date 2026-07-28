@@ -216,6 +216,9 @@ feedback:
   volume_created: "Volume %{label} attached to %{title}."
   volume_created_suggestion: "Scan L-code to shelve, or scan another V-code."
   volume_duplicate: "Label %{label} is already assigned to %{title}. Scan a different label."
+  volume_label_reused: "Label %{label} reused for %{title}. It belonged to a deleted volume, whose condition, shelf and purchase details were discarded."
+  volume_label_in_trash_with_loans: "Label %{label} belongs to a deleted volume that still has loan history, so it can't be reused. Restore that volume, or delete it permanently from the Trash."
+  volume_label_race: "Label %{label} was being changed at the same moment. Scan it again."
   volume_no_title: "No title selected. Scan an ISBN first to establish a title context."
   volume_confirm:
     title: "Add another copy?"

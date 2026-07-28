@@ -216,6 +216,9 @@ feedback:
   volume_created: "Exemplar %{label} an %{title} angehängt."
   volume_created_suggestion: "L-Code scannen zum Einsortieren, oder weiteren V-Code scannen."
   volume_duplicate: "Etikett %{label} ist bereits %{title} zugeordnet. Bitte ein anderes Etikett scannen."
+  volume_label_reused: "Etikett %{label} für %{title} wiederverwendet. Es gehörte zu einem gelöschten Exemplar, dessen Zustand, Standort und Kaufangaben verworfen wurden."
+  volume_label_in_trash_with_loans: "Etikett %{label} gehört zu einem gelöschten Exemplar mit Ausleihverlauf und kann daher nicht wiederverwendet werden. Stellen Sie das Exemplar wieder her oder löschen Sie es endgültig aus dem Papierkorb."
+  volume_label_race: "Etikett %{label} wurde im selben Moment geändert. Bitte erneut scannen."
   volume_no_title: "Kein Titel ausgewählt. Scannen Sie zuerst eine ISBN, um einen Titelkontext aufzubauen."
   volume_confirm:
     title: "Weiteres Exemplar hinzufügen?"

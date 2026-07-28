@@ -121,6 +121,103 @@ impl VolumeModel {
         }
     }
 
+    /// Look a volume up by label **including soft-deleted rows** (#442).
+    ///
+    /// `volumes.label` carries a global `UNIQUE` index that soft-deletion does
+    /// not release, so a label can collide with a row `find_by_label` cannot
+    /// see. That is how the duplicate-label error used to name its owner `"?"`.
+    /// Returns the row plus whether it is soft-deleted.
+    pub async fn find_by_label_any_state(
+        pool: &DbPool,
+        label: &str,
+    ) -> Result<Option<(VolumeModel, bool)>, AppError> {
+        tracing::debug!(label = %label, "Looking up volume by label (any state)");
+
+        // Same DECIMAL/TIMESTAMP casts as `find_by_label` (fix #288 and the
+        // MariaDB type gotchas in CLAUDE.md).
+        let row = sqlx::query(
+            r#"SELECT id, title_id, label, condition_state_id, edition_comment, location_id, version,
+                      CAST(purchase_price AS DOUBLE) AS purchase_price, purchase_currency,
+                      CAST(current_value AS DOUBLE) AS current_value, current_value_currency,
+                      CAST(current_value_updated_at AS DATETIME) AS current_value_updated_at,
+                      CAST(under_audit_since AS DATETIME) AS under_audit_since,
+                      (deleted_at IS NOT NULL) AS is_deleted
+               FROM volumes
+               WHERE label = ?"#,
+        )
+        .bind(label)
+        .fetch_optional(pool)
+        .await?;
+
+        match row {
+            Some(r) => {
+                let is_deleted: i8 = r.try_get("is_deleted")?;
+                Ok(Some((
+                    VolumeModel {
+                        id: r.try_get("id")?,
+                        title_id: r.try_get("title_id")?,
+                        label: r.try_get("label")?,
+                        condition_state_id: r.try_get("condition_state_id")?,
+                        edition_comment: r.try_get("edition_comment")?,
+                        location_id: r.try_get("location_id")?,
+                        version: r.try_get("version")?,
+                        purchase_price: r.try_get("purchase_price")?,
+                        purchase_currency: r.try_get("purchase_currency")?,
+                        current_value: r.try_get("current_value")?,
+                        current_value_currency: r.try_get("current_value_currency")?,
+                        current_value_updated_at: r.try_get("current_value_updated_at")?,
+                        under_audit_since: r.try_get("under_audit_since")?,
+                    },
+                    is_deleted != 0,
+                )))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// How many loans — past or present — reference this volume (#442).
+    ///
+    /// Reusing a soft-deleted volume's row keeps its `id`, and `loans` point at
+    /// `volume_id`. Re-pointing a row that carries loan history would silently
+    /// re-attribute that history to a different physical copy, so the reuse
+    /// path refuses when this is non-zero.
+    pub async fn count_loans(pool: &DbPool, volume_id: u64) -> Result<i64, AppError> {
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM loans WHERE volume_id = ?")
+            .bind(volume_id)
+            .fetch_one(pool)
+            .await?;
+        Ok(row.0)
+    }
+
+    /// Reuse a soft-deleted volume row for a different physical copy (#442).
+    ///
+    /// Clears `deleted_at`, re-points `title_id`, and **wipes every
+    /// copy-specific field** — the sticker is going onto a different object, so
+    /// its condition, shelf, purchase price and valuation do not carry over.
+    /// The caller is responsible for the loan-history guard and for the audit
+    /// entry; this method deliberately does not decide policy.
+    pub async fn reactivate_for_reuse(
+        pool: &DbPool,
+        id: u64,
+        title_id: u64,
+    ) -> Result<(), AppError> {
+        tracing::info!(volume_id = id, title_id = title_id, "Reusing soft-deleted volume label");
+
+        sqlx::query(
+            "UPDATE volumes SET deleted_at = NULL, title_id = ?, condition_state_id = NULL, \
+             edition_comment = NULL, location_id = NULL, purchase_price = NULL, \
+             purchase_currency = NULL, current_value = NULL, current_value_currency = NULL, \
+             current_value_updated_at = NULL, under_audit_since = NULL, version = version + 1 \
+             WHERE id = ?",
+        )
+        .bind(title_id)
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn create(
         pool: &DbPool,
         title_id: u64,

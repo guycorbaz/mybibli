@@ -11,8 +11,10 @@ use crate::utils::base_context;
 use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobUpdate};
 use crate::middleware::locale::Locale;
+use crate::db::DbPool;
 use crate::models::contributor::{ContributorModel, ContributorRoleModel, TitleContributorModel};
 use crate::models::session::SessionModel;
+use crate::models::title::TitleModel;
 use crate::models::volume::VolumeModel;
 use crate::services::contributor::ContributorService;
 use crate::services::scan_undo::UndoableAction;
@@ -105,6 +107,77 @@ fn skeleton_feedback_html(title_id: u64, isbn: &str) -> String {
 </div>"##,
         message = html_escape(&message)
     )
+}
+
+/// Make a freshly scanned title the session's scan context, and build the
+/// OOB updates that tell the librarian which title is now active.
+///
+/// **Every scan arm that resolves a code to a title MUST go through this.**
+/// Before #440 the four operations below were open-coded in the `"isbn"`
+/// arm, the `"issn"` arm and `handle_scan_with_type` — while the `"upc"`
+/// arm, the one that fires once a media-type preference has been
+/// remembered in a cookie, performed none of them. The session therefore
+/// kept pointing at the PREVIOUS title, so the next V-code scan attached
+/// its volume to the wrong item, or failed with a misleading "not found"
+/// when that stale title had since been deleted. Since
+/// `media_type_preference` is a session cookie, the first CD of a session
+/// worked and every subsequent one was broken.
+///
+/// Holding the sequence in one place is the actual fix: a fifth scan arm
+/// cannot silently reintroduce the omission.
+///
+/// Returns the OOB updates for the context banner plus, when the title was
+/// newly created, the session counter. Callers append their own
+/// guide-strip update and build the main feedback body.
+async fn activate_scanned_title(
+    pool: &DbPool,
+    token: Option<&str>,
+    title: &TitleModel,
+    is_new: bool,
+) -> Vec<OobUpdate> {
+    if let Some(token) = token {
+        if let Err(e) = SessionModel::set_current_title(pool, token, title.id).await {
+            tracing::warn!(
+                error = %e,
+                title_id = title.id,
+                "Failed to update current title in session"
+            );
+        }
+        // A new title context invalidates both the pending volume label
+        // (an L-code scan pairs with it) and the batch shelving mode.
+        let _ = SessionModel::set_last_volume_label(pool, token, "").await;
+        let _ = SessionModel::clear_active_location(pool, token).await;
+    }
+
+    let vol_count = VolumeModel::count_by_title(pool, title.id)
+        .await
+        .unwrap_or(0);
+    let author = TitleContributorModel::get_primary_contributor(pool, title.id)
+        .await
+        .unwrap_or(None);
+    let mut oob = vec![OobUpdate {
+        swap_mode: Default::default(),
+        target: "context-banner".to_string(),
+        content: context_banner_html(
+            &title.title,
+            &title.media_type,
+            vol_count,
+            author.as_deref(),
+        ),
+    }];
+
+    if is_new
+        && let Some(token) = token
+        && let Ok(counter) = SessionModel::increment_session_counter(pool, token).await
+    {
+        oob.push(OobUpdate {
+            swap_mode: Default::default(),
+            target: "session-counter".to_string(),
+            content: session_counter_html(counter),
+        });
+    }
+
+    oob
 }
 
 fn push_guide_oob(oob: &mut Vec<OobUpdate>, message: &str) {
@@ -387,48 +460,15 @@ pub async fn handle_scan(
             "isbn" => {
                 match TitleService::create_from_isbn(pool, &code, session.token.as_deref()).await {
                     Ok((title, is_new)) => {
-                        // Update current title in session
-                        if let Some(token) = &session.token {
-                            if let Err(e) =
-                                SessionModel::set_current_title(pool, token, title.id).await
-                            {
-                                tracing::warn!(error = %e, "Failed to update current title in session");
-                            }
-                            let _ = SessionModel::set_last_volume_label(pool, token, "").await;
-                            // Clear batch shelving mode on new ISBN context
-                            let _ = SessionModel::clear_active_location(pool, token).await;
-                        }
-
-                        let vol_count = VolumeModel::count_by_title(pool, title.id)
-                            .await
-                            .unwrap_or(0);
-
-                        // Build OOB updates: context banner + session counter
-                        let mut oob = vec![OobUpdate { swap_mode: Default::default(),
-                            target: "context-banner".to_string(),
-                            content: {
-                                let author =
-                                    TitleContributorModel::get_primary_contributor(pool, title.id)
-                                        .await
-                                        .unwrap_or(None);
-                                context_banner_html(
-                                    &title.title,
-                                    &title.media_type,
-                                    vol_count,
-                                    author.as_deref(),
-                                )
-                            },
-                        }];
-                        if is_new
-                            && let Some(token) = &session.token
-                            && let Ok(counter) =
-                                SessionModel::increment_session_counter(pool, token).await
-                        {
-                            oob.push(OobUpdate { swap_mode: Default::default(),
-                                target: "session-counter".to_string(),
-                                content: session_counter_html(counter),
-                            });
-                        }
+                        // #440 — one shared context activation for every
+                        // scan arm; see `activate_scanned_title`.
+                        let mut oob = activate_scanned_title(
+                            pool,
+                            session.token.as_deref(),
+                            &title,
+                            is_new,
+                        )
+                        .await;
 
                         // CR #242 — auto-link banner appended to either the
                         // "title exists" or the new-title skeleton feedback so
@@ -610,6 +650,49 @@ pub async fn handle_scan(
                     return Ok(Html(feedback_html("warning", &message, "")).into_response());
                 };
 
+                // #441 — `current_title_id` is sticky: it is written on scan and
+                // never cleared, including when the title it points at is later
+                // deleted. Creating the volume anyway used to bubble a raw
+                // NotFound out of `VolumeService::create_volume`'s "verify title
+                // exists" guard, which the error arm below flattened into the
+                // generic internal-error copy — "Introuvable — l'élément a
+                // peut-être été déplacé ou supprimé". That blames the LABEL the
+                // librarian just scanned, when the real problem is that there is
+                // no active item any more. Detect it here instead, drop the
+                // stale pointer so the context recovers, and say what to do.
+                if crate::models::title::TitleModel::find_by_id(pool, title_id)
+                    .await?
+                    .is_none()
+                {
+                    if let Some(token) = &session.token {
+                        let _ = SessionModel::clear_current_title(pool, token).await;
+                    }
+                    tracing::info!(
+                        stale_title_id = title_id,
+                        code = %code,
+                        "V-code scanned with a deleted active title; context cleared"
+                    );
+                    let message = rust_i18n::t!("feedback.volume_no_title").to_string();
+                    let resp = HtmxResponse {
+                        main: feedback_html("warning", &message, ""),
+                        oob: vec![
+                            OobUpdate {
+                                swap_mode: Default::default(),
+                                target: "context-banner".to_string(),
+                                content: String::new(),
+                            },
+                            OobUpdate {
+                                swap_mode: Default::default(),
+                                target: "guide-strip".to_string(),
+                                content: guide_strip_html(
+                                    rust_i18n::t!("guide.initial", locale = loc).as_ref(),
+                                ),
+                            },
+                        ],
+                    };
+                    return Ok(resp.into_response());
+                }
+
                 // CR #300: phantom-volume guard. `current_title_id` is sticky
                 // (set on ISBN scan, never cleared) — scanning a fresh V-code
                 // for ANOTHER physical book without re-scanning its ISBN would
@@ -680,8 +763,13 @@ pub async fn handle_scan(
                     }
                 }
 
-                match VolumeService::create_volume(pool, &code, title_id).await {
-                    Ok(volume) => {
+                match VolumeService::create_volume(pool, &code, title_id, session.user_id).await {
+                    Ok(creation) => {
+                        // #442 — a reused label discards the previous copy's
+                        // data, so the librarian must be told in as many words.
+                        let reused_label =
+                            matches!(creation, crate::services::volume::VolumeCreation::ReusedLabel(_));
+                        let volume = creation.into_volume();
                         if let Some(token) = &session.token {
                             // Store last volume label for subsequent L-code scan
                             if let Err(e) =
@@ -781,7 +869,21 @@ pub async fn handle_scan(
                                     .map(|t| (t.title.clone(), t.media_type.clone()))
                                     .unwrap_or_else(|| ("?".to_string(), "book".to_string()));
 
-                            let (message, suggestion) = if let Some(ref path) = shelved_path {
+                            let (message, suggestion) = if reused_label {
+                                // #442 — reuse takes precedence over the
+                                // shelved/not-shelved split: discarding the
+                                // previous copy's data is the thing the
+                                // librarian most needs to read.
+                                (
+                                    rust_i18n::t!(
+                                        "feedback.volume_label_reused",
+                                        label = &volume.label,
+                                        title = &title.0
+                                    )
+                                    .to_string(),
+                                    String::new(),
+                                )
+                            } else if let Some(ref path) = shelved_path {
                                 (
                                     rust_i18n::t!(
                                         "feedback.volume_created_and_shelved",
@@ -871,11 +973,21 @@ pub async fn handle_scan(
                     }
                     Err(e) => {
                         tracing::error!(error = %e, code = %code, "V-code scan failed");
-                        let message = match &e {
-                            AppError::BadRequest(msg) => msg.clone(),
-                            _ => rust_i18n::t!("error.internal").to_string(),
+                        let (level, message) = match &e {
+                            AppError::BadRequest(msg) => ("error", msg.clone()),
+                            // #441 — defence in depth. The guard above catches
+                            // the deleted-active-title case before we get here,
+                            // but if a title is deleted between that check and
+                            // the INSERT, the librarian must still be told the
+                            // item is gone rather than that something unnamed
+                            // is "introuvable".
+                            AppError::NotFound(_) => (
+                                "warning",
+                                rust_i18n::t!("feedback.volume_no_title").to_string(),
+                            ),
+                            _ => ("error", rust_i18n::t!("error.internal").to_string()),
                         };
-                        Ok(Html(feedback_html("error", &message, "")).into_response())
+                        Ok(Html(feedback_html(level, &message, "")).into_response())
                     }
                 }
             }
@@ -1032,44 +1144,14 @@ pub async fn handle_scan(
                 .await
                 {
                     Ok((title, is_new)) => {
-                        if let Some(token) = &session.token {
-                            if let Err(e) =
-                                SessionModel::set_current_title(pool, token, title.id).await
-                            {
-                                tracing::warn!(error = %e, "Failed to update current title in session");
-                            }
-                            let _ = SessionModel::set_last_volume_label(pool, token, "").await;
-                            let _ = SessionModel::clear_active_location(pool, token).await;
-                        }
-
-                        let vol_count = VolumeModel::count_by_title(pool, title.id)
-                            .await
-                            .unwrap_or(0);
-                        let mut oob = vec![OobUpdate { swap_mode: Default::default(),
-                            target: "context-banner".to_string(),
-                            content: {
-                                let author =
-                                    TitleContributorModel::get_primary_contributor(pool, title.id)
-                                        .await
-                                        .unwrap_or(None);
-                                context_banner_html(
-                                    &title.title,
-                                    &title.media_type,
-                                    vol_count,
-                                    author.as_deref(),
-                                )
-                            },
-                        }];
-                        if is_new
-                            && let Some(token) = &session.token
-                            && let Ok(counter) =
-                                SessionModel::increment_session_counter(pool, token).await
-                        {
-                            oob.push(OobUpdate { swap_mode: Default::default(),
-                                target: "session-counter".to_string(),
-                                content: session_counter_html(counter),
-                            });
-                        }
+                        // #440 — shared context activation.
+                        let mut oob = activate_scanned_title(
+                            pool,
+                            session.token.as_deref(),
+                            &title,
+                            is_new,
+                        )
+                        .await;
 
                         if !is_new {
                             let guide = rust_i18n::t!("guide.title_active", title = &title.title)
@@ -1145,35 +1227,65 @@ pub async fn handle_scan(
                     )
                     .await
                     {
-                        Ok((title, _is_new)) => {
-                            let timeout_secs = state
-                                .settings
-                                .read()
-                                .map(|s| s.metadata_fetch_timeout_secs)
-                                .unwrap_or(30);
-                            let per_provider_timeouts = state.metadata_chain_provider_timeouts();
-                            crate::tasks::metadata_fetch::spawn_fetch(
-                                "catalog_upc_session_pref",
-                                title.id,
-                                crate::tasks::metadata_fetch::fetch_metadata_chain(
-                                    pool.clone(),
+                        Ok((title, is_new)) => {
+                            // #440 — THIS is the arm that was missing the
+                            // context activation entirely. It fires from the
+                            // second UPC scan of a session onward (once the
+                            // media-type preference cookie is set), so the
+                            // session kept pointing at the previous title and
+                            // the next V-code attached its volume there.
+                            let mut oob = activate_scanned_title(
+                                pool,
+                                session.token.as_deref(),
+                                &title,
+                                is_new,
+                            )
+                            .await;
+
+                            // Only a genuinely new title warrants a metadata
+                            // fetch; re-scanning a known UPC used to re-trigger
+                            // the whole provider chain for nothing.
+                            if is_new {
+                                let timeout_secs = state
+                                    .settings
+                                    .read()
+                                    .map(|s| s.metadata_fetch_timeout_secs)
+                                    .unwrap_or(30);
+                                let per_provider_timeouts =
+                                    state.metadata_chain_provider_timeouts();
+                                crate::tasks::metadata_fetch::spawn_fetch(
+                                    "catalog_upc_session_pref",
                                     title.id,
-                                    code.clone(),
-                                    CodeType::Upc,
-                                    media_type,
-                                    state.registry.clone(),
-                                    timeout_secs,
-                                    per_provider_timeouts.clone(),
-                                    state.http_client.clone(),
-                                    state.covers_dir.clone(),
-                                    false,
-                                ),
-                            );
-                            Ok(HtmxResponse {
-                                main: skeleton_feedback_html(title.id, &code),
-                                oob: vec![],
+                                    crate::tasks::metadata_fetch::fetch_metadata_chain(
+                                        pool.clone(),
+                                        title.id,
+                                        code.clone(),
+                                        CodeType::Upc,
+                                        media_type,
+                                        state.registry.clone(),
+                                        timeout_secs,
+                                        per_provider_timeouts.clone(),
+                                        state.http_client.clone(),
+                                        state.covers_dir.clone(),
+                                        false,
+                                    ),
+                                );
                             }
-                            .into_response())
+
+                            let guide =
+                                rust_i18n::t!("guide.title_active", title = &title.title)
+                                    .to_string();
+                            push_guide_oob(&mut oob, &guide);
+
+                            let main = if is_new {
+                                skeleton_feedback_html(title.id, &code)
+                            } else {
+                                let message = rust_i18n::t!("feedback.title_exists").to_string();
+                                let suggestion =
+                                    rust_i18n::t!("feedback.title_exists_suggestion").to_string();
+                                feedback_html("info", &message, &suggestion)
+                            };
+                            Ok(HtmxResponse { main, oob }.into_response())
                         }
                         Err(e) => {
                             tracing::error!(error = %e, code = %code, "UPC scan failed");
@@ -1341,40 +1453,9 @@ pub async fn handle_scan_with_type(
     .await
     {
         Ok((title, is_new)) => {
-            if let Some(token) = &session.token {
-                if let Err(e) = SessionModel::set_current_title(pool, token, title.id).await {
-                    tracing::warn!(error = %e, "Failed to update current title");
-                }
-                let _ = SessionModel::set_last_volume_label(pool, token, "").await;
-                let _ = SessionModel::clear_active_location(pool, token).await;
-            }
-
-            let vol_count = VolumeModel::count_by_title(pool, title.id)
-                .await
-                .unwrap_or(0);
-            let mut oob = vec![OobUpdate { swap_mode: Default::default(),
-                target: "context-banner".to_string(),
-                content: {
-                    let author = TitleContributorModel::get_primary_contributor(pool, title.id)
-                        .await
-                        .unwrap_or(None);
-                    context_banner_html(
-                        &title.title,
-                        &title.media_type,
-                        vol_count,
-                        author.as_deref(),
-                    )
-                },
-            }];
-            if is_new
-                && let Some(token) = &session.token
-                && let Ok(counter) = SessionModel::increment_session_counter(pool, token).await
-            {
-                oob.push(OobUpdate { swap_mode: Default::default(),
-                    target: "session-counter".to_string(),
-                    content: session_counter_html(counter),
-                });
-            }
+            // #440 — shared context activation.
+            let mut oob =
+                activate_scanned_title(pool, session.token.as_deref(), &title, is_new).await;
 
             if is_new {
                 let timeout_secs = state
