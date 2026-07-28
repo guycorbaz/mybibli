@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-07-24 (v1.13.0 — UNIMARC-themed feature minor. #389 Palier 1: six UNIMARC-zone fields on titles + BnF capture + Health-tab backfill action (PR #435), #434 cataloging log summary (same PR), doc follow-up #432 merged. Palier 2 = #436. Release history: ROADMAP.md + GitHub releases.)
+# last_updated: 2026-07-28 (v1.14.0 — cataloging fixes + LoC MARC 21. #440/#441/#442 scan-flow defects (PR #444), #439 Library of Congress MARC 21 zones over SRU (PR #445). No migration. Release history: ROADMAP.md + GitHub releases.)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system

@@ -333,10 +333,13 @@ aucune couverture n'existe nulle part.
 
 Depuis la 1.13.0, l'onglet Santé porte une seconde action en lot à
 côté du re-fetch de couvertures : \textbf{Compléter les métadonnées
-via BnF}. Elle relance la recherche de métadonnées pour \emph{tous}
-les titres catalogués disposant d'un code — pas seulement ceux sans
-couverture — afin de remplir les champs alignés UNIMARC introduits
-en 1.13.0 sur les titres catalogués avant la mise à jour. Elle ne
+via les bibliothèques}. Elle relance la recherche de métadonnées pour
+\emph{tous} les titres catalogués disposant d'un code — pas seulement
+ceux sans couverture — afin de remplir les champs alignés UNIMARC
+introduits en 1.13.0 sur les titres catalogués avant la mise à jour.
+Depuis la 1.14.0 elle interroge les deux bibliothèques nationales, la
+BnF et la Library of Congress, ce qui étend son effet aux ouvrages
+anglophones. Elle ne
 fait que combler les manques : une valeur déjà présente, ou modifiée
 à la main, n'est jamais écrasée. Les deux actions en lot partagent
 le même délai de rythme, le même back-off anti-blocage et le même

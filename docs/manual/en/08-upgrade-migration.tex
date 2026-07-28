@@ -139,6 +139,67 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.14.0}\label{sec:whats-new-1.14.0}
+
+Version 1.14.0 is a feature minor on 1.13.0. It fixes three defects in
+the cataloging flow and extends bibliographic enrichment to
+English-language books. \emph{No database migration — the upgrade is
+an image swap against an unchanged schema, and rolling back to 1.13.0
+stays clean.} Routine \texttt{docker compose pull \&\& docker compose
+up -d}.
+
+\subsection*{Cataloging fixes}
+
+\begin{itemize}
+  \item \textbf{\#440 \string— volume labels attached to the wrong
+        title.} When several UPC-identified items (typically CDs) were
+        cataloged in a row within one browser session, only the first
+        established the scan context correctly. The rest left the
+        previous title active, so the label scanned next attached to
+        that title, or failed with a misleading message if it had
+        since been deleted. Every scan path now goes through one
+        shared context activation.
+  \item \textbf{\#441 \string— misleading error message.} When the
+        active title had been deleted, scanning a label answered
+        ``not found'', which pointed at the label when the real
+        problem was that no item was active. The message now says so,
+        and the stale context is cleared so the next scan starts
+        clean.
+  \item \textbf{\#442 \string— label locked after deletion.} Deleting
+        a volume did not release its V-code: the label could only be
+        re-used after an administrator permanently purged it from the
+        Trash, and the error named its owner ``\texttt{?}''. The label
+        is now directly reusable. The previous copy's details
+        (condition, location, purchase price, valuation) are discarded
+        — it is a different physical object — and recorded in the
+        audit trail. Reuse is refused when the deleted volume carries
+        loan history, since it would re-attribute that history to a
+        different copy.
+\end{itemize}
+
+\subsection*{Bibliographic zones for English-language books}
+
+\begin{itemize}
+  \item \textbf{\#439 \string— the Library of Congress complements the
+        BnF.} The six UNIMARC-aligned fields introduced in 1.13.0
+        stayed empty on English-language books: the BnF does not
+        catalog them, and the other sources carry no structured
+        bibliographic data. mybibli now also reads \textbf{MARC~21}
+        records from the Library of Congress.
+  \item \textbf{Field-by-field complementarity.} When the source that
+        resolved a title fills only some of the six zones, the other
+        library is consulted to complete the ones left empty. A value
+        already present is never overwritten.
+  \item \textbf{Actual reach.} Only books with ISBN prefixes 9780 and
+        9781 are affected. \emph{French titles the BnF could not
+        describe will stay empty} — the Library of Congress does not
+        hold them either. Bear that in mind when reading the backfill
+        figures after upgrading.
+  \item \textbf{Renamed button.} The Health-tab action is now
+        \emph{Backfill metadata from libraries}, since it no longer
+        relies on the BnF alone.
+\end{itemize}
+
 \section{What's new in 1.13.0}\label{sec:whats-new-1.13.0}
 
 Version 1.13.0 is a feature minor on 1.12.0 centered on one theme:
