@@ -148,6 +148,76 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.14.0}\label{sec:whats-new-1.14.0}
+
+La version 1.14.0 est une mineure de fonctionnalités sur la 1.13.0.
+Elle corrige trois défauts du flux de catalogage et étend
+l'enrichissement bibliographique aux ouvrages anglophones.
+\emph{Aucune migration de base — la mise à jour se réduit à un
+échange d'image sur un schéma inchangé, et le retour arrière vers la
+1.13.0 reste propre.} \texttt{docker compose pull \&\& docker compose
+up -d} de routine.
+
+\subsection*{Corrections du catalogage}
+
+\begin{itemize}
+  \item \textbf{\#440 \string— l'étiquette de volume se rattachait au
+        mauvais titre.} Lorsque plusieurs articles identifiés par un
+        code UPC (typiquement des CD) étaient catalogués à la suite
+        dans une même session de navigation, seul le premier
+        établissait correctement le contexte de scan. Les suivants
+        laissaient le titre précédent actif : l'étiquette scannée
+        ensuite se rattachait à ce titre-là, ou échouait avec un
+        message trompeur si celui-ci avait été supprimé entre-temps.
+        Tous les chemins de scan passent désormais par une même
+        activation de contexte.
+  \item \textbf{\#441 \string— message d'erreur trompeur.} Quand le
+        titre actif avait été supprimé, le scan d'une étiquette
+        répondait « Introuvable », ce qui désignait l'étiquette alors
+        que le problème était l'absence d'article actif. Le message
+        indique maintenant qu'aucun article n'est sélectionné, et le
+        contexte périmé est effacé pour que le scan suivant reparte
+        sur des bases saines.
+  \item \textbf{\#442 \string— étiquette bloquée après suppression.}
+        Supprimer un volume ne libérait pas son code~V : il fallait
+        passer par la corbeille et une suppression définitive avant de
+        pouvoir recoller l'étiquette sur un autre ouvrage, et le
+        message d'erreur désignait le propriétaire par un
+        « \texttt{?} ». L'étiquette est désormais réutilisable
+        directement. Les informations propres à l'ancien exemplaire
+        (état, emplacement, prix d'achat, valeur) sont écartées
+        puisqu'il s'agit d'un autre objet physique, et consignées
+        dans le journal d'audit. La réutilisation est refusée lorsque
+        le volume supprimé porte un historique de prêts, car elle
+        rattacherait cet historique à un exemplaire différent.
+\end{itemize}
+
+\subsection*{Zones bibliographiques pour les ouvrages anglophones}
+
+\begin{itemize}
+  \item \textbf{\#439 \string— la Library of Congress complète la
+        BnF.} Les six champs alignés UNIMARC introduits en 1.13.0
+        restaient vides sur les ouvrages anglophones : la BnF ne les
+        catalogue pas, et les autres sources ne portent aucune donnée
+        bibliographique structurée. mybibli interroge désormais aussi
+        les notices \textbf{MARC~21} de la Library of Congress.
+  \item \textbf{Complémentarité champ par champ.} Lorsque la source
+        qui a résolu un titre ne renseigne qu'une partie des six
+        zones, l'autre bibliothèque est consultée pour compléter
+        celles restées vides. Une valeur déjà présente n'est jamais
+        écrasée.
+  \item \textbf{Portée réelle.} Seuls les ouvrages à préfixe ISBN
+        9780 et 9781 sont concernés. \emph{Les titres français que la
+        BnF n'a pas su décrire resteront vides} : la Library of
+        Congress ne les connaît pas davantage. Tenez-en compte en
+        lisant les chiffres du complément de métadonnées après la
+        mise à jour.
+  \item \textbf{Bouton renommé.} L'action de l'onglet Santé s'appelle
+        désormais \emph{Compléter les métadonnées via les
+        bibliothèques}, puisqu'elle ne s'appuie plus sur la seule
+        BnF.
+\end{itemize}
+
 \section{Nouveautés de la 1.13.0}\label{sec:whats-new-1.13.0}
 
 La version 1.13.0 est une mineure de fonctionnalités sur la 1.12.0,
