@@ -139,6 +139,25 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.14.1}\label{sec:whats-new-1.14.1}
+
+Version 1.14.1 is a small patch on the 1.14.0 minor. \emph{No
+migration, no operator action.}
+
+\begin{itemize}
+  \item \textbf{\#447 \string— the application identifies itself in
+        its log.} At startup mybibli now records its version, the
+        commit the image was built from, and the build profile. A log
+        file read in isolation — weeks later, or pasted into an
+        incident report — is therefore unambiguous about which build
+        produced it. Establishing that previously meant opening the
+        host's \texttt{docker-compose} file, a detour made worse by
+        releases carrying no migration, which leave no other trace to
+        infer the version from. The commit appears only on official
+        images; a local build reports \texttt{unknown}, having no
+        commit it could honestly claim.
+\end{itemize}
+
 \section{What's new in 1.14.0}\label{sec:whats-new-1.14.0}
 
 Version 1.14.0 is a feature minor on 1.13.0. It fixes three defects in

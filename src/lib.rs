@@ -44,6 +44,58 @@ pub fn noop_log_level_reloader() -> LogLevelReloader {
     Arc::new(|_directive: &str| Ok(()))
 }
 
+/// Identity of the running binary (#447).
+///
+/// Emitted once at startup so a log file read in isolation — weeks later, or
+/// pasted into an issue — is unambiguous about which build produced it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildIdentity {
+    /// Crate version, always available.
+    pub version: &'static str,
+    /// Short git commit the binary was built from, or `"unknown"`.
+    ///
+    /// The Dockerfile does not copy `.git` into the build context, so this
+    /// cannot be derived at compile time from the repository. CI passes it as
+    /// a build argument instead. A locally-built binary therefore reports
+    /// `"unknown"`, which is the honest answer: there is no commit it can
+    /// truthfully claim, and a dirty working tree would make one misleading.
+    pub commit: &'static str,
+    /// `"debug"` or `"release"`. Explains a whole class of "why is it slow"
+    /// reports without any further investigation.
+    pub profile: &'static str,
+}
+
+impl BuildIdentity {
+    /// Emit the startup line that names this build (#447).
+    ///
+    /// Lives here rather than inline in `main.rs` so the emission itself is
+    /// covered by a test — the point of the issue is that the line reaches the
+    /// log, not merely that the values can be computed.
+    pub fn log_startup(&self, host: &str, port: &str) {
+        tracing::info!(
+            version = self.version,
+            commit = self.commit,
+            profile = self.profile,
+            host = host,
+            port = port,
+            "Starting mybibli"
+        );
+    }
+}
+
+/// Build identity of this binary.
+pub fn build_identity() -> BuildIdentity {
+    BuildIdentity {
+        version: env!("CARGO_PKG_VERSION"),
+        commit: option_env!("MYBIBLI_BUILD_SHA").unwrap_or("unknown"),
+        profile: if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        },
+    }
+}
+
 /// Shared application state passed to all handlers.
 #[derive(Clone)]
 pub struct AppState {
@@ -215,5 +267,63 @@ impl AppState {
             .read()
             .map(|s| s.bulk_refetch_delay_ms)
             .unwrap_or_else(|_| AppSettings::default().bulk_refetch_delay_ms)
+    }
+}
+
+#[cfg(test)]
+mod build_identity_tests {
+    use super::*;
+
+    #[test]
+    fn version_matches_the_crate_version() {
+        assert_eq!(build_identity().version, env!("CARGO_PKG_VERSION"));
+        // Guards against an empty or placeholder value reaching the log.
+        assert!(
+            build_identity().version.contains('.'),
+            "version must look like a semver, got {:?}",
+            build_identity().version
+        );
+    }
+
+    #[test]
+    fn profile_reports_the_build_kind() {
+        let p = build_identity().profile;
+        assert!(p == "debug" || p == "release", "unexpected profile {p:?}");
+        // The test suite itself is built with debug assertions on.
+        assert_eq!(p, "debug");
+    }
+
+    /// The commit is absent unless CI stamps it in. It must degrade to a
+    /// readable marker rather than an empty string — an empty field in the
+    /// log reads as "the logger is broken" rather than "this is a local
+    /// build".
+    #[test]
+    fn commit_is_never_empty() {
+        let c = build_identity().commit;
+        assert!(!c.is_empty(), "commit must never log as an empty string");
+        if option_env!("MYBIBLI_BUILD_SHA").is_none() {
+            assert_eq!(c, "unknown");
+        }
+    }
+
+    #[test]
+    fn identity_is_stable_across_calls() {
+        assert_eq!(build_identity(), build_identity());
+    }
+
+    /// The emission is the whole point of #447: a computed-but-unlogged
+    /// identity would satisfy every other test here and still leave the
+    /// production log unable to name its build.
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn startup_line_carries_version_commit_and_profile() {
+        build_identity().log_startup("0.0.0.0", "8080");
+        assert!(logs_contain("Starting mybibli"));
+        assert!(
+            logs_contain(env!("CARGO_PKG_VERSION")),
+            "the version must appear in the emitted event"
+        );
+        assert!(logs_contain("debug"), "the profile must appear");
+        assert!(logs_contain("unknown"), "an unstamped build must say so");
     }
 }
