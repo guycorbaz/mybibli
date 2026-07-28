@@ -129,58 +129,16 @@ impl BnfProvider {
         })
     }
 
-    /// Extract a subfield value from UNIMARC XML.
-    /// Looks for `<datafield tag="TAG" ...><subfield code="CODE">VALUE</subfield></datafield>`
+    /// Read a UNIMARC subfield.
+    ///
+    /// #439 — the implementation moved to `crate::metadata::marc` when the
+    /// Library of Congress provider needed the identical traversal over MARC 21
+    /// (Foundation Rule #1). Kept as a thin alias so the ~16 call sites below
+    /// stay readable as `Self::extract_subfield(xml, "200", "f")`.
     fn extract_subfield(xml: &str, tag: &str, code: &str) -> Option<String> {
-        // Find the datafield with matching tag
-        let tag_pattern = format!(r#"tag="{}""#, tag);
-        let mut search_from = 0;
-
-        while let Some(df_start) = xml[search_from..].find(&tag_pattern) {
-            let df_abs = search_from + df_start;
-
-            // Find the end of this datafield
-            let df_end = match xml[df_abs..].find("</datafield>") {
-                Some(pos) => df_abs + pos,
-                None => {
-                    // Try namespace-prefixed variant
-                    match xml[df_abs..].find("</mxc:datafield>") {
-                        Some(pos) => df_abs + pos,
-                        None => break,
-                    }
-                }
-            };
-
-            let datafield_content = &xml[df_abs..df_end];
-
-            // Find subfield with matching code
-            let code_pattern = format!(r#"code="{}""#, code);
-            if let Some(sf_start) = datafield_content.find(&code_pattern) {
-                // Find the > after the code attribute
-                let after_code = &datafield_content[sf_start..];
-                if let Some(gt_pos) = after_code.find('>') {
-                    let value_start = sf_start + gt_pos + 1;
-                    let value_content = &datafield_content[value_start..];
-                    // Find closing </subfield>
-                    let end_tag = if value_content.contains("</subfield>") {
-                        "</subfield>"
-                    } else {
-                        "</mxc:subfield>"
-                    };
-                    if let Some(end_pos) = value_content.find(end_tag) {
-                        let value = value_content[..end_pos].trim().to_string();
-                        if !value.is_empty() {
-                            return Some(value);
-                        }
-                    }
-                }
-            }
-
-            search_from = df_end;
-        }
-
-        None
+        crate::metadata::marc::extract_subfield(xml, tag, code)
     }
+
 }
 
 #[async_trait]
