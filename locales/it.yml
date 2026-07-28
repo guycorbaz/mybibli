@@ -818,10 +818,10 @@ admin:
       already_running: "Un riscaricamento delle copertine è già in corso. Attendi il suo completamento."
       review_cta: "Vedi i titoli senza copertina"
     bulk_metadata_backfill:
-      button: "Recupera metadati dalla BnF"
+      button: "Recupera metadati dalle biblioteche"
       started: "Recupero massivo dei metadati avviato per %{total} titoli. Il progresso è registrato nei log; aggiorna il pannello per vedere gli aggiornamenti."
       empty: "Nessun titolo con un codice da completare."
-      already_running: "Un'operazione BnF massiva è già in corso. Attendi il suo completamento."
+      already_running: "Un'operazione massiva sui metadati è già in corso. Attendi il suo completamento."
   users:
     heading: Account utenti
     empty_state: "Solo tu qui! Crea un account Bibliotecario per i membri della famiglia."

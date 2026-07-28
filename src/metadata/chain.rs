@@ -193,11 +193,15 @@ impl ChainExecutor {
                                 let filler_timeout = Duration::from_secs(
                                     per_provider_timeouts.for_provider(filler.name()),
                                 );
-                                let fut = match code_type {
-                                    CodeType::Upc => filler.lookup_by_upc(code),
-                                    CodeType::Isbn | CodeType::Issn => filler.lookup_by_isbn(code),
-                                };
-                                if let Ok(Ok(Some(extra))) =
+                                // #439 — the dedicated zone entry point, not
+                                // `lookup_by_isbn`. LoC's normal lookup vetoes
+                                // itself when its flat JSON search misses, but
+                                // the SRU catalogue is a different index and
+                                // may well hold the record; routing completion
+                                // through the normal lookup would discard
+                                // those zones.
+                                let fut = filler.lookup_marc_zones(code);
+                                if let Ok(Some(extra)) =
                                     tokio::time::timeout(filler_timeout, fut).await
                                 {
                                     let extra = extra.normalize_empty_strings();
@@ -367,6 +371,9 @@ mod tests {
                 ..MetadataResult::default()
             }))
         }
+        async fn lookup_marc_zones(&self, isbn: &str) -> Option<MetadataResult> {
+            self.lookup_by_isbn(isbn).await.ok().flatten()
+        }
     }
 
     /// A provider that answers but carries no MARC zones — the chain must never
@@ -393,6 +400,37 @@ mod tests {
                 title: Some("Flat".to_string()),
                 ..MetadataResult::default()
             }))
+        }
+    }
+
+    /// #439 — a provider whose primary lookup finds nothing but whose MARC
+    /// catalogue does hold the record. This is the Library of Congress shape:
+    /// its flat JSON search and its SRU catalogue are different indexes, and
+    /// the normal lookup vetoes itself when the JSON side misses.
+    struct ZonesOnlyOnSruProvider;
+
+    #[async_trait]
+    impl MetadataProvider for ZonesOnlyOnSruProvider {
+        fn name(&self) -> &str {
+            "zones_only_on_sru"
+        }
+        fn supports_media_type(&self, _media_type: &MediaType) -> bool {
+            true
+        }
+        fn supplies_marc_zones(&self) -> bool {
+            true
+        }
+        async fn lookup_by_isbn(
+            &self,
+            _isbn: &str,
+        ) -> Result<Option<MetadataResult>, MetadataError> {
+            Ok(None)
+        }
+        async fn lookup_marc_zones(&self, _isbn: &str) -> Option<MetadataResult> {
+            Some(MetadataResult {
+                edition_statement: Some("Reprint.".to_string()),
+                ..MetadataResult::default()
+            })
         }
     }
 
@@ -946,6 +984,43 @@ mod tests {
             calls.load(std::sync::atomic::Ordering::SeqCst),
             0,
             "a provider that carries no MARC zones must not be consulted for them"
+        );
+    }
+
+    /// Completion must go through `lookup_marc_zones`, not `lookup_by_isbn`.
+    /// Routing it through the normal lookup would discard the zones of any
+    /// provider that vetoes itself on a primary miss — which is exactly what
+    /// the LoC provider does when its JSON search and its SRU catalogue
+    /// disagree.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn zone_completion_uses_the_dedicated_entry_point(pool: sqlx::Pool<sqlx::MySql>) {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(ZoneProvider {
+            name: "first_library",
+            title: Some("A title"),
+            sor: Some("Someone"),
+            edition: None,
+            note: None,
+        }));
+        registry.register(Box::new(ZonesOnlyOnSruProvider));
+
+        let result = ChainExecutor::execute(
+            &registry,
+            &pool,
+            "9780999999992",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            result.edition_statement.as_deref(),
+            Some("Reprint."),
+            "#439: zones must be collected even when the provider's primary \
+             lookup returns None"
         );
     }
 }

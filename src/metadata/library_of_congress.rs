@@ -338,6 +338,17 @@ impl MetadataProvider for LibraryOfCongressProvider {
         true
     }
 
+    /// Zones straight from SRU — deliberately independent of the flat JSON
+    /// search, which indexes different records and would otherwise veto
+    /// perfectly good MARC data (#439).
+    async fn lookup_marc_zones(&self, isbn: &str) -> Option<MetadataResult> {
+        let safe_isbn: String = isbn.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+        if safe_isbn.is_empty() {
+            return None;
+        }
+        self.fetch_marc_zones(&safe_isbn).await
+    }
+
     fn supports_media_type(&self, media_type: &MediaType) -> bool {
         // LoC catalogs books + periodicals. BD / CD / DVD belong to other
         // providers in the chain (BDGest / MusicBrainz / TMDb / OMDb).

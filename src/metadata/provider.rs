@@ -193,6 +193,24 @@ pub trait MetadataProvider: Send + Sync {
         false
     }
 
+    /// Fetch **only** the six MARC zones for an ISBN, for the chain's
+    /// zone-completion pass (#439).
+    ///
+    /// Separate from [`Self::lookup_by_isbn`] on purpose. The LoC provider's
+    /// normal lookup returns `None` when its flat JSON search finds nothing,
+    /// because zones with no title are not a usable primary result — but for
+    /// completion they are exactly what is wanted, and the JSON search and the
+    /// SRU catalogue are different indexes that do not always agree. Routing
+    /// completion through `lookup_by_isbn` would therefore silently discard
+    /// recoverable zones whenever the two disagree.
+    ///
+    /// Only providers whose [`Self::supplies_marc_zones`] is true need
+    /// implement this; the chain uses that as the cheap gate before calling.
+    /// The returned result is read for its six zone fields and nothing else.
+    async fn lookup_marc_zones(&self, _isbn: &str) -> Option<MetadataResult> {
+        None
+    }
+
     /// Return the rate limiter for this provider, if any.
     /// ChainExecutor calls `acquire()` before each lookup when present.
     fn rate_limiter(&self) -> Option<Arc<RateLimiter>> {

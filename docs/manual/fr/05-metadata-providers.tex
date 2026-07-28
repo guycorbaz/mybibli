@@ -20,6 +20,9 @@ type de média deviné :
 \endhead
 BnF\index{BnF}                  & Livres         & Catalogue de la
 Bibliothèque nationale de France ; idéal pour les titres en français. & non \\
+Library of Congress\index{Library of Congress} & Livres & Catalogue
+de la bibliothèque nationale des États-Unis ; pendant anglophone de
+la BnF. Fournit aussi les zones MARC~21. & non \\
 Open Library\index{Open Library} & Livres         & Catalogue
 bénévole ; large couverture anglaise / multilingue. & non \\
 Google Books\index{Google Books} & Livres         & Commercial ; bon
@@ -38,6 +41,30 @@ l'emporte. « Propre » veut dire : titre présent, au moins un
 contributeur, et une année. Les correspondances partielles sont
 enregistrées mais mybibli continue à parcourir la chaîne jusqu'à
 trouver une correspondance propre ou épuiser les fournisseurs.
+
+\subsection*{Zones bibliographiques : BnF et Library of Congress}
+
+Six champs de catalogage détaillés — mention de responsabilité,
+mention d'édition, titre et numéro de collection, note générale,
+titre original — ne proviennent que des \emph{bibliothèques
+nationales}. Les autres fournisseurs ne les portent pas.
+
+Ces deux catalogues sont complémentaires plutôt que redondants : la
+BnF décrit le fonds francophone, la Library of Congress le fonds
+anglophone. Un titre absent des deux restera sans ces zones, et un
+titre français que la BnF ne décrit pas ne sera pas rattrapé par la
+Library of Congress.
+
+Quand le fournisseur qui a résolu le titre ne remplit qu'une partie
+de ces six zones, mybibli interroge l'autre bibliothèque pour
+compléter les zones restées vides. La règle est \emph{la première
+source l'emporte} : une valeur déjà présente n'est jamais écrasée.
+Seules ces six zones sont fusionnées — le titre, les auteurs et la
+couverture proviennent toujours d'un seul et même fournisseur.
+
+Le bouton \emph{Compléter les métadonnées via les bibliothèques} de
+l'onglet Santé applique le même traitement aux titres déjà
+catalogués.
 
 \subsection*{Replis sur les couvertures}
 

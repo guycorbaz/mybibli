@@ -153,6 +153,12 @@ impl MetadataProvider for BnfProvider {
         true
     }
 
+    /// The BnF's UNIMARC zones already ride along with its normal lookup, so
+    /// completion reuses it rather than issuing a second SRU request (#439).
+    async fn lookup_marc_zones(&self, isbn: &str) -> Option<MetadataResult> {
+        self.lookup_by_isbn(isbn).await.ok().flatten()
+    }
+
     fn supports_media_type(&self, media_type: &MediaType) -> bool {
         matches!(
             media_type,

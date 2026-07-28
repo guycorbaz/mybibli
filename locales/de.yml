@@ -830,10 +830,10 @@ admin:
       already_running: "Ein Cover-Nachzug läuft bereits. Bitte warten Sie auf den Abschluss."
       review_cta: "Titel ohne Cover ansehen"
     bulk_metadata_backfill:
-      button: "Metadaten von der BnF nachladen"
+      button: "Metadaten von Bibliotheken nachladen"
       started: "Massenhaftes Metadaten-Nachladen für %{total} Titel gestartet. Fortschritt steht im Log; aktualisieren Sie das Panel für Updates."
       empty: "Keine Titel mit einem Suchcode zum Nachladen."
-      already_running: "Ein BnF-Massenvorgang läuft bereits. Bitte warten Sie auf den Abschluss."
+      already_running: "Ein Metadaten-Massenvorgang läuft bereits. Bitte warten Sie auf den Abschluss."
   users:
     heading: Benutzerkonten
     empty_state: "Nur Sie hier! Erstellen Sie ein Bibliothekar-Konto für andere Haushaltsmitglieder."
