@@ -147,6 +147,12 @@ impl MetadataProvider for BnfProvider {
         "BnF"
     }
 
+    /// #439 — this provider serves structured MARC zones, so the chain's
+    /// zone-completion pass may consult it.
+    fn supplies_marc_zones(&self) -> bool {
+        true
+    }
+
     fn supports_media_type(&self, media_type: &MediaType) -> bool {
         matches!(
             media_type,

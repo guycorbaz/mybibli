@@ -162,7 +162,59 @@ impl ChainExecutor {
                         // `Some("")` from a sloppy upstream response
                         // would otherwise displace a real value via
                         // COALESCE / `manually_edited_fields` updates.
-                        return Some(metadata.normalize_empty_strings());
+                        let mut winner = metadata.normalize_empty_strings();
+
+                        // #439 — zone-completion pass. The chain otherwise
+                        // stops at the first provider that answers, which
+                        // leaves a title described by BnF permanently missing
+                        // the zones BnF does not carry (and vice versa for an
+                        // anglophone title answered by Google Books before LoC
+                        // is ever reached). Consult the REMAINING providers for
+                        // the six UNIMARC-aligned zones only, first-source-wins,
+                        // and stop as soon as all six are filled.
+                        //
+                        // Deliberately narrow: no other field is merged, so a
+                        // record's title / authors / cover still come from one
+                        // provider and cannot become a chimera. Runs inside the
+                        // global timeout, so a slow completion cannot extend the
+                        // overall budget.
+                        if winner.has_missing_unimarc_zones() {
+                            let already_used = provider_name;
+                            for filler in &chain {
+                                if filler.name() == already_used || !filler.supplies_marc_zones() {
+                                    continue;
+                                }
+                                if !winner.has_missing_unimarc_zones() {
+                                    break;
+                                }
+                                if let Some(limiter) = filler.rate_limiter() {
+                                    limiter.acquire().await;
+                                }
+                                let filler_timeout = Duration::from_secs(
+                                    per_provider_timeouts.for_provider(filler.name()),
+                                );
+                                let fut = match code_type {
+                                    CodeType::Upc => filler.lookup_by_upc(code),
+                                    CodeType::Isbn | CodeType::Issn => filler.lookup_by_isbn(code),
+                                };
+                                if let Ok(Ok(Some(extra))) =
+                                    tokio::time::timeout(filler_timeout, fut).await
+                                {
+                                    let extra = extra.normalize_empty_strings();
+                                    let before = winner.has_missing_unimarc_zones();
+                                    winner.fill_unimarc_zones_from(&extra);
+                                    if before && !winner.has_missing_unimarc_zones() {
+                                        tracing::info!(
+                                            code = %code,
+                                            filler = filler.name(),
+                                            "Zone completion filled the remaining UNIMARC zones"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
+                        return Some(winner);
                     }
                     Ok(Ok(None)) => {
                         tracing::info!(
@@ -277,6 +329,68 @@ mod tests {
         ) -> Result<Option<MetadataResult>, MetadataError> {
             Ok(Some(MetadataResult {
                 title: Some("Test Title".to_string()),
+                ..MetadataResult::default()
+            }))
+        }
+    }
+
+    /// #439 — a national-library-style provider that answers with a partial set
+    /// of MARC zones. Used to exercise the zone-completion pass.
+    struct ZoneProvider {
+        name: &'static str,
+        title: Option<&'static str>,
+        sor: Option<&'static str>,
+        edition: Option<&'static str>,
+        note: Option<&'static str>,
+    }
+
+    #[async_trait]
+    impl MetadataProvider for ZoneProvider {
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn supports_media_type(&self, _media_type: &MediaType) -> bool {
+            true
+        }
+        fn supplies_marc_zones(&self) -> bool {
+            true
+        }
+        async fn lookup_by_isbn(
+            &self,
+            _isbn: &str,
+        ) -> Result<Option<MetadataResult>, MetadataError> {
+            Ok(Some(MetadataResult {
+                title: self.title.map(str::to_string),
+                statement_of_responsibility: self.sor.map(str::to_string),
+                edition_statement: self.edition.map(str::to_string),
+                general_note: self.note.map(str::to_string),
+                ..MetadataResult::default()
+            }))
+        }
+    }
+
+    /// A provider that answers but carries no MARC zones — the chain must never
+    /// consult it during zone completion, however many zones are still empty.
+    struct FlatCountingProvider {
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl MetadataProvider for FlatCountingProvider {
+        fn name(&self) -> &str {
+            "flat_counting"
+        }
+        fn supports_media_type(&self, _media_type: &MediaType) -> bool {
+            true
+        }
+        async fn lookup_by_isbn(
+            &self,
+            _isbn: &str,
+        ) -> Result<Option<MetadataResult>, MetadataError> {
+            self.calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(Some(MetadataResult {
+                title: Some("Flat".to_string()),
                 ..MetadataResult::default()
             }))
         }
@@ -732,5 +846,106 @@ mod tests {
             }
         }
         assert!(result.is_none());
+    }
+
+    // ─── #439 — zone completion across providers ──────────────────────
+
+    /// The chain stops at the first provider that answers. Before #439 that
+    /// left a title described by the leading provider permanently missing any
+    /// zone that provider does not carry. The completion pass fills the gaps
+    /// from later MARC-capable providers, first-source-wins.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn zone_completion_fills_gaps_from_a_later_marc_provider(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) {
+        let mut registry = ProviderRegistry::new();
+        // First answers with a title + statement of responsibility only.
+        registry.register(Box::new(ZoneProvider {
+            name: "first_library",
+            title: Some("Le petit prince"),
+            sor: Some("Antoine de Saint-Exupéry"),
+            edition: None,
+            note: None,
+        }));
+        // Second carries an edition statement and a note the first lacks, and a
+        // COMPETING statement of responsibility that must NOT win.
+        registry.register(Box::new(ZoneProvider {
+            name: "second_library",
+            title: Some("Ignored title"),
+            sor: Some("SHOULD NOT WIN"),
+            edition: Some("2e édition"),
+            note: Some("Fac-similé"),
+        }));
+
+        let result = ChainExecutor::execute(
+            &registry,
+            &pool,
+            "9782070360246",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await
+        .expect("the first provider answers");
+
+        assert_eq!(
+            result.title.as_deref(),
+            Some("Le petit prince"),
+            "non-zone fields must come from the winning provider alone"
+        );
+        assert_eq!(
+            result.statement_of_responsibility.as_deref(),
+            Some("Antoine de Saint-Exupéry"),
+            "first source wins on a contested zone"
+        );
+        assert_eq!(
+            result.edition_statement.as_deref(),
+            Some("2e édition"),
+            "an empty zone must be completed from the later provider"
+        );
+        assert_eq!(result.general_note.as_deref(), Some("Fac-similé"));
+    }
+
+    /// The completion pass must never sweep providers that carry no zones.
+    /// `has_missing_unimarc_zones` is true whenever ANY of the six is empty,
+    /// and 490/240 are legitimately absent from most records — so without the
+    /// `supplies_marc_zones` gate this would fire on nearly every lookup and
+    /// turn each scan into a full-chain sweep.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn zone_completion_skips_providers_without_marc_zones(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(ZoneProvider {
+            name: "first_library",
+            title: Some("Only title"),
+            sor: None,
+            edition: None,
+            note: None,
+        }));
+        registry.register(Box::new(FlatCountingProvider {
+            calls: calls.clone(),
+        }));
+
+        let result = ChainExecutor::execute(
+            &registry,
+            &pool,
+            "9782070360246",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.title.as_deref(), Some("Only title"));
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "a provider that carries no MARC zones must not be consulted for them"
+        );
     }
 }

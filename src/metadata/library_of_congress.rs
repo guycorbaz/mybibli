@@ -53,25 +53,165 @@ use crate::models::media_type::MediaType;
 
 use super::provider::{MetadataError, MetadataProvider, MetadataResult};
 
+/// #439 — how many times to re-issue an SRU request that died at the transport
+/// layer, and how long to wait between attempts.
+///
+/// Measured against the live endpoint on 2026-07-28: at ~0.35 s spacing, 79 of
+/// 113 requests failed; at 2 s spacing, 6 of 26 still did. **Every failure was
+/// a dropped connection, never an HTTP status** — the server hangs up instead
+/// of answering 429, so `MetadataError::RateLimited` (and with it the #419
+/// back-off, which keys on 429/503) never fires. Retrying the transport error
+/// is the only way to see those records.
+const SRU_MAX_ATTEMPTS: u32 = 3;
+const SRU_RETRY_BASE_DELAY_MS: u64 = 2000;
+
 pub struct LibraryOfCongressProvider {
     client: reqwest::Client,
     base_url: String,
+    sru_base_url: String,
 }
 
 impl LibraryOfCongressProvider {
     pub fn new(client: reqwest::Client) -> Self {
         let base_url = std::env::var("LOC_API_BASE_URL")
             .unwrap_or_else(|_| "https://www.loc.gov/books/".to_string());
-        LibraryOfCongressProvider { client, base_url }
+        let sru_base_url = std::env::var("LOC_SRU_BASE_URL")
+            .unwrap_or_else(|_| "http://lx2.loc.gov:210/LCDB".to_string());
+        LibraryOfCongressProvider {
+            client,
+            base_url,
+            sru_base_url,
+        }
     }
 
     /// Construct with a custom base URL — used by integration tests
     /// pointing at the e2e mock server.
+    ///
+    /// The SRU endpoint follows the same base by default so a mock server can
+    /// serve both; override it with [`Self::with_sru_base_url`] when they
+    /// differ.
     pub fn with_base_url(client: reqwest::Client, base_url: &str) -> Self {
         LibraryOfCongressProvider {
             client,
             base_url: base_url.to_string(),
+            sru_base_url: base_url.to_string(),
         }
+    }
+
+    pub fn with_sru_base_url(mut self, sru_base_url: &str) -> Self {
+        self.sru_base_url = sru_base_url.to_string();
+        self
+    }
+
+    /// Fetch the MARC 21 record for an ISBN over SRU and read the six
+    /// UNIMARC-aligned zones out of it (#439).
+    ///
+    /// **Supplementary, never fatal.** The flat `?fo=json` search remains the
+    /// primary call — it is what supplies title, authors, date, language,
+    /// description and, crucially, the cover URL, none of which the MARC record
+    /// carries. This second request only adds the structured zones, so any
+    /// failure here degrades to "no zones" rather than failing the lookup.
+    ///
+    /// MARC 21 → internal mapping (semantic equivalents of the UNIMARC zones in
+    /// `docs/unimarc-mapping.md`):
+    ///
+    /// | internal | UNIMARC (BnF) | MARC 21 (LoC) |
+    /// |---|---|---|
+    /// | statement_of_responsibility | 200$f | 245$c |
+    /// | edition_statement | 205$a | 250$a |
+    /// | collection_title / number | 225$a / 225$v | 490$a / 490$v |
+    /// | general_note | 300$a | 500$a |
+    /// | original_title | 500$a | 240$a (uniform title) |
+    ///
+    /// Note the collision worth keeping in mind when reading both tables: `500`
+    /// means "general note" in MARC 21 but "original title" in UNIMARC.
+    async fn fetch_marc_zones(&self, safe_isbn: &str) -> Option<MetadataResult> {
+        let url = format!(
+            "{}?version=1.1&operation=searchRetrieve&query=bath.isbn={}&recordSchema=marcxml&maximumRecords=1",
+            self.sru_base_url, safe_isbn
+        );
+
+        let mut attempt = 0;
+        let body = loop {
+            attempt += 1;
+            match self
+                .client
+                .get(&url)
+                .header("User-Agent", "mybibli/1.14.0")
+                .send()
+                .await
+            {
+                Ok(response) if response.status().is_success() => match response.text().await {
+                    Ok(text) => break text,
+                    Err(e) => {
+                        tracing::debug!(isbn = %safe_isbn, error = %e, "LoC SRU body read failed");
+                        return None;
+                    }
+                },
+                Ok(response) => {
+                    // A real HTTP status — not the dropped-connection case, so
+                    // retrying buys nothing.
+                    tracing::debug!(
+                        isbn = %safe_isbn,
+                        status = %response.status(),
+                        "LoC SRU returned a non-success status; skipping zones"
+                    );
+                    return None;
+                }
+                Err(e) if attempt < SRU_MAX_ATTEMPTS => {
+                    // The dropped-connection case. Linear back-off: the server
+                    // is throttling by connection count, so spacing matters
+                    // more than exponential growth.
+                    let delay = SRU_RETRY_BASE_DELAY_MS * attempt as u64;
+                    tracing::debug!(
+                        isbn = %safe_isbn,
+                        attempt = attempt,
+                        delay_ms = delay,
+                        error = %e,
+                        "LoC SRU transport failure, retrying"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+                Err(e) => {
+                    tracing::info!(
+                        isbn = %safe_isbn,
+                        attempts = attempt,
+                        error = %e,
+                        "LoC SRU unreachable after retries; continuing without MARC zones"
+                    );
+                    return None;
+                }
+            }
+        };
+
+        Self::parse_marcxml_response(&body)
+    }
+
+    /// Read the six zones out of an SRU `searchRetrieve` MARCXML response.
+    ///
+    /// Returns `None` when the response carries no record at all, so the caller
+    /// can distinguish "LoC does not hold this ISBN" from "it does, but the
+    /// record has none of the zones we map".
+    pub fn parse_marcxml_response(body: &str) -> Option<MetadataResult> {
+        // `numberOfRecords` is namespace-prefixed in the live feed
+        // (`<zs:numberOfRecords>`), so match on the local name.
+        if !body.contains("numberOfRecords") || body.contains("numberOfRecords>0<") {
+            return None;
+        }
+        if !body.contains("<record") {
+            return None;
+        }
+
+        use super::marc::extract_subfield;
+        Some(MetadataResult {
+            statement_of_responsibility: extract_subfield(body, "245", "c"),
+            edition_statement: extract_subfield(body, "250", "a"),
+            collection_title: extract_subfield(body, "490", "a"),
+            collection_number: extract_subfield(body, "490", "v"),
+            general_note: extract_subfield(body, "500", "a"),
+            original_title: extract_subfield(body, "240", "a"),
+            ..MetadataResult::default()
+        })
     }
 
     /// Parse a `?fo=json` response into a [`MetadataResult`]. Returns
@@ -192,6 +332,12 @@ impl MetadataProvider for LibraryOfCongressProvider {
         "Library of Congress"
     }
 
+    /// #439 — this provider serves structured MARC zones, so the chain's
+    /// zone-completion pass may consult it.
+    fn supplies_marc_zones(&self) -> bool {
+        true
+    }
+
     fn supports_media_type(&self, media_type: &MediaType) -> bool {
         // LoC catalogs books + periodicals. BD / CD / DVD belong to other
         // providers in the chain (BDGest / MusicBrainz / TMDb / OMDb).
@@ -230,7 +376,24 @@ impl MetadataProvider for LibraryOfCongressProvider {
             .await
             .map_err(|e| MetadataError::Parse(e.to_string()))?;
 
-        Ok(Self::parse_json_response(&body))
+        // #439 — the JSON search stays primary (it alone carries the cover
+        // URL); the SRU MARC record adds the six structured zones on top. Both
+        // calls run for every ISBN rather than SRU-on-miss, because the target
+        // case is exactly an anglophone title where the JSON answers perfectly
+        // well and simply has no structured bibliographic data.
+        let zones = self.fetch_marc_zones(&safe_isbn).await;
+
+        Ok(match (Self::parse_json_response(&body), zones) {
+            (Some(mut json), Some(marc)) => {
+                json.fill_unimarc_zones_from(&marc);
+                Some(json)
+            }
+            (Some(json), None) => Some(json),
+            // The JSON search found nothing but the catalog holds a MARC
+            // record. Zones alone are not a usable result — there is no title
+            // to attach them to — so report the miss honestly.
+            (None, _) => None,
+        })
     }
 
     fn health_check_url(&self) -> Option<&str> {
@@ -390,5 +553,94 @@ mod tests {
         assert!(LibraryOfCongressProvider::parse_json_response("not json at all").is_none());
         assert!(LibraryOfCongressProvider::parse_json_response("{").is_none());
         assert!(LibraryOfCongressProvider::parse_json_response("").is_none());
+    }
+
+    // ─── #439 — SRU MARC 21 zones ─────────────────────────────────────
+
+    /// Trimmed from the live `lx2.loc.gov:210/LCDB` response for ISBN
+    /// 9780134685991, captured 2026-07-28. Keeps the `zs:` namespace prefix and
+    /// the two repeated 500 fields exactly as the server sends them.
+    const SRU_MARCXML: &str = r#"<?xml version="1.0"?>
+<zs:searchRetrieveResponse xmlns:zs="http://www.loc.gov/zing/srw/"><zs:version>1.1</zs:version><zs:numberOfRecords>1</zs:numberOfRecords><zs:records><zs:record><zs:recordSchema>marcxml</zs:recordSchema><zs:recordData><record xmlns="http://www.loc.gov/MARC21/slim">
+  <datafield tag="245" ind1="1" ind2="0">
+    <subfield code="a">Effective Java /</subfield>
+    <subfield code="c">Joshua Bloch.</subfield>
+  </datafield>
+  <datafield tag="250" ind1=" " ind2=" ">
+    <subfield code="a">Third edition.</subfield>
+  </datafield>
+  <datafield tag="500" ind1=" " ind2=" ">
+    <subfield code="a">"Updated for Java 9"--Cover.</subfield>
+  </datafield>
+  <datafield tag="500" ind1=" " ind2=" ">
+    <subfield code="a">"Best practices for the Java Platform" --Cover.</subfield>
+  </datafield>
+</record></zs:recordData></zs:record></zs:records></zs:searchRetrieveResponse>"#;
+
+    /// The shape returned for an ISBN the catalog does not hold.
+    const SRU_EMPTY: &str = r#"<?xml version="1.0"?>
+<zs:searchRetrieveResponse xmlns:zs="http://www.loc.gov/zing/srw/"><zs:version>1.1</zs:version><zs:numberOfRecords>0</zs:numberOfRecords><zs:records></zs:records></zs:searchRetrieveResponse>"#;
+
+    #[test]
+    fn marcxml_maps_the_marc21_tags_onto_the_internal_zones() {
+        let r = LibraryOfCongressProvider::parse_marcxml_response(SRU_MARCXML)
+            .expect("a record is present");
+        assert_eq!(
+            r.statement_of_responsibility.as_deref(),
+            Some("Joshua Bloch."),
+            "245$c"
+        );
+        assert_eq!(r.edition_statement.as_deref(), Some("Third edition."), "250$a");
+        assert_eq!(
+            r.general_note.as_deref(),
+            Some(r#""Updated for Java 9"--Cover."#),
+            "500$a, first of two"
+        );
+        // Absent from this record — must be None, not an empty string.
+        assert_eq!(r.collection_title, None, "490$a absent");
+        assert_eq!(r.original_title, None, "240$a absent");
+    }
+
+    /// A MARC record carries no cover and no usable description, which is
+    /// exactly why the SRU call complements the JSON search instead of
+    /// replacing it.
+    #[test]
+    fn marcxml_never_supplies_a_cover_or_title() {
+        let r = LibraryOfCongressProvider::parse_marcxml_response(SRU_MARCXML).unwrap();
+        assert_eq!(r.cover_url, None);
+        assert_eq!(r.title, None);
+    }
+
+    #[test]
+    fn marcxml_zero_records_is_none() {
+        assert!(LibraryOfCongressProvider::parse_marcxml_response(SRU_EMPTY).is_none());
+    }
+
+    #[test]
+    fn marcxml_garbage_is_none_not_a_panic() {
+        assert!(LibraryOfCongressProvider::parse_marcxml_response("").is_none());
+        assert!(LibraryOfCongressProvider::parse_marcxml_response("<html>oops</html>").is_none());
+    }
+
+    /// The merge the provider performs internally: JSON supplies the record,
+    /// MARC supplies the zones, and neither clobbers the other.
+    #[test]
+    fn json_result_keeps_its_fields_when_marc_zones_are_merged_in() {
+        let mut json = LibraryOfCongressProvider::parse_json_response(SAMPLE_LOC_RESPONSE)
+            .expect("sample parses");
+        let cover_before = json.cover_url.clone();
+        let title_before = json.title.clone();
+        assert!(cover_before.is_some(), "fixture must carry a cover");
+
+        let marc = LibraryOfCongressProvider::parse_marcxml_response(SRU_MARCXML).unwrap();
+        json.fill_unimarc_zones_from(&marc);
+
+        assert_eq!(json.cover_url, cover_before, "the cover must survive");
+        assert_eq!(json.title, title_before, "the title must survive");
+        assert_eq!(
+            json.statement_of_responsibility.as_deref(),
+            Some("Joshua Bloch."),
+            "and the zones must land"
+        );
     }
 }
