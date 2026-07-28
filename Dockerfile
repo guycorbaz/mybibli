@@ -9,6 +9,13 @@ COPY locales/ ./locales/
 COPY templates/ ./templates/
 COPY .sqlx/ ./.sqlx/
 ENV SQLX_OFFLINE=true
+# #447 — the build's git commit, so the running binary can name itself in the
+# log. `.git` is deliberately NOT copied into the build context (it would
+# invalidate the layer cache on every commit and bloat the context), so the
+# value arrives as a build argument. Absent -> the binary reports "unknown",
+# which is the honest answer for a local build.
+ARG MYBIBLI_BUILD_SHA
+ENV MYBIBLI_BUILD_SHA=$MYBIBLI_BUILD_SHA
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Stage 2: Generate CSS

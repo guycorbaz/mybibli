@@ -134,7 +134,13 @@ async fn main() {
     // Load configuration from environment
     let config = Config::from_env().expect("Failed to load configuration");
 
-    tracing::info!(host = %config.host, port = %config.port, "Starting mybibli");
+    // #447 — identify the build in the log itself. Production incidents on
+    // this project are diagnosed from the daily log files, not from a live
+    // shell, so a log that cannot say which binary produced it forces a
+    // detour through the host's compose file. That is worse for releases
+    // carrying no migration, where there is not even a migration line to
+    // infer the version from.
+    mybibli::build_identity().log_startup(&config.host, &config.port.to_string());
 
     // Create database connection pool
     let pool = db::create_pool(&config.database_url)

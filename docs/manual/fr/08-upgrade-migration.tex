@@ -148,6 +148,27 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.14.1}\label{sec:whats-new-1.14.1}
+
+La version 1.14.1 est un petit correctif sur la mineure 1.14.0.
+\emph{Aucune migration, aucune action de l'opérateur.}
+
+\begin{itemize}
+  \item \textbf{\#447 \string— l'application s'identifie dans son
+        journal.} Au démarrage, mybibli écrit désormais sa version,
+        le commit dont l'image a été construite et le profil de
+        compilation. Un fichier de journal relu isolément — des
+        semaines plus tard, ou collé dans un rapport d'incident —
+        indique donc sans ambiguïté quelle version l'a produit. Il
+        fallait auparavant ouvrir le fichier \texttt{docker-compose}
+        de la machine hôte pour le savoir, ce qui est un détour
+        d'autant plus gênant qu'une version sans migration ne laisse
+        aucune autre trace permettant de la déduire. Le commit
+        n'apparaît que sur les images officielles ; une compilation
+        locale affiche \texttt{unknown}, faute de pouvoir se
+        réclamer honnêtement d'un commit.
+\end{itemize}
+
 \section{Nouveautés de la 1.14.0}\label{sec:whats-new-1.14.0}
 
 La version 1.14.0 est une mineure de fonctionnalités sur la 1.13.0.

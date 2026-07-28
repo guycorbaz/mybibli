@@ -109,6 +109,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # #447 — stamp the commit into the binary so it identifies itself
+          # in the production log.
+          build-args: |
+            MYBIBLI_BUILD_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
