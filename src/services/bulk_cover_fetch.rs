@@ -35,11 +35,27 @@ use chrono::{DateTime, Utc};
 use crate::tasks::metadata_fetch::FetchOutcome;
 
 /// #419 — backoff schedule for retrying a title whose chain run came
-/// back [`FetchOutcome::Throttled`] (429/503). Two retries per title:
-/// 5 s then 20 s. v1 freeze (mirrors `RECENT_ACTIVITY_DAYS` /
-/// `SCAN_UNDO_WINDOW_SECS`); a unit test locks the values.
-pub const THROTTLE_RETRY_BACKOFF: &[Duration] =
-    &[Duration::from_secs(5), Duration::from_secs(20)];
+/// back [`FetchOutcome::Throttled`] (429/503). Three retries per title:
+/// 5 s, then 20 s, then 60 s. A unit test locks the values.
+///
+/// The third tier was added from prod evidence on panoramix (log
+/// `mybibli.log.2026-07-29`, backfill of 207 titles): 25 titles came
+/// back throttled, the 5 s retry rescued 12, the 20 s retry rescued 4
+/// more, and the remaining 9 were written off with the schedule
+/// exhausted. Google Books answers roughly one unauthenticated call in
+/// two with a 503 during a storm — independent of pacing (measured
+/// median gap before a 503: 4.24 s; before a success: 4.19 s) — so each
+/// further attempt is worth about half the residue. A third tier costs
+/// at most `residue × 60 s` on a run that is already minutes long.
+///
+/// Note this is a *per-title* schedule, not a global one: the tiers
+/// only elapse for titles that are actually throttled, so a clean run
+/// (e.g. the 2026-08-13 cover-refetch, 0 throttled) pays nothing.
+pub const THROTTLE_RETRY_BACKOFF: &[Duration] = &[
+    Duration::from_secs(5),
+    Duration::from_secs(20),
+    Duration::from_secs(60),
+];
 
 /// #419 — backoff delay before retry attempt `attempts_done` (the
 /// number of attempts already burned for this title). `None` once the
@@ -214,23 +230,45 @@ mod tests {
         assert!(snap.last_completed_at.is_some());
     }
 
-    /// #419 — v1 freeze of the throttle-retry schedule: 2 retries,
-    /// 5 s then 20 s. Deliberate value lock, mirrors the
+    /// #419 — value lock of the throttle-retry schedule: 3 retries,
+    /// 5 s then 20 s then 60 s. Deliberate value lock, mirrors the
     /// `RECENT_ACTIVITY_DAYS` test pattern.
     #[test]
     fn throttle_retry_backoff_schedule_is_locked() {
         assert_eq!(
             THROTTLE_RETRY_BACKOFF,
-            &[Duration::from_secs(5), Duration::from_secs(20)]
+            &[
+                Duration::from_secs(5),
+                Duration::from_secs(20),
+                Duration::from_secs(60)
+            ]
         );
         // Attempt 1 (nothing burned yet) is not a retry.
         assert_eq!(retry_backoff(0), None);
-        // After the 1st failed attempt → wait 5 s; after the 2nd → 20 s.
+        // After the 1st failed attempt → 5 s; the 2nd → 20 s; the 3rd → 60 s.
         assert_eq!(retry_backoff(1), Some(Duration::from_secs(5)));
         assert_eq!(retry_backoff(2), Some(Duration::from_secs(20)));
+        assert_eq!(retry_backoff(3), Some(Duration::from_secs(60)));
         // Schedule exhausted — the title is written off for this run.
-        assert_eq!(retry_backoff(3), None);
+        assert_eq!(retry_backoff(4), None);
         assert_eq!(retry_backoff(usize::MAX), None);
+    }
+
+    /// #419 — the schedule must stay monotonically increasing: each
+    /// retry waits longer than the previous one. A regression here
+    /// (e.g. a tier appended out of order) would make the tail of the
+    /// schedule hammer a provider that is already struggling.
+    #[test]
+    fn throttle_retry_backoff_is_strictly_increasing() {
+        assert!(
+            THROTTLE_RETRY_BACKOFF.windows(2).all(|w| w[0] < w[1]),
+            "backoff tiers must strictly increase, got {THROTTLE_RETRY_BACKOFF:?}"
+        );
+        // And every tier must be reachable through `retry_backoff`.
+        for (i, expected) in THROTTLE_RETRY_BACKOFF.iter().enumerate() {
+            assert_eq!(retry_backoff(i + 1), Some(*expected));
+        }
+        assert_eq!(retry_backoff(THROTTLE_RETRY_BACKOFF.len() + 1), None);
     }
 
     /// #419 — outcome bucketing: recovered / provider-failed (throttled
