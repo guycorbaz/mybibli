@@ -148,6 +148,49 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.15.0}\label{sec:whats-new-1.15.0}
+
+La version 1.15.0 est une mineure sur la 1.14.1, tirée de l'examen d'un
+mois de journaux de production. \emph{Une migration automatique et
+additive ; aucune action de l'exploitant.} La nouvelle colonne accepte
+l'absence de valeur et l'ancien binaire ne la lit pas : revenir à la
+1.14.1 reste propre.
+
+\begin{itemize}
+  \item \textbf{\#202 \string— une fiche indique désormais d'où vient
+        sa description.} Le catalogue interroge plusieurs bibliothèques
+        à la suite et retient la première réponse utile, mais il
+        oubliait jusqu'ici laquelle avait répondu. Devant une fiche
+        pauvre, rien ne permettait de distinguer une bibliothèque qui
+        avait répondu brièvement d'une autre qui n'avait pas répondu du
+        tout. La page du titre nomme maintenant la source. Les titres
+        catalogués avant cette version n'affichent rien, ce qui est
+        honnête : leur provenance n'a jamais été enregistrée, et en
+        inventer une vaudrait moins que de laisser la place vide. Le
+        nom de la bibliothèque n'est jamais traduit \string— c'est un
+        nom propre.
+  \item \textbf{\#424 \string— lisibilité des textes discrets.}
+        Plusieurs textes secondaires \string— le compteur à côté des
+        \emph{Ajouts récents}, les tirets de la table des volumes, les
+        commandes de l'arbre des emplacements \string— étaient trop
+        pâles sur leur fond pour atteindre le seuil d'accessibilité AA.
+        Ils ont été assombris. L'effet est volontairement discret : ces
+        textes doivent rester en retrait, seulement lisibles.
+  \item \textbf{\#419 \string— moins de titres abandonnés lors d'une
+        récupération groupée.} Lorsqu'un fournisseur refuse une rafale
+        de requêtes, la tâche réessaie les titres concernés. Une
+        troisième tentative, plus espacée, a été ajoutée : sur la passe
+        mesurée, neuf titres étaient abandonnés faute de celle-ci.
+        Seuls les titres refusés attendent ; une passe sans refus n'est
+        pas ralentie. La mesure a par ailleurs écarté une idée
+        plausible mais fausse : espacer davantage les requêtes n'y
+        change rien, car les refus ne suivent pas la cadence d'appel.
+  \item \textbf{\#449 \string— un identifiant de version plus court
+        dans le journal.} La ligne de démarrage affichait le commit
+        complet, sur quarante caractères ; elle affiche désormais les
+        sept caractères que tout le monde compare réellement.
+\end{itemize}
+
 \section{Nouveautés de la 1.14.1}\label{sec:whats-new-1.14.1}
 
 La version 1.14.1 est un petit correctif sur la mineure 1.14.0.

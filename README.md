@@ -9,7 +9,7 @@
 [![Version](https://img.shields.io/github/v/tag/guycorbaz/mybibli?label=version&sort=semver&color=blue)](https://github.com/guycorbaz/mybibli/releases)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-lightgrey)](LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/gcorbaz/mybibli?logo=docker&label=docker%20pulls)](https://hub.docker.com/r/gcorbaz/mybibli)
-[![Docker Image Size](https://img.shields.io/docker/image-size/gcorbaz/mybibli/1.14.1?logo=docker&label=image%20size)](https://hub.docker.com/r/gcorbaz/mybibli/tags)
+[![Docker Image Size](https://img.shields.io/docker/image-size/gcorbaz/mybibli/1.15.0?logo=docker&label=image%20size)](https://hub.docker.com/r/gcorbaz/mybibli/tags)
 [![Open Issues](https://img.shields.io/github/issues/guycorbaz/mybibli?logo=github)](https://github.com/guycorbaz/mybibli/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/guycorbaz/mybibli/main?logo=github)](https://github.com/guycorbaz/mybibli/commits/main)
 [![Stars](https://img.shields.io/github/stars/guycorbaz/mybibli?logo=github&style=flat)](https://github.com/guycorbaz/mybibli/stargazers)
@@ -17,7 +17,7 @@
 
 > Personal library cataloging for home collectors.
 
-**Status:** in production since v1.1.1 (2026-05-14). 10 epics shipped; project is in GH-issue-driven polish mode. Current release: `v1.14.1`. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli). See [ROADMAP.md](ROADMAP.md) for what's coming next.
+**Status:** in production since v1.1.1 (2026-05-14). 10 epics shipped; project is in GH-issue-driven polish mode. Current release: `v1.15.0`. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli). See [ROADMAP.md](ROADMAP.md) for what's coming next.
 
 ## What it is
 
@@ -38,7 +38,7 @@ Built for collectors who want more than a spreadsheet:
 
 ## Screenshots
 
-Live production install (`v1.14.1`, household NAS, 140+ volumes catalogued and growing):
+Live production install (`v1.15.0`, household NAS, 140+ volumes catalogued and growing):
 
 <p align="center">
   <img src="docs/screenshots/01-home-desktop.png" alt="mybibli home page — search bar, genre filters, dashboard counters, and a recent-additions strip with cover thumbnails." width="780">
