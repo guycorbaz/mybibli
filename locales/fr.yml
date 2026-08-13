@@ -169,6 +169,10 @@ nav:
   theme_toggle: Basculer le thème
   language_toggle_aria: Changer la langue
 title:
+  # #202 — provenance des métadonnées affichée sur /title/:id.
+  # Le nom du fournisseur n'est PAS traduit (NFR41) : c'est un nom
+  # propre, identique dans toutes les langues. Seul le libellé l'est.
+  metadata_source: "Source : %{provider}"
   created: "Titre créé : %{title}"
   exists: "Titre déjà existant : %{title}"
   current_banner: "En cours : %{title}"

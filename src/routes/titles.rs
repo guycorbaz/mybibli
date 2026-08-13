@@ -47,6 +47,12 @@ pub struct TitleDetailTemplate {
     pub label_action_edit: String,
     pub label_action_delete: String,
     pub label_placeholder_empty: String,
+    /// #202 — fully-formed "Source: BnF" line, or `None` when no provenance is
+    /// on file. Assembled in the handler rather than split into a label plus a
+    /// value because French wants a space before the colon and English does
+    /// not; the punctuation belongs in the locale string, as it already does
+    /// for `title.created` and its siblings.
+    pub label_metadata_source: Option<String>,
     pub contributors: Vec<TitleContributorModel>,
     pub label_contributors: String,
     // Fix #318 — labels for the Add/Remove contributor affordance
@@ -133,6 +139,19 @@ pub async fn title_detail(
         Ok(Html(html).into_response())
     } else {
         let similar_titles = TitleModel::find_similar(pool, title.id).await?;
+        // #202 — provenance badge. Only the full-page render needs it: the HTMX
+        // fragment above is the in-place refresh of the header block and does
+        // not carry the identifier rows the badge sits under.
+        let label_metadata_source = TitleModel::find_metadata_source(pool, title.id)
+            .await?
+            .map(|stored| {
+                rust_i18n::t!(
+                    "title.metadata_source",
+                    locale = loc,
+                    provider = crate::metadata::provider::metadata_source_display_name(&stored)
+                )
+                .to_string()
+            });
         let base = crate::utils::base_context(&session, loc, "title", &uri, state.session_timeout_secs());
         let template = TitleDetailTemplate {
             base,
@@ -140,6 +159,7 @@ pub async fn title_detail(
             genre_name,
             volume_count,
             volumes,
+            label_metadata_source,
             can_edit: session.role >= crate::middleware::auth::Role::Librarian,
             label_volumes_heading: rust_i18n::t!("title_detail.volumes_section_heading", locale = loc).to_string(),
             label_volumes_empty: rust_i18n::t!("title_detail.no_volumes", locale = loc).to_string(),
@@ -1964,8 +1984,12 @@ mod tests {
         assert!(result.is_err(), "non-numeric page_count must error");
     }
 
-    #[test]
-    fn test_title_detail_template_renders() {
+    /// #202 — shared fixture for the title-detail render tests.
+    ///
+    /// Extracted when the source-badge tests needed a second instance of the
+    /// same 80-line struct literal (Foundation Rule #1). Callers mutate the
+    /// one field they are exercising.
+    fn title_detail_test_template() -> TitleDetailTemplate {
         let title = TitleModel {
             id: 1,
             title: "L'Étranger".to_string(),
@@ -1995,10 +2019,11 @@ mod tests {
             original_title: None,
             version: 1,
         };
-        let template = TitleDetailTemplate {
+        TitleDetailTemplate {
             base: crate::utils::test_base_context("anonymous", "title", crate::config::AppSettings::default().session_timeout_secs),
             title,
             genre_name: "Roman".to_string(),
+            label_metadata_source: None,
             volume_count: 2,
             volumes: vec![],
             can_edit: false,
@@ -2050,7 +2075,12 @@ mod tests {
             label_collection: "Collection".to_string(),
             label_general_note: "Note".to_string(),
             label_original_title: "Original title".to_string(),
-        };
+        }
+    }
+
+    #[test]
+    fn test_title_detail_template_renders() {
+        let template = title_detail_test_template();
         let rendered = template.render().unwrap();
         assert!(
             rendered.contains("tranger"),
@@ -2065,6 +2095,36 @@ mod tests {
             !rendered.contains("aria-label=\"Similar titles\""),
             "Expected empty similar_titles to render NO <section> element"
         );
+        // #202 — this fixture has `label_metadata_source: None`, which is the
+        // state of every title cataloged before the column existed. The badge
+        // must be absent entirely rather than render an empty "Source:" line
+        // asserting a provenance that is not on file.
+        assert!(
+            !rendered.contains("Source"),
+            "a title with no recorded source must render NO source badge"
+        );
+    }
+
+    /// #202 — the positive half: a recorded provenance renders as a badge.
+    ///
+    /// Paired with the `None` assertion above, this pins both branches of the
+    /// template conditional. The E2E spec covers the same badge end-to-end;
+    /// this catches a template regression without a browser or a live provider.
+    #[test]
+    fn title_detail_template_renders_the_metadata_source_badge() {
+        let mut template = title_detail_test_template();
+        template.label_metadata_source = Some("Source: BnF".to_string());
+        let rendered = template.render().unwrap();
+        assert!(
+            rendered.contains("Source: BnF"),
+            "the recorded source must appear on the page"
+        );
+
+        // And the same fixture without it renders nothing — proving the
+        // assertion above is not passing for an unrelated reason.
+        let mut without = title_detail_test_template();
+        without.label_metadata_source = None;
+        assert!(!without.render().unwrap().contains("Source: BnF"));
     }
 
     // CR #350 — a Librarian viewing a title with NO cover gets the prominent
@@ -2106,6 +2166,7 @@ mod tests {
             base: crate::utils::test_base_context("librarian", "title", crate::config::AppSettings::default().session_timeout_secs),
             title,
             genre_name: "Roman".to_string(),
+            label_metadata_source: None,
             volume_count: 0,
             volumes: vec![],
             can_edit: true,
@@ -2237,6 +2298,7 @@ mod tests {
             base: crate::utils::test_base_context("anonymous", "title", crate::config::AppSettings::default().session_timeout_secs),
             title,
             genre_name: "Roman".to_string(),
+            label_metadata_source: None,
             volume_count: 1,
             volumes: vec![],
             can_edit: false,

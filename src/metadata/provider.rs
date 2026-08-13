@@ -174,6 +174,64 @@ pub fn provider_slug(name: &str) -> String {
     slug
 }
 
+/// #202 — how each provider spells its own name, keyed by [`provider_slug`].
+///
+/// Exposed (rather than buried inside
+/// [`metadata_source_display_name`]) so a test can assert that every provider
+/// registered in `main.rs` has an entry, instead of silently falling through to
+/// the generic transform and rendering as "Omdb".
+pub const PROVIDER_DISPLAY_NAMES: &[(&str, &str)] = &[
+    ("bnf", "BnF"),
+    ("google_books", "Google Books"),
+    ("open_library", "Open Library"),
+    ("library_of_congress", "Library of Congress"),
+    ("musicbrainz", "MusicBrainz"),
+    ("omdb", "OMDb"),
+    ("tmdb", "TMDb"),
+    ("bdgest", "BDGest"),
+    ("comic_vine", "Comic Vine"),
+];
+
+/// #202 — human-facing rendering of a stored `titles.metadata_source`.
+///
+/// The stored value is `MetadataProvider::name()` verbatim, and those names are
+/// written for code, not for a reader: `"google_books"`, `"omdb"`. This maps
+/// them to how the provider spells itself.
+///
+/// It is deliberately NOT a translation, and takes no locale (NFR41): a
+/// provider's name is a proper noun and reads identically in every locale, the
+/// same way the Admin → Health tab already lists them. Only the surrounding
+/// label ("Source", "Source :") goes through `t!()`.
+///
+/// Keyed on [`provider_slug`] so that a provider whose `name()` is already
+/// display-shaped (`"BnF"`, `"Library of Congress"`) and one whose name is a
+/// code identifier both resolve through the same table.
+///
+/// Unknown values fall back to a readable transform rather than being hidden:
+/// underscores become spaces and each word is capitalised. That path exists for
+/// forward compatibility with rows written by a future provider, not as the
+/// normal case — `every_registered_provider_has_a_display_name` fails the build
+/// if a registered provider is missing from the table below.
+pub fn metadata_source_display_name(stored: &str) -> String {
+    let slug = provider_slug(stored);
+    if let Some((_, display)) = PROVIDER_DISPLAY_NAMES.iter().find(|(k, _)| *k == slug) {
+        return (*display).to_string();
+    }
+
+    // Fallback: `some_new_provider` → `Some New Provider`.
+    slug.split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Trait for external metadata providers (BnF, Google Books, Open Library, etc.).
 #[async_trait]
 pub trait MetadataProvider: Send + Sync {
@@ -471,5 +529,98 @@ mod tests {
         assert_eq!(provider_slug("Comic Vine!"), "comic_vine");
         assert_eq!(provider_slug(""), "");
         assert_eq!(provider_slug("---"), "");
+    }
+
+    // ─── #202 — metadata-source display names ──────────────────────
+
+    /// The stored value is `MetadataProvider::name()` verbatim, and those are
+    /// written for code. Each must render the way the provider spells itself.
+    #[test]
+    fn display_name_renders_each_provider_the_way_it_spells_itself() {
+        for (stored, expected) in [
+            ("BnF", "BnF"),
+            ("google_books", "Google Books"),
+            ("open_library", "Open Library"),
+            ("Library of Congress", "Library of Congress"),
+            ("musicbrainz", "MusicBrainz"),
+            ("omdb", "OMDb"),
+            ("tmdb", "TMDb"),
+            ("bdgest", "BDGest"),
+            ("comic_vine", "Comic Vine"),
+        ] {
+            assert_eq!(
+                metadata_source_display_name(stored),
+                expected,
+                "display name for stored value {stored:?}"
+            );
+        }
+    }
+
+    /// Every provider registered in `main.rs` must have an explicit entry.
+    ///
+    /// Without this, adding a provider and forgetting the table is silent: the
+    /// generic fallback renders "omdb" as "Omdb", which looks deliberate and
+    /// wrong rather than obviously broken. Keep the list in sync with the
+    /// `registry.register(...)` calls in `main.rs` (plus Comic Vine, which is
+    /// implemented but intentionally not registered).
+    #[test]
+    fn every_registered_provider_has_a_display_name() {
+        const REGISTERED: &[&str] = &[
+            "bdgest",
+            "BnF",
+            "google_books",
+            "Library of Congress",
+            "open_library",
+            "musicbrainz",
+            "omdb",
+            "tmdb",
+            "comic_vine",
+        ];
+        for name in REGISTERED {
+            let slug = provider_slug(name);
+            assert!(
+                PROVIDER_DISPLAY_NAMES.iter().any(|(k, _)| *k == slug),
+                "provider {name:?} (slug {slug:?}) has no entry in \
+                 PROVIDER_DISPLAY_NAMES — it would render through the generic \
+                 fallback instead of its real spelling"
+            );
+        }
+    }
+
+    /// The table is keyed on slugs, so an entry whose key is not already a
+    /// slug would never match and the provider would silently fall through.
+    #[test]
+    fn display_name_table_keys_are_slugs() {
+        for (key, display) in PROVIDER_DISPLAY_NAMES {
+            assert_eq!(
+                &provider_slug(key),
+                key,
+                "PROVIDER_DISPLAY_NAMES key {key:?} is not a slug"
+            );
+            assert!(!display.is_empty(), "empty display name for {key:?}");
+        }
+    }
+
+    /// Unknown values degrade readably rather than leaking a raw identifier.
+    /// This is the forward-compatibility path for a row written by a provider
+    /// that no longer exists in the code, not the normal case.
+    #[test]
+    fn display_name_falls_back_to_a_readable_transform() {
+        assert_eq!(
+            metadata_source_display_name("some_new_provider"),
+            "Some New Provider"
+        );
+        assert_eq!(metadata_source_display_name("Worldcat"), "Worldcat");
+        // Separator runs collapse, exactly as `provider_slug` does.
+        assert_eq!(metadata_source_display_name("a -- b"), "A B");
+    }
+
+    /// A stored value that is empty or pure punctuation must not produce a
+    /// stray badge fragment. The route filters empties before this is reached,
+    /// but the function must not panic or emit whitespace on its own.
+    #[test]
+    fn display_name_handles_degenerate_input() {
+        assert_eq!(metadata_source_display_name(""), "");
+        assert_eq!(metadata_source_display_name("---"), "");
     }
 }

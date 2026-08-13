@@ -168,6 +168,9 @@ nav:
   theme_toggle: Toggle theme
   language_toggle_aria: Change language
 title:
+  # #202 — metadata provenance shown on /title/:id. The provider name
+  # is NOT translated (NFR41) — it is a proper noun. Only the label is.
+  metadata_source: "Source: %{provider}"
   created: "Title created: %{title}"
   exists: "Title already exists: %{title}"
   current_banner: "Current: %{title}"

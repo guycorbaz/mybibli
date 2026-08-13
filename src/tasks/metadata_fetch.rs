@@ -167,6 +167,9 @@ pub async fn fetch_metadata_chain_outcome(
     )
     .await;
 
+    // #202 — taken before the `result` match moves the payload out.
+    let chain_source = chain_outcome.source.clone();
+
     match chain_outcome.result {
         Some(metadata) => {
             tracing::info!(title_id = title_id, code = %code, "Metadata fetch completed successfully");
@@ -174,6 +177,14 @@ pub async fn fetch_metadata_chain_outcome(
                 tracing::warn!(title_id = title_id, error = %e, "Failed to update title from metadata");
                 mark_failed(&pool, title_id).await;
                 return FetchOutcome::Failed;
+            }
+
+            // #202 — record the provenance only when the chain actually names a
+            // provider. A cache hit resolves the metadata but reports no source,
+            // and overwriting a previously-recorded name with NULL there would
+            // make a re-fetch ERASE the badge it had earned on the first run.
+            if let Some(source) = chain_source.as_deref() {
+                record_metadata_source(&pool, title_id, source).await;
             }
 
             // Resolve cover URL via the shared fallback helper (fix #225 + #228).
@@ -548,6 +559,37 @@ pub async fn update_cover_image_url(
     .await
     .map_err(|e| AppError::Internal(format!("Failed to update cover_image_url: {e}")))?;
     Ok(())
+}
+
+/// #202 — persist which provider answered, for the source badge on
+/// `/title/:id`.
+///
+/// Best-effort by design: a failure here must not turn a successful metadata
+/// fetch into a failed one. The badge is diagnostic information about the
+/// fetch, not part of the record — losing it costs a reader one hint, whereas
+/// failing the fetch would cost them the metadata itself.
+///
+/// Only ever called with `Some`: a `None` source means the chain answered from
+/// `metadata_cache` (provenance unknown) or found nothing, and in both cases
+/// the previously-recorded value is more truthful than NULL would be. The
+/// caller enforces that; this function documents why it matters.
+async fn record_metadata_source(pool: &DbPool, title_id: u64, source: &str) {
+    if let Err(e) = sqlx::query(
+        "UPDATE titles SET metadata_source = ?, updated_at = NOW() \
+         WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(source)
+    .bind(title_id)
+    .execute(pool)
+    .await
+    {
+        tracing::warn!(
+            title_id = title_id,
+            source = source,
+            error = %e,
+            "Failed to record metadata source; the fetch itself succeeded"
+        );
+    }
 }
 
 /// Mark a pending_metadata_updates row as resolved.

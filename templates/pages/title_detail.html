@@ -68,6 +68,18 @@
                 {% if let Some(upc) = title.upc %}
                     <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">UPC: {{ upc }}</p>
                 {% endif %}
+                {# #202 — which provider resolved this record. Rendered only
+                   when a source is on file: a title cataloged before the column
+                   existed, or resolved from the metadata cache, has no source
+                   to name, and an empty badge would assert something false.
+                   The provider name is NOT translated (NFR41) — only the
+                   surrounding label is. #}
+                {% if let Some(source_label) = label_metadata_source %}
+                    <p class="mt-2 inline-flex items-center gap-1.5 rounded-md bg-stone-100 dark:bg-stone-800 px-2 py-1 text-xs text-stone-600 dark:text-stone-400">
+                        <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>{{ source_label }}</span>
+                    </p>
+                {% endif %}
                 {# #389 — UNIMARC-zone metadata (palier 1). Each row renders only when present. #}
                 {% if let Some(sor) = title.statement_of_responsibility %}
                     <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">{{ label_statement_of_responsibility }}: {{ sor }}</p>

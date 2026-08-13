@@ -47,6 +47,23 @@ impl ProviderTimeouts {
 pub struct ChainOutcome {
     pub result: Option<MetadataResult>,
     pub throttled: bool,
+    /// #202 — `MetadataProvider::name()` of the provider that actually
+    /// answered, verbatim. `None` in three distinct situations that the
+    /// caller must NOT conflate:
+    ///
+    /// - the chain found nothing (`result` is `None` too);
+    /// - the answer came from `metadata_cache`, which stores the merged
+    ///   payload without provenance — the winning provider is genuinely
+    ///   unknown on that path;
+    /// - the zone-completion pass contributed fields from a later provider.
+    ///   The name recorded is the provider that produced the base record, not
+    ///   every provider that touched it; a title is attributed to one source.
+    ///
+    /// Because a cache hit yields `None` on an otherwise successful run, a
+    /// caller persisting this MUST leave a previously-recorded source alone
+    /// rather than overwrite it with NULL. See
+    /// `TitleModel::update_from_metadata`.
+    pub source: Option<String>,
 }
 
 /// Executes metadata lookups through a chain of providers with fallback.
@@ -107,6 +124,9 @@ impl ChainExecutor {
                 return ChainOutcome {
                     result: Some(cached),
                     throttled: false,
+                    // #202 — the cache stores the merged payload without
+                    // provenance, so the source is unknown here, NOT absent.
+                    source: None,
                 };
             }
             Ok(None) => {
@@ -229,7 +249,7 @@ impl ChainExecutor {
                             }
                         }
 
-                        return Some(winner);
+                        return Some((provider_name.to_string(), winner));
                     }
                     Ok(Ok(None)) => {
                         tracing::info!(
@@ -290,8 +310,8 @@ impl ChainExecutor {
         })
         .await;
 
-        let result = match chain_result {
-            Ok(Some(metadata)) => {
+        let (result, source) = match chain_result {
+            Ok(Some((winning_provider, metadata))) => {
                 // Cache the successful result
                 match serde_json::to_value(&metadata) {
                     Ok(json) => {
@@ -303,20 +323,24 @@ impl ChainExecutor {
                         tracing::warn!(code = %code, error = %e, "Failed to serialize metadata for cache");
                     }
                 }
-                tracing::info!(code = %code, "Metadata chain completed with result");
-                Some(metadata)
+                tracing::info!(
+                    code = %code,
+                    provider = %winning_provider,
+                    "Metadata chain completed with result"
+                );
+                (Some(metadata), Some(winning_provider))
             }
             Ok(None) => {
                 tracing::info!(code = %code, "Metadata chain exhausted, no result");
-                None
+                (None, None)
             }
             Err(_) => {
                 tracing::warn!(code = %code, timeout_secs = timeout_secs, "Metadata chain global timeout");
-                None
+                (None, None)
             }
         };
 
-        ChainOutcome { result, throttled }
+        ChainOutcome { result, throttled, source }
     }
 }
 
@@ -563,6 +587,105 @@ mod tests {
         .await;
         assert!(outcome.result.is_none());
         assert!(outcome.throttled, "503 with no fallback result must set throttled");
+    }
+
+    // ─── #202 — winning-provider provenance ────────────────────────
+
+    /// The chain must name the provider that actually answered, so the title
+    /// can carry a source badge.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn execute_detailed_reports_the_winning_provider(pool: sqlx::Pool<sqlx::MySql>) {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(EmptyProvider));
+        registry.register(Box::new(SuccessProvider {
+            name: "google_books",
+        }));
+
+        let outcome = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            "9799999990051",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await;
+
+        assert!(outcome.result.is_some());
+        assert_eq!(
+            outcome.source.as_deref(),
+            Some("google_books"),
+            "the source must be the provider that answered, not the first one tried"
+        );
+    }
+
+    /// No result means no provenance — the two must stay consistent, otherwise
+    /// a title with no metadata could still be badged with a source.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn execute_detailed_reports_no_source_when_nothing_answered(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(EmptyProvider));
+
+        let outcome = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            "9799999990062",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await;
+
+        assert!(outcome.result.is_none());
+        assert_eq!(outcome.source, None);
+    }
+
+    /// A cache hit resolves the metadata but cannot name a provider: the cache
+    /// row stores the merged payload without provenance.
+    ///
+    /// This is the case the persistence layer must not misread. If the caller
+    /// wrote `source` unconditionally, a re-fetch that hits the cache would
+    /// erase the badge earned on the first run — which is why
+    /// `record_metadata_source` is only called for `Some`.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn execute_detailed_reports_no_source_on_a_cache_hit(pool: sqlx::Pool<sqlx::MySql>) {
+        const CODE: &str = "9799999990073";
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(SuccessProvider { name: "BnF" }));
+
+        // First run populates the cache and names the provider.
+        let first = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            CODE,
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await;
+        assert_eq!(first.source.as_deref(), Some("BnF"));
+
+        // Second run short-circuits on the cache: same metadata, no provenance.
+        let second = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            CODE,
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await;
+        assert!(second.result.is_some(), "the cache must still serve the result");
+        assert_eq!(
+            second.source, None,
+            "a cache hit has no provenance to report"
+        );
     }
 
     /// 429 sets the flag through the same path.
