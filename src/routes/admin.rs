@@ -398,9 +398,9 @@ fn spawn_bulk_bnf_worker(
             //
             // #419 — a Throttled outcome (chain empty-handed with a
             // provider answering 429/503) is retried per the
-            // THROTTLE_RETRY_BACKOFF schedule (5 s → 20 s) so a
+            // THROTTLE_RETRY_BACKOFF schedule (5 s → 20 s → 60 s) so a
             // transient storm doesn't burn the title's only chance
-            // for the run.
+            // for the run. Only throttled titles pay these waits.
             let mut attempts_done = 0usize;
             let outcome = loop {
                 let outcome = crate::tasks::metadata_fetch::fetch_metadata_chain_outcome(
