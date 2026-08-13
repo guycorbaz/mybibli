@@ -207,3 +207,80 @@ rotatifs hors du volume vers du stockage long terme :
 \begin{lstlisting}
 docker compose cp mybibli:/var/log/mybibli/. ./logs-archive/
 \end{lstlisting}
+
+\section{Réinitialiser un mot de passe administrateur oublié}\label{sec:reset-admin-password}
+
+mybibli ne propose pas de procédure « mot de passe oublié » par
+courriel : une installation domestique mono-locataire n'a ni serveur de
+messagerie sur lequel s'appuyer, ni second facteur de repli. Si vous
+êtes encore connecté quelque part, la correction est ordinaire —
+\texttt{/admin > Utilisateurs}, modifiez votre propre compte, donnez-vous
+un nouveau mot de passe. Faites-le \emph{avant} l'expiration de cette
+session : elle est la seule chose qui vous sépare de la procédure
+ci-dessous.
+
+\subsection*{Si vous êtes verrouillé dehors}
+
+Les mots de passe sont stockés sous forme de hachages Argon2id au format
+PHC. Les paramètres sont ceux par défaut de la bibliothèque
+\texttt{argon2} (\texttt{m=19456,t=2,p=1}), et ils doivent correspondre
+exactement, faute de quoi le nouveau mot de passe est rejeté à la
+connexion sans aucune explication. \textbf{Ne produisez pas le hachage
+avec un outil tiers} : la plupart emploient des paramètres différents.
+Utilisez l'utilitaire fourni avec les sources, qui appelle la fonction
+même de l'application :
+
+\begin{lstlisting}
+git clone https://github.com/guycorbaz/mybibli && cd mybibli
+cargo run -q --example hash_password -- 'votre nouveau mot de passe'
+\end{lstlisting}
+
+Il affiche une ligne commençant par \texttt{\$argon2id\$v=19\$m=19456}.
+Appliquez-la sur la machine qui héberge la base, en remplaçant
+\texttt{<HACHAGE>} par cette ligne et \texttt{<UTILISATEUR>} par votre
+identifiant :
+
+\begin{lstlisting}
+docker compose exec db mariadb -u root -p mybibli \
+  -e "UPDATE users SET password_hash = '<HACHAGE>', version = version + 1 \
+      WHERE username = '<UTILISATEUR>' AND deleted_at IS NULL;"
+\end{lstlisting}
+
+Vérifiez ensuite la ligne avant de refermer la session :
+
+\begin{lstlisting}
+docker compose exec db mariadb -u root -p mybibli \
+  -e "SELECT username, role, active, deleted_at, \
+      LEFT(password_hash,22) FROM users;"
+\end{lstlisting}
+
+\subsection*{Trois pièges}
+
+\begin{itemize}
+  \item \textbf{Entourez le hachage de guillemets simples.} Il contient
+        des caractères \texttt{\$}. Des guillemets doubles laisseraient
+        le shell les interpréter et vous écririez une valeur tronquée,
+        qui ne pourra jamais correspondre.
+  \item \textbf{Conservez \texttt{version = version + 1}.} Le
+        verrouillage optimiste lit cette colonne ; l'omettre laisserait
+        une modification ultérieure faite depuis l'interface écraser la
+        vôtre en croyant partir d'un état à jour.
+  \item \textbf{Le mot de passe passe dans l'historique du shell} aux
+        deux étapes. Préfixez les commandes d'une espace si votre shell
+        est configuré pour ignorer ces lignes, ou purgez l'historique
+        ensuite.
+\end{itemize}
+
+Il s'agit d'une écriture directe sur des données de production, sans
+retour arrière. Lancez d'abord le \texttt{SELECT} : l'opération n'est
+réversible que si vous avez noté l'ancienne valeur.
+
+\subsection*{Lire le journal de connexion}
+
+La distinction consignée dans le journal compte pour le diagnostic :
+\texttt{Login failed: user not found} signifie qu'aucun compte ne porte
+cet identifiant (ou qu'il est supprimé logiquement), tandis que
+\texttt{Login failed: invalid password} signifie que le compte est sain
+et que seul le mot de passe ne correspondait pas — le cas que traite
+cette section. Aucune de ces deux lignes n'enregistre jamais le mot de
+passe tenté.
