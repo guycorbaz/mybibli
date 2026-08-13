@@ -52,20 +52,42 @@ pub fn noop_log_level_reloader() -> LogLevelReloader {
 pub struct BuildIdentity {
     /// Crate version, always available.
     pub version: &'static str,
-    /// Short git commit the binary was built from, or `"unknown"`.
+    /// Git commit the binary was built from, or `"unknown"`.
     ///
     /// The Dockerfile does not copy `.git` into the build context, so this
     /// cannot be derived at compile time from the repository. CI passes it as
     /// a build argument instead. A locally-built binary therefore reports
     /// `"unknown"`, which is the honest answer: there is no commit it can
     /// truthfully claim, and a dirty working tree would make one misleading.
+    ///
+    /// #449 — stored **whole**: CI passes `${{ github.sha }}`, which is the
+    /// full 40-character hash, and a future surface (Admin → Health, a
+    /// support bundle) may well want all of it. Shortening happens at
+    /// emission, through [`BuildIdentity::short_commit`].
     pub commit: &'static str,
     /// `"debug"` or `"release"`. Explains a whole class of "why is it slow"
     /// reports without any further investigation.
     pub profile: &'static str,
 }
 
+/// #449 — how many leading characters of the commit hash reach the log.
+/// Seven is what `git log --oneline` and the GitHub UI show, so it is what
+/// anyone comparing two builds by eye actually reads.
+const SHORT_COMMIT_LEN: usize = 7;
+
 impl BuildIdentity {
+    /// The commit, shortened to [`SHORT_COMMIT_LEN`] characters (#449).
+    ///
+    /// Length-safe by construction: `str::get` returns `None` for a range
+    /// that runs past the end *or* lands inside a multi-byte character, and
+    /// both cases fall back to the value untouched. A plain `&self.commit[..7]`
+    /// would panic on either — and would happen to survive today only because
+    /// the unstamped placeholder `"unknown"` is exactly seven characters long.
+    /// That coincidence is not a guarantee, which is what the tests below pin.
+    pub fn short_commit(&self) -> &'static str {
+        self.commit.get(..SHORT_COMMIT_LEN).unwrap_or(self.commit)
+    }
+
     /// Emit the startup line that names this build (#447).
     ///
     /// Lives here rather than inline in `main.rs` so the emission itself is
@@ -74,7 +96,9 @@ impl BuildIdentity {
     pub fn log_startup(&self, host: &str, port: &str) {
         tracing::info!(
             version = self.version,
-            commit = self.commit,
+            // #449 — shortened here rather than in `build_identity()` so the
+            // struct keeps the full hash for any other consumer.
+            commit = self.short_commit(),
             profile = self.profile,
             host = host,
             port = port,
@@ -311,6 +335,70 @@ mod build_identity_tests {
         assert_eq!(build_identity(), build_identity());
     }
 
+    /// #449 — a CI-stamped 40-character SHA is shortened to 7 for the log,
+    /// while the struct keeps the whole value.
+    #[test]
+    fn short_commit_truncates_a_full_sha_to_seven_characters() {
+        let id = BuildIdentity {
+            version: "1.14.1",
+            commit: "2d0448e9de9d6e7d8ef3e3124c3d54fbd33721ea",
+            profile: "release",
+        };
+        assert_eq!(id.short_commit(), "2d0448e");
+        assert_eq!(
+            id.commit.len(),
+            40,
+            "the full hash must survive on the struct"
+        );
+    }
+
+    /// #449 — the trap the issue calls out: a naive `&commit[..7]` panics
+    /// on anything shorter than seven bytes. `"unknown"` is exactly seven,
+    /// so the naive form would pass today and start panicking the day that
+    /// placeholder changes. These values are deliberately shorter.
+    #[test]
+    fn short_commit_does_not_panic_on_values_shorter_than_seven() {
+        for value in ["", "a", "abc", "dev", "local"] {
+            let id = BuildIdentity {
+                version: "1.14.1",
+                commit: value,
+                profile: "debug",
+            };
+            assert_eq!(
+                id.short_commit(),
+                value,
+                "a value shorter than the cut must pass through untouched"
+            );
+        }
+    }
+
+    /// #449 — the other half of the `str::get` guard: a cut that would land
+    /// inside a multi-byte character must fall back rather than panic. Not a
+    /// realistic hash, but the accessor must not depend on the caller's
+    /// good manners.
+    #[test]
+    fn short_commit_does_not_split_a_multibyte_character() {
+        let id = BuildIdentity {
+            version: "1.14.1",
+            // Each 'é' is two bytes: byte index 7 falls mid-character.
+            commit: "ééééééé",
+            profile: "debug",
+        };
+        assert_eq!(id.short_commit(), "ééééééé");
+    }
+
+    /// #449 — the placeholder is unchanged by shortening, so an unstamped
+    /// local build still reads as "unknown" rather than a truncated stub.
+    #[test]
+    fn short_commit_leaves_the_unknown_placeholder_intact() {
+        let id = BuildIdentity {
+            version: "1.14.1",
+            commit: "unknown",
+            profile: "debug",
+        };
+        assert_eq!(id.short_commit(), "unknown");
+    }
+
     /// The emission is the whole point of #447: a computed-but-unlogged
     /// identity would satisfy every other test here and still leave the
     /// production log unable to name its build.
@@ -325,5 +413,26 @@ mod build_identity_tests {
         );
         assert!(logs_contain("debug"), "the profile must appear");
         assert!(logs_contain("unknown"), "an unstamped build must say so");
+    }
+
+    /// #449 — the shortening must happen *at emission*. Every other test
+    /// here would pass on an implementation that computed `short_commit()`
+    /// correctly and then logged `self.commit` anyway; only reading the
+    /// emitted event catches that.
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn startup_line_carries_the_short_commit_not_the_full_sha() {
+        let id = BuildIdentity {
+            version: "1.14.1",
+            commit: "2d0448e9de9d6e7d8ef3e3124c3d54fbd33721ea",
+            profile: "release",
+        };
+        id.log_startup("0.0.0.0", "80");
+
+        assert!(logs_contain("2d0448e"), "the short commit must appear");
+        assert!(
+            !logs_contain("2d0448e9de9d6e7d8ef3e3124c3d54fbd33721ea"),
+            "the full 40-character SHA must not reach the log"
+        );
     }
 }
