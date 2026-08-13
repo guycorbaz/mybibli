@@ -165,6 +165,9 @@ nav:
   theme_toggle: Cambia tema
   language_toggle_aria: Cambia lingua
 title:
+  # #202 — provenienza dei metadati su /title/:id. Il nome del fornitore NON
+  # è tradotto (NFR41): è un nome proprio. Solo l'etichetta lo è.
+  metadata_source: "Fonte: %{provider}"
   created: "Titolo creato: %{title}"
   exists: "Il titolo esiste già: %{title}"
   current_banner: "Corrente: %{title}"
