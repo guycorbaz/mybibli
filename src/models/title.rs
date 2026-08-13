@@ -244,6 +244,32 @@ impl TitleModel {
         }
     }
 
+    /// #202 — which provider resolved this title's metadata, or `None` when
+    /// no source has ever been recorded (every row predating the column, and
+    /// any title whose only successful fetch came from the cache).
+    ///
+    /// A dedicated one-column query rather than a new `TitleModel` field on
+    /// purpose. `TitleModel` is built by hand from 31 explicit SELECT lists
+    /// across this file; widening the struct would touch every one of them for
+    /// a value that exactly one page renders. The cost of the extra round-trip
+    /// is a single indexed primary-key lookup on a page that already issues
+    /// several.
+    pub async fn find_metadata_source(
+        pool: &DbPool,
+        id: u64,
+    ) -> Result<Option<String>, AppError> {
+        let row: Option<(Option<String>,)> = sqlx::query_as(
+            "SELECT metadata_source FROM titles WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+        // Flatten "no such title" and "title with no source" — both mean the
+        // badge has nothing to show, and the caller has already established
+        // the title exists.
+        Ok(row.and_then(|(source,)| source).filter(|s| !s.is_empty()))
+    }
+
     /// Fix #214: count active titles eligible for a bulk cover-refetch.
     ///
     /// Eligibility: `cover_image_url IS NULL OR ''` AND at least one
@@ -1806,6 +1832,75 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(got, None, "soft-deleted titles MUST NOT match");
+    }
+
+    // ─── #202 — metadata_source provenance ─────────────────────────
+
+    /// Helper: insert a title with an optional recorded source, return its id.
+    #[cfg(test)]
+    async fn insert_title_with_source(pool: &DbPool, source: Option<&str>) -> u64 {
+        let g: u64 = sqlx::query_scalar(
+            "SELECT id FROM genres WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let r = sqlx::query(
+            "INSERT INTO titles (title, language, media_type, genre_id, metadata_source) \
+             VALUES ('Provenance probe', 'fr', 'book', ?, ?)",
+        )
+        .bind(g)
+        .bind(source)
+        .execute(pool)
+        .await
+        .unwrap();
+        r.last_insert_id()
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_metadata_source_round_trips_the_stored_provider(pool: sqlx::MySqlPool) {
+        let id = insert_title_with_source(&pool, Some("google_books")).await;
+        let got = TitleModel::find_metadata_source(&pool, id).await.unwrap();
+        assert_eq!(got, Some("google_books".to_string()));
+    }
+
+    /// A pre-#202 row carries NULL and must read as "no provenance", which is
+    /// what suppresses the badge rather than rendering an empty one.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_metadata_source_returns_none_when_never_recorded(pool: sqlx::MySqlPool) {
+        let id = insert_title_with_source(&pool, None).await;
+        let got = TitleModel::find_metadata_source(&pool, id).await.unwrap();
+        assert_eq!(got, None);
+    }
+
+    /// An empty string is not a provider. It cannot be written by the current
+    /// code path, but a hand-edited row or a future import could produce one,
+    /// and `Some("")` would render a badge reading just "Source:".
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_metadata_source_treats_empty_string_as_absent(pool: sqlx::MySqlPool) {
+        let id = insert_title_with_source(&pool, Some("")).await;
+        let got = TitleModel::find_metadata_source(&pool, id).await.unwrap();
+        assert_eq!(got, None, "an empty source must not render a badge");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_metadata_source_returns_none_for_soft_deleted(pool: sqlx::MySqlPool) {
+        let id = insert_title_with_source(&pool, Some("BnF")).await;
+        sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let got = TitleModel::find_metadata_source(&pool, id).await.unwrap();
+        assert_eq!(got, None, "soft-deleted titles MUST NOT report a source");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_metadata_source_returns_none_for_nonexistent(pool: sqlx::MySqlPool) {
+        let got = TitleModel::find_metadata_source(&pool, 9_999_999)
+            .await
+            .unwrap();
+        assert_eq!(got, None);
     }
 
     #[sqlx::test(migrations = "./migrations")]

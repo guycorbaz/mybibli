@@ -151,4 +151,50 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     // Mock catch-all returns "Test Title {isbn}" by "Synthetic TestAuthor" for unique ISBNs.
     await expect(page.locator("body")).toContainText(/Test Title|TestAuthor/i, { timeout: 15000 });
   });
+  // ─── #202 — metadata-source badge on /title/:id ────────────────────
+  //
+  // The provider chain has always known which provider answered and then
+  // discarded it, so a librarian could not tell "BnF answered but holds
+  // little" from "nothing answered at all" — the question behind the original
+  // report. `titles.metadata_source` now records it and the detail page shows
+  // it.
+  //
+  // BnF is first in the chain for books and the mock answers its SRU endpoint
+  // with a synthetic record for any unknown ISBN, so a freshly generated code
+  // resolves through BnF deterministically.
+  test("title detail names the provider that resolved the metadata", async ({
+    page,
+  }) => {
+    // Randomised, like the Story 10-5 seed in accessibility-full.spec.ts: this
+    // test REQUIRES a brand-new title, because only a first scan emits a
+    // `.feedback-skeleton`. A fixed ISBN works exactly once against the shared
+    // E2E database and then silently takes the "title already exists" path,
+    // which returns an info entry with no id to read. Banded 10000-99998 so it
+    // cannot collide with this spec's fixed codes (CM 1, 2, 3 and 99).
+    const isbn = specIsbn("CM", 10000 + Math.floor(Math.random() * 89999));
+    await page.goto("/catalog");
+    const scanField = page.locator("#scan-field");
+    await scanField.fill(isbn);
+    await scanField.press("Enter");
+
+    const skeleton = page
+      .locator(".feedback-skeleton[id^='feedback-entry-']")
+      .first();
+    await expect(skeleton).toBeVisible({ timeout: 10000 });
+    const idAttr = await skeleton.getAttribute("id");
+    const titleId = idAttr!.replace("feedback-entry-", "");
+
+    // Poll the detail page: the source is written by the background fetch
+    // task, so it lands slightly after the skeleton appears.
+    await expect(async () => {
+      await page.goto(`/title/${titleId}`);
+      // i18n-aware: "Source: BnF" (en) / "Source : BnF" (fr). The provider name
+      // is deliberately NOT translated (NFR41), so it anchors the assertion in
+      // both locales.
+      await expect(page.getByText(/Source\s*:\s*BnF/)).toBeVisible({
+        timeout: 1000,
+      });
+    }).toPass({ timeout: 20000 });
+  });
+
 });

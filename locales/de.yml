@@ -168,6 +168,9 @@ nav:
   theme_toggle: Thema umschalten
   language_toggle_aria: Sprache wechseln
 title:
+  # #202 — Metadaten-Herkunft auf /title/:id. Der Anbietername wird NICHT
+  # übersetzt (NFR41) — er ist ein Eigenname. Nur das Label wird übersetzt.
+  metadata_source: "Quelle: %{provider}"
   created: "Titel angelegt: %{title}"
   exists: "Titel ist bereits vorhanden: %{title}"
   current_banner: "Aktuell: %{title}"
