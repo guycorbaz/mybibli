@@ -254,9 +254,9 @@ fn render_node_at_depth(
         (
             format!(
                 r#"<span class="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-<button type="button" data-locations-toggle="{form_id}" class="p-1 text-stone-400 hover:text-green-600 dark:hover:text-green-400" aria-label="Add child under {name}">➕</button>
-<a href="/locations/{id}/edit" class="p-1 text-stone-400 hover:text-indigo-600 dark:hover:text-indigo-400" aria-label="Edit {name}">✏️</a>
-<button type="button" hx-delete="/locations/{id}" hx-confirm="Delete {name} ({label})?" hx-target="closest [role=treeitem]" hx-swap="outerHTML" class="p-1 text-stone-400 hover:text-red-600 dark:hover:text-red-400" aria-label="Delete {name}">🗑️</button>
+<button type="button" data-locations-toggle="{form_id}" class="p-1 text-stone-600 dark:text-stone-400 hover:text-green-600 dark:hover:text-green-400" aria-label="Add child under {name}">➕</button>
+<a href="/locations/{id}/edit" class="p-1 text-stone-600 dark:text-stone-400 hover:text-indigo-600 dark:hover:text-indigo-400" aria-label="Edit {name}">✏️</a>
+<button type="button" hx-delete="/locations/{id}" hx-confirm="Delete {name} ({label})?" hx-target="closest [role=treeitem]" hx-swap="outerHTML" class="p-1 text-stone-600 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400" aria-label="Delete {name}">🗑️</button>
 </span>"#,
                 id = node.location.id,
             ),
@@ -299,7 +299,14 @@ fn render_node_at_depth(
     let has_children = !node.children.is_empty();
     let toggle_html = if has_children {
         format!(
-            r#"<button type="button" class="tree-toggle p-1 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200" data-tree-target="tree-children-{id}" aria-expanded="true" aria-label="{toggle_lbl}"><span class="tree-toggle-icon" aria-hidden="true">▼</span></button>"#,
+            // #424 — the toggle lives in a row that turns `bg-stone-100` on
+            // hover, where `text-stone-400` sits at 2.31:1. The glyph is
+            // `aria-hidden`, so axe's color-contrast rule skips it, but it is
+            // still the visual indicator of a control and WCAG 1.4.11 asks for
+            // 3:1. `text-stone-600` gives 6.99:1 there. The hover shade moves
+            // to stone-900 because stone-600 was previously the hover value —
+            // keeping it would have flattened the affordance.
+            r#"<button type="button" class="tree-toggle p-1 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200" data-tree-target="tree-children-{id}" aria-expanded="true" aria-label="{toggle_lbl}"><span class="tree-toggle-icon" aria-hidden="true">▼</span></button>"#,
             id = node.location.id,
             toggle_lbl = crate::utils::html_escape(
                 rust_i18n::t!("location.tree.toggle", locale = loc).as_ref()

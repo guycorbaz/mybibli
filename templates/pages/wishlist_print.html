@@ -41,7 +41,7 @@
                 {% when Some with (u) %}
                 <img src="{{ u }}" alt="" class="w-full h-full object-cover" loading="lazy">
                 {% when None %}
-                <span class="text-[10px] text-stone-400 px-1 text-center leading-tight">{{ label_placeholder_empty }}</span>
+                <span class="text-[10px] text-stone-500 dark:text-stone-400 px-1 text-center leading-tight">{{ label_placeholder_empty }}</span>
                 {% endmatch %}
             </div>
 

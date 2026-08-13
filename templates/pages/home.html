@@ -638,7 +638,7 @@
             <summary class="cursor-pointer list-none flex items-center gap-2 text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide select-none hover:text-stone-900 dark:hover:text-stone-100">
                 <svg class="w-3 h-3 transition-transform" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><path d="M3 2l5 4-5 4z"/></svg>
                 <h2 id="recent-additions-heading" class="inline">{{ recent_additions_heading }}</h2>
-                {% if !recent_additions.is_empty() %}<span class="text-stone-400 dark:text-stone-500 normal-case font-normal">({{ recent_additions.len() }})</span>{% endif %}
+                {% if !recent_additions.is_empty() %}<span class="text-stone-500 dark:text-stone-400 normal-case font-normal">({{ recent_additions.len() }})</span>{% endif %}
             </summary>
             {% if recent_additions.is_empty() %}
                 <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ recent_additions_empty }}</div>

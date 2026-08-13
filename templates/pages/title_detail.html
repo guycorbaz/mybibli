@@ -300,12 +300,12 @@
                             {% match v.location_name %}
                             {% when Some with (name) %}
                                 {{ name }}
-                                {% match v.location_label %}{% when Some with (l) %} <span class="ml-1 font-mono text-xs text-stone-400">({{ l }})</span>{% when None %}{% endmatch %}
-                            {% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>
+                                {% match v.location_label %}{% when Some with (l) %} <span class="ml-1 font-mono text-xs text-stone-500 dark:text-stone-400">({{ l }})</span>{% when None %}{% endmatch %}
+                            {% when None %}<span class="text-stone-500 dark:text-stone-400">{{ label_placeholder_empty }}</span>
                             {% endmatch %}
                         </td>
                         <td class="px-3 py-2 text-stone-700 dark:text-stone-300">
-                            {% match v.condition_name %}{% when Some with (c) %}{{ c }}{% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
+                            {% match v.condition_name %}{% when Some with (c) %}{{ c }}{% when None %}<span class="text-stone-500 dark:text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
                         </td>
                         {% if can_edit %}
                         <td class="px-3 py-2 text-right whitespace-nowrap">
@@ -348,14 +348,14 @@
                             {% match v.location_name %}
                             {% when Some with (name) %}
                                 {{ name }}
-                                {% match v.location_label %}{% when Some with (l) %} <span class="font-mono text-stone-400">({{ l }})</span>{% when None %}{% endmatch %}
-                            {% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>
+                                {% match v.location_label %}{% when Some with (l) %} <span class="font-mono text-stone-500 dark:text-stone-400">({{ l }})</span>{% when None %}{% endmatch %}
+                            {% when None %}<span class="text-stone-500 dark:text-stone-400">{{ label_placeholder_empty }}</span>
                             {% endmatch %}
                         </dd>
                     </div>
                     <div class="flex gap-2">
                         <dt class="font-medium text-stone-500 dark:text-stone-400">{{ label_col_condition }}:</dt>
-                        <dd>{% match v.condition_name %}{% when Some with (c) %}{{ c }}{% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}</dd>
+                        <dd>{% match v.condition_name %}{% when Some with (c) %}{{ c }}{% when None %}<span class="text-stone-500 dark:text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}</dd>
                     </div>
                 </dl>
             </li>

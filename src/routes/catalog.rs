@@ -88,7 +88,7 @@ fn scan_error_feedback_html(message: &str, scan_code: &str) -> String {
     // Dismiss button: `data-action="dismiss-feedback"` (handled by mybibli.js
     // delegated listener) instead of an inline `onclick` — strict CSP blocks
     // inline handlers even when the HTML was assembled in the backend.
-    html.push_str("</a></div></div><button type=\"button\" class=\"text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1\" aria-label=\"Dismiss\" data-action=\"dismiss-feedback\"><svg class=\"w-4 h-4\" viewBox=\"0 0 20 20\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z\" /></svg></button></div></div>");
+    html.push_str("</a></div></div><button type=\"button\" class=\"text-stone-500 dark:text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1\" aria-label=\"Dismiss\" data-action=\"dismiss-feedback\"><svg class=\"w-4 h-4\" viewBox=\"0 0 20 20\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z\" /></svg></button></div></div>");
     html
 }
 
@@ -2129,6 +2129,9 @@ fn contributor_list_html(contributors: &[TitleContributorModel]) -> String {
 
     for (i, (cid, name, roles)) in grouped.iter().enumerate() {
         if i > 0 {
+            // #424 — the only child is `aria-hidden`, so this carries no text
+            // for a contrast rule to evaluate; it is a decorative separator,
+            // not content. Left at stone-400 on purpose.
             html.push_str(r#"<li class="text-stone-400"><span aria-hidden="true"> · </span></li>"#);
         }
 

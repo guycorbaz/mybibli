@@ -415,7 +415,7 @@ fn metadata_display_html(
         .as_ref()
         .map(|i| {
             format!(
-                r#"<p class="mt-1 text-xs text-stone-400">ISBN: {}</p>"#,
+                r#"<p class="mt-1 text-xs text-stone-500 dark:text-stone-400">ISBN: {}</p>"#,
                 html_escape(i)
             )
         })
@@ -1812,8 +1812,15 @@ mod tests {
             "Dewey chip should appear in the metadata row. Got:\n{html}"
         );
         // The legacy standalone paragraph must NOT be there anymore.
+        //
+        // #424 — matched on the copy rather than the markup. The old assertion
+        // pinned a `text-stone-400` class that this issue has since changed,
+        // which would have made it pass vacuously: the legacy paragraph could
+        // have come back under the new class without tripping it. "Dewey
+        // code: " with a colon is the legacy form; the chip renders "Dewey
+        // code 741.5" without one, so the two stay distinguishable.
         assert!(
-            !html.contains(r#"<p class="mt-1 text-xs text-stone-400">Dewey code: 741.5</p>"#),
+            !html.contains("Dewey code: 741.5"),
             "Legacy standalone Dewey paragraph should have been removed."
         );
     }

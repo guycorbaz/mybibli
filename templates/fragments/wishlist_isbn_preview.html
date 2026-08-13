@@ -17,7 +17,7 @@
             {% match resolved_authors %}{% when Some with (a) %}<p class="mt-1 text-stone-700 dark:text-stone-300">{{ a }}</p>{% when None %}{% endmatch %}
             {% match resolved_publisher %}{% when Some with (p) %}<p class="mt-1 text-stone-600 dark:text-stone-400">{{ p }}</p>{% when None %}{% endmatch %}
             {% match resolved_year %}{% when Some with (y) %}<p class="mt-1 text-stone-500 dark:text-stone-400 text-xs">{{ y }}</p>{% when None %}{% endmatch %}
-            <p class="mt-2 font-mono text-xs text-stone-400">ISBN {{ isbn }}</p>
+            <p class="mt-2 font-mono text-xs text-stone-500 dark:text-stone-400">ISBN {{ isbn }}</p>
         </div>
     </div>
 
