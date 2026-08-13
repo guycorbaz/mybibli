@@ -85,6 +85,164 @@ test.describe("Story 9-22 — WCAG 2.2 AA full coverage", () => {
   }
 });
 
+// ─── Issue #424 — data-dependent contrast on / and /locations ──────────
+//
+// The `Story 9-22` block above visits `/` and `/locations` without seeding
+// anything, and BOTH pages hide their offending elements when empty: the home
+// "Recent additions" count badge renders only behind `{% if
+// !recent_additions.is_empty() %}`, and the `/locations` tree renders no
+// `role="treeitem"` row at all until a storage location exists.
+//
+// That is why the two contrast failures in #424 survived two months of green
+// CI: `accessibility-full.spec.ts` sorts first alphabetically, so it ran
+// before any journey spec had seeded data. Nothing pinned that ordering — a
+// worker-scheduling change would have turned CI red with no code change.
+//
+// This block removes the luck: it seeds one title and one location, then
+// re-runs axe on the two pages in their populated state. The static companion
+// is `templates_audit::light_mode_forbids_text_stone_400`, which catches the
+// class regardless of data; the two levels are complementary, not redundant.
+test.describe("Issue #424 — populated home + locations WCAG 2.2 AA", () => {
+  // Serial for the same reason as the Story 10-5 block: both tests read state
+  // seeded once in `beforeAll`, and a parallel dispatch would re-run the seed
+  // per worker against an ISBN that is only "new" for the first one.
+  test.describe.configure({ mode: "serial" });
+
+  // Only the title is tracked for cleanup — see the seeding note on why the
+  // storage location is reused and left in place.
+  const seeded: { title?: number } = {};
+
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    try {
+      await loginAs(page, "admin");
+
+      // Randomised sequence, same rationale as the Story 10-5 seed: a re-used
+      // ISBN takes the "title exists" path and never yields a skeleton.
+      //
+      // `specIsbn` documents `seq` as 0-99999 and pads it to 5 digits; a larger
+      // value silently yields a 14-character string that is no longer a valid
+      // EAN-13, and the scan then fails with no skeleton at all. Stay in range.
+      const seq = Math.floor(Math.random() * 99999);
+
+      // 1. A title, so `/` renders the "Recent additions" section with its
+      //    count badge. The badge is the element from the issue
+      //    (`templates/pages/home.html`, the `(10)` span).
+      await page.goto("/catalog");
+      const scanField = page.locator("#scan-field");
+      await scanField.fill(specIsbn("AX", seq));
+      await scanField.press("Enter");
+      const skeleton = page
+        .locator(".feedback-skeleton[id^='feedback-entry-']")
+        .first();
+      await expect(skeleton).toBeVisible({ timeout: 10000 });
+      const idAttr = await skeleton.getAttribute("id");
+      seeded.title = parseInt(idAttr!.replace("feedback-entry-", ""), 10);
+
+      // 2. A storage location, so `/locations` renders at least one
+      //    `role="treeitem"` row with its hover controls.
+      //
+      //    REUSED, not re-created, and deliberately never deleted. Three
+      //    constraints collide here:
+      //
+      //    a) `LocationService::validate_lcode` demands `L` + exactly 4 digits
+      //       (L0000 rejected), so the addressable space is tiny and the other
+      //       specs already occupy the L1xxx-L5xxx bands.
+      //    b) `storage_locations.label` is globally UNIQUE and soft-deletion
+      //       does NOT release it.
+      //    c) `LocationService::get_next_available_lcode` proposes over LIVE
+      //       rows only — a documented asymmetry (see the note on
+      //       `LocationModel::highest_label_any`). So after this spec
+      //       soft-deletes its shelf, the very next run is offered the SAME
+      //       code and the insert dies on the unique index.
+      //
+      //    Creating-then-deleting therefore cannot work twice against a
+      //    non-reset database. Reusing an existing AX shelf is idempotent, and
+      //    leaving it behind is harmless: no sibling spec asserts an empty
+      //    locations tree (unlike `/series`, which `empty-states.spec.ts`
+      //    does check).
+      await page.goto("/locations");
+      const existing = page
+        .locator('[role="treeitem"]')
+        .filter({ hasText: /AX-A11y Shelf/ })
+        .first();
+
+      if ((await existing.count()) === 0) {
+        const name = `AX-A11y Shelf ${seq}`;
+        await page
+          .locator("summary")
+          .filter({ hasText: /add root|ajouter/i })
+          .click();
+        await page.locator("#new-name").fill(name);
+        const proposed = await page.locator("#new-lcode").inputValue();
+        expect(
+          proposed,
+          `add-root form must pre-fill a valid L-code, got "${proposed}"`,
+        ).toMatch(/^L\d{4}$/);
+        await page.locator("#add-root-submit").click();
+      }
+      await expect(existing).toBeVisible({ timeout: 10000 });
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test.afterAll(async ({ browser }) => {
+    // Best-effort cleanup, mirroring the Story 10-5 block. Only the title is
+    // dropped: the storage location is reused across runs on purpose (see the
+    // seeding note), so deleting it would break the next run outright.
+    if (!seeded.title) return;
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    try {
+      await loginAs(page, "admin");
+      const csrf = await page
+        .locator('meta[name="csrf-token"]')
+        .getAttribute("content");
+      const headers = { "X-CSRF-Token": csrf ?? "" };
+      await page.request.delete(`/catalog/title/${seeded.title}`, { headers });
+    } catch {
+      // Cleanup is best-effort — a failure here must not mask the assertions.
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  for (const { url, label } of [
+    { url: "/", label: "home (populated)" },
+    { url: "/locations", label: "locations (populated)" },
+  ]) {
+    test(`${label} passes WCAG 2.2 AA with data present`, async ({ page }) => {
+      await loginAs(page, "admin");
+      await page.goto(url);
+      await page.waitForLoadState("domcontentloaded");
+
+      // Guard the guard: if the seed silently failed, the page would be empty
+      // and axe would pass vacuously — exactly the false green this block
+      // exists to remove.
+      if (url === "/locations") {
+        await expect(page.locator('[role="treeitem"]').first()).toBeVisible({
+          timeout: 10000,
+        });
+      } else {
+        await expect(page.locator("#recent-additions")).toBeVisible({
+          timeout: 10000,
+        });
+      }
+
+      const results = await new AxeBuilder({ page })
+        .withTags(WCAG_TAGS)
+        .analyze();
+
+      expect(
+        results.violations,
+        `${label}: ${results.violations.length} WCAG violation(s):\n${JSON.stringify(summariseViolations(results.violations), null, 2)}`,
+      ).toEqual([]);
+    });
+  }
+});
+
 // ─── Story 10-5 — entity-detail routes ─────────────────────────────────
 //
 // Seeds one title (via ISBN scan, which auto-creates the primary-author

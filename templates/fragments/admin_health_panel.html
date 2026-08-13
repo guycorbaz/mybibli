@@ -65,6 +65,10 @@
                     {{ bulk_cover_fetch_button_label }}
                 </button>
                 {% else %}
+                {# #424 — `text-stone-400` on `bg-stone-200` is 2.01:1, but WCAG 1.4.3
+                   exempts inactive controls and axe skips `disabled` elements. Left
+                   as-is deliberately: darkening a disabled button would make it read
+                   as available. #}
                 <button type="button"
                         disabled
                         class="px-4 py-2 text-sm font-medium text-stone-400 bg-stone-200 dark:bg-stone-800 rounded-md cursor-not-allowed">
@@ -83,6 +87,10 @@
                     {{ bulk_metadata_backfill_button_label }}
                 </button>
                 {% else %}
+                {# #424 — `text-stone-400` on `bg-stone-200` is 2.01:1, but WCAG 1.4.3
+                   exempts inactive controls and axe skips `disabled` elements. Left
+                   as-is deliberately: darkening a disabled button would make it read
+                   as available. #}
                 <button type="button"
                         disabled
                         class="px-4 py-2 text-sm font-medium text-stone-400 bg-stone-200 dark:bg-stone-800 rounded-md cursor-not-allowed">

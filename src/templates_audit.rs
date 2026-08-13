@@ -48,6 +48,34 @@ const ALLOWED_HX_CONFIRM_SITES: &[(&str, usize)] = &[];
 /// so the gap can't widen.
 const ALLOWED_HX_CONFIRM_RUST_SITES: &[(&str, usize)] = &[("src/routes/locations.rs", 1)];
 
+/// Issue #424 — sites where `text-stone-400` legitimately applies in LIGHT
+/// mode, with the count locked so the exception cannot widen silently.
+///
+/// `text-stone-400` (#a8a29e) is 2.41:1 on the `bg-stone-50` page background
+/// and 2.31:1 on the `bg-stone-100` hover shade — far below the WCAG 2.2 AA
+/// 4.5:1 threshold for normal text. The house convention for dimmed text is
+/// `text-stone-500 dark:text-stone-400` (4.59:1 light / 6.93:1 dark); rows
+/// that turn `bg-stone-100` on hover need `text-stone-600` (6.99:1).
+///
+/// Each entry below is exempt for a reason that a contrast rule does not
+/// reach, NOT because it is inconvenient to fix:
+///
+/// - `admin_health_panel.html` (2) — the two `disabled` bulk-action buttons.
+///   WCAG 1.4.3 exempts inactive controls and axe skips `disabled` elements.
+///   Darkening them would make a disabled button read as available.
+/// - `catalog.rs` (2) — a decorative `·` separator whose only child is
+///   `aria-hidden`, and the `animate-spin` skeleton SVG, likewise
+///   `aria-hidden`. Neither carries text for a contrast rule to evaluate.
+///
+/// `locations.rs` and `titles.rs` are deliberately absent: both were migrated
+/// by #424 and now carry zero. Prose mentions of the class inside `//`
+/// comments do not count — the scan requires the token to follow whitespace,
+/// a quote or `>`, so a backticked mention in documentation is not a match.
+const ALLOWED_LIGHT_STONE_400_SITES: &[(&str, usize)] = &[
+    ("templates/fragments/admin_health_panel.html", 2),
+    ("src/routes/catalog.rs", 2),
+];
+
 #[test]
 fn no_inline_markup_in_templates() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates");
@@ -869,6 +897,106 @@ fn templates_forbid_bg_red_500_with_text_white() {
                       with white text.\n";
         let report = format!("{}{}", header, violations.join("\n"));
         panic!("{report}");
+    }
+}
+
+/// Issue #424 — `text-stone-400` must not apply in LIGHT mode.
+///
+/// The failure this pins was latent for two months: `accessibility-full.spec.ts`
+/// only catches it when the E2E database already holds titles and locations,
+/// because both offending elements render conditionally on non-empty data. CI
+/// stayed green purely because that spec sorts first alphabetically and ran
+/// before any journey spec seeded anything — meaning a worker-scheduling change
+/// could have turned CI red with no code change at all.
+///
+/// A static audit does not depend on scheduling, on seed data, or on which
+/// page a browser happened to visit, which is why it belongs here rather than
+/// resting on the axe spec alone. The two enforcement levels are
+/// complementary: axe catches computed contrast on rendered pages, this catches
+/// the class before it ships.
+///
+/// Scope: a `text-stone-400` token that is NOT prefixed by `dark:`. The
+/// `dark:text-stone-400` form is the correct half of the house convention and
+/// is deliberately untouched — it is 6.93:1 on the dark background.
+#[test]
+fn light_mode_forbids_text_stone_400() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // A `text-stone-400` token not immediately preceded by `dark:`. Rust's
+    // `regex` has no look-behind, so the preceding character is captured and
+    // the `dark:` case is filtered out by inspecting the match instead.
+    let re = Regex::new(r"(?:^|[\s\x22'>])text-stone-400\b").unwrap();
+
+    let mut found: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for sub in ["templates", "src", "static/js"] {
+        let dir = root.join(sub);
+        if !dir.exists() {
+            continue;
+        }
+        visit(&dir, &mut |path| {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if !matches!(ext, "html" | "rs" | "js") {
+                return;
+            }
+            // This audit file names the class in its own documentation.
+            let rel_str = path
+                .strip_prefix(&root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "/");
+            if rel_str == "src/templates_audit.rs" {
+                return;
+            }
+            let raw = match fs::read_to_string(path) {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            let content = if ext == "html" {
+                strip_html_comments(&raw)
+            } else {
+                raw
+            };
+            let n = re.find_iter(&content).count();
+            if n > 0 {
+                *found.entry(rel_str).or_insert(0) += n;
+            }
+        });
+    }
+
+    let allowed: std::collections::BTreeMap<&str, usize> = ALLOWED_LIGHT_STONE_400_SITES.iter().copied().collect();
+    let mut violations: Vec<String> = Vec::new();
+
+    for (file, count) in &found {
+        match allowed.get(file.as_str()) {
+            None => violations.push(format!(
+                "  {file}: {count} light-mode `text-stone-400` occurrence(s) — file not in allowlist"
+            )),
+            Some(&expected) if expected != *count => violations.push(format!(
+                "  {file}: {count} occurrence(s), allowlist expects {expected}"
+            )),
+            Some(_) => {}
+        }
+    }
+    // A stale allowlist entry is a violation too: it would silently absorb a
+    // future regression in a file that no longer needs the exemption.
+    for (file, expected) in &allowed {
+        if !found.contains_key(*file) {
+            violations.push(format!(
+                "  {file}: allowlist expects {expected} occurrence(s), found none — remove the stale entry"
+            ));
+        }
+    }
+
+    if !violations.is_empty() {
+        panic!(
+            "WCAG AA contrast audit failed (#424):\n\
+             `text-stone-400` is 2.41:1 on `bg-stone-50` and 2.31:1 on the \n\
+             `bg-stone-100` hover shade, below the AA 4.5:1 threshold.\n\
+             Use `text-stone-500 dark:text-stone-400` (4.59:1 / 6.93:1), or\n\
+             `text-stone-600 dark:text-stone-400` on rows that hover to\n\
+             `bg-stone-100` (6.99:1).\n{}",
+            violations.join("\n")
+        );
     }
 }
 

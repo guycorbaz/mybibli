@@ -60,13 +60,13 @@
                         <a href="/wishlist/{{ item.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ item.title }}</a>
                     </td>
                     <td class="px-3 py-2 text-stone-700 dark:text-stone-300">
-                        {% match item.authors %}{% when Some with (a) %}{{ a }}{% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
+                        {% match item.authors %}{% when Some with (a) %}{{ a }}{% when None %}<span class="text-stone-500 dark:text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
                     </td>
                     <td class="px-3 py-2 font-mono text-xs text-stone-600 dark:text-stone-400">
-                        {% match item.isbn %}{% when Some with (i) %}{{ i }}{% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
+                        {% match item.isbn %}{% when Some with (i) %}{{ i }}{% when None %}<span class="text-stone-500 dark:text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
                     </td>
                     <td class="px-3 py-2 text-stone-700 dark:text-stone-300">
-                        {% match item.publisher %}{% when Some with (p) %}{{ p }}{% when None %}<span class="text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
+                        {% match item.publisher %}{% when Some with (p) %}{{ p }}{% when None %}<span class="text-stone-500 dark:text-stone-400">{{ label_placeholder_empty }}</span>{% endmatch %}
                     </td>
                     <td class="px-3 py-2 text-stone-500 dark:text-stone-400 text-xs tabular-nums">{{ item.created_at.format("%Y-%m-%d") }}</td>
                     {% if can_edit %}
