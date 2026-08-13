@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-07-28 (v1.14.1 — patch on v1.14.0. #447 build identity (version, commit, profile) logged at startup. No migration. Release history: ROADMAP.md + GitHub releases.)
+# last_updated: 2026-08-13 (v1.15.0 — minor on v1.14.1, from an August production-log review. #202 metadata provenance recorded and shown on the title page (tier 1 of 3), #424 light-mode WCAG AA contrast, #419 third throttle-retry tier, #449 short build commit in the log. One additive migration (titles.metadata_source, nullable). Release history: ROADMAP.md)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system

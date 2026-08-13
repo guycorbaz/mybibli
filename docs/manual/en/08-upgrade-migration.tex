@@ -139,6 +139,44 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.15.0}\label{sec:whats-new-1.15.0}
+
+Version 1.15.0 is a minor release on 1.14.1, drawn from a review of a
+month of production logs. \emph{One automatic, additive migration; no
+operator action.} The new column is nullable and unread by the previous
+binary, so rolling back to 1.14.1 stays clean.
+
+\begin{itemize}
+  \item \textbf{\#202 \string— a title now says where its description
+        came from.} The catalog consults several libraries in turn and
+        keeps the first useful answer, but until now it forgot which
+        one had replied. Facing a sparse record you could not tell a
+        library that answered briefly from one that never answered at
+        all. The title page now names the source. Titles catalogued
+        before this release show nothing, which is honest: their
+        provenance was never recorded, and inventing one would be
+        worse than leaving it blank. The library's name is never
+        translated \string— it is a proper noun.
+  \item \textbf{\#424 \string— readability of faint text.} Several
+        secondary texts \string— the counter beside \emph{Recent
+        additions}, the placeholders in the volume table, the controls
+        in the locations tree \string— were too pale against their
+        background to meet the AA accessibility threshold. They have
+        been darkened. The effect is subtle by design: these texts
+        must stay discreet, only readable.
+  \item \textbf{\#419 \string— fewer titles abandoned during a bulk
+        metadata run.} When a provider throttles a burst of requests,
+        the run retries the affected titles. A third, longer attempt
+        has been added: on the measured run, nine titles were being
+        written off for want of it. Only throttled titles wait, so a
+        clean run is unaffected. Measurement also settled a plausible
+        but wrong idea: spacing the requests further out does not
+        help, because the refusals do not follow the request rate.
+  \item \textbf{\#449 \string— a shorter commit in the log.} The
+        startup line printed the full forty-character commit; it now
+        prints the seven characters everyone actually compares.
+\end{itemize}
+
 \section{What's new in 1.14.1}\label{sec:whats-new-1.14.1}
 
 Version 1.14.1 is a small patch on the 1.14.0 minor. \emph{No
