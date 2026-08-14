@@ -216,10 +216,48 @@ messagerie sur lequel s'appuyer, ni second facteur de repli. Si vous
 êtes encore connecté quelque part, la correction est ordinaire —
 \texttt{/admin > Utilisateurs}, modifiez votre propre compte, donnez-vous
 un nouveau mot de passe. Faites-le \emph{avant} l'expiration de cette
-session : elle est la seule chose qui vous sépare de la procédure
+session : elle est la seule chose qui vous sépare des procédures
 ci-dessous.
 
-\subsection*{Si vous êtes verrouillé dehors}
+\subsection*{Si vous êtes verrouillé dehors : la trappe \texttt{MYBIBLI\_RESET\_ADMIN}}
+
+Depuis la v1.15.1, la voie de récupération recommandée est un
+interrupteur de démarrage à usage unique. Ajoutez au bloc
+\texttt{environment:} du service \texttt{mybibli} dans
+\texttt{docker-compose.yml}, avec votre identifiant administrateur en
+valeur :
+
+\begin{lstlisting}
+MYBIBLI_RESET_ADMIN=<UTILISATEUR>
+\end{lstlisting}
+
+Redémarrez le conteneur. Au démarrage, mybibli remplace le mot de passe
+de ce compte par une chaîne aléatoire fraîchement générée, déconnecte le
+compte partout, écrit les nouveaux identifiants dans le journal — puis
+\textbf{s'arrête volontairement} au lieu de servir. Lisez-les avec :
+
+\begin{lstlisting}
+docker compose logs mybibli | grep MYBIBLI_RESET_ADMIN
+\end{lstlisting}
+
+Retirez alors la variable et redémarrez de nouveau ; l'application
+refuse de tourner tant qu'elle est présente, de sorte qu'une variable
+oubliée dans \texttt{docker-compose.yml} ne puisse pas laisser subsister
+un compte dont le mot de passe traîne dans une vieille ligne de journal
+— chaque démarrage en générerait un nouveau. Connectez-vous avec le mot
+de passe affiché et changez-le aussitôt depuis
+\texttt{/admin > Utilisateurs}.
+
+La trappe n'accepte qu'un compte \emph{administrateur actif}. Un
+identifiant inconnu, désactivé ou non administrateur fait échouer le
+démarrage avec un message explicatif, sans rien modifier. Chaque usage
+est consigné dans le journal d'audit.
+
+\subsection*{Repli : écrire le hachage à la main}
+
+Si la trappe n'est pas utilisable (par exemple sur une version
+antérieure à la v1.15.1), la procédure manuelle ci-dessous reste
+valable.
 
 Les mots de passe sont stockés sous forme de hachages Argon2id au format
 PHC. Les paramètres sont ceux par défaut de la bibliothèque
