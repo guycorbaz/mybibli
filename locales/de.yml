@@ -510,6 +510,7 @@ location:
   cycle_detected: "Verschieben nicht möglich: Würde eine zyklische Hierarchie erzeugen."
   lcode_invalid: "Ungültiges L-Code-Format. Erwartet wird L gefolgt von 4 Ziffern (z. B. L0042)."
   lcode_duplicate: "Dieser L-Code wird bereits verwendet."
+  lcode_in_trash: "Dieser L-Code gehört zu einem Standort im Papierkorb. Stellen Sie diesen Standort wieder her oder löschen Sie ihn endgültig aus dem Papierkorb, um den Code freizugeben."
   lcode_exhausted: "Alle L-Codes (L0001–L9999) sind bereits in Verwendung."
   invalid_node_type: "Ungültiger Standorttyp."
   volumes_count: "%{count} Exemplare"

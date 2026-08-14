@@ -501,6 +501,7 @@ location:
   cycle_detected: "Impossibile spostare: si creerebbe una gerarchia circolare."
   lcode_invalid: "Formato codice L non valido. Atteso L seguito da 4 cifre (es. L0042)."
   lcode_duplicate: "Questo codice L è già in uso."
+  lcode_in_trash: "Questo codice L appartiene a un'ubicazione nel cestino. Ripristina tale ubicazione, oppure eliminala definitivamente dal cestino per liberare il codice."
   lcode_exhausted: "Tutti i codici L (L0001–L9999) sono in uso."
   invalid_node_type: "Tipo di ubicazione non valido."
   volumes_count: "%{count} esemplari"
