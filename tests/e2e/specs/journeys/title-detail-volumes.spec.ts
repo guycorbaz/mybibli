@@ -24,9 +24,15 @@ test.describe("CR #209 — per-volume table on /title/:id", () => {
   }) => {
     await loginAs(page, "librarian");
 
-    const ISBN = specIsbn("VL", 1);
-    const V_KEEP = "V0941"; // ASC sort puts V0941 before V0942
-    const V_DROP = "V0942";
+    // #458: randomised within reserved bands so a retry (or a second run
+    // against an un-reset DB) starts from a fresh title instead of hitting
+    // the "title already exists" / duplicate-V-code paths. ISBN seq band
+    // 10000+ is this spec's own namespace (specId "VL" isolates it from
+    // other specs); V-code band V6000–V6998 is unused by any other spec.
+    const ISBN = specIsbn("VL", 10000 + Math.floor(Math.random() * 89999));
+    const vBase = 6000 + Math.floor(Math.random() * 998);
+    const V_KEEP = `V${vBase}`; // ASC sort puts V_KEEP before V_DROP
+    const V_DROP = `V${vBase + 1}`;
 
     // Step 1: catalog the title via scan, then scan two distinct V-codes.
     await page.goto("/catalog");
@@ -43,17 +49,20 @@ test.describe("CR #209 — per-volume table on /title/:id", () => {
     ).toBeVisible({ timeout: 10000 });
     await scanField.fill(V_DROP);
     await scanField.press("Enter");
-    // CR #300: the title now has 1 volume → the V-code scan returns the
-    // phantom-volume confirmation modal. This test documents the legitimate
-    // multi-volume flow, so Confirm to bypass the guard.
+    // CR #300: the title now has exactly 1 volume → the V-code scan ALWAYS
+    // returns the phantom-volume confirmation modal in this flow. This test
+    // documents the legitimate multi-volume path, so Confirm to bypass the
+    // guard. #458: wait for the modal properly — the former
+    // `isVisible({ timeout })` check does not wait (the option is
+    // deprecated and ignored), so it raced the HTMX round-trip and a
+    // missed modal left the scan stuck behind an open dialog.
     const phantomConfirm = page
       .locator("#modal-slot dialog[open]")
       .getByRole("button", {
         name: /Add another copy|Ajouter un exemplaire|Exemplar hinzufügen|Aggiungi una copia/i,
       });
-    if (await phantomConfirm.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await phantomConfirm.click();
-    }
+    await expect(phantomConfirm).toBeVisible({ timeout: 10000 });
+    await phantomConfirm.click();
     await expect(
       page.locator(".feedback-entry").filter({ hasText: V_DROP }),
     ).toBeVisible({ timeout: 10000 });
