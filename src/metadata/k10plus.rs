@@ -73,6 +73,26 @@ const MAX_GENERAL_NOTE_CHARS: usize = 500;
 /// remark about the digitisation, not a bibliographic note.
 const GENERAL_NOTE_BOILERPLATE: &str = "Description based upon print version";
 
+/// ISBN prefixes K10plus is consulted for. Anything else returns `None`
+/// instantly — no request, no limiter acquisition.
+///
+/// Rationale (rc.1 → rc.2 fix): the chain's zone-completion pass runs for
+/// nearly every scanned book (490/240 are absent from most records, so
+/// "all six zones filled" is the rare case). In rc.1 the 1 req/s limiter
+/// was exposed through the trait, so the chain acquired it BEFORE every
+/// completion call — and with K10plus consulted for every prefix, the
+/// background metadata pipeline serialised behind the limiter under
+/// parallel load. The release gate caught it: 82 K10plus calls in one E2E
+/// run, +58 % suite wall-clock, two metadata-latency journeys timing out.
+///
+/// The gate keeps only prefixes where K10plus plausibly answers and #450
+/// has a stake: 978-0/978-1 (the anglophone leftovers this provider
+/// exists for), 978-3 (the German-language area — its home catalogue),
+/// and 978-2 (French: the BnF already failed #450's 9782 leftovers, so a
+/// free second opinion costs nothing). 979-x stays out pending a
+/// measurement that justifies it.
+const ISBN_PREFIXES: [&str; 4] = ["9780", "9781", "9782", "9783"];
+
 pub struct K10plusProvider {
     client: reqwest::Client,
     sru_base_url: String,
@@ -134,6 +154,13 @@ impl K10plusProvider {
     }
 
     async fn fetch_marc_zones(&self, safe_isbn: &str) -> Option<MetadataResult> {
+        // Pace ONLY the requests that actually go out. The limiter lives
+        // here, after the caller's prefix gate, and deliberately NOT behind
+        // the trait's `rate_limiter()` — the chain acquires that one before
+        // every completion call, gated or not, which is exactly the rc.1
+        // serialisation bug described on ISBN_PREFIXES.
+        self.limiter.acquire().await;
+
         let url = format!(
             "{}?version=1.1&operation=searchRetrieve&query=pica.isb%3D{}&maximumRecords=5&recordSchema=marcxml",
             self.sru_base_url, safe_isbn
@@ -189,7 +216,7 @@ impl MetadataProvider for K10plusProvider {
 
     async fn lookup_marc_zones(&self, isbn: &str) -> Option<MetadataResult> {
         let safe_isbn: String = isbn.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-        if safe_isbn.is_empty() {
+        if !ISBN_PREFIXES.iter().any(|p| safe_isbn.starts_with(p)) {
             return None;
         }
         self.fetch_marc_zones(&safe_isbn).await
@@ -206,9 +233,11 @@ impl MetadataProvider for K10plusProvider {
         Ok(None)
     }
 
-    fn rate_limiter(&self) -> Option<Arc<RateLimiter>> {
-        Some(self.limiter.clone())
-    }
+    // NOTE: no `rate_limiter()` trait impl, on purpose. The chain acquires
+    // a trait-exposed limiter before EVERY zone-completion call, including
+    // the prefix-gated ones that return instantly — rc.1 shipped it that
+    // way and serialised the whole background metadata pipeline under
+    // parallel load. Pacing lives inside `fetch_marc_zones`, after the gate.
 
     fn health_check_url(&self) -> Option<&str> {
         Some("https://sru.k10plus.de/")
@@ -318,11 +347,33 @@ mod tests {
     }
 
     #[test]
-    fn provider_declares_zones_and_a_rate_limiter() {
+    fn provider_declares_zones_but_no_trait_level_limiter() {
         let p = K10plusProvider::new(reqwest::Client::new());
         assert!(p.supplies_marc_zones());
-        assert!(p.rate_limiter().is_some());
+        // rc.2: the limiter is internal (post-prefix-gate). Exposing it via
+        // the trait made the chain acquire it before every completion call
+        // and serialised the metadata pipeline — this assertion locks the
+        // fix against a well-meaning "add the trait impl back" regression.
+        assert!(p.rate_limiter().is_none());
         assert_eq!(p.name(), "K10plus");
+    }
+
+    #[tokio::test]
+    async fn non_covered_prefixes_are_gated_without_a_request() {
+        // Unreachable base URL: if the gate leaks, the lookup would still
+        // return None here — so assert on timing-free behaviour: covered
+        // prefixes attempt (and fail on the dead endpoint), gated ones
+        // return instantly. The generated E2E ISBNs (978-6x…978-9x) and
+        // 979-x must all be gated.
+        let p = K10plusProvider::with_base_url(reqwest::Client::new(), "http://127.0.0.1:1");
+        for gated in ["9786684000012", "9788372000064", "9791032900116", "9798350000000"] {
+            let start = std::time::Instant::now();
+            assert!(p.lookup_marc_zones(gated).await.is_none());
+            assert!(
+                start.elapsed() < std::time::Duration::from_millis(900),
+                "gated prefix {gated} must not pay the limiter or the network"
+            );
+        }
     }
 
     #[tokio::test]

@@ -258,8 +258,14 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
         # - 9780000000002: used by provider-chain to test "all providers fail"
         # - 9780000000019: used by title-edit-no-metadata (#203) — title is created
         #   with empty metadata, exercising the edit-then-save flow
+        # - 9780000000026: same spec, second test (missing-genre_id fallback).
+        #   Was NOT listed here, so the catch-all answered it and the async
+        #   metadata write raced the test's read-version-then-save flow — a
+        #   latent 409 that surfaced when #450's zone completion shifted the
+        #   write by a few ms. The spec's premise is "the chain cannot
+        #   resolve", so it belongs on the blocklist like its sibling.
         # - Google Books known ISBNs: must NOT resolve via BnF so the chain falls through to Google Books
-        NO_METADATA_ISBNS = {"9780000000002", "9780000000019", "9780134685991", "9780201633610"}
+        NO_METADATA_ISBNS = {"9780000000002", "9780000000019", "9780000000026", "9780134685991", "9780201633610"}
 
         if isbn and isbn in BNF_KNOWN_ISBNS:
             body = make_sru_response(BNF_KNOWN_ISBNS[isbn])
