@@ -517,6 +517,7 @@ location:
   cycle_detected: "Cannot move: would create a circular hierarchy."
   lcode_invalid: "Invalid L-code format. Expected L followed by 4 digits (e.g., L0042)."
   lcode_duplicate: "This L-code is already in use."
+  lcode_in_trash: "This L-code belongs to a location in the Trash. Restore that location, or permanently delete it from the Trash to free the code."
   lcode_exhausted: "All L-codes (L0001–L9999) are in use."
   invalid_node_type: "Invalid location type."
   volumes_count: "%{count} volumes"

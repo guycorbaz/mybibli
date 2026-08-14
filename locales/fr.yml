@@ -513,6 +513,7 @@ location:
   cycle_detected: "Déplacement impossible : créerait une hiérarchie circulaire."
   lcode_invalid: "Format de code L invalide. Attendu : L suivi de 4 chiffres (ex. L0042)."
   lcode_duplicate: "Ce code L est déjà utilisé."
+  lcode_in_trash: "Ce code L appartient à un emplacement placé dans la corbeille. Restaurez cet emplacement, ou supprimez-le définitivement depuis la corbeille pour libérer le code."
   lcode_exhausted: "Tous les codes L (L0001–L9999) sont utilisés."
   invalid_node_type: "Type d'emplacement invalide."
   volumes_count: "%{count} volumes"

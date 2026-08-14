@@ -260,4 +260,51 @@ test.describe("Location Hierarchy CRUD (Story 2-1)", () => {
       page.locator("text=LO-IssueOneEightFive-Child"),
     ).toBeVisible();
   });
+
+  // ─── #457 — the proposed L-code must never be one a deleted row holds ──
+  //
+  // `storage_locations.label` is globally UNIQUE and soft-deletion does not
+  // release it, while the proposal used to be computed over live rows only.
+  // Deleting a location therefore walked the pre-filled code backwards onto the
+  // one the deleted row still held, and accepting it failed on the database
+  // index with no explanation. This is the exact cycle that broke the
+  // accessibility spec's seed on every run after the first.
+  test("creating a location after deleting one reuses no code and succeeds", async ({
+    page,
+  }) => {
+    await page.goto("/locations");
+
+    // 1. Create, taking whatever the form proposes.
+    await page.locator("summary").filter({ hasText: /add root|ajouter/i }).click();
+    await page.locator("#new-name").fill("L457 First");
+    const firstCode = await page.locator("#new-lcode").inputValue();
+    expect(firstCode).toMatch(/^L\d{4}$/);
+    await page.locator("#add-root-submit").click();
+
+    const firstRow = page
+      .locator('[role="treeitem"]')
+      .filter({ hasText: "L457 First" })
+      .first();
+    await expect(firstRow).toBeVisible({ timeout: 10000 });
+
+    // 2. Delete it (soft delete — the row keeps its label).
+    page.once("dialog", (d) => d.accept());
+    await firstRow.locator('button[hx-delete^="/locations/"]').click();
+    await expect(firstRow).toHaveCount(0, { timeout: 10000 });
+
+    // 3. Create again. The proposal must have moved on, not back.
+    await page.reload();
+    await page.locator("summary").filter({ hasText: /add root|ajouter/i }).click();
+    const secondCode = await page.locator("#new-lcode").inputValue();
+    expect(
+      secondCode,
+      "the proposal must not hand back the code the deleted row still holds",
+    ).not.toBe(firstCode);
+
+    await page.locator("#new-name").fill("L457 Second");
+    await page.locator("#add-root-submit").click();
+    await expect(
+      page.locator('[role="treeitem"]').filter({ hasText: "L457 Second" }).first(),
+    ).toBeVisible({ timeout: 10000 });
+  });
 });

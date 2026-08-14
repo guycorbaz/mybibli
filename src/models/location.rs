@@ -92,6 +92,56 @@ impl LocationModel {
         Ok(id)
     }
 
+    /// Look a location up by L-code **including soft-deleted rows** (#457).
+    ///
+    /// `storage_locations.label` carries a global `UNIQUE` index that
+    /// soft-deletion does not release, so a code can collide with a row
+    /// [`Self::find_by_label`] cannot see. That is how creating a location after
+    /// deleting one failed with a raw database error instead of an explanation.
+    ///
+    /// Deliberately the read-only half of the `volumes` treatment in #442: there
+    /// the soft-deleted row is reactivated and reused, because a V-code is a
+    /// sticker meant to be re-applied to another book. An L-code is not
+    /// analogous — `storage_locations` is listed in the Trash panel, so
+    /// repurposing the row would silently destroy a restore that stays available
+    /// for 30 days. Here the caller only needs to tell the two situations apart.
+    ///
+    /// Returns the row plus whether it is soft-deleted.
+    pub async fn find_by_label_any_state(
+        pool: &DbPool,
+        label: &str,
+    ) -> Result<Option<(LocationModel, bool)>, AppError> {
+        tracing::debug!(label = %label, "Looking up location by label (any state)");
+
+        let row = sqlx::query(
+            r#"SELECT id, CAST(parent_id AS SIGNED) as parent_id, name, node_type, label,
+                      is_organizational, (deleted_at IS NOT NULL) AS is_deleted
+               FROM storage_locations
+               WHERE label = ?"#,
+        )
+        .bind(label)
+        .fetch_optional(pool)
+        .await?;
+
+        match row {
+            Some(r) => {
+                let is_deleted: i8 = r.try_get("is_deleted")?;
+                Ok(Some((
+                    LocationModel {
+                        id: r.try_get("id")?,
+                        parent_id: r.try_get("parent_id")?,
+                        name: r.try_get("name")?,
+                        node_type: r.try_get("node_type")?,
+                        label: r.try_get("label")?,
+                        is_organizational: r.try_get("is_organizational")?,
+                    },
+                    is_deleted != 0,
+                )))
+            }
+            None => Ok(None),
+        }
+    }
+
     pub async fn find_by_label(
         pool: &DbPool,
         label: &str,

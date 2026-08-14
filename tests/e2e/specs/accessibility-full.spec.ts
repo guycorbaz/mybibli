@@ -143,25 +143,18 @@ test.describe("Issue #424 — populated home + locations WCAG 2.2 AA", () => {
       // 2. A storage location, so `/locations` renders at least one
       //    `role="treeitem"` row with its hover controls.
       //
-      //    REUSED, not re-created, and deliberately never deleted. Three
-      //    constraints collide here:
+      //    Still reused rather than re-created, but for a smaller reason than
+      //    before. #457 fixed the defect that forced it: the L-code proposal
+      //    used to be computed over live rows only, so this spec's own cleanup
+      //    handed the next run a code its soft-deleted shelf still held, and
+      //    the insert died on the UNIQUE index. That is gone.
       //
-      //    a) `LocationService::validate_lcode` demands `L` + exactly 4 digits
-      //       (L0000 rejected), so the addressable space is tiny and the other
-      //       specs already occupy the L1xxx-L5xxx bands.
-      //    b) `storage_locations.label` is globally UNIQUE and soft-deletion
-      //       does NOT release it.
-      //    c) `LocationService::get_next_available_lcode` proposes over LIVE
-      //       rows only — a documented asymmetry (see the note on
-      //       `LocationModel::highest_label_any`). So after this spec
-      //       soft-deletes its shelf, the very next run is offered the SAME
-      //       code and the insert dies on the unique index.
-      //
-      //    Creating-then-deleting therefore cannot work twice against a
-      //    non-reset database. Reusing an existing AX shelf is idempotent, and
-      //    leaving it behind is harmless: no sibling spec asserts an empty
-      //    locations tree (unlike `/series`, which `empty-states.spec.ts`
-      //    does check).
+      //    What remains is plain economy: the addressable space is 9 999 codes
+      //    (`L` + 4 digits, L0000 rejected) and each delete now permanently
+      //    retires one. A spec that created and deleted a shelf on every run
+      //    would burn codes for nothing. Leaving one behind is harmless — no
+      //    sibling spec asserts an empty locations tree, unlike `/series`,
+      //    which `empty-states.spec.ts` does check.
       await page.goto("/locations");
       const existing = page
         .locator('[role="treeitem"]')
@@ -169,12 +162,11 @@ test.describe("Issue #424 — populated home + locations WCAG 2.2 AA", () => {
         .first();
 
       if ((await existing.count()) === 0) {
-        const name = `AX-A11y Shelf ${seq}`;
         await page
           .locator("summary")
           .filter({ hasText: /add root|ajouter/i })
           .click();
-        await page.locator("#new-name").fill(name);
+        await page.locator("#new-name").fill(`AX-A11y Shelf ${seq}`);
         const proposed = await page.locator("#new-lcode").inputValue();
         expect(
           proposed,
