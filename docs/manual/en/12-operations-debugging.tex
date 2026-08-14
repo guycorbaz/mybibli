@@ -191,3 +191,72 @@ out of the volume to long-term storage:
 \begin{lstlisting}
 docker compose cp mybibli:/var/log/mybibli/. ./logs-archive/
 \end{lstlisting}
+
+\section{Resetting a forgotten administrator password}\label{sec:reset-admin-password}
+
+mybibli has no ``forgot my password'' e-mail flow: a single-tenant
+household install has no mail server to rely on and no second factor to
+fall back to. If you are still signed in somewhere, the fix is ordinary
+— \texttt{/admin > Users}, edit your own account, set a new password.
+Do it \emph{before} that session expires; it is the only thing standing
+between you and the procedure below.
+
+\subsection*{If you are locked out}
+
+Passwords are stored as Argon2id hashes in PHC string format. The
+parameters are the \texttt{argon2} crate's defaults
+(\texttt{m=19456,t=2,p=1}), and they must match exactly or the new
+password is rejected at login with no explanation. \textbf{Do not
+generate the hash with a third-party tool} — most default to different
+parameters. Use the helper shipped with the source, which calls the same
+function the application uses:
+
+\begin{lstlisting}
+git clone https://github.com/guycorbaz/mybibli && cd mybibli
+cargo run -q --example hash_password -- 'your new password'
+\end{lstlisting}
+
+It prints one line beginning with \texttt{\$argon2id\$v=19\$m=19456}.
+Apply it on the host running the database, replacing \texttt{<HASH>}
+with that line and \texttt{<USER>} with your username:
+
+\begin{lstlisting}
+docker compose exec db mariadb -u root -p mybibli \
+  -e "UPDATE users SET password_hash = '<HASH>', version = version + 1 \
+      WHERE username = '<USER>' AND deleted_at IS NULL;"
+\end{lstlisting}
+
+Then confirm the row before closing the session:
+
+\begin{lstlisting}
+docker compose exec db mariadb -u root -p mybibli \
+  -e "SELECT username, role, active, deleted_at, \
+      LEFT(password_hash,22) FROM users;"
+\end{lstlisting}
+
+\subsection*{Three things that bite}
+
+\begin{itemize}
+  \item \textbf{Quote the hash with single quotes.} It contains
+        \texttt{\$} characters. Double quotes let the shell expand them
+        and you will write a truncated value that can never match.
+  \item \textbf{Keep \texttt{version = version + 1}.} Optimistic
+        locking reads that column; omitting it lets a later edit from
+        the web interface overwrite your change while believing it
+        started from current state.
+  \item \textbf{The password reaches your shell history} at both steps.
+        Prefix the commands with a space if your shell is set to ignore
+        such lines, or clear the history afterwards.
+\end{itemize}
+
+This is a direct write to production data with no undo. Run the
+\texttt{SELECT} first: it is reversible only if you recorded the old
+value.
+
+\subsection*{Reading the login log}
+
+The distinction in the log matters when diagnosing:
+\texttt{Login failed: user not found} means no such account (or it is
+soft-deleted), while \texttt{Login failed: invalid password} means the
+account is healthy and only the password did not match — the case this
+section addresses. Neither line ever records the attempted password.
