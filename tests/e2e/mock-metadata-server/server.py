@@ -151,6 +151,10 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
         elif path == "/LCDB":
             self._handle_loc_sru(params)
 
+        # --- K10plus SRU (MARC 21) — #450 ---
+        elif path == "/k10plus":
+            self._handle_k10plus_sru(params)
+
         # --- Library of Congress flat JSON search — #439 ---
         # Must precede the Google Books arm: "/books/" vs "/books/v1/volumes".
         elif path == "/books/":
@@ -391,6 +395,42 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
             body = json.dumps({"results": []})
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(body.encode("utf-8"))
+
+    # --- K10plus mock (#450) ----------------------------------------
+    # catalog-marc-zones.spec.ts scans this spec-unique ISBN. The BnF
+    # catch-all resolves it (200$f, no edition, no note), the LoC mocks
+    # miss it (they only answer LOC_MARC_ISBN), so the zone-completion
+    # pass must fall through to K10plus — the production shape for the
+    # #450 population: anglophone titles LoC does not hold. The response
+    # is deliberately multi-record with an e-book boilerplate 500$a first,
+    # exercising the provider's noise filter end-to-end.
+    K10PLUS_MARC_ISBN = "9780449000021"
+
+    def _handle_k10plus_sru(self, params):
+        """SRU searchRetrieve returning MARC 21, K10plus query dialect."""
+        query = params.get("query", [""])[0]
+        isbn = query.replace("pica.isb=", "")
+        if isbn == self.K10PLUS_MARC_ISBN:
+            body = """<?xml version="1.0"?>
+<zs:searchRetrieveResponse xmlns:zs="http://www.loc.gov/zing/srw/"><zs:numberOfRecords>2</zs:numberOfRecords><zs:records><zs:record><zs:recordData><record xmlns="http://www.loc.gov/MARC21/slim">
+  <datafield tag="500" ind1=" " ind2=" ">
+    <subfield code="a">Description based upon print version of record</subfield>
+  </datafield>
+</record></zs:recordData></zs:record><zs:record><zs:recordData><record xmlns="http://www.loc.gov/MARC21/slim">
+  <datafield tag="250" ind1=" " ind2=" ">
+    <subfield code="a">K10plus Second edition.</subfield>
+  </datafield>
+  <datafield tag="500" ind1=" " ind2=" ">
+    <subfield code="a">K10plus general note.</subfield>
+  </datafield>
+</record></zs:recordData></zs:record></zs:records></zs:searchRetrieveResponse>"""
+        else:
+            body = """<?xml version="1.0"?>
+<zs:searchRetrieveResponse xmlns:zs="http://www.loc.gov/zing/srw/"><zs:numberOfRecords>0</zs:numberOfRecords><zs:records/></zs:searchRetrieveResponse>"""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/xml; charset=utf-8")
         self.end_headers()
         self.wfile.write(body.encode("utf-8"))
 

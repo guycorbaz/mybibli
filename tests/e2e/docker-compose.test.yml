@@ -31,6 +31,7 @@ services:
       # Without these the E2E stack would reach out to the real loc.gov.
       LOC_API_BASE_URL: "http://mock-metadata:9090/books/"
       LOC_SRU_BASE_URL: "http://mock-metadata:9090/LCDB"
+      K10PLUS_SRU_BASE_URL: "http://mock-metadata:9090/k10plus"
       MUSICBRAINZ_API_BASE_URL: "http://mock-metadata:9090"
       OMDB_API_BASE_URL: "http://mock-metadata:9090"
       OMDB_API_KEY: "test-omdb-key"

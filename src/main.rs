@@ -7,6 +7,7 @@ use mybibli::db;
 use mybibli::metadata::bdgest::BdgestProvider;
 use mybibli::metadata::bnf::BnfProvider;
 use mybibli::metadata::google_books::GoogleBooksProvider;
+use mybibli::metadata::k10plus::K10plusProvider;
 use mybibli::metadata::library_of_congress::LibraryOfCongressProvider;
 use mybibli::metadata::musicbrainz::MusicBrainzProvider;
 use mybibli::metadata::omdb::OmdbProvider;
@@ -332,6 +333,11 @@ async fn main() {
         settings_arc.clone(),
     )));
     registry.register(Box::new(LibraryOfCongressProvider::new(http_client.clone())));
+    // CR #450: K10plus sits after LoC and before Open Library. Zones-only —
+    // its lookup_by_isbn is inert, so it never wins a scan; it exists for
+    // the zone-completion pass, covering the anglophone titles LoC does not
+    // hold (O'Reilly, CUP, Penguin…). Ships its own 1 req/s limiter.
+    registry.register(Box::new(K10plusProvider::new(http_client.clone())));
     registry.register(Box::new(OpenLibraryProvider::new(http_client.clone())));
 
     // CD chain: MusicBrainz (1 req/sec rate limit)
