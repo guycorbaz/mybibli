@@ -121,11 +121,14 @@ test.describe("Title CRUD & ISBN Scanning", () => {
     const form = page.locator("#title-form-container form");
     await expect(form).toBeVisible({ timeout: 5000 });
 
-    // Fill required fields
-    await form.locator("#title-field").fill("Test Book Title");
+    // Fill required fields. #458: name suffixed per run so a retry (or a
+    // repeat run against an un-reset DB) creates a fresh title instead of
+    // an exact duplicate of a surviving row.
+    await form.locator("#title-field").fill(`Test Book Title ${Date.now()}`);
     await form.locator("#media-type-field").selectOption("book");
-    // Wait for media type-specific fields to load via HTMX
-    await page.waitForSelector("#page-count-field", { timeout: 3000 });
+    // Wait for media type-specific fields to load via HTMX. #458: 10s —
+    // the former 3s was routinely exceeded under CI's 2-worker load.
+    await page.waitForSelector("#page-count-field", { timeout: 10000 });
     // Fill optional page_count (empty string causes 422 deserialization error)
     await form.locator("#page-count-field").fill("200");
     // Select first non-empty genre option
@@ -155,16 +158,17 @@ test.describe("Title CRUD & ISBN Scanning", () => {
     const form = page.locator("#title-form-container form");
     await expect(form).toBeVisible({ timeout: 5000 });
 
-    // Select "book" — should show page_count
+    // Select "book" — should show page_count. #458: 10s timeouts — the
+    // former 3s was routinely exceeded under CI's 2-worker load.
     await form.locator("#media-type-field").selectOption("book");
     await expect(form.locator("#page-count-field")).toBeVisible({
-      timeout: 3000,
+      timeout: 10000,
     });
 
     // Select "cd" — should show track_count
     await form.locator("#media-type-field").selectOption("cd");
     await expect(form.locator("#track-count-field")).toBeVisible({
-      timeout: 3000,
+      timeout: 10000,
     });
     await expect(form.locator("#page-count-field")).not.toBeVisible();
   });

@@ -55,24 +55,26 @@
     }
 
     // Media-type dropdown triggers lazy-load of the type-specific fields
-    // fragment via HTMX. Pre-CSP this was an inline onchange.
-    function wireMediaTypeChange(form) {
-        var sel = form.querySelector("#media-type-field");
-        if (!sel || sel.dataset.htmxWired === "true") return;
-        sel.dataset.htmxWired = "true";
-        sel.addEventListener("change", function () {
-            var fields = document.getElementById("type-specific-fields");
-            if (!fields) return;
-            if (sel.value && typeof htmx !== "undefined") {
-                htmx.ajax("GET", "/catalog/title/fields/" + sel.value, {
-                    target: "#type-specific-fields",
-                    swap: "innerHTML",
-                });
-            } else {
-                fields.innerHTML = "";
-            }
-        });
-    }
+    // fragment via HTMX. Pre-CSP this was an inline onchange. #458:
+    // document-level delegation registered ONCE, like the submit guard
+    // below — the former per-element wiring ran on `htmx:load`, which
+    // HTMX only fires after its settle phase (~20 ms after the swap), so
+    // the form was visible-but-unwired for a beat and a change event in
+    // that window was silently lost (no request, no type fields).
+    document.addEventListener("change", function (e) {
+        var sel = e.target;
+        if (!sel || sel.id !== "media-type-field") return;
+        var fields = document.getElementById("type-specific-fields");
+        if (!fields) return;
+        if (sel.value && typeof htmx !== "undefined") {
+            htmx.ajax("GET", "/catalog/title/fields/" + sel.value, {
+                target: "#type-specific-fields",
+                swap: "innerHTML",
+            });
+        } else {
+            fields.innerHTML = "";
+        }
+    });
 
     function wireCancelButton(form) {
         var btn = form.querySelector("#title-form-cancel");
@@ -91,7 +93,6 @@
         var form = container && container.querySelector("form");
         if (!form) return;
         wireRequiredFields(form);
-        wireMediaTypeChange(form);
         wireCancelButton(form);
     }
 

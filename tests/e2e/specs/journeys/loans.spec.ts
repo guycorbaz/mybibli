@@ -265,7 +265,11 @@ test.describe("Volume detail — loan status role-aware (FR59)", () => {
     const uniq = Date.now();
     const borrowerName = `LN-9-8 Alice Tremblay ${uniq}`;
     const volumeLabel = uniqueVcode();
-    const ANON_ISBN = specIsbn("LN", 8);
+    // #458: randomised in the 10000+ band (the fixed seq 8 made retries and
+    // repeat runs hit the pre-existing title, where the V-code scan takes
+    // the phantom-volume modal path instead of the fresh-title path this
+    // seed phase assumes). Other tests in this spec use seqs 3-7.
+    const ANON_ISBN = specIsbn("LN", 10000 + Math.floor(Math.random() * 89999));
 
     // Seed: title + volume + borrower + active loan. Capture the title id from
     // the scan skeleton up front — createBorrower/createLoan navigate away, so

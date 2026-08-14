@@ -59,17 +59,25 @@ export async function scanTitleAndVolume(
     .getByRole("button", {
       name: /Add another copy|Ajouter un exemplaire|Exemplar hinzufügen|Aggiungi una copia/i,
     });
-  if (await phantomConfirm.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await phantomConfirm.click();
-  }
-  // Volume scan is synchronous; wait for a feedback entry containing the
-  // exact volume label. Filter first, then assert visibility — do not use
-  // `.first()` on the unfiltered list, which can lock onto a stale ISBN
-  // scan entry rendered earlier on the page.
+  // Volume scan feedback locator: filter first, then assert visibility —
+  // do not use `.first()` on the unfiltered list, which can lock onto a
+  // stale ISBN scan entry rendered earlier on the page.
   const volumeFeedback = page
     .locator(".feedback-entry")
     .filter({ hasText: new RegExp(`\\b${escapeRegex(volumeLabel)}\\b`, "i") });
-  await expect(volumeFeedback.first()).toBeVisible({ timeout: 5000 });
+  // #458: `isVisible()` does NOT wait (its `timeout` option is deprecated
+  // and ignored since Playwright 1.15), so polling it here raced the HTMX
+  // round-trip — whether the modal was caught depended on server latency,
+  // and a missed modal left the scan stuck behind an open dialog. Wait
+  // deterministically for whichever surface the scan actually produces:
+  // the confirmation modal, or the volume feedback entry directly.
+  await expect(phantomConfirm.or(volumeFeedback.first()).first()).toBeVisible({
+    timeout: 10000,
+  });
+  if (await phantomConfirm.isVisible()) {
+    await phantomConfirm.click();
+  }
+  await expect(volumeFeedback.first()).toBeVisible({ timeout: 10000 });
 }
 
 /**
