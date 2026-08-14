@@ -1,4 +1,5 @@
 pub mod admin_health;
+pub mod admin_reset;
 pub mod admin_system;
 pub mod auth;
 pub mod auto_purge;

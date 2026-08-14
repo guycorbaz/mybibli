@@ -138,6 +138,12 @@ Anonymous-session cookies are unaffected: they keep their fixed 7-day `Max-Age` 
 
 Adding routes to the allowlist is a hard ask — any new exempt route requires updating both the constant and the test, and ideally a comment in this document explaining why.
 
+### 5.7 `MYBIBLI_RESET_ADMIN` writes the recovery password to the log (CR #459)
+
+The one-shot startup hatch (`MYBIBLI_RESET_ADMIN=<username>`, `src/services/admin_reset.rs`) resets an active administrator's password to a random 144-bit string, invalidates every session for that account, writes the credentials at `WARN` to stdout **and the rotated log file**, then exits non-zero until the variable is removed.
+
+Accepted trade: the generated password is readable by anyone with access to the log volume. This grants nothing new — whoever can set the env var already controls `docker-compose.yml`, and whoever can read `/var/log/mybibli` on the host could equally read or rewrite the database. The password is one-time in practice: the operator is expected to log in and change it, and a *forgotten* variable re-randomises it on every boot instead of pinning a known value (that refusal-to-start is the load-bearing design point). The hatch refuses unknown, deactivated, and non-admin accounts, and each use leaves an `admin_audit` row (`admin_password_reset_hatch`) attributed to the SYSTEM user.
+
 ---
 
 ## 6. Cross-reference with issue #17 sub-items

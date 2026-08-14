@@ -176,6 +176,57 @@ async fn main() {
         }
     }
 
+    // CR #459 — MYBIBLI_RESET_ADMIN one-shot startup hatch. Read once,
+    // after migrations + seed gate, before the HTTP listener binds. On a
+    // reset request the process ALWAYS exits non-zero — success included —
+    // so a variable forgotten in docker-compose.yml re-randomises the
+    // password on every boot instead of leaving a known-password account
+    // standing. The operator removes the variable, restarts, and logs in
+    // with the credentials printed below.
+    if let Some(reset_username) = mybibli::services::admin_reset::parse_reset_request(
+        std::env::var("MYBIBLI_RESET_ADMIN").ok(),
+    ) {
+        match mybibli::services::admin_reset::reset_admin_password(&pool, &reset_username).await {
+            Ok(outcome) => {
+                tracing::warn!(
+                    username = %outcome.username,
+                    user_id = outcome.user_id,
+                    new_password = %outcome.password,
+                    sessions_invalidated = outcome.sessions_killed,
+                    "ONE-TIME ADMIN PASSWORD RESET (MYBIBLI_RESET_ADMIN). \
+                     Remove the variable and restart to log in with these credentials."
+                );
+                eprintln!(
+                    "[mybibli] MYBIBLI_RESET_ADMIN: password for '{}' has been reset.\n\
+                     [mybibli]   username: {}\n\
+                     [mybibli]   password: {}\n\
+                     [mybibli] All sessions for this user were invalidated ({}).\n\
+                     [mybibli] Refusing to start while MYBIBLI_RESET_ADMIN is set — \
+                     remove the variable and restart. (A forgotten variable would \
+                     re-randomise this password on every boot.)",
+                    outcome.username, outcome.username, outcome.password, outcome.sessions_killed
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    username = %reset_username,
+                    error = %e,
+                    "MYBIBLI_RESET_ADMIN failed — refusing to start in an ambiguous state"
+                );
+                eprintln!(
+                    "[mybibli] MYBIBLI_RESET_ADMIN failed: {e}\n\
+                     [mybibli] No password was changed. Fix the username (or remove \
+                     the variable) and restart."
+                );
+            }
+        }
+        // `std::process::exit` skips destructors; drop the non-blocking
+        // file-writer guard explicitly so the credential line above is
+        // flushed to the rotated log file, not just to stdout.
+        drop(_log_guard);
+        std::process::exit(78); // EX_CONFIG — refuse to serve while the variable is set
+    }
+
     // Validate FK dependency order against schema. Story 8-7 P5: never panic
     // here — schema evolution (adding/removing whitelisted tables) MUST NOT
     // be a hard crash; surface a warning and let the app come up.
