@@ -3,6 +3,7 @@ pub mod bnf;
 pub mod chain;
 pub mod comic_vine;
 pub mod google_books;
+pub mod k10plus;
 pub mod library_of_congress;
 pub mod marc;
 pub mod musicbrainz;

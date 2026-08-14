@@ -62,4 +62,44 @@ test.describe("MARC 21 zone completion (#439)", () => {
     // first source wins, the completion pass never overwrites.
     await expect(main).toContainText(/Statement of responsibility|Mention de responsabilité/i);
   });
+
+  // #450 — the population LoC does NOT hold: the completion pass must fall
+  // through past the LoC miss to K10plus. The mock's ISBN is answered by the
+  // BnF catch-all (no zones beyond 200$f), missed by both LoC mocks, and
+  // served by the K10plus mock with a multi-record response whose first
+  // 500$a is e-book boilerplate — so this journey also proves the noise
+  // filter end-to-end: the note that lands is the clean one.
+  test("a title LoC does not hold gains K10plus edition and note", async ({
+    page,
+  }) => {
+    await loginAs(page, "librarian");
+
+    const K10_ISBN = "9780449000021";
+    await page.goto("/catalog");
+    const scanField = page.locator("#scan-field");
+    await scanField.fill(K10_ISBN);
+    await scanField.press("Enter");
+    await page.waitForSelector(".feedback-skeleton, .feedback-entry", {
+      timeout: 10000,
+    });
+
+    await page.goto(`/?q=${K10_ISBN}`);
+    const titleLink = page
+      .locator('#browse-results table.browse-table tbody tr td a[href^="/title/"]')
+      .first();
+    await expect(titleLink).toBeVisible({ timeout: 15000 });
+    const href = (await titleLink.getAttribute("href"))!;
+
+    await expect(async () => {
+      await page.goto(href);
+      await expect(page.locator("main")).toContainText(
+        "K10plus Second edition.",
+      );
+    }).toPass({ timeout: 30000 });
+
+    const main = page.locator("main");
+    await expect(main).toContainText("K10plus general note.");
+    // The boilerplate 500$a from the e-book record must NOT have landed.
+    await expect(main).not.toContainText("Description based upon print version");
+  });
 });
