@@ -575,6 +575,10 @@ metadata:
     age_rating: Altersfreigabe
     issue_number: Ausgabennummer
     # CR #272 — editable identifier fields in the metadata-edit form.
+    # CR #206 — die eigene Aufstellungsentscheidung der Bibliothek, getrennt
+    # von den durch Anbieter gefüllten bibliografischen Feldern.
+    classification: Systematik
+    classification_help: "Das Genre gehört Ihnen: kein Metadatenabruf ändert es. Die Dewey-Notation kann von einer Bibliothek vorgeschlagen werden und wird nicht mehr vorgeschlagen, sobald Sie sie selbst bearbeiten."
     identifiers: Kennungen
     identifiers_help: "Die ISBN-13 muss 13 Ziffern mit gültiger Prüfsumme enthalten. ISSN / UPC werden unverändert übernommen. Leer lassen, um ein Feld zu löschen."
     isbn: ISBN
