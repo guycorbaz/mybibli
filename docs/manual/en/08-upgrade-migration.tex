@@ -139,6 +139,56 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.16.0}\label{sec:whats-new-1.16.0}
+
+Version 1.16.0 is a minor release on 1.15.0. \emph{No migration, no
+operator action} \string— upgrade the image and restart.
+
+\begin{itemize}
+  \item \textbf{\#450 \string— a third library describing your
+        English-language books.} Some titles stayed bare however often
+        you asked: neither the French National Library nor the Library
+        of Congress holds them. mybibli now also consults
+        \emph{K10plus}, the shared catalogue of the German academic
+        libraries, purely to fill in the bibliographic fields the
+        first answering library left empty. On the collection it was
+        measured against, it filled more of them than any other
+        source, including for English titles published in Britain and
+        the United States \string— German university libraries hold a
+        great deal of anglophone technical publishing. \textbf{To
+        benefit from it on titles already catalogued}, run
+        \emph{Backfill metadata} once from
+        \emph{Administration \textrightarrow{} Health} after
+        upgrading; new scans use it automatically.
+
+        A caveat worth stating plainly: a residue of titles remains
+        that no consulted library holds \string— small-press and
+        self-published works, chiefly British. Six catalogues have now
+        been tried against them. For those, the fields must be filled
+        by hand; no further update will change that.
+  \item \textbf{\#459 \string— getting back in after losing the
+        administrator password.} Until now, an administrator locked
+        out of their own installation had to open a database console
+        \string— an intimidating detour on a home NAS, for a situation
+        that is merely annoying. A single variable,
+        \texttt{MYBIBLI\_RESET\_ADMIN}, set in the
+        \texttt{docker-compose} file, resets one account at the next
+        restart. It works once: leaving the variable in place does not
+        re-arm it, and it therefore cannot become a permanent open
+        door. The \emph{Operations \& debugging} chapter gives the exact syntax.
+  \item \textbf{\#457 \string— a shelf-location code that is actually
+        free.} When creating a location, mybibli proposes the next
+        available code. It was overlooking deleted locations, which
+        keep their code until the definitive purge \string— so the
+        proposed code was sometimes already taken and saving failed on
+        an error that explained nothing. The proposal now counts them
+        and offers the lowest genuinely free code.
+  \item \textbf{\#458 \string— a more trustworthy test suite.} Four
+        automated tests failed at random, without any actual defect.
+        Nothing changes in the application; the point is that a
+        failure now means something, instead of prompting a re-run.
+\end{itemize}
+
 \section{What's new in 1.15.0}\label{sec:whats-new-1.15.0}
 
 Version 1.15.0 is a minor release on 1.14.1, drawn from a review of a

@@ -148,6 +148,62 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.16.0}\label{sec:whats-new-1.16.0}
+
+La version 1.16.0 est une mineure sur la 1.15.0. \emph{Aucune
+migration, aucune action de l'exploitant} \string— il suffit de mettre
+à jour l'image et de redémarrer.
+
+\begin{itemize}
+  \item \textbf{\#450 \string— une troisième bibliothèque pour décrire
+        vos livres en anglais.} Certains titres restaient nus quel que
+        soit le nombre de tentatives : ni la Bibliothèque nationale de
+        France ni la Bibliothèque du Congrès ne les possèdent. mybibli
+        consulte désormais aussi \emph{K10plus}, le catalogue commun
+        des bibliothèques universitaires allemandes, uniquement pour
+        compléter les champs bibliographiques que la première
+        bibliothèque ayant répondu a laissés vides. Sur la collection
+        de mesure, c'est elle qui en a rempli le plus, y compris pour
+        des titres anglais publiés en Grande-Bretagne et aux
+        États-Unis \string— les bibliothèques universitaires allemandes
+        possèdent beaucoup d'ouvrages techniques anglophones. \textbf{Pour
+        en profiter sur les titres déjà catalogués}, lancez une fois
+        \emph{Récupérer les métadonnées} depuis
+        \emph{Administration \textrightarrow{} Santé} après la mise à
+        jour ; les nouveaux scans en bénéficient automatiquement.
+
+        Une réserve qu'il vaut mieux énoncer franchement : il subsiste
+        un résidu de titres qu'aucune bibliothèque consultée ne
+        possède \string— des ouvrages de petits éditeurs ou
+        autoédités, britanniques pour la plupart. Six catalogues ont
+        désormais été essayés sur eux. Pour ceux-là, les champs sont à
+        saisir à la main ; aucune mise à jour n'y changera rien.
+  \item \textbf{\#459 \string— reprendre la main après la perte du mot
+        de passe administrateur.} Jusqu'ici, un administrateur enfermé
+        dehors de sa propre installation devait ouvrir une console de
+        base de données \string— un détour intimidant sur un NAS
+        domestique, pour une situation seulement fâcheuse. Une seule
+        variable, \texttt{MYBIBLI\_RESET\_ADMIN}, posée dans le fichier
+        \texttt{docker-compose}, réinitialise un compte au redémarrage
+        suivant. Elle n'agit qu'une fois : la laisser en place ne la
+        réarme pas, et elle ne peut donc pas devenir une porte ouverte
+        permanente. Le chapitre \emph{Opérations \& débogage} en donne la
+        syntaxe exacte.
+  \item \textbf{\#457 \string— un code d'emplacement réellement
+        libre.} À la création d'un emplacement, mybibli propose le
+        prochain code disponible. Il ignorait les emplacements
+        supprimés, qui conservent leur code jusqu'à la purge
+        définitive \string— le code proposé était donc parfois déjà
+        pris et l'enregistrement échouait sur une erreur qui
+        n'expliquait rien. La proposition les compte désormais et
+        offre le plus petit code véritablement libre.
+  \item \textbf{\#458 \string— une suite de tests digne de confiance.}
+        Quatre tests automatiques échouaient au hasard, sans défaut
+        réel. Rien ne change dans l'application ; l'intérêt est qu'un
+        échec signifie de nouveau quelque chose, au lieu d'inviter à
+        relancer la série.
+\end{itemize}
+
 \section{Nouveautés de la 1.15.0}\label{sec:whats-new-1.15.0}
 
 La version 1.15.0 est une mineure sur la 1.14.1, tirée de l'examen d'un

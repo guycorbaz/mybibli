@@ -203,7 +203,7 @@ between you and the procedures below.
 
 \subsection*{If you are locked out: the \texttt{MYBIBLI\_RESET\_ADMIN} hatch}
 
-Since v1.15.1, the recommended recovery path is a one-shot startup
+Since v1.16.0, the recommended recovery path is a one-shot startup
 switch. Add to the \texttt{mybibli} service's \texttt{environment:}
 block in \texttt{docker-compose.yml}, with your admin username as the
 value:
@@ -235,7 +235,7 @@ audit trail.
 
 \subsection*{Fallback: writing the hash by hand}
 
-If you cannot use the hatch (for instance on a version before v1.15.1),
+If you cannot use the hatch (for instance on a version before v1.16.0),
 the manual procedure below remains valid.
 
 Passwords are stored as Argon2id hashes in PHC string format. The
