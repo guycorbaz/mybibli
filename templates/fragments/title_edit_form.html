@@ -33,29 +33,40 @@
         </div>
     </div>
 
-    <div class="grid grid-cols-2 gap-4">
-        <div>
-            <label for="edit-genre" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_genre }}</label>
-            <select id="edit-genre" name="genre_id"
-                    class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                {% for g in genres %}
-                <option value="{{ g.id }}" {% if g.id == title.genre_id %}selected{% endif %}>{{ g.name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label for="edit-pub-date" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_publication_date }}</label>
-            <input type="date" id="edit-pub-date" name="publication_date"
-                   value="{% if let Some(d) = title.publication_date %}{{ d }}{% endif %}"
-                   class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-        </div>
-    </div>
-
     <div>
-        <label for="edit-dewey" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_dewey_code }}</label>
-        <input type="text" id="edit-dewey" name="dewey_code" value="{{ title.dewey_code.as_deref().unwrap_or_default() }}"
+        <label for="edit-pub-date" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ label_publication_date }}</label>
+        <input type="date" id="edit-pub-date" name="publication_date"
+               value="{% if let Some(d) = title.publication_date %}{{ d }}{% endif %}"
                class="mt-1 block w-48 rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
     </div>
+
+    {# CR #206 — genre and Dewey are the library's OWN shelving decisions, not
+       description harvested from a provider, so they are grouped away from the
+       bibliographic fields above. The help line states the one asymmetry a
+       librarian cannot guess: genre is never touched by a metadata fetch (no
+       provider in the chain returns one, and `genre_id` is absent from the
+       fetch UPDATE), whereas dewey_code IS proposed by providers until the
+       first manual edit records it in `manually_edited_fields`. #}
+    <fieldset class="border border-stone-200 dark:border-stone-700 rounded-md p-3">
+        <legend class="text-xs font-medium text-stone-500 dark:text-stone-400 px-1">{{ label_classification }}</legend>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+            <div>
+                <label for="edit-genre" class="block text-xs font-medium text-stone-700 dark:text-stone-300">{{ label_genre }}</label>
+                <select id="edit-genre" name="genre_id"
+                        class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                    {% for g in genres %}
+                    <option value="{{ g.id }}" {% if g.id == title.genre_id %}selected{% endif %}>{{ g.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="edit-dewey" class="block text-xs font-medium text-stone-700 dark:text-stone-300">{{ label_dewey_code }}</label>
+                <input type="text" id="edit-dewey" name="dewey_code" value="{{ title.dewey_code.as_deref().unwrap_or_default() }}"
+                       class="mt-1 block w-full rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm font-mono">
+            </div>
+        </div>
+        <p class="mt-2 text-xs text-stone-500 dark:text-stone-400">{{ label_classification_help }}</p>
+    </fieldset>
 
     {% if title.media_type == "book" || title.media_type == "bd" %}
     <div>

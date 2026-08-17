@@ -514,6 +514,10 @@ struct TitleEditFormTemplate {
     mt_dvd: String,
     mt_magazine: String,
     mt_report: String,
+    // CR #206 — genre + Dewey grouped as the library's own classification,
+    // visually separated from the provider-fed bibliographic fields.
+    label_classification: String,
+    label_classification_help: String,
     // CR #272 — editable ISBN/ISSN/UPC fields in the metadata-edit form.
     label_identifiers: String,
     label_identifiers_help: String,
@@ -568,6 +572,17 @@ pub async fn title_edit_form(
         mt_dvd: rust_i18n::t!("media_type.dvd", locale = loc).to_string(),
         mt_magazine: rust_i18n::t!("media_type.magazine", locale = loc).to_string(),
         mt_report: rust_i18n::t!("media_type.report", locale = loc).to_string(),
+        // CR #206 — the help line is the load-bearing part: it records the
+        // asymmetry between the two fields in the fieldset (genre never
+        // auto-filled, Dewey auto-filled until manually edited), which the
+        // reporting user had guessed backwards.
+        label_classification: rust_i18n::t!("metadata.field.classification", locale = loc)
+            .to_string(),
+        label_classification_help: rust_i18n::t!(
+            "metadata.field.classification_help",
+            locale = loc
+        )
+        .to_string(),
         // CR #272 — identifier fields are editable; help text explains the
         // ISBN-13 checksum guard so the user knows why a typo'd value
         // bounces back as 400.

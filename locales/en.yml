@@ -582,6 +582,10 @@ metadata:
     age_rating: Age rating
     issue_number: Issue number
     # CR #272 — editable identifier fields in the metadata-edit form.
+    # CR #206 — the library's own shelving decisions, kept apart from the
+    # provider-fed bibliographic fields above.
+    classification: Classification
+    classification_help: "Genre is your own: no metadata fetch ever changes it. The Dewey code may be proposed by a library, and stops being proposed once you edit it yourself."
     identifiers: Identifiers
     identifiers_help: "ISBN-13 must be 13 digits with a valid checksum. ISSN / UPC are accepted as-is. Leave blank to clear a field."
     isbn: ISBN

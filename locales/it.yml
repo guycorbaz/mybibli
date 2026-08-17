@@ -565,6 +565,10 @@ metadata:
     total_duration: "Durata (min)"
     age_rating: Classificazione per età
     issue_number: Numero del fascicolo
+    # CR #206 — la classificazione propria della biblioteca, tenuta distinta
+    # dai campi bibliografici forniti dai provider.
+    classification: Classificazione
+    classification_help: "Il genere è tuo: nessun recupero di metadati lo modifica. Il codice Dewey può essere proposto da una biblioteca e smette di esserlo non appena lo correggi tu."
     identifiers: Identificatori
     identifiers_help: "L'ISBN-13 deve avere 13 cifre con un codice di controllo valido. ISSN / UPC sono accettati così come sono. Lascia vuoto per cancellare un campo."
     isbn: ISBN

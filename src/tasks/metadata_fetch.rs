@@ -689,4 +689,28 @@ mod tests {
         // Future ran to completion; nothing should panic.
         rx.await.unwrap();
     }
+
+    /// CR #206 — the title-edit form now tells the user, in the Classification
+    /// fieldset, that "no metadata fetch ever changes the genre". That claim is
+    /// only true as long as `genre_id` stays out of this module's UPDATE
+    /// statement, and nothing else enforces it: `genre_id` is absent from
+    /// `detect_edited_fields`, so it is not protected by
+    /// `manually_edited_fields` either. Adding it to the UPDATE would silently
+    /// stomp a librarian's shelving decision on every re-fetch AND make the
+    /// on-screen copy a lie. Fail here rather than there.
+    #[test]
+    fn metadata_fetch_never_writes_genre_id() {
+        let source = include_str!("metadata_fetch.rs");
+        // Look only at what this module sends to the database, so the doc
+        // comments above (which legitimately name the column) do not match.
+        for line in source.lines() {
+            let sql_ish = line.contains("UPDATE titles") || line.contains("= COALESCE(?");
+            assert!(
+                !(sql_ish && line.contains("genre_id")),
+                "genre_id must never appear in a metadata-fetch UPDATE — it is the \
+                 library's own classification, not provider-supplied description \
+                 (see the Classification fieldset help text). Offending line: {line}"
+            );
+        }
+    }
 }

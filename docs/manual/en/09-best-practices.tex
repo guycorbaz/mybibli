@@ -60,6 +60,25 @@ Pick one as your primary navigation aid:
   \item Using both is fine; mybibli does not force a choice.
 \end{itemize}
 
+The two behave differently when metadata is fetched, and the
+difference is easy to guess backwards:
+
+\begin{itemize}
+  \item \textbf{The genre is yours alone.} No library in the provider
+        chain supplies one, and no metadata fetch \string— not the
+        automatic one at scan time, not \emph{Re-fetch metadata}, not
+        the admin backfill \string— ever changes it. Assign it once and
+        it stays.
+  \item \textbf{The Dewey code may be proposed for you.} A library
+        that holds the title can supply it, and it will fill an empty
+        field. The moment you edit it yourself, mybibli records that
+        the value is yours and stops overwriting it.
+\end{itemize}
+
+Both fields sit together in the \emph{Classification} section of the
+metadata-edit form, apart from the bibliographic fields the libraries
+describe, and that section states the distinction on screen.
+
 \section{Audit cadence}
 
 \begin{itemize}
