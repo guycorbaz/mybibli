@@ -67,6 +67,28 @@ Dewey\index{Dewey}. Choisissez l'un des deux comme aide principale
   \item Utiliser les deux est OK ; mybibli ne force pas le choix.
 \end{itemize}
 
+Les deux ne se comportent pas de la même façon lors d'une récupération
+de métadonnées, et la différence s'imagine facilement à l'envers :
+
+\begin{itemize}
+  \item \textbf{Le genre n'appartient qu'à vous.} Aucune bibliothèque
+        de la chaîne n'en fournit, et aucune récupération de
+        métadonnées \string— ni celle du scan, ni
+        \emph{Récupérer les métadonnées}, ni le rattrapage de
+        l'administration \string— ne le modifie. Attribuez-le une fois,
+        il reste.
+  \item \textbf{Le code Dewey, lui, peut vous être proposé.} Une
+        bibliothèque qui détient le titre peut le fournir, et il
+        remplira un champ vide. Dès que vous le corrigez vous-même,
+        mybibli enregistre que la valeur est la vôtre et cesse de
+        l'écraser.
+\end{itemize}
+
+Les deux champs sont réunis dans la rubrique \emph{Classement} du
+formulaire d'édition des métadonnées, à l'écart des champs
+bibliographiques que décrivent les bibliothèques, et cette rubrique
+rappelle la distinction à l'écran.
+
 \section{Cadence d'audit}
 
 \begin{itemize}
