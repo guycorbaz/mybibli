@@ -8,20 +8,20 @@ standard. It exists so that:
    without abandoning the flat, UX-friendly schema.
 2. There is a documented, testable contract (`tests/unimarc_mapping.rs`) that a
    title's fields round-trip losslessly to/from their UNIMARC zones.
-3. A future **Palier 2** (ISO 2709 `.mrc` / UNIMARC XML import-export — tracked
-   separately) has a stable foundation to build on.
-
-**Scope of Palier 1:** internal-model conformity only. No `.mrc` / XML
-serialization is produced yet — that is Palier 2.
+**Scope:** internal-model conformity only. No `.mrc` / XML serialization is
+produced. The once-planned **Palier 2** (ISO 2709 `.mrc` / UNIMARC XML
+import-export, for exchanging records with a SIGB) was **dropped on 2026-08-17**:
+record exchange makes no sense for a household library. The UNIMARC work stops
+here, at the internal-model alignment.
 
 ## Storage decision
 
 mybibli keeps the **flat `titles` table** and enriches it with a pragmatic
 subset of the most common UNIMARC zones (below). We deliberately do **not**
 introduce a parallel "raw UNIMARC zones" table: the pragmatic subset is
-sufficient for a domestic / small-association library, and a raw-zone store only
-becomes necessary if Palier 2 demands byte-fidelity round-trip with an external
-SIGB. Structured contributors and work-level series already live in their own
+sufficient for a domestic / small-association library, and a raw-zone store would
+only become necessary for a byte-fidelity round-trip with an external SIGB — a
+goal now abandoned (see above). Structured contributors and work-level series already live in their own
 tables (`title_contributors`, `series` / `title_series`).
 
 ## Mapping table
