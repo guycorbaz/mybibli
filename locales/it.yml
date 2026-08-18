@@ -544,7 +544,8 @@ metadata:
   diagnosis:
     transient: "%{providers} non ha potuto rispondere adesso — il servizio era occupato o troppo lento. Riprova tra qualche minuto."
     not_configured: "%{providers} non è stata consultata: non è impostata alcuna chiave di accesso. Puoi aggiungerla in Amministrazione > Sistema."
-    searched: "%{count} fonte/i sono state consultate e nessuna conosce questo codice; forse non è catalogato da nessuna parte. Puoi inserire i dati a mano."
+    searched_one: "Una fonte è stata consultata e non conosce questo codice; forse non è catalogato lì. Puoi inserire i dati a mano."
+    searched_other: "%{count} fonti sono state consultate e nessuna conosce questo codice; forse non è catalogato da nessuna parte. Puoi inserire i dati a mano."
   all_updated: "Tutti i campi dei metadati aggiornati dal fornitore."
   no_changes: "Nessuna modifica — i metadati corrispondono già a quelli del fornitore."
   auto_updated: "Sarà aggiornato automaticamente"

@@ -71,14 +71,21 @@ pub fn describe_failure(attempts: &[ProviderAttempt], locale: &str) -> Option<St
         );
     }
     if searched > 0 {
-        parts.push(
+        // rust_i18n does not select a plural form on its own here — the
+        // project picks the key (see wishlist.print_count_one/_other). "1
+        // source(s)" is developer shorthand, and the style guide asks for
+        // plain language.
+        let line = if searched == 1 {
+            rust_i18n::t!("metadata.diagnosis.searched_one", locale = locale).to_string()
+        } else {
             rust_i18n::t!(
-                "metadata.diagnosis.searched",
+                "metadata.diagnosis.searched_other",
                 locale = locale,
                 count = searched.to_string()
             )
-            .to_string(),
-        );
+            .to_string()
+        };
+        parts.push(line);
     }
 
     if parts.is_empty() {
@@ -104,6 +111,16 @@ mod tests {
         // A cache hit consults nobody. Saying "0 sources searched" would be a
         // statement about the world that was never checked.
         assert!(describe_failure(&[], "en").is_none());
+    }
+
+    #[test]
+    fn a_single_source_reads_as_singular_not_as_1_source_s() {
+        let a = vec![attempt("BnF", AttemptOutcome::NoResult)];
+        let msg = describe_failure(&a, "en").expect("some");
+        assert!(
+            !msg.contains("(s)") && !msg.contains("1 source"),
+            "one source must read as prose, not as developer shorthand: {msg}"
+        );
     }
 
     #[test]
