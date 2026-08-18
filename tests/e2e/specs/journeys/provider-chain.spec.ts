@@ -30,19 +30,33 @@ test.describe("Provider Chain & Fallback (Story 3-1)", () => {
     );
     await expect(anyFeedback.first()).toBeVisible({ timeout: 5000 });
 
-    // Trigger OOB delivery by scanning again.
-    // Bounded to 15s to cover BnF timeout + Google Books fallback under CI load.
+    // Scanning again proves the title was created: the response says so
+    // directly, so this assertion does not depend on the background fetch.
     await scanField.fill(GOOGLE_BOOKS_ISBN);
     await scanField.press("Enter");
 
-    // Should see "already exists" info feedback (title was created)
     const infoEntry = page.locator(
       '.feedback-entry[data-feedback-variant="info"]'
     );
     await expect(infoEntry).toBeVisible({ timeout: 15000 });
 
-    // Mock returns "Effective Java" by "Joshua Bloch"
-    await expect(page.locator("body")).toContainText(/Effective Java|Bloch/i, { timeout: 15000 });
+    // The metadata itself is written by a background task, and nothing on
+    // this page will fetch it once the second scan's response has landed:
+    // the PendingUpdates middleware delivers a resolved row at most once, on
+    // whatever HTMX request happens to follow, and there is no polling
+    // anywhere in the templates. Waiting on `body` here would therefore be
+    // waiting on a DOM that is finished changing — see #467.
+    //
+    // Re-query instead, until the fetch has landed. `toPass` retries the
+    // whole navigation, so this stays deterministic without waitForTimeout
+    // (which the CI grep gate rightly forbids).
+    await expect(async () => {
+      await page.goto(`/?q=${GOOGLE_BOOKS_ISBN}`);
+      await expect(page.locator("#browse-results")).toContainText(
+        /Effective Java|Bloch/i,
+        { timeout: 2000 },
+      );
+    }).toPass({ timeout: 30000 });
   });
 
   // AC8: All providers fail — title exists with no metadata, no blocking error
@@ -100,11 +114,26 @@ test.describe("Provider Chain & Fallback (Story 3-1)", () => {
     const banner = page.locator("#context-banner");
     await expect(banner).not.toHaveClass(/hidden/, { timeout: 5000 });
 
-    // Trigger OOB delivery; bounded to 15s for BnF resolution under CI load.
     await scanField.fill(BNF_ISBN);
     await scanField.press("Enter");
 
-    // Verify BnF metadata: "L'Étranger" by "Albert Camus"
-    await expect(page.locator("body")).toContainText(/tranger|Camus/i, { timeout: 15000 });
+    // #467 — this used to assert on `body` right here, and flaked. The
+    // background fetch for this ISBN is longer than it looks: the BnF mock
+    // answers with no UNIMARC zones, which triggers the #439 zone-completion
+    // pass, which consults K10plus — gated in for the 978-2 prefix and paced
+    // by a 1 req/s limiter shared across the whole process. Under parallel
+    // load the fetch can finish AFTER the second scan's response, and since
+    // a resolved row is delivered at most once, on some later HTMX request,
+    // nothing would ever swap it in.
+    //
+    // Assert on the catalog instead, retrying the navigation until the fetch
+    // has landed.
+    await expect(async () => {
+      await page.goto(`/?q=${BNF_ISBN}`);
+      await expect(page.locator("#browse-results")).toContainText(
+        /tranger|Camus/i,
+        { timeout: 2000 },
+      );
+    }).toPass({ timeout: 30000 });
   });
 });
