@@ -42,6 +42,38 @@ antérieures à 1.1.0 seront retirées de Docker Hub pour éviter toute
 utilisation accidentelle.
 \end{warning}
 
+\begin{warning}
+\textbf{mybibli n'est pas conçu pour être exposé directement sur
+Internet.}\index{sécurité!exposition réseau} L'application est prévue
+pour une maisonnée sur un réseau local, et plusieurs choix assumés en
+découlent : les tentatives de connexion ne sont pas limitées, il n'y a
+pas de second facteur d'authentification, le cookie de session ne porte
+l'attribut \texttt{Secure} que si vous le demandez
+(section~\ref{sec:env-vars}), et le catalogue se consulte sans
+s'identifier --- ce dernier point étant une fonctionnalité et non un
+oubli.
+
+N'ouvrez pas de redirection de port vers l'application. Si vous devez
+atteindre votre bibliothèque depuis l'extérieur, deux formes sont
+soutenues :
+
+\begin{itemize}
+  \item \textbf{Un tunnel privé} --- Tailscale, WireGuard ou le VPN
+        de votre routeur. Rien n'est publié : c'est votre téléphone qui
+        rejoint le réseau. C'est la forme recommandée, et celle
+        qu'utilise l'auteur.
+  \item \textbf{Un proxy inverse terminant le TLS} --- et il faut
+        alors poser également \texttt{MYBIBLI\_COOKIE\_SECURE=true}.
+        C'est cette seconde moitié que l'on oublie : sans elle, le
+        cookie de session reste accepté en HTTP clair et le proxy vous
+        apporte moins que vous ne le croyez.
+\end{itemize}
+
+Le raisonnement derrière chacun de ces choix est consigné dans
+\texttt{docs/auth-threat-model.md} au dépôt source, et
+\texttt{SECURITY.md} indique comment signaler ce qui le contredirait.
+\end{warning}
+
 \section{Checklist de pré-installation}
 
 Avant de commencer :

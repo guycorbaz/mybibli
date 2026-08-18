@@ -34,6 +34,36 @@ production. The first-launch setup wizard is silently bypassed. Use
 to prevent accidental use.
 \end{warning}
 
+\begin{warning}
+\textbf{mybibli is not built to face the open
+internet.}\index{security!network exposure} It is designed for one
+household on one local network, and several deliberate choices follow
+from that: there is no limit on login attempts, no second
+authentication factor, the session cookie carries no \texttt{Secure}
+attribute unless you set one (section~\ref{sec:env-vars}), and the
+catalogue is readable without signing in --- that last one is a
+feature, not an oversight.
+
+Do not forward a port to it. If you need to reach your library from
+outside the house, two shapes are supported:
+
+\begin{itemize}
+  \item \textbf{A private tunnel} --- Tailscale, WireGuard or your
+        router's VPN. Nothing is published; your phone joins the
+        network instead. This is the recommended shape, and the one
+        the author runs.
+  \item \textbf{A reverse proxy terminating TLS} --- and then you
+        must also set \texttt{MYBIBLI\_COOKIE\_SECURE=true}. That
+        second half is the one people forget: without it the session
+        cookie is still accepted over plain HTTP, and the proxy has
+        bought you less than you think.
+\end{itemize}
+
+The reasoning behind each of these choices is written down in
+\texttt{docs/auth-threat-model.md} in the source repository, and
+\texttt{SECURITY.md} says how to report anything that contradicts it.
+\end{warning}
+
 \section{Pre-installation checklist}
 
 Before you start:
