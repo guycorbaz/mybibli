@@ -139,6 +139,60 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.18.0}\label{sec:whats-new-1.18.0}
+
+Version 1.18.0 is a minor release on 1.17.0. \emph{One automatic,
+additive migration} \string— three new tables, created at first boot.
+Nothing to do by hand, but see the note at the end of this section
+before downgrading.
+
+\begin{itemize}
+  \item \textbf{\#443 \string— labels for the work in progress.} A genre
+        says what a book \emph{is}. A condition state says how a copy has
+        \emph{aged}. Neither of them says \emph{``I am not sure this
+        record is right, come back to it''}, and until now there was
+        nowhere to write that down.
+
+        Define your own vocabulary once, in
+        \emph{Administration \textrightarrow{} Reference data}
+        \string— ``To check'', ``Re-read'', ``Damaged binding'',
+        whatever your practice calls for. Then put any of it on a title
+        or on a single copy, from the same list, using the new section on
+        their pages. An item can carry several.
+
+        The \emph{Labels} entry in the menu opens a page listing your
+        whole vocabulary with how much each label is in use. Click one
+        and you get everything carrying it: the titles first, the copies
+        below, each in its own table because they are not described by
+        the same columns. Click any entry to reach the item itself and
+        fix what needed fixing.
+
+        \begin{tip}
+        Labels are yours alone. A visitor browsing your catalogue sees
+        none of them \string— not on a page, not in a count, not by
+        guessing an address. The vocabulary is deliberately not
+        translated: these are your words, not the software's.
+        \end{tip}
+
+        A label you have used somewhere cannot be deleted; mybibli tells
+        you how many titles and copies still carry it, so you can detach
+        them first if that is really what you want.
+  \item \textbf{The menu appears earlier on narrow screens.} With the new
+        \emph{Labels} entry, an administrator's navigation bar no longer
+        fits a tablet held upright. The bar therefore folds into the
+        ``hamburger'' menu below 1024 pixels instead of 768. On a tablet
+        you will now find the menu button where the links used to be;
+        nothing is lost, everything is one tap away.
+\end{itemize}
+
+\begin{warning}
+\textbf{First migration since 1.15.0.} Downgrading to 1.17.0 leaves the
+three new tables in place, unread \string— harmless, and your labels are
+still there if you come back. But take the usual pre-upgrade backup
+(chapter~\ref{ch:backup}) rather than relying on that: the safe path back
+is always the backup, not the assumption.
+\end{warning}
+
 \section{What's new in 1.17.0}\label{sec:whats-new-1.17.0}
 
 Version 1.17.0 is a minor release on 1.16.0. \emph{No migration, no
