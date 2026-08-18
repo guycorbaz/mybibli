@@ -3,6 +3,7 @@ pub mod admin_api_keys;
 pub mod audit;
 pub mod stats;
 pub mod title_lifecycle;
+pub mod admin_labels;
 pub mod admin_reference_data;
 pub mod admin_system;
 pub mod admin_users;
@@ -477,6 +478,24 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/admin/reference-data/genres/{id}/delete",
             axum::routing::post(admin_reference_data::genres_delete),
+        )
+        // Labels (CR #443) — fifth taxonomy, handlers in their own module
+        // because admin_reference_data.rs is already near the Rule 12 ceiling.
+        .route(
+            "/admin/reference-data/labels",
+            axum::routing::get(admin_labels::labels_section).post(admin_labels::labels_create),
+        )
+        .route(
+            "/admin/reference-data/labels/{id}/rename",
+            axum::routing::post(admin_labels::labels_rename),
+        )
+        .route(
+            "/admin/reference-data/labels/{id}/delete-modal",
+            axum::routing::get(admin_labels::labels_delete_modal),
+        )
+        .route(
+            "/admin/reference-data/labels/{id}/delete",
+            axum::routing::post(admin_labels::labels_delete),
         )
         // Volume States
         .route(

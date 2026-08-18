@@ -912,6 +912,7 @@ admin:
     section_volume_states: Volume states
     section_contributor_roles: Contributor roles
     section_node_types: Location node types
+    section_labels: Labels
     btn_add_genre: Add genre
     btn_add_state: Add state
     btn_add_role: Add role
@@ -932,10 +933,17 @@ admin:
     entity_state: volume state
     entity_role: contributor role
     entity_node_type: location node type
+    # CR #443 — the fifth taxonomy: labels span titles AND volumes, hence a
+    # two-part usage chip where the others have one count.
+    entity_label: label
+    labels_empty: "No labels yet."
+    btn_add_label: Add label
+    label_usage_chip: "%{titles} title(s), %{volumes} volume(s)"
     plural_genre: titles
     plural_state: volumes
     plural_role: title contributors
     plural_node_type: locations
+    plural_label: titles and volumes
     edit_aria: "Edit %{name}"
     delete_aria: "Delete %{name}"
     in_use_link_label: View list

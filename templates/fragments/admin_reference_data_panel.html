@@ -89,4 +89,22 @@
         ) %}{% endcall %}
         {{ node_types_list_html|safe }}
     </section>
+
+    {# ─── Labels (CR #443) ───────────────────────────────────────── #}
+    <section aria-labelledby="admin-ref-labels-heading">
+        {% call inline::inline_form(
+            "admin-ref-labels",
+            "admin-ref-labels-heading",
+            section_labels,
+            btn_add_label,
+            "/admin/reference-data/labels",
+            "#admin-ref-labels-list",
+            csrf_token,
+            btn_save,
+            btn_cancel,
+            false,
+            loanable_label
+        ) %}{% endcall %}
+        {{ labels_list_html|safe }}
+    </section>
 </section>
