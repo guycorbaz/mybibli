@@ -2352,6 +2352,9 @@ pub struct VolumeDetailTemplate {
     // and Contrôlé depending on the volume's current state. Visible to
     // Librarian+ only (the template checks `can_audit`).
     pub can_audit: bool,
+    /// CR #443 — pre-rendered labels region; empty for anonymous visitors,
+    /// who never trigger the queries in the first place.
+    pub labels_html: String,
     pub under_audit_chip_label: String,
     pub audit_button_label_mark: String,
     pub audit_button_label_clear: String,
@@ -2450,6 +2453,25 @@ pub async fn volume_detail(
     )
     .to_string();
 
+    // CR #443 — Librarian+ only, and enforced by not asking: an anonymous
+    // visitor's request never reaches the label tables, so no code path can
+    // leak a label name to them (issue requirement 6).
+    let labels_html = if session.role >= Role::Librarian {
+        let fragment = crate::routes::entity_labels::build_fragment(
+            &state,
+            crate::models::label::LabelTarget::Volume(volume.id),
+            format!("/volume/{}/labels", volume.id),
+            session.csrf_token.clone(),
+            loc,
+        )
+        .await?;
+        fragment
+            .render()
+            .map_err(|_| AppError::Internal("volume labels render failed".to_string()))?
+    } else {
+        String::new()
+    };
+
     let base = base_context(&session, loc, "catalog", &uri, state.session_timeout_secs());
     let template = VolumeDetailTemplate {
         base,
@@ -2465,6 +2487,7 @@ pub async fn volume_detail(
         loan_status_label_prefix,
         loan_status_label_suffix,
         can_audit: session.role >= Role::Librarian,
+        labels_html,
         under_audit_chip_label: rust_i18n::t!("volume.under_audit_chip", locale = loc).to_string(),
         audit_button_label_mark: rust_i18n::t!("volume.mark_under_audit", locale = loc).to_string(),
         audit_button_label_clear: rust_i18n::t!("volume.mark_checked", locale = loc).to_string(),

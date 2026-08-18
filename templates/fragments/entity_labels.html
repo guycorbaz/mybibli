@@ -1,0 +1,45 @@
+{# CR #443 tranche 2 — management labels on a title or a volume.
+   Shared by both detail pages: the caller sets `labels_endpoint` to its own
+   base path, so this fragment never needs to know which entity it is on.
+
+   Librarian+ only. The caller MUST also gate the include on `can_edit` — the
+   handler skips loading labels entirely for anonymous visitors, so rendering
+   this without the gate would show an empty region that leaks the feature's
+   existence (issue #443 requirement 6). #}
+<div id="entity-labels" class="mt-3 flex flex-wrap items-center gap-2">
+    <span class="text-xs font-medium text-stone-500 dark:text-stone-400">{{ label_labels_heading }}</span>
+    {% for l in labels %}
+        {# `data-label-chip` gives tests a selector that cannot also match the
+           <option> elements of the add-select below — a bare text match does,
+           which is how this fragment first appeared broken when it was not. #}
+        <span data-label-chip="{{ l.name|e }}" class="inline-flex items-center gap-1 rounded-full bg-stone-100 dark:bg-stone-800 px-2 py-0.5 text-xs text-stone-700 dark:text-stone-300 ring-1 ring-stone-200 dark:ring-stone-700">
+            {{ l.name|e }}
+            <button type="button"
+                    hx-post="{{ labels_endpoint }}/{{ l.id }}/detach"
+                    hx-target="#entity-labels"
+                    hx-swap="outerHTML"
+                    aria-label="{{ l.detach_aria }}"
+                    class="text-stone-600 dark:text-stone-400 hover:text-red-600 dark:hover:text-red-400">×</button>
+        </span>
+    {% else %}
+        <span class="text-xs text-stone-500 dark:text-stone-400">{{ label_labels_none }}</span>
+    {% endfor %}
+
+    {% if !available.is_empty() %}
+        <form hx-post="{{ labels_endpoint }}/attach"
+              hx-target="#entity-labels"
+              hx-swap="outerHTML"
+              class="inline-flex items-center gap-1">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+            <label for="entity-label-select" class="sr-only">{{ label_labels_add }}</label>
+            <select id="entity-label-select" name="label_id"
+                    class="rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 text-xs py-0.5">
+                {% for l in available %}
+                    <option value="{{ l.id }}">{{ l.name|e }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit"
+                    class="rounded-md bg-stone-200 dark:bg-stone-700 px-2 py-0.5 text-xs text-stone-700 dark:text-stone-200 hover:bg-stone-300 dark:hover:bg-stone-600">{{ label_labels_add }}</button>
+        </form>
+    {% endif %}
+</div>

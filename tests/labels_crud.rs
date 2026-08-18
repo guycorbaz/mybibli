@@ -12,7 +12,7 @@
 //!     DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test labels_crud
 
-use mybibli::models::label::LabelModel;
+use mybibli::models::label::{LabelModel, LabelTarget};
 use mybibli::models::{CreateOutcome, DeleteOutcome};
 use sqlx::MySqlPool;
 
@@ -209,4 +209,93 @@ async fn a_label_cannot_be_attached_twice_to_the_same_title(pool: MySqlPool) {
         .execute(&pool)
         .await;
     assert!(second.is_err(), "the composite UNIQUE must reject the duplicate");
+}
+
+// ─── Attach / detach (tranche 2) ────────────────────────────────────
+
+/// Detach soft-deletes the link, and the composite UNIQUE covers
+/// soft-deleted rows — so a naive re-attach would hit a constraint violation
+/// the user cannot act on ("already attached", when visibly it is not).
+#[sqlx::test(migrations = "./migrations")]
+async fn reattaching_a_detached_label_works(pool: MySqlPool) {
+    let label_id = create(&pool, "Va-et-vient").await;
+    let title_id = seed_title(&pool, "Titre bascule").await;
+    let target = LabelTarget::Title(title_id);
+
+    LabelModel::attach(&pool, target, label_id).await.unwrap();
+    assert_eq!(LabelModel::list_for(&pool, target).await.unwrap().len(), 1);
+
+    LabelModel::detach(&pool, target, label_id).await.unwrap();
+    assert!(LabelModel::list_for(&pool, target).await.unwrap().is_empty());
+    assert!(
+        LabelModel::count_usage(&pool, label_id).await.unwrap().is_unused(),
+        "a detached link must stop counting as usage"
+    );
+
+    // The re-attach that a naive INSERT would fail.
+    LabelModel::attach(&pool, target, label_id)
+        .await
+        .expect("re-attaching after a detach must succeed");
+    assert_eq!(LabelModel::list_for(&pool, target).await.unwrap().len(), 1);
+}
+
+/// A double click must not error, and must not create a second link.
+#[sqlx::test(migrations = "./migrations")]
+async fn attaching_twice_is_idempotent(pool: MySqlPool) {
+    let label_id = create(&pool, "Deux fois").await;
+    let title_id = seed_title(&pool, "Titre double clic").await;
+    let target = LabelTarget::Title(title_id);
+
+    LabelModel::attach(&pool, target, label_id).await.unwrap();
+    LabelModel::attach(&pool, target, label_id)
+        .await
+        .expect("a second attach is a no-op, not an error");
+
+    assert_eq!(LabelModel::list_for(&pool, target).await.unwrap().len(), 1);
+    assert_eq!(
+        LabelModel::count_usage(&pool, label_id).await.unwrap().titles,
+        1,
+        "usage must not double-count"
+    );
+}
+
+/// Both entity kinds go through one implementation; this pins that the volume
+/// side really writes `volume_labels` and not the title table.
+#[sqlx::test(migrations = "./migrations")]
+async fn volumes_and_titles_use_their_own_join_tables(pool: MySqlPool) {
+    let label_id = create(&pool, "Partagé").await;
+    let title_id = seed_title(&pool, "Titre partagé").await;
+    let volume_id = seed_volume(&pool, title_id, "V9100").await;
+
+    LabelModel::attach(&pool, LabelTarget::Title(title_id), label_id)
+        .await
+        .unwrap();
+    LabelModel::attach(&pool, LabelTarget::Volume(volume_id), label_id)
+        .await
+        .unwrap();
+
+    let usage = LabelModel::count_usage(&pool, label_id).await.unwrap();
+    assert_eq!((usage.titles, usage.volumes), (1, 1));
+
+    // Detaching one side must leave the other alone.
+    LabelModel::detach(&pool, LabelTarget::Title(title_id), label_id)
+        .await
+        .unwrap();
+    let usage = LabelModel::count_usage(&pool, label_id).await.unwrap();
+    assert_eq!(
+        (usage.titles, usage.volumes),
+        (0, 1),
+        "detaching a title must not touch the volume link"
+    );
+}
+
+/// Detaching something that was never attached is not an error: the caller
+/// asked for the label to be gone, and it is.
+#[sqlx::test(migrations = "./migrations")]
+async fn detaching_an_unattached_label_is_silent(pool: MySqlPool) {
+    let label_id = create(&pool, "Jamais posé").await;
+    let title_id = seed_title(&pool, "Titre nu").await;
+    LabelModel::detach(&pool, LabelTarget::Title(title_id), label_id)
+        .await
+        .expect("detach must be silent when there is nothing to detach");
 }

@@ -36,6 +36,11 @@ pub struct TitleDetailTemplate {
     // section.
     pub volumes: Vec<crate::models::volume::VolumeWithLocation>,
     pub can_edit: bool,
+    /// CR #443 — pre-rendered labels region, empty string for anonymous
+    /// visitors. Rendered here rather than composed in the template so the
+    /// same fragment serves the title page, the volume page and the HTMX
+    /// swaps that follow an attach/detach.
+    pub labels_html: String,
     pub label_volumes_heading: String,
     pub label_volumes_empty: String,
     pub label_volumes_empty_cta: String,
@@ -152,6 +157,25 @@ pub async fn title_detail(
                 )
                 .to_string()
             });
+        // CR #443 — labels are Librarian+ (issue requirement 6). Anonymous
+        // visitors do not merely get them hidden: the queries are never run,
+        // so there is no code path on which a label name reaches them.
+        let labels_html = if session.role >= crate::middleware::auth::Role::Librarian {
+            let fragment = crate::routes::entity_labels::build_fragment(
+                &state,
+                crate::models::label::LabelTarget::Title(title.id),
+                format!("/title/{}/labels", title.id),
+                session.csrf_token.clone(),
+                loc,
+            )
+            .await?;
+            fragment
+                .render()
+                .map_err(|_| AppError::Internal("title labels render failed".to_string()))?
+        } else {
+            String::new()
+        };
+
         let base = crate::utils::base_context(&session, loc, "title", &uri, state.session_timeout_secs());
         let template = TitleDetailTemplate {
             base,
@@ -161,6 +185,7 @@ pub async fn title_detail(
             volumes,
             label_metadata_source,
             can_edit: session.role >= crate::middleware::auth::Role::Librarian,
+            labels_html,
             label_volumes_heading: rust_i18n::t!("title_detail.volumes_section_heading", locale = loc).to_string(),
             label_volumes_empty: rust_i18n::t!("title_detail.no_volumes", locale = loc).to_string(),
             label_volumes_empty_cta: rust_i18n::t!("title_detail.add_volume_cta", locale = loc).to_string(),
@@ -2065,6 +2090,9 @@ mod tests {
             volume_count: 2,
             volumes: vec![],
             can_edit: false,
+            // CR #443 — fixtures render no labels region; the wiring is
+            // exercised by the E2E journey, not by these render fixtures.
+            labels_html: String::new(),
             label_volumes_heading: "Volumes of this title".to_string(),
             label_volumes_empty: "No volumes yet.".to_string(),
             label_volumes_empty_cta: "Scan".to_string(),
@@ -2208,6 +2236,9 @@ mod tests {
             volume_count: 0,
             volumes: vec![],
             can_edit: true,
+            // CR #443 — fixtures render no labels region; the wiring is
+            // exercised by the E2E journey, not by these render fixtures.
+            labels_html: String::new(),
             label_volumes_heading: "Volumes of this title".to_string(),
             label_volumes_empty: "No volumes yet.".to_string(),
             label_volumes_empty_cta: "Scan".to_string(),
@@ -2340,6 +2371,9 @@ mod tests {
             volume_count: 1,
             volumes: vec![],
             can_edit: false,
+            // CR #443 — fixtures render no labels region; the wiring is
+            // exercised by the E2E journey, not by these render fixtures.
+            labels_html: String::new(),
             label_volumes_heading: "Volumes of this title".to_string(),
             label_volumes_empty: "No volumes yet.".to_string(),
             label_volumes_empty_cta: "Scan".to_string(),

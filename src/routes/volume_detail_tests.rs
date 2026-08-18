@@ -46,6 +46,9 @@ fn make_test_volume_detail_template(
         loan_status_label_prefix: "On loan to ".to_string(),
         loan_status_label_suffix: " since 2026-04-15".to_string(),
         can_audit: false,
+        // CR #443 — this fixture renders no labels region; the wiring is
+        // covered by the E2E journey.
+        labels_html: String::new(),
         under_audit_chip_label: "To check".to_string(),
         audit_button_label_mark: "Mark to check".to_string(),
         audit_button_label_clear: "Checked".to_string(),

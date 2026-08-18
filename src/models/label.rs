@@ -257,6 +257,125 @@ impl LabelModel {
     }
 }
 
+/// Which entity a label is being attached to.
+///
+/// The two join tables are structurally identical, so the alternative was
+/// four near-duplicate methods. This keeps one implementation and makes the
+/// asymmetry impossible: every attach/detach/list path handles both kinds or
+/// none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LabelTarget {
+    Title(u64),
+    Volume(u64),
+}
+
+impl LabelTarget {
+    fn table(self) -> &'static str {
+        match self {
+            LabelTarget::Title(_) => "title_labels",
+            LabelTarget::Volume(_) => "volume_labels",
+        }
+    }
+
+    fn fk_column(self) -> &'static str {
+        match self {
+            LabelTarget::Title(_) => "title_id",
+            LabelTarget::Volume(_) => "volume_id",
+        }
+    }
+
+    fn id(self) -> u64 {
+        match self {
+            LabelTarget::Title(id) | LabelTarget::Volume(id) => id,
+        }
+    }
+}
+
+impl LabelModel {
+    /// Attach a label, or bring back a previously detached link.
+    ///
+    /// Detaching soft-deletes the row, and the composite UNIQUE covers
+    /// soft-deleted rows too — so a plain INSERT on re-attach hits a
+    /// constraint violation the user cannot act on ("already attached", when
+    /// visibly it is not). Same reactivation contract as `create`.
+    ///
+    /// Idempotent on an already-live link: re-attaching what is already
+    /// attached is a no-op rather than an error, because the UI can emit a
+    /// duplicate request on a double click and the user's intent is satisfied
+    /// either way.
+    pub async fn attach(pool: &DbPool, target: LabelTarget, label_id: u64) -> Result<(), AppError> {
+        let table = target.table();
+        let fk = target.fk_column();
+
+        // Select the nullity as a boolean rather than the TIMESTAMP itself:
+        // per CLAUDE.md, a TIMESTAMP column read through a dynamic query needs
+        // `CAST(col AS DATETIME)` or SQLx rejects it, and the date is not
+        // wanted here — only whether the link is currently detached.
+        let existing: Option<(u64, bool)> = sqlx::query_as(&format!(
+            "SELECT id, (deleted_at IS NOT NULL) AS is_detached \
+             FROM {table} WHERE {fk} = ? AND label_id = ? LIMIT 1"
+        ))
+        .bind(target.id())
+        .bind(label_id)
+        .fetch_optional(pool)
+        .await?;
+
+        match existing {
+            Some((_, false)) => Ok(()), // already attached
+            Some((link_id, true)) => {
+                sqlx::query(&format!(
+                    "UPDATE {table} SET deleted_at = NULL, version = version + 1 WHERE id = ?"
+                ))
+                .bind(link_id)
+                .execute(pool)
+                .await?;
+                Ok(())
+            }
+            None => {
+                sqlx::query(&format!(
+                    "INSERT INTO {table} ({fk}, label_id) VALUES (?, ?)"
+                ))
+                .bind(target.id())
+                .bind(label_id)
+                .execute(pool)
+                .await?;
+                Ok(())
+            }
+        }
+    }
+
+    /// Detach by soft-deleting the link. Silent when nothing was attached:
+    /// the caller asked for the label to be gone, and it is.
+    pub async fn detach(pool: &DbPool, target: LabelTarget, label_id: u64) -> Result<(), AppError> {
+        let table = target.table();
+        let fk = target.fk_column();
+        sqlx::query(&format!(
+            "UPDATE {table} SET deleted_at = NOW(), version = version + 1 \
+             WHERE {fk} = ? AND label_id = ? AND deleted_at IS NULL"
+        ))
+        .bind(target.id())
+        .bind(label_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Labels currently on one entity, alphabetical.
+    pub async fn list_for(pool: &DbPool, target: LabelTarget) -> Result<Vec<LabelModel>, AppError> {
+        let table = target.table();
+        let fk = target.fk_column();
+        let rows = sqlx::query(&format!(
+            "SELECT l.id, l.name, l.color, l.version FROM {table} j \
+             JOIN labels l ON l.id = j.label_id AND l.deleted_at IS NULL \
+             WHERE j.{fk} = ? AND j.deleted_at IS NULL ORDER BY l.name"
+        ))
+        .bind(target.id())
+        .fetch_all(pool)
+        .await?;
+        rows.iter().map(Self::from_row).collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

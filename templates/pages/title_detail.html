@@ -56,6 +56,11 @@
                     {% endif %}
                     <span>{{ volume_count }} {{ label_vol }}</span>
                 </div>
+                {# CR #443 — management labels, Librarian+ only. `labels_html`
+                   is empty for anonymous visitors (the handler never queries
+                   them), and the gate below makes that explicit rather than
+                   relying on the empty string. #}
+                {% if can_edit %}{{ labels_html|safe }}{% endif %}
                 {% if let Some(pub_name) = title.publisher %}
                     <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ pub_name }}</p>
                 {% endif %}
