@@ -60,11 +60,16 @@ jobs:
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cargo/bin/cargo-audit
-          key: cargo-audit-${{ runner.os }}-v0.21
+          key: cargo-audit-${{ runner.os }}-v0.22.1
 
+      # Floor is 0.22, not 0.21: the RustSec database now carries
+      # advisories scored with CVSS v4 (e.g. RUSTSEC-2026-0066), and
+      # 0.21 aborts on the whole database rather than the one entry it
+      # cannot parse — "unsupported CVSS version: 4.0". Anyone auditing
+      # locally with an older binary will hit the same wall.
       - name: Install cargo-audit
         if: steps.cache-audit.outputs.cache-hit != 'true'
-        run: cargo install cargo-audit --locked --version ^0.21
+        run: cargo install cargo-audit --locked --version '^0.22'
 
       - name: Scan Cargo.lock against the RustSec advisory database
         run: cargo audit
