@@ -148,6 +148,65 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.17.0}\label{sec:whats-new-1.17.0}
+
+La version 1.17.0 est une mineure sur la 1.16.0. \emph{Aucune migration,
+aucune action de l'exploitant} \string— il suffit de mettre à jour
+l'image et de redémarrer.
+
+Les deux changements viennent du même lecteur, à huit mois d'intervalle,
+et aucun des deux ne s'est révélé être le défaut signalé. Dans les deux
+cas, la mécanique faisait déjà ce qu'il fallait et c'est l'écran qui
+omettait de le dire.
+
+\begin{itemize}
+  \item \textbf{\#202 \string— une recherche infructueuse dit désormais
+        pourquoi.} Lorsqu'aucune bibliothèque ne parvenait à décrire un
+        ouvrage scanné, mybibli signalait seulement l'échec. Cette
+        phrase unique recouvrait trois situations appelant des réactions
+        opposées, sans que rien ne permette de les distinguer :
+
+        \begin{itemize}
+          \item toutes les bibliothèques ont été interrogées et aucune
+                ne détient l'ouvrage \string— il n'y a rien à faire,
+                aucune clé ni aucun réessai n'y changera quoi que ce
+                soit. Saisissez les informations à la main ;
+          \item une bibliothèque était trop occupée ou trop lente pour
+                répondre \string— là, il vaut réellement la peine de
+                represser le bouton dans quelques minutes ;
+          \item une bibliothèque n'a pas été interrogée du tout, faute
+                de clé d'accès renseignée \string— un champ dans
+                \emph{Administration \textrightarrow{} Système}, et la
+                question est réglée définitivement.
+        \end{itemize}
+
+        Ouvrez une fiche et pressez \emph{Re-télécharger les
+        métadonnées} : le message affiché dessous nomme désormais lequel
+        des trois cas s'est produit, et nomme les bibliothèques
+        concernées. Leurs noms ne sont jamais traduits \string— ce sont
+        les leurs.
+
+        Un cas devait être corrigé pour que tout cela soit honnête. OMDb
+        et TMDb, sans clé d'accès saisie, annonçaient exactement ce
+        qu'elles annoncent après une recherche infructueuse. Elles
+        disent maintenant qu'elles n'ont pas été interrogées.
+  \item \textbf{\#206 \string— lequel du genre et du Dewey une
+        récupération peut écraser.} La demande était que le genre cesse
+        d'être écrasé par les métadonnées automatiques. Il ne l'a jamais
+        été : aucune bibliothèque de la chaîne ne fournit de genre, et
+        rien dans mybibli n'en écrit. Ce que le formulaire ne disait pas,
+        c'est que le champ voisin fonctionne \emph{à l'inverse} \string—
+        le code Dewey, lui, \emph{est} proposé par les bibliothèques, et
+        continue de l'être jusqu'au jour où vous le corrigez vous-même,
+        après quoi il vous appartient et n'est plus touché.
+
+        À la lecture du formulaire, on devinait naturellement l'inverse.
+        Les deux champs sont désormais réunis dans une rubrique
+        \emph{Classement} qui énonce la différence en une ligne. La date
+        de publication, qui décrit l'ouvrage et non votre rangement,
+        reste à l'extérieur.
+\end{itemize}
+
 \section{Nouveautés de la 1.16.0}\label{sec:whats-new-1.16.0}
 
 La version 1.16.0 est une mineure sur la 1.15.0. \emph{Aucune

@@ -139,6 +139,61 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.17.0}\label{sec:whats-new-1.17.0}
+
+Version 1.17.0 is a minor release on 1.16.0. \emph{No migration, no
+operator action} \string— upgrade the image and restart.
+
+Both changes came from the same reader, eight months apart, and neither
+turned out to be the fault it was reported as. In both cases the
+machinery was already doing the right thing and the screen was failing
+to say so.
+
+\begin{itemize}
+  \item \textbf{\#202 \string— a failed lookup now tells you why.} When
+        no library could describe a scanned book, mybibli said only that
+        it had failed. That single sentence covered three situations
+        that call for opposite reactions, and you had no way to tell
+        them apart:
+
+        \begin{itemize}
+          \item every library was searched and none holds the book
+                \string— nothing to be done, and no key or retry will
+                change it. Type the details in by hand;
+          \item a library was too busy or too slow to answer \string—
+                genuinely worth pressing the button again in a few
+                minutes;
+          \item a library was never asked at all, because its access key
+                is not filled in \string— one field in
+                \emph{Administration \textrightarrow{} System}, and it
+                is settled for good.
+        \end{itemize}
+
+        Open a title and press \emph{Re-download metadata}: the message
+        underneath now names which of the three it was, and names the
+        libraries concerned. Their names are never translated \string—
+        they are the libraries' own.
+
+        One case had to be repaired for this to be honest at all. OMDb
+        and TMDb, with no access key entered, used to report exactly
+        what they report after a fruitless search. They now say that
+        they were not asked.
+  \item \textbf{\#206 \string— which of genre and Dewey a lookup may
+        overwrite.} The request was that the genre stop being
+        overwritten by automatic metadata. It never was: no library in
+        the chain supplies a genre, and nothing in mybibli writes one.
+        What the form did not say is that the field beside it behaves
+        the \emph{other} way round \string— the Dewey code \emph{is}
+        offered by libraries, and goes on being offered until the day
+        you correct it yourself, after which it is left alone as yours.
+
+        Reading the form, one would naturally guess this the wrong way
+        round. Both fields are now grouped in a \emph{Classification}
+        section that states the difference in one line. The publication
+        date, which describes the book rather than your shelving of it,
+        stays outside.
+\end{itemize}
+
 \section{What's new in 1.16.0}\label{sec:whats-new-1.16.0}
 
 Version 1.16.0 is a minor release on 1.15.0. \emph{No migration, no

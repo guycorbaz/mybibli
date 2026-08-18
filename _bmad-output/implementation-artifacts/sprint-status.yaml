@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-08-17 (v1.16.0 — minor on v1.15.0. #450 K10plus zone provider (leading zone contributor: 45 titles / 100 zones), #459 MYBIBLI_RESET_ADMIN one-shot admin recovery hatch, #457 lowest genuinely free L-code, #458 four E2E specs deflaked. No migration. Release history: ROADMAP.md)
+# last_updated: 2026-08-18 (v1.17.0 — minor on v1.16.0, metadata clarity. #202 tier 2: a failed lookup names the reason (nobody holds it / source busy / no API key) instead of a single yes-no; tier 3 dropped as redundant. #206 genre + Dewey grouped into a Classification section stating which one a fetch may overwrite. No migration. Release history: ROADMAP.md)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
