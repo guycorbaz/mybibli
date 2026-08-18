@@ -4,6 +4,7 @@ pub mod audit;
 pub mod stats;
 pub mod title_lifecycle;
 pub mod admin_labels;
+pub mod entity_labels;
 pub mod admin_reference_data;
 pub mod admin_system;
 pub mod admin_users;
@@ -478,6 +479,25 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/admin/reference-data/genres/{id}/delete",
             axum::routing::post(admin_reference_data::genres_delete),
+        )
+        // Label attach/detach on entities (CR #443 tranche 2). Librarian+;
+        // the handlers enforce it, and the detail pages do not even load
+        // labels for an anonymous visitor.
+        .route(
+            "/title/{id}/labels/attach",
+            axum::routing::post(entity_labels::title_labels_attach),
+        )
+        .route(
+            "/title/{id}/labels/{label_id}/detach",
+            axum::routing::post(entity_labels::title_labels_detach),
+        )
+        .route(
+            "/volume/{id}/labels/attach",
+            axum::routing::post(entity_labels::volume_labels_attach),
+        )
+        .route(
+            "/volume/{id}/labels/{label_id}/detach",
+            axum::routing::post(entity_labels::volume_labels_detach),
         )
         // Labels (CR #443) — fifth taxonomy, handlers in their own module
         // because admin_reference_data.rs is already near the Rule 12 ceiling.

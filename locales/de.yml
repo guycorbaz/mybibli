@@ -590,6 +590,12 @@ metadata:
     isbn: ISBN
     issn: ISSN
     upc: UPC
+# CR #443 tranche 2 — labels shown on title and volume detail pages.
+labels:
+  heading: "Etiketten:"
+  none: keine
+  add: Hinzufügen
+  detach_aria: "Etikett %{name} entfernen"
 media_type:
   book: Buch
   bd: BD

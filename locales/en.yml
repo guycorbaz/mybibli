@@ -598,6 +598,12 @@ metadata:
     isbn: ISBN
     issn: ISSN
     upc: UPC
+# CR #443 tranche 2 — labels shown on title and volume detail pages.
+labels:
+  heading: "Labels:"
+  none: none
+  add: Add
+  detach_aria: "Remove label %{name}"
 media_type:
   book: Book
   bd: BD
