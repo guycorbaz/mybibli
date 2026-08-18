@@ -19,7 +19,13 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await page.goto("/borrowers");
 
     // Click Add borrower to show form
-    await page.getByText(/Add borrower|Ajouter/i).click();
+    // #470 — was getByText(/Add borrower|Ajouter/i), which matches TWO
+    // elements once the page renders in French ("Ajouter un emprunteur" and
+    // "Ajouter un nouveau titre") and fails strict mode. It only ever passed
+    // because the librarian account was sometimes left in English by a
+    // parallel language-toggle test — the very leak #470 fixed. The link has
+    // a stable id; use it, per the selector policy in CLAUDE.md.
+    await page.locator("#borrowers-show-add-form").click();
     await expect(page.locator("#new-name")).toBeVisible({ timeout: 3000 });
 
     // Fill in name and submit
@@ -74,7 +80,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
   test("delete borrower → removed from list", async ({ page }) => {
     // First create a borrower to delete
     await page.goto("/borrowers");
-    await page.getByText(/Add borrower|Ajouter/i).click();
+    await page.locator("#borrowers-show-add-form").click();
     await page.locator("#new-name").fill("BW-Temp Borrower");
     await page.locator('main button[type="submit"]').last().click();
     await expect(page).toHaveURL(/\/borrowers/, { timeout: 5000 });
@@ -120,7 +126,7 @@ test.describe("Borrower CRUD & Search (Story 4-1)", () => {
     await expect(page.locator("h1")).toContainText(/Borrowers|Emprunteurs/i);
 
     // Create
-    await page.getByText(/Add borrower|Ajouter/i).click();
+    await page.locator("#borrowers-show-add-form").click();
     await page.locator("#new-name").fill("BW-Smoke Borrower");
     await page.locator("#new-email").fill("smoke@test.com");
     await page.locator('main button[type="submit"]').last().click();

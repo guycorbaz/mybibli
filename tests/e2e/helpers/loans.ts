@@ -89,7 +89,13 @@ export async function scanTitleAndVolume(
  */
 export async function createBorrower(page: Page, name: string): Promise<void> {
   await page.goto("/borrowers");
-  await page.getByText(/Add borrower|Ajouter/i).click();
+  // #470 — was getByText(/Add borrower|Ajouter/i), which matches TWO
+  // elements once the page renders in French ("Ajouter un emprunteur" and
+  // "Ajouter un nouveau titre") and fails strict mode. It only ever passed
+  // because the librarian account was sometimes left in English by a
+  // parallel language-toggle test — the very leak #470 fixed. The link has
+  // a stable id; use it, per the selector policy in CLAUDE.md.
+  await page.locator("#borrowers-show-add-form").click();
   await page.locator("#new-name").fill(name);
   await page.locator('main button[type="submit"]').last().click();
   // Assertion-as-wait: the borrower anchor appearing in the list confirms

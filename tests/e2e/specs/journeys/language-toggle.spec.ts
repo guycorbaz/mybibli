@@ -40,6 +40,25 @@ async function resetLibrarianPreferenceToFr(page: Page): Promise<void> {
 }
 
 test.describe("Story 7-3 — language toggle FR/EN", () => {
+  // #470 — serialised, for the same reason as the admin-system-settings
+  // describe: these tests mutate shared state that no per-test isolation
+  // reaches. `preferred_language` is a column on `users`, not on the session,
+  // so all three tests — all logging in as the same seeded `librarian` —
+  // write one row.
+  //
+  // The `beforeEach` below is what makes parallelism actively harmful rather
+  // than merely risky: it resets the stored preference to FR, so under
+  // `fullyParallel` one test's reset lands between another test's "switch to
+  // EN" and its assertion. The observed failure is `html lang` stable at
+  // "fr" across every poll — not a timing wobble on a value that eventually
+  // arrives, but the wrong value written by a sibling.
+  //
+  // Serialising trades a few seconds of CI time for a reset that means what
+  // it says. A dedicated seeded account would also work, but it buys
+  // parallelism across three short tests at the price of a migration and one
+  // more account to keep alive.
+  test.describe.configure({ mode: "serial" });
+
   // Ensure a clean `preferred_language` baseline BEFORE each authenticated
   // run — a prior aborted run may have left EN stored.
   test.beforeEach(async ({ browser }) => {
