@@ -27,6 +27,7 @@ mod modal_tests;
 mod status_message_tests;
 #[cfg(test)]
 mod volume_detail_tests;
+pub mod labels_page;
 pub mod loans;
 pub mod locations;
 pub mod series;
@@ -480,6 +481,9 @@ pub fn build_router(state: AppState) -> Router {
             "/admin/reference-data/genres/{id}/delete",
             axum::routing::post(admin_reference_data::genres_delete),
         )
+        // Labels index + drill-down (CR #443 tranche 3). Librarian+.
+        .route("/labels", axum::routing::get(labels_page::labels_index))
+        .route("/labels/{id}", axum::routing::get(labels_page::label_detail))
         // Label attach/detach on entities (CR #443 tranche 2). Librarian+;
         // the handlers enforce it, and the detail pages do not even load
         // labels for an anonymous visitor.

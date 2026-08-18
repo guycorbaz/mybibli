@@ -14,7 +14,9 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::{CONFLICT_NAME_TAKEN, CreateOutcome, DeleteOutcome};
+use crate::models::{
+    CONFLICT_NAME_TAKEN, CreateOutcome, DEFAULT_PAGE_SIZE, DeleteOutcome, PaginatedList,
+};
 use crate::services::locking::check_update_result;
 
 #[derive(Debug, Clone)]
@@ -373,6 +375,167 @@ impl LabelModel {
         .fetch_all(pool)
         .await?;
         rows.iter().map(Self::from_row).collect()
+    }
+}
+
+/// A title carrying a label, as the `/labels/{id}` page lists it.
+#[derive(Debug, Clone)]
+pub struct LabelledTitle {
+    pub id: u64,
+    pub title: String,
+    pub contributor: Option<String>,
+    pub genre: Option<String>,
+    pub cover_image_url: Option<String>,
+}
+
+/// A volume carrying a label. Different columns from a title, which is why
+/// the drill-down renders two sections rather than one merged table: a shared
+/// table would either duplicate columns or flatten to their intersection.
+#[derive(Debug, Clone)]
+pub struct LabelledVolume {
+    pub id: u64,
+    pub code: String,
+    pub title_id: u64,
+    pub title: String,
+    pub location: Option<String>,
+    pub state: Option<String>,
+}
+
+impl LabelModel {
+    /// The whole vocabulary with its usage, for the `/labels` index.
+    ///
+    /// One query per label would be N+1 on a page whose entire purpose is to
+    /// show counts; both counts are aggregated in a single grouped query
+    /// instead.
+    pub async fn list_all_with_usage(
+        pool: &DbPool,
+    ) -> Result<Vec<(LabelModel, LabelUsage)>, AppError> {
+        let rows = sqlx::query(
+            "SELECT l.id, l.name, l.color, l.version, \
+                    (SELECT COUNT(*) FROM title_labels tl \
+                       JOIN titles t ON t.id = tl.title_id AND t.deleted_at IS NULL \
+                      WHERE tl.label_id = l.id AND tl.deleted_at IS NULL) AS title_count, \
+                    (SELECT COUNT(*) FROM volume_labels vl \
+                       JOIN volumes v ON v.id = vl.volume_id AND v.deleted_at IS NULL \
+                      WHERE vl.label_id = l.id AND vl.deleted_at IS NULL) AS volume_count \
+             FROM labels l WHERE l.deleted_at IS NULL ORDER BY l.name",
+        )
+        .fetch_all(pool)
+        .await?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for r in &rows {
+            out.push((
+                Self::from_row(r)?,
+                LabelUsage {
+                    titles: r.try_get("title_count")?,
+                    volumes: r.try_get("volume_count")?,
+                },
+            ));
+        }
+        Ok(out)
+    }
+
+    /// Titles carrying a label, paginated independently of the volumes.
+    pub async fn list_titles_for(
+        pool: &DbPool,
+        label_id: u64,
+        page: u32,
+    ) -> Result<PaginatedList<LabelledTitle>, AppError> {
+        let offset = page.saturating_sub(1) * DEFAULT_PAGE_SIZE;
+        let total: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM title_labels tl \
+               JOIN titles t ON t.id = tl.title_id AND t.deleted_at IS NULL \
+              WHERE tl.label_id = ? AND tl.deleted_at IS NULL",
+        )
+        .bind(label_id)
+        .fetch_one(pool)
+        .await?;
+
+        let rows = sqlx::query(
+            "SELECT t.id, t.title, t.cover_image_url, \
+                    (SELECT g.name FROM genres g WHERE g.id = t.genre_id AND g.deleted_at IS NULL) AS genre, \
+                    (SELECT c.name FROM title_contributors tc \
+                       JOIN contributors c ON c.id = tc.contributor_id AND c.deleted_at IS NULL \
+                       JOIN contributor_roles cr ON cr.id = tc.role_id AND cr.deleted_at IS NULL \
+                      WHERE tc.title_id = t.id AND tc.deleted_at IS NULL AND cr.is_primary \
+                      LIMIT 1) AS contributor \
+             FROM title_labels tl \
+               JOIN titles t ON t.id = tl.title_id AND t.deleted_at IS NULL \
+             WHERE tl.label_id = ? AND tl.deleted_at IS NULL \
+             ORDER BY t.title LIMIT ? OFFSET ?",
+        )
+        .bind(label_id)
+        .bind(DEFAULT_PAGE_SIZE)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
+
+        let items = rows
+            .iter()
+            .map(|r| -> Result<LabelledTitle, AppError> {
+                Ok(LabelledTitle {
+                    id: r.try_get("id")?,
+                    title: r.try_get("title")?,
+                    contributor: r.try_get("contributor")?,
+                    genre: r.try_get("genre")?,
+                    cover_image_url: r.try_get("cover_image_url")?,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(PaginatedList::new(items, page, total.0 as u64, None, None, None))
+    }
+
+    /// Volumes carrying a label, paginated independently of the titles.
+    pub async fn list_volumes_for(
+        pool: &DbPool,
+        label_id: u64,
+        page: u32,
+    ) -> Result<PaginatedList<LabelledVolume>, AppError> {
+        let offset = page.saturating_sub(1) * DEFAULT_PAGE_SIZE;
+        let total: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM volume_labels vl \
+               JOIN volumes v ON v.id = vl.volume_id AND v.deleted_at IS NULL \
+              WHERE vl.label_id = ? AND vl.deleted_at IS NULL",
+        )
+        .bind(label_id)
+        .fetch_one(pool)
+        .await?;
+
+        let rows = sqlx::query(
+            "SELECT v.id, v.label AS code, v.title_id, t.title, \
+                    (SELECT sl.name FROM storage_locations sl \
+                      WHERE sl.id = v.location_id AND sl.deleted_at IS NULL) AS location, \
+                    (SELECT vs.name FROM volume_states vs \
+                      WHERE vs.id = v.condition_state_id AND vs.deleted_at IS NULL) AS state \
+             FROM volume_labels vl \
+               JOIN volumes v ON v.id = vl.volume_id AND v.deleted_at IS NULL \
+               JOIN titles t ON t.id = v.title_id AND t.deleted_at IS NULL \
+             WHERE vl.label_id = ? AND vl.deleted_at IS NULL \
+             ORDER BY v.label LIMIT ? OFFSET ?",
+        )
+        .bind(label_id)
+        .bind(DEFAULT_PAGE_SIZE)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
+
+        let items = rows
+            .iter()
+            .map(|r| -> Result<LabelledVolume, AppError> {
+                Ok(LabelledVolume {
+                    id: r.try_get("id")?,
+                    code: r.try_get("code")?,
+                    title_id: r.try_get("title_id")?,
+                    title: r.try_get("title")?,
+                    location: r.try_get("location")?,
+                    state: r.try_get("state")?,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(PaginatedList::new(items, page, total.0 as u64, None, None, None))
     }
 }
 

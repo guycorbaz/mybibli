@@ -6,7 +6,12 @@
     </a>
 
     <!-- Desktop nav links -->
-    <div class="hidden md:flex items-center gap-3 lg:gap-6 flex-1">
+    {# CR #443 — the strip switches to the menu at `lg`, not `md`. With the
+       Labels entry an admin carries eight links, which overflowed a 768 px
+       viewport by 86 px (caught by responsive-layouts.spec.ts). Raising the
+       breakpoint keeps every role on one consistent rule and leaves no
+       viewport where a nav entry is unreachable. #}
+    <div class="hidden lg:flex items-center gap-3 lg:gap-6 flex-1">
         <!-- Read-only browsing: visible to everyone (anonymous + authenticated) -->
         <a href="/catalog" {% if base.current_page == "catalog" %}aria-current="page" class="border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_catalog }}</a>
         <a href="/locations" {% if base.current_page == "locations" %}aria-current="page" class="border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_locations }}</a>
@@ -15,6 +20,10 @@
         <a href="/borrowers" {% if base.current_page == "borrowers" %}aria-current="page" class="border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_borrowers }}</a>
         <a href="/loans" {% if base.current_page == "loans" %}aria-current="page" class="border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_loans }}</a>
         <a href="/wishlist" {% if base.current_page == "wishlist" %}aria-current="page" class="border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_wishlist }}</a>
+        {# CR #443 — labels are internal curation, so the entry sits inside the
+           Librarian+ block; an anonymous visitor must not learn the feature
+           exists (issue requirement 6). #}
+        <a href="/labels" {% if base.current_page == "labels" %}aria-current="page" class="border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_labels }}</a>
         {% endif %}
         {% if base.role == "admin" %}
         <a href="/admin" {% if base.current_page == "admin" %}aria-current="page" class="border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_admin }}</a>
@@ -58,14 +67,14 @@
         {% endif %}
 
         <!-- Mobile hamburger -->
-        <button id="mobile-menu-toggle" type="button" class="md:hidden p-2 text-stone-600 dark:text-stone-400" aria-label="{{ base.nav_menu_open }}" aria-expanded="false" aria-controls="mobile-nav">
+        <button id="mobile-menu-toggle" type="button" class="lg:hidden p-2 text-stone-600 dark:text-stone-400" aria-label="{{ base.nav_menu_open }}" aria-expanded="false" aria-controls="mobile-nav">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
     </div>
 </nav>
 
 <!-- Mobile nav menu -->
-<div id="mobile-nav" class="hidden md:hidden bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 px-4 py-2">
+<div id="mobile-nav" class="hidden lg:hidden bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 px-4 py-2">
     <a href="/catalog" {% if base.current_page == "catalog" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_catalog }}</a>
     <a href="/locations" {% if base.current_page == "locations" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_locations }}</a>
     <a href="/series" {% if base.current_page == "series" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_series }}</a>
@@ -73,6 +82,7 @@
     <a href="/borrowers" {% if base.current_page == "borrowers" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_borrowers }}</a>
     <a href="/loans" {% if base.current_page == "loans" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_loans }}</a>
     <a href="/wishlist" {% if base.current_page == "wishlist" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_wishlist }}</a>
+    <a href="/labels" {% if base.current_page == "labels" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_labels }}</a>
     {% endif %}
     {% if base.role == "admin" %}
     <a href="/admin" {% if base.current_page == "admin" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_admin }}</a>
@@ -96,7 +106,7 @@
     </form>
     {# Issue #150 — mobile parity with desktop login/logout (lines 40-47 above).
        Without this block, an authenticated user on a ≤768px viewport cannot
-       sign out via the navbar (the desktop strip is hidden by `md:hidden`). #}
+       sign out via the navbar (the desktop strip is hidden by `lg:hidden`). #}
     {% if base.role == "anonymous" %}
     <a href="/login" class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">{{ base.nav_login }}</a>
     {% else %}

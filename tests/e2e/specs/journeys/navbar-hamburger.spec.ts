@@ -29,8 +29,11 @@ test.describe("Story 9-17 — NavBar hamburger menu", () => {
     await page.goto("/login");
 
     const trigger = page.locator("#mobile-menu-toggle");
+    // CR #443 — the strip switches at `lg`, not `md`: with the Labels entry
+    // an admin carries eight links, which overflowed a 768 px viewport.
+    // This locator names the utility class, so it had to move with it.
     const desktopNav = page
-      .locator("nav[aria-label='Main navigation'] > div.hidden.md\\:flex")
+      .locator("nav[aria-label='Main navigation'] > div.hidden.lg\\:flex")
       .first();
 
     await expect(trigger).toBeVisible();
