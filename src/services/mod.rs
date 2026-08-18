@@ -11,6 +11,7 @@ pub mod dashboard;
 pub mod loans;
 pub mod locations;
 pub mod locking;
+pub mod metadata_diagnosis;
 pub mod password;
 pub mod scan_undo;
 pub mod search;

@@ -62,7 +62,9 @@ impl MetadataProvider for OmdbProvider {
         // Story 8-5: read API key per fetch. Empty key → no HTTP call.
         let api_key = match self.current_api_key() {
             Some(k) => k,
-            None => return Ok(None),
+            // #202 tier 2 — was `Ok(None)`, indistinguishable from "searched
+            // and found nothing". The diagnosis surface needs the difference.
+            None => return Err(MetadataError::NotConfigured),
         };
 
         // Search by UPC as query text

@@ -64,6 +64,61 @@ pub struct ChainOutcome {
     /// rather than overwrite it with NULL. See
     /// `TitleModel::update_from_metadata`.
     pub source: Option<String>,
+    /// #202 tier 2 — one entry per provider actually consulted, in chain
+    /// order. Empty on a cache hit (no provider was asked) and when the media
+    /// type has no chain at all; a caller must therefore treat "empty" as "no
+    /// diagnosis available", never as "nobody was asked and nothing exists".
+    pub attempts: Vec<ProviderAttempt>,
+}
+
+/// #202 tier 2 — why one provider did not answer.
+///
+/// The chain has always distinguished these cases; until now it discarded
+/// them into the log and kept a single `throttled: bool`. Keeping them lets
+/// a librarian facing an empty record be told which of two very different
+/// things happened: nobody holds this title (nothing to do), or the chain
+/// never got a fair answer (retry, or set a key).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AttemptOutcome {
+    /// Answered with a record. Terminal — later providers are not consulted.
+    Answered,
+    /// Searched and holds nothing. The honest "this catalogue does not have
+    /// your book" — retrying will not change it.
+    NoResult,
+    /// HTTP 429. Transient; worth retrying later.
+    RateLimited,
+    /// HTTP 503. Transient; worth retrying later.
+    Unavailable,
+    /// Needs an API key and none is set. Fixed from /admin > System, not by
+    /// retrying.
+    NotConfigured,
+    /// Network or parse failure, message kept for the log-minded reader.
+    Failed(String),
+    /// Exceeded its per-provider budget. Distinct from `Failed`: the provider
+    /// may be healthy and merely slow, and the budget is admin-tunable.
+    TimedOut { after_secs: u64 },
+}
+
+/// #202 tier 2 — one provider's turn in the chain.
+#[derive(Debug, Clone)]
+pub struct ProviderAttempt {
+    pub provider: String,
+    pub outcome: AttemptOutcome,
+    pub duration_ms: u64,
+}
+
+impl ProviderAttempt {
+    /// True when the outcome means "ask again later" rather than "this
+    /// catalogue does not hold it". Drives the retry hint in the UI.
+    pub fn is_worth_retrying(&self) -> bool {
+        matches!(
+            self.outcome,
+            AttemptOutcome::RateLimited
+                | AttemptOutcome::Unavailable
+                | AttemptOutcome::TimedOut { .. }
+                | AttemptOutcome::Failed(_)
+        )
+    }
 }
 
 /// Executes metadata lookups through a chain of providers with fallback.
@@ -127,6 +182,10 @@ impl ChainExecutor {
                     // #202 — the cache stores the merged payload without
                     // provenance, so the source is unknown here, NOT absent.
                     source: None,
+                    // No provider was consulted, so there is nothing to
+                    // diagnose. Deliberately not a synthetic "everything
+                    // succeeded" list.
+                    attempts: Vec::new(),
                 };
             }
             Ok(None) => {
@@ -148,6 +207,11 @@ impl ChainExecutor {
         // the global-timeout Err arm because it lives outside the
         // timed future.
         let mut throttled = false;
+        // #202 tier 2 — accumulated inside the timed future but declared
+        // outside it, for the same reason as `throttled`: a global timeout
+        // discards the future's value, and the attempts made before the
+        // deadline are exactly what the user needs to see in that case.
+        let mut attempts: Vec<ProviderAttempt> = Vec::new();
         let global_timeout = Duration::from_secs(timeout_secs);
         let chain_result = tokio::time::timeout(global_timeout, async {
             for provider in &chain {
@@ -177,6 +241,12 @@ impl ChainExecutor {
                             duration_ms = duration_ms,
                             "Provider returned result"
                         );
+                        attempts.push(ProviderAttempt {
+                            provider: provider_name.to_string(),
+                            outcome: AttemptOutcome::Answered,
+                            duration_ms: duration_ms as u64,
+                        });
+
                         // #23 sub-item 7 — drop empty-string fields
                         // before the downstream merge sees them. A
                         // `Some("")` from a sloppy upstream response
@@ -258,6 +328,12 @@ impl ChainExecutor {
                             duration_ms = duration_ms,
                             "Provider returned no result"
                         );
+                        attempts.push(ProviderAttempt {
+                            provider: provider_name.to_string(),
+                            outcome: AttemptOutcome::NoResult,
+                            duration_ms: duration_ms as u64,
+                        });
+
                     }
                     Ok(Err(MetadataError::RateLimited)) => {
                         // #23 — structured rate-limit match. Was
@@ -272,6 +348,12 @@ impl ChainExecutor {
                             duration_ms = duration_ms,
                             "Provider rate limited (HTTP 429), skipping"
                         );
+                        attempts.push(ProviderAttempt {
+                            provider: provider_name.to_string(),
+                            outcome: AttemptOutcome::RateLimited,
+                            duration_ms: duration_ms as u64,
+                        });
+
                     }
                     Ok(Err(MetadataError::Unavailable)) => {
                         // #419 — Google Books answers burst load with
@@ -285,6 +367,29 @@ impl ChainExecutor {
                             duration_ms = duration_ms,
                             "Provider temporarily unavailable (HTTP 503), skipping"
                         );
+                        attempts.push(ProviderAttempt {
+                            provider: provider_name.to_string(),
+                            outcome: AttemptOutcome::Unavailable,
+                            duration_ms: duration_ms as u64,
+                        });
+
+                    }
+                    Ok(Err(MetadataError::NotConfigured)) => {
+                        // #202 tier 2 — not a failure of the provider, and not
+                        // a miss either: nothing was asked. Logged at info,
+                        // because on a household install several keyed
+                        // providers are legitimately unconfigured forever and
+                        // a warn per scan would be noise.
+                        tracing::info!(
+                            code = %code,
+                            provider = provider_name,
+                            "Provider skipped: no API key configured"
+                        );
+                        attempts.push(ProviderAttempt {
+                            provider: provider_name.to_string(),
+                            outcome: AttemptOutcome::NotConfigured,
+                            duration_ms: duration_ms as u64,
+                        });
                     }
                     Ok(Err(e)) => {
                         tracing::warn!(
@@ -294,6 +399,11 @@ impl ChainExecutor {
                             error = %e,
                             "Provider failed"
                         );
+                        attempts.push(ProviderAttempt {
+                            provider: provider_name.to_string(),
+                            outcome: AttemptOutcome::Failed(e.to_string()),
+                            duration_ms: duration_ms as u64,
+                        });
                     }
                     Err(_) => {
                         tracing::warn!(
@@ -303,6 +413,13 @@ impl ChainExecutor {
                             timeout_secs = provider_timeout_secs,
                             "Provider timed out"
                         );
+                        attempts.push(ProviderAttempt {
+                            provider: provider_name.to_string(),
+                            outcome: AttemptOutcome::TimedOut {
+                                after_secs: provider_timeout_secs,
+                            },
+                            duration_ms: duration_ms as u64,
+                        });
                     }
                 }
             }
@@ -340,7 +457,7 @@ impl ChainExecutor {
             }
         };
 
-        ChainOutcome { result, throttled, source }
+        ChainOutcome { result, throttled, source, attempts }
     }
 }
 
@@ -1155,6 +1272,128 @@ mod tests {
             Some("Reprint."),
             "#439: zones must be collected even when the provider's primary \
              lookup returns None"
+        );
+    }
+
+    // ─── #202 tier 2 — per-provider attempt collection ──────────────
+
+    /// The chain must record every provider it consulted, in order, with the
+    /// outcome that was previously only logged. Without this the diagnosis
+    /// surface has nothing to describe.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn attempts_record_each_provider_in_chain_order(pool: sqlx::Pool<sqlx::MySql>) {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(EmptyProvider));
+        registry.register(Box::new(RateLimitProvider));
+        registry.register(Box::new(SuccessProvider { name: "winner" }));
+
+        let outcome = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            "9799999990068",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await;
+
+        assert_eq!(outcome.attempts.len(), 3, "one entry per provider consulted");
+        assert_eq!(outcome.attempts[0].outcome, AttemptOutcome::NoResult);
+        assert_eq!(outcome.attempts[1].outcome, AttemptOutcome::RateLimited);
+        assert_eq!(outcome.attempts[2].outcome, AttemptOutcome::Answered);
+        assert_eq!(
+            outcome.attempts[2].provider, "winner",
+            "the answering provider is the last entry, not a separate field"
+        );
+    }
+
+    /// Providers after the winner are never consulted, so they must NOT appear
+    /// as attempts. Listing them would tell the user a source was searched
+    /// when it never was.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn providers_after_the_winner_are_not_listed(pool: sqlx::Pool<sqlx::MySql>) {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(SuccessProvider { name: "first" }));
+        registry.register(Box::new(FailProvider));
+
+        let outcome = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            "9799999990075",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await;
+
+        assert_eq!(outcome.attempts.len(), 1, "chain stops at the first answer");
+        assert_eq!(outcome.attempts[0].provider, "first");
+    }
+
+    /// A cache hit consults nobody. An empty attempt list is the honest
+    /// answer; a synthetic one would claim searches that never happened.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn a_cache_hit_records_no_attempts(pool: sqlx::Pool<sqlx::MySql>) {
+        let code = "9799999990082";
+        let cached = MetadataResult {
+            title: Some("Cached".to_string()),
+            ..Default::default()
+        };
+        MetadataCacheModel::upsert(&pool, code, &serde_json::to_value(&cached).unwrap())
+            .await
+            .unwrap();
+
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(SuccessProvider { name: "never_asked" }));
+
+        let outcome = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            code,
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await;
+
+        assert!(outcome.result.is_some(), "cache hit still returns a result");
+        assert!(
+            outcome.attempts.is_empty(),
+            "no provider was consulted, so nothing may be reported as searched"
+        );
+    }
+
+    /// A per-provider timeout is a distinct outcome from a miss: the source may
+    /// hold the title and merely be slow, so the user is told to retry rather
+    /// than that nobody has it.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn a_slow_provider_is_recorded_as_timed_out(pool: sqlx::Pool<sqlx::MySql>) {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(SlowProvider));
+
+        let outcome = ChainExecutor::execute_detailed(
+            &registry,
+            &pool,
+            "9799999990099",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(1),
+        )
+        .await;
+
+        assert_eq!(outcome.attempts.len(), 1);
+        assert!(
+            matches!(outcome.attempts[0].outcome, AttemptOutcome::TimedOut { .. }),
+            "got {:?}",
+            outcome.attempts[0].outcome
+        );
+        assert!(
+            outcome.attempts[0].is_worth_retrying(),
+            "a timeout must read as retryable, unlike an honest miss"
         );
     }
 }
