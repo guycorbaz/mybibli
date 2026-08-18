@@ -40,7 +40,7 @@ const NODE_TYPE_CASCADE_NAME_MAX_LEN: usize = 50;
 /// indicate a malformed/spoofed request. Story 8-4 P5.
 const MIN_VALID_VERSION: i32 = 1;
 
-fn require_valid_version(version: i32, loc: &'static str) -> Result<(), AppError> {
+pub(crate) fn require_valid_version(version: i32, loc: &'static str) -> Result<(), AppError> {
     if version < MIN_VALID_VERSION {
         return Err(AppError::BadRequest(
             rust_i18n::t!("error.reference_data.invalid_version", locale = loc).to_string(),
@@ -123,10 +123,14 @@ struct AdminReferenceDataPanel {
     section_volume_states: String,
     section_contributor_roles: String,
     section_node_types: String,
+    /// CR #443 — fifth section. Its list HTML is produced by
+    /// `routes::admin_labels`, which owns the label handlers.
+    section_labels: String,
     btn_add_genre: String,
     btn_add_state: String,
     btn_add_role: String,
     btn_add_node_type: String,
+    btn_add_label: String,
     btn_save: String,
     btn_cancel: String,
     loanable_label: String,
@@ -134,6 +138,7 @@ struct AdminReferenceDataPanel {
     volume_states_list_html: String,
     roles_list_html: String,
     node_types_list_html: String,
+    labels_list_html: String,
 }
 
 #[derive(Template)]
@@ -222,11 +227,15 @@ struct AdminRefLoanableWarningModal {
 // ─── Section identifier (for shared helpers) ───────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Section {
+pub(crate) enum Section {
     Genres,
     VolumeStates,
     ContributorRoles,
     NodeTypes,
+    /// CR #443 — the fifth taxonomy. Shares the delete-modal and in-use
+    /// refusal wording with the other four; only its usage count differs
+    /// (summed across two join tables), and that lives in `LabelModel`.
+    Labels,
 }
 
 impl Section {
@@ -236,6 +245,7 @@ impl Section {
             Section::VolumeStates => "volume-states",
             Section::ContributorRoles => "contributor-roles",
             Section::NodeTypes => "node-types",
+            Section::Labels => "labels",
         }
     }
 
@@ -245,6 +255,7 @@ impl Section {
             Section::VolumeStates => "#admin-ref-volume-states-list",
             Section::ContributorRoles => "#admin-ref-roles-list",
             Section::NodeTypes => "#admin-ref-node-types-list",
+            Section::Labels => "#admin-ref-labels-list",
         }
     }
 
@@ -254,6 +265,7 @@ impl Section {
             Section::VolumeStates => "admin.reference_data.entity_state",
             Section::ContributorRoles => "admin.reference_data.entity_role",
             Section::NodeTypes => "admin.reference_data.entity_node_type",
+            Section::Labels => "admin.reference_data.entity_label",
         }
     }
 
@@ -263,6 +275,7 @@ impl Section {
             Section::VolumeStates => "admin.reference_data.plural_state",
             Section::ContributorRoles => "admin.reference_data.plural_role",
             Section::NodeTypes => "admin.reference_data.plural_node_type",
+            Section::Labels => "admin.reference_data.plural_label",
         }
     }
 }
@@ -290,7 +303,7 @@ fn contains_invisible_unicode(s: &str) -> bool {
     })
 }
 
-fn validate_name(name: &str, loc: &'static str) -> Result<String, AppError> {
+pub(crate) fn validate_name(name: &str, loc: &'static str) -> Result<String, AppError> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
         return Err(AppError::BadRequest(
@@ -320,7 +333,7 @@ fn checkbox_to_bool(v: &Option<String>) -> bool {
 /// `CONFLICT_NAME_TAKEN` constant from `models::mod` so a future model that
 /// drops or reworks the marker is caught at compile time (the constant has
 /// a single point of definition).
-fn map_create_or_rename_conflict(err: AppError, loc: &'static str, name: &str) -> AppError {
+pub(crate) fn map_create_or_rename_conflict(err: AppError, loc: &'static str, name: &str) -> AppError {
     match err {
         AppError::Conflict(msg) if msg == CONFLICT_NAME_TAKEN => AppError::Conflict(
             rust_i18n::t!("error.reference_data.name_taken", locale = loc, name = name)
@@ -486,6 +499,9 @@ pub async fn render_panel_html(
     let volume_states_list_html = render_volume_states_list(volume_state_rows, &csrf, loc)?;
     let roles_list_html = render_roles_list(role_rows, loc)?;
     let node_types_list_html = render_node_types_list(node_type_rows, loc)?;
+    // CR #443 — rendered by the labels module, which owns the two-count usage
+    // chip; this panel only places the section.
+    let labels_list_html = crate::routes::admin_labels::render_section_html(state, loc).await?;
 
     let panel = AdminReferenceDataPanel {
         csrf_token: csrf,
@@ -507,6 +523,8 @@ pub async fn render_panel_html(
             locale = loc
         )
         .to_string(),
+        section_labels: rust_i18n::t!("admin.reference_data.section_labels", locale = loc)
+            .to_string(),
         btn_add_genre: rust_i18n::t!("admin.reference_data.btn_add_genre", locale = loc)
             .to_string(),
         btn_add_state: rust_i18n::t!("admin.reference_data.btn_add_state", locale = loc)
@@ -517,6 +535,8 @@ pub async fn render_panel_html(
             locale = loc
         )
         .to_string(),
+        btn_add_label: rust_i18n::t!("admin.reference_data.btn_add_label", locale = loc)
+            .to_string(),
         btn_save: rust_i18n::t!("admin.reference_data.btn_save", locale = loc).to_string(),
         btn_cancel: rust_i18n::t!("admin.reference_data.btn_cancel", locale = loc).to_string(),
         loanable_label: rust_i18n::t!("admin.reference_data.loanable_label", locale = loc)
@@ -525,6 +545,7 @@ pub async fn render_panel_html(
         volume_states_list_html,
         roles_list_html,
         node_types_list_html,
+        labels_list_html,
     };
     panel
         .render()
@@ -561,7 +582,7 @@ pub async fn admin_reference_data_panel(
 
 // ─── Helpers — render row + feedback as HtmxResponse ───────────────
 
-fn success_feedback(loc: &'static str, key: &str, name: &str) -> String {
+pub(crate) fn success_feedback(loc: &'static str, key: &str, name: &str) -> String {
     let msg = rust_i18n::t!(key, locale = loc, name = name).to_string();
     feedback_html("success", &msg, "")
 }
@@ -1352,7 +1373,7 @@ pub async fn node_types_delete(
 
 // ─── Modal renderers ───────────────────────────────────────────────
 
-fn render_delete_modal(
+pub(crate) fn render_delete_modal(
     section: Section,
     loc: &'static str,
     csrf: &str,
@@ -1432,7 +1453,7 @@ fn render_loanable_warning_modal(
         .map_err(|_| AppError::Internal("loanable warning modal render failed".to_string()))
 }
 
-fn in_use_conflict(loc: &'static str, section: Section, count: i64) -> AppError {
+pub(crate) fn in_use_conflict(loc: &'static str, section: Section, count: i64) -> AppError {
     let singular = rust_i18n::t!(section.entity_label_key(), locale = loc).to_string();
     let plural = rust_i18n::t!(section.plural_label_key(), locale = loc).to_string();
     let msg = rust_i18n::t!(

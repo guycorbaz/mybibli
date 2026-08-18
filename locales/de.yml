@@ -897,6 +897,7 @@ admin:
     section_volume_states: Exemplarzustände
     section_contributor_roles: Rollen der Mitwirkenden
     section_node_types: Standorttypen
+    section_labels: Etiketten
     btn_add_genre: Genre hinzufügen
     btn_add_state: Zustand hinzufügen
     btn_add_role: Rolle hinzufügen
@@ -917,10 +918,16 @@ admin:
     entity_state: Exemplarzustand
     entity_role: Rolle des Mitwirkenden
     entity_node_type: Standorttyp
+    # CR #443
+    entity_label: Etikett
+    labels_empty: "Noch keine Etiketten."
+    btn_add_label: Etikett hinzufügen
+    label_usage_chip: "%{titles} Titel, %{volumes} Exemplar(e)"
     plural_genre: Titel
     plural_state: Exemplare
     plural_role: Titel-Mitwirkende
     plural_node_type: Standorte
+    plural_label: Titel und Exemplare
     edit_aria: "%{name} bearbeiten"
     delete_aria: "%{name} löschen"
     in_use_link_label: Liste ansehen

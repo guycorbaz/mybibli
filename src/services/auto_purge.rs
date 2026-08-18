@@ -30,6 +30,13 @@ const DELETE_BATCH_SIZE: u64 = 10_000;
 pub(crate) const PURGE_DELETION_ORDER: &[&str] = &[
     "title_contributors", // FK → titles, contributors, contributor_roles
     "title_series",       // FK → titles, series
+    // CR #443 — label links. Junction children of BOTH titles and volumes,
+    // so they must be drained before either parent. `labels` itself sits
+    // with the other taxonomies further down: it is a parent here, and the
+    // usage guard means a label with live links is never soft-deleted in
+    // the first place.
+    "title_labels",       // FK → titles, labels
+    "volume_labels",      // FK → volumes, labels
     "loans",              // FK → volumes, borrowers, storage_locations
     "volumes",            // FK → titles, volume_states, storage_locations
     "titles",             // FK → genres
@@ -38,6 +45,7 @@ pub(crate) const PURGE_DELETION_ORDER: &[&str] = &[
     "storage_locations", // self-FK (hierarchical)
     "contributors",
     "genres",
+    "labels", // CR #443
     // Issue #69: deactivated users hard-deleted after 30 days.
     // `services::users::deactivate` (story 8-3) wipes the user's
     // sessions rows, but that invariant only holds for users

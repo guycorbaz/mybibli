@@ -885,6 +885,7 @@ admin:
     section_volume_states: Stati degli esemplari
     section_contributor_roles: Ruoli dei collaboratori
     section_node_types: Tipi di ubicazione
+    section_labels: Etichette
     btn_add_genre: Aggiungi genere
     btn_add_state: Aggiungi stato
     btn_add_role: Aggiungi ruolo
@@ -905,10 +906,16 @@ admin:
     entity_state: stato di esemplare
     entity_role: ruolo di collaboratore
     entity_node_type: tipo di ubicazione
+    # CR #443
+    entity_label: etichetta
+    labels_empty: "Nessuna etichetta per ora."
+    btn_add_label: Aggiungi etichetta
+    label_usage_chip: "%{titles} titolo/i, %{volumes} volume/i"
     plural_genre: titoli
     plural_state: esemplari
     plural_role: collaboratori di titolo
     plural_node_type: ubicazioni
+    plural_label: titoli e volumi
     edit_aria: "Modifica %{name}"
     delete_aria: "Elimina %{name}"
     in_use_link_label: Vedi lista

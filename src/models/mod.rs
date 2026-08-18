@@ -4,6 +4,7 @@ pub mod borrower;
 pub mod contributor;
 pub mod contributor_role;
 pub mod genre;
+pub mod label;
 pub mod loan;
 pub mod location;
 pub mod location_node_type;

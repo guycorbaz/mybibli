@@ -909,6 +909,7 @@ admin:
     section_volume_states: "États du volume"
     section_contributor_roles: "Rôles de contributeur"
     section_node_types: "Types d'emplacement"
+    section_labels: Étiquettes
     btn_add_genre: "Ajouter un genre"
     btn_add_state: "Ajouter un état"
     btn_add_role: "Ajouter un rôle"
@@ -929,10 +930,16 @@ admin:
     entity_state: "état du volume"
     entity_role: "rôle de contributeur"
     entity_node_type: "type d'emplacement"
+    # CR #443
+    entity_label: étiquette
+    labels_empty: "Aucune étiquette pour l'instant."
+    btn_add_label: Ajouter une étiquette
+    label_usage_chip: "%{titles} titre(s), %{volumes} volume(s)"
     plural_genre: "titres"
     plural_state: "volumes"
     plural_role: "contributions"
     plural_node_type: "emplacements"
+    plural_label: titres et volumes
     edit_aria: "Renommer %{name}"
     delete_aria: "Supprimer %{name}"
     in_use_link_label: "Voir la liste"
