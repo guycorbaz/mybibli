@@ -582,6 +582,26 @@ metadata:
     upc: UPC
 # CR #443 tranche 2 — labels shown on title and volume detail pages.
 labels:
+  # tranche 3 — the /labels page and its drill-down.
+  page_heading: Etichette
+  page_empty: "Nessuna etichetta. Creale in Amministrazione > Dati di riferimento."
+  col_name: Etichetta
+  col_usage: In uso
+  section_titles: Titoli
+  section_volumes: Volumi
+  no_titles: "Nessun titolo porta questa etichetta."
+  no_volumes: "Nessun volume porta questa etichetta."
+  col_title: Titolo
+  col_contributor: Collaboratore
+  col_genre: Genere
+  col_vcode: Codice V
+  col_parent_title: Titolo
+  col_location: Posizione
+  col_state: Stato
+  back_to_index: Tutte le etichette
+  prev_page: Precedente
+  next_page: Successivo
+  nav: Etichette
   heading: "Etichette:"
   none: nessuna
   add: Aggiungi

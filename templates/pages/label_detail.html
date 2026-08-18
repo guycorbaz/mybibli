@@ -1,0 +1,84 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+{# CR #443 tranche 3 — members of one label.
+   Two sections, titles above volumes (settled on the issue 2026-07-28): a
+   merged table would either duplicate columns or flatten to the smallest
+   common denominator. Each section paginates through its own query parameter
+   so paging one does not reset the other. An empty section renders its empty
+   state rather than disappearing — "no volumes carry this label" must be
+   distinguishable from "the volumes section failed to load". #}
+<div class="max-w-5xl mx-auto px-4 py-6">
+    <a href="/labels" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">← {{ back_label }}</a>
+    <h1 class="mt-2 text-2xl font-bold text-stone-900 dark:text-stone-100">{{ label_name|e }}</h1>
+
+    <section class="mt-6" aria-labelledby="label-titles-heading">
+        <h2 id="label-titles-heading" class="text-lg font-semibold text-stone-800 dark:text-stone-200">
+            {{ heading_titles }} ({{ titles.total_items }})
+        </h2>
+        {% if titles.items.is_empty() %}
+            <p id="label-titles-empty" class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ empty_titles }}</p>
+        {% else %}
+        <table id="label-titles-table" class="mt-2 w-full text-sm">
+            <thead>
+                <tr class="border-b border-stone-200 dark:border-stone-700 text-left text-stone-500 dark:text-stone-400">
+                    <th scope="col" class="py-2">{{ col_title }}</th>
+                    <th scope="col" class="py-2">{{ col_contributor }}</th>
+                    <th scope="col" class="py-2">{{ col_genre }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in titles.items %}
+                <tr class="border-b border-stone-100 dark:border-stone-800">
+                    <td class="py-2"><a href="/title/{{ t.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ t.title|e }}</a></td>
+                    <td class="py-2 text-stone-600 dark:text-stone-400">{% if let Some(c) = t.contributor %}{{ c|e }}{% endif %}</td>
+                    <td class="py-2 text-stone-600 dark:text-stone-400">{% if let Some(g) = t.genre %}{{ g|e }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if titles.total_pages > 1 %}
+        <nav class="mt-2 flex gap-3 text-sm" aria-label="{{ heading_titles }}">
+            {% if titles_page > 1 %}<a href="/labels/{{ label_id }}?tp={{ titles_page - 1 }}&amp;vp={{ volumes_page }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ prev_label }}</a>{% endif %}
+            {% if titles_page < titles.total_pages %}<a href="/labels/{{ label_id }}?tp={{ titles_page + 1 }}&amp;vp={{ volumes_page }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ next_label }}</a>{% endif %}
+        </nav>
+        {% endif %}
+        {% endif %}
+    </section>
+
+    <section class="mt-8" aria-labelledby="label-volumes-heading">
+        <h2 id="label-volumes-heading" class="text-lg font-semibold text-stone-800 dark:text-stone-200">
+            {{ heading_volumes }} ({{ volumes.total_items }})
+        </h2>
+        {% if volumes.items.is_empty() %}
+            <p id="label-volumes-empty" class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ empty_volumes }}</p>
+        {% else %}
+        <table id="label-volumes-table" class="mt-2 w-full text-sm">
+            <thead>
+                <tr class="border-b border-stone-200 dark:border-stone-700 text-left text-stone-500 dark:text-stone-400">
+                    <th scope="col" class="py-2">{{ col_vcode }}</th>
+                    <th scope="col" class="py-2">{{ col_parent_title }}</th>
+                    <th scope="col" class="py-2">{{ col_location }}</th>
+                    <th scope="col" class="py-2">{{ col_state }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in volumes.items %}
+                <tr class="border-b border-stone-100 dark:border-stone-800">
+                    <td class="py-2"><a href="/volume/{{ v.id }}" class="font-mono text-indigo-600 dark:text-indigo-400 hover:underline">{{ v.code|e }}</a></td>
+                    <td class="py-2"><a href="/title/{{ v.title_id }}" class="text-stone-700 dark:text-stone-300 hover:underline">{{ v.title|e }}</a></td>
+                    <td class="py-2 text-stone-600 dark:text-stone-400">{% if let Some(l) = v.location %}{{ l|e }}{% endif %}</td>
+                    <td class="py-2 text-stone-600 dark:text-stone-400">{% if let Some(s) = v.state %}{{ s|e }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if volumes.total_pages > 1 %}
+        <nav class="mt-2 flex gap-3 text-sm" aria-label="{{ heading_volumes }}">
+            {% if volumes_page > 1 %}<a href="/labels/{{ label_id }}?tp={{ titles_page }}&amp;vp={{ volumes_page - 1 }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ prev_label }}</a>{% endif %}
+            {% if volumes_page < volumes.total_pages %}<a href="/labels/{{ label_id }}?tp={{ titles_page }}&amp;vp={{ volumes_page + 1 }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ next_label }}</a>{% endif %}
+        </nav>
+        {% endif %}
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

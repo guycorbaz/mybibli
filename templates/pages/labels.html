@@ -1,0 +1,31 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+{# CR #443 tranche 3 — the vocabulary index. Librarian+; the route enforces
+   it, so an anonymous visitor never reaches this template. #}
+<div class="max-w-4xl mx-auto px-4 py-6">
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ heading }}</h1>
+
+    {% if rows.is_empty() %}
+        <p class="mt-6 text-stone-500 dark:text-stone-400">{{ empty_state }}</p>
+    {% else %}
+    <table class="mt-6 w-full text-sm">
+        <thead>
+            <tr class="border-b border-stone-200 dark:border-stone-700 text-left text-stone-500 dark:text-stone-400">
+                <th scope="col" class="py-2">{{ col_name }}</th>
+                <th scope="col" class="py-2">{{ col_usage }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr class="border-b border-stone-100 dark:border-stone-800">
+                <td class="py-2">
+                    <a href="/labels/{{ row.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ row.name|e }}</a>
+                </td>
+                <td class="py-2 text-stone-600 dark:text-stone-400">{{ row.usage_chip }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}

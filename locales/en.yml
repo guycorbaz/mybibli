@@ -600,6 +600,26 @@ metadata:
     upc: UPC
 # CR #443 tranche 2 — labels shown on title and volume detail pages.
 labels:
+  # tranche 3 — the /labels page and its drill-down.
+  page_heading: Labels
+  page_empty: "No labels yet. Create them in Administration > Reference data."
+  col_name: Label
+  col_usage: In use
+  section_titles: Titles
+  section_volumes: Volumes
+  no_titles: "No title carries this label."
+  no_volumes: "No volume carries this label."
+  col_title: Title
+  col_contributor: Contributor
+  col_genre: Genre
+  col_vcode: V-code
+  col_parent_title: Title
+  col_location: Location
+  col_state: State
+  back_to_index: All labels
+  prev_page: Previous
+  next_page: Next
+  nav: Labels
   heading: "Labels:"
   none: none
   add: Add
