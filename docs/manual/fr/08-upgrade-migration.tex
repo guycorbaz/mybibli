@@ -148,6 +148,65 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.18.0}\label{sec:whats-new-1.18.0}
+
+La version 1.18.0 est une mineure sur la 1.17.0. \emph{Une migration
+automatique et additive} \string— trois nouvelles tables, créées au
+premier démarrage. Rien à faire à la main, mais lisez la note en fin de
+section avant de revenir en arrière.
+
+\begin{itemize}
+  \item \textbf{\#443 \string— des étiquettes pour le travail en
+        cours.} Un genre dit ce qu'un livre \emph{est}. Un état dit
+        comment un exemplaire a \emph{vieilli}. Ni l'un ni l'autre ne dit
+        «~je ne suis pas sûr que cette fiche soit juste, il faudra y
+        revenir~», et jusqu'ici il n'y avait nulle part où l'écrire.
+
+        Définissez votre vocabulaire une fois, dans
+        \emph{Administration \textrightarrow{} Données de référence}
+        \string— «~À vérifier~», «~À relire~», «~Reliure abîmée~», ce que
+        votre pratique réclame. Posez-en ensuite n'importe laquelle sur
+        un titre ou sur un exemplaire précis, depuis la même liste, grâce
+        à la nouvelle rubrique de leurs fiches. Une fiche peut en porter
+        plusieurs.
+
+        L'entrée \emph{Étiquettes} du menu ouvre une page qui récapitule
+        tout votre vocabulaire avec son usage. Cliquez sur une étiquette
+        et vous obtenez tout ce qui la porte : les titres d'abord, les
+        exemplaires en dessous, chacun dans son tableau parce qu'ils ne
+        se décrivent pas avec les mêmes colonnes. Cliquez sur une entrée
+        pour rejoindre la fiche et corriger ce qui devait l'être.
+
+        \begin{tip}
+        Les étiquettes n'appartiennent qu'à vous. Un visiteur qui
+        parcourt votre catalogue n'en voit rien \string— ni sur une page,
+        ni dans un décompte, ni en devinant une adresse. Le vocabulaire
+        n'est délibérément pas traduit : ce sont vos mots, pas ceux du
+        logiciel.
+        \end{tip}
+
+        Une étiquette posée quelque part ne peut pas être supprimée ;
+        mybibli vous dit combien de titres et d'exemplaires la portent
+        encore, pour que vous puissiez les détacher d'abord si c'est bien
+        ce que vous voulez.
+  \item \textbf{Le menu apparaît plus tôt sur les écrans étroits.} Avec
+        la nouvelle entrée \emph{Étiquettes}, la barre de navigation d'un
+        administrateur ne tient plus sur une tablette tenue à la
+        verticale. Elle se replie donc dans le menu «~hamburger~» en
+        dessous de 1024 pixels au lieu de 768. Sur tablette, vous
+        trouverez désormais le bouton de menu là où étaient les liens ;
+        rien n'est perdu, tout est à une pression.
+\end{itemize}
+
+\begin{warning}
+\textbf{Première migration depuis la 1.15.0.} Revenir à la 1.17.0 laisse
+les trois nouvelles tables en place, sans les lire \string— sans
+dommage, et vos étiquettes seront toujours là si vous revenez. Prenez
+tout de même la sauvegarde d'avant mise à jour
+(chapitre~\ref{ch:backup}) plutôt que de vous fier à cela : le chemin de
+retour sûr, c'est toujours la sauvegarde, pas la supposition.
+\end{warning}
+
 \section{Nouveautés de la 1.17.0}\label{sec:whats-new-1.17.0}
 
 La version 1.17.0 est une mineure sur la 1.16.0. \emph{Aucune migration,
