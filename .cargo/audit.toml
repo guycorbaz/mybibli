@@ -1,0 +1,32 @@
+# cargo-audit configuration — read by the `advisories` job in
+# .github/workflows/audit.yml and by any local `cargo audit` run.
+#
+# Policy: the job fails on VULNERABILITIES only. Informational warnings
+# (unmaintained crates, unsound findings, yanked versions) are reported
+# but do not gate, because most of them have no fix to apply and a gate
+# that cannot be satisfied is a gate that gets switched off.
+#
+# Every entry below is an advisory we have read and decided not to act
+# on, with the reason. Re-read this list whenever an entry's crate moves
+# — an ignore that outlives its rationale is worse than no ignore.
+
+[advisories]
+ignore = [
+    # Marvin attack: timing sidechannel in RSA decryption/signing.
+    # Reached through sqlx-mysql, which uses `rsa` only to ENCRYPT the
+    # password with the server's public key during MySQL auth. The
+    # attack needs a decryption oracle over a private key; the client
+    # holds no private key, so the premise does not exist here. No
+    # patched release exists upstream as of 2026-08 — RustSec lists the
+    # advisory with an empty `patched` set. Revisit when sqlx moves off
+    # `rsa` or a constant-time release lands.
+    "RUSTSEC-2023-0071",
+
+    # Stack overflow in lopdf when PARSING deeply nested PDF objects.
+    # Reached through genpdf -> printpdf -> lopdf 0.26. mybibli only
+    # ever WRITES PDFs (the wish-list export, services/wishlist_pdf.rs);
+    # no code path calls `Document::load*`, so no attacker-supplied PDF
+    # is ever parsed. The fix is lopdf >= 0.42, which is out of reach
+    # without genpdf itself upgrading. Revisit if we ever import PDFs.
+    "RUSTSEC-2026-0187",
+]
