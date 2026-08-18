@@ -325,6 +325,18 @@ pub enum MetadataError {
     /// this variant so the bulk cover-refetch loop can back off and
     /// retry instead of burning the title's only chance for the run.
     Unavailable,
+    /// #202 tier 2 — the provider needs an API key and none is configured,
+    /// so no HTTP call was attempted.
+    ///
+    /// Before this variant, OMDb and TMDb returned `Ok(None)` on a missing
+    /// key, which the chain could not tell apart from "searched and found
+    /// nothing". That conflation is exactly what the diagnosis surface has
+    /// to undo: "no key configured" is fixed in one minute from
+    /// /admin > System, while "found nothing" means the title genuinely is
+    /// not in that catalogue and no amount of retrying will help.
+    ///
+    /// NOT a throttle: retrying changes nothing until a human sets the key.
+    NotConfigured,
 }
 
 impl MetadataError {
@@ -351,6 +363,9 @@ impl std::fmt::Display for MetadataError {
             }
             MetadataError::Unavailable => {
                 write!(f, "Provider temporarily unavailable (HTTP 503)")
+            }
+            MetadataError::NotConfigured => {
+                write!(f, "No API key configured for this provider")
             }
         }
     }

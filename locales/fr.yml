@@ -552,6 +552,14 @@ metadata:
   apply_changes: Appliquer les modifications sélectionnées
   update_success: "Mis à jour %{updated} champ(s), conservé %{kept} modification(s) manuelle(s)."
   redownload_failed: "Échec du re-téléchargement : aucune métadonnée trouvée."
+  # #202 palier 2 — pourquoi une recherche de métadonnées revient vide.
+  # Forme tripartite (docs/error-message-style.md) ; les noms de sources
+  # sont des noms propres (NFR41), jamais traduits.
+  diagnosis:
+    transient: "%{providers} n'a pas pu répondre à l'instant — le service était occupé ou trop lent. Réessayez dans quelques minutes."
+    not_configured: "%{providers} n'a pas été consultée : aucune clé d'accès n'est renseignée pour elle. Vous pouvez en ajouter une dans Administration > Système."
+    searched_one: "Une source a été interrogée et ne connaît pas ce code ; il se peut simplement qu'il n'y soit pas catalogué. Vous pouvez saisir les informations à la main."
+    searched_other: "%{count} sources ont été interrogées et aucune ne connaît ce code ; il se peut simplement qu'il ne soit catalogué nulle part. Vous pouvez saisir les informations à la main."
   all_updated: "Tous les champs mis à jour depuis le fournisseur."
   no_changes: "Aucun changement — les métadonnées correspondent déjà."
   auto_updated: "Sera mis à jour automatiquement"

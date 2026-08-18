@@ -264,8 +264,13 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
         #   latent 409 that surfaced when #450's zone completion shifted the
         #   write by a few ms. The spec's premise is "the chain cannot
         #   resolve", so it belongs on the blocklist like its sibling.
+        # - 9780000000033: used by metadata-diagnosis (#202 tier 2). The spec's
+        #   whole premise is that every provider comes back empty, so the
+        #   re-download handler reaches its failure branch and renders the
+        #   diagnosis line. A catch-all answer here would make the test
+        #   assert on a success page.
         # - Google Books known ISBNs: must NOT resolve via BnF so the chain falls through to Google Books
-        NO_METADATA_ISBNS = {"9780000000002", "9780000000019", "9780000000026", "9780134685991", "9780201633610"}
+        NO_METADATA_ISBNS = {"9780000000002", "9780000000019", "9780000000026", "9780000000033", "9780134685991", "9780201633610"}
 
         if isbn and isbn in BNF_KNOWN_ISBNS:
             body = make_sru_response(BNF_KNOWN_ISBNS[isbn])

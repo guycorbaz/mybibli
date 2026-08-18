@@ -549,6 +549,12 @@ metadata:
   apply_changes: Ausgewählte Änderungen übernehmen
   update_success: "%{updated} Feld(er) aktualisiert, %{kept} manuelle Bearbeitung(en) beibehalten."
   redownload_failed: "Erneutes Laden fehlgeschlagen: kein Anbieter lieferte Metadaten."
+  # #202 Stufe 2 — warum eine Metadatensuche leer zurückkommt.
+  diagnosis:
+    transient: "%{providers} konnte gerade nicht antworten — der Dienst war ausgelastet oder zu langsam. Versuchen Sie es in einigen Minuten erneut."
+    not_configured: "%{providers} wurde nicht abgefragt: dafür ist kein Zugangsschlüssel hinterlegt. Sie können ihn unter Verwaltung > System eintragen."
+    searched_one: "Eine Quelle wurde durchsucht und kennt diesen Code nicht; möglicherweise ist er dort nicht katalogisiert. Sie können die Angaben von Hand eintragen."
+    searched_other: "%{count} Quellen wurden durchsucht und keine kennt diesen Code; möglicherweise ist er nirgends katalogisiert. Sie können die Angaben von Hand eintragen."
   all_updated: "Alle Metadatenfelder vom Anbieter aktualisiert."
   no_changes: "Keine Änderungen — die Metadaten entsprechen bereits den Anbieterdaten."
   auto_updated: "Wird automatisch aktualisiert"

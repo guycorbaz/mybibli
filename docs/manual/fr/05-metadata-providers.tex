@@ -255,8 +255,35 @@ quelques secondes.
 \section{Dépannage : métadonnées vides}
 
 Si un ISBN fraîchement scanné finit avec des champs titre /
-auteur / description vides, parcourez cette liste avant de
-suspecter un bug :
+auteur / description vides, \textbf{interrogez d'abord
+l'application}. Ouvrez la fiche et pressez \emph{Re-télécharger
+les métadonnées} : la recherche se fait pendant que vous attendez,
+et si elle revient vide, le message affiché dessous dit désormais
+ce qui s'est réellement passé, au lieu de signaler seulement un
+échec. Il distingue trois situations que rien ne séparait
+jusqu'ici :
+
+\begin{itemize}
+  \item \textbf{«~\emph{N} sources ont été interrogées et aucune
+        ne connaît ce code~»} \string— l'absence franche. Aucune
+        clé, aucun réessai, aucune attente n'y changera quoi que
+        ce soit : l'ouvrage n'est décrit dans aucun des catalogues
+        que mybibli consulte. Saisissez les champs à la main.
+  \item \textbf{«~\emph{Source} n'a pas pu répondre à
+        l'instant~»} \string— la source était occupée ou trop
+        lente. Là, il vaut réellement la peine de represser le
+        bouton dans quelques minutes.
+  \item \textbf{«~\emph{Source} n'a pas été consultée : aucune
+        clé d'accès n'est renseignée~»} \string— elle n'a jamais
+        été interrogée. Un champ dans
+        \emph{Administration \textrightarrow{} Système} règle la
+        question une fois pour toutes.
+\end{itemize}
+
+Le message nomme les sources, et ces noms ne sont jamais traduits :
+ce sont ceux des bibliothèques elles-mêmes.
+
+Si vous préférez raisonner par vous-même, parcourez cette liste :
 
 \begin{enumerate}
   \item \textbf{État des fournisseurs dans \texttt{/admin >

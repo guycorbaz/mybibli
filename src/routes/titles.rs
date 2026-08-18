@@ -970,8 +970,16 @@ pub async fn redownload_metadata(
     };
     let per_provider_timeouts = state.metadata_chain_provider_timeouts();
 
-    // Execute chain synchronously (user is waiting for result)
-    let metadata_opt = ChainExecutor::execute(
+    // Execute chain synchronously (user is waiting for result).
+    //
+    // #202 tier 2 — `execute_detailed` rather than `execute`: the failure
+    // branch below needs the per-provider outcomes, and this handler is the
+    // one place the chain runs while a human is watching. Diagnosing on
+    // demand rather than persisting a verdict is deliberate — provider
+    // availability is episodic (Google Books' 503 storms come and go), so a
+    // reason recorded three weeks ago would describe a world that no longer
+    // exists, and it would have cost a migration to store.
+    let outcome = ChainExecutor::execute_detailed(
         &state.registry,
         pool,
         &code,
@@ -982,16 +990,24 @@ pub async fn redownload_metadata(
     )
     .await;
 
-    let metadata = match metadata_opt {
+    let metadata = match outcome.result {
         Some(m) => m,
         None => {
             let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
             let has_code = true;
             let mut html = metadata_display_html(&title, &genre_name, &session, has_code, loc);
+            let diagnosis =
+                crate::services::metadata_diagnosis::describe_failure(&outcome.attempts, loc)
+                    .unwrap_or_default();
+            tracing::info!(
+                title_id = id,
+                attempts = outcome.attempts.len(),
+                "Re-download found nothing; diagnosis surfaced to the user"
+            );
             let feedback = feedback_html(
                 "error",
                 &rust_i18n::t!("metadata.redownload_failed", locale = loc),
-                "",
+                &diagnosis,
             );
             html.push_str(&format!(
                 r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#

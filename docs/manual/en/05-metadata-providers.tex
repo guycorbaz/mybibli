@@ -233,7 +233,32 @@ within seconds.
 \section{Troubleshooting empty metadata}
 
 If a freshly scanned ISBN ends up with empty title / author /
-description fields, walk this list before suspecting a bug:
+description fields, **ask the application first**. Open the title
+and press \emph{Re-download metadata}: the lookup runs while you
+wait, and if it comes back empty the message underneath now says
+what actually happened rather than only that it failed. It
+distinguishes three situations that look identical from the
+outside:
+
+\begin{itemize}
+  \item \textbf{``\emph{N} sources were searched and none holds
+        this code''} \string— the honest miss. No key, no retry and
+        no waiting will change it; the book is not described in
+        the catalogues mybibli consults. Fill the fields in by
+        hand.
+  \item \textbf{``\emph{Source} could not answer just now''}
+        \string— the source was busy or too slow. Genuinely worth
+        pressing the button again in a few minutes.
+  \item \textbf{``\emph{Source} was not consulted: no API key is
+        set''} \string— it was never asked. One field in
+        \emph{Administration \textrightarrow{} System} fixes it
+        permanently.
+\end{itemize}
+
+The message names the sources, and the names are never translated:
+they are the libraries' own.
+
+If you would rather reason it out yourself, walk this list:
 
 \begin{enumerate}
   \item \textbf{Provider status in \texttt{/admin > Health}.}

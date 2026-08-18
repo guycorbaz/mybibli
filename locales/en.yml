@@ -556,6 +556,13 @@ metadata:
   apply_changes: Apply selected changes
   update_success: "Updated %{updated} field(s), kept %{kept} manual edit(s)."
   redownload_failed: "Re-download failed: no metadata found from any provider."
+  # #202 tier 2 — why a metadata lookup came back empty. Tripartite per
+  # docs/error-message-style.md; provider names are proper nouns (NFR41).
+  diagnosis:
+    transient: "%{providers} could not answer just now — the service was busy or too slow. Try again in a few minutes."
+    not_configured: "%{providers} was not consulted: no API key is set for it. You can add one in Administration > System."
+    searched_one: "One source was searched and does not hold this code, so it may simply not be catalogued there. You can fill the details in by hand."
+    searched_other: "%{count} sources were searched and none holds this code, so it may simply not be catalogued anywhere. You can fill the details in by hand."
   all_updated: "All metadata fields updated from provider."
   no_changes: "No changes — metadata already matches provider data."
   auto_updated: "Will be updated automatically"
