@@ -274,29 +274,12 @@ jobs:
             -f tests/e2e/docker-compose.wizard.yml \
             up -d --build --wait
 
-      - name: Wipe seeded users so the wizard predicate fires
-        # `sessions.user_id` carries an FK to `users.id` with no CASCADE
-        # (`fk_sessions_user`, story 1 initial schema), so a bare
-        # `DELETE FROM users` aborts with 23000. Drop the dependent
-        # session rows first; `admin_audit` cascades on user delete so
-        # we don't have to touch it explicitly.
-        run: |
-          docker compose \
-            -f tests/e2e/docker-compose.test.yml \
-            -f tests/e2e/docker-compose.wizard.yml \
-            exec -T db mariadb -uroot -proot_test mybibli_test \
-              -e "DELETE FROM sessions; DELETE FROM users;"
-
-      - name: Restart mybibli so it re-reads MYBIBLI_SKIP_SETUP="" and the empty users table
-        run: |
-          docker compose \
-            -f tests/e2e/docker-compose.test.yml \
-            -f tests/e2e/docker-compose.wizard.yml \
-            restart mybibli
-          # Boot is fast — give the listener a moment to bind before
-          # Playwright connects. Cargo's debug-build container starts in
-          # ~2 s on warm CI; the 5-s sleep here is generous.
-          sleep 5
+      # Issue #480 — no SQL wipe here on purpose. The wizard override
+      # unsets MYBIBLI_SEED_DEV_USERS, so the seed gate itself clears
+      # the seeded users and the published session row during the very
+      # boot that `--wait` above waited for. Wiping by hand would have
+      # hidden a broken gate; letting the gate do it makes this lane the
+      # end-to-end proof that a fresh production install starts clean.
 
       - name: Install E2E deps
         working-directory: tests/e2e

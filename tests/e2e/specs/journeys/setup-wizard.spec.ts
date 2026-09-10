@@ -10,22 +10,20 @@
  *
  * Two ways to run it locally:
  *
- *   # 1) Spawn the test stack fresh, drop the seed users, unset the
- *   #    bypass, then run only this spec.
- *   docker compose -f tests/e2e/docker-compose.test.yml up -d --build
- *   docker compose -f tests/e2e/docker-compose.test.yml exec -T db \
- *       mariadb -uroot -proot_test mybibli_test \
- *       -e "DELETE FROM users;"
- *   docker compose -f tests/e2e/docker-compose.test.yml stop mybibli
- *   MYBIBLI_SKIP_SETUP="" \
- *       docker compose -f tests/e2e/docker-compose.test.yml up -d mybibli
- *   MYBIBLI_SETUP_E2E=1 npx playwright test specs/journeys/setup-wizard.spec.ts
+ *   # 1) Spawn the test stack with the wizard override, which unsets
+ *   #    both MYBIBLI_SKIP_SETUP and MYBIBLI_SEED_DEV_USERS. The seed
+ *   #    gate then clears the seeded users at boot — no SQL wipe by
+ *   #    hand (issue #480), which is also what this spec now asserts.
+ *   docker compose -f tests/e2e/docker-compose.test.yml \
+ *       -f tests/e2e/docker-compose.wizard.yml up -d --build --wait
+ *   cd tests/e2e && MYBIBLI_SETUP_E2E=1 \
+ *       npx playwright test specs/journeys/setup-wizard.spec.ts
  *
  *   # 2) Run cargo run locally against a clean DB on port 8080.
  *   MYBIBLI_SETUP_E2E=1 npx playwright test specs/journeys/setup-wizard.spec.ts
  *
- * The CI job that wires the wizard stack lives outside this PR — it
- * is tracked as a follow-up issue surfaced in Epic 8 retrospective.
+ * The CI job that wires the wizard stack is `e2e-wizard` in
+ * `.github/workflows/_gates.yml`.
  */
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
@@ -37,6 +35,12 @@ const SETUP_E2E_GATED = process.env.MYBIBLI_SETUP_E2E !== "1";
 // predicate requires an empty users table that only the wizard CI lane
 // (this spec's lane) provides.
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag22aa"];
+
+// Issue #480 — the session token planted by
+// `migrations/20260329000002_seed_dev_user.sql`. Published in
+// CLAUDE.md, in the E2E helpers and in the git history, so a fresh
+// production install must not carry the row.
+const DEV_SESSION_TOKEN = "ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2";
 
 test.describe("Story 8-8 — First-launch setup wizard", () => {
   test.skip(
@@ -100,6 +104,33 @@ test.describe("Story 8-8 — First-launch setup wizard", () => {
     // /setup is dead — single-use property.
     const resp = await page.request.get("/setup");
     expect(resp.status()).toBe(404);
+
+    // Issue #480 — a fresh install must leave no seed artefact behind.
+    // This lane is the only one where the gate actually runs (every
+    // other spec pins MYBIBLI_SEED_DEV_USERS=1), so the two checks
+    // below live here.
+
+    // 1) Nothing restorable in the Trash. Until v1.18.0 the gate
+    //    soft-deleted `admin` and `librarian`, which left them sitting
+    //    in this panel behind a Restore button — one click from a live
+    //    administrator whose password is published in SECURITY.md.
+    await page.goto("/admin?tab=trash");
+    await expect(page.locator("#admin-trash-panel")).toContainText(
+      /No deleted items|Aucun élément supprimé/i,
+    );
+
+    // 2) The seeded session token no longer authenticates: the gate
+    //    deletes the row, so presenting the published cookie leaves the
+    //    visitor anonymous and /admin bounces to the login page.
+    await page.context().addCookies([
+      {
+        name: "session",
+        value: DEV_SESSION_TOKEN,
+        url: baseURL ?? "http://localhost:8080",
+      },
+    ]);
+    await page.goto("/admin");
+    await expect(page).toHaveURL(/\/login/);
   });
 
   // Note: the original "resume after browser close" test was removed

@@ -203,11 +203,15 @@ The app listens on `http://localhost:8080`. The seed migrations create an admin 
 > ℹ️ **Seed users are now gated (issue #173, fixed in 1.1.0).**
 > On a fresh install where `MYBIBLI_SEED_DEV_USERS` is unset, the
 > seed migrations still apply but the gate in `src/services/seed_gate.rs`
-> immediately soft-deletes any user whose hash still matches the
-> documented seed value. The first-launch wizard at `/setup` is
-> therefore reachable on every fresh production deployment. Set the
-> env var to `1` only for local development and the E2E test stack —
-> never in production.
+> immediately **hard-deletes** any user whose hash still matches the
+> documented seed value, along with the seeded session row whose token
+> is equally public. The first-launch wizard at `/setup` is therefore
+> reachable on every fresh production deployment, and nothing seeded is
+> left in the Trash for a later Restore click to revive (issue #480 —
+> before that fix the rows were only soft-deleted). An instance
+> upgrading from v1.18.0 or earlier purges the leftovers on its first
+> boot. Set the env var to `1` only for local development and the E2E
+> test stack — never in production.
 
 **Fresh-install wizard.** Story 8-8 introduced a first-launch wizard at `/setup` whose gate predicate is `(active_admin_count == 0) AND (settings.setup_completed_at IS NONE)`. Because the seed migrations create an admin before the gate is first evaluated, the wizard never triggers in practice on a default install — the password-rotation step above is the effective onboarding flow. The wizard can still be exercised by running `cargo run` against an empty DB with the seed migrations skipped. `MYBIBLI_SKIP_SETUP=1` (strict accept-set: `1` / `true` / `TRUE`) is the explicit bypass.
 
