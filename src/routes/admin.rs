@@ -226,6 +226,21 @@ struct AdminTrashPermanentDeleteModal {
 }
 
 #[derive(Template)]
+#[template(path = "fragments/admin_trash_restore_modal.html")]
+struct AdminTrashRestoreModal {
+    /// Issue #478 — thin wrapper around the same UX-DR8 macro as the
+    /// permanent-delete modal. Shown only on the conflict path; a
+    /// conflict-free restore never opens a dialog.
+    title: String,
+    body_html: String,
+    confirm_label: String,
+    cancel_label: String,
+    action_url: String,
+    csrf_token: String,
+    version: i32,
+}
+
+#[derive(Template)]
 #[template(path = "fragments/admin_trash_panel.html")]
 struct AdminTrashPanel {
     heading: String,
@@ -554,6 +569,24 @@ pub struct PermanentDeleteConfirmQuery {
     pub page: Option<u32>,
 }
 
+/// Query for `POST /admin/trash/{table}/{id}/restore` (issue #478).
+/// `version` drives the optimistic lock; `clear_conflicts` marks the
+/// second pass, after the admin confirmed the conflict modal; the rest
+/// are the panel filters threaded through so the post-restore re-render
+/// lands on the same view (same contract as `PermanentDeleteConfirmQuery`).
+#[derive(Debug, Deserialize)]
+pub struct RestoreQuery {
+    pub version: Option<i32>,
+    /// Typed as a string, not a `bool`: `serde_urlencoded` accepts only
+    /// `true` / `false` for a bool, so a hand-edited `?clear_conflicts=1`
+    /// would 400 instead of doing the obvious thing. Parsed through the
+    /// strict accept-set the project uses for its flags elsewhere.
+    pub clear_conflicts: Option<String>,
+    pub entity_type: Option<String>,
+    pub search: Option<String>,
+    pub page: Option<u32>,
+}
+
 pub async fn admin_trash_permanent_delete_confirm(
     State(state): State<AppState>,
     session: Session,
@@ -806,6 +839,218 @@ pub(crate) async fn render_admin_for_reference_data(
     is_htmx: bool,
 ) -> Result<Response, AppError> {
     render_admin(state, session, loc, uri, is_htmx, AdminTab::ReferenceData, None).await
+}
+
+/// Restore a soft-deleted item from the Trash (issue #478).
+///
+/// The Restore button had been rendering a URL to a route that was never
+/// registered, so a click produced a 404 that HTMX does not swap — no
+/// restore, no error, nothing. Everything below it already existed:
+/// `TrashService::restore`, `detect_restore_conflicts`,
+/// `restore_with_conflicts_cleared`, and the `admin.trash.restore_*`
+/// locale keys. This handler is the missing wiring.
+///
+/// **POST, not GET.** The button used to emit `hx-get`. A state-changing
+/// GET sits outside the CSRF middleware (story 8-2 guards
+/// POST/PUT/PATCH/DELETE only) and is fair game for any prefetcher, so
+/// the route is registered as POST and the button posts.
+///
+/// Two passes when relationships changed while the item sat in the trash:
+/// the first returns the conflict modal (retargeted into `#modal-slot`),
+/// its Confirm re-posts with `clear_conflicts=1`. A conflict-free restore
+/// takes the single-click path.
+pub async fn admin_trash_restore(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    axum::extract::Path((table, id)): axum::extract::Path<(String, u64)>,
+    Query(params): Query<RestoreQuery>,
+) -> Result<Response, AppError> {
+    session.require_role_with_return(Role::Admin, "/admin?tab=trash", locale.0)?;
+    let loc = locale.0;
+
+    let version = params
+        .version
+        .ok_or(AppError::BadRequest("Missing or invalid version".to_string()))?;
+
+    // `get_trash_entry` validates `table` against ALLOWED_TABLES and
+    // filters on `deleted_at IS NOT NULL`, so a purged (or already
+    // restored) row lands here rather than in the service layer.
+    let entry = crate::models::trash::TrashModel::get_trash_entry(&state.pool, &table, id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(
+                rust_i18n::t!("admin.trash.restore_error_not_found", locale = loc).to_string(),
+            )
+        })?;
+
+    let clear_conflicts = matches!(
+        params.clear_conflicts.as_deref(),
+        Some("1" | "true" | "TRUE")
+    );
+    let conflicts =
+        crate::services::trash::TrashService::detect_restore_conflicts(&state.pool, &table, id)
+            .await?;
+
+    if !conflicts.is_empty() && !clear_conflicts {
+        // The version in the URL is the one the admin's page carried, not
+        // a fresh read: a stale panel must still lose the optimistic lock
+        // when the modal's Confirm comes back.
+        let action_url = format!(
+            "/admin/trash/{}/{}/restore?version={}&clear_conflicts=1&entity_type={}&search={}&page={}",
+            crate::utils::html_escape(&table),
+            id,
+            version,
+            crate::utils::url_encode(params.entity_type.as_deref().unwrap_or("")),
+            crate::utils::url_encode(params.search.as_deref().unwrap_or("")),
+            params.page.unwrap_or(1).max(1),
+        );
+        let modal_html = render_restore_conflict_modal(
+            &session,
+            loc,
+            &action_url,
+            version,
+            &entry.item_name,
+            &conflicts,
+        )?;
+
+        // The click came from the panel's Restore button, whose
+        // `hx-target` is `#admin-trash-panel`. Retarget so the dialog
+        // lands in the stable `#modal-slot` (polish-1: outside any
+        // HTMX-swappable region) instead of replacing the panel with a
+        // modal. Not stripped by `ModalConfirmRetargetGuard` — that
+        // layer only touches responses to requests carrying
+        // `X-Modal-Confirm`, which a panel button never sends.
+        let mut response = Html(modal_html).into_response();
+        response.headers_mut().insert(
+            axum::http::HeaderName::from_static("hx-retarget"),
+            axum::http::HeaderValue::from_static("#modal-slot"),
+        );
+        response.headers_mut().insert(
+            axum::http::HeaderName::from_static("hx-reswap"),
+            axum::http::HeaderValue::from_static("innerHTML"),
+        );
+        return Ok(response);
+    }
+
+    let restored = if clear_conflicts {
+        crate::services::trash::TrashService::restore_with_conflicts_cleared(
+            &state.pool,
+            &table,
+            id,
+            version,
+        )
+        .await?
+    } else {
+        crate::services::trash::TrashService::restore(&state.pool, &table, id, version).await?
+    };
+
+    // Forensics, mirroring `permanent_delete_from_trash` — restoring a
+    // row is the inverse of purging it and belongs in the same trail.
+    // Best-effort on purpose: the restore already committed, so a failed
+    // audit INSERT must not turn a successful action into an error page.
+    if let Some(user_id) = session.user_id {
+        let actor_username: String = sqlx::query_scalar("SELECT username FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(&state.pool)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| format!("user-{}", user_id));
+
+        if let Err(e) = crate::models::admin_audit::AdminAuditModel::create(
+            &state.pool,
+            user_id,
+            "restore_from_trash",
+            Some(&table),
+            Some(id),
+            Some(serde_json::json!({
+                "user_username": actor_username,
+                "user_role": session.role.to_string(),
+                "item_name": restored.item_name,
+                "conflicts_cleared": clear_conflicts,
+            })),
+        )
+        .await
+        {
+            tracing::warn!(error = %e, table = %table, id = id, "restore audit entry failed");
+        }
+    }
+
+    let success_msg =
+        rust_i18n::t!("admin.trash.restore_success", locale = loc, name = &restored.item_name)
+            .to_string();
+    let feedback = feedback_html("success", &success_msg, "");
+
+    // Re-render with the filters the admin was looking at, exactly as the
+    // permanent-delete handler does (patch P12).
+    let filters = TrashQuery {
+        entity_type: params.entity_type,
+        search: params.search,
+        page: params.page,
+    };
+    let panel_html = render_trash_panel(&state, loc, &filters).await?;
+
+    // `HX-Trigger: modal-close` closes the conflict modal on the second
+    // pass. Harmless on the single-click path: modal.js only closes when
+    // the finished Confirm came from its own slot.
+    Ok(HtmxResponse {
+        main: panel_html,
+        oob: vec![OobUpdate {
+            swap_mode: Default::default(),
+            target: "feedback-list".to_string(),
+            content: feedback,
+        }],
+    }
+    .into_response_with_hx_trigger("modal-close"))
+}
+
+/// Build the conflict modal for [`admin_trash_restore`]. Kept separate so
+/// the handler reads as one flow. Every interpolated value carrying user
+/// data goes through `html_escape` — the macro consumes `body_html` with
+/// `|safe` (CSP-clean, no inline script/style).
+fn render_restore_conflict_modal(
+    session: &Session,
+    loc: &'static str,
+    action_url: &str,
+    version: i32,
+    item_name: &str,
+    conflicts: &[crate::services::trash::ConflictInfo],
+) -> Result<String, AppError> {
+    let explanation = rust_i18n::t!("admin.trash.restore_modal_explanation", locale = loc).to_string();
+    let conflicts_label = rust_i18n::t!("admin.trash.restore_modal_conflicts", locale = loc).to_string();
+
+    let items = conflicts
+        .iter()
+        .map(|c| format!("<li>{}</li>", crate::utils::html_escape(&c.description)))
+        .collect::<Vec<_>>()
+        .join("");
+
+    let body_html = format!(
+        r##"<p class="mb-3">{explanation}</p>
+<p class="font-mono font-bold text-stone-900 dark:text-white break-all mb-3">{item_name}</p>
+<p class="text-sm font-semibold mb-1">{conflicts_label}</p>
+<ul class="list-disc list-inside text-sm space-y-1">{items}</ul>"##,
+        explanation = crate::utils::html_escape(&explanation),
+        item_name = crate::utils::html_escape(item_name),
+        conflicts_label = crate::utils::html_escape(&conflicts_label),
+        items = items,
+    );
+
+    let modal = AdminTrashRestoreModal {
+        title: rust_i18n::t!("admin.trash.restore_modal_title", locale = loc).to_string(),
+        body_html,
+        confirm_label: rust_i18n::t!("admin.trash.restore_modal_clear_conflicts", locale = loc)
+            .to_string(),
+        cancel_label: rust_i18n::t!("admin.trash.restore_modal_cancel", locale = loc).to_string(),
+        action_url: action_url.to_string(),
+        csrf_token: session.csrf_token.clone(),
+        version,
+    };
+
+    modal
+        .render()
+        .map_err(|_| AppError::Internal("Modal render failed".to_string()))
 }
 
 pub async fn admin_trash_panel(

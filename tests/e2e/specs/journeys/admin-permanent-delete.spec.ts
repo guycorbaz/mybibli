@@ -61,7 +61,12 @@ test.describe("Story 8-7: Permanent Delete & Auto-Purge", () => {
     const row = await openTrashAndFindRow(page, name);
 
     // Click "Delete permanently" on our row → modal opens
-    const deleteBtn = row.locator("button[data-modal-trigger]");
+    // Issue #478 gave the Restore button `data-modal-trigger` too (it can
+    // open the restore-conflict modal), so the delete button is addressed
+    // by its accessible name rather than by the marker attribute.
+    const deleteBtn = row.getByRole("button", {
+      name: /delete permanently|supprimer définitivement/i,
+    });
     await expect(deleteBtn).toBeVisible();
     await deleteBtn.click();
 
@@ -97,7 +102,9 @@ test.describe("Story 8-7: Permanent Delete & Auto-Purge", () => {
     const name = await seedSoftDeletedSeries(page, "SC2");
     const row = await openTrashAndFindRow(page, name);
 
-    await row.locator("button[data-modal-trigger]").click();
+    await row
+      .getByRole("button", { name: /delete permanently|supprimer définitivement/i })
+      .click();
     const modal = page.locator("#modal-slot dialog[open]");
     await expect(modal).toBeVisible({ timeout: 5000 });
 

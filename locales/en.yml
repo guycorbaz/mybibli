@@ -838,6 +838,7 @@ admin:
     days_remaining_warning: "%{days} day"
     days_remaining_critical: "<7 days"
     restore_success: "Restored: %{name}"
+    restore_error_not_found: "That item is no longer in the trash. It may have been restored or purged already."
     delete_permanent_success: "Deleted permanently: %{name}"
     delete_permanent_modal_title: "Delete permanently?"
     delete_permanent_modal_warning: "This cannot be undone."
