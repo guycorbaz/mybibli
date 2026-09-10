@@ -13,14 +13,19 @@
 #       -f tests/e2e/docker-compose.test.yml \
 #       -f tests/e2e/docker-compose.wizard.yml \
 #       up -d --build --wait
-#   # then: wipe `users` so the gate predicate evaluates to "active"
-#   #       restart mybibli to pick up the empty `users` table
-#   #       run `npx playwright test specs/journeys/setup-wizard.spec.ts`
-#       with MYBIBLI_SETUP_E2E=1
+#   # the seed gate empties `users` on boot, so the wizard predicate is
+#   # already "active" — then run:
+#   #   MYBIBLI_SETUP_E2E=1 npx playwright test \
+#   #       specs/journeys/setup-wizard.spec.ts
 services:
   mybibli:
     environment:
       MYBIBLI_SKIP_SETUP: ""
+      # Issue #480: unset here too, so the seed gate itself clears the
+      # seeded users and the published session row at boot. Before this,
+      # the CI lane wiped `users` and `sessions` with raw SQL, which
+      # made the wizard fire but tested nothing about the gate.
+      MYBIBLI_SEED_DEV_USERS: ""
       # The base compose injects OMDB_API_KEY / TMDB_API_KEY for the
       # seeded-stack E2E suite. `config::migrate_legacy_env_vars` writes
       # them into `settings` on boot, so the wizard's resolver would see
