@@ -78,6 +78,17 @@ Live production install (`v1.18.0`, household NAS, 140+ volumes catalogued and g
 
 Pre-built images are published to Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli) — `:latest` tracks the highest semver, individual tags pin to the exact release. For development against the source tree, see **Development** below.
 
+### Network posture — read this before you deploy
+
+**mybibli is not built to face the open internet.** It is designed for one household on one local network, and several deliberate choices follow from that: no limit on login attempts (delegated to a reverse proxy if you run one), no second authentication factor, no `Secure` attribute on the session cookie unless you ask for it, and a catalogue that is readable without signing in — that last one is a feature, not an oversight. The reasoning for each is written down in [`docs/auth-threat-model.md`](docs/auth-threat-model.md) §5.
+
+Do not forward a port to it. If you need your library from outside the house, two shapes are supported:
+
+- **A private tunnel** — Tailscale, WireGuard, or your router's VPN. Nothing is published; the remote device joins the network instead. Recommended, and what the reference deployment runs.
+- **A reverse proxy terminating TLS** — and then set `MYBIBLI_COOKIE_SECURE=true` as well. That second half is the one people forget: without it the session cookie is still accepted over plain HTTP, and the proxy has bought you less than you think.
+
+Report anything that contradicts this posture through [`SECURITY.md`](SECURITY.md) — privately, not in a public issue.
+
 ### Installation notes
 
 Install **v1.1.0 or later**. Pre-1.1.0 images (`v1.0.0` … `v1.0.5`) shipped seed migrations that created default `admin/admin` and `librarian/librarian` credentials on every fresh install, bypassing the first-launch wizard ([#173](https://github.com/guycorbaz/mybibli/issues/173)). The seed gate landed in v1.1.0 and is the install floor; pre-1.1.0 Docker Hub tags have been removed. `:latest` and every published tag from 1.1.0 onwards are safe — a fresh install greets you with the setup wizard. If you happen to have an older deployment, wipe the database and reinstall before adding any data.

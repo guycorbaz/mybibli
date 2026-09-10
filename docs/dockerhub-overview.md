@@ -14,6 +14,12 @@ Tags below `1.1.0` (`v1.0.0` … `v1.0.5`) shipped with a hard-coded `admin/admi
 
 If you ran a pre-1.1.0 build, wipe the database before pulling 1.1.0+. See [the install warning](https://github.com/guycorbaz/mybibli#-do-not-install-versions-below-110) for the full writeup.
 
+## ⚠️ Built for a local network, not for the open internet
+
+mybibli is designed for one household on one LAN. Login attempts are not rate-limited, there is no second authentication factor, the session cookie carries no `Secure` attribute unless you set `MYBIBLI_COOKIE_SECURE=true`, and the catalogue is readable without signing in — a feature, not an oversight.
+
+**Do not forward a port to it.** To reach your library from outside the house, use a private tunnel (Tailscale, WireGuard, your router's VPN), or put it behind a TLS reverse proxy **and** set `MYBIBLI_COOKIE_SECURE=true`. The reasoning is in [`docs/auth-threat-model.md`](https://github.com/guycorbaz/mybibli/blob/main/docs/auth-threat-model.md); report anything that contradicts it via [`SECURITY.md`](https://github.com/guycorbaz/mybibli/blob/main/SECURITY.md).
+
 ## What it is
 
 - **Barcode-first cataloging.** Scan ISBN / EAN-13 → metadata resolves asynchronously through a provider chain (BDGest → BnF → Google Books → Library of Congress → Open Library → MusicBrainz → OMDb → TMDB) with cover-image download and similar-title detection.
