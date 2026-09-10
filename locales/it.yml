@@ -811,6 +811,7 @@ admin:
     days_remaining_warning: "%{days} giorno"
     days_remaining_critical: "<7 giorni"
     restore_success: "Ripristinato: %{name}"
+    restore_error_not_found: "Questo elemento non è più nel cestino. Probabilmente è già stato ripristinato o eliminato definitivamente."
     delete_permanent_success: "Eliminato definitivamente: %{name}"
     delete_permanent_modal_title: "Eliminare definitivamente?"
     delete_permanent_modal_warning: "Questa azione non può essere annullata."

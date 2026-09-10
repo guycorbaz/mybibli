@@ -823,6 +823,7 @@ admin:
     days_remaining_warning: "%{days} Tage"
     days_remaining_critical: "<7 Tage"
     restore_success: "Wiederhergestellt: %{name}"
+    restore_error_not_found: "Dieser Eintrag liegt nicht mehr im Papierkorb. Er wurde vermutlich schon wiederhergestellt oder endgültig gelöscht."
     delete_permanent_success: "Endgültig gelöscht: %{name}"
     delete_permanent_modal_title: "Endgültig löschen?"
     delete_permanent_modal_warning: "Dies kann nicht rückgängig gemacht werden."
