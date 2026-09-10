@@ -40,6 +40,14 @@ pub struct ApiKeyContext {
 }
 
 /// Resolve an API key from the request, OR return a 401 JSON envelope.
+//
+// `clippy::result_large_err` (tightened in Rust 1.98) flags the 128-byte
+// `axum::response::Response` in the `Err` slot. Boxing it would mean
+// unboxing at every call site only to hand axum back the same value:
+// the extractors below use `type Rejection = Response`, which the
+// `FromRequestParts` contract fixes. The error path here is the
+// rejection path — allocating on it buys nothing.
+#[allow(clippy::result_large_err)]
 async fn resolve_api_key(parts: &Parts, state: &AppState) -> Result<ApiKeyContext, Response> {
     // Pull the plaintext from `Authorization: Bearer …` first, fall
     // back to `X-API-Key`. Whitespace gets trimmed; empty values are
