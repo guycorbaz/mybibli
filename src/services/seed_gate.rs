@@ -29,21 +29,43 @@
 //! Runs immediately after `sqlx::migrate!` in `main.rs`. When
 //! [`MYBIBLI_SEED_DEV_USERS`](`crate::services::seed_gate`) is
 //! **not** set (or set to anything other than `"1"` / `"true"` /
-//! `"TRUE"`), soft-deletes any user whose `password_hash` still
-//! matches the documented seed hash. The hash check protects
-//! operators who have already rotated the seeded admin password —
-//! their rotated row is left untouched.
+//! `"TRUE"`), **hard-deletes** any user whose `password_hash` still
+//! matches the documented seed hash, plus the seeded `sessions` row
+//! whose token is equally public. The hash check protects operators
+//! who have already rotated the seeded admin password — their
+//! rotated row is left untouched.
+//!
+//! # Why hard-delete rather than soft-delete (issue #480)
+//!
+//! Until v1.18.0 the gate soft-deleted the seeded rows. That was
+//! enough to make the wizard fire and to stop `admin/admin` from
+//! logging in (both the login query and `find_resolved` require a
+//! live user), but it left the seed `password_hash` recoverable for
+//! the 30 days before `auto_purge` hard-deletes it — one
+//! `UPDATE users SET deleted_at = NULL` away. The Trash panel's
+//! Restore button is exactly that `UPDATE` in the UI: an
+//! administrator who sees `admin` and `librarian` sitting in the
+//! Trash and restores them, reasonably believing a predecessor
+//! deleted them, gets back a live administrator whose password is
+//! published in this repository's own `SECURITY.md`.
+//!
+//! Seed artefacts are not user data, so nothing in the Trash should
+//! ever offer them back. The predicate deliberately does **not**
+//! filter on `deleted_at`: an instance upgrading from v1.18.0 or
+//! earlier carries rows the old gate soft-deleted, and the first
+//! boot on this version purges them too.
 //!
 //! Net effect:
 //!
 //! * **Fresh production install** (default env): seed migrations
-//!   run → this gate fires → seeded users disappear → setup wizard
-//!   activates on the next request.
+//!   run → this gate fires → seeded users and the seeded session
+//!   row disappear → setup wizard activates on the next request.
 //! * **Dev / E2E** (`MYBIBLI_SEED_DEV_USERS=1`): gate is a no-op →
 //!   `admin/admin` and `librarian/librarian` persist for the
 //!   integration and Playwright test suites.
 //! * **Operator who has rotated their password**: hash no longer
-//!   matches → the rotated user row is left alone.
+//!   matches → the rotated user row is left alone. The seeded
+//!   session row still goes: its token is public whoever owns it.
 
 use crate::db::DbPool;
 
@@ -58,6 +80,22 @@ const ADMIN_SEED_HASH: &str =
 /// seeded `librarian` row.
 const LIBRARIAN_SEED_HASH: &str =
     "$argon2id$v=19$m=19456,t=2,p=1$NfI9SYT0huhcqAanQWa9pw$mSEHLW8Wl8wlk504MRpzyS42JlcU9w2CXYVVFMFvbcU";
+
+/// Session token planted by
+/// `migrations/20260329000002_seed_dev_user.sql`. The value is
+/// public — it appears in `CLAUDE.md`, in the E2E helpers and in the
+/// git history — so the gate deletes the row outright rather than
+/// relying on the two independent reasons it is currently inert
+/// (the `users` join in `SessionModel::find_resolved`, and a
+/// `last_activity` frozen at install time).
+pub const DEV_SESSION_TOKEN: &str = "ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2ZGV2";
+
+/// Matches a seeded user row by username **and** untouched seed
+/// hash. Bound twice at every call site (admin hash, then librarian
+/// hash). No `deleted_at` filter — see the module docs on the
+/// upgrade path from v1.18.0 and earlier.
+const SEEDED_USER_PREDICATE: &str =
+    "(username = 'admin' AND password_hash = ?) OR (username = 'librarian' AND password_hash = ?)";
 
 /// Pure parse for the `MYBIBLI_SEED_DEV_USERS` accept-set.
 /// Strict: only the literal strings `1`, `true` and `TRUE` count
@@ -76,7 +114,7 @@ pub fn parse_seed_dev_users(raw: Option<&str>) -> bool {
 /// site in `main.rs` short and lets integration tests target
 /// [`apply_with`] without touching shared process state.
 ///
-/// Returns the number of rows soft-deleted (0 when the env var
+/// Returns the number of user rows hard-deleted (0 when the env var
 /// opts back in, or when the operator already rotated the
 /// passwords).
 pub async fn apply(pool: &DbPool) -> Result<u64, sqlx::Error> {
@@ -98,29 +136,52 @@ pub async fn apply_with(pool: &DbPool, seed_enabled: bool) -> Result<u64, sqlx::
         return Ok(0);
     }
 
-    let result = sqlx::query(
-        "UPDATE users \
-            SET deleted_at = NOW(), version = version + 1 \
-          WHERE deleted_at IS NULL \
-            AND ( (username = 'admin' AND password_hash = ?) \
-               OR (username = 'librarian' AND password_hash = ?) )",
-    )
-    .bind(ADMIN_SEED_HASH)
-    .bind(LIBRARIAN_SEED_HASH)
-    .execute(pool)
-    .await?;
+    // Both deletes ride one transaction: a half-applied gate would
+    // leave a user row without its sessions, or worse, sessions
+    // pointing at a user the next statement was about to remove.
+    let mut tx = pool.begin().await?;
 
-    let removed = result.rows_affected();
-    if removed > 0 {
+    // `sessions.user_id` carries a bare FK to `users.id` — no
+    // CASCADE (`fk_sessions_user`, initial schema) — so the session
+    // rows must go first or the user DELETE aborts with 23000.
+    // `admin_audit.user_id` and `api_keys.created_by` are both
+    // ON DELETE SET NULL (#69 / #70), so those rows survive
+    // detached, which is what the audit trail wants.
+    let sessions_sql = format!(
+        "DELETE FROM sessions \
+          WHERE token = ? \
+             OR user_id IN (SELECT id FROM users WHERE {SEEDED_USER_PREDICATE})"
+    );
+    let sessions_removed = sqlx::query(&sessions_sql)
+        .bind(DEV_SESSION_TOKEN)
+        .bind(ADMIN_SEED_HASH)
+        .bind(LIBRARIAN_SEED_HASH)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+
+    let users_sql = format!("DELETE FROM users WHERE {SEEDED_USER_PREDICATE}");
+    let removed = sqlx::query(&users_sql)
+        .bind(ADMIN_SEED_HASH)
+        .bind(LIBRARIAN_SEED_HASH)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+
+    tx.commit().await?;
+
+    if removed > 0 || sessions_removed > 0 {
         tracing::info!(
             removed_count = removed,
-            "Issue #173 — dev seed gate removed seeded user(s). \
-             The setup wizard at /setup is now reachable."
+            sessions_removed = sessions_removed,
+            "Issue #173 / #480 — dev seed gate hard-deleted seeded user(s) \
+             and seeded session row(s). The setup wizard at /setup is now \
+             reachable."
         );
     } else {
         tracing::debug!(
-            "Issue #173 — dev seed gate found no seeded users to remove \
-             (already rotated or never installed)."
+            "Issue #173 — dev seed gate found no seeded rows to remove \
+             (already rotated, already purged, or never installed)."
         );
     }
 
