@@ -246,6 +246,42 @@ pub async fn resolve_cover_url_with_fallback(
     None
 }
 
+/// Ceiling on the compressed bytes accepted from either entry point —
+/// the provider download and the manual upload.
+const MAX_COVER_SIZE: usize = 10 * 1024 * 1024;
+
+/// Ceiling on what one decode may allocate (issue #479).
+///
+/// [`MAX_COVER_SIZE`] bounds the *compressed* input, which says nothing
+/// about memory: a highly redundant PNG or WebP of a few hundred KiB can
+/// declare dimensions that decode into gigabytes of RGBA. On the NAS
+/// deployment that means the OOM killer takes the container down, and
+/// every in-flight request with it.
+///
+/// `ImageReader::decode` computes the output size from the declared
+/// dimensions and checks it against this budget BEFORE allocating, for
+/// every format — so a bomb is refused rather than swallowed.
+///
+/// 64 MiB is ~16 megapixels of RGBA: a 4032×3024 phone photo passes, and
+/// everything here ends up resized to 400 px wide anyway. Without this the
+/// crate's own default applies — 512 MiB, which is exactly the accident
+/// we are preventing.
+const MAX_DECODE_ALLOC: u64 = 64 * 1024 * 1024;
+
+/// Strict per-side cap, checked against the header before any pixel work.
+/// Cheap early rejection for the absurd cases; [`MAX_DECODE_ALLOC`] is
+/// what actually bounds memory.
+const MAX_DECODE_DIMENSION: u32 = 10_000;
+
+/// The decode budget from [`MAX_DECODE_ALLOC`] / [`MAX_DECODE_DIMENSION`].
+fn decode_limits() -> image::Limits {
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(MAX_DECODE_ALLOC);
+    limits.max_image_width = Some(MAX_DECODE_DIMENSION);
+    limits.max_image_height = Some(MAX_DECODE_DIMENSION);
+    limits
+}
+
 pub struct CoverService;
 
 impl CoverService {
@@ -291,26 +327,33 @@ impl CoverService {
             )));
         }
 
-        // Reject responses larger than 10MB to prevent OOM
-        const MAX_COVER_SIZE: u64 = 10 * 1024 * 1024;
+        // Announced size first — cheapest rejection when the server is honest.
         if let Some(len) = response.content_length()
-            && len > MAX_COVER_SIZE
+            && len > MAX_COVER_SIZE as u64
         {
             return Err(CoverError::InvalidImage(format!(
                 "Image too large: {len} bytes (max {MAX_COVER_SIZE})"
             )));
         }
 
-        let bytes = response
-            .bytes()
+        // Then the body itself, chunk by chunk, stopping the moment the cap
+        // is crossed (issue #479). `Content-Length` is the server's claim,
+        // not a fact: it can be absent (chunked transfer) or simply wrong,
+        // and `response.bytes()` would buffer whatever arrives — an
+        // unbounded allocation driven by a host we do not control.
+        let mut response = response;
+        let mut bytes: Vec<u8> = Vec::with_capacity(64 * 1024);
+        while let Some(chunk) = response
+            .chunk()
             .await
-            .map_err(|e| CoverError::Network(e.to_string()))?;
-
-        if bytes.len() as u64 > MAX_COVER_SIZE {
-            return Err(CoverError::InvalidImage(format!(
-                "Image too large: {} bytes (max {MAX_COVER_SIZE})",
-                bytes.len()
-            )));
+            .map_err(|e| CoverError::Network(e.to_string()))?
+        {
+            if bytes.len() + chunk.len() > MAX_COVER_SIZE {
+                return Err(CoverError::InvalidImage(format!(
+                    "Image too large: over {MAX_COVER_SIZE} bytes"
+                )));
+            }
+            bytes.extend_from_slice(&chunk);
         }
 
         Self::process_and_save_bytes(&bytes, title_id, covers_dir).await
@@ -331,7 +374,6 @@ impl CoverService {
         title_id: u64,
         covers_dir: &Path,
     ) -> Result<String, CoverError> {
-        const MAX_COVER_SIZE: usize = 10 * 1024 * 1024;
         if bytes.is_empty() {
             return Err(CoverError::InvalidImage("Empty upload".to_string()));
         }
@@ -343,11 +385,23 @@ impl CoverService {
         }
 
         // Decode image (auto-detect format: JPEG, PNG, GIF, WebP, etc.)
-        let img = ImageReader::new(Cursor::new(bytes))
+        // under an explicit allocation budget — see `decode_limits`.
+        let mut reader = ImageReader::new(Cursor::new(bytes))
             .with_guessed_format()
-            .map_err(|e| CoverError::InvalidImage(e.to_string()))?
-            .decode()
             .map_err(|e| CoverError::InvalidImage(e.to_string()))?;
+        reader.limits(decode_limits());
+        let img = reader.decode().map_err(|e| match e {
+            // Say what the operator can act on. The crate's own wording
+            // ("Memory limit exceeded") reads like a server fault; from
+            // where the librarian sits, the file is simply too big to
+            // process. English like its sibling message above — the
+            // handler prefixes it with the localized copy.
+            image::ImageError::Limits(_) => CoverError::InvalidImage(format!(
+                "Image is too large to process (limit {} megapixels, or {MAX_DECODE_DIMENSION} px per side). Resize it and try again.",
+                MAX_DECODE_ALLOC / 4 / 1_000_000
+            )),
+            other => CoverError::InvalidImage(other.to_string()),
+        })?;
 
         // Resize if wider than 400px (maintain aspect ratio, no upscaling)
         let resized = if img.width() > 400 {
@@ -869,6 +923,200 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&on_disk);
+        let _ = std::fs::remove_dir(&temp_dir);
+    }
+
+    // ─── Issue #479 — decode bombs ─────────────────────────────────
+
+    /// CRC-32 (IEEE), bit-by-bit — a PNG chunk needs one and pulling a
+    /// crate in for four test images would be silly.
+    fn crc32(data: &[u8]) -> u32 {
+        let mut crc = 0xFFFF_FFFFu32;
+        for byte in data {
+            crc ^= *byte as u32;
+            for _ in 0..8 {
+                let mask = (crc & 1).wrapping_neg();
+                crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+            }
+        }
+        !crc
+    }
+
+    fn png_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(12 + data.len());
+        out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        out.extend_from_slice(kind);
+        out.extend_from_slice(data);
+        let mut crc_input = Vec::with_capacity(4 + data.len());
+        crc_input.extend_from_slice(kind);
+        crc_input.extend_from_slice(data);
+        out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
+        out
+    }
+
+    /// A decompression bomb in the only sense that matters here: a few
+    /// dozen bytes on the wire that DECLARE an enormous RGBA surface. The
+    /// PNG header is all a decoder needs to size its allocation, so the
+    /// pixel data is deliberately absent — a decoder that gets as far as
+    /// reading IDAT has already lost.
+    fn declared_size_png(width: u32, height: u32) -> Vec<u8> {
+        let mut ihdr = Vec::with_capacity(13);
+        ihdr.extend_from_slice(&width.to_be_bytes());
+        ihdr.extend_from_slice(&height.to_be_bytes());
+        ihdr.push(8); // bit depth
+        ihdr.push(6); // colour type: RGBA
+        ihdr.push(0); // compression
+        ihdr.push(0); // filter
+        ihdr.push(0); // interlace
+
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        png.extend_from_slice(&png_chunk(b"IHDR", &ihdr));
+        // A token IDAT: the decoder refuses to be constructed without one,
+        // and we want it constructed — the allocation check happens after,
+        // sized from IHDR. Its contents are never reached.
+        png.extend_from_slice(&png_chunk(b"IDAT", &[0x78, 0x01, 0x01, 0x00]));
+        png.extend_from_slice(&png_chunk(b"IEND", &[]));
+        png
+    }
+
+    #[tokio::test]
+    async fn decode_refuses_a_png_declaring_more_pixels_than_the_budget() {
+        let temp_dir = std::env::temp_dir().join("mybibli_cover_test_479_alloc");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // 8000x8000 RGBA = 256 MB — inside the per-side dimension cap, so
+        // this is the ALLOCATION budget doing the refusing. 88 bytes of
+        // input; before #479 the crate's 512 MiB default let it through.
+        let bomb = declared_size_png(8_000, 8_000);
+        assert!(bomb.len() < 256, "the bomb must be tiny on the wire");
+
+        match CoverService::process_and_save_bytes(&bomb, 1, &temp_dir).await {
+            Err(CoverError::InvalidImage(msg)) => assert!(
+                msg.contains("too large to process"),
+                "expected the operator-facing limit message, got: {msg}"
+            ),
+            other => panic!("expected the decode to be refused, got {other:?}"),
+        }
+        assert!(
+            !temp_dir.join("1.jpg").exists(),
+            "nothing should have been written"
+        );
+
+        let _ = std::fs::remove_dir(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn decode_refuses_a_png_wider_than_the_dimension_cap() {
+        let temp_dir = std::env::temp_dir().join("mybibli_cover_test_479_dimension");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // 40000 px on one side — refused from the header, before any
+        // pixel work, by the strict dimension limit.
+        let bomb = declared_size_png(40_000, 4);
+        match CoverService::process_and_save_bytes(&bomb, 2, &temp_dir).await {
+            Err(CoverError::InvalidImage(msg)) => assert!(
+                msg.contains("too large to process"),
+                "expected the operator-facing limit message, got: {msg}"
+            ),
+            other => panic!("expected the decode to be refused, got {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn decode_still_accepts_a_cover_a_librarian_would_actually_upload() {
+        // The budget must not cost us real covers: 2000x3000 RGB is a
+        // generous scan and well inside 64 MiB once decoded.
+        let temp_dir = std::env::temp_dir().join("mybibli_cover_test_479_legit");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let img = image::RgbImage::from_pixel(2000, 3000, image::Rgb([10, 20, 30]));
+        let mut png_bytes = Vec::new();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png)
+            .unwrap();
+
+        let out = CoverService::process_and_save_bytes(&png_bytes, 479, &temp_dir)
+            .await
+            .expect("a large but legitimate cover must still be accepted");
+        assert_eq!(out, "/covers/479.jpg");
+
+        let _ = std::fs::remove_file(temp_dir.join("479.jpg"));
+        let _ = std::fs::remove_dir(&temp_dir);
+    }
+
+    /// A provider that streams without announcing a length must not be
+    /// able to make us buffer indefinitely. Serves a chunked response —
+    /// no `Content-Length`, so the announced-size check above cannot fire
+    /// — and keeps sending until the client gives up.
+    #[tokio::test]
+    async fn download_stops_reading_past_the_size_cap() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Accept in a loop: `download_and_resize` tries the https-upgraded
+        // URL first (#427), which burns one connection before it falls
+        // back to the declared http one.
+        let server = tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
+                // Drain the request head; we do not care what it says.
+                let mut scratch = [0u8; 4096];
+                let _ = sock.read(&mut scratch).await;
+
+                if sock
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nTransfer-Encoding: chunked\r\n\r\n",
+                    )
+                    .await
+                    .is_err()
+                {
+                    continue;
+                }
+
+                // 64 KiB at a time, up to 32 MiB — more than triple the
+                // cap. The loop exits early once the client drops the
+                // connection, which is the behaviour under test.
+                let chunk = vec![0u8; 64 * 1024];
+                let head = format!("{:x}\r\n", chunk.len());
+                for _ in 0..512 {
+                    if sock.write_all(head.as_bytes()).await.is_err()
+                        || sock.write_all(&chunk).await.is_err()
+                        || sock.write_all(b"\r\n").await.is_err()
+                    {
+                        break;
+                    }
+                }
+                let _ = sock.write_all(b"0\r\n\r\n").await;
+            }
+        });
+
+        let temp_dir = std::env::temp_dir().join("mybibli_cover_test_479_stream");
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let client = reqwest::Client::new();
+        let result = CoverService::download_and_resize(
+            &client,
+            &format!("http://127.0.0.1:{port}/cover.png"),
+            3,
+            &temp_dir,
+        )
+        .await;
+
+        match result {
+            Err(CoverError::InvalidImage(msg)) => assert!(
+                msg.contains("too large"),
+                "expected the size cap to fire, got: {msg}"
+            ),
+            other => panic!("expected the download to be cut off, got {other:?}"),
+        }
+
+        server.abort();
         let _ = std::fs::remove_dir(&temp_dir);
     }
 }
