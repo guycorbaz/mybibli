@@ -1,0 +1,26 @@
+{# Issue #478 — restore-conflict modal. Shown only when
+   `TrashService::detect_restore_conflicts` reports that relationships
+   changed while the item sat in the trash (series reassigned, contributor
+   role removed). The Confirm button re-posts the same restore URL with
+   `clear_conflicts=1`, which routes to
+   `TrashService::restore_with_conflicts_cleared`.
+
+   Variant "warning" (indigo), not "delete" — restoring is not destructive;
+   what the Confirm clears is the stale relationship rows, and the body
+   lists them so the admin knows what they are agreeing to. Cancel keeps
+   the item deleted, per the `restore_modal_cancel` copy. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "warning",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "POST",
+    csrf_token,
+    "#admin-trash-panel",
+    "outerHTML",
+    version,
+    "",
+) %}{% endcall %}

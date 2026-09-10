@@ -589,6 +589,11 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/admin/trash", axum::routing::get(admin::admin_trash_panel))
         .route("/admin/trash/{table}/{id}/permanent-delete", axum::routing::get(admin::admin_trash_permanent_delete_confirm).post(admin::admin_trash_permanent_delete))
+        // Issue #478: the panel's Restore button rendered this URL from
+        // story 8-6 on, but the route was never registered — every click
+        // 404'd, and HTMX does not swap a 4xx, so nothing happened at all.
+        // POST rather than GET so the CSRF layer (story 8-2) covers it.
+        .route("/admin/trash/{table}/{id}/restore", axum::routing::post(admin::admin_trash_restore))
         // Admin → System settings (story 8-5). 4 routes — 1 GET panel + 3
         // POST per-form saves. All Admin-gated, all CSRF-protected via the
         // 8-2 middleware (none added to CSRF_EXEMPT_ROUTES).

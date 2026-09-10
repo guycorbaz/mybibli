@@ -835,6 +835,7 @@ admin:
     days_remaining_warning: "%{days} jour"
     days_remaining_critical: "<7 jours"
     restore_success: "Restauré : %{name}"
+    restore_error_not_found: "Cet élément n'est plus dans la corbeille. Il a peut-être déjà été restauré ou purgé."
     delete_permanent_success: "Supprimé définitivement : %{name}"
     delete_permanent_modal_title: "Supprimer définitivement ?"
     delete_permanent_modal_warning: "Ceci ne peut pas être annulé."
