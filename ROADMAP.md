@@ -32,27 +32,61 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.18.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.18.0)**
-(2026-08-18) — management labels ([#443](https://github.com/guycorbaz/mybibli/issues/443)):
-an admin-defined vocabulary a librarian applies to titles *and* volumes
-from one shared list, with a `/labels` page of its own. One additive
-migration. The section below has the detail; every release before it has
-its own section further down, and this is the file that carries them —
-the README quotes only the current release, and the website tells the
+**Current stable: [`v1.19.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.19.0)**
+(2026-09-11) — the three change requests of a security review run against
+the 1.18.0 code, and the documentation work it made necessary. **No
+migration.** The section below has the detail; every release before it
+has its own section further down, and this is the file that carries them
+— the README quotes only the current release, and the website tells the
 same story for a different audience.
-
-**Merged on `main`, not yet released** — the three change requests from
-the 2026-08-18 security review:
-[#480](https://github.com/guycorbaz/mybibli/issues/480) the seed gate
-hard-deletes its artefacts instead of parking them in the Trash,
-[#478](https://github.com/guycorbaz/mybibli/issues/478) the Trash panel's
-Restore button reaches a route that exists, and
-[#479](https://github.com/guycorbaz/mybibli/issues/479) a cover decode
-runs under an allocation budget. No migration. The version they ship
-under is not decided yet.
 
 **Open issues: none.** The tracker has been empty since the review
 closed. New work starts from a fresh report.
+
+## v1.19.0 — the security review *(shipped)*
+
+Shipped 2026-09-11. Three change requests, **no migration**, one
+documentation sweep. The review that produced them was run on 2026-08-18
+against the v1.18.0 code, with a stated attacker model: local network
+plus a private tunnel, never a port forwarded to the internet.
+
+- [#478](https://github.com/guycorbaz/mybibli/issues/478) — **the Trash
+  panel's Restore button reaches a route that exists.** It had rendered
+  a link to `/admin/trash/{table}/{id}/restore` since story 8-6; that
+  route was never registered, so every click returned a 404 that HTMX
+  does not swap — no restore, no error, nothing at all. The route is
+  registered as POST rather than the GET the button emitted, so it rides
+  the CSRF layer; where restoring would clash with a relationship formed
+  since the deletion, a modal names the conflict before clearing it.
+  The suite had stayed green throughout because `TrashService::restore`
+  was only ever called from `#[cfg(test)]`.
+- [#480](https://github.com/guycorbaz/mybibli/issues/480) — **the seed
+  gate hard-deletes its artefacts.** It had soft-deleted the seeded
+  `admin` / `librarian` rows, leaving them in the Trash for thirty days
+  with the passwords published in `SECURITY.md` intact, plus a session
+  row whose token is in the git history. Harmless while Restore was
+  broken; #478 is what made it urgent, and the two had to land in that
+  order. Upgrading instances purge whatever their old gate left behind.
+- [#479](https://github.com/guycorbaz/mybibli/issues/479) — **a cover
+  decode runs under an allocation budget.** The 10 MiB cap bounded the
+  compressed bytes, not the memory: a few hundred bytes of PNG can
+  declare gigabytes of RGBA, and the OOM killer would take the container
+  down with every request in flight. 64 MiB and a 10 000 px per-side
+  ceiling; the download side now streams with a hard cap instead of
+  trusting `Content-Length`. The path that matters is the provider
+  chain, where the bytes are not ours.
+
+Also in this release: the CI actions are pinned by commit SHA with a
+daily RustSec advisory scan ([#481](https://github.com/guycorbaz/mybibli/pull/481)),
+the network posture is stated where an operator will actually read it
+([#482](https://github.com/guycorbaz/mybibli/pull/482)), the
+community-health files landed
+([#477](https://github.com/guycorbaz/mybibli/pull/477)), and a
+documentation audit closed fourteen findings across every surface
+([#487](https://github.com/guycorbaz/mybibli/pull/487)) — K10plus finally
+documented, the shelf-audit chapter describing the feature that shipped
+three releases ago rather than a workaround, a route reference covering
+all 148 routes instead of 82.
 
 ## v1.18.0 — management labels *(shipped)*
 
