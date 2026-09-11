@@ -141,12 +141,82 @@ Chaque release mybibli publie une page GitHub Release avec :
   \item un paragraphe résumant le changement ;
   \item l'impact migration (aucun / additif / breaking) ;
   \item un lien vers le diff contre le tag précédent ;
-  \item les PDF de ce manuel (anglais + français) en pièce jointe
-        une fois le build PDF de release câblé dans la CI.
+  \item ce manuel en PDF, anglais et français, joint à la publication
+        elle-même --- l'exemplaire qui correspond à cette version.
 \end{itemize}
 
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
+
+\section{Nouveautés de la 1.19.0}\label{sec:whats-new-1.19.0}
+
+La version 1.19.0 est une version mineure sur la 1.18.0.
+\emph{Aucune migration} --- on récupère l'image, on redémarre, c'est
+tout. Elle porte les trois demandes de changement issues d'une revue de
+sécurité menée sur le code de la 1.18.0, ainsi que le travail de
+documentation que cette revue a rendu nécessaire.
+
+\begin{itemize}
+  \item \textbf{\#478 \string— la corbeille restaure vraiment.} Le
+        panneau Corbeille affichait un bouton \emph{Restaurer} depuis la
+        1.2.0. Il pointait vers une adresse à laquelle l'application n'a
+        jamais répondu : cliquer dessus ne faisait rien du tout --- ni
+        restauration, ni message d'erreur, rien. Si vous avez un jour
+        supprimé un titre par erreur, ouvert la corbeille et trouvé ce
+        bouton inerte, il l'était.
+
+        Il fonctionne. Une suppression malencontreuse se rattrape, et
+        l'élément revient là où il était. Quand les relations de la
+        notice ont changé pendant son séjour à la corbeille --- un titre
+        réaffecté à une autre série, par exemple --- mybibli demande
+        confirmation avant d'effacer le lien devenu caduc, au lieu de
+        trancher à votre place.
+
+  \item \textbf{\#480 \string— les comptes de développement ne laissent
+        plus de trace.} Une installation neuve a toujours embarqué deux
+        comptes de développement, \texttt{admin/admin} et
+        \texttt{librarian/librarian}, que l'application retire au premier
+        démarrage pour que l'assistant d'installation puisse s'exécuter
+        (section~\ref{sec:upgrade-1.1.0}). « Retirer » voulait dire
+        jusqu'ici \emph{mettre à la corbeille} : les lignes y restaient
+        trente jours, mots de passe intacts --- des mots de passe publiés
+        dans la politique de sécurité du projet. Avec le bouton
+        Restaurer de \#478 devenu fonctionnel, un administrateur aurait
+        pu les restaurer de bonne foi et rendre les clés de la maison.
+
+        Ils sont désormais supprimés pour de bon, avec la session de
+        développement pré-enregistrée. Une instance qui monte depuis la
+        1.18.0 ou antérieure nettoie ce que son ancien démarrage avait
+        laissé, dès le premier lancement après la mise à jour. Rien ne
+        change pour qui a changé le mot de passe seedé : ce compte-là est
+        laissé tranquille, comme il l'a toujours été.
+
+  \item \textbf{\#479 \string— une couverture ne peut plus épuiser le
+        serveur.} Les fichiers de couverture étaient déjà plafonnés à
+        10~Mio. Cela plafonne le \emph{fichier}, ce qui ne dit rien de la
+        mémoire : quelques centaines d'octets d'image peuvent décrire
+        légitimement une image de plusieurs gigaoctets, et la décoder
+        aurait fait tomber le conteneur --- avec toutes les requêtes en
+        cours. Le décodeur travaille maintenant sous un budget fixe et
+        refuse ce qui le dépasse, en le disant. Une photo prise avec
+        n'importe quel téléphone passe toujours.
+
+        Cela compte surtout là où les images ne sont pas les vôtres :
+        les couvertures téléchargées auprès des bibliothèques et
+        catalogues de la chaîne de métadonnées.
+\end{itemize}
+
+\begin{note}
+\textbf{Rien à faire à la mise à jour.} Aucun changement de schéma,
+aucun changement de configuration, aucune étape manuelle. Prenez votre
+sauvegarde habituelle par habitude plutôt que par nécessité.
+\end{note}
+
+Cette version met aussi la documentation en accord avec le logiciel :
+K10plus dans le chapitre des fournisseurs, le flux d'audit des rayons
+décrit tel qu'il fonctionne réellement, des sections de référence pour
+les étiquettes de gestion et pour la valorisation, et une référence des
+routes qui les couvre toutes au lieu de la moitié.
 
 \section{Nouveautés de la 1.18.0}\label{sec:whats-new-1.18.0}
 

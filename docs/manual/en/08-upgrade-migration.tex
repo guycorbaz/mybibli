@@ -132,12 +132,78 @@ Every mybibli release publishes a GitHub Release page with:
   \item a one-paragraph summary of the change set;
   \item the migration impact (none / additive / breaking);
   \item a link to the diff against the previous tag;
-  \item attached PDFs of this manual (English + French) once the
-        release-time PDF build is wired into CI.
+  \item this manual as PDF, English and French, attached to the
+        release itself --- the copy that matches that exact version.
 \end{itemize}
 
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
+
+\section{What's new in 1.19.0}\label{sec:whats-new-1.19.0}
+
+Version 1.19.0 is a minor release on 1.18.0. \emph{No migration} ---
+pull the image, restart, done. It carries the three change requests of
+a security review conducted on the 1.18.0 code, plus the documentation
+work that review made necessary.
+
+\begin{itemize}
+  \item \textbf{\#478 \string— the Trash can actually restore now.}
+        The Trash panel had shown a \emph{Restore} button since 1.2.0.
+        It pointed at an address the application never answered on, so
+        clicking it did nothing at all: no restore, no error message,
+        nothing. If you ever deleted a title by accident, opened the
+        Trash and wondered why the button seemed dead --- it was.
+
+        It works. Deleted something by mistake, restore it, and it
+        returns where it was. When the record's relationships changed
+        while it sat in the trash --- a title reassigned to another
+        series, say --- mybibli asks before clearing the stale link
+        rather than deciding for you.
+
+  \item \textbf{\#480 \string— the development accounts leave no
+        trace.} A fresh install has always shipped two development
+        accounts, \texttt{admin/admin} and
+        \texttt{librarian/librarian}, which the application removes at
+        first boot so the setup wizard can run (section
+        \ref{sec:upgrade-1.1.0}). Removed, until now, meant
+        \emph{moved to the Trash}: the rows sat there for thirty days
+        with their passwords intact --- passwords published in this
+        project's own security policy. With \#478 making the Restore
+        button work, an administrator could have restored them in good
+        faith and handed the house keys back.
+
+        They are now deleted outright, along with the pre-set
+        development session. An instance upgrading from 1.18.0 or
+        earlier clears whatever its old boot left behind, on the first
+        start after the upgrade. Nothing changes for an operator who
+        rotated the seeded password: that account is left alone, as it
+        always was.
+
+  \item \textbf{\#479 \string— a cover image cannot exhaust the
+        server.} Cover files were already capped at 10~MiB. That caps
+        the \emph{file}, which says nothing about memory: a few hundred
+        bytes of image can legitimately describe a picture of several
+        gigabytes, and decoding it would have taken the container down
+        --- along with every request in flight. The decoder now works
+        under a fixed budget and refuses anything beyond it with a
+        message saying so. A photograph from any phone still passes.
+
+        This matters most where the images are not yours: covers
+        downloaded from the libraries and catalogues in the metadata
+        chain.
+\end{itemize}
+
+\begin{note}
+\textbf{Nothing to do on upgrade.} No schema change, no configuration
+change, no manual step. Take your usual backup out of habit rather than
+necessity.
+\end{note}
+
+This release also brings the documentation in line with the software:
+K10plus in the provider chapter, the shelf-audit workflow described as
+it actually works, reference sections for management labels and for
+valuation, and a route reference that covers every route rather than
+half of them.
 
 \section{What's new in 1.18.0}\label{sec:whats-new-1.18.0}
 
