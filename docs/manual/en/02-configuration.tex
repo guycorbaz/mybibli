@@ -10,14 +10,18 @@ auto-purge cadence, provider keys).
 
 Everything in this chapter is configured from the
 \texttt{/admin}\index{admin panel} panel — there is no separate
-configuration file. The panel has five tabs:
+configuration file. The panel has six tabs:
 
 \begin{itemize}
   \item \textbf{Health} — read-only status dashboard.
   \item \textbf{Users} — create / deactivate users, change roles.
-  \item \textbf{Reference data} — the four taxonomy tables.
-  \item \textbf{Trash} — view and restore soft-deleted items.
+  \item \textbf{Reference data} — the taxonomy tables, and the
+        management-label vocabulary (section~\ref{sec:management-labels}).
+  \item \textbf{Trash} — view, restore and permanently delete
+        soft-deleted items.
   \item \textbf{System} — global settings.
+  \item \textbf{API keys} — mint and revoke the keys the HTTP API
+        authenticates with (chapter~\ref{ch:api}).
 \end{itemize}
 
 Only the \texttt{Admin} role sees the panel; \texttt{Librarian} and
@@ -73,7 +77,17 @@ type is stored by name in the locations table). Deleting a node type
 is refused as long as one location still references it.
 \end{tip}
 
-\section{Labels: V-codes and L-codes}\label{sec:labels}
+\section{Spine labels: V-codes and L-codes}\label{sec:labels}
+
+\begin{note}
+\textbf{Two things are called ``labels'' in mybibli.} This section is
+about the \emph{spine labels} you print and stick on a book or a shelf
+— the barcodes that make scanning work. The other kind, added in
+1.18.0, is the \emph{management label} you put on a record to say
+something about its state (``To check'', ``Damaged binding''); those
+live in section~\ref{sec:management-labels}. Nothing is printed for
+them, and they never leave the application.
+\end{note}
 
 mybibli prints two kinds of barcode labels:
 

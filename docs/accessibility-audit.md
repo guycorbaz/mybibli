@@ -1,6 +1,23 @@
-# Accessibility Audit — Story 9-22 (2026-05-10)
+# Accessibility audit — story 9-22 (2026-05-10)
 
-End-to-end WCAG 2.2 AA audit of mybibli. Three layers:
+**Status:** a dated snapshot, not a standing claim. The audit below was
+run on 2026-05-10 over the surfaces that existed then — thirteen URLs,
+listed in the next section. Everything shipped since has an automated
+axe-core gate only if it was added to
+`tests/e2e/specs/accessibility-full.spec.ts`, and several were not:
+`/labels` (1.18.0), `/wishlist`, `/stats/value` and `/audit` are not in
+it, and none of them has been through the manual keyboard and contrast
+passes recorded here. (`/setup` is the exception among the newer
+surfaces: story 10-5 put an axe check on it inside the wizard E2E lane,
+`tests/e2e/specs/journeys/setup-wizard.spec.ts`, because the wizard
+predicate needs a stack that lane alone provides.)
+
+Read this file as "these thirteen surfaces were audited on that date,
+and the automated part of it still runs on every PR" — not as "mybibli
+is WCAG 2.2 AA". Extending the spec to the newer surfaces is the
+prerequisite for the stronger claim.
+
+WCAG 2.2 AA audit of mybibli, in three layers:
 
 1. **Automated**: `tests/e2e/specs/accessibility-full.spec.ts` runs `axe-core` (`@axe-core/playwright`) on 13 surfaces with the `wcag2a`, `wcag2aa`, `wcag22aa` tag sets. **13/13 passing as of 2026-05-10.**
 2. **Manual keyboard navigation**: checklist below.

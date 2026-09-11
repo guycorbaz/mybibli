@@ -31,7 +31,8 @@ use axum::response::Response;
 /// Strict CSP directives — production default.
 ///
 /// Single-line value: browsers accept either form, single-line is simpler for
-/// log diffing. Update in lockstep with `architecture.md` § CSP Directives.
+/// log diffing. Update in lockstep with
+/// `_bmad-output/planning-artifacts/architecture.md` § CSP Directives.
 ///
 /// `img-src` allowlist mirrors the metadata providers grep-confirmed in
 /// `src/metadata/*.rs` (OpenLibrary, Google Books, TMDB, MusicBrainz cover

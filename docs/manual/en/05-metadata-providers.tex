@@ -22,6 +22,9 @@ Bibliothèque nationale catalogue; best for French-language titles. & no \\
 Library of Congress\index{Library of Congress} & Books & United
 States national library catalogue; the anglophone counterpart to the
 BnF. Also supplies MARC~21 zones. & no \\
+K10plus\index{K10plus}          & Books         & German union
+catalogue. Zone completion only — it never resolves a title on its
+own. Consulted for ISBN prefixes 978-0/1/2/3. & no \\
 Open Library\index{Open Library} & Books         & Volunteer
 catalogue; broad English / multilingual coverage. & no \\
 Google Books\index{Google Books} & Books         & Commercial; good
@@ -40,7 +43,7 @@ means: title present, at least one contributor, and a year. Partial
 matches are recorded but mybibli keeps walking the chain until it
 finds a clean one or runs out of providers.
 
-\subsection*{Bibliographic zones: BnF and Library of Congress}
+\subsection*{Bibliographic zones: the three catalogues}
 
 Six detailed cataloguing fields — statement of responsibility,
 edition statement, collection title and number, general note,
@@ -53,11 +56,25 @@ English-language one. A title held by neither will have none of these
 zones, and a French title the BnF could not describe will not be
 rescued by the Library of Congress.
 
+A third catalogue joined them in 1.16.0: \textbf{K10plus}\index{K10plus},
+the German union catalogue. It behaves differently from the other two —
+it never resolves a title, it only completes zones on a record another
+provider already resolved — and on this catalogue it turned out to be
+the most productive of the three, filling zones on titles neither
+national library carried. It is consulted only for ISBN prefixes 978-0,
+978-1, 978-2 and 978-3: the anglophone leftovers it exists for, its own
+German-language home ground, and the French prefix the BnF had already
+failed on. Any other prefix is skipped without a request, which keeps
+the one-request-per-second budget for the calls that can plausibly
+answer.
+
 When the provider that resolved a title fills only some of the six
-zones, mybibli asks the other library to complete the ones left
-empty. The rule is \emph{first source wins}: a value already present
-is never overwritten. Only these six zones are merged — the title,
-authors and cover always come from a single provider.
+zones, mybibli asks the others to complete the ones left empty. The
+rule is \emph{first source wins}: a value already present is never
+overwritten. Only these six zones are merged — the title, authors and
+cover always come from a single provider.
+
+None of this needs a key or any configuration.
 
 The \emph{Backfill metadata from libraries} button on the Health tab
 applies the same treatment to titles already in the catalogue.

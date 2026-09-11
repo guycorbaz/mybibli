@@ -2,22 +2,28 @@
 
 This document describes the GitHub Actions pipeline, Docker Hub publishing, and repo configuration for mybibli. Target audience: future maintainers (and AI agents) bringing up a replica or debugging a failed run.
 
-## Overview — the 3-gate model
+## Overview — the 4-gate model
 
-Every push on any branch and every PR targeting `main` runs three parallel jobs that must all pass for the run to be green:
+Every push on any branch and every PR targeting `main` runs four parallel jobs that must all pass for the run to be green:
 
 | Gate | Purpose | Typical duration |
 |------|---------|------------------|
-| `rust-tests`     | Lint + unit/bin tests + SQLx offline-cache check     | ~5 min |
-| `db-integration` | `#[sqlx::test]` suites against a MariaDB 10.11 service container | ~5 min |
-| `e2e`            | Full Playwright suite against the Docker Compose stack | ~15–20 min |
+| `rust-tests`     | Lint + unit/bin tests + SQLx offline-cache check     | ~7 min |
+| `db-integration` | Every `tests/*.rs` suite against a MariaDB 10.11 service container | ~7 min |
+| `e2e`            | Full Playwright suite against the seeded Docker Compose stack | ~15–20 min |
+| `e2e-wizard`     | The first-launch wizard spec against a stack with no seeded users | ~10 min |
 
-The three gates are exposed as a reusable workflow at `.github/workflows/_gates.yml` (called via `uses: ./.github/workflows/_gates.yml`). Both `ci.yml` and `release.yml` call the same gates so CI and release paths are guaranteed identical.
+The gates are exposed as a reusable workflow at `.github/workflows/_gates.yml` (called via `uses: ./.github/workflows/_gates.yml`). Both `ci.yml` and `release.yml` call the same gates so CI and release paths are guaranteed identical.
 
 After the gates pass:
 
-- **On push to `main`** — nothing else runs. `ci.yml` ends after the 3 gates. **No Docker Hub publish on main pushes** (per "version stricte" policy: images ship only at semver releases, never per mid-Epic story merge).
-- **On `v*.*.*` tag push** — `release.yml` runs `verify-version` (Cargo.toml vs. tag), re-runs the 3 gates, then `publish` pushes `gcorbaz/mybibli:<semver>` and `gcorbaz/mybibli:latest`.
+- **On push to `main`** — nothing else runs. `ci.yml` ends after the gates. **No Docker Hub publish on main pushes** (per "version stricte" policy: images ship only at semver releases, never per mid-Epic story merge).
+- **On `v*.*.*` tag push** — `release.yml` runs `verify-version` (Cargo.toml vs. tag), re-runs the gates, then `publish` pushes `gcorbaz/mybibli:<semver>` and `gcorbaz/mybibli:latest`.
+
+Two workflows run outside the gate model:
+
+- **`audit.yml`** — a RustSec advisory scan. Triggered by changes to `Cargo.toml` / `Cargo.lock` / `.cargo/audit.toml`, and **daily on a schedule**, which is the load-bearing part: an advisory is published against a version you already ship, without any commit on your side, so a scanner wired only to `push` is silent exactly when it matters. Vulnerabilities fail the job; informational warnings (unmaintained / unsound / yanked) are reported without failing. Accepted advisories, with the reason each is accepted, live in `.cargo/audit.toml`.
+- **`pages.yml`** — deploys `website/` to GitHub Pages on pushes to `main` that touch the site, the logo or the screenshots. Not a gate; it never reports a status on a PR.
 
 Docker Hub publishing is the exclusive responsibility of `release.yml`; both `<semver>` and `latest` tags are produced only on `v*.*.*` tag pushes.
 
@@ -43,8 +49,9 @@ Docker Hub publishing is the exclusive responsibility of `release.yml`; both `<s
 - Service container: `mariadb:10.11` on host port `3307`, credentials match `tests/docker-compose.rust-test.yml` (`root_test` root password, `mybibli_rust_test` DB).
 - Commands:
   ```bash
-  cargo test --test find_similar --test find_by_location_dewey --test metadata_fetch_dewey
+  cargo test --tests --no-fail-fast
   ```
+  `--tests` auto-discovers every `tests/*.rs` binary. It replaced a hardcoded `--test X --test Y` allowlist that had gone stale and was silently skipping 36 of 46 suites ([#357](https://github.com/guycorbaz/mybibli/issues/357)); `--no-fail-fast` keeps one red binary from masking failures in the ones after it.
 - Env: `DATABASE_URL=mysql://root:root_test@127.0.0.1:3307/mybibli_rust_test`, `SQLX_OFFLINE=true`
 - On failure: MariaDB container logs (last 200 lines) are uploaded as artifact `mariadb-logs-<run-id>`.
 
@@ -61,6 +68,18 @@ Docker Hub publishing is the exclusive responsibility of `release.yml`; both `<s
 - Caches: npm (`cache: npm` on `setup-node`) + `~/.cache/ms-playwright` via `actions/cache@v4`.
 - On failure: `tests/e2e/playwright-report/` + `tests/e2e/test-results/` uploaded as `playwright-report-<run-id>`; full compose logs uploaded as `compose-logs-<run-id>` (7-day retention).
 - Post-step (`if: always()`): `docker compose ... down -v` cleans up containers and volumes.
+
+### `e2e-wizard`
+
+- Runner: `ubuntu-latest`, Node 20 LTS
+- Stack: the same compose file plus `tests/e2e/docker-compose.wizard.yml`, which unsets `MYBIBLI_SKIP_SETUP` **and** `MYBIBLI_SEED_DEV_USERS`. The seed gate then clears the seeded users and the seeded session row during the boot the `--wait` already waits for — the lane deliberately does no SQL wipe of its own, so a broken gate fails it instead of hiding behind a manual cleanup ([#480](https://github.com/guycorbaz/mybibli/issues/480)).
+- Commands:
+  ```bash
+  MYBIBLI_SETUP_E2E=1 npx playwright test specs/journeys/setup-wizard.spec.ts
+  ```
+  The spec skips itself unless `MYBIBLI_SETUP_E2E=1`, so it stays inert in the seeded `e2e` lane.
+- Why a second lane: the base stack pins `MYBIBLI_SKIP_SETUP=1` so every other spec reaches its target route directly. The wizard needs the opposite — a fresh install where `/setup` is reachable — and the two cannot coexist in one stack.
+- On failure: the wizard Playwright report and the compose logs are uploaded, same shape as the `e2e` job.
 
 ## Secrets
 
@@ -111,10 +130,11 @@ Navigate to **Settings → Branches → Branch protection rules → Add rule** (
    - **Require approvals:** OFF (solo-maintainer mode — see rationale below).
 3. **Require status checks to pass before merging:** ON
    - **Require branches to be up to date before merging:** ON
-   - **Required status checks** — add EXACTLY these three (the parent job that calls the reusable workflow is named `gates`):
+   - **Required status checks** — add EXACTLY these four (the parent job that calls the reusable workflow is named `gates`):
      - `gates / Rust tests + clippy + sqlx-prepare`
      - `gates / DB integration tests`
      - `gates / Playwright E2E`
+     - `gates / Playwright wizard E2E`
 
      > GitHub shows reusable-workflow jobs as `<parent-job-id> / <job-display-name>` where the display name is the `name:` field of each job in `_gates.yml` (NOT the job ID). If the labels do not appear in the autocomplete, trigger a push so a full CI run indexes the check names, then edit the protection rule.
 4. **Do NOT add release-only jobs to required checks.** `verify-version` and `publish` from `release.yml` only run on `v*.*.*` tag pushes; they never report a status on PRs, so requiring them would lock every PR out of merging. (Note: `ci.yml` no longer has a `docker-publish` job — Docker Hub publishing is now release-only per "version stricte" policy.)

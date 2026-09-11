@@ -105,7 +105,7 @@ If/when multi-tenancy is on the roadmap, both #54 and #16 should be re-opened to
 
 ### Source Layout
 
-- `src/routes/` — HTTP handlers. Thin: extract params, call service, return response. `admin.rs` ships the `/admin` page (tabs: health, users, reference_data, trash, system) — admin-only.
+- `src/routes/` — HTTP handlers. Thin: extract params, call service, return response. `admin.rs` ships the `/admin` page shell and its Health and Trash tabs; the other four tabs live in `admin_users.rs`, `admin_reference_data.rs` (+ `admin_labels.rs`), `admin_system.rs` and `admin_api_keys.rs` — six tabs in all, admin-only.
 - `src/services/` — Business logic. All domain rules live here, never in handlers. `admin_health.rs` owns Health-tab data builders (entity counts, trash count, MariaDB version cache, disk usage).
 - `src/models/` — Database models. SQL queries, row mapping, `DbPool` parameter.
 - `src/middleware/` — Axum middleware: `auth.rs` (Session extractor), `htmx.rs` (HxRequest + HtmxResponse), `pending_updates.rs` (OOB metadata delivery), `logging.rs`, `csp.rs` (Content-Security-Policy + hardening headers, story 7-4).

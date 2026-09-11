@@ -129,6 +129,60 @@ n'est pas un constructeur de requêtes libre. Le contrôle n'est visible
 que pour les bibliothécaires et les administrateurs.
 \end{note}
 
+\section{Étiquettes de gestion}\label{sec:management-labels}
+
+Un genre dit ce qu'un livre \emph{est}. Un état dit comment un
+exemplaire a \emph{vieilli}. Ni l'un ni l'autre ne dit « je ne suis pas
+sûr que cette notice soit juste, il faudra y revenir » --- et c'est la
+phrase dont un catalogue vivant a le plus besoin. Depuis la 1.18.0, les
+\emph{étiquettes de gestion}\index{étiquette!de gestion} la portent.
+
+Ce ne sont pas les étiquettes de dos de la section~\ref{sec:labels} :
+rien ne s'imprime, rien ne se scanne, et un visiteur anonyme ne les voit
+jamais. Elles existent pour la personne qui tient la bibliothèque.
+
+\subsection*{Définir le vocabulaire}
+
+Un administrateur crée le vocabulaire une fois, dans
+\emph{Administration \textrightarrow{} Données de référence
+\textrightarrow{} Étiquettes} : « À vérifier », « À relire », « Reliure
+abîmée », « Prêté sans fiche » --- ce que votre pratique réclame. On les
+renomme et on les supprime au même endroit, et comme toute autre valeur
+de référence elles ne sont jamais traduites : ce que vous saisissez est
+ce que tout le monde voit, quelle que soit la langue de l'interface.
+
+Gardez la liste courte. Un vocabulaire de six étiquettes s'utilise ;
+un vocabulaire de trente est une seconde taxonomie de genres que
+personne n'entretient.
+
+\subsection*{Poser une étiquette}
+
+Un bibliothécaire pose les étiquettes depuis la section
+\emph{Étiquettes} d'une page de titre ou d'une page de volume, en
+choisissant dans ce vocabulaire commun. La distinction compte :
+
+\begin{itemize}
+  \item sur un \textbf{titre}, l'étiquette parle de la notice --- « les
+        métadonnées ont l'air fausses » ;
+  \item sur un \textbf{volume}, elle parle de cet exemplaire physique
+        --- « celui-ci a la reliure abîmée », ce qui ne dit rien des
+        deux autres exemplaires du rayon.
+\end{itemize}
+
+\subsection*{Retrouver ce qui porte une étiquette}
+
+\texttt{/labels} liste le vocabulaire avec un compte en regard de chaque
+entrée. En ouvrir une montre ce qui la porte, en deux sections --- les
+titres au-dessus des volumes --- chaque ligne menant à sa page de
+détail. C'est tout l'intérêt : une étiquette d'où l'on ne peut pas
+revenir est un mot dans un tiroir.
+
+\begin{note}
+Les étiquettes sont internes. Les gestionnaires n'exécutent même pas les
+requêtes pour un visiteur anonyme : rien ne fuit par le catalogue
+public --- pas même le fait qu'une étiquette existe.
+\end{note}
+
 \section{Déplacer un volume vers un autre lieu}\label{sec:move-volume}
 
 \begin{enumerate}
@@ -181,26 +235,57 @@ Les prêts qui dépassent le seuil de retard passent au rouge sur la
 page \texttt{/loans} et sur l'indicateur \emph{En retard} de la page
 d'accueil. \texttt{/loans?filter=overdue} donne une liste focalisée.
 
-\section{Audit de la bibliothèque}\label{sec:audit}
+\section{Audit des rayons}\label{sec:audit}
 
 Un \emph{audit}\index{audit} c'est le rituel « je parcours les
 étagères et je confirme que tout est bien à la place que la base
-indique ». mybibli ne livre pas un mode audit dédié — le flux
-équivalent est :
+indique ». Depuis la 1.7.x, mybibli porte ce flux au lieu de vous
+laisser l'improviser autour de la page de recherche.
 
-\begin{enumerate}
-  \item Filtrez \texttt{/search} par le lieu que vous comptez
-        auditer, trié par code V.
-  \item Parcourez le rayon en scannant chaque code V.
-  \item Pour tout volume scanné qui \emph{n'est pas} dans la liste
-        filtrée, mybibli affiche un message \emph{Volume absent de
-        ce lieu}. Déplacez-le (section~\ref{sec:move-volume}) et
-        continuez.
-  \item Tout volume \emph{dans} la liste filtrée que vous
-        \emph{n'avez pas} scanné après avoir parcouru le rayon est
-        suspect — soit déplacé, soit manquant. Marquez-le pour
-        suivi.
-\end{enumerate}
+L'unité de travail est un drapeau posé sur un volume :
+\emph{à contrôler}. On lève le drapeau, on parcourt le rayon, et on
+l'abaisse à mesure que chaque exemplaire est confirmé.
+
+\subsection*{Lever le drapeau}
+
+\begin{itemize}
+  \item \textbf{Un volume} — depuis sa page de détail,
+        \emph{Marquer à contrôler}. Utile quand un lecteur signale que
+        quelque chose cloche, ou qu'un scan a fait apparaître un volume
+        là où il n'aurait pas dû être.
+  \item \textbf{Un rayon entier} — depuis la page d'un lieu de
+        rangement, \emph{Marquer tous les volumes à contrôler}. C'est
+        ainsi qu'une passe planifiée commence : on marque le rayon le
+        dimanche soir, on le parcourt dans la semaine.
+\end{itemize}
+
+Un volume marqué porte une pastille \emph{À contrôler} partout où il
+est listé : le drapeau se voit sans ouvrir la vue d'audit.
+
+\subsection*{Parcourir le rayon}
+
+Le tableau de bord d'accueil affiche un indicateur \emph{Volumes à
+contrôler} avec son compte et un lien ; \texttt{/audit} est la liste
+elle-même, triée par lieu puis par code V — l'ordre dans lequel on
+marche. Chaque ligne porte un bouton \emph{Contrôlé} : on l'actionne
+quand on tient l'exemplaire, et la ligne quitte la liste.
+
+Deux situations se dénouent en chemin :
+
+\begin{itemize}
+  \item Un volume sur le rayon que la liste n'attend pas — scannez-le ;
+        mybibli signale qu'il appartient ailleurs et vous le déplacez
+        (section~\ref{sec:move-volume}).
+  \item Un volume que la liste attend et que le rayon ne porte pas —
+        laissez le drapeau levé. Une liste d'audit inachevée est une
+        liste de choses à faire, pas un échec : c'est le seul relevé de
+        ce que vous n'avez pas retrouvé.
+\end{itemize}
+
+\emph{Effacer tous les drapeaux} vide la liste d'un coup. À utiliser
+quand on abandonne une passe, pas pour en terminer une — un drapeau
+effacé sans avoir le volume en main enregistre une vérification qui
+n'a pas eu lieu.
 
 \begin{tip}
 Un audit trimestriel attrape les volumes mal rangés tôt — plus un
@@ -309,3 +394,36 @@ sur votre wish list \string— la retirer~?} Un clic sur le bouton
 \emph{Retirer de la wish list} ouvre la même modale \emph{Marquer
 comme acheté}, et la confirmation supprime l'entrée. Aucune
 suppression silencieuse.
+
+\section{Ce que vaut la bibliothèque}\label{sec:valuation}
+
+Deux montants facultatifs peuvent être enregistrés sur chaque volume :
+ce qu'il vous a \emph{coûté} (prix d'achat) et ce qu'il \emph{vaut}
+aujourd'hui (valeur actuelle), chacun avec sa devise. Les deux sont
+vides par défaut et rien ne force à les remplir --- une bibliothèque qui
+n'est pas un placement peut ignorer cette section.
+
+Si vous les renseignez, \texttt{/stats/value}\index{valorisation} en
+fait la somme sur tout le catalogue : un total par devise, puis une
+ventilation par genre et par série. Les volumes sans valeur sont
+ignorés plutôt que comptés à zéro : un catalogue partiellement valorisé
+dit donc la vérité sur la partie que vous avez valorisée, au lieu de
+diluer la moyenne.
+
+\begin{itemize}
+  \item La \textbf{devise par défaut} des nouvelles valorisations se
+        règle dans \emph{Administration \textrightarrow{} System} ; ce
+        n'est qu'un pré-remplissage, chaque volume peut en porter une
+        autre.
+  \item La \textbf{carte du tableau de bord} qui affiche le total estimé
+        est \emph{désactivée} par défaut. Activez-la au même endroit si
+        vous voulez ce chiffre sous les yeux chaque jour --- ce n'est pas
+        le souhait de tous les foyers.
+\end{itemize}
+
+\begin{note}
+L'assurance est la raison habituelle de tenir ces chiffres. Si c'est la
+vôtre, notez le prix d'achat autant que la valeur actuelle : le premier
+est un fait que vous pouvez prouver, la seconde une estimation qu'on
+vous demandera de justifier.
+\end{note}

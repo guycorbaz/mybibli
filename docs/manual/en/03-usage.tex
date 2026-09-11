@@ -119,6 +119,59 @@ chip, sort column and direction) — they are not a free-form query
 builder. The control is visible to librarians and administrators only.
 \end{note}
 
+\section{Management labels}\label{sec:management-labels}
+
+A genre says what a book \emph{is}. A condition state says how a copy
+has \emph{aged}. Neither says ``I am not sure this record is right,
+come back to it'' --- and that sentence is the one a working catalogue
+needs most. Since 1.18.0, \emph{management
+labels}\index{label!management} carry it.
+
+They are not the spine labels of section~\ref{sec:labels}: nothing is
+printed, nothing is scanned, and an anonymous visitor never sees them.
+They exist for the person maintaining the library.
+
+\subsection*{Defining the vocabulary}
+
+An admin creates the vocabulary once, in \emph{Administration
+\textrightarrow{} Reference data \textrightarrow{} Labels}: ``To
+check'', ``Re-read'', ``Damaged binding'', ``Lent informally'' ---
+whatever your practice calls for. Labels are renamed and deleted from
+the same place, and like every other reference value they are never
+translated: what you type is what everyone sees, in any interface
+language.
+
+Keep the list short. A vocabulary of six labels is used; a vocabulary
+of thirty is a second genre taxonomy nobody maintains.
+
+\subsection*{Putting a label on something}
+
+A librarian applies labels from the \emph{Labels} section of a title
+page or of a single volume page, choosing from that one shared
+vocabulary. The distinction matters:
+
+\begin{itemize}
+  \item on a \textbf{title}, the label is about the record --- ``the
+        metadata here looks wrong'';
+  \item on a \textbf{volume}, it is about that physical copy --- ``this
+        one has a damaged binding'', which says nothing about the other
+        two copies on the shelf.
+\end{itemize}
+
+\subsection*{Finding what carries a label}
+
+\texttt{/labels} lists the vocabulary with a count against each entry.
+Opening one shows what carries it, in two sections --- titles above
+volumes --- each row linking through to its detail page. That is the
+whole point: a label you cannot find your way back from is a note in a
+drawer.
+
+\begin{note}
+Labels are internal. The handlers do not even run the queries for an
+anonymous visitor, so nothing leaks through the public catalogue ---
+including the fact that a label exists.
+\end{note}
+
 \section{Moving a volume to another location}\label{sec:move-volume}
 
 \begin{enumerate}
@@ -170,24 +223,53 @@ Loans that exceed the overdue threshold turn red on the
 \texttt{/loans} page and on the home-page \emph{Overdue} indicator.
 You can run \texttt{/loans?filter=overdue} for a focused list.
 
-\section{Library audit}\label{sec:audit}
+\section{Shelf audit}\label{sec:audit}
 
 An \emph{audit}\index{audit} is the routine ``walk the shelves and
-confirm everything is where the database says it is''. mybibli does
-not ship a dedicated audit mode — the equivalent workflow is:
+confirm everything is where the database says it is''. Since 1.7.x
+mybibli carries the workflow rather than leaving you to improvise it
+around the search page.
 
-\begin{enumerate}
-  \item Filter \texttt{/search} by the location you intend to
-        audit, sorted by V-code.
-  \item Walk the shelf, scanning each V-code.
-  \item For any volume scanned that is \emph{not} in the filtered
-        list, mybibli surfaces a \emph{Volume not in this location}
-        message. Move it (section~\ref{sec:move-volume}) and move
-        on.
-  \item Any volume \emph{in} the filtered list that you did
-        \emph{not} scan after walking the shelf is suspect — either
-        misplaced or missing. Mark it for follow-up.
-\end{enumerate}
+The unit of work is a flag on a volume: \emph{to check}. You raise the
+flag, walk the shelf, and lower it as each copy is confirmed.
+
+\subsection*{Raising the flag}
+
+\begin{itemize}
+  \item \textbf{One volume} — on its detail page, \emph{Mark to check}.
+        Useful when a reader mentions that something looks wrong, or
+        when a scan surfaced a volume where it should not have been.
+  \item \textbf{A whole shelf} — on a storage location's page,
+        \emph{Mark all volumes for audit}. This is how a planned pass
+        starts: flag the shelf on Sunday evening, walk it during the
+        week.
+\end{itemize}
+
+A flagged volume carries a \emph{To check} chip wherever it is listed,
+so the flag is visible without opening the audit view.
+
+\subsection*{Walking the shelf}
+
+The home dashboard shows a \emph{Volumes to check} indicator with a
+count and a link; \texttt{/audit} is the list itself, sorted by
+location then V-code — the order you physically walk in. Each row
+carries a \emph{Checked} button: press it as you confirm the copy in
+your hand, and the row leaves the list.
+
+Two situations resolve themselves as you go:
+
+\begin{itemize}
+  \item A volume on the shelf that the list does not expect — scan it;
+        mybibli says it belongs elsewhere and you move it
+        (section~\ref{sec:move-volume}).
+  \item A volume the list expects and the shelf does not hold — leave
+        the flag raised. An unfinished audit list is a to-do list, not
+        a failure; it is the only record of what you could not find.
+\end{itemize}
+
+\emph{Clear all flags} empties the list in one action. Use it when you
+abandon a pass, not to finish one — a flag cleared without the volume
+in your hand records something you did not verify.
 
 \begin{tip}
 A quarterly audit catches misplaced volumes early — the longer a
@@ -290,3 +372,33 @@ in the feedback area: \emph{This ISBN is on your wish list — Remove
 it?} One click on the banner's \emph{Remove from wish list} button
 opens the same \emph{Mark as bought} modal, and confirming removes
 the entry. No silent deletions.
+
+\section{What the library is worth}\label{sec:valuation}
+
+Two optional amounts can be recorded against each volume: what it
+\emph{cost} you (purchase price) and what it is \emph{worth} now
+(current value), each with its own currency. Both are blank by default
+and nothing forces you to fill them --- a library that is not an
+investment can ignore this section entirely.
+
+If you do record them, \texttt{/stats/value}\index{valuation} sums them
+across the catalogue: a total per currency, then a breakdown by genre
+and by series. Volumes with no value set are skipped rather than
+counted as zero, so a partially-valued catalogue reports the truth
+about the part you have valued rather than a diluted average.
+
+\begin{itemize}
+  \item The \textbf{default currency} for new valuations is set in
+        \emph{Administration \textrightarrow{} System}; it is only a
+        pre-fill, and any volume can carry another.
+  \item The \textbf{home-dashboard card} showing the estimated total is
+        \emph{off} by default. Turn it on in the same place if you want
+        the figure in front of you every day --- some households do not.
+\end{itemize}
+
+\begin{note}
+Insurance is the usual reason to keep these figures. If that is yours,
+record the purchase price as well as the current value: the first is a
+fact you can evidence, the second an estimate you will be asked to
+justify.
+\end{note}
