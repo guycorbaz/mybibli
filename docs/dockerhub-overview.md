@@ -22,9 +22,10 @@ mybibli is designed for one household on one LAN. Login attempts are not rate-li
 
 ## What it is
 
-- **Barcode-first cataloging.** Scan ISBN / EAN-13 → metadata resolves asynchronously through a provider chain (BDGest → BnF → Google Books → Library of Congress → Open Library → MusicBrainz → OMDb → TMDB) with cover-image download and similar-title detection.
+- **Barcode-first cataloging.** Scan ISBN / EAN-13 → metadata resolves asynchronously through a provider chain (BDGest → BnF → Google Books → Library of Congress → K10plus → Open Library → MusicBrainz → OMDb → TMDb) with cover-image download and similar-title detection.
 - **Multi-media.** Books, BD/comics with multi-position omnibus volumes, audio, films/series — each typed correctly with the right provider chosen automatically.
 - **Series + collection awareness.** Gap detection on series volumes, Dewey-based browsing, similar-titles section.
+- **Management labels.** An admin defines a vocabulary once ("To check", "Re-read", "Damaged binding"); a librarian applies any of it to titles *and* to individual copies from that one shared list, and a `/labels` page lists the vocabulary with its counts and drills down to what carries each label. Internal to the library — an anonymous visitor sees none of it.
 - **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow, per-location volume list, optional organizational containers (folders, not shelves), shelf-audit workflow ("À contrôler") with home-dashboard indicator.
 - **Loan management.** Borrower CRUD, loan registration with automatic location restoration on return, overdue threshold (admin-configurable), per-borrower history.
 - **Wishlist + valuation.** First-class `/wishlist` with provider-chain ISBN preview + free-form add, mark-as-bought, server-rendered PDF export. Optional per-volume `purchase_price` + `current_value` with per-currency totals and a `/stats/value` page (default OFF, admin opt-in).
@@ -34,7 +35,7 @@ mybibli is designed for one household on one LAN. Login attempts are not rate-li
 - **Admin panel.** Health dashboard (entity counts, MariaDB version, disk usage, provider reachability), user management with last-active-admin guard, editable reference data (genres, volume states, contributor roles, location node types), system settings (loans / providers / language / valuation / **logging level**), trash view + restore + permanent delete, configurable auto-purge after 30 days.
 - **Production observability** (v1.7.0+, completed in v1.7.1). Persistent daily-rotating log files with 30-day in-process purge. Admin-controlled log level (`trace` / `debug` / `info` / `warn` / `error` or full `tracing-subscriber` `EnvFilter` directives) flippable from `/admin > System` without a redeploy.
 - **First-launch setup wizard.** Fresh installs walk through Admin → Providers → Preferences → Done.
-- **Mobile-aware + WCAG 2.2 AA accessible.** Dual-surface mobile UX (desktop tables collapse into cards, admin tabs into `<select>`), full keyboard navigation with shortcuts cheat-sheet (`?`), contextual help-icon tooltips, axe-core CI gate over every reachable surface.
+- **Mobile-aware + WCAG 2.2 AA accessible.** Dual-surface mobile UX (desktop tables collapse into cards, admin tabs into `<select>`), full keyboard navigation with shortcuts cheat-sheet (`?`), contextual help-icon tooltips, and an axe-core CI gate over the main surfaces (thirteen of them, listed in [`docs/accessibility-audit.md`](https://github.com/guycorbaz/mybibli/blob/main/docs/accessibility-audit.md) — the newer pages are not in the set yet).
 
 ## Quick start
 
@@ -105,7 +106,10 @@ Open `http://localhost:8080`. The first-launch wizard greets you. Create the adm
 
 ### Environment reference
 
-All deployment-time settings are environment variables — no config file. The canonical reference with every variable commented is [`.env.example`](https://github.com/guycorbaz/mybibli/blob/main/.env.example) in the repo. Grouped sections: database, HTTP server, application (incl. logging — `MYBIBLI_LOG_LEVEL` / `MYBIBLI_LOG_DIR` / `LOGS_HOST_PATH` / `MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS`), cookie & CSP hardening, metadata providers, dev / test overrides.
+Configuration comes in two layers, and the distinction matters:
+
+- **Deployment-time, environment variables** — database URL, host/port, cookie and CSP hardening, log directory, the dev/test overrides. There is no config file; the canonical reference with every variable commented is [`.env.example`](https://github.com/guycorbaz/mybibli/blob/main/.env.example) in the repo.
+- **Run-time, the admin panel** — loan thresholds, session timeout, provider API keys and per-provider timeouts, interface language, valuation display, log level. These live in the database and are edited in **Admin → System**, taking effect on the next request with no restart. Several of them (`MYBIBLI_LOG_LEVEL`, `MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS`, the provider API keys) *also* exist as environment variables: that is a one-shot seeding path for a fresh deployment, applied while the stored value is still the default. Once you save the setting in the panel, the panel wins and the variable is inert.
 
 ### Bind-mount alternatives (Synology DSM, journald shipping, etc.)
 

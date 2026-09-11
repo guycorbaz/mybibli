@@ -23,6 +23,9 @@ Bibliothèque nationale de France ; idéal pour les titres en français. & non \
 Library of Congress\index{Library of Congress} & Livres & Catalogue
 de la bibliothèque nationale des États-Unis ; pendant anglophone de
 la BnF. Fournit aussi les zones MARC~21. & non \\
+K10plus\index{K10plus}          & Livres         & Catalogue
+collectif allemand. Complète les zones uniquement — il ne résout
+jamais un titre seul. Consulté pour les préfixes ISBN 978-0/1/2/3. & non \\
 Open Library\index{Open Library} & Livres         & Catalogue
 bénévole ; large couverture anglaise / multilingue. & non \\
 Google Books\index{Google Books} & Livres         & Commercial ; bon
@@ -42,7 +45,7 @@ contributeur, et une année. Les correspondances partielles sont
 enregistrées mais mybibli continue à parcourir la chaîne jusqu'à
 trouver une correspondance propre ou épuiser les fournisseurs.
 
-\subsection*{Zones bibliographiques : BnF et Library of Congress}
+\subsection*{Zones bibliographiques : les trois catalogues}
 
 Six champs de catalogage détaillés — mention de responsabilité,
 mention d'édition, titre et numéro de collection, note générale,
@@ -55,12 +58,27 @@ anglophone. Un titre absent des deux restera sans ces zones, et un
 titre français que la BnF ne décrit pas ne sera pas rattrapé par la
 Library of Congress.
 
-Quand le fournisseur qui a résolu le titre ne remplit qu'une partie
-de ces six zones, mybibli interroge l'autre bibliothèque pour
-compléter les zones restées vides. La règle est \emph{la première
-source l'emporte} : une valeur déjà présente n'est jamais écrasée.
-Seules ces six zones sont fusionnées — le titre, les auteurs et la
-couverture proviennent toujours d'un seul et même fournisseur.
+Un troisième catalogue les a rejointes en 1.16.0 :
+\textbf{K10plus}\index{K10plus}, le catalogue collectif allemand. Il se
+comporte autrement que les deux autres — il ne résout jamais un titre,
+il ne fait que compléter les zones d'une notice qu'un autre fournisseur
+a déjà résolue — et il s'est révélé le plus productif des trois sur ce
+catalogue, remplissant des zones sur des titres qu'aucune des deux
+bibliothèques nationales ne portait. Il n'est consulté que pour les
+préfixes ISBN 978-0, 978-1, 978-2 et 978-3 : les restes anglophones pour
+lesquels il existe, son propre domaine germanophone, et le préfixe
+français sur lequel la BnF avait déjà échoué. Tout autre préfixe est
+ignoré sans requête, ce qui réserve le budget d'une requête par seconde
+aux appels qui ont une chance d'aboutir.
+
+Quand le fournisseur qui a résolu le titre ne remplit qu'une partie de
+ces six zones, mybibli interroge les autres pour compléter les zones
+restées vides. La règle est \emph{la première source l'emporte} : une
+valeur déjà présente n'est jamais écrasée. Seules ces six zones sont
+fusionnées — le titre, les auteurs et la couverture proviennent toujours
+d'un seul et même fournisseur.
+
+Rien de tout cela ne demande de clé ni de configuration.
 
 Le bouton \emph{Compléter les métadonnées via les bibliothèques} de
 l'onglet Santé applique le même traitement aux titres déjà

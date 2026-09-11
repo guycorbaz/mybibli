@@ -11,16 +11,20 @@ clés de fournisseurs).
 
 Tout se configure depuis le panneau
 \texttt{/admin}\index{panneau admin} — il n'y a pas de fichier de
-configuration séparé. Le panneau a cinq onglets :
+configuration séparé. Le panneau a six onglets :
 
 \begin{itemize}
   \item \textbf{Health} — tableau de bord en lecture seule.
   \item \textbf{Users} — créer/désactiver des utilisateurs, changer
         de rôle.
-  \item \textbf{Reference data} — les quatre tables taxonomiques.
-  \item \textbf{Trash} — voir et restaurer les éléments
-        soft-deleted.
+  \item \textbf{Reference data} — les tables taxonomiques, et le
+        vocabulaire des étiquettes de gestion
+        (section~\ref{sec:management-labels}).
+  \item \textbf{Trash} — voir, restaurer et supprimer définitivement
+        les éléments soft-deleted.
   \item \textbf{System} — paramètres globaux.
+  \item \textbf{API keys} — créer et révoquer les clés avec
+        lesquelles l'API HTTP s'authentifie (chapitre~\ref{ch:api}).
 \end{itemize}
 
 Seul le rôle \texttt{Admin} voit le panneau ; les utilisateurs
@@ -80,7 +84,18 @@ Supprimer un type est refusé tant qu'au moins un lieu y fait
 référence.
 \end{tip}
 
-\section{Étiquettes : codes V et codes L}\label{sec:labels}
+\section{Étiquettes de dos : codes V et codes L}\label{sec:labels}
+
+\begin{note}
+\textbf{Deux choses s'appellent « étiquettes » dans mybibli.} Cette
+section traite des \emph{étiquettes de dos} que l'on imprime et que
+l'on colle sur un livre ou une étagère — les codes-barres qui rendent
+le scan possible. L'autre sorte, apparue en 1.18.0, est
+l'\emph{étiquette de gestion} que l'on pose sur une notice pour dire
+quelque chose de son état (« À vérifier », « Reliure abîmée ») ; elles
+sont décrites en section~\ref{sec:management-labels}. Rien ne s'imprime
+pour elles, et elles ne sortent jamais de l'application.
+\end{note}
 
 mybibli imprime deux types d'étiquettes à code-barres :
 

@@ -1,14 +1,17 @@
-# mybibli Architecture Reference
+# Permanent delete, Trash and auto-purge
 
-This document records cross-cutting design decisions that apply to the whole
-codebase. Story-specific decisions live in
-`_bmad-output/implementation-artifacts/`; this file is for patterns whose
-shape doesn't change between stories.
+**Scope:** this file documents one subsystem — how a soft-deleted row
+travels to the Trash, what hard-deletes it, in which order, and what the
+audit trail keeps. It is not the architecture reference it used to be
+titled as; for that, read the "Architecture" section of
+[`CLAUDE.md`](../CLAUDE.md) (patterns as shipped) and
+[`_bmad-output/planning-artifacts/architecture.md`](../_bmad-output/planning-artifacts/architecture.md)
+(the design decisions and ARs behind them).
 
-For developer-facing conventions (build commands, foundation rules, lint
-gates), see `CLAUDE.md`.
+Story-specific decisions live in `_bmad-output/implementation-artifacts/`;
+what follows is the shape that doesn't change between stories.
 
-## Permanent Delete & Auto-Purge
+## The delete-and-purge pipeline
 
 Soft-deleted items are hard-purged after a fixed **30-day retention window**.
 The window is enforced by two complementary mechanisms:

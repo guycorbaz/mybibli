@@ -25,7 +25,7 @@
 
 Built for collectors who want more than a spreadsheet:
 
-- **Barcode-first cataloging.** Scan an ISBN / EAN-13 and the title resolves asynchronously through a metadata provider chain (BnF, Google Books, Open Library, Library of Congress, MusicBrainz, OMDb, TMDb, BDGest), with cover-image download and similar-title detection.
+- **Barcode-first cataloging.** Scan an ISBN / EAN-13 and the title resolves asynchronously through a metadata provider chain (BnF, Google Books, Open Library, Library of Congress, K10plus, MusicBrainz, OMDb, TMDb, BDGest), with cover-image download and similar-title detection.
 - **Multi-media support.** Books, BD/comics (with multi-position omnibus volumes), audio releases, films/series — each typed correctly and with the right metadata provider chosen automatically.
 - **Series + collection awareness.** Gap detection on series volumes, Dewey-based browsing, similar-titles section.
 - **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow, with a 30-second **Undo** on the last shelving or batch-location action.
@@ -286,10 +286,15 @@ cargo sqlx prepare --check --workspace -- --all-targets
 
 ### i18n
 
-Locale files in `locales/{en,fr}.yml`. After adding or renaming keys:
+Locale files in `locales/{en,fr,de,it}.yml` — **four** locales, and a key
+must exist in all four. `tests/locale_parity.rs` fails the build on any
+key present in one file and missing from another (it also checks that
+every translation carries the same `%{...}` placeholders as the English
+reference). After adding or renaming keys:
 
 ```bash
 touch src/lib.rs && cargo build      # Force proc-macro rebuild (rust-i18n)
+cargo test --test locale_parity      # All four files agree
 ```
 
 ## Repository layout
@@ -360,7 +365,26 @@ tests/
 
 ## Documentation
 
-Product and planning documents are versioned under `_bmad-output/`:
+### For people running mybibli
+
+- **[User manual](docs/manual/)** — the end-user book, one self-contained PDF per language: [English](docs/manual/mybibli-manual-en.pdf) · [French](docs/manual/mybibli-manual-fr.pdf). Installation, configuration, daily use, metadata providers, roles, backup and restore, upgrades and release notes, troubleshooting, the HTTP API, operations. LaTeX sources under `docs/manual/{en,fr}/`, built with `docs/manual/build.sh`.
+- [`SECURITY.md`](SECURITY.md) — supported versions, and how to report a vulnerability privately.
+
+### For people working on it
+
+- [`CLAUDE.md`](CLAUDE.md) — coding conventions, architecture patterns, and the Foundation Rules. The de-facto architecture reference for the shipped code.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — how to file, patch, and behave.
+- [`docs/ci-cd.md`](docs/ci-cd.md) — the four CI gates, Docker Hub publishing, release procedure.
+- [`docs/auth-threat-model.md`](docs/auth-threat-model.md) — the auth surface (CSRF, cookies, session policy) and its accepted posture for the single-tenant LAN/NAS shape. Read it before touching anything in that area.
+- [`docs/route-role-matrix.md`](docs/route-role-matrix.md) — every route with its role gate and CSRF status.
+- [`docs/permanent-delete-and-purge.md`](docs/permanent-delete-and-purge.md) — soft delete, Trash, FK ordering, and the auto-purge scheduler.
+- [`docs/error-message-style.md`](docs/error-message-style.md) — the contract every `error.*` i18n key answers to.
+- [`docs/unimarc-mapping.md`](docs/unimarc-mapping.md) — field-to-zone mapping for the UNIMARC-aligned cataloging fields.
+- [`docs/accessibility-audit.md`](docs/accessibility-audit.md) — the WCAG 2.2 AA audit, with its date and its scope.
+
+### Product and planning
+
+Versioned under `_bmad-output/`:
 
 - [`planning-artifacts/product-brief-mybibli.md`](_bmad-output/planning-artifacts/product-brief-mybibli.md) — product vision
 - [`planning-artifacts/prd.md`](_bmad-output/planning-artifacts/prd.md) — functional requirements (121 FRs), NFRs, user journeys
@@ -369,8 +393,6 @@ Product and planning documents are versioned under `_bmad-output/`:
 - [`planning-artifacts/epics.md`](_bmad-output/planning-artifacts/epics.md) — epic breakdown + FR coverage map
 - [`implementation-artifacts/sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) — live sprint state
 - [`implementation-artifacts/epic-*-retro-*.md`](_bmad-output/implementation-artifacts/) — per-epic retrospectives
-
-Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](CLAUDE.md). CI/CD pipeline, Docker Hub publishing, and release procedure are documented in [`docs/ci-cd.md`](docs/ci-cd.md). The auth surface (CSRF, cookies, session policy) and its accepted posture for the single-tenant LAN/NAS deployment shape are formalized in [`docs/auth-threat-model.md`](docs/auth-threat-model.md).
 
 ## Roadmap
 
@@ -387,7 +409,11 @@ Coding conventions and architecture rules for contributors are in [`CLAUDE.md`](
 | 9 | Polish UX & Accessibilité | ✅ done |
 | 10 | Mobile UX & sécurité closeout | ✅ done |
 
-mybibli has been live in production since v1.1.1 (2026-05-14) on the household NAS that drove the project. v1.0.0 shipped after Epic 9 close (2026-05-10) as the first production-ready build; v1.1.0 added the seed-gate + audit trio (mandatory install floor — see "Installation notes" above); the themed minors v1.2 through v1.8 then delivered the original feature roadmap (browse & find, wishlist, HTTP API, valuation & stats, catalog hygiene, de/it locales + runtime logging, cover handling), each followed by production-driven patch trains. Since v1.8 the project runs in GH-issue-driven polish mode; the current release is v1.18.0 (2026-08-18) — a single-feature minor: [#443](https://github.com/guycorbaz/mybibli/issues/443) **management labels**, an admin-defined vocabulary a librarian applies to titles *and* volumes alike — flag an item "À vérifier", then find everything flagged from a dedicated `/labels` page that drills down to the members and through to their detail pages. Labels are internal: a visitor never sees them. **One additive migration** (three tables). The navigation bar now switches to its menu below 1024px instead of 768px, because the new entry no longer fitted on a tablet. It follows v1.17.0 (2026-08-18) — a metadata-clarity minor: a metadata-clarity minor: [#202](https://github.com/guycorbaz/mybibli/issues/202) a failed metadata lookup now says *why* — every source searched and none holds the book, a source that was busy, or a source never asked for want of an API key — three situations that previously shared one message and call for opposite reactions; [#206](https://github.com/guycorbaz/mybibli/issues/206) genre and Dewey are grouped into a Classification section that states which of the two a metadata fetch may overwrite (the genre never, the Dewey code until you edit it). No migration. It follows v1.16.0 (2026-08-17) — a bibliographic-coverage and operability minor: [#450](https://github.com/guycorbaz/mybibli/issues/450) K10plus, the German union catalogue, joins the metadata chain as a zone completer and immediately becomes its leading contributor (45 titles / 100 UNIMARC zones, against 29 / 61 for the Library of Congress), gated by ISBN prefix; [#459](https://github.com/guycorbaz/mybibli/issues/459) `MYBIBLI_RESET_ADMIN`, a one-shot startup hatch that recovers a locked-out administrator without a database console; [#457](https://github.com/guycorbaz/mybibli/issues/457) the proposed L-code now counts soft-deleted rows so it is genuinely free; [#458](https://github.com/guycorbaz/mybibli/issues/458) four intermittently failing E2E specs deflaked at the source. No migration. It follows v1.15.0 (2026-08-13) — a production-log-review minor: [#202](https://github.com/guycorbaz/mybibli/issues/202) metadata provenance recorded and displayed per title, [#424](https://github.com/guycorbaz/mybibli/issues/424) light-mode contrast raised to the WCAG AA floor, [#419](https://github.com/guycorbaz/mybibli/issues/419) a third throttle-retry tier for bulk metadata runs, [#449](https://github.com/guycorbaz/mybibli/issues/449) a seven-character build commit in the startup log; one additive migration. It follows v1.14.0 (2026-07-28) — a cataloging-fix and bibliographic-coverage minor: [#440](https://github.com/guycorbaz/mybibli/issues/440)/[#441](https://github.com/guycorbaz/mybibli/issues/441)/[#442](https://github.com/guycorbaz/mybibli/issues/442) fix three defects in the scan flow (volume labels attaching to the previous title when cataloguing several UPC items in a row, a misleading "not found" when the active title had been deleted, and V-code labels staying locked after a volume was deleted), and [#439](https://github.com/guycorbaz/mybibli/issues/439) adds Library of Congress MARC 21 records so the UNIMARC-aligned fields also fill for English-language books the BnF does not hold. It follows v1.13.0 (2026-07-24) — a UNIMARC-themed feature minor: [#389](https://github.com/guycorbaz/mybibli/issues/389) six UNIMARC-aligned cataloging fields (statement of responsibility, edition statement, collection title/number, general note, original title) captured automatically from the BnF and shown on the title page, a new Health-tab *Backfill metadata from BnF* bulk action to fill them on already-cataloged titles, and [#434](https://github.com/guycorbaz/mybibli/issues/434) a per-title cataloging log summary; the field-to-zone mapping ships as [`docs/unimarc-mapping.md`](docs/unimarc-mapping.md), record import/export having since been dropped (2026-08-17) as out of scope for a household library. It follows v1.12.0 (2026-07-11) — a 2-issue feature minor: [#427](https://github.com/guycorbaz/mybibli/issues/427) two new cover sources (BnF Couvertures legal-deposit scans + Inventaire.io) that recover roughly half of the previously unfindable French/Swiss covers, and [#428](https://github.com/guycorbaz/mybibli/issues/428) a label-printing helper showing the highest V/L-codes in use on the catalog page — and v1.11.0 (same day) — a 4-issue minor driven by a production-log review: [#418](https://github.com/guycorbaz/mybibli/issues/418) persistent session cookie + admin-configurable inactivity timeout (tablet screen-locks no longer log you out mid-cataloguing), [#419](https://github.com/guycorbaz/mybibli/issues/419) bulk cover-refetch pacing + throttle back-off + completion summary, [#416](https://github.com/guycorbaz/mybibli/issues/416) daily auto-purge unblocked (orphan session rows), [#417](https://github.com/guycorbaz/mybibli/issues/417) dashboard-chip log-noise fix. It follows v1.10.0 (2026-07-01) — a single-feature minor closing [#9](https://github.com/guycorbaz/mybibli/issues/9) (undo the last scan action from the catalog feedback list within a 30-second window) — and the v1.9 line (2026-06-11): v1.9.0, the first issue-driven feature minor — [#367](https://github.com/guycorbaz/mybibli/issues/367) saved custom searches, [#396](https://github.com/guycorbaz/mybibli/issues/396) per-provider metadata-timeout overrides, [#405](https://github.com/guycorbaz/mybibli/issues/405)/[#406](https://github.com/guycorbaz/mybibli/issues/406) runtime log-level fixes — patched the same day by v1.9.1 ([#403](https://github.com/guycorbaz/mybibli/issues/403) German/Italian localization of the last two client-side messages, [#412](https://github.com/guycorbaz/mybibli/issues/412) CI test de-flake). The full release-by-release history lives in [ROADMAP.md](ROADMAP.md) and on the [GitHub releases page](https://github.com/guycorbaz/mybibli/releases). See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the epic breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
+mybibli has been live in production since v1.1.1 (2026-05-14) on the household NAS that drove the project. v1.0.0 shipped after Epic 9 close (2026-05-10) as the first production-ready build; v1.1.0 added the seed-gate + audit trio (mandatory install floor — see "Installation notes" above); the themed minors v1.2 through v1.8 then delivered the original feature roadmap (browse & find, wishlist, HTTP API, valuation & stats, catalog hygiene, de/it locales + runtime logging, cover handling), each followed by production-driven patch trains. Since v1.8 the project runs in GH-issue-driven polish mode.
+
+**Current release: `v1.18.0`** (2026-08-18) — management labels ([#443](https://github.com/guycorbaz/mybibli/issues/443)): an admin-defined vocabulary a librarian applies to titles *and* volumes from one shared list, with a `/labels` page that drills down to what carries each label. Labels stay internal — a visitor never sees them. One additive migration; the navigation bar now switches to its menu below 1024px, because the new entry no longer fitted on a tablet.
+
+**Release-by-release history lives in [ROADMAP.md](ROADMAP.md)** — one section per version, and the canonical copy. It is deliberately not repeated here: the [GitHub releases page](https://github.com/guycorbaz/mybibli/releases) carries the same notes as published artifacts, chapter 8 of the [user manual](docs/manual/) carries them offline, and the [website roadmap](https://guycorbaz.github.io/mybibli/roadmap.html) tells the same story for a different audience. See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the epic breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
 
 ## License
 

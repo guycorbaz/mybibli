@@ -1,13 +1,12 @@
-//! Admin page shell + Health tab (story 8-1) + Users panel (story 8-3).
+//! Admin page shell + Health tab + Trash.
 //!
-//! One entry point (`GET /admin`) with five tabs. Health and Users are complete;
-//! the other three are stubs that later Epic 8 stories fill in exactly one at
-//! a time:
-//!   - Users         → story 8-3 ✓
-//!   - Reference     → story 8-4
-//!   - System        → story 8-5
-//!   - Trash (view)  → story 8-6
-//!   - Trash (purge) → story 8-7
+//! One entry point (`GET /admin`) with six tabs, all shipped:
+//!   - Health        → this module
+//!   - Users         → `admin_users.rs`
+//!   - Reference     → `admin_reference_data.rs` + `admin_labels.rs`
+//!   - System        → `admin_system.rs`
+//!   - Trash         → this module (view, restore, permanent delete)
+//!   - API keys      → `admin_api_keys.rs`
 //!
 //! Middleware order follows AR16 — admin routes live at the top level
 //! alongside the non-catalog routes so they skip `pending_updates_middleware`
