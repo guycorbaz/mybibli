@@ -864,6 +864,13 @@ admin:
     count_contributors: Contributeurs
     count_borrowers: Emprunteurs
     count_active_loans: "Prêts actifs"
+    labels_heading: "Étiquettes à code-barres"
+    labels_hint: "Numéro le plus élevé jamais imprimé pour chaque famille d'étiquettes, corbeille comprise, et prochain numéro libre pour démarrer une nouvelle planche."
+    last_vcode: "Dernier numéro de volume (code V)"
+    last_lcode: "Dernier numéro d'étagère (code L)"
+    label_with_next: "%{highest} (prochain : %{next})"
+    label_exhausted: "%{highest} (plus aucun disponible)"
+    label_none_yet: "Aucun pour l'instant"
     providers_heading: "Fournisseurs de métadonnées"
     provider_status_up: Accessible
     provider_status_down: Inaccessible

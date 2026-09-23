@@ -28,6 +28,18 @@
         </tbody>
     </table>
 
+    {# #489 — label high-water marks: highest V-code / L-code ever printed
+       (soft-deleted rows included) and the next free number, so a fresh
+       label sheet starts right after the occupied range. #}
+    <h2 class="text-lg font-semibold text-stone-900 dark:text-stone-100 mb-2">{{ labels_heading }}</h2>
+    <p class="text-sm text-stone-500 dark:text-stone-400 mb-4">{{ labels_hint }}</p>
+    <table class="min-w-full divide-y divide-stone-200 dark:divide-stone-700 mb-8">
+        <tbody class="divide-y divide-stone-100 dark:divide-stone-800">
+            <tr><th scope="row" class="px-3 py-2 text-left text-sm text-stone-500 dark:text-stone-400 font-normal">{{ last_vcode_label }}</th><td id="health-last-vcode" class="px-3 py-2 text-right text-sm font-mono text-stone-900 dark:text-stone-100">{{ last_vcode_value }}</td></tr>
+            <tr><th scope="row" class="px-3 py-2 text-left text-sm text-stone-500 dark:text-stone-400 font-normal">{{ last_lcode_label }}</th><td id="health-last-lcode" class="px-3 py-2 text-right text-sm font-mono text-stone-900 dark:text-stone-100">{{ last_lcode_value }}</td></tr>
+        </tbody>
+    </table>
+
     <h2 class="text-lg font-semibold text-stone-900 dark:text-stone-100 mb-4">{{ providers_heading }}</h2>
     <table class="min-w-full divide-y divide-stone-200 dark:divide-stone-700 mb-8">
         <tbody class="divide-y divide-stone-100 dark:divide-stone-800">

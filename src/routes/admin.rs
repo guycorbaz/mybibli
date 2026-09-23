@@ -149,6 +149,15 @@ struct AdminHealthPanel {
     count_borrowers: i64,
     count_active_loans_label: String,
     count_active_loans: i64,
+    // #489 — label high-water marks: "V0142 (next: V0143)" per family,
+    // or the "none yet" placeholder. Pre-formatted so the template only
+    // prints two strings.
+    labels_heading: String,
+    labels_hint: String,
+    last_vcode_label: String,
+    last_vcode_value: String,
+    last_lcode_label: String,
+    last_lcode_value: String,
     providers_heading: String,
     providers: Vec<ProviderHealthRow>,
     // Fix #214: maintenance section — "Re-fetch missing covers".
@@ -1392,6 +1401,11 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
 
     let providers = build_provider_rows(&state.registry, &state.provider_health, loc);
 
+    // #489 — label high-water marks (two MAX() lookups, no cache needed).
+    let watermarks = admin_health::label_watermarks(pool).await?;
+    let last_vcode_value = format_label_watermark(watermarks.highest_vcode.as_deref(), loc);
+    let last_lcode_value = format_label_watermark(watermarks.highest_lcode.as_deref(), loc);
+
     // Fix #214: maintenance section data — count of titles with no
     // cover + bulk-fetch status. Cheap query (single SELECT COUNT) and
     // a lock-only status read; no extra DB round-trip beyond the count.
@@ -1451,6 +1465,12 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
         count_active_loans_label: rust_i18n::t!("admin.health.count_active_loans", locale = loc)
             .to_string(),
         count_active_loans: counts.active_loans,
+        labels_heading: rust_i18n::t!("admin.health.labels_heading", locale = loc).to_string(),
+        labels_hint: rust_i18n::t!("admin.health.labels_hint", locale = loc).to_string(),
+        last_vcode_label: rust_i18n::t!("admin.health.last_vcode", locale = loc).to_string(),
+        last_vcode_value,
+        last_lcode_label: rust_i18n::t!("admin.health.last_lcode", locale = loc).to_string(),
+        last_lcode_value,
         providers_heading: rust_i18n::t!("admin.health.providers_heading", locale = loc)
             .to_string(),
         providers,
@@ -1489,6 +1509,26 @@ async fn render_health_panel(state: &AppState, loc: &'static str) -> Result<Stri
     panel
         .render()
         .map_err(|_| AppError::Internal("admin health panel render failed".to_string()))
+}
+
+/// #489 — render one label watermark for the Health tab: `V0142 (next: V0143)`,
+/// `V9999 (none left)` when the numeric space is exhausted, or the
+/// "none yet" placeholder when the catalog holds no label of that family.
+fn format_label_watermark(highest: Option<&str>, loc: &str) -> String {
+    match highest {
+        None => rust_i18n::t!("admin.health.label_none_yet", locale = loc).to_string(),
+        Some(h) => match admin_health::next_label(h) {
+            Some(next) => rust_i18n::t!(
+                "admin.health.label_with_next",
+                locale = loc,
+                highest = h,
+                next = next
+            )
+            .to_string(),
+            None => rust_i18n::t!("admin.health.label_exhausted", locale = loc, highest = h)
+                .to_string(),
+        },
+    }
 }
 
 fn build_provider_rows(

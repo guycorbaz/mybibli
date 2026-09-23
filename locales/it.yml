@@ -840,6 +840,13 @@ admin:
     count_contributors: Collaboratori
     count_borrowers: Lettori
     count_active_loans: Prestiti attivi
+    labels_heading: Etichette con codice a barre
+    labels_hint: "Numero più alto mai stampato per ogni famiglia di etichette, cestino incluso, e prossimo numero libero da cui iniziare un nuovo foglio."
+    last_vcode: "Ultimo numero di volume (codice V)"
+    last_lcode: "Ultimo numero di scaffale (codice L)"
+    label_with_next: "%{highest} (prossimo: %{next})"
+    label_exhausted: "%{highest} (nessuno disponibile)"
+    label_none_yet: "Nessuno per ora"
     providers_heading: Fornitori di metadati
     provider_status_up: Raggiungibile
     provider_status_down: Non raggiungibile
