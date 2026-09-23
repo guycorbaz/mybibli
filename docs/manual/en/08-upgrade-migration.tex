@@ -139,6 +139,28 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.20.0}\label{sec:whats-new-1.20.0}
+
+Version 1.20.0 is a minor release on 1.19.0. \emph{No migration} ---
+pull the image, restart, done. It carries one change request.
+
+\begin{itemize}
+  \item \textbf{\#489 \string— where the labels end.} The
+        \texttt{/admin > Health} tab gains a \emph{Barcode labels}
+        section under the entity counters: the last volume number
+        (V-code) and the last shelf number (L-code) in use, each with
+        the next free number --- \texttt{V0142 (next: V0143)}. Read it
+        before printing a new sheet of pre-generated labels, so the
+        sheet starts right after the occupied range.
+
+        ``Last'' means the highest number ever printed, trashed items
+        included: a sticker already stuck on a book or a shelf is never
+        reissued. This is the rule the \texttt{/catalog} info line has
+        followed since 1.12.0, so the two surfaces always agree. An
+        empty catalog reads ``None yet''; \texttt{V9999} reads ``none
+        left'' rather than proposing a number the scanner would reject.
+\end{itemize}
+
 \section{What's new in 1.19.0}\label{sec:whats-new-1.19.0}
 
 Version 1.19.0 is a minor release on 1.18.0. \emph{No migration} ---
