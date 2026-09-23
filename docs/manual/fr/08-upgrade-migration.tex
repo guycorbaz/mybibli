@@ -148,6 +148,36 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.20.0}\label{sec:whats-new-1.20.0}
+
+La version 1.20.0 est une version mineure sur la 1.19.0.
+\emph{Aucune migration} --- on récupère l'image, on redémarre, c'est
+tout. Elle porte une seule demande de changement.
+
+\begin{itemize}
+  \item \textbf{\#489 \string— là où s'arrêtent les étiquettes.}
+        L'onglet \texttt{/admin > Health} gagne une section
+        \emph{Étiquettes à code-barres} sous les compteurs d'entités :
+        le dernier numéro de volume (code V) et le dernier numéro
+        d'étagère (code L) utilisés, chacun avec le prochain numéro
+        libre --- \texttt{V0142 (prochain : V0143)}. À consulter avant
+        d'imprimer une nouvelle planche d'étiquettes pré-générées, pour
+        qu'elle démarre juste après la plage occupée.
+
+        « Dernier » s'entend comme le numéro le plus élevé jamais
+        imprimé, corbeille comprise : une étiquette déjà collée sur un
+        livre ou une étagère n'est jamais réattribuée. C'est la règle
+        que suit la ligne d'information de \texttt{/catalog} depuis la
+        1.12.0, si bien que les deux affichages concordent toujours. Un
+        catalogue vide affiche « Aucun pour l'instant » ; \texttt{V9999}
+        affiche « plus aucun disponible » plutôt que de proposer un
+        numéro que le lecteur de codes refuserait.
+  \item \textbf{Correctif de dépendance.} La bibliothèque TLS derrière
+        les recherches de métadonnées sortantes (\texttt{rustls}) passe
+        de la 0.23.40 à la 0.23.45 pour l'avis RUSTSEC-2026-0285. Aucun
+        changement de code, rien à configurer.
+\end{itemize}
+
 \section{Nouveautés de la 1.19.0}\label{sec:whats-new-1.19.0}
 
 La version 1.19.0 est une version mineure sur la 1.18.0.

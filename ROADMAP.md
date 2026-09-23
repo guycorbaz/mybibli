@@ -32,16 +32,38 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.19.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.19.0)**
-(2026-09-11) — the three change requests of a security review run against
-the 1.18.0 code, and the documentation work it made necessary. **No
+**Current stable: [`v1.20.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.20.0)**
+(2026-09-23) — the last volume number and the last shelf number in use,
+on the admin Health tab, each with the next free number. **No
 migration.** The section below has the detail; every release before it
 has its own section further down, and this is the file that carries them
 — the README quotes only the current release, and the website tells the
 same story for a different audience.
 
-**Open issues: none.** The tracker has been empty since the review
-closed. New work starts from a fresh report.
+**Open issues: none.** The tracker has been empty since the security
+review closed; #489 was opened and shipped the same day. New work starts
+from a fresh report.
+
+## v1.20.0 — where the labels end *(shipped)*
+
+Shipped 2026-09-23. One change request, **no migration**.
+
+- [#489](https://github.com/guycorbaz/mybibli/issues/489) — **the admin
+  Health tab shows the last volume number (V-code) and the last shelf
+  number (L-code) in use, each with the next free number** —
+  `V0142 (next: V0143)`. The librarian prints sheets of pre-generated
+  barcode labels in advance and needs to know where the occupied range
+  ends; since v1.12.0 that answer lived only on the `/catalog` info line
+  ([#428](https://github.com/guycorbaz/mybibli/issues/428)). "Last" is
+  the highest number ever printed, trashed items included, so a sticker
+  already stuck on a book or a shelf is never reissued — the same rule
+  `/catalog` follows, so the two surfaces never contradict each other.
+  An empty catalog reads "none yet"; `V9999` reads "none left".
+- **Dependency fix** — `rustls` 0.23.40 → 0.23.45 for
+  [RUSTSEC-2026-0285](https://rustsec.org/advisories/RUSTSEC-2026-0285)
+  (TLS 1.3 handshake messages accepted across encryption-level
+  boundaries; medium), caught by the release-cut `cargo audit`. Affects
+  the outbound HTTPS client used for metadata lookups; no code change.
 
 ## v1.19.0 — the security review *(shipped)*
 
