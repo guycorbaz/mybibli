@@ -76,6 +76,46 @@ pub async fn trash_count(pool: &DbPool) -> Result<i64, AppError> {
     Ok(total)
 }
 
+/// #489 — the label high-water marks shown on the Health tab: the highest
+/// V-code / L-code ever printed and the next free number after each.
+/// `None` for a code family means the catalog holds no label of that
+/// family yet.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LabelWatermarks {
+    pub highest_vcode: Option<String>,
+    pub highest_lcode: Option<String>,
+}
+
+/// Highest V-code / L-code across the whole catalog, soft-deleted rows
+/// INCLUDED — a printed sticker outlives the row's trash state, so its
+/// number must never be reissued. Delegates to the same two model lookups
+/// that feed the `/catalog` info line (#428) so both surfaces always agree.
+pub async fn label_watermarks(pool: &DbPool) -> Result<LabelWatermarks, AppError> {
+    let highest_vcode = crate::models::volume::VolumeModel::highest_label_any(pool).await?;
+    let highest_lcode = crate::models::location::LocationModel::highest_label_any(pool).await?;
+    Ok(LabelWatermarks {
+        highest_vcode,
+        highest_lcode,
+    })
+}
+
+/// The label that follows `highest` in the fixed-width `X9999` scheme
+/// (`V0142` → `V0143`). Returns `None` when the numeric space is exhausted
+/// (`V9999`) or when the input is not a prefix + exactly four digits — the
+/// caller renders a "none left" placeholder either way rather than
+/// inventing a five-digit code the scanner path would reject.
+pub fn next_label(highest: &str) -> Option<String> {
+    let (prefix, digits) = highest.split_at(highest.len().checked_sub(4)?);
+    if prefix.len() != 1 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let n: u32 = digits.parse().ok()?;
+    if n >= 9999 {
+        return None;
+    }
+    Some(format!("{prefix}{:04}", n + 1))
+}
+
 /// Cached MariaDB `VERSION()` string. The version never changes at runtime;
 /// the 60-second cache amortizes the round-trip across back-to-back Health
 /// loads without making the handler dependent on a DB read for correctness.
@@ -195,6 +235,70 @@ mod tests {
         let (used, total) = du.unwrap();
         assert!(total > 0);
         assert!(used <= total);
+    }
+
+    // ─── #489 label watermarks ───────────────────────────────────
+
+    #[test]
+    fn next_label_increments_within_the_fixed_width() {
+        assert_eq!(next_label("V0142").as_deref(), Some("V0143"));
+        assert_eq!(next_label("L0037").as_deref(), Some("L0038"));
+        assert_eq!(next_label("V0009").as_deref(), Some("V0010"));
+        assert_eq!(next_label("V0999").as_deref(), Some("V1000"));
+        assert_eq!(next_label("V0000").as_deref(), Some("V0001"));
+    }
+
+    #[test]
+    fn next_label_is_none_when_the_space_is_exhausted() {
+        assert_eq!(next_label("V9999"), None);
+        assert_eq!(next_label("L9999"), None);
+    }
+
+    #[test]
+    fn next_label_rejects_malformed_input() {
+        assert_eq!(next_label(""), None);
+        assert_eq!(next_label("V"), None);
+        assert_eq!(next_label("V12"), None);
+        assert_eq!(next_label("V00001"), None, "five digits is not a label");
+        assert_eq!(next_label("V00a1"), None);
+        assert_eq!(next_label("0142"), None, "no prefix");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn label_watermarks_empty_catalog_is_all_none(pool: DbPool) {
+        let w = label_watermarks(&pool).await.unwrap();
+        assert_eq!(w, LabelWatermarks::default());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn label_watermarks_report_highest_including_soft_deleted(pool: DbPool) {
+        let title_id: u64 = sqlx::query(
+            "INSERT INTO titles (title, media_type, genre_id) VALUES ('T489', 'book', 1)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        sqlx::query(
+            "INSERT INTO volumes (title_id, label, deleted_at) VALUES \
+             (?, 'V0007', NULL), (?, 'V0042', NOW())",
+        )
+        .bind(title_id)
+        .bind(title_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO storage_locations (name, node_type, label, deleted_at) VALUES \
+             ('Shelf A', 'shelf', 'L0003', NULL), ('Shelf B', 'shelf', 'L0011', NOW())",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let w = label_watermarks(&pool).await.unwrap();
+        assert_eq!(w.highest_vcode.as_deref(), Some("V0042"), "trashed V-code still counts");
+        assert_eq!(w.highest_lcode.as_deref(), Some("L0011"), "trashed L-code still counts");
     }
 
     // ─── DB-backed tests ─────────────────────────────────────────

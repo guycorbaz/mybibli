@@ -852,6 +852,13 @@ admin:
     count_contributors: Mitwirkende
     count_borrowers: Entleiher
     count_active_loans: Aktive Ausleihen
+    labels_heading: Barcode-Etiketten
+    labels_hint: "Höchste je gedruckte Nummer pro Etikettenfamilie, Papierkorb eingeschlossen, und die nächste freie Nummer für einen neuen Etikettenbogen."
+    last_vcode: "Letzte Bandnummer (V-Code)"
+    last_lcode: "Letzte Regalnummer (L-Code)"
+    label_with_next: "%{highest} (nächste: %{next})"
+    label_exhausted: "%{highest} (keine mehr frei)"
+    label_none_yet: "Noch keine"
     providers_heading: Metadaten-Anbieter
     provider_status_up: Erreichbar
     provider_status_down: Nicht erreichbar

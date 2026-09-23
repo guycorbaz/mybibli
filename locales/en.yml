@@ -867,6 +867,13 @@ admin:
     count_contributors: Contributors
     count_borrowers: Borrowers
     count_active_loans: Active loans
+    labels_heading: Barcode labels
+    labels_hint: "Highest number ever printed for each label family, trashed items included, and the next free number to start a new label sheet from."
+    last_vcode: "Last volume number (V-code)"
+    last_lcode: "Last shelf number (L-code)"
+    label_with_next: "%{highest} (next: %{next})"
+    label_exhausted: "%{highest} (none left)"
+    label_none_yet: "None yet"
     providers_heading: Metadata providers
     provider_status_up: Reachable
     provider_status_down: Unreachable
