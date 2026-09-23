@@ -159,6 +159,10 @@ pull the image, restart, done. It carries one change request.
         followed since 1.12.0, so the two surfaces always agree. An
         empty catalog reads ``None yet''; \texttt{V9999} reads ``none
         left'' rather than proposing a number the scanner would reject.
+  \item \textbf{Dependency fix.} The TLS library behind the outbound
+        metadata lookups (\texttt{rustls}) moves from 0.23.40 to
+        0.23.45 for advisory RUSTSEC-2026-0285. No code change, nothing
+        to configure.
 \end{itemize}
 
 \section{What's new in 1.19.0}\label{sec:whats-new-1.19.0}

@@ -59,6 +59,11 @@ Shipped 2026-09-23. One change request, **no migration**.
   already stuck on a book or a shelf is never reissued — the same rule
   `/catalog` follows, so the two surfaces never contradict each other.
   An empty catalog reads "none yet"; `V9999` reads "none left".
+- **Dependency fix** — `rustls` 0.23.40 → 0.23.45 for
+  [RUSTSEC-2026-0285](https://rustsec.org/advisories/RUSTSEC-2026-0285)
+  (TLS 1.3 handshake messages accepted across encryption-level
+  boundaries; medium), caught by the release-cut `cargo audit`. Affects
+  the outbound HTTPS client used for metadata lookups; no code change.
 
 ## v1.19.0 — the security review *(shipped)*
 
