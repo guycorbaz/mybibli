@@ -1,6 +1,6 @@
 # Story 11.2: Library of Congress through SRU
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #495 (type:bug, Medium). Covers: FR123. Epic 11 — second story (production fix, ships in v1.20.1 with 11-1 and 11-3).
 
@@ -43,24 +43,24 @@ Data model: no migration, no new setting, no user-facing string (no locale chang
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `src/metadata/marc.rs` shared helpers (AC1, AC2)
-  - [ ] `datafields(xml, tag) -> Vec<&str>` (one slice per datafield; `extract_subfields` rebuilt on it, behaviour unchanged)
-  - [ ] `controlfield(xml, tag) -> Option<String>`
-  - [ ] `decode_xml_text(&str) -> String` (entities + NFC)
-  - [ ] `page_count_from_extent(&str) -> Option<i32>` lifted from `bnf.rs`, extended to `page`/`pages`; BnF switched onto it (existing BnF tests guard behaviour)
-  - [ ] `trim_isbd_punctuation(&str) -> String`
-  - [ ] unit tests
-- [ ] T2 — `Cargo.toml`: direct dependency `unicode-normalization = "0.1"` (already in `Cargo.lock` transitively, no new crate downloaded)
-- [ ] T3 — `src/metadata/library_of_congress.rs` (AC1–AC8)
-  - [ ] drop the JSON path (`base_url`, `LOC_API_BASE_URL`, `parse_json_response`, `LocEnvelope`, `LocResult`, `strip_html_tags`, `with_sru_base_url`); `with_base_url` now sets the SRU base
-  - [ ] `parse_marcxml_record(body) -> Option<MetadataResult>` (full record, AC1–AC3); `parse_marcxml_response` keeps the zones-only contract
-  - [ ] one `fetch_sru(&self, safe_isbn) -> Result<String, SruFailure>` used by both entry points: challenge detection (`is_cloudflare_challenge(&HeaderMap)`), warn logs, retry loop unchanged
-  - [ ] `USER_AGENT` const; `health_check_url`; module docs rewritten
-  - [ ] unit + mock-server tests (AC9)
-- [ ] T4 — E2E stack: remove `LOC_API_BASE_URL` from `tests/e2e/docker-compose.test.yml`; mock server: remove `/books/` + `_handle_loc_json`, add `LOC_PRIMARY_ISBN` (full MARC record with an entity-encoded accent) and `LOC_CHALLENGE_ISBN` (`403` + `cf-mitigated: challenge`, HTML body) on `/LCDB`, both on the BnF blocklist; `LOC_CHALLENGE_ISBN` in `OPEN_LIBRARY_KNOWN_ISBNS`
-- [ ] T4b — `docs/unimarc-mapping.md` § MARC 21 equivalence: note that LoC is now queried through SRU only and add the descriptive-field table (245$a/$b, 100/700$a, 264/260$b, 008/07–10, 008/35–37, 300$a, 520$a, 082$a)
-- [ ] T5 — E2E `tests/e2e/specs/journeys/catalog-loc-sru.spec.ts` (AC9)
-- [ ] T6 — gates: clippy `-D warnings`, `cargo test` (test DB), sqlx check, flake grep, `tsc --noEmit`, full E2E (`CI=true --workers=2`)
+- [x] T1 — `src/metadata/marc.rs` shared helpers (AC1, AC2)
+  - [x] `datafields(xml, tag) -> Vec<&str>` (one slice per datafield; `extract_subfields` rebuilt on it, behaviour unchanged)
+  - [x] `controlfield(xml, tag) -> Option<String>`
+  - [x] `decode_xml_text(&str) -> String` (entities + NFC)
+  - [x] `page_count_from_extent(&str) -> Option<i32>` lifted from `bnf.rs`, extended to `page`/`pages`; BnF switched onto it (existing BnF tests guard behaviour)
+  - [x] `trim_isbd_punctuation(&str) -> String`
+  - [x] unit tests
+- [x] T2 — `Cargo.toml`: direct dependency `unicode-normalization = "0.1"` (already in `Cargo.lock` transitively, no new crate downloaded)
+- [x] T3 — `src/metadata/library_of_congress.rs` (AC1–AC8)
+  - [x] drop the JSON path (`base_url`, `LOC_API_BASE_URL`, `parse_json_response`, `LocEnvelope`, `LocResult`, `strip_html_tags`, `with_sru_base_url`); `with_base_url` now sets the SRU base
+  - [x] `parse_marcxml_record(body) -> Option<MetadataResult>` (full record, AC1–AC3); `parse_marcxml_response` keeps the zones-only contract
+  - [x] one `fetch_sru(&self, safe_isbn) -> Result<String, SruFailure>` used by both entry points: challenge detection (`is_cloudflare_challenge(&HeaderMap)`), warn logs, retry loop unchanged
+  - [x] `USER_AGENT` const; `health_check_url`; module docs rewritten
+  - [x] unit + mock-server tests (AC9)
+- [x] T4 — E2E stack: remove `LOC_API_BASE_URL` from `tests/e2e/docker-compose.test.yml`; mock server: remove `/books/` + `_handle_loc_json`, add `LOC_PRIMARY_ISBN` (full MARC record with an entity-encoded accent) and `LOC_CHALLENGE_ISBN` (`403` + `cf-mitigated: challenge`, HTML body) on `/LCDB`, both on the BnF blocklist; `LOC_CHALLENGE_ISBN` in `OPEN_LIBRARY_KNOWN_ISBNS`
+- [x] T4b — `docs/unimarc-mapping.md` § MARC 21 equivalence: note that LoC is now queried through SRU only and add the descriptive-field table (245$a/$b, 100/700$a, 264/260$b, 008/07–10, 008/35–37, 300$a, 520$a, 082$a)
+- [x] T5 — E2E `tests/e2e/specs/journeys/catalog-loc-sru.spec.ts` (AC9)
+- [x] T6 — gates: clippy `-D warnings`, `cargo test` (test DB), sqlx check, flake grep, `tsc --noEmit`, full E2E (`CI=true --workers=2`)
 
 ## Dev Notes
 
@@ -114,9 +114,27 @@ claude-opus-5-5
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created
+- T1: `marc::datafields` (slices include the closing tag, so `extract_subfield` runs on them unchanged; `extract_subfields` rebuilt on it), `controlfield`, `decode_xml_text` (entities + NFC), `trim_isbd_punctuation`, `page_count_from_extent` (lifted from `bnf.rs`, which now calls it; also fixes a latent slice panic on an extent where `)` precedes `(`).
+- T2: `unicode-normalization = "0.1"` — resolved to the 0.1.25 already in `Cargo.lock`.
+- T3: JSON path removed; `fetch_sru` shared by both entry points with distinct `warn` lines for a challenge and a plain status; challenge never retried; 429/503 typed; `parse_marcxml_record` for the full description; `parse_marcxml_response` (zones) now reads the first `<record>` only and decodes entities. A LoC win now costs one request instead of two. `health_check_url` → SRU host. `library_of_congress.rs` was reformatted with rustfmt (largely rewritten); `marc.rs` / `bnf.rs` left in their existing formatting (rustfmt of Rust 1.99 reports pre-existing diffs on `main` too).
+- T4/T4b: mock `/books/` removed, `LOC_PRIMARY_ISBN` / `LOC_CHALLENGE_ISBN` added; compose variable removed; mapping doc updated.
+- T5: `catalog-loc-sru.spec.ts` — 2 journeys, also green twice against a non-reset stack. App log during the run shows the distinct warn line: `Library of Congress answered with a Cloudflare challenge (cf-mitigated: challenge); not retried, moving on`.
+- T6 gates (2026-10-27, under `mem-guard`): `cargo clippy --all-targets -- -D warnings` clean; `cargo test -j 1 --no-fail-fast` against the test DB — 61 binaries, 1595 passed, 0 failed (lib: 1205); `cargo sqlx prepare --check --workspace -- --all-targets` clean; flake grep clean; `tsc --noEmit` clean. Full E2E after `e2e-reset.sh`, `CI=true --workers=2`: **342 passed, 2 skipped, 0 failed**. Note: `cargo test` at the default job count was killed twice by the memory guard while compiling (oomd pressure on the user slice); `-j 1` went through.
 
 ### File List
+
+- `Cargo.toml`, `Cargo.lock` — `unicode-normalization` direct dependency
+- `src/metadata/marc.rs` — `datafields`, `controlfield`, `decode_xml_text`, `trim_isbd_punctuation`, `page_count_from_extent`, tests
+- `src/metadata/bnf.rs` — page count through the shared helper
+- `src/metadata/library_of_congress.rs` — SRU-only provider, challenge detection, User-Agent, health URL, tests (incl. mock-server tests)
+- `tests/e2e/mock-metadata-server/server.py` — LoC JSON mock removed; primary-record and challenge fixtures; BnF blocklist; Open Library entry
+- `tests/e2e/docker-compose.test.yml` — `LOC_API_BASE_URL` removed
+- `tests/e2e/specs/journeys/catalog-loc-sru.spec.ts` — new, 2 E2E tests
+- `docs/unimarc-mapping.md` — descriptive-field table for LoC
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 11-2 → review
+- `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md` — § 11-2
 
 ### Change Log
 
 - 2026-10-27 — Validation pass (checklist.md): concrete mock fixtures for the two E2E journeys, the `docs/unimarc-mapping.md` update (T4b), confirmation that no out-of-module caller uses the removed constructors. No blocker found.
+- 2026-10-27 — Implementation T1–T6; status → review.

@@ -72,6 +72,14 @@ GOOGLE_BOOKS_KNOWN_ISBNS = {
 
 # --- Open Library known ISBNs (for ISBNs NOT in BnF or Google Books) ---
 OPEN_LIBRARY_KNOWN_ISBNS = {
+    # #495 — the LoC mock answers this ISBN with a Cloudflare challenge; the
+    # chain must move on and land here.
+    "9780449000045": {
+        "title": "Open Library After Challenge",
+        "authors": [{"key": "/authors/OL1234A"}],
+        "publishers": ["Fallback Press"],
+        "publish_date": "2021",
+    },
     "9780596007126": {
         "title": "Head First Design Patterns",
         "subtitle": "A Brain-Friendly Guide",
@@ -154,11 +162,6 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
         # --- K10plus SRU (MARC 21) — #450 ---
         elif path == "/k10plus":
             self._handle_k10plus_sru(params)
-
-        # --- Library of Congress flat JSON search — #439 ---
-        # Must precede the Google Books arm: "/books/" vs "/books/v1/volumes".
-        elif path == "/books/":
-            self._handle_loc_json(params)
 
         # --- Google Books endpoint ---
         elif path == "/books/v1/volumes":
@@ -270,7 +273,9 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
         #   diagnosis line. A catch-all answer here would make the test
         #   assert on a success page.
         # - Google Books known ISBNs: must NOT resolve via BnF so the chain falls through to Google Books
-        NO_METADATA_ISBNS = {"9780000000002", "9780000000019", "9780000000026", "9780000000033", "9780134685991", "9780201633610"}
+        # - 9780449000038 / 9780449000045: catalog-loc-sru.spec.ts (#495) — the
+        #   chain must reach the Library of Congress as a primary source.
+        NO_METADATA_ISBNS = {"9780000000002", "9780000000019", "9780000000026", "9780000000033", "9780134685991", "9780201633610", "9780449000038", "9780449000045"}
 
         if isbn and isbn in BNF_KNOWN_ISBNS:
             body = make_sru_response(BNF_KNOWN_ISBNS[isbn])
@@ -384,30 +389,21 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body.encode("utf-8"))
 
-    # --- Library of Congress mocks (#439) ---------------------------
+    # --- Library of Congress SRU mock (#439, #495) --------------------
     # catalog-marc-zones.spec.ts scans this spec-unique ISBN. The BnF
     # catch-all resolves it first (it answers for any ISBN) and supplies
     # 200$f but no edition statement and no note — so the chain's
     # zone-completion pass must reach LoC for those. That is exactly the
     # cross-provider path the spec exercises.
     LOC_MARC_ISBN = "9780449000014"
-
-    def _handle_loc_json(self, params):
-        """Flat ?fo=json search. Carries the cover URL; no MARC zones."""
-        q = params.get("q", [""])[0]
-        if q == self.LOC_MARC_ISBN:
-            body = json.dumps({"results": [{
-                "title": "Zone Completion Sample",
-                "contributor": ["Sample Author"],
-                "date": "2020",
-                "language": ["english"],
-            }]})
-        else:
-            body = json.dumps({"results": []})
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(body.encode("utf-8"))
+    # #495 — catalog-loc-sru.spec.ts. Both ISBNs sit on the BnF blocklist so
+    # the chain reaches LoC as a PRIMARY source (Google Books misses unknown
+    # ISBNs). LOC_PRIMARY_ISBN gets a full MARC 21 record, with the
+    # decomposed numeric references the live feed uses for accents;
+    # LOC_CHALLENGE_ISBN gets the Cloudflare challenge production now sees
+    # on www.loc.gov, and is answered by Open Library further down the chain.
+    LOC_PRIMARY_ISBN = "9780449000038"
+    LOC_CHALLENGE_ISBN = "9780449000045"
 
     # --- K10plus mock (#450) ----------------------------------------
     # catalog-marc-zones.spec.ts scans this spec-unique ISBN. The BnF
@@ -449,7 +445,40 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
         """SRU searchRetrieve returning MARC 21. Supplies 250$a and 500$a."""
         query = params.get("query", [""])[0]
         isbn = query.replace("bath.isbn=", "")
-        if isbn == self.LOC_MARC_ISBN:
+        if isbn == self.LOC_CHALLENGE_ISBN:
+            body = "<!DOCTYPE html><html><head><title>Just a moment...</title></head><body></body></html>"
+            self.send_response(403)
+            self.send_header("cf-mitigated", "challenge")
+            self.send_header("Content-Type", "text/html; charset=UTF-8")
+            self.end_headers()
+            self.wfile.write(body.encode("utf-8"))
+            return
+        if isbn == self.LOC_PRIMARY_ISBN:
+            body = """<?xml version="1.0"?>
+<zs:searchRetrieveResponse xmlns:zs="http://www.loc.gov/zing/srw/"><zs:numberOfRecords>1</zs:numberOfRecords><zs:records><zs:record><zs:recordData><record xmlns="http://www.loc.gov/MARC21/slim">
+  <controlfield tag="008">200101s2020    nyu           000 0 eng d</controlfield>
+  <datafield tag="100" ind1="1" ind2=" ">
+    <subfield code="a">Primary, Sample,</subfield>
+    <subfield code="e">author.</subfield>
+  </datafield>
+  <datafield tag="245" ind1="1" ind2="0">
+    <subfield code="a">L'e&#x301;conomie de Congress :</subfield>
+    <subfield code="b">a sample /</subfield>
+    <subfield code="c">by S. Primary.</subfield>
+  </datafield>
+  <datafield tag="264" ind1=" " ind2="1">
+    <subfield code="a">New York :</subfield>
+    <subfield code="b">Congress Press,</subfield>
+    <subfield code="c">[2020]</subfield>
+  </datafield>
+  <datafield tag="300" ind1=" " ind2=" ">
+    <subfield code="a">xii, 321 pages ;</subfield>
+  </datafield>
+  <datafield tag="520" ind1=" " ind2=" ">
+    <subfield code="a">Congress summary.</subfield>
+  </datafield>
+</record></zs:recordData></zs:record></zs:records></zs:searchRetrieveResponse>"""
+        elif isbn == self.LOC_MARC_ISBN:
             body = """<?xml version="1.0"?>
 <zs:searchRetrieveResponse xmlns:zs="http://www.loc.gov/zing/srw/"><zs:numberOfRecords>1</zs:numberOfRecords><zs:records><zs:record><zs:recordData><record xmlns="http://www.loc.gov/MARC21/slim">
   <datafield tag="245" ind1="1" ind2="0">

@@ -45,47 +45,190 @@ pub fn extract_subfield(xml: &str, tag: &str, code: &str) -> Option<String> {
 /// Exposed for callers that genuinely want the repeats (e.g. collecting all
 /// authors from repeated author datafields) without re-implementing the scan.
 pub fn extract_subfields(xml: &str, tag: &str, code: &str) -> Vec<String> {
+    datafields(xml, tag)
+        .into_iter()
+        .filter_map(|df| first_subfield_in(df, code))
+        .collect()
+}
+
+/// Every `datafield[@tag=tag]` in document order, each as the raw slice from
+/// its `tag="…"` attribute through its closing tag (#495).
+///
+/// For callers that must read several subfields of the SAME datafield — e.g.
+/// skip a MARC 21 `700` that carries a `$t` (a related work, not a
+/// contributor). [`extract_subfield`] works on a slice unchanged, because the
+/// slice still starts with the `tag="…"` pattern.
+pub fn datafields<'a>(xml: &'a str, tag: &str) -> Vec<&'a str> {
     let tag_pattern = format!(r#"tag="{tag}""#);
-    let code_pattern = format!(r#"code="{code}""#);
     let mut out = Vec::new();
     let mut search_from = 0;
 
     while let Some(df_start) = xml[search_from..].find(&tag_pattern) {
         let df_abs = search_from + df_start;
 
-        // End of this datafield — plain or namespace-prefixed.
+        // End of this datafield — plain or namespace-prefixed. The slice
+        // keeps the closing tag so `extract_subfield` can run on it as is.
         let df_end = match xml[df_abs..].find("</datafield>") {
-            Some(pos) => df_abs + pos,
+            Some(pos) => df_abs + pos + "</datafield>".len(),
             None => match xml[df_abs..].find("</mxc:datafield>") {
-                Some(pos) => df_abs + pos,
+                Some(pos) => df_abs + pos + "</mxc:datafield>".len(),
                 None => break,
             },
         };
 
-        let datafield = &xml[df_abs..df_end];
-        if let Some(sf_start) = datafield.find(&code_pattern) {
-            let after_code = &datafield[sf_start..];
-            if let Some(gt_pos) = after_code.find('>') {
-                let value_start = sf_start + gt_pos + 1;
-                let value_content = &datafield[value_start..];
-                let end_tag = if value_content.contains("</subfield>") {
-                    "</subfield>"
-                } else {
-                    "</mxc:subfield>"
-                };
-                if let Some(end_pos) = value_content.find(end_tag) {
-                    let value = value_content[..end_pos].trim();
-                    if !value.is_empty() {
-                        out.push(value.to_string());
-                    }
-                }
-            }
-        }
-
+        out.push(&xml[df_abs..df_end]);
         search_from = df_end;
     }
 
     out
+}
+
+/// First non-empty `subfield[@code=code]` value inside one datafield slice.
+fn first_subfield_in(datafield: &str, code: &str) -> Option<String> {
+    let code_pattern = format!(r#"code="{code}""#);
+    let sf_start = datafield.find(&code_pattern)?;
+    let after_code = &datafield[sf_start..];
+    let gt_pos = after_code.find('>')?;
+    let value_start = sf_start + gt_pos + 1;
+    let value_content = &datafield[value_start..];
+    let end_tag = if value_content.contains("</subfield>") {
+        "</subfield>"
+    } else {
+        "</mxc:subfield>"
+    };
+    let end_pos = value_content.find(end_tag)?;
+    let value = value_content[..end_pos].trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+/// Raw text of `controlfield[@tag=tag]` (e.g. the MARC 21 `008` fixed-length
+/// data elements), untrimmed: positions inside it are significant (#495).
+pub fn controlfield(xml: &str, tag: &str) -> Option<String> {
+    let pattern = format!(r#"<controlfield tag="{tag}">"#);
+    let start = xml.find(&pattern)? + pattern.len();
+    let len = xml[start..].find("</controlfield>")?;
+    Some(xml[start..start + len].to_string())
+}
+
+/// Decode the XML entities a MARCXML text node may carry and normalise the
+/// result to Unicode NFC (#495).
+///
+/// The Library of Congress encodes every non-ASCII character as a numeric
+/// reference, frequently in decomposed form (`e&#x301;` for `é`), so a raw
+/// value would show the references and, once decoded, would still not match a
+/// precomposed search query. Handles `&#xHH;`, `&#NN;` and the five named XML
+/// entities; anything else (malformed or unknown) is kept verbatim.
+pub fn decode_xml_text(raw: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+
+    let mut out = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        let candidate = &rest[amp..];
+        let decoded = candidate.find(';').and_then(|semi| {
+            let entity = &candidate[1..semi];
+            let ch = match entity {
+                "amp" => Some('&'),
+                "lt" => Some('<'),
+                "gt" => Some('>'),
+                "quot" => Some('"'),
+                "apos" => Some('\''),
+                _ => {
+                    let code = if let Some(hex) =
+                        entity.strip_prefix("#x").or_else(|| entity.strip_prefix("#X"))
+                    {
+                        u32::from_str_radix(hex, 16).ok()
+                    } else if let Some(dec) = entity.strip_prefix('#') {
+                        dec.parse::<u32>().ok()
+                    } else {
+                        None
+                    };
+                    code.and_then(char::from_u32)
+                }
+            };
+            ch.map(|c| (c, semi + 1))
+        });
+        match decoded {
+            Some((c, consumed)) => {
+                out.push(c);
+                rest = &candidate[consumed..];
+            }
+            None => {
+                out.push('&');
+                rest = &candidate[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out.nfc().collect()
+}
+
+/// Strip the ISBD / MARC trailing punctuation from a descriptive value (#495):
+/// ` /`, ` :`, ` ;`, ` =`, `,` and a final `.` — except a period that closes
+/// an initial (`"Tolkien, J. R. R."` keeps it). Repeats until stable, so
+/// `"Gallimard, ."` and `"Title / ;"` both come out clean.
+pub fn trim_isbd_punctuation(raw: &str) -> String {
+    let mut s = raw.trim();
+    loop {
+        let before = s.len();
+        s = s.trim_end_matches([' ', '/', ':', ';', '=', ',']);
+        if let Some(stripped) = s.strip_suffix('.') {
+            let last_token = stripped.rsplit(' ').next().unwrap_or(stripped);
+            let is_initial = last_token.chars().count() == 1
+                && last_token.chars().all(char::is_alphabetic);
+            if !is_initial {
+                s = stripped;
+            }
+        }
+        s = s.trim();
+        if s.len() == before {
+            break;
+        }
+    }
+    s.to_string()
+}
+
+/// Page count from a physical-description extent: UNIMARC 215$a (`"245 p."`,
+/// `"XII-245 p."`, `"1 vol. (320 p.)"`) or MARC 21 300$a (`"xx, 392 pages ;"`,
+/// `"282 p. ;"`). Lifted from the BnF provider when the Library of Congress
+/// needed the same parse (#495, Foundation Rule #1); `page` / `pages` were
+/// added for the RDA wording.
+pub fn page_count_from_extent(desc: &str) -> Option<i32> {
+    // Pattern: a number right before "p" / "p." / "page(s)".
+    let words: Vec<&str> = desc.split_whitespace().collect();
+    for (i, word) in words.iter().enumerate() {
+        let w = word.trim_end_matches([',', ';', ':', ')']);
+        if (w.starts_with("p.") || w == "p" || w == "pages" || w == "page") && i > 0 {
+            // Handle "XII-245" by taking the part after the last hyphen.
+            let prev = words[i - 1];
+            let num_part = prev.rsplit('-').next().unwrap_or(prev);
+            let cleaned: String = num_part.chars().filter(|c| c.is_ascii_digit()).collect();
+            if let Ok(n) = cleaned.parse::<i32>()
+                && n > 0
+            {
+                return Some(n);
+            }
+        }
+    }
+    // Fallback: digits at the start of a parenthesised group, "(245 p.)".
+    if let Some(start) = desc.find('(')
+        && let Some(end) = desc.find(')')
+        && start < end
+    {
+        let inner = &desc[start + 1..end];
+        let digits: String = inner.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if let Ok(n) = digits.parse::<i32>()
+            && n > 0
+        {
+            return Some(n);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -180,5 +323,72 @@ mod tests {
         assert_eq!(extract_subfield(r#"<datafield tag="245">"#, "245", "a"), None);
         assert_eq!(extract_subfield("", "245", "a"), None);
         assert_eq!(extract_subfield(r#"tag="245" tag="245""#, "245", "a"), None);
+    }
+
+    // ─── #495 helpers ─────────────────────────────────────────────────
+
+    #[test]
+    fn datafields_returns_one_slice_per_field_readable_by_extract_subfield() {
+        let fields = datafields(MARC21, "500");
+        assert_eq!(fields.len(), 2);
+        assert_eq!(
+            extract_subfield(fields[1], "500", "a").as_deref(),
+            Some(r#""Best practices for the Java Platform" --Cover."#)
+        );
+        assert!(datafields(MARC21, "700").is_empty());
+    }
+
+    #[test]
+    fn controlfield_keeps_positions() {
+        let xml = r#"<record><controlfield tag="008">170925t20182018mau      b    001 0 eng d</controlfield></record>"#;
+        let f = controlfield(xml, "008").unwrap();
+        assert_eq!(&f[7..11], "2018");
+        assert_eq!(&f[35..38], "eng");
+        assert_eq!(controlfield(xml, "001"), None);
+    }
+
+    #[test]
+    fn decode_xml_text_handles_numeric_and_named_entities_and_composes() {
+        let decoded = decode_xml_text("L'e&#x301;conomie immate&#x301;rielle");
+        assert_eq!(decoded, "L'\u{e9}conomie immat\u{e9}rielle");
+        assert_eq!(decoded.chars().count(), "L'économie immatérielle".chars().count());
+        assert_eq!(decode_xml_text("&#xA9;2018"), "©2018");
+        assert_eq!(decode_xml_text("&#233;t&#233;"), "été");
+        assert_eq!(decode_xml_text("A &amp; B &lt;C&gt; &quot;D&quot; &apos;E&apos;"), r#"A & B <C> "D" 'E'"#);
+    }
+
+    #[test]
+    fn decode_xml_text_keeps_malformed_entities_verbatim() {
+        assert_eq!(decode_xml_text("Tom & Jerry"), "Tom & Jerry");
+        assert_eq!(decode_xml_text("&bogus; &#xZZ; &#;"), "&bogus; &#xZZ; &#;");
+        assert_eq!(decode_xml_text("&#x110000;"), "&#x110000;");
+        assert_eq!(decode_xml_text("trailing &"), "trailing &");
+        assert_eq!(decode_xml_text(""), "");
+    }
+
+    #[test]
+    fn trim_isbd_punctuation_strips_trailing_marks_but_keeps_initials() {
+        assert_eq!(trim_isbd_punctuation("Effective Java /"), "Effective Java");
+        assert_eq!(trim_isbd_punctuation("Boston :"), "Boston");
+        assert_eq!(trim_isbd_punctuation("Addison-Wesley,"), "Addison-Wesley");
+        assert_eq!(trim_isbd_punctuation("Bomsel, Olivier."), "Bomsel, Olivier");
+        assert_eq!(trim_isbd_punctuation("Tolkien, J. R. R."), "Tolkien, J. R. R.");
+        assert_eq!(trim_isbd_punctuation("Title / ;"), "Title");
+        assert_eq!(trim_isbd_punctuation("Equal ="), "Equal");
+        assert_eq!(trim_isbd_punctuation("  "), "");
+        assert_eq!(trim_isbd_punctuation("."), "");
+    }
+
+    #[test]
+    fn page_count_reads_unimarc_and_marc21_extents() {
+        assert_eq!(page_count_from_extent("245 p."), Some(245));
+        assert_eq!(page_count_from_extent("XII-245 p."), Some(245));
+        assert_eq!(page_count_from_extent("1 vol. (320 p.)"), Some(320));
+        assert_eq!(page_count_from_extent("xx, 392 pages ;"), Some(392));
+        assert_eq!(page_count_from_extent("282 p. ;"), Some(282));
+        assert_eq!(page_count_from_extent("1 page ;"), Some(1));
+        assert_eq!(page_count_from_extent("1 volume (unpaged) ;"), None);
+        assert_eq!(page_count_from_extent(""), None);
+        assert_eq!(page_count_from_extent(") weird ("), None);
     }
 }

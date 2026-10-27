@@ -69,43 +69,10 @@ impl BnfProvider {
         let title = Self::extract_subfield(xml, "200", "a");
         title.as_ref()?;
 
-        // Extract page count from 215$a (physical description).
-        // Common formats: "245 p.", "1 vol. (245 p.)", "XII-245 p.", "p. 245"
-        // Strategy: find a number that appears right before "p" or extract digits near "p."
-        let page_count = Self::extract_subfield(xml, "215", "a").and_then(|desc| {
-            // Look for pattern: digits followed by optional space and "p" (e.g. "245 p.", "245p")
-            let words: Vec<&str> = desc.split_whitespace().collect();
-            for (i, word) in words.iter().enumerate() {
-                if word.starts_with("p.") || *word == "p" {
-                    // The number should be the previous word
-                    if i > 0 {
-                        // Handle "XII-245" by taking the part after the last hyphen
-                        let prev = words[i - 1];
-                        let num_part = prev.rsplit('-').next().unwrap_or(prev);
-                        let cleaned: String =
-                            num_part.chars().filter(|c| c.is_ascii_digit()).collect();
-                        if let Ok(n) = cleaned.parse::<i32>()
-                            && n > 0
-                        {
-                            return Some(n);
-                        }
-                    }
-                }
-            }
-            // Fallback: extract digits from within parentheses like "(245 p.)"
-            if let Some(start) = desc.find('(')
-                && let Some(end) = desc.find(')')
-            {
-                let inner = &desc[start + 1..end];
-                let digits: String = inner.chars().take_while(|c| c.is_ascii_digit()).collect();
-                if let Ok(n) = digits.parse::<i32>()
-                    && n > 0
-                {
-                    return Some(n);
-                }
-            }
-            None
-        });
+        // Page count from 215$a (physical description): "245 p.", "1 vol. (245 p.)",
+        // "XII-245 p." — the parse is shared with the LoC 300$a (#495).
+        let page_count = Self::extract_subfield(xml, "215", "a")
+            .and_then(|desc| crate::metadata::marc::page_count_from_extent(&desc));
 
         Some(MetadataResult {
             title,

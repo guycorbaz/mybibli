@@ -1952,6 +1952,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "tracing-test",
+ "unicode-normalization",
 ]
 
 [[package]]
