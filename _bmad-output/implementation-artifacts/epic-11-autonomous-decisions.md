@@ -32,3 +32,41 @@ rewritten.
 **Chosen:** a valid ISBN-10 becomes `CodeType::Isbn(<ISBN-13>)`; an ISBN-10-shaped query with a bad checksum stays `CodeType::Isbn(<raw>)` (exact lookup, then fulltext fallback) as before.
 **Rejected:** turning a bad-checksum query into `Text` — a behaviour change nobody asked for; the fulltext fallback already covers it.
 **Reversible:** yes.
+
+## Story 11-2 — Library of Congress through SRU (#495)
+
+### D-11-2-1 — Sprint-status: the story line plus the line-2 header
+**Context:** the orchestrator's brief for 11-2 allows the `# last_updated:` comment on line 2 in addition to the story line.
+**Chosen:** change the `11-2-loc-via-sru` line and the line-2 comment only; `epic-11` and the YAML `last_updated:` key are left alone (Rule #16).
+**Rejected:** touching `epic-11` from a story branch.
+**Reversible:** yes.
+
+### D-11-2-2 — Remove the JSON search outright, no fallback
+**Context:** the issue offered "keep `?fo=json` as a secondary attempt that fails fast on `cf-mitigated`"; the epic AC says it "is no longer called".
+**Chosen:** delete the JSON path, its parser, wire types, `LOC_API_BASE_URL`, the mock `/books/` handler and the compose variable.
+**Rejected:** a fail-fast fallback — a guaranteed 403 per scan for as long as the Cloudflare policy holds, and dead code to maintain.
+**Reversible:** yes (git history).
+
+### D-11-2-3 — Fields mapped from MARC 21 beyond the AC minimum
+**Context:** the AC names title, contributors, publisher and date; the JSON path also supplied language, description and a cover.
+**Chosen:** also map subtitle (245$b), language (008/35–37), page count (300$a), description (520$a) and Dewey (082$a), so that the switch does not lose what the JSON gave (except the cover). The cover is left to the existing cover-only fallbacks (BnF cover service, Inventaire, Open Library by ISBN).
+**Rejected:** the AC minimum only (a visible regression on language/description); a cover from 856$u (not an image link).
+**Reversible:** yes.
+
+### D-11-2-4 — Entity decoding + NFC in the LoC parser, via `unicode-normalization`
+**Context:** LoC MARCXML encodes non-ASCII characters as numeric references, often decomposed (`e&#x301;`); `metadata::marc` never decodes entities.
+**Chosen:** a `marc::decode_xml_text` helper (entities + NFC) applied to every value the LoC provider returns; direct dependency `unicode-normalization = "0.1"`, already present in `Cargo.lock` through `url`/`idna`-era crates, so no new crate is fetched. BnF and K10plus readers stay raw.
+**Rejected:** no NFC (decomposed titles would not match a precomposed search query); decoding inside `extract_subfield` for every provider (changes BnF/K10plus output — out of scope).
+**Reversible:** yes.
+
+### D-11-2-5 — Per-provider timeout unchanged
+**Context:** the default per-provider budget is 5 s; the SRU transport retry (2 s + 4 s sleeps) can exceed it now that SRU is primary.
+**Chosen:** no default change; the chain records LoC as timed out and moves on, as the zone-completion pass already does. Admins can raise `provider_timeout.library_of_congress`.
+**Rejected:** a migration seeding a larger LoC override (a settings change nobody asked for).
+**Reversible:** yes.
+
+### D-11-2-6 — Health probe on the SRU host; other providers' User-Agents untouched
+**Context:** `health_check_url` pointed at `https://www.loc.gov/`, which the provider no longer calls. BnF, K10plus, MusicBrainz and the shared client also carry stale hard-coded User-Agents.
+**Chosen:** probe `http://lx2.loc.gov:210/LCDB` (HEAD answers 400 → reachable under #285); fix the LoC User-Agent only, as the AC asks.
+**Rejected:** a repo-wide User-Agent sweep in a production-fix story.
+**Reversible:** yes.
