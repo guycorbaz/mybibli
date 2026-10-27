@@ -218,7 +218,7 @@ development_status:
   #   -> 11-7 -> 11-8 -> 11-9 (blocks proposals) -> 11-10 .. 11-21 -> 11-22 (rmcp checkpoint)
   #   -> 11-23 (epic smoke, Rule #7) -> 11-24 -> retrospective -> release.
   epic-11: backlog
-  11-1-isbn10-at-scan: backlog
+  11-1-isbn10-at-scan: ready-for-dev
   11-2-loc-via-sru: backlog
   11-3-recent-additions-triangle: backlog
   11-4-sticky-navigation-bar: backlog
