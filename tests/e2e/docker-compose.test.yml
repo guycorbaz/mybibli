@@ -26,10 +26,9 @@ services:
       INVENTAIRE_API_BASE_URL: "http://mock-metadata:9090"
       GOOGLE_BOOKS_API_BASE_URL: "http://mock-metadata:9090"
       OPEN_LIBRARY_API_BASE_URL: "http://mock-metadata:9090"
-      # #439 — the Library of Congress needs BOTH endpoints stubbed: the flat
-      # JSON search and the SRU MARC 21 catalogue live on different paths.
-      # Without these the E2E stack would reach out to the real loc.gov.
-      LOC_API_BASE_URL: "http://mock-metadata:9090/books/"
+      # #439 / #495 — the Library of Congress is queried through SRU only
+      # (the JSON search is gone). Without this the E2E stack would reach out
+      # to the real lx2.loc.gov.
       LOC_SRU_BASE_URL: "http://mock-metadata:9090/LCDB"
       K10PLUS_SRU_BASE_URL: "http://mock-metadata:9090/k10plus"
       MUSICBRAINZ_API_BASE_URL: "http://mock-metadata:9090"

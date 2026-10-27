@@ -45,6 +45,10 @@ serde_urlencoded = "0.7"
 # Pure Rust, mid-level layout API on top of `printpdf`. ~250 KB extra in the
 # release binary; uses DejaVu Sans (TTF in `static/fonts/`) for unicode support.
 genpdf = "0.2"
+# #495 — NFC normalisation of Library of Congress MARCXML text, which encodes
+# accented letters as decomposed numeric references (`e&#x301;`). Already in
+# Cargo.lock through sqlx-mysql → stringprep; no new crate is fetched.
+unicode-normalization = "0.1"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

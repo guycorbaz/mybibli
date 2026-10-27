@@ -282,19 +282,34 @@ pub trait MetadataProvider: Send + Sync {
     /// Fetch **only** the six MARC zones for an ISBN, for the chain's
     /// zone-completion pass (#439).
     ///
-    /// Separate from [`Self::lookup_by_isbn`] on purpose. The LoC provider's
-    /// normal lookup returns `None` when its flat JSON search finds nothing,
-    /// because zones with no title are not a usable primary result — but for
-    /// completion they are exactly what is wanted, and the JSON search and the
-    /// SRU catalogue are different indexes that do not always agree. Routing
-    /// completion through `lookup_by_isbn` would therefore silently discard
-    /// recoverable zones whenever the two disagree.
+    /// Separate from [`Self::lookup_by_isbn`] on purpose: a provider may hold
+    /// zones its normal lookup does not surface. K10plus is the live case — a
+    /// zones-only provider whose `lookup_by_isbn` is inert. (Until #495 the
+    /// Library of Congress was the other one: its primary JSON search and its
+    /// SRU catalogue were different indexes.) Routing completion through
+    /// `lookup_by_isbn` would silently discard those zones.
     ///
     /// Only providers whose [`Self::supplies_marc_zones`] is true need
     /// implement this; the chain uses that as the cheap gate before calling.
     /// The returned result is read for its six zone fields and nothing else.
     async fn lookup_marc_zones(&self, _isbn: &str) -> Option<MetadataResult> {
         None
+    }
+
+    /// Does this provider's [`Self::lookup_marc_zones`] hit the same endpoint
+    /// as its [`Self::lookup_by_isbn`]? (#495)
+    ///
+    /// When true and the primary lookup FAILED in this chain run (an error, a
+    /// throttle, a timeout — e.g. a Cloudflare challenge), the zone-completion
+    /// pass does not ask again: the second request would fail the same way,
+    /// log the same warning and, for a transport failure, burn another retry
+    /// loop out of the global budget. A primary MISS is not enough to skip —
+    /// a record can exist without the fields a primary result needs (no 245$a)
+    /// and still carry zones. True for the BnF and the Library of Congress;
+    /// false (the default) for a provider like K10plus, whose zones live
+    /// behind a different call than its primary lookup.
+    fn zones_share_lookup_endpoint(&self) -> bool {
+        false
     }
 
     /// Return the rate limiter for this provider, if any.

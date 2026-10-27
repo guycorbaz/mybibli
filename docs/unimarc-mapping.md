@@ -97,6 +97,29 @@ Two further asymmetries worth knowing:
   is also used to disambiguate works with generic titles. Treat it as a good
   approximation rather than an exact equivalence.
 
+### Descriptive fields — LoC through SRU only (#495)
+
+Since v1.20.1 the LoC provider no longer calls the `www.loc.gov/books/?fo=json`
+search (it now answers server-side clients with a Cloudflare bot challenge). One
+SRU request to `lx2.loc.gov` supplies the whole description, read from the same
+MARC 21 record as the zones above:
+
+| mybibli field | MARC 21 (LoC) | Notes |
+|---|---|---|
+| `title` / `subtitle` | 245$a / 245$b | ISBD trailing punctuation removed |
+| authors | 100$a, then 700$a | `"Surname, Forename"` turned into `"Forename Surname"`; 700 with `$t` (a related work) skipped |
+| `publisher` | 264$b (`ind2="1"`), else 264$b of a production statement, else 260$b | distribution / manufacture / copyright 264s (`ind2` 2, 3, 4) are never used; `[publisher not identified]` / `s.n.` mean none; other bracketed names (`[Gallimard]`) are kept without brackets |
+| `publication_date` | 008/07–10, else 264$c / 260$c | first four-digit year |
+| `language` | 008/35–37 | MARC code mapped to ISO 639-1 where known |
+| `page_count` | 300$a | `"xx, 392 pages ;"`, `"282 p."` — parse shared with the BnF 215$a |
+| `description` | 520$a | |
+| `dewey_code` | 082$a | segmentation marks (`/`) removed; `[Fic]` / `[E]` ignored |
+
+LoC encodes accented letters as decomposed numeric references (`e&#x301;`);
+every value is entity-decoded and NFC-normalised before it leaves the provider.
+The record has no cover URL — the cover-only fallbacks (BnF cover service,
+Inventaire, Open Library) supply one.
+
 ### Coverage reality
 
 Measured against the live LoC SRU endpoint on 2026-07-28 over the production

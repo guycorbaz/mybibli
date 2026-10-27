@@ -32,3 +32,66 @@ rewritten.
 **Chosen:** a valid ISBN-10 becomes `CodeType::Isbn(<ISBN-13>)`; an ISBN-10-shaped query with a bad checksum stays `CodeType::Isbn(<raw>)` (exact lookup, then fulltext fallback) as before.
 **Rejected:** turning a bad-checksum query into `Text` — a behaviour change nobody asked for; the fulltext fallback already covers it.
 **Reversible:** yes.
+
+## Story 11-2 — Library of Congress through SRU (#495)
+
+### D-11-2-1 — Sprint-status: the story line plus the line-2 header
+**Context:** the orchestrator's brief for 11-2 allows the `# last_updated:` comment on line 2 in addition to the story line.
+**Chosen:** change the `11-2-loc-via-sru` line and the line-2 comment only; `epic-11` and the YAML `last_updated:` key are left alone (Rule #16).
+**Rejected:** touching `epic-11` from a story branch.
+**Reversible:** yes.
+
+### D-11-2-2 — Remove the JSON search outright, no fallback
+**Context:** the issue offered "keep `?fo=json` as a secondary attempt that fails fast on `cf-mitigated`"; the epic AC says it "is no longer called".
+**Chosen:** delete the JSON path, its parser, wire types, `LOC_API_BASE_URL`, the mock `/books/` handler and the compose variable.
+**Rejected:** a fail-fast fallback — a guaranteed 403 per scan for as long as the Cloudflare policy holds, and dead code to maintain.
+**Reversible:** yes (git history).
+
+### D-11-2-3 — Fields mapped from MARC 21 beyond the AC minimum
+**Context:** the AC names title, contributors, publisher and date; the JSON path also supplied language, description and a cover.
+**Chosen:** also map subtitle (245$b), language (008/35–37), page count (300$a), description (520$a) and Dewey (082$a), so that the switch does not lose what the JSON gave (except the cover). The cover is left to the existing cover-only fallbacks (BnF cover service, Inventaire, Open Library by ISBN).
+**Rejected:** the AC minimum only (a visible regression on language/description); a cover from 856$u (not an image link).
+**Reversible:** yes.
+
+### D-11-2-4 — Entity decoding + NFC in the LoC parser, via `unicode-normalization`
+**Context:** LoC MARCXML encodes non-ASCII characters as numeric references, often decomposed (`e&#x301;`); `metadata::marc` never decodes entities.
+**Chosen:** a `marc::decode_xml_text` helper (entities + NFC) applied to every value the LoC provider returns; direct dependency `unicode-normalization = "0.1"`, already in `Cargo.lock` through `sqlx-mysql` → `stringprep`, so no new crate is fetched. BnF and K10plus readers stay raw.
+**Rejected:** no NFC (decomposed titles would not match a precomposed search query); decoding inside `extract_subfield` for every provider (changes BnF/K10plus output — out of scope).
+**Reversible:** yes.
+
+### D-11-2-5 — Per-provider timeout unchanged
+**Context:** the default per-provider budget is 5 s; the SRU transport retry (2 s + 4 s sleeps) can exceed it now that SRU is primary.
+**Chosen:** no default change; the chain records LoC as timed out and moves on, as the zone-completion pass already does. Admins can raise `provider_timeout.library_of_congress`.
+**Rejected:** a migration seeding a larger LoC override (a settings change nobody asked for).
+**Reversible:** yes.
+
+### D-11-2-6 — Health probe on the SRU host; other providers' User-Agents untouched
+**Context:** `health_check_url` pointed at `https://www.loc.gov/`, which the provider no longer calls. BnF, K10plus, MusicBrainz and the shared client also carry stale hard-coded User-Agents.
+**Chosen:** probe `http://lx2.loc.gov:210/LCDB` (HEAD answers 400 → reachable under #285); fix the LoC User-Agent only, as the AC asks.
+**Rejected:** a repo-wide User-Agent sweep in a production-fix story.
+**Reversible:** yes.
+
+### D-11-2-7 — Plain HTTP for the whole LoC description
+**Context:** code review noted that title, authors and publisher now travel over plain HTTP (`http://lx2.loc.gov:210`), where only the six zones did before.
+**Chosen:** accept it. The SRU service is only offered over HTTP (checked 2026-10-27: TLS on :210 fails, :443 answers 404) and the HTTPS JSON search is behind the Cloudflare challenge. Values are plain text, HTML-escaped at render time, and editable by the librarian.
+**Rejected:** dropping LoC altogether (the regression #495 is about).
+**Reversible:** yes — switch the base URL if LoC ever offers SRU over HTTPS.
+
+### D-11-2-8 — Zone completion skips providers already settled in the run
+**Context:** with SRU primary, the completion pass would re-send the identical LoC request after a miss or a failure (review finding).
+**Chosen:** a trait hook `zones_come_with_lookup` (true for LoC and BnF); the chain skips a filler that failed in this run (any error or timeout) or that missed while its zones ride on that lookup. K10plus (zones behind a separate call) is unaffected. Side effect for the BnF: a BnF miss earlier in the chain is no longer re-queried for zones (it could only miss again).
+**Rejected:** caching inside the LoC provider (state in a provider for one chain run).
+**Reversible:** yes.
+
+### D-11-2-9 — Zone completion skips only providers that FAILED (supersedes D-11-2-8)
+**Context:** the re-review showed that skipping a provider after a primary MISS loses zones: a LoC record without 245$a is a miss that still carries zones.
+**Chosen:** the hook becomes `zones_share_lookup_endpoint` (true for LoC and BnF); the chain skips a filler only when its primary lookup failed in the run (error, throttle, timeout — the Cloudflare-challenge case). A miss is re-asked, at the cost of one cheap request.
+**Rejected:** keeping the miss-skip (silent zone loss); provider-side caching.
+**Reversible:** yes.
+
+
+### D-11-2-10 — Lockfile security bump of rustls / rustls-webpki in the 11-2 PR
+**Context:** the `cargo audit` job runs on a PR only when `Cargo.toml` / `Cargo.lock` change. 11-2 adds a dependency, so it ran — and failed on five vulnerabilities in `rustls 0.23.45` (RUSTSEC-2026-0346..0349) and `rustls-webpki 0.103.15` (RUSTSEC-2026-0382), published 2026-10-14. Unrelated to the story: the daily scheduled scan on `main` has been red since then.
+**Chosen:** `cargo update -p rustls -p rustls-webpki` (0.23.46 / 0.103.16, patch-level, lockfile only) in its own commit on this branch — the epic allows upgrades driven by the daily advisory scan (#481), and Rule #18 asks to fix the root cause of a red CI rather than merge over it. Local `cargo audit`: no vulnerability left.
+**Rejected:** merging with the audit job red (not a required check, but red); a separate chore PR first (would block 11-2 behind another CI cycle for a two-line lock change).
+**Reversible:** yes.

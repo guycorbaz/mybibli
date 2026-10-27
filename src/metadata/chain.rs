@@ -274,6 +274,26 @@ impl ChainExecutor {
                                 if filler.name() == already_used || !filler.supplies_marc_zones() {
                                     continue;
                                 }
+                                // #495 — don't re-ask a provider whose primary
+                                // lookup just FAILED against the same endpoint
+                                // (a Cloudflare challenge, a throttle, a
+                                // timeout would only repeat; a transport
+                                // failure would burn another retry loop out of
+                                // the global budget). A miss is not skipped:
+                                // see `zones_share_lookup_endpoint`.
+                                let failed_this_run = filler.zones_share_lookup_endpoint()
+                                    && attempts.iter().any(|a| {
+                                        a.provider == filler.name()
+                                            && !matches!(
+                                                a.outcome,
+                                                AttemptOutcome::Answered
+                                                    | AttemptOutcome::NoResult
+                                                    | AttemptOutcome::NotConfigured
+                                            )
+                                    });
+                                if failed_this_run {
+                                    continue;
+                                }
                                 if !winner.has_missing_unimarc_zones() {
                                     break;
                                 }
@@ -284,12 +304,12 @@ impl ChainExecutor {
                                     per_provider_timeouts.for_provider(filler.name()),
                                 );
                                 // #439 — the dedicated zone entry point, not
-                                // `lookup_by_isbn`. LoC's normal lookup vetoes
-                                // itself when its flat JSON search misses, but
-                                // the SRU catalogue is a different index and
-                                // may well hold the record; routing completion
-                                // through the normal lookup would discard
-                                // those zones.
+                                // `lookup_by_isbn`: a provider may hold zones
+                                // its normal lookup does not surface (K10plus,
+                                // whose lookup is inert; a LoC record without
+                                // 245$a, which is no usable primary result).
+                                // Routing completion through the normal
+                                // lookup would discard those zones.
                                 let fut = filler.lookup_marc_zones(code);
                                 if let Ok(Some(extra)) =
                                     tokio::time::timeout(filler_timeout, fut).await
@@ -556,9 +576,9 @@ mod tests {
     }
 
     /// #439 — a provider whose primary lookup finds nothing but whose MARC
-    /// catalogue does hold the record. This is the Library of Congress shape:
-    /// its flat JSON search and its SRU catalogue are different indexes, and
-    /// the normal lookup vetoes itself when the JSON side misses.
+    /// catalogue does hold the record: zones behind a different call than the
+    /// primary lookup (the K10plus shape; the Library of Congress had it too
+    /// until #495).
     struct ZonesOnlyOnSruProvider;
 
     #[async_trait]
@@ -581,6 +601,48 @@ mod tests {
         async fn lookup_marc_zones(&self, _isbn: &str) -> Option<MetadataResult> {
             Some(MetadataResult {
                 edition_statement: Some("Reprint.".to_string()),
+                ..MetadataResult::default()
+            })
+        }
+    }
+
+    /// #495 — counts zone-completion calls; its primary lookup either fails
+    /// or misses, and `zones_share_lookup_endpoint` is configurable.
+    struct SettledZoneProvider {
+        fail: bool,
+        shared_endpoint: bool,
+        zone_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl MetadataProvider for SettledZoneProvider {
+        fn name(&self) -> &str {
+            "settled_zone_provider"
+        }
+        fn supports_media_type(&self, _media_type: &MediaType) -> bool {
+            true
+        }
+        fn supplies_marc_zones(&self) -> bool {
+            true
+        }
+        fn zones_share_lookup_endpoint(&self) -> bool {
+            self.shared_endpoint
+        }
+        async fn lookup_by_isbn(
+            &self,
+            _isbn: &str,
+        ) -> Result<Option<MetadataResult>, MetadataError> {
+            if self.fail {
+                Err(MetadataError::Network("challenge".to_string()))
+            } else {
+                Ok(None)
+            }
+        }
+        async fn lookup_marc_zones(&self, _isbn: &str) -> Option<MetadataResult> {
+            self.zone_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Some(MetadataResult {
+                edition_statement: Some("From the second ask".to_string()),
                 ..MetadataResult::default()
             })
         }
@@ -1273,6 +1335,79 @@ mod tests {
             "#439: zones must be collected even when the provider's primary \
              lookup returns None"
         );
+    }
+
+    /// #495 — run the chain [settled provider, winner] and report how many
+    /// times the settled provider was asked for zones.
+    async fn zone_calls_after_primary(
+        pool: &sqlx::Pool<sqlx::MySql>,
+        fail: bool,
+        shared_endpoint: bool,
+    ) -> (usize, Option<String>) {
+        let zone_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(SettledZoneProvider {
+            fail,
+            shared_endpoint,
+            zone_calls: zone_calls.clone(),
+        }));
+        registry.register(Box::new(ZoneProvider {
+            name: "winner_library",
+            title: Some("A title"),
+            sor: None,
+            edition: None,
+            note: None,
+        }));
+        let result = ChainExecutor::execute(
+            &registry,
+            pool,
+            "9780999999985",
+            &CodeType::Isbn,
+            &MediaType::Book,
+            10,
+            &ProviderTimeouts::uniform(5),
+        )
+        .await
+        .unwrap();
+        (
+            zone_calls.load(std::sync::atomic::Ordering::SeqCst),
+            result.edition_statement,
+        )
+    }
+
+    /// A provider whose primary lookup failed in this run against the same
+    /// endpoint (a Cloudflare challenge, a throttle, a timeout) is not asked
+    /// again for zones.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn zone_completion_skips_a_shared_endpoint_provider_that_failed(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) {
+        let (calls, edition) = zone_calls_after_primary(&pool, true, true).await;
+        assert_eq!(calls, 0, "the same endpoint just failed; asking again repeats it");
+        assert_eq!(edition, None);
+    }
+
+    /// A primary MISS does not settle the zone question, even on a shared
+    /// endpoint: a LoC record without 245$a is no usable result but may still
+    /// carry zones.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn zone_completion_still_asks_a_shared_endpoint_provider_that_missed(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) {
+        let (calls, edition) = zone_calls_after_primary(&pool, false, true).await;
+        assert_eq!(calls, 1);
+        assert_eq!(edition.as_deref(), Some("From the second ask"));
+    }
+
+    /// The K10plus shape: zones behind a different call than the primary
+    /// lookup, so even a primary failure says nothing about them.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn zone_completion_still_asks_a_separate_endpoint_provider_that_failed(
+        pool: sqlx::Pool<sqlx::MySql>,
+    ) {
+        let (calls, edition) = zone_calls_after_primary(&pool, true, false).await;
+        assert_eq!(calls, 1);
+        assert_eq!(edition.as_deref(), Some("From the second ask"));
     }
 
     // ─── #202 tier 2 — per-provider attempt collection ──────────────

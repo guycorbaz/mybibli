@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-10-27 (11-1-isbn10-at-scan → done: code review clean, #497)
+# last_updated: 2026-10-27 (11-2-loc-via-sru → done: code review applied, #495)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -219,7 +219,7 @@ development_status:
   #   -> 11-23 (epic smoke, Rule #7) -> 11-24 -> retrospective -> release.
   epic-11: backlog
   11-1-isbn10-at-scan: done
-  11-2-loc-via-sru: backlog
+  11-2-loc-via-sru: done
   11-3-recent-additions-triangle: backlog
   11-4-sticky-navigation-bar: backlog
   11-5-propose-api-key-scope: backlog
