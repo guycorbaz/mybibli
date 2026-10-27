@@ -53,6 +53,18 @@ CSP_REPORT_ONLY=true cargo run       # Switches header to Content-Security-Polic
 MYBIBLI_SKIP_SETUP=1 cargo run
 ```
 
+### Memory guard on the workstation
+
+Prefix every heavy command with `mem-guard` (a station-wide tool in `~/.local/bin`, not in this repo): full `cargo test`, `cargo clippy --all-targets`, the first build of a fresh worktree, `./scripts/e2e-reset.sh`, the Playwright suite. Pass the rule on to every subagent prompt that compiles or tests.
+
+```bash
+mem-guard cargo test                 # runs in its own cgroup: 10G + 1G swap cap
+mem-guard npx playwright test        # at most 2 guarded jobs station-wide; a third waits
+mem-guard --status                   # slots in use, oomd policy, recent OOM kills
+```
+
+Why: `systemd-oomd` kills the whole terminal cgroup — the Claude Code session included — when memory pressure on the user slice exceeds 50 % for 20 s. Two sessions died that way on 2026-10-27 (a full `cargo test` in a fresh worktree while another project was building). Under `mem-guard` a peak kills the command (exit 137) and the session survives. Fast, light commands (`cargo check`, a single targeted test, `cargo fmt`) need no guard. Without user systemd (CI), the tool runs the command unguarded.
+
 ## Foundation Rules
 
 These apply to ALL sessions without exception.
