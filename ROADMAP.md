@@ -32,17 +32,63 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.20.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.20.0)**
-(2026-09-23) — the last volume number and the last shelf number in use,
-on the admin Health tab, each with the next free number. **No
-migration.** The section below has the detail; every release before it
-has its own section further down, and this is the file that carries them
-— the README quotes only the current release, and the website tells the
-same story for a different audience.
+**Current stable: [`v1.20.1`](https://github.com/guycorbaz/mybibli/releases/tag/v1.20.1)**
+(2026-10-27) — three production fixes: an ISBN-10 is recognised at
+scan, the Library of Congress answers again through SRU, and the
+*Recent additions* triangle turns. **No migration.** The section below
+has the detail; every release before it has its own section further
+down, and this is the file that carries them — the README quotes only
+the current release, and the website tells the same story for a
+different audience.
 
-**Open issues: none.** The tracker has been empty since the security
-review closed; #489 was opened and shipped the same day. New work starts
-from a fresh report.
+**In progress: epic 11** — a built-in MCP server that lets a local AI
+agent propose series, metadata and covers for the librarian to review
+([#493](https://github.com/guycorbaz/mybibli/issues/493)), led by the
+three fixes shipped in v1.20.1 and followed by the sticky navigation
+bar ([#496](https://github.com/guycorbaz/mybibli/issues/496)). v1.20.1
+is the planned intermediate release; the rest of the epic ships when
+it closes. A base-path setting for reverse proxies
+([#492](https://github.com/guycorbaz/mybibli/issues/492)) is queued
+for after it. Everything else open lives in the issue tracker.
+
+## v1.20.1 — three production fixes *(shipped)*
+
+Shipped 2026-10-27. Three bug fixes from epic 11, **no migration**, no
+setting change.
+
+- [#497](https://github.com/guycorbaz/mybibli/issues/497) — **an
+  ISBN-10 is recognised at scan.** Scanned on `/catalog` or on the home
+  page, a ten-character ISBN used to be taken for a UPC and created a
+  title with no metadata. It is now validated (trailing `X` included)
+  and converted to its ISBN-13 — `2205001213` → `9782205001211` — for
+  the duplicate check, the title row, the wishlist link and the
+  provider chain; a home-page search by ISBN-10 finds the title too.
+  One helper in `src/utils.rs` serves scan and search. Titles already
+  catalogued under a raw ISBN-10 are **not** merged automatically: the
+  owner cleans them up, and until then rescanning such a book creates a
+  second title under the ISBN-13.
+- [#495](https://github.com/guycorbaz/mybibli/issues/495) — **the
+  Library of Congress answers again.** Since 2026-10-26 its JSON search
+  (`www.loc.gov/books/?fo=json`) sits behind a Cloudflare bot challenge
+  and the provider returned nothing. The provider now reads MARC 21
+  through the SRU endpoint (`lx2.loc.gov`) that already supplied the
+  six cataloguing zones since v1.14.0: title, subtitle, contributors,
+  publisher, date, language, page count, description and Dewey, entity-
+  decoded and NFC-normalised. The JSON path is removed; a challenge is
+  logged as such and never retried. **Upgrade note:** SRU is reached
+  over plain HTTP on **port 210** — a network that allows only outbound
+  80/443 shows the Library of Congress as unreachable. English-language
+  titles scanned since 2026-10-26 got no LoC data: use *Re-download
+  metadata* on the title, or *Backfill metadata from libraries* on the
+  Health tab.
+- [#494](https://github.com/guycorbaz/mybibli/issues/494) — **the
+  *Recent additions* triangle rotates** when the home-page section is
+  open, including when the open state is restored from the last visit.
+  CSS only.
+- **Dependency fix** — `rustls` 0.23.45 → 0.23.46 and `rustls-webpki`
+  0.103.15 → 0.103.16 for RUSTSEC-2026-0346, -0347, -0348, -0349 and
+  [RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382),
+  caught by the daily `cargo audit`. Lockfile only.
 
 ## v1.20.0 — where the labels end *(shipped)*
 
