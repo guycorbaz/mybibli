@@ -31,7 +31,7 @@ Data model: no migration, no new setting, no user-facing string (no locale chang
 
 ## Acceptance Criteria
 
-1. **AC1 — SRU is the primary LoC source.** Given an ISBN the LoC catalogue holds, when the chain consults the LoC provider, then `lookup_by_isbn` issues the SRU MARCXML request only and maps the record: title (245$a), subtitle (245$b), contributors (100$a then 700$a, deduplicated, `"Surname, Forename"` inverted to `"Forename Surname"` like the BnF provider), publisher (264$b of the publication statement — `ind2="1"`, else the first 264 that is not a copyright notice `ind2="4"` — else 260$b), publication date (008/07–10 when four digits, else the first digits run of 264$c / 260$c), language (008/35–37 through the existing `normalize_language`), page count (300$a), description (520$a), Dewey (082$a without the `/` segmentation marks), plus the six zones read today. ISBD trailing punctuation (` /`, ` :`, ` ;`, ` =`, `,`, a final `.` that does not close an initial) is removed from title, subtitle, contributors and publisher. `www.loc.gov/books/?fo=json` is no longer called and the JSON parser, its wire types and `LOC_API_BASE_URL` are removed.
+1. **AC1 — SRU is the primary LoC source.** Given an ISBN the LoC catalogue holds, when the chain consults the LoC provider, then `lookup_by_isbn` issues the SRU MARCXML request only and maps the record: title (245$a), subtitle (245$b), contributors (100$a then 700$a, deduplicated, `"Surname, Forename"` inverted to `"Forename Surname"` like the BnF provider), publisher (264$b of the publication statement — `ind2="1"`, else the first 264 that is not distribution / manufacture / copyright, `ind2` 2/3/4 — else 260$b; a bracketed cataloguer's statement such as `[publisher not identified]` / `[s.n.]` is no publisher), publication date (008/07–10 when four digits, else the first digits run of 264$c / 260$c), language (008/35–37 through the existing `normalize_language`), page count (300$a), description (520$a), Dewey (082$a without the `/` segmentation marks; non-numeric `[Fic]` / `[E]` ignored), plus the six zones read today. ISBD trailing punctuation (` /`, ` :`, ` ;`, ` =`, `,`, one final `.` unless it belongs to the value: an initial, a dotted or known abbreviation, an ellipsis) is removed from title, subtitle, contributors and publisher. `www.loc.gov/books/?fo=json` is no longer called and the JSON parser, its wire types and `LOC_API_BASE_URL` are removed.
 2. **AC2 — text decoding.** Every field the provider returns is XML-entity-decoded (numeric `&#xHH;` / `&#NN;` and the five named entities) and NFC-normalised, so `L'e&#x301;conomie` becomes `L'économie`.
 3. **AC3 — empty / no title.** A response with `numberOfRecords` 0, no `<record`, or a record without 245$a gives `Ok(None)` (a miss, the chain moves on).
 4. **AC4 — Cloudflare challenge.** A response from the LoC endpoint carrying `cf-mitigated: challenge` (any status, header value case-insensitive) is logged at `warn` as a Cloudflare challenge — a message distinct from the plain HTTP-error one — and is never retried; `lookup_by_isbn` returns an error so the chain moves on to the next provider; `lookup_marc_zones` returns `None`.
@@ -95,6 +95,15 @@ Second pass, same three layers: 0 High; Medium findings on the first-pass fixes,
 - [x] [Review][Patch] Language mapping test restored for MARC codes; misplaced rustdoc on `page_count_from_extent`; mapping docs aligned with the publisher rule [src/metadata/library_of_congress.rs, src/metadata/marc.rs, docs/unimarc-mapping.md]
 
 Dismissed (second pass): `tracing-test` dev-dependency (already in `Cargo.toml`); E2E provenance badge "could be another list" (it is the resolving provider's badge, `find_metadata_source`); namespace-prefixed `<marc:record>`; `"Plan B."` keeping its period (indistinguishable from an initial); `"Vol. 2, [100] p."`; plain-HTTP port 210 (D-11-2-7); hard-coded v1.20.1 (the planned release); `Node.js.`-style dotted words keeping the period.
+
+#### Third pass — 2026-10-27
+
+Same three layers on the full diff. Acceptance Auditor and Edge Case Hunter: no Medium+. Blind Hunter: one Medium, patched.
+
+- [x] [Review][Patch] RDA `[publisher not identified]` / AACR2 `[s.n.]` were stored as the publisher (one fake publisher shared by every such title) — a bracketed cataloguer's statement is no publisher; `[Fic]` / `[E]` likewise no longer pass as Dewey [src/metadata/library_of_congress.rs]
+- [x] [Review][Patch] Stale chain comment (JSON veto), duplicated 264 comment, AC1 / mapping-doc wording (publisher rule, final period, author inversion) [src/metadata/chain.rs, src/metadata/library_of_congress.rs, docs/unimarc-mapping.md, this file]
+
+Dismissed (Low): a LoC/BnF miss re-asked once by completion (accepted cost of D-11-2-9); retry loop vs 5 s budget (D-11-2-5); E2E `waitForSelector` before navigating (same pattern as `catalog-marc-zones.spec.ts`, stable); non-fatal SRU warnings alongside records (LCDB emits none); diagnostics inside `recordData`, prefixed `<marc:record>`, non-literal `controlfield`, self-closing `<datafield/>` (not emitted by LoC); `"Plan B."` / `"12 p. l., 245 p."`; relator 700s (#504); raw 3-letter language codes (BnF parity); C0 references kept verbatim (XML 1.0 forbids them, so never seen); port 210 reachability on restricted networks (release-note item).
 
 ## Dev Notes
 
@@ -176,3 +185,4 @@ claude-opus-5-5
 - 2026-10-27 — Implementation T1–T6; status → review.
 - 2026-10-27 — Code review (3 layers): 11 patches applied, 1 deferred (#504), 17 dismissed; status → done.
 - 2026-10-27 — Re-review (Rule #6): Medium findings on the first-pass fixes patched (chain skip rule narrowed to failures, SRU diagnostics, 264 indicators, C1 controls, ISBD and page-count edge cases); third pass run on the delta.
+- 2026-10-27 — Third review pass: one Medium (bracketed cataloguer's statements as publisher) patched with small doc/comment fixes; final confirmation pass on that delta.

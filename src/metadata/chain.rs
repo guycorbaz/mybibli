@@ -304,12 +304,12 @@ impl ChainExecutor {
                                     per_provider_timeouts.for_provider(filler.name()),
                                 );
                                 // #439 — the dedicated zone entry point, not
-                                // `lookup_by_isbn`. LoC's normal lookup vetoes
-                                // itself when its flat JSON search misses, but
-                                // the SRU catalogue is a different index and
-                                // may well hold the record; routing completion
-                                // through the normal lookup would discard
-                                // those zones.
+                                // `lookup_by_isbn`: a provider may hold zones
+                                // its normal lookup does not surface (K10plus,
+                                // whose lookup is inert; a LoC record without
+                                // 245$a, which is no usable primary result).
+                                // Routing completion through the normal
+                                // lookup would discard those zones.
                                 let fut = filler.lookup_marc_zones(code);
                                 if let Ok(Some(extra)) =
                                     tokio::time::timeout(filler_timeout, fut).await

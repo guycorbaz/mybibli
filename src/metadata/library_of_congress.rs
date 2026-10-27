@@ -198,6 +198,12 @@ fn descriptive(raw: Option<String>) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+/// A whole value in square brackets — the cataloguer's own wording, such as
+/// `[publisher not identified]` or `[s.n.]` — rather than data from the item.
+fn is_bracketed_statement(value: &str) -> bool {
+    value.starts_with('[') && value.ends_with(']')
+}
+
 /// `"Bloch, Joshua"` → `"Joshua Bloch"` (the BnF provider's convention). Only
 /// a name with exactly one `", "` is inverted; anything else is kept as is.
 fn invert_name(name: &str) -> String {
@@ -373,8 +379,6 @@ impl LibraryOfCongressProvider {
         // (ind2 0/2/3/4 are production, distribution, manufacture, copyright);
         // 260 is the pre-RDA field.
         let field_264: Vec<&str> = datafields(record, "264");
-        // Without an ind2="1" field, never fall back on a copyright notice
-        // (ind2="4"): its $c is a ©-date and it has no $b.
         // Without a publication statement (ind2 1), fall back only on a
         // production one (ind2 0) or an unspecified one — never on
         // distribution (2), manufacture (3) or a copyright notice (4), whose
@@ -388,9 +392,12 @@ impl LibraryOfCongressProvider {
                     .find(|df| !matches!(indicator2(df), Some('2' | '3' | '4')))
             })
             .copied();
+        // "[publisher not identified]" (RDA) and "[s.n.]" (AACR2) are
+        // cataloguer's statements that there is no publisher — never a name.
         let publisher = publication
             .and_then(|df| descriptive(extract_subfield(df, "264", "b")))
-            .or_else(|| descriptive(extract_subfield(record, "260", "b")));
+            .or_else(|| descriptive(extract_subfield(record, "260", "b")))
+            .filter(|p| !is_bracketed_statement(p));
 
         let fixed = controlfield(record, "008");
         let publication_date = fixed
@@ -419,9 +426,10 @@ impl LibraryOfCongressProvider {
         let page_count = decoded(extract_subfield(record, "300", "a"))
             .and_then(|extent| page_count_from_extent(&extent));
 
+        // Juvenile records carry "[Fic]" / "[E]" in 082$a: not a Dewey number.
         let dewey_code = decoded(extract_subfield(record, "082", "a"))
             .map(|d| d.replace('/', "").trim().to_string())
-            .filter(|d| !d.is_empty());
+            .filter(|d| d.starts_with(|c: char| c.is_ascii_digit()));
 
         Some(MetadataResult {
             title: Some(title),
@@ -760,6 +768,26 @@ mod tests {
         );
         assert_eq!(r.language.as_deref(), Some("fr"));
         assert_eq!(r.page_count, Some(282));
+    }
+
+    #[test]
+    fn cataloguer_statements_are_not_a_publisher_and_fic_is_not_dewey() {
+        for (field, b) in [
+            ("264\" ind1=\" \" ind2=\"1", "[publisher not identified],"),
+            ("260\" ind1=\" \" ind2=\" ", "[s.n.],"),
+        ] {
+            let body = format!(
+                r#"<zs:numberOfRecords>1</zs:numberOfRecords><record xmlns="x">
+  <datafield tag="245" ind1="1" ind2="0"><subfield code="a">T.</subfield></datafield>
+  <datafield tag="082" ind1="0" ind2="0"><subfield code="a">[Fic]</subfield></datafield>
+  <datafield tag="{field}"><subfield code="b">{b}</subfield><subfield code="c">2004.</subfield></datafield>
+</record>"#
+            );
+            let r = LibraryOfCongressProvider::parse_marcxml_record(&body).unwrap();
+            assert_eq!(r.publisher, None, "{b}");
+            assert_eq!(r.dewey_code, None);
+            assert_eq!(r.publication_date.as_deref(), Some("2004"));
+        }
     }
 
     /// A manufacture (ind2 3) or distribution (ind2 2) 264 never stands in for

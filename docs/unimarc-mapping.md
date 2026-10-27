@@ -107,13 +107,13 @@ MARC 21 record as the zones above:
 | mybibli field | MARC 21 (LoC) | Notes |
 |---|---|---|
 | `title` / `subtitle` | 245$a / 245$b | ISBD trailing punctuation removed |
-| authors | 100$a, then 700$a | `"Surname, Forename"` inverted; 700 with `$t` (a related work) skipped |
-| `publisher` | 264$b (`ind2="1"`), else 264$b of a production statement, else 260$b | distribution / manufacture / copyright 264s (`ind2` 2, 3, 4) are never used |
+| authors | 100$a, then 700$a | `"Surname, Forename"` turned into `"Forename Surname"`; 700 with `$t` (a related work) skipped |
+| `publisher` | 264$b (`ind2="1"`), else 264$b of a production statement, else 260$b | distribution / manufacture / copyright 264s (`ind2` 2, 3, 4) are never used; `[publisher not identified]` / `[s.n.]` mean none |
 | `publication_date` | 008/07–10, else 264$c / 260$c | first four-digit year |
 | `language` | 008/35–37 | MARC code mapped to ISO 639-1 where known |
 | `page_count` | 300$a | `"xx, 392 pages ;"`, `"282 p."` — parse shared with the BnF 215$a |
 | `description` | 520$a | |
-| `dewey_code` | 082$a | segmentation marks (`/`) removed |
+| `dewey_code` | 082$a | segmentation marks (`/`) removed; `[Fic]` / `[E]` ignored |
 
 LoC encodes accented letters as decomposed numeric references (`e&#x301;`);
 every value is entity-decoded and NFC-normalised before it leaves the provider.
