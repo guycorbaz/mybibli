@@ -89,3 +89,9 @@ rewritten.
 **Rejected:** keeping the miss-skip (silent zone loss); provider-side caching.
 **Reversible:** yes.
 
+
+### D-11-2-10 — Lockfile security bump of rustls / rustls-webpki in the 11-2 PR
+**Context:** the `cargo audit` job runs on a PR only when `Cargo.toml` / `Cargo.lock` change. 11-2 adds a dependency, so it ran — and failed on five vulnerabilities in `rustls 0.23.45` (RUSTSEC-2026-0346..0349) and `rustls-webpki 0.103.15` (RUSTSEC-2026-0382), published 2026-10-14. Unrelated to the story: the daily scheduled scan on `main` has been red since then.
+**Chosen:** `cargo update -p rustls -p rustls-webpki` (0.23.46 / 0.103.16, patch-level, lockfile only) in its own commit on this branch — the epic allows upgrades driven by the daily advisory scan (#481), and Rule #18 asks to fix the root cause of a red CI rather than merge over it. Local `cargo audit`: no vulnerability left.
+**Rejected:** merging with the audit job red (not a required check, but red); a separate chore PR first (would block 11-2 behind another CI cycle for a two-line lock change).
+**Reversible:** yes.
