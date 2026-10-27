@@ -55,7 +55,7 @@ rewritten.
 
 ### D-11-2-4 — Entity decoding + NFC in the LoC parser, via `unicode-normalization`
 **Context:** LoC MARCXML encodes non-ASCII characters as numeric references, often decomposed (`e&#x301;`); `metadata::marc` never decodes entities.
-**Chosen:** a `marc::decode_xml_text` helper (entities + NFC) applied to every value the LoC provider returns; direct dependency `unicode-normalization = "0.1"`, already present in `Cargo.lock` through `url`/`idna`-era crates, so no new crate is fetched. BnF and K10plus readers stay raw.
+**Chosen:** a `marc::decode_xml_text` helper (entities + NFC) applied to every value the LoC provider returns; direct dependency `unicode-normalization = "0.1"`, already in `Cargo.lock` through `sqlx-mysql` → `stringprep`, so no new crate is fetched. BnF and K10plus readers stay raw.
 **Rejected:** no NFC (decomposed titles would not match a precomposed search query); decoding inside `extract_subfield` for every provider (changes BnF/K10plus output — out of scope).
 **Reversible:** yes.
 

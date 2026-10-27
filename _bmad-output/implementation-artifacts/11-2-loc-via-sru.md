@@ -58,6 +58,7 @@ Data model: no migration, no new setting, no user-facing string (no locale chang
   - [ ] `USER_AGENT` const; `health_check_url`; module docs rewritten
   - [ ] unit + mock-server tests (AC9)
 - [ ] T4 — E2E stack: remove `LOC_API_BASE_URL` from `tests/e2e/docker-compose.test.yml`; mock server: remove `/books/` + `_handle_loc_json`, add `LOC_PRIMARY_ISBN` (full MARC record with an entity-encoded accent) and `LOC_CHALLENGE_ISBN` (`403` + `cf-mitigated: challenge`, HTML body) on `/LCDB`, both on the BnF blocklist; `LOC_CHALLENGE_ISBN` in `OPEN_LIBRARY_KNOWN_ISBNS`
+- [ ] T4b — `docs/unimarc-mapping.md` § MARC 21 equivalence: note that LoC is now queried through SRU only and add the descriptive-field table (245$a/$b, 100/700$a, 264/260$b, 008/07–10, 008/35–37, 300$a, 520$a, 082$a)
 - [ ] T5 — E2E `tests/e2e/specs/journeys/catalog-loc-sru.spec.ts` (AC9)
 - [ ] T6 — gates: clippy `-D warnings`, `cargo test` (test DB), sqlx check, flake grep, `tsc --noEmit`, full E2E (`CI=true --workers=2`)
 
@@ -85,6 +86,13 @@ Data model: no migration, no new setting, no user-facing string (no locale chang
 - E2E specs relying on "every provider misses" (`9780000000002`, `…019`, `…026`, `…033`): the LoC SRU mock answers `numberOfRecords 0` for any unknown ISBN — unchanged.
 - `provider-chain.spec.ts` known ISBNs `9780134685991` / `9780201633610` are answered by Google Books before LoC — unchanged.
 
+### Validation additions (checklist pass)
+
+- Mock fixtures, concrete: `LOC_PRIMARY_ISBN = "9780449000038"` → one record with `008` `200101s2020    nyu           000 0 eng d`, `100$a Primary, Sample,`, `245$a L'e&#x301;conomie de Congress :` / `$b a sample /` / `$c Sample Primary.`, `264 _1 $b Congress Press,` `$c [2020]`, `300$a xii, 321 pages ;`, `520$a Congress summary.`; `LOC_CHALLENGE_ISBN = "9780449000045"` → `403`, headers `cf-mitigated: challenge`, `Content-Type: text/html`, a short HTML body. Both go on the BnF `NO_METADATA_ISBNS` blocklist (otherwise the BnF catch-all wins and LoC is never consulted as primary); the Google Books mock already misses unknown ISBNs. `LOC_CHALLENGE_ISBN` joins `OPEN_LIBRARY_KNOWN_ISBNS` with a distinctive title (`"Open Library After Challenge"`) and no `covers` key.
+- No integration test in `tests/` constructs `LibraryOfCongressProvider` (grep 2026-10-27), so removing `with_sru_base_url` and the JSON constructor arguments breaks nothing outside the module.
+- `provider_health.rs` reads `health_check_url()` only to issue a HEAD; no template renders the URL.
+- User manual chapters mention LoC as a source (`05-metadata-providers.tex`), not its endpoint — no change here; the release notes for v1.20.1 carry the user-visible part.
+
 ### Testing standards
 
 - Unit tests in `#[cfg(test)] mod tests`; async provider tests with `#[tokio::test]` and an `axum` router bound to `127.0.0.1:0` (no new dev-dependency); log assertions with `#[tracing_test::traced_test]` + `logs_contain`.
@@ -110,3 +118,5 @@ claude-opus-5-5
 ### File List
 
 ### Change Log
+
+- 2026-10-27 — Validation pass (checklist.md): concrete mock fixtures for the two E2E journeys, the `docs/unimarc-mapping.md` update (T4b), confirmation that no out-of-module caller uses the removed constructors. No blocker found.
