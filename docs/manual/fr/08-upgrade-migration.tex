@@ -148,6 +148,63 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.20.1}\label{sec:whats-new-1.20.1}
+
+La version 1.20.1 est une version corrective sur la 1.20.0.
+\emph{Aucune migration}, aucun réglage modifié --- on récupère
+l'image, on redémarre, c'est tout. Elle porte trois corrections
+remontées de la production.
+
+\begin{itemize}
+  \item \textbf{\#497 \string— un ISBN-10 est un ISBN.} Les livres et
+        les bandes dessinées anciens ne portent souvent que l'ISBN à
+        dix caractères. Scanné sur \texttt{/catalog} ou sur la page
+        d'accueil, il était pris pour un code UPC : un titre sans
+        métadonnées était créé sous le numéro brut. Il est désormais
+        reconnu, \texttt{X} final compris, et converti en son ISBN-13
+        --- \texttt{2205001213} devient \texttt{9782205001211} ---
+        exactement comme si l'ISBN-13 avait été scanné : recherche de
+        métadonnées, détection des doublons, lien avec la liste de
+        souhaits. Une recherche par ISBN-10 depuis la page d'accueil
+        trouve aussi le titre.
+
+        Les titres catalogués auparavant sous un ISBN-10 brut ne sont
+        \emph{pas} fusionnés automatiquement. Repérez-les (un code à
+        dix caractères, aucune métadonnée) et faites le ménage à la
+        main. Tant que ce n'est pas fait, rescanner un tel livre crée
+        un second titre sous l'ISBN-13.
+  \item \textbf{\#495 \string— la Library of Congress répond de
+        nouveau.} Depuis le 26 octobre 2026, la Library of Congress a
+        placé sa recherche JSON derrière un contrôle anti-robots, et le
+        fournisseur ne renvoyait plus rien. Il lit désormais les mêmes
+        notices par le service SRU de la bibliothèque, en MARC~21 ---
+        le service qui fournissait déjà les zones de catalogage depuis
+        la 1.14.0. Titre, auteurs, éditeur, date, langue, nombre de
+        pages, résumé et Dewey en proviennent ; la couverture, que le
+        MARC ne porte pas, vient des sources de couvertures habituelles.
+
+        Deux choses à savoir. Le service SRU est joint en \emph{HTTP
+        simple sur le port 210} (\texttt{lx2.loc.gov}) : un réseau qui
+        ne laisse sortir que les ports 80 et 443 affichera la Library
+        of Congress comme injoignable dans l'onglet Health, et la
+        chaîne passera simplement au fournisseur suivant. Et les titres
+        en anglais scannés entre le 26 octobre et cette mise à jour
+        n'ont reçu aucune donnée de la Library of Congress : ouvrez un
+        tel titre et pressez \emph{Re-télécharger les métadonnées}, ou
+        lancez \emph{Compléter les métadonnées via les bibliothèques}
+        depuis l'onglet Health.
+  \item \textbf{\#494 \string— le triangle des \emph{Ajouts récents}
+        tourne.} Le triangle devant la section \emph{Ajouts récents} de
+        la page d'accueil pointe désormais vers le bas quand la section
+        est ouverte, y compris quand la page la rouvre d'après votre
+        dernière visite.
+  \item \textbf{Correctif de dépendance.} La bibliothèque TLS derrière
+        les recherches de métadonnées sortantes passe à \texttt{rustls}
+        0.23.46 et \texttt{rustls-webpki} 0.103.16 pour les avis
+        RUSTSEC-2026-0346 à 0349 et RUSTSEC-2026-0382. Rien à
+        configurer.
+\end{itemize}
+
 \section{Nouveautés de la 1.20.0}\label{sec:whats-new-1.20.0}
 
 La version 1.20.0 est une version mineure sur la 1.19.0.

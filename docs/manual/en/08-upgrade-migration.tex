@@ -139,6 +139,57 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.20.1}\label{sec:whats-new-1.20.1}
+
+Version 1.20.1 is a patch release on 1.20.0. \emph{No migration}, no
+setting change --- pull the image, restart, done. It carries three
+fixes reported from production.
+
+\begin{itemize}
+  \item \textbf{\#497 \string— an ISBN-10 is an ISBN.} Older books and
+        comics often carry only the ten-character ISBN. Scanned on
+        \texttt{/catalog} or on the home page, it used to be taken for
+        a UPC code: a title with no metadata was created under the raw
+        number. It is now recognised, including a final \texttt{X},
+        and converted to its ISBN-13 --- \texttt{2205001213} becomes
+        \texttt{9782205001211} --- exactly as if the ISBN-13 had been
+        scanned: metadata lookup, duplicate check, wishlist link. A
+        home-page search by ISBN-10 finds the title too.
+
+        Titles catalogued earlier under a raw ISBN-10 are \emph{not}
+        merged automatically. Look for them (a ten-character code, no
+        metadata) and clean them up by hand. Until you do, rescanning
+        such a book creates a second title under the ISBN-13.
+  \item \textbf{\#495 \string— the Library of Congress answers again.}
+        Since 26 October 2026 the Library of Congress has put its JSON
+        search behind a bot challenge, and the provider returned
+        nothing. It now reads the same records through the Library's
+        SRU service, in MARC~21 --- the service that already supplied
+        the cataloguing zones since 1.14.0. Title, authors, publisher,
+        date, language, page count, description and Dewey come from
+        it; the cover, which MARC does not carry, comes from the usual
+        cover fallbacks.
+
+        Two things to know. The SRU service is reached over
+        \emph{plain HTTP on port 210} (\texttt{lx2.loc.gov}): a network
+        that only lets ports 80 and 443 out will show the Library of
+        Congress as unreachable on the Health tab, and the chain simply
+        moves on to the next provider. And English-language titles
+        scanned between 26 October and this upgrade got no Library of
+        Congress data: open such a title and press \emph{Re-download
+        metadata}, or run \emph{Backfill metadata from libraries} from
+        the Health tab.
+  \item \textbf{\#494 \string— the \emph{Recent additions} triangle
+        turns.} The triangle in front of the home page's \emph{Recent
+        additions} section now points down while the section is open,
+        including when the page reopens it from your last visit.
+  \item \textbf{Dependency fix.} The TLS library behind the outbound
+        metadata lookups moves to \texttt{rustls} 0.23.46 and
+        \texttt{rustls-webpki} 0.103.16 for advisories
+        RUSTSEC-2026-0346 to 0349 and RUSTSEC-2026-0382. Nothing to
+        configure.
+\end{itemize}
+
 \section{What's new in 1.20.0}\label{sec:whats-new-1.20.0}
 
 Version 1.20.0 is a minor release on 1.19.0. \emph{No migration} ---
