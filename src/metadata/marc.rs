@@ -52,12 +52,14 @@ pub fn extract_subfields(xml: &str, tag: &str, code: &str) -> Vec<String> {
 }
 
 /// Every `datafield[@tag=tag]` in document order, each as the raw slice from
-/// its `tag="…"` attribute through its closing tag (#495).
+/// its opening `<` through its closing tag (#495).
 ///
-/// For callers that must read several subfields of the SAME datafield — e.g.
-/// skip a MARC 21 `700` that carries a `$t` (a related work, not a
-/// contributor). [`extract_subfield`] works on a slice unchanged, because the
-/// slice still starts with the `tag="…"` pattern.
+/// For callers that must read several subfields — or the indicators, see
+/// [`indicator2`] — of the SAME datafield, e.g. skip a MARC 21 `700` that
+/// carries a `$t` (a related work, not a contributor). [`extract_subfield`]
+/// works on a slice unchanged, because the slice contains the `tag="…"`
+/// pattern. Starting at `<` rather than at `tag=` keeps attributes written
+/// before `tag` (legal XML) inside the slice.
 pub fn datafields<'a>(xml: &'a str, tag: &str) -> Vec<&'a str> {
     let tag_pattern = format!(r#"tag="{tag}""#);
     let mut out = Vec::new();
@@ -65,6 +67,12 @@ pub fn datafields<'a>(xml: &'a str, tag: &str) -> Vec<&'a str> {
 
     while let Some(df_start) = xml[search_from..].find(&tag_pattern) {
         let df_abs = search_from + df_start;
+        // Back up to the element's `<` when `tag=` is not its first attribute.
+        let open = xml[search_from..df_abs]
+            .rfind('<')
+            .map(|p| search_from + p)
+            .filter(|&p| !xml[p..df_abs].contains('>'))
+            .unwrap_or(df_abs);
 
         // End of this datafield — plain or namespace-prefixed. The slice
         // keeps the closing tag so `extract_subfield` can run on it as is.
@@ -76,11 +84,22 @@ pub fn datafields<'a>(xml: &'a str, tag: &str) -> Vec<&'a str> {
             },
         };
 
-        out.push(&xml[df_abs..df_end]);
+        out.push(&xml[open..df_end]);
         search_from = df_end;
     }
 
     out
+}
+
+/// Second indicator of a datafield slice from [`datafields`], read from its
+/// opening tag only (never from subfield text), with either quote style.
+pub fn indicator2(datafield: &str) -> Option<char> {
+    let opening = &datafield[..datafield.find('>')?];
+    let after = &opening[opening.find("ind2=")? + "ind2=".len()..];
+    let mut chars = after.chars();
+    let quote = chars.next().filter(|q| *q == '"' || *q == '\'')?;
+    let value = chars.next()?;
+    (chars.next() == Some(quote)).then_some(value)
 }
 
 /// First non-empty `subfield[@code=code]` value inside one datafield slice.
@@ -132,12 +151,14 @@ pub fn decode_xml_text(raw: &str) -> String {
         let candidate = &rest[amp..];
         let decoded = candidate.find(';').and_then(|semi| {
             let entity = &candidate[1..semi];
-            let ch = match entity {
-                "amp" => Some('&'),
-                "lt" => Some('<'),
-                "gt" => Some('>'),
-                "quot" => Some('"'),
-                "apos" => Some('\''),
+            // Some(Some(c)): push c; Some(None): drop the reference; None:
+            // keep it verbatim.
+            let ch: Option<Option<char>> = match entity {
+                "amp" => Some(Some('&')),
+                "lt" => Some(Some('<')),
+                "gt" => Some(Some('>')),
+                "quot" => Some(Some('"')),
+                "apos" => Some(Some('\'')),
                 _ => {
                     let code = if let Some(hex) =
                         entity.strip_prefix("#x").or_else(|| entity.strip_prefix("#X"))
@@ -148,18 +169,26 @@ pub fn decode_xml_text(raw: &str) -> String {
                     } else {
                         None
                     };
-                    // C0 controls other than tab / LF / CR are forbidden in
-                    // XML 1.0; a reference to one is kept verbatim rather than
-                    // smuggling a NUL or ESC into the catalogue.
-                    code.and_then(char::from_u32)
-                        .filter(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r'))
+                    match code.and_then(char::from_u32) {
+                        // C0 controls other than tab / LF / CR are forbidden
+                        // in XML 1.0: keep the reference verbatim rather than
+                        // smuggle a NUL or ESC into the catalogue.
+                        Some(c) if c < ' ' && !matches!(c, '\t' | '\n' | '\r') => None,
+                        // C1 controls are legal but invisible; MARC 21 uses
+                        // them as non-sort markers (U+0088/89, U+0098/9C
+                        // around a leading article). Drop them.
+                        Some(c) if ('\u{80}'..='\u{9f}').contains(&c) => Some(None),
+                        other => other.map(Some),
+                    }
                 }
             };
             ch.map(|c| (c, semi + 1))
         });
         match decoded {
             Some((c, consumed)) => {
-                out.push(c);
+                if let Some(c) = c {
+                    out.push(c);
+                }
                 rest = &candidate[consumed..];
             }
             None => {
@@ -174,39 +203,50 @@ pub fn decode_xml_text(raw: &str) -> String {
 
 /// Abbreviations whose final period is part of the word, not MARC's closing
 /// punctuation (compared case-insensitively, without the period).
-const KEEP_PERIOD_ABBREVIATIONS: [&str; 10] =
-    ["inc", "co", "corp", "ltd", "jr", "sr", "etc", "bros", "st", "dept"];
+const KEEP_PERIOD_ABBREVIATIONS: [&str; 19] = [
+    "inc", "co", "corp", "ltd", "jr", "sr", "etc", "bros", "st", "dept", "univ", "pub", "publ",
+    "dist", "assoc", "mfg", "intl", "vol", "ed",
+];
 
 /// Strip the ISBD / MARC trailing punctuation from a descriptive value (#495).
 ///
-/// - ` /`, ` :`, ` ;`, ` =` — ISBD separators, always preceded by a space;
-///   a bare trailing `/` (`"AC/DC/"`) is left alone.
+/// - `/`, `:`, `;`, `=` — ISBD separators, stripped only when preceded by
+///   whitespace (always the case in ISBD); a bare trailing `/` (`"AC/DC/"`)
+///   is left alone.
 /// - `,` — the comma MARC appends before the next subfield (`"Addison-Wesley,"`).
 /// - one final `.` — MARC's closing period — unless it belongs to the value: an
 ///   initial (`"Tolkien, J. R. R."`), a dotted abbreviation (`"U.S.A."`,
-///   `"Ph.D."`), a known abbreviation (`"Co."`, `"Jr."`, `"etc."`) or an
-///   ellipsis (`"And then..."`).
+///   `"Ph.D."`), a known abbreviation (`"Co."`, `"Jr."`, `"Univ."`) or an
+///   ellipsis (`"And then..."`). A period right after `)` or `]` is always
+///   MARC's (`"Title (2nd ed.)."`).
 ///
-/// Separators and commas are stripped repeatedly (`"Title / ;"` → `"Title"`);
-/// the period at most once.
+/// Separators and commas are stripped repeatedly, before and after the
+/// period (`"Title / ;"`, `"Gallimard, ."` → `"Gallimard"`); the period at
+/// most once.
 pub fn trim_isbd_punctuation(raw: &str) -> String {
     let mut s = raw.trim();
+    let mut period_done = false;
     loop {
         let before = s.len();
         s = s.trim_end_matches(',').trim_end();
-        for sep in [" /", " :", " ;", " ="] {
-            if let Some(stripped) = s.strip_suffix(sep) {
+        let mut chars = s.chars().rev();
+        if let (Some(last), Some(prev)) = (chars.next(), chars.next())
+            && matches!(last, '/' | ':' | ';' | '=')
+            && prev.is_whitespace()
+        {
+            s = s[..s.len() - last.len_utf8()].trim_end();
+        }
+        if !period_done
+            && let Some(stripped) = s.strip_suffix('.')
+        {
+            period_done = true;
+            if !period_belongs_to_value(stripped) {
                 s = stripped.trim_end();
             }
         }
         if s.len() == before {
             break;
         }
-    }
-    if let Some(stripped) = s.strip_suffix('.')
-        && !period_belongs_to_value(stripped)
-    {
-        s = stripped.trim_end();
     }
     s.to_string()
 }
@@ -217,10 +257,16 @@ fn period_belongs_to_value(before: &str) -> bool {
     if before.ends_with('.') {
         return true; // ellipsis
     }
+    if before.ends_with(')') || before.ends_with(']') {
+        return false;
+    }
     let last_token = before.rsplit([' ', ',', '(']).next().unwrap_or(before);
     let is_initial =
         last_token.chars().count() == 1 && last_token.chars().all(char::is_alphabetic);
-    let is_dotted = last_token.contains('.');
+    // "U.S.A", "Ph.D" — letters and dots only; "2.0" is a number, not an
+    // abbreviation, and keeps no closing period.
+    let is_dotted = last_token.contains('.')
+        && last_token.chars().all(|c| c == '.' || c.is_alphabetic());
     let is_known = KEEP_PERIOD_ABBREVIATIONS
         .iter()
         .any(|a| last_token.eq_ignore_ascii_case(a));
@@ -232,25 +278,16 @@ fn period_belongs_to_value(before: &str) -> bool {
 /// `"282 p. ;"`). Lifted from the BnF provider when the Library of Congress
 /// needed the same parse (#495, Foundation Rule #1); `page` / `pages` were
 /// added for the RDA wording.
-/// The page number a single extent token carries: `"245"`, `"245,"`,
-/// `"XII-245"` (part after the last hyphen), `"[2]"`. `None` for a token with
-/// no digits (`"xii,"`), which ends the backwards scan.
-fn leading_page_number(token: &str) -> Option<i32> {
-    let num_part = token.rsplit('-').next().unwrap_or(token);
-    let cleaned: String = num_part.chars().filter(|c| c.is_ascii_digit()).collect();
-    cleaned.parse::<i32>().ok().filter(|n| *n > 0)
-}
-
 pub fn page_count_from_extent(desc: &str) -> Option<i32> {
     // Pattern: a number right before "p" / "p." / "page(s)".
     let words: Vec<&str> = desc.split_whitespace().collect();
+    // AACR2 records unnumbered leaves and plates in brackets — "xii, 245, [2]
+    // p.", "[16] p. of plates, 245 p." — so an unbracketed sequence anywhere
+    // in the extent wins and a bracketed count is only the fallback.
+    let mut bracketed = None;
     for (i, word) in words.iter().enumerate() {
         let w = word.trim_end_matches([',', ';', ':', ')']);
         if (w.starts_with("p.") || w == "p" || w == "pages" || w == "page") && i > 0 {
-            // AACR2 records unnumbered leaves in brackets after the main
-            // sequence — "xii, 245, [2] p." — so prefer the nearest
-            // unbracketed number and fall back to the bracketed one.
-            let mut bracketed = None;
             for prev in words[..i].iter().rev().take(3) {
                 let Some(n) = leading_page_number(prev) else {
                     break;
@@ -261,10 +298,10 @@ pub fn page_count_from_extent(desc: &str) -> Option<i32> {
                     return Some(n);
                 }
             }
-            if bracketed.is_some() {
-                return bracketed;
-            }
         }
+    }
+    if bracketed.is_some() {
+        return bracketed;
     }
     // Fallback: digits at the start of a parenthesised group, "(245 p.)".
     if let Some(start) = desc.find('(')
@@ -280,6 +317,15 @@ pub fn page_count_from_extent(desc: &str) -> Option<i32> {
         }
     }
     None
+}
+
+/// The page number a single extent token carries: `"245"`, `"245,"`,
+/// `"XII-245"` (part after the last hyphen), `"[2]"`. `None` for a token with
+/// no digits (`"xii,"`), which ends the backwards scan.
+fn leading_page_number(token: &str) -> Option<i32> {
+    let num_part = token.rsplit('-').next().unwrap_or(token);
+    let cleaned: String = num_part.chars().filter(|c| c.is_ascii_digit()).collect();
+    cleaned.parse::<i32>().ok().filter(|n| *n > 0)
 }
 
 #[cfg(test)]
@@ -390,6 +436,20 @@ mod tests {
     }
 
     #[test]
+    fn indicator2_reads_the_opening_tag_whatever_the_attribute_order() {
+        let xml = r#"<record>
+  <datafield ind1=" " ind2="4" tag="264"><subfield code="c">ind2="1" in text</subfield></datafield>
+  <datafield tag="264" ind1=' ' ind2='1'><subfield code="b">Press,</subfield></datafield>
+</record>"#;
+        let fields = datafields(xml, "264");
+        assert_eq!(fields.len(), 2);
+        assert_eq!(indicator2(fields[0]), Some('4'), "ind2 before tag= is still seen");
+        assert_eq!(indicator2(fields[1]), Some('1'), "single quotes");
+        assert_eq!(extract_subfield(fields[1], "264", "b").as_deref(), Some("Press,"));
+        assert_eq!(indicator2(r#"<datafield tag="1">"#), None);
+    }
+
+    #[test]
     fn controlfield_keeps_positions() {
         let xml = r#"<record><controlfield tag="008">170925t20182018mau      b    001 0 eng d</controlfield></record>"#;
         let f = controlfield(xml, "008").unwrap();
@@ -415,6 +475,8 @@ mod tests {
         assert_eq!(decode_xml_text("&#x110000;"), "&#x110000;");
         assert_eq!(decode_xml_text("a&#0;b&#x1B;c"), "a&#0;b&#x1B;c", "C0 controls stay verbatim");
         assert_eq!(decode_xml_text("a&#x9;b"), "a\tb");
+        // MARC 21 non-sort markers (C1) around a leading article are dropped.
+        assert_eq!(decode_xml_text("&#x98;The &#x9C;Hobbit"), "The Hobbit");
         assert_eq!(decode_xml_text("trailing &"), "trailing &");
         assert_eq!(decode_xml_text(""), "");
     }
@@ -443,6 +505,12 @@ mod tests {
         assert_eq!(trim_isbd_punctuation("AC/DC/"), "AC/DC/");
         assert_eq!(trim_isbd_punctuation("Title :"), "Title");
         assert_eq!(trim_isbd_punctuation("Title."), "Title", "one closing period only");
+        assert_eq!(trim_isbd_punctuation("Gallimard, ."), "Gallimard");
+        assert_eq!(trim_isbd_punctuation("Title / ."), "Title");
+        assert_eq!(trim_isbd_punctuation("Title (2nd ed.)."), "Title (2nd ed.)");
+        assert_eq!(trim_isbd_punctuation("Version 2.0."), "Version 2.0");
+        assert_eq!(trim_isbd_punctuation("Harvard Univ."), "Harvard Univ.");
+        assert_eq!(trim_isbd_punctuation("Title\u{a0}/"), "Title");
     }
 
     #[test]
@@ -460,5 +528,6 @@ mod tests {
         assert_eq!(page_count_from_extent("xii, 245, [2] p. :"), Some(245));
         assert_eq!(page_count_from_extent("245, [3] p. ;"), Some(245));
         assert_eq!(page_count_from_extent("[48] p. :"), Some(48));
+        assert_eq!(page_count_from_extent("[16] p. of plates, 245 p."), Some(245));
     }
 }

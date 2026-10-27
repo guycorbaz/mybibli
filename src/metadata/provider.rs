@@ -296,17 +296,19 @@ pub trait MetadataProvider: Send + Sync {
         None
     }
 
-    /// Do this provider's zones come from the very request its
-    /// [`Self::lookup_by_isbn`] makes? (#495)
+    /// Does this provider's [`Self::lookup_marc_zones`] hit the same endpoint
+    /// as its [`Self::lookup_by_isbn`]? (#495)
     ///
-    /// When true, a primary lookup that came back empty already answered the
-    /// zone question for this run, so the zone-completion pass must not ask
-    /// again — the second identical request could only return the same
-    /// nothing. True for the BnF (completion reuses its lookup) and, since
-    /// #495, the Library of Congress (one SRU request serves both). False
-    /// (the default) for a provider like K10plus, whose zones live behind a
-    /// different call than its primary lookup.
-    fn zones_come_with_lookup(&self) -> bool {
+    /// When true and the primary lookup FAILED in this chain run (an error, a
+    /// throttle, a timeout — e.g. a Cloudflare challenge), the zone-completion
+    /// pass does not ask again: the second request would fail the same way,
+    /// log the same warning and, for a transport failure, burn another retry
+    /// loop out of the global budget. A primary MISS is not enough to skip —
+    /// a record can exist without the fields a primary result needs (no 245$a)
+    /// and still carry zones. True for the BnF and the Library of Congress;
+    /// false (the default) for a provider like K10plus, whose zones live
+    /// behind a different call than its primary lookup.
+    fn zones_share_lookup_endpoint(&self) -> bool {
         false
     }
 

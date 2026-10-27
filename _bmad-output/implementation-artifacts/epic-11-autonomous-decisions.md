@@ -83,3 +83,9 @@ rewritten.
 **Rejected:** caching inside the LoC provider (state in a provider for one chain run).
 **Reversible:** yes.
 
+### D-11-2-9 — Zone completion skips only providers that FAILED (supersedes D-11-2-8)
+**Context:** the re-review showed that skipping a provider after a primary MISS loses zones: a LoC record without 245$a is a miss that still carries zones.
+**Chosen:** the hook becomes `zones_share_lookup_endpoint` (true for LoC and BnF); the chain skips a filler only when its primary lookup failed in the run (error, throttle, timeout — the Cloudflare-challenge case). A miss is re-asked, at the cost of one cheap request.
+**Rejected:** keeping the miss-skip (silent zone loss); provider-side caching.
+**Reversible:** yes.
+

@@ -34,7 +34,7 @@
 //! |---|---|
 //! | title / subtitle | 245$a / 245$b |
 //! | authors | 100$a, then every 700$a without a `$t` (inverted to "Forename Surname") |
-//! | publisher | 264$b (publication, `ind2="1"`, preferred), else 260$b |
+//! | publisher | 264$b (publication, `ind2="1"`; else a 264 that is not distribution / manufacture / copyright), else 260$b |
 //! | publication date | 008/07–10, else the first four-digit run of 264$c / 260$c |
 //! | language | 008/35–37 |
 //! | page count | 300$a |
@@ -52,8 +52,8 @@ use async_trait::async_trait;
 use crate::models::media_type::MediaType;
 
 use super::marc::{
-    controlfield, datafields, decode_xml_text, extract_subfield, page_count_from_extent,
-    trim_isbd_punctuation,
+    controlfield, datafields, decode_xml_text, extract_subfield, indicator2,
+    page_count_from_extent, trim_isbd_punctuation,
 };
 use super::provider::{MetadataError, MetadataProvider, MetadataResult};
 
@@ -137,6 +137,30 @@ pub fn is_cloudflare_challenge(headers: &reqwest::header::HeaderMap) -> bool {
     })
 }
 
+/// The SRU base URL from the `LOC_SRU_BASE_URL` value: the production
+/// endpoint when unset, empty or blank (an empty base would make every request
+/// fail at the transport layer and burn the retry loop).
+fn sru_base_url_from(env_value: Option<String>) -> String {
+    env_value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| SRU_BASE_URL_DEFAULT.to_string())
+}
+
+/// Why an HTTP-200 body is not a usable SRU answer, if it is not: an HTML page
+/// (a proxy, a captive portal, a challenge without the marker header) or an
+/// SRU diagnostic (a query error or a back-end failure — it usually carries
+/// `numberOfRecords 0` and would otherwise pass for "not held").
+fn sru_body_problem(body: &str) -> Option<&'static str> {
+    if !body.contains("numberOfRecords") {
+        Some("not a searchRetrieve response")
+    } else if body.contains("diagnostics>") || body.contains("<diag:diagnostic") {
+        Some("an SRU diagnostic")
+    } else {
+        None
+    }
+}
+
 /// The first MARC `<record …>` element of an SRU response, if any.
 ///
 /// `maximumRecords=1` makes this the only one in practice; slicing keeps a
@@ -197,11 +221,9 @@ fn first_year(s: &str) -> Option<String> {
 
 impl LibraryOfCongressProvider {
     pub fn new(client: reqwest::Client) -> Self {
-        let sru_base_url =
-            std::env::var("LOC_SRU_BASE_URL").unwrap_or_else(|_| SRU_BASE_URL_DEFAULT.to_string());
         LibraryOfCongressProvider {
             client,
-            sru_base_url,
+            sru_base_url: sru_base_url_from(std::env::var("LOC_SRU_BASE_URL").ok()),
         }
     }
 
@@ -353,10 +375,18 @@ impl LibraryOfCongressProvider {
         let field_264: Vec<&str> = datafields(record, "264");
         // Without an ind2="1" field, never fall back on a copyright notice
         // (ind2="4"): its $c is a ©-date and it has no $b.
+        // Without a publication statement (ind2 1), fall back only on a
+        // production one (ind2 0) or an unspecified one — never on
+        // distribution (2), manufacture (3) or a copyright notice (4), whose
+        // $b is not the publisher and whose $c is not the publication date.
         let publication = field_264
             .iter()
-            .find(|df| df.contains(r#"ind2="1""#))
-            .or_else(|| field_264.iter().find(|df| !df.contains(r#"ind2="4""#)))
+            .find(|df| indicator2(df) == Some('1'))
+            .or_else(|| {
+                field_264
+                    .iter()
+                    .find(|df| !matches!(indicator2(df), Some('2' | '3' | '4')))
+            })
             .copied();
         let publisher = publication
             .and_then(|df| descriptive(extract_subfield(df, "264", "b")))
@@ -435,9 +465,9 @@ impl MetadataProvider for LibraryOfCongressProvider {
         true
     }
 
-    /// #495 — its zones ride on the same request as its normal lookup, so a
-    /// primary miss in this run settles the zone question too.
-    fn zones_come_with_lookup(&self) -> bool {
+    /// #495 — its zone path hits the same endpoint as its normal lookup, so a
+    /// failed lookup in this run means the zone request would fail too.
+    fn zones_share_lookup_endpoint(&self) -> bool {
         true
     }
 
@@ -449,6 +479,10 @@ impl MetadataProvider for LibraryOfCongressProvider {
             return None;
         }
         let body = self.fetch_sru(&safe_isbn).await.ok()?;
+        if let Some(problem) = sru_body_problem(&body) {
+            tracing::warn!(isbn = %safe_isbn, problem, "Library of Congress SRU answered 200 with an unusable body; skipping zones");
+            return None;
+        }
         Self::parse_marcxml_response(&body)
     }
 
@@ -471,17 +505,13 @@ impl MetadataProvider for LibraryOfCongressProvider {
         // #495 — one SRU request supplies the description AND the six zones;
         // the challenged `www.loc.gov/books/?fo=json` search is gone.
         let body = self.fetch_sru(&safe_isbn).await?;
-        // A 200 that is not an SRU answer (an HTML page from a proxy or a
-        // challenge without the marker header, an SRU diagnostic) is a
-        // failure of the source, not "LoC does not hold this ISBN".
-        if !body.contains("numberOfRecords") {
-            tracing::warn!(
-                isbn = %safe_isbn,
-                "Library of Congress SRU answered 200 with a body that is not a searchRetrieve response"
-            );
-            return Err(MetadataError::Parse(
-                "Library of Congress SRU response carries no numberOfRecords".to_string(),
-            ));
+        // A 200 that is not an SRU answer, or an SRU diagnostic, is a failure
+        // of the source — not "LoC does not hold this ISBN".
+        if let Some(problem) = sru_body_problem(&body) {
+            tracing::warn!(isbn = %safe_isbn, problem, "Library of Congress SRU answered 200 with an unusable body");
+            return Err(MetadataError::Parse(format!(
+                "Library of Congress SRU answered 200 with {problem}"
+            )));
         }
         Ok(Self::parse_marcxml_record(&body))
     }
@@ -732,6 +762,45 @@ mod tests {
         assert_eq!(r.page_count, Some(282));
     }
 
+    /// A manufacture (ind2 3) or distribution (ind2 2) 264 never stands in for
+    /// the publisher; with no usable 264 the 260 is read.
+    #[test]
+    fn manufacture_and_distribution_264_are_not_the_publisher() {
+        let body = r#"<zs:numberOfRecords>1</zs:numberOfRecords><record xmlns="x">
+  <datafield tag="245" ind1="1" ind2="0"><subfield code="a">T.</subfield></datafield>
+  <datafield tag="264" ind1=" " ind2="3"><subfield code="b">Printer Ltd.,</subfield><subfield code="c">1998.</subfield></datafield>
+  <datafield tag="264" ind1=" " ind2="2"><subfield code="b">Distributor,</subfield></datafield>
+  <datafield tag="260" ind1=" " ind2=" "><subfield code="b">Real Press,</subfield><subfield code="c">2003.</subfield></datafield>
+</record>"#;
+        let r = LibraryOfCongressProvider::parse_marcxml_record(body).unwrap();
+        assert_eq!(r.publisher.as_deref(), Some("Real Press"));
+        assert_eq!(r.publication_date.as_deref(), Some("2003"));
+    }
+
+    #[test]
+    fn marc_language_codes_map_to_iso_639_1() {
+        for (raw, expected) in [
+            ("eng", "en"),
+            ("fre", "fr"),
+            ("ger", "de"),
+            ("spa", "es"),
+            ("ita", "it"),
+            ("jpn", "jpn"),
+        ] {
+            assert_eq!(normalize_language(raw), expected, "{raw}");
+        }
+    }
+
+    #[test]
+    fn sru_base_url_falls_back_to_production_when_unset_or_blank() {
+        assert_eq!(sru_base_url_from(None), SRU_BASE_URL_DEFAULT);
+        assert_eq!(sru_base_url_from(Some("   ".into())), SRU_BASE_URL_DEFAULT);
+        assert_eq!(
+            sru_base_url_from(Some(" http://mock/LCDB ".into())),
+            "http://mock/LCDB"
+        );
+    }
+
     /// Without a publication 264 (ind2="1"), a copyright 264 (ind2="4") must
     /// not stand in: its $c is a ©-date and it has no publisher.
     #[test]
@@ -841,6 +910,7 @@ mod tests {
         pub const CHALLENGE: &str = "9780000000001";
         pub const SERVER_ERROR: &str = "9780000000002";
         pub const NOT_SRU: &str = "9780000000003";
+        pub const DIAGNOSTIC: &str = "9780000000004";
 
         #[derive(serde::Deserialize)]
         struct Params {
@@ -870,6 +940,11 @@ mod tests {
                     .into_response(),
                 SERVER_ERROR => (StatusCode::INTERNAL_SERVER_ERROR, "boom").into_response(),
                 NOT_SRU => (StatusCode::OK, "<html><body>Portal</body></html>").into_response(),
+                DIAGNOSTIC => (
+                    StatusCode::OK,
+                    r#"<zs:searchRetrieveResponse xmlns:zs="http://www.loc.gov/zing/srw/"><zs:version>1.1</zs:version><zs:numberOfRecords>0</zs:numberOfRecords><zs:diagnostics><diag:diagnostic xmlns:diag="http://www.loc.gov/zing/srw/diagnostic/"><diag:uri>info:srw/diagnostic/1/1</diag:uri><diag:message>Permanent system error</diag:message></diag:diagnostic></zs:diagnostics></zs:searchRetrieveResponse>"#,
+                )
+                    .into_response(),
                 _ => (StatusCode::OK, super::SRU_EMPTY).into_response(),
             }
         }
@@ -960,6 +1035,19 @@ mod tests {
         let err = p.lookup_by_isbn(mock::NOT_SRU).await.unwrap_err();
         assert!(matches!(err, MetadataError::Parse(_)), "{err}");
         assert!(logs_contain("not a searchRetrieve response"));
+    }
+
+    /// An SRU diagnostic carries `numberOfRecords 0` but is a source failure,
+    /// not "not held" — on both entry points.
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn an_sru_diagnostic_is_a_failure_not_a_miss() {
+        let (p, _) = mock_provider().await;
+        let err = p.lookup_by_isbn(mock::DIAGNOSTIC).await.unwrap_err();
+        assert!(err.to_string().contains("SRU diagnostic"), "{err}");
+        assert!(p.lookup_marc_zones(mock::DIAGNOSTIC).await.is_none());
+        assert!(p.lookup_marc_zones(mock::NOT_SRU).await.is_none());
+        assert!(logs_contain("skipping zones"), "the zone path logs it too");
     }
 
     #[tokio::test]

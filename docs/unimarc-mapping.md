@@ -108,7 +108,7 @@ MARC 21 record as the zones above:
 |---|---|---|
 | `title` / `subtitle` | 245$a / 245$b | ISBD trailing punctuation removed |
 | authors | 100$a, then 700$a | `"Surname, Forename"` inverted; 700 with `$t` (a related work) skipped |
-| `publisher` | 264$b (`ind2="1"`), else 260$b | |
+| `publisher` | 264$b (`ind2="1"`), else 264$b of a production statement, else 260$b | distribution / manufacture / copyright 264s (`ind2` 2, 3, 4) are never used |
 | `publication_date` | 008/07–10, else 264$c / 260$c | first four-digit year |
 | `language` | 008/35–37 | MARC code mapped to ISO 639-1 where known |
 | `page_count` | 300$a | `"xx, 392 pages ;"`, `"282 p."` — parse shared with the BnF 215$a |

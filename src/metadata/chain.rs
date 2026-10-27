@@ -274,24 +274,24 @@ impl ChainExecutor {
                                 if filler.name() == already_used || !filler.supplies_marc_zones() {
                                     continue;
                                 }
-                                // #495 — don't re-ask a provider this run has
-                                // already settled: one that just failed (a
-                                // Cloudflare challenge, a throttle, a timeout
-                                // would only repeat, and a transport failure
-                                // would burn another retry loop out of the
-                                // global budget), or one that missed when its
-                                // zones ride on that same lookup request.
-                                let settled = attempts.iter().any(|a| {
-                                    a.provider == filler.name()
-                                        && match a.outcome {
-                                            AttemptOutcome::NoResult => {
-                                                filler.zones_come_with_lookup()
-                                            }
-                                            AttemptOutcome::NotConfigured => false,
-                                            _ => true,
-                                        }
-                                });
-                                if settled {
+                                // #495 — don't re-ask a provider whose primary
+                                // lookup just FAILED against the same endpoint
+                                // (a Cloudflare challenge, a throttle, a
+                                // timeout would only repeat; a transport
+                                // failure would burn another retry loop out of
+                                // the global budget). A miss is not skipped:
+                                // see `zones_share_lookup_endpoint`.
+                                let failed_this_run = filler.zones_share_lookup_endpoint()
+                                    && attempts.iter().any(|a| {
+                                        a.provider == filler.name()
+                                            && !matches!(
+                                                a.outcome,
+                                                AttemptOutcome::Answered
+                                                    | AttemptOutcome::NoResult
+                                                    | AttemptOutcome::NotConfigured
+                                            )
+                                    });
+                                if failed_this_run {
                                     continue;
                                 }
                                 if !winner.has_missing_unimarc_zones() {
@@ -607,10 +607,10 @@ mod tests {
     }
 
     /// #495 — counts zone-completion calls; its primary lookup either fails
-    /// or misses, and `zones_come_with_lookup` is configurable.
+    /// or misses, and `zones_share_lookup_endpoint` is configurable.
     struct SettledZoneProvider {
         fail: bool,
-        zones_with_lookup: bool,
+        shared_endpoint: bool,
         zone_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     }
 
@@ -625,8 +625,8 @@ mod tests {
         fn supplies_marc_zones(&self) -> bool {
             true
         }
-        fn zones_come_with_lookup(&self) -> bool {
-            self.zones_with_lookup
+        fn zones_share_lookup_endpoint(&self) -> bool {
+            self.shared_endpoint
         }
         async fn lookup_by_isbn(
             &self,
@@ -1342,13 +1342,13 @@ mod tests {
     async fn zone_calls_after_primary(
         pool: &sqlx::Pool<sqlx::MySql>,
         fail: bool,
-        zones_with_lookup: bool,
+        shared_endpoint: bool,
     ) -> (usize, Option<String>) {
         let zone_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mut registry = ProviderRegistry::new();
         registry.register(Box::new(SettledZoneProvider {
             fail,
-            zones_with_lookup,
+            shared_endpoint,
             zone_calls: zone_calls.clone(),
         }));
         registry.register(Box::new(ZoneProvider {
@@ -1375,35 +1375,37 @@ mod tests {
         )
     }
 
-    /// A provider that failed earlier in the same run (a Cloudflare
-    /// challenge, a throttle, a timeout) is not asked again for zones.
+    /// A provider whose primary lookup failed in this run against the same
+    /// endpoint (a Cloudflare challenge, a throttle, a timeout) is not asked
+    /// again for zones.
     #[sqlx::test(migrations = "./migrations")]
-    async fn zone_completion_skips_a_provider_that_failed_this_run(
+    async fn zone_completion_skips_a_shared_endpoint_provider_that_failed(
         pool: sqlx::Pool<sqlx::MySql>,
     ) {
-        let (calls, edition) = zone_calls_after_primary(&pool, true, false).await;
-        assert_eq!(calls, 0, "a provider that just failed must not be re-asked");
+        let (calls, edition) = zone_calls_after_primary(&pool, true, true).await;
+        assert_eq!(calls, 0, "the same endpoint just failed; asking again repeats it");
         assert_eq!(edition, None);
     }
 
-    /// A provider whose zones ride on its primary lookup (LoC since #495, the
-    /// BnF) and which just missed is not asked again: the identical request
-    /// could only return the same nothing.
+    /// A primary MISS does not settle the zone question, even on a shared
+    /// endpoint: a LoC record without 245$a is no usable result but may still
+    /// carry zones.
     #[sqlx::test(migrations = "./migrations")]
-    async fn zone_completion_skips_a_missed_provider_whose_zones_come_with_lookup(
+    async fn zone_completion_still_asks_a_shared_endpoint_provider_that_missed(
         pool: sqlx::Pool<sqlx::MySql>,
     ) {
-        let (calls, _) = zone_calls_after_primary(&pool, false, true).await;
-        assert_eq!(calls, 0);
+        let (calls, edition) = zone_calls_after_primary(&pool, false, true).await;
+        assert_eq!(calls, 1);
+        assert_eq!(edition.as_deref(), Some("From the second ask"));
     }
 
-    /// The K10plus shape is untouched: a primary miss says nothing about zones
-    /// that live behind a different call, so completion still asks.
+    /// The K10plus shape: zones behind a different call than the primary
+    /// lookup, so even a primary failure says nothing about them.
     #[sqlx::test(migrations = "./migrations")]
-    async fn zone_completion_still_asks_a_missed_provider_with_separate_zones(
+    async fn zone_completion_still_asks_a_separate_endpoint_provider_that_failed(
         pool: sqlx::Pool<sqlx::MySql>,
     ) {
-        let (calls, edition) = zone_calls_after_primary(&pool, false, false).await;
+        let (calls, edition) = zone_calls_after_primary(&pool, true, false).await;
         assert_eq!(calls, 1);
         assert_eq!(edition.as_deref(), Some("From the second ask"));
     }

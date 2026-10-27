@@ -81,6 +81,21 @@ Code review 2026-10-27 (Blind Hunter, Edge Case Hunter, Acceptance Auditor): 0 d
 
 Dismissed (17): namespace-prefixed `<marc:record>` / controlfield (LoC sends none; the old zone parser required a bare `<record` too); unmapped 3-letter MARC language codes (the BnF provider already stores raw UNIMARC codes); plaintext HTTP for SRU (the only endpoint LoC serves — no HTTPS on :210, 404 on :443; recorded as D-11-2-7); retry loop vs 5 s budget (D-11-2-5, comment corrected); attribute order before `tag=` (LoC serialises `tag ind1 ind2`); entity-only subfield shadowing a later repeat; `numberOfRecords` with inner whitespace; 008 date `0000`; `invert_name` leaving `"Smith, John, Jr."` inverted; `LOC_API_BASE_URL` ignored silently (test-only variable); "since v1.20.1" wording (the planned release); BnF path lacking its own `pages` test (covered by the shared `marc.rs` tests); File List vs patch scope; and duplicates across layers.
 
+#### Re-review (Rule #6) — 2026-10-27
+
+Second pass, same three layers: 0 High; Medium findings on the first-pass fixes, all patched; the rest Low.
+
+- [x] [Review][Patch] The first-pass chain fix settled a provider on a primary MISS when its zones "ride on the lookup" — but a LoC record without 245$a is a miss that still carries zones, which were then lost. The hook is now `zones_share_lookup_endpoint` and the chain skips only a provider whose primary lookup FAILED in the run; a miss is re-asked (one cheap request). K10plus-shaped providers (separate zone endpoint) are re-asked even after a failure [src/metadata/chain.rs, src/metadata/provider.rs]
+- [x] [Review][Patch] An SRU diagnostic (it carries `numberOfRecords 0`) passed as "not held" — now a failure on the primary path and a logged skip on the zone path; the zone path also logs a non-SRU 200 [src/metadata/library_of_congress.rs:sru_body_problem]
+- [x] [Review][Patch] 264 fallback could take a distribution / manufacture statement, and the `ind2` test depended on attribute order and could match subfield text — `marc::indicator2` reads the opening tag (any attribute order, either quote); `datafields` slices now start at `<` [src/metadata/marc.rs, src/metadata/library_of_congress.rs]
+- [x] [Review][Patch] C1 controls: the first-pass filter used `is_control()`, which also caught C1 — MARC 21 non-sort markers (U+0088/89, U+0098/9C) are now dropped, C0 stays verbatim [src/metadata/marc.rs:decode_xml_text]
+- [x] [Review][Patch] ISBD trim: `"Gallimard, ."` kept its comma, a period after `)` was kept, `"Version 2.0."` kept its period, `Univ.`/`Pub.`/`Assoc.`… lost theirs, a separator after a no-break space was kept [src/metadata/marc.rs:trim_isbd_punctuation]
+- [x] [Review][Patch] Plates before the main sequence (`"[16] p. of plates, 245 p."`) gave 16 [src/metadata/marc.rs:page_count_from_extent]
+- [x] [Review][Patch] Blank `LOC_SRU_BASE_URL` burned the retry loop — falls back to production; unit-tested through `sru_base_url_from` (replaces the removed env test) [src/metadata/library_of_congress.rs]
+- [x] [Review][Patch] Language mapping test restored for MARC codes; misplaced rustdoc on `page_count_from_extent`; mapping docs aligned with the publisher rule [src/metadata/library_of_congress.rs, src/metadata/marc.rs, docs/unimarc-mapping.md]
+
+Dismissed (second pass): `tracing-test` dev-dependency (already in `Cargo.toml`); E2E provenance badge "could be another list" (it is the resolving provider's badge, `find_metadata_source`); namespace-prefixed `<marc:record>`; `"Plan B."` keeping its period (indistinguishable from an initial); `"Vol. 2, [100] p."`; plain-HTTP port 210 (D-11-2-7); hard-coded v1.20.1 (the planned release); `Node.js.`-style dotted words keeping the period.
+
 ## Dev Notes
 
 - **Why not keep the JSON as a fallback.** The epic AC says `?fo=json` is no longer called; a Cloudflare challenge is a policy, not an outage, so a fallback would add a guaranteed-403 request per scan. Removed outright.
@@ -144,8 +159,8 @@ claude-opus-5-5
 
 - `Cargo.toml`, `Cargo.lock` — `unicode-normalization` direct dependency
 - `src/metadata/marc.rs` — `datafields`, `controlfield`, `decode_xml_text`, `trim_isbd_punctuation`, `page_count_from_extent`, tests
-- `src/metadata/bnf.rs` — page count through the shared helper; `zones_come_with_lookup`
-- `src/metadata/provider.rs` — `zones_come_with_lookup` trait hook (review)
+- `src/metadata/bnf.rs` — page count through the shared helper; `zones_share_lookup_endpoint`
+- `src/metadata/provider.rs` — `zones_share_lookup_endpoint` trait hook (review)
 - `src/metadata/chain.rs` — completion skips providers settled in the run; 3 DB-backed tests (review)
 - `src/metadata/library_of_congress.rs` — SRU-only provider, challenge detection, User-Agent, health URL, tests (incl. mock-server tests)
 - `tests/e2e/mock-metadata-server/server.py` — LoC JSON mock removed; primary-record and challenge fixtures; BnF blocklist; Open Library entry
@@ -160,3 +175,4 @@ claude-opus-5-5
 - 2026-10-27 — Validation pass (checklist.md): concrete mock fixtures for the two E2E journeys, the `docs/unimarc-mapping.md` update (T4b), confirmation that no out-of-module caller uses the removed constructors. No blocker found.
 - 2026-10-27 — Implementation T1–T6; status → review.
 - 2026-10-27 — Code review (3 layers): 11 patches applied, 1 deferred (#504), 17 dismissed; status → done.
+- 2026-10-27 — Re-review (Rule #6): Medium findings on the first-pass fixes patched (chain skip rule narrowed to failures, SRU diagnostics, 264 indicators, C1 controls, ISBD and page-count edge cases); third pass run on the delta.

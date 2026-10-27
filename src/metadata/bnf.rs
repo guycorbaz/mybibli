@@ -120,9 +120,9 @@ impl MetadataProvider for BnfProvider {
         true
     }
 
-    /// #495 — its zones ride on the same request as its normal lookup, so a
-    /// primary miss in this run settles the zone question too.
-    fn zones_come_with_lookup(&self) -> bool {
+    /// #495 — its zone path hits the same endpoint as its normal lookup, so a
+    /// failed lookup in this run means the zone request would fail too.
+    fn zones_share_lookup_endpoint(&self) -> bool {
         true
     }
 
