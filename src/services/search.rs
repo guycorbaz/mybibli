@@ -27,7 +27,7 @@ pub fn detect_code(query: &str) -> CodeType {
         CodeType::Isbn(isbn13)
     } else if (q.len() == 13 && q.chars().all(|c| c.is_ascii_digit()))
         || (q.len() == 10
-            && q[..9].chars().all(|c| c.is_ascii_digit())
+            && q.as_bytes()[..9].iter().all(u8::is_ascii_digit)
             && q.ends_with(|c: char| c.is_ascii_digit() || c == 'X'))
     {
         CodeType::Isbn(q)
@@ -300,6 +300,8 @@ mod tests {
             detect_code("080442957x"),
             CodeType::Isbn("9780804429573".to_string())
         );
+        // 10 bytes with a multi-byte char straddling byte 9: no panic.
+        assert_eq!(detect_code("22050012é"), CodeType::Text);
     }
 
     #[test]

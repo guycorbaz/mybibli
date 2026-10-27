@@ -91,6 +91,7 @@ test.describe("ISBN-10 at scan (#497)", () => {
     page,
   }) => {
     const { isbn10 } = specIsbn10("IX", 4);
+    expect(isbn10).toMatch(/^\d{10}$/); // the checksum flip below needs a digit
     const last = parseInt(isbn10.slice(-1), 10);
     const badChecksum = isbn10.slice(0, 9) + ((last + 1) % 10).toString();
     await page.goto("/catalog");

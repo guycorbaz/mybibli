@@ -1,6 +1,6 @@
 # Story 11.1: Recognise an ISBN-10 at scan
 
-Status: review
+Status: done
 
 GitHub issue: #497 (type:bug, Medium). Covers: FR122. Epic 11 — first story (production fix, ships in v1.20.1 with 11-2 and 11-3).
 
@@ -49,6 +49,16 @@ Data model: titles keep ISBN in `titles.isbn` (13 chars). No migration. No new u
 - [x] T6 — E2E `tests/e2e/specs/journeys/catalog-isbn10.spec.ts` (specId `IX`), helper `specIsbn10()` in `tests/e2e/helpers/isbn.ts`
 - [x] T7 — gates: fmt, clippy `-D warnings`, `cargo test`, DB tests, sqlx check, flake grep, targeted then full E2E
 
+### Review Findings
+
+Code review 2026-10-27 (Blind Hunter, Edge Case Hunter, Acceptance Auditor): 1 decision-needed, 3 patch, 1 defer, 11 dismissed.
+
+- [x] [Review][Decision] Titles catalogued before 11-1 under the raw ISBN-10 (`upc` column) are duplicated on rescan — the scan now looks up `isbn = <ISBN-13>` only, so prod titles 271/282/287 (and any other legacy row) get a second title on the next scan until the user's data clean-up. Options: a fallback lookup on `upc = <raw ISBN-10>` in the scan/search paths, or keep the clean-up as the sole remedy (as scoped in #497). **Resolved 2026-10-27: clean-up only (user's choice) — no fallback lookup.**
+- [x] [Review][Patch] `search::detect_code` panics on a 10-byte query with a multi-byte char (`q[..9]` off a char boundary, e.g. `22050012é`) — pre-existing, but in the function this story edits [src/services/search.rs:30]
+- [x] [Review][Patch] Bad-checksum E2E builds `NaN` if its fixture ever ends in `X` — add an explicit guard [tests/e2e/specs/journeys/catalog-isbn10.spec.ts:94]
+- [x] [Review][Patch] Dev Notes claim on Rule #12 is wrong: `catalog.rs` grows by 43 lines (unit tests included), it does not shrink [this file, Dev Notes]
+- [x] [Review][Defer] Hyphenated or spaced ISBNs (`2-205-00121-3`) are not normalised in search or scan — same pre-existing gap for ISBN-13 [src/utils.rs:84] — deferred, pre-existing (#502)
+
 ## Dev Notes
 
 - ISBN-10 checksum: weights 10..1 over the 10 positions, `X` = 10 and only valid in position 10; valid iff sum % 11 == 0. ISBN-13 conversion: prefix `978` (every ISBN-10 maps to 978), keep the 9 body digits, recompute the EAN-13 check digit. ISBN-10 has no 979 form.
@@ -57,7 +67,7 @@ Data model: titles keep ISBN in `titles.isbn` (13 chars). No migration. No new u
 - Client JS stays untouched: it never blocks a 10-char code, and duplicating the mod-11 logic in JS would be a second source of truth.
 - `handle_scan_with_type` (UPC + chosen media type) is not reached by an ISBN-10 any more; unchanged.
 - Out of scope: ISBN-10 entry in the manual title form, wishlist "By ISBN" form, title-edit ISBN (#272) — story 11.10 reuses the helper for expected tomes; production data clean-up of titles 271/282/287 is the user's (issue #497 § Data clean-up); user-manual wording goes with the epic documentation story 11-24.
-- Rule #12: `catalog.rs` gains a few lines only (one branch, one struct field, one rebinding); the EAN-13 refactor removes more than it adds.
+- Rule #12: `catalog.rs` grows by 43 lines (about +11 net in production code — one branch, one struct field, one rebinding, partly offset by the EAN-13 refactor — the rest unit tests); no split in this story (AC9).
 
 ### Regression map (validated 2026-10-27)
 
@@ -112,3 +122,4 @@ claude-opus-5-5
 
 - 2026-10-27 — Validation pass (checklist.md): added the regression map (10-char literals in the suites, `CodeDetection` construction sites, EAN-13 re-validation in `create_from_isbn`, E2E wording and ISBN-10 derivation). No blocker found.
 - 2026-10-27 — Implementation T1–T7; status → review.
+- 2026-10-27 — Code review (3 layers): decision resolved (legacy raw ISBN-10 rows → data clean-up only), 3 Low patches applied (search panic guard, E2E fixture guard, Dev Notes line count), 1 deferred to #502, 11 dismissed; no Medium+ left → status done.
