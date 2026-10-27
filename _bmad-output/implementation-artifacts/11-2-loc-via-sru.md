@@ -105,6 +105,10 @@ Same three layers on the full diff. Acceptance Auditor and Edge Case Hunter: no 
 
 - [x] [Review][Patch] Confirmation pass on that fix (1 Medium): the AACR2 combined form `[S.l. : $b s.n.]` left `s.n.` as publisher, and a cataloguer-supplied `[Gallimard]` was dropped — detection is now on the content (`s.n.`, `publisher not identified`), bracketed real names are kept without brackets, and a 264 statement falls back to the 260 [src/metadata/library_of_congress.rs:publisher_name]
 
+- [x] [Review][Patch] Final confirmation (Low only, applied): only unmatched outer brackets are removed (`[Distributed by] Penguin` intact), `[s. n.]` and `[producer not identified]` recognised [src/metadata/library_of_congress.rs:publisher_name]
+
+Rule #6 closed: the confirmation pass on the last Medium fix found no Medium+.
+
 Dismissed (Low): a LoC/BnF miss re-asked once by completion (accepted cost of D-11-2-9); retry loop vs 5 s budget (D-11-2-5); E2E `waitForSelector` before navigating (same pattern as `catalog-marc-zones.spec.ts`, stable); non-fatal SRU warnings alongside records (LCDB emits none); diagnostics inside `recordData`, prefixed `<marc:record>`, non-literal `controlfield`, self-closing `<datafield/>` (not emitted by LoC); `"Plan B."` / `"12 p. l., 245 p."`; relator 700s (#504); raw 3-letter language codes (BnF parity); C0 references kept verbatim (XML 1.0 forbids them, so never seen); port 210 reachability on restricted networks (release-note item).
 
 ## Dev Notes
@@ -166,6 +170,8 @@ claude-opus-5-5
 - T5: `catalog-loc-sru.spec.ts` — 2 journeys, also green twice against a non-reset stack. App log during the run shows the distinct warn line: `Library of Congress answered with a Cloudflare challenge (cf-mitigated: challenge); not retried, moving on`.
 - T6 gates (2026-10-27, under `mem-guard`): `cargo clippy --all-targets -- -D warnings` clean; `cargo test -j 1 --no-fail-fast` against the test DB — 61 binaries, 1595 passed, 0 failed (lib: 1205); `cargo sqlx prepare --check --workspace -- --all-targets` clean; flake grep clean; `tsc --noEmit` clean. Full E2E after `e2e-reset.sh`, `CI=true --workers=2`: **342 passed, 2 skipped, 0 failed**. Note: `cargo test` at the default job count was killed twice by the memory guard while compiling (oomd pressure on the user slice); `-j 1` went through.
 
+- Final gates after the review loop (2026-10-27, `mem-guard`): clippy `-D warnings` clean; `cargo test -j 1 --no-fail-fast` against the test DB — 61 binaries, 1607 passed, 0 failed (lib: 1217); `cargo sqlx prepare --check` clean; flake grep and `tsc --noEmit` clean; full E2E after `e2e-reset.sh`, `CI=true --workers=2`: 342 passed, 2 skipped, 0 failed.
+
 ### File List
 
 - `Cargo.toml`, `Cargo.lock` — `unicode-normalization` direct dependency
@@ -189,3 +195,4 @@ claude-opus-5-5
 - 2026-10-27 — Re-review (Rule #6): Medium findings on the first-pass fixes patched (chain skip rule narrowed to failures, SRU diagnostics, 264 indicators, C1 controls, ISBD and page-count edge cases); third pass run on the delta.
 - 2026-10-27 — Third review pass: one Medium (bracketed cataloguer's statements as publisher) patched with small doc/comment fixes; final confirmation pass on that delta.
 - 2026-10-27 — Confirmation pass: AACR2 `s.n.` inside a combined bracket fixed (content-based check); final confirmation on that delta clean.
+- 2026-10-27 — Final confirmation pass: no Medium+ (3 Low applied); review loop closed.

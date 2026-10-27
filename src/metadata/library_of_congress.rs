@@ -207,14 +207,35 @@ fn descriptive(raw: Option<String>) -> Option<String> {
 /// that there is none.
 fn publisher_name(raw: Option<String>) -> Option<String> {
     let value = descriptive(raw)?;
-    let inner = value
-        .trim_matches(|c: char| c == '[' || c == ']' || c.is_whitespace())
-        .to_string();
-    let lowered = inner.trim_end_matches('.').to_lowercase();
-    if matches!(
-        lowered.as_str(),
-        "s.n" | "sine nomine" | "publisher not identified" | "publisher unknown"
-    ) || inner.is_empty()
+    // Drop an outer bracket only when it is unmatched inside the value, so
+    // `[Distributed by] Penguin` and `Little, Brown [and Company]` survive.
+    let mut inner = value.as_str();
+    if inner.starts_with('[') && !inner[1..].contains(']') {
+        inner = &inner[1..];
+    }
+    if inner.ends_with(']') && !inner[..inner.len() - 1].contains('[') {
+        inner = &inner[..inner.len() - 1];
+    }
+    if inner.starts_with('[') && inner.ends_with(']') && inner.matches('[').count() == 1 {
+        inner = &inner[1..inner.len() - 1];
+    }
+    let inner = inner.trim().to_string();
+    // "s.n." / "s. n." / "[producer not identified]" …, spacing ignored.
+    let key: String = inner
+        .trim_end_matches('.')
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_lowercase();
+    if inner.is_empty()
+        || matches!(
+            key.as_str(),
+            "s.n"
+                | "sinenomine"
+                | "publishernotidentified"
+                | "producernotidentified"
+                | "publisherunknown"
+        )
     {
         return None;
     }
@@ -812,6 +833,17 @@ mod tests {
         assert_eq!(p("s.n.,"), None, "AACR2 [S.l. : $b s.n., $c 1985]");
         assert_eq!(p("s.n.]"), None);
         assert_eq!(p("[Gallimard],").as_deref(), Some("Gallimard"));
+        assert_eq!(p("[s. n.]"), None);
+        assert_eq!(p("[producer not identified],"), None);
+        assert_eq!(
+            p("[Distributed by] Penguin,").as_deref(),
+            Some("[Distributed by] Penguin")
+        );
+        assert_eq!(
+            p("Little, Brown [and Company],").as_deref(),
+            Some("Little, Brown [and Company]")
+        );
+        assert_eq!(p("[Random House,").as_deref(), Some("Random House"));
         assert_eq!(p("Addison-Wesley,").as_deref(), Some("Addison-Wesley"));
     }
 
