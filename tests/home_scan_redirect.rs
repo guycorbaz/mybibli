@@ -236,6 +236,31 @@ async fn home_scan_isbn_unknown_redirects_to_catalog_with_code(pool: MySqlPool) 
     assert_eq!(hx, Some("/catalog?code=9780000000002".to_string()));
 }
 
+// Story 11-1 (#497) — an ISBN-10 is looked up and forwarded as its ISBN-13.
+#[sqlx::test(migrations = "./migrations")]
+async fn home_scan_isbn10_redirects_to_title_stored_under_isbn13(pool: MySqlPool) {
+    let g = first_genre_id(&pool).await;
+    let id = insert_title_with_isbn(&pool, "Blueberry", "9782205001211", g).await;
+
+    let (status, hx, _loc) = scan_htmx(&app(pool), "2205001213").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(hx, Some(format!("/title/{id}")));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn home_scan_isbn10_unknown_falls_back_to_catalog_with_isbn13(pool: MySqlPool) {
+    let (status, hx, _loc) = scan_htmx(&app(pool), "080442957X").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(hx, Some("/catalog?code=9780804429573".to_string()));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn home_scan_isbn10_bad_checksum_is_forwarded_unchanged(pool: MySqlPool) {
+    let (status, hx, _loc) = scan_htmx(&app(pool), "2205001214").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(hx, Some("/catalog?code=2205001214".to_string()));
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn home_scan_vcode_known_redirects_to_volume_detail(pool: MySqlPool) {
     let g = first_genre_id(&pool).await;

@@ -22,6 +22,9 @@ pub fn detect_code(query: &str) -> CodeType {
         CodeType::VCode(q)
     } else if q.len() == 5 && q.starts_with('L') && q[1..].chars().all(|c| c.is_ascii_digit()) {
         CodeType::LCode(q)
+    } else if let Some(isbn13) = crate::utils::isbn10_to_isbn13(&q) {
+        // Story 11-1 (#497): titles are stored under their ISBN-13.
+        CodeType::Isbn(isbn13)
     } else if (q.len() == 13 && q.chars().all(|c| c.is_ascii_digit()))
         || (q.len() == 10
             && q[..9].chars().all(|c| c.is_ascii_digit())
@@ -278,13 +281,24 @@ mod tests {
 
     #[test]
     fn test_detect_isbn10() {
+        // Bad ISBN-10 checksum: the shape is still looked up raw, then
+        // falls through to fulltext (pre-11-1 behaviour, D-11-1-5).
         assert_eq!(
             detect_code("207036024X"),
             CodeType::Isbn("207036024X".to_string())
         );
+        // Story 11-1 — a valid ISBN-10 is searched under its ISBN-13.
         assert_eq!(
             detect_code("0201633612"),
-            CodeType::Isbn("0201633612".to_string())
+            CodeType::Isbn("9780201633610".to_string())
+        );
+        assert_eq!(
+            detect_code(" 2205001213 "),
+            CodeType::Isbn("9782205001211".to_string())
+        );
+        assert_eq!(
+            detect_code("080442957x"),
+            CodeType::Isbn("9780804429573".to_string())
         );
     }
 

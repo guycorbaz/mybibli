@@ -86,6 +86,8 @@ pub async fn handle_home_scan(
         code_type = detection.code_type,
         "Home scan classified"
     );
+    // Story 11-1 — an ISBN-10 is looked up (and forwarded) as its ISBN-13.
+    let code = detection.normalized_code.as_deref().unwrap_or(code);
 
     let target = match detection.code_type {
         "isbn" => match TitleModel::find_id_by_isbn(pool, code).await {

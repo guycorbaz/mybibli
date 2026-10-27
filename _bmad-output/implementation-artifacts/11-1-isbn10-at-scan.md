@@ -1,6 +1,6 @@
 # Story 11.1: Recognise an ISBN-10 at scan
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #497 (type:bug, Medium). Covers: FR122. Epic 11 — first story (production fix, ships in v1.20.1 with 11-2 and 11-3).
 
@@ -37,17 +37,17 @@ Data model: titles keep ISBN in `titles.isbn` (13 chars). No migration. No new u
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `src/utils.rs` helpers (AC5, AC8)
-  - [ ] `pub fn ean13_check_digit(first12: &str) -> Option<u32>` (12 ASCII digits, weights 1/3)
-  - [ ] `pub fn isbn10_to_isbn13(code: &str) -> Option<String>`: exactly 10 chars, 9 ASCII digits + digit/`X`/`x`, Σ(dᵢ·(10−i)) ≡ 0 mod 11, returns `"978" + first 9 + ean13 check digit`
-  - [ ] unit tests
-  - [ ] refactor `TitleService::validate_isbn13_checksum` and `catalog.rs::validate_issn_from_ean` onto `ean13_check_digit` (existing tests guard behaviour)
-- [ ] T2 — `detect_code_type` (AC1–AC3, AC9): new field `CodeDetection::normalized_code: Option<String>` (Some only when the scanned form is rewritten); ISBN-10 branch before the `upc` branch; unit tests
-- [ ] T3 — `handle_scan`: rebind `code` to `detection.normalized_code` right after detection; log both forms
-- [ ] T4 — `home_scan.rs`: same rebinding; integration test in `tests/home_scan_redirect.rs`
-- [ ] T5 — `search.rs::detect_code`: valid ISBN-10 → `CodeType::Isbn(isbn13)`; update `test_detect_isbn10`; integration test in `tests/search_filter_browse.rs` (or a new `tests/search_isbn10.rs`)
-- [ ] T6 — E2E `tests/e2e/specs/journeys/catalog-isbn10.spec.ts` (specId `IX`), helper `specIsbn10()` in `tests/e2e/helpers/isbn.ts`
-- [ ] T7 — gates: fmt, clippy `-D warnings`, `cargo test`, DB tests, sqlx check, flake grep, targeted then full E2E
+- [x] T1 — `src/utils.rs` helpers (AC5, AC8)
+  - [x] `pub fn ean13_check_digit(first12: &str) -> Option<u32>` (12 ASCII digits, weights 1/3)
+  - [x] `pub fn isbn10_to_isbn13(code: &str) -> Option<String>`: exactly 10 chars, 9 ASCII digits + digit/`X`/`x`, Σ(dᵢ·(10−i)) ≡ 0 mod 11, returns `"978" + first 9 + ean13 check digit`
+  - [x] unit tests
+  - [x] refactor `TitleService::validate_isbn13_checksum` and `catalog.rs::validate_issn_from_ean` onto `ean13_check_digit` (existing tests guard behaviour)
+- [x] T2 — `detect_code_type` (AC1–AC3, AC9): new field `CodeDetection::normalized_code: Option<String>` (Some only when the scanned form is rewritten); ISBN-10 branch before the `upc` branch; unit tests
+- [x] T3 — `handle_scan`: rebind `code` to `detection.normalized_code` right after detection; log both forms
+- [x] T4 — `home_scan.rs`: same rebinding; integration test in `tests/home_scan_redirect.rs`
+- [x] T5 — `search.rs::detect_code`: valid ISBN-10 → `CodeType::Isbn(isbn13)`; update `test_detect_isbn10`; integration test in `tests/search_filter_browse.rs` (or a new `tests/search_isbn10.rs`)
+- [x] T6 — E2E `tests/e2e/specs/journeys/catalog-isbn10.spec.ts` (specId `IX`), helper `specIsbn10()` in `tests/e2e/helpers/isbn.ts`
+- [x] T7 — gates: fmt, clippy `-D warnings`, `cargo test`, DB tests, sqlx check, flake grep, targeted then full E2E
 
 ## Dev Notes
 
@@ -87,6 +87,28 @@ claude-opus-5-5
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created
+- T1: `utils::ean13_check_digit` + `utils::isbn10_to_isbn13`; `TitleService::validate_isbn13_checksum` and `catalog.rs::validate_issn_from_ean` now delegate to the shared EAN-13 computation (no third copy).
+- T2/T3: `CodeDetection::normalized_code`; ISBN-10 branch placed before the ISSN/UPC branches; `handle_scan` rebinds `code` once after detection and logs both forms.
+- T4: `home_scan.rs` rebinds the same way — lookup and `/catalog?code=` fallback use the ISBN-13.
+- T5: `search::detect_code` maps a valid ISBN-10 to `CodeType::Isbn(isbn13)`; a bad-checksum ISBN-10 shape keeps the raw lookup.
+- T6: `catalog-isbn10.spec.ts` (specId `IX`) + `specIsbn10()` helper. The spec is rerunnable against a non-reset stack: a first scan accepts either the new-title skeleton carrying the ISBN-13 or one more "already in your catalog" entry, and always asserts that no media-type selector appears; "existing title" checks count entries before/after the scan.
+- T7 gates (2026-10-27, run under the station-wide `mem-guard`): `cargo clippy --all-targets -- -D warnings` clean; `cargo test --no-fail-fast` against the test DB — 61 test binaries, all `ok`, 0 failed (lib: 1190 passed); `cargo sqlx prepare --check --workspace -- --all-targets` clean; flake grep clean; `tsc --noEmit` clean. E2E: targeted spec 5/5 (also twice against a non-reset stack); full suite after `e2e-reset.sh`, `CI=true --workers=2`: **340 passed, 2 skipped, 0 failed, 0 flaky**. An earlier full run (before the rerun fix) had 339 passed + 1 flaky `shelving.spec.ts:193` — known failure #499, unrelated.
+- `cargo fmt --check` reports diffs repo-wide, identical on `main` (rustfmt of Rust 1.99); CI does not run fmt; left untouched to keep the diff focused.
 
 ### File List
-- Validation pass (checklist.md, 2026-10-27): added the regression map (10-char literals in the suites, `CodeDetection` construction sites, EAN-13 re-validation in `create_from_isbn`, E2E wording and ISBN-10 derivation). No blocker found.
+
+- `src/utils.rs` — `ean13_check_digit`, `isbn10_to_isbn13`, unit tests
+- `src/services/title.rs` — `validate_isbn13_checksum` on the shared helper
+- `src/routes/catalog.rs` — `CodeDetection::normalized_code`, ISBN-10 branch, `handle_scan` rebinding, `validate_issn_from_ean` refactor, unit tests
+- `src/routes/home_scan.rs` — rebinding
+- `src/services/search.rs` — ISBN-10 → ISBN-13 in `detect_code`, updated `test_detect_isbn10`
+- `tests/home_scan_redirect.rs` — 3 DB-backed tests
+- `tests/search_isbn10.rs` — new, 3 DB-backed tests
+- `tests/e2e/helpers/isbn.ts` — `specIsbn10()`
+- `tests/e2e/specs/journeys/catalog-isbn10.spec.ts` — new, 5 E2E tests
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 11-1 → review
+
+### Change Log
+
+- 2026-10-27 — Validation pass (checklist.md): added the regression map (10-char literals in the suites, `CodeDetection` construction sites, EAN-13 re-validation in `create_from_isbn`, E2E wording and ISBN-10 derivation). No blocker found.
+- 2026-10-27 — Implementation T1–T7; status → review.

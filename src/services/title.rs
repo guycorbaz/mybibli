@@ -19,24 +19,9 @@ impl TitleService {
     /// Validate an ISBN-13 checksum using the modulo-10 algorithm
     /// with alternating weights 1 and 3.
     pub fn validate_isbn13_checksum(isbn: &str) -> bool {
-        if isbn.len() != 13 {
-            return false;
-        }
-
-        let digits: Vec<u32> = match isbn.chars().map(|c| c.to_digit(10)).collect() {
-            Some(d) => d,
-            None => return false,
-        };
-
-        let sum: u32 = digits
-            .iter()
-            .enumerate()
-            .take(12)
-            .map(|(i, &d)| if i % 2 == 0 { d } else { d * 3 })
-            .sum();
-
-        let check_digit = (10 - (sum % 10)) % 10;
-        check_digit == digits[12]
+        isbn.len() == 13
+            && isbn.bytes().all(|b| b.is_ascii_digit())
+            && crate::utils::ean13_check_digit(isbn) == isbn[12..].parse::<u32>().ok()
     }
 
     /// Validate a UPC-A checksum using the modulo-10 algorithm (#384).
