@@ -206,5 +206,5 @@ development_status:
   # bundles (3+ GH issues sharing one fix surface) get a polish-N spec.
   # Status flow: backlog → ready-for-dev → in-progress → done. Same as
   # stories. Lightweight "iteration retro" only if a new pattern emerges.
-  polish-1-modal-lifecycle-hardening: backlog
+  polish-1-modal-lifecycle-hardening: done  # shipped in PR #201 (a049223); status line was never updated
   polish-2-undo-recent-scan-actions: done

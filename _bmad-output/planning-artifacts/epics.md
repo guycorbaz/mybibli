@@ -1,5 +1,6 @@
 ---
 stepsCompleted: [1, 2, 3]
+epic11StepsCompleted: [1, 2, 3, 4]
 inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 ---
 
@@ -7,6 +8,7 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 
 ## Changelog
 
+- **2026-10-27** — Added **Epic 11: An AI assistant proposes, the librarian decides** (MCP server #493 + fixes #494–#497), with new requirements FR122–FR147, NFR42–NFR48, AR27–AR31, UX-DR31–UX-DR34. Decided in the party-mode session of 2026-10-27. Epic 10 retro action A5 ("no more Epic N+1") is deliberately reversed for this epic.
 - **2026-04-13** — Inserted new **Epic 6: Pipeline CI/CD et fiabilité** between Epic 5 closure and original Epic 6. Renumbered: original Epic 6 (Accès multi-rôle & Sécurité) → Epic 7; original Epic 7 (Administration & Configuration) → Epic 8; original Epic 8 (Polish UX & Accessibilité) → Epic 9. Historical documents (old story files, old retros, readiness report) updated in the same pass for consistency. FR assignments did not change — only the epic labels that hold them.
 
 ## Overview
@@ -138,6 +140,32 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - FR119: Admin can delete a borrower from /borrowers page (blocked if active loans, modal confirmation)
 - FR120: Admin page can be organized as 5 tabs: Health, Users, Reference Data, Trash, System
 - FR121: Setup wizard steps can be idempotent — if interrupted and resumed, each step detects existing data
+- FR122: Scanning or typing a valid ISBN-10 (including an `X` check digit) is recognised as an ISBN and converted to ISBN-13 before the duplicate check and the metadata lookup (#497)
+- FR123: The Library of Congress provider retrieves metadata through SRU / MARCXML; a Cloudflare challenge response is logged as such, distinct from a plain HTTP error (#495)
+- FR124: The "Recent additions" fold indicator on the home page reflects the open / closed state of the section, including a state restored on load (#494)
+- FR125: The main navigation bar stays visible whatever the scroll position (#496)
+- FR126: Admin can create an API key with scope `propose` — read everything, create proposals, no direct write
+- FR127: A local AI agent can connect to mybibli's MCP endpoint (`/api/mcp`) with an API key
+- FR128: The agent can read the catalog: search titles, volumes and contributors; read a title's detail
+- FR129: The agent can read series (positions, omnibus flags, gaps, expected tomes), the titles without a cover, and the titles with incomplete metadata
+- FR130: The agent can propose creating a series: name, type, total tome count, existing titles with position and omnibus flag, expected tomes the library does not own
+- FR131: The agent can propose attaching existing titles to an existing series, with expected tomes
+- FR132: The agent can propose completing a title's metadata
+- FR133: The agent can propose a cover for a title, with or without an existing cover, by uploading the image bytes
+- FR134: Every proposal carries mandatory sources (URLs) and records the API key that filed it
+- FR135: The agent can read its own past proposals and their status, including rejected ones
+- FR136: A rejected proposal cannot be resubmitted before an admin-configurable delay (default 90 days)
+- FR137: Librarian and Admin can list pending proposals and open a proposal's detail; sources open in a new tab; a proposed cover is shown next to the current one
+- FR138: Librarian and Admin can accept or reject a proposal
+- FR139: Librarian and Admin can edit a proposal before accepting it (series name, type, total count; positions and omnibus flags; proposed metadata values; expected tomes) and remove individual lines
+- FR140: Accepting a proposal whose target entities changed since it was filed is refused, and the proposal is marked stale
+- FR141: A series stores its expected tomes (title, ISBN, position) and shows them on its detail page
+- FR142: From a series' detail page, an expected tome can be added to the wishlist
+- FR143: The proposals page is reachable from a navigation entry carrying a pending-count badge and from a dashboard indicator
+- FR144: Fields written by accepting a proposal are marked as manually edited, so a later automatic metadata re-fetch does not overwrite them (same protection as #232)
+- FR145: When a title whose ISBN matches an expected tome is cataloged, it is attached to the series at that position and the expected tome is settled (same mechanism as the wishlist auto-link, CR #242)
+- FR146: Accepting or rejecting a proposal records who decided and when
+- FR147: Librarian can add, edit and delete expected tomes by hand from a series' detail page
 
 ### NonFunctional Requirements
 
@@ -182,6 +210,13 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - NFR39: All list views must display 25 items per page (fixed in v1)
 - NFR40: Metadata fetch must use configurable global timeout (default 30s), parallel execution, never block scan loop
 - NFR41: Reference data (genres, states, roles) not translated in v1
+- NFR42: The MCP endpoint implements the standard streamable HTTP transport, accepts protocol revisions `2025-11-25` (with `initialize`) and `2026-07-28` (stateless), carries no client-specific behaviour, and is checked with the official MCP Inspector
+- NFR43: The MCP endpoint validates `Origin` and `Host` explicitly (DNS-rebinding protection); it is meant for LAN use only, never exposed to the Internet
+- NFR44: The `propose` scope cannot cause any direct catalog write; the `read` scope cannot create proposals
+- NFR45: Proposed covers obey the same decode and size bounds as a manual upload (#479) and stay in a staging area until accepted; the maximum request body size on `/api/mcp` is set explicitly and consistently with those bounds (base64 inflates an image by about a third)
+- NFR46: `rmcp` is pinned to `=3.8.0` and confined to `src/mcp/`; it is upgraded only for a security advisory or at the pre-release checkpoint
+- NFR47: Everything an agent submits is untrusted data: source URLs are accepted only with an `http` or `https` scheme and validated at filing time; proposed values are never rendered as HTML
+- NFR48: Staged covers are purged when their proposal is decided (accepted covers are moved, the others deleted) and when a proposal goes stale or its API key is revoked, reusing the auto-purge mechanism of story 8-7
 
 ### Additional Requirements
 
@@ -213,6 +248,11 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - AR24: Database common columns: id BIGINT PK, created_at, updated_at, deleted_at, version INT
 - AR25: Timestamps: MariaDB TIMESTAMP in UTC, conversion to local in templates for display
 - AR26: No dotenvy crate — env vars injected by Docker, read via std::env::var()
+- AR27: MCP layer in `src/mcp/`: tools are thin adapters over `services/`; no `rmcp` or JSON-RPC type crosses the tool interface, so a hand-written transport can replace `rmcp` behind the same interface
+- AR28: The MCP endpoint is mounted at `/api/mcp` and inherits the existing CSRF short-circuit on `/api/*` (`src/middleware/csrf.rs`); the frozen exempt-route allowlist is unchanged
+- AR29: New tables `proposals`, `proposal_items` (carrying the target entity's `version` at filing time, for staleness detection) and `series_expected_tomes`, plus a cover staging directory; all tables follow AR24
+- AR30: The resubmission delay is a K/V row of the `settings` table (story 8-5 pattern), editable in Admin → System
+- AR31: For Kesh's SDK re-examination (Kesh epic 32, Q8), stories 11.6 and 11.22 and the Epic 11 retrospective record: crates added, build-time and binary-size deltas, integration friction with Axum 0.8 and the middleware stack, and the cost of any major upgrade
 
 ### UX Design Requirements
 
@@ -246,6 +286,10 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR28: Implement responsive per-page layouts as specified in UX spec: /catalog feedback above scan field on tablet, hamburger scanner auto-close, etc.
 - UX-DR29: Implement WCAG 2.2 AA accessibility: semantic HTML, ARIA attributes per component spec, skip link, dynamic html lang, prefers-reduced-motion, axe-core in Playwright CI
 - UX-DR30: Implement Similar Titles section on /title/:id: same author > same genre+decade > same series, max 8, section absent if 0. Titles without publication year excluded from decade matching
+- UX-DR31: Proposals page: list (type, target, filing date, API key label, status) and detail; sources as links with `target="_blank" rel="noopener"`; side-by-side current vs proposed values for metadata and covers; inline edit and line removal before acceptance; accept / reject through the UX-DR8 Modal (no `hx-confirm`)
+- UX-DR32: Navigation entry to the proposals page with a pending-count badge; the navigation bar is not compacted; the `lg` breakpoint is checked for overflow with an admin's full link set
+- UX-DR33: "Pending proposals" dashboard indicator on the home page, following the existing home-indicator pattern
+- UX-DR34: Series detail lists expected tomes among the positions, each with an "Add to wishlist" action
 
 ### FR Coverage Map
 
@@ -303,6 +347,12 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 | FR119 | 4 | Borrower deletion with guard |
 | FR120 | 8 | Admin page 5 tabs structure |
 | FR121 | 8 | Setup wizard idempotent steps |
+| FR122-FR125 | 11 | Production fixes: ISBN-10 at scan, LoC via SRU, Recent-additions triangle, sticky navigation |
+| FR126-FR129 | 11 | `propose` API-key scope, MCP endpoint, agent read tools |
+| FR130-FR136 | 11 | Agent proposals: series, metadata, covers, sources, history, resubmission delay |
+| FR137-FR140 | 11 | Proposals page: review, accept / reject, edit before accepting, staleness |
+| FR141-FR143 | 11 | Expected tomes, wishlist from series detail, access to the proposals page |
+| FR144-FR147 | 11 | Accepted fields protected from re-fetch, expected-tome auto-settle at scan, decision trail, manual expected-tome CRUD |
 
 **NFR Distribution:**
 - NFR1-NFR5, NFR7-NFR10, NFR12, NFR14, NFR22-NFR24, NFR26-NFR28, NFR30-NFR32, NFR34-NFR35, NFR38 (foundation) → Epic 1
@@ -318,6 +368,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - AR7, AR12 (mock extended), AR14 → Epic 3
 - AR9, AR13 → Epic 7/8
 - AR15, AR19 → Epic 7
+- AR27, AR28, AR29, AR30, AR31 → Epic 11
 
 **UX-DR Distribution:**
 - UX-DR1, UX-DR2 (basic), UX-DR3, UX-DR5 (basic), UX-DR6 (basic), UX-DR10 (basic), UX-DR15, UX-DR23, UX-DR24, UX-DR25 (scan-field, feedback, focus, theme), UX-DR29 (foundation) → Epic 1
@@ -328,8 +379,9 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR14 (Toast), UX-DR25 (scanner-guard.js) → Epic 7
 - UX-DR7, UX-DR20, UX-DR21 → Epic 8
 - UX-DR4, UX-DR6 (complete), UX-DR8, UX-DR13, UX-DR26, UX-DR28 → Epic 9
+- UX-DR31, UX-DR32, UX-DR33, UX-DR34 → Epic 11
 
-**Coverage: 121/121 FRs, 41/41 NFRs, 26/26 ARs, 30/30 UX-DRs — ZERO orphans.**
+**Coverage: 147/147 FRs, 48/48 NFRs, 31/31 ARs, 34/34 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27.)
 
 ## Epic List
 
@@ -1694,3 +1746,609 @@ Mobile-first responsive UX completed per UX-DR28 (DataTable → card list, admin
 - Foundation Rule #7 — the spec is a smoke test layer, NOT counted toward an epic smoke test (this epic's smoke is the 10.3 mobile flow)
 - Unit tests: none (test infrastructure)
 - E2E: the new tests themselves
+
+### Epic 11: An AI assistant proposes, the librarian decides
+
+A local AI agent — Claude Code first, then Hermes Agent or any other MCP client — explores the catalog through a built-in MCP server and proposes series, title attachments, metadata and covers that the provider chain could not find. The agent never writes to the catalog: every change is a proposal that a Librarian or Admin accepts, edits or rejects on a dedicated page. A series' missing tomes become first-class "expected tomes", settled automatically when scanned and one click away from the wishlist. The epic opens with four production fixes.
+
+**FRs:** FR122–FR147
+**NFRs:** NFR42–NFR48 (plus NFR3 CSP and NFR12 a11y unchanged)
+**ARs:** AR27–AR31
+**UX-DRs:** UX-DR31–UX-DR34 (UX-DR8 Modal reused)
+**Issues:** #493 (MCP server), #494, #495, #496, #497
+
+**Scope note — a deliberate bundle.** Epic 10 retro action A5 ("no more Epic N+1"; production bundles become `polish-N` specs) is reversed for this epic by decision of the project lead on 2026-10-27. The four fixes (#497, #495, #494, #496) are unrelated to the MCP server; they ride this epic so that releases follow epics rather than a burst of small patches.
+
+**Releases — one exception.** An intermediate patch release **v1.20.1** is cut after stories 11.1–11.3 (ISBN-10 and Library of Congress hurt daily cataloging). Everything else ships in the release that closes the epic, after its retrospective.
+
+**Key decisions (party-mode session, 2026-10-27).**
+- Endpoint `/api/mcp` (inherits the `/api/*` CSRF short-circuit; the frozen exempt-route allowlist is unchanged) — #493 says `/mcp`, the epic is authoritative.
+- SDK: the official `rmcp` crate pinned to `=3.8.0`, confined to `src/mcp/` (AR27). No upgrade during the epic except for a security advisory surfaced by the daily advisory scan (#481); story 11.22 decides on any upgrade before the release. Measurements feed the SDK re-examination of another project that chose a hand-written transport (AR31).
+- No client is privileged: standard streamable HTTP, both protocol revisions, explicit `Origin` / `Host` validation, MCP Inspector (NFR42, NFR43).
+- Access to the proposals page: navigation entry with a pending-count badge plus a dashboard indicator; the navigation bar is not compacted.
+
+**Sequencing.** 11.1 → 11.3 (independent, parallelisable) → **v1.20.1** → 11.4 → 11.5 (`propose` scope) → 11.6 (spike + endpoint; blocks the MCP tool stories) → 11.7 → 11.8 → 11.9 (blocks all proposal stories) → 11.10 → 11.11 → 11.12 → 11.15 → 11.16 → 11.17 → 11.18 → 11.19 → 11.20 → 11.21 → 11.22 (`rmcp` checkpoint) → 11.23 (epic smoke, Foundation Rule #7) → 11.24 → retrospective → release.
+
+**Stories:**
+
+
+#### Story 11.1: Recognise an ISBN-10 at scan (closes #497)
+
+As a librarian,
+I want an ISBN-10 to be scanned like an ISBN-13,
+So that older books and comics get their metadata and are not catalogued twice.
+
+**Covers:** FR122
+
+**Acceptance Criteria:**
+
+**Given** a valid ISBN-10 such as `2205001213`
+**When** it is scanned on `/catalog`
+**Then** it is classified as `isbn`, converted to `9782205001211`, and the title is created and fetched exactly as for the ISBN-13
+
+**Given** an ISBN-10 whose check digit is `X`
+**When** it is scanned
+**Then** it receives the same treatment
+
+**Given** a 10-digit code whose ISBN-10 checksum fails
+**When** it is scanned
+**Then** it is not taken for an ISBN and the current classification applies
+
+**Given** a title already catalogued under its ISBN-13
+**When** its ISBN-10 is scanned
+**Then** the existing title is returned and no duplicate is created
+
+**And** checksum validation and conversion live in one helper in `src/utils.rs` (Foundation Rule #1), used by both `routes/catalog.rs::detect_code_type` and `services/search.rs::detect_code`, so a home-page search by ISBN-10 finds a title stored under its ISBN-13
+**And** unit tests cover a valid ISBN-10, an `X` check digit, a bad checksum and the conversion; E2E covers an ISBN-10 scan creating the title with its ISBN-13, and an ISBN-10 scan returning an existing title
+**And** `catalog.rs` (3,050 lines, above Rule #12) is not split here — that is separate tech debt
+
+#### Story 11.2: Library of Congress through SRU (closes #495)
+
+As a librarian,
+I want the Library of Congress provider to answer again,
+So that English-language titles get their authoritative source back.
+
+**Covers:** FR123
+
+**Acceptance Criteria:**
+
+**Given** an ISBN known to the Library of Congress
+**When** the provider chain consults the LoC provider
+**Then** title, contributors, publisher and date come from the SRU / MARCXML record (`lx2.loc.gov`), and `www.loc.gov/books/?fo=json` is no longer called
+
+**Given** a response carrying `cf-mitigated: challenge` from any LoC endpoint
+**When** it is received
+**Then** it is logged at `warn` as a Cloudflare challenge, distinct from a plain HTTP error, and the chain moves on to the next provider
+
+**Given** a non-success SRU response
+**When** it is received
+**Then** it is logged at `warn` (today `debug`)
+
+**And** the User-Agent is built from `CARGO_PKG_VERSION` plus the project URL, replacing the hard-coded `mybibli/1.5.0` and `mybibli/1.14.0`
+**And** no attempt is made to pass the challenge
+**And** UNIMARC zone completion (CR #439) keeps working, under its existing tests
+**And** unit tests use the existing mock base URLs (`LOC_SRU_BASE_URL`) for a nominal MARCXML record, an empty result and a challenge response
+
+#### Story 11.3: Rotate the "Recent additions" triangle (closes #494)
+
+As a visitor,
+I want the triangle in front of "Recent additions" to show whether the section is open,
+So that I can see its state at a glance.
+
+**Covers:** FR124
+
+**Acceptance Criteria:**
+
+**Given** the section is closed
+**When** I open it
+**Then** the triangle points down, and points right again when I close it
+
+**Given** an open state restored from `localStorage` on load
+**When** the page renders
+**Then** the triangle already points down
+
+**And** the change is CSS only (`group` on `<details>`, `group-open:rotate-90` on the icon), CSP-clean, no JavaScript
+**And** E2E (`home.spec.ts`) asserts the icon's computed transform when open and when closed
+
+#### Story 11.4: Sticky navigation bar (closes #496)
+
+As a user,
+I want the navigation bar to stay visible while I scroll,
+So that I never have to scroll back up to reach the menu.
+
+**Covers:** FR125
+
+**Acceptance Criteria:**
+
+**Given** a long page (home, catalog, series detail, admin)
+**When** I scroll to the bottom
+**Then** the navigation bar stays at the top of the viewport
+
+**Given** the "Skip to content" link
+**When** it is activated
+**Then** its target is not hidden under the bar (`scroll-padding-top`: 48 px below `md`, 56 px from `md`)
+
+**Given** the mobile menu is open while the bar is stuck
+**When** I use it
+**Then** it stays usable and above the content
+
+**Given** an open modal or the feedback list
+**Then** they still render above the bar
+
+**Given** a printable page (wishlist print)
+**When** it is printed
+**Then** the bar is not repeated
+
+**And** the navigation is not compacted (CR #443 breakpoints unchanged)
+**And** E2E (`responsive-layouts.spec.ts`) asserts the bar is in the viewport after scrolling at mobile, tablet and desktop widths, and that the skip link's target is visible
+
+#### Story 11.5: The `propose` API-key scope
+
+As an admin,
+I want to issue an API key that can only read and propose,
+So that an AI agent can never modify the catalog directly.
+
+**Covers:** FR126, NFR44
+
+**Acceptance Criteria:**
+
+**Given** Admin → API keys
+**When** I create a key
+**Then** I can choose the `propose` scope besides `read` and `write`, and the key gets a distinct plaintext prefix (`mybibli_pr_…`)
+
+**Given** a `propose` key
+**When** it calls a `/api/v1` read endpoint
+**Then** the call succeeds
+**And** `PATCH /api/v1/titles/{id}` answers 403 `insufficient_scope`
+
+**Given** a `read` or `write` key
+**Then** it never carries the `propose` right (NFR44); a new `ApiKeyPropose` extractor requires exactly the `propose` scope
+
+**And** a migration extends `api_keys.scope` to accept `propose`; existing keys are unchanged
+**And** `ApiKeyScope::from_db` maps `propose` explicitly (today any unknown value silently falls back to `Read`)
+**And** the scope label and help text exist in all four locale files (`tests/locale_parity.rs`)
+**And** unit tests cover the full scope matrix; E2E covers creating a `propose` key from Admin → API keys
+
+#### Story 11.6: MCP endpoint on `/api/mcp` with `rmcp` (spike + foundation)
+
+As a librarian using Claude Code,
+I want to connect my AI agent to mybibli,
+So that it can start exploring the catalog.
+
+**Covers:** FR127, NFR42, NFR43, NFR45, NFR46, AR27, AR28, AR31
+
+**Acceptance Criteria:**
+
+**Given** the dependency `rmcp = "=3.8.0"`
+**Then** it is referenced only from `src/mcp/`; tools implement a mybibli-owned trait and no `rmcp` or JSON-RPC type crosses that interface (AR27, NFR46)
+
+**Given** a request to `/api/mcp` with a `propose` key
+**When** the client opens with `initialize` (revision `2025-11-25`) or calls a tool directly without a session (revision `2026-07-28`)
+**Then** both succeed (NFR42), and an unknown protocol revision is refused cleanly
+
+**Given** a missing, `read` or `write` key
+**Then** the endpoint refuses access
+
+**Given** an `Origin` outside the allowlist or a `Host` outside the configured hosts
+**Then** the request is refused (NFR43); the operator can configure the allowed hosts (the NAS is not loopback) — the mechanism is decided in this story and documented
+
+**And** the endpoint exposes one real read tool, `get_title`, going through `services/`
+**And** the maximum request body size is set explicitly (NFR45)
+**And** the CSRF exemption is inherited through `/api/*`; `csrf_exempt_routes_frozen` stays green (AR28)
+**And** Rust integration tests cover both protocol revisions, the scope matrix, and `Origin` / `Host` rejection; the MCP Inspector check and a real Claude Code session are manual steps recorded in the PR with a screenshot
+**And** the AR31 measurements (crates added, build-time and binary-size deltas, friction with Axum 0.8 and the middleware stack) are recorded in the story file
+**And** if `rmcp` proves unusable, the story records that finding and switches to a hand-written transport behind the same trait — an explicit, documented decision, never a silent swap
+
+#### Story 11.7: Catalog read tools
+
+As an AI agent,
+I want to search and read the catalog,
+So that I can identify what I could propose.
+
+**Covers:** FR128, AR27
+
+**Acceptance Criteria:**
+
+**Given** a `propose` key
+**Then** the tools `search_titles` (text, ISBN, media type, genre; paginated), `get_title` (enriched: volumes, contributors and roles, series and position, cover present or not, manually edited fields) and `search_contributors` return structured JSON
+
+**And** soft-deleted rows never appear, and pagination is capped server-side
+**And** every tool is a thin adapter over `services/` (`search.rs`, `title.rs`) — no SQL in `src/mcp/`
+**And** every tool carries a description and an input schema clear enough for an agent to use it without external documentation
+**And** integration tests cover each tool, plus an unknown and a soft-deleted identifier
+
+#### Story 11.8: Series and gaps read tools
+
+As an AI agent,
+I want to see series, their gaps and the incomplete titles,
+So that I know what to look for on the web.
+
+**Covers:** FR129
+
+**Acceptance Criteria:**
+
+**Given** a `propose` key
+**Then** the tools `list_series`, `get_series` (type, total count, positions, omnibus flags, gaps computed as in `SeriesModel::list_with_gaps`), `list_titles_without_cover` and `list_titles_with_incomplete_metadata` are available
+
+**Given** `list_titles_with_incomplete_metadata`
+**Then** a title is incomplete when it lacks a description, a publisher, a contributor or a publication year, and the list can be filtered by missing field
+
+**And** all lists are paginated and exclude soft-deleted rows
+**And** `get_series` does not include expected tomes yet — story 11.10 adds them
+**And** integration tests cover each tool on seeded data (a series with gaps, a title without a cover, a title without a description)
+
+
+#### Story 11.9: Proposals schema and service
+
+As a librarian,
+I want every agent proposal stored with its sources and the state of what it targets,
+So that I can review it safely later.
+
+**Covers:** FR134, FR140, NFR47, AR29
+
+**Acceptance Criteria:**
+
+**Given** the migration
+**Then** it creates `proposals` (kind `series_create` / `series_attach` / `metadata` / `cover`; status `pending` / `accepted` / `rejected` / `stale`; filing API key; sources; decided-by user; decided-at; optional rejection reason) and `proposal_items` (one line per action: target table, target id, the target's `version` at filing time, proposed values), both following AR24
+
+**Given** a proposal without sources, or with a source whose scheme is not `http` / `https`
+**When** it is filed
+**Then** it is refused with an explicit error (FR134, NFR47)
+
+**Given** a pending proposal whose target entity changed version or was deleted
+**When** its staleness is checked
+**Then** it is marked `stale` (FR140)
+
+**And** the service exposes filing, listing, detail and status transitions; only `pending` → `accepted` / `rejected` / `stale` is allowed, and nothing leaves a final state
+**And** the cover staging directory is created and configured next to `covers/`, unused for now
+**And** JSON columns are read with `CAST(… AS CHAR)` (MariaDB gotcha) and `cargo sqlx prepare` is run
+**And** unit and integration tests cover source validation, the transition rules and staleness detection
+
+#### Story 11.10: Expected tomes — data and auto-settle at scan
+
+As a librarian,
+I want a series to know the tomes I do not own,
+So that its gaps have names and settle by themselves once I scan them.
+
+**Covers:** FR129 (expected tomes), FR141, FR145, AR29
+
+**Acceptance Criteria:**
+
+**Given** the migration
+**Then** `series_expected_tomes` exists (series, position, title, optional ISBN-13, origin `manual` / `proposal`, settled title nullable), following AR24
+
+**Given** a valid ISBN-10 entered for an expected tome
+**Then** it is stored as ISBN-13 using the story 11.1 helper
+
+**Given** an unsettled expected tome with an ISBN
+**When** a title with that ISBN is catalogued (scan or manual creation)
+**Then** the title is attached to the series at that position, the expected tome is marked settled, and the scan feedback says so (FR145)
+
+**Given** that position is already held by another title of the series
+**Then** no attachment is made, the expected tome stays unsettled, and the feedback reports the conflict
+
+**And** the MCP tool `get_series` now returns expected tomes (completing story 11.8)
+**And** the service offers create, update, delete and list-by-series, used by manual entry (11.11) and by proposals (11.12)
+**And** unit and integration tests cover CRUD, auto-settle, the position conflict, and an ISBN-10 stored as ISBN-13
+
+#### Story 11.11: Expected tomes — series page and wishlist
+
+As a librarian,
+I want to see and manage a series' missing tomes from its page and send them to the wishlist,
+So that I know what to buy.
+
+**Covers:** FR142, FR147, UX-DR34
+
+**Acceptance Criteria:**
+
+**Given** a series detail page
+**Then** expected tomes appear in the positions grid with their title, in the missing squares of UX-DR16; everyone who can see the series (anonymous included) sees them, only Librarian and Admin can act on them
+
+**Given** a Librarian
+**When** they add, edit or delete an expected tome
+**Then** the change is saved (FR147); deletion uses the UX-DR8 Modal, never `hx-confirm`
+
+**Given** an expected tome
+**When** I choose "Add to wishlist"
+**Then** a wishlist item is created with its title, its ISBN and a note naming the series and the position (FR142, UX-DR34)
+
+**Given** an expected tome whose ISBN is already on the wishlist
+**Then** the action says so instead of creating a duplicate
+
+**And** labels exist in all four locale files; the page stays CSP-clean; every form carries the CSRF token
+**And** E2E: a Librarian adds an expected tome, sends it to the wishlist, then scans its ISBN — the tome shows as owned at the right position and the wishlist item is linked
+
+#### Story 11.12: Series proposal tools
+
+As an AI agent,
+I want to propose a new series, or attachments to an existing one,
+So that the librarian can group volumes without searching by hand.
+
+**Covers:** FR130, FR131
+
+**Acceptance Criteria:**
+
+**Given** a `propose` key
+**Then** `propose_series_create` (name, type, total count, existing titles with position and omnibus flag, expected tomes with position / title / ISBN, sources) and `propose_series_attach` (target series, titles, expected tomes, sources) are available
+**And** each call files one proposal per series (one item per line) and returns its id and status
+
+**Given** an unknown or soft-deleted title, a position ≤ 0, or a position used twice in the proposal
+**Then** the proposal is refused with an error an agent can act on
+
+**Given** an active series with the same name
+**When** `propose_series_create` is called
+**Then** it is refused and the response points to `propose_series_attach` with that series' id
+
+**Given** a pending proposal already targeting the same series
+**Then** the new one is refused and the response returns the existing proposal's id
+
+**And** every item records its target's `version` (staleness detection); expected tomes carry the origin `proposal`
+**And** integration tests cover the nominal case, each refusal and the duplicate
+
+#### Story 11.13: Metadata proposal tool
+
+As an AI agent,
+I want to propose a title's missing information,
+So that titles the providers never found become complete.
+
+**Covers:** FR132
+
+**Acceptance Criteria:**
+
+**Given** a `propose` key
+**Then** `propose_title_metadata` accepts a title, a subset of its editable fields (subtitle, description, publisher, publication year, Dewey, contributors with role) and sources
+
+**Then** the proposal stores, for each field, the current value next to the proposed one, and drops fields whose value would not change
+
+**Given** a field outside that list, or a value the existing title-edit validation would reject
+**Then** the proposal is refused field by field with an explicit message
+
+**And** contributors are proposed by name and role; whether they already exist is settled at acceptance (story 11.18)
+**And** integration tests cover a nominal proposal, an unchanged field, an invalid field and a soft-deleted title
+
+#### Story 11.14: Cover proposal tool and staging purge
+
+As an AI agent,
+I want to submit a cover I found,
+So that the librarian can approve it without downloading it.
+
+**Covers:** FR133, NFR45, NFR48
+
+**Acceptance Criteria:**
+
+**Given** a `propose` key
+**Then** `propose_cover` accepts a title, the image (base64), its media type and the source URL
+
+**Then** the image passes the same checks as a manual upload (decode and size bounds of #479) before it is written to the staging directory (NFR45)
+
+**Given** a title that already has a cover
+**Then** the proposal is accepted and flagged as a replacement
+
+**Given** an invalid, oversized or unsupported image
+**Then** it is refused and nothing is written to the staging directory
+
+**And** the service provides *promote* (staging → `covers/`) and *discard*, called by rejection (story 11.16) and acceptance (story 11.18)
+**And** revoking an API key marks its pending proposals stale and purges their staged covers; the scheduled purge (story 8-7) also removes orphaned staged files (NFR48)
+**And** integration tests cover a valid image, a refused image, a replacement, key revocation and orphan purging
+
+#### Story 11.15: Proposal history and resubmission delay
+
+As an AI agent, I want to know what was rejected and why; as an admin, I want to set how soon a rejected proposal may come back,
+So that the librarian is not asked the same thing over and over.
+
+**Covers:** FR135, FR136, AR30
+
+**Acceptance Criteria:**
+
+**Given** a `propose` key
+**Then** `list_my_proposals` returns its own proposals, filterable by status, with the decision date and the optional rejection reason for decided ones (FR135)
+
+**Given** Admin → System
+**Then** a "Delay before a rejected proposal can be resubmitted" setting exists, default 90 days, stored in `settings` (AR30, story 8-5 pattern)
+
+**Given** a proposal equivalent to one rejected within the delay
+**When** it is filed
+**Then** it is refused and the response gives the date from which it will be accepted again (FR136)
+**And** two proposals are equivalent when they share the kind and the target: the series (by id, or by normalised name for a creation), the title plus the same set of fields for metadata, the title for a cover
+
+**And** labels exist in all four locale files
+**And** tests cover the history, the delay (refused inside it, accepted after it, with a simulated clock) and the setting
+
+
+#### Story 11.16: Proposals page — list, detail, reject
+
+As a librarian,
+I want to see pending proposals and turn down the ones I do not want,
+So that the agent's suggestions are reviewed in one place.
+
+**Covers:** FR137, FR138 (reject), FR146 (reject), UX-DR31
+
+**Acceptance Criteria:**
+
+**Given** a Librarian or Admin
+**When** they open `/proposals`
+**Then** they see the list (kind, target, filing date, key label, status), filterable by status and kind; an anonymous visitor is redirected to login
+
+**Given** a proposal's detail
+**Then** its items, proposed values (as escaped text, NFR47) and sources are shown, each source opening in a new tab (`target="_blank" rel="noopener noreferrer"`)
+
+**Given** a pending proposal
+**When** I reject it through the UX-DR8 Modal
+**Then** I can enter an optional reason; the proposal becomes `rejected`; who decided and when are recorded (FR146); a staged cover is discarded
+
+**And** modals close via `HX-Trigger: modal-close`; no `hx-confirm`; CSP-clean; labels in all four locale files
+**And** integration tests cover listing, filtering, rejection with and without a reason, and the discard of a staged cover; E2E: a Librarian logs in from a blank browser, opens a proposal and rejects it with a reason
+
+#### Story 11.17: Accept a series proposal
+
+As a librarian,
+I want to accept a series proposal,
+So that the series, its attachments and its expected tomes enter the catalog in one step.
+
+**Covers:** FR138 (accept, series), FR140, FR146 (accept)
+
+**Acceptance Criteria:**
+
+**Given** a pending `series_create` or `series_attach` proposal
+**When** I accept it through the UX-DR8 Modal
+**Then** staleness is re-checked, then all items are applied in one transaction through `services/`: the series is created (or the target series used), titles are attached with their positions and omnibus flags, expected tomes are created with origin `proposal`; who decided and when is recorded (FR146)
+
+**Given** a proposal that has gone stale (a title or the series changed or was deleted since filing)
+**When** I accept it
+**Then** nothing is applied, the proposal is marked `stale`, and the message explains why in plain words (`docs/error-message-style.md`)
+
+**Given** a failure while applying one item
+**Then** the whole transaction rolls back and the proposal stays `pending`
+
+**And** the accept action and its states (pending, stale, accepted) are shown on the detail page built in story 11.16
+**And** integration tests cover `series_create`, `series_attach`, staleness and rollback; E2E: a Librarian accepts a series proposal and finds the series with its titles and expected tomes
+
+#### Story 11.18: Accept a metadata or cover proposal
+
+As a librarian,
+I want to accept a metadata or cover proposal,
+So that a title I could not complete gets the information or cover the agent found.
+
+**Covers:** FR138 (accept, metadata and cover), FR140, FR144, FR146 (accept)
+
+**Acceptance Criteria:**
+
+**Given** a pending `metadata` proposal
+**When** I accept it
+**Then** staleness is re-checked; the title fields are updated in one transaction; contributors are resolved (an existing contributor with the same name and role is reused, otherwise created); the written fields are marked as manually edited (FR144); who decided and when is recorded
+
+**Given** a pending `cover` proposal
+**When** I accept it
+**Then** staleness is re-checked; the staged cover is promoted to `covers/` after the decision is committed (replacing the existing cover when flagged as a replacement); who decided and when is recorded
+
+**Given** a stale metadata or cover proposal
+**When** I accept it
+**Then** nothing is applied, the proposal is marked `stale`, and the message explains why in plain words
+
+**And** a later automatic metadata re-download leaves the accepted fields untouched (#232 protection)
+**And** integration tests cover metadata acceptance, contributor reuse and creation, cover promotion and replacement, staleness, and re-download protection; E2E: a Librarian accepts a metadata proposal and a cover proposal and sees both on the title page
+
+#### Story 11.19: Edit a proposal before accepting it
+
+As a librarian,
+I want to correct a proposal rather than reject it,
+So that I keep the agent's work while fixing its mistakes.
+
+**Covers:** FR139, UX-DR31
+
+**Acceptance Criteria:**
+
+**Given** a pending proposal
+**Then** before accepting I can edit the series name, type and total count, each title's position and omnibus flag, the proposed values and the expected tomes, and I can remove any item (FR139)
+
+**Then** edits pass the same validation as filing, and the agent's original values are kept next to the edited ones so the history shows what changed
+
+**Given** two people editing the same proposal at once
+**Then** optimistic locking on the proposal refuses the second save with the project's usual conflict message
+
+**Given** a proposal whose items were all removed
+**Then** it can only be rejected, not accepted
+
+**And** inline editing reuses `static/js/inline-form.js`; CSP-clean
+**And** unit tests cover validation and locking; E2E edits a position, removes an item, accepts, and checks the series
+
+#### Story 11.20: Side-by-side view for metadata and covers
+
+As a librarian,
+I want to compare what exists with what is proposed,
+So that I can decide at a glance.
+
+**Covers:** FR137, NFR47, UX-DR31
+
+**Acceptance Criteria:**
+
+**Given** a metadata proposal
+**Then** each field shows its current and proposed values side by side, and changed fields are highlighted by more than colour alone (WCAG)
+
+**Given** a cover proposal
+**Then** the current cover (or the placeholder) and the proposed image are shown side by side, and a replacement is flagged
+
+**And** the staged image is never public: it is served by an authenticated route (`/proposals/{id}/cover`, Librarian and Admin), not under `/covers/`
+**And** proposed values are rendered as escaped text, never as HTML (NFR47)
+**And** unit tests cover the staged-image route (anonymous redirected, Librarian 200); axe passes on both views; E2E covers both views
+
+#### Story 11.21: Access to the proposals page
+
+As a librarian,
+I want to see at once that proposals are waiting,
+So that they do not pile up.
+
+**Covers:** FR143, UX-DR32, UX-DR33
+
+**Acceptance Criteria:**
+
+**Given** a Librarian or Admin
+**Then** a "Proposals" entry appears in the navigation bar with a pending-count badge; the badge disappears at zero and its `aria-label` states the count; anonymous visitors see neither
+
+**Given** the home dashboard
+**Then** a "Pending proposals" indicator follows the existing indicator pattern and links to `/proposals` (UX-DR33)
+
+**Given** a decision taken on `/proposals`
+**Then** the badge is up to date on the next navigation
+
+**And** the navigation bar is not compacted; if `responsive-layouts.spec.ts` shows an overflow at `lg` with an Admin's full link set, the story stops and reports to the project lead instead of deciding alone (UX-DR32)
+**And** labels exist in all four locale files
+**And** E2E: the badge and the indicator appear with a pending proposal and disappear once it is decided
+
+#### Story 11.22: `rmcp` checkpoint before the release
+
+As a maintainer,
+I want to decide deliberately whether to upgrade `rmcp`,
+So that the release ships neither a needless change nor a known flaw.
+
+**Covers:** NFR46, AR31
+
+**Acceptance Criteria:**
+
+**Given** the pinned `=3.8.0`
+**When** the checkpoint runs
+**Then** the versions published since then and their release notes are listed in the story file
+
+**Then** the decision is explicit: upgrade only for an open security advisory, a protocol revision a targeted client requires, or a fix we need — otherwise stay on 3.8.0 and record why
+
+**Given** an upgrade
+**Then** it touches only `src/mcp/`, the full suite passes again, and the MCP Inspector check and the Claude Code session are redone
+
+**And** the AR31 measurements are completed (final dependency weight; upgrade cost in files and time, if any) in a "Report for Kesh" section of the story file, feeding the retrospective
+
+#### Story 11.23: Epic 11 smoke test (Foundation Rule #7)
+
+As a maintainer,
+I want one test that walks the epic's core journey from a blank browser,
+So that I know the pieces work together.
+
+**Covers:** Foundation Rule #7 (FR126–FR147 end to end)
+
+**Acceptance Criteria:**
+
+**Given** a blank browser with no injected cookie
+**When** the test runs
+**Then** it chains: admin login through `loginAs` → creation of a `propose` key in Admin → API keys → a scripted MCP client (`tests/e2e/helpers/mcp.ts`, plain JSON-RPC over `fetch`) searches two titles and files a series proposal with two titles and one expected tome → the badge shows 1 → open the proposal, change a position, accept → the series page shows both titles at the right positions and the expected tome → send the expected tome to the wishlist → scan its ISBN → it shows as owned
+
+**And** data is isolated (`specIsbn`, unique names); no `waitForTimeout`
+**And** the test is green under `CI=true npx playwright test --workers=2` (Foundation Rule #13), since it touches shared state
+**And** if this test fails, the epic is not done
+
+#### Story 11.24: Documentation
+
+As an operator,
+I want to know how to connect an agent and how to handle proposals,
+So that I can use the feature without reading the code.
+
+**Covers:** FR126–FR147 (documentation), AR31
+
+**Acceptance Criteria:**
+
+**Given** the user manual (English and French)
+**Then** a new chapter covers creating a `propose` key, configuring the allowed hosts, connecting Claude Code (`claude mcp add --transport http …` with the authorization header), the proposals page (accept, edit, reject with a reason), and expected tomes with the wishlist
+**And** the connection page stays generic (address, header, scope) so it applies to Hermes Agent or any other MCP client
+
+**And** the PDFs are rebuilt
+**And** `CLAUDE.md` documents the new patterns: the `src/mcp/` layer, the proposal lifecycle, expected tomes, cover staging and its purge
+**And** `docs/auth-threat-model.md` covers the new surface: the `propose` scope, `/api/mcp`, `Origin` / `Host` validation, agent content treated as untrusted
+**And** release documentation (Foundation Rule #19) is done at release time, not in this story

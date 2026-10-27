@@ -1,6 +1,6 @@
 # Polish iteration 1: Modal lifecycle hardening
 
-Status: backlog
+Status: done
 
 **Bundle type:** post-Epic-10 polish iteration (per Epic 10 retro action A5 — production-driven polish bundles, no formal epic). 5 GH issues grouped because they share one fix surface.
 
