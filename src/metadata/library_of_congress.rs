@@ -198,10 +198,27 @@ fn descriptive(raw: Option<String>) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-/// A whole value in square brackets — the cataloguer's own wording, such as
-/// `[publisher not identified]` or `[s.n.]` — rather than data from the item.
-fn is_bracketed_statement(value: &str) -> bool {
-    value.starts_with('[') && value.ends_with(']')
+/// The publisher a 264$b / 260$b names, if any.
+///
+/// Square brackets only mean the cataloguer supplied the value from outside
+/// the item (`[Gallimard]` is still Gallimard, kept without its brackets). But
+/// RDA `[publisher not identified]` and AACR2 `s.n.` (*sine nomine*) — alone,
+/// `[s.n.]`, or inside a bracket opened in $a, `[S.l. : $b s.n.]` — state
+/// that there is none.
+fn publisher_name(raw: Option<String>) -> Option<String> {
+    let value = descriptive(raw)?;
+    let inner = value
+        .trim_matches(|c: char| c == '[' || c == ']' || c.is_whitespace())
+        .to_string();
+    let lowered = inner.trim_end_matches('.').to_lowercase();
+    if matches!(
+        lowered.as_str(),
+        "s.n" | "sine nomine" | "publisher not identified" | "publisher unknown"
+    ) || inner.is_empty()
+    {
+        return None;
+    }
+    Some(inner)
 }
 
 /// `"Bloch, Joshua"` → `"Joshua Bloch"` (the BnF provider's convention). Only
@@ -392,12 +409,9 @@ impl LibraryOfCongressProvider {
                     .find(|df| !matches!(indicator2(df), Some('2' | '3' | '4')))
             })
             .copied();
-        // "[publisher not identified]" (RDA) and "[s.n.]" (AACR2) are
-        // cataloguer's statements that there is no publisher — never a name.
         let publisher = publication
-            .and_then(|df| descriptive(extract_subfield(df, "264", "b")))
-            .or_else(|| descriptive(extract_subfield(record, "260", "b")))
-            .filter(|p| !is_bracketed_statement(p));
+            .and_then(|df| publisher_name(extract_subfield(df, "264", "b")))
+            .or_else(|| publisher_name(extract_subfield(record, "260", "b")));
 
         let fixed = controlfield(record, "008");
         let publication_date = fixed
@@ -788,6 +802,17 @@ mod tests {
             assert_eq!(r.dewey_code, None);
             assert_eq!(r.publication_date.as_deref(), Some("2004"));
         }
+    }
+
+    #[test]
+    fn publisher_name_drops_no_publisher_statements_and_keeps_supplied_names() {
+        let p = |v: &str| publisher_name(Some(v.to_string()));
+        assert_eq!(p("[publisher not identified],"), None);
+        assert_eq!(p("[s.n.],"), None);
+        assert_eq!(p("s.n.,"), None, "AACR2 [S.l. : $b s.n., $c 1985]");
+        assert_eq!(p("s.n.]"), None);
+        assert_eq!(p("[Gallimard],").as_deref(), Some("Gallimard"));
+        assert_eq!(p("Addison-Wesley,").as_deref(), Some("Addison-Wesley"));
     }
 
     /// A manufacture (ind2 3) or distribution (ind2 2) 264 never stands in for
