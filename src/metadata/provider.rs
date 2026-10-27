@@ -233,6 +233,13 @@ pub fn metadata_source_display_name(stored: &str) -> String {
 }
 
 /// Trait for external metadata providers (BnF, Google Books, Open Library, etc.).
+//
+// `clippy::double_must_use` (new in Rust 1.99) fires inside the
+// `#[async_trait]` expansion: the macro adds a bare `#[must_use]` to each
+// async method, whose return type — a pinned boxed future — is already
+// `#[must_use]`. The attribute is the macro's, not ours, so it cannot be
+// removed here; the lint is allowed on the trait it expands.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait MetadataProvider: Send + Sync {
     /// Human-readable name of the provider.
