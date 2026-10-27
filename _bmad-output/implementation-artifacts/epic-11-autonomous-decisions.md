@@ -95,3 +95,17 @@ rewritten.
 **Chosen:** `cargo update -p rustls -p rustls-webpki` (0.23.46 / 0.103.16, patch-level, lockfile only) in its own commit on this branch — the epic allows upgrades driven by the daily advisory scan (#481), and Rule #18 asks to fix the root cause of a red CI rather than merge over it. Local `cargo audit`: no vulnerability left.
 **Rejected:** merging with the audit job red (not a required check, but red); a separate chore PR first (would block 11-2 behind another CI cycle for a two-line lock change).
 **Reversible:** yes.
+
+## § 11-3 — Rotate the "Recent additions" triangle (#494)
+
+### D-11-3-1 — E2E asserts the computed `rotate`, not `transform`
+**Context:** the AC and the issue ask to assert "the icon's computed transform". Tailwind v4 (`@tailwindcss/cli@4.2.2`, checked 2026-10-27) emits `rotate-90` as the individual CSS property `rotate: 90deg`; the computed `transform` stays `none` in both states.
+**Chosen:** assert `getComputedStyle(icon).rotate` (`"90deg"` open, `"none"` closed) via `toHaveCSS("rotate", …)` — the property that actually carries the rotation.
+**Rejected:** asserting `transform` (would never change — a test that passes or fails for the wrong reason); forcing a `transform:` rule in `input.css` (not the CSS-only Tailwind change the AC describes).
+**Reversible:** yes.
+
+### D-11-3-2 — Named group `group/fold` instead of a bare `group`
+**Context:** the AC names `group` on `<details>` and `group-open:rotate-90` on the icon. The fold contains title cards that are themselves `.group`; Tailwind's `group-*` variants match any ancestor `.group`, so a bare `group` on `<details>` would make a future `group-hover:` inside a card fire whenever the pointer is anywhere in the fold.
+**Chosen:** `group/fold` on `<details>`, `group-open/fold:rotate-90` on the `<svg>` — same CSS-only, CSP-clean, JS-free change, scoped to this element.
+**Rejected:** the bare `group` (harmless today — no `group-*` variant is used in any template — but a latent trap).
+**Reversible:** yes.
