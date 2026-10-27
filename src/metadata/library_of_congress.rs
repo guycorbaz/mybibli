@@ -68,8 +68,11 @@ use super::provider::{MetadataError, MetadataProvider, MetadataResult};
 /// is the only way to see those records.
 ///
 /// #495 — now that SRU is the primary lookup, the chain's per-provider budget
-/// (5 s by default) bounds this loop: a second attempt fits, a third usually
-/// does not, and the chain then records the provider as timed out.
+/// (5 s by default) bounds this loop: a second attempt fits only when the
+/// first connection drops quickly, a third never does, and the chain then
+/// records the provider as timed out rather than unreachable. Kept as is on
+/// purpose: the #439 measurement is what sized the 2 s spacing, and an admin
+/// can raise `provider_timeout.library_of_congress`.
 const SRU_MAX_ATTEMPTS: u32 = 3;
 const SRU_RETRY_BASE_DELAY_MS: u64 = 2000;
 
@@ -348,11 +351,13 @@ impl LibraryOfCongressProvider {
         // (ind2 0/2/3/4 are production, distribution, manufacture, copyright);
         // 260 is the pre-RDA field.
         let field_264: Vec<&str> = datafields(record, "264");
+        // Without an ind2="1" field, never fall back on a copyright notice
+        // (ind2="4"): its $c is a ©-date and it has no $b.
         let publication = field_264
             .iter()
             .find(|df| df.contains(r#"ind2="1""#))
-            .copied()
-            .or_else(|| field_264.first().copied());
+            .or_else(|| field_264.iter().find(|df| !df.contains(r#"ind2="4""#)))
+            .copied();
         let publisher = publication
             .and_then(|df| descriptive(extract_subfield(df, "264", "b")))
             .or_else(|| descriptive(extract_subfield(record, "260", "b")));
@@ -430,6 +435,12 @@ impl MetadataProvider for LibraryOfCongressProvider {
         true
     }
 
+    /// #495 — its zones ride on the same request as its normal lookup, so a
+    /// primary miss in this run settles the zone question too.
+    fn zones_come_with_lookup(&self) -> bool {
+        true
+    }
+
     /// Zones only, for the chain's completion pass when another provider won.
     /// Any failure (already logged by `fetch_sru`) degrades to "no zones".
     async fn lookup_marc_zones(&self, isbn: &str) -> Option<MetadataResult> {
@@ -460,13 +471,27 @@ impl MetadataProvider for LibraryOfCongressProvider {
         // #495 — one SRU request supplies the description AND the six zones;
         // the challenged `www.loc.gov/books/?fo=json` search is gone.
         let body = self.fetch_sru(&safe_isbn).await?;
+        // A 200 that is not an SRU answer (an HTML page from a proxy or a
+        // challenge without the marker header, an SRU diagnostic) is a
+        // failure of the source, not "LoC does not hold this ISBN".
+        if !body.contains("numberOfRecords") {
+            tracing::warn!(
+                isbn = %safe_isbn,
+                "Library of Congress SRU answered 200 with a body that is not a searchRetrieve response"
+            );
+            return Err(MetadataError::Parse(
+                "Library of Congress SRU response carries no numberOfRecords".to_string(),
+            ));
+        }
         Ok(Self::parse_marcxml_record(&body))
     }
 
-    /// #495 — probe the host the provider actually talks to. A `HEAD` there
-    /// answers 400, which the #285 any-status rule counts as reachable.
+    /// #495 — probe the endpoint the provider actually queries (including a
+    /// `LOC_SRU_BASE_URL` override, so the E2E stack never probes the real
+    /// host). A `HEAD` on the production SRU URL answers 400, which the #285
+    /// any-status rule counts as reachable.
     fn health_check_url(&self) -> Option<&str> {
-        Some(SRU_BASE_URL_DEFAULT)
+        Some(&self.sru_base_url)
     }
 }
 
@@ -707,6 +732,21 @@ mod tests {
         assert_eq!(r.page_count, Some(282));
     }
 
+    /// Without a publication 264 (ind2="1"), a copyright 264 (ind2="4") must
+    /// not stand in: its $c is a ©-date and it has no publisher.
+    #[test]
+    fn copyright_264_is_never_the_publication_statement() {
+        let body = r#"<zs:numberOfRecords>1</zs:numberOfRecords><record xmlns="x">
+  <controlfield tag="008">200101s19uu    nyu           000 0 eng d</controlfield>
+  <datafield tag="245" ind1="1" ind2="0"><subfield code="a">T.</subfield></datafield>
+  <datafield tag="264" ind1=" " ind2="4"><subfield code="c">&#xA9;1999</subfield></datafield>
+  <datafield tag="260" ind1=" " ind2=" "><subfield code="b">Old Press,</subfield><subfield code="c">2001.</subfield></datafield>
+</record>"#;
+        let r = LibraryOfCongressProvider::parse_marcxml_record(body).unwrap();
+        assert_eq!(r.publisher.as_deref(), Some("Old Press"));
+        assert_eq!(r.publication_date.as_deref(), Some("2001"));
+    }
+
     #[test]
     fn record_without_245a_is_no_result() {
         let body = r#"<zs:numberOfRecords>1</zs:numberOfRecords><record xmlns="x">
@@ -749,7 +789,6 @@ mod tests {
     fn user_agent_carries_the_running_version_and_project_url() {
         assert!(USER_AGENT.starts_with(&format!("mybibli/{} ", env!("CARGO_PKG_VERSION"))));
         assert!(USER_AGENT.contains("https://github.com/guycorbaz/mybibli"));
-        assert!(!USER_AGENT.contains("1.5.0") || env!("CARGO_PKG_VERSION") == "1.5.0");
     }
 
     #[test]
@@ -781,9 +820,10 @@ mod tests {
     }
 
     #[test]
-    fn health_probe_targets_the_sru_host() {
-        let p = LibraryOfCongressProvider::with_base_url(reqwest::Client::new(), "http://x");
-        assert_eq!(p.health_check_url(), Some("http://lx2.loc.gov:210/LCDB"));
+    fn health_probe_targets_the_queried_sru_endpoint() {
+        let p = LibraryOfCongressProvider::with_base_url(reqwest::Client::new(), "http://x/LCDB");
+        assert_eq!(p.health_check_url(), Some("http://x/LCDB"));
+        assert_eq!(SRU_BASE_URL_DEFAULT, "http://lx2.loc.gov:210/LCDB");
     }
 
     // ─── #495 — provider against a local mock SRU server ──────────────
@@ -800,6 +840,7 @@ mod tests {
         pub const EMPTY: &str = "9780000000000";
         pub const CHALLENGE: &str = "9780000000001";
         pub const SERVER_ERROR: &str = "9780000000002";
+        pub const NOT_SRU: &str = "9780000000003";
 
         #[derive(serde::Deserialize)]
         struct Params {
@@ -812,11 +853,13 @@ mod tests {
             Query(p): Query<Params>,
         ) -> axum::response::Response {
             hits.fetch_add(1, Ordering::SeqCst);
-            assert_eq!(
-                headers.get("user-agent").and_then(|v| v.to_str().ok()),
-                Some(super::USER_AGENT),
-                "every request must identify itself"
-            );
+            // Every request must identify itself. A mismatch answers 418 (no
+            // retry, immediate test failure) instead of panicking the server
+            // task, which would look like a dropped connection and trigger
+            // the 2 s + 4 s transport back-off.
+            if headers.get("user-agent").and_then(|v| v.to_str().ok()) != Some(super::USER_AGENT) {
+                return (StatusCode::IM_A_TEAPOT, "bad user-agent").into_response();
+            }
             match p.query.trim_start_matches("bath.isbn=") {
                 NOMINAL => (StatusCode::OK, super::SRU_FULL).into_response(),
                 CHALLENGE => (
@@ -826,6 +869,7 @@ mod tests {
                 )
                     .into_response(),
                 SERVER_ERROR => (StatusCode::INTERNAL_SERVER_ERROR, "boom").into_response(),
+                NOT_SRU => (StatusCode::OK, "<html><body>Portal</body></html>").into_response(),
                 _ => (StatusCode::OK, super::SRU_EMPTY).into_response(),
             }
         }
@@ -910,6 +954,15 @@ mod tests {
     }
 
     #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn a_200_that_is_not_an_sru_answer_is_a_failure_not_a_miss() {
+        let (p, _) = mock_provider().await;
+        let err = p.lookup_by_isbn(mock::NOT_SRU).await.unwrap_err();
+        assert!(matches!(err, MetadataError::Parse(_)), "{err}");
+        assert!(logs_contain("not a searchRetrieve response"));
+    }
+
+    #[tokio::test]
     async fn zone_entry_point_degrades_to_none_on_challenge_and_error() {
         let (p, _) = mock_provider().await;
         assert!(p.lookup_marc_zones(mock::CHALLENGE).await.is_none());
@@ -918,19 +971,6 @@ mod tests {
         let zones = p.lookup_marc_zones(mock::NOMINAL).await.expect("zones");
         assert_eq!(zones.edition_statement.as_deref(), Some("Third edition."));
         assert_eq!(zones.title, None, "the zone path never supplies a title");
-    }
-
-    /// `new()` honours `LOC_SRU_BASE_URL` — the variable the E2E stack sets.
-    #[tokio::test]
-    async fn new_reads_the_sru_base_url_from_the_environment() {
-        let (base, hits) = mock::start().await;
-        // SAFETY: no other test in the crate reads or writes LOC_SRU_BASE_URL.
-        unsafe { std::env::set_var("LOC_SRU_BASE_URL", &base) };
-        let p = LibraryOfCongressProvider::new(reqwest::Client::new());
-        unsafe { std::env::remove_var("LOC_SRU_BASE_URL") };
-        let r = p.lookup_by_isbn(mock::NOMINAL).await.unwrap();
-        assert!(r.is_some());
-        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

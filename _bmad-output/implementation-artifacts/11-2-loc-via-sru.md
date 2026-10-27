@@ -1,6 +1,6 @@
 # Story 11.2: Library of Congress through SRU
 
-Status: review
+Status: done
 
 GitHub issue: #495 (type:bug, Medium). Covers: FR123. Epic 11 — second story (production fix, ships in v1.20.1 with 11-1 and 11-3).
 
@@ -31,7 +31,7 @@ Data model: no migration, no new setting, no user-facing string (no locale chang
 
 ## Acceptance Criteria
 
-1. **AC1 — SRU is the primary LoC source.** Given an ISBN the LoC catalogue holds, when the chain consults the LoC provider, then `lookup_by_isbn` issues the SRU MARCXML request only and maps the record: title (245$a), subtitle (245$b), contributors (100$a then 700$a, deduplicated, `"Surname, Forename"` inverted to `"Forename Surname"` like the BnF provider), publisher (first 264$b, else 260$b), publication date (008/07–10 when four digits, else the first digits run of 264$c / 260$c), language (008/35–37 through the existing `normalize_language`), page count (300$a), description (520$a), Dewey (082$a without the `/` segmentation marks), plus the six zones read today. ISBD trailing punctuation (` /`, ` :`, ` ;`, ` =`, `,`, a final `.` that does not close an initial) is removed from title, subtitle, contributors and publisher. `www.loc.gov/books/?fo=json` is no longer called and the JSON parser, its wire types and `LOC_API_BASE_URL` are removed.
+1. **AC1 — SRU is the primary LoC source.** Given an ISBN the LoC catalogue holds, when the chain consults the LoC provider, then `lookup_by_isbn` issues the SRU MARCXML request only and maps the record: title (245$a), subtitle (245$b), contributors (100$a then 700$a, deduplicated, `"Surname, Forename"` inverted to `"Forename Surname"` like the BnF provider), publisher (264$b of the publication statement — `ind2="1"`, else the first 264 that is not a copyright notice `ind2="4"` — else 260$b), publication date (008/07–10 when four digits, else the first digits run of 264$c / 260$c), language (008/35–37 through the existing `normalize_language`), page count (300$a), description (520$a), Dewey (082$a without the `/` segmentation marks), plus the six zones read today. ISBD trailing punctuation (` /`, ` :`, ` ;`, ` =`, `,`, a final `.` that does not close an initial) is removed from title, subtitle, contributors and publisher. `www.loc.gov/books/?fo=json` is no longer called and the JSON parser, its wire types and `LOC_API_BASE_URL` are removed.
 2. **AC2 — text decoding.** Every field the provider returns is XML-entity-decoded (numeric `&#xHH;` / `&#NN;` and the five named entities) and NFC-normalised, so `L'e&#x301;conomie` becomes `L'économie`.
 3. **AC3 — empty / no title.** A response with `numberOfRecords` 0, no `<record`, or a record without 245$a gives `Ok(None)` (a miss, the chain moves on).
 4. **AC4 — Cloudflare challenge.** A response from the LoC endpoint carrying `cf-mitigated: challenge` (any status, header value case-insensitive) is logged at `warn` as a Cloudflare challenge — a message distinct from the plain HTTP-error one — and is never retried; `lookup_by_isbn` returns an error so the chain moves on to the next provider; `lookup_marc_zones` returns `None`.
@@ -62,6 +62,25 @@ Data model: no migration, no new setting, no user-facing string (no locale chang
 - [x] T5 — E2E `tests/e2e/specs/journeys/catalog-loc-sru.spec.ts` (AC9)
 - [x] T6 — gates: clippy `-D warnings`, `cargo test` (test DB), sqlx check, flake grep, `tsc --noEmit`, full E2E (`CI=true --workers=2`)
 
+### Review Findings
+
+Code review 2026-10-27 (Blind Hunter, Edge Case Hunter, Acceptance Auditor): 0 decision-needed, 11 patch, 1 defer, 17 dismissed.
+
+- [x] [Review][Patch] Zone completion re-asked LoC (and BnF) after it had already missed or failed in the same run — a second identical SRU request, a doubled challenge warn, or a second retry loop out of the global budget. New trait hook `zones_come_with_lookup` (true for LoC and BnF); the chain skips a filler that failed this run, or missed when its zones ride on that lookup [src/metadata/chain.rs, src/metadata/provider.rs]
+- [x] [Review][Patch] Page count read the bracketed unnumbered leaves (`"xii, 245, [2] p."` → 2) [src/metadata/marc.rs:page_count_from_extent]
+- [x] [Review][Patch] A 200 whose body is not an SRU answer was reported as "LoC does not hold this ISBN" — now a `Parse` error with a warn [src/metadata/library_of_congress.rs:lookup_by_isbn]
+- [x] [Review][Patch] Health probe ignored `LOC_SRU_BASE_URL` (E2E stack probed the real host) — now the queried endpoint [src/metadata/library_of_congress.rs:health_check_url]
+- [x] [Review][Patch] `unsafe set_var` test with a false SAFETY claim (other tests call `new()` in parallel) — removed; `with_base_url` covers the endpoint wiring [src/metadata/library_of_congress.rs tests]
+- [x] [Review][Patch] Publisher/date fallback could take a copyright 264 (`ind2="4"`) [src/metadata/library_of_congress.rs:parse_marcxml_record]
+- [x] [Review][Patch] ISBD trim removed periods belonging to the value (`U.S.A.`, `Co.`, `Jr.`, ellipsis) and bare trailing `/` — now one closing period at most, separators only when space-preceded [src/metadata/marc.rs:trim_isbd_punctuation]
+- [x] [Review][Patch] Numeric references to C0 controls (`&#0;`, `&#x1B;`) were decoded into the value — kept verbatim [src/metadata/marc.rs:decode_xml_text]
+- [x] [Review][Patch] Challenge E2E did not show the chain went past LoC — asserts the provenance badge (LoC on the primary journey, Open Library on the challenge journey) [tests/e2e/specs/journeys/catalog-loc-sru.spec.ts]
+- [x] [Review][Patch] Mock SRU handler panicked on a User-Agent mismatch (slow, misleading failure through the transport back-off) — answers 418 instead; tautological UA assertion removed [src/metadata/library_of_congress.rs tests]
+- [x] [Review][Patch] Spec text vs code: publisher rule and E2E fixture wording aligned; retry-budget comment made accurate [this file, src/metadata/library_of_congress.rs]
+- [x] [Review][Defer] 245$n/$p dropped, corporate 110/710 main entries ignored, relator-coded 700s kept as authors — deferred (#504)
+
+Dismissed (17): namespace-prefixed `<marc:record>` / controlfield (LoC sends none; the old zone parser required a bare `<record` too); unmapped 3-letter MARC language codes (the BnF provider already stores raw UNIMARC codes); plaintext HTTP for SRU (the only endpoint LoC serves — no HTTPS on :210, 404 on :443; recorded as D-11-2-7); retry loop vs 5 s budget (D-11-2-5, comment corrected); attribute order before `tag=` (LoC serialises `tag ind1 ind2`); entity-only subfield shadowing a later repeat; `numberOfRecords` with inner whitespace; 008 date `0000`; `invert_name` leaving `"Smith, John, Jr."` inverted; `LOC_API_BASE_URL` ignored silently (test-only variable); "since v1.20.1" wording (the planned release); BnF path lacking its own `pages` test (covered by the shared `marc.rs` tests); File List vs patch scope; and duplicates across layers.
+
 ## Dev Notes
 
 - **Why not keep the JSON as a fallback.** The epic AC says `?fo=json` is no longer called; a Cloudflare challenge is a policy, not an outage, so a fallback would add a guaranteed-403 request per scan. Removed outright.
@@ -88,7 +107,7 @@ Data model: no migration, no new setting, no user-facing string (no locale chang
 
 ### Validation additions (checklist pass)
 
-- Mock fixtures, concrete: `LOC_PRIMARY_ISBN = "9780449000038"` → one record with `008` `200101s2020    nyu           000 0 eng d`, `100$a Primary, Sample,`, `245$a L'e&#x301;conomie de Congress :` / `$b a sample /` / `$c Sample Primary.`, `264 _1 $b Congress Press,` `$c [2020]`, `300$a xii, 321 pages ;`, `520$a Congress summary.`; `LOC_CHALLENGE_ISBN = "9780449000045"` → `403`, headers `cf-mitigated: challenge`, `Content-Type: text/html`, a short HTML body. Both go on the BnF `NO_METADATA_ISBNS` blocklist (otherwise the BnF catch-all wins and LoC is never consulted as primary); the Google Books mock already misses unknown ISBNs. `LOC_CHALLENGE_ISBN` joins `OPEN_LIBRARY_KNOWN_ISBNS` with a distinctive title (`"Open Library After Challenge"`) and no `covers` key.
+- Mock fixtures, concrete: `LOC_PRIMARY_ISBN = "9780449000038"` → one record with `008` `200101s2020    nyu           000 0 eng d`, `100$a Primary, Sample,`, `245$a L'e&#x301;conomie de Congress :` / `$b a sample /` / `$c by S. Primary.` (so the E2E author assertion can only be met by the inverted 100$a), `264 _1 $b Congress Press,` `$c [2020]`, `300$a xii, 321 pages ;`, `520$a Congress summary.`; `LOC_CHALLENGE_ISBN = "9780449000045"` → `403`, headers `cf-mitigated: challenge`, `Content-Type: text/html`, a short HTML body. Both go on the BnF `NO_METADATA_ISBNS` blocklist (otherwise the BnF catch-all wins and LoC is never consulted as primary); the Google Books mock already misses unknown ISBNs. `LOC_CHALLENGE_ISBN` joins `OPEN_LIBRARY_KNOWN_ISBNS` with a distinctive title (`"Resolved After The Challenge"`) and no `covers` key.
 - No integration test in `tests/` constructs `LibraryOfCongressProvider` (grep 2026-10-27), so removing `with_sru_base_url` and the JSON constructor arguments breaks nothing outside the module.
 - `provider_health.rs` reads `health_check_url()` only to issue a HEAD; no template renders the URL.
 - User manual chapters mention LoC as a source (`05-metadata-providers.tex`), not its endpoint — no change here; the release notes for v1.20.1 carry the user-visible part.
@@ -125,16 +144,19 @@ claude-opus-5-5
 
 - `Cargo.toml`, `Cargo.lock` — `unicode-normalization` direct dependency
 - `src/metadata/marc.rs` — `datafields`, `controlfield`, `decode_xml_text`, `trim_isbd_punctuation`, `page_count_from_extent`, tests
-- `src/metadata/bnf.rs` — page count through the shared helper
+- `src/metadata/bnf.rs` — page count through the shared helper; `zones_come_with_lookup`
+- `src/metadata/provider.rs` — `zones_come_with_lookup` trait hook (review)
+- `src/metadata/chain.rs` — completion skips providers settled in the run; 3 DB-backed tests (review)
 - `src/metadata/library_of_congress.rs` — SRU-only provider, challenge detection, User-Agent, health URL, tests (incl. mock-server tests)
 - `tests/e2e/mock-metadata-server/server.py` — LoC JSON mock removed; primary-record and challenge fixtures; BnF blocklist; Open Library entry
 - `tests/e2e/docker-compose.test.yml` — `LOC_API_BASE_URL` removed
 - `tests/e2e/specs/journeys/catalog-loc-sru.spec.ts` — new, 2 E2E tests
 - `docs/unimarc-mapping.md` — descriptive-field table for LoC
-- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 11-2 → review
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 11-2 → done
 - `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md` — § 11-2
 
 ### Change Log
 
 - 2026-10-27 — Validation pass (checklist.md): concrete mock fixtures for the two E2E journeys, the `docs/unimarc-mapping.md` update (T4b), confirmation that no out-of-module caller uses the removed constructors. No blocker found.
 - 2026-10-27 — Implementation T1–T6; status → review.
+- 2026-10-27 — Code review (3 layers): 11 patches applied, 1 deferred (#504), 17 dismissed; status → done.

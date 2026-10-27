@@ -148,7 +148,11 @@ pub fn decode_xml_text(raw: &str) -> String {
                     } else {
                         None
                     };
+                    // C0 controls other than tab / LF / CR are forbidden in
+                    // XML 1.0; a reference to one is kept verbatim rather than
+                    // smuggling a NUL or ESC into the catalogue.
                     code.and_then(char::from_u32)
+                        .filter(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r'))
                 }
             };
             ch.map(|c| (c, semi + 1))
@@ -168,29 +172,59 @@ pub fn decode_xml_text(raw: &str) -> String {
     out.nfc().collect()
 }
 
-/// Strip the ISBD / MARC trailing punctuation from a descriptive value (#495):
-/// ` /`, ` :`, ` ;`, ` =`, `,` and a final `.` — except a period that closes
-/// an initial (`"Tolkien, J. R. R."` keeps it). Repeats until stable, so
-/// `"Gallimard, ."` and `"Title / ;"` both come out clean.
+/// Abbreviations whose final period is part of the word, not MARC's closing
+/// punctuation (compared case-insensitively, without the period).
+const KEEP_PERIOD_ABBREVIATIONS: [&str; 10] =
+    ["inc", "co", "corp", "ltd", "jr", "sr", "etc", "bros", "st", "dept"];
+
+/// Strip the ISBD / MARC trailing punctuation from a descriptive value (#495).
+///
+/// - ` /`, ` :`, ` ;`, ` =` — ISBD separators, always preceded by a space;
+///   a bare trailing `/` (`"AC/DC/"`) is left alone.
+/// - `,` — the comma MARC appends before the next subfield (`"Addison-Wesley,"`).
+/// - one final `.` — MARC's closing period — unless it belongs to the value: an
+///   initial (`"Tolkien, J. R. R."`), a dotted abbreviation (`"U.S.A."`,
+///   `"Ph.D."`), a known abbreviation (`"Co."`, `"Jr."`, `"etc."`) or an
+///   ellipsis (`"And then..."`).
+///
+/// Separators and commas are stripped repeatedly (`"Title / ;"` → `"Title"`);
+/// the period at most once.
 pub fn trim_isbd_punctuation(raw: &str) -> String {
     let mut s = raw.trim();
     loop {
         let before = s.len();
-        s = s.trim_end_matches([' ', '/', ':', ';', '=', ',']);
-        if let Some(stripped) = s.strip_suffix('.') {
-            let last_token = stripped.rsplit(' ').next().unwrap_or(stripped);
-            let is_initial = last_token.chars().count() == 1
-                && last_token.chars().all(char::is_alphabetic);
-            if !is_initial {
-                s = stripped;
+        s = s.trim_end_matches(',').trim_end();
+        for sep in [" /", " :", " ;", " ="] {
+            if let Some(stripped) = s.strip_suffix(sep) {
+                s = stripped.trim_end();
             }
         }
-        s = s.trim();
         if s.len() == before {
             break;
         }
     }
+    if let Some(stripped) = s.strip_suffix('.')
+        && !period_belongs_to_value(stripped)
+    {
+        s = stripped.trim_end();
+    }
     s.to_string()
+}
+
+/// Is the period after `before` part of the value rather than MARC's closing
+/// punctuation? See [`trim_isbd_punctuation`].
+fn period_belongs_to_value(before: &str) -> bool {
+    if before.ends_with('.') {
+        return true; // ellipsis
+    }
+    let last_token = before.rsplit([' ', ',', '(']).next().unwrap_or(before);
+    let is_initial =
+        last_token.chars().count() == 1 && last_token.chars().all(char::is_alphabetic);
+    let is_dotted = last_token.contains('.');
+    let is_known = KEEP_PERIOD_ABBREVIATIONS
+        .iter()
+        .any(|a| last_token.eq_ignore_ascii_case(a));
+    is_initial || is_dotted || is_known
 }
 
 /// Page count from a physical-description extent: UNIMARC 215$a (`"245 p."`,
@@ -198,20 +232,37 @@ pub fn trim_isbd_punctuation(raw: &str) -> String {
 /// `"282 p. ;"`). Lifted from the BnF provider when the Library of Congress
 /// needed the same parse (#495, Foundation Rule #1); `page` / `pages` were
 /// added for the RDA wording.
+/// The page number a single extent token carries: `"245"`, `"245,"`,
+/// `"XII-245"` (part after the last hyphen), `"[2]"`. `None` for a token with
+/// no digits (`"xii,"`), which ends the backwards scan.
+fn leading_page_number(token: &str) -> Option<i32> {
+    let num_part = token.rsplit('-').next().unwrap_or(token);
+    let cleaned: String = num_part.chars().filter(|c| c.is_ascii_digit()).collect();
+    cleaned.parse::<i32>().ok().filter(|n| *n > 0)
+}
+
 pub fn page_count_from_extent(desc: &str) -> Option<i32> {
     // Pattern: a number right before "p" / "p." / "page(s)".
     let words: Vec<&str> = desc.split_whitespace().collect();
     for (i, word) in words.iter().enumerate() {
         let w = word.trim_end_matches([',', ';', ':', ')']);
         if (w.starts_with("p.") || w == "p" || w == "pages" || w == "page") && i > 0 {
-            // Handle "XII-245" by taking the part after the last hyphen.
-            let prev = words[i - 1];
-            let num_part = prev.rsplit('-').next().unwrap_or(prev);
-            let cleaned: String = num_part.chars().filter(|c| c.is_ascii_digit()).collect();
-            if let Ok(n) = cleaned.parse::<i32>()
-                && n > 0
-            {
-                return Some(n);
+            // AACR2 records unnumbered leaves in brackets after the main
+            // sequence — "xii, 245, [2] p." — so prefer the nearest
+            // unbracketed number and fall back to the bracketed one.
+            let mut bracketed = None;
+            for prev in words[..i].iter().rev().take(3) {
+                let Some(n) = leading_page_number(prev) else {
+                    break;
+                };
+                if prev.starts_with('[') {
+                    bracketed.get_or_insert(n);
+                } else {
+                    return Some(n);
+                }
+            }
+            if bracketed.is_some() {
+                return bracketed;
             }
         }
     }
@@ -362,6 +413,8 @@ mod tests {
         assert_eq!(decode_xml_text("Tom & Jerry"), "Tom & Jerry");
         assert_eq!(decode_xml_text("&bogus; &#xZZ; &#;"), "&bogus; &#xZZ; &#;");
         assert_eq!(decode_xml_text("&#x110000;"), "&#x110000;");
+        assert_eq!(decode_xml_text("a&#0;b&#x1B;c"), "a&#0;b&#x1B;c", "C0 controls stay verbatim");
+        assert_eq!(decode_xml_text("a&#x9;b"), "a\tb");
         assert_eq!(decode_xml_text("trailing &"), "trailing &");
         assert_eq!(decode_xml_text(""), "");
     }
@@ -380,6 +433,19 @@ mod tests {
     }
 
     #[test]
+    fn trim_isbd_punctuation_keeps_periods_and_slashes_that_belong_to_the_value() {
+        assert_eq!(trim_isbd_punctuation("U.S.A."), "U.S.A.");
+        assert_eq!(trim_isbd_punctuation("Smith, John, Ph.D."), "Smith, John, Ph.D.");
+        assert_eq!(trim_isbd_punctuation("Acme Co."), "Acme Co.");
+        assert_eq!(trim_isbd_punctuation("Smith, John, Jr.,"), "Smith, John, Jr.");
+        assert_eq!(trim_isbd_punctuation("Cats, dogs, etc."), "Cats, dogs, etc.");
+        assert_eq!(trim_isbd_punctuation("And then..."), "And then...");
+        assert_eq!(trim_isbd_punctuation("AC/DC/"), "AC/DC/");
+        assert_eq!(trim_isbd_punctuation("Title :"), "Title");
+        assert_eq!(trim_isbd_punctuation("Title."), "Title", "one closing period only");
+    }
+
+    #[test]
     fn page_count_reads_unimarc_and_marc21_extents() {
         assert_eq!(page_count_from_extent("245 p."), Some(245));
         assert_eq!(page_count_from_extent("XII-245 p."), Some(245));
@@ -390,5 +456,9 @@ mod tests {
         assert_eq!(page_count_from_extent("1 volume (unpaged) ;"), None);
         assert_eq!(page_count_from_extent(""), None);
         assert_eq!(page_count_from_extent(") weird ("), None);
+        // AACR2 unnumbered leaves in brackets after the main sequence.
+        assert_eq!(page_count_from_extent("xii, 245, [2] p. :"), Some(245));
+        assert_eq!(page_count_from_extent("245, [3] p. ;"), Some(245));
+        assert_eq!(page_count_from_extent("[48] p. :"), Some(48));
     }
 }

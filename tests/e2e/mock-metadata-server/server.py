@@ -75,7 +75,7 @@ OPEN_LIBRARY_KNOWN_ISBNS = {
     # #495 — the LoC mock answers this ISBN with a Cloudflare challenge; the
     # chain must move on and land here.
     "9780449000045": {
-        "title": "Open Library After Challenge",
+        "title": "Resolved After The Challenge",
         "authors": [{"key": "/authors/OL1234A"}],
         "publishers": ["Fallback Press"],
         "publish_date": "2021",

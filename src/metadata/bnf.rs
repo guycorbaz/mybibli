@@ -120,6 +120,12 @@ impl MetadataProvider for BnfProvider {
         true
     }
 
+    /// #495 — its zones ride on the same request as its normal lookup, so a
+    /// primary miss in this run settles the zone question too.
+    fn zones_come_with_lookup(&self) -> bool {
+        true
+    }
+
     /// The BnF's UNIMARC zones already ride along with its normal lookup, so
     /// completion reuses it rather than issuing a second SRU request (#439).
     async fn lookup_marc_zones(&self, isbn: &str) -> Option<MetadataResult> {

@@ -70,3 +70,16 @@ rewritten.
 **Chosen:** probe `http://lx2.loc.gov:210/LCDB` (HEAD answers 400 → reachable under #285); fix the LoC User-Agent only, as the AC asks.
 **Rejected:** a repo-wide User-Agent sweep in a production-fix story.
 **Reversible:** yes.
+
+### D-11-2-7 — Plain HTTP for the whole LoC description
+**Context:** code review noted that title, authors and publisher now travel over plain HTTP (`http://lx2.loc.gov:210`), where only the six zones did before.
+**Chosen:** accept it. The SRU service is only offered over HTTP (checked 2026-10-27: TLS on :210 fails, :443 answers 404) and the HTTPS JSON search is behind the Cloudflare challenge. Values are plain text, HTML-escaped at render time, and editable by the librarian.
+**Rejected:** dropping LoC altogether (the regression #495 is about).
+**Reversible:** yes — switch the base URL if LoC ever offers SRU over HTTPS.
+
+### D-11-2-8 — Zone completion skips providers already settled in the run
+**Context:** with SRU primary, the completion pass would re-send the identical LoC request after a miss or a failure (review finding).
+**Chosen:** a trait hook `zones_come_with_lookup` (true for LoC and BnF); the chain skips a filler that failed in this run (any error or timeout) or that missed while its zones ride on that lookup. K10plus (zones behind a separate call) is unaffected. Side effect for the BnF: a BnF miss earlier in the chain is no longer re-queried for zones (it could only miss again).
+**Rejected:** caching inside the LoC provider (state in a provider for one chain run).
+**Reversible:** yes.
+

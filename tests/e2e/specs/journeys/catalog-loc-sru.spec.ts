@@ -68,6 +68,8 @@ test.describe("Library of Congress through SRU (#495)", () => {
     await expect(main).not.toContainText("Congress Press,");
     // No raw entity leaks to the page.
     await expect(main).not.toContainText("&#x301;");
+    // The provenance badge (#202) names the provider that resolved it.
+    await expect(main).toContainText("Library of Congress");
   });
 
   test("a Cloudflare challenge from LoC hands over to the next provider", async ({
@@ -75,10 +77,12 @@ test.describe("Library of Congress through SRU (#495)", () => {
   }) => {
     await loginAs(page, "librarian");
 
-    await scanAndOpenTitle(
-      page,
-      LOC_CHALLENGE_ISBN,
-      "Open Library After Challenge",
-    );
+    await scanAndOpenTitle(page, LOC_CHALLENGE_ISBN, "Resolved After The Challenge");
+
+    // Open Library sits after LoC in the book chain, so its badge proves the
+    // chain went past the challenged provider rather than stopping on it.
+    // (That LoC was asked, logged the challenge and did not retry is pinned
+    // by the provider's unit tests against a mock SRU server.)
+    await expect(page.locator("main")).toContainText("Open Library");
   });
 });
