@@ -50,6 +50,8 @@ No Rust handler, no locale key, no JS, no migration.
 - The fold's existing E2E (`home.spec.ts` ~l. 108) opens the fold via `el.open = true` and clicks a card — unaffected.
 - `src/templates_audit.rs::no_inline_markup_in_templates` — classes only, no inline style → stays green.
 - `home::tests::home_renders_recent_additions_with_three_items` counts `class="title-card group"` inside the section — the `<details>` class is `group/fold`, not that string → count unchanged.
+- Fail-before proof: on `main` the open fold's icon computes `rotate: none`, so the new E2E fails without T1; the E2E stack (`tests/e2e/docker-compose.test.yml`) builds the app from the repo `Dockerfile`, whose `css` stage regenerates `output.css` from the templates — no committed CSS to update.
+- No `toHaveCSS` precedent in the suite yet; it is Playwright's retrying web-first assertion (the existing "Tailwind CSS styles" test reads `getComputedStyle` once, which would race the 150 ms transition here).
 
 ### Testing standards
 
@@ -63,6 +65,10 @@ No Rust handler, no locale key, no JS, no migration.
 - `CLAUDE.md` Foundation Rules #2, #3, #12, #13; CSP rules (story 7-4)
 
 ## Dev Agent Record
+
+## Change Log
+
+- 2026-10-27 — Validation pass (checklist.md): added the fail-before proof, the E2E stack CSS build path and the `toHaveCSS` rationale to the regression map. No blocker found.
 
 ### Agent Model Used
 
