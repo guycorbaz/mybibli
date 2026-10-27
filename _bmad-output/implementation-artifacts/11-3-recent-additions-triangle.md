@@ -1,6 +1,6 @@
 # Story 11.3: Rotate the "Recent additions" triangle
 
-Status: review
+Status: done
 
 GitHub issue: #494 (type:bug, Low). Covers: FR124. Epic 11 — third story (production fix, ships in v1.20.1 with 11-1 and 11-2).
 
@@ -36,6 +36,17 @@ No Rust handler, no locale key, no JS, no migration.
 - [x] T2 — Rust render test (AC4): in a new sibling test module `src/routes/home_fold_tests.rs` (home.rs is already 2,562 lines — Rule #12, do not grow it; `home_indicator_tests.rs` is scoped to the indicators), render `make_test_home_template_with_counts("anonymous", false, 0, 0, 0)`, slice `#recent-additions` with `home::tests::slice_section`, assert the `<details id="recent-additions-fold"` tag carries `group/fold` and the `<svg` inside `<summary>` carries `group-open/fold:rotate-90` and `transition-transform`.
 - [x] T3 — E2E (AC1, AC2, AC4): new test in the "Home page — Recent additions section" describe of `home.spec.ts`: anonymous blank context, `goto("/")`, icon = `#recent-additions-fold > summary svg`; `toHaveCSS("rotate", "none")`; click `summary` → `toHaveCSS("rotate", "90deg")`; click again → `"none"`; click to open, `page.reload()`, expect `details` to have the `open` attribute and the icon `toHaveCSS("rotate", "90deg")`.
 - [x] T4 — Gates: clippy `-D warnings`, `cargo test`, sqlx check, flake grep, `tsc --noEmit`, full E2E (`CI=true --workers=2`).
+
+### Review Findings
+
+Code review 2026-10-27 (Blind Hunter, Edge Case Hunter, Acceptance Auditor): 0 decision-needed, 3 patch (1 Medium), 1 defer, 19 dismissed. Re-review after the patches (Rule #6): no Medium+ left — 2 Medium claims dismissed (CSS rebuilt by the Dockerfile `css` stage, which the E2E exercises; the localStorage key in the E2E is the persistence contract under test), the rest Low and dismissed or already covered.
+
+- [x] [Review][Patch] E2E reload could race the asynchronous `toggle` handler that persists `"open"` → poll localStorage for `"open"` before `page.reload()` (Medium) [tests/e2e/specs/journeys/home.spec.ts]
+- [x] [Review][Patch] `not.toHaveAttribute("open", "")` passes when `open` carries another value → `not.toHaveAttribute("open")` [tests/e2e/specs/journeys/home.spec.ts]
+- [x] [Review][Patch] render-test parser: a missing `class` attribute made the "no bare group" check pass vacuously, and the `<svg>` search was not bounded to `<summary>` → panic on missing attribute, slice to `</summary>` [src/routes/home_fold_tests.rs]
+- [x] [Review][Defer] Dockerfile builds CSS with an unpinned Tailwind (`npm install tailwindcss @tailwindcss/cli`) [Dockerfile:24] — deferred, pre-existing (#506)
+
+Dismissed (main ones): reduced motion (global `prefers-reduced-motion` rule in `input.css` already zeroes transitions); rotation transition playing on a restored-open reload (accepted in Dev Notes; the fold itself already restores after first paint); epic wording `group`/`transform` vs `group/fold`/`rotate` (D-11-3-1, D-11-3-2); other folds (only one `data-home-fold-key` in the templates); doubled `#[cfg(test)]` (existing `home_indicator_tests.rs` pattern); helper visibility (`pub(crate)` already); WebKit `::-webkit-details-marker` (pre-existing, unverified, outside the AC).
 
 ## Dev Notes
 
@@ -93,3 +104,4 @@ claude-opus-5-5
 
 - 2026-10-27 — Validation pass (checklist.md): added the fail-before proof, the E2E stack CSS build path and the `toHaveCSS` rationale to the regression map. No blocker found.
 - 2026-10-27 — Implementation T1–T4; status → review.
+- 2026-10-27 — Code review (3 layers) + re-review: 3 patches applied (1 Medium), 1 deferred to #506, rest dismissed; no Medium+ left → status done.

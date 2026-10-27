@@ -139,7 +139,7 @@ test.describe("Home page — Recent additions section", () => {
     const icon = summary.locator("svg");
 
     // Blank context → no stored state → closed, pointing right.
-    await expect(fold).not.toHaveAttribute("open", "");
+    await expect(fold).not.toHaveAttribute("open");
     await expect(icon).toHaveCSS("rotate", "none");
 
     await summary.click();
@@ -147,13 +147,22 @@ test.describe("Home page — Recent additions section", () => {
     await expect(icon).toHaveCSS("rotate", "90deg");
 
     await summary.click();
-    await expect(fold).not.toHaveAttribute("open", "");
+    await expect(fold).not.toHaveAttribute("open");
     await expect(icon).toHaveCSS("rotate", "none");
 
     // Open again, then reload: home-recent-additions.js restores the
     // open state from localStorage and the triangle already points down.
     await summary.click();
     await expect(fold).toHaveAttribute("open", "");
+    // The `toggle` event (and so the localStorage write) fires after the
+    // attribute flips — wait for the persisted value before reloading.
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.localStorage.getItem("mybibli.home.fold.recent_additions"),
+        ),
+      )
+      .toBe("open");
     await page.reload();
     await expect(fold).toHaveAttribute("open", "");
     await expect(icon).toHaveCSS("rotate", "90deg");

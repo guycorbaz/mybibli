@@ -22,13 +22,14 @@ mod tests {
         &html[start..end]
     }
 
-    /// Splits a tag's `class="..."` attribute into its classes (empty when
-    /// the tag has no class attribute).
+    /// Splits a tag's `class="..."` attribute into its classes. Panics when
+    /// the attribute is missing, so a negative assertion can never pass
+    /// vacuously on a tag the parser failed to read.
     fn classes(tag: &str) -> Vec<&str> {
-        let Some(found) = tag.find(" class=\"") else {
-            return Vec::new();
-        };
-        let start = found + 8;
+        let start = tag
+            .find(" class=\"")
+            .unwrap_or_else(|| panic!("tag must carry a class=\"…\" attribute: {tag}"))
+            + 8;
         let end = tag[start..].find('"').expect("class attribute must close") + start;
         tag[start..end].split_whitespace().collect()
     }
@@ -48,7 +49,11 @@ mod tests {
         );
 
         let summary_start = section.find("<summary").expect("<summary> missing");
-        let svg = opening_tag(&section[summary_start..], "<svg");
+        let summary_end = section[summary_start..]
+            .find("</summary>")
+            .map(|i| summary_start + i)
+            .expect("</summary> missing");
+        let svg = opening_tag(&section[summary_start..summary_end], "<svg");
         let svg_classes = classes(svg);
         assert!(
             svg_classes.contains(&"group-open/fold:rotate-90"),
