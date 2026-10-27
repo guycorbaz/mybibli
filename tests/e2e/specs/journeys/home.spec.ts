@@ -123,6 +123,41 @@ test.describe("Home page — Recent additions section", () => {
       );
     }
   });
+
+  // Story 11-3 (#494) — the disclosure triangle reflects the fold state,
+  // including a state restored from localStorage on reload. Tailwind v4
+  // emits `rotate-90` as the individual CSS `rotate` property (not
+  // `transform`), so that is the computed value asserted here.
+  // `toHaveCSS` retries, which absorbs the 150 ms rotate transition.
+  test("anonymous: fold triangle points down while open, right while closed, and after reload", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    const fold = page.locator("details#recent-additions-fold");
+    const summary = fold.locator(":scope > summary");
+    const icon = summary.locator("svg");
+
+    // Blank context → no stored state → closed, pointing right.
+    await expect(fold).not.toHaveAttribute("open", "");
+    await expect(icon).toHaveCSS("rotate", "none");
+
+    await summary.click();
+    await expect(fold).toHaveAttribute("open", "");
+    await expect(icon).toHaveCSS("rotate", "90deg");
+
+    await summary.click();
+    await expect(fold).not.toHaveAttribute("open", "");
+    await expect(icon).toHaveCSS("rotate", "none");
+
+    // Open again, then reload: home-recent-additions.js restores the
+    // open state from localStorage and the triangle already points down.
+    await summary.click();
+    await expect(fold).toHaveAttribute("open", "");
+    await page.reload();
+    await expect(fold).toHaveAttribute("open", "");
+    await expect(icon).toHaveCSS("rotate", "90deg");
+  });
 });
 
 // Story 9-3 — "Stats by genre" section.

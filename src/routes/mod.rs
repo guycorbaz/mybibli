@@ -20,6 +20,8 @@ pub mod saved_searches;
 pub mod home_scan;
 mod home_search_fragment;
 #[cfg(test)]
+mod home_fold_tests;
+#[cfg(test)]
 mod home_indicator_tests;
 #[cfg(test)]
 mod modal_tests;

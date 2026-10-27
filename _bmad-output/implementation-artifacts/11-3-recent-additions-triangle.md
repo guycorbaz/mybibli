@@ -1,6 +1,6 @@
 # Story 11.3: Rotate the "Recent additions" triangle
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #494 (type:bug, Low). Covers: FR124. Epic 11 — third story (production fix, ships in v1.20.1 with 11-1 and 11-2).
 
@@ -32,10 +32,10 @@ No Rust handler, no locale key, no JS, no migration.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Template (AC1–AC3): `templates/pages/home.html` — add `group/fold` to the `<details>`; add `group-open/fold:rotate-90` to the `<svg>` (keep `transition-transform`); update the CR #261 comment block with one line citing #494.
-- [ ] T2 — Rust render test (AC4): in `src/routes/home_indicator_tests.rs` (home.rs is already 2,562 lines — Rule #12, do not grow it), render `make_test_home_template_with_counts("anonymous", false, 0, 0, 0)`, slice `#recent-additions` with `home::tests::slice_section`, assert the `<details id="recent-additions-fold"` tag carries `group/fold` and the `<svg` inside `<summary>` carries `group-open/fold:rotate-90` and `transition-transform`.
-- [ ] T3 — E2E (AC1, AC2, AC4): new test in the "Home page — Recent additions section" describe of `home.spec.ts`: anonymous blank context, `goto("/")`, icon = `#recent-additions-fold > summary svg`; `toHaveCSS("rotate", "none")`; click `summary` → `toHaveCSS("rotate", "90deg")`; click again → `"none"`; click to open, `page.reload()`, expect `details` to have the `open` attribute and the icon `toHaveCSS("rotate", "90deg")`.
-- [ ] T4 — Gates: clippy `-D warnings`, `cargo test`, sqlx check, flake grep, `tsc --noEmit`, full E2E (`CI=true --workers=2`).
+- [x] T1 — Template (AC1–AC3): `templates/pages/home.html` — add `group/fold` to the `<details>`; add `group-open/fold:rotate-90` to the `<svg>` (keep `transition-transform`); update the CR #261 comment block with one line citing #494.
+- [x] T2 — Rust render test (AC4): in a new sibling test module `src/routes/home_fold_tests.rs` (home.rs is already 2,562 lines — Rule #12, do not grow it; `home_indicator_tests.rs` is scoped to the indicators), render `make_test_home_template_with_counts("anonymous", false, 0, 0, 0)`, slice `#recent-additions` with `home::tests::slice_section`, assert the `<details id="recent-additions-fold"` tag carries `group/fold` and the `<svg` inside `<summary>` carries `group-open/fold:rotate-90` and `transition-transform`.
+- [x] T3 — E2E (AC1, AC2, AC4): new test in the "Home page — Recent additions section" describe of `home.spec.ts`: anonymous blank context, `goto("/")`, icon = `#recent-additions-fold > summary svg`; `toHaveCSS("rotate", "none")`; click `summary` → `toHaveCSS("rotate", "90deg")`; click again → `"none"`; click to open, `page.reload()`, expect `details` to have the `open` attribute and the icon `toHaveCSS("rotate", "90deg")`.
+- [x] T4 — Gates: clippy `-D warnings`, `cargo test`, sqlx check, flake grep, `tsc --noEmit`, full E2E (`CI=true --workers=2`).
 
 ## Dev Notes
 
@@ -66,10 +66,6 @@ No Rust handler, no locale key, no JS, no migration.
 
 ## Dev Agent Record
 
-## Change Log
-
-- 2026-10-27 — Validation pass (checklist.md): added the fail-before proof, the E2E stack CSS build path and the `toHaveCSS` rationale to the regression map. No blocker found.
-
 ### Agent Model Used
 
 claude-opus-5-5
@@ -79,5 +75,21 @@ claude-opus-5-5
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created
+- T1: `group/fold` on `<details id="recent-additions-fold">`, `group-open/fold:rotate-90` on the triangle; CR #261 comment extended with the #494 rationale (named group). No JS, no inline style.
+- T2: `src/routes/home_fold_tests.rs` (new sibling test module, wired `#[cfg(test)]` in `routes/mod.rs`) — 2 render tests: the fold carries `group/fold` and the icon `group-open/fold:rotate-90` + `transition-transform`; the fold carries no bare `group` (D-11-3-2). Both red before T1, green after.
+- T3: `home.spec.ts` — "fold triangle points down while open, right while closed, and after reload" (blank anonymous context; `toHaveCSS("rotate", …)` closed → open → closed → open + reload).
+- T4 gates (2026-10-27, heavy commands under `mem-guard`): `cargo clippy --all-targets -- -D warnings` clean; `cargo test -j 2 --no-fail-fast` against the test DB — 61 binaries, 1,609 passed, 0 failed; `cargo sqlx prepare --check --workspace -- --all-targets` clean; flake grep clean; `tsc --noEmit` clean. E2E: targeted describe 2/2; full suite after `e2e-reset.sh`, `CI=true --workers=2`: **343 passed, 2 skipped, 0 failed**.
 
 ### File List
+
+- `templates/pages/home.html` — fold classes + comment
+- `src/routes/home_fold_tests.rs` — new, 2 render tests
+- `src/routes/mod.rs` — test module wiring
+- `tests/e2e/specs/journeys/home.spec.ts` — 1 E2E test
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 11-3 → review
+- `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md` — § 11-3 (D-11-3-1, D-11-3-2)
+
+## Change Log
+
+- 2026-10-27 — Validation pass (checklist.md): added the fail-before proof, the E2E stack CSS build path and the `toHaveCSS` rationale to the regression map. No blocker found.
+- 2026-10-27 — Implementation T1–T4; status → review.
