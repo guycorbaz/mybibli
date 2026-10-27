@@ -59,6 +59,14 @@ Data model: titles keep ISBN in `titles.isbn` (13 chars). No migration. No new u
 - Out of scope: ISBN-10 entry in the manual title form, wishlist "By ISBN" form, title-edit ISBN (#272) — story 11.10 reuses the helper for expected tomes; production data clean-up of titles 271/282/287 is the user's (issue #497 § Data clean-up); user-manual wording goes with the epic documentation story 11-24.
 - Rule #12: `catalog.rs` gains a few lines only (one branch, one struct field, one rebinding); the EAN-13 refactor removes more than it adds.
 
+### Regression map (validated 2026-10-27)
+
+- Every 10-character code literal in the test suites was checked against the mod-11 rule: `catalog.rs` test `9771234567` (sum ≡ 7 mod 11) stays `upc`; `scanner-guard.spec.ts` types `9782070360` into a dialog input (never submitted, and sum ≡ 1 mod 11 anyway); `search.rs` test `207036024X` has a bad checksum (stays raw `Isbn`), `0201633612` is valid → its expected value becomes `Isbn("9780201633610")`.
+- No other caller builds `CodeDetection` (`home_scan.rs` only reads it), so the new field touches `detect_code_type` and its tests only.
+- `create_from_isbn` re-validates the ISBN-13 checksum: the converted value must therefore be computed with the same EAN-13 algorithm — guaranteed by sharing `ean13_check_digit`.
+- E2E wording: EN "This title is already in your catalog." / FR "Ce titre est déjà dans votre catalogue." → `/already in your catalog|déjà dans votre catalogue/i`.
+- E2E ISBN-10 values must be derived from a 978-prefixed `specIsbn("IX", n)` (drop `978` and the EAN check digit, append the mod-11 digit) so the ISBN-13 stays unique per spec; pick one `n` whose mod-11 digit is `X` for AC2.
+
 ### Testing standards
 
 - Unit tests alongside code (`#[cfg(test)] mod tests`); DB tests with `#[sqlx::test(migrations = "./migrations")]`.
@@ -81,3 +89,4 @@ claude-opus-5-5
 - Ultimate context engine analysis completed - comprehensive developer guide created
 
 ### File List
+- Validation pass (checklist.md, 2026-10-27): added the regression map (10-char literals in the suites, `CodeDetection` construction sites, EAN-13 re-validation in `create_from_isbn`, E2E wording and ISBN-10 derivation). No blocker found.
