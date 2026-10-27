@@ -35,6 +35,30 @@ export function specIsbn(specId: string, seq: number = 1): string {
 }
 
 /**
+ * ISBN-10 form of `specIsbn(specId, seq)` (story 11-1, #497).
+ *
+ * Every `specIsbn` value starts with 978, so it has an ISBN-10: drop the
+ * `978` prefix and the EAN-13 check digit, then append the ISBN-10
+ * modulo-11 check digit (weights 10..2, `X` stands for 10). The server
+ * must convert this value back to exactly `specIsbn(specId, seq)`.
+ *
+ * @returns `{ isbn10, isbn13 }` — the pair a spec scans and asserts on
+ */
+export function specIsbn10(
+  specId: string,
+  seq: number = 1,
+): { isbn10: string; isbn13: string } {
+  const isbn13 = specIsbn(specId, seq);
+  const body = isbn13.slice(3, 12);
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(body[i]!, 10) * (10 - i);
+  }
+  const check = (11 - (sum % 11)) % 11;
+  return { isbn10: body + (check === 10 ? "X" : check.toString()), isbn13 };
+}
+
+/**
  * Per-spec unique location code (L-code) generator (#22).
  *
  * L-codes are validated as exactly `"L"` + 4 ASCII digits

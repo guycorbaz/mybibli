@@ -59,6 +59,52 @@ pub fn url_encode(s: &str) -> String {
     result
 }
 
+/// EAN-13 check digit (modulo 10, alternating weights 1 and 3) of the first
+/// 12 characters of `code`. Returns `None` unless those 12 characters are
+/// ASCII digits. Shared by the ISBN-13 / ISSN-EAN validators and the
+/// ISBN-10 → ISBN-13 conversion (story 11-1).
+pub fn ean13_check_digit(code: &str) -> Option<u32> {
+    let first12 = code.get(..12)?;
+    let mut sum = 0;
+    for (i, c) in first12.chars().enumerate() {
+        let d = c.to_digit(10)?;
+        sum += if i % 2 == 0 { d } else { d * 3 };
+    }
+    Some((10 - (sum % 10)) % 10)
+}
+
+/// Convert a valid ISBN-10 to its ISBN-13 (story 11-1, #497).
+///
+/// Accepts exactly 10 characters: 9 ASCII digits then a check digit `0-9`
+/// or `X`/`x` (worth 10). The ISBN-10 is valid when
+/// Σ dᵢ · (10 − i) ≡ 0 (mod 11). Every ISBN-10 maps to the `978` prefix:
+/// `978` + the 9 body digits + a recomputed EAN-13 check digit.
+/// Returns `None` for anything that is not a valid ISBN-10, so callers keep
+/// their current classification for it.
+pub fn isbn10_to_isbn13(code: &str) -> Option<String> {
+    let bytes = code.as_bytes();
+    if bytes.len() != 10 || !bytes[..9].iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let check = match bytes[9] {
+        b @ b'0'..=b'9' => u32::from(b - b'0'),
+        b'X' | b'x' => 10,
+        _ => return None,
+    };
+    let body_sum: u32 = bytes[..9]
+        .iter()
+        .enumerate()
+        .map(|(i, b)| u32::from(b - b'0') * (10 - i as u32))
+        .sum();
+    if !(body_sum + check).is_multiple_of(11) {
+        return None;
+    }
+    let mut isbn13 = format!("978{}", &code[..9]);
+    let ean_check = ean13_check_digit(&isbn13)?;
+    isbn13.push(char::from_digit(ean_check, 10)?);
+    Some(isbn13)
+}
+
 /// Escape HTML special characters to prevent XSS.
 pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -489,6 +535,59 @@ pub(crate) fn test_base_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ─── Story 11-1 (#497) — ISBN-10 → ISBN-13 ────────────────────
+
+    #[test]
+    fn isbn10_to_isbn13_converts_production_examples() {
+        assert_eq!(isbn10_to_isbn13("2205001213").as_deref(), Some("9782205001211"));
+        assert_eq!(isbn10_to_isbn13("2205011502").as_deref(), Some("9782205011500"));
+        assert_eq!(isbn10_to_isbn13("0201633612").as_deref(), Some("9780201633610"));
+    }
+
+    #[test]
+    fn isbn10_to_isbn13_accepts_x_check_digit_in_either_case() {
+        assert_eq!(isbn10_to_isbn13("080442957X").as_deref(), Some("9780804429573"));
+        assert_eq!(isbn10_to_isbn13("080442957x").as_deref(), Some("9780804429573"));
+    }
+
+    #[test]
+    fn isbn10_to_isbn13_rejects_bad_checksum() {
+        assert_eq!(isbn10_to_isbn13("2205001214"), None);
+        assert_eq!(isbn10_to_isbn13("2205001210"), None);
+        // `X` where the checksum wants a digit.
+        assert_eq!(isbn10_to_isbn13("220500121X"), None);
+    }
+
+    #[test]
+    fn isbn10_to_isbn13_rejects_wrong_shape() {
+        assert_eq!(isbn10_to_isbn13(""), None);
+        assert_eq!(isbn10_to_isbn13("220500121"), None); // 9 chars
+        assert_eq!(isbn10_to_isbn13("22050012130"), None); // 11 chars
+        assert_eq!(isbn10_to_isbn13("9782205001211"), None); // already ISBN-13
+        assert_eq!(isbn10_to_isbn13("X205001213"), None); // X outside last position
+        assert_eq!(isbn10_to_isbn13("22050O1213"), None); // letter O
+        assert_eq!(isbn10_to_isbn13("2205-01213"), None);
+        assert_eq!(isbn10_to_isbn13("22050012é"), None); // multi-byte, 10 bytes
+    }
+
+    #[test]
+    fn isbn10_to_isbn13_output_passes_ean13_validation() {
+        let isbn13 = isbn10_to_isbn13("2205001213").unwrap();
+        assert_eq!(
+            ean13_check_digit(&isbn13),
+            isbn13[12..].parse::<u32>().ok()
+        );
+    }
+
+    #[test]
+    fn ean13_check_digit_computes_known_values() {
+        assert_eq!(ean13_check_digit("978207036024"), Some(6));
+        assert_eq!(ean13_check_digit("9782070360246"), Some(6)); // ignores char 13
+        assert_eq!(ean13_check_digit("977000000000"), Some(3));
+        assert_eq!(ean13_check_digit("97820703602"), None); // too short
+        assert_eq!(ean13_check_digit("97820703602A"), None); // non-digit
+    }
 
     #[test]
     fn generate_session_token_length_is_44() {

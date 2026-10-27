@@ -361,28 +361,18 @@ pub struct CodeDetection {
     pub code_type: &'static str,
     pub inferred_media_type: Option<crate::models::media_type::MediaType>,
     pub inferred_code_type: Option<crate::models::media_type::CodeType>,
+    /// Canonical form of the scanned code when it differs from the input:
+    /// an ISBN-10 is rewritten to its ISBN-13 (story 11-1, #497). Callers
+    /// use it for every downstream lookup, creation and provider call.
+    pub normalized_code: Option<String>,
 }
 
 /// Validate an ISSN barcode as a valid EAN-13 with 977 prefix.
 /// ISSN-13 format: 977 + 7-digit ISSN body + 2-digit issue + 1 EAN check digit.
 /// Uses the standard EAN-13 checksum (same as ISBN-13: alternating weights 1,3).
 fn validate_issn_from_ean(code: &str) -> bool {
-    if code.len() != 13 || !code.starts_with("977") {
-        return false;
-    }
     // EAN-13 check digit: same algorithm as ISBN-13
-    let digits: Vec<u32> = match code.chars().map(|c| c.to_digit(10)).collect() {
-        Some(d) => d,
-        None => return false,
-    };
-    let sum: u32 = digits
-        .iter()
-        .enumerate()
-        .take(12)
-        .map(|(i, &d)| if i % 2 == 0 { d } else { d * 3 })
-        .sum();
-    let check_digit = (10 - (sum % 10)) % 10;
-    check_digit == digits[12]
+    code.starts_with("977") && TitleService::validate_isbn13_checksum(code)
 }
 
 pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
@@ -393,6 +383,7 @@ pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
             code_type: "vcode",
             inferred_media_type: None,
             inferred_code_type: None,
+            normalized_code: None,
         };
     }
     if code.starts_with('L') && code.len() == 5 {
@@ -400,6 +391,7 @@ pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
             code_type: "lcode",
             inferred_media_type: None,
             inferred_code_type: None,
+            normalized_code: None,
         };
     }
     if (code.starts_with("978") || code.starts_with("979")) && code.len() == 13 {
@@ -407,6 +399,17 @@ pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
             code_type: "isbn",
             inferred_media_type: Some(MediaType::Book),
             inferred_code_type: Some(CodeType::Isbn),
+            normalized_code: None,
+        };
+    }
+    // Story 11-1 (#497): a valid ISBN-10 (incl. an `X` check digit) is an
+    // ISBN, carried as its ISBN-13. A failed checksum falls through.
+    if let Some(isbn13) = crate::utils::isbn10_to_isbn13(code) {
+        return CodeDetection {
+            code_type: "isbn",
+            inferred_media_type: Some(MediaType::Book),
+            inferred_code_type: Some(CodeType::Isbn),
+            normalized_code: Some(isbn13),
         };
     }
     // 977 prefix: could be ISSN or UPC
@@ -415,6 +418,7 @@ pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
             code_type: "issn",
             inferred_media_type: Some(MediaType::Magazine),
             inferred_code_type: Some(CodeType::Issn),
+            normalized_code: None,
         };
     }
     if code.chars().all(|c| c.is_ascii_digit()) && code.len() >= 8 && code.len() <= 13 {
@@ -422,12 +426,14 @@ pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
             code_type: "upc",
             inferred_media_type: None, // Needs disambiguation
             inferred_code_type: Some(CodeType::Upc),
+            normalized_code: None,
         };
     }
     CodeDetection {
         code_type: "unknown",
         inferred_media_type: None,
         inferred_code_type: None,
+        normalized_code: None,
     }
 }
 
@@ -451,7 +457,9 @@ pub async fn handle_scan(
     }
 
     let detection = detect_code_type(&code);
-    tracing::info!(code = %code, code_type = detection.code_type, "Processing scan");
+    tracing::info!(code = %code, normalized = ?detection.normalized_code, code_type = detection.code_type, "Processing scan");
+    // Story 11-1 — every downstream use sees the canonical form (ISBN-13).
+    let code = detection.normalized_code.clone().unwrap_or(code);
 
     if is_htmx {
         let pool = &state.pool;
@@ -2877,6 +2885,41 @@ mod tests {
         // 977-prefix but shorter than 13 digits → falls through to UPC
         let d = detect_code_type("9771234567");
         assert_eq!(d.code_type, "upc");
+    }
+
+    // Story 11-1 (#497) — ISBN-10 at scan.
+    #[test]
+    fn test_detect_code_type_valid_isbn10_is_isbn_with_isbn13() {
+        let d = detect_code_type("2205001213");
+        assert_eq!(d.code_type, "isbn");
+        assert_eq!(d.inferred_media_type, Some(crate::models::media_type::MediaType::Book));
+        assert_eq!(d.inferred_code_type, Some(crate::models::media_type::CodeType::Isbn));
+        assert_eq!(d.normalized_code.as_deref(), Some("9782205001211"));
+    }
+
+    #[test]
+    fn test_detect_code_type_isbn10_x_check_digit() {
+        for code in ["080442957X", "080442957x"] {
+            let d = detect_code_type(code);
+            assert_eq!(d.code_type, "isbn", "{code}");
+            assert_eq!(d.normalized_code.as_deref(), Some("9780804429573"));
+        }
+    }
+
+    #[test]
+    fn test_detect_code_type_isbn10_bad_checksum_keeps_current_class() {
+        let d = detect_code_type("2205001214");
+        assert_eq!(d.code_type, "upc");
+        assert_eq!(d.normalized_code, None);
+        let d = detect_code_type("220500121X");
+        assert_eq!(d.code_type, "unknown");
+        assert_eq!(d.normalized_code, None);
+    }
+
+    #[test]
+    fn test_detect_code_type_isbn13_is_not_rewritten() {
+        assert_eq!(detect_code_type("9782205001211").normalized_code, None);
+        assert_eq!(detect_code_type("12345678").normalized_code, None);
     }
 
     #[test]
