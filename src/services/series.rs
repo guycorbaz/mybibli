@@ -27,6 +27,28 @@ pub struct SeriesPositionInfo {
     /// to pick the right `/static/icons/{media_type}.svg` fallback when
     /// `cover_image_url` is None. Empty string for gaps.
     pub media_type: String,
+    /// Story 11-11 (UX-DR34): the unsettled expected tome naming this gap.
+    pub expected: Option<crate::services::expected_tomes::ExpectedTomeCard>,
+}
+
+impl SeriesPositionInfo {
+    /// A missing position, optionally named by an expected tome.
+    pub fn gap(
+        position: i32,
+        expected: Option<crate::services::expected_tomes::ExpectedTomeCard>,
+    ) -> Self {
+        Self {
+            position,
+            title_id: None,
+            title_name: None,
+            is_omnibus: false,
+            dewey_code: None,
+            cover_image_url: None,
+            primary_contributor: None,
+            media_type: String::new(),
+            expected,
+        }
+    }
 }
 
 pub struct SeriesService;
@@ -285,6 +307,7 @@ impl SeriesService {
                     cover_image_url: a.cover_image_url,
                     primary_contributor: a.primary_contributor,
                     media_type: a.media_type,
+                    expected: None,
                 })
                 .collect());
         }
@@ -312,6 +335,7 @@ fn build_position_grid(
             cover_image_url: assignment.and_then(|a| a.cover_image_url.clone()),
             primary_contributor: assignment.and_then(|a| a.primary_contributor.clone()),
             media_type: assignment.map(|a| a.media_type.clone()).unwrap_or_default(),
+            expected: None,
         });
     }
     Ok(positions)
@@ -653,6 +677,7 @@ mod tests {
             cover_image_url: None,
             primary_contributor: None,
             media_type: String::new(),
+            expected: None,
         }
     }
 

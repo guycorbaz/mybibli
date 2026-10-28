@@ -101,6 +101,30 @@ impl WishlistItemModel {
         Ok(row.map(map_row))
     }
 
+    /// Story 11-11 (D-11-11-4) — the oldest active item without ISBN
+    /// carrying exactly this title and these notes: the duplicate check
+    /// for an expected tome without ISBN sent to the wishlist.
+    pub async fn find_without_isbn(
+        pool: &DbPool,
+        title: &str,
+        notes: &str,
+    ) -> Result<Option<WishlistItem>, AppError> {
+        let row = sqlx::query(
+            "SELECT id, isbn, title, authors, publisher, \
+                    CAST(publication_year AS UNSIGNED) AS publication_year, \
+                    cover_image_url, notes, created_at, version \
+             FROM wishlist_items \
+             WHERE isbn IS NULL AND title = ? AND notes = ? AND deleted_at IS NULL \
+             ORDER BY created_at ASC, id ASC \
+             LIMIT 1",
+        )
+        .bind(title)
+        .bind(notes)
+        .fetch_optional(pool)
+        .await?;
+        Ok(row.map(map_row))
+    }
+
     /// List every active (non-soft-deleted) wishlist item, newest-first.
     /// v1 has no pagination — the list size is bounded by user behavior
     /// (a household wishlist rarely exceeds ~100 entries). Promote to a

@@ -97,6 +97,50 @@ impl Browser {
     }
 }
 
+impl Browser {
+    /// Story 11-11 — any request as this browser; `htmx` adds `HX-Request`.
+    /// Returns the raw response (status, headers, body).
+    pub async fn send(
+        &self,
+        router: &Router,
+        method: &str,
+        path: &str,
+        body: &str,
+        htmx: bool,
+    ) -> axum::response::Response {
+        let mut req = Request::builder()
+            .method(method)
+            .uri(path)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("cookie", format!("session={}", self.cookie))
+            .header("X-CSRF-Token", &self.csrf);
+        if htmx {
+            req = req.header("HX-Request", "true");
+        }
+        router
+            .clone()
+            .oneshot(req.body(Body::from(body.to_string())).unwrap())
+            .await
+            .unwrap()
+    }
+
+    /// A page GET as this browser; returns status and body.
+    pub async fn get(&self, router: &Router, path: &str) -> (StatusCode, String) {
+        let res = self.send(router, "GET", path, "", false).await;
+        let status = res.status();
+        (status, body_string(res).await)
+    }
+}
+
+/// A GET without any session (a blank browser).
+pub async fn get_anonymous(router: &Router, path: &str) -> axum::response::Response {
+    router
+        .clone()
+        .oneshot(Request::get(path).body(Body::empty()).unwrap())
+        .await
+        .unwrap()
+}
+
 pub async fn body_string(res: axum::response::Response) -> String {
     let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
         .await

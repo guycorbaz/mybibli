@@ -148,19 +148,88 @@ impl From<sqlx::Error> for ExpectedTomeError {
 }
 
 impl From<ExpectedTomeError> for AppError {
+    /// English message (MCP tools, D-11-9-2); web handlers use
+    /// [`ExpectedTomeError::into_app_error`].
     fn from(e: ExpectedTomeError) -> Self {
-        match e {
-            ExpectedTomeError::Database(inner) => inner,
-            ExpectedTomeError::NotFound { .. } | ExpectedTomeError::SeriesNotFound { .. } => {
-                AppError::NotFound(e.to_string())
-            }
-            ExpectedTomeError::Settled { .. }
-            | ExpectedTomeError::VersionConflict { .. }
-            | ExpectedTomeError::PositionHeld { .. }
-            | ExpectedTomeError::PositionTaken { .. }
-            | ExpectedTomeError::DuplicateIsbn { .. } => AppError::Conflict(e.to_string()),
-            other => AppError::BadRequest(other.to_string()),
+        let message = e.to_string();
+        e.with_message(message)
+    }
+}
+
+impl ExpectedTomeError {
+    /// The `AppError` class of this refusal, carrying `message`:
+    /// missing → `NotFound`, state conflicts → `Conflict`, malformed
+    /// input → `BadRequest`; a database error stays itself.
+    fn with_message(self, message: String) -> AppError {
+        match self {
+            Self::Database(inner) => inner,
+            Self::NotFound { .. } | Self::SeriesNotFound { .. } => AppError::NotFound(message),
+            Self::Settled { .. }
+            | Self::VersionConflict { .. }
+            | Self::PositionHeld { .. }
+            | Self::PositionTaken { .. }
+            | Self::DuplicateIsbn { .. } => AppError::Conflict(message),
+            _ => AppError::BadRequest(message),
         }
+    }
+
+    /// The same classification as `From<ExpectedTomeError> for AppError`,
+    /// with the librarian-facing message of [`Self::localized`].
+    pub fn into_app_error(self, loc: &str) -> AppError {
+        let message = self.localized(loc);
+        self.with_message(message)
+    }
+
+    /// Story 11-11 (D-11-11-5) — the message a librarian reads, in `loc`
+    /// (docs/error-message-style.md: field errors terse, conflicts
+    /// what → why → what to do; a database error never shows internals).
+    pub fn localized(&self, loc: &str) -> String {
+        use rust_i18n::t;
+        match self {
+            Self::TitleRequired => t!("expected_tome.error.title_required", locale = loc),
+            Self::TitleTooLong { max } => t!(
+                "expected_tome.error.title_too_long",
+                locale = loc,
+                max = max
+            ),
+            Self::InvalidIsbn { .. } => t!("expected_tome.error.invalid_isbn", locale = loc),
+            Self::SeriesNotFound { .. } => {
+                t!("expected_tome.error.series_not_found", locale = loc)
+            }
+            Self::NotFound { .. } => t!("expected_tome.error.not_found", locale = loc),
+            Self::PositionOutOfRange {
+                total: Some(total), ..
+            } => t!(
+                "expected_tome.error.position_out_of_range",
+                locale = loc,
+                total = total
+            ),
+            Self::PositionOutOfRange { total: None, .. } => {
+                t!("expected_tome.error.position_invalid", locale = loc)
+            }
+            Self::PositionHeld { position, holder } => t!(
+                "expected_tome.error.position_held",
+                locale = loc,
+                position = position,
+                holder = holder
+            ),
+            Self::PositionTaken { position } => t!(
+                "expected_tome.error.position_taken",
+                locale = loc,
+                position = position
+            ),
+            Self::DuplicateIsbn { isbn } => t!(
+                "expected_tome.error.duplicate_isbn",
+                locale = loc,
+                isbn = isbn
+            ),
+            Self::Settled { .. } => t!("expected_tome.error.settled", locale = loc),
+            Self::VersionConflict { .. } => {
+                t!("expected_tome.error.version_conflict", locale = loc)
+            }
+            Self::Database(_) => t!("expected_tome.error.database", locale = loc),
+        }
+        .to_string()
     }
 }
 
@@ -253,10 +322,107 @@ pub fn check_position(series: &SeriesShape, position: i32) -> Result<(), Expecte
 }
 
 fn closed_total(series: &SeriesShape) -> Option<i32> {
-    match (series.series_type, series.total_volume_count) {
+    closed_total_of(series.series_type, series.total_volume_count)
+}
+
+/// The bound positions must respect: the total of a closed series that
+/// has one (> 0), else none.
+pub fn closed_total_of(series_type: SeriesType, total: Option<i32>) -> Option<i32> {
+    match (series_type, total) {
         (SeriesType::Closed, Some(t)) if t > 0 => Some(t),
         _ => None,
     }
+}
+
+/// Story 11-11 (UX-DR34) — what the series page shows of a tome.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpectedTomeCard {
+    pub id: u64,
+    pub position: i32,
+    pub title: String,
+    pub isbn: Option<String>,
+    pub version: i32,
+}
+
+impl From<&ExpectedTomeRow> for ExpectedTomeCard {
+    fn from(r: &ExpectedTomeRow) -> Self {
+        Self {
+            id: r.id,
+            position: r.position,
+            title: r.title.clone(),
+            isbn: r.isbn.clone(),
+            version: r.version,
+        }
+    }
+}
+
+/// Why an unsettled tome cannot sit in a gap of the grid (#524).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReviewReason {
+    /// A closed series' total was lowered below the tome's position.
+    AboveTotal { total: i32 },
+    /// A live title of the series holds the position (e.g. restored
+    /// from the Trash after the tome was entered).
+    Held { holder: String },
+}
+
+/// An unsettled tome listed under "Expected tomes to review".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TomeToReview {
+    pub card: ExpectedTomeCard,
+    pub reason: ReviewReason,
+}
+
+/// Story 11-11 (pure — unit tested): place the live tomes of a series on
+/// its position grid. A settled tome is skipped (its title's card shows
+/// the position); an unsettled tome fills the gap at its position, or,
+/// when the grid has no square there, gets one (open series, or a closed
+/// series without total) inserted in position order; a tome above a
+/// closed total or on a held position is returned for review instead.
+/// Run before `sort_positions`.
+pub fn place_on_grid(
+    positions: &mut Vec<crate::services::series::SeriesPositionInfo>,
+    tomes: &[ExpectedTomeRow],
+    closed_total: Option<i32>,
+) -> Vec<TomeToReview> {
+    let mut review = Vec::new();
+    for tome in tomes.iter().filter(|t| !t.is_settled()) {
+        let card = ExpectedTomeCard::from(tome);
+        if let Some(holder) = positions
+            .iter()
+            .find(|p| p.position == tome.position && p.title_id.is_some())
+        {
+            review.push(TomeToReview {
+                card,
+                reason: ReviewReason::Held {
+                    holder: holder.title_name.clone().unwrap_or_default(),
+                },
+            });
+            continue;
+        }
+        if let Some(total) = closed_total
+            && tome.position > total
+        {
+            review.push(TomeToReview {
+                card,
+                reason: ReviewReason::AboveTotal { total },
+            });
+            continue;
+        }
+        match positions.iter_mut().find(|p| p.position == tome.position) {
+            Some(gap) if gap.expected.is_none() => gap.expected = Some(card),
+            // Unreachable with the unique key (one live tome per position).
+            Some(_) => {}
+            None => {
+                let at = positions.partition_point(|p| p.position <= tome.position);
+                positions.insert(
+                    at,
+                    crate::services::series::SeriesPositionInfo::gap(tome.position, Some(card)),
+                );
+            }
+        }
+    }
+    review
 }
 
 /// A tome to create or the new values of one.
@@ -831,5 +997,170 @@ mod tests {
         // Database text never leaks.
         let m = ExpectedTomeError::Database(AppError::Internal("secret".into())).to_string();
         assert!(!m.contains("secret"));
+    }
+
+    // ─── Story 11-11 ─────────────────────────────────────
+
+    fn all_errors() -> Vec<ExpectedTomeError> {
+        vec![
+            ExpectedTomeError::TitleRequired,
+            ExpectedTomeError::TitleTooLong { max: 500 },
+            ExpectedTomeError::InvalidIsbn { value: "x".into() },
+            ExpectedTomeError::SeriesNotFound { series_id: 1 },
+            ExpectedTomeError::NotFound { id: 1 },
+            ExpectedTomeError::PositionOutOfRange {
+                position: 9,
+                total: Some(5),
+            },
+            ExpectedTomeError::PositionOutOfRange {
+                position: 0,
+                total: None,
+            },
+            ExpectedTomeError::PositionHeld {
+                position: 2,
+                holder: "Le Lotus bleu".into(),
+            },
+            ExpectedTomeError::PositionTaken { position: 2 },
+            ExpectedTomeError::DuplicateIsbn {
+                isbn: "9782070360246".into(),
+            },
+            ExpectedTomeError::Settled { id: 1 },
+            ExpectedTomeError::VersionConflict { id: 1 },
+            ExpectedTomeError::Database(AppError::Internal("secret".into())),
+        ]
+    }
+
+    #[test]
+    fn localized_renders_every_variant_in_every_locale() {
+        for loc in ["en", "fr", "de", "it"] {
+            for e in all_errors() {
+                let m = e.localized(loc);
+                assert!(!m.is_empty(), "{loc} {e:?}");
+                assert!(!m.contains("expected_tome."), "{loc} {e:?}: missing key");
+                assert!(!m.contains("%{"), "{loc} {e:?}: uninterpolated {m}");
+                assert!(!m.contains("secret"), "{loc}: database text leaked");
+            }
+        }
+    }
+
+    #[test]
+    fn localized_messages_carry_their_values_and_differ_by_locale() {
+        let held = ExpectedTomeError::PositionHeld {
+            position: 2,
+            holder: "Le Lotus bleu".into(),
+        };
+        for loc in ["en", "fr", "de", "it"] {
+            let m = held.localized(loc);
+            assert!(m.contains('2') && m.contains("Le Lotus bleu"), "{loc}: {m}");
+        }
+        assert_ne!(held.localized("en"), held.localized("fr"));
+        let range = ExpectedTomeError::PositionOutOfRange {
+            position: 9,
+            total: Some(5),
+        };
+        assert!(range.localized("fr").contains('5'));
+    }
+
+    #[test]
+    fn into_app_error_keeps_the_classification_with_the_localized_text() {
+        let e = ExpectedTomeError::PositionTaken { position: 3 }.into_app_error("fr");
+        assert!(matches!(&e, AppError::Conflict(m) if m.contains("position 3")));
+        let e = ExpectedTomeError::TitleRequired.into_app_error("de");
+        assert!(matches!(&e, AppError::BadRequest(m) if m.contains("Titel")));
+        let e = ExpectedTomeError::NotFound { id: 4 }.into_app_error("it");
+        assert!(matches!(e, AppError::NotFound(_)));
+        let e = ExpectedTomeError::Database(AppError::Internal("x".into())).into_app_error("en");
+        assert!(matches!(e, AppError::Internal(_)));
+    }
+
+    fn tome(id: u64, position: i32, settled: bool) -> ExpectedTomeRow {
+        ExpectedTomeRow {
+            id,
+            series_id: 1,
+            position,
+            title: format!("Tome {position}"),
+            isbn: None,
+            origin: ExpectedTomeOrigin::Manual,
+            settled_title_id: settled.then_some(99),
+            version: 0,
+        }
+    }
+
+    fn owned(position: i32, name: &str) -> crate::services::series::SeriesPositionInfo {
+        let mut p = crate::services::series::SeriesPositionInfo::gap(position, None);
+        p.title_id = Some(position as u64 + 100);
+        p.title_name = Some(name.into());
+        p
+    }
+
+    fn closed_grid(
+        total: i32,
+        owned_at: &[i32],
+    ) -> Vec<crate::services::series::SeriesPositionInfo> {
+        (1..=total)
+            .map(|p| {
+                if owned_at.contains(&p) {
+                    owned(p, &format!("Owned {p}"))
+                } else {
+                    crate::services::series::SeriesPositionInfo::gap(p, None)
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn place_on_grid_fills_the_gap_of_a_closed_series() {
+        let mut grid = closed_grid(4, &[1, 3]);
+        let review = place_on_grid(&mut grid, &[tome(7, 2, false)], Some(4));
+        assert!(review.is_empty());
+        assert_eq!(grid.len(), 4);
+        assert_eq!(grid[1].expected.as_ref().map(|c| c.id), Some(7));
+        assert!(grid.iter().filter(|p| p.expected.is_some()).count() == 1);
+    }
+
+    #[test]
+    fn place_on_grid_skips_settled_tomes() {
+        let mut grid = closed_grid(4, &[2]);
+        let review = place_on_grid(&mut grid, &[tome(7, 2, true)], Some(4));
+        assert!(review.is_empty());
+        assert!(grid.iter().all(|p| p.expected.is_none()));
+    }
+
+    #[test]
+    fn place_on_grid_inserts_open_series_squares_in_position_order() {
+        let mut grid = vec![owned(1, "A"), owned(5, "B")];
+        let review = place_on_grid(&mut grid, &[tome(1, 3, false), tome(2, 9, false)], None);
+        assert!(review.is_empty());
+        let order: Vec<i32> = grid.iter().map(|p| p.position).collect();
+        assert_eq!(order, vec![1, 3, 5, 9]);
+        assert_eq!(grid[1].expected.as_ref().map(|c| c.id), Some(1));
+        assert!(grid[1].title_id.is_none());
+        assert_eq!(grid[3].expected.as_ref().map(|c| c.id), Some(2));
+    }
+
+    #[test]
+    fn place_on_grid_lists_tomes_above_the_total_and_on_held_positions() {
+        let mut grid = closed_grid(3, &[2]);
+        let review = place_on_grid(&mut grid, &[tome(1, 2, false), tome(2, 6, false)], Some(3));
+        assert_eq!(grid.len(), 3);
+        assert!(grid.iter().all(|p| p.expected.is_none()));
+        assert_eq!(review.len(), 2);
+        assert_eq!(review[0].card.id, 1);
+        assert_eq!(
+            review[0].reason,
+            ReviewReason::Held {
+                holder: "Owned 2".into()
+            }
+        );
+        assert_eq!(review[1].card.id, 2);
+        assert_eq!(review[1].reason, ReviewReason::AboveTotal { total: 3 });
+    }
+
+    #[test]
+    fn closed_total_of_ignores_open_series_and_missing_totals() {
+        assert_eq!(closed_total_of(SeriesType::Closed, Some(5)), Some(5));
+        assert_eq!(closed_total_of(SeriesType::Closed, None), None);
+        assert_eq!(closed_total_of(SeriesType::Closed, Some(0)), None);
+        assert_eq!(closed_total_of(SeriesType::Open, Some(5)), None);
     }
 }

@@ -1,6 +1,6 @@
 # Story 11.11: Expected tomes — series page and wishlist
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR142, FR147, UX-DR34 (UX-DR16 grid, UX-DR8 Modal reused). Epic 11 — eleventh story; consumes 11-10 (`ExpectedTomeService`, auto-settle at scan). Carry-overs from 11-10: the scan-to-settle E2E (D-11-10-7), the localization of `ExpectedTomeError` (D-11-10-4), and a legible rendering of the states of #524 (tome above a lowered total, tome on a position a restored title holds again). Related open issues: #519 (`/series` list counting — out of scope), #524 (rendered here, not prevented).
 
@@ -38,17 +38,17 @@ so that I know what to buy.
 8. **AC8 — roles & scoping.** Every form, modal and mutation requires Librarian (Anonymous → login redirect with return to the series page; HTMX mutation → the usual 303/HX-Redirect); a tome id that does not belong to the series in the path, or is deleted, is a 404. The page itself stays readable anonymously.
 9. **AC9 — localized errors.** `ExpectedTomeError::localized(loc)` renders every variant through `t!()` (`expected_tome.error.*`), in en/fr/de/it, following docs/error-message-style.md: field errors terse (title required / too long, invalid ISBN, position out of range), conflicts as what happened → why → what to do (position held, position taken, duplicate ISBN, settled, changed by someone else, not found), database error without internals. The MCP `Display` stays English.
 10. **AC10 — CSP & CSRF.** No inline script/style/handler (`templates_audit` green); every new `<form method="POST">` carries `_csrf_token` as first child; HTMX posts inherit the token via `csrf.js`.
-11. **AC11 — tests.** Unit: grid placement (gap filled, open-series insert ordered, above total, held, settled skipped), wishlist note text, every `localized` variant non-empty in the four locales and distinct from the key. Router-level integration (`tests/expected_tomes_web.rs`, `#[sqlx::test]`, `tests/common/web.rs`): page shows a tome anonymously without actions and with actions for a librarian; create / edit / refusal (422 + localized message) / stale version; delete modal 405 without HTMX, delete success; tome of another series → 404; anonymous POST refused; wishlist create (item fields + note + audit), duplicate by ISBN, duplicate without ISBN; lowered total and held position listed under "to review". E2E `tests/e2e/specs/journeys/expected-tomes.spec.ts` (spec id `XT`): (a) Librarian creates a closed series, adds an expected tome with an ISBN through the form, sees it in its gap, sends it to the wishlist (then the second click says it is already there), scans the ISBN on `/catalog` — the feedback shows the settle and the wishlist banner — and the series page shows the title owned at that position; (b) edit then delete a tome through the modal; (c) lowering the total moves a tome to "to review"; (d) a blank browser (anonymous) sees the tome title without actions.
+11. **AC11 — tests.** Unit: grid placement (gap filled, open-series insert ordered, above total, held, settled skipped), wishlist note text, every `localized` variant non-empty in the four locales and distinct from the key. Router-level integration (`tests/expected_tomes_web.rs`, `#[sqlx::test]`, `tests/common/web.rs`): page shows a tome anonymously without actions and with actions for a librarian; create / edit / refusal (422 + localized message) / stale version; delete modal 405 without HTMX, delete success; tome of another series → 404; anonymous POST refused; wishlist create (item fields + note + audit), duplicate by ISBN, duplicate without ISBN; lowered total and held position listed under "to review". E2E `tests/e2e/specs/journeys/series-expected-tomes.spec.ts` (spec id `XT`; file name per D-11-11-6): (a) Librarian creates a closed series, adds an expected tome with an ISBN through the form, sees it in its gap, sends it to the wishlist (then the second click says it is already there), scans the ISBN on `/catalog` — the feedback shows the settle and the wishlist banner — and the series page shows the title owned at that position; (b) edit then delete a tome through the modal; (c) lowering the total moves a tome to "to review"; (d) a blank browser (anonymous) sees the tome title without actions.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `ExpectedTomeError::localized` + `expected_tome.error.*` keys ×4 (AC9).
-- [ ] T2 — `SeriesPositionInfo.expected` + pure placement `services::expected_tomes::place_on_grid` returning the stranded tomes (AC1, AC2).
-- [ ] T3 — `src/routes/series_expected_tomes.rs`: form pages, create, update, delete modal + delete, wishlist; routes in `routes/mod.rs` (AC3–AC8).
-- [ ] T4 — Templates: `pages/expected_tome_form.html`, `fragments/expected_tome_delete_modal.html`, grid card + "to review" section in `series_detail.html` / `series_gap_grid.html`; labels ×4 (AC1–AC6, AC10).
-- [ ] T5 — Wishlist: shared audit helper, duplicate lookup without ISBN (`WishlistItemModel::find_by_title_and_notes_without_isbn`) (AC6, AC7).
-- [ ] T6 — Tests (AC11): unit, `tests/expected_tomes_web.rs`, E2E spec.
-- [ ] T7 — Gates: clippy `--all-targets -D warnings`, full `cargo test` (test DB 3307), `cargo sqlx prepare --check --workspace -- --all-targets`, locale parity, flake grep, `tsc --noEmit`, full Playwright `CI=true --workers=2` on a reset stack (port 18080).
+- [x] T1 — `ExpectedTomeError::localized` + `expected_tome.error.*` keys ×4 (AC9).
+- [x] T2 — `SeriesPositionInfo.expected` + pure placement `services::expected_tomes::place_on_grid` returning the stranded tomes (AC1, AC2).
+- [x] T3 — `src/routes/series_expected_tomes.rs`: form pages, create, update, delete modal + delete, wishlist; routes in `routes/mod.rs` (AC3–AC8).
+- [x] T4 — Templates: `pages/expected_tome_form.html`, `fragments/expected_tome_delete_modal.html`, grid card + "to review" section in `series_detail.html` / `series_gap_grid.html`; labels ×4 (AC1–AC6, AC10).
+- [x] T5 — Wishlist: shared audit helper, duplicate lookup without ISBN (`WishlistItemModel::find_by_title_and_notes_without_isbn`) (AC6, AC7).
+- [x] T6 — Tests (AC11): unit, `tests/expected_tomes_web.rs`, E2E spec.
+- [x] T7 — Gates: clippy `--all-targets -D warnings`, full `cargo test` (test DB 3307), `cargo sqlx prepare --check --workspace -- --all-targets`, locale parity, flake grep, `tsc --noEmit`, full Playwright `CI=true --workers=2` on a reset stack (port 18080).
 
 ## Dev Notes
 
@@ -81,9 +81,28 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Completion Notes List
 
+- Series page: unsettled tomes fill their gap square (title, ISBN, "Expected" marker); open series get a square at the tome's position; settled tomes stay hidden behind the owned card; tomes above a lowered total or on a held position are listed under "Expected tomes to review" with the reason (#524, D-11-11-2). Placement is the pure `expected_tomes::place_on_grid`, run before the sort.
+- Routes in `src/routes/series_expected_tomes.rs`: full-page add / edit forms (refusal → 422 + localized message, typed values kept), UX-DR8 delete modal + `POST …/delete` (HX-Redirect), `POST …/wishlist` (D-11-11-3).
+- Wishlist: title + ISBN + note "Series «name», tome N"; duplicate by ISBN, or for a tome without ISBN by title + note (D-11-11-4); shared `audit_wishlist_add` helper; `utils::feedback_html_with_link` for the link to the item.
+- `ExpectedTomeError::localized` / `into_app_error` with `expected_tome.error.*` in the four locales; MCP keeps the English `Display` (D-11-11-5).
+- E2E spec renamed `series-expected-tomes.spec.ts` (D-11-11-6): a series created early in the alphabetical schedule broke empty-states / dewey-code / classification-fieldset.
+- Gates: clippy `--all-targets -D warnings` clean; `cargo test` 1852 passed / 0 failed (test DB 3307); `cargo sqlx prepare --check` green; flake grep clean; `tsc --noEmit` clean; Playwright `CI=true --workers=2` on a reset stack (18080): 367 passed, 2 skipped, 0 failed.
+
 ### File List
+
+- src/routes/series_expected_tomes.rs (new)
+- templates/pages/expected_tome_form.html (new), templates/fragments/expected_tome_delete_modal.html (new), templates/components/expected_tome_actions.html (new)
+- templates/components/series_gap_grid.html, templates/pages/series_detail.html
+- src/routes/series.rs, src/routes/mod.rs, src/routes/wishlist.rs
+- src/services/expected_tomes.rs, src/services/series.rs
+- src/models/wishlist.rs, src/utils.rs
+- locales/en.yml, locales/fr.yml, locales/de.yml, locales/it.yml
+- tests/expected_tomes_web.rs (new), tests/common/web.rs
+- tests/e2e/specs/journeys/series-expected-tomes.spec.ts (new)
+- _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md, sprint-status.yaml
 
 ## Change Log
 
 - 2026-10-28 — story created (ready-for-dev).
 - 2026-10-28 — validated against the create-story checklist: GET forms use `require_role_with_return` (Anonymous bounces back to the form), mutations `require_role`; router-level tests build the router with `tests/common/mcp.rs::router` + `tests/common/web.rs::Browser`; the wishlist note is plain text (rendered escaped by the wishlist pages); placement must skip settled tomes using the predicate-reduced `settled_title_id` (`list_by_series`), never the raw column.
+- 2026-10-28 — implementation complete (review).

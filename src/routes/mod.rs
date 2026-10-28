@@ -36,6 +36,7 @@ pub mod labels_page;
 pub mod loans;
 pub mod locations;
 pub mod series;
+pub mod series_expected_tomes;
 pub mod setup;
 pub mod titles;
 pub mod wishlist;
@@ -282,6 +283,35 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .route(
             "/series/{id}/edit",
             axum::routing::get(series::edit_series_form),
+        )
+        // Story 11-11 — expected tomes (FR142, FR147, UX-DR34).
+        .route(
+            "/series/{id}/expected-tomes",
+            axum::routing::post(series_expected_tomes::create),
+        )
+        .route(
+            "/series/{id}/expected-tomes/new",
+            axum::routing::get(series_expected_tomes::new_form),
+        )
+        .route(
+            "/series/{id}/expected-tomes/{tome_id}",
+            axum::routing::post(series_expected_tomes::update),
+        )
+        .route(
+            "/series/{id}/expected-tomes/{tome_id}/edit",
+            axum::routing::get(series_expected_tomes::edit_form),
+        )
+        .route(
+            "/series/{id}/expected-tomes/{tome_id}/delete-modal",
+            axum::routing::get(series_expected_tomes::delete_modal),
+        )
+        .route(
+            "/series/{id}/expected-tomes/{tome_id}/delete",
+            axum::routing::post(series_expected_tomes::delete),
+        )
+        .route(
+            "/series/{id}/expected-tomes/{tome_id}/wishlist",
+            axum::routing::post(series_expected_tomes::add_to_wishlist),
         )
         // Borrower routes
         .route(

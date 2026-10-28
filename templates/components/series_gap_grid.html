@@ -26,8 +26,9 @@
         </a>
         {% else %}
         <div role="gridcell"
-             aria-label="{{ missing_label }}{{ pos.position }}"
-             title="{{ missing_label }}{{ pos.position }}"
+             aria-label="{{ missing_label }}{{ pos.position }}{% if let Some(card) = pos.expected %} — {{ card.title }}{% endif %}"
+             title="{{ missing_label }}{{ pos.position }}{% if let Some(card) = pos.expected %} — {{ card.title }}{% endif %}"
+             {% if let Some(card) = pos.expected %}data-expected-tome="{{ card.id }}" data-position="{{ pos.position }}"{% endif %}
              class="series-card-gap series-gap-stripes flex flex-col rounded-md border border-dashed border-red-300 dark:border-red-700 overflow-hidden">
             <div class="aspect-[2/3] flex items-center justify-center text-red-400 dark:text-red-500">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -36,7 +37,22 @@
             </div>
             <div class="p-2 flex flex-col gap-0.5">
                 <span class="text-lg font-bold text-red-600 dark:text-red-400 leading-tight">{{ volume_short_label }} {{ pos.position }}</span>
+                {% if let Some(card) = pos.expected %}
+                {# Story 11-11 (UX-DR34): the expected tome naming this gap. #}
+                <span class="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">{{ tome_labels.marker }}</span>
+                <span class="text-sm font-medium text-stone-900 dark:text-stone-100 break-words" data-expected-tome-title>{{ card.title }}</span>
+                {% if let Some(isbn) = card.isbn %}
+                <span class="text-xs text-stone-500 dark:text-stone-400">{{ tome_labels.isbn }} {{ isbn }}</span>
+                {% endif %}
+                {% include "components/expected_tome_actions.html" %}
+                {% else %}
                 <span class="text-xs text-red-500 dark:text-red-500">{{ missing_label }}{{ pos.position }}</span>
+                {% if base.role == "librarian" || base.role == "admin" %}
+                <a href="/series/{{ series.id }}/expected-tomes/new?position={{ pos.position }}"
+                   data-name-gap="{{ pos.position }}"
+                   class="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">{{ tome_labels.name_gap }}</a>
+                {% endif %}
+                {% endif %}
             </div>
         </div>
         {% endif %}

@@ -154,6 +154,72 @@ pub struct SeriesDetailTemplate {
     pub label_sort_position: String,
     pub label_sort_dewey: String,
     pub label_sort_title: String,
+    /// Story 11-11 (UX-DR34, #524): tomes that fit no gap, with labels.
+    pub tomes_to_review: Vec<TomeToReviewView>,
+    pub tome_labels: ExpectedTomeLabels,
+}
+
+/// Story 11-11 — a tome under "Expected tomes to review", reason rendered.
+pub struct TomeToReviewView {
+    pub card: crate::services::expected_tomes::ExpectedTomeCard,
+    pub reason: String,
+}
+
+/// Story 11-11 — labels of the expected-tome cards and actions.
+pub struct ExpectedTomeLabels {
+    pub marker: String,
+    pub add: String,
+    pub name_gap: String,
+    pub edit: String,
+    pub delete: String,
+    pub add_to_wishlist: String,
+    pub isbn: String,
+    pub review_heading: String,
+    pub review_intro: String,
+}
+
+impl ExpectedTomeLabels {
+    fn new(loc: &str) -> Self {
+        let t = |k: &str| rust_i18n::t!(k, locale = loc).to_string();
+        Self {
+            marker: t("expected_tome.marker"),
+            add: t("expected_tome.add"),
+            name_gap: t("expected_tome.name_gap"),
+            edit: t("expected_tome.edit"),
+            delete: t("expected_tome.delete"),
+            add_to_wishlist: t("expected_tome.add_to_wishlist"),
+            isbn: t("expected_tome.isbn_label"),
+            review_heading: t("expected_tome.review_heading"),
+            review_intro: t("expected_tome.review_intro"),
+        }
+    }
+}
+
+fn review_view(
+    item: crate::services::expected_tomes::TomeToReview,
+    loc: &str,
+) -> TomeToReviewView {
+    use crate::services::expected_tomes::ReviewReason;
+    let position = item.card.position;
+    let reason = match &item.reason {
+        ReviewReason::AboveTotal { total } => rust_i18n::t!(
+            "expected_tome.review_above_total",
+            locale = loc,
+            position = position,
+            total = total
+        ),
+        ReviewReason::Held { holder } => rust_i18n::t!(
+            "expected_tome.review_held",
+            locale = loc,
+            position = position,
+            holder = holder
+        ),
+    }
+    .to_string();
+    TomeToReviewView {
+        card: item.card,
+        reason,
+    }
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -184,6 +250,18 @@ pub async fn series_detail_page(
     let owned = positions.iter().filter(|p| p.title_id.is_some()).count() as u64;
     let gap = compute_gap(&series, owned);
     let series_name_for_grid = series.name.clone();
+
+    // Story 11-11: name the gaps with the series' expected tomes; those
+    // that fit no gap (#524) are listed for review. Before the sort.
+    let tomes = crate::services::expected_tomes::ExpectedTomeService::list_by_series(pool, id).await?;
+    let tomes_to_review = crate::services::expected_tomes::place_on_grid(
+        &mut positions,
+        &tomes,
+        crate::services::expected_tomes::closed_total_of(series.series_type, series.total_volume_count),
+    )
+    .into_iter()
+    .map(|t| review_view(t, loc))
+    .collect();
 
     // Fix #235: sort the position grid by the requested key / dir.
     // The owned / gap counters are computed BEFORE the sort because
@@ -223,6 +301,8 @@ pub async fn series_detail_page(
         label_sort_position: rust_i18n::t!("series.sort.position", locale = loc).to_string(),
         label_sort_dewey: rust_i18n::t!("series.sort.dewey_code", locale = loc).to_string(),
         label_sort_title: rust_i18n::t!("series.sort.title", locale = loc).to_string(),
+        tomes_to_review,
+        tome_labels: ExpectedTomeLabels::new(loc),
     };
 
     match template.render() {

@@ -563,3 +563,9 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** carry-over (b) — `ExpectedTomeError` messages were agent-facing English.
 **Chosen:** `ExpectedTomeError::localized(loc)` with `expected_tome.error.*` keys in the four locales for every web surface; `Display` (used by MCP tools) unchanged (D-11-7 / D-11-9-2 precedent).
 **Reversible:** yes.
+
+### D-11-11-6 — E2E spec named to run after the specs that assume no series
+**Context:** the first full run named the spec `expected-tomes.spec.ts`; the series it creates appeared while `empty-states.spec.ts` expected an empty `/series`, and while `dewey-code` / `classification-fieldset` clicked the last submit button of a title page (which becomes "Add to series" once a series exists) — 5 failures.
+**Chosen:** rename to `series-expected-tomes.spec.ts`, next to `series.spec.ts`, which already relies on the same alphabetical schedule; documented in the spec header. Full suite green afterwards.
+**Rejected:** rewriting the three older specs' selectors in this story (out of scope; the order dependency predates it).
+**Reversible:** yes.
