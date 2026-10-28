@@ -21,6 +21,8 @@ so that I can review it safely later.
 | `src/models/*.rs` | dynamic `sqlx::query` + `Row::try_get` is the norm (6 macro calls repo-wide); `PaginatedList::new`, `DEFAULT_PAGE_SIZE = 25` in `models/mod.rs` | same style; TIMESTAMP columns read with `CAST(col AS DATETIME)` (dynamic-query gotcha), JSON with `CAST(col AS CHAR)` |
 | `src/mcp/tool.rs` | `From<AppError> for ToolError` maps **every** `AppError` to `Internal` | filing errors must stay typed (`ProposalError`) so 11-12..11-14 can turn a validation refusal into an `InvalidArguments` the agent can act on |
 | `AppState.covers_dir` (`src/lib.rs`, built in `main.rs` from `COVERS_DIR`, default `./covers`, served by `ServeDir` at `/covers`) | 36 files construct `AppState` literally (tests) | the staging directory is **derived** from `covers_dir` (sibling `<name>-staging`), exposed by `AppState::cover_staging_dir()`, created at boot — no new `AppState` field, never served |
+| `tests/seed_drift.rs` | `ENTITY_TABLES_WITH_SOFT_DELETE` asserts the AR24 quartet on a fresh DB | extend it with the two new tables (AR24 regression net) |
+| `src/services/admin_health.rs` | entity counts over a fixed table list (`information_schema` used only to probe `deleted_at`) | untouched — proposals are not catalogue entities; the dashboard indicator is 11-21 |
 | `reqwest` 0.12 | re-exports `url::Url` as `reqwest::Url` | source URLs parsed with `reqwest::Url` — no new dependency |
 
 ## Acceptance Criteria
@@ -42,7 +44,7 @@ so that I can review it safely later.
 - [ ] T2 — Model `src/models/proposal.rs`: `ProposalKind`, `ProposalStatus` (+ `can_transition_to`), `ProposalTargetTable`, row structs, insert / list / count / find / items / target versions / guarded status update, all taking `&mut MySqlConnection` where a transaction may need them (AC1, AC4–AC7, AC9).
 - [ ] T3 — Service `src/services/proposals.rs`: `ProposalError` (+ `From<ProposalError> for AppError`), pure validators (`validate_sources`, `validate_items`, `normalize_rejection_reason`, `stale_reasons`), `ProposalService::{file, list, detail, transition, transition_in, stale_targets, stale_targets_in, check_staleness, check_staleness_in}` (AC2–AC7).
 - [ ] T4 — `src/services/cover_staging.rs` + `AppState::cover_staging_dir()` + creation in `main.rs` (AC8).
-- [ ] T5 — Unit tests in both modules; integration tests `tests/proposals_service.rs` (AC10).
+- [ ] T5 — Unit tests in both modules; integration tests `tests/proposals_service.rs` (AC10); add `proposals` and `proposal_items` to `tests/seed_drift.rs::ENTITY_TABLES_WITH_SOFT_DELETE` so the AR24 quartet is enforced on a fresh DB.
 - [ ] T6 — Docs: schema documented in the migration header and the module docs; CLAUDE.md / manual left to story 11-24 (no user-visible surface yet).
 - [ ] T7 — Gates: clippy `--all-targets -D warnings`, full `cargo test` (test DB 3307), `cargo sqlx prepare --check --workspace -- --all-targets`, flake grep, `tsc --noEmit`, full Playwright `CI=true --workers=2` on a reset stack (regression only — no E2E added, see D-11-9-6).
 
@@ -80,3 +82,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 ## Change Log
 
 - 2026-10-28 — story created (create-story).
+- 2026-10-28 — validated against the create-story checklist: AR24 regression net (`seed_drift`), purge interaction (`decided_by` SET NULL, no FK on targets), typed errors for the MCP layer, staging dir kept off `/covers`; no gap left open.
