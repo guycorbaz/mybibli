@@ -60,6 +60,11 @@ so that I can identify what I could propose.
 - `search_catalog` order: trimmed query empty → `active_search("", filters)` (browse). Otherwise `detect_code`: `VCode` → `VolumeModel::find_by_label_with_title` (both live) → one-item list if filters match, else fall through to text; `Isbn` → `TitleModel::find_by_isbn` → same; `LCode` / `Text` → `active_search`. Exact hits are returned as a one-item page (`total_items = 1`) on page 1 and as an empty page with the same totals on page > 1.
 - Filters on an exact hit compare the `TitleModel` (`media_type`, `genre_id`).
 - `active_search` FULLTEXT needs ≥ 3 characters after stripping operators; shorter queries use LIKE — unchanged.
+- Verified live-only lookups: `VolumeModel::find_by_label` and `TitleModel::{find_by_id, find_by_isbn}` filter `deleted_at IS NULL`, so a soft-deleted volume label or title ISBN falls through to text search and finds nothing.
+- `has_cover` uses the same predicate as the `no_cover_only` filter (CR #355): NULL or empty string = no cover.
+- `title_count` = `COUNT(DISTINCT t.id)` over `LEFT JOIN title_contributors tc (tc.deleted_at IS NULL) JOIN titles t (t.deleted_at IS NULL)` — a contributor with two roles on one title counts it once; a contributor without live titles is still listed with 0. Name matching relies on the column's case-insensitive collation; LIKE wildcards are escaped as in `search_by_name`.
+- Genre names are compared with `to_lowercase()` in Rust over `GenreModel::list_active` (accents preserved).
+- FULLTEXT (`ft_titles_search`) sees committed rows only — `#[sqlx::test]` inserts commit, so text search works in tests (as in `tests/search_filter_browse.rs`).
 - Page cap: `MAX_PAGE = 10_000` (250 000 rows — far above a household library); prevents `(page - 1) * 25` overflowing `u32`.
 
 ### Wire details (from 11-6)
@@ -96,3 +101,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 ## Change Log
 
 - 2026-10-28 — story created (create-story).
+- 2026-10-28 — validated against the create-story checklist: live-only lookups verified, cover predicate, title-count join, FULLTEXT commit note added.
