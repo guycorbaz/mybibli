@@ -207,9 +207,12 @@ fn parse_enum<T>(raw: &str, column: &str, parse: fn(&str) -> Option<T>) -> Resul
 // that filed it after the key is revoked or deleted, and the name of the
 // user who decided it after that user is deactivated (AC4, AC5). The row
 // itself only disappears when purged (`decided_by` is then SET NULL).
+// The COALESCE is CAST to CHAR: on a server whose default charset is not
+// utf8mb4 (CI's MariaDB), `users.username` and `proposals.decided_by_name`
+// carry different collations and the bare COALESCE decodes as VARBINARY.
 const PROPOSAL_SELECT: &str = "SELECT p.id, p.kind, p.status, p.api_key_id, k.label AS api_key_label, \
      CAST(p.sources AS CHAR) AS sources, CAST(p.decided_by AS SIGNED) AS decided_by, \
-     COALESCE(u.username, p.decided_by_name) AS decided_by_username, \
+     CAST(COALESCE(u.username, p.decided_by_name) AS CHAR) AS decided_by_username, \
      CAST(p.decided_at AS DATETIME) AS decided_at, p.rejection_reason, \
      CAST(p.created_at AS DATETIME) AS created_at, CAST(p.updated_at AS DATETIME) AS updated_at, \
      p.version \

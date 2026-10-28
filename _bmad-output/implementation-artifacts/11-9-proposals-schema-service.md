@@ -110,6 +110,8 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Debug Log References
 
+- CI (DB integration job) failed after review round 2: `COALESCE(users.username, proposals.decided_by_name)` decoded as VARBINARY on CI's MariaDB, which runs on the server default charset (the local test container forces utf8mb4). Reproduced on a MariaDB 10.11 container started without the charset flags; fixed with `CAST(… AS CHAR)`; `proposals_service` green on both configurations.
+
 ### Completion Notes List
 
 - T1: `20261028120000_create_proposals.sql` — `proposals` / `proposal_items`, AR24 quartet, `decided_by` SET NULL, no FK on targets, `chk_proposal_items_target`.
@@ -143,3 +145,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — code review round 1: 5 Medium + 11 Low fixed, 2 Medium deferred (#521, #522).
 - 2026-10-28 — code review round 2: 4 Medium + 10 Low fixed.
 - 2026-10-28 — code review round 3: 1 Medium + 1 Low fixed; round 4 clean → done.
+- 2026-10-28 — CI fix: charset-independent decoding of the decider's name.
