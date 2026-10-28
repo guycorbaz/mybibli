@@ -1,4 +1,4 @@
-//! The MCP tools (stories 11-6..11-8 read, 11-12 on propose). Each one is a thin adapter over
+//! The MCP tools (stories 11-6..11-8 read, 11-12 / 11-13 on propose). Each one is a thin adapter over
 //! `services/`, implementing [`super::tool::McpTool`]: it validates its
 //! arguments, calls one service and maps the result to JSON.
 
@@ -8,8 +8,10 @@ mod get_title;
 mod list_series;
 mod list_titles_with_incomplete_metadata;
 mod list_titles_without_cover;
+mod proposal_args;
 mod propose_series_attach;
 mod propose_series_create;
+mod propose_title_metadata;
 mod search_contributors;
 mod search_titles;
 mod series_proposal_args;
@@ -35,11 +37,16 @@ pub fn registry() -> ToolRegistry {
         .with(list_titles_with_incomplete_metadata::ListTitlesWithIncompleteMetadata)
         .with(propose_series_create::ProposeSeriesCreate)
         .with(propose_series_attach::ProposeSeriesAttach)
+        .with(propose_title_metadata::ProposeTitleMetadata)
 }
 
 /// The tools that file proposals (story 11-12 on); every other tool reads.
 #[cfg(test)]
-const PROPOSE_TOOLS: [&str; 2] = ["propose_series_attach", "propose_series_create"];
+const PROPOSE_TOOLS: [&str; 3] = [
+    "propose_series_attach",
+    "propose_series_create",
+    "propose_title_metadata",
+];
 
 /// One page of a list tool's answer — the same shape for every list.
 #[derive(Debug, Serialize)]
@@ -180,6 +187,7 @@ mod tests {
                 "list_titles_without_cover",
                 "propose_series_attach",
                 "propose_series_create",
+                "propose_title_metadata",
                 "search_contributors",
                 "search_titles"
             ],

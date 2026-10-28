@@ -435,11 +435,7 @@ pub async fn patch_title(
     // Match the same regex used by the metadata-edit form.
     if let Some(Some(dewey)) = body.dewey_code.as_ref() {
         let trimmed = dewey.trim();
-        if !trimmed.is_empty()
-            && !trimmed
-                .chars()
-                .all(|c| c.is_ascii_digit() || c == '.' || c == '/')
-        {
+        if !trimmed.is_empty() && !crate::utils::dewey_code_chars_valid(trimmed) {
             return Ok((
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
@@ -662,19 +658,11 @@ mod tests {
         // around it is exercised by the integration tests.
         let valid_cases = ["813", "813.54", "973/.926", "100.0"];
         for c in valid_cases {
-            assert!(
-                c.chars()
-                    .all(|ch| ch.is_ascii_digit() || ch == '.' || ch == '/'),
-                "{c} should be valid"
-            );
+            assert!(crate::utils::dewey_code_chars_valid(c), "{c} should be valid");
         }
         let invalid_cases = ["abc", "813;DROP TABLE titles", "ml-100"];
         for c in invalid_cases {
-            assert!(
-                !c.chars()
-                    .all(|ch| ch.is_ascii_digit() || ch == '.' || ch == '/'),
-                "{c} should be invalid"
-            );
+            assert!(!crate::utils::dewey_code_chars_valid(c), "{c} should be invalid");
         }
     }
 }

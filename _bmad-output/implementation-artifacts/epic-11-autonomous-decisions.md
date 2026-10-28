@@ -659,3 +659,68 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** confirmation pass, no Medium+; the BEGIN → key `FOR UPDATE` → plain-read order verified (sqlx sends a bare `BEGIN`).
 **Chosen:** the `series_version` description now warns that an unpinned call is refused (retry) when the series is edited during it; accepted: the "changed since you read it" wording in that case, validation after `BEGIN` in `ProposalService::file`, the redundant share lock in `file_in`.
 **Reversible:** yes.
+
+## § 11-13 — Metadata proposal tool (part of #493)
+
+### D-11-13-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-13-metadata-proposal-tool` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-13-2 — Item shapes: one `"line": "field"` item per changed field, current next to proposed [PRODUCT]
+**Context:** "stores, for each field, the current value next to the proposed one"; 11-15 (equivalence = title + set of fields), 11-16 (display), 11-18 (accept), 11-19 (edit / remove an item), 11-20 (side by side) consume the shapes.
+**Chosen:** one item per kept field, fixed order subtitle, description, publisher, publication_year, dewey_code, contributors; every item targets `titles/<id>` and records its version. Scalar: `{"line":"field","field","current","proposed"}` (strings; `publication_year` integers, current = year of `publication_date`, acceptance writes `YYYY-01-01`). Contributors: `{"line":"field","field":"contributors","current":[{"name","role"}],"proposed":[{"name","role","role_id"}]}` — `proposed` = contributors **to add**, `role_id` authoritative, `role` the name at filing. `current` stays as filed (11-19 edits `proposed` only). Contract documented on `services/metadata_proposals.rs`.
+**Rejected:** one item for the whole proposal (11-19 could not remove one field, 11-15 could not read the field set); one item per contributor (a contributor has no single "current" value to show next to it).
+**Reversible:** yes until 11-18 ships.
+
+### D-11-13-3 — Field rules: the column bounds, no erasing, a description cap [PRODUCT]
+**Context:** "a value the existing title-edit validation would reject"; the edit form only trims, turns empty into NULL, and silently drops an unparseable date — it relies on the column widths.
+**Chosen:** trimmed strings; `null`, a wrong JSON type or a blank value refused (an agent completes a title, it never erases a value); `subtitle` ≤ 500, `publisher` ≤ 255, `dewey_code` ≤ 32 characters (columns); `description` ≤ 10 000 characters (the item, current value included, must fit 11-9's 64 KiB — an oversized item is refused naming the field); control characters refused in single-line values (line breaks / tabs allowed in `description`, NFR47); `dewey_code` by the API v1 rule (digits, `.`, `/`, extracted to `utils::dewey_code_chars_valid`) plus at least one digit; `publication_year` 1000..=next year.
+**Rejected:** accepting the edit form's silent fallbacks (an invalid year would read as "no change").
+**Reversible:** yes.
+
+### D-11-13-4 — Contributors: additions only, role by name among live roles [PRODUCT]
+**Context:** "contributors are proposed by name and role; whether they already exist is settled at acceptance".
+**Chosen:** a proposal only adds contributors (≤ 50, none removed at acceptance). The role is matched case-insensitively (trimmed, Rust `to_lowercase`) against live `contributor_roles`, stored with its id and the library's spelling; an unknown or soft-deleted role is refused listing the valid roles. Names follow `ContributorService`'s rule (non-blank, ≤ 255 bytes — shared constant `MAX_CONTRIBUTOR_NAME_BYTES`). The same name + role twice is refused; a name + role already on the title (case-insensitive) is dropped as unchanged.
+**Rejected:** replace semantics (a removal proposal is outside "missing information" and riskier); matching roles by the SQL collation (accent-insensitive; Rust matching is pure and testable, an accent mismatch only yields a refusal listing the spellings).
+**Reversible:** yes.
+
+### D-11-13-5 — No pending-duplicate rule for metadata [PRODUCT]
+**Context:** 11-12 refused a second pending proposal for the same series (its AC); 11-13's AC says nothing.
+**Chosen:** a second metadata proposal for the same title is filed. Accepting one bumps `titles.version`, so the other goes stale at its own acceptance (contributor-only proposals do not bump it — 11-18 must skip a contributor already present, D-11-13-6). FR136's resubmission delay (11-15) covers repeats of rejected proposals.
+**Rejected:** blocking on any pending metadata proposal for the title (an agent could not propose a field it found later until a librarian decides).
+**Reversible:** yes.
+
+### D-11-13-6 — Staleness baseline: version read for the comparison, plus the stored `current` values (#521 left to 11-17/11-18)
+**Context:** #521 — writes that do not bump `version` escape the staleness check.
+**Chosen:** every item records the pinned `version`, or the version of the row the comparison read (a title edited between that read and the filing is refused with `TargetChanged`, D-11-12-13 precedent), so `current` matches the recorded version. All six scalar writers of these fields bump `titles.version` (edit form, API v1 PATCH, background fetch, UNIMARC backfill). Not covered: `title_contributors` writes (manual add / remove, the fetch adding an author). The stored `current` values give 11-18 a field-level baseline whichever option #521 picks; acceptance must skip a contributor + role already on the title.
+**Reversible:** yes.
+
+### D-11-13-7 — Field-by-field refusal: all problems at once, nothing filed
+**Context:** "refused field by field with an explicit message".
+**Chosen:** the service collects every problem (unknown field, type, bounds, each contributor entry with its 1-based path such as `contributors[2].role`) into one `Invalid arguments` refusal; nothing is filed when any field is refused. The tool receives `fields` as a map so an unknown field reaches the service and is named with the list of proposable fields (the advertised schema stays closed).
+**Rejected:** filing the valid fields and reporting the others (a partial proposal the agent did not intend).
+**Reversible:** yes.
+
+### D-11-13-8 — Shared proposal pieces; the result lists `unchanged_fields`; no own transaction
+**Context:** a second proposal kind; 11-14 is the third.
+**Chosen:** `RefusalClass`, `FiledProposal` and a `Refusal` trait (`class()` + `Display`) move to `services::proposals` (re-exported by `series_proposals`); `src/mcp/tools/proposal_args.rs` holds `sources_property`, `filed_document` and a generic `tool_error`. Result: `{proposal_id, status, kind, item_count, unchanged_fields}`. Filing goes through `ProposalService::file` (its own transaction): no duplicate check needs 11-12's exclusive key lock, and the version pin makes the earlier reads consistent.
+**Reversible:** yes.
+
+### D-11-13-9 — Code review round 1: names folded like the collation, oversized current values truncated, full current date shown [PRODUCT]
+**Context:** review round 1 (three layers). Medium: (a) contributor names were compared with `to_lowercase` only, while acceptance resolves them with the `utf8mb4_unicode_ci` collation — "Jose" / "José" passed the in-proposal dedupe (acceptance would then hit the junction's unique key) and an existing "José" read as a new contributor; (b) a title whose current description (or contributor list) is near 64 KiB could never receive a proposal for that field, and the refusal told the agent to shorten its own value; (c) `publication_year` showed only the current year, hiding the month and day acceptance (`YYYY-01-01`) erases; (d) a contributor removed from a title (soft-deleted junction row) cannot be added back — pre-existing in the web flow too.
+**Chosen:** (a) `fold_name` (NFD, combining marks dropped, lower case, inner whitespace collapsed) for the dedupe, the "already on the title" check and role matching ("editeur" finds "Éditeur"); proposed text is stored NFC, one-line values with inner whitespace collapsed; the module contract tells 11-18 to re-check by contributor id after `find_or_create`. (b) `fit_item` shortens the item's `current` (string tail, list tail) and adds `"current_truncated": true` — the proposed value alone always fits; the `ItemTooLarge` refusal is gone. (c) the `publication_year` item carries `"current_date"`. (d) #531 (type:bug) — `add_to_title` must reactivate a soft-deleted junction row; 11-18 relies on it.
+**Also fixed (Low):** zero-width, direction, isolate, line / paragraph separator and BOM characters refused (NFR47); echoed field keys bounded to 80 characters without backticks or control characters, at most 50 errors spelled out; valid roles listed once at the end of the refusal; a missing `name` / `role` says "is missing"; a year above `i64::MAX` reads as out of range; the year bound uses UTC; an unpinned `TargetChanged` says the title was edited during the call; the Dewey schema pattern requires a digit; the description names the key refusal and the normalisation; `tool_error` tested with metadata errors.
+**Accepted (Low):** source errors reported after field errors (two round trips at worst); the Dewey check stays "lite" (API v1 rule); no revoked-key test for this tool (the transport guard refuses before any tool runs, covered by 11-6 / 11-12 tests); `description` safety depends on the review pages escaping it (11-16, NFR47).
+**Reversible:** yes.
+
+### D-11-13-10 — Code review round 2: one normal form for proposed and current text; no-break spaces kept [PRODUCT]
+**Context:** round 2 (Medium): the round-1 whitespace collapse used `split_whitespace`, turning French no-break spaces (U+00A0, U+202F) into ordinary spaces, and the "unchanged" check compared the normalised proposal with the raw current value — a proposal identical to the stored text (double space, NFD, no-break space) was filed as a change.
+**Chosen:** `normalize_text` — trim, NFC, CRLF / CR → LF; one-line values collapse runs of space / tab / line break only (no-break spaces kept). Proposed values are stored in that form and current values are compared through it, so a difference in normal form alone is no change. `fold_name` lower-cases before decomposing (Turkish "İ").
+**Accepted (Low):** `fold_name` also drops dependent vowel signs of scripts such as Devanagari, which the collation weighs (a near-duplicate dropped or refused; 11-18 re-checks by contributor id) — noted in the module contract.
+**Reversible:** yes.
+
+### D-11-13-11 — Code review round 3: clean; Lows accepted
+**Context:** confirmation pass, no Medium+.
+**Chosen:** fixed the `text()` doc comment, the spec's dev notes and a test for a tab in the current value; accepted: a current value that differs only in form cannot be cleaned by a proposal (D-11-13-10), the length message counts characters after NFC, the residual Greek final-sigma fold.
+**Reversible:** yes.

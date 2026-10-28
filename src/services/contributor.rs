@@ -6,6 +6,11 @@ use crate::models::contributor::{
 };
 use crate::models::title::TitleModel;
 
+/// At most this many bytes in a contributor name (the rule of
+/// [`ContributorService::find_or_create`], reused by the metadata
+/// proposal of story 11-13).
+pub const MAX_CONTRIBUTOR_NAME_BYTES: usize = 255;
+
 pub struct ContributorService;
 
 impl ContributorService {
@@ -28,7 +33,7 @@ impl ContributorService {
                 rust_i18n::t!("contributor.error.name_required").to_string(),
             ));
         }
-        if trimmed.len() > 255 {
+        if trimmed.len() > MAX_CONTRIBUTOR_NAME_BYTES {
             return Err(AppError::BadRequest(
                 rust_i18n::t!("contributor.error.name_too_long").to_string(),
             ));
@@ -131,7 +136,7 @@ impl ContributorService {
                 rust_i18n::t!("contributor.error.name_required").to_string(),
             ));
         }
-        if trimmed.len() > 255 {
+        if trimmed.len() > MAX_CONTRIBUTOR_NAME_BYTES {
             return Err(AppError::BadRequest(
                 rust_i18n::t!("contributor.error.name_too_long").to_string(),
             ));

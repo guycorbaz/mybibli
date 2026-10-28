@@ -105,6 +105,14 @@ pub fn isbn10_to_isbn13(code: &str) -> Option<String> {
     Some(isbn13)
 }
 
+/// Whether a Dewey code is made only of digits, `.` and `/` (the
+/// lite rule of the API v1 metadata PATCH, reused by the metadata
+/// proposal of story 11-13). An empty string passes: callers decide
+/// whether empty means "clear".
+pub fn dewey_code_chars_valid(code: &str) -> bool {
+    code.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '/')
+}
+
 /// `%query%` with the LIKE metacharacters of `query` escaped, so a user
 /// typing `_` or `%` matches those characters literally.
 pub fn like_contains_pattern(query: &str) -> String {
