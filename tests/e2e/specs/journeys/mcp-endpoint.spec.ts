@@ -139,12 +139,15 @@ test.describe("Story 11-6 — MCP endpoint", () => {
       await revokeApiKey(page, propose.label);
       await revokeApiKey(page, read.label);
     }
-    const afterRevoke = await mcpPost(agent, propose.plaintext, {
-      jsonrpc: "2.0",
-      id: 6,
-      method: "tools/list",
-    });
-    expect(afterRevoke.status()).toBe(401);
-    await agent.dispose();
+    try {
+      const afterRevoke = await mcpPost(agent, propose.plaintext, {
+        jsonrpc: "2.0",
+        id: 6,
+        method: "tools/list",
+      });
+      expect(afterRevoke.status()).toBe(401);
+    } finally {
+      await agent.dispose();
+    }
   });
 });

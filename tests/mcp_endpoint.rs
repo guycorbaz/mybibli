@@ -381,12 +381,15 @@ async fn only_a_propose_key_gets_in(pool: DbPool) {
     let write = seed_key(&pool, ApiKeyScope::Write).await;
     let propose = seed_key(&pool, ApiKeyScope::Propose).await;
     let revoked = seed_key(&pool, ApiKeyScope::Propose).await;
-    let revoked_rows = sqlx::query("UPDATE api_keys SET revoked_at = NOW() WHERE key_prefix = ?")
-        .bind(&revoked[..12])
-        .execute(&pool)
-        .await
-        .unwrap()
-        .rows_affected();
+    // The 12-char prefix holds one random character, so two propose keys
+    // can share it: revoke by id (the last key seeded), not by prefix.
+    let revoked_rows = sqlx::query(
+        "UPDATE api_keys SET revoked_at = NOW() WHERE id = (SELECT MAX(id) FROM (SELECT id FROM api_keys) AS k)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap()
+    .rows_affected();
     assert_eq!(revoked_rows, 1, "the revoked key must be the one updated");
     let app = router(&pool);
 
@@ -523,7 +526,7 @@ async fn body_under_the_cap_is_accepted(pool: DbPool) {
         res["result"]["isError"],
         true,
         "{}",
-        &res.to_string()[..200]
+        res.to_string().chars().take(200).collect::<String>()
     );
 }
 

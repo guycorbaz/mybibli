@@ -1,6 +1,6 @@
 # Story 11.6: MCP endpoint on `/api/mcp` with `rmcp` (spike + foundation)
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR127, NFR42, NFR43, NFR45, NFR46, AR27, AR28, AR31. Epic 11 — sixth story; blocks every MCP tool story (11-7 onwards). Prerequisite delivered by 11-5: `ApiKeyScope::Propose` + the `ApiKeyPropose` extractor (`src/middleware/api_key.rs`), today mounted only on a test route.
 
@@ -172,6 +172,15 @@ Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor, full 
 - [x] [Review][Defer] (Medium→Low) Body cap sized for 11-12 covers (≈ 14.3 MiB) while only `get_title` exists, and no request timeout on `/api/mcp` → #514 (kept per D-11-6-5; revisit with 11-12)
 - Dismissed: plain-text 400 (rmcp's own 4xx bodies are plain text too); `NotFound` carrying free text (only built from format strings); title-detail queries without a snapshot (pre-existing in `/api/v1`, `version` guards later writes); session-skip on `/api/mcp/` (normalised, harmless); spec-letter deviations (trait/registry shape, `find_title_detail`, `&McpConfig`, `MP` ISBN id — `MC` is taken, raw-SQL key seeding as in the 11-5 tests) — recorded here instead.
 
+Round 2 (2026-10-28, single combined pass): 0 High, 0 Medium, 5 Low — `ensure_supported_version` verified against the rmcp source on every path (2025-11-25 with header, 2026-07-28 `_meta`, `server/discover`, `initialize`).
+
+- [x] [Review][Patch] (Low) README still described browser origins — aligned with D-11-6-13
+- [x] [Review][Patch] (Low) E2E request context not disposed on failure — `dispose` in a `finally`
+- [x] [Review][Patch] (Low) Failure-message slice `[..200]` could panic — `chars().take(200)`
+- [x] [Review][Patch] (Low) Threat model order of checks missed the in-handler -32022 step — added
+- Noted, no action: `ping` and other rmcp default methods are not version-guarded (no catalog data; later stories adding handlers must call `ensure_supported_version`).
+- Found while re-running the suite: the new `rows_affected == 1` assertion exposed that two propose keys can share the 12-char prefix (one random character) — the test now revokes by id. Intended behaviour of the prefix scan (argon2 picks the right row), no product change.
+
 ### Debug Log References
 
 - First `cargo test --lib mcp::` run: `parse_args([1])` accepted — serde reads a struct from a sequence; an explicit object check was added (unreachable through MCP, whose `arguments` is always an object, but the tool contract says object).
@@ -185,7 +194,7 @@ Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor, full 
 - `/api/mcp` mounted via `routes::build_router_with_mcp` (`build_router` reads `McpConfig::from_env()`); session resolver skips the path; `rmcp=warn` log cap.
 - Title-detail DTOs + assembly moved from `routes/api_v1.rs` to `services/title_detail.rs` (JSON unchanged; `tests/api_v1_*` green).
 - Docs: `.env.example`, `docker-compose.yml`, `README.md`, `docs/auth-threat-model.md` (§ 4 row + § 5.8), `docs/route-role-matrix.md` (§ MCP endpoint).
-- Tests: 16 integration tests (`tests/mcp_endpoint.rs`), 13 unit tests in `src/mcp/`, 1 session-skip unit test, 1 log-cap unit test; E2E `mcp-endpoint.spec.ts`; key creation/revocation extracted to `tests/e2e/helpers/api-keys.ts` and reused by the 11-5 spec. Full `cargo test -j 1`: 1669 passed, 0 failed.
+- Tests: 16 integration tests (`tests/mcp_endpoint.rs`), 13 unit tests in `src/mcp/`, 1 session-skip unit test, 1 log-cap unit test; E2E `mcp-endpoint.spec.ts`; key creation/revocation extracted to `tests/e2e/helpers/api-keys.ts` and reused by the 11-5 spec. Full `cargo test -j 1`: 1672 passed, 0 failed (after review round 1); full E2E `--workers=2`: 360 passed, 2 skipped.
 - Follow-up issue #513 (`/api/v1` anonymous session rows).
 
 ### File List
@@ -208,3 +217,4 @@ Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor, full 
 - 2026-10-28 — validated against the create-story checklist: oneshot `Host` header trap, nest path note, E2E helper reuse added.
 - 2026-10-28 — implemented (dev-story); spike measurements recorded; status → review.
 - 2026-10-28 — code review round 1: 9 patches applied, 1 deferred (#514).
+- 2026-10-28 — code review round 2: no Medium+; 4 Low patched; status → done.

@@ -162,7 +162,8 @@ The variables are grouped in seven sections:
    11-6) `MYBIBLI_MCP_ALLOWED_HOSTS` (comma-separated `Host` values
    accepted; default `localhost,127.0.0.1,::1`; on a NAS list the LAN
    name/IP your AI agent uses) and `MYBIBLI_MCP_ALLOWED_ORIGINS`
-   (browser origins accepted; default none).
+   (`Origin` values accepted from clients or proxies that forward one;
+   default none — browser pages are not supported, no CORS).
 5. **Metadata provider API keys** — `GOOGLE_BOOKS_API_KEY`,
    `OMDB_API_KEY`, `TMDB_API_KEY`. Migrated ONCE into the `settings`
    table at boot; afterwards the admin can rotate or clear them via
