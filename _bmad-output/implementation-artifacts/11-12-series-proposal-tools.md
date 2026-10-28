@@ -1,6 +1,6 @@
 # Story 11.12: Series proposal tools
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR130, FR131 (with FR134, NFR44, NFR47, AR27, AR29 inherited from 11-5 / 11-6 / 11-9). Epic 11 — twelfth story; the first MCP tools that *file* something. The agent never writes the catalog: each call files one proposal through `ProposalService::file` (story 11-9). Acceptance is story 11-17; the proposals page is 11-16.
 
@@ -97,6 +97,12 @@ Round 2:
 - [x] [Review][Patch] (Low) "Proposal filed" logged before the commit — `log_filed` after commit; line-cap test now proves the cap runs first; `version` wording narrowed to the series' own fields (#521); stale spec / module notes refreshed
 - Accepted (Low, round 2): `utf8mb4_unicode_ci` weighs all supplementary-plane characters equally (emoji-only differences read as the same name — a false "already exists", never a wrong write); the concurrency test is scheduling-dependent; attach refusals that share `validate_lines` are exercised through create; attach checks against titles/tomes read before the transaction (re-checked at acceptance, #529); a pending create for a name does not block an attach on a hand-created series of that name.
 
+Round 3 (confirmation): no Medium+ finding. The snapshot claim of D-11-12-13 verified against the statement order (BEGIN → key `FOR UPDATE` → first plain read). Lows: the `TargetChanged` wording when the agent sent no version (description now says such a call may be refused and retried — fixed); validation now runs after `BEGIN` in `file` / under the key lock in `file_unique`, plus a redundant share lock in `file_in` (accepted, a few round trips).
+
+### Senior Developer Review (AI)
+
+Three rounds (Blind Hunter, Edge Case Hunter, Acceptance Auditor). Rounds 1–2 fixed (1 High, 7 Medium); round 3 clean. Deferred: #528, #529. Outcome: approved.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -134,3 +140,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — story created (ready-for-dev).
 - 2026-10-28 — validated against the create-story checklist: added the 11-19 note on the series line and the `i32` bound; no AC change.
 - 2026-10-28 — implemented (dev-story); status review.
+- 2026-10-28 — code review rounds 1–3 (D-11-12-9..13); status done.

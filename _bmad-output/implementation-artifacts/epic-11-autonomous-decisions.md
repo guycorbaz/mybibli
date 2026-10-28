@@ -654,3 +654,8 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Chosen:** the three duplicate reads are plain reads. They run right after the exclusive key-row lock, which is a locking read and opens no snapshot, so the first plain read's snapshot already contains every filing committed before the lock was granted — same-key serialisation is kept (the concurrency test still passes) without range locks. The attach series line pins `series_version` or, when absent, the version read for the checks (a series edited in between is refused with `TargetChanged`). "Proposal filed" is logged after the commit (`proposals::log_filed`). `get_series` / `series_version` descriptions now say `version` moves with the series' own fields only (title / tome writes do not bump it, #521).
 **Accepted (Low):** `utf8mb4_unicode_ci` gives every supplementary-plane character one weight (two names differing only by an emoji compare equal → a false "already exists"); `utf8mb4_unicode_520_ci` would need its own check on the CI server.
 **Reversible:** yes.
+
+### D-11-12-14 — Code review round 3: clean; Lows accepted
+**Context:** confirmation pass, no Medium+; the BEGIN → key `FOR UPDATE` → plain-read order verified (sqlx sends a bare `BEGIN`).
+**Chosen:** the `series_version` description now warns that an unpinned call is refused (retry) when the series is edited during it; accepted: the "changed since you read it" wording in that case, validation after `BEGIN` in `ProposalService::file`, the redundant share lock in `file_in`.
+**Reversible:** yes.

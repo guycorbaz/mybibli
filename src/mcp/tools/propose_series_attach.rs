@@ -91,7 +91,7 @@ impl McpTool for ProposeSeriesAttach {
                 },
                 "series_version": {
                     "type": "integer",
-                    "description": "Optional: the series' `version` as returned by get_series. When given and the series' own fields (name, description, type, total) changed since, the proposal is refused so you can re-read it. Without it, the version read while checking this call is recorded."
+                    "description": "Optional: the series' `version` as returned by get_series. When given and the series' own fields (name, description, type, total) changed since, the proposal is refused so you can re-read it. Without it, the version read while checking this call is recorded, and a series edited during the call is refused the same way (just retry)."
                 },
                 "titles": titles_property(),
                 "expected_tomes": tomes_property(),
