@@ -12,33 +12,18 @@
  */
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { createApiKey, revokeApiKey, SCOPE_LABEL } from "../../helpers/api-keys";
 
-const PROPOSE_LABEL = /Read \+ propose|Lecture \+ propositions|Lesen \+ vorschlagen|Lettura \+ proposte/i;
+const PROPOSE_LABEL = SCOPE_LABEL.propose;
 
 test.describe("Story 11-5 — propose API-key scope", () => {
   test("admin creates a propose key that reads but cannot write", async ({ page }) => {
     await page.context().clearCookies();
     await loginAs(page, "admin");
 
-    await page.goto("/admin?tab=api_keys");
-    const label = `agent-${crypto.randomUUID().slice(0, 8)}`;
-
-    await page.locator("#admin-api-keys-label").fill(label);
-    const proposeRadio = page.getByRole("radio", { name: PROPOSE_LABEL });
-    await expect(proposeRadio).toBeVisible();
-    await proposeRadio.check();
-    await page
-      .locator("#admin-api-keys-panel form")
-      .getByRole("button", { name: /Create key|Créer la clé|Schlüssel erstellen|Crea chiave/i })
-      .click();
-
+    const { label, plaintext } = await createApiKey(page, "propose");
     // One-time plaintext modal: distinct `mybibli_pr_` prefix.
-    const plaintextBox = page.locator("[data-api-key-plaintext]");
-    await expect(plaintextBox).toBeVisible({ timeout: 10000 });
-    const plaintext = (await plaintextBox.textContent())?.trim() ?? "";
     expect(plaintext).toMatch(/^mybibli_pr_[A-Za-z0-9]{40}$/);
-    await page.locator('#admin-modal-slot [data-action="admin-modal-close"]').click();
-    await expect(plaintextBox).toHaveCount(0);
 
     // The list row carries the propose chip and the 12-char prefix.
     const row = page.locator("#admin-api-keys-list tr", { hasText: label });
@@ -67,17 +52,7 @@ test.describe("Story 11-5 — propose API-key scope", () => {
     expect(body.scope_required).toBe("write");
 
     // Clean up: revoke through the UX-DR8 modal.
-    await row.getByRole("button", { name: new RegExp(label) }).click();
-    const revokeDialog = page.locator("#admin-modal-slot dialog");
-    await expect(revokeDialog).toBeVisible();
-    const revoked = page.waitForResponse(
-      (r) => r.request().method() === "POST" && /\/admin\/api-keys\/\d+\/revoke$/.test(r.url()),
-    );
-    await revokeDialog
-      .getByRole("button", { name: /Revoke key|Révoquer la clé|Schlüssel widerrufen|Revoca chiave/i })
-      .click();
-    expect((await revoked).status()).toBe(200);
-    await expect(revokeDialog).toBeHidden();
+    await revokeApiKey(page, label);
     // The revoked row loses its Revoke button (the status chip and the
     // German Revoke button share the word "Widerrufen", so assert on the
     // button, not on the row text).

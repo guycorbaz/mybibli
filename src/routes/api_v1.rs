@@ -24,12 +24,10 @@ use serde::{Deserialize, Serialize};
 use crate::AppState;
 use crate::error::AppError;
 use crate::middleware::api_key::{ApiKeyAuth, ApiKeyWrite};
-use crate::models::contributor::TitleContributorModel;
 use crate::models::genre::GenreModel;
 use crate::models::location::LocationModel;
-use crate::models::series::{SeriesModel, TitleSeriesModel};
+use crate::models::series::SeriesModel;
 use crate::models::title::TitleModel;
-use crate::models::volume::VolumeModel;
 
 // ─── Common shapes ───────────────────────────────────────────────
 
@@ -157,58 +155,13 @@ pub async fn list_titles(
 
 // ─── /api/v1/titles/:id ──────────────────────────────────────────
 
-#[derive(Debug, Serialize)]
-pub struct ApiTitleDetail {
-    pub id: u64,
-    pub title: String,
-    pub subtitle: Option<String>,
-    pub description: Option<String>,
-    pub language: String,
-    pub media_type: String,
-    pub isbn: Option<String>,
-    pub issn: Option<String>,
-    pub upc: Option<String>,
-    pub publisher: Option<String>,
-    pub publication_date: Option<String>, // ISO 8601 (YYYY-MM-DD)
-    pub cover_image_url: Option<String>,
-    pub genre_id: u64,
-    pub genre_name: Option<String>,
-    pub dewey_code: Option<String>,
-    pub page_count: Option<i32>,
-    pub track_count: Option<i32>,
-    pub total_duration: Option<i32>,
-    pub age_rating: Option<String>,
-    pub issue_number: Option<i32>,
-    pub contributors: Vec<ApiContributor>,
-    pub volumes: Vec<ApiVolume>,
-    pub series: Vec<ApiSeriesAssignment>,
-    pub version: i32,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ApiContributor {
-    pub id: u64,
-    pub name: String,
-    pub role: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ApiVolume {
-    pub id: u64,
-    pub label: String,
-    pub location_name: Option<String>,
-    pub location_label: Option<String>,
-    pub condition_name: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ApiSeriesAssignment {
-    pub series_id: u64,
-    pub series_name: String,
-    pub position: i32,
-    pub is_omnibus: bool,
-    pub end_position: Option<i32>,
-}
+// The detail document and its assembly live in `services::title_detail`
+// (story 11-6): the MCP `get_title` tool returns the same document.
+pub use crate::services::title_detail::{
+    TitleDetail as ApiTitleDetail, TitleDetailContributor as ApiContributor,
+    TitleDetailSeries as ApiSeriesAssignment, TitleDetailVolume as ApiVolume,
+};
+use crate::services::title_detail::{build_title_detail, find_title_detail};
 
 /// `GET /api/v1/titles/:id` — full detail document.
 pub async fn get_title(
@@ -216,90 +169,10 @@ pub async fn get_title(
     ApiKeyAuth(_ctx): ApiKeyAuth,
     Path(id): Path<u64>,
 ) -> Result<Response, AppError> {
-    let pool = &state.pool;
-    let title = match TitleModel::find_by_id(pool, id).await? {
-        Some(t) => t,
-        None => return Ok(not_found_response("title not found")),
-    };
-    let detail = build_title_detail(pool, &title).await?;
-    Ok(Json(detail).into_response())
-}
-
-/// Assemble the rich [`ApiTitleDetail`] DTO from a `TitleModel`.
-/// Shared by the GET and PATCH handlers — PATCH calls it on the
-/// post-update row so the response always mirrors the persisted state.
-async fn build_title_detail(
-    pool: &crate::db::DbPool,
-    title: &TitleModel,
-) -> Result<ApiTitleDetail, AppError> {
-    let contributors_raw = TitleContributorModel::find_by_title(pool, title.id).await?;
-    let volumes_raw = VolumeModel::find_by_title(pool, title.id).await?;
-    let series_raw = TitleSeriesModel::find_by_title(pool, title.id).await?;
-    // Resolve genre name via the catalog's existing helper (returns
-    // empty string for an orphan-FK soft-deleted genre — same shape
-    // the home dashboard uses).
-    let genre_name_str = GenreModel::find_name_by_id(pool, title.genre_id).await?;
-    let genre_name = if genre_name_str.is_empty() {
-        None
-    } else {
-        Some(genre_name_str)
-    };
-
-    let contributors: Vec<ApiContributor> = contributors_raw
-        .into_iter()
-        .map(|tc| ApiContributor {
-            id: tc.contributor_id,
-            name: tc.contributor_name,
-            role: tc.role_name,
-        })
-        .collect();
-    let volumes: Vec<ApiVolume> = volumes_raw
-        .into_iter()
-        .map(|v| ApiVolume {
-            id: v.id,
-            label: v.label,
-            location_name: v.location_name,
-            location_label: v.location_label,
-            condition_name: v.condition_name,
-        })
-        .collect();
-    let series: Vec<ApiSeriesAssignment> = series_raw
-        .into_iter()
-        .map(|sa| ApiSeriesAssignment {
-            series_id: sa.series_id,
-            series_name: sa.series_name,
-            position: sa.position_start,
-            is_omnibus: sa.is_omnibus,
-            end_position: sa.position_end,
-        })
-        .collect();
-
-    Ok(ApiTitleDetail {
-        id: title.id,
-        title: title.title.clone(),
-        subtitle: title.subtitle.clone(),
-        description: title.description.clone(),
-        language: title.language.clone(),
-        media_type: title.media_type.clone(),
-        isbn: title.isbn.clone(),
-        issn: title.issn.clone(),
-        upc: title.upc.clone(),
-        publisher: title.publisher.clone(),
-        publication_date: title.publication_date.map(|d| d.format("%Y-%m-%d").to_string()),
-        cover_image_url: title.cover_image_url.clone(),
-        genre_id: title.genre_id,
-        genre_name,
-        dewey_code: title.dewey_code.clone(),
-        page_count: title.page_count,
-        track_count: title.track_count,
-        total_duration: title.total_duration,
-        age_rating: title.age_rating.clone(),
-        issue_number: title.issue_number,
-        contributors,
-        volumes,
-        series,
-        version: title.version,
-    })
+    match find_title_detail(&state.pool, id).await? {
+        Some(detail) => Ok(Json(detail).into_response()),
+        None => Ok(not_found_response("title not found")),
+    }
 }
 
 // ─── /api/v1/genres ──────────────────────────────────────────────

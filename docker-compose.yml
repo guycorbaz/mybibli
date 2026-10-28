@@ -50,6 +50,12 @@ services:
       MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS: ${MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS:-10}
       APP_LANGUAGE: ${APP_LANGUAGE:-en}
       MYBIBLI_COOKIE_SECURE: ${MYBIBLI_COOKIE_SECURE:-false}
+      # Story 11-6: MCP endpoint `/api/mcp` — `Host` / `Origin`
+      # allowlists (DNS-rebinding defence). Empty = loopback hosts only
+      # and no browser origin. On a NAS, list the LAN name/IP the agent
+      # uses, e.g. `nas.local,192.168.1.10,localhost`. See .env.example.
+      MYBIBLI_MCP_ALLOWED_HOSTS: ${MYBIBLI_MCP_ALLOWED_HOSTS:-}
+      MYBIBLI_MCP_ALLOWED_ORIGINS: ${MYBIBLI_MCP_ALLOWED_ORIGINS:-}
     volumes:
       # Issue #213 — cover images MUST persist across container upgrades.
       # The Rust binary writes cover JPGs into `/app/covers` (resolved

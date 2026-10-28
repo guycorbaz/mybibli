@@ -188,3 +188,84 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 **Chosen:** the extractor is `pub` in `middleware/api_key.rs`; an integration test mounts it on a test-only route to pin the full key matrix (missing / read / write / propose). No production route is added.
 **Rejected:** a placeholder production route (dead surface, would need CSRF/route-matrix entries for nothing).
 **Reversible:** yes.
+
+## § 11-6 — MCP endpoint on `/api/mcp` with `rmcp` (part of #493)
+
+### D-11-6-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-6-mcp-endpoint-rmcp-spike` and the `# last_updated:` header change on this branch.
+**Rejected:** touching `epic-11` or sibling lines.
+**Reversible:** yes.
+
+### D-11-6-2 — Allowed hosts and origins come from environment variables
+**Context:** the AC lets this story decide how the operator configures the allowed hosts (the NAS is not loopback).
+**Chosen:** `MYBIBLI_MCP_ALLOWED_HOSTS` (comma-separated `host` or `host:port`; default `localhost,127.0.0.1,::1`; a set value replaces the default) and `MYBIBLI_MCP_ALLOWED_ORIGINS` (comma-separated `scheme://host:port`; default empty, so any request carrying an `Origin` is refused — MCP clients are not browsers; an origin is listed only for a client or proxy that forwards one — see D-11-6-13). Read once when the router is built, like `CSP_REPORT_ONLY`.
+**Rejected:** a K/V `settings` row editable in Admin → System — the list is a deployment fact (which LAN name the NAS answers to) and a DNS-rebinding defence; making it editable from a web page weakens the defence for no gain.
+**Reversible:** yes.
+
+### D-11-6-3 — rmcp performs the Host/Origin check; the API-key check runs first
+**Context:** rmcp 3.8.0 validates `Host` and `Origin` itself (403), configured explicitly from D-11-6-2. The key check is an axum layer around the rmcp service, so it runs before.
+**Chosen:** configure rmcp's validator (`with_allowed_hosts`, `with_allowed_origins`, `enforce_origin_validation`) rather than write a second validator. Effective order: key (401/403) → protocol-version header (400, D-11-6-9) → Host/Origin (403); a request with neither a valid key nor an allowed host gets 401, one with a valid key and a bad host 403. Trade-off (review round 1): a refused-host request still costs one argon2 verification and bumps the key's `last_used_at`; documented in `docs/auth-threat-model.md` § 5.8. A hand-written transport (AR27 fallback) would have to re-implement the check — recorded in `src/mcp/transport.rs`.
+**Rejected:** a mybibli validator in front of auth (duplicated parsing logic whose semantics could drift from rmcp's); disabling rmcp's validator.
+**Reversible:** yes.
+
+### D-11-6-4 — An `initialize` with an unknown revision is negotiated, not refused
+**Context:** the AC asks that an unknown protocol revision be "refused cleanly". The MCP lifecycle says a server receiving an `initialize` for a version it does not support answers with a version it does support; the client then disconnects if it cannot speak it. rmcp implements exactly that.
+**Chosen:** keep the spec behaviour for `initialize` (answer `2025-11-25`); "refused cleanly" applies to the two other channels — an unknown `MCP-Protocol-Version` header (400 with a plain-text reason) and a `_meta` version that does not match an accepted header (JSON-RPC `HEADER_MISMATCH` -32020, HTTP 400 — corrected in review round 1: since the header itself is restricted to the two revisions, an unknown `_meta` version can only surface as a mismatch). Tests pin all three.
+**Rejected:** overriding `initialize` to return an error (breaks the spec negotiation every client relies on).
+**Reversible:** yes.
+
+### D-11-6-5 — Body limit derived from the cover bound
+**Context:** NFR45 asks for an explicit limit consistent with the cover bounds (base64 inflates by a third); covers arrive in story 11-12. `services::cover::MAX_COVER_SIZE` is 10 MiB. The manual upload route is in fact capped lower, by axum's default 2 MB body limit on `Multipart`.
+**Chosen:** `ceil(MAX_COVER_SIZE / 3) * 4 + 1 MiB` (≈ 14.3 MiB), computed from the constant so the two cannot drift. Story 11-12 may tighten it to the effective manual-upload bound.
+**Rejected:** a small limit now that 11-12 must remember to raise.
+**Reversible:** yes.
+
+### D-11-6-6 — No anonymous session row for `/api/mcp`
+**Context:** the session resolver mints an anonymous `sessions` row on every request without a cookie, `/api/*` included. An agent calling tools in a loop would write one row per call (purged after 7 days).
+**Chosen:** add `/api/mcp` to `should_skip_session_resolve` (the endpoint authenticates by key only and reads no `Session`). `/api/v1` keeps today's behaviour; follow-up issue #513.
+**Rejected:** skipping all `/api/*` here (changes `/api/v1` responses — out of scope).
+**Reversible:** yes.
+
+### D-11-6-7 — Title detail assembly moves to `services/`
+**Context:** AR27 wants tools as thin adapters over `services/`; the title-detail assembly lives privately in `routes/api_v1.rs`.
+**Chosen:** move the DTOs and the assembly to `services/title_detail.rs`; `api_v1` re-exports the DTO names, JSON unchanged. `get_title` returns the same document as `GET /api/v1/titles/{id}`; story 11-7 enriches it.
+**Rejected:** calling the route module from `src/mcp/`; a second assembly.
+**Reversible:** yes.
+
+### D-11-6-8 — Own trait, no `#[tool]` macros
+**Context:** rmcp offers `#[tool]` / `#[tool_router]` macros (feature `macros`), whose generated code names rmcp types in the tool signatures.
+**Chosen:** `default-features = false`, features `server` + `transport-streamable-http-server`; tools implement `mcp::tool::McpTool` (serde_json in, serde_json out) and one hand-written `ServerHandler` in `transport.rs` dispatches to them.
+**Rejected:** the macros (AR27: no rmcp type may cross the tool interface).
+**Reversible:** yes.
+
+### D-11-6-9 — The endpoint refuses `MCP-Protocol-Version` values other than the two served revisions
+**Context:** rmcp refuses only versions it does not know; a header naming an older revision it knows (`2025-06-18`, `2025-03-26`, `2024-11-05`) is served, although `supported_protocol_versions` lists only `2025-11-25` and `2026-07-28` (that list bounds `initialize` negotiation and per-request `_meta` versions, not the header).
+**Chosen:** the mybibli guard in `src/mcp/mod.rs` (which also checks the key) answers 400 with a plain-text reason when the header is present and names anything else. A request without the header keeps rmcp's backward-compatible handling (the 2025-11-25 spec has clients send it after `initialize`; absent means an older client, which then gets the 2025-11-25 semantics).
+**Rejected:** relying on rmcp alone (older revisions slip through — contradicts NFR42's "accepts revisions 2025-11-25 and 2026-07-28"); `stateless_protocol_metadata_required` (would refuse every 2025-11-25 request, which carries no per-request `_meta`).
+**Reversible:** yes.
+
+### D-11-6-10 — Manual checks: a real Claude Code session transcript; the MCP Inspector left to the librarian [PRODUCT]
+**Context:** the AC asks for the MCP Inspector check and a real Claude Code session to be "recorded in the PR with a screenshot". This story runs without a display or an interactive user, and the session's permission policy refused running the Inspector (`npx @modelcontextprotocol/inspector`, external code).
+**Chosen:** a non-interactive `claude -p` session (Claude Code 2.1.312) with `/api/mcp` registered through `--mcp-config` against the local E2E stack called `get_title` successfully; its transcript and the server log lines (revision negotiated: `2026-07-28`) are pasted in the PR. The MCP Inspector check and the screenshots are listed in the PR as a manual step for the librarian (commands included) — to be done before the epic closes.
+**Rejected:** skipping the checks; fabricating a screenshot; working around the permission refusal.
+**Departs from the epic wording** (evidence format; Inspector check deferred to the librarian).
+**Reversible:** yes.
+
+### D-11-6-11 — `rmcp` logs capped at `warn` by default
+**Context:** the manual session showed rmcp logging its per-request service lifecycle at INFO (four lines per stateless call, with the client's `initialize` parameters) — noise on the NAS log volume at the default `info` level.
+**Chosen:** add `rmcp=warn` to `config::LOG_NOISE_CAPS` (the Fix #405 mechanism); mybibli's own `MCP tool call` line (tool, key id) stays at INFO. An operator can still set `MYBIBLI_LOG_LEVEL=rmcp=debug`.
+**Rejected:** leaving the default verbose.
+**Reversible:** yes.
+
+### D-11-6-12 — An ordinary request without `MCP-Protocol-Version` is refused
+**Context:** review round 1 (Edge Case Hunter): rmcp reads a non-`initialize` request without the header as revision `2025-03-26` and would serve it — a back door around D-11-6-9.
+**Chosen:** `list_tools` and `call_tool` check `RequestContext::protocol_version()` against the two served revisions and answer JSON-RPC `UNSUPPORTED_PROTOCOL_VERSION` (-32022) otherwise. The 2025-11-25 specification requires clients to send the header on every request after `initialize`, and 2026-07-28 requests always carry it, so conforming clients are unaffected (the E2E and the manual Claude Code session send it).
+**Rejected:** buffering the body in the axum guard to read the method (duplicates rmcp parsing); `stateless_protocol_metadata_required` (refuses every 2025-11-25 request).
+**Reversible:** yes.
+
+### D-11-6-13 — No CORS on `/api/mcp`
+**Context:** review round 1: a browser page on an allowed origin cannot call the endpoint — its CORS preflight carries no key (401) and no `Access-Control-Allow-*` header is ever sent.
+**Chosen:** keep it that way (the endpoint is for local agents, not browser pages; adding CORS would widen the surface of a LAN-only endpoint). `MYBIBLI_MCP_ALLOWED_ORIGINS` stays, for clients or proxies that forward an `Origin`; the docs no longer suggest a browser tool in direct mode. The MCP Inspector's default proxy mode is unaffected.
+**Rejected:** a CORS layer bypassing the key check for `OPTIONS`.
+**Reversible:** yes.

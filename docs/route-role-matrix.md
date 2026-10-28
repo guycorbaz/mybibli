@@ -174,6 +174,21 @@ with `/api/mcp` in story 11-6).
 | GET | `/api/v1/titles/{id}` | API key *(read)* | n/a | One title. |
 | PATCH | `/api/v1/titles/{id}` | API key *(write)* | n/a | A read-only or propose key gets 403 here. |
 
+### MCP endpoint — bearer-token auth, no session (`src/mcp/`)
+
+Story 11-6 (#493). Same `/api/` CSRF short-circuit as API v1 (AR28 — the
+frozen exempt-route allowlist is unchanged). Only a `propose` key passes
+(`ApiKeyPropose`: 401 without a valid key, 403 `insufficient_scope` for a
+`read` or `write` key). Stateless streamable HTTP, protocol revisions
+`2025-11-25` and `2026-07-28`; tools are listed by `tools/list`. `Host`
+and `Origin` are checked against `MYBIBLI_MCP_ALLOWED_HOSTS` /
+`MYBIBLI_MCP_ALLOWED_ORIGINS` (403); the session resolver does not run on
+this path (no anonymous `sessions` row).
+
+| method | path | role | csrf | note |
+|---|---|---|---|---|
+| POST | `/api/mcp` | API key *(propose)* | n/a | JSON-RPC; body capped at ≈ 14.3 MiB (413). GET / DELETE answer 405. |
+
 ### Shelf audit (CR #237) (`src/routes/audit.rs`)
 
 | method | path | role | csrf | note |

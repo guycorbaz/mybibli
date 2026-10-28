@@ -20,6 +20,7 @@ pub mod series;
 pub mod setup;
 pub mod soft_delete;
 pub mod title;
+pub mod title_detail;
 pub mod trash;
 pub mod volume;
 pub mod volume_audit;

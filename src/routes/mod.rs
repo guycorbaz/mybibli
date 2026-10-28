@@ -81,6 +81,13 @@ use crate::middleware::pending_updates::pending_updates_middleware;
 use crate::middleware::setup_gate::setup_gate_middleware;
 
 pub fn build_router(state: AppState) -> Router {
+    build_router_with_mcp(state, crate::mcp::McpConfig::from_env())
+}
+
+/// [`build_router`] with an explicit MCP configuration (story 11-6).
+/// Tests use it to pin allowed hosts/origins without touching the
+/// process environment.
+pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig) -> Router {
     let pool = state.pool.clone();
 
     // Catalog routes with PendingUpdates middleware for async metadata delivery
@@ -395,6 +402,9 @@ pub fn build_router(state: AppState) -> Router {
             "/api/v1/series",
             axum::routing::get(api_v1::list_series_endpoint),
         )
+        // Story 11-6 — MCP endpoint `/api/mcp` (propose key; CSRF
+        // short-circuits on `/api/*`, AR28). See `src/mcp/mod.rs`.
+        .merge(crate::mcp::router(state.clone(), &mcp_config))
         .route(
             "/api/v1/dewey/{prefix}",
             axum::routing::get(api_v1::list_titles_by_dewey_prefix),

@@ -121,12 +121,16 @@ impl Session {
 ///   bandwidth and can saturate the pool under realistic browser
 ///   concurrency (issue #36).
 ///
+/// - `/api/mcp` — the MCP endpoint (story 11-6, D-11-6-6) authenticates
+///   by API key only and reads no `Session`; an agent calling tools in a
+///   loop would otherwise mint one anonymous `sessions` row per call.
+///
 /// Uses `csrf::normalize_exempt_path` (issue #40) so that router-equivalent
 /// variants (`//static/app.css`, `/static/`) are caught alongside the
 /// canonical forms.
 pub(crate) fn should_skip_session_resolve(uri_path: &str) -> bool {
     let path = crate::middleware::csrf::normalize_exempt_path(uri_path);
-    if path == "/health" {
+    if path == "/health" || path == crate::mcp::MCP_PATH {
         return true;
     }
     matches!(path.as_str(), "/static" | "/covers" | "/logo")
@@ -566,6 +570,14 @@ mod tests {
         assert!(should_skip_session_resolve("/static/js/htmx.min.js"));
         assert!(should_skip_session_resolve("/covers/cache/abc.jpg"));
         assert!(should_skip_session_resolve("/logo/svg/mybibli-icon.svg"));
+    }
+
+    #[test]
+    fn should_skip_session_resolve_mcp_endpoint() {
+        assert!(should_skip_session_resolve("/api/mcp"));
+        assert!(should_skip_session_resolve("//api/mcp"));
+        assert!(!should_skip_session_resolve("/api/mcpx"));
+        assert!(!should_skip_session_resolve("/api/v1/titles"));
     }
 
     #[test]
