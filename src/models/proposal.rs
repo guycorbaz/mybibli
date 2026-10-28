@@ -477,6 +477,52 @@ impl ProposalModel {
         Ok(found.is_some())
     }
 
+    /// Story 11-12 — the oldest live pending proposal with a live item
+    /// targeting `table`/`id`, if any.
+    pub async fn pending_targeting(
+        pool: &DbPool,
+        table: ProposalTargetTable,
+        id: u64,
+    ) -> Result<Option<u64>, AppError> {
+        let found: Option<u64> = sqlx::query_scalar(
+            "SELECT p.id FROM proposals p \
+             JOIN proposal_items i ON i.proposal_id = p.id AND i.deleted_at IS NULL \
+             WHERE p.deleted_at IS NULL AND p.status = 'pending' \
+               AND i.target_table = ? AND i.target_id = ? \
+             ORDER BY p.id ASC LIMIT 1",
+        )
+        .bind(table.as_str())
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(found)
+    }
+
+    /// Story 11-12 — the oldest live pending `series_create` proposal
+    /// whose series line (`"line": "series"`, no target) proposes `name`,
+    /// compared case- and accent-insensitively. Both sides are converted
+    /// to utf8mb4 explicitly so the server's default charset (CI) cannot
+    /// change the comparison.
+    pub async fn pending_series_create_named(
+        pool: &DbPool,
+        name: &str,
+    ) -> Result<Option<u64>, AppError> {
+        let found: Option<u64> = sqlx::query_scalar(
+            "SELECT p.id FROM proposals p \
+             JOIN proposal_items i ON i.proposal_id = p.id AND i.deleted_at IS NULL \
+             WHERE p.deleted_at IS NULL AND p.status = 'pending' AND p.kind = 'series_create' \
+               AND i.target_table IS NULL \
+               AND JSON_UNQUOTE(JSON_EXTRACT(i.proposed_values, '$.line')) = 'series' \
+               AND CONVERT(JSON_UNQUOTE(JSON_EXTRACT(i.proposed_values, '$.name')) USING utf8mb4) \
+                   COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci \
+             ORDER BY p.id ASC LIMIT 1",
+        )
+        .bind(name)
+        .fetch_optional(pool)
+        .await?;
+        Ok(found)
+    }
+
     /// One page of live proposals, newest first.
     pub async fn list(
         pool: &DbPool,

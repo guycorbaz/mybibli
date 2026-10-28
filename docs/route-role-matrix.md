@@ -189,12 +189,18 @@ this path (no anonymous `sessions` row).
 |---|---|---|---|---|
 | POST | `/api/mcp` | API key *(propose)* | n/a | JSON-RPC; body capped at ≈ 14.3 MiB (413). GET / DELETE answer 405. |
 
-Tools (all read-only, soft-deleted rows never returned): `get_title`
+Read tools (soft-deleted rows never returned): `get_title`
 (11-6, enriched in 11-7 with `has_cover` and `manually_edited_fields`),
 `search_titles` and `search_contributors` (11-7 — 25 items per page,
 `page` 1..=10000); `list_series`, `get_series` (positions, omnibus
 flags, gaps computed as on the dashboard), `list_titles_without_cover`
-and `list_titles_with_incomplete_metadata` (11-8).
+and `list_titles_with_incomplete_metadata` (11-8; `get_series` returns
+the series `version` since 11-12).
+
+Proposal tools (11-12 on — they file a pending proposal for a Librarian or
+Admin to decide and never write the catalog, NFR44): `propose_series_create`
+and `propose_series_attach` (one proposal per series, mandatory http(s)
+sources, refused while another proposal for the same series is pending).
 
 ### Shelf audit (CR #237) (`src/routes/audit.rs`)
 

@@ -1,6 +1,6 @@
 # Story 11.12: Series proposal tools
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR130, FR131 (with FR134, NFR44, NFR47, AR27, AR29 inherited from 11-5 / 11-6 / 11-9). Epic 11 — twelfth story; the first MCP tools that *file* something. The agent never writes the catalog: each call files one proposal through `ProposalService::file` (story 11-9). Acceptance is story 11-17; the proposals page is 11-16.
 
@@ -49,13 +49,13 @@ so that the librarian can group volumes without searching by hand.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `get_series` returns `version` (+ description, unit test) (AC2).
-- [ ] T2 — Model: `ProposalModel::pending_targeting(pool, table, id)` and `pending_series_create_named(pool, name)` (AC5).
-- [ ] T3 — Service `src/services/series_proposals.rs`: input types, `SeriesProposalError` (English `Display`), pure `validate_*` functions, `SeriesProposalService::{propose_create, propose_attach}` building the items of AC6 and mapping `ProposalError` target errors to title/series ids (AC2–AC6).
-- [ ] T4 — `ToolError::Refused`; tools `propose_series_create.rs`, `propose_series_attach.rs` with a shared argument module; registry + annotations; registry tests split (AC1, AC7, AC8).
-- [ ] T5 — Integration tests `tests/mcp_series_proposals.rs`; existing MCP test files updated for 9 tools (AC9).
-- [ ] T6 — E2E spec + `MCP_TOOLS` helper (AC9).
-- [ ] T7 — `docs/route-role-matrix.md` MCP section lists the proposal tools; decisions D-11-12-* logged.
+- [x] T1 — `get_series` returns `version` (+ description, unit test) (AC2).
+- [x] T2 — Model: `ProposalModel::pending_targeting(pool, table, id)` and `pending_series_create_named(pool, name)` (AC5).
+- [x] T3 — Service `src/services/series_proposals.rs`: input types, `SeriesProposalError` (English `Display`), pure `validate_*` functions, `SeriesProposalService::{propose_create, propose_attach}` building the items of AC6 and mapping `ProposalError` target errors to title/series ids (AC2–AC6).
+- [x] T4 — `ToolError::Refused`; tools `propose_series_create.rs`, `propose_series_attach.rs` with a shared argument module; registry + annotations; registry tests split (AC1, AC7, AC8).
+- [x] T5 — Integration tests `tests/mcp_series_proposals.rs`; existing MCP test files updated for 9 tools (AC9).
+- [x] T6 — E2E spec + `MCP_TOOLS` helper (AC9).
+- [x] T7 — `docs/route-role-matrix.md` MCP section lists the proposal tools; decisions D-11-12-* logged.
 
 ## Dev Notes
 
@@ -80,13 +80,36 @@ so that the librarian can group volumes without searching by hand.
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- `cargo clippy --all-targets -- -D warnings`: clean.
+- `cargo test` (unit + DB integration on the 3307 test DB): 1880 passed, 0 failed.
+- `cargo sqlx prepare --check --workspace -- --all-targets`: up to date (no macro query added).
+- `tsc --noEmit`: clean; `waitForTimeout` grep: clean.
+- Playwright on a reset stack (`E2E_HOST_PORT=18080`, `CI=true --workers=2`): 368 passed, 2 skipped.
 
 ### Completion Notes List
 
+- New service `services::series_proposals` (contract of the item shapes in its module doc) over `ProposalService::file`; typed `SeriesProposalError` with `class()`.
+- Two model reads for the pending-duplicate rule (`ProposalModel::pending_targeting`, `pending_series_create_named`).
+- MCP: `propose_series_create`, `propose_series_attach`, shared `series_proposal_args`; `ToolError::Refused`; `get_series.version`.
+- Decisions D-11-12-1..8.
+
 ### File List
+
+- `src/services/series_proposals.rs` (new), `src/services/mod.rs`
+- `src/models/proposal.rs`
+- `src/mcp/tool.rs`, `src/mcp/tools/mod.rs`, `src/mcp/tools/get_series.rs`
+- `src/mcp/tools/propose_series_create.rs`, `src/mcp/tools/propose_series_attach.rs`, `src/mcp/tools/series_proposal_args.rs` (new)
+- `tests/mcp_series_proposals.rs` (new), `tests/common/mcp.rs`, `tests/mcp_catalog_read_tools.rs`, `tests/mcp_series_gaps_tools.rs`
+- `tests/e2e/specs/journeys/mcp-series-proposals.spec.ts` (new), `tests/e2e/helpers/mcp.ts`
+- `docs/route-role-matrix.md`
+- `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md`, `sprint-status.yaml`
 
 ## Change Log
 
 - 2026-10-28 — story created (ready-for-dev).
 - 2026-10-28 — validated against the create-story checklist: added the 11-19 note on the series line and the `i32` bound; no AC change.
+- 2026-10-28 — implemented (dev-story); status review.

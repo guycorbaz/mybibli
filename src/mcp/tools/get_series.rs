@@ -92,6 +92,8 @@ struct Document {
     missing_positions_truncated: bool,
     positions: Vec<Position>,
     expected_tomes: Vec<ExpectedTome>,
+    /// Story 11-12 — pin it in `propose_series_attach.series_version`.
+    version: i32,
 }
 
 impl From<AgentSeriesDetail> for Document {
@@ -108,6 +110,7 @@ impl From<AgentSeriesDetail> for Document {
             missing_positions_truncated: d.gaps.missing_positions_truncated,
             positions: d.positions.into_iter().map(Into::into).collect(),
             expected_tomes: d.expected_tomes.into_iter().map(Into::into).collect(),
+            version: d.series.version,
         }
     }
 }
@@ -136,8 +139,9 @@ impl McpTool for GetSeries {
          tomes the librarian expects but may not own yet, ordered by position: id, position, \
          title, ISBN-13 (or null), `origin` (`manual` or `proposal`) and `settled_title_id` \
          (the catalogued title holding its position, null while not settled — a position held by \
-         another title also leaves it null). Find ids with list_series; read a \
-         title with get_title. Deleted series are reported as not found. Read-only."
+         another title also leaves it null). `version` changes whenever the series is \
+         edited; pass it as `series_version` to propose_series_attach. Find ids with \
+         list_series; read a title with get_title. Deleted series are reported as not found. Read-only."
     }
 
     fn input_schema(&self) -> Value {
@@ -208,7 +212,7 @@ mod tests {
                 description: None,
                 series_type: SeriesType::Closed,
                 total_volume_count: Some(3),
-                version: 1,
+                version: 6,
             },
             positions: Vec::new(),
             gaps: series_gaps(SeriesType::Closed, Some(3), &[]),
@@ -236,5 +240,8 @@ mod tests {
             }])
         );
         assert!(GetSeries.description().contains("expected_tomes"));
+        // Story 11-12: the series version, for `series_version`.
+        assert_eq!(v["version"], 6);
+        assert!(GetSeries.description().contains("series_version"));
     }
 }

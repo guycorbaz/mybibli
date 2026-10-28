@@ -40,7 +40,8 @@ async fn tools_list_describes_the_read_tools(pool: DbPool) {
         assert!(t["description"].as_str().unwrap().len() > 200, "{t}");
         assert_eq!(t["inputSchema"]["type"], "object");
         assert_eq!(t["inputSchema"]["additionalProperties"], false);
-        assert_eq!(t["annotations"]["readOnlyHint"], true);
+        let proposes = PROPOSE_TOOLS.contains(&t["name"].as_str().unwrap());
+        assert_eq!(t["annotations"]["readOnlyHint"], !proposes, "{t}");
     }
     let search = tools.iter().find(|t| t["name"] == "search_titles").unwrap();
     assert_eq!(

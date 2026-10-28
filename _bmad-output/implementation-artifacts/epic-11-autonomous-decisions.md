@@ -580,3 +580,48 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** the confirmation pass found no Medium+. Lows: the version-conflict copy still told the librarian to reload; repeated tome controls had no accessible name; a failed delete-modal GET is invisible on the series page.
 **Chosen:** new conflict wording ("the form now shows the latest version: make your change again") in the four locales; `aria-label` "<action> — <tome title>" on the three controls; the missing `#feedback-list` on the series page (which also affects the series delete modal and CSRF rejections, pre-existing) goes to #526.
 **Reversible:** yes.
+
+## § 11-12 — Series proposal tools (part of #493)
+
+### D-11-12-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-12-series-proposal-tools` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-12-2 — Item shapes: a series line first, then titles, then expected tomes [PRODUCT]
+**Context:** "one item per line"; 11-9 left the `proposed_values` shapes to the proposal stories; 11-16/11-17/11-19 consume them.
+**Chosen:** a `"line"` discriminant. Line 1 is always the series: for `series_create` `{"line":"series","name","series_type","total_volume_count"}` without target; for `series_attach` `{"line":"series"}` targeting `series/<id>` (so the series' version is recorded even when only tomes are proposed, and the duplicate rule is one indexed lookup). Title lines `{"line":"title","position","is_omnibus"[, "end_position"]}` target `titles/<id>`; expected-tome lines `{"line":"expected_tome","position","title","isbn"}` have no target. The origin `proposal` follows from the line type (11-17 creates tomes with `ExpectedTomeOrigin::Proposal`), it is not stored. 11-19 must not let the series line be removed. Contract documented on `services/series_proposals.rs`.
+**Rejected:** tome lines targeting the series in an attach (redundant version records; an attach with titles only would record no series version); storing `origin` in each tome line (constant).
+**Reversible:** yes until 11-17 ships.
+
+### D-11-12-3 — An omnibus is `is_omnibus` + `end_position`
+**Context:** the AC says "position and omnibus flag"; an omnibus in the catalog covers a range (`assign_omnibus(start, end)`).
+**Chosen:** `is_omnibus: true` requires `end_position ≥ position` (same rule as the web form); `end_position` without the flag is refused. Duplicate positions are found by comparing ranges (sorted, never expanded), so an omnibus `1..2^31` cannot blow up memory.
+**Reversible:** yes.
+
+### D-11-12-4 — Filing-time checks beyond the AC's list [PRODUCT]
+**Context:** the AC lists unknown/deleted titles, position ≤ 0 and positions used twice; a proposal that cannot be accepted wastes the librarian's time.
+**Chosen:** also refused at filing: positions above a closed total (the proposed total, or the series' total), the same title twice, tome title / ISBN by the expected-tome rules (D-11-10-4), the same tome ISBN twice; for attach, against the series as it is now: a title already in the series, a position held by a live title, a position or ISBN of a live expected tome. A closed series needs a total, an open one takes none, a name is 1..=255 characters.
+**Not refused:** a title line on a position an expected tome waits for (acceptance attaches the title; the tome settles or shows in "to review", D-11-11-2); an expected tome whose ISBN a title of the catalog already carries (acceptance settles it, D-11-10-11).
+**Reversible:** yes.
+
+### D-11-12-5 — Duplicate rules, checked before filing, outside its transaction [PRODUCT]
+**Context:** "an active series with the same name" and "a pending proposal already targeting the same series".
+**Chosen:** same name = `SeriesModel::active_find_by_name` (the web form's rule) → `Refused` naming the id and `propose_series_attach`. Pending duplicate: attach = a live pending proposal with a live item targeting `series/<id>`; create = a live pending `series_create` whose series line has the same name under `utf8mb4_unicode_ci` (both sides `CONVERT … USING utf8mb4` so CI's server default charset cannot change the result). Decided or soft-deleted proposals never block. Both checks are plain reads before `ProposalService::file`: two concurrent filings for the same series can both pass (harmless — the librarian rejects one, and the second accept goes stale or conflicts).
+**Rejected:** locking inside the filing transaction (a new lock order next to 11-9's key lock and 11-14's revocation, for a race a single agent does not produce).
+**Reversible:** yes.
+
+### D-11-12-6 — `get_series` returns `version`; `version` / `series_version` pins are optional
+**Context:** D-11-9-11 gave filing an optional `expected_version`; `get_title` already returned `version`, `get_series` did not.
+**Chosen:** `get_series` gains `version` (MCP-only document); title entries take an optional `version`, attach an optional `series_version`; a mismatch is refused naming the entity ("Title 42 changed since you read it…"), never 11-9's internal item index (target errors are restated by the series service).
+**Reversible:** yes.
+
+### D-11-12-7 — `ToolError::Refused`, propose tools not read-only
+**Context:** `ToolError` had only `InvalidArguments`, `NotFound`, `Internal`; an existing series or a pending duplicate is neither a malformed argument nor a server error.
+**Chosen:** `ToolError::Refused(String)` (message as is). `SeriesProposalError::class()` decides: input → `InvalidArguments`, unknown series/title → `NotFound`, state conflicts / revoked key → `Refused`, database → `Internal` (logged). The two tools return `read_only() = false` (annotations `readOnlyHint: false`, `idempotentHint: false`, `destructiveHint: false`); the registry test now checks nested schemas are closed (`additionalProperties: false`) and described, and that propose tools say they do not change the catalog.
+**Reversible:** yes.
+
+### D-11-12-8 — Success document
+**Context:** "returns its id and status".
+**Chosen:** `{ "proposal_id", "status": "pending", "kind", "item_count" }`.
+**Reversible:** yes.

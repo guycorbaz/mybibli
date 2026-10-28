@@ -148,7 +148,8 @@ async fn tools_list_includes_the_series_and_gaps_tools(pool: DbPool) {
         ])
     );
     for t in tools {
-        assert_eq!(t["annotations"]["readOnlyHint"], true, "{t}");
+        let proposes = PROPOSE_TOOLS.contains(&t["name"].as_str().unwrap());
+        assert_eq!(t["annotations"]["readOnlyHint"], !proposes, "{t}");
     }
 }
 
