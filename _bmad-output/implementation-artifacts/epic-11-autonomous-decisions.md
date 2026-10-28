@@ -188,3 +188,53 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 **Chosen:** the extractor is `pub` in `middleware/api_key.rs`; an integration test mounts it on a test-only route to pin the full key matrix (missing / read / write / propose). No production route is added.
 **Rejected:** a placeholder production route (dead surface, would need CSRF/route-matrix entries for nothing).
 **Reversible:** yes.
+
+## § 11-6 — MCP endpoint on `/api/mcp` with `rmcp` (part of #493)
+
+### D-11-6-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-6-mcp-endpoint-rmcp-spike` and the `# last_updated:` header change on this branch.
+**Rejected:** touching `epic-11` or sibling lines.
+**Reversible:** yes.
+
+### D-11-6-2 — Allowed hosts and origins come from environment variables
+**Context:** the AC lets this story decide how the operator configures the allowed hosts (the NAS is not loopback).
+**Chosen:** `MYBIBLI_MCP_ALLOWED_HOSTS` (comma-separated `host` or `host:port`; default `localhost,127.0.0.1,::1`; a set value replaces the default) and `MYBIBLI_MCP_ALLOWED_ORIGINS` (comma-separated `scheme://host:port`; default empty, so any request carrying an `Origin` is refused — MCP clients are not browsers; a browser-based MCP Inspector needs its origin listed). Read once when the router is built, like `CSP_REPORT_ONLY`.
+**Rejected:** a K/V `settings` row editable in Admin → System — the list is a deployment fact (which LAN name the NAS answers to) and a DNS-rebinding defence; making it editable from a web page weakens the defence for no gain.
+**Reversible:** yes.
+
+### D-11-6-3 — rmcp performs the Host/Origin check; the API-key check runs first
+**Context:** rmcp 3.8.0 validates `Host` and `Origin` itself (403), configured explicitly from D-11-6-2. The key check is an axum layer around the rmcp service, so it runs before.
+**Chosen:** configure rmcp's validator (`with_allowed_hosts`, `with_allowed_origins`, `enforce_origin_validation`) rather than write a second validator; a request with neither a valid key nor an allowed host gets 401, one with a valid key and a bad host 403. A hand-written transport (AR27 fallback) would have to re-implement the check — recorded in `src/mcp/transport.rs`.
+**Rejected:** a mybibli validator in front of auth (duplicated parsing logic whose semantics could drift from rmcp's); disabling rmcp's validator.
+**Reversible:** yes.
+
+### D-11-6-4 — An `initialize` with an unknown revision is negotiated, not refused
+**Context:** the AC asks that an unknown protocol revision be "refused cleanly". The MCP lifecycle says a server receiving an `initialize` for a version it does not support answers with a version it does support; the client then disconnects if it cannot speak it. rmcp implements exactly that.
+**Chosen:** keep the spec behaviour for `initialize` (answer `2025-11-25`); "refused cleanly" applies to the two other channels — an unknown `MCP-Protocol-Version` header (400 with a plain-text reason) and an unknown per-request `_meta` version (JSON-RPC `UNSUPPORTED_PROTOCOL_VERSION`). Tests pin all three.
+**Rejected:** overriding `initialize` to return an error (breaks the spec negotiation every client relies on).
+**Reversible:** yes.
+
+### D-11-6-5 — Body limit derived from the cover bound
+**Context:** NFR45 asks for an explicit limit consistent with the cover bounds (base64 inflates by a third); covers arrive in story 11-12. `services::cover::MAX_COVER_SIZE` is 10 MiB. The manual upload route is in fact capped lower, by axum's default 2 MB body limit on `Multipart`.
+**Chosen:** `ceil(MAX_COVER_SIZE / 3) * 4 + 1 MiB` (≈ 14.3 MiB), computed from the constant so the two cannot drift. Story 11-12 may tighten it to the effective manual-upload bound.
+**Rejected:** a small limit now that 11-12 must remember to raise.
+**Reversible:** yes.
+
+### D-11-6-6 — No anonymous session row for `/api/mcp`
+**Context:** the session resolver mints an anonymous `sessions` row on every request without a cookie, `/api/*` included. An agent calling tools in a loop would write one row per call (purged after 7 days).
+**Chosen:** add `/api/mcp` to `should_skip_session_resolve` (the endpoint authenticates by key only and reads no `Session`). `/api/v1` keeps today's behaviour; a follow-up issue tracks it.
+**Rejected:** skipping all `/api/*` here (changes `/api/v1` responses — out of scope).
+**Reversible:** yes.
+
+### D-11-6-7 — Title detail assembly moves to `services/`
+**Context:** AR27 wants tools as thin adapters over `services/`; the title-detail assembly lives privately in `routes/api_v1.rs`.
+**Chosen:** move the DTOs and the assembly to `services/title_detail.rs`; `api_v1` re-exports the DTO names, JSON unchanged. `get_title` returns the same document as `GET /api/v1/titles/{id}`; story 11-7 enriches it.
+**Rejected:** calling the route module from `src/mcp/`; a second assembly.
+**Reversible:** yes.
+
+### D-11-6-8 — Own trait, no `#[tool]` macros
+**Context:** rmcp offers `#[tool]` / `#[tool_router]` macros (feature `macros`), whose generated code names rmcp types in the tool signatures.
+**Chosen:** `default-features = false`, features `server` + `transport-streamable-http-server`; tools implement `mcp::tool::McpTool` (serde_json in, serde_json out) and one hand-written `ServerHandler` in `transport.rs` dispatches to them.
+**Rejected:** the macros (AR27: no rmcp type may cross the tool interface).
+**Reversible:** yes.
