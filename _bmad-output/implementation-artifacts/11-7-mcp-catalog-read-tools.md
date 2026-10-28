@@ -1,6 +1,6 @@
 # Story 11.7: MCP catalog read tools
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR128, AR27. Epic 11 — seventh story; builds on 11-6 (`/api/mcp`, `McpTool` trait, `get_title`). 11-8 adds the series / gaps / incomplete-metadata tools on the same pattern.
 
@@ -41,13 +41,13 @@ so that I can identify what I could propose.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Model (AC1, AC3, AC5): `TitleModel::active_search` gains `media_type: Option<&str>` (`t.media_type = ?`, bound); `ContributorModel::search_paged` (count + page query, `deleted_at IS NULL` on contributors, junction and titles).
-- [ ] T2 — Services (AC1–AC3, AC6): `services::search::{CatalogSearch, SearchService::search_catalog}`; `services::contributor::ContributorService::search`; `services::title_detail::{AgentTitleDetail, find_agent_title_detail}` (flattened `TitleDetail` + `has_cover` + `manually_edited_fields`). Unit tests where pure.
-- [ ] T3 — Tools (AC1–AC3, AC7, AC8): `src/mcp/tools/search_titles.rs`, `search_contributors.rs`; shared argument helpers (`page`, `query`) in `src/mcp/tools/args.rs`; `get_title` switches to the enriched document; registry + its test updated; no-SQL walk test in `src/mcp/mod.rs`.
-- [ ] T4 — Integration tests (AC9): extract `tests/common/mcp.rs` from `tests/mcp_endpoint.rs`; new `tests/mcp_catalog_read_tools.rs`.
-- [ ] T5 — E2E (AC9): `tests/e2e/helpers/mcp.ts` (extracted `mcpPost`, `mcpCall`), reused by `mcp-endpoint.spec.ts`; new `mcp-read-tools.spec.ts` (spec id `MR`).
-- [ ] T6 — Docs: `docs/route-role-matrix.md` § MCP lists the three tools. User manual = story 11-24.
-- [ ] T7 — Gates: clippy `--all-targets -D warnings`, full `cargo test -j 1` (mem-guard), `cargo sqlx prepare --check` (dynamic queries only expected — no `.sqlx` change), locale parity (no keys: tool texts are agent-facing English, not UI), flake grep, `tsc --noEmit`, full E2E `--workers=2`.
+- [x] T1 — Model (AC1, AC3, AC5): `TitleModel::active_search` gains `media_type: Option<&str>` (`t.media_type = ?`, bound); `ContributorModel::search_paged` (count + page query, `deleted_at IS NULL` on contributors, junction and titles).
+- [x] T2 — Services (AC1–AC3, AC6): `services::search::{CatalogSearch, SearchService::search_catalog}`; `services::contributor::ContributorService::search`; `services::title_detail::{AgentTitleDetail, find_agent_title_detail}` (flattened `TitleDetail` + `has_cover` + `manually_edited_fields`). Unit tests where pure.
+- [x] T3 — Tools (AC1–AC3, AC7, AC8): `src/mcp/tools/search_titles.rs`, `search_contributors.rs`; shared argument helpers (`page`, `query`) in `src/mcp/tools/args.rs`; `get_title` switches to the enriched document; registry + its test updated; no-SQL walk test in `src/mcp/mod.rs`.
+- [x] T4 — Integration tests (AC9): extract `tests/common/mcp.rs` from `tests/mcp_endpoint.rs`; new `tests/mcp_catalog_read_tools.rs`.
+- [x] T5 — E2E (AC9): `tests/e2e/helpers/mcp.ts` (extracted `mcpPost`, `mcpCall`), reused by `mcp-endpoint.spec.ts`; new `mcp-read-tools.spec.ts` (spec id `MR`).
+- [x] T6 — Docs: `docs/route-role-matrix.md` § MCP lists the three tools. User manual = story 11-24.
+- [x] T7 — Gates: clippy `--all-targets -D warnings`, full `cargo test -j 1` (mem-guard), `cargo sqlx prepare --check` (dynamic queries only expected — no `.sqlx` change), locale parity (no keys: tool texts are agent-facing English, not UI), flake grep, `tsc --noEmit`, full E2E `--workers=2`.
 
 ## Dev Notes
 
@@ -94,11 +94,31 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Debug Log References
 
+- `cargo fmt -- <files>` formatted the whole crate (main is not fmt-clean); unrelated files were restored and only this story's hunks kept.
+- A targeted E2E run before the full suite left the scanned ISBNs in the DB; the full run then re-scanned existing titles (no skeleton) — the full suite was rerun on a freshly reset stack.
+
 ### Completion Notes List
 
+- `search_titles` (text / ISBN-10/13 / volume label, `media_type`, `genre` by name, browse on empty query, 25 per page, page 1..=10000) over the new `SearchService::search_catalog`; `TitleModel::active_search` gained a bound `media_type` filter (web callers pass `None`).
+- `search_contributors` over `ContributorService::search` → `ContributorModel::search_paged` (live title count, LIKE metacharacters escaped by a shared `like_contains_pattern`).
+- `get_title` now returns `AgentTitleDetail` (flattened `TitleDetail` + `has_cover` + `manually_edited_fields`); `/api/v1` unchanged (D-11-7-2).
+- Shared tool plumbing: `tools/args.rs` (object parsing, page and query bounds), `ListPage<T>` and `to_json` in `tools/mod.rs`; registry test pins the exact tool set, a description on every schema property and `additionalProperties: false`; `mcp::tests::no_sql_under_src_mcp` enforces AR27.
+- Tests: 11 integration tests (`tests/mcp_catalog_read_tools.rs`), MCP helpers moved to `tests/common/mcp.rs`; unit tests for args, genre matching, exact-hit filters, `has_cover`, LIKE escaping, list page shape. Full `cargo test -j 1`: 1696 passed, 0 failed. E2E `mcp-read-tools.spec.ts` (+ `helpers/mcp.ts`, reused by the 11-6 spec); full suite `--workers=2`: 360 passed, 2 skipped, 1 known flaky (shelving.spec.ts:193, #499) passed on retry.
+- No migration, no new setting, no route, no dependency, no locale key.
+
 ### File List
+
+- src/mcp/mod.rs, src/mcp/tools/mod.rs, src/mcp/tools/get_title.rs
+- src/mcp/tools/args.rs, src/mcp/tools/search_titles.rs, src/mcp/tools/search_contributors.rs (new)
+- src/services/search.rs, src/services/title_detail.rs, src/services/contributor.rs
+- src/models/title.rs, src/models/contributor.rs
+- tests/common/mod.rs, tests/common/mcp.rs, tests/mcp_catalog_read_tools.rs (new); tests/mcp_endpoint.rs
+- tests/e2e/helpers/mcp.ts, tests/e2e/specs/journeys/mcp-read-tools.spec.ts (new); tests/e2e/specs/journeys/mcp-endpoint.spec.ts
+- docs/route-role-matrix.md
+- _bmad-output/implementation-artifacts/11-7-mcp-catalog-read-tools.md, epic-11-autonomous-decisions.md, sprint-status.yaml
 
 ## Change Log
 
 - 2026-10-28 — story created (create-story).
 - 2026-10-28 — validated against the create-story checklist: live-only lookups verified, cover predicate, title-count join, FULLTEXT commit note added.
+- 2026-10-28 — implemented (dev-story); status → review.

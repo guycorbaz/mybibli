@@ -1145,6 +1145,9 @@ impl TitleModel {
         // identifier clause: titles WITHOUT an ISBN/ISSN/UPC can never be
         // auto-fetched, so they most need the manual-upload safety net.
         no_cover_only: bool,
+        // Story 11-7 — exact media type (`book`, `bd`, …); bound, never
+        // interpolated. Callers validate the value against `MediaType`.
+        media_type: Option<&str>,
     ) -> Result<PaginatedList<SearchResult>, AppError> {
         let sort_col = validated_sort(sort);
         let sort_dir = validated_dir(dir);
@@ -1208,6 +1211,10 @@ impl TitleModel {
             genre_bind = Some(gid);
         }
 
+        if media_type.is_some() {
+            conditions.push("t.media_type = ?".to_string());
+        }
+
         if no_volumes_only {
             // CR #279 — title with zero active volumes.
             conditions.push(
@@ -1252,6 +1259,9 @@ impl TitleModel {
         if let Some(gid) = genre_bind {
             count_query = count_query.bind(gid);
         }
+        if let Some(mt) = media_type {
+            count_query = count_query.bind(mt);
+        }
         if let Some(ref sv) = state_bind {
             count_query = count_query.bind(sv);
         }
@@ -1292,6 +1302,9 @@ impl TitleModel {
         }
         if let Some(gid) = genre_bind {
             data_query = data_query.bind(gid);
+        }
+        if let Some(mt) = media_type {
+            data_query = data_query.bind(mt);
         }
         if let Some(ref sv) = state_bind {
             data_query = data_query.bind(sv);

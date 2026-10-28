@@ -6,6 +6,16 @@ use crate::error::AppError;
 
 // ─── Contributor model ────────────────────────────────────────────
 
+/// `%query%` with the LIKE metacharacters of `query` escaped, so a user
+/// typing `_` or `%` matches those characters literally.
+fn like_contains_pattern(query: &str) -> String {
+    let escaped = query
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("%{escaped}%")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContributorModel {
     pub id: u64,
@@ -71,11 +81,7 @@ impl ContributorModel {
     ) -> Result<Vec<ContributorModel>, AppError> {
         tracing::debug!(query = %query, "Searching contributors by name");
 
-        let escaped_query = query
-            .replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_");
-        let pattern = format!("%{}%", escaped_query);
+        let pattern = like_contains_pattern(query);
         let rows: Vec<(u64, String, Option<String>, i32)> = sqlx::query_as(
             "SELECT id, name, biography, version FROM contributors WHERE name LIKE ? AND deleted_at IS NULL ORDER BY name LIMIT ?",
         )
@@ -93,6 +99,63 @@ impl ContributorModel {
                 version,
             })
             .collect())
+    }
+
+    /// Story 11-7 — one page of live contributors whose name contains
+    /// `query` (all of them when `query` is empty), sorted by name, each
+    /// with the number of live titles it is attached to (any role,
+    /// counted once). Page size `DEFAULT_PAGE_SIZE`.
+    pub async fn search_paged(
+        pool: &DbPool,
+        query: &str,
+        page: u32,
+    ) -> Result<crate::models::PaginatedList<ContributorSearchRow>, AppError> {
+        use crate::models::DEFAULT_PAGE_SIZE;
+
+        let pattern = like_contains_pattern(query.trim());
+        let offset = page.saturating_sub(1).saturating_mul(DEFAULT_PAGE_SIZE);
+
+        let (total,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM contributors WHERE name LIKE ? AND deleted_at IS NULL",
+        )
+        .bind(&pattern)
+        .fetch_one(pool)
+        .await?;
+
+        let rows: Vec<(u64, String, i64)> = sqlx::query_as(
+            r#"SELECT c.id, c.name, COUNT(DISTINCT t.id) AS title_count
+               FROM contributors c
+               LEFT JOIN title_contributors tc
+                 ON tc.contributor_id = c.id AND tc.deleted_at IS NULL
+               LEFT JOIN titles t
+                 ON t.id = tc.title_id AND t.deleted_at IS NULL
+               WHERE c.name LIKE ? AND c.deleted_at IS NULL
+               GROUP BY c.id, c.name
+               ORDER BY c.name ASC, c.id ASC
+               LIMIT ? OFFSET ?"#,
+        )
+        .bind(&pattern)
+        .bind(DEFAULT_PAGE_SIZE)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
+
+        let items = rows
+            .into_iter()
+            .map(|(id, name, title_count)| ContributorSearchRow {
+                id,
+                name,
+                title_count: u64::try_from(title_count).unwrap_or(0),
+            })
+            .collect();
+        Ok(crate::models::PaginatedList::new(
+            items,
+            page,
+            u64::try_from(total).unwrap_or(0),
+            None,
+            None,
+            None,
+        ))
     }
 
     pub async fn create(
@@ -221,6 +284,15 @@ pub struct ContributorTitleRow {
     pub title: String,
     pub media_type: String,
     pub role_name: String,
+}
+
+/// Story 11-7 — one row of [`ContributorModel::search_paged`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContributorSearchRow {
+    pub id: u64,
+    pub name: String,
+    /// Live titles this contributor is attached to (any role).
+    pub title_count: u64,
 }
 
 // ─── Title-contributor junction ───────────────────────────────────
@@ -360,6 +432,13 @@ pub use crate::models::contributor_role::ContributorRoleModel;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn like_contains_pattern_escapes_metacharacters() {
+        assert_eq!(like_contains_pattern("Camus"), "%Camus%");
+        assert_eq!(like_contains_pattern(""), "%%");
+        assert_eq!(like_contains_pattern("50%_a\\b"), "%50\\%\\_a\\\\b%");
+    }
 
     #[test]
     fn test_contributor_model_display() {

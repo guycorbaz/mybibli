@@ -181,4 +181,51 @@ mod tests {
             "transport.rs moved? update this test"
         );
     }
+
+    /// AR27 (story 11-7): tools are thin adapters over `services/` — no
+    /// database access and no SQL anywhere under `src/mcp/`.
+    #[test]
+    fn no_sql_under_src_mcp() {
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read src/mcp") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        walk(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/mcp"),
+            &mut files,
+        );
+        assert!(files.len() >= 5, "src/mcp/ moved? update this test");
+        // Built at run time so this test does not match itself.
+        let needles = [
+            ["sq", "lx"].concat(),
+            ["SEL", "ECT "].concat(),
+            ["INS", "ERT "].concat(),
+            ["UPD", "ATE "].concat(),
+            ["DEL", "ETE "].concat(),
+            [" FR", "OM "].concat(),
+            ["DbP", "ool"].concat(),
+        ];
+        let offenders: Vec<String> = files
+            .iter()
+            .flat_map(|p| {
+                let text = std::fs::read_to_string(p).unwrap_or_default();
+                text.lines()
+                    .map(|l| l.split("//").next().unwrap_or("").to_string())
+                    .filter(|code| needles.iter().any(|n| code.contains(n.as_str())))
+                    .map(|code| format!("{}: {}", p.display(), code.trim()))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "SQL or DB access in src/mcp/: {offenders:#?}"
+        );
+    }
 }

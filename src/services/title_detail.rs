@@ -160,3 +160,54 @@ pub async fn find_title_detail(pool: &DbPool, id: u64) -> Result<Option<TitleDet
     };
     build_title_detail(pool, &title).await.map(Some)
 }
+
+/// Story 11-7 — the document the MCP `get_title` tool returns: the
+/// [`TitleDetail`] fields (flattened, same names) plus what an agent
+/// needs before proposing anything. Kept apart from `TitleDetail` so the
+/// `/api/v1` contract does not change (D-11-7-2).
+#[derive(Debug, Serialize)]
+pub struct AgentTitleDetail {
+    #[serde(flatten)]
+    pub detail: TitleDetail,
+    /// Whether the title has a cover image (same predicate as the
+    /// "no cover" search filter: NULL or empty = no cover).
+    pub has_cover: bool,
+    /// Fields the librarian edited by hand; a metadata refresh never
+    /// overwrites them.
+    pub manually_edited_fields: Vec<String>,
+}
+
+/// Whether a stored cover URL denotes an actual cover.
+pub fn has_cover(cover_image_url: Option<&str>) -> bool {
+    cover_image_url.is_some_and(|u| !u.trim().is_empty())
+}
+
+/// [`find_title_detail`] enriched for an agent; `None` when the id is
+/// unknown or soft-deleted.
+pub async fn find_agent_title_detail(
+    pool: &DbPool,
+    id: u64,
+) -> Result<Option<AgentTitleDetail>, AppError> {
+    let Some(title) = TitleModel::find_by_id(pool, id).await? else {
+        return Ok(None);
+    };
+    let detail = build_title_detail(pool, &title).await?;
+    Ok(Some(AgentTitleDetail {
+        has_cover: has_cover(title.cover_image_url.as_deref()),
+        manually_edited_fields: title.parsed_manually_edited_fields(),
+        detail,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn has_cover_requires_a_non_empty_url() {
+        assert!(!has_cover(None));
+        assert!(!has_cover(Some("")));
+        assert!(!has_cover(Some("  ")));
+        assert!(has_cover(Some("/covers/12.jpg")));
+    }
+}

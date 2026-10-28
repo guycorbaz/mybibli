@@ -11,28 +11,12 @@
  * Spec ID "MP" for ISBNs; unique key labels; no shared-DB assertion
  * beyond the rows this test creates.
  */
-import { test, expect, request as playwrightRequest, APIRequestContext } from "@playwright/test";
+import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
 import { createApiKey, revokeApiKey } from "../../helpers/api-keys";
-
-const MCP_HEADERS = {
-  "Content-Type": "application/json",
-  Accept: "application/json, text/event-stream",
-};
-
-async function mcpPost(
-  request: APIRequestContext,
-  key: string,
-  body: object,
-  extra: Record<string, string> = {},
-) {
-  return request.post("/api/mcp", {
-    headers: { ...MCP_HEADERS, Authorization: `Bearer ${key}`, ...extra },
-    data: body,
-  });
-}
+import { mcpPost } from "../../helpers/mcp";
 
 test.describe("Story 11-6 — MCP endpoint", () => {
   test("an agent with a propose key connects and reads a title", async ({ page, baseURL }) => {

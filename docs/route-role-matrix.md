@@ -189,6 +189,11 @@ this path (no anonymous `sessions` row).
 |---|---|---|---|---|
 | POST | `/api/mcp` | API key *(propose)* | n/a | JSON-RPC; body capped at ≈ 14.3 MiB (413). GET / DELETE answer 405. |
 
+Tools (all read-only, soft-deleted rows never returned): `get_title`
+(11-6, enriched in 11-7 with `has_cover` and `manually_edited_fields`),
+`search_titles` and `search_contributors` (11-7 — 25 items per page,
+`page` 1..=10000).
+
 ### Shelf audit (CR #237) (`src/routes/audit.rs`)
 
 | method | path | role | csrf | note |
