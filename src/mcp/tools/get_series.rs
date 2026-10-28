@@ -139,8 +139,9 @@ impl McpTool for GetSeries {
          tomes the librarian expects but may not own yet, ordered by position: id, position, \
          title, ISBN-13 (or null), `origin` (`manual` or `proposal`) and `settled_title_id` \
          (the catalogued title holding its position, null while not settled — a position held by \
-         another title also leaves it null). `version` changes whenever the series is \
-         edited; pass it as `series_version` to propose_series_attach. Find ids with \
+         another title also leaves it null). `version` changes when the series' own \
+         fields (name, description, type, total) are edited — not when titles or expected \
+         tomes are added; pass it as `series_version` to propose_series_attach. Find ids with \
          list_series; read a title with get_title. Deleted series are reported as not found. Read-only."
     }
 

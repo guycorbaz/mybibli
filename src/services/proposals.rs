@@ -638,13 +638,15 @@ impl ProposalService {
         let mut tx = pool.begin().await?;
         let id = Self::file_in(&mut tx, proposal).await?;
         tx.commit().await?;
+        log_filed(id, proposal);
         Ok(id)
     }
 
     /// [`Self::file`] on a caller-held transaction (story 11-12 runs its
     /// duplicate checks in the same one); the caller commits. Nothing is
     /// committed here, so an error leaves nothing behind once the caller
-    /// rolls back (or drops) the transaction.
+    /// rolls back (or drops) the transaction. The caller logs the filing
+    /// with [`log_filed`] once committed.
     pub async fn file_in(
         conn: &mut MySqlConnection,
         proposal: &NewProposal,
@@ -706,13 +708,6 @@ impl ProposalService {
         for row in &rows {
             ProposalModel::insert_item(tx, id, row).await?;
         }
-        tracing::info!(
-            proposal_id = id,
-            kind = proposal.kind.as_str(),
-            api_key_id = proposal.api_key_id,
-            items = rows.len(),
-            "Proposal filed"
-        );
         Ok(id)
     }
 
@@ -927,6 +922,18 @@ impl ProposalService {
             stale_targets,
         })
     }
+}
+
+/// Log a committed filing (after the commit, so a failed commit never
+/// leaves a "filed" line for a proposal that does not exist).
+pub fn log_filed(id: u64, proposal: &NewProposal) {
+    tracing::info!(
+        proposal_id = id,
+        kind = proposal.kind.as_str(),
+        api_key_id = proposal.api_key_id,
+        items = proposal.items.len(),
+        "Proposal filed"
+    );
 }
 
 fn stale_update() -> StatusUpdate {

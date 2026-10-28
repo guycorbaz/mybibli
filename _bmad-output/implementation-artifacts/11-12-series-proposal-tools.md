@@ -35,7 +35,7 @@ so that the librarian can group volumes without searching by hand.
    - At least one title or expected tome for attach; create may carry none (a bare series).
    - `is_omnibus: true` requires `end_position ≥ position` (the omnibus covers `position..=end_position`, as `assign_omnibus`); `end_position` is refused without `is_omnibus: true`.
    - Optional `version` / `series_version` pin the version the agent read (`get_title.version`, `get_series.version`); a mismatch is refused (`TargetChanged`, re-read and retry).
-3. **AC3 — create refusals.** Refused with an actionable message: blank name or longer than 255 characters; `closed` without a total; a total for `open`; an **active series with the same name** (column collation, as the web form) → refused with a message naming the series id and telling the agent to call `propose_series_attach` with that `series_id`.
+3. **AC3 — create refusals.** Refused with an actionable message: blank name or longer than 255 characters; `closed` without a total; a total for `open`; an **active series with the same name** (case- and accent-insensitive, `utf8mb4_unicode_ci` — D-11-12-11) → refused with a message naming the series id and telling the agent to call `propose_series_attach` with that `series_id`.
 4. **AC4 — line refusals (both tools).** Refused, naming the offending title id / tome: an unknown or soft-deleted title; a position ≤ 0 (or beyond `i32`); a **position used twice in the proposal** (title, omnibus range or expected tome — ranges compared, never expanded); the same title twice; a position above the closed total (proposed total for create, the series' total for attach); an expected tome with a blank / > 500-character title or an invalid ISBN (expected-tome rules, D-11-10-4); two tomes with the same ISBN. Attach only, against the series as it is now: unknown or soft-deleted series (not found, points to `list_series`); a title already in the series; a position held by another live title; a position or ISBN of a live expected tome of the series.
 5. **AC5 — pending duplicate.** A pending (live) proposal already targeting the same series refuses the new one and the message returns the existing proposal's id: for attach, a pending proposal with an item targeting `series/<id>`; for create, a pending `series_create` proposal whose series line has the same name (case- and accent-insensitive, `utf8mb4_unicode_ci`). A decided (accepted / rejected / stale) or soft-deleted proposal never blocks.
 6. **AC6 — what is filed (FR134, AR29).** One proposal per call, kind `series_create` / `series_attach`, attributed to the calling key, sources stored by 11-9's rules, status `pending`. One item per line, in this order:
@@ -61,10 +61,10 @@ so that the librarian can group volumes without searching by hand.
 
 - **Item shapes are a contract** for 11-16 (display), 11-17 (accept) and 11-19 (edit): keep `line` as the discriminant and the series line first. Document them on the service module.
 - **Error mapping:** `SeriesProposalError::Proposal(ProposalError)` keeps 11-9's typed errors; `is_invalid_input()` → `InvalidArguments`; `TargetNotFound` / `TargetChanged` are rewritten by the series service to name the title / series id (the agent never sees 11-9's internal item index); `KeyNotAllowed` → `Refused`; `Database` and decision-only variants → `Internal` (logged).
-- **Duplicate checks** run before `file`, outside its transaction (read-only): a concurrent double filing can slip through (harmless — the librarian rejects one, the second goes stale at acceptance). Logged as a decision.
+- **Duplicate checks** run inside the filing transaction, after an exclusive lock on the filing key row, as plain reads (D-11-12-11, D-11-12-13).
 - **Collation:** the pending-name lookup compares `CONVERT(JSON_UNQUOTE(JSON_EXTRACT(...)) USING utf8mb4) COLLATE utf8mb4_unicode_ci` with the bound name converted the same way — CI's server default charset must not change the result.
 - **For 11-19 (edit before accept):** the series line is not a removable line (removing it leaves titles without a series); 11-19 must keep it.
-- **Total cap:** `total_volume_count` and positions are bounded by `i32` (the column type); no smaller product cap is introduced (the web form has none).
+- **Caps:** positions and totals ≤ 10 000, an omnibus ≤ 100 positions, ≤ 999 lines (D-11-12-9, review round 1).
 - **Not here:** FR136 resubmission delay (11-15); applying anything (11-17); the web page (11-16).
 - Heavy commands under `mem-guard`, cargo `-j 2`; `rustfmt --edition 2024` on touched leaf files only.
 
@@ -91,6 +91,12 @@ Round 1:
 - [x] [Review][Defer] (Low) Owned ISBN on a tome line, cross-key race, cross-proposal title conflicts — re-check at acceptance, #529
 - Dismissed (round 1): existing omnibus covering a proposed position (one `title_series` row per covered position, so the equality checks are complete — verified by two layers); `Tome` message names the position rather than the title (identifies the line); KeyNotAllowed through the router (the guard refuses first; unit-tested mapping).
 
+Round 2:
+- [x] [Review][Patch] (Medium) Share-locking duplicate reads on unindexed predicates locked every series row / whole index ranges — deadlock-prone against an acceptance (11-16/17) and between keys; now plain reads after the key lock (D-11-12-13) [src/models/proposal.rs]
+- [x] [Review][Patch] (Medium) Attach without `series_version` recorded a baseline newer than the state it was checked against — the version read for the checks is now pinned (D-11-12-13) [src/services/series_proposals.rs]
+- [x] [Review][Patch] (Low) "Proposal filed" logged before the commit — `log_filed` after commit; line-cap test now proves the cap runs first; `version` wording narrowed to the series' own fields (#521); stale spec / module notes refreshed
+- Accepted (Low, round 2): `utf8mb4_unicode_ci` weighs all supplementary-plane characters equally (emoji-only differences read as the same name — a false "already exists", never a wrong write); the concurrency test is scheduling-dependent; attach refusals that share `validate_lines` are exercised through create; attach checks against titles/tomes read before the transaction (re-checked at acceptance, #529); a pending create for a name does not block an attach on a hand-created series of that name.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -107,10 +113,10 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Completion Notes List
 
-- New service `services::series_proposals` (contract of the item shapes in its module doc) over `ProposalService::file`; typed `SeriesProposalError` with `class()`.
+- New service `services::series_proposals` (contract of the item shapes in its module doc) over `ProposalService::file_in` (new transaction-scoped body of `file`); typed `SeriesProposalError` with `class()`.
 - Two model reads for the pending-duplicate rule (`ProposalModel::pending_targeting`, `pending_series_create_named`).
 - MCP: `propose_series_create`, `propose_series_attach`, shared `series_proposal_args`; `ToolError::Refused`; `get_series.version`.
-- Decisions D-11-12-1..8.
+- Decisions D-11-12-1..13 (9..13 from code review).
 
 ### File List
 

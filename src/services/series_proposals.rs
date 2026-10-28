@@ -4,7 +4,7 @@
 //! thin adapters over this module. It validates what the agent proposes,
 //! refuses what a librarian could never accept (or what is already
 //! proposed), and files **one proposal per call** through
-//! [`ProposalService::file`] (story 11-9). Nothing in the catalogue
+//! [`ProposalService::file_in`] (story 11-9). Nothing in the catalogue
 //! changes: acceptance is story 11-17.
 //!
 //! ## Item shapes (contract for 11-16, 11-17, 11-19)
@@ -44,7 +44,7 @@ use crate::services::expected_tomes::{
     ExpectedTomeError, closed_total_of, normalize_isbn, validate_title,
 };
 use crate::services::proposals::{
-    NewProposal, NewProposalItem, ProposalError, ProposalService, validate_sources,
+    NewProposal, NewProposalItem, ProposalError, ProposalService, log_filed, validate_sources,
 };
 use crate::services::series::SeriesService;
 
@@ -881,7 +881,10 @@ impl SeriesProposalService {
                 table: ProposalTargetTable::Series,
                 id: series.id,
             }),
-            expected_version: req.series_version,
+            // The version the checks above ran against: when the agent did
+            // not pin one, a series edited between that read and the filing
+            // is refused rather than recorded as the baseline (round 2).
+            expected_version: Some(req.series_version.unwrap_or(series.version)),
             proposed_values: json!({ "line": "series" }),
         };
         let proposal = NewProposal {
@@ -896,8 +899,9 @@ impl SeriesProposalService {
     /// File `proposal` unless the series it is about already exists (a
     /// create) or already has a pending proposal. The filing key row is
     /// locked exclusively first, so concurrent series filings with the
-    /// same key run one after the other and the second sees the first
-    /// (D-11-12-5); everything happens in one transaction.
+    /// same key run one after the other and the second sees the first;
+    /// the checks are plain reads taken after that lock (D-11-12-11,
+    /// D-11-12-13); everything happens in one transaction.
     async fn file_unique(
         pool: &DbPool,
         proposal: &NewProposal,
@@ -940,6 +944,7 @@ impl SeriesProposalService {
         }
         let proposal_id = ProposalService::file_in(&mut tx, proposal).await?;
         tx.commit().await.map_err(ProposalError::from)?;
+        log_filed(proposal_id, proposal);
         Ok(FiledProposal {
             proposal_id,
             kind: proposal.kind,
@@ -1102,6 +1107,9 @@ mod tests {
         // The line cap is checked before any per-line work.
         let titles: Vec<_> = (1..=MAX_LINES as u64).map(|i| title(i, i as i64)).collect();
         assert!(validate_lines(&titles, &[], None).is_ok());
+        // An invalid first line: the count is still what is reported.
+        let mut titles = titles;
+        titles[0].position = 0;
         let err = validate_lines(&titles, &[tome(5_000, "T", None)], None).unwrap_err();
         assert!(
             matches!(err, SeriesProposalError::TooManyLines { count } if count == MAX_LINES + 1)
