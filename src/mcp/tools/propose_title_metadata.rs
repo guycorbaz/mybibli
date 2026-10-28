@@ -70,10 +70,13 @@ impl McpTool for ProposeTitleMetadata {
          erases a value); `subtitle` exceeds 500 characters, `publisher` 255, `description` \
          10000, `dewey_code` 32; a single-line value contains a control character (line \
          breaks and tabs are allowed in `description` only); `dewey_code` is not made of \
-         digits, '.' and '/'; `publication_year` is before 1000 or after next year; \
+         digits, '.' and '/' with at least one digit; `publication_year` is before 1000 or after next year; \
          `contributors` is empty, holds more than 50 entries, repeats a name and role, has a \
          blank name or one over 255 bytes, or a role the library does not define (the \
-         message lists the valid roles). A source that is not an http(s) URL is refused."
+         message lists the valid roles). Also refused: a source that is not an http(s) URL; a \
+         key that was revoked or lacks the propose scope. Text is stored as plain text (NFC, \
+         inner spaces of one-line values collapsed); zero-width and direction characters are \
+         refused."
     }
 
     fn input_schema(&self) -> Value {
@@ -121,7 +124,7 @@ impl McpTool for ProposeTitleMetadata {
                             "type": "string",
                             "minLength": 1,
                             "maxLength": MAX_DEWEY_CHARS,
-                            "pattern": "^[0-9./]+$",
+                            "pattern": "^[0-9./]*[0-9][0-9./]*$",
                             "description": "Dewey Decimal Classification class (e.g. \"843.914\")."
                         },
                         "contributors": {

@@ -135,7 +135,8 @@ async fn files_one_item_per_changed_field_with_its_current_value(pool: DbPool) {
             json!({"line": "field", "field": "description", "current": null,
                    "proposed": "Un aviateur rencontre un petit prince.\nIl vient d'un astéroïde."}),
             json!({"line": "field", "field": "publisher", "current": null, "proposed": "Gallimard"}),
-            json!({"line": "field", "field": "publication_year", "current": 1987, "proposed": 1999}),
+            json!({"line": "field", "field": "publication_year", "current": 1987,
+                   "current_date": "1987-05-01", "proposed": 1999}),
             json!({"line": "field", "field": "dewey_code", "current": null, "proposed": "843.912"}),
             json!({"line": "field", "field": "contributors",
                    "current": [{"name": "Antoine de Saint-Exupéry", "role": "Auteur"}],
@@ -225,7 +226,8 @@ async fn invalid_fields_are_refused_field_by_field(pool: DbPool) {
         "`publisher` is longer than 255 characters",
         "`publication_year` must be a year between 1000 and",
         "`dewey_code` must be a Dewey class",
-        "`contributors[1].role` \"Autor\" is not a contributor role of this library; use one of:",
+        "`contributors[1].role` \"Autor\" is not a contributor role of this library.",
+        "The library's contributor roles are:",
     ] {
         assert!(msg.contains(expected), "missing {expected:?} in {msg}");
     }
@@ -311,6 +313,63 @@ async fn a_soft_deleted_role_is_unknown(pool: DbPool) {
         .await;
     assert!(
         msg.contains("\"Coloriste\" is not a contributor role of this library"),
+        "{msg}"
+    );
+    assert_eq!(proposal_count(&pool).await, 0);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_very_long_current_description_is_truncated_not_refused(pool: DbPool) {
+    let agent = Agent::new(&pool).await;
+    let t = known_title(&pool).await;
+    // 60 000 bytes of quotes serialize to 120 000 bytes, beyond the 64 KiB item cap.
+    sqlx::query("UPDATE titles SET description = ? WHERE id = ?")
+        .bind("\"".repeat(60_000))
+        .bind(t)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let doc = agent
+        .ok(TOOL, args(t, json!({"description": "Un conte."})))
+        .await;
+    let detail = ProposalService::detail(&pool, doc["proposal_id"].as_u64().unwrap())
+        .await
+        .unwrap()
+        .expect("filed");
+    let item = &detail.items[0].proposed_values;
+    assert_eq!(item["current_truncated"], true);
+    assert_eq!(item["proposed"], "Un conte.");
+    assert!(item["current"].as_str().unwrap().len() > 10_000);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn contributor_names_compare_without_accents(pool: DbPool) {
+    let agent = Agent::new(&pool).await;
+    let t = known_title(&pool).await;
+    let msg = agent
+        .err(
+            TOOL,
+            args(
+                t,
+                json!({"contributors": [{"name": "Antoine de Saint-Exupery", "role": "Auteur"}]}),
+            ),
+        )
+        .await;
+    assert!(msg.contains("Nothing would change"), "{msg}");
+    let msg = agent
+        .err(
+            TOOL,
+            args(
+                t,
+                json!({"contributors": [
+                    {"name": "Hergé", "role": "Illustrateur"},
+                    {"name": "herge", "role": "illustrateur"}
+                ]}),
+            ),
+        )
+        .await;
+    assert!(
+        msg.contains("`contributors[2]` repeats a contributor"),
         "{msg}"
     );
     assert_eq!(proposal_count(&pool).await, 0);

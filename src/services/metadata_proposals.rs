@@ -16,22 +16,39 @@
 //!
 //! - **scalar field** — `{"line": "field", "field": "<name>", "current":
 //!   <value|null>, "proposed": <value>}`. Strings for `subtitle`,
-//!   `description`, `publisher`, `dewey_code` (trimmed); integers for
-//!   `publication_year` (`current` is the year of the title's
-//!   `publication_date`; acceptance writes `YYYY-01-01`).
+//!   `description`, `publisher`, `dewey_code` (trimmed, NFC; one-line
+//!   values with inner whitespace collapsed); integers for
+//!   `publication_year`, whose item also carries `"current_date"`
+//!   (`YYYY-MM-DD` or null) — `current` is its year, and acceptance
+//!   writes `YYYY-01-01`, so the reviewer sees the month and day it
+//!   replaces.
 //! - **contributors** — `{"line": "field", "field": "contributors",
 //!   "current": [{"name", "role"}…], "proposed": [{"name", "role",
 //!   "role_id"}…]}`. `proposed` lists the contributors **to add**;
 //!   acceptance never removes one. `role_id` is authoritative, `role` is
-//!   the role's name at filing (for display). Whether a contributor with
-//!   that name already exists is settled at acceptance (11-18: reuse,
-//!   else create).
+//!   the role's name at filing (for display). Names are compared folded
+//!   ([`fold_name`]: case, accents, inner whitespace — close to the
+//!   `utf8mb4_unicode_ci` collation): duplicates within the list are
+//!   refused, and a name + role already on the title is dropped.
+//! - **`"current_truncated": true`** is added when the title's current
+//!   value was too long to fit the 64 KiB item cap next to the proposed
+//!   one ([`fit_item`]): the string lost its tail, or the list its last
+//!   entries. The field-level baseline is then incomplete; staleness
+//!   relies on `version`.
 //!
 //! `current` is the value at filing, kept as filed (11-19 edits
-//! `proposed` only). It is also the field-level staleness baseline that
-//! #521 may use: contributor writes (`title_contributors`) do not bump
-//! `titles.version`, so acceptance must skip a contributor already on
-//! the title.
+//! `proposed` only; to re-validate an edit it calls [`validate_fields`]
+//! with `{name, role}` contributor entries). It is also the field-level
+//! staleness baseline that #521 may use: contributor writes
+//! (`title_contributors`) do not bump `titles.version`.
+//!
+//! **For 11-18 (acceptance):** resolve each proposed contributor with
+//! the SQL collation (`find_or_create`), then skip it when the title
+//! already has that contributor id + role (re-check, it may have been
+//! added since filing) and when the item resolves two entries to the
+//! same contributor; a junction row soft-deleted earlier must be
+//! reactivated rather than inserted (the unique key ignores
+//! `deleted_at`, #531).
 //!
 //! Errors are a typed [`MetadataProposalError`] with agent-facing
 //! English messages (D-11-9-2 precedent).
@@ -39,8 +56,10 @@
 use std::collections::HashSet;
 use std::fmt;
 
-use chrono::Datelike;
+use chrono::{Datelike, NaiveDate};
 use serde_json::{Map, Value, json};
+use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::char::is_combining_mark;
 
 use crate::db::DbPool;
 use crate::error::AppError;
@@ -77,6 +96,8 @@ pub const MAX_DEWEY_CHARS: usize = 32;
 pub const MIN_PUBLICATION_YEAR: i32 = 1000;
 /// At most this many contributors per proposal.
 pub const MAX_CONTRIBUTORS: usize = 50;
+/// At most this many field errors spelled out in one refusal.
+pub const MAX_REPORTED_ERRORS: usize = 50;
 
 /// `propose_title_metadata`.
 #[derive(Debug, Clone, PartialEq)]
@@ -102,16 +123,31 @@ pub struct FiledMetadataProposal {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldProblem {
     NotProposable,
-    WrongType { expected: &'static str },
+    WrongType {
+        expected: &'static str,
+    },
+    Missing,
     Blank,
-    TooLongChars { max: usize },
-    TooLongBytes { max: usize },
+    TooLongChars {
+        max: usize,
+    },
+    TooLongBytes {
+        max: usize,
+    },
     ControlCharacter,
     DeweyShape,
-    YearOutOfRange { min: i32, max: i32 },
+    YearOutOfRange {
+        min: i32,
+        max: i32,
+    },
     EmptyList,
-    TooManyContributors { count: usize },
-    UnknownRole { role: String, known: Vec<String> },
+    TooManyContributors {
+        count: usize,
+    },
+    /// The valid roles are listed once, after every field error.
+    UnknownRole {
+        role: String,
+    },
     ContributorTwice,
 }
 
@@ -125,6 +161,7 @@ impl fmt::Display for FieldProblem {
                 PROPOSABLE_FIELDS.join(", ")
             ),
             WrongType { expected } => write!(f, "must be {expected}"),
+            Missing => write!(f, "is missing"),
             Blank => write!(
                 f,
                 "is empty; propose a value, or leave the field out (a proposal completes a \
@@ -132,7 +169,11 @@ impl fmt::Display for FieldProblem {
             ),
             TooLongChars { max } => write!(f, "is longer than {max} characters"),
             TooLongBytes { max } => write!(f, "is longer than {max} bytes (UTF-8)"),
-            ControlCharacter => write!(f, "contains a control character (line break, tab…)"),
+            ControlCharacter => write!(
+                f,
+                "contains a control or invisible character (line break, tab, zero-width or \
+                 direction mark…)"
+            ),
             DeweyShape => write!(
                 f,
                 "must be a Dewey class made of digits, '.' and '/' (e.g. \"843.914\")"
@@ -146,15 +187,9 @@ impl fmt::Display for FieldProblem {
                 f,
                 "holds {count} contributors; at most {MAX_CONTRIBUTORS} per proposal"
             ),
-            UnknownRole { role, known } if known.is_empty() => write!(
-                f,
-                "\"{role}\" is not a contributor role, and the library has none defined"
-            ),
-            UnknownRole { role, known } => write!(
-                f,
-                "\"{role}\" is not a contributor role of this library; use one of: {}",
-                known.join(", ")
-            ),
+            UnknownRole { role } => {
+                write!(f, "\"{role}\" is not a contributor role of this library")
+            }
             ContributorTwice => write!(f, "repeats a contributor with the same name and role"),
         }
     }
@@ -179,8 +214,12 @@ impl fmt::Display for FieldError {
 pub enum MetadataProposalError {
     /// `fields` is empty.
     NoFields,
-    /// One or more fields refused; nothing filed.
-    Fields(Vec<FieldError>),
+    /// One or more fields refused; nothing filed. `roles` are the
+    /// library's contributor roles, listed once when a role was unknown.
+    Fields {
+        errors: Vec<FieldError>,
+        roles: Vec<String>,
+    },
     TitleNotFound {
         title_id: u64,
     },
@@ -188,16 +227,13 @@ pub enum MetadataProposalError {
         title_id: u64,
         expected: i32,
         current: i32,
+        /// The agent gave `version` (else the title moved during the call).
+        pinned: bool,
     },
     /// Every proposed value is already the title's.
     NothingChanges {
         title_id: u64,
         fields: Vec<&'static str>,
-    },
-    /// One item, with the title's current value next to the proposed
-    /// one, exceeds the item cap.
-    ItemTooLarge {
-        field: &'static str,
     },
     Proposal(ProposalError),
 }
@@ -206,11 +242,9 @@ impl Refusal for MetadataProposalError {
     fn class(&self) -> RefusalClass {
         use MetadataProposalError::*;
         match self {
-            NoFields | Fields(_) => RefusalClass::InvalidInput,
+            NoFields | Fields { .. } => RefusalClass::InvalidInput,
             TitleNotFound { .. } => RefusalClass::NotFound,
-            TargetChanged { .. } | NothingChanges { .. } | ItemTooLarge { .. } => {
-                RefusalClass::Conflict
-            }
+            TargetChanged { .. } | NothingChanges { .. } => RefusalClass::Conflict,
             Proposal(e) if e.is_invalid_input() => RefusalClass::InvalidInput,
             Proposal(ProposalError::KeyNotAllowed { .. }) => RefusalClass::Conflict,
             Proposal(_) => RefusalClass::Internal,
@@ -227,15 +261,32 @@ impl fmt::Display for MetadataProposalError {
                 "`fields` is empty: give at least one of {}.",
                 PROPOSABLE_FIELDS.join(", ")
             ),
-            Fields(errors) => {
+            Fields { errors, roles } => {
                 write!(
                     f,
                     "{} field{} refused, nothing was filed:",
                     errors.len(),
                     if errors.len() == 1 { " was" } else { "s were" }
                 )?;
-                for e in errors {
+                for e in errors.iter().take(MAX_REPORTED_ERRORS) {
                     write!(f, "\n- {e}.")?;
+                }
+                if errors.len() > MAX_REPORTED_ERRORS {
+                    write!(f, "\n- … and {} more.", errors.len() - MAX_REPORTED_ERRORS)?;
+                }
+                if errors
+                    .iter()
+                    .any(|e| matches!(e.problem, FieldProblem::UnknownRole { .. }))
+                {
+                    if roles.is_empty() {
+                        write!(f, "\nThe library defines no contributor role.")?;
+                    } else {
+                        write!(
+                            f,
+                            "\nThe library's contributor roles are: {}.",
+                            roles.join(", ")
+                        )?;
+                    }
                 }
                 write!(f, "\nCorrect or remove these fields and call again.")
             }
@@ -248,23 +299,26 @@ impl fmt::Display for MetadataProposalError {
                 title_id,
                 expected,
                 current,
+                pinned: true,
             } => write!(
                 f,
                 "Title {title_id} changed since you read it (version {expected}, now {current}): \
                  read it again with get_title and file the proposal on its current state."
+            ),
+            TargetChanged {
+                title_id,
+                pinned: false,
+                ..
+            } => write!(
+                f,
+                "Title {title_id} was edited while your proposal was being filed: nothing was \
+                 filed; call again (read it with get_title first to see the new values)."
             ),
             NothingChanges { title_id, fields } => write!(
                 f,
                 "Nothing would change: title {title_id} already has the proposed value of {}. \
                  Nothing was filed.",
                 fields.join(", ")
-            ),
-            ItemTooLarge { field } => write!(
-                f,
-                "The `{field}` entry, with the title's current value next to it, exceeds the \
-                 {} KiB a proposal entry may hold: propose a shorter value, or leave `{field}` \
-                 out.",
-                MAX_ITEM_VALUES_BYTES / 1024
             ),
             Proposal(e) => write!(f, "{e}"),
         }
@@ -323,36 +377,80 @@ pub struct CurrentValues {
     pub subtitle: Option<String>,
     pub description: Option<String>,
     pub publisher: Option<String>,
-    pub publication_year: Option<i32>,
+    pub publication_date: Option<NaiveDate>,
     pub dewey_code: Option<String>,
     /// `(name, role_id, role name)` of each live contributor.
     pub contributors: Vec<(String, u64, String)>,
 }
 
-fn same_name(a: &str, b: &str) -> bool {
-    a.trim().to_lowercase() == b.trim().to_lowercase()
+/// A name folded for comparison, close to the `utf8mb4_unicode_ci`
+/// collation acceptance will match contributors with (D-11-13-9):
+/// decomposed, accents dropped, lower case, inner whitespace collapsed.
+pub fn fold_name(name: &str) -> String {
+    name.nfd()
+        .filter(|c| !is_combining_mark(*c))
+        .flat_map(char::to_lowercase)
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
-/// A trimmed, non-blank string within `max` characters; single-line
-/// unless `multiline` (then only line breaks and tabs are allowed).
+fn same_name(a: &str, b: &str) -> bool {
+    fold_name(a) == fold_name(b)
+}
+
+/// Characters refused in agent text: control characters (line breaks
+/// and tabs allowed when `multiline`) and invisible format characters
+/// (zero-width, direction marks and isolates, line / paragraph
+/// separators, BOM) that could hide text or spoof a name (NFR47).
+fn forbidden_char(c: char, multiline: bool) -> bool {
+    (c.is_control() && !(multiline && matches!(c, '\n' | '\r' | '\t')))
+        || matches!(
+            c,
+            '\u{200B}'..='\u{200F}'
+                | '\u{202A}'..='\u{202E}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{2060}'..='\u{2069}'
+                | '\u{FEFF}'
+        )
+}
+
+/// A field name as echoed in a message: at most 80 characters, without
+/// control characters or backticks (agent input, D-11-13-9).
+fn echo_key(key: &str) -> String {
+    key.chars()
+        .take(80)
+        .map(|c| if c.is_control() || c == '`' { '?' } else { c })
+        .collect()
+}
+
+/// A trimmed, non-blank string within `max` characters, normalised to
+/// NFC; single-line unless `multiline` (then line breaks and tabs are
+/// allowed). Single-line values get inner whitespace runs collapsed.
 fn text(value: &Value, max: usize, multiline: bool) -> Result<String, FieldProblem> {
     let Some(raw) = value.as_str() else {
         return Err(FieldProblem::WrongType {
             expected: "a string",
         });
     };
-    let v = raw.trim();
+    if raw.chars().any(|c| forbidden_char(c, multiline)) {
+        return Err(FieldProblem::ControlCharacter);
+    }
+    let nfc: String = raw.trim().nfc().collect();
+    let v = if multiline {
+        nfc
+    } else {
+        nfc.split_whitespace().collect::<Vec<_>>().join(" ")
+    };
     if v.is_empty() {
         return Err(FieldProblem::Blank);
     }
     if v.chars().count() > max {
         return Err(FieldProblem::TooLongChars { max });
     }
-    let allowed = |c: char| multiline && matches!(c, '\n' | '\r' | '\t');
-    if v.chars().any(|c| c.is_control() && !allowed(c)) {
-        return Err(FieldProblem::ControlCharacter);
-    }
-    Ok(v.to_string())
+    Ok(v)
 }
 
 fn dewey(value: &Value) -> Result<String, FieldProblem> {
@@ -365,18 +463,21 @@ fn dewey(value: &Value) -> Result<String, FieldProblem> {
 
 fn year(value: &Value, current_year: i32) -> Result<i32, FieldProblem> {
     let max = current_year + 1;
-    let Some(y) = value.as_i64() else {
-        return Err(FieldProblem::WrongType {
-            expected: "an integer year (e.g. 1987)",
-        });
+    let out_of_range = FieldProblem::YearOutOfRange {
+        min: MIN_PUBLICATION_YEAR,
+        max,
     };
-    i32::try_from(y)
-        .ok()
-        .filter(|y| (MIN_PUBLICATION_YEAR..=max).contains(y))
-        .ok_or(FieldProblem::YearOutOfRange {
-            min: MIN_PUBLICATION_YEAR,
-            max,
-        })
+    match value.as_i64() {
+        Some(y) => i32::try_from(y)
+            .ok()
+            .filter(|y| (MIN_PUBLICATION_YEAR..=max).contains(y))
+            .ok_or(out_of_range),
+        // An integer above i64::MAX is still an integer.
+        None if value.is_u64() => Err(out_of_range),
+        None => Err(FieldProblem::WrongType {
+            expected: "an integer year (e.g. 1987)",
+        }),
+    }
 }
 
 /// Validate `contributors`, pushing each problem with its path.
@@ -422,14 +523,14 @@ fn contributors(
         };
         for key in obj.keys().filter(|k| *k != "name" && *k != "role") {
             errors.push(err(
-                format!("{path}.{key}"),
+                format!("{path}.{}", echo_key(key)),
                 FieldProblem::WrongType {
                     expected: "absent (a contributor has only `name` and `role`)",
                 },
             ));
         }
         let name = match obj.get("name") {
-            None => Err(FieldProblem::Blank),
+            None => Err(FieldProblem::Missing),
             Some(v) => text(v, usize::MAX, false).and_then(|n| {
                 if n.len() > MAX_CONTRIBUTOR_NAME_BYTES {
                     Err(FieldProblem::TooLongBytes {
@@ -441,21 +542,18 @@ fn contributors(
             }),
         };
         let role = match obj.get("role") {
-            None => Err(FieldProblem::Blank),
+            None => Err(FieldProblem::Missing),
             Some(v) => text(v, usize::MAX, false).and_then(|r| {
                 roles
                     .iter()
                     .find(|(_, known)| same_name(known, &r))
                     .cloned()
-                    .ok_or_else(|| FieldProblem::UnknownRole {
-                        role: r.chars().take(80).collect(),
-                        known: roles.iter().map(|(_, n)| n.clone()).collect(),
-                    })
+                    .ok_or_else(|| FieldProblem::UnknownRole { role: echo_key(&r) })
             }),
         };
         match (name, role) {
             (Ok(name), Ok((role_id, role))) => {
-                if !seen.insert((name.to_lowercase(), role_id)) {
+                if !seen.insert((fold_name(&name), role_id)) {
                     errors.push(err(path, FieldProblem::ContributorTwice));
                     continue;
                 }
@@ -495,7 +593,7 @@ pub fn validate_fields(
         let mut single = |r: Result<(), FieldProblem>| {
             if let Err(problem) = r {
                 errors.push(FieldError {
-                    field: key.clone(),
+                    field: echo_key(key),
                     problem,
                 });
             }
@@ -521,7 +619,10 @@ pub fn validate_fields(
     if errors.is_empty() {
         Ok(out)
     } else {
-        Err(MetadataProposalError::Fields(errors))
+        Err(MetadataProposalError::Fields {
+            errors,
+            roles: roles.iter().map(|(_, n)| n.clone()).collect(),
+        })
     }
 }
 
@@ -531,51 +632,53 @@ pub fn diff_against(
     proposed: &ProposedFields,
     current: &CurrentValues,
 ) -> (Vec<(&'static str, Value)>, Vec<&'static str>) {
-    let mut items = Vec::new();
+    let mut items: Vec<(&'static str, Value)> = Vec::new();
     let mut unchanged = Vec::new();
-    let mut scalar = |field: &'static str, cur: Value, new: Option<Value>, same: bool| {
-        let Some(new) = new else { return };
-        if same {
+    let mut text_field = |field: &'static str, new: &Option<String>, cur: &Option<String>| {
+        let Some(n) = new else { return };
+        if cur.as_deref().map(str::trim) == Some(n.as_str()) {
             unchanged.push(field);
         } else {
             items.push((
                 field,
-                json!({"line": "field", "field": field, "current": cur, "proposed": new}),
+                json!({"line": "field", "field": field, "current": cur, "proposed": n}),
             ));
         }
     };
-    let text_same = |new: &Option<String>, cur: &Option<String>| matches!((new, cur), (Some(n), Some(c)) if n == c.trim());
-    scalar(
-        "subtitle",
-        json!(current.subtitle),
-        proposed.subtitle.as_ref().map(|v| json!(v)),
-        text_same(&proposed.subtitle, &current.subtitle),
-    );
-    scalar(
-        "description",
-        json!(current.description),
-        proposed.description.as_ref().map(|v| json!(v)),
-        text_same(&proposed.description, &current.description),
-    );
-    scalar(
-        "publisher",
-        json!(current.publisher),
-        proposed.publisher.as_ref().map(|v| json!(v)),
-        text_same(&proposed.publisher, &current.publisher),
-    );
-    scalar(
-        "publication_year",
-        json!(current.publication_year),
-        proposed.publication_year.map(|v| json!(v)),
-        proposed.publication_year.is_some()
-            && proposed.publication_year == current.publication_year,
-    );
-    scalar(
-        "dewey_code",
-        json!(current.dewey_code),
-        proposed.dewey_code.as_ref().map(|v| json!(v)),
-        text_same(&proposed.dewey_code, &current.dewey_code),
-    );
+    text_field("subtitle", &proposed.subtitle, &current.subtitle);
+    text_field("description", &proposed.description, &current.description);
+    text_field("publisher", &proposed.publisher, &current.publisher);
+    let current_year = current.publication_date.map(|d| d.year());
+    let year_item = proposed.publication_year.map(|year| {
+        (
+            year,
+            // `current_date` shows the reviewer the month and day that
+            // acceptance (`YYYY-01-01`) replaces.
+            json!({
+                "line": "field", "field": "publication_year",
+                "current": current_year,
+                "current_date": current.publication_date.map(|d| d.format("%Y-%m-%d").to_string()),
+                "proposed": year,
+            }),
+        )
+    });
+    text_field("dewey_code", &proposed.dewey_code, &current.dewey_code);
+    if let Some((year, item)) = year_item {
+        // Keep the documented order: publication_year before dewey_code.
+        let at = items
+            .iter()
+            .position(|(f, _)| *f == "dewey_code")
+            .unwrap_or(items.len());
+        if Some(year) == current_year {
+            let at_u = unchanged
+                .iter()
+                .position(|f| *f == "dewey_code")
+                .unwrap_or(unchanged.len());
+            unchanged.insert(at_u, "publication_year");
+        } else {
+            items.insert(at, ("publication_year", item));
+        }
+    }
     if let Some(list) = &proposed.contributors {
         let added: Vec<Value> = list
             .iter()
@@ -604,6 +707,41 @@ pub fn diff_against(
     (items, unchanged)
 }
 
+/// Make an item fit [`MAX_ITEM_VALUES_BYTES`] by shortening its
+/// `current` value (pure — unit tested): a string loses its tail, a list
+/// its last entries, and `"current_truncated": true` is added. The
+/// proposed value alone always fits (its bounds keep it far below the
+/// cap), so a title whose current description or contributor list is
+/// very long can still receive a proposal (D-11-13-9).
+pub fn fit_item(mut item: Value) -> Value {
+    let size = |v: &Value| v.to_string().len();
+    if size(&item) <= MAX_ITEM_VALUES_BYTES {
+        return item;
+    }
+    item["current_truncated"] = json!(true);
+    loop {
+        let excess = size(&item).saturating_sub(MAX_ITEM_VALUES_BYTES);
+        if excess == 0 {
+            return item;
+        }
+        match &mut item["current"] {
+            Value::String(s) => {
+                // Drop characters from the tail until their serialized
+                // (escaped) size covers the excess.
+                let mut freed = 0;
+                while freed < excess {
+                    let Some(c) = s.pop() else { return item };
+                    freed += Value::String(c.to_string()).to_string().len() - 2;
+                }
+            }
+            Value::Array(list) if !list.is_empty() => {
+                list.pop();
+            }
+            _ => return item,
+        }
+    }
+}
+
 pub struct MetadataProposalService;
 
 impl MetadataProposalService {
@@ -618,7 +756,7 @@ impl MetadataProposalService {
         } else {
             Vec::new()
         };
-        let current_year = chrono::Local::now().year();
+        let current_year = chrono::Utc::now().year();
         let proposed = validate_fields(&req.fields, &roles, current_year)?;
         let sources = validate_sources(&req.sources)?;
 
@@ -634,6 +772,7 @@ impl MetadataProposalService {
                 title_id: title.id,
                 expected,
                 current: title.version,
+                pinned: true,
             });
         }
         let current_contributors = if proposed.contributors.is_some() {
@@ -649,7 +788,7 @@ impl MetadataProposalService {
             subtitle: title.subtitle,
             description: title.description,
             publisher: title.publisher,
-            publication_year: title.publication_date.map(|d| d.year()),
+            publication_date: title.publication_date,
             dewey_code: title.dewey_code,
             contributors: current_contributors,
         };
@@ -669,7 +808,6 @@ impl MetadataProposalService {
         // that read and the filing is refused rather than recorded as the
         // baseline (D-11-12-13 precedent), so `current` matches it.
         let version = req.version.unwrap_or(title.version);
-        let field_names: Vec<&'static str> = items.iter().map(|(f, _)| *f).collect();
         let proposal = NewProposal {
             kind: ProposalKind::Metadata,
             api_key_id: req.api_key_id,
@@ -679,7 +817,7 @@ impl MetadataProposalService {
                 .map(|(_, values)| NewProposalItem {
                     target: Some(target),
                     expected_version: Some(version),
-                    proposed_values: values,
+                    proposed_values: fit_item(values),
                 })
                 .collect(),
         };
@@ -695,12 +833,8 @@ impl MetadataProposalService {
                     title_id: target.id,
                     expected,
                     current,
+                    pinned: req.version.is_some(),
                 },
-                ProposalError::ValuesTooLarge { index, .. } => {
-                    MetadataProposalError::ItemTooLarge {
-                        field: field_names.get(index - 1).copied().unwrap_or("description"),
-                    }
-                }
                 other => MetadataProposalError::Proposal(other),
             })?;
         Ok(FiledMetadataProposal {
@@ -730,7 +864,7 @@ mod tests {
 
     fn field_errors(v: Value) -> Vec<FieldError> {
         match validate_fields(&fields(v), &roles(), YEAR) {
-            Err(MetadataProposalError::Fields(e)) => e,
+            Err(MetadataProposalError::Fields { errors, .. }) => errors,
             other => panic!("expected field errors, got {other:?}"),
         }
     }
@@ -811,7 +945,11 @@ mod tests {
             problem_of(&errors, "description"),
             FieldProblem::WrongType { .. }
         ));
-        let msg = MetadataProposalError::Fields(errors).to_string();
+        let msg = MetadataProposalError::Fields {
+            errors,
+            roles: vec![],
+        }
+        .to_string();
         assert!(msg.starts_with("7 fields were refused, nothing was filed:"));
         assert!(msg.contains("`isbn` cannot be proposed; the fields an agent may propose are subtitle, description, publisher, publication_year, dewey_code, contributors"));
     }
@@ -907,7 +1045,7 @@ mod tests {
         ]}));
         assert!(matches!(
             problem_of(&errors, "contributors[1].role"),
-            FieldProblem::UnknownRole { ref known, .. } if known == &["Auteur", "Illustrateur"]
+            FieldProblem::UnknownRole { ref role } if role == "Autor"
         ));
         assert_eq!(
             problem_of(&errors, "contributors[2].name"),
@@ -935,7 +1073,7 @@ mod tests {
         );
         assert_eq!(
             problem_of(&errors, "contributors[9].name"),
-            FieldProblem::Blank
+            FieldProblem::Missing
         );
         // 255 bytes pass even when that is fewer characters.
         let ok = validate_fields(
@@ -953,7 +1091,7 @@ mod tests {
             no_roles
                 .unwrap_err()
                 .to_string()
-                .contains("has none defined")
+                .contains("The library defines no contributor role.")
         );
     }
 
@@ -962,7 +1100,7 @@ mod tests {
             subtitle: Some("Roman".into()),
             description: None,
             publisher: Some("Gallimard ".into()),
-            publication_year: Some(1987),
+            publication_date: NaiveDate::from_ymd_opt(1987, 6, 15),
             dewey_code: None,
             contributors: vec![("Jean Dupont".into(), 1, "Auteur".into())],
         }
@@ -1007,7 +1145,7 @@ mod tests {
         );
         assert_eq!(
             items[1].1,
-            json!({"line": "field", "field": "publication_year", "current": 1987, "proposed": 1988})
+            json!({"line": "field", "field": "publication_year", "current": 1987, "current_date": "1987-06-15", "proposed": 1988})
         );
         assert_eq!(
             items[3].1,
@@ -1038,7 +1176,14 @@ mod tests {
     fn refusals_are_classified() {
         use MetadataProposalError as E;
         assert_eq!(E::NoFields.class(), RefusalClass::InvalidInput);
-        assert_eq!(E::Fields(vec![]).class(), RefusalClass::InvalidInput);
+        assert_eq!(
+            E::Fields {
+                errors: vec![],
+                roles: vec![]
+            }
+            .class(),
+            RefusalClass::InvalidInput
+        );
         assert_eq!(
             E::TitleNotFound { title_id: 1 }.class(),
             RefusalClass::NotFound
@@ -1057,7 +1202,8 @@ mod tests {
             E::TargetChanged {
                 title_id: 1,
                 expected: 1,
-                current: 2
+                current: 2,
+                pinned: true
             }
             .class(),
             RefusalClass::Conflict
@@ -1074,12 +1220,177 @@ mod tests {
             E::Proposal(ProposalError::Database(AppError::Internal("x".into()))).class(),
             RefusalClass::Internal
         );
+        let pinned = E::TargetChanged {
+            title_id: 7,
+            expected: 1,
+            current: 2,
+            pinned: true,
+        };
         assert!(
-            E::ItemTooLarge {
-                field: "description"
-            }
-            .to_string()
-            .contains("64 KiB")
+            pinned
+                .to_string()
+                .contains("changed since you read it (version 1, now 2)")
         );
+        let unpinned = E::TargetChanged {
+            title_id: 7,
+            expected: 1,
+            current: 2,
+            pinned: false,
+        };
+        assert!(
+            unpinned
+                .to_string()
+                .contains("was edited while your proposal was being filed")
+        );
+    }
+
+    #[test]
+    fn names_fold_like_the_collation() {
+        assert_eq!(fold_name("  José   SARAMAGO "), "jose saramago");
+        assert!(same_name("Hergé", "Herge\u{301}"));
+        assert!(same_name("Jean  Dupont", "jean dupont"));
+        assert!(!same_name("Jean Dupont", "Jean Dupond"));
+        // Accent-folded duplicates in one proposal are refused.
+        let errors = field_errors(json!({"contributors": [
+            {"name": "José", "role": "Auteur"},
+            {"name": "Jose", "role": "auteur"}
+        ]}));
+        assert_eq!(
+            problem_of(&errors, "contributors[2]"),
+            FieldProblem::ContributorTwice
+        );
+        // A role written without its accent is found.
+        let roles = vec![(9, "Éditeur".to_string())];
+        let ok = validate_fields(
+            &fields(json!({"contributors": [{"name": "A", "role": "editeur"}]})),
+            &roles,
+            YEAR,
+        )
+        .unwrap();
+        assert_eq!(ok.contributors.unwrap()[0].role, "Éditeur");
+    }
+
+    #[test]
+    fn text_is_normalised_and_invisible_characters_are_refused() {
+        let p = validate_fields(
+            &fields(json!({"subtitle": "  Un   conte\u{a0}poétique ", "publisher": "Gallimard"})),
+            &roles(),
+            YEAR,
+        )
+        .unwrap();
+        assert_eq!(p.subtitle.as_deref(), Some("Un conte poétique"));
+        // NFD input is stored as NFC.
+        let p = validate_fields(
+            &fields(json!({"publisher": "Herge\u{301}"})),
+            &roles(),
+            YEAR,
+        )
+        .unwrap();
+        assert_eq!(p.publisher.as_deref(), Some("Hergé"));
+        for bad in [
+            "\u{200B}",
+            "a\u{202E}b",
+            "a\u{2028}b",
+            "\u{FEFF}x",
+            "a\u{2066}b",
+        ] {
+            let errors = field_errors(json!({ "subtitle": bad }));
+            assert_eq!(
+                problem_of(&errors, "subtitle"),
+                FieldProblem::ControlCharacter,
+                "{bad:?}"
+            );
+            let errors = field_errors(json!({ "description": bad }));
+            assert_eq!(
+                problem_of(&errors, "description"),
+                FieldProblem::ControlCharacter,
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn echoed_keys_are_bounded_and_roles_listed_once() {
+        let long = format!("x`{}\n", "k".repeat(200));
+        let errors = field_errors(json!({ long.clone(): 1 }));
+        assert_eq!(errors[0].field.chars().count(), 80);
+        assert!(!errors[0].field.contains('`') && !errors[0].field.contains('\n'));
+
+        let msg = validate_fields(
+            &fields(json!({"contributors": [
+                {"name": "A", "role": "Autor"}, {"name": "B", "role": "Painter"}
+            ]})),
+            &roles(),
+            YEAR,
+        )
+        .unwrap_err()
+        .to_string();
+        assert_eq!(msg.matches("Auteur, Illustrateur").count(), 1, "{msg}");
+        assert!(msg.contains("The library's contributor roles are: Auteur, Illustrateur."));
+
+        let many: Map<String, Value> = (0..60).map(|i| (format!("f{i}"), json!(1))).collect();
+        let msg = validate_fields(&many, &roles(), YEAR)
+            .unwrap_err()
+            .to_string();
+        assert!(msg.starts_with("60 fields were refused"), "{msg}");
+        assert!(msg.contains("… and 10 more."), "{msg}");
+    }
+
+    #[test]
+    fn a_huge_integer_year_is_out_of_range() {
+        assert!(matches!(
+            year(&json!(u64::MAX), YEAR),
+            Err(FieldProblem::YearOutOfRange { .. })
+        ));
+    }
+
+    #[test]
+    fn publication_year_shows_the_full_current_date() {
+        let proposed = ProposedFields {
+            publication_year: Some(1988),
+            dewey_code: Some("843".into()),
+            ..Default::default()
+        };
+        let (items, _) = diff_against(&proposed, &current());
+        assert_eq!(
+            items[0].1,
+            json!({"line": "field", "field": "publication_year", "current": 1987,
+                   "current_date": "1987-06-15", "proposed": 1988})
+        );
+        assert_eq!(items[1].0, "dewey_code");
+        let same = ProposedFields {
+            publication_year: Some(1987),
+            dewey_code: Some("843".into()),
+            ..Default::default()
+        };
+        let (items, unchanged) = diff_against(&same, &current());
+        assert_eq!(unchanged, ["publication_year"]);
+        assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn oversized_current_values_are_truncated_to_fit() {
+        let small =
+            json!({"line": "field", "field": "description", "current": "a", "proposed": "b"});
+        assert_eq!(fit_item(small.clone()), small);
+
+        // A current description of 70 000 quotes (140 000 serialized bytes).
+        let item = json!({"line": "field", "field": "description",
+                          "current": "\"".repeat(70_000), "proposed": "x".repeat(10_000)});
+        let fitted = fit_item(item);
+        assert!(fitted.to_string().len() <= MAX_ITEM_VALUES_BYTES);
+        assert_eq!(fitted["current_truncated"], true);
+        assert_eq!(fitted["proposed"], "x".repeat(10_000));
+        assert!(fitted["current"].as_str().unwrap().len() > 1000);
+
+        let current: Vec<Value> = (0..2000)
+            .map(|i| json!({"name": format!("Contributor number {i}"), "role": "Auteur"}))
+            .collect();
+        let item = json!({"line": "field", "field": "contributors", "current": current,
+                          "proposed": [{"name": "N", "role": "Auteur", "role_id": 1}]});
+        let fitted = fit_item(item);
+        assert!(fitted.to_string().len() <= MAX_ITEM_VALUES_BYTES);
+        assert_eq!(fitted["current_truncated"], true);
+        assert!(fitted["current"].as_array().unwrap().len() > 100);
     }
 }

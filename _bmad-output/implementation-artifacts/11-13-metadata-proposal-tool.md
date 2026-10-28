@@ -75,6 +75,18 @@ so that titles the providers never found become complete.
 - [Source: src/routes/titles.rs#update_title], [Source: src/routes/api_v1.rs] — title-edit validation, Dewey rule.
 - [Source: src/services/contributor.rs] — contributor name rule.
 
+### Review Findings
+
+Code review 2026-10-28 (bmad-code-review: Blind Hunter, Edge Case Hunter, Acceptance Auditor).
+
+Round 1:
+- [x] [Review][Patch] (Medium) Contributor names compared case-insensitively only, unlike the collation acceptance uses — `fold_name` for dedupe, "already on the title" and roles; NFC storage (D-11-13-9) [src/services/metadata_proposals.rs]
+- [x] [Review][Patch] (Medium) A near-64 KiB current description / contributor list made the field unproposable, with misleading advice, classed as conflict, `index - 1` fallback untested — `fit_item` truncates `current` with `current_truncated`; `ItemTooLarge` removed
+- [x] [Review][Patch] (Medium) `publication_year` hid the month and day acceptance erases — `current_date` in the item
+- [x] [Review][Defer] (Medium, pre-existing) Re-adding a contributor whose junction row was soft-deleted fails on the unique key — #531; 11-18 contract notes it
+- [x] [Review][Patch] (Low) Invisible / direction characters, unbounded echoed keys, role list repeated per error, "blank" for a missing key, huge-integer year, local-time bound, unpinned `TargetChanged` wording, Dewey schema pattern, description gaps, `tool_error` metadata test
+- Accepted (Low): source errors after field errors; lite Dewey rule; no revoked-key test for this tool (transport guard); `description` escaping belongs to 11-16.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -111,3 +123,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — story created (ready-for-dev).
 - 2026-10-28 — validated against the create-story checklist: added the comparison / normalisation rules (dev notes); no AC change.
 - 2026-10-28 — implemented (dev-story); status review.
+- 2026-10-28 — code review round 1 (D-11-13-9); fixes applied.

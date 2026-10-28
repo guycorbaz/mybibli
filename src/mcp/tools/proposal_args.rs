@@ -93,4 +93,28 @@ mod tests {
             json!({"proposal_id": 5, "status": "pending", "kind": "series_attach", "item_count": 3})
         );
     }
+
+    #[test]
+    fn metadata_refusals_map_through_the_same_helper() {
+        use crate::services::metadata_proposals::MetadataProposalError as M;
+        assert!(matches!(
+            tool_error(M::NoFields, "t"),
+            ToolError::InvalidArguments(m) if m.contains("`fields` is empty")
+        ));
+        assert!(matches!(
+            tool_error(M::TitleNotFound { title_id: 3 }, "t"),
+            ToolError::NotFound(m) if m.contains("No title with id 3")
+        ));
+        assert!(matches!(
+            tool_error(M::NothingChanges { title_id: 3, fields: vec!["publisher"] }, "t"),
+            ToolError::Refused(m) if m.contains("Nothing would change")
+        ));
+        assert_eq!(
+            tool_error(
+                M::Proposal(ProposalError::Database(AppError::Internal("pw".into()))),
+                "t"
+            ),
+            ToolError::Internal
+        );
+    }
 }
