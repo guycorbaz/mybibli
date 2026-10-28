@@ -1061,3 +1061,224 @@ fn csrf_exempt_routes_frozen() {
          expected list in the same PR and justify in the review description."
     );
 }
+
+/// Story 11-4 (#496) — the navigation `<header>` is `sticky … z-40`. Every
+/// `position: fixed` surface — full-viewport overlays (modals, the
+/// connection-lost overlay) and the toasts built in `static/js` — must sit
+/// above it, so its class list must carry `z-50`. Modals promoted with
+/// `showModal()` reach the top layer anyway; this pins the declarative
+/// `<dialog open>` fallback and every non-dialog surface.
+///
+/// Scope: `class="…"` attributes in `templates/`, and multi-token,
+/// single-line string literals (`"…"`, `'…'`, `` `…` ``) in the first-party `static/js/*.js`
+/// modules (vendored, minified and nested files excluded) whose
+/// whitespace-separated tokens include the exact token `fixed`. Not seen:
+/// one-token-per-argument `classList.add("fixed", …)`, responsive
+/// `md:fixed`, CSS files and HTML built in Rust — keep new fixed surfaces
+/// to a single class string. Only the literal `z-50` is accepted.
+#[test]
+fn fixed_surfaces_stack_above_sticky_nav() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let class_attr_re = Regex::new(r#"\bclass\s*=\s*"([^"]*)""#).unwrap();
+    let js_string_re = Regex::new(r#""([^"\n]*)"|'([^'\n]*)'|`([^`\n]*)`"#).unwrap();
+
+    let mut fixed_surfaces = 0usize;
+    let mut js_fixed_surfaces = 0usize;
+    let mut violations: Vec<String> = Vec::new();
+    let mut check = |path: &Path, classes: &str| {
+        let tokens: Vec<&str> = classes.split_whitespace().collect();
+        if tokens.contains(&"fixed") {
+            fixed_surfaces += 1;
+            if path.extension().and_then(|e| e.to_str()) == Some("js") {
+                js_fixed_surfaces += 1;
+            }
+            if !tokens.contains(&"z-50") {
+                let rel = path.strip_prefix(&root).unwrap_or(path);
+                violations.push(format!("  {} — \"{classes}\"", rel.display()));
+            }
+        }
+    };
+
+    visit(&root.join("templates"), &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let Ok(raw) = fs::read_to_string(path) else {
+            return;
+        };
+        let content = strip_html_comments(&raw);
+        for cap in class_attr_re.captures_iter(&content) {
+            check(path, &cap[1]);
+        }
+    });
+
+    let js_dir = root.join("static/js");
+    let entries = fs::read_dir(&js_dir).expect("static/js must exist");
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !name.ends_with(".js") || name.ends_with(".min.js") {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        for cap in js_string_re.captures_iter(&content) {
+            let literal = cap
+                .get(1)
+                .or_else(|| cap.get(2))
+                .or_else(|| cap.get(3))
+                .map_or("", |m| m.as_str());
+            // Class strings only: a lone `"fixed"` (e.g. a computed-style
+            // comparison) is not a class list.
+            if literal.split_whitespace().count() > 1 {
+                check(&path, literal);
+            }
+        }
+    }
+
+    assert!(
+        js_fixed_surfaces >= 2,
+        "expected the two JS toasts (session-timeout.js, connection-monitor.js) \
+         to be scanned (found {js_fixed_surfaces}) — has the JS scan stopped matching?"
+    );
+    assert!(
+        fixed_surfaces >= 3,
+        "expected the modal, overlay and toast `fixed` surfaces to be found \
+         (found {fixed_surfaces}) — has the scan stopped matching?"
+    );
+    assert!(
+        violations.is_empty(),
+        "`fixed` surfaces must carry `z-50` to stay above the sticky nav bar \
+         (`z-40`, story 11-4):\n{}",
+        violations.join("\n")
+    );
+}
+
+/// Story 11-4 (#496, D-11-4-8) — `<main>` gives every descendant a
+/// `scroll-margin-top` equal to the sticky bar height so anchors land below
+/// the bar. `scroll-margin` applies to EVERY scroll-container ancestor, so
+/// inside an inner vertical scroller (dropdown list, saved-searches list) it
+/// would keep a focused row 48/56 px below the list's own top and shift the
+/// list. Each inner vertical scroller must reset it with `**:scroll-mt-0!`
+/// (the `!` beats both breakpoints of the inherited rule). The mobile menu
+/// lives in `<header>`, outside `<main>`, and is exempt. Detected: the
+/// `overflow-{,y-}{auto,scroll}` utilities (any variant, either `!` form);
+/// not detected: a bounded `overflow-x-auto` / `overflow-hidden` box or a
+/// `<dialog>` inside `<main>` (none exist — modals mount outside `<main>`).
+#[test]
+fn inner_vertical_scrollers_reset_the_bar_scroll_margin() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // Every class attribute (both branches of an Askama if/else included).
+    let class_attr_re = Regex::new(r#"\bclass\s*=\s*"([^"]*)""#).unwrap();
+
+    let mut scrollers = 0usize;
+    let mut violations: Vec<String> = Vec::new();
+    visit(&root.join("templates"), &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let Ok(raw) = fs::read_to_string(path) else {
+            return;
+        };
+        // The mobile menu (`#mobile-nav`) lives in <header>, outside <main>.
+        if path.ends_with("components/nav_bar.html") {
+            return;
+        }
+        let content = strip_html_comments(&raw);
+        for cap in class_attr_re.captures_iter(&content) {
+            let tokens: Vec<&str> = cap[1].split_whitespace().collect();
+            // Base utility of each token, variant prefixes and `!` removed,
+            // so `md:overflow-y-auto` or `overflow-scroll!` count too.
+            let is_vertical_scroller = tokens.iter().any(|t| {
+                let base = t
+                    .rsplit(':')
+                    .next()
+                    .unwrap_or(t)
+                    .trim_end_matches('!')
+                    .trim_start_matches(['!', '-']);
+                matches!(
+                    base,
+                    "overflow-y-auto" | "overflow-auto" | "overflow-y-scroll" | "overflow-scroll"
+                )
+            });
+            assert!(
+                !(cap[1].contains("{%") && cap[1].contains("overflow")),
+                "{}: a conditional overflow class cannot be audited — keep it literal: {}",
+                path.display(),
+                &cap[1]
+            );
+            if is_vertical_scroller {
+                scrollers += 1;
+                if !tokens.contains(&"**:scroll-mt-0!") {
+                    let rel = path.strip_prefix(&root).unwrap_or(path);
+                    violations.push(format!("  {} — class=\"{}\"", rel.display(), &cap[1]));
+                }
+            }
+        }
+    });
+
+    assert!(
+        scrollers >= 3,
+        "expected the three inner scrollers, found {scrollers}"
+    );
+    assert!(
+        violations.is_empty(),
+        "inner vertical scrollers must reset the inherited bar scroll margin \
+         with `**:scroll-mt-0!` (story 11-4, D-11-4-8):\n{}",
+        violations.join("\n")
+    );
+}
+
+/// Story 11-4 (D-11-4-8) — `**:scroll-mt-12` on `<main>` compiles to
+/// `:is(.cls *)`, same specificity as a plain utility and emitted later, so
+/// it silently beats any `scroll-m*` / `scroll-p*` utility written on an
+/// element inside `<main>`. Keep the scroll-offset utilities to the four on
+/// `<main>` (layouts/base.html) and the `**:scroll-mt-0!` reset on inner
+/// scrollers; anything else must be a deliberate change of this test.
+#[test]
+fn scroll_offset_utilities_stay_on_main_and_inner_scrollers() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let class_attr_re = Regex::new(r#"\bclass\s*=\s*"([^"]*)""#).unwrap();
+    let main_set = [
+        "scroll-mt-12",
+        "md:scroll-mt-14",
+        "**:scroll-mt-12",
+        "md:**:scroll-mt-14",
+    ];
+    let mut violations: Vec<String> = Vec::new();
+    visit(&root.join("templates"), &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let Ok(raw) = fs::read_to_string(path) else {
+            return;
+        };
+        let content = strip_html_comments(&raw);
+        let is_base = path.ends_with("layouts/base.html");
+        for cap in class_attr_re.captures_iter(&content) {
+            for t in cap[1].split_whitespace() {
+                let base = t
+                    .rsplit(':')
+                    .next()
+                    .unwrap_or(t)
+                    .trim_end_matches('!')
+                    .trim_start_matches(['!', '-']);
+                if !(base.starts_with("scroll-m") || base.starts_with("scroll-p")) {
+                    continue;
+                }
+                let allowed = t == "**:scroll-mt-0!" || (is_base && main_set.contains(&t));
+                if !allowed {
+                    let rel = path.strip_prefix(&root).unwrap_or(path);
+                    violations.push(format!("  {} — `{t}`", rel.display()));
+                }
+            }
+        }
+    });
+    assert!(
+        violations.is_empty(),
+        "scroll-offset utilities outside <main>'s set are overridden by its \
+         `**:` rule (story 11-4, D-11-4-8):\n{}",
+        violations.join("\n")
+    );
+}

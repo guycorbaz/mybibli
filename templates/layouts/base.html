@@ -32,7 +32,19 @@
 <body class="{% block body_class %}bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 min-h-full{% endblock %}" data-page="{{ base.current_page }}" data-user-role="{{ base.role }}"{% if base.role != "anonymous" %} data-session-timeout="{{ base.session_timeout_secs }}"{% endif %}>
     <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-white focus:px-4 focus:py-2 focus:rounded focus:shadow">{{ base.skip_label }}</a>
     {% include "components/nav_bar.html" %}
-    <main id="main-content">
+    {# Story 11-4 (#496) — scroll-margin-top = the sticky bar height (h-12
+       below `md`, md:h-14 from `md`) on <main> and everything inside it, so
+       the skip-link target, hash links, focus() and scrollIntoView land
+       below the bar instead of under it. Deliberately NOT a root
+       `scroll-padding-top`: that would also apply to the controls inside
+       the stuck bar, and Chromium then scrolls the page up by the padding
+       every time one of them takes focus (Escape returning focus to the
+       hamburger, Shift+Tab into the nav) — D-11-4-8.
+       Side effects, both pinned by templates_audit: the `**:` rule beats any
+       scroll-m*/scroll-p* utility on an element inside <main> (keep none);
+       scroll-margin applies to every scroll container, so inner vertical
+       scrollers reset it with `**:scroll-mt-0!`. #}
+    <main id="main-content" class="scroll-mt-12 md:scroll-mt-14 **:scroll-mt-12 md:**:scroll-mt-14">
         {% block content %}{% endblock %}
     </main>
     {# Story 8-4: stable mount point for admin modals (delete-confirm, loanable warning).

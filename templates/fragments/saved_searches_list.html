@@ -3,7 +3,7 @@
    mutation handler (create/rename/delete) targeting #saved-searches-list.
    Each row: a run-link (full nav to the saved browse state) + rename/delete
    buttons that load UX-DR8 modals into #modal-slot. CSP-clean. #}
-<div id="saved-searches-list" class="mt-2 max-h-72 overflow-y-auto">
+<div id="saved-searches-list" class="mt-2 max-h-72 overflow-y-auto **:scroll-mt-0!">
     {% if rows.is_empty() %}
     <p class="px-3 py-2 text-sm text-stone-500 dark:text-stone-400">{{ empty_label }}</p>
     {% else %}
