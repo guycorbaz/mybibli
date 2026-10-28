@@ -42,7 +42,8 @@ pub fn page(page: Option<u32>) -> Result<u32, ToolError> {
 
 /// Validate an optional string argument named `name`: at most
 /// [`MAX_QUERY_CHARS`] characters as sent (the schema's `maxLength`),
-/// then trimmed; absent means empty. The value is never echoed back.
+/// then trimmed; absent means empty. The length error does not echo
+/// the value; callers may quote the (bounded) value in their own errors.
 pub fn text(name: &str, value: Option<String>) -> Result<String, ToolError> {
     let value = value.unwrap_or_default();
     if value.chars().count() > MAX_QUERY_CHARS {

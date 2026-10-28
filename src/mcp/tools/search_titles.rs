@@ -112,12 +112,14 @@ impl McpTool for SearchTitles {
         "Search the titles of the library catalog. `query` may be free text (matched against \
          title, subtitle, description and contributor names), an ISBN-10 or ISBN-13, hyphens \
          allowed (exact match: only the titles carrying it), or a volume label such as V0042 \
-         (exact match: the title that volume belongs to). Omit `query` to browse the whole catalog. Optional filters: `media_type` and `genre` \
-         (a genre name as shown by get_title; case and accents are ignored). Results are sorted by title, \
-         25 per page; pass `page` (1-based) to read further pages until `page` equals \
-         `total_pages`. Each item gives the title id (use get_title for the full record), \
-         title, subtitle, media type, genre, main contributor, number of volumes, whether a \
-         cover exists, publication date and Dewey code. Deleted titles never appear. Read-only."
+         (exact match: the title that volume belongs to). Omit `query` to browse the whole \
+         catalog. Optional filters: `media_type` and `genre` (a genre name as shown by \
+         get_title; case and accents are ignored). Results are sorted by title (titles sharing \
+         one ISBN: oldest first), 25 per page; pass `page` (1-based) to read further pages \
+         until `page` equals `total_pages`. Each item gives the title id (use get_title for \
+         the full record), title, subtitle, media type, genre, main contributor, number of \
+         volumes, whether a cover exists, publication date and Dewey code. Deleted titles \
+         never appear. Read-only."
     }
 
     fn input_schema(&self) -> Value {
@@ -137,7 +139,7 @@ impl McpTool for SearchTitles {
                 "genre": {
                     "type": "string",
                     "maxLength": args::MAX_QUERY_CHARS,
-                    "description": "Only titles of this genre, by name (case-insensitive). An unknown name returns the list of valid genres."
+                    "description": "Only titles of this genre, by name (case and accents ignored). An unknown name returns the list of valid genres."
                 },
                 "page": {
                     "type": "integer",

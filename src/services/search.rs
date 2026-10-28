@@ -292,7 +292,7 @@ impl SearchService {
             let mut items = Vec::new();
             for title in hits
                 .iter()
-                .skip(((page - 1) * DEFAULT_PAGE_SIZE) as usize)
+                .skip((page - 1).saturating_mul(DEFAULT_PAGE_SIZE) as usize)
                 .take(DEFAULT_PAGE_SIZE as usize)
             {
                 items.push(Self::enrich_title(pool, title).await);
@@ -344,11 +344,15 @@ impl SearchService {
 }
 
 /// An identifier as an agent may copy it — `978-2-07-036024-6`,
-/// `2 07 036024 X` — without its hyphens and spaces, when what remains
+/// `2 07 036024 X`, Unicode hyphens or dashes, non-breaking spaces —
+/// without those separators, when what remains
 /// is shaped like an ISBN-10/13; any other query is returned unchanged
 /// (a title containing a hyphen stays text).
 fn compact_code(query: &str) -> String {
-    let compact: String = query.chars().filter(|c| !matches!(c, '-' | ' ')).collect();
+    let compact: String = query
+        .chars()
+        .filter(|c| !(c.is_whitespace() || matches!(c, '-' | '\u{2010}'..='\u{2015}')))
+        .collect();
     let isbn_shaped = (compact.len() == 13 && compact.chars().all(|c| c.is_ascii_digit()))
         || (compact.len() == 10
             && compact.as_bytes()[..9].iter().all(u8::is_ascii_digit)
@@ -410,6 +414,10 @@ mod tests {
         assert_eq!(compact_code("978-2-07-036024-6"), "9782070360246");
         assert_eq!(compact_code("978 2 07 036024 6"), "9782070360246");
         assert_eq!(compact_code("2-07-036024-x"), "207036024x");
+        assert_eq!(
+            compact_code("978\u{2011}2\u{2013}07\u{a0}036024\t6"),
+            "9782070360246"
+        );
         assert_eq!(compact_code("9782070360246"), "9782070360246");
         assert_eq!(compact_code("Spider-Man"), "Spider-Man");
         assert_eq!(compact_code("1984 - 2001"), "1984 - 2001");

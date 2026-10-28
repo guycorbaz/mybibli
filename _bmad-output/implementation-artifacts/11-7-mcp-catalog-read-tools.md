@@ -1,6 +1,6 @@
 # Story 11.7: MCP catalog read tools
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR128, AR27. Epic 11 — seventh story; builds on 11-6 (`/api/mcp`, `McpTool` trait, `get_title`). 11-8 adds the series / gaps / incomplete-metadata tools on the same pattern.
 
@@ -110,6 +110,13 @@ Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor, full 
 - [x] [Review][Defer] (Low, pre-existing) `enrich_title` hides lookup errors behind defaults → #517
 - Dismissed: `page: 2.0` (schema says integer; clients send integers); `has_cover` not checking the file on disk (documented predicate, same as the UI filter); malformed `manually_edited_fields` read as `[]` (pre-existing, logged at WARN); count/page not in one snapshot (household scale, same as the web lists); LIKE escaping under `NO_BACKSLASH_ESCAPES` (mode not used); `page_size` constant in the response (same constant as the query); FULLTEXT short tokens (unchanged web behaviour); description-length assertions (deliberate AC7 guard).
 
+Round 2 (2026-10-28, single combined pass): 0 High, 0 Medium, 6 Low — every round-1 fix verified (exact-hit paging, `compact_code` slicing, `ORDER BY … t.id` under `DISTINCT`, the detector, collation pinned by `20260427000000_pin_reference_data_collation.sql`).
+
+- [x] [Review][Patch] (Low) Description now states the order of titles sharing an ISBN; `genre` schema text says case and accents are ignored; `args::text` comment corrected
+- [x] [Review][Patch] (Low) `compact_code` also strips Unicode hyphens/dashes (U+2010–U+2015) and any whitespace
+- [x] [Review][Patch] (Low) `MediaType::ALL` exhaustiveness pinned by a `match`-based unit test; exact-hit skip uses `saturating_mul`
+- Noted, no action: the SQL-keyword half of the no-SQL detector misses some lower-case or line-final forms — the sqlx API names (`sqlx`, `DbPool`, `query_as`, `fetch_`, `.execute(`) catch any real access.
+
 ### Debug Log References
 
 - `cargo fmt -- <files>` formatted the whole crate (main is not fmt-clean); unrelated files were restored and only this story's hunks kept.
@@ -121,7 +128,7 @@ Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor, full 
 - `search_contributors` over `ContributorService::search` → `ContributorModel::search_paged` (live title count, LIKE metacharacters escaped by a shared `like_contains_pattern`).
 - `get_title` now returns `AgentTitleDetail` (flattened `TitleDetail` + `has_cover` + `manually_edited_fields`); `/api/v1` unchanged (D-11-7-2).
 - Shared tool plumbing: `tools/args.rs` (object parsing, page and query bounds), `ListPage<T>` and `to_json` in `tools/mod.rs`; registry test pins the exact tool set, a description on every schema property and `additionalProperties: false`; `mcp::tests::no_sql_under_src_mcp` enforces AR27.
-- Tests: 11 integration tests (`tests/mcp_catalog_read_tools.rs`), MCP helpers moved to `tests/common/mcp.rs`; unit tests for args, genre matching, exact-hit filters, `has_cover`, LIKE escaping, list page shape. Full `cargo test -j 1`: 1696 passed, 0 failed. E2E `mcp-read-tools.spec.ts` (+ `helpers/mcp.ts`, reused by the 11-6 spec); full suite `--workers=2`: 360 passed, 2 skipped, 1 known flaky (shelving.spec.ts:193, #499) passed on retry.
+- Tests: 11 integration tests (`tests/mcp_catalog_read_tools.rs`), MCP helpers moved to `tests/common/mcp.rs`; unit tests for args, genre matching, exact-hit filters, `has_cover`, LIKE escaping, list page shape. Full `cargo test -j 1`: 1696 passed, 0 failed (1703 after review round 1). E2E `mcp-read-tools.spec.ts` (+ `helpers/mcp.ts`, reused by the 11-6 spec); full suite `--workers=2`: 360 passed, 2 skipped, 1 known flaky (shelving.spec.ts:193, #499) passed on retry.
 - No migration, no new setting, no route, no dependency, no locale key.
 
 ### File List
@@ -140,3 +147,4 @@ Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor, full 
 - 2026-10-28 — story created (create-story).
 - 2026-10-28 — validated against the create-story checklist: live-only lookups verified, cover predicate, title-count join, FULLTEXT commit note added.
 - 2026-10-28 — implemented (dev-story); status → review.
+- 2026-10-28 — code review round 1: 10 patches, 2 deferred (#516, #517); round 2: no Medium+, 3 Low patched; status → done.
