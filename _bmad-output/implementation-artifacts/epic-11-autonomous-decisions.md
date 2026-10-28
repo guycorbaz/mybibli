@@ -109,3 +109,41 @@ rewritten.
 **Chosen:** `group/fold` on `<details>`, `group-open/fold:rotate-90` on the `<svg>` — same CSS-only, CSP-clean, JS-free change, scoped to this element.
 **Rejected:** the bare `group` (harmless today — no `group-*` variant is used in any template — but a latent trap).
 **Reversible:** yes.
+
+## § 11-4 — Sticky navigation bar (#496)
+
+### D-11-4-1 — The `<header>` sticks, at `z-40`
+**Context:** the bar (`<nav>`) and the mobile panel (`#mobile-nav`) are siblings inside `<header>`. In-content layers go up to `z-30` (saved-searches dropdown); every overlay is `z-50` or in the top layer.
+**Chosen:** `sticky top-0 z-40` on `<header>` — the panel travels with the bar; content passes under, overlays stay above.
+**Rejected:** `sticky` on `<nav>` only (the open panel would scroll away under the bar); `fixed` (needs a body offset, layout shift); `z-50` (ties with overlays, order would depend on DOM position).
+**Reversible:** yes.
+
+### D-11-4-2 — `scroll-padding-top` on `<html>` with Tailwind utilities
+**Context:** the AC asks for 48 px below `md`, 56 px from `md`.
+**Chosen:** `scroll-pt-12 md:scroll-pt-14` on `<html>` (= `h-12` / `md:h-14` with `--spacing: 4px`). Covers the skip link, any fragment link, `focus()` and `scrollIntoView`.
+**Rejected:** `scroll-margin-top` per target (every future anchor would need it); a rule in `input.css` (duplicates the bar heights outside the template).
+**Reversible:** yes.
+
+### D-11-4-3 — The mobile panel is bounded to the viewport and scrolls internally
+**Context:** not in the issue. Once the header is sticky, a panel taller than the viewport cannot be scrolled into reach: the admin menu (~430 px, and 11-21 adds an entry) overflows a landscape phone (375 px high), hiding Logout.
+**Chosen:** `max-h-[calc(100dvh-3rem)] md:max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain` on `#mobile-nav` — needed for AC3 "stays usable".
+**Rejected:** leaving it unbounded (a regression introduced by this story on short viewports); compacting the menu (forbidden by the epic).
+**Reversible:** yes.
+
+### D-11-4-4 — Print: `print:static`, the bar is not hidden
+**Context:** the wishlist print page is a stand-alone document without the bar, so the AC already holds there. Other pages can still be printed with Ctrl-P.
+**Chosen:** `print:static` on the header — printed once, at the top, as before this story.
+**Rejected:** `print:hidden` (changes what users get today when printing a page — beyond the AC).
+**Reversible:** yes.
+
+### D-11-4-5 — "The feedback list renders above the bar" read as "never covered by it"
+**Context:** `#feedback-list` is an in-flow `aria-live` region inside `<main>`, not an overlay; in-flow content necessarily passes under a sticky bar while scrolling.
+**Chosen:** no z-index change for the list; it is covered by the AC2 mechanism (scroll-padding keeps anything brought into view below the bar). The genuine overlays (modals, connection-lost overlay, toasts) are pinned above the bar by a render test (`fixed inset-0` ⇒ `z-50`) and an E2E check.
+**Rejected:** making the feedback list sticky/fixed (a product change nobody asked for).
+**Reversible:** yes.
+
+### D-11-4-6 — E2E long pages: series list instead of series detail
+**Context:** the AC names "home, catalog, series detail, admin". A series detail page needs a seeded series, and shared-DB writes in a layout spec risk races with `empty-states.spec.ts` (`/series` empty list) and Trash counts.
+**Chosen:** the E2E covers `/`, `/catalog`, `/series`, `/admin` and forces a scrollable document via CSSOM `min-height` on `#main-content`; every page extends the same `base.html`, and the render test pins the classes on the shared layout.
+**Rejected:** seeding a series (shared-state flake risk for no extra coverage of a layout-level property).
+**Reversible:** yes — add the detail page if a read-only series fixture appears.
