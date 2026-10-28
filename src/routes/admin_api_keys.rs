@@ -203,23 +203,8 @@ fn render_list_html(loc: &'static str, _csrf_token: &str, keys: &[ApiKey]) -> Re
                     "bg-emerald-100 text-emerald-800",
                 )
             };
-            let (scope_label, scope_chip_class) = match k.scope {
-                ApiKeyScope::Read => (
-                    rust_i18n::t!("admin.api_keys.scope_read", locale = loc).to_string(),
-                    "bg-sky-100 text-sky-800",
-                ),
-                ApiKeyScope::Write => (
-                    rust_i18n::t!("admin.api_keys.scope_write", locale = loc).to_string(),
-                    "bg-amber-100 text-amber-800",
-                ),
-                // Story 11-5 — the class pair must also appear in a
-                // template: the Dockerfile's Tailwind scan reads
-                // `templates/` only (D-11-5-3).
-                ApiKeyScope::Propose => (
-                    rust_i18n::t!("admin.api_keys.scope_propose", locale = loc).to_string(),
-                    "bg-purple-100 text-purple-800",
-                ),
-            };
+            let scope_label = rust_i18n::t!(scope_label_key(k.scope), locale = loc).to_string();
+            let scope_chip_class = scope_chip_class(k.scope);
             KeyRowDisplay {
                 id: k.id,
                 label: k.label.clone(),
@@ -265,6 +250,30 @@ fn render_list_html(loc: &'static str, _csrf_token: &str, keys: &[ApiKey]) -> Re
     }
     .render()
     .map_err(|_| AppError::Internal("admin api_keys list render failed".to_string()))
+}
+
+/// Locale key of a scope's label (form radio and list chip).
+fn scope_label_key(scope: ApiKeyScope) -> &'static str {
+    match scope {
+        ApiKeyScope::Read => "admin.api_keys.scope_read",
+        ApiKeyScope::Write => "admin.api_keys.scope_write",
+        ApiKeyScope::Propose => "admin.api_keys.scope_propose",
+    }
+}
+
+/// Chip classes of a scope in the list. Every class must also appear
+/// somewhere under `templates/`: the Dockerfile's Tailwind scan reads
+/// `templates/` only, so a class written only here is never emitted
+/// (D-11-5-3) — pinned by `scope_chip_classes_are_emitted_by_tailwind`.
+fn scope_chip_class(scope: ApiKeyScope) -> &'static str {
+    match scope {
+        ApiKeyScope::Read => "bg-sky-100 dark:bg-sky-900 text-sky-800 dark:text-sky-200",
+        ApiKeyScope::Write => "bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200",
+        // Story 11-5.
+        ApiKeyScope::Propose => {
+            "bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200"
+        }
+    }
 }
 
 // ─── Panel route ──────────────────────────────────────────────────
@@ -316,16 +325,11 @@ pub async fn admin_api_keys_create(
         ));
     }
 
-    let scope = match form.scope.as_str() {
-        "read" => ApiKeyScope::Read,
-        "write" => ApiKeyScope::Write,
-        "propose" => ApiKeyScope::Propose,
-        _ => {
-            return Err(AppError::BadRequest(
-                rust_i18n::t!("admin.api_keys.error_invalid_scope", locale = loc).to_string(),
-            ));
-        }
-    };
+    let scope = ApiKeyScope::parse(&form.scope).ok_or_else(|| {
+        AppError::BadRequest(
+            rust_i18n::t!("admin.api_keys.error_invalid_scope", locale = loc).to_string(),
+        )
+    })?;
 
     let (plaintext, prefix) = mint_plaintext_key(scope);
     let hash = hash_password(&plaintext)
@@ -636,4 +640,64 @@ pub async fn admin_api_keys_delete(
         }],
     };
     Ok(resp.into_response_with_hx_trigger("modal-close"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ALL_SCOPES: [ApiKeyScope; 3] =
+        [ApiKeyScope::Read, ApiKeyScope::Write, ApiKeyScope::Propose];
+
+    fn templates_text() -> String {
+        fn walk(dir: &std::path::Path, out: &mut String) {
+            for entry in std::fs::read_dir(dir).expect("read templates dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "html") {
+                    out.push_str(&std::fs::read_to_string(&path).expect("read template"));
+                    out.push('\n');
+                }
+            }
+        }
+        let mut out = String::new();
+        walk(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates"),
+            &mut out,
+        );
+        out
+    }
+
+    /// D-11-5-3 — the Tailwind build only scans `templates/`; a chip
+    /// class that appears only in this Rust file would ship unstyled.
+    #[test]
+    fn scope_chip_classes_are_emitted_by_tailwind() {
+        let templates = templates_text();
+        for scope in ALL_SCOPES {
+            for class in scope_chip_class(scope).split_whitespace() {
+                assert!(
+                    templates.contains(class),
+                    "{scope:?}: class `{class}` appears in no template"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_scope_has_a_distinct_chip_and_label() {
+        let chips: std::collections::HashSet<_> =
+            ALL_SCOPES.iter().map(|s| scope_chip_class(*s)).collect();
+        let labels: std::collections::HashSet<_> =
+            ALL_SCOPES.iter().map(|s| scope_label_key(*s)).collect();
+        assert_eq!(chips.len(), 3);
+        assert_eq!(labels.len(), 3);
+        for loc in ["en", "fr", "de", "it"] {
+            for scope in ALL_SCOPES {
+                let key = scope_label_key(scope);
+                let text = rust_i18n::t!(key, locale = loc).to_string();
+                assert_ne!(text, key, "{loc}: missing {key}");
+            }
+        }
+    }
 }

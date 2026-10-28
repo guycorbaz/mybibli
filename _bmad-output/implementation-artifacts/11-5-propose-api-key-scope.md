@@ -48,6 +48,22 @@ so that an AI agent can never modify the catalog directly.
 - [x] T9 — E2E (AC7): `tests/e2e/specs/journeys/admin-api-keys.spec.ts` — `loginAs(page, "admin")`, `/admin?tab=api_keys`, unique label, pick the propose radio by role, submit; the created modal shows a plaintext matching `/^mybibli_pr_[A-Za-z0-9]{40}$/`; close; the list row shows the label and the propose chip; `page.request` with `Authorization: Bearer` → GET `/api/v1/titles` 200, PATCH `/api/v1/titles/1` 403 `insufficient_scope`; revoke the key at the end via its UX-DR8 modal (leaves no active key behind). i18n-aware regexes; no `waitForTimeout`.
 - [x] T10 — Gates: clippy `--all-targets -D warnings`, full `cargo test`, `cargo sqlx prepare --check` (dynamic `sqlx::query` only — no `.sqlx` change expected), `tsc --noEmit`, full E2E at `--workers=2`.
 
+### Review Findings
+
+Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor, full mode): 0 High, 4 Medium, ~20 Low.
+
+- [x] [Review][Patch] (Medium) Integration test passed on the list's 12-char prefix, not the modal plaintext — now matches `data-api-key-plaintext>mybibli_<short>_[A-Za-z0-9]{40}</div>` [tests/api_key_propose_scope.rs]
+- [x] [Review][Patch] (Medium) E2E PATCH targeted shared title id 1 — now a non-existent id (2147483647): 403 expected, a regressed guard answers 404 and touches nothing [admin-api-keys.spec.ts]
+- [x] [Review][Patch] (Medium) E2E revoke assertion ambiguous in German ("Widerrufen" is both the status and the Revoke button) and could race the commit — now waits for the revoke POST (200), the dialog hidden and the row's Revoke button gone [admin-api-keys.spec.ts]
+- [x] [Review][Patch] (Medium→Low after check) Propose chip relies on a class pair used incidentally by another template — chip classes moved to `scope_chip_class()`, and `scope_chip_classes_are_emitted_by_tailwind` pins every class against `templates/` [src/routes/admin_api_keys.rs]
+- [x] [Review][Patch] (Low) Scope string mapping duplicated in the form handler — `ApiKeyScope::parse` (strict) shared by the form and `from_db` [src/models/api_key.rs]
+- [x] [Review][Patch] (Low) Chips had no dark-mode variants — all three scope chips carry `dark:` variants (all classes already present in templates) [src/routes/admin_api_keys.rs]
+- [x] [Review][Patch] (Low) `ApiKeyPropose` matrix lacked a forged same-prefix key and a soft-deleted key — both added (401) [tests/api_key_propose_scope.rs]
+- [x] [Review][Patch] (Low) Panel label assertion accepted EN/FR only — now any of the four locales [tests/api_key_propose_scope.rs]
+- [x] [Review][Patch] (Low) E2E read check used `/api/v1/genres` only — now `/api/v1/titles` and `/api/v1/genres` [admin-api-keys.spec.ts]
+- [x] [Review][Defer] (Low) Row mapping swallows `scope` decode errors via `unwrap_or_default` — deferred, pre-existing → #511
+- Dismissed (verified): migration drops a DEFAULT/COMMENT (the original column had neither); other `!= Read` scope checks granting write (none — `ApiKeyScope` is matched only in the three touched files); UI advertises proposals before `/api/mcp` exists (same release, D-11-5-4); `from_db` warn flood (ENUM column, unreachable in practice); `state_with_pool` duplication (existing per-file pattern of every integration test); `?tab=api_keys` (valid tab name); write/propose mutual exclusivity (NFR44 by design); test placement in a new file instead of `api_v1_auth.rs` and the column-type test in the model module (same coverage); no pre-migration row test (ENUM append preserves values by construction).
+
 ## Dev Notes
 
 - **Least privilege by construction.** Never express propose as "write minus something": `allows_write` stays `matches!(Write)`, `allows_propose` is `matches!(Propose)`. A future scope added to the enum is then refused by both until someone opts it in.
@@ -118,3 +134,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — story created (create-story).
 - 2026-10-28 — validated against the create-story checklist: extractor order, consumer grep and manual-scope notes added.
 - 2026-10-28 — implemented (dev-story); status → review.
+- 2026-10-28 — code review round 1: 9 patches applied, 1 deferred (#511).

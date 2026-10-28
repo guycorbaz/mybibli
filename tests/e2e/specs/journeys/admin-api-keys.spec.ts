@@ -48,11 +48,16 @@ test.describe("Story 11-5 — propose API-key scope", () => {
 
     // The key reads the API…
     const auth = { Authorization: `Bearer ${plaintext}` };
-    const read = await page.request.get("/api/v1/genres", { headers: auth });
-    expect(read.status()).toBe(200);
+    for (const path of ["/api/v1/titles", "/api/v1/genres"]) {
+      const read = await page.request.get(path, { headers: auth });
+      expect(read.status(), path).toBe(200);
+    }
 
-    // …but never writes the catalog directly (NFR44).
-    const patch = await page.request.patch("/api/v1/titles/1", {
+    // …but never writes the catalog directly (NFR44). The id does not
+    // exist on purpose: the scope check runs before the title lookup, so
+    // the expected answer is 403; a regressed guard would answer 404 and
+    // still fail this test without touching any shared row.
+    const patch = await page.request.patch("/api/v1/titles/2147483647", {
       headers: { ...auth, "Content-Type": "application/json" },
       data: { version: 0, subtitle: "agent was here" },
     });
@@ -65,12 +70,21 @@ test.describe("Story 11-5 — propose API-key scope", () => {
     await row.getByRole("button", { name: new RegExp(label) }).click();
     const revokeDialog = page.locator("#admin-modal-slot dialog");
     await expect(revokeDialog).toBeVisible();
+    const revoked = page.waitForResponse(
+      (r) => r.request().method() === "POST" && /\/admin\/api-keys\/\d+\/revoke$/.test(r.url()),
+    );
     await revokeDialog
       .getByRole("button", { name: /Revoke key|Révoquer la clé|Schlüssel widerrufen|Revoca chiave/i })
       .click();
+    expect((await revoked).status()).toBe(200);
+    await expect(revokeDialog).toBeHidden();
+    // The revoked row loses its Revoke button (the status chip and the
+    // German Revoke button share the word "Widerrufen", so assert on the
+    // button, not on the row text).
+    const revokedRow = page.locator("#admin-api-keys-list tr", { hasText: label });
     await expect(
-      page.locator("#admin-api-keys-list tr", { hasText: label }),
-    ).toContainText(/Revoked|Révoquée|Widerrufen|Revocata/i);
+      revokedRow.getByRole("button", { name: /Revoke API key|Révoquer la clé|widerrufen|Revoca chiave/i }),
+    ).toHaveCount(0);
 
     // A revoked propose key no longer authenticates.
     const afterRevoke = await page.request.get("/api/v1/genres", { headers: auth });

@@ -215,6 +215,35 @@ async fn propose_extractor_accepts_a_propose_key(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn propose_extractor_refuses_a_wrong_propose_key(pool: DbPool) {
+    let key = seed_key(&pool, "agent", ApiKeyScope::Propose).await;
+    // Same 12-char prefix (so the candidate scan finds the row), wrong suffix.
+    let forged = format!("{}{}", &key[..12], "x".repeat(key.len() - 12));
+    assert_ne!(forged, key);
+    let res = probe_router(pool)
+        .oneshot(bearer_get("/probe", &forged))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(json_body(res).await["reason"], "invalid_api_key");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn propose_extractor_refuses_a_deleted_propose_key(pool: DbPool) {
+    let key = seed_key(&pool, "agent", ApiKeyScope::Propose).await;
+    sqlx::query("UPDATE api_keys SET revoked_at = NOW(), deleted_at = NOW() WHERE key_prefix = ?")
+        .bind(&key[..12])
+        .execute(&pool)
+        .await
+        .unwrap();
+    let res = probe_router(pool)
+        .oneshot(bearer_get("/probe", &key))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn propose_extractor_refuses_a_revoked_propose_key(pool: DbPool) {
     let key = seed_key(&pool, "agent", ApiKeyScope::Propose).await;
     sqlx::query("UPDATE api_keys SET revoked_at = NOW() WHERE key_prefix = ?")
@@ -281,8 +310,14 @@ async fn admin_creates_each_scope_with_its_prefix(pool: DbPool) {
             .unwrap();
         let html = String::from_utf8_lossy(&bytes);
         let prefix = format!("mybibli_{short}_");
+        // The list also shows the 12-char prefix: pin the FULL plaintext
+        // inside the one-time modal's container.
+        let re = regex::Regex::new(&format!(
+            r"data-api-key-plaintext>{prefix}[A-Za-z0-9]{{40}}</div>"
+        ))
+        .unwrap();
         assert!(
-            html.contains(&prefix),
+            re.is_match(&html),
             "{scope}: plaintext shown once in the modal"
         );
 
@@ -340,7 +375,14 @@ async fn admin_panel_offers_the_propose_scope(pool: DbPool) {
         );
     }
     assert!(
-        html.contains("Read + propose") || html.contains("Lecture + propositions"),
+        [
+            "Read + propose",
+            "Lecture + propositions",
+            "Lesen + vorschlagen",
+            "Lettura + proposte"
+        ]
+        .iter()
+        .any(|l| html.contains(l)),
         "propose label rendered"
     );
 }

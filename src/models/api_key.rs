@@ -59,23 +59,29 @@ impl ApiKeyScope {
         }
     }
 
+    /// Strict parse of the canonical name (`as_str`). Used by the admin
+    /// form; `None` for anything else.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "read" => Some(ApiKeyScope::Read),
+            "write" => Some(ApiKeyScope::Write),
+            "propose" => Some(ApiKeyScope::Propose),
+            _ => None,
+        }
+    }
+
     /// Map the stored `api_keys.scope` value. The column is an ENUM, so
     /// an unknown value can only come from a future migration or a
     /// manual edit: it falls back to `Read` — the least-privileged scope
     /// (no write, no proposal) — and is logged (D-11-5-2).
     pub fn from_db(s: &str) -> Self {
-        match s {
-            "read" => ApiKeyScope::Read,
-            "write" => ApiKeyScope::Write,
-            "propose" => ApiKeyScope::Propose,
-            other => {
-                tracing::warn!(
-                    scope = other,
-                    "unknown api_keys.scope value; treating the key as read-only"
-                );
-                ApiKeyScope::Read
-            }
-        }
+        Self::parse(s).unwrap_or_else(|| {
+            tracing::warn!(
+                scope = s,
+                "unknown api_keys.scope value; treating the key as read-only"
+            );
+            ApiKeyScope::Read
+        })
     }
 
     /// Every scope can call the read endpoints.
@@ -348,6 +354,17 @@ mod tests {
         for s in ALL_SCOPES {
             assert_eq!(ApiKeyScope::from_db(s.as_str()), s, "round-trip {s:?}");
         }
+    }
+
+    #[test]
+    fn scope_parse_is_strict() {
+        for s in ALL_SCOPES {
+            assert_eq!(ApiKeyScope::parse(s.as_str()), Some(s));
+        }
+        assert_eq!(ApiKeyScope::parse("admin"), None);
+        assert_eq!(ApiKeyScope::parse(""), None);
+        assert_eq!(ApiKeyScope::parse("Propose"), None);
+        assert_eq!(ApiKeyScope::parse(" propose"), None);
     }
 
     #[test]
