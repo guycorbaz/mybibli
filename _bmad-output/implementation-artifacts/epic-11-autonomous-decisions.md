@@ -399,7 +399,7 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 ### D-11-9-4 — Staging directory derived from `COVERS_DIR`, sibling `<name>-staging` [PRODUCT]
 **Context:** "created and configured next to `covers/`, unused for now"; `AppState` is built literally in 36 files.
 **Chosen:** `services::cover_staging::staging_dir_for(covers_dir)` → `./covers-staging` (Docker: `/app/covers-staging`), exposed by `AppState::cover_staging_dir()`, created at boot, never served (outside the `/covers` `ServeDir`, so an unreviewed agent image is never publicly reachable). No new env var: an operator moves it by moving `COVERS_DIR`.
-**Consequence flagged for 11-14:** in the shipped `docker-compose.yml` only `/app/covers` is a volume, so staged covers would not survive a container re-creation (every upgrade). 11-14 must either add a volume (and update `docker-compose.yml` / `docs/dockerhub-overview.md`) or handle a missing staged file on acceptance.
+**Consequence flagged for 11-14 (#522):** in the shipped `docker-compose.yml` only `/app/covers` is a volume, so staged covers would not survive a container re-creation (every upgrade). 11-14 must either add a volume (and update `docker-compose.yml` / `docs/dockerhub-overview.md`) or handle a missing staged file on acceptance.
 Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `COVERS_DIR` parent is not writable must not fail to start for a directory nothing uses yet; 11-14 refuses cover proposals when it is missing.
 **Rejected:** a subdirectory of `covers/` (persistent, but served by `/covers` unless a guard route is added — untrusted images on the public origin); a new `AppState` field (36-file churn for an unused path).
 **Reversible:** yes.
@@ -420,4 +420,21 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** the AC lists `decided-by user; decided-at` without saying what a system-made transition records.
 **Chosen:** `pending → stale` sets `decided_at = NOW()` and leaves `decided_by` NULL; accept / reject require a user id. A rejection reason is accepted only on reject (trimmed, empty → NULL, ≤ 1000 characters).
 **Rejected:** leaving `decided_at` NULL on stale (the history in 11-15 could not date it).
+**Reversible:** yes.
+
+### D-11-9-8 — Code review: staleness stays version-based; writers that skip the bump tracked in #521
+**Context:** review round 1 found writes that do not bump the target's `version` (background cover / `metadata_source` fetch on `titles`; `title_series` attach / detach on neither `titles` nor `series`), so a proposal filed before them reads as fresh.
+**Chosen:** keep the AR29 rule in this story; #521 (Medium) records the gap and the choice 11-17 / 11-18 must make before accepting anything (bump the parent `version`, or re-check the overwritten state at acceptance).
+**Rejected:** bumping `titles.version` from the background fetch now — a librarian's open edit form would then fail with a version conflict, a user-visible change outside this story.
+**Reversible:** yes.
+
+### D-11-9-9 — Code review: accept enforces staleness and locks the targets [PRODUCT]
+**Context:** review round 1 — `Decision::Accept` moved a proposal to `accepted` without any staleness check, and the check read target versions from the transaction snapshot without locking them, so "re-check then apply" (11-17) could apply onto a concurrently edited row.
+**Chosen:** `transition_in(Accept)` locks the proposal, reads its targets with `FOR UPDATE` (current read, held to the end of the transaction), and when any moved marks the proposal `stale` and returns `ProposalError::Stale` (the pool wrapper commits that mark; a caller in its own transaction must commit it too). `check_staleness_in` uses the same locking read. Reject does not check staleness (rejecting a moved proposal is harmless).
+**Rejected:** leaving FR140 to every caller (11-17 and 11-18 would each have to remember it).
+**Reversible:** yes.
+
+### D-11-9-10 — Code review: the service checks the filing key and the deciding user [PRODUCT]
+**Context:** review round 1 — any `api_key_id` / user id was stored as given; an unknown id surfaced as a database error, a revoked key or a deactivated user was accepted.
+**Chosen:** filing share-locks the key row and requires `scope = 'propose'`, not revoked, not deleted (`KeyNotAllowed`, → `Conflict`); a revocation (11-14) then waits for an in-flight filing and sees it. Accept / reject require an active user (`UnknownDecider`, → `BadRequest`). Also from the review: JSON nested deeper than 20 levels is refused (`ValuesTooDeep`; MariaDB refuses beyond 32), all items of a proposal together are capped at 1 MiB, the stored (normalised) source must itself fit 2048 characters, `ProposalError::Database` never shows database text, and a covers path without a final name (`.`) is resolved before deriving the staging sibling (`None` for `/`, so it is never inside the served directory).
 **Reversible:** yes.

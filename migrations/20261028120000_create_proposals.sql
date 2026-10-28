@@ -51,6 +51,7 @@ CREATE TABLE proposals (
     INDEX idx_proposals_status (status, deleted_at),
     INDEX idx_proposals_api_key (api_key_id),
     INDEX idx_proposals_deleted_at (deleted_at),
+    INDEX idx_proposals_listing (deleted_at, created_at, id),
     CONSTRAINT fk_proposals_api_key FOREIGN KEY (api_key_id) REFERENCES api_keys (id),
     CONSTRAINT fk_proposals_decided_by FOREIGN KEY (decided_by) REFERENCES users (id)
         ON DELETE SET NULL

@@ -598,28 +598,180 @@ async fn concurrent_deciders_cannot_both_win(pool: MySqlPool) {
     let u2 = insert_user(&pool, "lib-two").await;
     let id = file(&pool, &proposal(ProposalKind::SeriesCreate, key, &[None])).await;
 
-    let accept = Decision::Accept { by: u1 };
-    let reject = Decision::Reject {
-        by: u2,
-        reason: None,
+    // The first decider holds its transaction open; the second must wait
+    // on the row lock, then see the first decision.
+    let mut tx = pool.begin().await.unwrap();
+    ProposalService::transition_in(&mut tx, id, &Decision::Accept { by: u1 })
+        .await
+        .unwrap();
+    let second = {
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            ProposalService::transition(
+                &pool,
+                id,
+                &Decision::Reject {
+                    by: u2,
+                    reason: None,
+                },
+            )
+            .await
+        })
     };
-    let (a, b) = tokio::join!(
-        ProposalService::transition(&pool, id, &accept),
-        ProposalService::transition(&pool, id, &reject),
-    );
-    assert_eq!(
-        [a.is_ok(), b.is_ok()].iter().filter(|ok| **ok).count(),
-        1,
-        "exactly one decider wins: {a:?} / {b:?}"
-    );
-    let loser = if a.is_ok() { b } else { a };
-    assert!(matches!(loser, Err(ProposalError::NotPending { .. })));
+    // Wait until the second decider is actually blocked on the row lock,
+    // so the test proves the guard under real contention.
+    let mut waited = false;
+    for _ in 0..250 {
+        let waiting: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM information_schema.PROCESSLIST \
+             WHERE DB = DATABASE() AND COMMAND = 'Execute' \
+             AND INFO LIKE 'SELECT status FROM proposals%FOR UPDATE'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        if waiting > 0 {
+            waited = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(waited, "the second decider never waited on the lock");
+    tx.commit().await.unwrap();
+    match second.await.unwrap() {
+        Err(ProposalError::NotPending { status, .. }) => {
+            assert_eq!(status, ProposalStatus::Accepted)
+        }
+        other => panic!("expected NotPending(accepted), got {other:?}"),
+    }
     let d = ProposalService::detail(&pool, id)
         .await
         .unwrap()
         .unwrap()
         .proposal;
+    assert_eq!(d.status, ProposalStatus::Accepted);
+    assert_eq!(d.decided_by, Some(u1));
     assert_eq!(d.version, 2);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn accepting_a_stale_proposal_marks_it_stale(pool: MySqlPool) {
+    let key = insert_key(&pool, "k").await;
+    let user = insert_user(&pool, "lib-accept-stale").await;
+    let title = insert_title(&pool, "T").await;
+    let id = file(
+        &pool,
+        &proposal(ProposalKind::Metadata, key, &[title_target(title)]),
+    )
+    .await;
+    bump_version(&pool, "titles", title).await;
+
+    match ProposalService::transition(&pool, id, &Decision::Accept { by: user }).await {
+        Err(ProposalError::Stale { id: got, targets }) => {
+            assert_eq!(got, id);
+            assert_eq!(targets.len(), 1);
+            assert_eq!(targets[0].reason, StaleReason::Changed);
+        }
+        other => panic!("expected Stale, got {other:?}"),
+    }
+    let d = ProposalService::detail(&pool, id)
+        .await
+        .unwrap()
+        .unwrap()
+        .proposal;
+    assert_eq!(
+        d.status,
+        ProposalStatus::Stale,
+        "the stale mark is committed"
+    );
+    assert!(d.decided_by.is_none());
+
+    // Rejecting does not need fresh targets.
+    let id2 = file(
+        &pool,
+        &proposal(ProposalKind::Metadata, key, &[title_target(title)]),
+    )
+    .await;
+    bump_version(&pool, "titles", title).await;
+    assert_eq!(
+        ProposalService::transition(
+            &pool,
+            id2,
+            &Decision::Reject {
+                by: user,
+                reason: None
+            }
+        )
+        .await
+        .unwrap(),
+        ProposalStatus::Rejected
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_decision_needs_an_active_user(pool: MySqlPool) {
+    let key = insert_key(&pool, "k").await;
+    let gone = insert_user(&pool, "lib-deactivated").await;
+    soft_delete(&pool, "users", gone).await;
+    let id = file(&pool, &proposal(ProposalKind::SeriesCreate, key, &[None])).await;
+
+    for by in [gone, 9_999_999] {
+        assert!(matches!(
+            ProposalService::transition(&pool, id, &Decision::Accept { by }).await,
+            Err(ProposalError::UnknownDecider { user_id }) if user_id == by
+        ));
+    }
+    assert_eq!(status(&pool, id).await, ProposalStatus::Pending);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn only_a_live_propose_key_can_file(pool: MySqlPool) {
+    let title = insert_title(&pool, "T").await;
+    let revoked = insert_key(&pool, "revoked").await;
+    sqlx::query("UPDATE api_keys SET revoked_at = NOW() WHERE id = ?")
+        .bind(revoked)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let deleted = insert_key(&pool, "deleted").await;
+    soft_delete(&pool, "api_keys", deleted).await;
+    let read_key = insert_key(&pool, "read").await;
+    sqlx::query("UPDATE api_keys SET scope = 'read' WHERE id = ?")
+        .bind(read_key)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    for key in [revoked, deleted, read_key, 8_888_888] {
+        let p = proposal(ProposalKind::Metadata, key, &[title_target(title)]);
+        assert!(matches!(
+            ProposalService::file(&pool, &p).await,
+            Err(ProposalError::KeyNotAllowed { api_key_id }) if api_key_id == key
+        ));
+    }
+    assert_eq!(proposal_count(&pool).await, (0, 0));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn deeply_nested_values_are_refused_before_the_database(pool: MySqlPool) {
+    let key = insert_key(&pool, "k").await;
+    let mut deep = json!(1);
+    for _ in 0..40 {
+        deep = json!({ "a": deep });
+    }
+    let p = NewProposal {
+        kind: ProposalKind::SeriesCreate,
+        api_key_id: key,
+        sources: vec!["https://example.org/".into()],
+        items: vec![NewProposalItem {
+            target: None,
+            proposed_values: deep,
+        }],
+    };
+    let err = ProposalService::file(&pool, &p).await.unwrap_err();
+    assert!(err.is_invalid_input(), "{err:?}");
+    assert!(matches!(err, ProposalError::ValuesTooDeep { index: 1 }));
+    assert_eq!(proposal_count(&pool).await, (0, 0));
 }
 
 #[sqlx::test(migrations = "./migrations")]

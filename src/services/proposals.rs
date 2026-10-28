@@ -41,6 +41,12 @@ pub const MAX_SOURCE_CHARS: usize = 2048;
 pub const MAX_ITEMS: usize = 1000;
 /// At most this many bytes per item's serialized `proposed_values`.
 pub const MAX_ITEM_VALUES_BYTES: usize = 64 * 1024;
+/// At most this many nesting levels in an item's `proposed_values`
+/// (MariaDB refuses JSON nested deeper than 32 levels; a typed refusal
+/// beats a database error).
+pub const MAX_ITEM_VALUES_DEPTH: usize = 20;
+/// At most this many bytes for all the items of one proposal together.
+pub const MAX_PROPOSAL_VALUES_BYTES: usize = 1024 * 1024;
 /// At most this many characters in a rejection reason.
 pub const MAX_REJECTION_REASON_CHARS: usize = 1000;
 
@@ -51,7 +57,6 @@ pub enum SourceRejection {
     TooLong,
     NotAUrl,
     Scheme(String),
-    NoHost,
     Credentials,
 }
 
@@ -81,6 +86,14 @@ pub enum ProposalError {
         bytes: usize,
     },
     /// `index` is 1-based.
+    ValuesTooDeep {
+        index: usize,
+    },
+    /// All the items together exceed [`MAX_PROPOSAL_VALUES_BYTES`].
+    ProposalTooLarge {
+        bytes: usize,
+    },
+    /// `index` is 1-based.
     TargetNotFound {
         index: usize,
         table: ProposalTargetTable,
@@ -89,8 +102,23 @@ pub enum ProposalError {
     ReasonTooLong {
         chars: usize,
     },
+    /// The filing key is unknown, revoked, deleted or not a `propose` key.
+    KeyNotAllowed {
+        api_key_id: u64,
+    },
+    /// The deciding user does not exist or is deactivated.
+    UnknownDecider {
+        user_id: u64,
+    },
     NotFound {
         id: u64,
+    },
+    /// An accept found targets that moved since filing; the proposal
+    /// has been marked `stale` (FR140). A caller running inside its own
+    /// transaction must commit it to keep that mark.
+    Stale {
+        id: u64,
+        targets: Vec<StaleTarget>,
     },
     NotPending {
         id: u64,
@@ -103,11 +131,20 @@ impl ProposalError {
     /// `true` when the caller's input was refused (as opposed to a
     /// missing proposal, a state conflict or a server failure).
     pub fn is_invalid_input(&self) -> bool {
-        !matches!(
+        matches!(
             self,
-            ProposalError::NotFound { .. }
-                | ProposalError::NotPending { .. }
-                | ProposalError::Database(_)
+            ProposalError::NoSources
+                | ProposalError::TooManySources { .. }
+                | ProposalError::InvalidSource { .. }
+                | ProposalError::NoItems
+                | ProposalError::TooManyItems { .. }
+                | ProposalError::ValuesNotObject { .. }
+                | ProposalError::ValuesTooLarge { .. }
+                | ProposalError::ValuesTooDeep { .. }
+                | ProposalError::ProposalTooLarge { .. }
+                | ProposalError::TargetNotFound { .. }
+                | ProposalError::ReasonTooLong { .. }
+                | ProposalError::UnknownDecider { .. }
         )
     }
 }
@@ -140,7 +177,6 @@ impl fmt::Display for ProposalError {
                         f,
                         "its scheme \"{s}\" is not allowed; only http and https are accepted."
                     ),
-                    SourceRejection::NoHost => write!(f, "it has no host name."),
                     SourceRejection::Credentials => write!(
                         f,
                         "it embeds a user name or password; give the plain page URL."
@@ -161,6 +197,16 @@ impl fmt::Display for ProposalError {
                 "Item {index} was refused: its proposed values take {bytes} bytes, more than the \
                  {MAX_ITEM_VALUES_BYTES} allowed."
             ),
+            ProposalError::ValuesTooDeep { index } => write!(
+                f,
+                "Item {index} was refused: its proposed values are nested more than \
+                 {MAX_ITEM_VALUES_DEPTH} levels deep."
+            ),
+            ProposalError::ProposalTooLarge { bytes } => write!(
+                f,
+                "The proposal was refused: its items take {bytes} bytes together, more than the \
+                 {MAX_PROPOSAL_VALUES_BYTES} allowed; split it."
+            ),
             ProposalError::TargetNotFound { index, table, id } => {
                 let what = match table {
                     ProposalTargetTable::Titles => "title",
@@ -176,13 +222,31 @@ impl fmt::Display for ProposalError {
                 "The rejection reason is {chars} characters long; at most \
                  {MAX_REJECTION_REASON_CHARS} are allowed."
             ),
+            ProposalError::KeyNotAllowed { .. } => write!(
+                f,
+                "This API key cannot file proposals: it was revoked or does not have the \
+                 propose scope."
+            ),
+            ProposalError::UnknownDecider { user_id } => {
+                write!(f, "User {user_id} does not exist or is deactivated.")
+            }
             ProposalError::NotFound { id } => write!(f, "Proposal {id} does not exist."),
+            ProposalError::Stale { id, targets } => write!(
+                f,
+                "Proposal {id} can no longer be accepted: {} of the entries it targets changed \
+                 or were deleted since it was filed. It is now marked stale.",
+                targets.len()
+            ),
             ProposalError::NotPending { id, status } => write!(
                 f,
                 "Proposal {id} is already {}; only a pending proposal can be decided.",
                 status.as_str()
             ),
-            ProposalError::Database(e) => write!(f, "{e}"),
+            // Never the database text: this message may reach an agent.
+            ProposalError::Database(_) => write!(
+                f,
+                "The proposal could not be processed because of a server error."
+            ),
         }
     }
 }
@@ -204,7 +268,9 @@ impl From<ProposalError> for AppError {
         match e {
             ProposalError::Database(inner) => inner,
             ProposalError::NotFound { .. } => AppError::NotFound(e.to_string()),
-            ProposalError::NotPending { .. } => AppError::Conflict(e.to_string()),
+            ProposalError::NotPending { .. }
+            | ProposalError::Stale { .. }
+            | ProposalError::KeyNotAllowed { .. } => AppError::Conflict(e.to_string()),
             other => AppError::BadRequest(other.to_string()),
         }
     }
@@ -301,8 +367,10 @@ pub struct StalenessCheck {
 }
 
 /// Validate and normalise the sources: trimmed, parsed, `http`/`https`
-/// only, with a host and no credentials; stored in parsed form,
-/// duplicates dropped keeping the first-seen order.
+/// only, no credentials; stored in parsed form (which must itself fit
+/// [`MAX_SOURCE_CHARS`]), duplicates dropped keeping the first-seen
+/// order. A host is required by the parser itself for `http`/`https`
+/// (`http://` alone is "not an absolute URL").
 pub fn validate_sources(sources: &[String]) -> Result<Vec<String>, ProposalError> {
     if sources.is_empty() {
         return Err(ProposalError::NoSources);
@@ -327,13 +395,14 @@ pub fn validate_sources(sources: &[String]) -> Result<Vec<String>, ProposalError
         if !matches!(url.scheme(), "http" | "https") {
             return Err(reject(SourceRejection::Scheme(url.scheme().to_string())));
         }
-        if url.host_str().is_none_or(str::is_empty) {
-            return Err(reject(SourceRejection::NoHost));
-        }
         if !url.username().is_empty() || url.password().is_some() {
             return Err(reject(SourceRejection::Credentials));
         }
         let normalised = url.to_string();
+        // Percent-encoding and punycode can lengthen the stored form.
+        if normalised.chars().count() > MAX_SOURCE_CHARS {
+            return Err(reject(SourceRejection::TooLong));
+        }
         if !out.contains(&normalised) {
             out.push(normalised);
         }
@@ -349,24 +418,48 @@ pub fn validate_items(items: &[NewProposalItem]) -> Result<Vec<String>, Proposal
     if items.len() > MAX_ITEMS {
         return Err(ProposalError::TooManyItems { count: items.len() });
     }
-    items
-        .iter()
-        .enumerate()
-        .map(|(i, item)| {
-            let index = i + 1;
-            if !item.proposed_values.is_object() {
-                return Err(ProposalError::ValuesNotObject { index });
-            }
-            let json = item.proposed_values.to_string();
-            if json.len() > MAX_ITEM_VALUES_BYTES {
-                return Err(ProposalError::ValuesTooLarge {
-                    index,
-                    bytes: json.len(),
-                });
-            }
-            Ok(json)
-        })
-        .collect()
+    let mut out = Vec::with_capacity(items.len());
+    let mut total = 0usize;
+    for (i, item) in items.iter().enumerate() {
+        let index = i + 1;
+        if !item.proposed_values.is_object() {
+            return Err(ProposalError::ValuesNotObject { index });
+        }
+        if json_depth(&item.proposed_values) > MAX_ITEM_VALUES_DEPTH {
+            return Err(ProposalError::ValuesTooDeep { index });
+        }
+        let json = item.proposed_values.to_string();
+        if json.len() > MAX_ITEM_VALUES_BYTES {
+            return Err(ProposalError::ValuesTooLarge {
+                index,
+                bytes: json.len(),
+            });
+        }
+        total += json.len();
+        out.push(json);
+    }
+    if total > MAX_PROPOSAL_VALUES_BYTES {
+        return Err(ProposalError::ProposalTooLarge { bytes: total });
+    }
+    Ok(out)
+}
+
+/// Nesting depth of a JSON value: a scalar is 0, `{}` / `[]` is 1.
+/// Iterative, so a hostile payload cannot overflow the stack.
+fn json_depth(value: &Value) -> usize {
+    let mut max = 0;
+    let mut stack = vec![(value, 0usize)];
+    while let Some((v, depth)) = stack.pop() {
+        let children: Box<dyn Iterator<Item = &Value>> = match v {
+            Value::Object(m) => Box::new(m.values()),
+            Value::Array(a) => Box::new(a.iter()),
+            _ => continue,
+        };
+        let d = depth + 1;
+        max = max.max(d);
+        stack.extend(children.map(|c| (c, d)));
+    }
+    max
 }
 
 /// Trim a rejection reason; empty means none.
@@ -427,10 +520,11 @@ async fn read_target_states(
     conn: &mut MySqlConnection,
     targets: impl Iterator<Item = ProposalTarget>,
     live_only: bool,
+    lock: bool,
 ) -> Result<HashMap<ProposalTargetTable, HashMap<u64, TargetRowState>>, AppError> {
     let mut states = HashMap::new();
     for (table, ids) in ids_by_table(targets) {
-        let rows = ProposalModel::target_states(conn, table, &ids, live_only).await?;
+        let rows = ProposalModel::target_states(conn, table, &ids, live_only, lock).await?;
         states.insert(table, rows);
     }
     Ok(states)
@@ -451,12 +545,43 @@ fn item_from_row(row: ProposalItemRow) -> Result<ProposalItem, AppError> {
     })
 }
 
+async fn stale_targets_on(
+    conn: &mut MySqlConnection,
+    id: u64,
+    lock: bool,
+) -> Result<Vec<StaleTarget>, AppError> {
+    let items = ProposalModel::items(conn, id).await?;
+    let states =
+        read_target_states(conn, items.iter().filter_map(|i| i.target), false, lock).await?;
+    Ok(stale_reasons(&items, &states))
+}
+
+/// Run `f` in a transaction that is committed when `f` succeeds or ends
+/// on [`ProposalError::Stale`] (the stale mark must persist), and rolled
+/// back otherwise.
+async fn in_transaction<T>(
+    pool: &DbPool,
+    f: impl for<'c> FnOnce(
+        &'c mut MySqlConnection,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<T, ProposalError>> + Send + 'c>,
+    >,
+) -> Result<T, ProposalError> {
+    let mut tx = pool.begin().await?;
+    let res = f(&mut tx).await;
+    match &res {
+        Ok(_) | Err(ProposalError::Stale { .. }) => tx.commit().await?,
+        Err(_) => tx.rollback().await?,
+    }
+    res
+}
+
 pub struct ProposalService;
 
 impl ProposalService {
-    /// File a proposal: validate, read each target's current version,
-    /// write the proposal (`pending`) and its items in one transaction.
-    /// Returns the new proposal's id.
+    /// File a proposal: validate, check the filing key, read each
+    /// target's current version, write the proposal (`pending`) and its
+    /// items in one transaction. Returns the new proposal's id.
     pub async fn file(pool: &DbPool, proposal: &NewProposal) -> Result<u64, ProposalError> {
         let sources = validate_sources(&proposal.sources)?;
         let values = validate_items(&proposal.items)?;
@@ -464,10 +589,16 @@ impl ProposalService {
             .map_err(|e| AppError::Internal(format!("sources serialization: {e}")))?;
 
         let mut tx = pool.begin().await?;
+        if !ProposalModel::lock_filing_key(&mut tx, proposal.api_key_id).await? {
+            return Err(ProposalError::KeyNotAllowed {
+                api_key_id: proposal.api_key_id,
+            });
+        }
         let states = read_target_states(
             &mut tx,
             proposal.items.iter().filter_map(|i| i.target),
             true,
+            false,
         )
         .await?;
 
@@ -525,17 +656,18 @@ impl ProposalService {
     }
 
     /// A live proposal with its live items; `None` when unknown or
-    /// soft-deleted.
+    /// soft-deleted. Both reads share one transaction (one snapshot).
     pub async fn detail(pool: &DbPool, id: u64) -> Result<Option<ProposalDetail>, AppError> {
-        let Some(row) = ProposalModel::find(pool, id).await? else {
+        let mut tx = pool.begin().await?;
+        let Some(row) = ProposalModel::find(&mut tx, id).await? else {
             return Ok(None);
         };
-        let mut conn = pool.acquire().await?;
-        let items = ProposalModel::items(&mut conn, id)
+        let items = ProposalModel::items(&mut tx, id)
             .await?
             .into_iter()
             .map(item_from_row)
             .collect::<Result<Vec<_>, _>>()?;
+        tx.commit().await?;
         let sources: Vec<String> =
             serde_json::from_value(decode_json(&row.sources_json, "proposals.sources")?).map_err(
                 |e| AppError::Internal(format!("proposals.sources is not a string array: {e}")),
@@ -560,21 +692,34 @@ impl ProposalService {
         }))
     }
 
-    /// Decide a pending proposal (own transaction). See [`Self::transition_in`].
+    /// Decide a pending proposal in its own transaction. See
+    /// [`Self::transition_in`]; on [`ProposalError::Stale`] the stale
+    /// mark is committed.
     pub async fn transition(
         pool: &DbPool,
         id: u64,
         decision: &Decision,
     ) -> Result<ProposalStatus, ProposalError> {
-        let mut conn = pool.acquire().await?;
-        Self::transition_in(&mut conn, id, decision).await
+        let decision = decision.clone();
+        in_transaction(pool, move |conn| {
+            Box::pin(async move { Self::transition_in(conn, id, &decision).await })
+        })
+        .await
     }
 
-    /// Decide a pending proposal on the given connection (a transaction
-    /// when the caller applies the proposal in the same unit — 11-17).
-    /// Only `pending` → `accepted` / `rejected` / `stale`; accept and
-    /// reject record the user, every decision records `decided_at` and
-    /// bumps `version`. Returns the new status.
+    /// Decide a pending proposal on the given connection, which must be
+    /// inside a transaction (story 11-17 applies the proposal in the same
+    /// one). Only `pending` → `accepted` / `rejected` / `stale`; accept
+    /// and reject record an active user, every decision records
+    /// `decided_at` and bumps `version`.
+    ///
+    /// **Accept re-checks staleness first (FR140):** the proposal and its
+    /// targets are locked, and if any target moved since filing the
+    /// proposal is marked `stale` and [`ProposalError::Stale`] is
+    /// returned — the caller must then commit (not roll back) to keep
+    /// the mark, and apply nothing. On success the targets stay locked
+    /// until the transaction ends, so what the check saw is what the
+    /// caller applies onto.
     pub async fn transition_in(
         conn: &mut MySqlConnection,
         id: u64,
@@ -599,22 +744,53 @@ impl ProposalService {
         };
         debug_assert!(ProposalStatus::Pending.can_transition_to(update.to));
 
-        if ProposalModel::update_status_from_pending(conn, id, &update).await? == 1 {
-            tracing::info!(
-                proposal_id = id,
-                status = update.to.as_str(),
-                decided_by = ?update.decided_by,
-                "Proposal decided"
-            );
-            return Ok(update.to);
+        let status = ProposalModel::lock_status(conn, id)
+            .await?
+            .ok_or(ProposalError::NotFound { id })?;
+        if status != ProposalStatus::Pending {
+            return Err(ProposalError::NotPending { id, status });
         }
-        match ProposalModel::status_of(conn, id).await? {
-            None => Err(ProposalError::NotFound { id }),
-            Some(status) => Err(ProposalError::NotPending { id, status }),
+        if let Some(user_id) = update.decided_by
+            && !ProposalModel::is_active_user(conn, user_id).await?
+        {
+            return Err(ProposalError::UnknownDecider { user_id });
         }
+        if matches!(decision, Decision::Accept { .. }) {
+            let targets = stale_targets_on(conn, id, true).await?;
+            if !targets.is_empty() {
+                Self::apply_update(conn, id, &stale_update()).await?;
+                return Err(ProposalError::Stale { id, targets });
+            }
+        }
+        Self::apply_update(conn, id, &update).await?;
+        Ok(update.to)
     }
 
-    /// The items of a proposal whose target moved since filing.
+    async fn apply_update(
+        conn: &mut MySqlConnection,
+        id: u64,
+        update: &StatusUpdate,
+    ) -> Result<(), ProposalError> {
+        // The row is locked by `lock_status`; the status guard in the
+        // UPDATE is a second line of defence for a caller without a
+        // transaction.
+        if ProposalModel::update_status_from_pending(conn, id, update).await? != 1 {
+            return Err(match ProposalModel::lock_status(conn, id).await? {
+                None => ProposalError::NotFound { id },
+                Some(status) => ProposalError::NotPending { id, status },
+            });
+        }
+        tracing::info!(
+            proposal_id = id,
+            status = update.to.as_str(),
+            decided_by = ?update.decided_by,
+            "Proposal decided"
+        );
+        Ok(())
+    }
+
+    /// The items of a proposal whose target moved since filing (plain
+    /// read, for display).
     pub async fn stale_targets(pool: &DbPool, id: u64) -> Result<Vec<StaleTarget>, AppError> {
         let mut conn = pool.acquire().await?;
         Self::stale_targets_in(&mut conn, id).await
@@ -625,24 +801,22 @@ impl ProposalService {
         conn: &mut MySqlConnection,
         id: u64,
     ) -> Result<Vec<StaleTarget>, AppError> {
-        let items = ProposalModel::items(conn, id).await?;
-        let states = read_target_states(conn, items.iter().filter_map(|i| i.target), false).await?;
-        Ok(stale_reasons(&items, &states))
+        stale_targets_on(conn, id, false).await
     }
 
     /// Check a proposal's staleness in its own transaction: a pending
     /// proposal with at least one moved target becomes `stale`.
     pub async fn check_staleness(pool: &DbPool, id: u64) -> Result<StalenessCheck, ProposalError> {
-        let mut tx = pool.begin().await?;
-        let check = Self::check_staleness_in(&mut tx, id).await?;
-        tx.commit().await?;
-        Ok(check)
+        in_transaction(pool, move |conn| {
+            Box::pin(async move { Self::check_staleness_in(conn, id).await })
+        })
+        .await
     }
 
     /// [`Self::check_staleness`] on the given connection, which must be
-    /// inside a transaction for the row lock to hold (11-17 re-checks
-    /// then applies in the same transaction). A non-pending proposal is
-    /// left untouched and reported with its current status.
+    /// inside a transaction for the locks (proposal row and target rows)
+    /// to hold. A non-pending proposal is left untouched and reported
+    /// with its current status.
     pub async fn check_staleness_in(
         conn: &mut MySqlConnection,
         id: u64,
@@ -656,18 +830,26 @@ impl ProposalService {
                 stale_targets: Vec::new(),
             });
         }
-        let stale_targets = Self::stale_targets_in(conn, id).await?;
+        let stale_targets = stale_targets_on(conn, id, true).await?;
         if stale_targets.is_empty() {
             return Ok(StalenessCheck {
                 status,
                 stale_targets,
             });
         }
-        let status = Self::transition_in(conn, id, &Decision::MarkStale).await?;
+        Self::apply_update(conn, id, &stale_update()).await?;
         Ok(StalenessCheck {
-            status,
+            status: ProposalStatus::Stale,
             stale_targets,
         })
+    }
+}
+
+fn stale_update() -> StatusUpdate {
+    StatusUpdate {
+        to: ProposalStatus::Stale,
+        decided_by: None,
+        rejection_reason: None,
     }
 }
 
@@ -816,6 +998,46 @@ mod tests {
     }
 
     #[test]
+    fn item_values_depth_is_bounded() {
+        let mut deep = json!("leaf");
+        for _ in 0..MAX_ITEM_VALUES_DEPTH {
+            deep = json!({ "a": deep });
+        }
+        assert_eq!(json_depth(&deep), MAX_ITEM_VALUES_DEPTH);
+        assert!(validate_items(&[item(deep.clone())]).is_ok());
+        let too_deep = json!({ "a": [deep] });
+        assert!(matches!(
+            validate_items(&[item(json!({})), item(too_deep)]),
+            Err(ProposalError::ValuesTooDeep { index: 2 })
+        ));
+    }
+
+    #[test]
+    fn json_depth_counts_containers() {
+        assert_eq!(json_depth(&json!(1)), 0);
+        assert_eq!(json_depth(&json!({})), 1);
+        assert_eq!(json_depth(&json!({"a": [1, {"b": 2}], "c": 3})), 3);
+    }
+
+    #[test]
+    fn total_item_values_are_bounded() {
+        let chunk = json!({ "d": "x".repeat(60 * 1024) });
+        let n = MAX_PROPOSAL_VALUES_BYTES / (60 * 1024) + 1;
+        assert!(matches!(
+            validate_items(&vec![item(chunk); n]),
+            Err(ProposalError::ProposalTooLarge { .. })
+        ));
+    }
+
+    #[test]
+    fn the_stored_form_must_fit_the_length_limit() {
+        // Short as typed, long once percent-encoded.
+        let url = format!("https://example.org/{}", "é".repeat(1000));
+        assert!(url.chars().count() < MAX_SOURCE_CHARS);
+        assert_eq!(source_err(&[url.as_str()]), (1, SourceRejection::TooLong));
+    }
+
+    #[test]
     fn rejection_reason_is_trimmed_and_bounded() {
         assert_eq!(normalize_rejection_reason(None).unwrap(), None);
         assert_eq!(normalize_rejection_reason(Some("   ")).unwrap(), None);
@@ -939,9 +1161,32 @@ mod tests {
         assert!(!np.is_invalid_input());
         assert!(matches!(AppError::from(np), AppError::Conflict(m) if m.contains("rejected")));
 
-        let db = ProposalError::Database(AppError::Internal("x".into()));
+        let db = ProposalError::Database(AppError::Internal("password=secret".into()));
         assert!(!db.is_invalid_input());
+        assert!(
+            !db.to_string().contains("secret"),
+            "no database text in the message"
+        );
         assert!(matches!(AppError::from(db), AppError::Internal(_)));
+
+        for e in [
+            ProposalError::Stale {
+                id: 1,
+                targets: vec![],
+            },
+            ProposalError::KeyNotAllowed { api_key_id: 1 },
+        ] {
+            assert!(!e.is_invalid_input());
+            assert!(matches!(AppError::from(e), AppError::Conflict(_)));
+        }
+        for e in [
+            ProposalError::UnknownDecider { user_id: 1 },
+            ProposalError::ValuesTooDeep { index: 1 },
+            ProposalError::ProposalTooLarge { bytes: 1 },
+        ] {
+            assert!(e.is_invalid_input());
+            assert!(matches!(AppError::from(e), AppError::BadRequest(_)));
+        }
     }
 
     #[test]

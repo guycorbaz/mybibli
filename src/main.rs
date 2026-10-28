@@ -377,16 +377,22 @@ async fn main() {
     // next to `covers/` and never served. Fail-open (D-11-9-4): nothing
     // uses it yet, so a parent directory the process cannot write to
     // must not stop a deployment that boots today.
-    let cover_staging_dir = mybibli::services::cover_staging::staging_dir_for(&covers_dir);
-    match std::fs::create_dir_all(&cover_staging_dir) {
-        Ok(()) => tracing::info!(
-            cover_staging_dir = %cover_staging_dir.display(),
-            "Cover staging directory configured"
-        ),
-        Err(e) => tracing::warn!(
-            cover_staging_dir = %cover_staging_dir.display(),
-            error = %e,
-            "Cover staging directory could not be created; cover proposals will be unavailable"
+    match mybibli::services::cover_staging::staging_dir_for(&covers_dir) {
+        Some(dir) => match std::fs::create_dir_all(&dir) {
+            Ok(()) => tracing::info!(
+                cover_staging_dir = %dir.display(),
+                "Cover staging directory configured"
+            ),
+            Err(e) => tracing::warn!(
+                cover_staging_dir = %dir.display(),
+                error = %e,
+                "Cover staging directory could not be created; cover proposals will be unavailable"
+            ),
+        },
+        None => tracing::warn!(
+            covers_dir = %covers_dir.display(),
+            "No cover staging directory can sit next to the covers directory; \
+             cover proposals will be unavailable"
         ),
     }
 

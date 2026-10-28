@@ -202,8 +202,14 @@ fn parse_enum<T>(raw: &str, column: &str, parse: fn(&str) -> Option<T>) -> Resul
     parse(raw).ok_or_else(|| AppError::Internal(format!("unexpected {column} value: {raw}")))
 }
 
+// The `api_keys` and `users` joins deliberately carry no
+// `deleted_at IS NULL`: a proposal keeps showing the label of the key
+// that filed it after the key is revoked or deleted, and the name of the
+// user who decided it after that user is deactivated (AC4, AC5). The row
+// itself only disappears when purged (`decided_by` is then SET NULL).
 const PROPOSAL_SELECT: &str = "SELECT p.id, p.kind, p.status, p.api_key_id, k.label AS api_key_label, \
-     CAST(p.sources AS CHAR) AS sources, p.decided_by, u.username AS decided_by_username, \
+     CAST(p.sources AS CHAR) AS sources, CAST(p.decided_by AS SIGNED) AS decided_by, \
+     u.username AS decided_by_username, \
      CAST(p.decided_at AS DATETIME) AS decided_at, p.rejection_reason, \
      CAST(p.created_at AS DATETIME) AS created_at, CAST(p.updated_at AS DATETIME) AS updated_at, \
      p.version \
@@ -211,7 +217,7 @@ const PROPOSAL_SELECT: &str = "SELECT p.id, p.kind, p.status, p.api_key_id, k.la
      LEFT JOIN api_keys k ON k.id = p.api_key_id \
      LEFT JOIN users u ON u.id = p.decided_by";
 
-const ITEM_SELECT: &str = "SELECT id, proposal_id, target_table, target_id, target_version, \
+const ITEM_SELECT: &str = "SELECT id, proposal_id, target_table, CAST(target_id AS SIGNED) AS target_id, target_version, \
      CAST(proposed_values AS CHAR) AS proposed_values, version \
      FROM proposal_items";
 
@@ -228,7 +234,7 @@ impl ProposalModel {
             api_key_id: r.try_get("api_key_id")?,
             api_key_label: r.try_get("api_key_label")?,
             sources_json: r.try_get("sources")?,
-            decided_by: r.try_get("decided_by")?,
+            decided_by: r.try_get::<Option<i64>, _>("decided_by")?.map(|v| v as u64),
             decided_by_username: r.try_get("decided_by_username")?,
             decided_at: r.try_get("decided_at")?,
             rejection_reason: r.try_get("rejection_reason")?,
@@ -240,7 +246,7 @@ impl ProposalModel {
 
     fn item_from_row(r: &sqlx::mysql::MySqlRow) -> Result<ProposalItemRow, AppError> {
         let table: Option<String> = r.try_get("target_table")?;
-        let target_id: Option<u64> = r.try_get("target_id")?;
+        let target_id: Option<u64> = r.try_get::<Option<i64>, _>("target_id")?.map(|v| v as u64);
         let target = match (table, target_id) {
             (Some(t), Some(id)) => Some(ProposalTarget {
                 table: parse_enum(
@@ -306,12 +312,17 @@ impl ProposalModel {
 
     /// Current state of the given rows of one target table, by id. Rows
     /// that no longer exist (hard-purged) are absent from the map. With
-    /// `live_only`, soft-deleted rows are absent too.
+    /// `live_only`, soft-deleted rows are absent too. With `lock`, the
+    /// read is a locking read (`FOR UPDATE`): it sees the latest committed
+    /// rows rather than the transaction's snapshot, and holds them until
+    /// the transaction ends, so a staleness check followed by an apply in
+    /// the same transaction (story 11-17) cannot miss a concurrent edit.
     pub async fn target_states(
         conn: &mut MySqlConnection,
         table: ProposalTargetTable,
         ids: &[u64],
         live_only: bool,
+        lock: bool,
     ) -> Result<HashMap<u64, TargetRowState>, AppError> {
         let mut out = HashMap::new();
         if ids.is_empty() {
@@ -323,9 +334,10 @@ impl ProposalModel {
         } else {
             ""
         };
+        let lock = if lock { " FOR UPDATE" } else { "" };
         // `table` comes from the enum, never from input.
         let sql = format!(
-            "SELECT id, version, CAST(deleted_at IS NOT NULL AS SIGNED) AS is_deleted FROM {} WHERE id IN ({placeholders}){live}",
+            "SELECT id, version, CAST(deleted_at IS NOT NULL AS SIGNED) AS is_deleted FROM {} WHERE id IN ({placeholders}){live}{lock}",
             table.as_str()
         );
         let mut q = sqlx::query(&sql);
@@ -346,9 +358,15 @@ impl ProposalModel {
     }
 
     /// A live proposal by id.
-    pub async fn find(pool: &DbPool, id: u64) -> Result<Option<ProposalRow>, AppError> {
+    pub async fn find(
+        conn: &mut MySqlConnection,
+        id: u64,
+    ) -> Result<Option<ProposalRow>, AppError> {
         let sql = format!("{PROPOSAL_SELECT} WHERE p.id = ? AND p.deleted_at IS NULL");
-        let row = sqlx::query(&sql).bind(id).fetch_optional(pool).await?;
+        let row = sqlx::query(&sql)
+            .bind(id)
+            .fetch_optional(&mut *conn)
+            .await?;
         row.as_ref().map(Self::proposal_from_row).transpose()
     }
 
@@ -381,21 +399,6 @@ impl ProposalModel {
             .transpose()
     }
 
-    /// Status of a live proposal, without locking.
-    pub async fn status_of(
-        conn: &mut MySqlConnection,
-        id: u64,
-    ) -> Result<Option<ProposalStatus>, AppError> {
-        let status: Option<String> =
-            sqlx::query_scalar("SELECT status FROM proposals WHERE id = ? AND deleted_at IS NULL")
-                .bind(id)
-                .fetch_optional(&mut *conn)
-                .await?;
-        status
-            .map(|s| parse_enum(&s, "proposals.status", ProposalStatus::parse))
-            .transpose()
-    }
-
     /// Move a live `pending` proposal to a final state. The status guard
     /// is part of the `WHERE`, so of two concurrent deciders only one
     /// updates a row. Returns the number of rows updated (0 or 1).
@@ -416,6 +419,38 @@ impl ProposalModel {
         .execute(&mut *conn)
         .await?;
         Ok(res.rows_affected())
+    }
+
+    /// Whether the key may file proposals: it exists, is neither revoked
+    /// nor deleted, and has the `propose` scope. The row is share-locked
+    /// until the filing transaction ends, so a concurrent revocation
+    /// (which marks the key's pending proposals stale, story 11-14) waits
+    /// for the filing to commit and then sees it.
+    pub async fn lock_filing_key(
+        conn: &mut MySqlConnection,
+        api_key_id: u64,
+    ) -> Result<bool, AppError> {
+        let found: Option<u64> = sqlx::query_scalar(
+            "SELECT id FROM api_keys WHERE id = ? AND scope = 'propose' \
+             AND revoked_at IS NULL AND deleted_at IS NULL LOCK IN SHARE MODE",
+        )
+        .bind(api_key_id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found.is_some())
+    }
+
+    /// Whether `user_id` is an active (not deactivated) user.
+    pub async fn is_active_user(
+        conn: &mut MySqlConnection,
+        user_id: u64,
+    ) -> Result<bool, AppError> {
+        let found: Option<u64> =
+            sqlx::query_scalar("SELECT id FROM users WHERE id = ? AND deleted_at IS NULL")
+                .bind(user_id)
+                .fetch_optional(&mut *conn)
+                .await?;
+        Ok(found.is_some())
     }
 
     /// One page of live proposals, newest first.
