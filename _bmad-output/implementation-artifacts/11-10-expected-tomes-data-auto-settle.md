@@ -22,6 +22,7 @@ so that its gaps have names and settle by themselves once I scan them.
 | `services::title::create_manual` | stores `form.isbn` as typed (ISBN-13 expected, D-11-1-4) | settle matches the stored ISBN exactly; a non-13-digit value matches nothing |
 | `utils::isbn10_to_isbn13`, `TitleService::validate_isbn13_checksum` | story 11-1 helper | ISBN normalisation for expected tomes reuses both |
 | `services::auto_purge::PURGE_DELETION_ORDER` | children before parents; `validate_schema` checks every entry exists | add `series_expected_tomes` before `titles` / `series` (soft-deleted tomes purged after 30 days) |
+| `services::trash::permanent_delete` (Trash panel) | hard-deletes a title / series after clearing an explicit child list (`title_series`, …) | no change needed: the tome FKs are `CASCADE` (series) and `SET NULL` (title), so a manual permanent delete is never blocked — covered by an integration test |
 | `tests/seed_drift.rs::ENTITY_TABLES_WITH_SOFT_DELETE` | AR24 regression net | add `series_expected_tomes` |
 | `tests/scan_title_context.rs` | drives `/catalog/scan` through `tower::oneshot` with real login + CSRF | pattern for handler-level settle tests |
 | `tests/e2e/specs/journeys/mcp-gaps-tools.spec.ts` | E2E over `get_series` | assert the new `expected_tomes` key |
@@ -90,3 +91,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 ## Change Log
 
 - 2026-10-28 — story created (ready-for-dev).
+- 2026-10-28 — validated against the create-story checklist: added the Trash permanent-delete path (FK actions make it safe), confirmed `POST /catalog/title` is the manual creation route, `admin_reset` touches no catalogue table.
