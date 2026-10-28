@@ -96,6 +96,10 @@ HTTP ─► CSP ─► SetupGate ─► SessionResolve (skipped for /api/mcp) �
 - Stateless: GET and DELETE answer 405 (`Allow: POST`). Fine for both revisions (no server-initiated stream needed).
 - `2026-07-28` requests need the `Mcp-Method` header (`tools/call`) and `Mcp-Name` (tool name) matching the body (SEP-2243), else a JSON-RPC header-mismatch error.
 
+- `tower::ServiceExt::oneshot` requests carry no `Host` header and an origin-form URI: rmcp then answers 400 `missing Host header`. Every integration-test request must set `Host: localhost` (or the host under test) explicitly.
+- `nest_service("/api/mcp", …)`: rmcp ignores the path, so `/api/mcp` and `/api/mcp/` both reach it; only POST is served.
+- The E2E journey reuses the key-creation steps of `tests/e2e/specs/journeys/admin-api-keys.spec.ts` (same selectors); if they are needed twice, extract a helper into `tests/e2e/helpers/` instead of copying (Rule #1).
+
 ### Configuration mechanism (decided here — AC5)
 
 Env vars, read once at router build: they are deployment facts (which LAN name the NAS answers to), security-relevant, and must not be editable from a web page an attacker could reach. Not a `settings` row (D-11-6-2).
@@ -143,3 +147,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 ## Change Log
 
 - 2026-10-28 — story created (create-story), after the rmcp 3.8.0 source pre-check.
+- 2026-10-28 — validated against the create-story checklist: oneshot `Host` header trap, nest path note, E2E helper reuse added.
