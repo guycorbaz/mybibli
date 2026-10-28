@@ -490,3 +490,24 @@ async fn count_with_gaps_negative_position_does_not_fill_slot(pool: MySqlPool) {
     let n = SeriesModel::count_with_gaps(&pool).await.expect("query ok");
     assert_eq!(n, 1, "negative position excluded; 2 < 3 = gappy");
 }
+
+/// Story 11-8 review — a position above the total (left behind when the
+/// total of a closed series is lowered, or an open series is closed)
+/// fills no slot: a closed series of 3 holding 1, 5 and 6 still misses
+/// 2 and 3. Before the fix the out-of-range positions hid both gaps.
+#[sqlx::test(migrations = "./migrations")]
+async fn position_above_total_does_not_fill_a_slot(pool: MySqlPool) {
+    let s = insert_series(&pool, "Closed-Shrunk", "closed", Some(3)).await;
+    insert_filled_position(&pool, s, 1, 1).await;
+    insert_filled_position(&pool, s, 5, 5).await;
+    insert_filled_position(&pool, s, 6, 6).await;
+
+    let n = SeriesModel::count_with_gaps(&pool).await.expect("query ok");
+    assert_eq!(n, 1, "1/3 in-range positions held = gappy");
+    let rows = SeriesModel::list_with_gaps(&pool, 10)
+        .await
+        .expect("query ok");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].owned_count, 1);
+    assert_eq!(rows[0].gap_count(), 2);
+}

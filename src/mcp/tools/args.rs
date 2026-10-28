@@ -1,9 +1,12 @@
 //! Story 11-7 — argument checks shared by the MCP tools (pure).
 
+use std::str::FromStr;
+
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::mcp::tool::ToolError;
+use crate::models::media_type::MediaType;
 
 /// Highest page a list tool serves. Pages hold `DEFAULT_PAGE_SIZE`
 /// items, so this reaches far beyond a household library and keeps
@@ -59,6 +62,35 @@ pub fn query(query: Option<String>) -> Result<String, ToolError> {
     text("query", query)
 }
 
+/// The accepted `media_type` values, from [`MediaType::ALL`].
+pub fn media_type_names() -> Vec<String> {
+    MediaType::ALL.iter().map(ToString::to_string).collect()
+}
+
+/// Validate an optional `media_type` filter (case-insensitive); empty
+/// or absent means no filter. Returns the canonical name.
+pub fn media_type(value: Option<String>) -> Result<Option<String>, ToolError> {
+    let value = text("media_type", value)?;
+    if value.is_empty() {
+        return Ok(None);
+    }
+    MediaType::from_str(&value)
+        .map(|m| Some(m.to_string()))
+        .map_err(|_| {
+            ToolError::InvalidArguments(format!(
+                "unknown `media_type` \"{value}\"; use one of: {}",
+                media_type_names().join(", ")
+            ))
+        })
+}
+
+/// Validate an optional `genre` name filter; empty or absent means no
+/// filter. The name is resolved against the database by
+/// [`super::resolve_genre`].
+pub fn genre(value: Option<String>) -> Result<Option<String>, ToolError> {
+    Ok(Some(text("genre", value)?).filter(|g| !g.is_empty()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,5 +142,29 @@ mod tests {
         assert_eq!(text("genre", Some(" BD ".into())), Ok("BD".into()));
         let long = text("genre", Some("g".repeat(MAX_QUERY_CHARS + 1))).unwrap_err();
         assert!(long.message().contains("`genre`") && !long.message().contains("ggg"));
+    }
+
+    #[test]
+    fn media_type_names_follow_the_enum() {
+        assert_eq!(
+            media_type_names(),
+            ["book", "bd", "cd", "dvd", "magazine", "report"]
+        );
+    }
+
+    #[test]
+    fn media_type_and_genre_filters() {
+        assert_eq!(media_type(None), Ok(None));
+        assert_eq!(media_type(Some(" ".into())), Ok(None));
+        assert_eq!(media_type(Some("BD".into())), Ok(Some("bd".into())));
+        let err = media_type(Some("vinyl".into())).unwrap_err();
+        assert!(
+            err.message()
+                .contains("book, bd, cd, dvd, magazine, report")
+        );
+        assert!(media_type(Some("m".repeat(MAX_QUERY_CHARS + 1))).is_err());
+        assert_eq!(genre(Some("  ".into())), Ok(None));
+        assert_eq!(genre(Some(" Roman ".into())), Ok(Some("Roman".into())));
+        assert!(genre(Some("g".repeat(MAX_QUERY_CHARS + 1))).is_err());
     }
 }

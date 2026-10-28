@@ -3,18 +3,9 @@ use sqlx::Row;
 
 use crate::db::DbPool;
 use crate::error::AppError;
+use crate::utils::like_contains_pattern;
 
 // ─── Contributor model ────────────────────────────────────────────
-
-/// `%query%` with the LIKE metacharacters of `query` escaped, so a user
-/// typing `_` or `%` matches those characters literally.
-fn like_contains_pattern(query: &str) -> String {
-    let escaped = query
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_");
-    format!("%{escaped}%")
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContributorModel {

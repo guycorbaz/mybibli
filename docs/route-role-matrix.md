@@ -192,7 +192,9 @@ this path (no anonymous `sessions` row).
 Tools (all read-only, soft-deleted rows never returned): `get_title`
 (11-6, enriched in 11-7 with `has_cover` and `manually_edited_fields`),
 `search_titles` and `search_contributors` (11-7 — 25 items per page,
-`page` 1..=10000).
+`page` 1..=10000); `list_series`, `get_series` (positions, omnibus
+flags, gaps computed as on the dashboard), `list_titles_without_cover`
+and `list_titles_with_incomplete_metadata` (11-8).
 
 ### Shelf audit (CR #237) (`src/routes/audit.rs`)
 

@@ -1,17 +1,12 @@
 //! Story 11-7 — `search_titles`: find titles by text, ISBN or volume
 //! label, filtered by media type and genre, one page at a time.
 
-use std::str::FromStr;
-
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::{ListPage, args, to_json};
+use super::{ListPage, TitleItem, args, resolve_genre, title_list_schema, to_json};
 use crate::mcp::tool::{McpTool, ToolContext, ToolError, ToolFuture};
-use crate::models::media_type::MediaType;
-use crate::models::title::SearchResult;
-use crate::services::search::{CatalogSearch, GenreLookup, SearchService};
-use crate::services::title_detail::has_cover;
+use crate::services::search::{CatalogSearch, SearchService};
 
 pub struct SearchTitles;
 
@@ -37,66 +32,14 @@ struct Parsed {
     page: u32,
 }
 
-/// The accepted `media_type` values, from [`MediaType::ALL`].
-fn media_type_names() -> Vec<String> {
-    MediaType::ALL.iter().map(ToString::to_string).collect()
-}
-
 fn parse_args(args: Value) -> Result<Parsed, ToolError> {
     let a: Args = args::parse_object(args, EXPECTED)?;
-    let media_type = args::text("media_type", a.media_type)?;
-    let media_type = if media_type.is_empty() {
-        None
-    } else {
-        Some(
-            MediaType::from_str(&media_type)
-                .map_err(|_| {
-                    ToolError::InvalidArguments(format!(
-                        "unknown `media_type` \"{media_type}\"; use one of: {}",
-                        media_type_names().join(", ")
-                    ))
-                })?
-                .to_string(),
-        )
-    };
-    let genre = Some(args::text("genre", a.genre)?).filter(|g| !g.is_empty());
     Ok(Parsed {
         query: args::query(a.query)?,
-        media_type,
-        genre,
+        media_type: args::media_type(a.media_type)?,
+        genre: args::genre(a.genre)?,
         page: args::page(a.page)?,
     })
-}
-
-#[derive(Debug, Serialize)]
-struct Item {
-    id: u64,
-    title: String,
-    subtitle: Option<String>,
-    media_type: String,
-    genre_name: Option<String>,
-    primary_contributor: Option<String>,
-    volume_count: u64,
-    has_cover: bool,
-    publication_date: Option<String>,
-    dewey_code: Option<String>,
-}
-
-impl From<SearchResult> for Item {
-    fn from(r: SearchResult) -> Self {
-        Item {
-            id: r.id,
-            title: r.title,
-            subtitle: r.subtitle,
-            media_type: r.media_type,
-            genre_name: Some(r.genre_name).filter(|g| !g.is_empty()),
-            primary_contributor: r.primary_contributor,
-            volume_count: r.volume_count,
-            has_cover: has_cover(r.cover_image_url.as_deref()),
-            publication_date: r.publication_date.map(|d| d.format("%Y-%m-%d").to_string()),
-            dewey_code: r.dewey_code,
-        }
-    }
 }
 
 impl McpTool for SearchTitles {
@@ -123,57 +66,20 @@ impl McpTool for SearchTitles {
     }
 
     fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "maxLength": args::MAX_QUERY_CHARS,
-                    "description": "Free text, an ISBN-10/ISBN-13, or a volume label (V0042). Empty or omitted: all titles."
-                },
-                "media_type": {
-                    "type": "string",
-                    "enum": media_type_names(),
-                    "description": "Only titles of this media type (bd = comics)."
-                },
-                "genre": {
-                    "type": "string",
-                    "maxLength": args::MAX_QUERY_CHARS,
-                    "description": "Only titles of this genre, by name (case and accents ignored). An unknown name returns the list of valid genres."
-                },
-                "page": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": args::MAX_PAGE,
-                    "default": 1,
-                    "description": "1-based page number; each page holds 25 titles."
-                }
-            },
-            "additionalProperties": false
-        })
+        title_list_schema(json!({
+            "query": {
+                "type": "string",
+                "maxLength": args::MAX_QUERY_CHARS,
+                "description": "Free text, an ISBN-10/ISBN-13, or a volume label (V0042). Empty or omitted: all titles."
+            }
+        }))
     }
 
     fn call<'a>(&'a self, ctx: &'a ToolContext, args: Value) -> ToolFuture<'a> {
         Box::pin(async move {
             let parsed = parse_args(args)?;
             let pool = &ctx.state.pool;
-            let genre_id = match parsed.genre.as_deref() {
-                None => None,
-                Some(name) => match SearchService::resolve_genre(pool, name).await? {
-                    GenreLookup::Found(id) => Some(id),
-                    GenreLookup::Unknown(known) if known.is_empty() => {
-                        return Err(ToolError::InvalidArguments(
-                            "the library has no genres; omit `genre`".to_string(),
-                        ));
-                    }
-                    GenreLookup::Unknown(known) => {
-                        return Err(ToolError::InvalidArguments(format!(
-                            "unknown `genre` \"{name}\"; the library's genres are: {}",
-                            known.join(", ")
-                        )));
-                    }
-                },
-            };
+            let genre_id = resolve_genre(ctx, parsed.genre.as_deref()).await?;
             let list = SearchService::search_catalog(
                 pool,
                 &CatalogSearch {
@@ -181,10 +87,11 @@ impl McpTool for SearchTitles {
                     media_type: parsed.media_type,
                     genre_id,
                     page: parsed.page,
+                    no_cover_only: false,
                 },
             )
             .await?;
-            to_json(ListPage::<Item>::from(list), "search_titles")
+            to_json(ListPage::<TitleItem>::from(list), "search_titles")
         })
     }
 }
@@ -221,14 +128,6 @@ mod tests {
                 .unwrap()
                 .media_type,
             None
-        );
-    }
-
-    #[test]
-    fn media_type_names_follow_the_enum() {
-        assert_eq!(
-            media_type_names(),
-            ["book", "bd", "cd", "dvd", "magazine", "report"]
         );
     }
 

@@ -13,153 +13,15 @@
 
 mod common;
 
-use axum::Router;
 use common::mcp::*;
 use mybibli::db::DbPool;
 use mybibli::models::api_key::ApiKeyScope;
-use serde_json::{Value, json};
-
-// ─── Seeding (test DB only) ──────────────────────────────────────
-
-async fn genre_id(pool: &DbPool, name: &str) -> u64 {
-    let (id,): (u64,) = sqlx::query_as("SELECT id FROM genres WHERE name = ?")
-        .bind(name)
-        .fetch_one(pool)
-        .await
-        .unwrap();
-    id
-}
-
-async fn role_id(pool: &DbPool, name: &str) -> u64 {
-    let (id,): (u64,) = sqlx::query_as("SELECT id FROM contributor_roles WHERE name = ?")
-        .bind(name)
-        .fetch_one(pool)
-        .await
-        .unwrap();
-    id
-}
-
-async fn add_title(
-    pool: &DbPool,
-    title: &str,
-    media_type: &str,
-    genre: &str,
-    isbn: Option<&str>,
-) -> u64 {
-    let genre = genre_id(pool, genre).await;
-    sqlx::query(
-        "INSERT INTO titles (title, language, genre_id, media_type, isbn) VALUES (?, 'fr', ?, ?, ?)",
-    )
-    .bind(title)
-    .bind(genre)
-    .bind(media_type)
-    .bind(isbn)
-    .execute(pool)
-    .await
-    .unwrap()
-    .last_insert_id()
-}
-
-async fn add_contributor(pool: &DbPool, name: &str) -> u64 {
-    sqlx::query("INSERT INTO contributors (name) VALUES (?)")
-        .bind(name)
-        .execute(pool)
-        .await
-        .unwrap()
-        .last_insert_id()
-}
-
-async fn credit(pool: &DbPool, title_id: u64, contributor_id: u64, role: &str) -> u64 {
-    let role = role_id(pool, role).await;
-    sqlx::query(
-        "INSERT INTO title_contributors (title_id, contributor_id, role_id) VALUES (?, ?, ?)",
-    )
-    .bind(title_id)
-    .bind(contributor_id)
-    .bind(role)
-    .execute(pool)
-    .await
-    .unwrap()
-    .last_insert_id()
-}
-
-async fn add_volume(pool: &DbPool, title_id: u64, label: &str, location: Option<u64>) -> u64 {
-    sqlx::query("INSERT INTO volumes (title_id, label, location_id) VALUES (?, ?, ?)")
-        .bind(title_id)
-        .bind(label)
-        .bind(location)
-        .execute(pool)
-        .await
-        .unwrap()
-        .last_insert_id()
-}
-
-async fn soft_delete(pool: &DbPool, table: &str, id: u64) {
-    let sql = format!("UPDATE {table} SET deleted_at = NOW() WHERE id = ?");
-    let done = sqlx::query(&sql).bind(id).execute(pool).await.unwrap();
-    assert_eq!(done.rows_affected(), 1, "{table} {id}");
-}
-
-// ─── Calling a tool ──────────────────────────────────────────────
-
-struct Agent {
-    app: Router,
-    key: String,
-}
-
-impl Agent {
-    async fn new(pool: &DbPool) -> Self {
-        Self {
-            app: router(pool),
-            key: seed_key(pool, ApiKeyScope::Propose).await,
-        }
-    }
-
-    /// The `result` of a `tools/call` (revision 2025-11-25, stateless).
-    async fn call(&self, tool: &str, args: Value) -> Value {
-        let res = send_json(
-            &self.app,
-            Call::new(&self.key, legacy_call(tool, args)).version(V_LEGACY),
-        )
-        .await;
-        assert!(res["error"].is_null(), "protocol error: {res}");
-        res["result"].clone()
-    }
-
-    /// A successful call's `structuredContent`.
-    async fn ok(&self, tool: &str, args: Value) -> Value {
-        let result = self.call(tool, args.clone()).await;
-        assert_eq!(result["isError"], false, "{tool} {args}: {result}");
-        result["structuredContent"].clone()
-    }
-
-    /// A failed call's message.
-    async fn err(&self, tool: &str, args: Value) -> String {
-        let result = self.call(tool, args.clone()).await;
-        assert_eq!(
-            result["isError"], true,
-            "{tool} {args} should fail: {result}"
-        );
-        result["content"][0]["text"]
-            .as_str()
-            .expect("error text")
-            .to_string()
-    }
-}
-
-fn ids(page: &Value) -> Vec<u64> {
-    page["items"]
-        .as_array()
-        .expect("items")
-        .iter()
-        .map(|i| i["id"].as_u64().expect("id"))
-        .collect()
-}
+use serde_json::json;
 
 // ─── tools/list ──────────────────────────────────────────────────
 
 #[sqlx::test(migrations = "./migrations")]
-async fn tools_list_describes_the_three_read_tools(pool: DbPool) {
+async fn tools_list_describes_the_read_tools(pool: DbPool) {
     let agent = Agent::new(&pool).await;
     let list = send_json(
         &agent.app,
@@ -173,7 +35,7 @@ async fn tools_list_describes_the_three_read_tools(pool: DbPool) {
     let tools = list["result"]["tools"].as_array().expect("tools");
     let mut names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     names.sort();
-    assert_eq!(names, ["get_title", "search_contributors", "search_titles"]);
+    assert_eq!(names, ALL_TOOLS);
     for t in tools {
         assert!(t["description"].as_str().unwrap().len() > 200, "{t}");
         assert_eq!(t["inputSchema"]["type"], "object");

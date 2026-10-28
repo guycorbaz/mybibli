@@ -331,3 +331,48 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 **Context:** review round 1 — Rust `to_lowercase` is accent-sensitive while the web UI (MariaDB `*_ci` collation) is not.
 **Chosen:** `GenreModel::find_active_id_by_name` (`name = ?`, collation decides: case- and accent-insensitive); the list of names is only loaded for the "unknown genre" message. `genre` and `media_type` are capped at 200 characters like `query` (they are echoed in error messages); the bound applies to the value as sent, like the schema's `maxLength`.
 **Reversible:** yes.
+
+## § 11-8 — MCP series and gaps read tools (part of #493)
+
+### D-11-8-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-8-mcp-series-gaps-read-tools` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-8-2 — Split `models/title.rs` first (#516)
+**Context:** the story adds a title query; `src/models/title.rs` is at 1942 lines (Rule 12).
+**Chosen:** move the search projection (`SearchResult`, sort whitelist, `active_search`, `list_recent_active`, their unit tests) to `src/models/title_search.rs` in its own behaviour-preserving commit, re-exported from `models::title` so no caller changes; the incomplete-metadata query goes to the new file. Closes #516.
+**Reversible:** yes.
+
+### D-11-8-3 — Gaps only for closed series, with the dashboard's formula
+**Context:** the AC says "gaps computed as in `SeriesModel::list_with_gaps`", which only knows gaps for a closed series with a total.
+**Chosen:** `gap_count = max(total - distinct held positions, 0)` for a closed series with `total > 0`, `null` otherwise; `missing_positions` lists the positions 1..=total not held. An open series reports `gap_count: null` and `missing_positions: []` — holes between held positions of an open series are not reported (no known end). A position above the total (legacy data only — assignment refuses it) counts as held, as on the dashboard, so `gap_count` can then be smaller than the number of missing positions.
+**Rejected:** inventing gaps for open series (departs from the dashboard and from the AC's reference).
+**Reversible:** yes.
+
+### D-11-8-4 — `missing_positions` capped at 1000
+**Context:** `series.total_volume_count` has no upper bound.
+**Chosen:** at most 1000 missing positions listed, ascending, with `missing_positions_truncated: true` when cut; `gap_count` stays exact.
+**Reversible:** yes.
+
+### D-11-8-5 — `positions` lists assignment rows, not a grid
+**Context:** the AC asks for "positions, omnibus flags".
+**Chosen:** one entry per live assignment row (an omnibus yields one entry per covered position, `is_omnibus: true`), ordered by position then title id; the gaps are given separately in `missing_positions` instead of empty grid cells.
+**Reversible:** yes.
+
+### D-11-8-6 — Incomplete metadata: four fixed fields, one optional filter
+**Context:** "a title is incomplete when it lacks a description, a publisher, a contributor or a publication year, and the list can be filtered by missing field".
+**Chosen:** `missing` (optional, one of `description`, `publisher`, `contributor`, `publication_year`); blank strings count as missing; a contributor counts only through a live junction row, live contributor and live role (the `get_title` rule); the publication year is missing when `publication_date` is NULL. Each item lists all its missing fields. Both title lists also take the `media_type` and `genre` filters of `search_titles`.
+**Rejected:** an array filter (any/all semantics to explain for little gain).
+**Reversible:** yes.
+
+### D-11-8-7 — `list_series` filters: name and `gaps_only`
+**Context:** the AC gives no input shape for `list_series`.
+**Chosen:** `query` (name substring) and `gaps_only` (closed series with at least one gap), sorted by name then id, 25 per page.
+**Reversible:** yes.
+
+### D-11-8-8 — Code review: a position above a closed series' total fills no slot (supersedes part of D-11-8-3)
+**Context:** the review found `gap_count` (total − held positions, counting positions above the total) disagreeing with `missing_positions` (1..=total not held), and `list_series gaps_only` hiding a series that `get_series` reports gaps for. Positions above the total are not legacy-only: `update_series` checks the new total against the number of assignment rows, so lowering a total or closing an open series leaves them behind.
+**Chosen:** for a closed series with a total, only positions within 1..=total count as held — in the shared SQL `filled_positions_join!` (dashboard `count_with_gaps` / `list_with_gaps` and `list_summaries`) and in the Rust `series_gaps`, so `gap_count` always equals the number of missing positions and every surface agrees (the series detail grid already counted that way). `get_series` still lists the out-of-range assignment rows in `positions`. The `/series` list page's own row count and the `update_series` guard are left as they are, tracked in #519.
+**Rejected:** keeping the dashboard formula and documenting the mismatch (two tools contradicting each other on the same series); changing only the MCP side (dashboard and MCP would then disagree).
+**Reversible:** yes.
