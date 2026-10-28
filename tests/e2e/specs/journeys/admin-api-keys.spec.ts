@@ -82,6 +82,12 @@ test.describe("Story 11-5 — propose API-key scope", () => {
     // German Revoke button share the word "Widerrufen", so assert on the
     // button, not on the row text).
     const revokedRow = page.locator("#admin-api-keys-list tr", { hasText: label });
+    await expect(revokedRow).toBeVisible();
+    await expect(
+      revokedRow.getByRole("button", {
+        name: /Delete API key|Supprimer la clé|löschen|Elimina chiave/i,
+      }),
+    ).toBeVisible();
     await expect(
       revokedRow.getByRole("button", { name: /Revoke API key|Révoquer la clé|widerrufen|Revoca chiave/i }),
     ).toHaveCount(0);

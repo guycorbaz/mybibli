@@ -267,8 +267,8 @@ fn scope_label_key(scope: ApiKeyScope) -> &'static str {
 /// (D-11-5-3) — pinned by `scope_chip_classes_are_emitted_by_tailwind`.
 fn scope_chip_class(scope: ApiKeyScope) -> &'static str {
     match scope {
-        ApiKeyScope::Read => "bg-sky-100 dark:bg-sky-900 text-sky-800 dark:text-sky-200",
-        ApiKeyScope::Write => "bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200",
+        ApiKeyScope::Read => "bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200",
+        ApiKeyScope::Write => "bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200",
         // Story 11-5.
         ApiKeyScope::Propose => {
             "bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200"
@@ -669,19 +669,40 @@ mod tests {
         out
     }
 
+    /// Class-like tokens of every template: split on whitespace, quotes
+    /// and template delimiters, so `dark:bg-sky-900` does NOT match
+    /// inside `dark:bg-sky-900/40` (exact-token comparison).
+    fn template_tokens() -> std::collections::HashSet<String> {
+        templates_text()
+            .split(|c: char| c.is_whitespace() || "\"'`{}%<>".contains(c))
+            .filter(|t| !t.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
     /// D-11-5-3 — the Tailwind build only scans `templates/`; a chip
     /// class that appears only in this Rust file would ship unstyled.
     #[test]
     fn scope_chip_classes_are_emitted_by_tailwind() {
-        let templates = templates_text();
+        let tokens = template_tokens();
         for scope in ALL_SCOPES {
             for class in scope_chip_class(scope).split_whitespace() {
                 assert!(
-                    templates.contains(class),
-                    "{scope:?}: class `{class}` appears in no template"
+                    tokens.contains(class),
+                    "{scope:?}: class `{class}` appears in no template as an exact token"
                 );
             }
         }
+    }
+
+    #[test]
+    fn template_tokens_match_exact_classes_only() {
+        let tokens = template_tokens();
+        // Present only with an opacity suffix in templates.
+        assert!(tokens.contains("dark:bg-sky-900/40"));
+        assert!(!tokens.contains("dark:bg-sky-900"));
+        // Preceded by an Askama tag in admin_trash_panel.html.
+        assert!(tokens.contains("bg-purple-100"));
     }
 
     #[test]

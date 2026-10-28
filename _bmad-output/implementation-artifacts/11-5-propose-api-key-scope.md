@@ -57,14 +57,18 @@ Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor, full 
 - [x] [Review][Patch] (Medium) E2E revoke assertion ambiguous in German ("Widerrufen" is both the status and the Revoke button) and could race the commit — now waits for the revoke POST (200), the dialog hidden and the row's Revoke button gone [admin-api-keys.spec.ts]
 - [x] [Review][Patch] (Medium→Low after check) Propose chip relies on a class pair used incidentally by another template — chip classes moved to `scope_chip_class()`, and `scope_chip_classes_are_emitted_by_tailwind` pins every class against `templates/` [src/routes/admin_api_keys.rs]
 - [x] [Review][Patch] (Low) Scope string mapping duplicated in the form handler — `ApiKeyScope::parse` (strict) shared by the form and `from_db` [src/models/api_key.rs]
-- [x] [Review][Patch] (Low) Chips had no dark-mode variants — all three scope chips carry `dark:` variants (all classes already present in templates) [src/routes/admin_api_keys.rs]
+- [x] [Review][Patch] (Low) Chips had no dark-mode variants — all three scope chips carry `dark:` variants [src/routes/admin_api_keys.rs]
 - [x] [Review][Patch] (Low) `ApiKeyPropose` matrix lacked a forged same-prefix key and a soft-deleted key — both added (401) [tests/api_key_propose_scope.rs]
 - [x] [Review][Patch] (Low) Panel label assertion accepted EN/FR only — now any of the four locales [tests/api_key_propose_scope.rs]
 - [x] [Review][Patch] (Low) E2E read check used `/api/v1/genres` only — now `/api/v1/titles` and `/api/v1/genres` [admin-api-keys.spec.ts]
 - [x] [Review][Defer] (Low) Row mapping swallows `scope` decode errors via `unwrap_or_default` — deferred, pre-existing → #511
 - Dismissed (verified): migration drops a DEFAULT/COMMENT (the original column had neither); other `!= Read` scope checks granting write (none — `ApiKeyScope` is matched only in the three touched files); UI advertises proposals before `/api/mcp` exists (same release, D-11-5-4); `from_db` warn flood (ENUM column, unreachable in practice); `state_with_pool` duplication (existing per-file pattern of every integration test); `?tab=api_keys` (valid tab name); write/propose mutual exclusivity (NFR44 by design); test placement in a new file instead of `api_v1_auth.rs` and the column-type test in the model module (same coverage); no pre-migration row test (ENUM append preserves values by construction).
 
-## Dev Notes
+Round 2 (2026-10-28, single combined pass): 1 Medium, 1 Low.
+
+- [x] [Review][Patch] (Medium) Round-1 dark variants `dark:bg-sky-900` / `dark:bg-amber-900` exist in templates only with an opacity suffix, so Tailwind never emits them (light background + light text in dark mode); the emission test matched substrings — read/write chips now use `dark:bg-sky-900/40` / `dark:bg-amber-900/30`, and the test compares exact tokens (split on whitespace, quotes and template delimiters), with a self-test pinning the substring trap [src/routes/admin_api_keys.rs]
+- [x] [Review][Patch] (Low) E2E "Revoke button gone" would pass if the row vanished — now asserts the row is still listed and shows its Delete button [admin-api-keys.spec.ts]
+
 
 - **Least privilege by construction.** Never express propose as "write minus something": `allows_write` stays `matches!(Write)`, `allows_propose` is `matches!(Propose)`. A future scope added to the enum is then refused by both until someone opts it in.
 - **Why `ApiKeyPropose` exists without a route.** 11-6 mounts `/api/mcp` behind it. The extractor is `pub`, so no dead-code lint; the integration test mounts it on a throw-away route to pin the matrix now.
@@ -135,3 +139,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — validated against the create-story checklist: extractor order, consumer grep and manual-scope notes added.
 - 2026-10-28 — implemented (dev-story); status → review.
 - 2026-10-28 — code review round 1: 9 patches applied, 1 deferred (#511).
+- 2026-10-28 — code review round 2: 1 Medium + 1 Low patched; round 3 re-review.
