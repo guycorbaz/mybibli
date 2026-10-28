@@ -599,7 +599,7 @@ async fn stale_targets_on(
     id: u64,
     lock: bool,
 ) -> Result<Vec<StaleTarget>, AppError> {
-    let items = ProposalModel::items(conn, id).await?;
+    let items = ProposalModel::items(conn, id, lock).await?;
     let states =
         read_target_states(conn, items.iter().filter_map(|i| i.target), false, lock).await?;
     Ok(stale_reasons(&items, &states))
@@ -725,7 +725,7 @@ impl ProposalService {
         let Some(row) = ProposalModel::find(&mut tx, id).await? else {
             return Ok(None);
         };
-        let items = ProposalModel::items(&mut tx, id)
+        let items = ProposalModel::items(&mut tx, id, false)
             .await?
             .into_iter()
             .map(item_from_row)
@@ -824,7 +824,7 @@ impl ProposalService {
             return Err(ProposalError::UnknownDecider { user_id });
         }
         if matches!(decision, Decision::Accept { .. }) {
-            let items = ProposalModel::items(conn, id).await?;
+            let items = ProposalModel::items(conn, id, true).await?;
             if items.is_empty() {
                 return Err(ProposalError::NothingToApply { id });
             }

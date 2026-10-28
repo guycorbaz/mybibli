@@ -1118,3 +1118,44 @@ async fn a_proposal_without_items_can_only_be_rejected(pool: MySqlPool) {
         ProposalStatus::Rejected
     );
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn accept_sees_items_and_deciders_changed_after_its_snapshot(pool: MySqlPool) {
+    let key = insert_key(&pool, "k").await;
+    let user = insert_user(&pool, "lib-items-snapshot").await;
+    let id = file(&pool, &proposal(ProposalKind::SeriesCreate, key, &[None])).await;
+
+    // Snapshot taken, then every item is removed (story 11-19)…
+    let mut tx = pool.begin().await.unwrap();
+    let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM proposal_items WHERE proposal_id = ?")
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE proposal_items SET deleted_at = NOW() WHERE proposal_id = ?")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    // …and the accept still sees that nothing is left.
+    assert!(matches!(
+        ProposalService::transition_in(&mut tx, id, &Decision::Accept { by: user }).await,
+        Err(ProposalError::NothingToApply { .. })
+    ));
+    tx.rollback().await.unwrap();
+
+    // Same for a decider deactivated after the snapshot.
+    let id2 = file(&pool, &proposal(ProposalKind::SeriesCreate, key, &[None])).await;
+    let mut tx = pool.begin().await.unwrap();
+    let _: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE id = ?")
+        .bind(user)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    soft_delete(&pool, "users", user).await;
+    assert!(matches!(
+        ProposalService::transition_in(&mut tx, id2, &Decision::Accept { by: user }).await,
+        Err(ProposalError::UnknownDecider { .. })
+    ));
+    tx.rollback().await.unwrap();
+}

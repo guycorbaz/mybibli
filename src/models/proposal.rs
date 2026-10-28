@@ -371,11 +371,19 @@ impl ProposalModel {
     }
 
     /// Live items of a proposal, in filing order.
+    ///
+    /// With `lock` (a decision is being made), the read is a locking
+    /// read (`LOCK IN SHARE MODE`): it sees items removed or added after
+    /// the caller's snapshot and keeps them from changing until the
+    /// transaction ends.
     pub async fn items(
         conn: &mut MySqlConnection,
         proposal_id: u64,
+        lock: bool,
     ) -> Result<Vec<ProposalItemRow>, AppError> {
-        let sql = format!("{ITEM_SELECT} WHERE proposal_id = ? AND deleted_at IS NULL ORDER BY id");
+        let lock = if lock { " LOCK IN SHARE MODE" } else { "" };
+        let sql =
+            format!("{ITEM_SELECT} WHERE proposal_id = ? AND deleted_at IS NULL ORDER BY id{lock}");
         let rows = sqlx::query(&sql)
             .bind(proposal_id)
             .fetch_all(&mut *conn)
@@ -449,13 +457,16 @@ impl ProposalModel {
     }
 
     /// Whether `user_id` is an active user (the login predicate:
-    /// `active = TRUE AND deleted_at IS NULL`, story 8-3).
+    /// `active = TRUE AND deleted_at IS NULL`, story 8-3). A locking read:
+    /// a deactivation committed after the caller's snapshot is seen, and
+    /// one still in flight waits for the decision.
     pub async fn is_active_user(
         conn: &mut MySqlConnection,
         user_id: u64,
     ) -> Result<bool, AppError> {
         let found: Option<u64> = sqlx::query_scalar(
-            "SELECT id FROM users WHERE id = ? AND active = TRUE AND deleted_at IS NULL",
+            "SELECT id FROM users WHERE id = ? AND active = TRUE AND deleted_at IS NULL \
+             LOCK IN SHARE MODE",
         )
         .bind(user_id)
         .fetch_optional(&mut *conn)
