@@ -162,3 +162,29 @@ rewritten.
 Because `scroll-margin` applies to every scroll-container ancestor, the three inner vertical scrollers inside `<main>` reset it with `**:scroll-mt-0!` (pinned by `templates_audit::inner_vertical_scrollers_reset_the_bar_scroll_margin` and a behavioural E2E). Accepted trade-off: the reset also removes the page-level offset for those rows (a saved-search row scrolled to the very top of the page could sit under the bar). And because the `**:` rule beats any `scroll-m*` utility inside `<main>`, no other scroll-offset utility may be used there (audit `scroll_offset_utilities_stay_on_main_and_inner_scrollers`).
 **Departs from the epic wording** (property name only; the AC's offsets and intent are kept).
 **Reversible:** yes.
+
+## § 11-5 — The `propose` API-key scope (part of #493)
+
+### D-11-5-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-5-propose-api-key-scope` and the `# last_updated:` header change on this branch; `epic-11` stays `in-progress`.
+**Rejected:** touching sibling lines.
+**Reversible:** yes.
+
+### D-11-5-2 — Unknown stored scope still falls back to `Read`, but loudly
+**Context:** the AC asks `from_db` to map `propose` explicitly because "today any unknown value silently falls back to `Read`". The column is an `ENUM`, so an unknown value can only come from a future migration or a manual edit.
+**Chosen:** three explicit arms; the `_` arm keeps `Read` (the least-privileged scope: no write, no proposal) and emits `tracing::warn!` with the raw value.
+**Rejected:** making `from_db` fallible (every caller is a row mapper that would have to drop the row or 500 — an authentication outage for one corrupt row); mapping unknown to `Propose` or `Write` (privilege escalation).
+**Reversible:** yes.
+
+### D-11-5-3 — Propose chip colour taken from classes already present in `templates/`
+**Context:** the scope chip classes are chosen in `admin_api_keys.rs`, but the Dockerfile css stage only copies `templates/` into the Tailwind scan — a class literal that exists only in a `.rs` file is never emitted.
+**Chosen:** `bg-purple-100 text-purple-800` (already used by a template), distinct from read (sky) and write (amber).
+**Rejected:** violet (absent from `templates/`, would render unstyled in production); moving the chip mapping into the template (larger change to an unrelated rendering path).
+**Reversible:** yes.
+
+### D-11-5-4 — `ApiKeyPropose` pinned by a throw-away test route
+**Context:** the AC requires the extractor now, but the only route that will use it (`/api/mcp`) arrives with 11-6.
+**Chosen:** the extractor is `pub` in `middleware/api_key.rs`; an integration test mounts it on a test-only route to pin the full key matrix (missing / read / write / propose). No production route is added.
+**Rejected:** a placeholder production route (dead surface, would need CSRF/route-matrix entries for nothing).
+**Reversible:** yes.
