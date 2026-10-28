@@ -9,6 +9,17 @@ use crate::error::AppError;
 use crate::models::title::TitleModel;
 use crate::models::{DEFAULT_PAGE_SIZE, PaginatedList};
 
+/// The main contributor of title `t`: an "Auteur" first, else the
+/// oldest live junction row (live contributor and role). Same choice as
+/// the other title lists.
+const PRIMARY_CONTRIBUTOR_SUBQUERY: &str = "(SELECT c.name FROM title_contributors tc \
+     JOIN contributors c ON tc.contributor_id = c.id \
+     JOIN contributor_roles cr ON tc.role_id = cr.id \
+     WHERE tc.title_id = t.id AND tc.deleted_at IS NULL \
+       AND c.deleted_at IS NULL AND cr.deleted_at IS NULL \
+     ORDER BY CASE WHEN cr.name = 'Auteur' THEN 0 ELSE 1 END, tc.id ASC \
+     LIMIT 1)";
+
 /// Search result row for as-you-type search.
 #[derive(Debug, Clone)]
 pub struct SearchResult {
@@ -348,6 +359,187 @@ impl TitleModel {
             .collect();
 
         Ok(items)
+    }
+}
+
+/// Story 11-8 — a bibliographic field whose absence makes a title
+/// "incomplete" for the MCP `list_titles_with_incomplete_metadata` tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MetadataField {
+    Description,
+    Publisher,
+    Contributor,
+    PublicationYear,
+}
+
+impl MetadataField {
+    /// Every field, in the order the tool reports them.
+    pub const ALL: [MetadataField; 4] = [
+        MetadataField::Description,
+        MetadataField::Publisher,
+        MetadataField::Contributor,
+        MetadataField::PublicationYear,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MetadataField::Description => "description",
+            MetadataField::Publisher => "publisher",
+            MetadataField::Contributor => "contributor",
+            MetadataField::PublicationYear => "publication_year",
+        }
+    }
+
+    /// Parse the tool's argument value (exact, lower-case).
+    pub fn parse(value: &str) -> Option<MetadataField> {
+        Self::ALL.into_iter().find(|f| f.as_str() == value)
+    }
+
+    /// SQL predicate on `titles t` that holds when the field is missing.
+    /// Fixed text chosen from this enum — never user input. A blank
+    /// string counts as missing; a contributor counts only through a
+    /// live junction row, live contributor and live role (the rule
+    /// `get_title` lists contributors by).
+    fn missing_predicate(self) -> &'static str {
+        match self {
+            MetadataField::Description => "(t.description IS NULL OR TRIM(t.description) = '')",
+            MetadataField::Publisher => "(t.publisher IS NULL OR TRIM(t.publisher) = '')",
+            MetadataField::Contributor => {
+                "NOT EXISTS (SELECT 1 FROM title_contributors tc \
+                   JOIN contributors c ON tc.contributor_id = c.id AND c.deleted_at IS NULL \
+                   JOIN contributor_roles cr ON tc.role_id = cr.id AND cr.deleted_at IS NULL \
+                   WHERE tc.title_id = t.id AND tc.deleted_at IS NULL)"
+            }
+            MetadataField::PublicationYear => "t.publication_date IS NULL",
+        }
+    }
+}
+
+/// Story 11-8 — one title missing at least one [`MetadataField`].
+#[derive(Debug, Clone)]
+pub struct IncompleteTitleRow {
+    pub id: u64,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub media_type: String,
+    pub genre_name: String,
+    pub isbn: Option<String>,
+    pub primary_contributor: Option<String>,
+    pub cover_image_url: Option<String>,
+    pub publication_date: Option<chrono::NaiveDate>,
+    /// The missing fields, in [`MetadataField::ALL`] order.
+    pub missing: Vec<MetadataField>,
+}
+
+/// `WHERE` filter of [`TitleModel::list_incomplete_metadata`]: the
+/// title misses `only`, or any field when `only` is `None`.
+fn incomplete_filter(only: Option<MetadataField>) -> String {
+    match only {
+        Some(field) => field.missing_predicate().to_string(),
+        None => format!(
+            "({})",
+            MetadataField::ALL
+                .iter()
+                .map(|f| f.missing_predicate())
+                .collect::<Vec<_>>()
+                .join(" OR ")
+        ),
+    }
+}
+
+impl TitleModel {
+    /// Story 11-8 — one page of live titles missing `only` (or any
+    /// [`MetadataField`] when `None`), optionally of one media type and
+    /// genre, sorted by title then id. Page size `DEFAULT_PAGE_SIZE`.
+    pub async fn list_incomplete_metadata(
+        pool: &DbPool,
+        only: Option<MetadataField>,
+        media_type: Option<&str>,
+        genre_id: Option<u64>,
+        page: u32,
+    ) -> Result<PaginatedList<IncompleteTitleRow>, AppError> {
+        let offset = page.saturating_sub(1).saturating_mul(DEFAULT_PAGE_SIZE);
+        let filter = format!(
+            "t.deleted_at IS NULL AND {} \
+             AND (? IS NULL OR t.media_type = ?) \
+             AND (? IS NULL OR t.genre_id = ?)",
+            incomplete_filter(only)
+        );
+
+        let count_sql = format!("SELECT COUNT(*) FROM titles t WHERE {filter}");
+        let (total,): (i64,) = sqlx::query_as(&count_sql)
+            .bind(media_type)
+            .bind(media_type)
+            .bind(genre_id)
+            .bind(genre_id)
+            .fetch_one(pool)
+            .await?;
+
+        let flags: String = MetadataField::ALL
+            .iter()
+            .map(|f| {
+                format!(
+                    "CASE WHEN {} THEN 1 ELSE 0 END AS missing_{}, ",
+                    f.missing_predicate(),
+                    f.as_str()
+                )
+            })
+            .collect();
+        let page_sql = format!(
+            "SELECT t.id, t.title, t.subtitle, t.media_type, t.isbn, t.cover_image_url, \
+                    CAST(t.publication_date AS DATE) AS publication_date, \
+                    COALESCE(g.name, '') AS genre_name, {flags}\
+                    {primary} AS primary_contributor \
+             FROM titles t \
+             LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
+             WHERE {filter} \
+             ORDER BY t.title ASC, t.id ASC \
+             LIMIT ? OFFSET ?",
+            primary = PRIMARY_CONTRIBUTOR_SUBQUERY,
+        );
+        let rows = sqlx::query(&page_sql)
+            .bind(media_type)
+            .bind(media_type)
+            .bind(genre_id)
+            .bind(genre_id)
+            .bind(DEFAULT_PAGE_SIZE)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?;
+
+        let items = rows
+            .into_iter()
+            .map(|r| {
+                let mut missing = Vec::new();
+                for field in MetadataField::ALL {
+                    let flag: i64 = r.try_get(format!("missing_{}", field.as_str()).as_str())?;
+                    if flag != 0 {
+                        missing.push(field);
+                    }
+                }
+                Ok(IncompleteTitleRow {
+                    id: r.try_get("id")?,
+                    title: r.try_get("title")?,
+                    subtitle: r.try_get("subtitle")?,
+                    media_type: r.try_get("media_type")?,
+                    genre_name: r.try_get("genre_name")?,
+                    isbn: r.try_get("isbn")?,
+                    primary_contributor: r.try_get("primary_contributor")?,
+                    cover_image_url: r.try_get("cover_image_url")?,
+                    publication_date: r.try_get("publication_date")?,
+                    missing,
+                })
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+        Ok(PaginatedList::new(
+            items,
+            page,
+            u64::try_from(total).unwrap_or(0),
+            None,
+            None,
+            None,
+        ))
     }
 }
 

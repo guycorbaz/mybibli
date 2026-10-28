@@ -68,6 +68,25 @@ fn row_to_series(row: sqlx::mysql::MySqlRow) -> Result<SeriesModel, sqlx::Error>
     })
 }
 
+/// The positions a series holds, per series: distinct `position_number`
+/// values above 0 of live assignments of live titles (story 9-6 rule,
+/// code-review patches P2 + P4). A `LEFT JOIN` aliased `filled` with
+/// column `owned_count`, shared by [`SeriesModel::list_with_gaps`] and
+/// [`SeriesModel::list_summaries`] so the dashboard and the MCP tools
+/// count gaps the same way.
+macro_rules! filled_positions_join {
+    () => {
+        "LEFT JOIN ( \
+           SELECT ts.series_id, COUNT(DISTINCT ts.position_number) AS owned_count \
+           FROM title_series ts \
+           INNER JOIN titles t ON ts.title_id = t.id AND t.deleted_at IS NULL \
+           WHERE ts.deleted_at IS NULL \
+             AND ts.position_number > 0 \
+           GROUP BY ts.series_id \
+         ) filled ON filled.series_id = s.id"
+    };
+}
+
 impl SeriesModel {
     pub async fn active_find_by_id(
         pool: &DbPool,
@@ -276,33 +295,117 @@ impl SeriesModel {
         pool: &DbPool,
         limit: u32,
     ) -> Result<Vec<SeriesWithGap>, AppError> {
-        let rows: Vec<SeriesWithGap> = sqlx::query_as(
+        let rows: Vec<SeriesWithGap> = sqlx::query_as(concat!(
             "SELECT \
                s.id, s.name, s.total_volume_count, \
                COALESCE(filled.owned_count, 0) AS owned_count \
-             FROM series s \
-             LEFT JOIN ( \
-               SELECT ts.series_id, COUNT(DISTINCT ts.position_number) AS owned_count \
-               FROM title_series ts \
-               INNER JOIN titles t ON ts.title_id = t.id AND t.deleted_at IS NULL \
-               WHERE ts.deleted_at IS NULL \
-                 AND ts.position_number > 0 \
-               GROUP BY ts.series_id \
-             ) filled ON filled.series_id = s.id \
-             WHERE s.deleted_at IS NULL \
+             FROM series s ",
+            filled_positions_join!(),
+            " WHERE s.deleted_at IS NULL \
                AND s.series_type = 'closed' \
                AND s.total_volume_count IS NOT NULL \
                AND s.total_volume_count > 0 \
                AND s.total_volume_count > COALESCE(filled.owned_count, 0) \
              ORDER BY (s.total_volume_count - COALESCE(filled.owned_count, 0)) DESC, s.name ASC \
              LIMIT ?",
-        )
+        ))
         .bind(limit)
         .fetch_all(pool)
         .await?;
 
         Ok(rows)
     }
+
+    /// Story 11-8 — one page of live series whose name contains `query`
+    /// (all when empty), sorted by name then id, each with its held
+    /// positions. `gaps_only` keeps the closed series with a total above
+    /// the held positions — the [`Self::list_with_gaps`] predicate.
+    pub async fn list_summaries(
+        pool: &DbPool,
+        query: &str,
+        gaps_only: bool,
+        page: u32,
+    ) -> Result<PaginatedList<SeriesSummaryRow>, AppError> {
+        // The two variants differ by a fixed predicate (never user text).
+        const ALL: &str = "";
+        const GAPS: &str = " AND s.series_type = 'closed' \
+             AND s.total_volume_count IS NOT NULL \
+             AND s.total_volume_count > 0 \
+             AND s.total_volume_count > COALESCE(filled.owned_count, 0)";
+        let gaps = if gaps_only { GAPS } else { ALL };
+        let pattern = crate::utils::like_contains_pattern(query.trim());
+        let offset = page.saturating_sub(1).saturating_mul(DEFAULT_PAGE_SIZE);
+
+        let count_sql = format!(
+            concat!(
+                "SELECT COUNT(*) FROM series s ",
+                filled_positions_join!(),
+                " WHERE s.deleted_at IS NULL AND s.name LIKE ?{}"
+            ),
+            gaps
+        );
+        let (total,): (i64,) = sqlx::query_as(&count_sql)
+            .bind(&pattern)
+            .fetch_one(pool)
+            .await?;
+
+        let page_sql = format!(
+            concat!(
+                "SELECT s.id, s.name, s.series_type, s.total_volume_count, \
+                   CAST(COALESCE(filled.owned_count, 0) AS SIGNED) AS owned_count \
+                 FROM series s ",
+                filled_positions_join!(),
+                " WHERE s.deleted_at IS NULL AND s.name LIKE ?{} \
+                 ORDER BY s.name ASC, s.id ASC LIMIT ? OFFSET ?"
+            ),
+            gaps
+        );
+        let rows = sqlx::query(&page_sql)
+            .bind(&pattern)
+            .bind(DEFAULT_PAGE_SIZE)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?;
+
+        let items = rows
+            .into_iter()
+            .map(|r| {
+                let type_str: String = r.try_get("series_type")?;
+                let owned: i64 = r.try_get("owned_count")?;
+                Ok(SeriesSummaryRow {
+                    id: r.try_get("id")?,
+                    name: r.try_get("name")?,
+                    series_type: type_str.parse().unwrap_or_else(|_| {
+                        tracing::warn!(series_type = %type_str, "Invalid series_type in database, defaulting to Open");
+                        SeriesType::Open
+                    }),
+                    total_volume_count: r.try_get("total_volume_count")?,
+                    owned_count: u64::try_from(owned).unwrap_or(0),
+                })
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+        Ok(PaginatedList::new(
+            items,
+            page,
+            u64::try_from(total).unwrap_or(0),
+            None,
+            None,
+            None,
+        ))
+    }
+}
+
+/// Story 11-8 — one series as the MCP `list_series` tool lists it:
+/// identity, type, total and the positions it holds (same rule as
+/// [`SeriesModel::list_with_gaps`]).
+#[derive(Debug, Clone)]
+pub struct SeriesSummaryRow {
+    pub id: u64,
+    pub name: String,
+    pub series_type: SeriesType,
+    pub total_volume_count: Option<i32>,
+    pub owned_count: u64,
 }
 
 /// Story 9-6 — narrow projection for the home-page "Series with gaps"

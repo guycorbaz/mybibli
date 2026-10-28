@@ -105,6 +105,16 @@ pub fn isbn10_to_isbn13(code: &str) -> Option<String> {
     Some(isbn13)
 }
 
+/// `%query%` with the LIKE metacharacters of `query` escaped, so a user
+/// typing `_` or `%` matches those characters literally.
+pub fn like_contains_pattern(query: &str) -> String {
+    let escaped = query
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("%{escaped}%")
+}
+
 /// Escape HTML special characters to prevent XSS.
 pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")

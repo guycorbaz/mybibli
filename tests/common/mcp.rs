@@ -18,6 +18,17 @@ use tower::ServiceExt;
 pub const V_LEGACY: &str = "2025-11-25";
 pub const V_MODERN: &str = "2026-07-28";
 
+/// Every tool `/api/mcp` serves, sorted by name.
+pub const ALL_TOOLS: [&str; 7] = [
+    "get_series",
+    "get_title",
+    "list_series",
+    "list_titles_with_incomplete_metadata",
+    "list_titles_without_cover",
+    "search_contributors",
+    "search_titles",
+];
+
 pub fn state_with_pool(pool: DbPool) -> mybibli::AppState {
     mybibli::AppState {
         pool,
@@ -181,4 +192,141 @@ pub fn modern_call(key: &str, name: &'static str, args: Value) -> Call {
         .version(V_MODERN)
         .header("mcp-method", "tools/call")
         .header("mcp-name", name)
+}
+
+// ─── Seeding (test DB only; story 11-7, shared since 11-8) ──────────────────────────────────────
+
+pub async fn genre_id(pool: &DbPool, name: &str) -> u64 {
+    let (id,): (u64,) = sqlx::query_as("SELECT id FROM genres WHERE name = ?")
+        .bind(name)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    id
+}
+
+pub async fn role_id(pool: &DbPool, name: &str) -> u64 {
+    let (id,): (u64,) = sqlx::query_as("SELECT id FROM contributor_roles WHERE name = ?")
+        .bind(name)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+    id
+}
+
+pub async fn add_title(
+    pool: &DbPool,
+    title: &str,
+    media_type: &str,
+    genre: &str,
+    isbn: Option<&str>,
+) -> u64 {
+    let genre = genre_id(pool, genre).await;
+    sqlx::query(
+        "INSERT INTO titles (title, language, genre_id, media_type, isbn) VALUES (?, 'fr', ?, ?, ?)",
+    )
+    .bind(title)
+    .bind(genre)
+    .bind(media_type)
+    .bind(isbn)
+    .execute(pool)
+    .await
+    .unwrap()
+    .last_insert_id()
+}
+
+pub async fn add_contributor(pool: &DbPool, name: &str) -> u64 {
+    sqlx::query("INSERT INTO contributors (name) VALUES (?)")
+        .bind(name)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id()
+}
+
+pub async fn credit(pool: &DbPool, title_id: u64, contributor_id: u64, role: &str) -> u64 {
+    let role = role_id(pool, role).await;
+    sqlx::query(
+        "INSERT INTO title_contributors (title_id, contributor_id, role_id) VALUES (?, ?, ?)",
+    )
+    .bind(title_id)
+    .bind(contributor_id)
+    .bind(role)
+    .execute(pool)
+    .await
+    .unwrap()
+    .last_insert_id()
+}
+
+pub async fn add_volume(pool: &DbPool, title_id: u64, label: &str, location: Option<u64>) -> u64 {
+    sqlx::query("INSERT INTO volumes (title_id, label, location_id) VALUES (?, ?, ?)")
+        .bind(title_id)
+        .bind(label)
+        .bind(location)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id()
+}
+
+pub async fn soft_delete(pool: &DbPool, table: &str, id: u64) {
+    let sql = format!("UPDATE {table} SET deleted_at = NOW() WHERE id = ?");
+    let done = sqlx::query(&sql).bind(id).execute(pool).await.unwrap();
+    assert_eq!(done.rows_affected(), 1, "{table} {id}");
+}
+
+// ─── Calling a tool ──────────────────────────────────────────────
+
+pub struct Agent {
+    pub app: Router,
+    pub key: String,
+}
+
+impl Agent {
+    pub async fn new(pool: &DbPool) -> Self {
+        Self {
+            app: router(pool),
+            key: seed_key(pool, ApiKeyScope::Propose).await,
+        }
+    }
+
+    /// The `result` of a `tools/call` (revision 2025-11-25, stateless).
+    pub async fn call(&self, tool: &str, args: Value) -> Value {
+        let res = send_json(
+            &self.app,
+            Call::new(&self.key, legacy_call(tool, args)).version(V_LEGACY),
+        )
+        .await;
+        assert!(res["error"].is_null(), "protocol error: {res}");
+        res["result"].clone()
+    }
+
+    /// A successful call's `structuredContent`.
+    pub async fn ok(&self, tool: &str, args: Value) -> Value {
+        let result = self.call(tool, args.clone()).await;
+        assert_eq!(result["isError"], false, "{tool} {args}: {result}");
+        result["structuredContent"].clone()
+    }
+
+    /// A failed call's message.
+    pub async fn err(&self, tool: &str, args: Value) -> String {
+        let result = self.call(tool, args.clone()).await;
+        assert_eq!(
+            result["isError"], true,
+            "{tool} {args} should fail: {result}"
+        );
+        result["content"][0]["text"]
+            .as_str()
+            .expect("error text")
+            .to_string()
+    }
+}
+
+pub fn ids(page: &Value) -> Vec<u64> {
+    page["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|i| i["id"].as_u64().expect("id"))
+        .collect()
 }

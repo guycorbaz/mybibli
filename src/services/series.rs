@@ -1,6 +1,9 @@
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::series::{SeriesModel, SeriesType, TitleSeriesModel, TitleSeriesRow};
+use crate::models::PaginatedList;
+use crate::models::series::{
+    SeriesModel, SeriesSummaryRow, SeriesType, TitleSeriesModel, TitleSeriesRow,
+};
 
 /// A position in a series grid: either filled (with title info) or a gap.
 #[derive(Debug, Clone)]
@@ -455,9 +458,165 @@ pub fn sort_positions(positions: &mut [SeriesPositionInfo], key: SeriesSortKey, 
     }
 }
 
+/// Story 11-8 — most missing positions [`series_gaps`] lists; the
+/// total of a closed series has no upper bound.
+pub const MAX_LISTED_MISSING_POSITIONS: usize = 1000;
+
+/// Story 11-8 — the gaps of a series as the MCP tools report them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeriesGaps {
+    /// Distinct positions above 0 held by live titles.
+    pub owned_positions: u64,
+    /// `None` for an open series or a closed one without a total.
+    pub gap_count: Option<u64>,
+    /// Positions 1..=total not held, ascending, at most
+    /// [`MAX_LISTED_MISSING_POSITIONS`].
+    pub missing_positions: Vec<i32>,
+    /// Whether `missing_positions` was cut at the cap.
+    pub missing_positions_truncated: bool,
+}
+
+/// Story 11-8 — the gap count of `SeriesModel::list_with_gaps` (story
+/// 9-6): `total - held positions`, floored at 0, for a closed series
+/// with a total above 0; `None` otherwise. A position above the total
+/// (legacy data — assignment refuses it) counts as held, as on the
+/// dashboard.
+pub fn gap_count(series_type: SeriesType, total: Option<i32>, owned_positions: u64) -> Option<u64> {
+    match (series_type, total) {
+        (SeriesType::Closed, Some(total)) if total > 0 => {
+            Some((total as u64).saturating_sub(owned_positions))
+        }
+        _ => None,
+    }
+}
+
+/// Story 11-8 — gaps of `series` given the positions of its live
+/// assignment rows (pure — unit tested).
+pub fn series_gaps(series_type: SeriesType, total: Option<i32>, held: &[i32]) -> SeriesGaps {
+    let held: std::collections::BTreeSet<i32> = held.iter().copied().filter(|p| *p > 0).collect();
+    let owned_positions = held.len() as u64;
+    let gap_count = gap_count(series_type, total, owned_positions);
+    let mut missing_positions: Vec<i32> = Vec::new();
+    let mut missing_positions_truncated = false;
+    if gap_count.is_some() {
+        let total = total.unwrap_or(0);
+        let held_in_range = held.range(1..=total).count() as u64;
+        let missing_total = total as u64 - held_in_range;
+        missing_positions = (1..=total)
+            .filter(|p| !held.contains(p))
+            .take(MAX_LISTED_MISSING_POSITIONS)
+            .collect();
+        missing_positions_truncated = missing_total > missing_positions.len() as u64;
+    }
+    SeriesGaps {
+        owned_positions,
+        gap_count,
+        missing_positions,
+        missing_positions_truncated,
+    }
+}
+
+/// Story 11-8 — a series as the MCP `get_series` tool returns it.
+#[derive(Debug, Clone)]
+pub struct AgentSeriesDetail {
+    pub series: SeriesModel,
+    /// Live assignment rows (one per position of an omnibus), ordered by
+    /// position then title id.
+    pub positions: Vec<TitleSeriesRow>,
+    pub gaps: SeriesGaps,
+}
+
+impl SeriesService {
+    /// Story 11-8 — one page of live series (see
+    /// [`SeriesModel::list_summaries`]).
+    pub async fn list_summaries(
+        pool: &DbPool,
+        query: &str,
+        gaps_only: bool,
+        page: u32,
+    ) -> Result<PaginatedList<SeriesSummaryRow>, AppError> {
+        SeriesModel::list_summaries(pool, query, gaps_only, page).await
+    }
+
+    /// Story 11-8 — a live series with its assignments and gaps; `None`
+    /// when unknown or soft-deleted.
+    pub async fn agent_series_detail(
+        pool: &DbPool,
+        id: u64,
+    ) -> Result<Option<AgentSeriesDetail>, AppError> {
+        let Some(series) = SeriesModel::active_find_by_id(pool, id).await? else {
+            return Ok(None);
+        };
+        let mut positions = TitleSeriesModel::find_by_series(pool, id).await?;
+        positions.sort_by_key(|p| (p.position_number, p.title_id));
+        let held: Vec<i32> = positions.iter().map(|p| p.position_number).collect();
+        let gaps = series_gaps(series.series_type, series.total_volume_count, &held);
+        Ok(Some(AgentSeriesDetail {
+            series,
+            positions,
+            gaps,
+        }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gap_count_follows_the_dashboard_rule() {
+        assert_eq!(gap_count(SeriesType::Closed, Some(10), 7), Some(3));
+        assert_eq!(gap_count(SeriesType::Closed, Some(10), 12), Some(0));
+        assert_eq!(gap_count(SeriesType::Closed, Some(0), 0), None);
+        assert_eq!(gap_count(SeriesType::Closed, None, 0), None);
+        assert_eq!(gap_count(SeriesType::Open, Some(10), 2), None);
+    }
+
+    #[test]
+    fn series_gaps_lists_the_missing_positions() {
+        // Position 2 held twice, an omnibus on 4..=5, a bogus position 0.
+        let g = series_gaps(SeriesType::Closed, Some(6), &[0, 2, 2, 4, 5]);
+        assert_eq!(
+            g,
+            SeriesGaps {
+                owned_positions: 3,
+                gap_count: Some(3),
+                missing_positions: vec![1, 3, 6],
+                missing_positions_truncated: false,
+            }
+        );
+    }
+
+    #[test]
+    fn series_gaps_open_series_has_no_gaps() {
+        let g = series_gaps(SeriesType::Open, None, &[1, 3]);
+        assert_eq!(g.owned_positions, 2);
+        assert_eq!(g.gap_count, None);
+        assert!(g.missing_positions.is_empty() && !g.missing_positions_truncated);
+    }
+
+    #[test]
+    fn series_gaps_position_above_total_counts_as_held() {
+        // Legacy data: position 5 in a closed series of 3.
+        let g = series_gaps(SeriesType::Closed, Some(3), &[1, 5]);
+        assert_eq!(g.owned_positions, 2);
+        assert_eq!(g.gap_count, Some(1));
+        assert_eq!(g.missing_positions, vec![2, 3]);
+    }
+
+    #[test]
+    fn series_gaps_caps_the_missing_list() {
+        let g = series_gaps(SeriesType::Closed, Some(i32::MAX), &[1]);
+        assert_eq!(g.gap_count, Some(i32::MAX as u64 - 1));
+        assert_eq!(g.missing_positions.len(), MAX_LISTED_MISSING_POSITIONS);
+        assert_eq!(g.missing_positions[0], 2);
+        assert!(g.missing_positions_truncated);
+        // Exactly at the cap: not truncated.
+        let cap = MAX_LISTED_MISSING_POSITIONS as i32;
+        let g = series_gaps(SeriesType::Closed, Some(cap), &[]);
+        assert_eq!(g.missing_positions.len(), MAX_LISTED_MISSING_POSITIONS);
+        assert!(!g.missing_positions_truncated);
+    }
 
     fn pos(position: i32, title_id: Option<u64>, name: Option<&str>, dewey: Option<&str>) -> SeriesPositionInfo {
         SeriesPositionInfo {

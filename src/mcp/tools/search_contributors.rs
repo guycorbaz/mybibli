@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::{ListPage, args, to_json};
+use super::{ListPage, args, page_property, to_json};
 use crate::mcp::tool::{McpTool, ToolContext, ToolError, ToolFuture};
 use crate::models::contributor::ContributorSearchRow;
 use crate::services::contributor::ContributorService;
@@ -71,13 +71,7 @@ impl McpTool for SearchContributors {
                     "maxLength": args::MAX_QUERY_CHARS,
                     "description": "Part of the contributor's name. Empty or omitted: all contributors."
                 },
-                "page": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": args::MAX_PAGE,
-                    "default": 1,
-                    "description": "1-based page number; each page holds 25 contributors."
-                }
+                "page": page_property("contributors")
             },
             "additionalProperties": false
         })

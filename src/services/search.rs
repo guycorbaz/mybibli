@@ -3,6 +3,7 @@ use crate::error::AppError;
 use crate::models::contributor::TitleContributorModel;
 use crate::models::genre::GenreModel;
 use crate::models::title::{SearchResult, TitleModel};
+use crate::models::title_search::{IncompleteTitleRow, MetadataField};
 use crate::models::volume::VolumeModel;
 use crate::models::{DEFAULT_PAGE_SIZE, PaginatedList};
 
@@ -80,6 +81,9 @@ pub struct CatalogSearch {
     pub genre_id: Option<u64>,
     /// 1-based page.
     pub page: u32,
+    /// Story 11-8 — only titles without a cover (NULL or empty
+    /// `cover_image_url`, the web "no cover" filter).
+    pub no_cover_only: bool,
 }
 
 /// Story 11-7 — outcome of resolving a genre name typed by an agent.
@@ -308,10 +312,23 @@ impl SearchService {
             &None,
             page,
             false,
-            false,
+            search.no_cover_only,
             search.media_type.as_deref(),
         )
         .await
+    }
+
+    /// Story 11-8 — one page of live titles missing `only` (or any
+    /// tracked field), for the MCP agent (see
+    /// [`TitleModel::list_incomplete_metadata`]).
+    pub async fn list_incomplete_metadata(
+        pool: &DbPool,
+        only: Option<MetadataField>,
+        media_type: Option<&str>,
+        genre_id: Option<u64>,
+        page: u32,
+    ) -> Result<PaginatedList<IncompleteTitleRow>, AppError> {
+        TitleModel::list_incomplete_metadata(pool, only, media_type, genre_id, page.max(1)).await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -371,6 +388,8 @@ fn catalog_filters_match(search: &CatalogSearch, title: &TitleModel) -> bool {
         .as_deref()
         .is_none_or(|m| m == title.media_type)
         && search.genre_id.is_none_or(|g| g == title.genre_id)
+        && (!search.no_cover_only
+            || !crate::services::title_detail::has_cover(title.cover_image_url.as_deref()))
 }
 
 #[cfg(test)]
@@ -447,6 +466,14 @@ mod tests {
             ..Default::default()
         };
         assert!(!catalog_filters_match(&genre4, &t));
+        let no_cover = CatalogSearch {
+            no_cover_only: true,
+            ..Default::default()
+        };
+        assert!(catalog_filters_match(&no_cover, &t));
+        let mut covered = title("bd", 3);
+        covered.cover_image_url = Some("/covers/1.jpg".into());
+        assert!(!catalog_filters_match(&no_cover, &covered));
     }
 
     #[test]
