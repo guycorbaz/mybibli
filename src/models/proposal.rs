@@ -477,6 +477,97 @@ impl ProposalModel {
         Ok(found.is_some())
     }
 
+    /// Story 11-12 — [`Self::lock_filing_key`] with an exclusive lock:
+    /// series proposals filed with the same key are serialised, so their
+    /// duplicate checks (below) and their insert cannot interleave. Same
+    /// lock order as the share lock (key row first).
+    pub async fn lock_filing_key_exclusive(
+        conn: &mut MySqlConnection,
+        api_key_id: u64,
+    ) -> Result<bool, AppError> {
+        let found: Option<u64> = sqlx::query_scalar(
+            "SELECT id FROM api_keys WHERE id = ? AND scope = 'propose' \
+             AND revoked_at IS NULL AND deleted_at IS NULL FOR UPDATE",
+        )
+        .bind(api_key_id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found.is_some())
+    }
+
+    /// Story 11-12 — the oldest live pending proposal with a live item
+    /// targeting `table`/`id`, if any. A plain read: called right after
+    /// [`Self::lock_filing_key_exclusive`] (a locking read, which opens no
+    /// snapshot), it sees every filing committed before that lock was
+    /// granted — without the range locks a locking read would take on
+    /// this unindexed predicate (review round 2, D-11-12-13).
+    pub async fn pending_targeting(
+        conn: &mut MySqlConnection,
+        table: ProposalTargetTable,
+        id: u64,
+    ) -> Result<Option<u64>, AppError> {
+        let found: Option<u64> = sqlx::query_scalar(
+            "SELECT p.id FROM proposals p \
+             JOIN proposal_items i ON i.proposal_id = p.id AND i.deleted_at IS NULL \
+             WHERE p.deleted_at IS NULL AND p.status = 'pending' \
+               AND i.target_table = ? AND i.target_id = ? \
+             ORDER BY p.id ASC LIMIT 1",
+        )
+        .bind(table.as_str())
+        .bind(id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found)
+    }
+
+    /// Story 11-12 — the oldest live pending `series_create` proposal
+    /// whose series line (`"line": "series"`, no target) proposes `name`,
+    /// compared case- and accent-insensitively. Both sides are converted
+    /// to utf8mb4 explicitly so the server's default charset (CI) cannot
+    /// change the comparison. A plain read (see [`Self::pending_targeting`]).
+    pub async fn pending_series_create_named(
+        conn: &mut MySqlConnection,
+        name: &str,
+    ) -> Result<Option<u64>, AppError> {
+        let found: Option<u64> = sqlx::query_scalar(
+            "SELECT p.id FROM proposals p \
+             JOIN proposal_items i ON i.proposal_id = p.id AND i.deleted_at IS NULL \
+             WHERE p.deleted_at IS NULL AND p.status = 'pending' AND p.kind = 'series_create' \
+               AND i.target_table IS NULL \
+               AND JSON_UNQUOTE(JSON_EXTRACT(i.proposed_values, '$.line')) = 'series' \
+               AND CONVERT(JSON_UNQUOTE(JSON_EXTRACT(i.proposed_values, '$.name')) USING utf8mb4) \
+                   COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci \
+             ORDER BY p.id ASC LIMIT 1",
+        )
+        .bind(name)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found)
+    }
+
+    /// Story 11-12 — the oldest live series named `name` under the same
+    /// comparison as [`Self::pending_series_create_named`] (case- and
+    /// accent-insensitive, independent of the server charset), with its
+    /// stored name. A plain read: a share lock here would lock every
+    /// series row (no index serves the predicate) and could deadlock with
+    /// a proposal acceptance locking a series (review round 2).
+    pub async fn active_series_named(
+        conn: &mut MySqlConnection,
+        name: &str,
+    ) -> Result<Option<(u64, String)>, AppError> {
+        let found: Option<(u64, String)> = sqlx::query_as(
+            "SELECT id, CAST(name AS CHAR) FROM series \
+             WHERE deleted_at IS NULL \
+               AND CONVERT(name USING utf8mb4) COLLATE utf8mb4_unicode_ci \
+                   = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci \
+             ORDER BY id ASC LIMIT 1",
+        )
+        .bind(name)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found)
+    }
+
     /// One page of live proposals, newest first.
     pub async fn list(
         pool: &DbPool,

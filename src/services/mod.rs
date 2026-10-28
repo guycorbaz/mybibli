@@ -20,6 +20,7 @@ pub mod scan_undo;
 pub mod search;
 pub mod seed_gate;
 pub mod series;
+pub mod series_proposals;
 pub mod setup;
 pub mod soft_delete;
 pub mod title;

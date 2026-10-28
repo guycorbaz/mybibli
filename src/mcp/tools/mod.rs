@@ -1,4 +1,4 @@
-//! The MCP tools (stories 11-6, 11-7). Each one is a thin adapter over
+//! The MCP tools (stories 11-6..11-8 read, 11-12 on propose). Each one is a thin adapter over
 //! `services/`, implementing [`super::tool::McpTool`]: it validates its
 //! arguments, calls one service and maps the result to JSON.
 
@@ -8,8 +8,11 @@ mod get_title;
 mod list_series;
 mod list_titles_with_incomplete_metadata;
 mod list_titles_without_cover;
+mod propose_series_attach;
+mod propose_series_create;
 mod search_contributors;
 mod search_titles;
+mod series_proposal_args;
 
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -30,7 +33,13 @@ pub fn registry() -> ToolRegistry {
         .with(get_series::GetSeries)
         .with(list_titles_without_cover::ListTitlesWithoutCover)
         .with(list_titles_with_incomplete_metadata::ListTitlesWithIncompleteMetadata)
+        .with(propose_series_create::ProposeSeriesCreate)
+        .with(propose_series_attach::ProposeSeriesAttach)
 }
+
+/// The tools that file proposals (story 11-12 on); every other tool reads.
+#[cfg(test)]
+const PROPOSE_TOOLS: [&str; 2] = ["propose_series_attach", "propose_series_create"];
 
 /// One page of a list tool's answer — the same shape for every list.
 #[derive(Debug, Serialize)]
@@ -158,7 +167,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_serves_exactly_the_read_tools() {
+    fn registry_serves_the_read_and_propose_tools() {
         let reg = registry();
         let names: Vec<_> = reg.iter().map(|t| t.name()).collect();
         assert_eq!(
@@ -169,6 +178,8 @@ mod tests {
                 "list_series",
                 "list_titles_with_incomplete_metadata",
                 "list_titles_without_cover",
+                "propose_series_attach",
+                "propose_series_create",
                 "search_contributors",
                 "search_titles"
             ],
@@ -188,23 +199,49 @@ mod tests {
             assert!(!tool.title().is_empty(), "{name} has no title");
             let description = tool.description();
             assert!(description.len() > 200, "{name} description too short");
-            assert!(
-                description.contains("Read-only"),
-                "{name}: say it is read-only"
-            );
+            if PROPOSE_TOOLS.contains(&name) {
+                assert!(!tool.read_only(), "{name} files a proposal");
+                assert!(
+                    description.contains("does not change the catalog")
+                        && description.contains("`sources`"),
+                    "{name}: say it never changes the catalog and needs sources"
+                );
+            } else {
+                assert!(tool.read_only(), "{name}: catalog tools are read-only");
+                assert!(
+                    description.contains("Read-only"),
+                    "{name}: say it is read-only"
+                );
+            }
             let schema = tool.input_schema();
             assert_eq!(schema["type"], "object", "{name} schema is not an object");
             assert_eq!(
                 schema["additionalProperties"], false,
                 "{name}: unknown arguments must be refused"
             );
-            for (prop, def) in schema["properties"].as_object().expect("properties") {
-                assert!(
-                    def["description"].as_str().is_some_and(|d| !d.is_empty()),
-                    "{name}.{prop} has no description"
-                );
-            }
-            assert!(tool.read_only(), "{name}: catalog tools are read-only");
+            assert_schema_is_closed_and_described(name, "", &schema);
+        }
+    }
+
+    /// Every object schema, nested ones included (array items), refuses
+    /// unknown properties and describes each property.
+    fn assert_schema_is_closed_and_described(tool: &str, path: &str, schema: &Value) {
+        if let Some(items) = schema.get("items") {
+            assert_schema_is_closed_and_described(tool, &format!("{path}[]"), items);
+        }
+        if schema["type"] != "object" {
+            return;
+        }
+        assert_eq!(
+            schema["additionalProperties"], false,
+            "{tool}{path}: unknown arguments must be refused"
+        );
+        for (prop, def) in schema["properties"].as_object().expect("properties") {
+            assert!(
+                def["description"].as_str().is_some_and(|d| !d.is_empty()),
+                "{tool}{path}.{prop} has no description"
+            );
+            assert_schema_is_closed_and_described(tool, &format!("{path}.{prop}"), def);
         }
     }
 

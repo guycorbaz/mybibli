@@ -580,3 +580,82 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** the confirmation pass found no Medium+. Lows: the version-conflict copy still told the librarian to reload; repeated tome controls had no accessible name; a failed delete-modal GET is invisible on the series page.
 **Chosen:** new conflict wording ("the form now shows the latest version: make your change again") in the four locales; `aria-label` "<action> — <tome title>" on the three controls; the missing `#feedback-list` on the series page (which also affects the series delete modal and CSRF rejections, pre-existing) goes to #526.
 **Reversible:** yes.
+
+## § 11-12 — Series proposal tools (part of #493)
+
+### D-11-12-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-12-series-proposal-tools` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-12-2 — Item shapes: a series line first, then titles, then expected tomes [PRODUCT]
+**Context:** "one item per line"; 11-9 left the `proposed_values` shapes to the proposal stories; 11-16/11-17/11-19 consume them.
+**Chosen:** a `"line"` discriminant. Line 1 is always the series: for `series_create` `{"line":"series","name","series_type","total_volume_count"}` without target; for `series_attach` `{"line":"series"}` targeting `series/<id>` (so the series' version is recorded even when only tomes are proposed, and the duplicate rule is one indexed lookup). Title lines `{"line":"title","position","is_omnibus"[, "end_position"]}` target `titles/<id>`; expected-tome lines `{"line":"expected_tome","position","title","isbn"}` have no target. The origin `proposal` follows from the line type (11-17 creates tomes with `ExpectedTomeOrigin::Proposal`), it is not stored. 11-19 must not let the series line be removed. Contract documented on `services/series_proposals.rs`.
+**Rejected:** tome lines targeting the series in an attach (redundant version records; an attach with titles only would record no series version); storing `origin` in each tome line (constant).
+**Reversible:** yes until 11-17 ships.
+
+### D-11-12-3 — An omnibus is `is_omnibus` + `end_position`
+**Context:** the AC says "position and omnibus flag"; an omnibus in the catalog covers a range (`assign_omnibus(start, end)`).
+**Chosen:** `is_omnibus: true` requires `end_position ≥ position` (same rule as the web form); `end_position` without the flag is refused. Duplicate positions are found by comparing ranges (sorted, never expanded), so an omnibus `1..2^31` cannot blow up memory.
+**Reversible:** yes.
+
+### D-11-12-4 — Filing-time checks beyond the AC's list [PRODUCT]
+**Context:** the AC lists unknown/deleted titles, position ≤ 0 and positions used twice; a proposal that cannot be accepted wastes the librarian's time.
+**Chosen:** also refused at filing: positions above a closed total (the proposed total, or the series' total), the same title twice, tome title / ISBN by the expected-tome rules (D-11-10-4), the same tome ISBN twice; for attach, against the series as it is now: a title already in the series, a position held by a live title, a position or ISBN of a live expected tome. A closed series needs a total, an open one takes none, a name is 1..=255 characters.
+**Not refused:** a title line on a position an expected tome waits for (acceptance attaches the title; the tome settles or shows in "to review", D-11-11-2); an expected tome whose ISBN a title of the catalog already carries (acceptance settles it, D-11-10-11).
+**Reversible:** yes.
+
+### D-11-12-5 — Duplicate rules, checked before filing, outside its transaction [PRODUCT]
+**Context:** "an active series with the same name" and "a pending proposal already targeting the same series".
+**Chosen:** same name = `SeriesModel::active_find_by_name` (the web form's rule) → `Refused` naming the id and `propose_series_attach`. Pending duplicate: attach = a live pending proposal with a live item targeting `series/<id>`; create = a live pending `series_create` whose series line has the same name under `utf8mb4_unicode_ci` (both sides `CONVERT … USING utf8mb4` so CI's server default charset cannot change the result). Decided or soft-deleted proposals never block. Both checks are plain reads before `ProposalService::file`: two concurrent filings for the same series can both pass (harmless — the librarian rejects one, and the second accept goes stale or conflicts).
+**Rejected:** locking inside the filing transaction (a new lock order next to 11-9's key lock and 11-14's revocation, for a race a single agent does not produce).
+**Reversible:** yes.
+
+### D-11-12-6 — `get_series` returns `version`; `version` / `series_version` pins are optional
+**Context:** D-11-9-11 gave filing an optional `expected_version`; `get_title` already returned `version`, `get_series` did not.
+**Chosen:** `get_series` gains `version` (MCP-only document); title entries take an optional `version`, attach an optional `series_version`; a mismatch is refused naming the entity ("Title 42 changed since you read it…"), never 11-9's internal item index (target errors are restated by the series service).
+**Reversible:** yes.
+
+### D-11-12-7 — `ToolError::Refused`, propose tools not read-only
+**Context:** `ToolError` had only `InvalidArguments`, `NotFound`, `Internal`; an existing series or a pending duplicate is neither a malformed argument nor a server error.
+**Chosen:** `ToolError::Refused(String)` (message as is). `SeriesProposalError::class()` decides: input → `InvalidArguments`, unknown series/title → `NotFound`, state conflicts / revoked key → `Refused`, database → `Internal` (logged). The two tools return `read_only() = false` (annotations `readOnlyHint: false`, `idempotentHint: false`, `destructiveHint: false`); the registry test now checks nested schemas are closed (`additionalProperties: false`) and described, and that propose tools say they do not change the catalog.
+**Reversible:** yes.
+
+### D-11-12-8 — Success document
+**Context:** "returns its id and status".
+**Chosen:** `{ "proposal_id", "status": "pending", "kind", "item_count" }`.
+**Reversible:** yes.
+
+### D-11-12-9 — Code review round 1: bounded positions, omnibus span and line count [PRODUCT]
+**Context:** review round 1 (High, edge-case layer): an omnibus `1..2147483647` passed filing, and accepting it (`assign_omnibus`, one row per position) would run away; a closed total of `i32::MAX` would make the series page grid unbounded. (Medium, blind layer): the 1000-item cap was only checked inside `ProposalService::file`, after an O(n²) validation of up to ~500 000 lines a 14 MiB body can carry.
+**Chosen:** agent proposals accept positions and totals in 1..=10 000 (`MAX_POSITION`), an omnibus covering at most 100 positions (`MAX_OMNIBUS_SPAN`), and at most 999 title + tome lines together (`MAX_LINES`, checked first, before any per-line work); duplicate titles / ISBNs use hash sets. The schemas carry the same bounds; the descriptions quote them.
+**Rejected:** the same caps on the web forms (librarian input, out of scope).
+**Supersedes:** the `i32` bound of the story's dev notes.
+**Reversible:** yes.
+
+### D-11-12-10 — Code review round 1: a title line may not fill an expected tome's position [PRODUCT]
+**Context:** review round 1 (Medium): an attach title line on a position named by a live unsettled expected tome was filed; accepting it would put a title next to an unsettled tome (the "to review" state of D-11-11-2), and the tool description already said it was refused.
+**Chosen:** refused (`TomePositionTaken`), omnibus ranges included. If that title really is the tome, its ISBN would have settled the tome at catalogue time; otherwise the librarian resolves it on the series page.
+**Supersedes:** the "Not refused" title-line case of D-11-12-4.
+**Reversible:** yes.
+
+### D-11-12-11 — Code review round 1: duplicate checks inside the filing transaction, serialised per key (supersedes part of D-11-12-5)
+**Context:** review round 1 (Medium, two layers): agents issue parallel tool calls, so two filings for the same series could both pass the plain-read duplicate checks.
+**Chosen:** `ProposalService::file_in` (the transaction-scoped body of `file`); the series service opens the transaction, locks the filing key row `FOR UPDATE` (same key-first lock order as the share lock and 11-14's revocation), runs the existing-series and pending checks as locking (current) reads, files, commits. Filings with the same key are serialised — the realistic race. Two different keys racing on the same series remain possible (tracked for 11-17 in #529). The existing-series check now uses the same `utf8mb4_unicode_ci` comparison as the pending check, independent of the server charset (the web form's own check is unchanged). Validated (normalised) sources are what is filed.
+**Rejected:** a lock on the series row (deadlock-prone against an accept holding the proposal-item next-key locks, D-11-9-12); `GET_LOCK` (session-scoped, unreliable with a pool).
+**Reversible:** yes.
+
+### D-11-12-12 — Code review round 1: deferred Lows
+**Chosen:** #528 (E2E specs creating a series depend on file order — pre-existing, D-11-11-6); #529 (checks 11-17 must repeat at acceptance: owned ISBN on a tome line also proposed as a title line, cross-key race, cross-proposal title conflicts). #514 (MCP body cap / timeout) re-pointed to 11-14 by comment. Fixed: refusals now covered end-to-end through the router (name length, title twice, omnibus rules, positions, totals, tome title/ISBN, line cap), unblocking by accept and soft delete, the concurrent filing, the accent-insensitive existing-series match, and the E2E checks a revoked key is refused.
+**Reversible:** yes.
+
+### D-11-12-13 — Code review round 2: plain duplicate reads after the key lock; attach pins the version it checked (supersedes part of D-11-12-11)
+**Context:** round 2 (Medium, two layers): the duplicate reads were `LOCK IN SHARE MODE` on predicates no index serves (`CONVERT … COLLATE`, `JSON_EXTRACT`), so they share-locked every `series` row and whole `proposal_items` ranges — a deadlock with an acceptance locking a series (11-16/17) and between two keys inserting into the locked gaps. (Medium, blind layer): an attach without `series_version` recorded, as staleness baseline, the version read inside the filing transaction, newer than the state its position checks ran on.
+**Chosen:** the three duplicate reads are plain reads. They run right after the exclusive key-row lock, which is a locking read and opens no snapshot, so the first plain read's snapshot already contains every filing committed before the lock was granted — same-key serialisation is kept (the concurrency test still passes) without range locks. The attach series line pins `series_version` or, when absent, the version read for the checks (a series edited in between is refused with `TargetChanged`). "Proposal filed" is logged after the commit (`proposals::log_filed`). `get_series` / `series_version` descriptions now say `version` moves with the series' own fields only (title / tome writes do not bump it, #521).
+**Accepted (Low):** `utf8mb4_unicode_ci` gives every supplementary-plane character one weight (two names differing only by an emoji compare equal → a false "already exists"); `utf8mb4_unicode_520_ci` would need its own check on the CI server.
+**Reversible:** yes.
+
+### D-11-12-14 — Code review round 3: clean; Lows accepted
+**Context:** confirmation pass, no Medium+; the BEGIN → key `FOR UPDATE` → plain-read order verified (sqlx sends a bare `BEGIN`).
+**Chosen:** the `series_version` description now warns that an unpinned call is refused (retry) when the series is edited during it; accepted: the "changed since you read it" wording in that case, validation after `BEGIN` in `ProposalService::file`, the redundant share lock in `file_in`.
+**Reversible:** yes.

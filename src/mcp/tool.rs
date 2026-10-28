@@ -39,6 +39,10 @@ pub enum ToolError {
     InvalidArguments(String),
     /// The requested entity does not exist (or is soft-deleted).
     NotFound(String),
+    /// Story 11-12 — well-formed arguments the library's current state
+    /// refuses (an existing series, a pending duplicate, a revoked key…);
+    /// the message says what to do instead.
+    Refused(String),
     /// A server-side failure; the detail is logged, never sent.
     Internal,
 }
@@ -48,7 +52,7 @@ impl ToolError {
     pub fn message(&self) -> String {
         match self {
             ToolError::InvalidArguments(m) => format!("Invalid arguments: {m}"),
-            ToolError::NotFound(m) => m.clone(),
+            ToolError::NotFound(m) | ToolError::Refused(m) => m.clone(),
             ToolError::Internal => {
                 "The library could not answer this request because of a server error. \
                  Try again later."
@@ -76,7 +80,8 @@ pub trait McpTool: Send + Sync + 'static {
     fn description(&self) -> &'static str;
     /// JSON Schema (an object schema) of the arguments.
     fn input_schema(&self) -> Value;
-    /// Whether the tool only reads. Every tool of this story does.
+    /// Whether the tool only reads. The proposal tools (story 11-12 on)
+    /// return `false`: they file a proposal, never touch the catalog.
     fn read_only(&self) -> bool {
         true
     }
@@ -134,6 +139,10 @@ mod tests {
         assert_eq!(
             ToolError::NotFound("No title 7.".into()).message(),
             "No title 7."
+        );
+        assert_eq!(
+            ToolError::Refused("Proposal 3 is pending.".into()).message(),
+            "Proposal 3 is pending."
         );
         let internal: ToolError = AppError::Internal("db password=secret".into()).into();
         assert_eq!(internal, ToolError::Internal);
