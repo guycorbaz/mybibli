@@ -611,3 +611,187 @@ async fn get_series_returns_the_expected_tomes(pool: DbPool) {
     // The settled tome's title now fills position 2.
     assert_eq!(doc["missing_positions"], json!([1, 3, 4, 5]));
 }
+
+// ─── Review round 1 regressions ──────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn update_refusals_and_unchanged_position(pool: DbPool) {
+    let s = add_series(&pool, "S", "closed", Some(4)).await;
+    let i2 = isbn(101);
+    let t1 = create(&pool, s, 1, "One", None).await;
+    create(&pool, s, 2, "Two", Some(&i2)).await;
+    let owned = book(&pool, "Owned 3", None).await;
+    assign(&pool, owned, s, 3, false).await;
+
+    for (inp, want) in [
+        (input(3, "One", None), "PositionHeld"),
+        (input(2, "One", None), "PositionTaken"),
+        (input(5, "One", None), "PositionOutOfRange"),
+        (input(1, "One", Some(&i2)), "DuplicateIsbn"),
+    ] {
+        let e = ExpectedTomeService::update(&pool, t1, 1, &inp)
+            .await
+            .unwrap_err();
+        assert!(format!("{e:?}").starts_with(want), "{inp:?}: got {e:?}");
+    }
+
+    // Position 1 gets filled by hand by an unrelated title, and the total
+    // is lowered: fixing the tome's title in place still works.
+    let other = book(&pool, "Unrelated", None).await;
+    assign(&pool, other, s, 1, false).await;
+    let row = ExpectedTomeService::update(&pool, t1, 1, &input(1, "One (fixed)", None))
+        .await
+        .unwrap();
+    assert_eq!(row.title, "One (fixed)");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn unassigning_the_settled_title_unsettles_the_tome(pool: DbPool) {
+    let s = add_series(&pool, "S", "open", None).await;
+    let i = isbn(102);
+    let tome = create(&pool, s, 2, "Two", Some(&i)).await;
+    let title = book(&pool, "T", Some(&i)).await;
+    ExpectedTomeService::settle_for_title(&pool, title, &i)
+        .await
+        .unwrap();
+    assert_eq!(settled_title(&pool, tome).await, Some(title));
+
+    sqlx::query("UPDATE title_series SET deleted_at = NOW() WHERE title_id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        settled_title(&pool, tome).await,
+        None,
+        "position is a gap again"
+    );
+
+    // Scanning again re-attaches it.
+    let out = ExpectedTomeService::settle_for_title(&pool, title, &i)
+        .await
+        .unwrap();
+    assert_eq!(out[0].result, SettleResult::Settled);
+    assert_eq!(live_positions(&pool, title, s).await, vec![2]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn editing_after_the_settled_title_is_deleted_clears_the_link(pool: DbPool) {
+    let s = add_series(&pool, "S", "open", None).await;
+    let i = isbn(103);
+    let tome = create(&pool, s, 1, "One", Some(&i)).await;
+    let title = book(&pool, "T", Some(&i)).await;
+    ExpectedTomeService::settle_for_title(&pool, title, &i)
+        .await
+        .unwrap();
+    soft_delete(&pool, "titles", title).await;
+    let version = ExpectedTomeService::find(&pool, tome)
+        .await
+        .unwrap()
+        .unwrap()
+        .version;
+    ExpectedTomeService::update(&pool, tome, version, &input(4, "Four", None))
+        .await
+        .unwrap();
+    // The title comes back from the Trash: the edited tome stays unsettled.
+    sqlx::query("UPDATE titles SET deleted_at = NULL WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(settled_title(&pool, tome).await, None);
+    let raw: Option<u64> =
+        sqlx::query_scalar("SELECT settled_title_id FROM series_expected_tomes WHERE id = ?")
+            .bind(tome)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(raw, None);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_tome_for_an_owned_isbn_settles_on_entry(pool: DbPool) {
+    let s = add_series(&pool, "S", "open", None).await;
+    let i = isbn(104);
+    let title = book(&pool, "Already owned", Some(&i)).await;
+    let row = ExpectedTomeService::create(
+        &pool,
+        s,
+        &input(3, "Three", Some(&i)),
+        ExpectedTomeOrigin::Manual,
+    )
+    .await
+    .unwrap();
+    assert_eq!(row.settled_title_id, Some(title));
+    assert_eq!(live_positions(&pool, title, s).await, vec![3]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn hand_assignment_and_isbn_edit_settle(pool: DbPool) {
+    let s = add_series(&pool, "S", "closed", Some(5)).await;
+    let i1 = isbn(105);
+    let i2 = isbn(106);
+    let tome1 = create(&pool, s, 1, "One", Some(&i1)).await;
+    let tome2 = create(&pool, s, 2, "Two", Some(&i2)).await;
+
+    // A title carrying the ISBN is assigned by hand at the tome's position.
+    let t1 = book(&pool, "T1", Some(&i1)).await;
+    mybibli::services::series::SeriesService::assign_title(&pool, t1, s, 1)
+        .await
+        .unwrap();
+    assert_eq!(settled_title(&pool, tome1).await, Some(t1));
+
+    // A title gains the ISBN through an edit.
+    let t2 = book(&pool, "T2", None).await;
+    sqlx::query("UPDATE titles SET isbn = ? WHERE id = ?")
+        .bind(&i2)
+        .bind(t2)
+        .execute(&pool)
+        .await
+        .unwrap();
+    ExpectedTomeService::settle_for_title_id(&pool, t2).await;
+    assert_eq!(settled_title(&pool, tome2).await, Some(t2));
+    assert_eq!(live_positions(&pool, t2, s).await, vec![2]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn rescanning_an_existing_title_settles(pool: DbPool) {
+    seed_admin(&pool, "tome_admin").await;
+    let app = router(&pool);
+    let browser = Browser::login(&app, "tome_admin").await;
+    let s = add_series(&pool, "Rescan", "open", None).await;
+    let i = isbn(107);
+    let tome = create(&pool, s, 6, "Six", Some(&i)).await;
+    // Catalogued before the tome existed in the series' knowledge.
+    let title = book(&pool, "Owned copy", Some(&i)).await;
+
+    let (status, body) = browser
+        .post_form(&app, "/catalog/scan", &format!("code={i}"))
+        .await;
+    assert!(status.is_success(), "{status}: {body}");
+    assert!(
+        body.contains("Expected tome found") || body.contains("Tome attendu trouvé"),
+        "{body}"
+    );
+    assert_eq!(settled_title(&pool, tome).await, Some(title));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn manual_creation_with_an_isbn10_settles(pool: DbPool) {
+    seed_admin(&pool, "tome_admin").await;
+    let app = router(&pool);
+    let browser = Browser::login(&app, "tome_admin").await;
+    let s = add_series(&pool, "Hyphen", "open", None).await;
+    let tome = create(&pool, s, 1, "One", Some("9782070360246")).await;
+    let genre = common::mcp::genre_id(&pool, "Roman").await;
+
+    let (status, body) = browser
+        .post_form(
+            &app,
+            "/catalog/title",
+            &format!("title=One&media_type=book&genre_id={genre}&isbn=2070360245"),
+        )
+        .await;
+    assert!(status.is_success(), "{status}: {body}");
+    assert!(settled_title(&pool, tome).await.is_some(), "{body}");
+}

@@ -32,7 +32,7 @@ so that its gaps have names and settle by themselves once I scan them.
 1. **AC1 — migration (AR29, AR24).** `series_expected_tomes`: `id BIGINT UNSIGNED PK`, `series_id` (NOT NULL, FK `series(id)` **ON DELETE CASCADE** — a hard-purged series takes its tomes), `position INT NOT NULL`, `title VARCHAR(500) NOT NULL`, `isbn VARCHAR(13) NULL` (always ISBN-13 when set), `origin ENUM('manual','proposal') NOT NULL DEFAULT 'manual'`, `settled_title_id` (NULL, FK `titles(id)` **ON DELETE SET NULL**), AR24 quartet, a stored generated `live_marker` (1 when `deleted_at IS NULL`, else NULL) with `UNIQUE (series_id, position, live_marker)` and `UNIQUE (series_id, isbn, live_marker)` (at most one live tome per position and per ISBN in a series; soft-deleted rows never collide), indexes on `isbn`, `deleted_at`, `settled_title_id`. InnoDB, utf8mb4.
 2. **AC2 — ISBN.** An ISBN given for an expected tome is trimmed, hyphens and spaces removed; a valid ISBN-10 (incl. `X`) is stored as ISBN-13 via `utils::isbn10_to_isbn13`; an ISBN-13 must pass the checksum; anything else is refused (`InvalidIsbn`). Empty → no ISBN.
 3. **AC3 — service CRUD** (`services::expected_tomes::ExpectedTomeService`): `create` (+ `create_in` on a connection, for 11-17), `update` (optimistic lock on `version`), `delete` (soft, optimistic lock), `list_by_series` (live tomes of a live series, ordered by position), `find`. Validation: series live (`SeriesNotFound`); position ≥ 1, and ≤ total for a closed series (`PositionOutOfRange`); position not held by a live title of the series (`PositionHeld`); no other live tome at the position (`PositionTaken`) or with the same ISBN in the series (`DuplicateIsbn`) — checked in the service and backed by the unique keys; title trimmed, 1..=500 characters (`TitleRequired` / `TitleTooLong`). Update re-checks all of this excluding the tome itself, and refuses a settled tome (`Settled`). Typed `ExpectedTomeError` with agent-facing English `Display` and `From<ExpectedTomeError> for AppError` (validation → `BadRequest`, `NotFound` → `NotFound`, version mismatch / `Settled` → `Conflict`).
-4. **AC4 — settled.** A tome is *settled* when `settled_title_id` names a live title. A tome whose settled title was soft-deleted (or purged — FK SET NULL) reads as unsettled again and can be settled again.
+4. **AC4 — settled.** A tome is *settled* when `settled_title_id` names a live title (refined in review, D-11-10-10: that still holds the tome's position). A tome whose settled title was soft-deleted (or purged — FK SET NULL) reads as unsettled again and can be settled again.
 5. **AC5 — auto-settle (FR145).** `ExpectedTomeService::settle_for_title(pool, title_id, isbn)` runs whenever a title carrying an ISBN is catalogued — the `/catalog/scan` ISBN arm (new title **and** re-scan of an existing title, like the wishlist auto-link) and the manual title form (`POST /catalog/title`). In one transaction, for each unsettled live tome of a live series with that ISBN (locked `FOR UPDATE`), in id order:
    - title already assigned to the series at the tome's position → mark settled, no new row (`Settled`);
    - title assigned to the series at another position → no change (`Conflict::TitleElsewhere { position }`);
@@ -75,6 +75,25 @@ so that its gaps have names and settle by themselves once I scan them.
 - [Source: src/services/series.rs#assign_title], [Source: src/models/series.rs#TitleSeriesModel::assign] — position rules and assignment.
 - [Source: src/services/proposals.rs] — typed-error / `_in` transaction conventions (D-11-9-2, D-11-9-11).
 - [Source: _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md] — D-11-8-3/8 (gap rule), D-11-9-*; this story's choices are D-11-10-*.
+
+### Review Findings
+
+Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor on `git diff main...HEAD`) — decisions in D-11-10-10:
+
+- [x] [Review][Patch] Lock-order inversion between scan-settle (tome → series) and create/update/delete (series → tome): deadlock would silently drop the settle [Medium] — one order everywhere (series by id → tomes); settle reads matching series without a lock first; delete locks the series first; holder read is a locking read.
+- [x] [Review][Patch] Every ISBN scan took a gap lock on `idx_expected_tomes_isbn` [Low] — unlocked pre-read, lock only on a match.
+- [x] [Review][Patch] A tome stayed "settled" after its title was unassigned or moved [Medium] — settled now also requires the title to hold the tome's position.
+- [x] [Review][Patch] An unsettled tome could not be edited once its position got taken / its total lowered [Medium] — range and holder checks only when the position changes.
+- [x] [Review][Patch] Soft-delete title → edit tome → restore title resurrected a contradicted settlement [Medium] — an edit clears `settled_title_id`.
+- [x] [Review][Patch] ISBN-10 typed in the manual form never matched (stored raw) [Medium] — `settle_for_title` normalises its input.
+- [x] [Review][Patch] Tome left "missing" next to a title that fills it (tome entered for an owned ISBN, hand assignment, ISBN added by edit) [Medium] — settle on tome create/edit, after `assign_title` / `assign_omnibus`, after a title ISBN change.
+- [x] [Review][Patch] Any EAN-13 accepted as a tome ISBN [Low] — 978/979 required.
+- [x] [Review][Patch] Position/ISBN collisions mapped to `BadRequest` [Low] — now `Conflict`.
+- [x] [Review][Patch] `catalog.rs` (already > 2000 lines) grew by 9 lines [Low] — `isbn_banners` takes `Option<&str>`; +4 lines.
+- [x] [Review][Patch] Tests missing for re-scan, update refusals, restore sequence [Low] — added (`tests/expected_tomes.rs`, 7 new tests).
+- [x] [Review][Defer] Lowered total / Trash restore onto a tome's position [Low] — #524.
+- [x] [Review][Dismiss] `assign_in` keeps a revived row's omnibus flag (it resets `is_omnibus = FALSE`); scan passes an un-normalised code (it is normalised upstream); one failure loses the wishlist banner (it is kept).
+- [x] [Review][Accept] Conflict warning repeats on rescan (by design); non-HTMX manual form silent; `get_series` two reads; single transaction for all matches; unique-key fallback by key name.
 
 ## Dev Agent Record
 

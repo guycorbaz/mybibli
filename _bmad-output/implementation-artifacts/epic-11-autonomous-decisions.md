@@ -502,3 +502,18 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** the scan / manual-creation tests need a real login + CSRF flow; it is written inline in `tests/scan_title_context.rs` and several other files.
 **Chosen:** a small `Browser { cookie, csrf }` helper in `tests/common/web.rs` used by the new test crate; the existing files are left as they are (no churn outside the story).
 **Reversible:** yes.
+
+### D-11-10-10 — Code review round 1: one lock order, a stricter "settled", settle on every path that can fill a tome [PRODUCT]
+**Context:** the three review layers found (Medium) a lock-order inversion between scan-settle and the tome writers (deadlock → the settle silently lost), a gap lock taken by every ISBN scan, a tome that stayed "settled" after its title was unassigned or moved, an unsettled tome that could no longer be edited once its position got taken, a restored title resurrecting a settlement contradicted by an edit, a manually typed ISBN-10 that never matched, and tomes left "missing" next to a title that fills them (tome entered for an ISBN already owned, title assigned by hand, ISBN added by an edit).
+**Chosen (supersedes part of D-11-10-3 and D-11-10-5):**
+- Lock order everywhere: series rows (by id) → tome rows. Settle first reads the matching series ids without a lock (a scan that matches nothing takes no lock), then locks those series in id order, then the tomes; delete locks the series first; the position-holder read is a locking read.
+- A tome is settled when its settled title is live **and** still holds the tome's position (live `title_series` row); unassigning, moving or deleting the title makes the position a gap again, and the next catalogue event settles it again. An edit of an unsettled tome clears any stale `settled_title_id`.
+- Update checks the range and the holder only when the position changes.
+- `settle_for_title` normalises the ISBN it is given (ISBN-10, separators).
+- Settle also runs when a tome is created or edited with the ISBN of a live title (first such title by id), after `SeriesService::assign_title` / `assign_omnibus`, and after a title edit that changes its ISBN — silently (logged), no feedback on those paths.
+- A tome ISBN-13 must start with 978/979 (a book EAN, the only codes the scan treats as ISBNs).
+- `PositionHeld`, `PositionTaken`, `DuplicateIsbn` map to `AppError::Conflict` (state conflicts, not malformed input).
+- `create_title` calls the banner helper in one statement (`isbn_banners` takes `Option<&str>`), so `catalog.rs` grows by 4 lines only.
+**Deferred:** a total lowered below a tome's position and a Trash restore onto a tome's position (#524, Low).
+**Accepted (Low):** a conflict warning repeats on every rescan of the ISBN (by design, D-11-10-5); the non-HTMX manual form settles without showing the banner (the UI always posts through HTMX); `get_series` reads tomes in a second query (read-only tool); one transaction for all matching tomes (only database errors can abort it now); the unique-key fallback distinguishes the two keys by name in the MariaDB message.
+**Reversible:** yes.

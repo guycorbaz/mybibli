@@ -17,6 +17,7 @@ use crate::models::contributor::TitleContributorModel;
 use crate::models::genre::GenreModel;
 use crate::models::series::{SeriesModel, TitleSeriesAssignment};
 use crate::models::title::{SimilarTitle, TitleModel, detect_edited_fields};
+use crate::services::expected_tomes::ExpectedTomeService;
 use crate::models::volume::VolumeModel;
 use crate::utils::feedback_html;
 use crate::services::cover::{CoverService, resolve_cover_url_with_fallback};
@@ -884,6 +885,10 @@ pub async fn update_title(
         &resolved_media_type,
     )
     .await?;
+    // Story 11-10 — a new ISBN can fill an expected tome.
+    if updated.isbn.is_some() && updated.isbn != old_title.isbn {
+        ExpectedTomeService::settle_for_title_id(pool, id).await;
+    }
 
     // Issue #331 — audit any media_type bascule so the change is forensic-
     // visible alongside identifier edits. Skipped when the type is byte-

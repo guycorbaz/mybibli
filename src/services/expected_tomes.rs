@@ -153,9 +153,11 @@ impl From<ExpectedTomeError> for AppError {
             ExpectedTomeError::NotFound { .. } | ExpectedTomeError::SeriesNotFound { .. } => {
                 AppError::NotFound(e.to_string())
             }
-            ExpectedTomeError::Settled { .. } | ExpectedTomeError::VersionConflict { .. } => {
-                AppError::Conflict(e.to_string())
-            }
+            ExpectedTomeError::Settled { .. }
+            | ExpectedTomeError::VersionConflict { .. }
+            | ExpectedTomeError::PositionHeld { .. }
+            | ExpectedTomeError::PositionTaken { .. }
+            | ExpectedTomeError::DuplicateIsbn { .. } => AppError::Conflict(e.to_string()),
             other => AppError::BadRequest(other.to_string()),
         }
     }
@@ -163,8 +165,9 @@ impl From<ExpectedTomeError> for AppError {
 
 /// Normalise an ISBN given for an expected tome (pure — unit tested):
 /// trimmed, hyphens and spaces removed; empty → `None`; a valid ISBN-10
-/// becomes its ISBN-13 (story 11-1 helper); an ISBN-13 must pass its
-/// checksum; anything else is refused.
+/// becomes its ISBN-13 (story 11-1 helper); an ISBN-13 must start with
+/// 978 / 979 (a book EAN — the only codes `/catalog/scan` treats as
+/// ISBNs) and pass its checksum; anything else is refused.
 pub fn normalize_isbn(raw: Option<&str>) -> Result<Option<String>, ExpectedTomeError> {
     let Some(raw) = raw else { return Ok(None) };
     let compact: String = raw
@@ -178,7 +181,9 @@ pub fn normalize_isbn(raw: Option<&str>) -> Result<Option<String>, ExpectedTomeE
     if let Some(isbn13) = crate::utils::isbn10_to_isbn13(&compact) {
         return Ok(Some(isbn13));
     }
-    if TitleService::validate_isbn13_checksum(&compact) {
+    if (compact.starts_with("978") || compact.starts_with("979"))
+        && TitleService::validate_isbn13_checksum(&compact)
+    {
         return Ok(Some(compact));
     }
     Err(ExpectedTomeError::InvalidIsbn {
@@ -283,7 +288,9 @@ impl ExpectedTomeService {
     }
 
     /// Create a tome on a caller-held transaction (proposal acceptance,
-    /// story 11-17); returns its id. Locks the series row.
+    /// story 11-17); returns its id. Locks the series row. When a live
+    /// title already carries the ISBN, the tome is settled with it at
+    /// once (same rules as at scan time).
     pub async fn create_in(
         conn: &mut MySqlConnection,
         series_id: u64,
@@ -295,18 +302,23 @@ impl ExpectedTomeService {
         let series = ExpectedTomeModel::lock_series_in(conn, series_id)
             .await?
             .ok_or(ExpectedTomeError::SeriesNotFound { series_id })?;
-        Self::check_slot(conn, &series, input.position, isbn.as_deref(), None).await?;
+        Self::check_slot(conn, &series, input.position, isbn.as_deref(), None, true).await?;
         let values = ExpectedTomeValues {
             position: input.position,
             title: &title,
             isbn: isbn.as_deref(),
         };
-        ExpectedTomeModel::insert_in(conn, series_id, &values, origin)
+        let id = ExpectedTomeModel::insert_in(conn, series_id, &values, origin)
             .await
-            .map_err(|e| map_unique_violation(e, input.position, isbn.as_deref()))
+            .map_err(|e| map_unique_violation(e, input.position, isbn.as_deref()))?;
+        Self::settle_with_owned_title(conn, id, &series, input.position, isbn.as_deref()).await?;
+        Ok(id)
     }
 
-    /// Update an unsettled tome under optimistic locking.
+    /// Update an unsettled tome under optimistic locking. The holder and
+    /// range checks only apply when the position changes, so a tome whose
+    /// position got taken (or fell above a lowered total) can still be
+    /// corrected. A stale settled link (its title gone) is cleared.
     pub async fn update(
         pool: &DbPool,
         id: u64,
@@ -316,23 +328,23 @@ impl ExpectedTomeService {
         let title = validate_title(input.title)?;
         let isbn = normalize_isbn(input.isbn)?;
         let mut tx = pool.begin().await?;
-        let current = ExpectedTomeModel::find_in(&mut tx, id, false)
-            .await?
-            .ok_or(ExpectedTomeError::NotFound { id })?;
-        // Lock order series → tome, as in create and settle.
-        let series = ExpectedTomeModel::lock_series_in(&mut tx, current.series_id)
-            .await?
-            .ok_or(ExpectedTomeError::NotFound { id })?;
-        let current = ExpectedTomeModel::find_in(&mut tx, id, true)
-            .await?
-            .ok_or(ExpectedTomeError::NotFound { id })?;
+        let (series, current) = Self::lock_tome(&mut tx, id).await?;
         if current.version != version {
             return Err(ExpectedTomeError::VersionConflict { id });
         }
         if current.is_settled() {
             return Err(ExpectedTomeError::Settled { id });
         }
-        Self::check_slot(&mut tx, &series, input.position, isbn.as_deref(), Some(id)).await?;
+        let moved = input.position != current.position;
+        Self::check_slot(
+            &mut tx,
+            &series,
+            input.position,
+            isbn.as_deref(),
+            Some(id),
+            moved,
+        )
+        .await?;
         let values = ExpectedTomeValues {
             position: input.position,
             title: &title,
@@ -344,6 +356,8 @@ impl ExpectedTomeService {
         if n == 0 {
             return Err(ExpectedTomeError::VersionConflict { id });
         }
+        Self::settle_with_owned_title(&mut tx, id, &series, input.position, isbn.as_deref())
+            .await?;
         let row = ExpectedTomeModel::find_in(&mut tx, id, false)
             .await?
             .ok_or(ExpectedTomeError::NotFound { id })?;
@@ -354,9 +368,7 @@ impl ExpectedTomeService {
     /// Soft-delete a tome (settled or not) under optimistic locking.
     pub async fn delete(pool: &DbPool, id: u64, version: i32) -> Result<(), ExpectedTomeError> {
         let mut tx = pool.begin().await?;
-        let current = ExpectedTomeModel::find_in(&mut tx, id, true)
-            .await?
-            .ok_or(ExpectedTomeError::NotFound { id })?;
+        let (_, current) = Self::lock_tome(&mut tx, id).await?;
         if current.version != version
             || ExpectedTomeModel::soft_delete_in(&mut tx, id, version).await? == 0
         {
@@ -366,32 +378,59 @@ impl ExpectedTomeService {
         Ok(())
     }
 
+    /// Lock a tome for writing — series row first, then the tome, the
+    /// order every writer follows (create, update, delete, settle).
+    async fn lock_tome(
+        conn: &mut MySqlConnection,
+        id: u64,
+    ) -> Result<(SeriesShape, ExpectedTomeRow), ExpectedTomeError> {
+        let peek = ExpectedTomeModel::find_in(conn, id, false)
+            .await?
+            .ok_or(ExpectedTomeError::NotFound { id })?;
+        let series = ExpectedTomeModel::lock_series_in(conn, peek.series_id)
+            .await?
+            .ok_or(ExpectedTomeError::NotFound { id })?;
+        let current = ExpectedTomeModel::find_in(conn, id, true)
+            .await?
+            .ok_or(ExpectedTomeError::NotFound { id })?;
+        Ok((series, current))
+    }
+
     /// FR145 — settle every unsettled tome carrying `isbn` with the
     /// catalogued title `title_id` (rules in D-11-10-5), in one
-    /// transaction. Returns one outcome per matching tome, in tome id
-    /// order; empty when nothing matches (or `isbn` is not an ISBN-13).
+    /// transaction. `isbn` is normalised like a tome's (a hyphenated
+    /// ISBN-13 or an ISBN-10 typed in the manual form still matches).
+    /// Returns one outcome per matching tome, in tome id order; empty
+    /// when nothing matches. A scan that matches nothing takes no lock.
     pub async fn settle_for_title(
         pool: &DbPool,
         title_id: u64,
         isbn: &str,
     ) -> Result<Vec<SettleOutcome>, AppError> {
-        if !TitleService::validate_isbn13_checksum(isbn) {
+        let Ok(Some(isbn)) = normalize_isbn(Some(isbn)) else {
+            return Ok(Vec::new());
+        };
+        let series_ids = ExpectedTomeModel::series_with_unsettled_isbn(pool, &isbn).await?;
+        if series_ids.is_empty() {
             return Ok(Vec::new());
         }
         let mut tx = pool.begin().await?;
-        let candidates = ExpectedTomeModel::unsettled_by_isbn_for_update_in(&mut tx, isbn).await?;
-        if candidates.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut outcomes = Vec::with_capacity(candidates.len());
-        for c in candidates {
-            let result =
-                Self::settle_one(&mut tx, title_id, c.tome_id, &c.series, c.position).await?;
+        // Lock order: series (by id), then tomes — as every other writer.
+        let series = ExpectedTomeModel::lock_series_ids_in(&mut tx, &series_ids).await?;
+        let live_ids: Vec<u64> = series.iter().map(|s| s.id).collect();
+        let tomes =
+            ExpectedTomeModel::unsettled_by_isbn_for_update_in(&mut tx, &isbn, &live_ids).await?;
+        let mut outcomes = Vec::with_capacity(tomes.len());
+        for (tome_id, series_id, position) in tomes {
+            let Some(shape) = series.iter().find(|s| s.id == series_id) else {
+                continue;
+            };
+            let result = Self::settle_one(&mut tx, title_id, tome_id, shape, position).await?;
             outcomes.push(SettleOutcome {
-                tome_id: c.tome_id,
-                series_id: c.series.id,
-                series_name: c.series.name,
-                position: c.position,
+                tome_id,
+                series_id,
+                series_name: shape.name.clone(),
+                position,
                 result,
             });
         }
@@ -407,6 +446,43 @@ impl ExpectedTomeService {
             );
         }
         Ok(outcomes)
+    }
+
+    /// Settle with the ISBN a live title carries — called after a title
+    /// is assigned to a series by hand or its ISBN is edited, so a tome
+    /// never stays "missing" next to the title that fills it. Best
+    /// effort: a failure is logged, never returned.
+    pub async fn settle_for_title_id(pool: &DbPool, title_id: u64) {
+        let result = match ExpectedTomeModel::live_title_isbn(pool, title_id).await {
+            Ok(Some(isbn)) => Self::settle_for_title(pool, title_id, &isbn)
+                .await
+                .map(|_| ()),
+            Ok(None) => Ok(()),
+            Err(e) => Err(e),
+        };
+        if let Err(e) = result {
+            tracing::error!(error = %e, title_id, "Expected tome auto-settle failed");
+        }
+    }
+
+    /// After a tome is created or edited: when a live title already
+    /// carries its ISBN, settle it with the first such title (by id).
+    async fn settle_with_owned_title(
+        conn: &mut MySqlConnection,
+        tome_id: u64,
+        series: &SeriesShape,
+        position: i32,
+        isbn: Option<&str>,
+    ) -> Result<(), ExpectedTomeError> {
+        let Some(isbn) = isbn else { return Ok(()) };
+        if let Some(&title_id) = ExpectedTomeModel::live_titles_with_isbn_in(conn, isbn)
+            .await?
+            .first()
+        {
+            let result = Self::settle_one(conn, title_id, tome_id, series, position).await?;
+            tracing::info!(title_id, tome_id, result = ?result, "Expected tome settled on entry");
+        }
+        Ok(())
     }
 
     async fn settle_one(
@@ -441,19 +517,23 @@ impl ExpectedTomeService {
         Ok(SettleResult::Settled)
     }
 
-    /// The position / ISBN rules shared by create and update.
+    /// The position / ISBN rules shared by create and update; the range
+    /// and holder checks run only when `position_changed`.
     async fn check_slot(
         conn: &mut MySqlConnection,
         series: &SeriesShape,
         position: i32,
         isbn: Option<&str>,
         except_tome: Option<u64>,
+        position_changed: bool,
     ) -> Result<(), ExpectedTomeError> {
-        check_position(series, position)?;
-        if let Some((_, holder)) =
-            ExpectedTomeModel::position_holder_in(conn, series.id, position, None).await?
-        {
-            return Err(ExpectedTomeError::PositionHeld { position, holder });
+        if position_changed {
+            check_position(series, position)?;
+            if let Some((_, holder)) =
+                ExpectedTomeModel::position_holder_in(conn, series.id, position, None).await?
+            {
+                return Err(ExpectedTomeError::PositionHeld { position, holder });
+            }
         }
         if ExpectedTomeModel::position_taken_in(conn, series.id, position, except_tome).await? {
             return Err(ExpectedTomeError::PositionTaken { position });
@@ -540,6 +620,9 @@ mod tests {
             "abc",
             "97820703602461",
             "12345",
+            // Valid EAN-13s that are not book codes (ISSN EAN, product EAN).
+            "9771234567003",
+            "4006381333931",
         ] {
             assert!(
                 matches!(
@@ -599,6 +682,10 @@ mod tests {
                 position: 1,
                 holder: "X".into()
             }),
+            AppError::Conflict(_)
+        ));
+        assert!(matches!(
+            AppError::from(ExpectedTomeError::InvalidIsbn { value: "x".into() }),
             AppError::BadRequest(_)
         ));
         assert!(matches!(

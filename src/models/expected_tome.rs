@@ -72,15 +72,32 @@ impl ExpectedTomeRow {
     }
 }
 
+/// "This tome is settled": its settled title is live **and** still
+/// holds the tome's position in the series (a live `title_series` row).
+/// Unassigning, moving or deleting that title makes the tome a gap again
+/// (D-11-10-3, refined in review). Over `series_expected_tomes e`.
+macro_rules! settled_predicate {
+    () => {
+        "EXISTS (SELECT 1 FROM titles st \
+           JOIN title_series sts ON sts.title_id = st.id \
+             AND sts.series_id = e.series_id AND sts.position_number = e.position \
+             AND sts.deleted_at IS NULL \
+           WHERE st.id = e.settled_title_id AND st.deleted_at IS NULL)"
+    };
+}
+
 /// The columns of [`ExpectedTomeRow`], over `series_expected_tomes e`
-/// joined with a live `series s` and `LEFT JOIN titles st` (live).
-const ROW_COLUMNS: &str = "e.id, e.series_id, e.position, e.title, e.isbn, e.origin, \
-     st.id AS settled_title_id, e.version";
+/// joined with a live `series s`.
+const ROW_COLUMNS: &str = concat!(
+    "e.id, e.series_id, e.position, e.title, e.isbn, e.origin, \
+     IF(",
+    settled_predicate!(),
+    ", e.settled_title_id, NULL) AS settled_title_id, e.version"
+);
 
 /// The joins behind [`ROW_COLUMNS`].
 const ROW_JOINS: &str = "FROM series_expected_tomes e \
-     JOIN series s ON s.id = e.series_id AND s.deleted_at IS NULL \
-     LEFT JOIN titles st ON st.id = e.settled_title_id AND st.deleted_at IS NULL";
+     JOIN series s ON s.id = e.series_id AND s.deleted_at IS NULL";
 
 fn map_row(r: &MySqlRow) -> Result<ExpectedTomeRow, sqlx::Error> {
     let origin: String = r.try_get("origin")?;
@@ -106,14 +123,6 @@ pub struct SeriesShape {
     pub name: String,
     pub series_type: SeriesType,
     pub total_volume_count: Option<i32>,
-}
-
-/// An unsettled tome matching a catalogued ISBN, with its series.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettleCandidate {
-    pub tome_id: u64,
-    pub position: i32,
-    pub series: SeriesShape,
 }
 
 /// Values written by an insert or an update.
@@ -203,7 +212,7 @@ impl ExpectedTomeModel {
              JOIN titles t ON t.id = ts.title_id AND t.deleted_at IS NULL \
              WHERE ts.series_id = ? AND ts.position_number = ? AND ts.deleted_at IS NULL \
                AND (? IS NULL OR ts.title_id <> ?) \
-             ORDER BY ts.id ASC LIMIT 1",
+             ORDER BY ts.id ASC LIMIT 1 FOR UPDATE",
         )
         .bind(series_id)
         .bind(position)
@@ -290,7 +299,8 @@ impl ExpectedTomeModel {
     ) -> Result<u64, sqlx::Error> {
         let r = sqlx::query(
             "UPDATE series_expected_tomes \
-             SET position = ?, title = ?, isbn = ?, version = version + 1 \
+             SET position = ?, title = ?, isbn = ?, settled_title_id = NULL, \
+                 version = version + 1 \
              WHERE id = ? AND version = ? AND deleted_at IS NULL",
         )
         .bind(values.position)
@@ -320,37 +330,108 @@ impl ExpectedTomeModel {
         Ok(r.rows_affected())
     }
 
-    /// Unsettled live tomes of live series carrying `isbn`, locked
-    /// (`FOR UPDATE`, with their series rows), in id order.
+    /// Series (live) holding an unsettled live tome with `isbn`, by id —
+    /// a plain read, so a scan that matches nothing takes no lock.
+    pub async fn series_with_unsettled_isbn(
+        pool: &DbPool,
+        isbn: &str,
+    ) -> Result<Vec<u64>, AppError> {
+        let ids: Vec<u64> = sqlx::query_scalar(concat!(
+            "SELECT DISTINCT e.series_id FROM series_expected_tomes e \
+             JOIN series s ON s.id = e.series_id AND s.deleted_at IS NULL \
+             WHERE e.isbn = ? AND e.deleted_at IS NULL AND NOT ",
+            settled_predicate!(),
+            " ORDER BY e.series_id ASC"
+        ))
+        .bind(isbn)
+        .fetch_all(pool)
+        .await?;
+        Ok(ids)
+    }
+
+    /// Lock live series rows in id order (`FOR UPDATE`) — the first lock
+    /// every expected-tome writer takes, so they never deadlock.
+    pub async fn lock_series_ids_in(
+        conn: &mut MySqlConnection,
+        ids: &[u64],
+    ) -> Result<Vec<SeriesShape>, AppError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let marks = vec!["?"; ids.len()].join(", ");
+        let sql = format!(
+            "SELECT id, name, series_type, total_volume_count FROM series \
+             WHERE id IN ({marks}) AND deleted_at IS NULL ORDER BY id ASC FOR UPDATE"
+        );
+        let mut q = sqlx::query(&sql);
+        for id in ids {
+            q = q.bind(id);
+        }
+        let rows = q.fetch_all(&mut *conn).await?;
+        rows.iter()
+            .map(map_series_shape)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(AppError::Database)
+    }
+
+    /// Unsettled live tomes with `isbn` in the given (already locked)
+    /// series, locked `FOR UPDATE`, in id order: `(tome id, series id,
+    /// position)`.
     pub async fn unsettled_by_isbn_for_update_in(
         conn: &mut MySqlConnection,
         isbn: &str,
-    ) -> Result<Vec<SettleCandidate>, AppError> {
-        let rows = sqlx::query(
-            "SELECT e.id AS tome_id, e.position, \
-                    s.id, s.name, s.series_type, s.total_volume_count \
-             FROM series_expected_tomes e \
-             JOIN series s ON s.id = e.series_id AND s.deleted_at IS NULL \
-             WHERE e.isbn = ? AND e.deleted_at IS NULL \
-               AND (e.settled_title_id IS NULL OR NOT EXISTS ( \
-                    SELECT 1 FROM titles st \
-                    WHERE st.id = e.settled_title_id AND st.deleted_at IS NULL)) \
-             ORDER BY e.id ASC \
-             FOR UPDATE",
+        series_ids: &[u64],
+    ) -> Result<Vec<(u64, u64, i32)>, AppError> {
+        if series_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let marks = vec!["?"; series_ids.len()].join(", ");
+        let sql = format!(
+            "SELECT e.id, e.series_id, e.position FROM series_expected_tomes e \
+             WHERE e.isbn = ? AND e.deleted_at IS NULL AND e.series_id IN ({marks}) \
+               AND NOT {} \
+             ORDER BY e.id ASC FOR UPDATE",
+            settled_predicate!()
+        );
+        let mut q = sqlx::query(&sql).bind(isbn);
+        for id in series_ids {
+            q = q.bind(id);
+        }
+        let rows = q.fetch_all(&mut *conn).await?;
+        rows.iter()
+            .map(|r| {
+                Ok((
+                    r.try_get("id")?,
+                    r.try_get("series_id")?,
+                    r.try_get("position")?,
+                ))
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()
+            .map_err(AppError::Database)
+    }
+
+    /// Live titles carrying `isbn`, by id.
+    pub async fn live_titles_with_isbn_in(
+        conn: &mut MySqlConnection,
+        isbn: &str,
+    ) -> Result<Vec<u64>, AppError> {
+        let ids: Vec<u64> = sqlx::query_scalar(
+            "SELECT id FROM titles WHERE isbn = ? AND deleted_at IS NULL ORDER BY id ASC",
         )
         .bind(isbn)
         .fetch_all(&mut *conn)
         .await?;
-        rows.iter()
-            .map(|r| {
-                Ok(SettleCandidate {
-                    tome_id: r.try_get("tome_id")?,
-                    position: r.try_get("position")?,
-                    series: map_series_shape(r)?,
-                })
-            })
-            .collect::<Result<Vec<_>, sqlx::Error>>()
-            .map_err(AppError::Database)
+        Ok(ids)
+    }
+
+    /// The ISBN of a live title (`None` when unknown, deleted or blank).
+    pub async fn live_title_isbn(pool: &DbPool, title_id: u64) -> Result<Option<String>, AppError> {
+        let isbn: Option<Option<String>> =
+            sqlx::query_scalar("SELECT isbn FROM titles WHERE id = ? AND deleted_at IS NULL")
+                .bind(title_id)
+                .fetch_optional(pool)
+                .await?;
+        Ok(isbn.flatten())
     }
 
     /// Positions of the live assignment rows of `title_id` in the series.

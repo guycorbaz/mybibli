@@ -10,9 +10,13 @@ use crate::services::expected_tomes::{ExpectedTomeService, SettleOutcome, Settle
 use crate::utils::feedback_html;
 
 /// Wishlist auto-link banner + one feedback entry per expected tome the
-/// ISBN matched. Empty when nothing matches. Never fails: a settle error
-/// is logged and shows nothing (the scan itself already succeeded).
-pub async fn isbn_banners(pool: &DbPool, title_id: u64, isbn: &str, loc: &str) -> String {
+/// ISBN matched. Empty when the title has no ISBN or nothing matches.
+/// Never fails: a settle error is logged and shows nothing (the scan or
+/// creation itself already succeeded).
+pub async fn isbn_banners(pool: &DbPool, title_id: u64, isbn: Option<&str>, loc: &str) -> String {
+    let Some(isbn) = isbn else {
+        return String::new();
+    };
     let mut html = crate::routes::wishlist::autolink_feedback_html(pool, isbn, loc).await;
     match ExpectedTomeService::settle_for_title(pool, title_id, isbn).await {
         Ok(outcomes) => html.push_str(&settle_feedback_html(&outcomes, loc)),
