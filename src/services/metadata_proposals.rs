@@ -28,7 +28,9 @@
 //!   acceptance never removes one. `role_id` is authoritative, `role` is
 //!   the role's name at filing (for display). Names are compared folded
 //!   ([`fold_name`]: case, accents, inner whitespace — close to the
-//!   `utf8mb4_unicode_ci` collation): duplicates within the list are
+//!   `utf8mb4_unicode_ci` collation; it also drops vowel signs of
+//!   scripts such as Devanagari, which the collation weighs — accepted,
+//!   11-18 re-checks by contributor id): duplicates within the list are
 //!   refused, and a name + role already on the title is dropped.
 //! - **`"current_truncated": true`** is added when the title's current
 //!   value was too long to fit the 64 KiB item cap next to the proposed
@@ -387,9 +389,9 @@ pub struct CurrentValues {
 /// collation acceptance will match contributors with (D-11-13-9):
 /// decomposed, accents dropped, lower case, inner whitespace collapsed.
 pub fn fold_name(name: &str) -> String {
-    name.nfd()
+    name.to_lowercase()
+        .nfd()
         .filter(|c| !is_combining_mark(*c))
-        .flat_map(char::to_lowercase)
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -426,6 +428,31 @@ fn echo_key(key: &str) -> String {
         .collect()
 }
 
+/// The normal form proposed text is stored in, and current values are
+/// compared in (round 2): trimmed, NFC, CRLF / CR as LF; one-line values
+/// get runs of ordinary whitespace (space, tab, line break) collapsed to
+/// one space — no-break spaces (French typography) are kept as they are.
+pub fn normalize_text(raw: &str, multiline: bool) -> String {
+    let nfc: String = raw.trim().nfc().collect();
+    if multiline {
+        return nfc.replace("\r\n", "\n").replace('\r', "\n");
+    }
+    let mut out = String::with_capacity(nfc.len());
+    let mut in_run = false;
+    for c in nfc.chars() {
+        if matches!(c, ' ' | '\t' | '\n' | '\r') {
+            if !in_run {
+                out.push(' ');
+            }
+            in_run = true;
+        } else {
+            out.push(c);
+            in_run = false;
+        }
+    }
+    out
+}
+
 /// A trimmed, non-blank string within `max` characters, normalised to
 /// NFC; single-line unless `multiline` (then line breaks and tabs are
 /// allowed). Single-line values get inner whitespace runs collapsed.
@@ -438,12 +465,7 @@ fn text(value: &Value, max: usize, multiline: bool) -> Result<String, FieldProbl
     if raw.chars().any(|c| forbidden_char(c, multiline)) {
         return Err(FieldProblem::ControlCharacter);
     }
-    let nfc: String = raw.trim().nfc().collect();
-    let v = if multiline {
-        nfc
-    } else {
-        nfc.split_whitespace().collect::<Vec<_>>().join(" ")
-    };
+    let v = normalize_text(raw, multiline);
     if v.is_empty() {
         return Err(FieldProblem::Blank);
     }
@@ -634,20 +656,32 @@ pub fn diff_against(
 ) -> (Vec<(&'static str, Value)>, Vec<&'static str>) {
     let mut items: Vec<(&'static str, Value)> = Vec::new();
     let mut unchanged = Vec::new();
-    let mut text_field = |field: &'static str, new: &Option<String>, cur: &Option<String>| {
-        let Some(n) = new else { return };
-        if cur.as_deref().map(str::trim) == Some(n.as_str()) {
-            unchanged.push(field);
-        } else {
-            items.push((
-                field,
-                json!({"line": "field", "field": field, "current": cur, "proposed": n}),
-            ));
-        }
-    };
-    text_field("subtitle", &proposed.subtitle, &current.subtitle);
-    text_field("description", &proposed.description, &current.description);
-    text_field("publisher", &proposed.publisher, &current.publisher);
+    let mut text_field =
+        |field: &'static str, new: &Option<String>, cur: &Option<String>, multiline: bool| {
+            let Some(n) = new else { return };
+            // A difference in normal form alone (spacing, NFD) is no change.
+            if cur
+                .as_deref()
+                .map(|c| normalize_text(c, multiline))
+                .as_deref()
+                == Some(n.as_str())
+            {
+                unchanged.push(field);
+            } else {
+                items.push((
+                    field,
+                    json!({"line": "field", "field": field, "current": cur, "proposed": n}),
+                ));
+            }
+        };
+    text_field("subtitle", &proposed.subtitle, &current.subtitle, false);
+    text_field(
+        "description",
+        &proposed.description,
+        &current.description,
+        true,
+    );
+    text_field("publisher", &proposed.publisher, &current.publisher, false);
     let current_year = current.publication_date.map(|d| d.year());
     let year_item = proposed.publication_year.map(|year| {
         (
@@ -662,7 +696,12 @@ pub fn diff_against(
             }),
         )
     });
-    text_field("dewey_code", &proposed.dewey_code, &current.dewey_code);
+    text_field(
+        "dewey_code",
+        &proposed.dewey_code,
+        &current.dewey_code,
+        false,
+    );
     if let Some((year, item)) = year_item {
         // Keep the documented order: publication_year before dewey_code.
         let at = items
@@ -1278,7 +1317,8 @@ mod tests {
             YEAR,
         )
         .unwrap();
-        assert_eq!(p.subtitle.as_deref(), Some("Un conte poétique"));
+        // Ordinary spaces collapse; the no-break space is kept.
+        assert_eq!(p.subtitle.as_deref(), Some("Un conte\u{a0}poétique"));
         // NFD input is stored as NFC.
         let p = validate_fields(
             &fields(json!({"publisher": "Herge\u{301}"})),
@@ -1392,5 +1432,29 @@ mod tests {
         assert!(fitted.to_string().len() <= MAX_ITEM_VALUES_BYTES);
         assert_eq!(fitted["current_truncated"], true);
         assert!(fitted["current"].as_array().unwrap().len() > 100);
+    }
+
+    #[test]
+    fn a_difference_in_normal_form_alone_is_no_change() {
+        let current = CurrentValues {
+            subtitle: Some("Tome 1\u{a0}:  L'aube ".into()),
+            publisher: Some("Herge\u{301}".into()),
+            description: Some("a\r\nb".into()),
+            ..Default::default()
+        };
+        let p = validate_fields(
+            &fields(json!({
+                "subtitle": "Tome 1\u{a0}: L'aube",
+                "publisher": "Hergé",
+                "description": "a\nb"
+            })),
+            &roles(),
+            YEAR,
+        )
+        .unwrap();
+        let (items, unchanged) = diff_against(&p, &current);
+        assert!(items.is_empty(), "{items:?}");
+        assert_eq!(unchanged, ["subtitle", "description", "publisher"]);
+        assert_eq!(fold_name("İlhan"), fold_name("ilhan"));
     }
 }

@@ -87,6 +87,11 @@ Round 1:
 - [x] [Review][Patch] (Low) Invisible / direction characters, unbounded echoed keys, role list repeated per error, "blank" for a missing key, huge-integer year, local-time bound, unpinned `TargetChanged` wording, Dewey schema pattern, description gaps, `tool_error` metadata test
 - Accepted (Low): source errors after field errors; lite Dewey rule; no revoked-key test for this tool (transport guard); `description` escaping belongs to 11-16.
 
+Round 2:
+- [x] [Review][Patch] (Medium) Whitespace collapse ate no-break spaces and the unchanged check compared against the raw current value — `normalize_text` on both sides (D-11-13-10)
+- [x] [Review][Patch] (Low) `fold_name` lower-cases first (Turkish İ); CRLF vs LF description is no change
+- Accepted (Low): `fold_name` drops Devanagari-style vowel signs (documented).
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -124,3 +129,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — validated against the create-story checklist: added the comparison / normalisation rules (dev notes); no AC change.
 - 2026-10-28 — implemented (dev-story); status review.
 - 2026-10-28 — code review round 1 (D-11-13-9); fixes applied.
+- 2026-10-29 — code review round 2 (D-11-13-10); fixes applied.
