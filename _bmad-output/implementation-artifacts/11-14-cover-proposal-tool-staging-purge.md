@@ -60,6 +60,8 @@ so that the librarian can approve it without downloading it.
 - **No pending-duplicate rule** (D-11-13-5 precedent): a second cover proposal for the same title is filed; the librarian picks one, the other goes stale on acceptance (the cover write bumps `titles.version` in 11-18). 11-15's resubmission delay covers repeats of rejected ones. Disk use per proposal is one ≤ 400 px JPEG.
 - **Staleness (#521):** the background cover fetch does not bump `titles.version`; the item's `current` records the cover URL at filing so 11-18 can compare it with the live value.
 - **Lock order on revocation:** `UPDATE api_keys` (key row) first, then `SELECT … FOR UPDATE` of the key's pending proposals, then the update to `stale` — the order `lock_filing_key` documents; an in-flight filing commits first and its proposal is then marked stale.
+- **Admin copy unchanged:** the revoke feedback keeps its wording (no new locale key); the stale marks are visible on the proposals page (11-16). The E2E checks `/covers/.staging/` is not served; the router test checks a real staged file answers 404.
+- **The agent never learns `staged_file`:** the result is `{proposal_id, status, kind, item_count, replaces_existing}`; the staging layout stays internal.
 - **Legacy sibling directory:** 11-9 created an empty `<covers>-staging` at boot on `main` (never released); it is left as is (nothing writes to it).
 - Heavy commands under `mem-guard`, cargo `-j 2`; `rustfmt --edition 2024` on touched leaf files only.
 
@@ -86,3 +88,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 ## Change Log
 
 - 2026-10-29 — story created (ready-for-dev).
+- 2026-10-29 — validated against the create-story checklist: result shape and the admin-copy / E2E scope made explicit (dev notes); no AC change.
