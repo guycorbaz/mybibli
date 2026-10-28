@@ -517,3 +517,19 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Deferred:** a total lowered below a tome's position and a Trash restore onto a tome's position (#524, Low).
 **Accepted (Low):** a conflict warning repeats on every rescan of the ISBN (by design, D-11-10-5); the non-HTMX manual form settles without showing the banner (the UI always posts through HTMX); `get_series` reads tomes in a second query (read-only tool); one transaction for all matching tomes (only database errors can abort it now); the unique-key fallback distinguishes the two keys by name in the MariaDB message.
 **Reversible:** yes.
+
+### D-11-10-11 — Code review round 2: only catalogue events attach; the other hooks only record [PRODUCT]
+**Context:** round 2 (both layers, Medium): after D-11-10-10 the settle that follows a hand assignment, a title ISBN edit or a tome label fix ran the full attach logic across every series, so a title a librarian had removed from series A on purpose was silently put back into A by an unrelated action (assigning it to series B, fixing the tome's label). Low: a tome entered for a title already at that position was refused (`PositionHeld`); a title whose ISBN was typed as an ISBN-10 (or with hyphens, within the 13-character column) was not found when the tome was entered; no `(series_id, position_number)` index, so the holder locking read locked the whole series' `title_series` rows.
+**Chosen (supersedes part of D-11-10-10):**
+- Attach (write `title_series`) only on a catalogue event — scan, manual title creation — and when a tome is created or its ISBN changed. After a hand assignment (`assign_title` / `assign_omnibus`), a title ISBN edit, or a tome edit that keeps its ISBN, settle only **records** a settlement the series already shows (the title already holds the tome's position); it never attaches.
+- Creating a tome on a position held by a title carrying the same ISBN is allowed and settles it (that title is preferred over other owners of the ISBN).
+- Owners of an ISBN are matched on the stored value with hyphens/spaces removed, as ISBN-13 or its ISBN-10.
+- `CREATE INDEX idx_title_series_series_position (series_id, position_number)` in the story migration.
+- `get_series` description: `settled_title_id` is null while not settled, including when another title holds the position.
+**Accepted (Low):** results of the hook paths stay silent (logged); InnoDB can still report a deadlock between two settles on adjacent series under REPEATABLE READ — the settle is then lost until the next catalogue event (single-librarian load); the title-edit hook is exercised through the service, not the route.
+**Reversible:** yes.
+
+### D-11-10-12 — Code review round 3: clean; Lows accepted
+**Context:** the confirmation pass found no Medium+. Lows: the holder exemption looks at the first holder row only; whitespace other than a space is stripped in Rust but not in the SQL owner lookup; with duplicate ISBNs the first owner by id may yield `TitleElsewhere` where another could attach; the owner lookup scans `titles` (no index on the normalised value); `idx_title_series_series` is now a prefix of `idx_title_series_series_position`.
+**Chosen:** accept all (rare data shapes at household scale; each degrades to "tome stays unsettled", never to a wrong attachment); the redundant index can go in a later cleanup migration.
+**Reversible:** yes.

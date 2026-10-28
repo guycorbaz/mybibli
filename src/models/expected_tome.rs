@@ -125,6 +125,15 @@ pub struct SeriesShape {
     pub total_volume_count: Option<i32>,
 }
 
+/// The live title holding a series position.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PositionHolder {
+    pub title_id: u64,
+    pub title: String,
+    /// As stored (the manual form keeps what was typed).
+    pub isbn: Option<String>,
+}
+
 /// Values written by an insert or an update.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedTomeValues<'a> {
@@ -206,9 +215,9 @@ impl ExpectedTomeModel {
         series_id: u64,
         position: i32,
         except_title: Option<u64>,
-    ) -> Result<Option<(u64, String)>, AppError> {
+    ) -> Result<Option<PositionHolder>, AppError> {
         let row = sqlx::query(
-            "SELECT t.id, t.title FROM title_series ts \
+            "SELECT t.id, t.title, t.isbn FROM title_series ts \
              JOIN titles t ON t.id = ts.title_id AND t.deleted_at IS NULL \
              WHERE ts.series_id = ? AND ts.position_number = ? AND ts.deleted_at IS NULL \
                AND (? IS NULL OR ts.title_id <> ?) \
@@ -221,7 +230,11 @@ impl ExpectedTomeModel {
         .fetch_optional(&mut *conn)
         .await?;
         match row {
-            Some(r) => Ok(Some((r.try_get("id")?, r.try_get("title")?))),
+            Some(r) => Ok(Some(PositionHolder {
+                title_id: r.try_get("id")?,
+                title: r.try_get("title")?,
+                isbn: r.try_get("isbn")?,
+            })),
             None => Ok(None),
         }
     }
@@ -410,17 +423,27 @@ impl ExpectedTomeModel {
             .map_err(AppError::Database)
     }
 
-    /// Live titles carrying `isbn`, by id.
+    /// Live titles whose stored ISBN, once hyphens and spaces are
+    /// removed, is one of `forms` (the ISBN-13 and, for a 978 code, its
+    /// ISBN-10 — the manual form stores what was typed), by id.
     pub async fn live_titles_with_isbn_in(
         conn: &mut MySqlConnection,
-        isbn: &str,
+        forms: &[String],
     ) -> Result<Vec<u64>, AppError> {
-        let ids: Vec<u64> = sqlx::query_scalar(
-            "SELECT id FROM titles WHERE isbn = ? AND deleted_at IS NULL ORDER BY id ASC",
-        )
-        .bind(isbn)
-        .fetch_all(&mut *conn)
-        .await?;
+        if forms.is_empty() {
+            return Ok(Vec::new());
+        }
+        let marks = vec!["?"; forms.len()].join(", ");
+        let sql = format!(
+            "SELECT id FROM titles WHERE deleted_at IS NULL \
+               AND UPPER(REPLACE(REPLACE(isbn, '-', ''), ' ', '')) IN ({marks}) \
+             ORDER BY id ASC"
+        );
+        let mut q = sqlx::query_scalar(&sql);
+        for f in forms {
+            q = q.bind(f);
+        }
+        let ids: Vec<u64> = q.fetch_all(&mut *conn).await?;
         Ok(ids)
     }
 

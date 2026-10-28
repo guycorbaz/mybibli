@@ -46,3 +46,8 @@ CREATE TABLE series_expected_tomes (
         ON DELETE SET NULL,
     CONSTRAINT chk_expected_tomes_position CHECK (position >= 1)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- The settle and creation checks read "who holds position N of series S"
+-- with a locking read; without this index InnoDB next-key-locks every
+-- `title_series` row of the series (and the gap into the next series).
+CREATE INDEX idx_title_series_series_position ON title_series (series_id, position_number);

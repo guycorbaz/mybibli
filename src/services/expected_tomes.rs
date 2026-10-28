@@ -20,7 +20,8 @@ use sqlx::MySqlConnection;
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::expected_tome::{
-    ExpectedTomeModel, ExpectedTomeOrigin, ExpectedTomeRow, ExpectedTomeValues, SeriesShape,
+    ExpectedTomeModel, ExpectedTomeOrigin, ExpectedTomeRow, ExpectedTomeValues, PositionHolder,
+    SeriesShape,
 };
 use crate::models::series::{SeriesType, TitleSeriesModel};
 use crate::services::title::TitleService;
@@ -191,6 +192,42 @@ pub fn normalize_isbn(raw: Option<&str>) -> Result<Option<String>, ExpectedTomeE
     })
 }
 
+/// The ISBN-10 of a 978 ISBN-13 (pure — unit tested); `None` for a 979
+/// code (no ISBN-10 exists) or a malformed value.
+pub fn isbn13_to_isbn10(isbn13: &str) -> Option<String> {
+    if isbn13.len() != 13
+        || !isbn13.starts_with("978")
+        || !isbn13.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let body = &isbn13[3..12];
+    let sum: u32 = body
+        .bytes()
+        .enumerate()
+        .map(|(i, b)| u32::from(b - b'0') * (10 - i as u32))
+        .sum();
+    let check = (11 - sum % 11) % 11;
+    let check = if check == 10 {
+        'X'
+    } else {
+        char::from(b'0' + check as u8)
+    };
+    Some(format!("{body}{check}"))
+}
+
+/// The stored forms a title may carry for this ISBN-13.
+fn stored_forms(isbn13: &str) -> Vec<String> {
+    let mut forms = vec![isbn13.to_string()];
+    forms.extend(isbn13_to_isbn10(isbn13));
+    forms
+}
+
+/// Whether a stored title ISBN is this ISBN-13 (any accepted spelling).
+fn same_isbn(stored: Option<&str>, isbn13: &str) -> bool {
+    matches!(normalize_isbn(stored), Ok(Some(n)) if n == isbn13)
+}
+
 /// Validate a tome title (pure — unit tested): trimmed, 1..=500 characters.
 pub fn validate_title(raw: &str) -> Result<String, ExpectedTomeError> {
     let t = raw.trim();
@@ -311,7 +348,8 @@ impl ExpectedTomeService {
         let id = ExpectedTomeModel::insert_in(conn, series_id, &values, origin)
             .await
             .map_err(|e| map_unique_violation(e, input.position, isbn.as_deref()))?;
-        Self::settle_with_owned_title(conn, id, &series, input.position, isbn.as_deref()).await?;
+        Self::settle_with_owned_title(conn, id, &series, input.position, isbn.as_deref(), true)
+            .await?;
         Ok(id)
     }
 
@@ -356,8 +394,18 @@ impl ExpectedTomeService {
         if n == 0 {
             return Err(ExpectedTomeError::VersionConflict { id });
         }
-        Self::settle_with_owned_title(&mut tx, id, &series, input.position, isbn.as_deref())
-            .await?;
+        // A new ISBN may attach the title that carries it; otherwise only
+        // record a settlement the series already shows (D-11-10-11).
+        let attach = isbn != current.isbn;
+        Self::settle_with_owned_title(
+            &mut tx,
+            id,
+            &series,
+            input.position,
+            isbn.as_deref(),
+            attach,
+        )
+        .await?;
         let row = ExpectedTomeModel::find_in(&mut tx, id, false)
             .await?
             .ok_or(ExpectedTomeError::NotFound { id })?;
@@ -398,14 +446,42 @@ impl ExpectedTomeService {
 
     /// FR145 — settle every unsettled tome carrying `isbn` with the
     /// catalogued title `title_id` (rules in D-11-10-5), in one
-    /// transaction. `isbn` is normalised like a tome's (a hyphenated
-    /// ISBN-13 or an ISBN-10 typed in the manual form still matches).
-    /// Returns one outcome per matching tome, in tome id order; empty
-    /// when nothing matches. A scan that matches nothing takes no lock.
+    /// transaction, attaching the title where the position is free.
+    /// `isbn` is normalised like a tome's (an ISBN-10 typed in the manual
+    /// form still matches). Returns one outcome per matching tome, in
+    /// tome id order; empty when nothing matches. A scan that matches
+    /// nothing takes no lock.
     pub async fn settle_for_title(
         pool: &DbPool,
         title_id: u64,
         isbn: &str,
+    ) -> Result<Vec<SettleOutcome>, AppError> {
+        Self::settle_matching(pool, title_id, isbn, true).await
+    }
+
+    /// After a title is assigned to a series by hand or its ISBN edited:
+    /// mark as settled the tomes carrying its ISBN at a position the
+    /// title **already holds** — never attach it anywhere (a librarian
+    /// who removed it from a series on purpose keeps it removed,
+    /// D-11-10-11). Best effort: a failure is logged, never returned.
+    pub async fn settle_for_title_id(pool: &DbPool, title_id: u64) {
+        let result = match ExpectedTomeModel::live_title_isbn(pool, title_id).await {
+            Ok(Some(isbn)) => Self::settle_matching(pool, title_id, &isbn, false)
+                .await
+                .map(|_| ()),
+            Ok(None) => Ok(()),
+            Err(e) => Err(e),
+        };
+        if let Err(e) = result {
+            tracing::error!(error = %e, title_id, "Expected tome auto-settle failed");
+        }
+    }
+
+    async fn settle_matching(
+        pool: &DbPool,
+        title_id: u64,
+        isbn: &str,
+        attach: bool,
     ) -> Result<Vec<SettleOutcome>, AppError> {
         let Ok(Some(isbn)) = normalize_isbn(Some(isbn)) else {
             return Ok(Vec::new());
@@ -425,7 +501,11 @@ impl ExpectedTomeService {
             let Some(shape) = series.iter().find(|s| s.id == series_id) else {
                 continue;
             };
-            let result = Self::settle_one(&mut tx, title_id, tome_id, shape, position).await?;
+            let Some(result) =
+                Self::settle_one(&mut tx, title_id, tome_id, shape, position, attach).await?
+            else {
+                continue;
+            };
             outcomes.push(SettleOutcome {
                 tome_id,
                 series_id,
@@ -442,79 +522,85 @@ impl ExpectedTomeService {
                 series_id = o.series_id,
                 position = o.position,
                 result = ?o.result,
+                attach,
                 "Expected tome auto-settle"
             );
         }
         Ok(outcomes)
     }
 
-    /// Settle with the ISBN a live title carries — called after a title
-    /// is assigned to a series by hand or its ISBN is edited, so a tome
-    /// never stays "missing" next to the title that fills it. Best
-    /// effort: a failure is logged, never returned.
-    pub async fn settle_for_title_id(pool: &DbPool, title_id: u64) {
-        let result = match ExpectedTomeModel::live_title_isbn(pool, title_id).await {
-            Ok(Some(isbn)) => Self::settle_for_title(pool, title_id, &isbn)
-                .await
-                .map(|_| ()),
-            Ok(None) => Ok(()),
-            Err(e) => Err(e),
-        };
-        if let Err(e) = result {
-            tracing::error!(error = %e, title_id, "Expected tome auto-settle failed");
-        }
-    }
-
-    /// After a tome is created or edited: when a live title already
-    /// carries its ISBN, settle it with the first such title (by id).
+    /// After a tome is created or edited: when a live title carries its
+    /// ISBN (any stored spelling), settle it with the first such title
+    /// (by id) unless another one already holds the position — attaching it
+    /// only when `attach`.
     async fn settle_with_owned_title(
         conn: &mut MySqlConnection,
         tome_id: u64,
         series: &SeriesShape,
         position: i32,
         isbn: Option<&str>,
+        attach: bool,
     ) -> Result<(), ExpectedTomeError> {
         let Some(isbn) = isbn else { return Ok(()) };
-        if let Some(&title_id) = ExpectedTomeModel::live_titles_with_isbn_in(conn, isbn)
-            .await?
-            .first()
-        {
-            let result = Self::settle_one(conn, title_id, tome_id, series, position).await?;
+        let owners = ExpectedTomeModel::live_titles_with_isbn_in(conn, &stored_forms(isbn)).await?;
+        // Prefer an owner already holding the position (several titles
+        // may share an ISBN), else the first by id.
+        let mut chosen = owners.first().copied();
+        for &owner in &owners {
+            if ExpectedTomeModel::title_positions_in(conn, owner, series.id)
+                .await?
+                .contains(&position)
+            {
+                chosen = Some(owner);
+                break;
+            }
+        }
+        if let Some(title_id) = chosen {
+            let result =
+                Self::settle_one(conn, title_id, tome_id, series, position, attach).await?;
             tracing::info!(title_id, tome_id, result = ?result, "Expected tome settled on entry");
         }
         Ok(())
     }
 
+    /// One tome against one title. `None` only without `attach`, when the
+    /// title does not already hold the position (nothing done).
     async fn settle_one(
         conn: &mut MySqlConnection,
         title_id: u64,
         tome_id: u64,
         series: &SeriesShape,
         position: i32,
-    ) -> Result<SettleResult, AppError> {
+        attach: bool,
+    ) -> Result<Option<SettleResult>, AppError> {
         let held = ExpectedTomeModel::title_positions_in(conn, title_id, series.id).await?;
         if held.contains(&position) {
             ExpectedTomeModel::mark_settled_in(conn, tome_id, title_id).await?;
-            return Ok(SettleResult::Settled);
+            return Ok(Some(SettleResult::Settled));
+        }
+        if !attach {
+            return Ok(None);
         }
         if let Some(&elsewhere) = held.first() {
-            return Ok(SettleResult::TitleElsewhere {
+            return Ok(Some(SettleResult::TitleElsewhere {
                 position: elsewhere,
-            });
+            }));
         }
         if let Some(total) = closed_total(series)
             && position > total
         {
-            return Ok(SettleResult::OutOfRange { total });
+            return Ok(Some(SettleResult::OutOfRange { total }));
         }
-        if let Some((_, holder)) =
+        if let Some(holder) =
             ExpectedTomeModel::position_holder_in(conn, series.id, position, Some(title_id)).await?
         {
-            return Ok(SettleResult::PositionHeld { holder });
+            return Ok(Some(SettleResult::PositionHeld {
+                holder: holder.title,
+            }));
         }
         TitleSeriesModel::assign_in(conn, title_id, series.id, position).await?;
         ExpectedTomeModel::mark_settled_in(conn, tome_id, title_id).await?;
-        Ok(SettleResult::Settled)
+        Ok(Some(SettleResult::Settled))
     }
 
     /// The position / ISBN rules shared by create and update; the range
@@ -529,10 +615,17 @@ impl ExpectedTomeService {
     ) -> Result<(), ExpectedTomeError> {
         if position_changed {
             check_position(series, position)?;
-            if let Some((_, holder)) =
-                ExpectedTomeModel::position_holder_in(conn, series.id, position, None).await?
+            // A holder carrying the tome's own ISBN is the tome, owned:
+            // allowed, and settled right after the write.
+            if let Some(PositionHolder {
+                title, isbn: held, ..
+            }) = ExpectedTomeModel::position_holder_in(conn, series.id, position, None).await?
+                && !isbn.is_some_and(|i| same_isbn(held.as_deref(), i))
             {
-                return Err(ExpectedTomeError::PositionHeld { position, holder });
+                return Err(ExpectedTomeError::PositionHeld {
+                    position,
+                    holder: title,
+                });
             }
         }
         if ExpectedTomeModel::position_taken_in(conn, series.id, position, except_tome).await? {
@@ -632,6 +725,22 @@ mod tests {
                 "{bad} should be refused"
             );
         }
+    }
+
+    #[test]
+    fn isbn13_to_isbn10_inverts_the_conversion() {
+        for ten in ["2205001213", "080442957X", "0201633612", "2070360245"] {
+            let thirteen = crate::utils::isbn10_to_isbn13(ten).unwrap();
+            assert_eq!(isbn13_to_isbn10(&thirteen).as_deref(), Some(ten));
+        }
+        assert_eq!(isbn13_to_isbn10("9791032305690"), None); // 979: no ISBN-10
+        assert_eq!(isbn13_to_isbn10("978123"), None);
+        assert_eq!(
+            stored_forms("9782070360246"),
+            vec!["9782070360246", "2070360245"]
+        );
+        assert!(same_isbn(Some("2-07-036024-5"), "9782070360246"));
+        assert!(!same_isbn(None, "9782070360246"));
     }
 
     #[test]

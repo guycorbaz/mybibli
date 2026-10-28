@@ -135,7 +135,8 @@ impl McpTool for GetSeries {
          known gaps (`gap_count` null, `missing_positions` empty). `expected_tomes` lists the \
          tomes the librarian expects but may not own yet, ordered by position: id, position, \
          title, ISBN-13 (or null), `origin` (`manual` or `proposal`) and `settled_title_id` \
-         (the catalogued title that settled it, null while it is still missing). Find ids with list_series; read a \
+         (the catalogued title holding its position, null while not settled — a position held by \
+         another title also leaves it null). Find ids with list_series; read a \
          title with get_title. Deleted series are reported as not found. Read-only."
     }
 

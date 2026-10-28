@@ -1,6 +1,6 @@
 # Story 11.10: Expected tomes — data and auto-settle at scan
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR129 (expected tomes), FR141, FR145, AR29. Epic 11 — tenth story; blocks 11-11 (series page + wishlist, manual CRUD UI) and 11-12 (series proposals that create expected tomes). Related open issues: #519 (`/series` list gap counting), #521 (writes that do not bump `version` — `title_series` attach included), #522 (cover staging).
 
@@ -95,6 +95,21 @@ Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor on `gi
 - [x] [Review][Dismiss] `assign_in` keeps a revived row's omnibus flag (it resets `is_omnibus = FALSE`); scan passes an un-normalised code (it is normalised upstream); one failure loses the wishlist banner (it is kept).
 - [x] [Review][Accept] Conflict warning repeats on rescan (by design); non-HTMX manual form silent; `get_series` two reads; single transaction for all matches; unique-key fallback by key name.
 
+Round 2 (2026-10-28, Blind Hunter + Edge Case Hunter on the round-1 fixes) — decisions in D-11-10-11:
+
+- [x] [Review][Patch] Hand assignment / ISBN edit / tome label fix silently re-attached a title removed from a series on purpose [Medium] — those hooks only record a settlement the series already shows; attaching is reserved to catalogue events and to a new tome ISBN.
+- [x] [Review][Patch] A tome entered on a position held by the title carrying its ISBN was refused [Low] — allowed and settled.
+- [x] [Review][Patch] Title stored with an ISBN-10 / hyphens not found when a tome is entered [Low] — owners matched on normalised ISBN-13 or ISBN-10.
+- [x] [Review][Patch] Holder locking read locked the whole series' `title_series` rows [Low] — `idx_title_series_series_position`.
+- [x] [Review][Patch] `get_series` described an unsettled-but-held tome as "missing" [Low] — wording.
+- [x] [Review][Patch] Tests not exercising what they claimed (lowered total, omnibus) [Low] — fixed / added (4 new tests).
+- [x] [Review][Dismiss] `update_title` settle inside an open transaction (none is open: `update_full` commits first); `IF()` decoding to `Option<u64>` (green on the DB suite).
+- [x] [Review][Accept] Silent hook results; theoretical gap-lock deadlock between adjacent series; title-edit hook tested through the service.
+
+
+Round 3 (2026-10-28, confirmation pass on the round-2 fixes): **no Medium+ finding**. Lows accepted (D-11-10-12): holder exemption decided on the first holder row only (a position held by both a single title and an omnibus); Rust vs SQL whitespace normalisation (tab / NBSP in a stored ISBN); owner choice when none holds the position (duplicate ISBNs); `live_titles_with_isbn_in` scans `titles` (no index on the normalised value); `idx_title_series_series` now a prefix of the new index.
+
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -127,6 +142,7 @@ Claude Opus 5.5 (claude-opus-5-5)
 - src/mcp/tools/get_series.rs
 - locales/en.yml, locales/fr.yml, locales/de.yml, locales/it.yml
 - tests/expected_tomes.rs (new), tests/common/web.rs (new), tests/common/mod.rs
+- src/routes/titles.rs (settle hook on ISBN edit — review round 1)
 - tests/mcp_series_gaps_tools.rs, tests/seed_drift.rs
 - tests/e2e/specs/journeys/mcp-gaps-tools.spec.ts
 - _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md, sprint-status.yaml
@@ -136,3 +152,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — story created (ready-for-dev).
 - 2026-10-28 — validated against the create-story checklist: added the Trash permanent-delete path (FK actions make it safe), confirmed `POST /catalog/title` is the manual creation route, `admin_reset` touches no catalogue table.
 - 2026-10-28 — implementation complete (review).
+- 2026-10-28 — code review: round 1 (3 layers) 7 Medium + Lows fixed, round 2 1 Medium fixed, round 3 clean; #524 opened (Low). Gates after review: clippy clean, `cargo test` 1827 passed / 0 failed, sqlx `--check` green, Playwright 362 passed / 2 skipped on a reset stack (done).

@@ -635,14 +635,38 @@ async fn update_refusals_and_unchanged_position(pool: DbPool) {
         assert!(format!("{e:?}").starts_with(want), "{inp:?}: got {e:?}");
     }
 
-    // Position 1 gets filled by hand by an unrelated title, and the total
-    // is lowered: fixing the tome's title in place still works.
+    // Position 1 gets filled by hand by an unrelated title: fixing the
+    // tome's title in place still works.
     let other = book(&pool, "Unrelated", None).await;
     assign(&pool, other, s, 1, false).await;
     let row = ExpectedTomeService::update(&pool, t1, 1, &input(1, "One (fixed)", None))
         .await
         .unwrap();
     assert_eq!(row.title, "One (fixed)");
+    // The total is lowered below tome 2's position: it can still be fixed
+    // in place, but not moved outside the new range.
+    sqlx::query("UPDATE series SET total_volume_count = 1 WHERE id = ?")
+        .bind(s)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let t2 = ExpectedTomeService::list_by_series(&pool, s).await.unwrap()[1].clone();
+    assert_eq!(t2.position, 2);
+    ExpectedTomeService::update(
+        &pool,
+        t2.id,
+        t2.version,
+        &input(2, "Two (fixed)", Some(&i2)),
+    )
+    .await
+    .unwrap();
+    let e = ExpectedTomeService::update(&pool, t2.id, t2.version + 1, &input(4, "Two", Some(&i2)))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(e, ExpectedTomeError::PositionOutOfRange { .. }),
+        "{e}"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -727,7 +751,7 @@ async fn a_tome_for_an_owned_isbn_settles_on_entry(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn hand_assignment_and_isbn_edit_settle(pool: DbPool) {
+async fn hand_assignment_and_isbn_edit_only_record_what_the_series_shows(pool: DbPool) {
     let s = add_series(&pool, "S", "closed", Some(5)).await;
     let i1 = isbn(105);
     let i2 = isbn(106);
@@ -741,8 +765,11 @@ async fn hand_assignment_and_isbn_edit_settle(pool: DbPool) {
         .unwrap();
     assert_eq!(settled_title(&pool, tome1).await, Some(t1));
 
-    // A title gains the ISBN through an edit.
+    // A title gains the tome's ISBN through an edit while it sits
+    // elsewhere: nothing is attached behind the librarian's back.
     let t2 = book(&pool, "T2", None).await;
+    let elsewhere = add_series(&pool, "Elsewhere", "open", None).await;
+    assign(&pool, t2, elsewhere, 1, false).await;
     sqlx::query("UPDATE titles SET isbn = ? WHERE id = ?")
         .bind(&i2)
         .bind(t2)
@@ -750,8 +777,91 @@ async fn hand_assignment_and_isbn_edit_settle(pool: DbPool) {
         .await
         .unwrap();
     ExpectedTomeService::settle_for_title_id(&pool, t2).await;
+    assert_eq!(settled_title(&pool, tome2).await, None);
+    assert!(live_positions(&pool, t2, s).await.is_empty());
+
+    // Once it is placed at the tome's position by hand, the tome settles.
+    mybibli::services::series::SeriesService::assign_title(&pool, t2, s, 2)
+        .await
+        .unwrap();
     assert_eq!(settled_title(&pool, tome2).await, Some(t2));
-    assert_eq!(live_positions(&pool, t2, s).await, vec![2]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_title_removed_on_purpose_is_not_reattached_by_other_actions(pool: DbPool) {
+    let a = add_series(&pool, "A", "open", None).await;
+    let b = add_series(&pool, "B", "open", None).await;
+    let i = isbn(108);
+    let tome = create(&pool, a, 2, "Two", Some(&i)).await;
+    let t = book(&pool, "T", Some(&i)).await;
+    ExpectedTomeService::settle_for_title(&pool, t, &i)
+        .await
+        .unwrap();
+    // The librarian removes T from A on purpose.
+    sqlx::query("UPDATE title_series SET deleted_at = NOW() WHERE title_id = ? AND series_id = ?")
+        .bind(t)
+        .bind(a)
+        .execute(&pool)
+        .await
+        .unwrap();
+    // Assigning T to another series, or fixing the tome's label, does not
+    // put it back into A.
+    mybibli::services::series::SeriesService::assign_title(&pool, t, b, 1)
+        .await
+        .unwrap();
+    let v = ExpectedTomeService::find(&pool, tome)
+        .await
+        .unwrap()
+        .unwrap()
+        .version;
+    ExpectedTomeService::update(&pool, tome, v, &input(2, "Two (fixed)", Some(&i)))
+        .await
+        .unwrap();
+    assert!(live_positions(&pool, t, a).await.is_empty());
+    assert_eq!(settled_title(&pool, tome).await, None);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn omnibus_assignment_settles_a_tome_in_its_range(pool: DbPool) {
+    let s = add_series(&pool, "S", "closed", Some(6)).await;
+    let i = isbn(109);
+    let tome = create(&pool, s, 4, "Four", Some(&i)).await;
+    let omnibus = book(&pool, "Omnibus", Some(&i)).await;
+    mybibli::services::series::SeriesService::assign_omnibus(&pool, omnibus, s, 3, 5)
+        .await
+        .unwrap();
+    assert_eq!(settled_title(&pool, tome).await, Some(omnibus));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_tome_entered_for_a_title_already_in_place_or_stored_as_isbn10(pool: DbPool) {
+    let s = add_series(&pool, "S", "open", None).await;
+    // Title already at position 1, same ISBN: the tome is accepted, settled.
+    let i1 = isbn(110);
+    let held = book(&pool, "Held", Some(&i1)).await;
+    assign(&pool, held, s, 1, false).await;
+    let row = ExpectedTomeService::create(
+        &pool,
+        s,
+        &input(1, "One", Some(&i1)),
+        ExpectedTomeOrigin::Manual,
+    )
+    .await
+    .unwrap();
+    assert_eq!(row.settled_title_id, Some(held));
+    // A title whose ISBN was typed as an ISBN-10 is found when the tome is
+    // entered with the ISBN-13.
+    let ten = book(&pool, "Typed ten", Some("2-07-036024-5")).await;
+    let row = ExpectedTomeService::create(
+        &pool,
+        s,
+        &input(2, "Two", Some("9782070360246")),
+        ExpectedTomeOrigin::Manual,
+    )
+    .await
+    .unwrap();
+    assert_eq!(row.settled_title_id, Some(ten));
+    assert_eq!(live_positions(&pool, ten, s).await, vec![2]);
 }
 
 #[sqlx::test(migrations = "./migrations")]
