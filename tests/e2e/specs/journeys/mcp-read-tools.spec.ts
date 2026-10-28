@@ -4,7 +4,7 @@
  * Real journey from a blank browser: loginAs(admin) → scan an ISBN in
  * /catalog (creates a title; the mock provider adds a synthetic author)
  * → Admin → API keys → create a `propose` key → as a separate agent
- * client: `tools/list` lists the three read tools → `search_titles`
+ * client: `tools/list` lists the read tools → `search_titles`
  * finds the scanned ISBN → `get_title` returns the enriched record →
  * `search_contributors` finds its author → an invalid argument is a
  * tool error → the key is revoked.
@@ -18,7 +18,7 @@ import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
 import { createApiKey, revokeApiKey } from "../../helpers/api-keys";
-import { mcpCallTool, mcpPost } from "../../helpers/mcp";
+import { MCP_TOOLS, mcpCallTool, mcpPost } from "../../helpers/mcp";
 
 test.describe("Story 11-7 — MCP catalog read tools", () => {
   test("an agent searches and reads the catalog", async ({ page, baseURL }) => {
@@ -47,7 +47,7 @@ test.describe("Story 11-7 — MCP catalog read tools", () => {
       );
       expect(list.status()).toBe(200);
       const names = (await list.json()).result.tools.map((t: { name: string }) => t.name).sort();
-      expect(names).toEqual(["get_title", "search_contributors", "search_titles"]);
+      expect(names).toEqual(MCP_TOOLS);
 
       // search_titles: exact ISBN lookup.
       const found = await mcpCallTool(agent, key, "search_titles", { query: isbn });

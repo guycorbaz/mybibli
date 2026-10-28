@@ -10,6 +10,17 @@ export const MCP_HEADERS = {
   Accept: "application/json, text/event-stream",
 };
 
+/** Every tool `/api/mcp` serves, sorted by name (stories 11-6..11-8). */
+export const MCP_TOOLS = [
+  "get_series",
+  "get_title",
+  "list_series",
+  "list_titles_with_incomplete_metadata",
+  "list_titles_without_cover",
+  "search_contributors",
+  "search_titles",
+];
+
 /** POST one JSON-RPC message to `/api/mcp` with a bearer key. */
 export async function mcpPost(
   request: APIRequestContext,
