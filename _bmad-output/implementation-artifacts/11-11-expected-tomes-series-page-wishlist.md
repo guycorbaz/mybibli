@@ -86,3 +86,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 ## Change Log
 
 - 2026-10-28 — story created (ready-for-dev).
+- 2026-10-28 — validated against the create-story checklist: GET forms use `require_role_with_return` (Anonymous bounces back to the form), mutations `require_role`; router-level tests build the router with `tests/common/mcp.rs::router` + `tests/common/web.rs::Browser`; the wishlist note is plain text (rendered escaped by the wishlist pages); placement must skip settled tomes using the predicate-reduced `settled_title_id` (`list_by_series`), never the raw column.
