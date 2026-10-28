@@ -209,7 +209,7 @@ fn parse_enum<T>(raw: &str, column: &str, parse: fn(&str) -> Option<T>) -> Resul
 // itself only disappears when purged (`decided_by` is then SET NULL).
 const PROPOSAL_SELECT: &str = "SELECT p.id, p.kind, p.status, p.api_key_id, k.label AS api_key_label, \
      CAST(p.sources AS CHAR) AS sources, CAST(p.decided_by AS SIGNED) AS decided_by, \
-     u.username AS decided_by_username, \
+     COALESCE(u.username, p.decided_by_name) AS decided_by_username, \
      CAST(p.decided_at AS DATETIME) AS decided_at, p.rejection_reason, \
      CAST(p.created_at AS DATETIME) AS created_at, CAST(p.updated_at AS DATETIME) AS updated_at, \
      p.version \
@@ -408,11 +408,13 @@ impl ProposalModel {
         update: &StatusUpdate,
     ) -> Result<u64, AppError> {
         let res = sqlx::query(
-            "UPDATE proposals SET status = ?, decided_by = ?, decided_at = NOW(), \
+            "UPDATE proposals SET status = ?, decided_by = ?, \
+             decided_by_name = (SELECT username FROM users WHERE id = ?), decided_at = NOW(), \
              rejection_reason = ?, version = version + 1 \
              WHERE id = ? AND status = 'pending' AND deleted_at IS NULL",
         )
         .bind(update.to.as_str())
+        .bind(update.decided_by)
         .bind(update.decided_by)
         .bind(update.rejection_reason.as_deref())
         .bind(id)
@@ -423,9 +425,15 @@ impl ProposalModel {
 
     /// Whether the key may file proposals: it exists, is neither revoked
     /// nor deleted, and has the `propose` scope. The row is share-locked
-    /// until the filing transaction ends, so a concurrent revocation
-    /// (which marks the key's pending proposals stale, story 11-14) waits
-    /// for the filing to commit and then sees it.
+    /// until the filing transaction ends.
+    ///
+    /// **Lock order for story 11-14 (revocation):** lock the `api_keys`
+    /// row first (`UPDATE api_keys … ` or `SELECT … FOR UPDATE`), then
+    /// mark the key's pending proposals stale. A revocation that touched
+    /// `proposals` first could deadlock with an in-flight filing (which
+    /// holds this share lock and then inserts into `proposals`); in the
+    /// prescribed order it simply waits for the filing to commit and
+    /// then sees the new proposal.
     pub async fn lock_filing_key(
         conn: &mut MySqlConnection,
         api_key_id: u64,
@@ -440,16 +448,18 @@ impl ProposalModel {
         Ok(found.is_some())
     }
 
-    /// Whether `user_id` is an active (not deactivated) user.
+    /// Whether `user_id` is an active user (the login predicate:
+    /// `active = TRUE AND deleted_at IS NULL`, story 8-3).
     pub async fn is_active_user(
         conn: &mut MySqlConnection,
         user_id: u64,
     ) -> Result<bool, AppError> {
-        let found: Option<u64> =
-            sqlx::query_scalar("SELECT id FROM users WHERE id = ? AND deleted_at IS NULL")
-                .bind(user_id)
-                .fetch_optional(&mut *conn)
-                .await?;
+        let found: Option<u64> = sqlx::query_scalar(
+            "SELECT id FROM users WHERE id = ? AND active = TRUE AND deleted_at IS NULL",
+        )
+        .bind(user_id)
+        .fetch_optional(&mut *conn)
+        .await?;
         Ok(found.is_some())
     }
 
@@ -493,13 +503,16 @@ impl ProposalModel {
             count_q = count_q.bind(key);
             list_q = list_q.bind(key);
         }
-        let total = count_q.fetch_one(pool).await?;
+        // One transaction, one snapshot: the total matches the page.
+        let mut tx = pool.begin().await?;
+        let total = count_q.fetch_one(&mut *tx).await?;
         let offset = u64::from(page.max(1) - 1) * u64::from(DEFAULT_PAGE_SIZE);
         let rows = list_q
             .bind(DEFAULT_PAGE_SIZE)
             .bind(offset)
-            .fetch_all(pool)
+            .fetch_all(&mut *tx)
             .await?;
+        tx.commit().await?;
 
         let items = rows
             .iter()

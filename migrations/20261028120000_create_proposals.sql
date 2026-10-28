@@ -17,8 +17,9 @@
 --   * `decided_by` / `decided_at` / `rejection_reason`: the decision
 --     trail (FR146). `decided_by` is SET NULL when the user row is
 --     hard-purged by the 30-day auto-purge (story 8-7, issue #69) —
---     otherwise a decision would block that purge. A `stale`
---     transition records `decided_at` and no user.
+--     otherwise a decision would block that purge; `decided_by_name`
+--     keeps the decider's username for the trail. A `stale` transition
+--     records `decided_at` and no user.
 --
 -- `proposal_items` — one line per action of a proposal.
 --   * `target_table` / `target_id` / `target_version`: the existing
@@ -42,6 +43,9 @@ CREATE TABLE proposals (
     api_key_id BIGINT UNSIGNED NOT NULL,
     sources JSON NOT NULL,
     decided_by BIGINT UNSIGNED NULL DEFAULT NULL,
+    -- Username of the decider copied at decision time: the FR146 trail
+    -- survives the purge of the user row (decided_by is then SET NULL).
+    decided_by_name VARCHAR(255) NULL DEFAULT NULL,
     decided_at TIMESTAMP NULL DEFAULT NULL,
     rejection_reason TEXT NULL DEFAULT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

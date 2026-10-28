@@ -99,8 +99,20 @@ pub enum ProposalError {
         table: ProposalTargetTable,
         id: u64,
     },
+    /// `index` is 1-based. The target moved since the agent read it.
+    TargetChanged {
+        index: usize,
+        table: ProposalTargetTable,
+        id: u64,
+        expected: i32,
+        current: i32,
+    },
     ReasonTooLong {
         chars: usize,
+    },
+    /// Every item was removed; the proposal can only be rejected.
+    NothingToApply {
+        id: u64,
     },
     /// The filing key is unknown, revoked, deleted or not a `propose` key.
     KeyNotAllowed {
@@ -113,9 +125,9 @@ pub enum ProposalError {
     NotFound {
         id: u64,
     },
-    /// An accept found targets that moved since filing; the proposal
-    /// has been marked `stale` (FR140). A caller running inside its own
-    /// transaction must commit it to keep that mark.
+    /// Returned by [`ProposalService::transition`] when an accept found
+    /// targets that moved since filing; the `stale` mark is committed
+    /// (FR140).
     Stale {
         id: u64,
         targets: Vec<StaleTarget>,
@@ -143,8 +155,8 @@ impl ProposalError {
                 | ProposalError::ValuesTooDeep { .. }
                 | ProposalError::ProposalTooLarge { .. }
                 | ProposalError::TargetNotFound { .. }
+                | ProposalError::TargetChanged { .. }
                 | ProposalError::ReasonTooLong { .. }
-                | ProposalError::UnknownDecider { .. }
         )
     }
 }
@@ -171,7 +183,8 @@ impl fmt::Display for ProposalError {
                     }
                     SourceRejection::NotAUrl => write!(
                         f,
-                        "it is not an absolute URL (expected http://… or https://…)."
+                        "it is not an absolute URL with a host name (expected \
+                         http://host/… or https://host/…)."
                     ),
                     SourceRejection::Scheme(s) => write!(
                         f,
@@ -217,6 +230,25 @@ impl fmt::Display for ProposalError {
                     "Item {index} was refused: {what} {id} does not exist or was deleted."
                 )
             }
+            ProposalError::TargetChanged {
+                index,
+                table,
+                id,
+                expected,
+                current,
+            } => write!(
+                f,
+                "Item {index} was refused: {} {id} changed since you read it (version {expected}, \
+                 now {current}). Read it again and file the proposal on its current state.",
+                match table {
+                    ProposalTargetTable::Titles => "title",
+                    ProposalTargetTable::Series => "series",
+                }
+            ),
+            ProposalError::NothingToApply { id } => write!(
+                f,
+                "Proposal {id} has no item left to apply; it can only be rejected."
+            ),
             ProposalError::ReasonTooLong { chars } => write!(
                 f,
                 "The rejection reason is {chars} characters long; at most \
@@ -270,18 +302,24 @@ impl From<ProposalError> for AppError {
             ProposalError::NotFound { .. } => AppError::NotFound(e.to_string()),
             ProposalError::NotPending { .. }
             | ProposalError::Stale { .. }
-            | ProposalError::KeyNotAllowed { .. } => AppError::Conflict(e.to_string()),
+            | ProposalError::KeyNotAllowed { .. }
+            | ProposalError::NothingToApply { .. } => AppError::Conflict(e.to_string()),
             other => AppError::BadRequest(other.to_string()),
         }
     }
 }
 
 /// One line of a proposal to file.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct NewProposalItem {
     /// The existing entity the line acts on; `None` for a line that
     /// creates something new.
     pub target: Option<ProposalTarget>,
+    /// The target's `version` as the agent read it. When given and the
+    /// row has moved since, filing is refused (`TargetChanged`), so an
+    /// edit made between the agent's read and its filing is not silently
+    /// absorbed into the staleness baseline. Ignored without a target.
+    pub expected_version: Option<i32>,
     /// A JSON object; its shape depends on the proposal kind.
     pub proposed_values: Value,
 }
@@ -357,6 +395,17 @@ pub struct StaleTarget {
     pub reason: StaleReason,
 }
 
+/// Outcome of [`ProposalService::transition_in`].
+#[must_use]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Transition {
+    /// The decision was recorded; the proposal now has this status.
+    Decided(ProposalStatus),
+    /// An accept found moved targets: the proposal is now `stale`, and
+    /// nothing must be applied. Commit the transaction to keep the mark.
+    WentStale(Vec<StaleTarget>),
+}
+
 /// Outcome of a staleness check.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StalenessCheck {
@@ -425,9 +474,6 @@ pub fn validate_items(items: &[NewProposalItem]) -> Result<Vec<String>, Proposal
         if !item.proposed_values.is_object() {
             return Err(ProposalError::ValuesNotObject { index });
         }
-        if json_depth(&item.proposed_values) > MAX_ITEM_VALUES_DEPTH {
-            return Err(ProposalError::ValuesTooDeep { index });
-        }
         let json = item.proposed_values.to_string();
         if json.len() > MAX_ITEM_VALUES_BYTES {
             return Err(ProposalError::ValuesTooLarge {
@@ -435,11 +481,14 @@ pub fn validate_items(items: &[NewProposalItem]) -> Result<Vec<String>, Proposal
                 bytes: json.len(),
             });
         }
+        if json_depth(&item.proposed_values) > MAX_ITEM_VALUES_DEPTH {
+            return Err(ProposalError::ValuesTooDeep { index });
+        }
         total += json.len();
+        if total > MAX_PROPOSAL_VALUES_BYTES {
+            return Err(ProposalError::ProposalTooLarge { bytes: total });
+        }
         out.push(json);
-    }
-    if total > MAX_PROPOSAL_VALUES_BYTES {
-        return Err(ProposalError::ProposalTooLarge { bytes: total });
     }
     Ok(out)
 }
@@ -556,9 +605,8 @@ async fn stale_targets_on(
     Ok(stale_reasons(&items, &states))
 }
 
-/// Run `f` in a transaction that is committed when `f` succeeds or ends
-/// on [`ProposalError::Stale`] (the stale mark must persist), and rolled
-/// back otherwise.
+/// Run `f` in a transaction: committed when `f` succeeds, rolled back
+/// otherwise (a failed rollback is logged; the original error wins).
 async fn in_transaction<T>(
     pool: &DbPool,
     f: impl for<'c> FnOnce(
@@ -570,8 +618,12 @@ async fn in_transaction<T>(
     let mut tx = pool.begin().await?;
     let res = f(&mut tx).await;
     match &res {
-        Ok(_) | Err(ProposalError::Stale { .. }) => tx.commit().await?,
-        Err(_) => tx.rollback().await?,
+        Ok(_) => tx.commit().await?,
+        Err(_) => {
+            if let Err(e) = tx.rollback().await {
+                tracing::warn!(error = %e, "proposal transaction rollback failed");
+            }
+        }
     }
     res
 }
@@ -614,6 +666,17 @@ impl ProposalService {
                             id: t.id,
                         },
                     )?;
+                    if let Some(expected) = item.expected_version
+                        && expected != state.version
+                    {
+                        return Err(ProposalError::TargetChanged {
+                            index: i + 1,
+                            table: t.table,
+                            id: t.id,
+                            expected,
+                            current: state.version,
+                        });
+                    }
                     Some((t, state.version))
                 }
             };
@@ -693,18 +756,22 @@ impl ProposalService {
     }
 
     /// Decide a pending proposal in its own transaction. See
-    /// [`Self::transition_in`]; on [`ProposalError::Stale`] the stale
-    /// mark is committed.
+    /// [`Self::transition_in`]. An accept that finds moved targets
+    /// commits the `stale` mark and returns [`ProposalError::Stale`].
     pub async fn transition(
         pool: &DbPool,
         id: u64,
         decision: &Decision,
     ) -> Result<ProposalStatus, ProposalError> {
         let decision = decision.clone();
-        in_transaction(pool, move |conn| {
+        let outcome = in_transaction(pool, move |conn| {
             Box::pin(async move { Self::transition_in(conn, id, &decision).await })
         })
-        .await
+        .await?;
+        match outcome {
+            Transition::Decided(status) => Ok(status),
+            Transition::WentStale(targets) => Err(ProposalError::Stale { id, targets }),
+        }
     }
 
     /// Decide a pending proposal on the given connection, which must be
@@ -714,17 +781,18 @@ impl ProposalService {
     /// `decided_at` and bumps `version`.
     ///
     /// **Accept re-checks staleness first (FR140):** the proposal and its
-    /// targets are locked, and if any target moved since filing the
-    /// proposal is marked `stale` and [`ProposalError::Stale`] is
-    /// returned — the caller must then commit (not roll back) to keep
-    /// the mark, and apply nothing. On success the targets stay locked
+    /// targets are locked; an accept with no live item left is refused
+    /// (`NothingToApply`); if any target moved since filing, the proposal
+    /// is marked `stale` and [`Transition::WentStale`] is returned — an
+    /// `Ok`, so the caller commits the mark with the transaction and must
+    /// apply nothing. On [`Transition::Decided`] the targets stay locked
     /// until the transaction ends, so what the check saw is what the
     /// caller applies onto.
     pub async fn transition_in(
         conn: &mut MySqlConnection,
         id: u64,
         decision: &Decision,
-    ) -> Result<ProposalStatus, ProposalError> {
+    ) -> Result<Transition, ProposalError> {
         let update = match decision {
             Decision::Accept { by } => StatusUpdate {
                 to: ProposalStatus::Accepted,
@@ -756,14 +824,21 @@ impl ProposalService {
             return Err(ProposalError::UnknownDecider { user_id });
         }
         if matches!(decision, Decision::Accept { .. }) {
-            let targets = stale_targets_on(conn, id, true).await?;
+            let items = ProposalModel::items(conn, id).await?;
+            if items.is_empty() {
+                return Err(ProposalError::NothingToApply { id });
+            }
+            let states =
+                read_target_states(conn, items.iter().filter_map(|i| i.target), false, true)
+                    .await?;
+            let targets = stale_reasons(&items, &states);
             if !targets.is_empty() {
                 Self::apply_update(conn, id, &stale_update()).await?;
-                return Err(ProposalError::Stale { id, targets });
+                return Ok(Transition::WentStale(targets));
             }
         }
         Self::apply_update(conn, id, &update).await?;
-        Ok(update.to)
+        Ok(Transition::Decided(update.to))
     }
 
     async fn apply_update(
@@ -959,6 +1034,7 @@ mod tests {
     fn item(values: Value) -> NewProposalItem {
         NewProposalItem {
             target: None,
+            expected_version: None,
             proposed_values: values,
         }
     }
@@ -1179,8 +1255,17 @@ mod tests {
             assert!(!e.is_invalid_input());
             assert!(matches!(AppError::from(e), AppError::Conflict(_)));
         }
+        let decider = ProposalError::UnknownDecider { user_id: 1 };
+        assert!(!decider.is_invalid_input(), "server state, not agent input");
+        assert!(matches!(AppError::from(decider), AppError::BadRequest(_)));
         for e in [
-            ProposalError::UnknownDecider { user_id: 1 },
+            ProposalError::TargetChanged {
+                index: 1,
+                table: ProposalTargetTable::Titles,
+                id: 1,
+                expected: 1,
+                current: 2,
+            },
             ProposalError::ValuesTooDeep { index: 1 },
             ProposalError::ProposalTooLarge { bytes: 1 },
         ] {

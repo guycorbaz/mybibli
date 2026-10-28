@@ -154,8 +154,10 @@ impl AppState {
     /// Story 11-9: the cover staging directory, a sibling of
     /// `covers_dir` never served by `/covers` (see
     /// `services::cover_staging`); `None` when no sibling exists.
+    /// Also `None` when the directory does not exist (its creation at
+    /// boot failed), so a caller degrades instead of failing on write.
     pub fn cover_staging_dir(&self) -> Option<PathBuf> {
-        crate::services::cover_staging::staging_dir_for(&self.covers_dir)
+        crate::services::cover_staging::staging_dir_for(&self.covers_dir).filter(|d| d.is_dir())
     }
 
     /// Read the currently-configured session inactivity timeout (seconds).

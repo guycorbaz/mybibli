@@ -12,7 +12,7 @@ use mybibli::models::proposal::{
 };
 use mybibli::services::proposals::{
     Decision, NewProposal, NewProposalItem, ProposalError, ProposalService, SourceRejection,
-    StaleReason,
+    StaleReason, Transition,
 };
 use serde_json::json;
 use sqlx::MySqlPool;
@@ -123,6 +123,7 @@ fn proposal(kind: ProposalKind, key: u64, targets: &[Option<ProposalTarget>]) ->
             .enumerate()
             .map(|(i, t)| NewProposalItem {
                 target: *t,
+                expected_version: None,
                 proposed_values: json!({ "line": i + 1 }),
             })
             .collect(),
@@ -601,9 +602,12 @@ async fn concurrent_deciders_cannot_both_win(pool: MySqlPool) {
     // The first decider holds its transaction open; the second must wait
     // on the row lock, then see the first decision.
     let mut tx = pool.begin().await.unwrap();
-    ProposalService::transition_in(&mut tx, id, &Decision::Accept { by: u1 })
-        .await
-        .unwrap();
+    assert_eq!(
+        ProposalService::transition_in(&mut tx, id, &Decision::Accept { by: u1 })
+            .await
+            .unwrap(),
+        Transition::Decided(ProposalStatus::Accepted)
+    );
     let second = {
         let pool = pool.clone();
         tokio::spawn(async move {
@@ -620,23 +624,7 @@ async fn concurrent_deciders_cannot_both_win(pool: MySqlPool) {
     };
     // Wait until the second decider is actually blocked on the row lock,
     // so the test proves the guard under real contention.
-    let mut waited = false;
-    for _ in 0..250 {
-        let waiting: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM information_schema.PROCESSLIST \
-             WHERE DB = DATABASE() AND COMMAND = 'Execute' \
-             AND INFO LIKE 'SELECT status FROM proposals%FOR UPDATE'",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        if waiting > 0 {
-            waited = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-    assert!(waited, "the second decider never waited on the lock");
+    wait_until_blocked(&pool, "SELECT status FROM proposals%FOR UPDATE").await;
     tx.commit().await.unwrap();
     match second.await.unwrap() {
         Err(ProposalError::NotPending { status, .. }) => {
@@ -765,6 +753,7 @@ async fn deeply_nested_values_are_refused_before_the_database(pool: MySqlPool) {
         sources: vec!["https://example.org/".into()],
         items: vec![NewProposalItem {
             target: None,
+            expected_version: None,
             proposed_values: deep,
         }],
     };
@@ -795,6 +784,11 @@ async fn decided_by_is_set_null_when_the_user_row_is_purged(pool: MySqlPool) {
         .proposal;
     assert_eq!(d.status, ProposalStatus::Accepted);
     assert!(d.decided_by.is_none());
+    assert_eq!(
+        d.decided_by_username.as_deref(),
+        Some("lib-purged"),
+        "the decider's name survives the purge (FR146)"
+    );
     assert!(d.decided_at.is_some());
 }
 
@@ -971,4 +965,156 @@ async fn soft_deleted_items_are_ignored_by_staleness(pool: MySqlPool) {
     let check = ProposalService::check_staleness(&pool, id).await.unwrap();
     assert_eq!(check.status, ProposalStatus::Pending);
     assert!(check.stale_targets.is_empty());
+}
+
+// ─── Review round 2 ─────────────────────────────────────────────────
+
+/// Wait until a statement matching `pattern` (SQL LIKE) is executing on
+/// this test's database — i.e. blocked, when another transaction holds
+/// the lock it needs.
+async fn wait_until_blocked(pool: &MySqlPool, pattern: &str) {
+    for _ in 0..250 {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM information_schema.PROCESSLIST \
+             WHERE DB = DATABASE() AND COMMAND IN ('Execute', 'Query') AND INFO LIKE ?",
+        )
+        .bind(pattern)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        if n > 0 {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("no statement matching {pattern} ever waited");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn accepting_fresh_targets_holds_them_until_commit(pool: MySqlPool) {
+    let key = insert_key(&pool, "k").await;
+    let user = insert_user(&pool, "lib-hold").await;
+    let title = insert_title(&pool, "T").await;
+    let series = insert_series(&pool, "S").await;
+    let id = file(
+        &pool,
+        &proposal(
+            ProposalKind::SeriesAttach,
+            key,
+            &[series_target(series), title_target(title)],
+        ),
+    )
+    .await;
+
+    let mut tx = pool.begin().await.unwrap();
+    assert_eq!(
+        ProposalService::transition_in(&mut tx, id, &Decision::Accept { by: user })
+            .await
+            .unwrap(),
+        Transition::Decided(ProposalStatus::Accepted)
+    );
+    // A librarian edit of the target must wait for the accepting
+    // transaction (11-17 applies onto exactly what was checked).
+    let edit = {
+        let pool = pool.clone();
+        tokio::spawn(async move {
+            sqlx::query("UPDATE titles SET version = version + 1 WHERE id = ?")
+                .bind(title)
+                .execute(&pool)
+                .await
+                .unwrap();
+        })
+    };
+    wait_until_blocked(&pool, "UPDATE titles SET version%").await;
+    assert!(!edit.is_finished());
+    tx.commit().await.unwrap();
+    edit.await.unwrap();
+    assert_eq!(status(&pool, id).await, ProposalStatus::Accepted);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn accept_sees_changes_committed_after_its_snapshot(pool: MySqlPool) {
+    let key = insert_key(&pool, "k").await;
+    let user = insert_user(&pool, "lib-snapshot").await;
+    let title = insert_title(&pool, "T").await;
+    let id = file(
+        &pool,
+        &proposal(ProposalKind::Metadata, key, &[title_target(title)]),
+    )
+    .await;
+
+    // The caller's transaction takes its snapshot before the edit…
+    let mut tx = pool.begin().await.unwrap();
+    let _: i32 = sqlx::query_scalar("SELECT version FROM titles WHERE id = ?")
+        .bind(title)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    bump_version(&pool, "titles", title).await;
+    // …yet the accept's locking read sees the committed edit.
+    match ProposalService::transition_in(&mut tx, id, &Decision::Accept { by: user })
+        .await
+        .unwrap()
+    {
+        Transition::WentStale(targets) => assert_eq!(targets[0].reason, StaleReason::Changed),
+        other => panic!("expected WentStale, got {other:?}"),
+    }
+    tx.commit().await.unwrap();
+    assert_eq!(status(&pool, id).await, ProposalStatus::Stale);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn filing_refuses_a_target_changed_since_the_agent_read_it(pool: MySqlPool) {
+    let key = insert_key(&pool, "k").await;
+    let title = insert_title(&pool, "T").await;
+    bump_version(&pool, "titles", title).await; // version 2
+
+    let mut p = proposal(ProposalKind::Metadata, key, &[title_target(title)]);
+    p.items[0].expected_version = Some(1);
+    assert!(matches!(
+        ProposalService::file(&pool, &p).await,
+        Err(ProposalError::TargetChanged {
+            index: 1,
+            expected: 1,
+            current: 2,
+            ..
+        })
+    ));
+    assert_eq!(proposal_count(&pool).await, (0, 0));
+
+    p.items[0].expected_version = Some(2);
+    let id = file(&pool, &p).await;
+    let d = ProposalService::detail(&pool, id).await.unwrap().unwrap();
+    assert_eq!(d.items[0].target_version, Some(2));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_proposal_without_items_can_only_be_rejected(pool: MySqlPool) {
+    let key = insert_key(&pool, "k").await;
+    let user = insert_user(&pool, "lib-empty").await;
+    let id = file(&pool, &proposal(ProposalKind::SeriesCreate, key, &[None])).await;
+    sqlx::query("UPDATE proposal_items SET deleted_at = NOW() WHERE proposal_id = ?")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        ProposalService::transition(&pool, id, &Decision::Accept { by: user }).await,
+        Err(ProposalError::NothingToApply { .. })
+    ));
+    assert_eq!(status(&pool, id).await, ProposalStatus::Pending);
+    assert_eq!(
+        ProposalService::transition(
+            &pool,
+            id,
+            &Decision::Reject {
+                by: user,
+                reason: None
+            }
+        )
+        .await
+        .unwrap(),
+        ProposalStatus::Rejected
+    );
 }
