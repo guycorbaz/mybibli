@@ -272,8 +272,8 @@ impl SeriesModel {
     /// positions count is strictly less than `total_volume_count`. Open
     /// series and closed-with-NULL/zero-total are excluded.
     ///
-    /// Single-round-trip correlated subquery; `COUNT(DISTINCT
-    /// position_number)` de-dupes the same-position-different-titles
+    /// Single round-trip over the shared `filled_positions_join!`
+    /// derived table; `COUNT(DISTINCT position_number)` de-dupes the same-position-different-titles
     /// edge case AND collapses BD omnibus rows (multiple title_series
     /// rows for the same title_id at distinct positions still count as
     /// distinct slots).
@@ -286,6 +286,8 @@ impl SeriesModel {
     /// - **P4:** `AND ts.position_number > 0` excludes data-error rows
     ///   at position 0 / negative from silently filling slot 0 (the
     ///   slot-numbering convention is positions 1..total).
+    /// - **Story 11-8 review:** a position above the total of a closed
+    ///   series fills no slot either.
     pub async fn count_with_gaps(pool: &DbPool) -> Result<i64, AppError> {
         let row: (i64,) = sqlx::query_as(concat!(
             "SELECT COUNT(*) FROM series s ",

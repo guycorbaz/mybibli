@@ -465,7 +465,8 @@ pub const MAX_LISTED_MISSING_POSITIONS: usize = 1000;
 /// Story 11-8 — the gaps of a series as the MCP tools report them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SeriesGaps {
-    /// Distinct positions above 0 held by live titles.
+    /// Distinct positions above 0 held by live titles — within
+    /// 1..=total for a closed series with a total.
     pub owned_positions: u64,
     /// `None` for an open series or a closed one without a total.
     pub gap_count: Option<u64>,
