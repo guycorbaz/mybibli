@@ -12,6 +12,7 @@ pub mod media_type;
 pub mod metadata_cache;
 pub mod saved_search;
 pub mod series;
+pub mod proposal;
 pub mod session;
 pub mod title;
 pub mod title_search;

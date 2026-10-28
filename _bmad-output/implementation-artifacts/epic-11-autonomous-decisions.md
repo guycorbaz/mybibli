@@ -376,3 +376,76 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 **Chosen:** for a closed series with a total, only positions within 1..=total count as held — in the shared SQL `filled_positions_join!` (dashboard `count_with_gaps` / `list_with_gaps` and `list_summaries`) and in the Rust `series_gaps`, so `gap_count` always equals the number of missing positions and every surface agrees (the series detail grid already counted that way). `get_series` still lists the out-of-range assignment rows in `positions`. The `/series` list page's own row count and the `update_series` guard are left as they are, tracked in #519.
 **Rejected:** keeping the dashboard formula and documenting the mismatch (two tools contradicting each other on the same series); changing only the MCP side (dashboard and MCP would then disagree).
 **Reversible:** yes.
+
+## § 11-9 — Proposals schema and service (part of #493)
+
+### D-11-9-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-9-proposals-schema-service` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-9-2 — Filing errors are a typed `ProposalError`, agent-facing English
+**Context:** `From<AppError> for ToolError` maps every `AppError` to `Internal`; the proposal tools (11-12..11-14) must return an actionable refusal (FR134, NFR47 "explicit error").
+**Chosen:** `services::proposals::ProposalError` (validation variants, `NotFound`, `NotPending`, `Database`) with English `Display` messages (MCP copy is not localized — D-11-7 precedent) and `From<ProposalError> for AppError` (validation → `BadRequest`, `NotPending` → `Conflict`); the web stories (11-16..11-19) localize what reaches a librarian.
+**Rejected:** `AppError::BadRequest(String)` (the tool layer could not tell a refusal from a server error); localized keys now (no web surface yet).
+**Reversible:** yes.
+
+### D-11-9-3 — Item target: nullable ENUM table + id + version, no FK
+**Context:** "one line per action: target table, target id, the target's version". A `series_create` line or an expected tome targets nothing that exists yet; titles and series are hard-purged 30 days after a soft delete.
+**Chosen:** `target_table ENUM('titles','series') NULL`, `target_id`, `target_version`, all three NULL or all set (CHECK constraint); no FK (polymorphic, must not block the purge — a purged target reads as deleted, hence stale). The service reads the version itself at filing; the caller never supplies it. A later story extends the ENUM by migration if it needs another target.
+**Rejected:** a free `VARCHAR` table name (SQL identifiers cannot be bound — the whitelist would live only in Rust); an `action` column (not in the AC; 11-12..11-14 define the `proposed_values` shapes).
+**Reversible:** yes (migration).
+
+### D-11-9-4 — Staging directory derived from `COVERS_DIR`, sibling `<name>-staging` [PRODUCT]
+**Context:** "created and configured next to `covers/`, unused for now"; `AppState` is built literally in 36 files.
+**Chosen:** `services::cover_staging::staging_dir_for(covers_dir)` → `./covers-staging` (Docker: `/app/covers-staging`), exposed by `AppState::cover_staging_dir()`, created at boot, never served (outside the `/covers` `ServeDir`, so an unreviewed agent image is never publicly reachable). No new env var: an operator moves it by moving `COVERS_DIR`.
+**Consequence flagged for 11-14 (#522):** in the shipped `docker-compose.yml` only `/app/covers` is a volume, so staged covers would not survive a container re-creation (every upgrade). 11-14 must either add a volume (and update `docker-compose.yml` / `docs/dockerhub-overview.md`) or handle a missing staged file on acceptance.
+Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `COVERS_DIR` parent is not writable must not fail to start for a directory nothing uses yet; 11-14 refuses cover proposals when it is missing.
+**Rejected:** a subdirectory of `covers/` (persistent, but served by `/covers` unless a guard route is added — untrusted images on the public origin); a new `AppState` field (36-file churn for an unused path).
+**Reversible:** yes.
+
+### D-11-9-5 — Source URLs: credentials refused, normalised, deduplicated, bounded [PRODUCT]
+**Context:** NFR47 asks for `http`/`https` only, validated at filing; sources will be rendered as links on the proposals page (11-16).
+**Chosen:** parse with `reqwest::Url` (no new crate); refuse a non-http(s) scheme, a missing host and embedded credentials (`https://bnf.fr@evil.example` disguises the real host in a link); at most 20 sources of at most 2048 characters; stored in parsed form, duplicates dropped. Items: at most 1000, values a JSON object of at most 64 KiB serialized.
+**Rejected:** storing the raw string (an unparseable variant could slip through later rendering); unbounded lists.
+**Reversible:** yes.
+
+### D-11-9-6 — No E2E in this story
+**Context:** Foundation Rule 3 asks E2E for every feature; this story has no route, page, tool or other user-visible behaviour (the service has no caller until 11-12 / 11-16).
+**Chosen:** unit + DB integration tests only; the full Playwright suite still runs as the regression gate. The first E2E over proposals comes with 11-12 (agent files one) and 11-16 (librarian rejects one).
+**Rejected:** a throw-away route only to drive an E2E (D-11-5-4 precedent).
+**Reversible:** yes.
+
+### D-11-9-7 — `stale` records `decided_at`, never `decided_by` [PRODUCT]
+**Context:** the AC lists `decided-by user; decided-at` without saying what a system-made transition records.
+**Chosen:** `pending → stale` sets `decided_at = NOW()` and leaves `decided_by` NULL; accept / reject require a user id. A rejection reason is accepted only on reject (trimmed, empty → NULL, ≤ 1000 characters).
+**Rejected:** leaving `decided_at` NULL on stale (the history in 11-15 could not date it).
+**Reversible:** yes.
+
+### D-11-9-8 — Code review: staleness stays version-based; writers that skip the bump tracked in #521
+**Context:** review round 1 found writes that do not bump the target's `version` (background cover / `metadata_source` fetch on `titles`; `title_series` attach / detach on neither `titles` nor `series`), so a proposal filed before them reads as fresh.
+**Chosen:** keep the AR29 rule in this story; #521 (Medium) records the gap and the choice 11-17 / 11-18 must make before accepting anything (bump the parent `version`, or re-check the overwritten state at acceptance).
+**Rejected:** bumping `titles.version` from the background fetch now — a librarian's open edit form would then fail with a version conflict, a user-visible change outside this story.
+**Reversible:** yes.
+
+### D-11-9-9 — Code review: accept enforces staleness and locks the targets [PRODUCT]
+**Context:** review round 1 — `Decision::Accept` moved a proposal to `accepted` without any staleness check, and the check read target versions from the transaction snapshot without locking them, so "re-check then apply" (11-17) could apply onto a concurrently edited row.
+**Chosen:** `transition_in(Accept)` locks the proposal, reads its targets with `FOR UPDATE` (current read, held to the end of the transaction), and when any moved marks the proposal `stale` and returns `ProposalError::Stale` (the pool wrapper commits that mark; a caller in its own transaction must commit it too). `check_staleness_in` uses the same locking read. Reject does not check staleness (rejecting a moved proposal is harmless).
+**Rejected:** leaving FR140 to every caller (11-17 and 11-18 would each have to remember it).
+**Reversible:** yes.
+
+### D-11-9-10 — Code review: the service checks the filing key and the deciding user [PRODUCT]
+**Context:** review round 1 — any `api_key_id` / user id was stored as given; an unknown id surfaced as a database error, a revoked key or a deactivated user was accepted.
+**Chosen:** filing share-locks the key row and requires `scope = 'propose'`, not revoked, not deleted (`KeyNotAllowed`, → `Conflict`); a revocation (11-14) then waits for an in-flight filing and sees it. Accept / reject require an active user (`UnknownDecider`, → `BadRequest`). Also from the review: JSON nested deeper than 20 levels is refused (`ValuesTooDeep`; MariaDB refuses beyond 32), all items of a proposal together are capped at 1 MiB, the stored (normalised) source must itself fit 2048 characters, `ProposalError::Database` never shows database text, and a covers path without a final name (`.`) is resolved before deriving the staging sibling (`None` for `/`, so it is never inside the served directory).
+**Reversible:** yes.
+
+### D-11-9-11 — Code review round 2: accept outcome is a value, filing can pin the agent's read, the decider's name is kept [PRODUCT]
+**Context:** review round 2 — (a) `transition_in` returned the stale case as an `Err`, so a caller in its own transaction (11-17) using `?` would roll back and lose the stale mark; (b) the staleness baseline is the version at filing, so an edit between the agent's read and its filing was silently absorbed; (c) after the 30-day user purge an accepted proposal no longer said who decided (FR146).
+**Chosen:** (a) `transition_in` returns `Transition::{Decided(status), WentStale(targets)}` (`#[must_use]`); the pool wrapper `transition` still maps `WentStale` to `ProposalError::Stale` after committing; an accept with no live item left is refused (`NothingToApply`, as 11-19 requires). (b) `NewProposalItem.expected_version: Option<i32>` — when given and the row moved, filing is refused (`TargetChanged`, an agent-correctable error); the proposal tools (11-12..11-14) decide whether to expose it. (c) `proposals.decided_by_name` copies the username at decision time; reads show `COALESCE(live username, copy)`. Also: the active-user check uses the login predicate (`active = TRUE AND deleted_at IS NULL`); `UnknownDecider` is not agent input; the listing reads its count and page in one transaction; a failed rollback no longer hides the original error; `AppState::cover_staging_dir()` is `None` when the directory does not exist; the lock order a revocation (11-14) must follow is documented on `lock_filing_key`.
+**Rejected:** a mandatory `expected_version` (the read tools of 11-7 / 11-8 do not expose `version` yet).
+**Reversible:** yes.
+
+### D-11-9-12 — Code review round 4: clean; one note for 11-17
+**Context:** confirmation pass found no Medium+. Low: the locking item read on accept takes next-key locks on `idx_proposal_items_proposal`; when the proposal being accepted is the newest, a concurrent filing waits on its item INSERT until the accept transaction ends (no deadlock — each side waits once).
+**Chosen:** accept as is; 11-17 must keep accept-and-apply transactions short (no network I/O inside — e.g. cover promotion happens after commit, as 11-18 already says).
+**Reversible:** yes.
