@@ -533,3 +533,50 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** the confirmation pass found no Medium+. Lows: the holder exemption looks at the first holder row only; whitespace other than a space is stripped in Rust but not in the SQL owner lookup; with duplicate ISBNs the first owner by id may yield `TitleElsewhere` where another could attach; the owner lookup scans `titles` (no index on the normalised value); `idx_title_series_series` is now a prefix of `idx_title_series_series_position`.
 **Chosen:** accept all (rare data shapes at household scale; each degrades to "tome stays unsettled", never to a wrong attachment); the redundant index can go in a later cleanup migration.
 **Reversible:** yes.
+
+## § 11-11 — Expected tomes: series page and wishlist (part of #493)
+
+### D-11-11-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-11-expected-tomes-series-page-wishlist` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-11-2 — #524 states are rendered, not prevented [PRODUCT]
+**Context:** a lowered total or a Trash restore can leave an unsettled tome above the total or on a position a title holds again; 11-10 deferred it to this page.
+**Chosen:** the series page lists such tomes in an "Expected tomes to review" section under the grid, each with its reason (above the total of T / held by «title») and the Edit / Delete actions. `update_series` and the Trash restore are unchanged.
+**Rejected:** refusing to lower a total below a tome (a librarian correcting a wrong total would first have to delete tomes); silently hiding those tomes.
+**Reversible:** yes.
+
+### D-11-11-3 — Full-page forms for add / edit, UX-DR8 modal for delete
+**Context:** FR147 asks for add, edit, delete; UX-DR8 only covers destructive confirmations.
+**Chosen:** `GET/POST /series/{id}/expected-tomes/new|…/{tome}/edit` full-page forms (the series edit form pattern), a refusal re-renders the form with the typed values and the localized message (422); delete through `…/delete-modal` + `POST …/delete` (HX-Redirect to the series page).
+**Rejected:** an inline HTMX form inside the grid card (cramped on 2-column phones, harder to make keyboard-accessible).
+**Reversible:** yes.
+
+### D-11-11-4 — Wishlist note and duplicate rule [PRODUCT]
+**Context:** FR142 asks for "a note naming the series and the position"; the AC only defines the ISBN duplicate.
+**Chosen:** note `Series «name», tome N` in the librarian's language at the time of the click; duplicate = a live item with the tome's ISBN; for a tome without ISBN, a live item without ISBN with the same title and the same note (so a double click does not create two rows). The `wishlist_add` audit row is written like the wishlist form does (shared helper).
+**Rejected:** no dedup without ISBN (double clicks duplicate); dedup on title alone ("Tome 3" in two series would collide).
+**Reversible:** yes.
+
+### D-11-11-5 — Web messages localized, MCP stays English
+**Context:** carry-over (b) — `ExpectedTomeError` messages were agent-facing English.
+**Chosen:** `ExpectedTomeError::localized(loc)` with `expected_tome.error.*` keys in the four locales for every web surface; `Display` (used by MCP tools) unchanged (D-11-7 / D-11-9-2 precedent).
+**Reversible:** yes.
+
+### D-11-11-6 — E2E spec named to run after the specs that assume no series
+**Context:** the first full run named the spec `expected-tomes.spec.ts`; the series it creates appeared while `empty-states.spec.ts` expected an empty `/series`, and while `dewey-code` / `classification-fieldset` clicked the last submit button of a title page (which becomes "Add to series" once a series exists) — 5 failures.
+**Chosen:** rename to `series-expected-tomes.spec.ts`, next to `series.spec.ts`, which already relies on the same alphabetical schedule; documented in the spec header. Full suite green afterwards.
+**Rejected:** rewriting the three older specs' selectors in this story (out of scope; the order dependency predates it).
+**Reversible:** yes.
+
+### D-11-11-7 — Code review round 1: errors stay on the page, conflicts refresh the form, wording aligned [PRODUCT]
+**Context:** three review layers; Medium: wishlist errors lost (retarget to a `#feedback-list` the series page lacks), stale version kept after a conflict, anonymous test stopped by CSRF, French "liste d'envies" vs the UI's "wish list".
+**Chosen:** the wishlist handler renders refusals into `#series-feedback`; a version conflict re-renders the form with the stored values and current version (the message still explains what happened); a vanished tome / series is a 404; a settled tome is never wished ("already in your catalog") and its edit form says it is read-only up front; French copy uses "wish list"; existing label keys reused; the ISBN hint is terse; the refusal page's layout links point at the GET form; the wishlist button disables itself during the request.
+**Accepted (Low):** locale-dependent no-ISBN dedup and an ISBN added after a no-ISBN wish (D-11-11-4); check-then-insert race between two librarians; non-integer positions read as out of range; tome squares keep position order under the title sort; inherited `CAST(… AS UNSIGNED)` in the wishlist model; E2E stamp wrap.
+**Reversible:** yes.
+
+### D-11-11-8 — Code review round 2: clean; two Lows fixed, one deferred
+**Context:** the confirmation pass found no Medium+. Lows: the version-conflict copy still told the librarian to reload; repeated tome controls had no accessible name; a failed delete-modal GET is invisible on the series page.
+**Chosen:** new conflict wording ("the form now shows the latest version: make your change again") in the four locales; `aria-label` "<action> — <tome title>" on the three controls; the missing `#feedback-list` on the series page (which also affects the series delete modal and CSRF rejections, pre-existing) goes to #526.
+**Reversible:** yes.

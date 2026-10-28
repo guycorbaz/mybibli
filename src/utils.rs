@@ -161,6 +161,25 @@ pub fn feedback_html_undoable(
     feedback_html_action(variant, message, suggestion, &button)
 }
 
+/// Like [`feedback_html`] with a link inside the entry (story 11-11: the
+/// wishlist item an expected tome was sent to). `href` and `link_label`
+/// are HTML-escaped here — callers MUST NOT pre-escape; `href` must be a
+/// server-built same-origin path.
+pub fn feedback_html_with_link(
+    variant: &str,
+    message: &str,
+    suggestion: &str,
+    href: &str,
+    link_label: &str,
+) -> String {
+    let link = format!(
+        r#"<a href="{}" class="mt-1 inline-block text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline">{}</a>"#,
+        html_escape(href),
+        html_escape(link_label)
+    );
+    feedback_html_action(variant, message, suggestion, &link)
+}
+
 /// Shared renderer behind [`feedback_html`] and [`feedback_html_undoable`].
 /// `extra_action_html` is injected verbatim inside the entry body after the
 /// suggestion paragraph — callers are responsible for its safety (the only

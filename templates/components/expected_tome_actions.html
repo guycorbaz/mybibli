@@ -1,0 +1,25 @@
+{# Story 11-11 (FR142, FR147, UX-DR34) — Librarian/Admin actions on an
+   expected tome. Expects `card` (ExpectedTomeCard), `series`,
+   `tome_labels` and `base` in scope. Delete opens the UX-DR8 modal
+   (no hx-confirm); "Add to wishlist" answers into #series-feedback
+   (CSRF header via csrf.js). CSP-clean. #}
+{% if base.role == "librarian" || base.role == "admin" %}
+<div class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs" data-expected-tome-actions="{{ card.id }}">
+    <a href="/series/{{ series.id }}/expected-tomes/{{ card.id }}/edit"
+       aria-label="{{ tome_labels.edit }} — {{ card.title }}"
+       class="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">{{ tome_labels.edit }}</a>
+    <button type="button"
+            hx-get="/series/{{ series.id }}/expected-tomes/{{ card.id }}/delete-modal"
+            hx-target="#modal-slot" hx-swap="innerHTML"
+            data-modal-trigger aria-haspopup="dialog" aria-expanded="false"
+            aria-label="{{ tome_labels.delete }} — {{ card.title }}"
+            class="font-medium text-red-600 dark:text-red-400 hover:underline">{{ tome_labels.delete }}</button>
+    <button type="button"
+            hx-post="/series/{{ series.id }}/expected-tomes/{{ card.id }}/wishlist"
+            hx-target="#series-feedback" hx-swap="innerHTML"
+            hx-disabled-elt="this"
+            aria-label="{{ tome_labels.add_to_wishlist }} — {{ card.title }}"
+            data-expected-tome-wishlist="{{ card.id }}"
+            class="font-medium text-emerald-700 dark:text-emerald-400 hover:underline">{{ tome_labels.add_to_wishlist }}</button>
+</div>
+{% endif %}

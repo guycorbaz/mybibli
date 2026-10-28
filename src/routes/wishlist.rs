@@ -335,22 +335,33 @@ pub async fn wishlist_create(
     )
     .await?;
 
-    // Audit trail (#242 AC): record the add. user_id is None for anonymous
-    // (mutations require Librarian+ so user_id is always Some here).
+    audit_wishlist_add(pool, &session, id, title).await;
+
+    Ok(Redirect::to("/wishlist"))
+}
+
+/// Audit trail (#242 AC): record a wishlist add. Shared by the wishlist
+/// form and the series page's "Add to wishlist" (story 11-11). `user_id`
+/// is `None` only for anonymous sessions, which never reach a mutation.
+/// Best effort: a failed audit write never fails the add.
+pub(crate) async fn audit_wishlist_add(
+    pool: &crate::db::DbPool,
+    session: &Session,
+    item_id: u64,
+    title: &str,
+) {
     if let Some(user_id) = session.user_id {
         crate::models::admin_audit::AdminAuditModel::create(
             pool,
             user_id,
             "wishlist_add",
             Some("wishlist_items"),
-            Some(id),
+            Some(item_id),
             Some(serde_json::json!({"title": title})),
         )
         .await
         .ok();
     }
-
-    Ok(Redirect::to("/wishlist"))
 }
 
 // ─── Detail page ─────────────────────────────────────────────────
