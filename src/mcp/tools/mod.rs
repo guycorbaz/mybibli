@@ -14,8 +14,7 @@ mod search_titles;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use super::tool::{ToolError, ToolRegistry};
-use crate::db::DbPool;
+use super::tool::{ToolContext, ToolError, ToolRegistry};
 use crate::models::title::SearchResult;
 use crate::models::{DEFAULT_PAGE_SIZE, PaginatedList};
 use crate::services::search::{GenreLookup, SearchService};
@@ -130,11 +129,11 @@ fn title_list_schema(extra: Value) -> Value {
 
 /// Resolve an optional genre name to its id; an unknown name is an
 /// argument error listing the library's genres.
-async fn resolve_genre(pool: &DbPool, name: Option<&str>) -> Result<Option<u64>, ToolError> {
+async fn resolve_genre(ctx: &ToolContext, name: Option<&str>) -> Result<Option<u64>, ToolError> {
     let Some(name) = name else {
         return Ok(None);
     };
-    match SearchService::resolve_genre(pool, name).await? {
+    match SearchService::resolve_genre(&ctx.state.pool, name).await? {
         GenreLookup::Found(id) => Ok(Some(id)),
         GenreLookup::Unknown(known) if known.is_empty() => Err(ToolError::InvalidArguments(
             "the library has no genres; omit `genre`".to_string(),

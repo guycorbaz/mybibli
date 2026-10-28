@@ -125,7 +125,7 @@ impl McpTool for ListTitlesWithIncompleteMetadata {
         Box::pin(async move {
             let parsed = parse_args(args)?;
             let pool = &ctx.state.pool;
-            let genre_id = resolve_genre(pool, parsed.genre.as_deref()).await?;
+            let genre_id = resolve_genre(ctx, parsed.genre.as_deref()).await?;
             let list = SearchService::list_incomplete_metadata(
                 pool,
                 parsed.missing,

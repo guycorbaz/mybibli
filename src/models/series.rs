@@ -71,9 +71,9 @@ fn row_to_series(row: sqlx::mysql::MySqlRow) -> Result<SeriesModel, sqlx::Error>
 /// The positions a series holds, per series: distinct `position_number`
 /// values above 0 of live assignments of live titles (story 9-6 rule,
 /// code-review patches P2 + P4). A `LEFT JOIN` aliased `filled` with
-/// column `owned_count`, shared by [`SeriesModel::list_with_gaps`] and
-/// [`SeriesModel::list_summaries`] so the dashboard and the MCP tools
-/// count gaps the same way.
+/// column `owned_count`, shared by [`SeriesModel::count_with_gaps`],
+/// [`SeriesModel::list_with_gaps`] and [`SeriesModel::list_summaries`]
+/// so the dashboard and the MCP tools count gaps the same way.
 macro_rules! filled_positions_join {
     () => {
         "LEFT JOIN ( \
@@ -264,21 +264,15 @@ impl SeriesModel {
     ///   at position 0 / negative from silently filling slot 0 (the
     ///   slot-numbering convention is positions 1..total).
     pub async fn count_with_gaps(pool: &DbPool) -> Result<i64, AppError> {
-        let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM series s \
-             WHERE s.deleted_at IS NULL \
+        let row: (i64,) = sqlx::query_as(concat!(
+            "SELECT COUNT(*) FROM series s ",
+            filled_positions_join!(),
+            " WHERE s.deleted_at IS NULL \
                AND s.series_type = 'closed' \
                AND s.total_volume_count IS NOT NULL \
                AND s.total_volume_count > 0 \
-               AND s.total_volume_count > ( \
-                 SELECT COUNT(DISTINCT ts.position_number) \
-                 FROM title_series ts \
-                 INNER JOIN titles t ON ts.title_id = t.id AND t.deleted_at IS NULL \
-                 WHERE ts.series_id = s.id \
-                   AND ts.deleted_at IS NULL \
-                   AND ts.position_number > 0 \
-               )",
-        )
+               AND s.total_volume_count > COALESCE(filled.owned_count, 0)",
+        ))
         .fetch_one(pool)
         .await?;
 

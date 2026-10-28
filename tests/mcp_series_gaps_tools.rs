@@ -69,7 +69,7 @@ async fn set(pool: &DbPool, title_id: u64, column: &str, value: Option<&str>) {
         .unwrap();
 }
 
-fn item<'a>(page: &'a Value, id: u64) -> &'a Value {
+fn item(page: &Value, id: u64) -> &Value {
     page["items"]
         .as_array()
         .expect("items")

@@ -59,7 +59,7 @@ impl McpTool for ListTitlesWithoutCover {
         Box::pin(async move {
             let (media_type, genre, page) = parse_args(args)?;
             let pool = &ctx.state.pool;
-            let genre_id = resolve_genre(pool, genre.as_deref()).await?;
+            let genre_id = resolve_genre(ctx, genre.as_deref()).await?;
             let list = SearchService::search_catalog(
                 pool,
                 &CatalogSearch {
