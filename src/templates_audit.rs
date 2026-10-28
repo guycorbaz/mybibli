@@ -1069,21 +1069,29 @@ fn csrf_exempt_routes_frozen() {
 /// `showModal()` reach the top layer anyway; this pins the declarative
 /// `<dialog open>` fallback and every non-dialog surface.
 ///
-/// Scope: `class="…"` attributes in `templates/`, and string literals in
-/// the first-party `static/js/*.js` modules (vendored and minified files
-/// excluded) whose whitespace-separated tokens include `fixed`.
+/// Scope: `class="…"` attributes in `templates/`, and multi-token string
+/// literals (`"…"`, `'…'`, `` `…` ``) in the first-party `static/js/*.js`
+/// modules (vendored, minified and nested files excluded) whose
+/// whitespace-separated tokens include the exact token `fixed`. Not seen:
+/// one-token-per-argument `classList.add("fixed", …)`, responsive
+/// `md:fixed`, CSS files and HTML built in Rust — keep new fixed surfaces
+/// to a single class string. Only the literal `z-50` is accepted.
 #[test]
 fn fixed_surfaces_stack_above_sticky_nav() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let class_attr_re = Regex::new(r#"\bclass\s*=\s*"([^"]*)""#).unwrap();
-    let js_string_re = Regex::new(r#""([^"\n]*)"|'([^'\n]*)'"#).unwrap();
+    let js_string_re = Regex::new(r#""([^"\n]*)"|'([^'\n]*)'|`([^`]*)`"#).unwrap();
 
     let mut fixed_surfaces = 0usize;
+    let mut js_fixed_surfaces = 0usize;
     let mut violations: Vec<String> = Vec::new();
     let mut check = |path: &Path, classes: &str| {
         let tokens: Vec<&str> = classes.split_whitespace().collect();
         if tokens.contains(&"fixed") {
             fixed_surfaces += 1;
+            if path.extension().and_then(|e| e.to_str()) == Some("js") {
+                js_fixed_surfaces += 1;
+            }
             if !tokens.contains(&"z-50") {
                 let rel = path.strip_prefix(&root).unwrap_or(path);
                 violations.push(format!("  {} — \"{classes}\"", rel.display()));
@@ -1116,7 +1124,11 @@ fn fixed_surfaces_stack_above_sticky_nav() {
             continue;
         };
         for cap in js_string_re.captures_iter(&content) {
-            let literal = cap.get(1).or_else(|| cap.get(2)).map_or("", |m| m.as_str());
+            let literal = cap
+                .get(1)
+                .or_else(|| cap.get(2))
+                .or_else(|| cap.get(3))
+                .map_or("", |m| m.as_str());
             // Class strings only: a lone `"fixed"` (e.g. a computed-style
             // comparison) is not a class list.
             if literal.split_whitespace().count() > 1 {
@@ -1125,6 +1137,11 @@ fn fixed_surfaces_stack_above_sticky_nav() {
         }
     }
 
+    assert!(
+        js_fixed_surfaces >= 2,
+        "expected the two JS toasts (session-timeout.js, connection-monitor.js) \
+         to be scanned (found {js_fixed_surfaces}) — has the JS scan stopped matching?"
+    );
     assert!(
         fixed_surfaces >= 3,
         "expected the modal, overlay and toast `fixed` surfaces to be found \

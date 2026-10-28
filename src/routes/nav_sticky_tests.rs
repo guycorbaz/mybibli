@@ -65,20 +65,33 @@ mod tests {
 
     /// AC2 — anchors (skip link, hash links, `focus()` scrolling) land
     /// below the bar: 48 px below `md`, 56 px from `md` (the bar heights).
+    /// The offset sits on `<main>` and its descendants, NOT on the root
+    /// scroller: a root `scroll-padding-top` would make the page jump
+    /// whenever a control inside the stuck bar takes focus (D-11-4-8).
     #[test]
-    fn root_scroll_padding_matches_bar_height() {
+    fn content_scroll_margin_matches_bar_height() {
         let html = render("anonymous");
-        let root = opening_tag(&html, "<html");
+        let main = opening_tag(&html, "<main id=\"main-content\"");
         assert_has(
-            root,
-            &["scroll-pt-12", "md:scroll-pt-14"],
-            "the root scroller must reserve the bar height",
+            main,
+            &[
+                "scroll-mt-12",
+                "md:scroll-mt-14",
+                "**:scroll-mt-12",
+                "md:**:scroll-mt-14",
+            ],
+            "content must reserve the bar height when scrolled into view",
+        );
+        let root = opening_tag(&html, "<html");
+        assert!(
+            !classes(root).iter().any(|c| c.contains("scroll-p")),
+            "no root scroll-padding: it would scroll the page when a bar control takes focus, got {root}"
         );
         let nav = opening_tag(&html, "<nav aria-label=\"Main navigation\"");
         assert_has(
             nav,
             &["h-12", "md:h-14"],
-            "scroll padding mirrors the bar heights",
+            "scroll margin mirrors the bar heights",
         );
     }
 

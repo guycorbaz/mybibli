@@ -122,11 +122,12 @@ rewritten.
 **Context:** the AC asks for 48 px below `md`, 56 px from `md`.
 **Chosen:** `scroll-pt-12 md:scroll-pt-14` on `<html>` (= `h-12` / `md:h-14` with `--spacing: 4px`). Covers the skip link, any fragment link, `focus()` and `scrollIntoView`.
 **Rejected:** `scroll-margin-top` per target (every future anchor would need it); a rule in `input.css` (duplicates the bar heights outside the template).
+**Superseded by D-11-4-8** (re-review): the offset moved from the root scroller to `<main>`.
 **Reversible:** yes.
 
 ### D-11-4-3 — The mobile panel is bounded to the viewport and scrolls internally
 **Context:** not in the issue. Once the header is sticky, a panel taller than the viewport cannot be scrolled into reach: the admin menu (~430 px, and 11-21 adds an entry) overflows a landscape phone (375 px high), hiding Logout.
-**Chosen:** `max-h-[calc(100dvh-3rem)] md:max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain` on `#mobile-nav` — needed for AC3 "stays usable".
+**Chosen:** `overflow-y-auto overscroll-contain` and a max-height of the viewport minus the bar on `#mobile-nav` — needed for AC3 "stays usable". After review: `max-h-[calc(100vh-48px)] md:max-h-[calc(100vh-56px)]` with `supports-[height:100dvh]:` overrides in `dvh` (fallback for engines without `dvh`; px like the project's `--spacing: 4px`).
 **Rejected:** leaving it unbounded (a regression introduced by this story on short viewports); compacting the menu (forbidden by the epic).
 **Reversible:** yes.
 
@@ -138,7 +139,7 @@ rewritten.
 
 ### D-11-4-5 — "The feedback list renders above the bar" read as "never covered by it"
 **Context:** `#feedback-list` is an in-flow `aria-live` region inside `<main>`, not an overlay; in-flow content necessarily passes under a sticky bar while scrolling.
-**Chosen:** no z-index change for the list; it is covered by the AC2 mechanism (scroll-padding keeps anything brought into view below the bar). The genuine overlays (modals, connection-lost overlay, toasts) are pinned above the bar by a render test (`fixed inset-0` ⇒ `z-50`) and an E2E check.
+**Chosen:** no z-index change for the list; it is covered by the AC2 mechanism (scroll-padding keeps anything brought into view below the bar). The genuine overlays (modals, connection-lost overlay, toasts) are pinned above the bar by `templates_audit::fixed_surfaces_stack_above_sticky_nav` (every `fixed` class list in `templates/` and `static/js` ⇒ `z-50`) and by two E2E checks (top-layer cheat sheet; plain `fixed inset-0 z-50` connection-lost overlay).
 **Rejected:** making the feedback list sticky/fixed (a product change nobody asked for).
 **Reversible:** yes.
 
@@ -152,4 +153,11 @@ rewritten.
 **Context:** the new axe check with the mobile menu open failed on `landmark-unique`: the desktop language form (visible in the bar at every width) and its mobile-menu copy are two `<form aria-label="Change language">` landmarks. Pre-existing, but only observable with the menu open, which no test opened before.
 **Chosen:** drop `aria-label` on the mobile copy — an unnamed `<form>` is not a landmark; its `<select>` keeps its sr-only label, so nothing is lost for screen readers. No visual change, no locale key.
 **Rejected:** a distinct label (new key in four locales for a redundant landmark); removing the mobile copy (a UI change); excluding the axe rule in the test.
+**Reversible:** yes.
+
+### D-11-4-8 — `scroll-margin-top` on the content instead of a root `scroll-padding-top`
+**Context:** the epic AC names `scroll-padding-top` (48 / 56 px). The re-review reproduced in Chromium that a root `scroll-padding-top` also applies to the controls inside the stuck bar: whenever one of them takes focus (Escape closing the mobile menu returns focus to the hamburger; Shift+Tab into the nav), the browser tries to bring it below the padding and scrolls the page up by roughly half a viewport — the reader loses their place, which defeats the purpose of the story.
+**Chosen:** `scroll-mt-12 md:scroll-mt-14 **:scroll-mt-12 md:**:scroll-mt-14` on `<main id="main-content">` — the same 48 / 56 px offsets for the skip-link target, hash links, `focus()` and `scrollIntoView` of anything inside `<main>`; nothing on the root, so bar controls never trigger a scroll. Two E2E tests pin "no jump"; the skip-link tests still pin the offset.
+**Rejected:** keeping the root padding and patching `nav.js` with `focus({ preventScroll: true })` (does not cover keyboard Tab into the bar); negative `scroll-margin` on header controls (fragile).
+**Departs from the epic wording** (property name only; the AC's offsets and intent are kept).
 **Reversible:** yes.

@@ -251,6 +251,7 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
   for (const [name, viewport] of [
     ["portrait phone", MOBILE],
     ["landscape phone", LANDSCAPE_PHONE],
+    ["tablet", TABLET],
   ] as const) {
     test(`${name} — the mobile menu stays usable and above the content while stuck`, async ({
       page,
@@ -287,6 +288,41 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
       await expect(page).toHaveURL(/\/series$/);
     });
   }
+
+  // D-11-4-8 — a root `scroll-padding-top` made Chromium scroll the page up
+  // whenever a control inside the stuck bar took focus. The reader must
+  // keep their place.
+  test("desktop — focusing a link in the stuck bar does not move the page", async ({
+    page,
+  }) => {
+    await page.setViewportSize(DESKTOP);
+    await loginAs(page, "admin");
+    await page.goto("/series");
+    const before = await assertNavStuckAtTop(page, "/series before focus");
+    await page.locator(`${NAV} a[href="/catalog"]`).focus();
+    await page.keyboard.press("Shift+Tab");
+    const after = await page.evaluate(() => window.scrollY);
+    expect(Math.abs(after - before.scrollY), "the page must not jump").toBeLessThanOrEqual(1);
+  });
+
+  test("mobile — closing the stuck menu with Escape does not move the page", async ({
+    page,
+  }) => {
+    await page.setViewportSize(MOBILE);
+    await loginAs(page, "admin");
+    await page.goto("/series");
+    // Baseline taken BEFORE opening: the open panel is in the header's flow,
+    // so re-scrolling to the bottom with it open would make the closing
+    // shrink clamp scrollY and look like a jump.
+    const before = await assertNavStuckAtTop(page, "/series before menu");
+    await page.locator("#mobile-menu-toggle").click();
+    await expect(page.locator("#mobile-nav")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#mobile-nav")).toBeHidden();
+    await expect(page.locator("#mobile-menu-toggle")).toBeFocused();
+    const after = await page.evaluate(() => window.scrollY);
+    expect(Math.abs(after - before.scrollY), "the page must not jump").toBeLessThanOrEqual(1);
+  });
 
   test("an open dialog renders above the stuck bar", async ({ page }) => {
     await page.setViewportSize(DESKTOP);
