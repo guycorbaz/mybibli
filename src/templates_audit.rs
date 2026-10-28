@@ -1209,7 +1209,10 @@ fn inner_vertical_scrollers_reset_the_bar_scroll_margin() {
         }
     });
 
-    assert!(scrollers >= 3, "expected the three inner scrollers, found {scrollers}");
+    assert!(
+        scrollers >= 3,
+        "expected the three inner scrollers, found {scrollers}"
+    );
     assert!(
         violations.is_empty(),
         "inner vertical scrollers must reset the inherited bar scroll margin \
