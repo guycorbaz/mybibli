@@ -390,9 +390,12 @@ impl MetadataField {
         }
     }
 
-    /// Parse the tool's argument value (exact, lower-case).
+    /// Parse the tool's argument value, ignoring ASCII case like the
+    /// tools' `media_type` argument.
     pub fn parse(value: &str) -> Option<MetadataField> {
-        Self::ALL.into_iter().find(|f| f.as_str() == value)
+        Self::ALL
+            .into_iter()
+            .find(|f| f.as_str().eq_ignore_ascii_case(value))
     }
 
     /// SQL predicate on `titles t` that holds when the field is missing.
@@ -644,9 +647,6 @@ mod tests {
             validated_sort(&Some("primary_contributor; --".to_string())),
             "title"
         );
-        assert_eq!(
-            validated_sort(&Some("dewey".to_string())),
-            "title"
-        );
+        assert_eq!(validated_sort(&Some("dewey".to_string())), "title");
     }
 }

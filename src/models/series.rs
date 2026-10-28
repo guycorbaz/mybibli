@@ -70,20 +70,43 @@ fn row_to_series(row: sqlx::mysql::MySqlRow) -> Result<SeriesModel, sqlx::Error>
 
 /// The positions a series holds, per series: distinct `position_number`
 /// values above 0 of live assignments of live titles (story 9-6 rule,
-/// code-review patches P2 + P4). A `LEFT JOIN` aliased `filled` with
-/// column `owned_count`, shared by [`SeriesModel::count_with_gaps`],
-/// [`SeriesModel::list_with_gaps`] and [`SeriesModel::list_summaries`]
-/// so the dashboard and the MCP tools count gaps the same way.
+/// code-review patches P2 + P4) — and, for a closed series with a
+/// total, at most that total (story 11-8 review: a position above the
+/// total, left behind when the total shrinks or an open series is
+/// closed, fills no slot and must not hide a gap). A `LEFT JOIN`
+/// aliased `filled` with column `owned_count`, shared by
+/// [`SeriesModel::count_with_gaps`], [`SeriesModel::list_with_gaps`]
+/// and [`SeriesModel::list_summaries`] so the dashboard and the MCP
+/// tools count gaps the same way; `services::series::series_gaps`
+/// applies the same rule in Rust.
 macro_rules! filled_positions_join {
     () => {
         "LEFT JOIN ( \
            SELECT ts.series_id, COUNT(DISTINCT ts.position_number) AS owned_count \
            FROM title_series ts \
            INNER JOIN titles t ON ts.title_id = t.id AND t.deleted_at IS NULL \
+           INNER JOIN series sx ON sx.id = ts.series_id \
            WHERE ts.deleted_at IS NULL \
              AND ts.position_number > 0 \
+             AND (sx.series_type <> 'closed' \
+                  OR sx.total_volume_count IS NULL \
+                  OR sx.total_volume_count <= 0 \
+                  OR ts.position_number <= sx.total_volume_count) \
            GROUP BY ts.series_id \
          ) filled ON filled.series_id = s.id"
+    };
+}
+
+/// The "series has gaps" predicate on `series s` joined with
+/// [`filled_positions_join!`]: a closed series with a total above the
+/// positions it holds. Shared by the dashboard queries and
+/// `list_summaries(gaps_only)`.
+macro_rules! has_gaps_predicate {
+    () => {
+        "s.series_type = 'closed' \
+         AND s.total_volume_count IS NOT NULL \
+         AND s.total_volume_count > 0 \
+         AND s.total_volume_count > COALESCE(filled.owned_count, 0)"
     };
 }
 
@@ -267,11 +290,8 @@ impl SeriesModel {
         let row: (i64,) = sqlx::query_as(concat!(
             "SELECT COUNT(*) FROM series s ",
             filled_positions_join!(),
-            " WHERE s.deleted_at IS NULL \
-               AND s.series_type = 'closed' \
-               AND s.total_volume_count IS NOT NULL \
-               AND s.total_volume_count > 0 \
-               AND s.total_volume_count > COALESCE(filled.owned_count, 0)",
+            " WHERE s.deleted_at IS NULL AND ",
+            has_gaps_predicate!(),
         ))
         .fetch_one(pool)
         .await?;
@@ -295,12 +315,9 @@ impl SeriesModel {
                COALESCE(filled.owned_count, 0) AS owned_count \
              FROM series s ",
             filled_positions_join!(),
-            " WHERE s.deleted_at IS NULL \
-               AND s.series_type = 'closed' \
-               AND s.total_volume_count IS NOT NULL \
-               AND s.total_volume_count > 0 \
-               AND s.total_volume_count > COALESCE(filled.owned_count, 0) \
-             ORDER BY (s.total_volume_count - COALESCE(filled.owned_count, 0)) DESC, s.name ASC \
+            " WHERE s.deleted_at IS NULL AND ",
+            has_gaps_predicate!(),
+            " ORDER BY (s.total_volume_count - COALESCE(filled.owned_count, 0)) DESC, s.name ASC \
              LIMIT ?",
         ))
         .bind(limit)
@@ -322,10 +339,7 @@ impl SeriesModel {
     ) -> Result<PaginatedList<SeriesSummaryRow>, AppError> {
         // The two variants differ by a fixed predicate (never user text).
         const ALL: &str = "";
-        const GAPS: &str = " AND s.series_type = 'closed' \
-             AND s.total_volume_count IS NOT NULL \
-             AND s.total_volume_count > 0 \
-             AND s.total_volume_count > COALESCE(filled.owned_count, 0)";
+        const GAPS: &str = concat!(" AND ", has_gaps_predicate!());
         let gaps = if gaps_only { GAPS } else { ALL };
         let pattern = crate::utils::like_contains_pattern(query.trim());
         let offset = page.saturating_sub(1).saturating_mul(DEFAULT_PAGE_SIZE);

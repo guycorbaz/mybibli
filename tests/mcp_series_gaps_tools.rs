@@ -453,3 +453,98 @@ async fn incomplete_metadata_pages_by_25(pool: DbPool) {
     assert_eq!(past["items"], json!([]));
     assert_eq!(past["total_items"], 30);
 }
+
+// ─── Story 11-8 code review ──────────────────────────────────────
+
+/// A position above the total (the total was lowered, or an open series
+/// closed) fills no slot: `get_series` and `list_series` agree, and
+/// `gap_count` equals the number of `missing_positions`.
+#[sqlx::test(migrations = "./migrations")]
+async fn position_above_total_fills_no_slot_in_both_tools(pool: DbPool) {
+    let series = add_series(&pool, "Raccourcie", "closed", Some(3)).await;
+    for (n, position) in [(1, 1), (5, 5), (6, 6)] {
+        let t = add_title(&pool, &format!("Tome {n}"), "bd", "BD", None).await;
+        assign(&pool, t, series, position, false).await;
+    }
+    let agent = Agent::new(&pool).await;
+
+    let doc = agent.ok("get_series", json!({"id": series})).await;
+    assert_eq!(doc["owned_positions"], 1);
+    assert_eq!(doc["gap_count"], 2);
+    assert_eq!(doc["missing_positions"], json!([2, 3]));
+    assert_eq!(
+        doc["positions"].as_array().unwrap().len(),
+        3,
+        "rows still listed"
+    );
+
+    let gaps = agent.ok("list_series", json!({"gaps_only": true})).await;
+    assert_eq!(ids(&gaps), [series]);
+    assert_eq!(item(&gaps, series)["owned_positions"], 1);
+    assert_eq!(item(&gaps, series)["gap_count"], 2);
+}
+
+/// A title with every tracked field filled and a cover, but no credit.
+async fn uncredited_title(pool: &DbPool, title: &str) -> u64 {
+    let id = add_title(pool, title, "book", "Roman", None).await;
+    set(pool, id, "description", Some("A story.")).await;
+    set(pool, id, "publisher", Some("Gallimard")).await;
+    set(pool, id, "publication_date", Some("1942-05-19")).await;
+    set(pool, id, "cover_image_url", Some("/covers/x.jpg")).await;
+    id
+}
+
+/// AC5 — a credit counts only through a live junction row and a live
+/// role; an empty publisher is missing.
+#[sqlx::test(migrations = "./migrations")]
+async fn incomplete_metadata_live_credit_rule_and_blank_publisher(pool: DbPool) {
+    let empty_pub = complete_title(&pool, "A éditeur vide").await;
+    set(&pool, empty_pub, "publisher", Some("")).await;
+
+    let role_gone = uncredited_title(&pool, "B rôle supprimé").await;
+    let colorist = add_contributor(&pool, "Coloriste").await;
+    credit(&pool, role_gone, colorist, "Coloriste").await;
+    let role = role_id(&pool, "Coloriste").await;
+    soft_delete(&pool, "contributor_roles", role).await;
+
+    let row_gone = uncredited_title(&pool, "C crédit supprimé").await;
+    let author = add_contributor(&pool, "Auteur retiré").await;
+    let junction = credit(&pool, row_gone, author, "Auteur").await;
+    soft_delete(&pool, "title_contributors", junction).await;
+
+    let agent = Agent::new(&pool).await;
+    let all = agent
+        .ok("list_titles_with_incomplete_metadata", json!({}))
+        .await;
+    assert_eq!(ids(&all), [empty_pub, role_gone, row_gone]);
+    assert_eq!(item(&all, empty_pub)["missing"], json!(["publisher"]));
+    assert_eq!(item(&all, role_gone)["missing"], json!(["contributor"]));
+    assert_eq!(item(&all, row_gone)["missing"], json!(["contributor"]));
+    assert!(item(&all, row_gone)["primary_contributor"].is_null());
+
+    // `missing` ignores ASCII case, like `media_type`.
+    let page = agent
+        .ok(
+            "list_titles_with_incomplete_metadata",
+            json!({"missing": "Contributor"}),
+        )
+        .await;
+    assert_eq!(ids(&page), [role_gone, row_gone]);
+}
+
+/// AC9 through the full router: over-long string, unknown media type.
+#[sqlx::test(migrations = "./migrations")]
+async fn invalid_strings_are_tool_errors(pool: DbPool) {
+    let agent = Agent::new(&pool).await;
+    let long = "x".repeat(201);
+    let msg = agent.err("list_series", json!({ "query": long })).await;
+    assert!(msg.starts_with("Invalid arguments"), "{msg}");
+    for tool in [
+        "list_titles_without_cover",
+        "list_titles_with_incomplete_metadata",
+    ] {
+        let msg = agent.err(tool, json!({"media_type": "vinyl"})).await;
+        assert!(msg.starts_with("Invalid arguments"), "{tool}: {msg}");
+        assert!(msg.contains("book"), "{tool} lists the media types: {msg}");
+    }
+}

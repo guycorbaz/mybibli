@@ -103,8 +103,9 @@ impl McpTool for GetSeries {
          covering several positions appears once per covered position). For a closed series, \
          `missing_positions` lists the positions 1..total the library does not hold (at most \
          1000; `missing_positions_truncated` says when the list was cut) and `gap_count` \
-         counts them as total minus `owned_positions`; an open series has no known gaps \
-         (`gap_count` null, `missing_positions` empty). Find ids with list_series; read a \
+         counts them as total minus `owned_positions` (the distinct positions held within \
+         1..total; a title listed above the total fills no slot); an open series has no \
+         known gaps (`gap_count` null, `missing_positions` empty). Find ids with list_series; read a \
          title with get_title. Deleted series are reported as not found. Read-only."
     }
 

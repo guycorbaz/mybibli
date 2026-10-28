@@ -68,9 +68,9 @@ impl McpTool for ListSeries {
          (case-insensitive); omit `query` to list them all. A series is `closed` (it has a \
          known total number of tomes, `total_volume_count`) or `open` (ongoing, no total). \
          Each item gives the series id (use get_series for its positions and missing tomes), \
-         name, type, total, `owned_positions` (distinct positions held by the library) and \
-         `gap_count` (total minus owned positions; null for an open series, whose gaps are \
-         unknown). Set `gaps_only` to list only the closed series with at least one gap. \
+         name, type, total, `owned_positions` (distinct positions held by the library, \
+         within 1..total for a closed series) and `gap_count` (total minus owned \
+         positions; null for an open series, whose gaps are unknown). Set `gaps_only` to list only the closed series with at least one gap. \
          Sorted by name, 25 per page; pass `page` (1-based) until `page` equals \
          `total_pages`. Deleted series and titles never appear or count. Read-only."
     }

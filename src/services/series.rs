@@ -478,9 +478,8 @@ pub struct SeriesGaps {
 
 /// Story 11-8 — the gap count of `SeriesModel::list_with_gaps` (story
 /// 9-6): `total - held positions`, floored at 0, for a closed series
-/// with a total above 0; `None` otherwise. A position above the total
-/// (legacy data — assignment refuses it) counts as held, as on the
-/// dashboard.
+/// with a total above 0; `None` otherwise. `owned_positions` counts the
+/// held positions within 1..=total only (see [`series_gaps`]).
 pub fn gap_count(series_type: SeriesType, total: Option<i32>, owned_positions: u64) -> Option<u64> {
     match (series_type, total) {
         (SeriesType::Closed, Some(total)) if total > 0 => {
@@ -491,18 +490,28 @@ pub fn gap_count(series_type: SeriesType, total: Option<i32>, owned_positions: u
 }
 
 /// Story 11-8 — gaps of `series` given the positions of its live
-/// assignment rows (pure — unit tested).
+/// assignment rows (pure — unit tested). Same rule as the SQL
+/// `filled_positions_join!` of `models::series`: distinct positions
+/// above 0, and for a closed series with a total, at most that total —
+/// a position above the total (left behind when the total shrinks or an
+/// open series is closed) fills no slot, so `gap_count` always equals
+/// the number of missing positions.
 pub fn series_gaps(series_type: SeriesType, total: Option<i32>, held: &[i32]) -> SeriesGaps {
-    let held: std::collections::BTreeSet<i32> = held.iter().copied().filter(|p| *p > 0).collect();
+    let upper = match (series_type, total) {
+        (SeriesType::Closed, Some(t)) if t > 0 => t,
+        _ => i32::MAX,
+    };
+    let held: std::collections::BTreeSet<i32> = held
+        .iter()
+        .copied()
+        .filter(|p| *p > 0 && *p <= upper)
+        .collect();
     let owned_positions = held.len() as u64;
     let gap_count = gap_count(series_type, total, owned_positions);
     let mut missing_positions: Vec<i32> = Vec::new();
     let mut missing_positions_truncated = false;
-    if gap_count.is_some() {
-        let total = total.unwrap_or(0);
-        let held_in_range = held.range(1..=total).count() as u64;
-        let missing_total = total as u64 - held_in_range;
-        missing_positions = (1..=total)
+    if let Some(missing_total) = gap_count {
+        missing_positions = (1..=upper)
             .filter(|p| !held.contains(p))
             .take(MAX_LISTED_MISSING_POSITIONS)
             .collect();
@@ -596,12 +605,15 @@ mod tests {
     }
 
     #[test]
-    fn series_gaps_position_above_total_counts_as_held() {
-        // Legacy data: position 5 in a closed series of 3.
-        let g = series_gaps(SeriesType::Closed, Some(3), &[1, 5]);
-        assert_eq!(g.owned_positions, 2);
-        assert_eq!(g.gap_count, Some(1));
+    fn series_gaps_position_above_total_fills_no_slot() {
+        // Position 5 in a closed series of 3 (the total was lowered, or
+        // an open series closed): it hides no gap — regression for the
+        // story 11-8 review (gap_count disagreed with missing_positions).
+        let g = series_gaps(SeriesType::Closed, Some(3), &[1, 5, 6]);
+        assert_eq!(g.owned_positions, 1);
+        assert_eq!(g.gap_count, Some(2));
         assert_eq!(g.missing_positions, vec![2, 3]);
+        assert_eq!(g.gap_count, Some(g.missing_positions.len() as u64));
     }
 
     #[test]

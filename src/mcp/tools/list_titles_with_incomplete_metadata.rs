@@ -165,6 +165,13 @@ mod tests {
                 Some(f)
             );
         }
+        // Case-insensitive, like `media_type` (story 11-8 review).
+        assert_eq!(
+            parse_args(json!({"missing": "Publication_Year"}))
+                .unwrap()
+                .missing,
+            Some(MetadataField::PublicationYear)
+        );
         let err = parse_args(json!({"missing": "isbn"})).unwrap_err();
         assert!(
             err.message()

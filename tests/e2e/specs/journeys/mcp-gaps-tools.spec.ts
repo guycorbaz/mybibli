@@ -30,7 +30,7 @@ test.describe("Story 11-8 — MCP series and gaps read tools", () => {
     await page.locator("#series-name").fill(seriesName);
     await page.locator("#series-type").selectOption("closed");
     await page.locator("#series-total").fill("3");
-    await page.locator('main button[type="submit"]').last().click();
+    await page.getByRole("button", { name: /^(Save|Enregistrer|Speichern|Salva)$/i }).click();
     await page.waitForURL(/\/series\/\d+$/);
     const seriesId = Number(page.url().match(/\/series\/(\d+)$/)![1]);
 
@@ -46,7 +46,8 @@ test.describe("Story 11-8 — MCP series and gaps read tools", () => {
     await page.locator("#assign-series").selectOption({ label: seriesName });
     await page.locator("#assign-position").fill("2");
     await page.locator("#assign-series-submit").click();
-    await page.waitForURL(/\/title\/\d+/);
+    // The assignment is rendered as a link to the series on the title page.
+    await expect(page.locator(`a[href^="/series/"]:has-text("${seriesName}")`)).toBeVisible();
 
     const propose = await createApiKey(page, "propose", "mcp-gaps");
     expect(baseURL, "baseURL must be configured").toBeTruthy();
@@ -65,15 +66,10 @@ test.describe("Story 11-8 — MCP series and gaps read tools", () => {
       expect(names).toEqual(MCP_TOOLS);
 
       // get_series: the title holds position 2; 1 and 3 are missing.
-      await expect
-        .poll(async () => {
-          const res = await mcpCallTool(agent, key, "get_series", { id: seriesId });
-          expect(res.isError).toBe(false);
-          return res.structuredContent.positions.map((p: { title_id: number }) => p.title_id);
-        })
-        .toEqual([titleId]);
-      const series = (await mcpCallTool(agent, key, "get_series", { id: seriesId }))
-        .structuredContent;
+      const got = await mcpCallTool(agent, key, "get_series", { id: seriesId });
+      expect(got.isError, JSON.stringify(got.content)).toBe(false);
+      const series = got.structuredContent;
+      expect(series.positions.map((p: { title_id: number }) => p.title_id)).toEqual([titleId]);
       expect(series.name).toBe(seriesName);
       expect(series.series_type).toBe("closed");
       expect(series.positions[0].position).toBe(2);
@@ -97,12 +93,27 @@ test.describe("Story 11-8 — MCP series and gaps read tools", () => {
         },
       ]);
 
-      // The two title lists answer with the paged shape.
-      for (const tool of ["list_titles_without_cover", "list_titles_with_incomplete_metadata"]) {
-        const res = await mcpCallTool(agent, key, tool, { media_type: "book" });
-        expect(res.isError, tool).toBe(false);
-        expect(res.structuredContent.page_size, tool).toBe(25);
-        expect(Array.isArray(res.structuredContent.items), tool).toBe(true);
+      // The two title lists answer with the paged shape, and every item
+      // honours the list's predicate (the shared E2E DB holds other
+      // specs' titles, so the scanned one may sit on a later page).
+      const noCover = await mcpCallTool(agent, key, "list_titles_without_cover", {
+        media_type: "book",
+      });
+      expect(noCover.isError).toBe(false);
+      expect(noCover.structuredContent.page_size).toBe(25);
+      for (const it of noCover.structuredContent.items) {
+        expect(it.has_cover, `title ${it.id}`).toBe(false);
+        expect(it.media_type, `title ${it.id}`).toBe("book");
+      }
+      const incomplete = await mcpCallTool(agent, key, "list_titles_with_incomplete_metadata", {
+        media_type: "book",
+        missing: "publisher",
+      });
+      expect(incomplete.isError).toBe(false);
+      expect(incomplete.structuredContent.page_size).toBe(25);
+      for (const it of incomplete.structuredContent.items) {
+        expect(it.missing, `title ${it.id}`).toContain("publisher");
+        expect(it.media_type, `title ${it.id}`).toBe("book");
       }
 
       // A bad argument is a tool error the agent can read.
