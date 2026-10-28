@@ -248,7 +248,7 @@ pub async fn resolve_cover_url_with_fallback(
 
 /// Ceiling on the compressed bytes accepted from either entry point —
 /// the provider download and the manual upload.
-const MAX_COVER_SIZE: usize = 10 * 1024 * 1024;
+pub(crate) const MAX_COVER_SIZE: usize = 10 * 1024 * 1024;
 
 /// Ceiling on what one decode may allocate (issue #479).
 ///

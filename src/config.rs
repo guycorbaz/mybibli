@@ -119,7 +119,12 @@ pub fn csp_report_only() -> bool {
 /// directive — or a legitimate `mybibli=debug` — does not drag in the
 /// per-request hyper/reqwest firehose (~2 MB/day observed in prod when the
 /// dev `.env` shipped `MYBIBLI_LOG_LEVEL=debug`).
-const LOG_NOISE_CAPS: &str = "hyper_util=warn,reqwest=warn,hyper=warn";
+///
+/// Story 11-6: `rmcp` (the MCP transport) logs its per-request service
+/// lifecycle at INFO — four lines per stateless `/api/mcp` call, including
+/// the client's `initialize` parameters. mybibli logs the useful part
+/// itself (`MCP tool call`, target `mybibli::mcp`), so `rmcp` is capped too.
+const LOG_NOISE_CAPS: &str = "hyper_util=warn,reqwest=warn,hyper=warn,rmcp=warn";
 
 /// Combine the operator's log-level directive with the default noise caps.
 ///
@@ -152,6 +157,12 @@ mod combine_log_directives_tests {
         // (added later) wins in tracing-subscriber's last-wins semantics.
         assert!(combined.starts_with(LOG_NOISE_CAPS));
         assert!(combined.ends_with("info"));
+    }
+
+    #[test]
+    fn mcp_transport_lifecycle_is_capped_at_warn() {
+        assert!(combine_log_directives("info").contains("rmcp=warn"));
+        assert!(combine_log_directives("mybibli=debug").contains("rmcp=warn"));
     }
 
     #[test]

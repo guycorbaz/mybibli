@@ -1,6 +1,6 @@
 # Story 11.6: MCP endpoint on `/api/mcp` with `rmcp` (spike + foundation)
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR127, NFR42, NFR43, NFR45, NFR46, AR27, AR28, AR31. Epic 11 — sixth story; blocks every MCP tool story (11-7 onwards). Prerequisite delivered by 11-5: `ApiKeyScope::Propose` + the `ApiKeyPropose` extractor (`src/middleware/api_key.rs`), today mounted only on a test route.
 
@@ -56,23 +56,23 @@ Conclusion: no fallback to a hand-written transport is needed. The fallback seam
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Dependency (AC1): add `rmcp` pinned `=3.8.0`, `default-features = false`, features `["server", "transport-streamable-http-server"]`; record the `Cargo.lock` package delta. Run `cargo audit` locally if available.
-- [ ] T2 — `src/services/title_detail.rs` (AC6): move `ApiTitleDetail`, `ApiContributor`, `ApiVolume`, `ApiSeriesAssignment` and `build_title_detail` from `api_v1.rs`; add `TitleDetailService::find(pool, id) -> Result<Option<TitleDetail>, AppError>` (`TitleModel::find_by_id` already filters `deleted_at IS NULL`). `api_v1.rs` re-exports the names and calls the service; JSON shape unchanged (existing `tests/api_v1_*.rs` guard it).
-- [ ] T3 — `src/mcp/` module (AC1, AC6):
+- [x] T1 — Dependency (AC1): add `rmcp` pinned `=3.8.0`, `default-features = false`, features `["server", "transport-streamable-http-server"]`; record the `Cargo.lock` package delta. Run `cargo audit` locally if available.
+- [x] T2 — `src/services/title_detail.rs` (AC6): move `ApiTitleDetail`, `ApiContributor`, `ApiVolume`, `ApiSeriesAssignment` and `build_title_detail` from `api_v1.rs`; add `TitleDetailService::find(pool, id) -> Result<Option<TitleDetail>, AppError>` (`TitleModel::find_by_id` already filters `deleted_at IS NULL`). `api_v1.rs` re-exports the names and calls the service; JSON shape unchanged (existing `tests/api_v1_*.rs` guard it).
+- [x] T3 — `src/mcp/` module (AC1, AC6):
   - `mod.rs` — module doc (architecture, confinement rule, fallback seam); `pub fn router(state: AppState, config: McpConfig) -> axum::Router<AppState>` returning the mounted service with its auth layer; `pub use config::McpConfig`.
   - `tool.rs` — `McpTool` trait (`name`, `description`, `input_schema() -> serde_json::Value`, `async call(&self, ctx: &ToolContext, args: serde_json::Value) -> Result<serde_json::Value, ToolError>` via boxed future), `ToolContext { state: AppState, api_key_id: u64 }`, `ToolError { InvalidArguments(String), NotFound(String), Internal(String) }`, `registry() -> Vec<Arc<dyn McpTool>>`.
   - `tools/get_title.rs` — the adapter: parse `id`, call `TitleDetailService::find`, serialize.
   - `config.rs` — `McpConfig { allowed_hosts, allowed_origins, max_request_body_bytes }`, `from_env()`, pure `parse_list()`; `max_request_body_bytes()` derived from `MAX_COVER_SIZE`.
   - `transport.rs` — the only rmcp-aware file: `MybibliMcpServer` implementing `rmcp::ServerHandler` (`get_info` with name/version/instructions + tools capability, `supported_protocol_versions` = [2025-11-25, 2026-07-28], `list_tools`, `get_tool`, `call_tool` translating `ToolError` into `CallToolResult::error`), and `StreamableHttpService` construction (stateless, JSON responses, hosts/origins/body limit from `McpConfig`, `enforce_origin_validation`, no SSE keep-alive).
-- [ ] T4 — Auth layer (AC4): `from_fn_with_state` middleware in `src/mcp/mod.rs` that runs `ApiKeyPropose::from_request_parts` and inserts `ApiKeyContext` into the request extensions; rejection returned unchanged.
-- [ ] T5 — Wiring (AC5, AC8): `routes::build_router_with_mcp(state, mcp_config)`; `build_router` delegates with `McpConfig::from_env()`; `.nest_service`/`.nest` at `/api/mcp`; `should_skip_session_resolve` gains `/api/mcp` (+ unit test).
-- [ ] T6 — Docs (AC5): `docs/auth-threat-model.md` (MCP surface: bearer `propose` key, Host/Origin allowlists, body limit, LAN-only), `docs/route-role-matrix.md` (§ MCP), `README.md` env table, `docker-compose.yml` commented example. User manual = story 11-24.
-- [ ] T7 — Unit tests (AC1, AC5, AC7, AC9): config parsing (default, override, trimming, empty items dropped), body-limit arithmetic, confinement walk over `src/`, registry names unique and schemas are objects, `ToolError` mapping, session-resolve skip.
-- [ ] T8 — Integration tests (AC2–AC8): `tests/mcp_endpoint.rs` with `#[sqlx::test(migrations = "./migrations")]`, `build_router_with_mcp` + `tower::ServiceExt::oneshot`, keys minted through `ApiKeyModel` (pattern of `tests/api_key_propose_scope.rs`): both revisions, discover, unknown revision ×3, scope matrix (missing, invalid, read, write, revoked, propose), Host/Origin (bad host, bad origin, allowed origin, no origin), oversized body 413, get_title found / unknown / soft-deleted / bad args, unknown tool, no CSRF token needed, no `sessions` row created.
-- [ ] T9 — E2E (AC9): `tests/e2e/specs/journeys/mcp-endpoint.spec.ts` — `loginAs(page, "admin")`, create a `propose` key via the UI, `page.request.post("/api/mcp", …)` initialize (2025-11-25) → tools/list contains `get_title` → tools/call `get_title` on a title created in the spec via the scan flow (`specIsbn("MC", n)`) → `structuredContent.title` matches; a `read` key gets 403; revoke the propose key at the end.
-- [ ] T10 — Spike measurements (AC10): clean `cargo build --release -j 8` time and binary size on `main` (baseline) vs. the branch; `Cargo.lock` package count delta; frictions → § Spike record below.
-- [ ] T11 — Manual checks (AC9): MCP Inspector (CLI mode) against the E2E stack and a real `claude` CLI session with the endpoint registered; transcripts in the PR.
-- [ ] T12 — Gates: clippy `--all-targets -D warnings`, full `cargo test -j 1` (mem-guard), `cargo sqlx prepare --check`, locale parity (no new keys expected), flake grep, `tsc --noEmit`, full E2E `--workers=2`, CI incl. cargo-audit.
+- [x] T4 — Auth layer (AC4): `from_fn_with_state` middleware in `src/mcp/mod.rs` that runs `ApiKeyPropose::from_request_parts` and inserts `ApiKeyContext` into the request extensions; rejection returned unchanged.
+- [x] T5 — Wiring (AC5, AC8): `routes::build_router_with_mcp(state, mcp_config)`; `build_router` delegates with `McpConfig::from_env()`; `.nest_service`/`.nest` at `/api/mcp`; `should_skip_session_resolve` gains `/api/mcp` (+ unit test).
+- [x] T6 — Docs (AC5): `docs/auth-threat-model.md` (MCP surface: bearer `propose` key, Host/Origin allowlists, body limit, LAN-only), `docs/route-role-matrix.md` (§ MCP), `README.md` env table, `docker-compose.yml` commented example. User manual = story 11-24.
+- [x] T7 — Unit tests (AC1, AC5, AC7, AC9): config parsing (default, override, trimming, empty items dropped), body-limit arithmetic, confinement walk over `src/`, registry names unique and schemas are objects, `ToolError` mapping, session-resolve skip.
+- [x] T8 — Integration tests (AC2–AC8): `tests/mcp_endpoint.rs` with `#[sqlx::test(migrations = "./migrations")]`, `build_router_with_mcp` + `tower::ServiceExt::oneshot`, keys minted through `ApiKeyModel` (pattern of `tests/api_key_propose_scope.rs`): both revisions, discover, unknown revision ×3, scope matrix (missing, invalid, read, write, revoked, propose), Host/Origin (bad host, bad origin, allowed origin, no origin), oversized body 413, get_title found / unknown / soft-deleted / bad args, unknown tool, no CSRF token needed, no `sessions` row created.
+- [x] T9 — E2E (AC9): `tests/e2e/specs/journeys/mcp-endpoint.spec.ts` — `loginAs(page, "admin")`, create a `propose` key via the UI, `page.request.post("/api/mcp", …)` initialize (2025-11-25) → tools/list contains `get_title` → tools/call `get_title` on a title created in the spec via the scan flow (`specIsbn("MC", n)`) → `structuredContent.title` matches; a `read` key gets 403; revoke the propose key at the end.
+- [x] T10 — Spike measurements (AC10): clean `cargo build --release -j 8` time and binary size on `main` (baseline) vs. the branch; `Cargo.lock` package count delta; frictions → § Spike record below.
+- [x] T11 — Manual checks (AC9): a real `claude -p` session (Claude Code 2.1.312, revision `2026-07-28` negotiated) called `get_title` through `/api/mcp`; transcript in the PR. The MCP Inspector run was refused by the session permission policy (external code) — left to the librarian with the commands in the PR (D-11-6-10).
+- [x] T12 — Gates: clippy `--all-targets -D warnings`, full `cargo test -j 1` (mem-guard), `cargo sqlx prepare --check`, locale parity (no new keys expected), flake grep, `tsc --noEmit`, full E2E `--workers=2`, CI incl. cargo-audit.
 
 ## Dev Notes
 
@@ -121,16 +121,34 @@ Integration tests drive the full router (`build_router_with_mcp`) with `oneshot`
 - [Source: ~/devel/kesh/_bmad-output/planning-artifacts/epic-32-spike-mcp.md §5] — Kesh's hand-written choice and Q8 (read only).
 - [Source: _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md] — D-11-6-*.
 
-## Spike record (AR31) — filled during dev-story
+## Spike record (AR31) — measured 2026-10-28
 
-| Measure | Baseline (`main` a63aebd) | With rmcp | Delta |
+Station: 32 threads, 30 GiB; toolchain of the repo; `SQLX_OFFLINE=true`; each build in a fresh `CARGO_TARGET_DIR` (registry already downloaded), under `mem-guard`. One sample per figure — treat seconds as ±5 %.
+
+| Measure | Baseline (`main` a63aebd) | With rmcp (this branch) | Delta |
 |---|---|---|---|
-| Clean `cargo build --release -j 8` (wall) | 1 m 20.8 s | | |
-| Release binary size | 30 000 992 B | | |
-| `Cargo.lock` packages | 466 | | |
-| Crates compiled in a clean release build | 351 | | |
+| Clean `cargo build --release -j 8` (wall) | 80.8 s | 84.5 s | **+3.7 s (+4.6 %)** |
+| Incremental release rebuild of the `mybibli` crate only (`touch src/lib.rs`) | 41.9 s | 41.6 s | none measurable |
+| Peak RSS of the clean release build | 3.23 GB | 3.61 GB | +0.38 GB |
+| Release binary size | 30 000 992 B | 33 295 792 B | **+3 294 800 B (+11.0 %, ≈ 3.1 MiB)** — includes the ~850 lines of `src/mcp/` (tests included) |
+| `Cargo.lock` packages | 466 | 482 | **+16** |
+| Crates compiled in a clean release build | 351 | 368 | +17 |
 
-Frictions: _to record_.
+Crates added (features `server` + `transport-streamable-http-server`, no `macros`): `rmcp 3.8.0`, `schemars 1.2.3` + `schemars_derive` + `serde_derive_internals` + `dyn-clone` + `ref-cast(-impl)` (pulled by the `server` feature even without macros), `pastey`, `sse-stream`, `uuid`, `chacha20`; and **second or third major versions** of crates already present: `syn 3.0.9` (besides 1.x and 2.x), `rand 0.10` / `rand_core 0.10` (besides 0.8 and 0.9), `base64 0.23` (besides 0.22), `cpufeatures 0.3`. `hyper`, `http`, `http-body`, `tower-service`, `tokio-util` were already in the tree through axum/reqwest.
+
+Frictions met (Axum 0.8 + mybibli middleware stack):
+
+1. **None at the seam itself.** `StreamableHttpService` is a plain `tower::Service`; `Router::route_service("/api/mcp", …)` worked first time, and the `http` 1.x crate is shared, so the `ApiKeyContext` inserted by an axum layer reaches the handler through rmcp's `RequestContext.extensions → http::request::Parts`. The global stack (CSP headers, setup gate, CSRF `/api/*` short-circuit, `non_htmx_error_wrapper` — which only rewraps `text/html`) needed no change.
+2. **Layer order is imposed by the leaf service.** rmcp validates `Host`/`Origin` inside the service, so the axum key check necessarily runs first (401 before 403). Acceptable here (D-11-6-3), but a deployment wanting the rebinding check first would need its own validator.
+3. **rmcp's version gate is wider than the served set.** The `MCP-Protocol-Version` header is checked against every revision rmcp knows, not against `supported_protocol_versions`; a 15-line guard restores "exactly two revisions" (D-11-6-9).
+4. **rmcp reads the body itself.** axum's `DefaultBodyLimit` does not apply; the cap must be set on rmcp (`with_max_request_body_bytes`), which streams and answers 413 (D-11-6-5).
+5. **Wire strictness of `2026-07-28`.** A session-less call needs `MCP-Protocol-Version`, SEP-2243 `Mcp-Method` / `Mcp-Name` headers and `_meta` (protocol version + client capabilities), all cross-checked (`-32020` on mismatch). Correct per spec, but hand-built test requests must get every piece right.
+6. **Test harness:** `tower::ServiceExt::oneshot` requests have no `Host` header → rmcp answers 400; every integration test sets `Host` explicitly.
+7. **mybibli-side, not rmcp:** the session resolver minted an anonymous `sessions` row for every `/api/*` request — fixed for `/api/mcp` (D-11-6-6), follow-up issue for `/api/v1`.
+8. **API surface:** `ServerHandler` with `async fn` in the impl (RPITIT) and `#[non_exhaustive]` model types with builder constructors (`Tool::new(...).with_title(...)`, `CallToolResult::structured`, `ListToolsResult::with_all_items`) — no macro needed; the hand-written handler is ~100 lines.
+9. **Major-upgrade cost (for 11-22):** everything rmcp-specific is in `src/mcp/transport.rs` (≈ 200 lines incl. tests); the trait, tools, config and guard are rmcp-free. The confinement test `mcp::tests::rmcp_is_confined_to_the_transport_file` fails if that ever changes.
+
+For Kesh Q8: on this stack rmcp cost ≈ 3 MiB of binary, ≈ 4 s of clean release build, 16 lock entries (including a third `syn` major), and an integration done in one working session with no blocking friction; it brought both protocol eras, SEP-2243 header validation, Host/Origin checks and a streaming body cap that a hand-written transport would have to re-implement and test.
 
 ## Dev Agent Record
 
@@ -140,11 +158,36 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Debug Log References
 
+- First `cargo test --lib mcp::` run: `parse_args([1])` accepted — serde reads a struct from a sequence; an explicit object check was added (unreachable through MCP, whose `arguments` is always an object, but the tool contract says object).
+- The unknown-`_meta` integration test first passed for the wrong reason (missing header → `-32020`); it now covers both the missing-header and the header/`_meta` mismatch refusals and asserts 400.
+- The manual Claude Code session showed rmcp's INFO lifecycle logs per request → D-11-6-11.
+
 ### Completion Notes List
 
+- Spike verdict: `rmcp 3.8.0` is usable as the epic assumed — no fallback to a hand-written transport (see § Spike pre-check and § Spike record).
+- `src/mcp/`: `McpTool` trait + `ToolRegistry` (rmcp-free), `get_title` adapter over the new `services::title_detail`, `McpConfig` (env vars), guard layer (propose key + protocol-version header), and `transport.rs` — the only file naming rmcp (stateless, JSON responses, Host/Origin, body cap, two revisions). Confinement test walks `src/` and `tests/`.
+- `/api/mcp` mounted via `routes::build_router_with_mcp` (`build_router` reads `McpConfig::from_env()`); session resolver skips the path; `rmcp=warn` log cap.
+- Title-detail DTOs + assembly moved from `routes/api_v1.rs` to `services/title_detail.rs` (JSON unchanged; `tests/api_v1_*` green).
+- Docs: `.env.example`, `docker-compose.yml`, `README.md`, `docs/auth-threat-model.md` (§ 4 row + § 5.8), `docs/route-role-matrix.md` (§ MCP endpoint).
+- Tests: 16 integration tests (`tests/mcp_endpoint.rs`), 13 unit tests in `src/mcp/`, 1 session-skip unit test, 1 log-cap unit test; E2E `mcp-endpoint.spec.ts`; key creation/revocation extracted to `tests/e2e/helpers/api-keys.ts` and reused by the 11-5 spec. Full `cargo test -j 1`: 1669 passed, 0 failed.
+- Follow-up issue #513 (`/api/v1` anonymous session rows).
+
 ### File List
+
+- Cargo.toml, Cargo.lock
+- src/lib.rs
+- src/mcp/mod.rs, src/mcp/config.rs, src/mcp/tool.rs, src/mcp/transport.rs, src/mcp/tools/mod.rs, src/mcp/tools/get_title.rs (new)
+- src/services/title_detail.rs (new), src/services/mod.rs, src/services/cover.rs
+- src/routes/api_v1.rs, src/routes/mod.rs
+- src/middleware/auth.rs
+- src/config.rs
+- tests/mcp_endpoint.rs (new)
+- tests/e2e/helpers/api-keys.ts (new), tests/e2e/specs/journeys/mcp-endpoint.spec.ts (new), tests/e2e/specs/journeys/admin-api-keys.spec.ts
+- .env.example, docker-compose.yml, README.md, docs/auth-threat-model.md, docs/route-role-matrix.md
+- _bmad-output/implementation-artifacts/11-6-mcp-endpoint-rmcp-spike.md, epic-11-autonomous-decisions.md, sprint-status.yaml
 
 ## Change Log
 
 - 2026-10-28 — story created (create-story), after the rmcp 3.8.0 source pre-check.
 - 2026-10-28 — validated against the create-story checklist: oneshot `Host` header trap, nest path note, E2E helper reuse added.
+- 2026-10-28 — implemented (dev-story); spike measurements recorded; status → review.

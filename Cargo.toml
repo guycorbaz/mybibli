@@ -49,6 +49,11 @@ genpdf = "0.2"
 # accented letters as decomposed numeric references (`e&#x301;`). Already in
 # Cargo.lock through sqlx-mysql → stringprep; no new crate is fetched.
 unicode-normalization = "0.1"
+# Story 11-6 (#493) — MCP server on `/api/mcp`. Pinned exactly (NFR46):
+# upgraded only for a security advisory or at the pre-release checkpoint
+# (story 11-22). Confined to `src/mcp/` (AR27) — a unit test enforces it.
+# No `macros` feature: tools implement mybibli's own `McpTool` trait.
+rmcp = { version = "=3.8.0", default-features = false, features = ["server", "transport-streamable-http-server"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

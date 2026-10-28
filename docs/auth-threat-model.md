@@ -89,6 +89,7 @@ An attacker gains LAN access (e.g., compromised guest device) and tries to escal
 | **Strict CSP** — `script-src 'self'`, `style-src 'self'`, no `unsafe-inline` / `unsafe-eval` | `src/middleware/csrf.rs::csp` + `src/templates_audit.rs::templates_have_no_inline_scripts_styles_or_event_handlers` | Story 7-4; toggle via `CSP_REPORT_ONLY=true` for observation mode |
 | **Anonymous-session purge** — `sessions` rows for anonymous visitors expire after 7 days of inactivity | `src/tasks/anonymous_session_purge.rs` | `purges_old_anonymous_rows_only` integration test |
 | **CSRF token never logged** | `tracing` macros never bind the raw token | Code review |
+| **MCP endpoint `/api/mcp` (story 11-6)** — `propose`-scope bearer key only (no cookie, no session row); `Host` checked against `MYBIBLI_MCP_ALLOWED_HOSTS` (default loopback names) and any present `Origin` against `MYBIBLI_MCP_ALLOWED_ORIGINS` (default none) — DNS-rebinding defence in depth for a LAN-only endpoint (NFR43); request body capped (NFR45); only protocol revisions `2025-11-25` / `2026-07-28` | `src/mcp/` (guard in `mod.rs`, Host/Origin/body cap configured in `transport.rs`) | `tests/mcp_endpoint.rs` |
 
 ---
 
@@ -145,6 +146,10 @@ The one-shot startup hatch (`MYBIBLI_RESET_ADMIN=<username>`, `src/services/admi
 Accepted trade: the generated password is readable by anyone with access to the log volume. This grants nothing new — whoever can set the env var already controls `docker-compose.yml`, and whoever can read `/var/log/mybibli` on the host could equally read or rewrite the database. The password is one-time in practice: the operator is expected to log in and change it, and a *forgotten* variable re-randomises it on every boot instead of pinning a known value (that refusal-to-start is the load-bearing design point). The hatch refuses unknown, deactivated, and non-admin accounts, and each use leaves an `admin_audit` row (`admin_password_reset_hatch`) attributed to the SYSTEM user.
 
 ---
+
+### 5.8 The MCP endpoint is for the LAN, not the Internet (story 11-6)
+
+`/api/mcp` carries a bearer API key in every request. On the default LAN-HTTP deployment the key crosses the LAN in clear, as `/api/v1` keys do; the posture of § 5.1 applies. The endpoint is meant for an agent running on the librarian's machine on the same LAN (NFR43) and must never be published to the Internet. The `Host` allowlist is a DNS-rebinding defence, not an access control: a request without a valid `propose` key is refused (401) before the `Host` check runs, so a rebinding page — which holds no key — never reaches the MCP layer. A `propose` key cannot write catalog data (NFR44); the worst a leaked key can do is read the catalog and, from story 11-9 on, file proposals the librarian must review.
 
 ## 6. Cross-reference with issue #17 sub-items
 

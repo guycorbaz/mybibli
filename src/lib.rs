@@ -3,6 +3,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod i18n;
+pub mod mcp;
 pub mod metadata;
 pub mod middleware;
 pub mod models;

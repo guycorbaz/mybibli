@@ -223,7 +223,7 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 
 ### D-11-6-6 — No anonymous session row for `/api/mcp`
 **Context:** the session resolver mints an anonymous `sessions` row on every request without a cookie, `/api/*` included. An agent calling tools in a loop would write one row per call (purged after 7 days).
-**Chosen:** add `/api/mcp` to `should_skip_session_resolve` (the endpoint authenticates by key only and reads no `Session`). `/api/v1` keeps today's behaviour; a follow-up issue tracks it.
+**Chosen:** add `/api/mcp` to `should_skip_session_resolve` (the endpoint authenticates by key only and reads no `Session`). `/api/v1` keeps today's behaviour; follow-up issue #513.
 **Rejected:** skipping all `/api/*` here (changes `/api/v1` responses — out of scope).
 **Reversible:** yes.
 
@@ -237,4 +237,23 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 **Context:** rmcp offers `#[tool]` / `#[tool_router]` macros (feature `macros`), whose generated code names rmcp types in the tool signatures.
 **Chosen:** `default-features = false`, features `server` + `transport-streamable-http-server`; tools implement `mcp::tool::McpTool` (serde_json in, serde_json out) and one hand-written `ServerHandler` in `transport.rs` dispatches to them.
 **Rejected:** the macros (AR27: no rmcp type may cross the tool interface).
+**Reversible:** yes.
+
+### D-11-6-9 — The endpoint refuses `MCP-Protocol-Version` values other than the two served revisions
+**Context:** rmcp refuses only versions it does not know; a header naming an older revision it knows (`2025-06-18`, `2025-03-26`, `2024-11-05`) is served, although `supported_protocol_versions` lists only `2025-11-25` and `2026-07-28` (that list bounds `initialize` negotiation and per-request `_meta` versions, not the header).
+**Chosen:** the mybibli guard in `src/mcp/mod.rs` (which also checks the key) answers 400 with a plain-text reason when the header is present and names anything else. A request without the header keeps rmcp's backward-compatible handling (the 2025-11-25 spec has clients send it after `initialize`; absent means an older client, which then gets the 2025-11-25 semantics).
+**Rejected:** relying on rmcp alone (older revisions slip through — contradicts NFR42's "accepts revisions 2025-11-25 and 2026-07-28"); `stateless_protocol_metadata_required` (would refuse every 2025-11-25 request, which carries no per-request `_meta`).
+**Reversible:** yes.
+
+### D-11-6-10 — Manual checks: a real Claude Code session transcript; the MCP Inspector left to the librarian [PRODUCT]
+**Context:** the AC asks for the MCP Inspector check and a real Claude Code session to be "recorded in the PR with a screenshot". This story runs without a display or an interactive user, and the session's permission policy refused running the Inspector (`npx @modelcontextprotocol/inspector`, external code).
+**Chosen:** a non-interactive `claude -p` session (Claude Code 2.1.312) with `/api/mcp` registered through `--mcp-config` against the local E2E stack called `get_title` successfully; its transcript and the server log lines (revision negotiated: `2026-07-28`) are pasted in the PR. The MCP Inspector check and the screenshots are listed in the PR as a manual step for the librarian (commands included) — to be done before the epic closes.
+**Rejected:** skipping the checks; fabricating a screenshot; working around the permission refusal.
+**Departs from the epic wording** (evidence format; Inspector check deferred to the librarian).
+**Reversible:** yes.
+
+### D-11-6-11 — `rmcp` logs capped at `warn` by default
+**Context:** the manual session showed rmcp logging its per-request service lifecycle at INFO (four lines per stateless call, with the client's `initialize` parameters) — noise on the NAS log volume at the default `info` level.
+**Chosen:** add `rmcp=warn` to `config::LOG_NOISE_CAPS` (the Fix #405 mechanism); mybibli's own `MCP tool call` line (tool, key id) stays at INFO. An operator can still set `MYBIBLI_LOG_LEVEL=rmcp=debug`.
+**Rejected:** leaving the default verbose.
 **Reversible:** yes.
