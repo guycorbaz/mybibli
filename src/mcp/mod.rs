@@ -181,4 +181,82 @@ mod tests {
             "transport.rs moved? update this test"
         );
     }
+
+    /// AR27 (story 11-7): tools are thin adapters over `services/` — no
+    /// database access and no SQL anywhere under `src/mcp/`.
+    #[test]
+    fn no_sql_under_src_mcp() {
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read src/mcp") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        walk(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/mcp"),
+            &mut files,
+        );
+        assert!(files.len() >= 5, "src/mcp/ moved? update this test");
+        // Built at run time so this test does not match itself.
+        let api_needles = [
+            ["sq", "lx"].concat(),
+            ["DbP", "ool"].concat(),
+            ["query", "_as"].concat(),
+            ["fetch", "_"].concat(),
+            [".exec", "ute("].concat(),
+        ];
+        let keywords = [
+            ["SEL", "ECT"].concat(),
+            ["INS", "ERT"].concat(),
+            ["UPD", "ATE"].concat(),
+            ["DEL", "ETE"].concat(),
+            ["FR", "OM"].concat(),
+        ];
+        let is_sql = |code: &str| {
+            // An upper-case keyword followed by whitespace, anywhere (string
+            // literals included); or a lower-case `select … from` line.
+            let keyword = keywords.iter().any(|k| {
+                code.match_indices(k.as_str()).any(|(i, _)| {
+                    code[i + k.len()..]
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_whitespace)
+                })
+            });
+            let lower = code.to_lowercase();
+            let lowercase_sql = lower.contains(&["sel", "ect "].concat())
+                && lower.contains(&[" fr", "om "].concat());
+            keyword || lowercase_sql || api_needles.iter().any(|n| code.contains(n.as_str()))
+        };
+        // The detector itself.
+        assert!(is_sql(&["\"SEL", "ECT id\tFR", "OM t\""].concat()));
+        assert!(is_sql(
+            &["let u = \"http://x\"; \"sel", "ect a fr", "om b\""].concat()
+        ));
+        assert!(is_sql(&["pool.fet", "ch_one()"].concat()));
+        assert!(!is_sql("\"Return one title from the catalog. Read-only.\""));
+        assert!(!is_sql("\"Results are SELECTED by FROMAGE\""));
+        let offenders: Vec<String> = files
+            .iter()
+            .flat_map(|p| {
+                let text = std::fs::read_to_string(p).unwrap_or_default();
+                text.lines()
+                    // Only whole comment lines are skipped: a `//` inside a
+                    // string literal (a URL) must not hide the rest.
+                    .filter(|l| !l.trim_start().starts_with("//"))
+                    .filter(|l| is_sql(l))
+                    .map(|l| format!("{}: {}", p.display(), l.trim()))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "SQL or DB access in src/mcp/: {offenders:#?}"
+        );
+    }
 }

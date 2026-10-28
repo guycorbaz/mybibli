@@ -1,11 +1,25 @@
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::contributor::{ContributorModel, ContributorRoleModel, TitleContributorModel};
+use crate::models::PaginatedList;
+use crate::models::contributor::{
+    ContributorModel, ContributorRoleModel, ContributorSearchRow, TitleContributorModel,
+};
 use crate::models::title::TitleModel;
 
 pub struct ContributorService;
 
 impl ContributorService {
+    /// Story 11-7 — one page of live contributors whose name contains
+    /// `query` (all when empty), with their live title counts. Used by
+    /// the MCP `search_contributors` tool.
+    pub async fn search(
+        pool: &DbPool,
+        query: &str,
+        page: u32,
+    ) -> Result<PaginatedList<ContributorSearchRow>, AppError> {
+        ContributorModel::search_paged(pool, query, page.max(1)).await
+    }
+
     /// Find an existing contributor by exact name, or create a new one.
     pub async fn find_or_create(pool: &DbPool, name: &str) -> Result<ContributorModel, AppError> {
         let trimmed = name.trim();

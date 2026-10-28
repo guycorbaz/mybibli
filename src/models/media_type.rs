@@ -30,6 +30,19 @@ pub enum MediaType {
     Report,
 }
 
+impl MediaType {
+    /// Every media type, in display order (story 11-7: the MCP schema
+    /// and its error messages are built from this list).
+    pub const ALL: [MediaType; 6] = [
+        MediaType::Book,
+        MediaType::Bd,
+        MediaType::Cd,
+        MediaType::Dvd,
+        MediaType::Magazine,
+        MediaType::Report,
+    ];
+}
+
 impl fmt::Display for MediaType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -62,6 +75,35 @@ impl FromStr for MediaType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `MediaType::ALL` lists every variant: adding one without listing
+    /// it fails to compile here first.
+    #[test]
+    fn all_lists_every_variant() {
+        for m in MediaType::ALL {
+            match m {
+                MediaType::Book
+                | MediaType::Bd
+                | MediaType::Cd
+                | MediaType::Dvd
+                | MediaType::Magazine
+                | MediaType::Report => {}
+            }
+        }
+        let exhaustive = |m: MediaType| match m {
+            MediaType::Book => 0,
+            MediaType::Bd => 1,
+            MediaType::Cd => 2,
+            MediaType::Dvd => 3,
+            MediaType::Magazine => 4,
+            MediaType::Report => 5,
+        };
+        let positions: Vec<usize> = MediaType::ALL.iter().map(|m| exhaustive(*m)).collect();
+        assert_eq!(positions, (0..6).collect::<Vec<_>>());
+        for m in MediaType::ALL {
+            assert_eq!(m.to_string().parse::<MediaType>(), Ok(m));
+        }
+    }
 
     #[test]
     fn test_display_lowercase() {

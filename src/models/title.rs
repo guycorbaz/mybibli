@@ -119,12 +119,9 @@ fn row_to_title(row: sqlx::mysql::MySqlRow) -> Result<TitleModel, sqlx::Error> {
     })
 }
 
-impl TitleModel {
-    pub async fn find_by_isbn(pool: &DbPool, isbn: &str) -> Result<Option<TitleModel>, AppError> {
-        tracing::debug!(isbn = %isbn, "Looking up title by ISBN");
-
-        let row = sqlx::query(
-            r#"SELECT id, title, original_title, subtitle, statement_of_responsibility,
+/// Full `TitleModel` projection of the live titles carrying one ISBN
+/// (bind: the ISBN). Shared by `find_by_isbn` and `list_by_isbn`.
+const SELECT_LIVE_BY_ISBN: &str = r#"SELECT id, title, original_title, subtitle, statement_of_responsibility,
                       description, general_note, language,
                       media_type, publication_date, publisher,
                       edition_statement, collection_title, collection_number,
@@ -134,17 +131,36 @@ impl TitleModel {
                       age_rating, issue_number,
                       CAST(manually_edited_fields AS CHAR) as manually_edited_fields, version
                FROM titles
-               WHERE isbn = ? AND deleted_at IS NULL
-               LIMIT 1"#,
-        )
-        .bind(isbn)
-        .fetch_optional(pool)
-        .await?;
+               WHERE isbn = ? AND deleted_at IS NULL"#;
+
+impl TitleModel {
+    pub async fn find_by_isbn(pool: &DbPool, isbn: &str) -> Result<Option<TitleModel>, AppError> {
+        tracing::debug!(isbn = %isbn, "Looking up title by ISBN");
+
+        let row = sqlx::query(&format!("{SELECT_LIVE_BY_ISBN} LIMIT 1"))
+            .bind(isbn)
+            .fetch_optional(pool)
+            .await?;
 
         match row {
             Some(r) => Ok(Some(row_to_title(r)?)),
             None => Ok(None),
         }
+    }
+
+    /// Story 11-7 — every live title carrying `isbn`, oldest first.
+    /// `titles.isbn` has no UNIQUE key (the scan flow prevents duplicates,
+    /// a manual edit does not), so an agent's exact lookup must see them
+    /// all.
+    pub async fn list_by_isbn(pool: &DbPool, isbn: &str) -> Result<Vec<TitleModel>, AppError> {
+        let rows = sqlx::query(&format!("{SELECT_LIVE_BY_ISBN} ORDER BY id ASC"))
+            .bind(isbn)
+            .fetch_all(pool)
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(row_to_title)
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Story 9-9 — narrow lookup returning ONLY the title id for a
@@ -1145,6 +1161,9 @@ impl TitleModel {
         // identifier clause: titles WITHOUT an ISBN/ISSN/UPC can never be
         // auto-fetched, so they most need the manual-upload safety net.
         no_cover_only: bool,
+        // Story 11-7 — exact media type (`book`, `bd`, …); bound, never
+        // interpolated. Callers validate the value against `MediaType`.
+        media_type: Option<&str>,
     ) -> Result<PaginatedList<SearchResult>, AppError> {
         let sort_col = validated_sort(sort);
         let sort_dir = validated_dir(dir);
@@ -1208,6 +1227,10 @@ impl TitleModel {
             genre_bind = Some(gid);
         }
 
+        if media_type.is_some() {
+            conditions.push("t.media_type = ?".to_string());
+        }
+
         if no_volumes_only {
             // CR #279 — title with zero active volumes.
             conditions.push(
@@ -1252,6 +1275,9 @@ impl TitleModel {
         if let Some(gid) = genre_bind {
             count_query = count_query.bind(gid);
         }
+        if let Some(mt) = media_type {
+            count_query = count_query.bind(mt);
+        }
         if let Some(ref sv) = state_bind {
             count_query = count_query.bind(sv);
         }
@@ -1281,7 +1307,7 @@ impl TitleModel {
              FROM titles t \
              LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL{} \
              WHERE {} \
-             ORDER BY {} {} \
+             ORDER BY {} {}, t.id ASC \
              LIMIT ? OFFSET ?",
             extra_join, where_clause, sql_order_col, sort_dir
         );
@@ -1292,6 +1318,9 @@ impl TitleModel {
         }
         if let Some(gid) = genre_bind {
             data_query = data_query.bind(gid);
+        }
+        if let Some(mt) = media_type {
+            data_query = data_query.bind(mt);
         }
         if let Some(ref sv) = state_bind {
             data_query = data_query.bind(sv);

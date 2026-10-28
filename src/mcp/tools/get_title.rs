@@ -3,8 +3,9 @@
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use super::{args, to_json};
 use crate::mcp::tool::{McpTool, ToolContext, ToolError, ToolFuture};
-use crate::services::title_detail::find_title_detail;
+use crate::services::title_detail::find_agent_title_detail;
 
 pub struct GetTitle;
 
@@ -16,16 +17,7 @@ struct Args {
 
 /// Validate the raw arguments (pure — unit tested).
 fn parse_args(args: Value) -> Result<u64, ToolError> {
-    // serde would also read a struct from a sequence (`[1]`); only the
-    // object form of the schema is accepted.
-    if !args.is_object() {
-        return Err(ToolError::InvalidArguments(
-            "expected an object {\"id\": <positive integer>}".to_string(),
-        ));
-    }
-    let args: Args = serde_json::from_value(args).map_err(|e| {
-        ToolError::InvalidArguments(format!("expected {{\"id\": <positive integer>}} ({e})"))
-    })?;
+    let args: Args = args::parse_object(args, "{\"id\": <positive integer>}")?;
     if args.id == 0 {
         return Err(ToolError::InvalidArguments(
             "`id` must be a positive integer".to_string(),
@@ -48,8 +40,11 @@ impl McpTool for GetTitle {
          (title, subtitle, description, language, media type, ISBN/ISSN/UPC, publisher, \
          publication date, genre, Dewey code, page count…), its contributors with their \
          roles, its physical volumes with their shelf location and condition, and its \
-         series assignments with positions. Deleted titles are reported as not found. \
-         Read-only."
+         series assignments with positions (`end_position` set for an omnibus covering \
+         several positions). Also `has_cover` (whether a cover image exists) and \
+         `manually_edited_fields` (fields the librarian edited by hand; a metadata refresh \
+         never overwrites them). Find ids with search_titles. Deleted titles are reported \
+         as not found. Read-only."
     }
 
     fn input_schema(&self) -> Value {
@@ -70,11 +65,8 @@ impl McpTool for GetTitle {
     fn call<'a>(&'a self, ctx: &'a ToolContext, args: Value) -> ToolFuture<'a> {
         Box::pin(async move {
             let id = parse_args(args)?;
-            match find_title_detail(&ctx.state.pool, id).await? {
-                Some(detail) => serde_json::to_value(detail).map_err(|e| {
-                    tracing::error!(error = %e, "get_title: serialization failed");
-                    ToolError::Internal
-                }),
+            match find_agent_title_detail(&ctx.state.pool, id).await? {
+                Some(detail) => to_json(detail, "get_title"),
                 None => Err(ToolError::NotFound(format!(
                     "No title with id {id} exists in the catalog."
                 ))),

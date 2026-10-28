@@ -269,3 +269,65 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 **Chosen:** keep it that way (the endpoint is for local agents, not browser pages; adding CORS would widen the surface of a LAN-only endpoint). `MYBIBLI_MCP_ALLOWED_ORIGINS` stays, for clients or proxies that forward an `Origin`; the docs no longer suggest a browser tool in direct mode. The MCP Inspector's default proxy mode is unaffected.
 **Rejected:** a CORS layer bypassing the key check for `OPTIONS`.
 **Reversible:** yes.
+
+## § 11-7 — MCP catalog read tools (part of #493)
+
+### D-11-7-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-7-mcp-catalog-read-tools` and the `# last_updated:` header change on this branch.
+**Rejected:** touching `epic-11` or sibling lines.
+**Reversible:** yes.
+
+### D-11-7-2 — `get_title` enrichment is MCP-only, `/api/v1` unchanged
+**Context:** the AC asks `get_title` to carry "cover present or not" and "manually edited fields"; `TitleDetail` is shared with `GET /api/v1/titles/{id}` (D-11-6-7).
+**Chosen:** `AgentTitleDetail` in `services/title_detail.rs` flattens `TitleDetail` and adds `has_cover` and `manually_edited_fields`; the API v1 document stays byte-identical.
+**Rejected:** adding the fields to `TitleDetail` (silently changes a public API contract outside this story's scope); a second assembly (Rule #1).
+**Reversible:** yes.
+
+### D-11-7-3 — One `query` argument with code detection; no separate volume tool
+**Context:** FR128 says "search titles, volumes and contributors"; the AC names three tools (`search_titles`, `get_title`, `search_contributors`) and filters "text, ISBN, media type, genre".
+**Chosen:** `search_titles.query` reuses `search::detect_code`: ISBN-10/13 → exact lookup, volume label `V0042` → its title, otherwise text. Volumes are read through `get_title` (labels, locations, condition). Filters also apply to exact hits; an L-code is treated as text (no redirect for an agent); an empty query browses the whole catalog (the web UI returns nothing there).
+**Rejected:** a `search_volumes` tool (not in the AC); separate `isbn` / `text` arguments (two ways to say the same thing).
+**Reversible:** yes.
+
+### D-11-7-4 — Fixed page size 25, page capped at 10 000
+**Context:** "pagination is capped server-side".
+**Chosen:** the page size is `DEFAULT_PAGE_SIZE` (25) — no client-controlled size; `page` must be 1..=10000 (also keeps `(page-1)*25` inside `u32`).
+**Rejected:** a `page_size` argument clamped to a maximum (more surface, no need at household scale).
+**Reversible:** yes.
+
+### D-11-7-5 — Genre filter by name
+**Context:** an agent sees genre names (`get_title.genre_name`) and has no genre-listing tool.
+**Chosen:** `genre` is a case-insensitive name; an unknown name returns `isError` listing the active genres, so the agent can correct itself.
+**Rejected:** a genre id (the agent would need another tool to discover ids).
+**Reversible:** yes.
+
+### D-11-7-6 — `search_contributors` returns a live title count
+**Context:** the AC gives no output shape.
+**Chosen:** `{ id, name, title_count }` sorted by name, empty query lists all; the agent then uses `search_titles` with the name to list the titles.
+**Rejected:** embedding each contributor's titles (unbounded payload); the biography (free text, not needed to identify).
+**Reversible:** yes.
+
+### D-11-7-7 — MCP test helpers shared through `tests/common/mcp.rs`
+**Context:** the new integration test file needs the request builders of `tests/mcp_endpoint.rs`.
+**Chosen:** move them to `tests/common/mcp.rs` (`mod common;` in both files); same for the E2E `mcpPost` → `tests/e2e/helpers/mcp.ts`.
+**Rejected:** copying them (Rule #1); one 1 100-line test file.
+**Reversible:** yes.
+
+### D-11-7-8 — Non-object `arguments` are a transport-level JSON-RPC error
+**Context:** the story's AC8 listed "non-object arguments" among the cases answered with `isError: true`. Review round 1 showed that rmcp 3.8.0 types `arguments` as a JSON object and answers `-32601` before any tool runs.
+**Chosen:** accept the transport behaviour (the MCP schema itself types `arguments` as an object; nothing is executed) and pin it with an integration test; `args::parse_object` keeps its non-object guard for a future transport (AR27 seam).
+**Rejected:** a custom `tools/call` deserializer in `transport.rs` to turn it into `isError` (fights the SDK for a malformed request no conforming client sends).
+**Departs from the story's AC8 wording** (not from epics.md).
+**Reversible:** yes.
+
+### D-11-7-9 — Exact identifiers answer exactly (supersedes part of D-11-7-3)
+**Context:** review round 1 — an ISBN or volume label that exists but fails the filters fell through to a text search on the digits; `titles.isbn` has no UNIQUE key, so `find_by_isbn … LIMIT 1` hid duplicates; agents copy hyphenated ISBNs; title pages had no tie-breaker.
+**Chosen:** an identifier that exists returns only its titles (all live titles sharing an ISBN, via `TitleModel::list_by_isbn`), filtered, or an empty page — never a text match; an unknown identifier still falls through to text. Hyphens and spaces are stripped when what remains is ISBN-shaped. `active_search` orders `…, t.id ASC` — this also makes the web search order deterministic among equal titles (no visible change otherwise).
+**Rejected:** leaving the web search order non-deterministic (agent paging repeats or skips titles).
+**Reversible:** yes.
+
+### D-11-7-10 — Genre names resolved by the column collation (refines D-11-7-5)
+**Context:** review round 1 — Rust `to_lowercase` is accent-sensitive while the web UI (MariaDB `*_ci` collation) is not.
+**Chosen:** `GenreModel::find_active_id_by_name` (`name = ?`, collation decides: case- and accent-insensitive); the list of names is only loaded for the "unknown genre" message. `genre` and `media_type` are capped at 200 characters like `query` (they are echoed in error messages); the bound applies to the value as sent, like the schema's `maxLength`.
+**Reversible:** yes.
