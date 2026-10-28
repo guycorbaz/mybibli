@@ -14,6 +14,7 @@ pub mod saved_search;
 pub mod series;
 pub mod session;
 pub mod title;
+pub mod title_search;
 pub mod trash;
 pub mod user;
 pub mod volume;
