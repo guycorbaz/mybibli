@@ -57,6 +57,9 @@ so that an AI agent can never modify the catalog directly.
 - **Audit.** `admin_api_keys_revoke` / `delete` already store `scope.as_str()` in `admin_audit.details` → `"propose"` appears automatically.
 - **CSP / modals.** The panel radio is plain markup; no inline style, no `hx-confirm`. The created/revoke modals are unchanged.
 - **Chip colour.** `bg-purple-100 text-purple-800` — distinct from read (sky) and write (amber). The Dockerfile css stage copies only `templates/` into the Tailwind scan, so a chip class written only in a `.rs` file is never emitted; purple-100/800 already appear in a template (the existing sky/amber chips survive the same way). Do not pick a colour absent from `templates/` (D-11-5-3).
+- **Extractor order on PATCH.** `patch_title(State, ApiKeyWrite, Path, Json)` — Axum runs extractors in order and stops at the first rejection, so a propose key gets 403 before `Path`/`Json` are parsed; the E2E PATCH may target any id with a minimal body.
+- **No other scope consumers.** Grep (2026-10-28): `ApiKeyScope` is matched only in `models/api_key.rs`, `middleware/api_key.rs` and `routes/admin_api_keys.rs`; `admin_audit` details store `as_str()`; no seed migration inserts api keys.
+- **User manual out of scope.** `docs/manual/{en,fr}/11-api-integrations.tex` still describes two scopes; story 11.24 owns the `propose`-key documentation (its AC names "creating a `propose` key"). The developer-facing `docs/route-role-matrix.md` is updated here.
 - **sprint-status.** Only the `11-5-propose-api-key-scope` line + line-2 header (Rule 16).
 
 ### Regression map
@@ -90,3 +93,4 @@ Unit tests next to code (`#[cfg(test)]`), DB tests with `#[sqlx::test(migrations
 ## Change Log
 
 - 2026-10-28 — story created (create-story).
+- 2026-10-28 — validated against the create-story checklist: extractor order, consumer grep and manual-scope notes added.
