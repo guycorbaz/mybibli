@@ -57,6 +57,9 @@ struct AdminApiKeysPanel {
     scope_read_help: String,
     scope_write: String,
     scope_write_help: String,
+    // Story 11-5 — third scope.
+    scope_propose: String,
+    scope_propose_help: String,
     btn_create: String,
     csrf_token: String,
     list_html: String,
@@ -159,6 +162,9 @@ pub async fn render_panel_html(
         scope_write: rust_i18n::t!("admin.api_keys.scope_write", locale = loc).to_string(),
         scope_write_help: rust_i18n::t!("admin.api_keys.scope_write_help", locale = loc)
             .to_string(),
+        scope_propose: rust_i18n::t!("admin.api_keys.scope_propose", locale = loc).to_string(),
+        scope_propose_help: rust_i18n::t!("admin.api_keys.scope_propose_help", locale = loc)
+            .to_string(),
         btn_create: rust_i18n::t!("admin.api_keys.btn_create", locale = loc).to_string(),
         csrf_token: session.csrf_token.clone(),
         list_html,
@@ -205,6 +211,13 @@ fn render_list_html(loc: &'static str, _csrf_token: &str, keys: &[ApiKey]) -> Re
                 ApiKeyScope::Write => (
                     rust_i18n::t!("admin.api_keys.scope_write", locale = loc).to_string(),
                     "bg-amber-100 text-amber-800",
+                ),
+                // Story 11-5 — the class pair must also appear in a
+                // template: the Dockerfile's Tailwind scan reads
+                // `templates/` only (D-11-5-3).
+                ApiKeyScope::Propose => (
+                    rust_i18n::t!("admin.api_keys.scope_propose", locale = loc).to_string(),
+                    "bg-purple-100 text-purple-800",
                 ),
             };
             KeyRowDisplay {
@@ -306,6 +319,7 @@ pub async fn admin_api_keys_create(
     let scope = match form.scope.as_str() {
         "read" => ApiKeyScope::Read,
         "write" => ApiKeyScope::Write,
+        "propose" => ApiKeyScope::Propose,
         _ => {
             return Err(AppError::BadRequest(
                 rust_i18n::t!("admin.api_keys.error_invalid_scope", locale = loc).to_string(),

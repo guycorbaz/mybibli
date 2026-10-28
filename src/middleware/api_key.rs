@@ -1,12 +1,16 @@
 //! CR #241 — API-key authentication for `/api/v1/*` routes.
 //!
-//! Two extractors:
+//! Three extractors:
 //!
 //! - [`ApiKeyAuth`] — required: the route fails with 401 if no key
-//!   resolves. Use on any read endpoint of `/api/v1/*`.
+//!   resolves. Any scope may read. Use on any read endpoint of
+//!   `/api/v1/*`.
 //! - [`ApiKeyWrite`] — same but the scope must be `Write`. Use on
-//!   `PATCH` / mutation endpoints; returns 403 if a read-only key is
-//!   presented.
+//!   `PATCH` / mutation endpoints; returns 403 for a `read` or
+//!   `propose` key.
+//! - [`ApiKeyPropose`] — story 11-5: the scope must be exactly
+//!   `Propose` (NFR44 — `read` and `write` keys never carry it); 403
+//!   otherwise. Guards the agent surface (`/api/mcp`, story 11-6).
 //!
 //! Auth shape: `Authorization: Bearer <plaintext>` (canonical) or
 //! `X-API-Key: <plaintext>` (convenience fallback). The plaintext is
@@ -162,11 +166,39 @@ where
         if !ctx.scope.allows_write() {
             tracing::warn!(
                 key_id = ctx.key_id,
-                "API key with read scope attempted a write endpoint"
+                scope = ctx.scope.as_str(),
+                "API key without write scope attempted a write endpoint"
             );
             return Err(forbidden_response("insufficient_scope", "write"));
         }
         Ok(ApiKeyWrite(ctx))
+    }
+}
+
+/// Story 11-5 — propose-scope extractor. Only a key whose scope is
+/// exactly `propose` passes; `read` and `write` keys get 403 with
+/// `scope_required: "propose"` (NFR44), a missing or invalid key 401.
+pub struct ApiKeyPropose(pub ApiKeyContext);
+
+impl<S> FromRequestParts<S> for ApiKeyPropose
+where
+    AppState: axum::extract::FromRef<S>,
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let app_state = AppState::from_ref(state);
+        let ctx = resolve_api_key(parts, &app_state).await?;
+        if !ctx.scope.allows_propose() {
+            tracing::warn!(
+                key_id = ctx.key_id,
+                scope = ctx.scope.as_str(),
+                "API key without propose scope attempted a propose endpoint"
+            );
+            return Err(forbidden_response("insufficient_scope", "propose"));
+        }
+        Ok(ApiKeyPropose(ctx))
     }
 }
 
@@ -197,6 +229,17 @@ mod tests {
     fn forbidden_envelope_carries_required_scope() {
         let r = forbidden_response("insufficient_scope", "write");
         assert_eq!(r.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn forbidden_envelope_for_propose_names_the_scope() {
+        let r = forbidden_response("insufficient_scope", "propose");
+        assert_eq!(r.status(), StatusCode::FORBIDDEN);
+        let bytes = axum::body::to_bytes(r.into_body(), 4096).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["error"], "forbidden");
+        assert_eq!(v["reason"], "insufficient_scope");
+        assert_eq!(v["scope_required"], "propose");
     }
 
     #[test]

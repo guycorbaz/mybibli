@@ -16,11 +16,27 @@ use sqlx::Row;
 use crate::db::DbPool;
 use crate::error::AppError;
 
+/// Scope carried by an API key.
+///
+/// Rights matrix (story 11-5, NFR44):
+///
+/// | scope     | read | write (PATCH) | propose |
+/// |-----------|------|---------------|---------|
+/// | `read`    | yes  | no            | no      |
+/// | `write`   | yes  | yes           | no      |
+/// | `propose` | yes  | no            | yes     |
+///
+/// `write` and `propose` are mutually exclusive: each right is granted
+/// by an explicit `matches!` on one variant, never as "everything but",
+/// so a variant added later holds neither until someone opts it in.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Copy)]
 #[serde(rename_all = "lowercase")]
 pub enum ApiKeyScope {
     Read,
     Write,
+    /// Story 11-5 — read everything and submit proposals for a
+    /// librarian to review; never writes catalogue data directly.
+    Propose,
 }
 
 impl ApiKeyScope {
@@ -28,34 +44,54 @@ impl ApiKeyScope {
         match self {
             ApiKeyScope::Read => "read",
             ApiKeyScope::Write => "write",
+            ApiKeyScope::Propose => "propose",
         }
     }
 
     /// Short form used in the plaintext key prefix (`mybibli_ro_…` /
-    /// `mybibli_rw_…`). Helps users not paste a write key into a
-    /// read-only client by accident.
+    /// `mybibli_rw_…` / `mybibli_pr_…`). Helps users not paste a write
+    /// key into a read-only client by accident.
     pub fn short(&self) -> &'static str {
         match self {
             ApiKeyScope::Read => "ro",
             ApiKeyScope::Write => "rw",
+            ApiKeyScope::Propose => "pr",
         }
     }
 
+    /// Map the stored `api_keys.scope` value. The column is an ENUM, so
+    /// an unknown value can only come from a future migration or a
+    /// manual edit: it falls back to `Read` — the least-privileged scope
+    /// (no write, no proposal) — and is logged (D-11-5-2).
     pub fn from_db(s: &str) -> Self {
         match s {
+            "read" => ApiKeyScope::Read,
             "write" => ApiKeyScope::Write,
-            _ => ApiKeyScope::Read,
+            "propose" => ApiKeyScope::Propose,
+            other => {
+                tracing::warn!(
+                    scope = other,
+                    "unknown api_keys.scope value; treating the key as read-only"
+                );
+                ApiKeyScope::Read
+            }
         }
     }
 
-    /// `write` implies `read` — a write-scope key can also call any
-    /// read endpoint.
+    /// Every scope can call the read endpoints.
     pub fn allows_read(&self) -> bool {
         true
     }
 
+    /// Only `write` may call mutation endpoints (`PATCH /api/v1/…`).
     pub fn allows_write(&self) -> bool {
         matches!(self, ApiKeyScope::Write)
+    }
+
+    /// Only `propose` may create proposals (NFR44: `read` and `write`
+    /// never carry this right).
+    pub fn allows_propose(&self) -> bool {
+        matches!(self, ApiKeyScope::Propose)
     }
 }
 
@@ -254,7 +290,7 @@ pub fn mint_plaintext_key(scope: ApiKeyScope) -> (String, String) {
         })
         .collect();
     let plaintext = format!("mybibli_{}_{}", scope.short(), suffix);
-    // 12 chars covers `mybibli_ro_X` / `mybibli_rw_X` — enough to
+    // 12 chars covers `mybibli_ro_X` / `mybibli_rw_X` / `mybibli_pr_X` — enough to
     // narrow the candidate scan without leaking enough of the suffix
     // to brute-force.
     let prefix: String = plaintext.chars().take(12).collect();
@@ -288,18 +324,75 @@ mod tests {
     }
 
     #[test]
-    fn scope_from_db_falls_back_to_read_for_unknown() {
-        assert_eq!(ApiKeyScope::from_db("write"), ApiKeyScope::Write);
+    fn mint_plaintext_key_propose_has_distinct_prefix() {
+        let (k, prefix) = mint_plaintext_key(ApiKeyScope::Propose);
+        assert!(k.starts_with("mybibli_pr_"));
+        assert_eq!(k.len(), "mybibli_pr_".len() + 40);
+        assert_eq!(prefix.len(), 12);
+        assert_eq!(prefix, &k[..12]);
+        assert!(
+            k["mybibli_pr_".len()..]
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric())
+        );
+    }
+
+    const ALL_SCOPES: [ApiKeyScope; 3] =
+        [ApiKeyScope::Read, ApiKeyScope::Write, ApiKeyScope::Propose];
+
+    #[test]
+    fn scope_from_db_maps_every_known_value_explicitly() {
         assert_eq!(ApiKeyScope::from_db("read"), ApiKeyScope::Read);
-        assert_eq!(ApiKeyScope::from_db("garbage"), ApiKeyScope::Read);
+        assert_eq!(ApiKeyScope::from_db("write"), ApiKeyScope::Write);
+        assert_eq!(ApiKeyScope::from_db("propose"), ApiKeyScope::Propose);
+        for s in ALL_SCOPES {
+            assert_eq!(ApiKeyScope::from_db(s.as_str()), s, "round-trip {s:?}");
+        }
     }
 
     #[test]
-    fn scope_allows_methods() {
-        assert!(ApiKeyScope::Read.allows_read());
-        assert!(!ApiKeyScope::Read.allows_write());
-        assert!(ApiKeyScope::Write.allows_read());
-        assert!(ApiKeyScope::Write.allows_write());
+    fn scope_from_db_falls_back_to_read_for_unknown() {
+        assert_eq!(ApiKeyScope::from_db("garbage"), ApiKeyScope::Read);
+        assert_eq!(ApiKeyScope::from_db(""), ApiKeyScope::Read);
+        // Case matters: the ENUM stores lowercase values only.
+        assert_eq!(ApiKeyScope::from_db("PROPOSE"), ApiKeyScope::Read);
+    }
+
+    #[test]
+    fn scope_strings_are_distinct() {
+        let longs: std::collections::HashSet<_> = ALL_SCOPES.iter().map(|s| s.as_str()).collect();
+        let shorts: std::collections::HashSet<_> = ALL_SCOPES.iter().map(|s| s.short()).collect();
+        assert_eq!(longs.len(), 3);
+        assert_eq!(shorts.len(), 3);
+        assert_eq!(ApiKeyScope::Propose.as_str(), "propose");
+        assert_eq!(ApiKeyScope::Propose.short(), "pr");
+    }
+
+    /// Full scope matrix (story 11-5, NFR44): (scope, read, write, propose).
+    #[test]
+    fn scope_rights_matrix() {
+        let matrix = [
+            (ApiKeyScope::Read, true, false, false),
+            (ApiKeyScope::Write, true, true, false),
+            (ApiKeyScope::Propose, true, false, true),
+        ];
+        for (scope, read, write, propose) in matrix {
+            assert_eq!(scope.allows_read(), read, "{scope:?} read");
+            assert_eq!(scope.allows_write(), write, "{scope:?} write");
+            assert_eq!(scope.allows_propose(), propose, "{scope:?} propose");
+        }
+        // NFR44: no scope holds both write and propose.
+        for s in ALL_SCOPES {
+            assert!(!(s.allows_write() && s.allows_propose()), "{s:?}");
+        }
+    }
+
+    #[test]
+    fn scope_serde_uses_lowercase_names() {
+        assert_eq!(
+            serde_json::to_string(&ApiKeyScope::Propose).unwrap(),
+            "\"propose\""
+        );
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -320,6 +413,46 @@ mod tests {
         assert_eq!(got.scope, ApiKeyScope::Read);
         assert!(got.last_used_at.is_none());
         assert!(got.revoked_at.is_none());
+    }
+
+    /// Story 11-5 — a `propose` row round-trips through the ENUM and is
+    /// returned by the candidate scan with its scope intact.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn propose_key_round_trips_and_is_a_candidate(pool: MySqlPool) {
+        let (plain, prefix) = mint_plaintext_key(ApiKeyScope::Propose);
+        let id = ApiKeyModel::create(
+            &pool,
+            "Agent",
+            &hash(&plain),
+            &prefix,
+            ApiKeyScope::Propose,
+            None,
+        )
+        .await
+        .unwrap();
+        let got = ApiKeyModel::find_by_id(&pool, id).await.unwrap().unwrap();
+        assert_eq!(got.scope, ApiKeyScope::Propose);
+        assert!(got.key_prefix.starts_with("mybibli_pr_"));
+        let candidates = ApiKeyModel::find_candidates_by_prefix(&pool, &prefix)
+            .await
+            .unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].scope, ApiKeyScope::Propose);
+    }
+
+    /// Story 11-5 — the migration widens the ENUM; the three values are
+    /// accepted and existing values keep their meaning.
+    #[sqlx::test(migrations = "./migrations")]
+    async fn scope_column_accepts_the_three_values(pool: MySqlPool) {
+        let (column_type,): (String,) = sqlx::query_as(
+            "SELECT CAST(COLUMN_TYPE AS CHAR) FROM information_schema.COLUMNS \
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'api_keys' \
+               AND COLUMN_NAME = 'scope'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(column_type, "enum('read','write','propose')");
     }
 
     #[sqlx::test(migrations = "./migrations")]

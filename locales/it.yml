@@ -1001,7 +1001,7 @@ admin:
     btn_save_provider_timeouts: "Salva timeout per fornitore"
   api_keys:
     panel_heading: "Chiavi API"
-    intro: "Le chiavi API autenticano chiamanti esterni all'API JSON HTTP sotto /api/v1/*. Le chiavi di lettura possono elencare e recuperare i record; le chiavi di scrittura possono anche modificare via PATCH i campi del titolo abilitati. Ogni chiave è mostrata UNA SOLA volta alla creazione — copiala subito o revocala e ricreala."
+    intro: "Le chiavi API autenticano chiamanti esterni all'API JSON HTTP sotto /api/v1/*. Le chiavi di lettura possono elencare e recuperare i record; le chiavi di scrittura possono anche modificare via PATCH i campi del titolo abilitati; le chiavi di proposta leggono come una chiave di lettura e possono inviare proposte che un bibliotecario esamina, senza mai modificare direttamente il catalogo. Ogni chiave è mostrata UNA SOLA volta alla creazione — copiala subito o revocala e ricreala."
     tooltip_aria: "Informazioni sulle chiavi API"
     tooltip_text: "Passa la chiave come `Authorization: Bearer <chiave>` o `X-API-Key: <chiave>`. La CSRF è bypassata per /api/* perché l'autenticazione Bearer non usa i cookie. Le chiavi non vengono mai esportate nei log; qui compare solo il prefisso di 12 caratteri."
     section_create: "Nuova chiave API"
@@ -1013,6 +1013,9 @@ admin:
     scope_read_help: "GET /api/v1/* — elenca e recupera risorse. Non può modificare."
     scope_write: "Lettura + scrittura"
     scope_write_help: "Aggiunge PATCH /api/v1/titles/{id} per genre_id, dewey_code, description, subtitle."
+    # Story 11-5 — the propose scope (FR126, NFR44).
+    scope_propose: "Lettura + proposte"
+    scope_propose_help: "Per un agente IA: tutto ciò che può fare una chiave di sola lettura, più l'invio di proposte che un bibliotecario esamina. Non modifica mai direttamente il catalogo."
     btn_create: "Crea chiave"
     col_label: "Etichetta"
     col_scope: "Ambito"
@@ -1045,7 +1048,7 @@ admin:
     error_delete_active: "Le chiavi attive non possono essere eliminate — revoca prima la chiave."
     error_label_required: "L'etichetta è obbligatoria."
     error_label_too_long: "L'etichetta deve avere al massimo 120 caratteri."
-    error_invalid_scope: "L'ambito deve essere «read» o «write»."
+    error_invalid_scope: "L'ambito deve essere «read», «write» o «propose»."
     error_not_found: "Chiave API non trovata."
     error_already_revoked: "Questa chiave è già stata revocata."
     error_version_conflict: "Questa chiave è stata modificata da un altro amministratore. Ricarica il pannello."

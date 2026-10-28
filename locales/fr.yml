@@ -1026,7 +1026,7 @@ admin:
     btn_save_provider_timeouts: "Enregistrer les délais par fournisseur"
   api_keys:
     panel_heading: "Clés d'API"
-    intro: "Les clés d'API authentifient les appelants externes à l'API JSON HTTP sous /api/v1/*. Les clés en lecture peuvent lister et consulter ; les clés en écriture peuvent aussi modifier les champs autorisés (PATCH). Chaque clé n'est affichée QU'UNE FOIS à la création — copiez-la maintenant ou révoquez-la et recréez-en une."
+    intro: "Les clés d'API authentifient les appelants externes à l'API JSON HTTP sous /api/v1/*. Les clés en lecture peuvent lister et consulter ; les clés en écriture peuvent aussi modifier les champs autorisés (PATCH) ; les clés de proposition lisent comme une clé en lecture et peuvent soumettre des propositions qu'un bibliothécaire examine, sans jamais modifier le catalogue directement. Chaque clé n'est affichée QU'UNE FOIS à la création — copiez-la maintenant ou révoquez-la et recréez-en une."
     tooltip_aria: "À propos des clés d'API"
     tooltip_text: "Transmettez la clé via `Authorization: Bearer <clé>` ou `X-API-Key: <clé>`. La protection CSRF est désactivée pour /api/* (l'authentification par jeton ne dépend pas des cookies). Les clés ne sont jamais exportées dans les journaux ; seul le préfixe de 12 caractères apparaît ici."
     section_create: "Nouvelle clé d'API"
@@ -1038,6 +1038,9 @@ admin:
     scope_read_help: "GET /api/v1/* — lister et consulter les ressources. Aucune modification."
     scope_write: "Lecture + écriture"
     scope_write_help: "Ajoute PATCH /api/v1/titles/{id} pour genre_id, dewey_code, description, subtitle."
+    # Story 11-5 — the propose scope (FR126, NFR44).
+    scope_propose: "Lecture + propositions"
+    scope_propose_help: "Pour un agent IA : tout ce que permet une clé en lecture seule, plus la soumission de propositions qu'un bibliothécaire examine. Ne modifie jamais le catalogue directement."
     btn_create: "Créer la clé"
     col_label: "Libellé"
     col_scope: "Portée"
@@ -1071,7 +1074,7 @@ admin:
     error_delete_active: "Une clé active ne peut pas être supprimée — révoquez-la d'abord."
     error_label_required: "Un libellé est requis."
     error_label_too_long: "Le libellé doit contenir au maximum 120 caractères."
-    error_invalid_scope: "La portée doit être « read » ou « write »."
+    error_invalid_scope: "La portée doit être « read », « write » ou « propose »."
     error_not_found: "Clé d'API introuvable."
     error_already_revoked: "Cette clé a déjà été révoquée."
     error_version_conflict: "Cette clé a été modifiée par un autre administrateur. Rechargez le panneau."

@@ -1,6 +1,6 @@
 # Story 11.5: The `propose` API-key scope
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR126, NFR44. Epic 11 — fifth story; prerequisite of 11-6 (the MCP endpoint accepts only `propose` keys).
 
@@ -37,16 +37,16 @@ so that an AI agent can never modify the catalog directly.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Migration (AC4): `migrations/20261028000000_api_keys_scope_propose.sql` — `ALTER TABLE api_keys MODIFY COLUMN scope ENUM('read', 'write', 'propose') NOT NULL;` with a header comment citing story 11-5 / FR126 / NFR44 and the `mybibli_pr_` prefix.
-- [ ] T2 — Model (AC1, AC3, AC5): `ApiKeyScope::Propose`; `as_str` → `"propose"`, `short` → `"pr"`; `from_db` explicit arms for the three values, `_` → `tracing::warn!` + `Read`; `allows_propose()` → `matches!(self, Propose)`; doc comments state the matrix (read: R; write: R+W; propose: R+P; W and P mutually exclusive).
-- [ ] T3 — Middleware (AC2, AC3): `ApiKeyPropose` extractor next to `ApiKeyWrite`, sharing `resolve_api_key` / `forbidden_response` (no duplication — Rule #1); module doc lists three extractors; `ApiKeyWrite`'s warn log names the actual scope (`scope = ctx.scope.as_str()`), not "read scope".
-- [ ] T4 — Admin UI (AC1, AC6): `admin_api_keys.rs` — parse `"propose"`, list chip `bg-purple-100 text-purple-800`, panel fields `scope_propose` / `scope_propose_help`; template third radio.
-- [ ] T5 — Locales (AC6): `admin.api_keys.scope_propose`, `scope_propose_help`, updated `intro` + `error_invalid_scope` in en/fr/de/it; `touch src/lib.rs`; `cargo test --test locale_parity`.
-- [ ] T6 — Docs: `docs/route-role-matrix.md` § HTTP API v1 — three scopes, `ApiKeyPropose` named, PATCH note "a read-only or propose key gets 403". (User-manual chapter is story 11-24's scope.)
-- [ ] T7 — Unit tests (AC7): in `models/api_key.rs` — scope matrix table test, round-trip `from_db(as_str(s)) == s` for all three, `short()` values distinct, `mint_plaintext_key(Propose)` → `mybibli_pr_` + 12-char prefix, unknown → Read; update `scope_from_db_falls_back_to_read_for_unknown`.
-- [ ] T8 — Integration tests (AC2–AC4, AC7): `tests/api_v1_auth.rs` — propose key GET `/api/v1/titles` 200, PATCH 403 with `scope_required = "write"` and title unchanged; new `tests/api_key_propose_scope.rs` — a test router with one `ApiKeyPropose` route through `build_router`-equivalent state: missing → 401, read → 403 `scope_required = "propose"`, write → 403, propose → 200; admin create `POST /admin/api-keys` with `scope=propose` (session + CSRF, like `tests/admin_api_keys_delete.rs`) → row stored with `scope = 'propose'`, `key_prefix` starts `mybibli_pr_`, response modal carries the plaintext; `information_schema` column type is `enum('read','write','propose')`; an invalid scope still answers 400.
-- [ ] T9 — E2E (AC7): `tests/e2e/specs/journeys/admin-api-keys.spec.ts` — `loginAs(page, "admin")`, `/admin?tab=api_keys`, unique label, pick the propose radio by role, submit; the created modal shows a plaintext matching `/^mybibli_pr_[A-Za-z0-9]{40}$/`; close; the list row shows the label and the propose chip; `page.request` with `Authorization: Bearer` → GET `/api/v1/titles` 200, PATCH `/api/v1/titles/1` 403 `insufficient_scope`; revoke the key at the end via its UX-DR8 modal (leaves no active key behind). i18n-aware regexes; no `waitForTimeout`.
-- [ ] T10 — Gates: clippy `--all-targets -D warnings`, full `cargo test`, `cargo sqlx prepare --check` (dynamic `sqlx::query` only — no `.sqlx` change expected), `tsc --noEmit`, full E2E at `--workers=2`.
+- [x] T1 — Migration (AC4): `migrations/20261028000000_api_keys_scope_propose.sql` — `ALTER TABLE api_keys MODIFY COLUMN scope ENUM('read', 'write', 'propose') NOT NULL;` with a header comment citing story 11-5 / FR126 / NFR44 and the `mybibli_pr_` prefix.
+- [x] T2 — Model (AC1, AC3, AC5): `ApiKeyScope::Propose`; `as_str` → `"propose"`, `short` → `"pr"`; `from_db` explicit arms for the three values, `_` → `tracing::warn!` + `Read`; `allows_propose()` → `matches!(self, Propose)`; doc comments state the matrix (read: R; write: R+W; propose: R+P; W and P mutually exclusive).
+- [x] T3 — Middleware (AC2, AC3): `ApiKeyPropose` extractor next to `ApiKeyWrite`, sharing `resolve_api_key` / `forbidden_response` (no duplication — Rule #1); module doc lists three extractors; `ApiKeyWrite`'s warn log names the actual scope (`scope = ctx.scope.as_str()`), not "read scope".
+- [x] T4 — Admin UI (AC1, AC6): `admin_api_keys.rs` — parse `"propose"`, list chip `bg-purple-100 text-purple-800`, panel fields `scope_propose` / `scope_propose_help`; template third radio.
+- [x] T5 — Locales (AC6): `admin.api_keys.scope_propose`, `scope_propose_help`, updated `intro` + `error_invalid_scope` in en/fr/de/it; `touch src/lib.rs`; `cargo test --test locale_parity`.
+- [x] T6 — Docs: `docs/route-role-matrix.md` § HTTP API v1 — three scopes, `ApiKeyPropose` named, PATCH note "a read-only or propose key gets 403". (User-manual chapter is story 11-24's scope.)
+- [x] T7 — Unit tests (AC7): in `models/api_key.rs` — scope matrix table test, round-trip `from_db(as_str(s)) == s` for all three, `short()` values distinct, `mint_plaintext_key(Propose)` → `mybibli_pr_` + 12-char prefix, unknown → Read; update `scope_from_db_falls_back_to_read_for_unknown`.
+- [x] T8 — Integration tests (AC2–AC4, AC7): `tests/api_v1_auth.rs` — propose key GET `/api/v1/titles` 200, PATCH 403 with `scope_required = "write"` and title unchanged; new `tests/api_key_propose_scope.rs` — a test router with one `ApiKeyPropose` route through `build_router`-equivalent state: missing → 401, read → 403 `scope_required = "propose"`, write → 403, propose → 200; admin create `POST /admin/api-keys` with `scope=propose` (session + CSRF, like `tests/admin_api_keys_delete.rs`) → row stored with `scope = 'propose'`, `key_prefix` starts `mybibli_pr_`, response modal carries the plaintext; `information_schema` column type is `enum('read','write','propose')`; an invalid scope still answers 400.
+- [x] T9 — E2E (AC7): `tests/e2e/specs/journeys/admin-api-keys.spec.ts` — `loginAs(page, "admin")`, `/admin?tab=api_keys`, unique label, pick the propose radio by role, submit; the created modal shows a plaintext matching `/^mybibli_pr_[A-Za-z0-9]{40}$/`; close; the list row shows the label and the propose chip; `page.request` with `Authorization: Bearer` → GET `/api/v1/titles` 200, PATCH `/api/v1/titles/1` 403 `insufficient_scope`; revoke the key at the end via its UX-DR8 modal (leaves no active key behind). i18n-aware regexes; no `waitForTimeout`.
+- [x] T10 — Gates: clippy `--all-targets -D warnings`, full `cargo test`, `cargo sqlx prepare --check` (dynamic `sqlx::query` only — no `.sqlx` change expected), `tsc --noEmit`, full E2E at `--workers=2`.
 
 ## Dev Notes
 
@@ -84,13 +84,37 @@ Unit tests next to code (`#[cfg(test)]`), DB tests with `#[sqlx::test(migrations
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- First run of `tests/api_key_propose_scope.rs`: 2 failures in the tests themselves — a freshly inserted title carries `version = 1` (not 0), and the panel renders in the configured default language; both assertions corrected (version read before PATCH, label matched in EN or FR).
 
 ### Completion Notes List
 
+- `ApiKeyScope::Propose` (`"propose"` / `"pr"`), explicit `from_db`, `allows_propose`; rights are granted by one `matches!` each, so write and propose stay mutually exclusive (NFR44).
+- `ApiKeyPropose` extractor (403 `insufficient_scope` / `scope_required: propose`); `ApiKeyWrite`'s refusal log now names the actual scope.
+- Migration widens the ENUM; existing rows keep their value.
+- Admin → API keys: third radio, purple chip (D-11-5-3), four locales (labels, help, intro, invalid-scope error).
+- `docs/route-role-matrix.md` updated; user-manual chapter left to 11-24.
+- Tests: 6 new model unit/DB tests (matrix, round-trip, prefix, ENUM column type, propose round-trip), 1 middleware envelope test, 9 integration tests in `tests/api_key_propose_scope.rs`, 1 E2E journey `admin-api-keys.spec.ts`.
+
 ### File List
+
+- migrations/20261028000000_api_keys_scope_propose.sql (new)
+- src/models/api_key.rs
+- src/middleware/api_key.rs
+- src/routes/admin_api_keys.rs
+- templates/fragments/admin_api_keys_panel.html
+- locales/en.yml, locales/fr.yml, locales/de.yml, locales/it.yml
+- docs/route-role-matrix.md
+- tests/api_key_propose_scope.rs (new)
+- tests/admin_api_keys_delete.rs (comment only)
+- tests/e2e/specs/journeys/admin-api-keys.spec.ts (new)
+- _bmad-output/implementation-artifacts/11-5-propose-api-key-scope.md, epic-11-autonomous-decisions.md, sprint-status.yaml
 
 ## Change Log
 
 - 2026-10-28 — story created (create-story).
 - 2026-10-28 — validated against the create-story checklist: extractor order, consumer grep and manual-scope notes added.
+- 2026-10-28 — implemented (dev-story); status → review.
