@@ -92,8 +92,10 @@ mod tests {
         assert_has(
             panel,
             &[
-                "max-h-[calc(100dvh-3rem)]",
-                "md:max-h-[calc(100dvh-3.5rem)]",
+                "max-h-[calc(100vh-48px)]",
+                "md:max-h-[calc(100vh-56px)]",
+                "supports-[height:100dvh]:max-h-[calc(100dvh-48px)]",
+                "md:supports-[height:100dvh]:max-h-[calc(100dvh-56px)]",
                 "overflow-y-auto",
                 "overscroll-contain",
                 "hidden",
@@ -110,9 +112,11 @@ mod tests {
         let html = render("admin");
         let nav = opening_tag(&html, "<nav aria-label=\"Main navigation\"");
         assert_has(nav, &["h-12", "md:h-14"], "bar height unchanged");
-        assert!(
-            html.contains("<div class=\"hidden lg:flex items-center gap-3 lg:gap-6 flex-1\">"),
-            "the desktop strip must still switch at `lg`"
+        let strip = opening_tag(&html, "<div class=\"hidden lg:flex");
+        assert_has(
+            strip,
+            &["hidden", "lg:flex"],
+            "the desktop strip must still switch at `lg`",
         );
         let toggle = opening_tag(&html, "<button id=\"mobile-menu-toggle\"");
         assert_has(toggle, &["lg:hidden"], "hamburger still switches at `lg`");
@@ -120,19 +124,37 @@ mod tests {
 
     /// Story 11-4 — with the menu open, the desktop language form (always
     /// visible in the bar) and the mobile copy were two form landmarks with
-    /// the same name (axe `landmark-unique`). Only the desktop copy is a
+    /// the same name (axe `landmark-unique`). Only the desktop copy — the
+    /// one holding `#lang-select`, outside the `hidden lg:flex` strip — is a
     /// named landmark; the mobile `<select>` keeps its own label.
     #[test]
-    fn only_one_named_language_form_landmark() {
+    fn only_the_desktop_language_form_is_a_named_landmark() {
         let html = render("admin");
-        let named = html
+        let forms: Vec<&str> = html
             .match_indices("<form action=\"/language\"")
-            .filter(|(i, _)| opening_tag(&html[*i..], "<form").contains("aria-label="))
-            .count();
-        assert_eq!(
-            named, 1,
-            "exactly one language form may carry an aria-label"
-        );
+            .map(|(i, _)| {
+                let end = html[i..].find("</form>").expect("form must close") + i;
+                &html[i..end]
+            })
+            .collect();
+        assert_eq!(forms.len(), 2, "desktop + mobile language forms");
+        for form in forms {
+            let named = opening_tag(form, "<form").contains("aria-label=");
+            let desktop = form.contains("id=\"lang-select\"");
+            assert_eq!(
+                named, desktop,
+                "only the desktop language form may be a named landmark: {form}"
+            );
+        }
+        // The desktop form sits in the always-visible right-hand group,
+        // after the `hidden lg:flex` strip closes, so it is visible at
+        // every width.
+        let mobile_panel = html.find("<div id=\"mobile-nav\"").expect("mobile panel");
+        let desktop_form = html.find("id=\"lang-select\"").expect("desktop select");
+        let right_group = html
+            .find("<div class=\"flex items-center gap-4 ml-auto\">")
+            .expect("right-hand group");
+        assert!(right_group < desktop_form && desktop_form < mobile_panel);
         assert!(
             html.contains("<label for=\"lang-select-mobile\" class=\"sr-only\">"),
             "the mobile select must keep its label"

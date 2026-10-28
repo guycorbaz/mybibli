@@ -57,6 +57,26 @@ No Rust handler change, no locale key, no JS, no migration.
   - axe (`checkAccessibility`) on a stuck page with the mobile menu open.
 - [x] T6 — Gates: clippy `-D warnings`, `cargo test`, sqlx check, flake grep, `tsc --noEmit`, full E2E (`CI=true --workers=2`).
 
+### Review Findings
+
+Code review 2026-10-28 (Blind Hunter, Edge Case Hunter, Acceptance Auditor): 0 decision-needed, 10 patch (5 Medium), 1 defer, 13 dismissed.
+
+- [x] [Review][Patch] E2E nav check could pass vacuously: a late native `autofocus` (catalog scan field, under parallel load) scrolled the page back to 0 after the scroll poll, and at scrollY 0 a non-sticky bar also sits at y 0 (Medium, blind+edge) → scroll and measure in ONE evaluate, polled until the sample is genuinely scrolled (`scrollToBottomAndMeasure`); menu, dialog and overlay assertions read the same sample [tests/e2e/specs/journeys/responsive-layouts.spec.ts]
+- [x] [Review][Patch] Landscape menu test did not prove the panel overflows (Medium) → assert `scrollHeight > clientHeight` at 667×375 [responsive-layouts.spec.ts]
+- [x] [Review][Patch] Dialog test only exercised the top layer, not `z-40` (Medium, blind+auditor) → new E2E with the connection-lost overlay (plain `fixed inset-0 z-50`, not top layer) covering the stuck bar [responsive-layouts.spec.ts]
+- [x] [Review][Patch] Overlay audit covered `fixed inset-0` in templates only while the header comment claimed toasts too (Medium, blind+edge+auditor) → `fixed_surfaces_stack_above_sticky_nav`: every `fixed` class list in `templates/` and in first-party `static/js/*.js` string literals must carry `z-50`; comment corrected (Rust-built HTML not scanned) [src/templates_audit.rs, templates/components/nav_bar.html]
+- [x] [Review][Patch] No fallback when `dvh` is unsupported → the panel would be unbounded again (Medium, edge+blind) → `vh` base value, `dvh` under `supports-[height:100dvh]:` (cascade order checked with the CLI at both breakpoints) [templates/components/nav_bar.html]
+- [x] [Review][Patch] Panel bound in `rem` while the bar is in `--spacing` px → drift with a non-16 px root font (Low) → `48px` / `56px` [templates/components/nav_bar.html]
+- [x] [Review][Patch] Skip-link E2E skipped the `md` width; the focused link's own visibility was untested (Low) → tablet added; link asserted in viewport and topmost [responsive-layouts.spec.ts]
+- [x] [Review][Patch] Landmark render test passed if the wrong form kept the name; desktop form "visible at every width" unchecked (Low) → asserts the named form is the one holding `#lang-select`, located in the always-visible right-hand group [src/routes/nav_sticky_tests.rs]
+- [x] [Review][Patch] Render test matched an exact class string for the `lg` strip (Low) → class-set check [src/routes/nav_sticky_tests.rs]
+- [x] [Review][Patch] Print test title claimed "not repeated" while asserting `position: static` (Low) → title says what it checks [responsive-layouts.spec.ts]
+- [x] [Review][Defer] Sticky bar on very short viewports / high zoom (WCAG 1.4.10 reflow) [templates/components/nav_bar.html] — deferred to #509 (needs a product call on a height threshold)
+
+Mutation proof after the patches (throwaway spec injecting CSS with `bypassCSP`): `header{position:static}` fails all 11 tests; `html{scroll-padding-top:0}` fails the 3 skip-link tests; `header{z-index:60}` fails the overlay test (and the skip-link tests); `#mobile-nav{max-height:none}` fails the landscape-menu test.
+
+Dismissed (main ones): existing `sticky top-0` content elements hidden under the bar (none exist — grep); scroll padding ignoring the open mobile panel (the panel traps focus and closes on link click); `#[cfg(test)]` doubled (existing `home_fold_tests.rs` pattern); `body h-full` hypothetical; series detail vs list (D-11-4-6); `md` panel bound not E2E-tested (render test + same mechanism as below `md`); wishlist print page not E2E-tested (no bar by construction); a11y change and bounded panel outside the issue (D-11-4-7, D-11-4-3, recorded).
+
 ## Dev Notes
 
 - **Why the `<header>`, not the `<nav>`.** The mobile panel is a sibling of `<nav>` inside `<header>`; sticking the header keeps the panel attached right below the bar with no positioning change. The header is a direct child of `<body>` and no ancestor sets `overflow`, so sticky works against the viewport for the full document height.
@@ -115,8 +135,8 @@ claude-opus-5-5
 - `templates/layouts/base.html` — root scroll padding
 - `src/routes/nav_sticky_tests.rs` — new, 5 render tests
 - `src/routes/mod.rs` — test module wiring
-- `src/templates_audit.rs` — overlay z-order invariant
-- `tests/e2e/specs/journeys/responsive-layouts.spec.ts` — 9 E2E tests
+- `src/templates_audit.rs` — `fixed` surfaces z-order invariant (templates + static/js)
+- `tests/e2e/specs/journeys/responsive-layouts.spec.ts` — 11 E2E tests
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — 11-4 → review
 - `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md` — § 11-4
 
@@ -124,3 +144,4 @@ claude-opus-5-5
 
 - 2026-10-28 — Validation pass (checklist.md): Tailwind emission of every new class verified with the CLI; overlay-invariant scope, `elementFromPoint`/top-layer semantics and the skip-link fail-before reasoning added to Dev Notes. No blocker found.
 - 2026-10-28 — Implementation T1–T6; status → review.
+- 2026-10-28 — Code review (3 layers): 10 patches applied (5 Medium), 1 deferred to #509, rest dismissed.

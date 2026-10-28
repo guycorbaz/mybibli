@@ -115,29 +115,70 @@ test.describe("Story 9-21 — responsive per-page layouts", () => {
 const NAV = 'nav[aria-label="Main navigation"]';
 const LANDSCAPE_PHONE = { width: 667, height: 375 };
 
-async function scrollToBottomOfLongPage(page: Page) {
+interface StuckSample {
+  scrollY: number;
+  navTop: number;
+  navBottom: number;
+  panelTop: number | null;
+  panelOverflows: boolean;
+  menuLinkOnTop: boolean;
+  headerCoveredAtCentre: boolean;
+  lostOverlayOnTopOfBar: boolean;
+}
+
+/**
+ * Scrolls a (forcibly) long page to the bottom and measures the bar in the
+ * SAME synchronous task. A late native `autofocus` (e.g. the catalog scan
+ * field under parallel load) can scroll the document back to the top at
+ * any moment, and at scrollY 0 a non-sticky bar also sits at y 0 — so a
+ * measurement taken in a separate call could pass vacuously. Polls until
+ * a sample is genuinely scrolled, then returns that sample.
+ */
+async function scrollToBottomAndMeasure(page: Page): Promise<StuckSample> {
   await page.waitForLoadState("load");
-  // Scroll inside the poll: a page-load autofocus (e.g. the catalog scan
-  // field) can scroll the document back to the top after a single
-  // scrollTo, so each attempt re-applies it until it sticks.
+  let sample: StuckSample | undefined;
   await expect
-    .poll(() =>
-      page.evaluate(() => {
+    .poll(async () => {
+      sample = await page.evaluate((): StuckSample => {
         const main = document.getElementById("main-content");
         if (main) main.style.minHeight = "3000px";
         window.scrollTo(0, document.documentElement.scrollHeight);
-        return window.scrollY;
-      }),
-    )
+        const nav = document.querySelector('nav[aria-label="Main navigation"]')!;
+        const r = nav.getBoundingClientRect();
+        const header = document.querySelector("header")!;
+        const panel = document.getElementById("mobile-nav")!;
+        const panelOpen = !panel.classList.contains("hidden");
+        const link = panel.querySelector('a[href="/series"]');
+        let menuLinkOnTop = false;
+        if (panelOpen && link) {
+          const l = link.getBoundingClientRect();
+          const hit = document.elementFromPoint(l.left + l.width / 2, l.top + l.height / 2);
+          menuLinkOnTop = hit !== null && link.contains(hit);
+        }
+        const centreHit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        const edgeHit = document.elementFromPoint(r.left + 8, r.top + r.height / 2);
+        const lost = document.getElementById("connection-lost-overlay");
+        return {
+          scrollY: window.scrollY,
+          navTop: r.top,
+          navBottom: r.bottom,
+          panelTop: panelOpen ? panel.getBoundingClientRect().top : null,
+          panelOverflows: panelOpen && panel.scrollHeight > panel.clientHeight,
+          menuLinkOnTop,
+          headerCoveredAtCentre: centreHit !== null && !header.contains(centreHit),
+          lostOverlayOnTopOfBar: lost !== null && edgeHit !== null && lost.contains(edgeHit),
+        };
+      });
+      return sample.scrollY;
+    })
     .toBeGreaterThan(1000);
+  return sample!;
 }
 
-async function assertNavStuckAtTop(page: Page, label: string) {
-  const nav = page.locator(NAV);
-  await expect(nav, `${label}: nav in viewport`).toBeInViewport();
-  const box = await nav.boundingBox();
-  expect(box, `${label}: nav has a box`).not.toBeNull();
-  expect(Math.abs(box!.y), `${label}: nav top at the viewport top`).toBeLessThanOrEqual(1);
+async function assertNavStuckAtTop(page: Page, label: string): Promise<StuckSample> {
+  const sample = await scrollToBottomAndMeasure(page);
+  expect(Math.abs(sample.navTop), `${label}: nav top at the viewport top`).toBeLessThanOrEqual(1);
+  return sample;
 }
 
 test.describe("Story 11-4 — sticky navigation bar", () => {
@@ -153,7 +194,6 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
       await loginAs(page, "admin");
       for (const path of ["/", "/catalog", "/series", "/admin"]) {
         await page.goto(path);
-        await scrollToBottomOfLongPage(page);
         await assertNavStuckAtTop(page, `${path} ${name}`);
       }
     });
@@ -161,6 +201,7 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
 
   for (const [name, viewport] of [
     ["mobile", MOBILE],
+    ["tablet", TABLET],
     ["desktop", DESKTOP],
   ] as const) {
     test(`${name} — the skip link target is not hidden under the bar`, async ({
@@ -169,9 +210,18 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
       await page.setViewportSize(viewport);
       await loginAs(page, "admin");
       await page.goto("/catalog");
-      await scrollToBottomOfLongPage(page);
+      await assertNavStuckAtTop(page, `/catalog ${name} before skip`);
 
-      await page.locator('a[href="#main-content"]').focus();
+      const skip = page.locator('a[href="#main-content"]');
+      await skip.focus();
+      // The focused link itself is visible (z-50, above the bar).
+      await expect(skip).toBeInViewport();
+      const skipOnTop = await skip.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return top !== null && el.contains(top);
+      });
+      expect(skipOnTop, "the focused skip link must not be covered by the bar").toBe(true);
       await page.keyboard.press("Enter");
       await expect.poll(() => page.evaluate(() => location.hash)).toBe("#main-content");
       // Let the fragment scroll settle (two frames), then measure once.
@@ -208,36 +258,32 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
       await page.setViewportSize(viewport);
       await loginAs(page, "admin");
       await page.goto("/catalog");
-      await scrollToBottomOfLongPage(page);
+      await assertNavStuckAtTop(page, `${name} before menu`);
 
       await page.locator("#mobile-menu-toggle").click();
       const panel = page.locator("#mobile-nav");
       await expect(panel).toBeVisible();
-      await expect(panel).toBeInViewport();
-      const navBox = (await page.locator(NAV).boundingBox())!;
-      const panelBox = (await panel.boundingBox())!;
-      expect(Math.abs(panelBox.y - (navBox.y + navBox.height))).toBeLessThanOrEqual(1);
-
-      // The menu sits above the page content: hit testing at a link's
-      // centre lands on that link, not on whatever scrolled underneath.
-      const seriesLink = panel.locator('a[href="/series"]');
-      const hit = await seriesLink.evaluate((el) => {
-        const r = el.getBoundingClientRect();
-        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-        return top !== null && el.contains(top);
-      });
-      expect(hit, "the menu link must be the topmost element at its centre").toBe(true);
-
-      // The last entry stays reachable even when the menu is taller than
-      // the space left under the stuck bar (landscape phone).
+      const sample = await assertNavStuckAtTop(page, `${name} menu open`);
+      // The panel hangs right below the stuck bar …
+      expect(sample.panelTop).not.toBeNull();
+      expect(Math.abs(sample.panelTop! - sample.navBottom)).toBeLessThanOrEqual(1);
+      // … above the page content: hit testing at a link's centre lands on
+      // that link, not on whatever scrolled underneath.
+      expect(sample.menuLinkOnTop, "the menu link must be the topmost element").toBe(true);
+      // On a landscape phone the admin menu is taller than the space left
+      // under the bar: the panel must really overflow and scroll on its own.
+      if (viewport === LANDSCAPE_PHONE) {
+        expect(sample.panelOverflows, "the admin menu must overflow a 375 px-high viewport").toBe(
+          true,
+        );
+      }
       const logout = panel.locator('form[action="/logout"] button');
       await logout.scrollIntoViewIfNeeded();
       await expect(logout).toBeInViewport();
-      await assertNavStuckAtTop(page, `${name} menu open`);
 
       await checkAccessibility(page);
 
-      await seriesLink.click();
+      await panel.locator('a[href="/series"]').click();
       await expect(page).toHaveURL(/\/series$/);
     });
   }
@@ -246,7 +292,6 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
     await page.setViewportSize(DESKTOP);
     await loginAs(page, "admin");
     await page.goto("/");
-    await scrollToBottomOfLongPage(page);
     await assertNavStuckAtTop(page, "/ before dialog");
 
     await page.evaluate(() => {
@@ -256,16 +301,30 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
     await page.keyboard.press("?");
     await expect(page.locator("dialog#shortcuts-cheat-sheet")).toHaveAttribute("open", "");
 
-    const coveredByOverlay = await page.evaluate(() => {
-      const nav = document.querySelector('nav[aria-label="Main navigation"]')!;
-      const r = nav.getBoundingClientRect();
-      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return top !== null && !document.querySelector("header")!.contains(top);
-    });
-    expect(coveredByOverlay, "the dialog backdrop must cover the bar").toBe(true);
+    const sample = await assertNavStuckAtTop(page, "/ dialog open");
+    expect(sample.headerCoveredAtCentre, "the dialog backdrop must cover the bar").toBe(true);
   });
 
-  test("print — the bar falls back to normal flow and is not repeated", async ({
+  test("a fixed z-50 overlay (not in the top layer) renders above the stuck bar", async ({
+    page,
+  }) => {
+    // The cheat sheet above is promoted to the top layer, which beats any
+    // z-index; the connection-lost overlay is a plain `fixed inset-0 z-50`
+    // div, so it exercises the bar's z-40 for real.
+    await page.setViewportSize(DESKTOP);
+    await loginAs(page, "admin");
+    await page.goto("/catalog");
+    await assertNavStuckAtTop(page, "/catalog before overlay");
+
+    await page.evaluate(() =>
+      document.getElementById("connection-lost-overlay")!.classList.remove("hidden"),
+    );
+    await expect(page.locator("#connection-lost-overlay")).toBeVisible();
+    const sample = await assertNavStuckAtTop(page, "/catalog overlay shown");
+    expect(sample.lostOverlayOnTopOfBar, "the overlay must cover the bar").toBe(true);
+  });
+
+  test("print — the bar prints in normal flow (position: static), once at the top", async ({
     page,
   }) => {
     await page.setViewportSize(DESKTOP);

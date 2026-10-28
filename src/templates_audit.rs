@@ -1063,19 +1063,35 @@ fn csrf_exempt_routes_frozen() {
 }
 
 /// Story 11-4 (#496) — the navigation `<header>` is `sticky … z-40`. Every
-/// full-viewport overlay (`fixed inset-0`: modals, connection-lost overlay)
-/// must sit above it, so it must carry `z-50`. Modals promoted with
+/// `position: fixed` surface — full-viewport overlays (modals, the
+/// connection-lost overlay) and the toasts built in `static/js` — must sit
+/// above it, so its class list must carry `z-50`. Modals promoted with
 /// `showModal()` reach the top layer anyway; this pins the declarative
-/// `<dialog open>` fallback and the non-dialog overlays.
+/// `<dialog open>` fallback and every non-dialog surface.
+///
+/// Scope: `class="…"` attributes in `templates/`, and string literals in
+/// the first-party `static/js/*.js` modules (vendored and minified files
+/// excluded) whose whitespace-separated tokens include `fixed`.
 #[test]
-fn fixed_overlays_stack_above_sticky_nav() {
+fn fixed_surfaces_stack_above_sticky_nav() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let tpl_dir = root.join("templates");
-    let class_re = Regex::new(r#"\bclass\s*=\s*"([^"]*)""#).unwrap();
+    let class_attr_re = Regex::new(r#"\bclass\s*=\s*"([^"]*)""#).unwrap();
+    let js_string_re = Regex::new(r#""([^"\n]*)"|'([^'\n]*)'"#).unwrap();
 
-    let mut overlays = 0usize;
+    let mut fixed_surfaces = 0usize;
     let mut violations: Vec<String> = Vec::new();
-    visit(&tpl_dir, &mut |path| {
+    let mut check = |path: &Path, classes: &str| {
+        let tokens: Vec<&str> = classes.split_whitespace().collect();
+        if tokens.contains(&"fixed") {
+            fixed_surfaces += 1;
+            if !tokens.contains(&"z-50") {
+                let rel = path.strip_prefix(&root).unwrap_or(path);
+                violations.push(format!("  {} — \"{classes}\"", rel.display()));
+            }
+        }
+    };
+
+    visit(&root.join("templates"), &mut |path| {
         if path.extension().and_then(|e| e.to_str()) != Some("html") {
             return;
         }
@@ -1083,26 +1099,41 @@ fn fixed_overlays_stack_above_sticky_nav() {
             return;
         };
         let content = strip_html_comments(&raw);
-        for cap in class_re.captures_iter(&content) {
-            let classes: Vec<&str> = cap[1].split_whitespace().collect();
-            if classes.contains(&"fixed") && classes.contains(&"inset-0") {
-                overlays += 1;
-                if !classes.contains(&"z-50") {
-                    let rel = path.strip_prefix(&root).unwrap_or(path);
-                    violations.push(format!("  {} — class=\"{}\"", rel.display(), &cap[1]));
-                }
-            }
+        for cap in class_attr_re.captures_iter(&content) {
+            check(path, &cap[1]);
         }
     });
 
+    let js_dir = root.join("static/js");
+    let entries = fs::read_dir(&js_dir).expect("static/js must exist");
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !name.ends_with(".js") || name.ends_with(".min.js") {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        for cap in js_string_re.captures_iter(&content) {
+            let literal = cap.get(1).or_else(|| cap.get(2)).map_or("", |m| m.as_str());
+            // Class strings only: a lone `"fixed"` (e.g. a computed-style
+            // comparison) is not a class list.
+            if literal.split_whitespace().count() > 1 {
+                check(&path, literal);
+            }
+        }
+    }
+
     assert!(
-        overlays > 0,
-        "expected at least one `fixed inset-0` overlay in templates/"
+        fixed_surfaces >= 3,
+        "expected the modal, overlay and toast `fixed` surfaces to be found \
+         (found {fixed_surfaces}) — has the scan stopped matching?"
     );
     assert!(
         violations.is_empty(),
-        "full-viewport overlays must carry `z-50` to stay above the sticky \
-         nav bar (`z-40`, story 11-4):\n{}",
+        "`fixed` surfaces must carry `z-50` to stay above the sticky nav bar \
+         (`z-40`, story 11-4):\n{}",
         violations.join("\n")
     );
 }

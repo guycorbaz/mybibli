@@ -2,8 +2,10 @@
    menu stays reachable on long pages. It wraps both the bar and the mobile
    panel, so the open panel travels with it. `z-40`: above in-content
    popovers (saved searches z-30, tooltips z-20, autocompletes z-10) and
-   below every overlay (modals, connection-lost overlay, toasts: z-50 or
-   the top layer — pinned by templates_audit::fixed_overlays_stack_above_sticky_nav).
+   below every `fixed` surface (modals, connection-lost overlay, JS toasts:
+   z-50 or the top layer — pinned by
+   templates_audit::fixed_surfaces_stack_above_sticky_nav for templates/
+   and static/js; HTML built in Rust is not scanned).
    `print:static`: a printed page shows the bar once, never per sheet.
    The bar is NOT compacted (epic 11): heights and the `lg` switch stay. #}
 <header class="sticky top-0 z-40 print:static">
@@ -84,9 +86,11 @@
 <!-- Mobile nav menu -->
 {# Story 11-4 (#496) — once the header sticks, a panel taller than the
    viewport (admin menu on a landscape phone) can no longer be scrolled
-   into reach: bound it to the viewport minus the bar (h-12 / md:h-14)
-   and let it scroll on its own. #}
-<div id="mobile-nav" class="hidden lg:hidden max-h-[calc(100dvh-3rem)] md:max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 px-4 py-2">
+   into reach: bound it to the viewport minus the bar (h-12 / md:h-14 =
+   48 / 56 px, px like --spacing so a non-16px root font cannot drift)
+   and let it scroll on its own. `vh` first, `dvh` where supported (the
+   dynamic toolbar of mobile browsers); older engines keep the vh bound. #}
+<div id="mobile-nav" class="hidden lg:hidden max-h-[calc(100vh-48px)] md:max-h-[calc(100vh-56px)] supports-[height:100dvh]:max-h-[calc(100dvh-48px)] md:supports-[height:100dvh]:max-h-[calc(100dvh-56px)] overflow-y-auto overscroll-contain bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 px-4 py-2">
     <a href="/catalog" {% if base.current_page == "catalog" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_catalog }}</a>
     <a href="/locations" {% if base.current_page == "locations" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_locations }}</a>
     <a href="/series" {% if base.current_page == "series" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_series }}</a>
