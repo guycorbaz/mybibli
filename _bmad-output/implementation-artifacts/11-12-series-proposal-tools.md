@@ -63,6 +63,8 @@ so that the librarian can group volumes without searching by hand.
 - **Error mapping:** `SeriesProposalError::Proposal(ProposalError)` keeps 11-9's typed errors; `is_invalid_input()` → `InvalidArguments`; `TargetNotFound` / `TargetChanged` are rewritten by the series service to name the title / series id (the agent never sees 11-9's internal item index); `KeyNotAllowed` → `Refused`; `Database` and decision-only variants → `Internal` (logged).
 - **Duplicate checks** run before `file`, outside its transaction (read-only): a concurrent double filing can slip through (harmless — the librarian rejects one, the second goes stale at acceptance). Logged as a decision.
 - **Collation:** the pending-name lookup compares `CONVERT(JSON_UNQUOTE(JSON_EXTRACT(...)) USING utf8mb4) COLLATE utf8mb4_unicode_ci` with the bound name converted the same way — CI's server default charset must not change the result.
+- **For 11-19 (edit before accept):** the series line is not a removable line (removing it leaves titles without a series); 11-19 must keep it.
+- **Total cap:** `total_volume_count` and positions are bounded by `i32` (the column type); no smaller product cap is introduced (the web form has none).
 - **Not here:** FR136 resubmission delay (11-15); applying anything (11-17); the web page (11-16).
 - Heavy commands under `mem-guard`, cargo `-j 2`; `rustfmt --edition 2024` on touched leaf files only.
 
@@ -87,3 +89,4 @@ so that the librarian can group volumes without searching by hand.
 ## Change Log
 
 - 2026-10-28 — story created (ready-for-dev).
+- 2026-10-28 — validated against the create-story checklist: added the 11-19 note on the series line and the `i32` bound; no AC change.
