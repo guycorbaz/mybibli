@@ -449,3 +449,45 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** confirmation pass found no Medium+. Low: the locking item read on accept takes next-key locks on `idx_proposal_items_proposal`; when the proposal being accepted is the newest, a concurrent filing waits on its item INSERT until the accept transaction ends (no deadlock — each side waits once).
 **Chosen:** accept as is; 11-17 must keep accept-and-apply transactions short (no network I/O inside — e.g. cover promotion happens after commit, as 11-18 already says).
 **Reversible:** yes.
+
+## § 11-10 — Expected tomes: data and auto-settle at scan (part of #493)
+
+### D-11-10-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-10-expected-tomes-data-auto-settle` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-10-2 — Schema: FK CASCADE to the series, SET NULL to the settled title, live-only unique keys
+**Context:** AR29 names the table; series and titles are hard-purged 30 days after a soft delete; nothing in the AC says how duplicates behave.
+**Chosen:** `series_id` FK `ON DELETE CASCADE` (a tome has no meaning without its series), `settled_title_id` FK `ON DELETE SET NULL` (the purge of a title must not be blocked). A stored generated `live_marker` (1 when live, NULL when soft-deleted) backs `UNIQUE (series_id, position, live_marker)` and `UNIQUE (series_id, isbn, live_marker)`: at most one live tome per position and per ISBN in a series, soft-deleted rows never collide. `series_expected_tomes` joins `PURGE_DELETION_ORDER` before `titles`/`series`.
+**Rejected:** no FK (orphans); RESTRICT (would block the 30-day purge); service-only uniqueness (a proposal acceptance racing a manual add could duplicate).
+**Reversible:** yes (migration).
+
+### D-11-10-3 — "Settled" means the settled title is live [PRODUCT]
+**Context:** the AC says "settled title nullable"; a settled title can later be soft-deleted.
+**Chosen:** a tome is settled when `settled_title_id` names a live title; once that title is soft-deleted (or purged, FK SET NULL) the tome reads as unsettled again — the position is a gap again — and the next catalogue of its ISBN settles it again.
+**Rejected:** a sticky settled flag (a deleted copy would leave a named gap that never reappears).
+**Reversible:** yes.
+
+### D-11-10-4 — Validation rules for a tome [PRODUCT]
+**Context:** the AC lists the fields, not the rules; 11-11 (manual) and 11-12 (proposals) share the service.
+**Chosen:** live series; position ≥ 1 and ≤ total for a closed series (the `assign_title` rule); refused when the position is already held by a live title of the series (an expected tome names a gap) or by another live tome; ISBN unique among the series' live tomes; title trimmed, 1..=500 characters (the `titles.title` width); ISBN with hyphens/spaces stripped, ISBN-10 converted, ISBN-13 checksum checked. A settled tome cannot be edited (only deleted). Errors are a typed `ExpectedTomeError` with English `Display` (D-11-9-2 precedent); 11-11 localizes what reaches a librarian.
+**Rejected:** allowing a tome on a held position (would show a name over an owned square and could never settle without a conflict).
+**Reversible:** yes.
+
+### D-11-10-5 — Auto-settle runs on every ISBN catalogue event, re-scans included [PRODUCT]
+**Context:** FR145 says "when a title whose ISBN matches … is cataloged, same mechanism as the wishlist auto-link"; the wishlist auto-link fires for a new title and for a re-scan of an existing one.
+**Chosen:** the `/catalog/scan` ISBN arm (new and existing title) and the manual title form when it carries an ISBN. Rules in order: title already at that position → settle only; title elsewhere in the series → conflict; closed series total now below the position → conflict; position held by another live title (single or omnibus) → conflict; else attach + settle. Several matching tomes (different series) are each handled. A settle failure is logged and never fails the scan. The title-edit form setting an ISBN later does not settle (not a catalogue event).
+**Rejected:** new titles only (an owned-but-unattached copy rescanned would never settle); attaching a title at a second position of the same series.
+**Reversible:** yes.
+
+### D-11-10-6 — Settle does not bump `series` / `titles` versions
+**Context:** attaching writes `title_series`, which today never bumps a parent version (#521).
+**Chosen:** same as every `title_series` write; #521 already records the staleness gap for 11-17/11-18. The tome's own `version` is bumped.
+**Reversible:** yes.
+
+### D-11-10-7 — No scan-settle E2E in this story
+**Context:** Rule 3; no web route or MCP tool creates an expected tome before 11-11 / 11-12, and 11-11's own AC is exactly that E2E (add a tome, scan its ISBN, see it owned).
+**Chosen:** handler-level integration tests drive the real router (`/catalog/scan`, `POST /catalog/title`) with login + CSRF and assert the banner; the E2E `mcp-gaps-tools.spec.ts` asserts the new `expected_tomes` key of `get_series`; the full Playwright suite runs as regression gate.
+**Rejected:** a throw-away seeding route (D-11-5-4, D-11-9-6 precedent).
+**Reversible:** yes.
