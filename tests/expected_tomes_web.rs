@@ -254,7 +254,12 @@ async fn a_refusal_re_renders_the_form_with_the_localized_message(pool: DbPool) 
     for (position, title, isbn, expect) in [
         ("9", "Trop loin", "", "comprise entre 1 et 5"),
         ("2", "", "", "Le titre est obligatoire"),
-        ("2", "Mauvais ISBN", "12345", "ISBN invalide"),
+        (
+            "2",
+            "Mauvais ISBN",
+            "12345",
+            "L&#39;ISBN doit être un ISBN-13",
+        ),
         ("abc", "Pas un nombre", "", "comprise entre 1 et 5"),
     ] {
         let body = format!(
@@ -310,10 +315,9 @@ async fn edit_through_the_form_and_a_stale_version_is_refused(pool: DbPool) {
     let t = tome(&pool, s, 2, "Brouillon", None).await;
     let (app, browser) = librarian(&pool).await;
     let v = version_of(&pool, t).await;
+    let path = format!("/series/{s}/expected-tomes/{t}");
 
-    let (status, html) = browser
-        .get(&app, &format!("/series/{s}/expected-tomes/{t}/edit"))
-        .await;
+    let (status, html) = browser.get(&app, &format!("{path}/edit")).await;
     assert_eq!(status, StatusCode::OK);
     assert!(html.contains("value=\"Brouillon\""));
     assert!(html.contains(&format!("name=\"version\" value=\"{v}\"")));
@@ -322,34 +326,33 @@ async fn edit_through_the_form_and_a_stale_version_is_refused(pool: DbPool) {
         "_csrf_token={}&version={v}&position=3&title=Final&isbn=",
         enc(&browser.csrf)
     );
-    let res = browser
-        .send(
-            &app,
-            "POST",
-            &format!("/series/{s}/expected-tomes/{t}"),
-            &body,
-            false,
-        )
-        .await;
+    let res = browser.send(&app, "POST", &path, &body, false).await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     assert_eq!(live_tomes(&pool, s).await, vec![(3, "Final".into(), None)]);
 
-    // Same (now stale) version again.
-    let res = browser
-        .send(
-            &app,
-            "POST",
-            &format!("/series/{s}/expected-tomes/{t}"),
-            &body,
-            false,
-        )
-        .await;
+    // The (now stale) version again with other values: refused, and the
+    // form shows the tome as it now stands, with its current version.
+    let stale = format!(
+        "_csrf_token={}&version={v}&position=4&title=Autre&isbn=",
+        enc(&browser.csrf)
+    );
+    let res = browser.send(&app, "POST", &path, &stale, false).await;
     assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let html = body_string(res).await;
     assert!(
         html.contains("Quelqu&#39;un d&#39;autre a modifié ce tome attendu"),
         "{html}"
     );
+    let current = version_of(&pool, t).await;
+    assert_ne!(current, v);
+    assert!(html.contains(&format!("name=\"version\" value=\"{current}\"")));
+    assert!(html.contains("value=\"Final\""), "current values shown");
+    // The layout's return link is the GET form, not the POST-only route.
+    assert!(
+        html.contains(&format!("name=\"next\" value=\"{path}/edit\"")),
+        "{html}"
+    );
+    assert_eq!(live_tomes(&pool, s).await, vec![(3, "Final".into(), None)]);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -391,12 +394,25 @@ async fn anonymous_cannot_reach_the_forms_or_mutate(pool: DbPool) {
             .unwrap()
             .starts_with("/login")
     );
-    let res = axum::http::Request::post(format!("/series/{s}/expected-tomes/{t}/wishlist"))
-        .body(axum::body::Body::empty())
-        .unwrap();
-    let res = tower::ServiceExt::oneshot(app.clone(), res).await.unwrap();
-    assert!(!res.status().is_success(), "{}", res.status());
+    // A real anonymous session with a valid CSRF token: the requests pass
+    // the CSRF layer and are stopped by the role check.
+    let anon = Browser::anonymous(&app).await;
+    let base = format!("/series/{s}/expected-tomes");
+    let res = anon
+        .send(&app, "POST", &format!("{base}/{t}/wishlist"), "", true)
+        .await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    assert_eq!(res.headers()["hx-redirect"], "/login");
+    let body = format!("_csrf_token={}&position=2&title=X", enc(&anon.csrf));
+    let res = anon.send(&app, "POST", &base, &body, false).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let body = format!("_csrf_token={}&version=0", enc(&anon.csrf));
+    let res = anon
+        .send(&app, "POST", &format!("{base}/{t}/delete"), &body, true)
+        .await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
     assert!(wishlist_rows(&pool).await.is_empty());
+    assert_eq!(live_tomes(&pool, s).await.len(), 1);
 }
 
 // ─── Delete ──────────────────────────────────────────────────────
@@ -468,7 +484,7 @@ async fn add_to_wishlist_creates_the_item_then_says_it_is_already_there(pool: Db
 
     let (status, html) = browser.post_form(&app, &path, "").await;
     assert_eq!(status, StatusCode::OK, "{html}");
-    assert!(html.contains("a été ajouté à votre liste d"), "{html}");
+    assert!(html.contains("a été ajouté à votre wish list"), "{html}");
     let rows = wishlist_rows(&pool).await;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].0, "Le Piège diabolique");
@@ -493,7 +509,7 @@ async fn add_to_wishlist_creates_the_item_then_says_it_is_already_there(pool: Db
 
     let (status, html) = browser.post_form(&app, &path, "").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(html.contains("est déjà dans votre liste d"), "{html}");
+    assert!(html.contains("est déjà dans votre wish list"), "{html}");
     assert!(html.contains(&format!("href=\"/wishlist/{item}\"")));
     assert_eq!(wishlist_rows(&pool).await.len(), 1, "no duplicate");
 }
@@ -516,7 +532,7 @@ async fn a_tome_whose_isbn_is_already_wished_creates_nothing(pool: DbPool) {
             "",
         )
         .await;
-    assert!(html.contains("Ajouté avant") && html.contains("est déjà dans votre liste d"));
+    assert!(html.contains("Ajouté avant") && html.contains("est déjà dans votre wish list"));
     assert_eq!(wishlist_rows(&pool).await.len(), 1);
 }
 
@@ -537,7 +553,11 @@ async fn a_tome_without_isbn_is_wished_once(pool: DbPool) {
             )
             .await;
     }
-    assert_eq!(wishlist_rows(&pool).await.len(), 1, "double click");
+    assert_eq!(
+        wishlist_rows(&pool).await.len(),
+        1,
+        "a second, sequential click"
+    );
     // Same title in another series: a different note, a different item.
     browser
         .post_form(
@@ -557,16 +577,64 @@ async fn a_deleted_series_hides_its_tome_routes(pool: DbPool) {
     let t = tome(&pool, s, 1, "Tome", None).await;
     soft_delete(&pool, "series", s).await;
     let (app, browser) = librarian(&pool).await;
-    let (status, _) = browser
+    let base = format!("/series/{s}/expected-tomes");
+    // Wishlist: the refusal is rendered into #series-feedback (200).
+    let (status, html) = browser
+        .post_form(&app, &format!("{base}/{t}/wishlist"), "")
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("feedback-entry"), "{html}");
+    assert!(wishlist_rows(&pool).await.is_empty());
+    let (status, _) = browser.get(&app, &format!("{base}/new")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let res = browser
+        .send(&app, "GET", &format!("{base}/{t}/delete-modal"), "", true)
+        .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    let body = format!("_csrf_token={}&version=0", enc(&browser.csrf));
+    let res = browser
+        .send(&app, "POST", &format!("{base}/{t}/delete"), &body, true)
+        .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_settled_tome_is_read_only_and_never_wished(pool: DbPool) {
+    let s = add_series(&pool, "Yoko Tsuno", "closed", Some(3)).await;
+    let code = isbn(8);
+    let t = tome(&pool, s, 2, "Le Feu de Wotan", Some(&code)).await;
+    let title = add_title(&pool, "Le Feu de Wotan", "bd", "Roman", Some(&code)).await;
+    ExpectedTomeService::settle_for_title(&pool, title, &code)
+        .await
+        .unwrap();
+    let (app, browser) = librarian(&pool).await;
+    let base = format!("/series/{s}/expected-tomes/{t}");
+
+    let (status, html) = browser.get(&app, &format!("{base}/edit")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("id=\"expected-tome-error\""), "said up front");
+    assert!(html.contains("déjà possédé"), "{html}");
+
+    let (status, html) = browser
+        .post_form(&app, &format!("{base}/wishlist"), "")
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("est déjà dans votre catalogue"), "{html}");
+    assert!(wishlist_rows(&pool).await.is_empty());
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn wishlist_feedback_escapes_the_title(pool: DbPool) {
+    let s = add_series(&pool, "S", "open", None).await;
+    let t = tome(&pool, s, 1, "<b>Gras</b>", None).await;
+    let (app, browser) = librarian(&pool).await;
+    let (_, html) = browser
         .post_form(
             &app,
             &format!("/series/{s}/expected-tomes/{t}/wishlist"),
             "",
         )
         .await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, _) = browser
-        .get(&app, &format!("/series/{s}/expected-tomes/new"))
-        .await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(!html.contains("<b>Gras</b>"), "{html}");
+    assert!(html.contains("&lt;b&gt;Gras&lt;/b&gt;"), "{html}");
 }

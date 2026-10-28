@@ -124,6 +124,22 @@ impl Browser {
             .unwrap()
     }
 
+    /// Story 11-11 — an anonymous visitor: the session cookie and CSRF
+    /// token minted on a first page view (so a mutation reaches the
+    /// handler's role check instead of stopping at the CSRF layer).
+    pub async fn anonymous(router: &Router) -> Self {
+        let res = get_anonymous(router, "/").await;
+        let cookie = session_cookie(&res).expect("anonymous session cookie");
+        let html = body_string(res).await;
+        let needle = "name=\"csrf-token\" content=\"";
+        let start = html.find(needle).expect("csrf-token meta tag") + needle.len();
+        let end = html[start..].find('"').unwrap();
+        Browser {
+            cookie,
+            csrf: html[start..start + end].to_string(),
+        }
+    }
+
     /// A page GET as this browser; returns status and body.
     pub async fn get(&self, router: &Router, path: &str) -> (StatusCode, String) {
         let res = self.send(router, "GET", path, "", false).await;

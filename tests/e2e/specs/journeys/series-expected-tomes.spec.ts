@@ -75,15 +75,15 @@ test.describe("Expected tomes on the series page (story 11-11)", () => {
 
     // Add to wishlist, then a second click says it is already there.
     const wish = card.getByRole("button", {
-      name: /add to wish list|ajouter à la liste d'envies/i,
+      name: /add to wish list|ajouter à la wish list/i,
     });
     await wish.click();
     await expect(page.locator("#series-feedback")).toContainText(
-      /added to your wish list|ajouté à votre liste d'envies/i,
+      /added to your wish list|ajouté à votre wish list/i,
     );
     await wish.click();
     await expect(page.locator("#series-feedback")).toContainText(
-      /already on your wish list|déjà dans votre liste d'envies/i,
+      /already on your wish list|déjà dans votre wish list/i,
     );
     await page.goto("/wishlist");
     await expect(page.getByText(title).first()).toBeVisible();
@@ -147,7 +147,7 @@ test.describe("Expected tomes on the series page (story 11-11)", () => {
     await page.locator("#expected-tome-isbn").fill("12345");
     await page.locator('main button[type="submit"]').last().click();
     await expect(page.locator("#expected-tome-error")).toContainText(
-      /Invalid ISBN|ISBN invalide/i,
+      /valid ISBN-13 or ISBN-10|ISBN-13 ou ISBN-10 valide/i,
     );
     await expect(page.locator("#expected-tome-title")).toHaveValue(
       `Mauvais ${RUN}`,

@@ -412,7 +412,11 @@ pub fn place_on_grid(
         match positions.iter_mut().find(|p| p.position == tome.position) {
             Some(gap) if gap.expected.is_none() => gap.expected = Some(card),
             // Unreachable with the unique key (one live tome per position).
-            Some(_) => {}
+            Some(_) => tracing::warn!(
+                tome_id = tome.id,
+                position = tome.position,
+                "Two live expected tomes at one position; the second is not shown"
+            ),
             None => {
                 let at = positions.partition_point(|p| p.position <= tome.position);
                 positions.insert(

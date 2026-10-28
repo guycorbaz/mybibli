@@ -46,7 +46,7 @@ so that I know what to buy.
 - [x] T2 — `SeriesPositionInfo.expected` + pure placement `services::expected_tomes::place_on_grid` returning the stranded tomes (AC1, AC2).
 - [x] T3 — `src/routes/series_expected_tomes.rs`: form pages, create, update, delete modal + delete, wishlist; routes in `routes/mod.rs` (AC3–AC8).
 - [x] T4 — Templates: `pages/expected_tome_form.html`, `fragments/expected_tome_delete_modal.html`, grid card + "to review" section in `series_detail.html` / `series_gap_grid.html`; labels ×4 (AC1–AC6, AC10).
-- [x] T5 — Wishlist: shared audit helper, duplicate lookup without ISBN (`WishlistItemModel::find_by_title_and_notes_without_isbn`) (AC6, AC7).
+- [x] T5 — Wishlist: shared audit helper, duplicate lookup without ISBN (`WishlistItemModel::find_without_isbn`) (AC6, AC7).
 - [x] T6 — Tests (AC11): unit, `tests/expected_tomes_web.rs`, E2E spec.
 - [x] T7 — Gates: clippy `--all-targets -D warnings`, full `cargo test` (test DB 3307), `cargo sqlx prepare --check --workspace -- --all-targets`, locale parity, flake grep, `tsc --noEmit`, full Playwright `CI=true --workers=2` on a reset stack (port 18080).
 
@@ -70,6 +70,25 @@ so that I know what to buy.
 - [Source: src/routes/wishlist.rs#wishlist_create, #autolink_feedback_html] — wishlist write and scan link.
 - [Source: docs/error-message-style.md] — error copy.
 - GitHub #524 — states rendered by AC2.
+
+### Review Findings
+
+Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor on `git diff main...HEAD`) — decisions in D-11-11-7:
+
+- [x] [Review][Patch] "Add to wishlist" errors (deleted tome / series, server error) were lost: the `AppError` retarget aims at `#feedback-list`, absent from the series page [Medium] — the handler renders every refusal into `#series-feedback` (200).
+- [x] [Review][Patch] After a version conflict the edit form kept the stale version, so every resubmit conflicted again [Medium] — the form is re-rendered with the tome as it now stands and its current version.
+- [x] [Review][Patch] The anonymous-mutation test was stopped by CSRF, not by the role check [Medium] — `Browser::anonymous` (real anonymous session + token); create / delete / wishlist all asserted 303 → login.
+- [x] [Review][Patch] French copy said "liste d'envies" while the rest of the French UI says "wish list" [Medium] — aligned.
+- [x] [Review][Patch] Duplicate label keys (`edit`, `delete`, `add_to_wishlist`, `cancel`) [Low] — existing `series.*`, `wishlist.add_to_wishlist`, `common.cancel` reused.
+- [x] [Review][Patch] `invalid_isbn` field hint ended with an instruction [Low] — terse ("ISBN must be a valid ISBN-13 or ISBN-10.").
+- [x] [Review][Patch] Refusal page carried the POST-only URI into the layout's `next` links [Low] — the GET form address is used.
+- [x] [Review][Patch] A tome / series that vanished between the checks re-rendered the form with 422 [Low] — 404.
+- [x] [Review][Patch] Wishlist accepted a settled tome; the edit form of a settled tome only refused on save [Low] — "already in your catalog" info entry; the edit form shows the settled message up front.
+- [x] [Review][Patch] Silent drop in the unreachable `place_on_grid` branch [Low] — logged.
+- [x] [Review][Patch] Double click on "Add to wishlist" [Low] — `hx-disabled-elt="this"`; test message no longer claims a concurrency check.
+- [x] [Review][Patch] No test for escaping in the wishlist feedback, nor for delete on a deleted series [Low] — added.
+- [x] [Review][Dismiss] "A settled tome can become invisible and block its position" — settled requires the title to hold the position, so the position is never a gap while the tome is hidden; once the title leaves, the tome reads unsettled and is shown again (D-11-10-10). "Delete works on a trashed series" — `find` joins the live series, already a 404 (now tested).
+- [x] [Review][Accept] No-ISBN dedup keyed on the localized note (locale / rename / hand edit can duplicate) and an ISBN added after a no-ISBN wish (D-11-11-4); check-then-insert race between two librarians; non-integer / overflowing position reads as out of range; tome squares do not sort by name under `?sort=title` (gaps bucket last by design, #235); inherited `CAST(publication_year AS UNSIGNED)` in the wishlist model; `expected_tome.error.series_not_found` / `.database` not reached from the web (generic messages there); E2E run stamp wraps every ~5.5 h.
 
 ## Dev Agent Record
 

@@ -15,6 +15,7 @@
     <button type="button"
             hx-post="/series/{{ series.id }}/expected-tomes/{{ card.id }}/wishlist"
             hx-target="#series-feedback" hx-swap="innerHTML"
+            hx-disabled-elt="this"
             data-expected-tome-wishlist="{{ card.id }}"
             class="font-medium text-emerald-700 dark:text-emerald-400 hover:underline">{{ tome_labels.add_to_wishlist }}</button>
 </div>

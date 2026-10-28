@@ -569,3 +569,9 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Chosen:** rename to `series-expected-tomes.spec.ts`, next to `series.spec.ts`, which already relies on the same alphabetical schedule; documented in the spec header. Full suite green afterwards.
 **Rejected:** rewriting the three older specs' selectors in this story (out of scope; the order dependency predates it).
 **Reversible:** yes.
+
+### D-11-11-7 — Code review round 1: errors stay on the page, conflicts refresh the form, wording aligned [PRODUCT]
+**Context:** three review layers; Medium: wishlist errors lost (retarget to a `#feedback-list` the series page lacks), stale version kept after a conflict, anonymous test stopped by CSRF, French "liste d'envies" vs the UI's "wish list".
+**Chosen:** the wishlist handler renders refusals into `#series-feedback`; a version conflict re-renders the form with the stored values and current version (the message still explains what happened); a vanished tome / series is a 404; a settled tome is never wished ("already in your catalog") and its edit form says it is read-only up front; French copy uses "wish list"; existing label keys reused; the ISBN hint is terse; the refusal page's layout links point at the GET form; the wishlist button disables itself during the request.
+**Accepted (Low):** locale-dependent no-ISBN dedup and an ISBN added after a no-ISBN wish (D-11-11-4); check-then-insert race between two librarians; non-integer positions read as out of range; tome squares keep position order under the title sort; inherited `CAST(… AS UNSIGNED)` in the wishlist model; E2E stamp wrap.
+**Reversible:** yes.

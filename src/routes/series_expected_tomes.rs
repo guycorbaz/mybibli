@@ -88,7 +88,7 @@ fn render_form(
         label_isbn: rust_i18n::t!("expected_tome.field_isbn", locale = loc).to_string(),
         isbn_help: rust_i18n::t!("expected_tome.isbn_help", locale = loc).to_string(),
         label_save: rust_i18n::t!("expected_tome.save", locale = loc).to_string(),
-        label_cancel: rust_i18n::t!("expected_tome.cancel", locale = loc).to_string(),
+        label_cancel: rust_i18n::t!("common.cancel", locale = loc).to_string(),
         label_back: rust_i18n::t!("expected_tome.back", locale = loc).to_string(),
     };
     match template.render() {
@@ -169,13 +169,17 @@ pub async fn edit_form(
     session.require_role_with_return(Role::Librarian, uri.path(), loc)?;
     let series = live_series(&state, id, loc).await?;
     let tome = tome_of_series(&state, id, tome_id, loc).await?;
+    // A settled tome is read-only: say so up front rather than on save.
+    let error = tome
+        .is_settled()
+        .then(|| ExpectedTomeError::Settled { id: tome.id }.localized(loc));
     let form = FormState {
         tome_id: Some(tome.id),
         version: tome.version,
         position: tome.position.to_string(),
         title: tome.title,
         isbn: tome.isbn.unwrap_or_default(),
-        error: None,
+        error,
     };
     render_form(&state, &session, loc, &uri, &series, form, StatusCode::OK)
 }
@@ -198,23 +202,27 @@ fn parse_position(raw: &str) -> i32 {
     raw.trim().parse::<i32>().unwrap_or(0)
 }
 
-/// Re-render the form after a refusal (422), or propagate a database
-/// error (logged, generic page).
-#[allow(clippy::too_many_arguments)]
-fn refused(
+/// Re-render the form after a refusal (422) with the typed values. A
+/// version conflict shows the tome as it now stands (with its current
+/// version, so a deliberate resubmit can succeed); a vanished tome or
+/// series is a 404 and a database error propagates (logged, generic).
+async fn refused(
     state: &AppState,
     session: &Session,
     loc: &'static str,
-    uri: &axum::http::Uri,
     series: &SeriesModel,
     tome_id: Option<u64>,
     form: TomeForm,
     err: ExpectedTomeError,
 ) -> Result<Response, AppError> {
-    if let ExpectedTomeError::Database(inner) = err {
-        return Err(inner);
+    match err {
+        ExpectedTomeError::Database(inner) => return Err(inner),
+        ExpectedTomeError::NotFound { .. } | ExpectedTomeError::SeriesNotFound { .. } => {
+            return Err(err.into_app_error(loc));
+        }
+        _ => {}
     }
-    let state_ = FormState {
+    let mut state_ = FormState {
         tome_id,
         version: form.version.unwrap_or(0),
         position: form.position,
@@ -222,11 +230,31 @@ fn refused(
         isbn: form.isbn.unwrap_or_default(),
         error: Some(err.localized(loc)),
     };
+    if let (ExpectedTomeError::VersionConflict { .. }, Some(id)) = (&err, tome_id) {
+        match ExpectedTomeService::find(&state.pool, id).await? {
+            Some(current) if current.series_id == series.id => {
+                state_.version = current.version;
+                state_.position = current.position.to_string();
+                state_.title = current.title;
+                state_.isbn = current.isbn.unwrap_or_default();
+            }
+            _ => return Err(ExpectedTomeError::NotFound { id }.into_app_error(loc)),
+        }
+    }
+    // The page's own (GET) address, so the layout's return links (language
+    // toggle, login `next`) never point at a POST-only route.
+    let page = match tome_id {
+        Some(t) => format!("/series/{}/expected-tomes/{t}/edit", series.id),
+        None => format!("/series/{}/expected-tomes/new", series.id),
+    };
+    let uri: axum::http::Uri = page
+        .parse()
+        .map_err(|e| AppError::Internal(format!("expected tome form uri: {e}")))?;
     render_form(
         state,
         session,
         loc,
-        uri,
+        &uri,
         series,
         state_,
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -238,7 +266,6 @@ pub async fn create(
     State(state): State<AppState>,
     session: Session,
     Extension(locale): Extension<Locale>,
-    OriginalUri(uri): OriginalUri,
     Path(id): Path<u64>,
     axum::Form(form): axum::Form<TomeForm>,
 ) -> Result<Response, AppError> {
@@ -260,7 +287,7 @@ pub async fn create(
             );
             Ok(Redirect::to(&format!("/series/{id}")).into_response())
         }
-        Err(e) => refused(&state, &session, loc, &uri, &series, None, form, e),
+        Err(e) => refused(&state, &session, loc, &series, None, form, e).await,
     }
 }
 
@@ -269,7 +296,6 @@ pub async fn update(
     State(state): State<AppState>,
     session: Session,
     Extension(locale): Extension<Locale>,
-    OriginalUri(uri): OriginalUri,
     Path((id, tome_id)): Path<(u64, u64)>,
     axum::Form(form): axum::Form<TomeForm>,
 ) -> Result<Response, AppError> {
@@ -288,7 +314,7 @@ pub async fn update(
             tracing::info!(series_id = id, tome_id, "Expected tome updated");
             Ok(Redirect::to(&format!("/series/{id}")).into_response())
         }
-        Err(e) => refused(&state, &session, loc, &uri, &series, Some(tome_id), form, e),
+        Err(e) => refused(&state, &session, loc, &series, Some(tome_id), form, e).await,
     }
 }
 
@@ -403,7 +429,9 @@ pub fn wishlist_note(series_name: &str, position: i32, loc: &str) -> String {
 
 /// `POST /series/{id}/expected-tomes/{tome_id}/wishlist` — HTMX fragment
 /// for `#series-feedback`: the new item, or the existing one when the
-/// tome is already on the wishlist (D-11-11-4).
+/// tome is already on the wishlist (D-11-11-4). Refusals and errors are
+/// rendered into the same region (the series page has no
+/// `#feedback-list` for the `AppError` retarget to land in).
 pub async fn add_to_wishlist(
     State(state): State<AppState>,
     session: Session,
@@ -412,9 +440,42 @@ pub async fn add_to_wishlist(
 ) -> Result<Response, AppError> {
     let loc = locale.0;
     session.require_role(Role::Librarian, loc)?;
+    let html = match wish_tome(&state, &session, id, tome_id, loc).await {
+        Ok(html) => html,
+        Err(e) => {
+            let message = match &e {
+                AppError::NotFound(m) | AppError::Conflict(m) | AppError::BadRequest(m) => {
+                    m.clone()
+                }
+                other => {
+                    tracing::error!(error = %other, series_id = id, tome_id, "Add to wishlist failed");
+                    rust_i18n::t!("error.internal", locale = loc).to_string()
+                }
+            };
+            crate::utils::feedback_html("error", &message, "")
+        }
+    };
+    Ok(Html(html).into_response())
+}
+
+async fn wish_tome(
+    state: &AppState,
+    session: &Session,
+    id: u64,
+    tome_id: u64,
+    loc: &'static str,
+) -> Result<String, AppError> {
     let pool = &state.pool;
-    let series = live_series(&state, id, loc).await?;
-    let tome = tome_of_series(&state, id, tome_id, loc).await?;
+    let series = live_series(state, id, loc).await?;
+    let tome = tome_of_series(state, id, tome_id, loc).await?;
+    if tome.is_settled() {
+        let message = rust_i18n::t!(
+            "expected_tome.wishlist_owned",
+            locale = loc,
+            title = tome.title.as_str()
+        );
+        return Ok(crate::utils::feedback_html("info", &message, ""));
+    }
     let note = wishlist_note(&series.name, tome.position, loc);
 
     let existing = match tome.isbn.as_deref() {
@@ -428,14 +489,13 @@ pub async fn add_to_wishlist(
             locale = loc,
             title = item.title.as_str()
         );
-        return Ok(Html(crate::utils::feedback_html_with_link(
+        return Ok(crate::utils::feedback_html_with_link(
             "info",
             &message,
             "",
             &format!("/wishlist/{}", item.id),
             &open_label,
-        ))
-        .into_response());
+        ));
     }
 
     let item_id = WishlistItemModel::create(
@@ -451,7 +511,7 @@ pub async fn add_to_wishlist(
         },
     )
     .await?;
-    crate::routes::wishlist::audit_wishlist_add(pool, &session, item_id, &tome.title).await;
+    crate::routes::wishlist::audit_wishlist_add(pool, session, item_id, &tome.title).await;
     tracing::info!(
         series_id = id,
         tome_id,
@@ -463,14 +523,13 @@ pub async fn add_to_wishlist(
         locale = loc,
         title = tome.title.as_str()
     );
-    Ok(Html(crate::utils::feedback_html_with_link(
+    Ok(crate::utils::feedback_html_with_link(
         "success",
         &message,
         "",
         &format!("/wishlist/{item_id}"),
         &open_label,
     ))
-    .into_response())
 }
 
 #[cfg(test)]
