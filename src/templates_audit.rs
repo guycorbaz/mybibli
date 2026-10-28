@@ -1069,8 +1069,8 @@ fn csrf_exempt_routes_frozen() {
 /// `showModal()` reach the top layer anyway; this pins the declarative
 /// `<dialog open>` fallback and every non-dialog surface.
 ///
-/// Scope: `class="…"` attributes in `templates/`, and multi-token string
-/// literals (`"…"`, `'…'`, `` `…` ``) in the first-party `static/js/*.js`
+/// Scope: `class="…"` attributes in `templates/`, and multi-token,
+/// single-line string literals (`"…"`, `'…'`, `` `…` ``) in the first-party `static/js/*.js`
 /// modules (vendored, minified and nested files excluded) whose
 /// whitespace-separated tokens include the exact token `fixed`. Not seen:
 /// one-token-per-argument `classList.add("fixed", …)`, responsive
@@ -1080,7 +1080,7 @@ fn csrf_exempt_routes_frozen() {
 fn fixed_surfaces_stack_above_sticky_nav() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let class_attr_re = Regex::new(r#"\bclass\s*=\s*"([^"]*)""#).unwrap();
-    let js_string_re = Regex::new(r#""([^"\n]*)"|'([^'\n]*)'|`([^`]*)`"#).unwrap();
+    let js_string_re = Regex::new(r#""([^"\n]*)"|'([^'\n]*)'|`([^`\n]*)`"#).unwrap();
 
     let mut fixed_surfaces = 0usize;
     let mut js_fixed_surfaces = 0usize;
@@ -1184,7 +1184,22 @@ fn inner_vertical_scrollers_reset_the_bar_scroll_margin() {
                 continue;
             }
             let tokens: Vec<&str> = cap[1].split_whitespace().collect();
-            if tokens.contains(&"overflow-y-auto") || tokens.contains(&"overflow-auto") {
+            // Base utility of each token, variant prefixes and `!` removed,
+            // so `md:overflow-y-auto` or `overflow-scroll!` count too.
+            let is_vertical_scroller = tokens.iter().any(|t| {
+                let base = t.rsplit(':').next().unwrap_or(t).trim_end_matches('!');
+                matches!(
+                    base,
+                    "overflow-y-auto" | "overflow-auto" | "overflow-y-scroll" | "overflow-scroll"
+                )
+            });
+            assert!(
+                !(cap[1].contains("{%") && cap[1].contains("overflow")),
+                "{}: a conditional overflow class cannot be audited — keep it literal: {}",
+                path.display(),
+                &cap[1]
+            );
+            if is_vertical_scroller {
                 scrollers += 1;
                 if !tokens.contains(&"**:scroll-mt-0!") {
                     let rel = path.strip_prefix(&root).unwrap_or(path);
@@ -1199,6 +1214,54 @@ fn inner_vertical_scrollers_reset_the_bar_scroll_margin() {
         violations.is_empty(),
         "inner vertical scrollers must reset the inherited bar scroll margin \
          with `**:scroll-mt-0!` (story 11-4, D-11-4-8):\n{}",
+        violations.join("\n")
+    );
+}
+
+/// Story 11-4 (D-11-4-8) — `**:scroll-mt-12` on `<main>` compiles to
+/// `:is(.cls *)`, same specificity as a plain utility and emitted later, so
+/// it silently beats any `scroll-m*` / `scroll-p*` utility written on an
+/// element inside `<main>`. Keep the scroll-offset utilities to the four on
+/// `<main>` (layouts/base.html) and the `**:scroll-mt-0!` reset on inner
+/// scrollers; anything else must be a deliberate change of this test.
+#[test]
+fn scroll_offset_utilities_stay_on_main_and_inner_scrollers() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let class_attr_re = Regex::new(r#"\bclass\s*=\s*"([^"]*)""#).unwrap();
+    let main_set = [
+        "scroll-mt-12",
+        "md:scroll-mt-14",
+        "**:scroll-mt-12",
+        "md:**:scroll-mt-14",
+    ];
+    let mut violations: Vec<String> = Vec::new();
+    visit(&root.join("templates"), &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let Ok(raw) = fs::read_to_string(path) else {
+            return;
+        };
+        let content = strip_html_comments(&raw);
+        let is_base = path.ends_with("layouts/base.html");
+        for cap in class_attr_re.captures_iter(&content) {
+            for t in cap[1].split_whitespace() {
+                let base = t.rsplit(':').next().unwrap_or(t).trim_end_matches('!');
+                if !(base.starts_with("scroll-m") || base.starts_with("scroll-p")) {
+                    continue;
+                }
+                let allowed = t == "**:scroll-mt-0!" || (is_base && main_set.contains(&t));
+                if !allowed {
+                    let rel = path.strip_prefix(&root).unwrap_or(path);
+                    violations.push(format!("  {} — `{t}`", rel.display()));
+                }
+            }
+        }
+    });
+    assert!(
+        violations.is_empty(),
+        "scroll-offset utilities outside <main>'s set are overridden by its \
+         `**:` rule (story 11-4, D-11-4-8):\n{}",
         violations.join("\n")
     );
 }

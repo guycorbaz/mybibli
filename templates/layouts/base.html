@@ -39,7 +39,11 @@
        `scroll-padding-top`: that would also apply to the controls inside
        the stuck bar, and Chromium then scrolls the page up by the padding
        every time one of them takes focus (Escape returning focus to the
-       hamburger, Shift+Tab into the nav) — D-11-4-8. #}
+       hamburger, Shift+Tab into the nav) — D-11-4-8.
+       Side effects, both pinned by templates_audit: the `**:` rule beats any
+       scroll-m*/scroll-p* utility on an element inside <main> (keep none);
+       scroll-margin applies to every scroll container, so inner vertical
+       scrollers reset it with `**:scroll-mt-0!`. #}
     <main id="main-content" class="scroll-mt-12 md:scroll-mt-14 **:scroll-mt-12 md:**:scroll-mt-14">
         {% block content %}{% endblock %}
     </main>

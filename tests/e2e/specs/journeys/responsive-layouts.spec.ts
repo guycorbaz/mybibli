@@ -205,7 +205,9 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
       await loginAs(page, "admin");
       for (const path of ["/", "/catalog", "/series", "/admin"]) {
         await page.goto(path);
-        await assertNavStuckAtTop(page, `${path} ${name}`);
+        const sample = await assertNavStuckAtTop(page, `${path} ${name}`);
+        // … and painted on top: hit testing at its centre lands in <header>.
+        expect(sample.headerCoveredAtCentre, `${path} ${name}: bar on top`).toBe(false);
       }
     });
   }
@@ -333,6 +335,56 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
     await expect(page.locator("#mobile-menu-toggle")).toBeFocused();
     const after = await settledScrollY(page);
     expect(Math.abs(after - before.scrollY), "the page must not jump").toBeLessThanOrEqual(1);
+  });
+
+  // D-11-4-8 — the bar offset is a scroll-margin on every element inside
+  // <main>, and scroll-margin applies to EVERY scroll container: inside an
+  // inner vertical scroller it would keep a focused row 48 px below the
+  // scroller's own top. Inner scrollers carry `**:scroll-mt-0!`. Real
+  // compiled classes; geometry through the CSSOM. The control box (no
+  // reset) proves the inherited margin is there in the first place.
+  test("inner scrollers inside <main> keep their rows in place on focus", async ({
+    page,
+  }) => {
+    await page.setViewportSize(DESKTOP);
+    await loginAs(page, "admin");
+    await page.goto("/series");
+    await page.waitForLoadState("load");
+    const scrollTops = await page.evaluate(async () => {
+      const frames = () =>
+        new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      const main = document.getElementById("main-content")!;
+      const make = (reset: boolean) => {
+        const box = document.createElement("div");
+        if (reset) box.className = "**:scroll-mt-0!";
+        box.style.maxHeight = "288px";
+        box.style.overflowY = "auto";
+        for (let i = 0; i < 20; i++) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = `row ${i}`;
+          b.style.display = "block";
+          b.style.height = "40px";
+          box.appendChild(b);
+        }
+        main.prepend(box);
+        return box;
+      };
+      const result: Record<string, number> = {};
+      for (const reset of [false, true]) {
+        window.scrollTo(0, 0);
+        const box = make(reset);
+        box.scrollTop = 200; // row 5 sits exactly at the box's top edge
+        await frames();
+        (box.children[5] as HTMLElement).focus();
+        await frames();
+        result[reset ? "reset" : "control"] = box.scrollTop;
+        box.remove();
+      }
+      return result;
+    });
+    expect(scrollTops.control, "without the reset the row is pushed 48 px down").toBeLessThan(200);
+    expect(scrollTops.reset, "with the reset the list stays put").toBe(200);
   });
 
   test("an open dialog renders above the stuck bar", async ({ page }) => {
