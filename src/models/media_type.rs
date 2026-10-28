@@ -30,6 +30,19 @@ pub enum MediaType {
     Report,
 }
 
+impl MediaType {
+    /// Every media type, in display order (story 11-7: the MCP schema
+    /// and its error messages are built from this list).
+    pub const ALL: [MediaType; 6] = [
+        MediaType::Book,
+        MediaType::Bd,
+        MediaType::Cd,
+        MediaType::Dvd,
+        MediaType::Magazine,
+        MediaType::Report,
+    ];
+}
+
 impl fmt::Display for MediaType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

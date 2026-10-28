@@ -28,6 +28,22 @@ impl GenreModel {
         Ok(row.map(|r| r.0).unwrap_or_default())
     }
 
+    /// Story 11-7 — the id of the live genre called `name`, compared
+    /// with the column collation (case- and accent-insensitive, as in
+    /// the web UI).
+    pub async fn find_active_id_by_name(
+        pool: &DbPool,
+        name: &str,
+    ) -> Result<Option<u64>, AppError> {
+        let row: Option<(u64,)> = sqlx::query_as(
+            "SELECT id FROM genres WHERE name = ? AND deleted_at IS NULL ORDER BY id LIMIT 1",
+        )
+        .bind(name)
+        .fetch_optional(pool)
+        .await?;
+        Ok(row.map(|r| r.0))
+    }
+
     pub async fn list_active(pool: &DbPool) -> Result<Vec<GenreModel>, AppError> {
         Self::list_all(pool).await
     }

@@ -119,12 +119,9 @@ fn row_to_title(row: sqlx::mysql::MySqlRow) -> Result<TitleModel, sqlx::Error> {
     })
 }
 
-impl TitleModel {
-    pub async fn find_by_isbn(pool: &DbPool, isbn: &str) -> Result<Option<TitleModel>, AppError> {
-        tracing::debug!(isbn = %isbn, "Looking up title by ISBN");
-
-        let row = sqlx::query(
-            r#"SELECT id, title, original_title, subtitle, statement_of_responsibility,
+/// Full `TitleModel` projection of the live titles carrying one ISBN
+/// (bind: the ISBN). Shared by `find_by_isbn` and `list_by_isbn`.
+const SELECT_LIVE_BY_ISBN: &str = r#"SELECT id, title, original_title, subtitle, statement_of_responsibility,
                       description, general_note, language,
                       media_type, publication_date, publisher,
                       edition_statement, collection_title, collection_number,
@@ -134,17 +131,36 @@ impl TitleModel {
                       age_rating, issue_number,
                       CAST(manually_edited_fields AS CHAR) as manually_edited_fields, version
                FROM titles
-               WHERE isbn = ? AND deleted_at IS NULL
-               LIMIT 1"#,
-        )
-        .bind(isbn)
-        .fetch_optional(pool)
-        .await?;
+               WHERE isbn = ? AND deleted_at IS NULL"#;
+
+impl TitleModel {
+    pub async fn find_by_isbn(pool: &DbPool, isbn: &str) -> Result<Option<TitleModel>, AppError> {
+        tracing::debug!(isbn = %isbn, "Looking up title by ISBN");
+
+        let row = sqlx::query(&format!("{SELECT_LIVE_BY_ISBN} LIMIT 1"))
+            .bind(isbn)
+            .fetch_optional(pool)
+            .await?;
 
         match row {
             Some(r) => Ok(Some(row_to_title(r)?)),
             None => Ok(None),
         }
+    }
+
+    /// Story 11-7 — every live title carrying `isbn`, oldest first.
+    /// `titles.isbn` has no UNIQUE key (the scan flow prevents duplicates,
+    /// a manual edit does not), so an agent's exact lookup must see them
+    /// all.
+    pub async fn list_by_isbn(pool: &DbPool, isbn: &str) -> Result<Vec<TitleModel>, AppError> {
+        let rows = sqlx::query(&format!("{SELECT_LIVE_BY_ISBN} ORDER BY id ASC"))
+            .bind(isbn)
+            .fetch_all(pool)
+            .await?;
+        Ok(rows
+            .into_iter()
+            .map(row_to_title)
+            .collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Story 9-9 — narrow lookup returning ONLY the title id for a
@@ -1291,7 +1307,7 @@ impl TitleModel {
              FROM titles t \
              LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL{} \
              WHERE {} \
-             ORDER BY {} {} \
+             ORDER BY {} {}, t.id ASC \
              LIMIT ? OFFSET ?",
             extra_join, where_clause, sql_order_col, sort_dir
         );

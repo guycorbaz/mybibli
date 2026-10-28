@@ -92,6 +92,24 @@ so that I can identify what I could propose.
 
 Claude Opus 5.5 (claude-opus-5-5)
 
+### Review Findings
+
+Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor, full mode): 0 High, 10 Medium, ~20 Low.
+
+- [x] [Review][Patch] (Medium) An existing ISBN / volume label that failed the filters fell through to a text search on the digits — now an empty page (D-11-7-9) [src/services/search.rs]
+- [x] [Review][Patch] (Medium) Duplicate ISBNs hidden by `find_by_isbn … LIMIT 1` — `TitleModel::list_by_isbn`, all live titles returned and paged [src/models/title.rs, src/services/search.rs]
+- [x] [Review][Patch] (Medium) Hyphenated / spaced ISBNs read as text — `compact_code` strips separators when the result is ISBN-shaped
+- [x] [Review][Patch] (Medium) No tie-breaker in the title order: paging could repeat or skip equal titles — `ORDER BY …, t.id ASC`
+- [x] [Review][Patch] (Medium) Media-type list hard-coded three times — `MediaType::ALL` feeds the schema enum and the error message
+- [x] [Review][Patch] (Medium) `genre` / `media_type` unbounded and echoed back — capped at 200 characters; empty-genre-list message
+- [x] [Review][Patch] (Medium) No-SQL walk test weak (`//` split cut URLs, case/whitespace gaps) — whole comment lines only, keyword + any whitespace, lower-case `select … from`, sqlx API names; self-test of the detector
+- [x] [Review][Patch] (Medium) Non-object `arguments` never reach the tool over the wire — pinned as a JSON-RPC error (D-11-7-8)
+- [x] [Review][Patch] (Medium→Low) E2E loop variable shadowed the `page` fixture — renamed (the author is a single exact-name row, so the 10-page bound is ample)
+- [x] [Review][Patch] (Low) Genre matching accent-sensitive unlike the UI — DB collation (D-11-7-10); query bound applied before trimming like `maxLength`; tests for soft-deleted series / series links / primary contributor, upper-case media type over the wire, V-code with mismatching filter, equal-title paging, duplicate ISBNs
+- [x] [Review][Defer] (Low) `src/models/title.rs` at 1942 lines → #516
+- [x] [Review][Defer] (Low, pre-existing) `enrich_title` hides lookup errors behind defaults → #517
+- Dismissed: `page: 2.0` (schema says integer; clients send integers); `has_cover` not checking the file on disk (documented predicate, same as the UI filter); malformed `manually_edited_fields` read as `[]` (pre-existing, logged at WARN); count/page not in one snapshot (household scale, same as the web lists); LIKE escaping under `NO_BACKSLASH_ESCAPES` (mode not used); `page_size` constant in the response (same constant as the query); FULLTEXT short tokens (unchanged web behaviour); description-length assertions (deliberate AC7 guard).
+
 ### Debug Log References
 
 - `cargo fmt -- <files>` formatted the whole crate (main is not fmt-clean); unrelated files were restored and only this story's hunks kept.
@@ -111,7 +129,7 @@ Claude Opus 5.5 (claude-opus-5-5)
 - src/mcp/mod.rs, src/mcp/tools/mod.rs, src/mcp/tools/get_title.rs
 - src/mcp/tools/args.rs, src/mcp/tools/search_titles.rs, src/mcp/tools/search_contributors.rs (new)
 - src/services/search.rs, src/services/title_detail.rs, src/services/contributor.rs
-- src/models/title.rs, src/models/contributor.rs
+- src/models/title.rs, src/models/contributor.rs, src/models/genre.rs, src/models/media_type.rs
 - tests/common/mod.rs, tests/common/mcp.rs, tests/mcp_catalog_read_tools.rs (new); tests/mcp_endpoint.rs
 - tests/e2e/helpers/mcp.ts, tests/e2e/specs/journeys/mcp-read-tools.spec.ts (new); tests/e2e/specs/journeys/mcp-endpoint.spec.ts
 - docs/route-role-matrix.md

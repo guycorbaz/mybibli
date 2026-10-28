@@ -584,3 +584,144 @@ async fn invalid_arguments_are_tool_errors_not_protocol_errors(pool: DbPool) {
         .await;
     assert!(msg.contains("book, bd, cd, dvd, magazine, report"), "{msg}");
 }
+
+// ─── Review round 1 ──────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_existing_identifier_never_turns_into_a_text_match(pool: DbPool) {
+    let bd = add_title(&pool, "Gaston", "bd", "BD", Some("9782800101504")).await;
+    add_volume(&pool, bd, "V0301", None).await;
+    // A book whose description quotes the BD's ISBN and volume label.
+    let book = add_title(&pool, "Guide Gaston", "book", "Roman", None).await;
+    sqlx::query("UPDATE titles SET description = 'Voir 9782800101504 et V0301' WHERE id = ?")
+        .bind(book)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let agent = Agent::new(&pool).await;
+
+    for query in ["9782800101504", "V0301"] {
+        let page = agent
+            .ok(
+                "search_titles",
+                json!({"query": query, "media_type": "book"}),
+            )
+            .await;
+        assert_eq!(ids(&page), Vec::<u64>::new(), "{query}: {page}");
+        assert_eq!(page["total_items"], 0);
+        let page = agent
+            .ok("search_titles", json!({"query": query, "media_type": "BD"}))
+            .await;
+        assert_eq!(ids(&page), [bd], "{query}: upper-case media type accepted");
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_isbn_shared_by_two_titles_returns_both_and_hyphens_are_ignored(pool: DbPool) {
+    let first = add_title(&pool, "Édition 1", "book", "Roman", Some("9782070360246")).await;
+    let second = add_title(&pool, "Édition 2", "book", "Roman", Some("9782070360246")).await;
+    let agent = Agent::new(&pool).await;
+
+    let page = agent
+        .ok("search_titles", json!({"query": "9782070360246"}))
+        .await;
+    assert_eq!(ids(&page), [first, second]);
+    assert_eq!(page["total_items"], 2);
+    for query in ["978-2-07-036024-6", "978 2 07 036024 6", "2-07-036024-5"] {
+        let page = agent.ok("search_titles", json!({"query": query})).await;
+        assert_eq!(ids(&page), [first, second], "{query}");
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn paging_titles_with_equal_names_neither_repeats_nor_skips(pool: DbPool) {
+    let mut all = Vec::new();
+    for _ in 0..27 {
+        all.push(add_title(&pool, "Tome 1", "bd", "BD", None).await);
+    }
+    let agent = Agent::new(&pool).await;
+    let mut seen = ids(&agent.ok("search_titles", json!({"query": "Tome"})).await);
+    seen.extend(ids(&agent
+        .ok("search_titles", json!({"query": "Tome", "page": 2}))
+        .await));
+    assert_eq!(seen, all, "ties broken by id");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn genre_names_ignore_case_and_accents(pool: DbPool) {
+    sqlx::query("INSERT INTO genres (name) VALUES ('Poésie')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let poems = add_title(&pool, "Les Fleurs du mal", "book", "Poésie", None).await;
+    let agent = Agent::new(&pool).await;
+    for genre in ["Poésie", "poesie", "POÉSIE"] {
+        let page = agent.ok("search_titles", json!({"genre": genre})).await;
+        assert_eq!(ids(&page), [poems], "{genre}");
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn soft_deleted_series_and_contributors_stay_hidden(pool: DbPool) {
+    let id = add_title(&pool, "Le Sceptre d'Ottokar", "bd", "BD", None).await;
+    let gone = add_contributor(&pool, "Auteur Effacé").await;
+    credit(&pool, id, gone, "Auteur").await;
+    soft_delete(&pool, "contributors", gone).await;
+    let live = add_contributor(&pool, "Hergé").await;
+    credit(&pool, id, live, "Illustrateur").await;
+
+    let mut series_ids = Vec::new();
+    for name in ["Série supprimée", "Série au lien supprimé", "Série vivante"] {
+        let sid = sqlx::query("INSERT INTO series (name) VALUES (?)")
+            .bind(name)
+            .execute(&pool)
+            .await
+            .unwrap()
+            .last_insert_id();
+        let link = sqlx::query(
+            "INSERT INTO title_series (title_id, series_id, position_number) VALUES (?, ?, 8)",
+        )
+        .bind(id)
+        .bind(sid)
+        .execute(&pool)
+        .await
+        .unwrap()
+        .last_insert_id();
+        series_ids.push((sid, link));
+    }
+    soft_delete(&pool, "series", series_ids[0].0).await;
+    soft_delete(&pool, "title_series", series_ids[1].1).await;
+    let agent = Agent::new(&pool).await;
+
+    let doc = agent.ok("get_title", json!({"id": id})).await;
+    assert_eq!(
+        doc["series"],
+        json!([{"series_id": series_ids[2].0, "series_name": "Série vivante",
+                "position": 8, "is_omnibus": false, "end_position": null}])
+    );
+    let page = agent.ok("search_titles", json!({"query": "Ottokar"})).await;
+    assert_eq!(page["items"][0]["primary_contributor"], "Hergé");
+}
+
+/// Arguments that are not a JSON object never reach a tool: the MCP
+/// schema types `arguments` as an object, so the transport refuses the
+/// request with a JSON-RPC error (D-11-7-8). Nothing is executed.
+#[sqlx::test(migrations = "./migrations")]
+async fn non_object_arguments_are_refused_by_the_transport(pool: DbPool) {
+    let agent = Agent::new(&pool).await;
+    for args in [json!([1]), json!("Tintin"), json!(3)] {
+        let res = send_json(
+            &agent.app,
+            Call::new(
+                &agent.key,
+                json!({"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+                       "params": {"name": "search_titles", "arguments": args}}),
+            )
+            .version(V_LEGACY),
+        )
+        .await;
+        assert!(res["result"].is_null(), "{res}");
+        // rmcp 3.8.0 cannot decode the params and answers -32601.
+        assert!(res["error"]["code"].is_i64(), "{res}");
+    }
+}

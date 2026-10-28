@@ -1,10 +1,10 @@
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::PaginatedList;
 use crate::models::contributor::TitleContributorModel;
 use crate::models::genre::GenreModel;
 use crate::models::title::{SearchResult, TitleModel};
 use crate::models::volume::VolumeModel;
+use crate::models::{DEFAULT_PAGE_SIZE, PaginatedList};
 
 /// Detected code type from search input.
 #[derive(Debug, PartialEq)]
@@ -252,13 +252,15 @@ impl SearchService {
         }
     }
 
-    /// Story 11-7 — resolve a genre name (case-insensitive, surrounding
-    /// spaces ignored) among the live genres.
+    /// Story 11-7 — resolve a genre name among the live genres (the
+    /// column collation decides: case- and accent-insensitive).
     pub async fn resolve_genre(pool: &DbPool, name: &str) -> Result<GenreLookup, AppError> {
-        let genres = GenreModel::list_active(pool).await?;
-        Ok(match_genre(
-            genres.into_iter().map(|g| (g.id, g.name)).collect(),
-            name,
+        if let Some(id) = GenreModel::find_active_id_by_name(pool, name.trim()).await? {
+            return Ok(GenreLookup::Found(id));
+        }
+        let known = GenreModel::list_active(pool).await?;
+        Ok(GenreLookup::Unknown(
+            known.into_iter().map(|g| g.name).collect(),
         ))
     }
 
@@ -270,22 +272,32 @@ impl SearchService {
     ) -> Result<PaginatedList<SearchResult>, AppError> {
         let page = search.page.max(1);
         let trimmed = search.query.trim();
-        let exact = match detect_code(trimmed) {
+        let exact: Option<Vec<TitleModel>> = match detect_code(&compact_code(trimmed)) {
             CodeType::VCode(code) => VolumeModel::find_by_label_with_title(pool, &code)
                 .await?
-                .map(|(_volume, title)| title),
-            CodeType::Isbn(isbn) => TitleModel::find_by_isbn(pool, &isbn).await?,
+                .map(|(_volume, title)| vec![title]),
+            CodeType::Isbn(isbn) => {
+                Some(TitleModel::list_by_isbn(pool, &isbn).await?).filter(|t| !t.is_empty())
+            }
             CodeType::LCode(_) | CodeType::Text => None,
         };
-        if let Some(title) = exact
-            && catalog_filters_match(search, &title)
-        {
-            let items = if page == 1 {
-                vec![Self::enrich_title(pool, &title).await]
-            } else {
-                Vec::new()
-            };
-            return Ok(PaginatedList::new(items, page, 1, None, None, None));
+        // An identifier that exists answers exactly — never a fuzzy text
+        // match on the digits, even when the filters exclude it.
+        if let Some(titles) = exact {
+            let hits: Vec<TitleModel> = titles
+                .into_iter()
+                .filter(|t| catalog_filters_match(search, t))
+                .collect();
+            let total = hits.len() as u64;
+            let mut items = Vec::new();
+            for title in hits
+                .iter()
+                .skip(((page - 1) * DEFAULT_PAGE_SIZE) as usize)
+                .take(DEFAULT_PAGE_SIZE as usize)
+            {
+                items.push(Self::enrich_title(pool, title).await);
+            }
+            return Ok(PaginatedList::new(items, page, total, None, None, None));
         }
         TitleModel::active_search(
             pool,
@@ -331,15 +343,20 @@ impl SearchService {
     }
 }
 
-/// Pure part of [`SearchService::resolve_genre`].
-fn match_genre(genres: Vec<(u64, String)>, name: &str) -> GenreLookup {
-    let wanted = name.trim().to_lowercase();
-    match genres
-        .iter()
-        .find(|(_, n)| n.trim().to_lowercase() == wanted)
-    {
-        Some((id, _)) => GenreLookup::Found(*id),
-        None => GenreLookup::Unknown(genres.into_iter().map(|(_, n)| n).collect()),
+/// An identifier as an agent may copy it — `978-2-07-036024-6`,
+/// `2 07 036024 X` — without its hyphens and spaces, when what remains
+/// is shaped like an ISBN-10/13; any other query is returned unchanged
+/// (a title containing a hyphen stays text).
+fn compact_code(query: &str) -> String {
+    let compact: String = query.chars().filter(|c| !matches!(c, '-' | ' ')).collect();
+    let isbn_shaped = (compact.len() == 13 && compact.chars().all(|c| c.is_ascii_digit()))
+        || (compact.len() == 10
+            && compact.as_bytes()[..9].iter().all(u8::is_ascii_digit)
+            && compact.ends_with(|c: char| c.is_ascii_digit() || c == 'X' || c == 'x'));
+    if compact.len() != query.len() && isbn_shaped {
+        compact
+    } else {
+        query.to_string()
     }
 }
 
@@ -389,16 +406,16 @@ mod tests {
     }
 
     #[test]
-    fn match_genre_is_case_insensitive_and_lists_names_on_miss() {
-        let genres = vec![(1, "Roman".to_string()), (2, "Bande dessinée".to_string())];
-        assert_eq!(
-            match_genre(genres.clone(), " BANDE DESSINÉE "),
-            GenreLookup::Found(2)
-        );
-        assert_eq!(
-            match_genre(genres, "Poésie"),
-            GenreLookup::Unknown(vec!["Roman".into(), "Bande dessinée".into()])
-        );
+    fn compact_code_strips_separators_from_isbn_shapes_only() {
+        assert_eq!(compact_code("978-2-07-036024-6"), "9782070360246");
+        assert_eq!(compact_code("978 2 07 036024 6"), "9782070360246");
+        assert_eq!(compact_code("2-07-036024-x"), "207036024x");
+        assert_eq!(compact_code("9782070360246"), "9782070360246");
+        assert_eq!(compact_code("Spider-Man"), "Spider-Man");
+        assert_eq!(compact_code("1984 - 2001"), "1984 - 2001");
+        assert_eq!(compact_code("V0042"), "V0042");
+        // Multi-byte input never panics on the byte slice.
+        assert_eq!(compact_code("é-é-é-é-é"), "é-é-é-é-é");
     }
 
     #[test]

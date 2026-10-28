@@ -313,3 +313,21 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 **Chosen:** move them to `tests/common/mcp.rs` (`mod common;` in both files); same for the E2E `mcpPost` → `tests/e2e/helpers/mcp.ts`.
 **Rejected:** copying them (Rule #1); one 1 100-line test file.
 **Reversible:** yes.
+
+### D-11-7-8 — Non-object `arguments` are a transport-level JSON-RPC error
+**Context:** the story's AC8 listed "non-object arguments" among the cases answered with `isError: true`. Review round 1 showed that rmcp 3.8.0 types `arguments` as a JSON object and answers `-32601` before any tool runs.
+**Chosen:** accept the transport behaviour (the MCP schema itself types `arguments` as an object; nothing is executed) and pin it with an integration test; `args::parse_object` keeps its non-object guard for a future transport (AR27 seam).
+**Rejected:** a custom `tools/call` deserializer in `transport.rs` to turn it into `isError` (fights the SDK for a malformed request no conforming client sends).
+**Departs from the story's AC8 wording** (not from epics.md).
+**Reversible:** yes.
+
+### D-11-7-9 — Exact identifiers answer exactly (supersedes part of D-11-7-3)
+**Context:** review round 1 — an ISBN or volume label that exists but fails the filters fell through to a text search on the digits; `titles.isbn` has no UNIQUE key, so `find_by_isbn … LIMIT 1` hid duplicates; agents copy hyphenated ISBNs; title pages had no tie-breaker.
+**Chosen:** an identifier that exists returns only its titles (all live titles sharing an ISBN, via `TitleModel::list_by_isbn`), filtered, or an empty page — never a text match; an unknown identifier still falls through to text. Hyphens and spaces are stripped when what remains is ISBN-shaped. `active_search` orders `…, t.id ASC` — this also makes the web search order deterministic among equal titles (no visible change otherwise).
+**Rejected:** leaving the web search order non-deterministic (agent paging repeats or skips titles).
+**Reversible:** yes.
+
+### D-11-7-10 — Genre names resolved by the column collation (refines D-11-7-5)
+**Context:** review round 1 — Rust `to_lowercase` is accent-sensitive while the web UI (MariaDB `*_ci` collation) is not.
+**Chosen:** `GenreModel::find_active_id_by_name` (`name = ?`, collation decides: case- and accent-insensitive); the list of names is only loaded for the "unknown genre" message. `genre` and `media_type` are capped at 200 characters like `query` (they are echoed in error messages); the bound applies to the value as sent, like the schema's `maxLength`.
+**Reversible:** yes.

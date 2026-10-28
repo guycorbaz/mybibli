@@ -40,15 +40,22 @@ pub fn page(page: Option<u32>) -> Result<u32, ToolError> {
     }
 }
 
-/// Validate an optional free-text query; absent means empty.
-pub fn query(query: Option<String>) -> Result<String, ToolError> {
-    let q = query.unwrap_or_default().trim().to_string();
-    if q.chars().count() > MAX_QUERY_CHARS {
+/// Validate an optional string argument named `name`: at most
+/// [`MAX_QUERY_CHARS`] characters as sent (the schema's `maxLength`),
+/// then trimmed; absent means empty. The value is never echoed back.
+pub fn text(name: &str, value: Option<String>) -> Result<String, ToolError> {
+    let value = value.unwrap_or_default();
+    if value.chars().count() > MAX_QUERY_CHARS {
         return Err(ToolError::InvalidArguments(format!(
-            "`query` must be at most {MAX_QUERY_CHARS} characters"
+            "`{name}` must be at most {MAX_QUERY_CHARS} characters"
         )));
     }
-    Ok(q)
+    Ok(value.trim().to_string())
+}
+
+/// [`text`] for the `query` argument.
+pub fn query(query: Option<String>) -> Result<String, ToolError> {
+    text("query", query)
 }
 
 #[cfg(test)]
@@ -97,5 +104,10 @@ mod tests {
         assert_eq!(query(Some("  Camus ".into())), Ok("Camus".into()));
         assert!(query(Some("é".repeat(MAX_QUERY_CHARS))).is_ok());
         assert!(query(Some("é".repeat(MAX_QUERY_CHARS + 1))).is_err());
+        // The bound applies to the value as sent, like `maxLength`.
+        assert!(query(Some(format!(" {} ", "a".repeat(MAX_QUERY_CHARS)))).is_err());
+        assert_eq!(text("genre", Some(" BD ".into())), Ok("BD".into()));
+        let long = text("genre", Some("g".repeat(MAX_QUERY_CHARS + 1))).unwrap_err();
+        assert!(long.message().contains("`genre`") && !long.message().contains("ggg"));
     }
 }

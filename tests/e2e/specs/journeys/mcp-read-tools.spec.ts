@@ -77,15 +77,15 @@ test.describe("Story 11-7 — MCP catalog read tools", () => {
       // search_contributors: the author is listed with at least this title.
       await expect
         .poll(async () => {
-          for (let page = 1; page <= 10; page++) {
+          for (let p = 1; p <= 10; p++) {
             const res = await mcpCallTool(agent, key, "search_contributors", {
               query: author!.name,
-              page,
+              page: p,
             });
             expect(res.isError).toBe(false);
             const hit = res.structuredContent.items.find((c: { id: number }) => c.id === author!.id);
             if (hit) return hit.title_count;
-            if (page >= res.structuredContent.total_pages) break;
+            if (p >= res.structuredContent.total_pages) break;
           }
           return 0;
         })
