@@ -1162,11 +1162,15 @@ fn fixed_surfaces_stack_above_sticky_nav() {
 /// would keep a focused row 48/56 px below the list's own top and shift the
 /// list. Each inner vertical scroller must reset it with `**:scroll-mt-0!`
 /// (the `!` beats both breakpoints of the inherited rule). The mobile menu
-/// lives in `<header>`, outside `<main>`, and is exempt.
+/// lives in `<header>`, outside `<main>`, and is exempt. Detected: the
+/// `overflow-{,y-}{auto,scroll}` utilities (any variant, either `!` form);
+/// not detected: a bounded `overflow-x-auto` / `overflow-hidden` box or a
+/// `<dialog>` inside `<main>` (none exist — modals mount outside `<main>`).
 #[test]
 fn inner_vertical_scrollers_reset_the_bar_scroll_margin() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let tag_re = Regex::new(r#"<[a-zA-Z][^>]*\bclass\s*=\s*"([^"]*)"[^>]*>"#).unwrap();
+    // Every class attribute (both branches of an Askama if/else included).
+    let class_attr_re = Regex::new(r#"\bclass\s*=\s*"([^"]*)""#).unwrap();
 
     let mut scrollers = 0usize;
     let mut violations: Vec<String> = Vec::new();
@@ -1177,17 +1181,22 @@ fn inner_vertical_scrollers_reset_the_bar_scroll_margin() {
         let Ok(raw) = fs::read_to_string(path) else {
             return;
         };
+        // The mobile menu (`#mobile-nav`) lives in <header>, outside <main>.
+        if path.ends_with("components/nav_bar.html") {
+            return;
+        }
         let content = strip_html_comments(&raw);
-        for cap in tag_re.captures_iter(&content) {
-            let tag = cap.get(0).map_or("", |m| m.as_str());
-            if tag.contains("id=\"mobile-nav\"") {
-                continue;
-            }
+        for cap in class_attr_re.captures_iter(&content) {
             let tokens: Vec<&str> = cap[1].split_whitespace().collect();
             // Base utility of each token, variant prefixes and `!` removed,
             // so `md:overflow-y-auto` or `overflow-scroll!` count too.
             let is_vertical_scroller = tokens.iter().any(|t| {
-                let base = t.rsplit(':').next().unwrap_or(t).trim_end_matches('!');
+                let base = t
+                    .rsplit(':')
+                    .next()
+                    .unwrap_or(t)
+                    .trim_end_matches('!')
+                    .trim_start_matches(['!', '-']);
                 matches!(
                     base,
                     "overflow-y-auto" | "overflow-auto" | "overflow-y-scroll" | "overflow-scroll"
@@ -1249,7 +1258,12 @@ fn scroll_offset_utilities_stay_on_main_and_inner_scrollers() {
         let is_base = path.ends_with("layouts/base.html");
         for cap in class_attr_re.captures_iter(&content) {
             for t in cap[1].split_whitespace() {
-                let base = t.rsplit(':').next().unwrap_or(t).trim_end_matches('!');
+                let base = t
+                    .rsplit(':')
+                    .next()
+                    .unwrap_or(t)
+                    .trim_end_matches('!')
+                    .trim_start_matches(['!', '-']);
                 if !(base.starts_with("scroll-m") || base.starts_with("scroll-p")) {
                     continue;
                 }

@@ -1,6 +1,6 @@
 # Story 11.4: Sticky navigation bar
 
-Status: review
+Status: done
 
 GitHub issue: #496 (type:change-request). Covers: FR125. Epic 11 — fourth story (production fix bundled in the epic; ships in the release that closes epic 11, not in a patch).
 
@@ -108,6 +108,8 @@ Fourth pass 2026-10-28 (Rule #6, 3 layers): 0 decision-needed, 6 patch (3 Medium
 
 Fourth-pass dismissed: the reset also drops the page-level offset for saved-search rows (accepted trade-off — rows of a 288 px dropdown panel near the top of the home page; recorded in D-11-4-8); overlay E2E racing `connection-monitor.js` (not possible: `dismissOverlay()` returns early unless the monitor showed the overlay itself); `<dialog>` as a default scroll container inside `<main>` (every dialog mounts in `#modal-slot` / `#admin-modal-slot` or is the cheat sheet, all outside `<main>`); doubled `#[cfg(test)]` (existing pattern).
 
+Fifth pass 2026-10-28 (Rule #6, 3 layers): **no High or Medium finding — clean.** 4 Low patched: leading `!` / `-` utility forms now recognised by both scroller/offset audits; the scroller audit reads every `class` attribute (both Askama branches) and exempts `nav_bar.html` by path; its doc comment states what it does not detect (bounded `overflow-x-auto` / `overflow-hidden`, `<dialog>` in `<main>` — none exist); File List and T5 counts aligned.
+
 Dismissed (main ones, first pass): existing `sticky top-0` content elements hidden under the bar (none exist — grep); scroll padding ignoring the open mobile panel (the panel traps focus and closes on link click); `#[cfg(test)]` doubled (existing `home_fold_tests.rs` pattern); `body h-full` hypothetical; series detail vs list (D-11-4-6); `md` panel bound not E2E-tested (render test + same mechanism as below `md`); wishlist print page not E2E-tested (no bar by construction); a11y change and bounded panel outside the issue (D-11-4-7, D-11-4-3, recorded).
 
 ## Dev Notes
@@ -159,9 +161,9 @@ claude-opus-5-5
 - T1–T3: `<header class="sticky top-0 z-40 print:static">`; content offset `<main id="main-content" class="scroll-mt-12 md:scroll-mt-14 **:scroll-mt-12 md:**:scroll-mt-14">` (first shipped as `scroll-pt-*` on `<html>`, replaced in re-review — D-11-4-8); `#mobile-nav` bounded to the viewport below the bar (`vh` fallback, `dvh` under `supports-`), `overflow-y-auto overscroll-contain`. Comments cite #496. No JS, no inline style.
 - T4: `src/routes/nav_sticky_tests.rs` (5 render tests: sticky header classes for the three roles, content scroll margin = bar heights and no root scroll padding, bounded mobile panel, navigation not compacted, only the desktop language form is a named landmark) + three audits in `src/templates_audit.rs`: `fixed_surfaces_stack_above_sticky_nav` (every `fixed` class list in `templates/` and `static/js` carries `z-50`), `inner_vertical_scrollers_reset_the_bar_scroll_margin`, `scroll_offset_utilities_stay_on_main_and_inner_scrollers`. The layout tests were red before T1–T3.
 - Surfaced by the new axe check with the mobile menu open: the desktop and mobile language forms were two form landmarks with the same `aria-label` (axe `landmark-unique`, pre-existing, only visible with the menu open). Fixed in-story by dropping the `aria-label` on the mobile copy (its `<select>` keeps its sr-only label) — D-11-4-7.
-- T5: `responsive-layouts.spec.ts` describe "Story 11-4 — sticky navigation bar", 15 tests after review: bar stuck after scrolling on `/`, `/catalog`, `/series`, `/admin` at 375/768/1280; skip-link target below the bar (375/768/1280); stuck mobile menu usable, above content, last entry reachable, axe-clean (375×667, 667×375, 768×1024); focusing a bar control / closing the menu with Escape does not move the page; top-layer dialog and plain `z-50` overlay above the bar; print → `position: static`. Scroll and measurement happen in one evaluate (a late native autofocus can reset the scroll). Spec stable over `--repeat-each=5` (85/85); mutation-checked (see Review Findings).
+- T5: `responsive-layouts.spec.ts` describe "Story 11-4 — sticky navigation bar", 15 tests after review: bar stuck after scrolling on `/`, `/catalog`, `/series`, `/admin` at 375/768/1280; skip-link target below the bar (375/768/1280); stuck mobile menu usable, above content, last entry reachable, axe-clean (375×667, 667×375, 768×1024); focusing a bar control / closing the menu with Escape does not move the page; an inner scroller with `**:scroll-mt-0!` keeps its rows in place on focus (control box without it shifts); top-layer dialog and plain `z-50` overlay above the bar; print → `position: static`. Scroll and measurement happen in one evaluate (a late native autofocus can reset the scroll). Spec stable over `--repeat-each=5` (85/85); mutation-checked (see Review Findings).
 - T6 gates (2026-10-28, heavy commands under `mem-guard`): `cargo clippy --all-targets -- -D warnings` clean; `cargo test -j 2 --no-fail-fast` against the test DB — 61 binaries, 1,615 passed, 0 failed; `cargo sqlx prepare --check --workspace -- --all-targets` clean; flake grep clean; `tsc --noEmit` clean. Full E2E after `e2e-reset.sh`, `CI=true --workers=2`: **351 passed, 2 skipped, 1 flaky** (`shelving.spec.ts:193`, known #499, green on retry).
-- Gates re-run on the final code after the re-review (2026-10-28): clippy `-D warnings` clean; `cargo test --no-fail-fast` (`-j 1` — a `-j 2` attempt was killed by mem-guard under station-wide memory pressure) — 61 binaries, 1,615 passed, 0 failed; sqlx check clean; flake grep clean; `tsc --noEmit` clean; full E2E after `e2e-reset.sh`, `CI=true --workers=2`: **357 passed, 2 skipped, 0 failed, 0 flaky**.
+- Final gates on the merged-candidate code (2026-10-28, after the fifth review pass): clippy `-D warnings` clean; `cargo test -j 1 --no-fail-fast` against the test DB — 61 binaries, **1,617 passed, 0 failed**; `cargo sqlx prepare --check` clean; flake grep clean; `tsc --noEmit` clean; full E2E after `e2e-reset.sh`, `CI=true --workers=2`: **358 passed, 2 skipped, 0 failed, 0 flaky**. (A `-j 2` cargo run was killed once by mem-guard under station-wide memory pressure; `-j 1` used since.)
 
 ### File List
 
@@ -169,9 +171,9 @@ claude-opus-5-5
 - `templates/layouts/base.html` — content scroll margin on `<main>`
 - `src/routes/nav_sticky_tests.rs` — new, 5 render tests
 - `src/routes/mod.rs` — test module wiring
-- `src/templates_audit.rs` — `fixed` surfaces z-order invariant (templates + static/js); inner-scroller scroll-margin reset invariant
+- `src/templates_audit.rs` — `fixed` surfaces z-order invariant (templates + static/js); inner-scroller scroll-margin reset invariant; scroll-offset utilities confined to `<main>`'s set
 - `templates/fragments/saved_searches_list.html`, `templates/pages/loans.html`, `templates/components/contributor_form.html` — `**:scroll-mt-0!` on inner vertical scrollers
-- `tests/e2e/specs/journeys/responsive-layouts.spec.ts` — 14 E2E tests
+- `tests/e2e/specs/journeys/responsive-layouts.spec.ts` — 15 E2E tests
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — 11-4 → review
 - `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md` — § 11-4
 
@@ -183,3 +185,4 @@ claude-opus-5-5
 - 2026-10-28 — Re-review (Rule #6): 4 patches (2 Medium: root scroll-padding focus jump → `scroll-margin-top` on content, stale records), 8 dismissed.
 - 2026-10-28 — Third pass (Rule #6): 5 patches (inner scrollers reset the inherited scroll margin; records aligned), 2 dismissed.
 - 2026-10-28 — Fourth pass (Rule #6): 6 patches (test/audit strength: behavioural E2E for the inner-scroller reset, audit of scroll-offset utilities, wider scroller detection, bar hit-test in the page sweep, records); 4 dismissed.
+- 2026-10-28 — Fifth pass (Rule #6): clean (no Medium+); 4 Low patched; status → done.

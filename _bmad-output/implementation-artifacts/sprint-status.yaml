@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-10-28 (story 11-4 sticky navigation bar (#496) → review)
+# last_updated: 2026-10-28 (story 11-4 sticky navigation bar (#496) → done)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -221,7 +221,7 @@ development_status:
   11-1-isbn10-at-scan: done
   11-2-loc-via-sru: done
   11-3-recent-additions-triangle: done
-  11-4-sticky-navigation-bar: review
+  11-4-sticky-navigation-bar: done
   11-5-propose-api-key-scope: backlog
   11-6-mcp-endpoint-rmcp-spike: backlog
   11-7-mcp-catalog-read-tools: backlog
