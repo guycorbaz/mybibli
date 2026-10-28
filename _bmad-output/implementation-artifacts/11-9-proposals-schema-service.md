@@ -1,6 +1,6 @@
 # Story 11.9: Proposals schema and service
 
-Status: in-progress
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR134, FR140, NFR47, AR29. Epic 11 — ninth story; blocks every proposal story (11-12 series tools, 11-13 metadata, 11-14 cover, 11-15 history, 11-16..11-19 proposals page). No MCP tool, no route, no template, no locale key in this story: it lays the schema and the service the next stories call.
 
@@ -40,13 +40,13 @@ so that I can review it safely later.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Migration `20261028120000_create_proposals.sql` (AC1).
-- [ ] T2 — Model `src/models/proposal.rs`: `ProposalKind`, `ProposalStatus` (+ `can_transition_to`), `ProposalTargetTable`, row structs, insert / list / count / find / items / target versions / guarded status update, all taking `&mut MySqlConnection` where a transaction may need them (AC1, AC4–AC7, AC9).
-- [ ] T3 — Service `src/services/proposals.rs`: `ProposalError` (+ `From<ProposalError> for AppError`), pure validators (`validate_sources`, `validate_items`, `normalize_rejection_reason`, `stale_reasons`), `ProposalService::{file, list, detail, transition, transition_in, stale_targets, stale_targets_in, check_staleness, check_staleness_in}` (AC2–AC7).
-- [ ] T4 — `src/services/cover_staging.rs` + `AppState::cover_staging_dir()` + creation in `main.rs` (AC8).
-- [ ] T5 — Unit tests in both modules; integration tests `tests/proposals_service.rs` (AC10); add `proposals` and `proposal_items` to `tests/seed_drift.rs::ENTITY_TABLES_WITH_SOFT_DELETE` so the AR24 quartet is enforced on a fresh DB.
-- [ ] T6 — Docs: schema documented in the migration header and the module docs; CLAUDE.md / manual left to story 11-24 (no user-visible surface yet).
-- [ ] T7 — Gates: clippy `--all-targets -D warnings`, full `cargo test` (test DB 3307), `cargo sqlx prepare --check --workspace -- --all-targets`, flake grep, `tsc --noEmit`, full Playwright `CI=true --workers=2` on a reset stack (regression only — no E2E added, see D-11-9-6).
+- [x] T1 — Migration `20261028120000_create_proposals.sql` (AC1).
+- [x] T2 — Model `src/models/proposal.rs`: `ProposalKind`, `ProposalStatus` (+ `can_transition_to`), `ProposalTargetTable`, row structs, insert / list / count / find / items / target versions / guarded status update, all taking `&mut MySqlConnection` where a transaction may need them (AC1, AC4–AC7, AC9).
+- [x] T3 — Service `src/services/proposals.rs`: `ProposalError` (+ `From<ProposalError> for AppError`), pure validators (`validate_sources`, `validate_items`, `normalize_rejection_reason`, `stale_reasons`), `ProposalService::{file, list, detail, transition, transition_in, stale_targets, stale_targets_in, check_staleness, check_staleness_in}` (AC2–AC7).
+- [x] T4 — `src/services/cover_staging.rs` + `AppState::cover_staging_dir()` + creation in `main.rs` (AC8).
+- [x] T5 — Unit tests in both modules; integration tests `tests/proposals_service.rs` (AC10); add `proposals` and `proposal_items` to `tests/seed_drift.rs::ENTITY_TABLES_WITH_SOFT_DELETE` so the AR24 quartet is enforced on a fresh DB.
+- [x] T6 — Docs: schema documented in the migration header and the module docs; CLAUDE.md / manual left to story 11-24 (no user-visible surface yet).
+- [x] T7 — Gates: clippy `--all-targets -D warnings`, full `cargo test` (test DB 3307), `cargo sqlx prepare --check --workspace -- --all-targets`, flake grep, `tsc --noEmit`, full Playwright `CI=true --workers=2` on a reset stack (regression only — no E2E added, see D-11-9-6).
 
 ## Dev Notes
 
@@ -77,9 +77,31 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Completion Notes List
 
+- T1: `20261028120000_create_proposals.sql` — `proposals` / `proposal_items`, AR24 quartet, `decided_by` SET NULL, no FK on targets, `chk_proposal_items_target`.
+- T2: `models/proposal.rs` — enums (`ProposalKind`, `ProposalStatus::can_transition_to`, `ProposalTargetTable`), grouped target-state read (one query per table), guarded `update_status_from_pending`, list/count, row lock; connection-scoped functions for 11-17.
+- T3: `services/proposals.rs` — `ProposalError` (agent-facing, `is_invalid_input`, `From` into `AppError`), `validate_sources` / `validate_items` / `normalize_rejection_reason` / `stale_reasons` (pure), `ProposalService::{file, list, detail, transition(_in), stale_targets(_in), check_staleness(_in)}`.
+- T4: `services/cover_staging.rs::staging_dir_for`, `AppState::cover_staging_dir()`, fail-open creation in `main.rs` (E2E stack log: `/tmp/test-covers-staging`).
+- T5: 25 unit tests (models + services + staging); `tests/proposals_service.rs` 17 integration tests; `seed_drift` extended.
+- T6: schema documented in the migration header and module docs.
+- T7 gates (2026-10-28): `cargo clippy --all-targets -- -D warnings` clean; `cargo test` (test DB 3307) 1772 passed / 0 failed across 66 binaries; `cargo sqlx prepare --check --workspace -- --all-targets` clean (no macro query added); flake gate clean; `tsc --noEmit` clean; Playwright on a freshly reset stack, `CI=true --workers=2`: 362 passed, 2 skipped, 0 failed.
+
 ### File List
+
+- `migrations/20261028120000_create_proposals.sql` (new)
+- `src/models/proposal.rs` (new)
+- `src/models/mod.rs`
+- `src/services/proposals.rs` (new)
+- `src/services/cover_staging.rs` (new)
+- `src/services/mod.rs`
+- `src/lib.rs`
+- `src/main.rs`
+- `tests/proposals_service.rs` (new)
+- `tests/seed_drift.rs`
+- `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ## Change Log
 
 - 2026-10-28 — story created (create-story).
 - 2026-10-28 — validated against the create-story checklist: AR24 regression net (`seed_drift`), purge interaction (`decided_by` SET NULL, no FK on targets), typed errors for the MCP layer, staging dir kept off `/covers`; no gap left open.
+- 2026-10-28 — dev-story complete (T1–T7), gates green → review.
