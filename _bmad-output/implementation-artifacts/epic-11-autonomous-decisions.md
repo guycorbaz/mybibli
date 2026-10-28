@@ -719,3 +719,8 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Chosen:** `normalize_text` — trim, NFC, CRLF / CR → LF; one-line values collapse runs of space / tab / line break only (no-break spaces kept). Proposed values are stored in that form and current values are compared through it, so a difference in normal form alone is no change. `fold_name` lower-cases before decomposing (Turkish "İ").
 **Accepted (Low):** `fold_name` also drops dependent vowel signs of scripts such as Devanagari, which the collation weighs (a near-duplicate dropped or refused; 11-18 re-checks by contributor id) — noted in the module contract.
 **Reversible:** yes.
+
+### D-11-13-11 — Code review round 3: clean; Lows accepted
+**Context:** confirmation pass, no Medium+.
+**Chosen:** fixed the `text()` doc comment, the spec's dev notes and a test for a tab in the current value; accepted: a current value that differs only in form cannot be cleaned by a proposal (D-11-13-10), the length message counts characters after NFC, the residual Greek final-sigma fold.
+**Reversible:** yes.

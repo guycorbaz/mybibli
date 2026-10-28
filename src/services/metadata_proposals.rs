@@ -453,9 +453,9 @@ pub fn normalize_text(raw: &str, multiline: bool) -> String {
     out
 }
 
-/// A trimmed, non-blank string within `max` characters, normalised to
-/// NFC; single-line unless `multiline` (then line breaks and tabs are
-/// allowed). Single-line values get inner whitespace runs collapsed.
+/// A non-blank string in [`normalize_text`] form, within `max`
+/// characters (counted after normalisation); single-line unless
+/// `multiline` (then line breaks and tabs are allowed).
 fn text(value: &Value, max: usize, multiline: bool) -> Result<String, FieldProblem> {
     let Some(raw) = value.as_str() else {
         return Err(FieldProblem::WrongType {
@@ -1440,13 +1440,15 @@ mod tests {
             subtitle: Some("Tome 1\u{a0}:  L'aube ".into()),
             publisher: Some("Herge\u{301}".into()),
             description: Some("a\r\nb".into()),
+            dewey_code: Some("843\t".into()),
             ..Default::default()
         };
         let p = validate_fields(
             &fields(json!({
                 "subtitle": "Tome 1\u{a0}: L'aube",
                 "publisher": "Hergé",
-                "description": "a\nb"
+                "description": "a\nb",
+                "dewey_code": "843"
             })),
             &roles(),
             YEAR,
@@ -1454,7 +1456,10 @@ mod tests {
         .unwrap();
         let (items, unchanged) = diff_against(&p, &current);
         assert!(items.is_empty(), "{items:?}");
-        assert_eq!(unchanged, ["subtitle", "description", "publisher"]);
+        assert_eq!(
+            unchanged,
+            ["subtitle", "description", "publisher", "dewey_code"]
+        );
         assert_eq!(fold_name("İlhan"), fold_name("ilhan"));
     }
 }

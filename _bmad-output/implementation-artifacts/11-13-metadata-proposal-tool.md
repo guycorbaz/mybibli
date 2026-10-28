@@ -1,6 +1,6 @@
 # Story 11.13: Metadata proposal tool
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR132 (with FR134, NFR44, NFR47, AR27, AR29 inherited from 11-5 / 11-6 / 11-9). Epic 11 — thirteenth story; the second kind of proposal an agent files. The agent never writes the catalog: each call files one `metadata` proposal through `ProposalService::file` (story 11-9). Acceptance is story 11-18; the proposals page is 11-16; editing before acceptance is 11-19.
 
@@ -60,7 +60,7 @@ so that titles the providers never found become complete.
 
 - **Item shapes are a contract** (D-11-13-2): `line` = `"field"`, `field` names the column-level field; 11-15's equivalence ("same set of fields") reads the `field` keys; 11-19 may remove an item or edit `proposed` (and must keep `current` as filed); 11-18 writes `proposed`, `publication_year` as `YYYY-01-01`, adds contributors by `role_id` (reuse a contributor with the same name and role, else create), marks written fields manually edited (FR144; `publication_year` is tracked as `publication_date`).
 - **Staleness baseline (#521, decision belongs to 11-17/11-18):** every item records `titles.version` at filing (or the agent's pin). The scalar fields covered here are all written through statements that bump `titles.version` (edit form, API v1 PATCH, background metadata fetch). **Not** covered: `title_contributors` writes (manual add/remove, the fetch adding contributors) do not bump `titles.version`. The stored `current` values give 11-18 a field-level baseline it can compare to the live row whichever option #521 picks; for contributors, acceptance must skip a pair already present.
-- **Normalisation and comparison:** proposed strings are trimmed (inner text kept as is); a scalar is unchanged when it equals the current value trimmed (`None` current never equals). `publication_year` compares with `publication_date`'s year. A contributor is unchanged when a current contributor has the same `role_id` and the same trimmed name compared with Rust `to_lowercase()` (accent-sensitive — at worst a near-duplicate reaches the librarian, and 11-18's reuse by the SQL collation settles it). Role names match the live roles with the same trimmed, `to_lowercase()` comparison; the stored `role` is the library's spelling.
+- **Normalisation and comparison (as implemented after review, D-11-13-9 / D-11-13-10):** proposed text is stored in `normalize_text` form (trimmed, NFC, CRLF → LF; one-line values collapse runs of space / tab / line break, no-break spaces kept) and current values are compared through the same function, so a difference in form alone is no change. `publication_year` compares with `publication_date`'s year. Contributor names and role names compare through `fold_name` (case, accents, inner whitespace — close to `utf8mb4_unicode_ci`); 11-18 re-checks by contributor id.
 - **No pending-duplicate rule** (D-11-13-5): a second metadata proposal for the same title is filed; accepting one bumps `titles.version`, so the other goes stale at its own acceptance.
 - **No own transaction:** reads with the pool, then `ProposalService::file` with the pinned version — a concurrent edit between the read and the filing is refused by `TargetChanged`, so `current` is consistent with the recorded version for every scalar field.
 - **Item size:** the item cap is 64 KiB serialized; a title whose current description is very long (> ~50 KB) could push the description item over it → mapped to a description-specific refusal.
@@ -91,6 +91,12 @@ Round 2:
 - [x] [Review][Patch] (Medium) Whitespace collapse ate no-break spaces and the unchanged check compared against the raw current value — `normalize_text` on both sides (D-11-13-10)
 - [x] [Review][Patch] (Low) `fold_name` lower-cases first (Turkish İ); CRLF vs LF description is no change
 - Accepted (Low): `fold_name` drops Devanagari-style vowel signs (documented).
+
+Round 3 (confirmation): no Medium+ finding. Lows fixed: `text()` doc comment, spec dev notes, a tab in the current value covered by a test. Accepted: a current value differing only in form cannot be "cleaned" by a proposal (D-11-13-10); the length message counts characters after NFC; the residual Greek final-sigma fold.
+
+### Senior Developer Review (AI)
+
+Three rounds (Blind Hunter, Edge Case Hunter, Acceptance Auditor in round 1; combined confirmation passes in rounds 2–3). Rounds 1–2 fixed (4 Medium, one deferred as pre-existing #531); round 3 clean. Outcome: approved.
 
 ## Dev Agent Record
 
@@ -130,3 +136,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — implemented (dev-story); status review.
 - 2026-10-28 — code review round 1 (D-11-13-9); fixes applied.
 - 2026-10-29 — code review round 2 (D-11-13-10); fixes applied.
+- 2026-10-29 — code review round 3 clean; status done.
