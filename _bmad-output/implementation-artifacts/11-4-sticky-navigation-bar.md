@@ -22,7 +22,7 @@ so that I never have to scroll back up to reach the menu.
 | `#feedback-list` (catalog, admin, title detail, home) | in-flow `<div aria-live="polite">` inside `<main>` — **not** an overlay | "renders above the bar" is read as: never covered by the bar when brought into view (scroll-padding), and no overlay is pushed under the bar (see D-11-4-5) |
 | `#mobile-nav` | up to 8 links + language form + logout (admin) ≈ 430 px, and 11-21 will add a Proposals entry | once the header is sticky, a panel taller than the viewport (landscape phone, 375 px high) can no longer be scrolled into reach → bound it to the viewport and let it scroll internally |
 | `templates/pages/wishlist_print.html` | stand-alone document (does **not** extend `base.html`) — no nav bar at all | the "bar not repeated" AC holds by construction; we add `print:static` on the header for any other page the user prints from the browser |
-| In-page anchors | `href="#main-content"` (skip link), `href="#add-form"` (borrowers, intercepted by `borrowers.js`); no `scrollIntoView` / `hx-swap … show:` anywhere | `scroll-padding-top` on the root scroller covers fragment navigation, `focus()` scrolling and any future `scrollIntoView` |
+| In-page anchors | `href="#main-content"` (skip link), `href="#add-form"` (borrowers, intercepted by `borrowers.js`); no `scrollIntoView` / `hx-swap … show:` anywhere | (as shipped, D-11-4-8) `scroll-margin-top` on `<main>` and its descendants covers fragment navigation, `focus()` scrolling and any future `scrollIntoView` |
 | `Dockerfile` css stage | Tailwind v4 CLI scans `templates/` and regenerates `output.css` (gitignored) | new utility classes in templates are emitted automatically for E2E and prod |
 
 No Rust handler change, no locale key, no JS, no migration.
@@ -47,14 +47,14 @@ No Rust handler change, no locale key, no JS, no migration.
   - `<main id="main-content"` carries `scroll-mt-12`, `md:scroll-mt-14`, `**:scroll-mt-12`, `md:**:scroll-mt-14`; `<html>` carries no `scroll-p*` class;
   - `<div id="mobile-nav"` carries `overflow-y-auto` and both `max-h-[calc(100dvh-…)]` classes;
   - `<nav aria-label="Main navigation"` still carries `h-12` and `md:h-14` (AC6);
-  - overlay invariant: walk `templates/`, every opening tag whose class list holds both `fixed` and `inset-0` carries `z-50` (so it stays above the `z-40` bar).
-- [x] T5 — E2E (AC1–AC5, AC7): new describe "Story 11-4 — sticky navigation bar" in `tests/e2e/specs/journeys/responsive-layouts.spec.ts`:
-  - per viewport (mobile / tablet / desktop), admin via `loginAs`, pages `/`, `/catalog`, `/series`, `/admin`: guarantee a scrollable document (CSSOM `min-height` on `#main-content`, not an inline `style` attribute), scroll to the bottom, assert `scrollY > 0` and the `nav[aria-label="Main navigation"]` top at 0 and `toBeInViewport()`;
-  - skip link (mobile + desktop): scroll to bottom, focus the skip link, press Enter, assert `#main-content` top ≥ nav bottom − 1 and the nav still in viewport;
-  - mobile menu (375×667 and landscape 667×375, admin): scroll to bottom, open the hamburger, `#mobile-nav` in viewport and its top equals the nav bottom; `elementFromPoint` at a menu link's centre is that link; the logout button scrolls into view inside the panel; a menu link navigates;
-  - overlay: scroll to bottom, open the cheat sheet (`?`), `elementFromPoint` over the bar is not inside `<header>`;
-  - print: `page.emulateMedia({ media: "print" })` → header computed `position` is `static`;
-  - axe (`checkAccessibility`) on a stuck page with the mobile menu open.
+  - (shipped in `src/templates_audit.rs` as `fixed_surfaces_stack_above_sticky_nav`, widened in review) every `fixed` class list in `templates/` and in `static/js` string literals carries `z-50`.
+- [x] T5 — E2E (AC1–AC5, AC7): new describe "Story 11-4 — sticky navigation bar" in `tests/e2e/specs/journeys/responsive-layouts.spec.ts` (14 tests as shipped after review):
+  - bar stuck after scrolling to the bottom of `/`, `/catalog`, `/series`, `/admin` at 375 / 768 / 1280 (admin via `loginAs`; document made scrollable through the CSSOM; scroll and measure in one evaluate);
+  - skip link at 375 / 768 / 1280: the focused link is visible and topmost, and after Enter `#main-content` top ≥ nav bottom − 1 with the nav in viewport;
+  - stuck mobile menu at 375×667, 667×375 and 768×1024: panel right under the bar, a menu link topmost at its centre, panel overflows and scrolls at 667×375, logout reachable, axe-clean, a link navigates;
+  - no jump: focusing a link in the stuck bar + Shift+Tab (desktop) and closing the menu with Escape (mobile) leave `scrollY` unchanged;
+  - overlays: the top-layer cheat sheet and the plain `fixed inset-0 z-50` connection-lost overlay both cover the stuck bar;
+  - print: `page.emulateMedia({ media: "print" })` → header computed `position` is `static`.
 - [x] T6 — Gates: clippy `-D warnings`, `cargo test`, sqlx check, flake grep, `tsc --noEmit`, full E2E (`CI=true --workers=2`).
 
 ### Review Findings
@@ -86,6 +86,16 @@ Re-review dismissed: px vs rem for the panel bound (false positive — this proj
 
 Mutation proof after the re-review patch: `html{scroll-padding-top:48px}` fails the two new focus tests; `main, main *{scroll-margin-top:0}` fails the three skip-link tests.
 
+Third pass 2026-10-28 (Rule #6, 3 layers on the final diff): 0 decision-needed, 5 patch (1 Medium), 0 defer, 2 dismissed.
+
+- [x] [Review][Patch] `**:scroll-mt-*` also applies inside inner vertical scrollers (saved-searches list: Shift+Tab or modal-cancel focus return shifted the list by ~2 rows) (Medium blind / Low edge, verified) → `**:scroll-mt-0!` on the three inner vertical scrollers in `<main>` (saved-searches list, borrower and contributor dropdowns) + audit `inner_vertical_scrollers_reset_the_bar_scroll_margin` [templates/fragments/saved_searches_list.html, templates/pages/loans.html, templates/components/contributor_form.html, src/templates_audit.rs]
+- [x] [Review][Patch] "No root scroll padding" guard only read `<html>` classes (Low) → also asserts `input.css` has no `scroll-padding` [src/routes/nav_sticky_tests.rs]
+- [x] [Review][Patch] No-jump tests read `scrollY` without letting a triggered scroll apply (Low) → `settledScrollY` (two frames) [responsive-layouts.spec.ts]
+- [x] [Review][Patch] D-11-4-5 and T4/T5, Dev Notes skip-link reasoning and the regression map still described pre-review code (Medium/Low, auditor) → updated
+- [x] [Review][Patch] Print test title claimed "once at the top" (Low) → title states only `position: static` [responsive-layouts.spec.ts]
+
+Third-pass dismissed: JS string scan false alarm on an apostrophe in a comment (fails loudly, never passes silently); no direct E2E for `#feedback-list` brought into view (same `**:` mechanism the skip-link tests and the mutation proof cover).
+
 Dismissed (main ones, first pass): existing `sticky top-0` content elements hidden under the bar (none exist — grep); scroll padding ignoring the open mobile panel (the panel traps focus and closes on link click); `#[cfg(test)]` doubled (existing `home_fold_tests.rs` pattern); `body h-full` hypothetical; series detail vs list (D-11-4-6); `md` panel bound not E2E-tested (render test + same mechanism as below `md`); wishlist print page not E2E-tested (no bar by construction); a11y change and bounded panel outside the issue (D-11-4-7, D-11-4-3, recorded).
 
 ## Dev Notes
@@ -101,7 +111,7 @@ Dismissed (main ones, first pass): existing `sticky top-0` content elements hidd
 - **Verified emission at story creation (2026-10-28, superseded for the panel bound and the anchor offset — see the two notes above; `@tailwindcss/cli@4.2.2`, project `input.css`):** `.sticky{position:sticky}`, `.z-40`, `.scroll-pt-12{scroll-padding-top:calc(var(--spacing)*12)}`, `md:scroll-pt-14` under `@media (width>=768px)`, `max-h-[calc(100dvh-3rem)]`, `md:max-h-[calc(100dvh-3.5rem)]`, `overscroll-contain`, and `print:static{@media print{position:static}}` emitted **after** `.sticky`, so it wins in print.
 - **Fixed-surface invariant scope.** `templates_audit::fixed_surfaces_stack_above_sticky_nav` checks every `class="…"` in `templates/` and every multi-token string literal (`"…"`, `'…'`, backticks) in first-party `static/js/*.js` whose tokens include `fixed`: it must carry `z-50`. It counts the JS hits separately (the two toasts) so a silently broken JS scan fails. Not seen: `classList.add("fixed", …)` one token per argument, `md:fixed`, CSS files, HTML built in Rust — keep new fixed surfaces to one class string.
 - **Hit testing under a top-layer dialog.** `document.elementFromPoint` over a `::backdrop` returns the `<dialog>` (pseudo-elements hit-test to their originating element) — hence the E2E asserts "not inside `<header>`", not a specific element.
-- **Skip-link E2E discriminates both halves.** Without `sticky`, the jump leaves the bar off-screen (nav-in-viewport fails); with `sticky` but no scroll-padding, the target lands at viewport top 0 under the bar (`main.top ≥ nav.bottom` fails).
+- **Skip-link E2E discriminates both halves.** Without `sticky`, the jump leaves the bar off-screen (nav-in-viewport fails); with `sticky` but no scroll-margin on `<main>`, the target lands at viewport top 0 under the bar (`main.top ≥ nav.bottom` fails).
 - **Playwright and sticky headers.** Playwright scrolls targets into view and retries with other alignments when another element would receive the click, so existing specs that click near the top of the viewport keep working; the full suite run is the proof.
 
 ### Regression map
@@ -110,7 +120,7 @@ Dismissed (main ones, first pass): existing `sticky top-0` content elements hidd
 - `src/templates_audit.rs` (no inline markup, CSRF forms, hx-confirm): classes only → green.
 - `responsive-layouts.spec.ts` horizontal-overflow tests: no width change.
 - `accessibility-full.spec.ts`: no new landmark, no colour change.
-- Fail-before proof: on `main` the nav scrolls away (`toBeInViewport` fails after scrolling), the skip target sits at viewport top 0 under a stuck bar without scroll-padding, and the header computes `position: static` but not `sticky` — every E2E assertion and render test fails without T1–T3.
+- Fail-before proof: on `main` the nav scrolls away (`toBeInViewport` fails after scrolling), the skip target sits at viewport top 0 under a stuck bar without the scroll-margin on `<main>`, and the header computes `position: static` but not `sticky` — every E2E assertion and render test fails without T1–T3.
 
 ### Testing standards
 
@@ -147,7 +157,8 @@ claude-opus-5-5
 - `templates/layouts/base.html` — content scroll margin on `<main>`
 - `src/routes/nav_sticky_tests.rs` — new, 5 render tests
 - `src/routes/mod.rs` — test module wiring
-- `src/templates_audit.rs` — `fixed` surfaces z-order invariant (templates + static/js)
+- `src/templates_audit.rs` — `fixed` surfaces z-order invariant (templates + static/js); inner-scroller scroll-margin reset invariant
+- `templates/fragments/saved_searches_list.html`, `templates/pages/loans.html`, `templates/components/contributor_form.html` — `**:scroll-mt-0!` on inner vertical scrollers
 - `tests/e2e/specs/journeys/responsive-layouts.spec.ts` — 14 E2E tests
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — 11-4 → review
 - `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md` — § 11-4
@@ -157,4 +168,5 @@ claude-opus-5-5
 - 2026-10-28 — Validation pass (checklist.md): Tailwind emission of every new class verified with the CLI; overlay-invariant scope, `elementFromPoint`/top-layer semantics and the skip-link fail-before reasoning added to Dev Notes. No blocker found.
 - 2026-10-28 — Implementation T1–T6; status → review.
 - 2026-10-28 — Code review (3 layers): 10 patches applied (5 Medium), 1 deferred to #509, rest dismissed.
+- 2026-10-28 — Third pass (Rule #6): 5 patches (inner scrollers reset the inherited scroll margin; records aligned), 2 dismissed.
 - 2026-10-28 — Re-review (Rule #6): 4 patches (2 Medium: root scroll-padding focus jump → `scroll-margin-top` on content, stale records), 8 dismissed.

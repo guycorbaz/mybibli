@@ -1154,3 +1154,51 @@ fn fixed_surfaces_stack_above_sticky_nav() {
         violations.join("\n")
     );
 }
+
+/// Story 11-4 (#496, D-11-4-8) — `<main>` gives every descendant a
+/// `scroll-margin-top` equal to the sticky bar height so anchors land below
+/// the bar. `scroll-margin` applies to EVERY scroll-container ancestor, so
+/// inside an inner vertical scroller (dropdown list, saved-searches list) it
+/// would keep a focused row 48/56 px below the list's own top and shift the
+/// list. Each inner vertical scroller must reset it with `**:scroll-mt-0!`
+/// (the `!` beats both breakpoints of the inherited rule). The mobile menu
+/// lives in `<header>`, outside `<main>`, and is exempt.
+#[test]
+fn inner_vertical_scrollers_reset_the_bar_scroll_margin() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let tag_re = Regex::new(r#"<[a-zA-Z][^>]*\bclass\s*=\s*"([^"]*)"[^>]*>"#).unwrap();
+
+    let mut scrollers = 0usize;
+    let mut violations: Vec<String> = Vec::new();
+    visit(&root.join("templates"), &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let Ok(raw) = fs::read_to_string(path) else {
+            return;
+        };
+        let content = strip_html_comments(&raw);
+        for cap in tag_re.captures_iter(&content) {
+            let tag = cap.get(0).map_or("", |m| m.as_str());
+            if tag.contains("id=\"mobile-nav\"") {
+                continue;
+            }
+            let tokens: Vec<&str> = cap[1].split_whitespace().collect();
+            if tokens.contains(&"overflow-y-auto") || tokens.contains(&"overflow-auto") {
+                scrollers += 1;
+                if !tokens.contains(&"**:scroll-mt-0!") {
+                    let rel = path.strip_prefix(&root).unwrap_or(path);
+                    violations.push(format!("  {} — class=\"{}\"", rel.display(), &cap[1]));
+                }
+            }
+        }
+    });
+
+    assert!(scrollers >= 3, "expected the three inner scrollers, found {scrollers}");
+    assert!(
+        violations.is_empty(),
+        "inner vertical scrollers must reset the inherited bar scroll margin \
+         with `**:scroll-mt-0!` (story 11-4, D-11-4-8):\n{}",
+        violations.join("\n")
+    );
+}

@@ -113,6 +113,17 @@ test.describe("Story 9-21 — responsive per-page layouts", () => {
  * shared E2E database happens to hold. Read-only: no entity is created.
  */
 const NAV = 'nav[aria-label="Main navigation"]';
+
+/** scrollY after two animation frames, so any scroll triggered by the last
+ *  action (focus, Escape) has been applied before it is read. */
+async function settledScrollY(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.scrollY))),
+      ),
+  );
+}
 const LANDSCAPE_PHONE = { width: 667, height: 375 };
 
 interface StuckSample {
@@ -301,7 +312,7 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
     const before = await assertNavStuckAtTop(page, "/series before focus");
     await page.locator(`${NAV} a[href="/catalog"]`).focus();
     await page.keyboard.press("Shift+Tab");
-    const after = await page.evaluate(() => window.scrollY);
+    const after = await settledScrollY(page);
     expect(Math.abs(after - before.scrollY), "the page must not jump").toBeLessThanOrEqual(1);
   });
 
@@ -320,7 +331,7 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
     await page.keyboard.press("Escape");
     await expect(page.locator("#mobile-nav")).toBeHidden();
     await expect(page.locator("#mobile-menu-toggle")).toBeFocused();
-    const after = await page.evaluate(() => window.scrollY);
+    const after = await settledScrollY(page);
     expect(Math.abs(after - before.scrollY), "the page must not jump").toBeLessThanOrEqual(1);
   });
 
@@ -360,7 +371,7 @@ test.describe("Story 11-4 — sticky navigation bar", () => {
     expect(sample.lostOverlayOnTopOfBar, "the overlay must cover the bar").toBe(true);
   });
 
-  test("print — the bar prints in normal flow (position: static), once at the top", async ({
+  test("print — the bar is in normal flow (position: static)", async ({
     page,
   }) => {
     await page.setViewportSize(DESKTOP);

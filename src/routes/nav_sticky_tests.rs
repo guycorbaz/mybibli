@@ -93,6 +93,13 @@ mod tests {
             &["h-12", "md:h-14"],
             "scroll margin mirrors the bar heights",
         );
+        let input_css =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/static/css/input.css"))
+                .expect("read input.css");
+        assert!(
+            !input_css.contains("scroll-padding"),
+            "no scroll-padding in input.css either (D-11-4-8)"
+        );
     }
 
     /// AC3 — once stuck, the mobile panel can no longer be reached by
