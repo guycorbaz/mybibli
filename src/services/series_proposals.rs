@@ -31,6 +31,7 @@
 //! Errors are a typed [`SeriesProposalError`] with agent-facing English
 //! messages (D-11-9-2 precedent).
 
+use std::collections::HashSet;
 use std::fmt;
 
 use serde_json::{Value, json};
@@ -38,7 +39,7 @@ use serde_json::{Value, json};
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::proposal::{ProposalKind, ProposalModel, ProposalTarget, ProposalTargetTable};
-use crate::models::series::{SeriesModel, SeriesType};
+use crate::models::series::SeriesType;
 use crate::services::expected_tomes::{
     ExpectedTomeError, closed_total_of, normalize_isbn, validate_title,
 };
@@ -49,6 +50,15 @@ use crate::services::series::SeriesService;
 
 /// At most this many characters in a series name (`series.name` width).
 pub const MAX_SERIES_NAME_CHARS: usize = 255;
+/// Highest position or total an agent may propose (D-11-12-9): far above
+/// any real series, low enough that a series page grid stays bounded.
+pub const MAX_POSITION: i32 = 10_000;
+/// At most this many positions covered by one omnibus (D-11-12-9):
+/// accepting an omnibus writes one `title_series` row per position.
+pub const MAX_OMNIBUS_SPAN: i32 = 100;
+/// At most this many title + expected-tome lines per proposal: the
+/// proposal's item cap minus the series line.
+pub const MAX_LINES: usize = crate::services::proposals::MAX_ITEMS - 1;
 
 /// An existing title to place in the series.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,6 +146,9 @@ pub enum SeriesProposalError {
         value: i64,
     },
     NothingToAttach,
+    TooManyLines {
+        count: usize,
+    },
     InvalidPosition {
         line: LineRef,
         position: i64,
@@ -268,8 +281,12 @@ impl fmt::Display for SeriesProposalError {
             ),
             TotalOutOfRange { value } => write!(
                 f,
-                "`total_volume_count` must be between 1 and {} (got {value}).",
-                i32::MAX
+                "`total_volume_count` must be between 1 and {MAX_POSITION} (got {value})."
+            ),
+            TooManyLines { count } => write!(
+                f,
+                "A proposal accepts at most {MAX_LINES} entries in `titles` and `expected_tomes` \
+                 together ({count} given): split it."
             ),
             NothingToAttach => write!(
                 f,
@@ -277,8 +294,7 @@ impl fmt::Display for SeriesProposalError {
             ),
             InvalidPosition { line, position } => write!(
                 f,
-                "The position of {line} must be between 1 and {} (got {position}).",
-                i32::MAX
+                "The position of {line} must be between 1 and {MAX_POSITION} (got {position})."
             ),
             EndWithoutOmnibus { title_id } => write!(
                 f,
@@ -301,8 +317,11 @@ impl fmt::Display for SeriesProposalError {
             } => write!(
                 f,
                 "Title {title_id} is an omnibus from position {position}: `end_position` ({end}) \
-                 must be at least {position} and at most {}.",
-                i32::MAX
+                 must be at least {position} and at most {} (an omnibus covers at most \
+                 {MAX_OMNIBUS_SPAN} positions).",
+                position
+                    .saturating_add(i64::from(MAX_OMNIBUS_SPAN) - 1)
+                    .min(i64::from(MAX_POSITION))
             ),
             PositionUsedTwice {
                 position,
@@ -509,7 +528,7 @@ pub struct ValidLines {
 fn position_in_range(line: &LineRef, position: i64) -> Result<i32, SeriesProposalError> {
     i32::try_from(position)
         .ok()
-        .filter(|p| *p >= 1)
+        .filter(|p| (1..=MAX_POSITION).contains(p))
         .ok_or_else(|| SeriesProposalError::InvalidPosition {
             line: line.clone(),
             position,
@@ -529,7 +548,7 @@ pub fn validate_series_name(raw: &str) -> Result<String, SeriesProposalError> {
 }
 
 /// Validate a proposed series type and total (pure): a closed series
-/// needs a total in 1..=i32::MAX, an open one takes none.
+/// needs a total in 1..=[`MAX_POSITION`], an open one takes none.
 pub fn validate_total(
     series_type: SeriesType,
     total: Option<i64>,
@@ -540,22 +559,29 @@ pub fn validate_total(
         (SeriesType::Closed, None) => Err(SeriesProposalError::TotalRequired),
         (SeriesType::Closed, Some(v)) => i32::try_from(v)
             .ok()
-            .filter(|t| *t >= 1)
+            .filter(|t| (1..=MAX_POSITION).contains(t))
             .map(Some)
             .ok_or(SeriesProposalError::TotalOutOfRange { value: v }),
     }
 }
 
-/// Validate the title and tome lines (pure — unit tested): positions in
-/// 1..=i32::MAX and within `closed_total` when given, omnibus ranges,
+/// Validate the title and tome lines (pure — unit tested): at most
+/// [`MAX_LINES`] lines, positions in 1..=[`MAX_POSITION`] and within `closed_total` when given, omnibus ranges,
 /// each title once, no position used twice across all lines (ranges
-/// compared, never expanded), tome title and ISBN by the expected-tome
-/// rules, each tome ISBN once.
+/// compared, never expanded), an omnibus spanning at most
+/// [`MAX_OMNIBUS_SPAN`] positions, tome title and ISBN by the
+/// expected-tome rules, each tome ISBN once. Linear apart from one sort.
 pub fn validate_lines(
     titles: &[TitleLine],
     tomes: &[TomeLine],
     closed_total: Option<i32>,
 ) -> Result<ValidLines, SeriesProposalError> {
+    let count = titles.len() + tomes.len();
+    if count > MAX_LINES {
+        return Err(SeriesProposalError::TooManyLines { count });
+    }
+    let mut seen_titles: HashSet<u64> = HashSet::with_capacity(titles.len());
+    let mut seen_isbns: HashSet<String> = HashSet::new();
     let mut valid_titles = Vec::with_capacity(titles.len());
     for t in titles {
         let line = LineRef::Title(t.title_id);
@@ -570,7 +596,8 @@ pub fn validate_lines(
             (true, end) => {
                 let valid = end
                     .and_then(|e| i32::try_from(e).ok())
-                    .filter(|e| *e >= position);
+                    .filter(|e| *e >= position && *e - position < MAX_OMNIBUS_SPAN)
+                    .filter(|e| *e <= MAX_POSITION);
                 Some(valid.ok_or(SeriesProposalError::InvalidOmnibusRange {
                     title_id: t.title_id,
                     position: t.position,
@@ -578,10 +605,7 @@ pub fn validate_lines(
                 })?)
             }
         };
-        if valid_titles
-            .iter()
-            .any(|v: &ValidTitle| v.title_id == t.title_id)
-        {
+        if !seen_titles.insert(t.title_id) {
             return Err(SeriesProposalError::TitleTwice {
                 title_id: t.title_id,
             });
@@ -624,7 +648,7 @@ pub fn validate_lines(
             });
         }
         if let Some(isbn) = &isbn
-            && valid_tomes.iter().any(|v| v.isbn.as_ref() == Some(isbn))
+            && !seen_isbns.insert(isbn.clone())
         {
             return Err(SeriesProposalError::TomeIsbnTwice { isbn: isbn.clone() });
         }
@@ -735,35 +759,20 @@ impl SeriesProposalService {
         let name = validate_series_name(&req.name)?;
         let total = validate_total(req.series_type, req.total_volume_count)?;
         let lines = validate_lines(&req.titles, &req.expected_tomes, total)?;
-        validate_sources(&req.sources)?;
-
-        if let Some(existing) = SeriesModel::active_find_by_name(pool, &name).await? {
-            return Err(SeriesProposalError::SeriesExists {
-                series_id: existing.id,
-                name: existing.name,
-            });
-        }
-        if let Some(proposal_id) = ProposalModel::pending_series_create_named(pool, &name).await? {
-            return Err(SeriesProposalError::PendingDuplicate {
-                proposal_id,
-                series: PendingFor::SeriesName(name),
-            });
-        }
+        let sources = validate_sources(&req.sources)?;
 
         let series_line = NewProposalItem {
             target: None,
             expected_version: None,
             proposed_values: create_series_line(&name, req.series_type, total),
         };
-        let items = build_items(series_line, &lines);
-        Self::file(
-            pool,
-            ProposalKind::SeriesCreate,
-            req.api_key_id,
-            &req.sources,
-            items,
-        )
-        .await
+        let proposal = NewProposal {
+            kind: ProposalKind::SeriesCreate,
+            api_key_id: req.api_key_id,
+            sources,
+            items: build_items(series_line, &lines),
+        };
+        Self::file_unique(pool, &proposal, Duplicate::Name(name)).await
     }
 
     /// File a `series_attach` proposal (FR131), checked against the
@@ -783,7 +792,7 @@ impl SeriesProposalService {
         let series = &detail.series;
         let total = closed_total_of(series.series_type, series.total_volume_count);
         let lines = validate_lines(&req.titles, &req.expected_tomes, total)?;
-        validate_sources(&req.sources)?;
+        let sources = validate_sources(&req.sources)?;
         if let Some(expected) = req.series_version
             && expected != series.version
         {
@@ -794,14 +803,6 @@ impl SeriesProposalService {
                 },
                 expected,
                 current: series.version,
-            });
-        }
-        if let Some(proposal_id) =
-            ProposalModel::pending_targeting(pool, ProposalTargetTable::Series, series.id).await?
-        {
-            return Err(SeriesProposalError::PendingDuplicate {
-                proposal_id,
-                series: PendingFor::SeriesId(series.id),
             });
         }
 
@@ -823,6 +824,19 @@ impl SeriesProposalService {
                     position: row.position_number,
                     holder_title_id: row.title_id,
                     holder: row.title_name.clone(),
+                });
+            }
+            // A settled tome's position is held by its title (above); an
+            // unsettled one names a gap a title line must not fill
+            // silently (D-11-12-10).
+            if let Some(tome) = detail
+                .expected_tomes
+                .iter()
+                .find(|e| (t.position..=t.end()).contains(&e.position))
+            {
+                return Err(SeriesProposalError::TomePositionTaken {
+                    position: tome.position,
+                    tome_title: tome.title.clone(),
                 });
             }
         }
@@ -870,38 +884,76 @@ impl SeriesProposalService {
             expected_version: req.series_version,
             proposed_values: json!({ "line": "series" }),
         };
-        let items = build_items(series_line, &lines);
-        Self::file(
-            pool,
-            ProposalKind::SeriesAttach,
-            req.api_key_id,
-            &req.sources,
-            items,
-        )
-        .await
+        let proposal = NewProposal {
+            kind: ProposalKind::SeriesAttach,
+            api_key_id: req.api_key_id,
+            sources,
+            items: build_items(series_line, &lines),
+        };
+        Self::file_unique(pool, &proposal, Duplicate::SeriesId(series.id)).await
     }
 
-    async fn file(
+    /// File `proposal` unless the series it is about already exists (a
+    /// create) or already has a pending proposal. The filing key row is
+    /// locked exclusively first, so concurrent series filings with the
+    /// same key run one after the other and the second sees the first
+    /// (D-11-12-5); everything happens in one transaction.
+    async fn file_unique(
         pool: &DbPool,
-        kind: ProposalKind,
-        api_key_id: u64,
-        sources: &[String],
-        items: Vec<NewProposalItem>,
+        proposal: &NewProposal,
+        duplicate: Duplicate,
     ) -> Result<FiledProposal, SeriesProposalError> {
-        let item_count = items.len();
-        let proposal = NewProposal {
-            kind,
-            api_key_id,
-            sources: sources.to_vec(),
-            items,
-        };
-        let proposal_id = ProposalService::file(pool, &proposal).await?;
+        let mut tx = pool.begin().await.map_err(ProposalError::from)?;
+        if !ProposalModel::lock_filing_key_exclusive(&mut tx, proposal.api_key_id).await? {
+            return Err(ProposalError::KeyNotAllowed {
+                api_key_id: proposal.api_key_id,
+            }
+            .into());
+        }
+        match duplicate {
+            Duplicate::Name(name) => {
+                if let Some((series_id, name)) =
+                    ProposalModel::active_series_named(&mut tx, &name).await?
+                {
+                    return Err(SeriesProposalError::SeriesExists { series_id, name });
+                }
+                if let Some(proposal_id) =
+                    ProposalModel::pending_series_create_named(&mut tx, &name).await?
+                {
+                    return Err(SeriesProposalError::PendingDuplicate {
+                        proposal_id,
+                        series: PendingFor::SeriesName(name),
+                    });
+                }
+            }
+            Duplicate::SeriesId(id) => {
+                if let Some(proposal_id) =
+                    ProposalModel::pending_targeting(&mut tx, ProposalTargetTable::Series, id)
+                        .await?
+                {
+                    return Err(SeriesProposalError::PendingDuplicate {
+                        proposal_id,
+                        series: PendingFor::SeriesId(id),
+                    });
+                }
+            }
+        }
+        let proposal_id = ProposalService::file_in(&mut tx, proposal).await?;
+        tx.commit().await.map_err(ProposalError::from)?;
         Ok(FiledProposal {
             proposal_id,
-            kind,
-            item_count,
+            kind: proposal.kind,
+            item_count: proposal.items.len(),
         })
     }
+}
+
+/// What makes a series proposal a duplicate.
+enum Duplicate {
+    /// A create: an active series or a pending create with this name.
+    Name(String),
+    /// An attach: a pending proposal targeting this series.
+    SeriesId(u64),
 }
 
 #[cfg(test)]
@@ -963,7 +1015,7 @@ mod tests {
             validate_total(SeriesType::Closed, None),
             Err(SeriesProposalError::TotalRequired)
         ));
-        for bad in [0, -1, i64::from(i32::MAX) + 1] {
+        for bad in [0, -1, i64::from(MAX_POSITION) + 1, i64::from(i32::MAX) + 1] {
             assert!(
                 matches!(
                     validate_total(SeriesType::Closed, Some(bad)),
@@ -1010,8 +1062,8 @@ mod tests {
     }
 
     #[test]
-    fn positions_must_be_positive_and_fit_i32() {
-        for bad in [0, -3, i64::from(i32::MAX) + 1] {
+    fn positions_are_bounded() {
+        for bad in [0, -3, i64::from(MAX_POSITION) + 1, i64::from(i32::MAX) + 1] {
             assert!(matches!(
                 validate_lines(&[title(1, bad)], &[], None),
                 Err(SeriesProposalError::InvalidPosition {
@@ -1027,7 +1079,37 @@ mod tests {
                 })
             ));
         }
-        assert!(validate_lines(&[title(1, i64::from(i32::MAX))], &[], None).is_ok());
+        assert!(validate_lines(&[title(1, i64::from(MAX_POSITION))], &[], None).is_ok());
+        assert_eq!(
+            validate_total(SeriesType::Closed, Some(i64::from(MAX_POSITION))).unwrap(),
+            Some(MAX_POSITION)
+        );
+    }
+
+    #[test]
+    fn omnibus_span_and_line_count_are_capped() {
+        // Regression (review round 1): accepting an omnibus writes one row
+        // per covered position.
+        assert!(validate_lines(&[omnibus(1, 1, i64::from(MAX_OMNIBUS_SPAN))], &[], None).is_ok());
+        assert!(matches!(
+            validate_lines(&[omnibus(1, 1, i64::from(MAX_OMNIBUS_SPAN) + 1)], &[], None),
+            Err(SeriesProposalError::InvalidOmnibusRange { .. })
+        ));
+        assert!(matches!(
+            validate_lines(&[omnibus(1, 9_990, 10_001)], &[], None),
+            Err(SeriesProposalError::InvalidOmnibusRange { .. })
+        ));
+        // The line cap is checked before any per-line work.
+        let titles: Vec<_> = (1..=MAX_LINES as u64).map(|i| title(i, i as i64)).collect();
+        assert!(validate_lines(&titles, &[], None).is_ok());
+        let err = validate_lines(&titles, &[tome(5_000, "T", None)], None).unwrap_err();
+        assert!(
+            matches!(err, SeriesProposalError::TooManyLines { count } if count == MAX_LINES + 1)
+        );
+        assert!(
+            err.to_string()
+                .contains("`titles` and `expected_tomes` together")
+        );
     }
 
     #[test]

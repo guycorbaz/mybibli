@@ -132,6 +132,25 @@ test.describe("Story 11-12 — MCP series proposal tools", () => {
       await revokeApiKey(page, propose.label);
     }
 
+    // The revoked key can no longer file anything.
+    const after = await playwrightRequest.newContext({ baseURL: baseURL! });
+    try {
+      const res = await mcpPost(
+        after,
+        propose.plaintext,
+        {
+          jsonrpc: "2.0",
+          id: 9,
+          method: "tools/call",
+          params: { name: "propose_series_create", arguments: { name: `SQ-Late-${stamp}`, series_type: "open", sources: [SOURCE] } },
+        },
+        { "MCP-Protocol-Version": "2025-11-25" },
+      );
+      expect(res.status()).toBe(401);
+    } finally {
+      await after.dispose();
+    }
+
     // Nothing was written to the catalog: the series page shows no tome.
     await page.goto(`/series/${seriesId}`);
     await expect(page.locator("h1")).toContainText(existingName);

@@ -71,18 +71,22 @@ impl McpTool for ProposeSeriesCreate {
         "Propose to create a series that does not exist in the library yet: its name, its \
          type (`closed` with the known `total_volume_count`, or `open` when the series is \
          ongoing or its total unknown), the titles the library already holds with their \
-         position (and `is_omnibus` / `end_position` for an omnibus covering several \
+         position (and `is_omnibus` with `end_position` for an omnibus covering several \
          positions), and the tomes it does not own yet (`expected_tomes`: position, title, \
          optional ISBN). Every proposal needs `sources`: the http(s) URLs where you found the \
          information. This files ONE proposal for a librarian to accept, edit or reject; it \
          does not change the catalog. Returns `proposal_id` and `status` (`pending`). Refused \
-         with an explanation when: a series with that name already exists (the message gives \
-         its id: use propose_series_attach instead); a proposal for the same series name is \
-         still pending (the message gives its id); a title id is unknown or deleted; a \
-         position is below 1, above a closed series' total, or used twice in the proposal; a \
-         title is listed twice; an expected tome has no title, an invalid ISBN or the ISBN of \
-         another tome; a source is not an http(s) URL. Check existing series with \
-         list_series first."
+         with an explanation when: a series with that name already exists, case and accents \
+         ignored (the message gives its id: use propose_series_attach instead); a proposal \
+         for the same series name is still pending (the message gives its id); the name is \
+         empty or longer than 255 characters; a closed series has no total, or an open one \
+         has one; a title id is unknown or deleted, or a title's `version` no longer matches; \
+         a title is listed twice; a position is below 1, above 10000, above a closed series' \
+         total, or used twice in the proposal (omnibus ranges included); `end_position` is \
+         given without `is_omnibus`, or an omnibus lacks it or covers more than 100 \
+         positions; `titles` and `expected_tomes` hold more than 999 entries together; an \
+         expected tome has no title, an invalid ISBN or the ISBN of another tome; a source is \
+         not an http(s) URL. Check existing series with list_series first."
     }
 
     fn input_schema(&self) -> Value {
@@ -103,6 +107,7 @@ impl McpTool for ProposeSeriesCreate {
                 "total_volume_count": {
                     "type": "integer",
                     "minimum": 1,
+                    "maximum": 10000,
                     "description": "Number of tomes of a closed series; required for `closed`, refused for `open`."
                 },
                 "titles": titles_property(),

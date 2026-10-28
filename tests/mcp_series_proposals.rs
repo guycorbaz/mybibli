@@ -339,6 +339,56 @@ async fn create_refusals_write_nothing(pool: DbPool) {
             "only http and https".into(),
         ),
         (base(json!({"sources": []})), "at least one source".into()),
+        // Review round 1: every line rule through the router.
+        (
+            base(json!({"name": "n".repeat(256)})),
+            "longer than 255 characters".into(),
+        ),
+        (
+            base(
+                json!({"titles": [{"title_id": t, "position": 1}, {"title_id": t, "position": 2}]}),
+            ),
+            format!("Title {t} appears twice"),
+        ),
+        (
+            base(json!({"titles": [{"title_id": t, "position": 1, "end_position": 2}]})),
+            format!("Title {t} has `end_position` but is not an omnibus"),
+        ),
+        (
+            base(json!({"titles": [{"title_id": t, "position": 1, "is_omnibus": true}]})),
+            format!("Title {t} is an omnibus: give `end_position`"),
+        ),
+        (
+            base(
+                json!({"titles": [{"title_id": t, "position": 1, "is_omnibus": true, "end_position": 101}]}),
+            ),
+            "at most 100 positions".into(),
+        ),
+        (
+            base(json!({"titles": [{"title_id": t, "position": 10_001}]})),
+            "must be between 1 and 10000".into(),
+        ),
+        (
+            base(json!({"series_type": "closed", "total_volume_count": 2_147_483_647_i64})),
+            "`total_volume_count` must be between 1 and 10000".into(),
+        ),
+        (
+            base(json!({"expected_tomes": [{"position": 1, "title": "  "}]})),
+            "needs a title".into(),
+        ),
+        (
+            base(json!({"expected_tomes": [
+                {"position": 1, "title": "A", "isbn": "9782205001211"},
+                {"position": 2, "title": "B", "isbn": "2205001213"}
+            ]})),
+            "ISBN 9782205001211 is given to two expected tomes".into(),
+        ),
+        (
+            base(
+                json!({"titles": (1..=1000).map(|i| json!({"title_id": i, "position": i})).collect::<Vec<_>>()}),
+            ),
+            "at most 999 entries".into(),
+        ),
     ];
     for (args, expected) in cases {
         let msg = agent.err("propose_series_create", args.clone()).await;
@@ -347,7 +397,7 @@ async fn create_refusals_write_nothing(pool: DbPool) {
 
     // Same name as an active series (case-insensitive): points to attach.
     let msg = agent
-        .err("propose_series_create", base(json!({"name": "lucky luke"})))
+        .err("propose_series_create", base(json!({"name": "LÜCKY luke"})))
         .await;
     assert!(
         msg.contains(&format!("(id {existing})"))
@@ -424,6 +474,14 @@ async fn attach_refusals_write_nothing(pool: DbPool) {
             base(json!({"titles": [{"title_id": 999_999, "position": 2}]})),
             "No title with id 999999".into(),
         ),
+        // Review round 1: a title line on an expected tome's position,
+        // also through an omnibus range.
+        (
+            base(
+                json!({"titles": [{"title_id": t, "position": 3, "is_omnibus": true, "end_position": 5}]}),
+            ),
+            "already expects the tome \"Spirou 4\" at position 4".into(),
+        ),
     ];
     for (args, expected) in cases {
         let msg = agent.err("propose_series_attach", args.clone()).await;
@@ -460,7 +518,7 @@ async fn a_pending_proposal_for_the_same_series_blocks_a_new_one(pool: DbPool) {
     );
     assert_eq!(proposal_count(&pool).await, 2);
 
-    // Once decided, a new proposal can be filed.
+    // Once decided (or soft-deleted), a new proposal can be filed.
     let admin = librarian_id(&pool).await;
     ProposalService::transition(
         &pool,
@@ -475,7 +533,36 @@ async fn a_pending_proposal_for_the_same_series_blocks_a_new_one(pool: DbPool) {
     ProposalService::transition(&pool, first, &Decision::MarkStale)
         .await
         .unwrap();
-    agent.ok("propose_series_attach", attach).await;
+    let refiled = proposal_id(&agent.ok("propose_series_attach", attach.clone()).await);
     agent.ok("propose_series_create", create).await;
     assert_eq!(proposal_count(&pool).await, 4);
+    // Accepted: no longer pending.
+    ProposalService::transition(&pool, refiled, &Decision::Accept { by: admin })
+        .await
+        .unwrap();
+    let again = proposal_id(&agent.ok("propose_series_attach", attach.clone()).await);
+    // Soft-deleted: never blocks.
+    soft_delete(&pool, "proposals", again).await;
+    agent.ok("propose_series_attach", attach).await;
+    assert_eq!(proposal_count(&pool).await, 6);
+}
+
+/// Review round 1: two concurrent filings for the same series with the
+/// same key are serialised by the key lock — exactly one is filed.
+#[sqlx::test(migrations = "./migrations")]
+async fn concurrent_filings_for_one_series_file_once(pool: DbPool) {
+    let agent = Agent::new(&pool).await;
+    let series = add_series(&pool, "Yakari", "open", None).await;
+    let attach = json!({"series_id": series, "expected_tomes": [{"position": 1, "title": "Y1"}], "sources": [SRC]});
+    let create = json!({"name": "Johan et Pirlouit", "series_type": "open", "sources": [SRC]});
+    let (a, b, c, d) = tokio::join!(
+        agent.call("propose_series_attach", attach.clone()),
+        agent.call("propose_series_attach", attach),
+        agent.call("propose_series_create", create.clone()),
+        agent.call("propose_series_create", create),
+    );
+    let ok = |r: &Value| r["isError"] == false;
+    assert_eq!([&a, &b].iter().filter(|r| ok(r)).count(), 1, "{a} {b}");
+    assert_eq!([&c, &d].iter().filter(|r| ok(r)).count(), 1, "{c} {d}");
+    assert_eq!(proposal_count(&pool).await, 2);
 }

@@ -635,19 +635,33 @@ impl ProposalService {
     /// target's current version, write the proposal (`pending`) and its
     /// items in one transaction. Returns the new proposal's id.
     pub async fn file(pool: &DbPool, proposal: &NewProposal) -> Result<u64, ProposalError> {
+        let mut tx = pool.begin().await?;
+        let id = Self::file_in(&mut tx, proposal).await?;
+        tx.commit().await?;
+        Ok(id)
+    }
+
+    /// [`Self::file`] on a caller-held transaction (story 11-12 runs its
+    /// duplicate checks in the same one); the caller commits. Nothing is
+    /// committed here, so an error leaves nothing behind once the caller
+    /// rolls back (or drops) the transaction.
+    pub async fn file_in(
+        conn: &mut MySqlConnection,
+        proposal: &NewProposal,
+    ) -> Result<u64, ProposalError> {
         let sources = validate_sources(&proposal.sources)?;
         let values = validate_items(&proposal.items)?;
         let sources_json = serde_json::to_string(&sources)
             .map_err(|e| AppError::Internal(format!("sources serialization: {e}")))?;
 
-        let mut tx = pool.begin().await?;
-        if !ProposalModel::lock_filing_key(&mut tx, proposal.api_key_id).await? {
+        let tx = conn;
+        if !ProposalModel::lock_filing_key(tx, proposal.api_key_id).await? {
             return Err(ProposalError::KeyNotAllowed {
                 api_key_id: proposal.api_key_id,
             });
         }
         let states = read_target_states(
-            &mut tx,
+            tx,
             proposal.items.iter().filter_map(|i| i.target),
             true,
             false,
@@ -686,17 +700,12 @@ impl ProposalService {
             });
         }
 
-        let id = ProposalModel::insert_proposal(
-            &mut tx,
-            proposal.kind,
-            proposal.api_key_id,
-            &sources_json,
-        )
-        .await?;
+        let id =
+            ProposalModel::insert_proposal(tx, proposal.kind, proposal.api_key_id, &sources_json)
+                .await?;
         for row in &rows {
-            ProposalModel::insert_item(&mut tx, id, row).await?;
+            ProposalModel::insert_item(tx, id, row).await?;
         }
-        tx.commit().await?;
         tracing::info!(
             proposal_id = id,
             kind = proposal.kind.as_str(),

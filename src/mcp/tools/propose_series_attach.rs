@@ -61,20 +61,23 @@ impl McpTool for ProposeSeriesAttach {
 
     fn description(&self) -> &'static str {
         "Propose to attach titles the library already holds to an existing series (each \
-         with its position, and `is_omnibus` / `end_position` for an omnibus covering several \
-         positions), and/or to record tomes of that series the library does not own yet \
-         (`expected_tomes`: position, title, optional ISBN). Give at least one title or \
-         expected tome, and `sources`: the http(s) URLs where you found the information. \
-         Read the series with get_series first: proposed positions must be free. This files \
-         ONE proposal for a librarian to accept, edit or reject; it does not change the \
-         catalog. Returns `proposal_id` and `status` (`pending`). Refused with an explanation \
-         when: the series id is unknown or deleted; a proposal for this series is still \
-         pending (the message gives its id); a title id is unknown or deleted, or the title \
-         is already in the series; a position is below 1, above a closed series' total, used \
-         twice in the proposal, or already held by a title or an expected tome of the \
-         series; an expected tome has no title, an invalid ISBN or an ISBN the series already \
-         expects; `series_version` or a title's `version` no longer matches; a source is not \
-         an http(s) URL. To create a series that does not exist, use propose_series_create."
+         with its position, and `is_omnibus` with `end_position` for an omnibus covering \
+         several positions), and/or to record tomes of that series the library does not own \
+         yet (`expected_tomes`: position, title, optional ISBN). Give at least one title or \
+         expected tome, and `sources`: the http(s) URLs where you found the information. Read \
+         the series with get_series first: proposed positions must be free. This files ONE \
+         proposal for a librarian to accept, edit or reject; it does not change the catalog. \
+         Returns `proposal_id` and `status` (`pending`). Refused with an explanation when: the \
+         series id is unknown or deleted; a proposal for this series is still pending (the \
+         message gives its id); a title id is unknown or deleted, is already in the series, \
+         or is listed twice; a position is below 1, above 10000, above a closed series' total, \
+         used twice in the proposal (omnibus ranges included), or already held by a title or \
+         named by an expected tome of the series; `end_position` is given without \
+         `is_omnibus`, or an omnibus lacks it or covers more than 100 positions; `titles` and \
+         `expected_tomes` hold more than 999 entries together; an expected tome has no title, \
+         an invalid ISBN or an ISBN the series (or this proposal) already expects; \
+         `series_version` or a title's `version` no longer matches; a source is not an \
+         http(s) URL. To create a series that does not exist, use propose_series_create."
     }
 
     fn input_schema(&self) -> Value {

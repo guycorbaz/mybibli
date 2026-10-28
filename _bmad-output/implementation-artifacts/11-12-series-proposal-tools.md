@@ -76,6 +76,21 @@ so that the librarian can group volumes without searching by hand.
 - [Source: src/mcp/tools/get_series.rs], [Source: src/mcp/tool.rs] — tool conventions (D-11-7-*, D-11-8-*).
 - [Source: _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md] — D-11-9-*, D-11-10-*, D-11-11-*.
 
+### Review Findings
+
+Code review 2026-10-28 (bmad-code-review: Blind Hunter, Edge Case Hunter, Acceptance Auditor).
+
+Round 1:
+- [x] [Review][Patch] (High) Omnibus range / total unbounded (`1..i32::MAX` → runaway acceptance, unbounded grid) — positions and totals ≤ 10 000, omnibus ≤ 100 positions (D-11-12-9) [src/services/series_proposals.rs]
+- [x] [Review][Patch] (Medium) Item cap checked after an O(n²) validation — line cap (999) first, hash sets (D-11-12-9) [src/services/series_proposals.rs]
+- [x] [Review][Patch] (Medium) Duplicate rule raced by parallel calls — checks in the filing transaction behind an exclusive key-row lock, `ProposalService::file_in` (D-11-12-11) [src/services/series_proposals.rs, src/services/proposals.rs, src/models/proposal.rs]
+- [x] [Review][Patch] (Medium) Attach title line on an expected tome's position accepted (description said refused) — refused (D-11-12-10)
+- [x] [Review][Patch] (Medium) AC9: several refusals only unit-tested — integration cases added; unblocking by accept / soft delete; concurrent filing test [tests/mcp_series_proposals.rs]
+- [x] [Review][Patch] (Low) Existing-series check used the column collation — same `utf8mb4_unicode_ci` comparison as the pending check; normalised sources filed; descriptions list every refusal and bound; E2E checks the revoked key
+- [x] [Review][Defer] (Low) E2E specs creating a series depend on file order — #528 (pre-existing)
+- [x] [Review][Defer] (Low) Owned ISBN on a tome line, cross-key race, cross-proposal title conflicts — re-check at acceptance, #529
+- Dismissed (round 1): existing omnibus covering a proposed position (one `title_series` row per covered position, so the equality checks are complete — verified by two layers); `Tome` message names the position rather than the title (identifies the line); KeyNotAllowed through the router (the guard refuses first; unit-tested mapping).
+
 ## Dev Agent Record
 
 ### Agent Model Used

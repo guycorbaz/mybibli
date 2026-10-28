@@ -5,9 +5,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::mcp::tool::ToolError;
-use crate::services::proposals::{MAX_ITEMS, MAX_SOURCE_CHARS, MAX_SOURCES};
+use crate::services::proposals::{MAX_SOURCE_CHARS, MAX_SOURCES};
 use crate::services::series_proposals::{
-    FiledProposal, RefusalClass, SeriesProposalError, TitleLine, TomeLine,
+    FiledProposal, MAX_LINES, RefusalClass, SeriesProposalError, TitleLine, TomeLine,
 };
 
 /// One entry of `titles`.
@@ -65,8 +65,8 @@ pub fn lines(titles: Vec<TitleArg>, tomes: Vec<TomeArg>) -> (Vec<TitleLine>, Vec
 pub fn titles_property() -> Value {
     json!({
         "type": "array",
-        "maxItems": MAX_ITEMS - 1,
-        "description": "Titles the library already holds, each with its position in the series. Find title ids with search_titles; a tome the library does not own goes in `expected_tomes` instead.",
+        "maxItems": MAX_LINES,
+        "description": "Titles the library already holds, each with its position in the series (at most 999 entries in `titles` and `expected_tomes` together). Find title ids with search_titles; a tome the library does not own goes in `expected_tomes` instead.",
         "items": {
             "type": "object",
             "properties": {
@@ -78,6 +78,7 @@ pub fn titles_property() -> Value {
                 "position": {
                     "type": "integer",
                     "minimum": 1,
+                    "maximum": 10000,
                     "description": "Position (tome number) of the title in the series, from 1. For an omnibus, the first position it covers."
                 },
                 "is_omnibus": {
@@ -88,7 +89,8 @@ pub fn titles_property() -> Value {
                 "end_position": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Omnibus only: the last position it covers (at least `position`)."
+                    "maximum": 10000,
+                    "description": "Omnibus only: the last position it covers (at least `position`, at most 100 positions in all)."
                 },
                 "version": {
                     "type": "integer",
@@ -105,14 +107,15 @@ pub fn titles_property() -> Value {
 pub fn tomes_property() -> Value {
     json!({
         "type": "array",
-        "maxItems": MAX_ITEMS - 1,
-        "description": "Tomes of the series the library does not own yet (they show as expected on the series page once accepted).",
+        "maxItems": MAX_LINES,
+        "description": "Tomes of the series the library does not own yet (at most 999 entries in `titles` and `expected_tomes` together) (they show as expected on the series page once accepted).",
         "items": {
             "type": "object",
             "properties": {
                 "position": {
                     "type": "integer",
                     "minimum": 1,
+                    "maximum": 10000,
                     "description": "Position (tome number) of the tome in the series, from 1."
                 },
                 "title": {
@@ -174,6 +177,24 @@ mod tests {
     use crate::models::proposal::ProposalKind;
     use crate::services::proposals::ProposalError;
     use crate::services::series_proposals::PendingFor;
+
+    /// The schema bounds follow the service constants (the descriptions
+    /// quote them as numbers).
+    #[test]
+    fn schema_bounds_follow_the_service() {
+        use crate::services::series_proposals::{MAX_OMNIBUS_SPAN, MAX_POSITION};
+        assert_eq!(
+            (MAX_LINES, MAX_POSITION, MAX_OMNIBUS_SPAN),
+            (999, 10_000, 100)
+        );
+        let t = titles_property();
+        assert_eq!(t["maxItems"], 999);
+        assert_eq!(t["items"]["properties"]["position"]["maximum"], 10_000);
+        assert_eq!(
+            tomes_property()["items"]["properties"]["position"]["maximum"],
+            10_000
+        );
+    }
 
     #[test]
     fn refusals_map_to_actionable_tool_errors() {

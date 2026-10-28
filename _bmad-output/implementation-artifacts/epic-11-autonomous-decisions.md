@@ -625,3 +625,26 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** "returns its id and status".
 **Chosen:** `{ "proposal_id", "status": "pending", "kind", "item_count" }`.
 **Reversible:** yes.
+
+### D-11-12-9 — Code review round 1: bounded positions, omnibus span and line count [PRODUCT]
+**Context:** review round 1 (High, edge-case layer): an omnibus `1..2147483647` passed filing, and accepting it (`assign_omnibus`, one row per position) would run away; a closed total of `i32::MAX` would make the series page grid unbounded. (Medium, blind layer): the 1000-item cap was only checked inside `ProposalService::file`, after an O(n²) validation of up to ~500 000 lines a 14 MiB body can carry.
+**Chosen:** agent proposals accept positions and totals in 1..=10 000 (`MAX_POSITION`), an omnibus covering at most 100 positions (`MAX_OMNIBUS_SPAN`), and at most 999 title + tome lines together (`MAX_LINES`, checked first, before any per-line work); duplicate titles / ISBNs use hash sets. The schemas carry the same bounds; the descriptions quote them.
+**Rejected:** the same caps on the web forms (librarian input, out of scope).
+**Supersedes:** the `i32` bound of the story's dev notes.
+**Reversible:** yes.
+
+### D-11-12-10 — Code review round 1: a title line may not fill an expected tome's position [PRODUCT]
+**Context:** review round 1 (Medium): an attach title line on a position named by a live unsettled expected tome was filed; accepting it would put a title next to an unsettled tome (the "to review" state of D-11-11-2), and the tool description already said it was refused.
+**Chosen:** refused (`TomePositionTaken`), omnibus ranges included. If that title really is the tome, its ISBN would have settled the tome at catalogue time; otherwise the librarian resolves it on the series page.
+**Supersedes:** the "Not refused" title-line case of D-11-12-4.
+**Reversible:** yes.
+
+### D-11-12-11 — Code review round 1: duplicate checks inside the filing transaction, serialised per key (supersedes part of D-11-12-5)
+**Context:** review round 1 (Medium, two layers): agents issue parallel tool calls, so two filings for the same series could both pass the plain-read duplicate checks.
+**Chosen:** `ProposalService::file_in` (the transaction-scoped body of `file`); the series service opens the transaction, locks the filing key row `FOR UPDATE` (same key-first lock order as the share lock and 11-14's revocation), runs the existing-series and pending checks as locking (current) reads, files, commits. Filings with the same key are serialised — the realistic race. Two different keys racing on the same series remain possible (tracked for 11-17 in #529). The existing-series check now uses the same `utf8mb4_unicode_ci` comparison as the pending check, independent of the server charset (the web form's own check is unchanged). Validated (normalised) sources are what is filed.
+**Rejected:** a lock on the series row (deadlock-prone against an accept holding the proposal-item next-key locks, D-11-9-12); `GET_LOCK` (session-scoped, unreliable with a pool).
+**Reversible:** yes.
+
+### D-11-12-12 — Code review round 1: deferred Lows
+**Chosen:** #528 (E2E specs creating a series depend on file order — pre-existing, D-11-11-6); #529 (checks 11-17 must repeat at acceptance: owned ISBN on a tome line also proposed as a title line, cross-key race, cross-proposal title conflicts). #514 (MCP body cap / timeout) re-pointed to 11-14 by comment. Fixed: refusals now covered end-to-end through the router (name length, title twice, omnibus rules, positions, totals, tome title/ISBN, line cap), unblocking by accept and soft delete, the concurrent filing, the accent-insensitive existing-series match, and the E2E checks a revoked key is refused.
+**Reversible:** yes.
