@@ -1,6 +1,6 @@
 # Story 11.9: Proposals schema and service
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR134, FR140, NFR47, AR29. Epic 11 — ninth story; blocks every proposal story (11-12 series tools, 11-13 metadata, 11-14 cover, 11-15 history, 11-16..11-19 proposals page). No MCP tool, no route, no template, no locale key in this story: it lays the schema and the service the next stories call.
 
@@ -95,7 +95,12 @@ Round 3:
 - [x] [Review][Patch] (Low) AC1 / AC5 / AC6 text and Dev Agent Record counts brought in line with D-11-9-9..11 [this file]
 - Dismissed (round 3): `fk_proposals_api_key` vs the purge (verified: `api_keys` is never hard-deleted — not in `auto_purge` order nor `ALLOWED_TABLES`; `api_keys.created_by` is `ON DELETE SET NULL`).
 
-Round 4: see Senior Developer Review.
+Round 4 (confirmation pass, all three lenses): no Medium+. Lows: accept's locking item read briefly blocks a concurrent filing when the accepted proposal is the newest (note for 11-17, D-11-9-12); early returns in `file` / `detail` roll back by drop (correct, style only) — both dismissed.
+
+### Senior Developer Review (AI)
+
+- **Outcome:** approved after three fix rounds; round 4 (confirmation pass) found no Medium+ issue. Deferred: #521, #522 (both Medium, `type:code-review-finding`).
+- **Gates (2026-10-28, final code):** `cargo clippy --all-targets -- -D warnings` clean; `cargo test` with the test DB on 3307: 1786 passed / 0 failed across 66 binaries (`proposals_service` 26, lib unit tests for the story 30); `cargo sqlx prepare --check --workspace -- --all-targets` clean on a freshly migrated test DB; flake gate clean; `tsc --noEmit` clean; Playwright on a freshly reset stack, `CI=true --workers=2`: 362 passed, 2 skipped, 0 failed.
 
 ## Dev Agent Record
 
@@ -137,3 +142,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — dev-story complete (T1–T7), gates green → review.
 - 2026-10-28 — code review round 1: 5 Medium + 11 Low fixed, 2 Medium deferred (#521, #522).
 - 2026-10-28 — code review round 2: 4 Medium + 10 Low fixed.
+- 2026-10-28 — code review round 3: 1 Medium + 1 Low fixed; round 4 clean → done.
