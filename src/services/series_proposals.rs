@@ -43,8 +43,10 @@ use crate::models::series::SeriesType;
 use crate::services::expected_tomes::{
     ExpectedTomeError, closed_total_of, normalize_isbn, validate_title,
 };
+pub use crate::services::proposals::{FiledProposal, RefusalClass};
 use crate::services::proposals::{
-    NewProposal, NewProposalItem, ProposalError, ProposalService, log_filed, validate_sources,
+    NewProposal, NewProposalItem, ProposalError, ProposalService, Refusal, log_filed,
+    validate_sources,
 };
 use crate::services::series::SeriesService;
 
@@ -102,14 +104,6 @@ pub struct SeriesAttachRequest {
     pub titles: Vec<TitleLine>,
     pub expected_tomes: Vec<TomeLine>,
     pub sources: Vec<String>,
-}
-
-/// A filed proposal.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FiledProposal {
-    pub proposal_id: u64,
-    pub kind: ProposalKind,
-    pub item_count: usize,
 }
 
 /// A line of the proposal, as named in error messages.
@@ -222,22 +216,8 @@ pub enum SeriesProposalError {
     Proposal(ProposalError),
 }
 
-/// How a refusal should be presented (the tool layer maps it to a
-/// `ToolError` without knowing every variant).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RefusalClass {
-    /// The arguments are wrong as given.
-    InvalidInput,
-    /// An entity the arguments name does not exist.
-    NotFound,
-    /// The arguments are well formed but the library's state refuses them.
-    Conflict,
-    /// A server failure; nothing to show.
-    Internal,
-}
-
-impl SeriesProposalError {
-    pub fn class(&self) -> RefusalClass {
+impl Refusal for SeriesProposalError {
+    fn class(&self) -> RefusalClass {
         use SeriesProposalError::*;
         match self {
             SeriesNotFound { .. } | TitleNotFound { .. } => RefusalClass::NotFound,

@@ -50,6 +50,35 @@ pub const MAX_PROPOSAL_VALUES_BYTES: usize = 1024 * 1024;
 /// At most this many characters in a rejection reason.
 pub const MAX_REJECTION_REASON_CHARS: usize = 1000;
 
+/// How a refusal should be presented (the tool layer maps it to a
+/// `ToolError` without knowing every variant).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefusalClass {
+    /// The arguments are wrong as given.
+    InvalidInput,
+    /// An entity the arguments name does not exist.
+    NotFound,
+    /// The arguments are well formed but the library's state refuses them.
+    Conflict,
+    /// A server failure; nothing to show.
+    Internal,
+}
+
+/// A proposal error the agent can be shown: its [`RefusalClass`] and an
+/// English message (`Display`). Implemented by each kind's error type
+/// (stories 11-12, 11-13, 11-14) so the MCP layer maps them uniformly.
+pub trait Refusal: fmt::Display + fmt::Debug {
+    fn class(&self) -> RefusalClass;
+}
+
+/// A filed proposal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FiledProposal {
+    pub proposal_id: u64,
+    pub kind: ProposalKind,
+    pub item_count: usize,
+}
+
 /// Why a source URL was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceRejection {

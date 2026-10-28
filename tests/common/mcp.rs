@@ -19,7 +19,7 @@ pub const V_LEGACY: &str = "2025-11-25";
 pub const V_MODERN: &str = "2026-07-28";
 
 /// Every tool `/api/mcp` serves, sorted by name.
-pub const ALL_TOOLS: [&str; 9] = [
+pub const ALL_TOOLS: [&str; 10] = [
     "get_series",
     "get_title",
     "list_series",
@@ -27,12 +27,17 @@ pub const ALL_TOOLS: [&str; 9] = [
     "list_titles_without_cover",
     "propose_series_attach",
     "propose_series_create",
+    "propose_title_metadata",
     "search_contributors",
     "search_titles",
 ];
 
-/// The tools that file proposals (story 11-12 on); the others read.
-pub const PROPOSE_TOOLS: [&str; 2] = ["propose_series_attach", "propose_series_create"];
+/// The tools that file proposals (stories 11-12, 11-13); the others read.
+pub const PROPOSE_TOOLS: [&str; 3] = [
+    "propose_series_attach",
+    "propose_series_create",
+    "propose_title_metadata",
+];
 
 pub fn state_with_pool(pool: DbPool) -> mybibli::AppState {
     mybibli::AppState {

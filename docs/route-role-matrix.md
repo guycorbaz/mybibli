@@ -201,6 +201,10 @@ Proposal tools (11-12 on — they file a pending proposal for a Librarian or
 Admin to decide and never write the catalog, NFR44): `propose_series_create`
 and `propose_series_attach` (one proposal per series, mandatory http(s)
 sources, refused while another proposal for the same series is pending).
+`propose_title_metadata` (11-13) proposes subtitle, description, publisher,
+publication year, Dewey code and contributors to add for one title; each
+field is stored next to the title's current value, unchanged fields are
+dropped, invalid ones refused field by field.
 
 ### Shelf audit (CR #237) (`src/routes/audit.rs`)
 

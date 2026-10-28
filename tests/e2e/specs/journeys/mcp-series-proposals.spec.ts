@@ -4,7 +4,7 @@
  * Real journey from a blank browser: loginAs(admin) → scan an ISBN in
  * /catalog (a title the agent will place) → create a series in the web UI
  * (the one the agent attaches to) → Admin → API keys → create a `propose`
- * key → as a separate agent client: `tools/list` lists the nine tools →
+ * key → as a separate agent client: `tools/list` lists every tool →
  * `propose_series_create` files a pending proposal → the same proposal
  * again is refused with the pending id → a create for the existing
  * series' name is refused and points to `propose_series_attach` →

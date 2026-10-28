@@ -1,6 +1,6 @@
 # Story 11.13: Metadata proposal tool
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR132 (with FR134, NFR44, NFR47, AR27, AR29 inherited from 11-5 / 11-6 / 11-9). Epic 11 — thirteenth story; the second kind of proposal an agent files. The agent never writes the catalog: each call files one `metadata` proposal through `ProposalService::file` (story 11-9). Acceptance is story 11-18; the proposals page is 11-16; editing before acceptance is 11-19.
 
@@ -49,12 +49,12 @@ so that titles the providers never found become complete.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Shared pieces: `RefusalClass` + `FiledProposal` moved to `services::proposals` (re-exported by `series_proposals`); `utils::dewey_code_chars_valid` used by `api_v1`; `MAX_CONTRIBUTOR_NAME_BYTES` constant in `services::contributor` used by its checks.
-- [ ] T2 — Service `src/services/metadata_proposals.rs`: request types, `MetadataProposalError` (English `Display`, `class()`), pure `validate_fields`, `resolve_roles`, `diff_against` (current vs proposed, items), `MetadataProposalService::propose` (read title + contributors + roles, pin version, `ProposalService::file`).
-- [ ] T3 — MCP: `src/mcp/tools/proposal_args.rs` (sources schema, filed document, generic `tool_error`), `propose_title_metadata.rs`; registry; registry test.
-- [ ] T4 — Integration tests `tests/mcp_metadata_proposals.rs`; tool counts in existing MCP tests / helpers.
-- [ ] T5 — E2E `tests/e2e/specs/journeys/mcp-metadata-proposal.spec.ts`; `MCP_TOOLS`.
-- [ ] T6 — `docs/route-role-matrix.md` MCP section; decisions D-11-13-*.
+- [x] T1 — Shared pieces: `RefusalClass` + `FiledProposal` moved to `services::proposals` (re-exported by `series_proposals`); `utils::dewey_code_chars_valid` used by `api_v1`; `MAX_CONTRIBUTOR_NAME_BYTES` constant in `services::contributor` used by its checks.
+- [x] T2 — Service `src/services/metadata_proposals.rs`: request types, `MetadataProposalError` (English `Display`, `class()`), pure `validate_fields`, `resolve_roles`, `diff_against` (current vs proposed, items), `MetadataProposalService::propose` (read title + contributors + roles, pin version, `ProposalService::file`).
+- [x] T3 — MCP: `src/mcp/tools/proposal_args.rs` (sources schema, filed document, generic `tool_error`), `propose_title_metadata.rs`; registry; registry test.
+- [x] T4 — Integration tests `tests/mcp_metadata_proposals.rs`; tool counts in existing MCP tests / helpers.
+- [x] T5 — E2E `tests/e2e/specs/journeys/mcp-metadata-proposal.spec.ts`; `MCP_TOOLS`.
+- [x] T6 — `docs/route-role-matrix.md` MCP section; decisions D-11-13-*.
 
 ## Dev Notes
 
@@ -79,13 +79,35 @@ so that titles the providers never found become complete.
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- `cargo clippy --all-targets -- -D warnings`: clean.
+- `cargo test` (unit + DB integration on the 3307 test DB): 1903 passed, 0 failed.
+- `cargo sqlx prepare --check --workspace -- --all-targets`: up to date (no macro query added).
+- `tsc --noEmit`: clean; `waitForTimeout` grep: clean.
+- Playwright on a reset stack (`E2E_HOST_PORT=18080`, `CI=true --workers=2`): 369 passed, 2 skipped.
 
 ### Completion Notes List
 
+- New service `services::metadata_proposals` (item-shape contract in its module doc, D-11-13-2) over `ProposalService::file`; typed `MetadataProposalError` implementing the new shared `Refusal` trait; pure `validate_fields` (all problems at once) and `diff_against` (current vs proposed, unchanged fields dropped).
+- Shared pieces: `RefusalClass`, `FiledProposal`, `Refusal` in `services::proposals`; MCP `proposal_args` module; `utils::dewey_code_chars_valid` (API v1 reuses it); `MAX_CONTRIBUTOR_NAME_BYTES`.
+- MCP tool `propose_title_metadata` (10 tools).
+- Decisions D-11-13-1..8.
+
 ### File List
+
+- `src/services/metadata_proposals.rs` (new), `src/services/mod.rs`, `src/services/proposals.rs`, `src/services/series_proposals.rs`, `src/services/contributor.rs`
+- `src/mcp/tools/propose_title_metadata.rs` (new), `src/mcp/tools/proposal_args.rs` (new), `src/mcp/tools/series_proposal_args.rs`, `src/mcp/tools/propose_series_create.rs`, `src/mcp/tools/propose_series_attach.rs`, `src/mcp/tools/mod.rs`
+- `src/utils.rs`, `src/routes/api_v1.rs`
+- `tests/mcp_metadata_proposals.rs` (new), `tests/common/mcp.rs`, `tests/mcp_series_proposals.rs`
+- `tests/e2e/specs/journeys/mcp-metadata-proposal.spec.ts` (new), `tests/e2e/helpers/mcp.ts`, `tests/e2e/specs/journeys/mcp-series-proposals.spec.ts`
+- `docs/route-role-matrix.md`
+- `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md`, `sprint-status.yaml`
 
 ## Change Log
 
 - 2026-10-28 — story created (ready-for-dev).
 - 2026-10-28 — validated against the create-story checklist: added the comparison / normalisation rules (dev notes); no AC change.
+- 2026-10-28 — implemented (dev-story); status review.

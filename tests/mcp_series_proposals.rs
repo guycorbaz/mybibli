@@ -114,8 +114,10 @@ async fn tools_are_listed_as_propose_tools(pool: DbPool) {
         assert_eq!(t["annotations"]["readOnlyHint"], false, "{t}");
         assert_eq!(t["annotations"]["destructiveHint"], false, "{t}");
         assert_eq!(t["annotations"]["idempotentHint"], false, "{t}");
-        let titles = &t["inputSchema"]["properties"]["titles"]["items"];
-        assert_eq!(titles["additionalProperties"], false, "{t}");
+        if name.starts_with("propose_series_") {
+            let titles = &t["inputSchema"]["properties"]["titles"]["items"];
+            assert_eq!(titles["additionalProperties"], false, "{t}");
+        }
         assert!(
             t["inputSchema"]["required"]
                 .as_array()

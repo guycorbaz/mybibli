@@ -14,6 +14,7 @@ pub mod loans;
 pub mod locations;
 pub mod locking;
 pub mod metadata_diagnosis;
+pub mod metadata_proposals;
 pub mod password;
 pub mod proposals;
 pub mod scan_undo;

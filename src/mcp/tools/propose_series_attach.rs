@@ -5,10 +5,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::args;
-use super::series_proposal_args::{
-    TitleArg, TomeArg, filed_document, lines, sources_property, titles_property, tomes_property,
-    tool_error,
-};
+use super::proposal_args::{filed_document, sources_property, tool_error};
+use super::series_proposal_args::{TitleArg, TomeArg, lines, titles_property, tomes_property};
 use crate::mcp::tool::{McpTool, ToolContext, ToolError, ToolFuture};
 use crate::services::series_proposals::{SeriesAttachRequest, SeriesProposalService};
 
