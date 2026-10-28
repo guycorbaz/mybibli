@@ -376,3 +376,47 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 **Chosen:** for a closed series with a total, only positions within 1..=total count as held — in the shared SQL `filled_positions_join!` (dashboard `count_with_gaps` / `list_with_gaps` and `list_summaries`) and in the Rust `series_gaps`, so `gap_count` always equals the number of missing positions and every surface agrees (the series detail grid already counted that way). `get_series` still lists the out-of-range assignment rows in `positions`. The `/series` list page's own row count and the `update_series` guard are left as they are, tracked in #519.
 **Rejected:** keeping the dashboard formula and documenting the mismatch (two tools contradicting each other on the same series); changing only the MCP side (dashboard and MCP would then disagree).
 **Reversible:** yes.
+
+## § 11-9 — Proposals schema and service (part of #493)
+
+### D-11-9-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-9-proposals-schema-service` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-9-2 — Filing errors are a typed `ProposalError`, agent-facing English
+**Context:** `From<AppError> for ToolError` maps every `AppError` to `Internal`; the proposal tools (11-12..11-14) must return an actionable refusal (FR134, NFR47 "explicit error").
+**Chosen:** `services::proposals::ProposalError` (validation variants, `NotFound`, `NotPending`, `Database`) with English `Display` messages (MCP copy is not localized — D-11-7 precedent) and `From<ProposalError> for AppError` (validation → `BadRequest`, `NotPending` → `Conflict`); the web stories (11-16..11-19) localize what reaches a librarian.
+**Rejected:** `AppError::BadRequest(String)` (the tool layer could not tell a refusal from a server error); localized keys now (no web surface yet).
+**Reversible:** yes.
+
+### D-11-9-3 — Item target: nullable ENUM table + id + version, no FK
+**Context:** "one line per action: target table, target id, the target's version". A `series_create` line or an expected tome targets nothing that exists yet; titles and series are hard-purged 30 days after a soft delete.
+**Chosen:** `target_table ENUM('titles','series') NULL`, `target_id`, `target_version`, all three NULL or all set (CHECK constraint); no FK (polymorphic, must not block the purge — a purged target reads as deleted, hence stale). The service reads the version itself at filing; the caller never supplies it. A later story extends the ENUM by migration if it needs another target.
+**Rejected:** a free `VARCHAR` table name (SQL identifiers cannot be bound — the whitelist would live only in Rust); an `action` column (not in the AC; 11-12..11-14 define the `proposed_values` shapes).
+**Reversible:** yes (migration).
+
+### D-11-9-4 — Staging directory derived from `COVERS_DIR`, sibling `<name>-staging` [PRODUCT]
+**Context:** "created and configured next to `covers/`, unused for now"; `AppState` is built literally in 36 files.
+**Chosen:** `services::cover_staging::staging_dir_for(covers_dir)` → `./covers-staging` (Docker: `/app/covers-staging`), exposed by `AppState::cover_staging_dir()`, created at boot, never served (outside the `/covers` `ServeDir`, so an unreviewed agent image is never publicly reachable). No new env var: an operator moves it by moving `COVERS_DIR`.
+**Consequence flagged for 11-14:** in the shipped `docker-compose.yml` only `/app/covers` is a volume, so staged covers would not survive a container re-creation (every upgrade). 11-14 must either add a volume (and update `docker-compose.yml` / `docs/dockerhub-overview.md`) or handle a missing staged file on acceptance.
+**Rejected:** a subdirectory of `covers/` (persistent, but served by `/covers` unless a guard route is added — untrusted images on the public origin); a new `AppState` field (36-file churn for an unused path).
+**Reversible:** yes.
+
+### D-11-9-5 — Source URLs: credentials refused, normalised, deduplicated, bounded [PRODUCT]
+**Context:** NFR47 asks for `http`/`https` only, validated at filing; sources will be rendered as links on the proposals page (11-16).
+**Chosen:** parse with `reqwest::Url` (no new crate); refuse a non-http(s) scheme, a missing host and embedded credentials (`https://bnf.fr@evil.example` disguises the real host in a link); at most 20 sources of at most 2048 characters; stored in parsed form, duplicates dropped. Items: at most 1000, values a JSON object of at most 64 KiB serialized.
+**Rejected:** storing the raw string (an unparseable variant could slip through later rendering); unbounded lists.
+**Reversible:** yes.
+
+### D-11-9-6 — No E2E in this story
+**Context:** Foundation Rule 3 asks E2E for every feature; this story has no route, page, tool or other user-visible behaviour (the service has no caller until 11-12 / 11-16).
+**Chosen:** unit + DB integration tests only; the full Playwright suite still runs as the regression gate. The first E2E over proposals comes with 11-12 (agent files one) and 11-16 (librarian rejects one).
+**Rejected:** a throw-away route only to drive an E2E (D-11-5-4 precedent).
+**Reversible:** yes.
+
+### D-11-9-7 — `stale` records `decided_at`, never `decided_by` [PRODUCT]
+**Context:** the AC lists `decided-by user; decided-at` without saying what a system-made transition records.
+**Chosen:** `pending → stale` sets `decided_at = NOW()` and leaves `decided_by` NULL; accept / reject require a user id. A rejection reason is accepted only on reject (trimmed, empty → NULL, ≤ 1000 characters).
+**Rejected:** leaving `decided_at` NULL on stale (the history in 11-15 could not date it).
+**Reversible:** yes.
