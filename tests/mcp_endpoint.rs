@@ -252,6 +252,29 @@ async fn legacy_revision_initialize_then_stateless_calls(pool: DbPool) {
     assert_eq!(call["result"]["isError"], false, "{call}");
     assert_eq!(call["result"]["structuredContent"]["id"], title_id);
     assert_eq!(call["result"]["structuredContent"]["title"], "Legacy Era");
+    // Clients that ignore `structuredContent` get the same JSON as text.
+    let text = call["result"]["content"][0]["text"]
+        .as_str()
+        .expect("text block");
+    let from_text: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(from_text, call["result"]["structuredContent"]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn request_without_version_header_after_initialize_is_refused(pool: DbPool) {
+    // rmcp reads an ordinary request without `MCP-Protocol-Version` as
+    // 2025-03-26, which this endpoint does not serve (D-11-6-12).
+    let title_id = seed_title(&pool, "Headerless").await;
+    let key = seed_key(&pool, ApiKeyScope::Propose).await;
+    let app = router(&pool);
+    for body in [
+        json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        legacy_call("get_title", json!({"id": title_id})),
+    ] {
+        let res = send_json(&app, Call::new(&key, body.clone())).await;
+        assert_eq!(res["error"]["code"], -32022, "{body}: {res}");
+        assert!(!res.to_string().contains("Headerless"), "{res}");
+    }
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -333,10 +356,9 @@ async fn unknown_meta_version_is_a_jsonrpc_error_and_runs_no_tool(pool: DbPool) 
         assert_eq!(status, StatusCode::BAD_REQUEST, "{text}");
         assert!(!text.contains("Never Served"), "a tool ran: {text}");
         let v: Value = serde_json::from_str(&text).expect("JSON-RPC error body");
-        assert!(
-            v["error"]["code"].is_i64(),
-            "expected a JSON-RPC error: {text}"
-        );
+        // HEADER_MISMATCH: the per-request version must equal the header,
+        // and the guard admits only the two served revisions as header.
+        assert_eq!(v["error"]["code"], -32020, "{text}");
         assert!(v.get("result").is_none(), "{text}");
     }
 }
@@ -359,11 +381,13 @@ async fn only_a_propose_key_gets_in(pool: DbPool) {
     let write = seed_key(&pool, ApiKeyScope::Write).await;
     let propose = seed_key(&pool, ApiKeyScope::Propose).await;
     let revoked = seed_key(&pool, ApiKeyScope::Propose).await;
-    sqlx::query("UPDATE api_keys SET revoked_at = NOW() WHERE key_prefix = ?")
+    let revoked_rows = sqlx::query("UPDATE api_keys SET revoked_at = NOW() WHERE key_prefix = ?")
         .bind(&revoked[..12])
         .execute(&pool)
         .await
-        .unwrap();
+        .unwrap()
+        .rows_affected();
+    assert_eq!(revoked_rows, 1, "the revoked key must be the one updated");
     let app = router(&pool);
 
     let mut missing = Call::new("unused", initialize(V_LEGACY));
@@ -408,6 +432,12 @@ async fn host_outside_the_allowlist_is_refused(pool: DbPool) {
     let mut call = Call::new(&key, initialize(V_LEGACY));
     call.host = "127.0.0.1:18080";
     send_json(&app, call).await;
+    // IPv6 loopback (bracketed) and any case are accepted too.
+    for host in ["[::1]", "[::1]:18080", "LOCALHOST:8080"] {
+        let mut call = Call::new(&key, initialize(V_LEGACY));
+        call.host = host;
+        send_json(&app, call).await;
+    }
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -419,6 +449,7 @@ async fn configured_hosts_replace_the_loopback_default(pool: DbPool) {
     );
     for (host, ok) in [
         ("nas.local", true),
+        ("NAS.Local", true),
         ("nas.local:8080", true),
         ("192.168.1.10:8080", true),
         ("192.168.1.10:9090", false),
@@ -477,6 +508,26 @@ async fn oversized_body_is_refused_with_413(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn body_under_the_cap_is_accepted(pool: DbPool) {
+    // Pins that no smaller limit (e.g. axum's 2 MB default) sits in front
+    // of the transport: a 3 MiB body reaches the tool, which refuses the
+    // unknown argument as a tool error.
+    let key = seed_key(&pool, ApiKeyScope::Propose).await;
+    let app = router(&pool);
+    let body = json!({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "get_title", "arguments": {"id": 1, "pad": "a".repeat(3 * 1024 * 1024)}}
+    });
+    let res = send_json(&app, Call::new(&key, body).version(V_LEGACY)).await;
+    assert_eq!(
+        res["result"]["isError"],
+        true,
+        "{}",
+        &res.to_string()[..200]
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn no_csrf_token_and_no_anonymous_session_row(pool: DbPool) {
     let key = seed_key(&pool, ApiKeyScope::Propose).await;
     let app = router(&pool);
@@ -504,21 +555,26 @@ async fn no_csrf_token_and_no_anonymous_session_row(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn get_is_not_allowed(pool: DbPool) {
+async fn get_and_delete_are_not_allowed(pool: DbPool) {
     let key = seed_key(&pool, ApiKeyScope::Propose).await;
     let app = router(&pool);
-    let res = app
-        .oneshot(
-            Request::get("/api/mcp")
-                .header("host", "localhost")
-                .header("authorization", format!("Bearer {key}"))
-                .header("accept", "text/event-stream")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED);
+    for method in ["GET", "DELETE"] {
+        let res = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri("/api/mcp")
+                    .header("host", "localhost")
+                    .header("authorization", format!("Bearer {key}"))
+                    .header("accept", "text/event-stream")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED, "{method}");
+    }
 }
 
 // ─── get_title ───────────────────────────────────────────────────

@@ -11,7 +11,7 @@
  * Spec ID "MP" for ISBNs; unique key labels; no shared-DB assertion
  * beyond the rows this test creates.
  */
-import { test, expect, APIRequestContext } from "@playwright/test";
+import { test, expect, request as playwrightRequest, APIRequestContext } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
@@ -35,7 +35,7 @@ async function mcpPost(
 }
 
 test.describe("Story 11-6 — MCP endpoint", () => {
-  test("an agent with a propose key connects and reads a title", async ({ page }) => {
+  test("an agent with a propose key connects and reads a title", async ({ page, baseURL }) => {
     await page.context().clearCookies();
     await loginAs(page, "admin");
 
@@ -51,92 +51,100 @@ test.describe("Story 11-6 — MCP endpoint", () => {
     const propose = await createApiKey(page, "propose", "mcp");
     const read = await createApiKey(page, "read", "mcp-ro");
 
-    // 2025-11-25: initialize, then stateless calls (no session id).
-    const init = await mcpPost(page.request, propose.plaintext, {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-11-25",
-        capabilities: {},
-        clientInfo: { name: "mybibli-e2e", version: "1.0.0" },
-      },
-    });
-    expect(init.status()).toBe(200);
-    const initBody = await init.json();
-    expect(initBody.result.protocolVersion).toBe("2025-11-25");
-    expect(initBody.result.serverInfo.name).toBe("mybibli");
-    expect(init.headers()["mcp-session-id"]).toBeUndefined();
+    // The agent is a separate client: a fresh request context without the
+    // admin's cookies, like Claude Code.
+    expect(baseURL, "baseURL must be configured").toBeTruthy();
+    const agent = await playwrightRequest.newContext({ baseURL: baseURL! });
+    try {
 
-    const legacy = { "MCP-Protocol-Version": "2025-11-25" };
-    const list = await mcpPost(
-      page.request,
-      propose.plaintext,
-      { jsonrpc: "2.0", id: 2, method: "tools/list" },
-      legacy,
-    );
-    expect(list.status()).toBe(200);
-    const names = (await list.json()).result.tools.map((t: { name: string }) => t.name);
-    expect(names).toContain("get_title");
-
-    const call = await mcpPost(
-      page.request,
-      propose.plaintext,
-      {
+      // 2025-11-25: initialize, then stateless calls (no session id).
+      const init = await mcpPost(agent, propose.plaintext, {
         jsonrpc: "2.0",
-        id: 3,
-        method: "tools/call",
-        params: { name: "get_title", arguments: { id: titleId } },
-      },
-      legacy,
-    );
-    expect(call.status()).toBe(200);
-    const callBody = await call.json();
-    expect(callBody.result.isError).toBe(false);
-    expect(callBody.result.structuredContent.id).toBe(titleId);
-    expect(callBody.result.structuredContent.isbn).toBe(isbn);
-
-    // 2026-07-28: one session-less call, no initialize.
-    const modern = await mcpPost(
-      page.request,
-      propose.plaintext,
-      {
-        jsonrpc: "2.0",
-        id: 4,
-        method: "tools/call",
+        id: 1,
+        method: "initialize",
         params: {
-          name: "get_title",
-          arguments: { id: titleId },
-          _meta: {
-            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-            "io.modelcontextprotocol/clientInfo": { name: "mybibli-e2e", version: "1.0.0" },
-            "io.modelcontextprotocol/clientCapabilities": {},
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "mybibli-e2e", version: "1.0.0" },
+        },
+      });
+      expect(init.status()).toBe(200);
+      const initBody = await init.json();
+      expect(initBody.result.protocolVersion).toBe("2025-11-25");
+      expect(initBody.result.serverInfo.name).toBe("mybibli");
+      expect(init.headers()["mcp-session-id"]).toBeUndefined();
+
+      const legacy = { "MCP-Protocol-Version": "2025-11-25" };
+      const list = await mcpPost(
+        agent,
+        propose.plaintext,
+        { jsonrpc: "2.0", id: 2, method: "tools/list" },
+        legacy,
+      );
+      expect(list.status()).toBe(200);
+      const names = (await list.json()).result.tools.map((t: { name: string }) => t.name);
+      expect(names).toContain("get_title");
+
+      const call = await mcpPost(
+        agent,
+        propose.plaintext,
+        {
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: { name: "get_title", arguments: { id: titleId } },
+        },
+        legacy,
+      );
+      expect(call.status()).toBe(200);
+      const callBody = await call.json();
+      expect(callBody.result.isError).toBe(false);
+      expect(callBody.result.structuredContent.id).toBe(titleId);
+      expect(callBody.result.structuredContent.isbn).toBe(isbn);
+
+      // 2026-07-28: one session-less call, no initialize.
+      const modern = await mcpPost(
+        agent,
+        propose.plaintext,
+        {
+          jsonrpc: "2.0",
+          id: 4,
+          method: "tools/call",
+          params: {
+            name: "get_title",
+            arguments: { id: titleId },
+            _meta: {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+              "io.modelcontextprotocol/clientInfo": { name: "mybibli-e2e", version: "1.0.0" },
+              "io.modelcontextprotocol/clientCapabilities": {},
+            },
           },
         },
-      },
-      { "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/call", "Mcp-Name": "get_title" },
-    );
-    expect(modern.status()).toBe(200);
-    expect((await modern.json()).result.structuredContent.isbn).toBe(isbn);
+        { "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/call", "Mcp-Name": "get_title" },
+      );
+      expect(modern.status()).toBe(200);
+      expect((await modern.json()).result.structuredContent.isbn).toBe(isbn);
 
-    // A read key never reaches the agent surface (NFR44).
-    const refused = await mcpPost(page.request, read.plaintext, {
-      jsonrpc: "2.0",
-      id: 5,
-      method: "tools/list",
-    });
-    expect(refused.status()).toBe(403);
-    expect((await refused.json()).scope_required).toBe("propose");
-
-    // Clean up: no active key left behind.
-    await page.goto("/admin?tab=api_keys");
-    await revokeApiKey(page, propose.label);
-    await revokeApiKey(page, read.label);
-    const afterRevoke = await mcpPost(page.request, propose.plaintext, {
+      // A read key never reaches the agent surface (NFR44).
+      const refused = await mcpPost(agent, read.plaintext, {
+        jsonrpc: "2.0",
+        id: 5,
+        method: "tools/list",
+      });
+      expect(refused.status()).toBe(403);
+      expect((await refused.json()).scope_required).toBe("propose");
+    } finally {
+      // Clean up even on failure: no active key left behind.
+      await page.goto("/admin?tab=api_keys");
+      await revokeApiKey(page, propose.label);
+      await revokeApiKey(page, read.label);
+    }
+    const afterRevoke = await mcpPost(agent, propose.plaintext, {
       jsonrpc: "2.0",
       id: 6,
       method: "tools/list",
     });
     expect(afterRevoke.status()).toBe(401);
+    await agent.dispose();
   });
 });

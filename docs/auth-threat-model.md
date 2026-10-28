@@ -145,11 +145,11 @@ The one-shot startup hatch (`MYBIBLI_RESET_ADMIN=<username>`, `src/services/admi
 
 Accepted trade: the generated password is readable by anyone with access to the log volume. This grants nothing new — whoever can set the env var already controls `docker-compose.yml`, and whoever can read `/var/log/mybibli` on the host could equally read or rewrite the database. The password is one-time in practice: the operator is expected to log in and change it, and a *forgotten* variable re-randomises it on every boot instead of pinning a known value (that refusal-to-start is the load-bearing design point). The hatch refuses unknown, deactivated, and non-admin accounts, and each use leaves an `admin_audit` row (`admin_password_reset_hatch`) attributed to the SYSTEM user.
 
----
-
 ### 5.8 The MCP endpoint is for the LAN, not the Internet (story 11-6)
 
-`/api/mcp` carries a bearer API key in every request. On the default LAN-HTTP deployment the key crosses the LAN in clear, as `/api/v1` keys do; the posture of § 5.1 applies. The endpoint is meant for an agent running on the librarian's machine on the same LAN (NFR43) and must never be published to the Internet. The `Host` allowlist is a DNS-rebinding defence, not an access control: a request without a valid `propose` key is refused (401) before the `Host` check runs, so a rebinding page — which holds no key — never reaches the MCP layer. A `propose` key cannot write catalog data (NFR44); the worst a leaked key can do is read the catalog and, from story 11-9 on, file proposals the librarian must review.
+`/api/mcp` carries a bearer API key in every request. On the default LAN-HTTP deployment the key crosses the LAN in clear, as `/api/v1` keys do; the posture of § 5.1 applies. The endpoint is meant for an agent running on the librarian's machine on the same LAN (NFR43) and must never be published to the Internet. The `Host` allowlist is a DNS-rebinding defence, not an access control. The checks run in this order: API key (401 / 403), protocol-version header (400), then `Host` / `Origin` (403) inside the transport. A rebinding page holds no key, so it is refused at the first step and never reaches the MCP layer. Accepted trade-off of that order: a request from a disallowed `Host` still costs one key verification (argon2) and, with a valid key, updates the key's `last_used_at` before being refused; and the endpoint sends no CORS headers, so browser pages cannot call it at all. A `propose` key cannot write catalog data (NFR44); the worst a leaked key can do is read the catalog and, from story 11-9 on, file proposals the librarian must review.
+
+---
 
 ## 6. Cross-reference with issue #17 sub-items
 

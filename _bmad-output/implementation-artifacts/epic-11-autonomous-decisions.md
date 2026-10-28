@@ -199,19 +199,19 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 
 ### D-11-6-2 — Allowed hosts and origins come from environment variables
 **Context:** the AC lets this story decide how the operator configures the allowed hosts (the NAS is not loopback).
-**Chosen:** `MYBIBLI_MCP_ALLOWED_HOSTS` (comma-separated `host` or `host:port`; default `localhost,127.0.0.1,::1`; a set value replaces the default) and `MYBIBLI_MCP_ALLOWED_ORIGINS` (comma-separated `scheme://host:port`; default empty, so any request carrying an `Origin` is refused — MCP clients are not browsers; a browser-based MCP Inspector needs its origin listed). Read once when the router is built, like `CSP_REPORT_ONLY`.
+**Chosen:** `MYBIBLI_MCP_ALLOWED_HOSTS` (comma-separated `host` or `host:port`; default `localhost,127.0.0.1,::1`; a set value replaces the default) and `MYBIBLI_MCP_ALLOWED_ORIGINS` (comma-separated `scheme://host:port`; default empty, so any request carrying an `Origin` is refused — MCP clients are not browsers; an origin is listed only for a client or proxy that forwards one — see D-11-6-13). Read once when the router is built, like `CSP_REPORT_ONLY`.
 **Rejected:** a K/V `settings` row editable in Admin → System — the list is a deployment fact (which LAN name the NAS answers to) and a DNS-rebinding defence; making it editable from a web page weakens the defence for no gain.
 **Reversible:** yes.
 
 ### D-11-6-3 — rmcp performs the Host/Origin check; the API-key check runs first
 **Context:** rmcp 3.8.0 validates `Host` and `Origin` itself (403), configured explicitly from D-11-6-2. The key check is an axum layer around the rmcp service, so it runs before.
-**Chosen:** configure rmcp's validator (`with_allowed_hosts`, `with_allowed_origins`, `enforce_origin_validation`) rather than write a second validator; a request with neither a valid key nor an allowed host gets 401, one with a valid key and a bad host 403. A hand-written transport (AR27 fallback) would have to re-implement the check — recorded in `src/mcp/transport.rs`.
+**Chosen:** configure rmcp's validator (`with_allowed_hosts`, `with_allowed_origins`, `enforce_origin_validation`) rather than write a second validator. Effective order: key (401/403) → protocol-version header (400, D-11-6-9) → Host/Origin (403); a request with neither a valid key nor an allowed host gets 401, one with a valid key and a bad host 403. Trade-off (review round 1): a refused-host request still costs one argon2 verification and bumps the key's `last_used_at`; documented in `docs/auth-threat-model.md` § 5.8. A hand-written transport (AR27 fallback) would have to re-implement the check — recorded in `src/mcp/transport.rs`.
 **Rejected:** a mybibli validator in front of auth (duplicated parsing logic whose semantics could drift from rmcp's); disabling rmcp's validator.
 **Reversible:** yes.
 
 ### D-11-6-4 — An `initialize` with an unknown revision is negotiated, not refused
 **Context:** the AC asks that an unknown protocol revision be "refused cleanly". The MCP lifecycle says a server receiving an `initialize` for a version it does not support answers with a version it does support; the client then disconnects if it cannot speak it. rmcp implements exactly that.
-**Chosen:** keep the spec behaviour for `initialize` (answer `2025-11-25`); "refused cleanly" applies to the two other channels — an unknown `MCP-Protocol-Version` header (400 with a plain-text reason) and an unknown per-request `_meta` version (JSON-RPC `UNSUPPORTED_PROTOCOL_VERSION`). Tests pin all three.
+**Chosen:** keep the spec behaviour for `initialize` (answer `2025-11-25`); "refused cleanly" applies to the two other channels — an unknown `MCP-Protocol-Version` header (400 with a plain-text reason) and a `_meta` version that does not match an accepted header (JSON-RPC `HEADER_MISMATCH` -32020, HTTP 400 — corrected in review round 1: since the header itself is restricted to the two revisions, an unknown `_meta` version can only surface as a mismatch). Tests pin all three.
 **Rejected:** overriding `initialize` to return an error (breaks the spec negotiation every client relies on).
 **Reversible:** yes.
 
@@ -256,4 +256,16 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 **Context:** the manual session showed rmcp logging its per-request service lifecycle at INFO (four lines per stateless call, with the client's `initialize` parameters) — noise on the NAS log volume at the default `info` level.
 **Chosen:** add `rmcp=warn` to `config::LOG_NOISE_CAPS` (the Fix #405 mechanism); mybibli's own `MCP tool call` line (tool, key id) stays at INFO. An operator can still set `MYBIBLI_LOG_LEVEL=rmcp=debug`.
 **Rejected:** leaving the default verbose.
+**Reversible:** yes.
+
+### D-11-6-12 — An ordinary request without `MCP-Protocol-Version` is refused
+**Context:** review round 1 (Edge Case Hunter): rmcp reads a non-`initialize` request without the header as revision `2025-03-26` and would serve it — a back door around D-11-6-9.
+**Chosen:** `list_tools` and `call_tool` check `RequestContext::protocol_version()` against the two served revisions and answer JSON-RPC `UNSUPPORTED_PROTOCOL_VERSION` (-32022) otherwise. The 2025-11-25 specification requires clients to send the header on every request after `initialize`, and 2026-07-28 requests always carry it, so conforming clients are unaffected (the E2E and the manual Claude Code session send it).
+**Rejected:** buffering the body in the axum guard to read the method (duplicates rmcp parsing); `stateless_protocol_metadata_required` (refuses every 2025-11-25 request).
+**Reversible:** yes.
+
+### D-11-6-13 — No CORS on `/api/mcp`
+**Context:** review round 1: a browser page on an allowed origin cannot call the endpoint — its CORS preflight carries no key (401) and no `Access-Control-Allow-*` header is ever sent.
+**Chosen:** keep it that way (the endpoint is for local agents, not browser pages; adding CORS would widen the surface of a LAN-only endpoint). `MYBIBLI_MCP_ALLOWED_ORIGINS` stays, for clients or proxies that forward an `Origin`; the docs no longer suggest a browser tool in direct mode. The MCP Inspector's default proxy mode is unaffected.
+**Rejected:** a CORS layer bypassing the key check for `OPTIONS`.
 **Reversible:** yes.

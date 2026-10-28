@@ -12,8 +12,9 @@
 //! - `MYBIBLI_MCP_ALLOWED_ORIGINS` — comma-separated `scheme://host:port`
 //!   values accepted in the `Origin` header (`:*` = any port). Default:
 //!   empty, which refuses every request that carries an `Origin` header —
-//!   MCP clients such as Claude Code send none; only a browser-based tool
-//!   (e.g. the MCP Inspector in direct mode) needs its origin listed.
+//!   MCP clients such as Claude Code send none; list an origin only for a
+//!   client or proxy that forwards one. Browser pages calling the endpoint
+//!   directly are not supported: no CORS headers are sent (D-11-6-13).
 //!   Requests without an `Origin` header always pass this check.
 
 use crate::services::cover::MAX_COVER_SIZE;
@@ -75,8 +76,18 @@ impl McpConfig {
     /// transport, the opposite of what an operator clearing it intends.
     pub fn from_values(hosts: Option<&str>, origins: Option<&str>) -> Self {
         let mut allowed_hosts = hosts.map(parse_list).unwrap_or_default();
+        for entry in &allowed_hosts {
+            if entry.contains('/') || entry.contains('*') {
+                tracing::warn!(
+                    entry = %entry,
+                    "{ALLOWED_HOSTS_ENV}: entries are `host` or `host:port` (no scheme, path or wildcard); this one never matches"
+                );
+            }
+        }
         if allowed_hosts.is_empty() {
-            if hosts.is_some() {
+            // docker-compose passes an empty string when the operator sets
+            // nothing: only a non-blank value listing nothing is a mistake.
+            if hosts.is_some_and(|h| !h.trim().is_empty()) {
                 tracing::warn!(
                     "{ALLOWED_HOSTS_ENV} is set but lists no host; using the loopback default"
                 );

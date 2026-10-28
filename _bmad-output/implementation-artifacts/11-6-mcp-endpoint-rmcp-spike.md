@@ -20,7 +20,7 @@ Verified on crates.io and in the crate source (`~/.cargo/registry/src/*/rmcp-3.8
 | streamable HTTP server, axum integration | `transport::streamable_http_server::StreamableHttpService<S, M>` is a `tower::Service<http::Request<B>>`; mounted with `Router::nest_service` | mount at `/api/mcp` |
 | stateless mode | `StreamableHttpServerConfig::with_legacy_session_mode(false)` + `session::never::NeverSessionManager` (or `LocalSessionManager`, unused when stateless); `with_json_response(true)` answers plain JSON for request/response tools | no in-memory session table; one fresh handler per request |
 | revisions `2025-11-25` (with `initialize`) and `2026-07-28` (session-less) | `ProtocolVersion::V_2025_11_25` / `V_2026_07_28`; `ServerHandler::supported_protocol_versions()` bounds negotiation; 2026-07-28 requests carry `_meta["io.modelcontextprotocol/protocolVersion"]` + `clientCapabilities` and the `MCP-Protocol-Version` / `Mcp-Method` / `Mcp-Name` headers (SEP-2243, validated by rmcp) | override `supported_protocol_versions` to exactly these two |
-| unknown revision refused | an unknown `MCP-Protocol-Version` header → HTTP 400 `Unsupported MCP-Protocol-Version`; an unknown per-request `_meta` version → JSON-RPC error `UNSUPPORTED_PROTOCOL_VERSION`; an `initialize` naming an unknown version is answered with `2025-11-25` (the spec's negotiation rule — the client then decides) | "refused cleanly" = the two first cases; the third is the spec-mandated negotiation (D-11-6-4) |
+| unknown revision refused | an unknown `MCP-Protocol-Version` header → HTTP 400 `Unsupported MCP-Protocol-Version`; an unknown per-request `_meta` version → JSON-RPC error (in practice `HEADER_MISMATCH` -32020: rmcp requires the header to equal `_meta` — corrected in review); an `initialize` naming an unknown version is answered with `2025-11-25` (the spec's negotiation rule — the client then decides) | "refused cleanly" = the two first cases; the third is the spec-mandated negotiation (D-11-6-4) |
 | `Origin` / `Host` validation | built in: `allowed_hosts` (default loopback only; entry without port = any port), `allowed_origins` + `enforce_origin_validation()` (empty list ⇒ every present `Origin` refused; missing `Origin` passes) → 403 | configured explicitly from mybibli config (D-11-6-2) |
 | explicit max body size | `with_max_request_body_bytes(n)`, enforced while streaming → 413 | set explicitly (D-11-6-5) |
 | per-request HTTP data in handlers | rmcp inserts `http::request::Parts` into `RequestContext.extensions` | the `ApiKeyContext` inserted by our auth layer reaches the tool adapter |
@@ -97,7 +97,7 @@ HTTP ─► CSP ─► SetupGate ─► SessionResolve (skipped for /api/mcp) �
 - `2026-07-28` requests need the `Mcp-Method` header (`tools/call`) and `Mcp-Name` (tool name) matching the body (SEP-2243), else a JSON-RPC header-mismatch error.
 
 - `tower::ServiceExt::oneshot` requests carry no `Host` header and an origin-form URI: rmcp then answers 400 `missing Host header`. Every integration-test request must set `Host: localhost` (or the host under test) explicitly.
-- `nest_service("/api/mcp", …)`: rmcp ignores the path, so `/api/mcp` and `/api/mcp/` both reach it; only POST is served.
+- Mounted with `route_service("/api/mcp", …)` (exact path; `/api/mcp/` answers 404); only POST is served.
 - The E2E journey reuses the key-creation steps of `tests/e2e/specs/journeys/admin-api-keys.spec.ts` (same selectors); if they are needed twice, extract a helper into `tests/e2e/helpers/` instead of copying (Rule #1).
 
 ### Configuration mechanism (decided here — AC5)
@@ -156,6 +156,22 @@ For Kesh Q8: on this stack rmcp cost ≈ 3 MiB of binary, ≈ 4 s of clean relea
 
 Claude Opus 5.5 (claude-opus-5-5)
 
+### Review Findings
+
+Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor, full mode): 0 High, 9 Medium, ~25 Low.
+
+- [x] [Review][Patch] (Medium) A non-`initialize` request without `MCP-Protocol-Version` was served as revision 2025-03-26 — `list_tools` / `call_tool` now refuse any revision outside the two (-32022) + integration test (D-11-6-12) [src/mcp/transport.rs]
+- [x] [Review][Patch] (Medium) The 413 test could pass behind a smaller limit — new test: a 3 MiB body reaches the tool [tests/mcp_endpoint.rs]
+- [x] [Review][Patch] (Medium) Unknown-`_meta` test asserted any error code and docs claimed -32022 — test pins -32020, pre-check table, D-11-6-4 and the `transport.rs` contract corrected
+- [x] [Review][Patch] (Medium) E2E calls carried the admin's cookies — the agent now uses a fresh request context; cleanup in `finally` [mcp-endpoint.spec.ts]
+- [x] [Review][Patch] (Medium) `MYBIBLI_MCP_ALLOWED_ORIGINS` documented for a browser tool that CORS would block anyway — docs corrected, no CORS by design (D-11-6-13)
+- [x] [Review][Patch] (Medium) Threat model presented the key-before-Host order without its cost — § 5.8 states the order and the trade-off; D-11-6-3 updated; § 5.8 moved inside § 5
+- [x] [Review][Patch] (Medium→Low) IPv6 / case of `Host` untested — tests for `[::1]`, `[::1]:18080`, `LOCALHOST:8080`, `NAS.Local` (rmcp strips brackets, lower-cases)
+- [x] [Review][Patch] (Medium) Manual-check evidence absent from the PR — added to the PR body before `gh pr ready`
+- [x] [Review][Patch] (Low) Success text block untested; GET only for 405 (now GET + DELETE); revoked-key update not checked (`rows_affected == 1`); supported versions duplicated as literals (now derived); non-object schema fallback now `{"type":"object"}`; omitted `arguments` now an empty object; compose's empty `MYBIBLI_MCP_ALLOWED_HOSTS` no longer warns, entries with a scheme/path/wildcard warn; confinement test strips whitespace and catches `use ::rmcp`, `extern crate rmcp`, grouped imports
+- [x] [Review][Defer] (Medium→Low) Body cap sized for 11-12 covers (≈ 14.3 MiB) while only `get_title` exists, and no request timeout on `/api/mcp` → #514 (kept per D-11-6-5; revisit with 11-12)
+- Dismissed: plain-text 400 (rmcp's own 4xx bodies are plain text too); `NotFound` carrying free text (only built from format strings); title-detail queries without a snapshot (pre-existing in `/api/v1`, `version` guards later writes); session-skip on `/api/mcp/` (normalised, harmless); spec-letter deviations (trait/registry shape, `find_title_detail`, `&McpConfig`, `MP` ISBN id — `MC` is taken, raw-SQL key seeding as in the 11-5 tests) — recorded here instead.
+
 ### Debug Log References
 
 - First `cargo test --lib mcp::` run: `parse_args([1])` accepted — serde reads a struct from a sequence; an explicit object check was added (unreachable through MCP, whose `arguments` is always an object, but the tool contract says object).
@@ -191,3 +207,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — story created (create-story), after the rmcp 3.8.0 source pre-check.
 - 2026-10-28 — validated against the create-story checklist: oneshot `Host` header trap, nest path note, E2E helper reuse added.
 - 2026-10-28 — implemented (dev-story); spike measurements recorded; status → review.
+- 2026-10-28 — code review round 1: 9 patches applied, 1 deferred (#514).

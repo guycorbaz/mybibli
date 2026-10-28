@@ -11,9 +11,10 @@
 //! - the request-body cap (413, NFR45);
 //! - `Accept` / `Content-Type` checks (406 / 415), POST only (405);
 //! - protocol negotiation: `initialize` for `2025-11-25`, per-request
-//!   `_meta` for `2026-07-28`, unknown `_meta` versions refused with
-//!   `UNSUPPORTED_PROTOCOL_VERSION`, SEP-2243 `Mcp-Method` / `Mcp-Name`
-//!   header consistency.
+//!   `_meta` for `2026-07-28`; a `_meta` version without a matching
+//!   `MCP-Protocol-Version` header refused with `HEADER_MISMATCH`
+//!   (-32020, HTTP 400); SEP-2243 `Mcp-Method` / `Mcp-Name` header
+//!   consistency.
 //!
 //! The server is stateless: no `Mcp-Session-Id`, one fresh handler per
 //! request, plain JSON responses.
@@ -44,7 +45,29 @@ pub(super) const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] =
 /// Wire strings of [`SUPPORTED_PROTOCOL_VERSIONS`], for the
 /// transport-independent header check in `mod.rs`.
 pub(super) fn supported_protocol_version_strings() -> Vec<&'static str> {
-    vec!["2025-11-25", "2026-07-28"]
+    SUPPORTED_PROTOCOL_VERSIONS
+        .iter()
+        .map(ProtocolVersion::as_str)
+        .collect()
+}
+
+/// Refuse an ordinary request whose effective revision is not served.
+/// The guard in `mod.rs` already refuses a header naming another
+/// revision; this catches the request WITHOUT the header, which rmcp
+/// treats as `2025-03-26` (D-11-6-12). `initialize` and notifications
+/// never reach the tool handlers.
+fn ensure_supported_version(context: &RequestContext<RoleServer>) -> Result<(), ErrorData> {
+    match context.protocol_version() {
+        Some(v) if SUPPORTED_PROTOCOL_VERSIONS.contains(&v) => Ok(()),
+        other => {
+            let requested = other.unwrap_or(ProtocolVersion::V_2025_03_26);
+            tracing::warn!(requested = %requested, "MCP request on an unsupported protocol revision");
+            Err(ErrorData::unsupported_protocol_version(
+                requested,
+                SUPPORTED_PROTOCOL_VERSIONS,
+            ))
+        }
+    }
 }
 
 const INSTRUCTIONS: &str = "mybibli is a home library catalog. These tools read the catalog. \
@@ -63,7 +86,10 @@ fn to_rmcp_tool(tool: &dyn McpTool) -> Tool {
         serde_json::Value::Object(map) => map,
         other => {
             tracing::error!(tool = tool.name(), schema = %other, "MCP tool schema is not an object");
-            JsonObject::new()
+            // Still advertise a valid (empty) object schema.
+            let mut fallback = JsonObject::new();
+            fallback.insert("type".into(), serde_json::Value::String("object".into()));
+            fallback
         }
     };
     Tool::new(tool.name(), tool.description(), schema)
@@ -112,8 +138,9 @@ impl ServerHandler for MybibliMcpServer {
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
+        ensure_supported_version(&context)?;
         Ok(ListToolsResult::with_all_items(
             self.tools
                 .iter()
@@ -127,6 +154,7 @@ impl ServerHandler for MybibliMcpServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
+        ensure_supported_version(&context)?;
         let Some(tool) = self.tools.get(&request.name) else {
             return Err(ErrorData::invalid_params(
                 format!("unknown tool: {}", request.name),
@@ -146,7 +174,9 @@ impl ServerHandler for MybibliMcpServer {
         let args = request
             .arguments
             .map(serde_json::Value::Object)
-            .unwrap_or(serde_json::Value::Null);
+            // An omitted `arguments` is an empty object, so a future
+            // argument-less tool is not refused by an object-shaped parser.
+            .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
         tracing::info!(tool = tool.name(), api_key_id, "MCP tool call");
         Ok(tool_result(tool.call(&ctx, args).await).into())
     }
@@ -186,6 +216,7 @@ mod tests {
             .collect();
         assert_eq!(wire, supported_protocol_version_strings());
         assert_eq!(wire, vec!["2025-11-25", "2026-07-28"]);
+        assert!(!SUPPORTED_PROTOCOL_VERSIONS.contains(&ProtocolVersion::V_2025_03_26));
     }
 
     #[test]

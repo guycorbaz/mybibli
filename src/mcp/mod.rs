@@ -146,17 +146,29 @@ mod tests {
             }
         }
         let allowed = root.join("src/mcp/transport.rs");
-        // Built at run time so this test does not match itself.
-        let path_needle = ["rmcp", "::"].concat();
-        let use_needle = ["use ", "rmcp"].concat();
+        // Built at run time so this test does not match itself. Whitespace
+        // is removed from each code line first, so `rmcp :: x`,
+        // `use ::rmcp`, `extern crate rmcp` and `use { rmcp… }` all match.
+        let needles = [
+            ["rmcp", "::"].concat(),
+            ["use", "rmcp"].concat(),
+            ["crate", "rmcp"].concat(),
+            ["{", "rmcp"].concat(),
+        ];
         let offenders: Vec<_> = files
             .iter()
             .filter(|p| **p != allowed)
             .filter(|p| {
                 let text = std::fs::read_to_string(p).unwrap_or_default();
                 text.lines().any(|l| {
-                    let code = l.split("//").next().unwrap_or("");
-                    code.contains(&path_needle) || code.contains(&use_needle)
+                    let code: String = l
+                        .split("//")
+                        .next()
+                        .unwrap_or("")
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect();
+                    needles.iter().any(|n| code.contains(n.as_str()))
                 })
             })
             .collect();
