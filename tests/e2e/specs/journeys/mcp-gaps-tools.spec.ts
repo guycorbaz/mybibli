@@ -75,6 +75,9 @@ test.describe("Story 11-8 — MCP series and gaps read tools", () => {
       expect(series.positions[0].position).toBe(2);
       expect(series.gap_count).toBe(2);
       expect(series.missing_positions).toEqual([1, 3]);
+      // Story 11-10: expected tomes are part of the document (none entered
+      // here — no web route creates one before story 11-11).
+      expect(series.expected_tomes).toEqual([]);
 
       // list_series: the series is among the ones with gaps.
       const gaps = await mcpCallTool(agent, key, "list_series", {

@@ -1175,3 +1175,12 @@ setup:
     overdue_must_be_positive: "Le seuil de retard doit être un entier positif."
     admin_already_created: "Un compte administrateur a été créé depuis un autre navigateur. Veuillez recharger la page."
     admin_already_created_by_other_browser: "Un autre navigateur a déjà créé le compte administrateur. Nous vous avons fait passer à l'étape suivante — vous pouvez revenir à l'étape précédente pour mettre à jour les informations d'administration si nécessaire."
+
+expected_tome:
+  # Story 11-10 (FR145) — feedback when a catalogued ISBN matches an expected tome.
+  settled: "Tome attendu trouvé : ce titre occupe désormais la position %{position} de « %{series} »."
+  settled_suggestion: "La série ne le compte plus comme manquant."
+  conflict: "Tome attendu de « %{series} » (position %{position}) : rien n'a été rattaché."
+  conflict_held: "Cette position est déjà occupée par « %{holder} ». Vérifiez la page de la série pour décider quel exemplaire y a sa place."
+  conflict_elsewhere: "Ce titre figure déjà dans la série à la position %{other}. Déplacez-le depuis la page du titre si la position %{position} est la bonne."
+  conflict_out_of_range: "La série ne compte plus que %{total} tomes. Augmentez son total sur la page de la série, puis scannez à nouveau."

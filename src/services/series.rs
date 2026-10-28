@@ -193,7 +193,11 @@ impl SeriesService {
             ));
         }
 
-        TitleSeriesModel::assign(pool, title_id, series_id, position_number).await
+        let id = TitleSeriesModel::assign(pool, title_id, series_id, position_number).await?;
+        // Story 11-10 — a hand assignment can fill an expected tome.
+        crate::services::expected_tomes::ExpectedTomeService::settle_for_title_id(pool, title_id)
+            .await;
+        Ok(id)
     }
 
     /// Assign an omnibus title covering a range of positions.
@@ -234,7 +238,10 @@ impl SeriesService {
             ));
         }
 
-        TitleSeriesModel::assign_omnibus(pool, title_id, series_id, start, end).await
+        TitleSeriesModel::assign_omnibus(pool, title_id, series_id, start, end).await?;
+        crate::services::expected_tomes::ExpectedTomeService::settle_for_title_id(pool, title_id)
+            .await;
+        Ok(())
     }
 
     /// Unassign a title from a series. Verifies title_id ownership.
@@ -534,6 +541,8 @@ pub struct AgentSeriesDetail {
     /// position then title id.
     pub positions: Vec<TitleSeriesRow>,
     pub gaps: SeriesGaps,
+    /// Story 11-10 — live expected tomes, by position then id.
+    pub expected_tomes: Vec<crate::models::expected_tome::ExpectedTomeRow>,
 }
 
 impl SeriesService {
@@ -561,10 +570,13 @@ impl SeriesService {
         positions.sort_by_key(|p| (p.position_number, p.title_id));
         let held: Vec<i32> = positions.iter().map(|p| p.position_number).collect();
         let gaps = series_gaps(series.series_type, series.total_volume_count, &held);
+        let expected_tomes =
+            crate::services::expected_tomes::ExpectedTomeService::list_by_series(pool, id).await?;
         Ok(Some(AgentSeriesDetail {
             series,
             positions,
             gaps,
+            expected_tomes,
         }))
     }
 }

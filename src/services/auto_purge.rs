@@ -30,6 +30,10 @@ const DELETE_BATCH_SIZE: u64 = 10_000;
 pub(crate) const PURGE_DELETION_ORDER: &[&str] = &[
     "title_contributors", // FK → titles, contributors, contributor_roles
     "title_series",       // FK → titles, series
+    // Story 11-10 — soft-deleted expected tomes. Their FKs are CASCADE
+    // (series) / SET NULL (settled title), so they never block a parent;
+    // listed so a tome deleted by hand is hard-purged after 30 days.
+    "series_expected_tomes", // FK → series, titles
     // CR #443 — label links. Junction children of BOTH titles and volumes,
     // so they must be drained before either parent. `labels` itself sits
     // with the other taxonomies further down: it is a parent here, and the

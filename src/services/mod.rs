@@ -9,6 +9,7 @@ pub mod contributor;
 pub mod cover;
 pub mod cover_staging;
 pub mod dashboard;
+pub mod expected_tomes;
 pub mod loans;
 pub mod locations;
 pub mod locking;

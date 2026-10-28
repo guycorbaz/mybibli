@@ -486,6 +486,18 @@ impl TitleSeriesModel {
         series_id: u64,
         position_number: i32,
     ) -> Result<u64, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::assign_in(&mut conn, title_id, series_id, position_number).await
+    }
+
+    /// [`Self::assign`] on a caller-held connection, so it can run inside
+    /// a transaction (story 11-10 auto-settle).
+    pub async fn assign_in(
+        conn: &mut sqlx::MySqlConnection,
+        title_id: u64,
+        series_id: u64,
+        position_number: i32,
+    ) -> Result<u64, AppError> {
         // Check for soft-deleted row with same key — restore it if found
         let existing = sqlx::query(
             "SELECT id FROM title_series \
@@ -494,7 +506,7 @@ impl TitleSeriesModel {
         .bind(title_id)
         .bind(series_id)
         .bind(position_number)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await?;
 
         if let Some(row) = existing {
@@ -504,7 +516,7 @@ impl TitleSeriesModel {
                  WHERE id = ?",
             )
             .bind(id)
-            .execute(pool)
+            .execute(&mut *conn)
             .await?;
             return Ok(id);
         }
@@ -516,7 +528,7 @@ impl TitleSeriesModel {
         .bind(title_id)
         .bind(series_id)
         .bind(position_number)
-        .execute(pool)
+        .execute(&mut *conn)
         .await;
 
         match result {
