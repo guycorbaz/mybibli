@@ -1014,7 +1014,7 @@ admin:
     btn_save_provider_timeouts: "Zeitüberschreitungen pro Anbieter speichern"
   api_keys:
     panel_heading: "API-Schlüssel"
-    intro: "API-Schlüssel authentifizieren externe Aufrufer an der HTTP-JSON-API unter /api/v1/*. Lese-Schlüssel können Datensätze auflisten und abrufen; Schreib-Schlüssel können zusätzlich freigegebene Titelfelder per PATCH bearbeiten. Jeder Schlüssel wird genau EINMAL beim Anlegen angezeigt — jetzt kopieren oder widerrufen und neu erstellen."
+    intro: "API-Schlüssel authentifizieren externe Aufrufer an der HTTP-JSON-API unter /api/v1/*. Lese-Schlüssel können Datensätze auflisten und abrufen; Schreib-Schlüssel können zusätzlich freigegebene Titelfelder per PATCH bearbeiten; Vorschlags-Schlüssel lesen wie Lese-Schlüssel und können Vorschläge einreichen, die eine Bibliothekarin oder ein Bibliothekar prüft — den Katalog ändern sie nie direkt. Jeder Schlüssel wird genau EINMAL beim Anlegen angezeigt — jetzt kopieren oder widerrufen und neu erstellen."
     tooltip_aria: "Über API-Schlüssel"
     tooltip_text: "Übergeben Sie den Schlüssel als `Authorization: Bearer <key>` oder `X-API-Key: <key>`. CSRF wird für /api/* umgangen, weil Bearer-Authentifizierung nicht über Cookies läuft. Schlüssel erscheinen nie in Logs; nur das 12-Zeichen-Präfix ist hier sichtbar."
     section_create: "Neuer API-Schlüssel"
@@ -1026,6 +1026,9 @@ admin:
     scope_read_help: "GET /api/v1/* — Ressourcen auflisten und abrufen. Keine Änderungen."
     scope_write: "Lesen + schreiben"
     scope_write_help: "Fügt PATCH /api/v1/titles/{id} für genre_id, dewey_code, description, subtitle hinzu."
+    # Story 11-5 — the propose scope (FR126, NFR44).
+    scope_propose: "Lesen + vorschlagen"
+    scope_propose_help: "Für einen KI-Agenten: alles, was ein Nur-Lese-Schlüssel kann, plus Vorschläge, die eine Bibliothekarin oder ein Bibliothekar prüft. Ändert den Katalog nie direkt."
     btn_create: "Schlüssel erstellen"
     col_label: "Bezeichnung"
     col_scope: "Bereich"
@@ -1059,7 +1062,7 @@ admin:
     error_delete_active: "Aktive Schlüssel können nicht gelöscht werden — zuerst widerrufen."
     error_label_required: "Eine Bezeichnung ist erforderlich."
     error_label_too_long: "Die Bezeichnung darf höchstens 120 Zeichen lang sein."
-    error_invalid_scope: "Der Geltungsbereich muss \"read\" oder \"write\" sein."
+    error_invalid_scope: "Der Geltungsbereich muss \"read\", \"write\" oder \"propose\" sein."
     error_not_found: "API-Schlüssel nicht gefunden."
     error_already_revoked: "Dieser Schlüssel wurde bereits widerrufen."
     error_version_conflict: "Dieser Schlüssel wurde durch einen anderen Administrator geändert. Bitte das Panel neu laden."

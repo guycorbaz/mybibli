@@ -1030,7 +1030,7 @@ admin:
     btn_save_provider_timeouts: "Save per-provider timeouts"
   api_keys:
     panel_heading: "API keys"
-    intro: "API keys authenticate external callers to the HTTP JSON API under /api/v1/*. Read keys can list and fetch records; write keys can also PATCH whitelisted title fields. Each key is shown ONCE at creation — copy it now or revoke and re-create."
+    intro: "API keys authenticate external callers to the HTTP JSON API under /api/v1/*. Read keys can list and fetch records; write keys can also PATCH whitelisted title fields; propose keys read like read keys and can submit proposals for a librarian to review, never changing the catalog directly. Each key is shown ONCE at creation — copy it now or revoke and re-create."
     tooltip_aria: "About API keys"
     tooltip_text: "Pass the key as `Authorization: Bearer <key>` or `X-API-Key: <key>`. CSRF is bypassed for /api/* because bearer auth doesn't ride on cookies. Keys are never exported in logs; only the 12-char prefix appears here."
     section_create: "New API key"
@@ -1042,6 +1042,9 @@ admin:
     scope_read_help: "GET /api/v1/* — list and fetch resources. Cannot mutate."
     scope_write: "Read + write"
     scope_write_help: "Adds PATCH /api/v1/titles/{id} for genre_id, dewey_code, description, subtitle."
+    # Story 11-5 — the propose scope (FR126, NFR44).
+    scope_propose: "Read + propose"
+    scope_propose_help: "For an AI agent: everything a read-only key can do, plus submitting proposals that a librarian reviews. Never modifies the catalog directly."
     btn_create: "Create key"
     col_label: "Label"
     col_scope: "Scope"
@@ -1075,7 +1078,7 @@ admin:
     error_delete_active: "Active keys cannot be deleted — revoke the key first."
     error_label_required: "A label is required."
     error_label_too_long: "Label must be 120 characters or fewer."
-    error_invalid_scope: "Scope must be \"read\" or \"write\"."
+    error_invalid_scope: "Scope must be \"read\", \"write\" or \"propose\"."
     error_not_found: "API key not found."
     error_already_revoked: "This key has already been revoked."
     error_version_conflict: "This key was modified by another administrator. Reload the panel."

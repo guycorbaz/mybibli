@@ -27,11 +27,19 @@
                         <span class="block text-xs text-stone-500 dark:text-stone-400">{{ scope_read_help }}</span>
                     </span>
                 </label>
-                <label class="flex items-start gap-2">
+                <label class="flex items-start gap-2 mb-2">
                     <input type="radio" name="scope" value="write" class="mt-1">
                     <span>
                         <span class="font-semibold">{{ scope_write }}</span>
                         <span class="block text-xs text-stone-500 dark:text-stone-400">{{ scope_write_help }}</span>
+                    </span>
+                </label>
+                {# Story 11-5 — read + propose, never a direct write (NFR44). #}
+                <label class="flex items-start gap-2">
+                    <input type="radio" name="scope" value="propose" class="mt-1">
+                    <span>
+                        <span class="font-semibold">{{ scope_propose }}</span>
+                        <span class="block text-xs text-stone-500 dark:text-stone-400">{{ scope_propose_help }}</span>
                     </span>
                 </label>
             </fieldset>

@@ -158,8 +158,11 @@ These routes authenticate with `Authorization: Bearer <key>` (or
 short-circuits the whole `/api/` prefix before its token check — the
 `csrf` column below is therefore "not applicable" rather than "exempt".
 Keys are minted and revoked in **Admin → API keys**; the scope
-(read / write) is carried by the key, which is why the role column names
-the key rather than a user.
+(read / write / propose) is carried by the key, which is why the role
+column names the key rather than a user. Every scope may read; only a
+`write` key passes `ApiKeyWrite`, and only a `propose` key passes
+`ApiKeyPropose` (story 11-5, NFR44 — it guards the agent surface added
+with `/api/mcp` in story 11-6).
 
 | method | path | role | csrf | note |
 |---|---|---|---|---|
@@ -169,7 +172,7 @@ the key rather than a user.
 | GET | `/api/v1/series` | API key *(read)* | n/a | Series list. |
 | GET | `/api/v1/titles` | API key *(read)* | n/a | Title list; paginated. |
 | GET | `/api/v1/titles/{id}` | API key *(read)* | n/a | One title. |
-| PATCH | `/api/v1/titles/{id}` | API key *(write)* | n/a | A read-only key gets 403 here. |
+| PATCH | `/api/v1/titles/{id}` | API key *(write)* | n/a | A read-only or propose key gets 403 here. |
 
 ### Shelf audit (CR #237) (`src/routes/audit.rs`)
 
