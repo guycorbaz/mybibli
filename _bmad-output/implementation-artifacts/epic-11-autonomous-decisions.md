@@ -370,3 +370,9 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 **Context:** the AC gives no input shape for `list_series`.
 **Chosen:** `query` (name substring) and `gaps_only` (closed series with at least one gap), sorted by name then id, 25 per page.
 **Reversible:** yes.
+
+### D-11-8-8 — Code review: a position above a closed series' total fills no slot (supersedes part of D-11-8-3)
+**Context:** the review found `gap_count` (total − held positions, counting positions above the total) disagreeing with `missing_positions` (1..=total not held), and `list_series gaps_only` hiding a series that `get_series` reports gaps for. Positions above the total are not legacy-only: `update_series` checks the new total against the number of assignment rows, so lowering a total or closing an open series leaves them behind.
+**Chosen:** for a closed series with a total, only positions within 1..=total count as held — in the shared SQL `filled_positions_join!` (dashboard `count_with_gaps` / `list_with_gaps` and `list_summaries`) and in the Rust `series_gaps`, so `gap_count` always equals the number of missing positions and every surface agrees (the series detail grid already counted that way). `get_series` still lists the out-of-range assignment rows in `positions`. The `/series` list page's own row count and the `update_series` guard are left as they are, tracked in #519.
+**Rejected:** keeping the dashboard formula and documenting the mismatch (two tools contradicting each other on the same series); changing only the MCP side (dashboard and MCP would then disagree).
+**Reversible:** yes.

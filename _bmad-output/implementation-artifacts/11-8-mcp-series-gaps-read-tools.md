@@ -1,6 +1,6 @@
 # Story 11.8: MCP series and gaps read tools
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here); resolves #516 (split `src/models/title.rs`). Covers: FR129. Epic 11 — eighth story; builds on 11-6 (`/api/mcp`, `McpTool` trait) and 11-7 (`search_titles`, shared `tools/args.rs`, `ListPage`, `tests/common/mcp.rs`, `helpers/mcp.ts`). 11-10 adds expected tomes to `get_series`.
 
@@ -65,6 +65,24 @@ so that I know what to look for on the web.
 - [Source: _bmad-output/implementation-artifacts/11-7-mcp-catalog-read-tools.md] — conventions; D-11-6-*, D-11-7-* in `epic-11-autonomous-decisions.md`.
 - [Source: src/models/series.rs#list_with_gaps] — gap rule (story 9-6).
 
+### Review Findings
+
+Code review 2026-10-28 (bmad-code-review: Blind Hunter, Edge Case Hunter, Acceptance Auditor; second full pass after fixes found no Medium+ issue).
+
+- [x] [Review][Patch] (Medium) `gap_count` disagreed with `missing_positions`, and `list_series gaps_only` hid a series that `get_series` reported gaps for, when a position sits above a closed series' total — reachable, not legacy-only (`update_series` checks the new total against the row count). Positions above the total now fill no slot in the shared SQL join and in `series_gaps`; dashboard fixed with it (D-11-8-8) [src/models/series.rs, src/services/series.rs]
+- [x] [Review][Patch] (Low) Gaps predicate written three times — shared through `has_gaps_predicate!` [src/models/series.rs]
+- [x] [Review][Patch] (Low) `missing` was case-sensitive while `media_type` is not — `MetadataField::parse` ignores ASCII case [src/models/title_search.rs]
+- [x] [Review][Patch] (Low) AC5 only partly tested — soft-deleted junction row, soft-deleted role, empty publisher added; AC9 over-long query and unknown media type now also go through the router [tests/mcp_series_gaps_tools.rs]
+- [x] [Review][Patch] (Low) E2E: no-op `waitForURL` after the assignment, nested `expect` inside `expect.poll`, title lists only shape-checked, fragile submit selector — fixed [tests/e2e/specs/journeys/mcp-gaps-tools.spec.ts]
+- [x] [Review][Patch] (Low) Stale comments on `count_with_gaps` and `SeriesGaps::owned_positions` [src/models/series.rs, src/services/series.rs]
+- [x] [Review][Defer] (Low) `/series` list page counts owned/gaps from assignment rows, and the `update_series` guard lets a total drop below the highest position — pre-existing → #519
+- Dismissed (11): positions ≤ 0 listed in `positions` (AC2: every live row); "not found" wording (same as `get_title`); incomplete-metadata query cost; genre error lists all genres (pre-existing, 11-7); `expect` in the static schema builder; literal "25" in descriptions; `series_type` parse fallback (pre-existing; the column is an ENUM); E2E data left behind (shared-DB convention); SQL vs `has_cover` whitespace (PAD SPACE collation); `series sx` without `deleted_at` (outer `s` filtered); `PRIMARY_CONTRIBUTOR_SUBQUERY` copies in moved code.
+
+### Senior Developer Review (AI)
+
+- **Outcome:** approved after fixes (commits 8e5d27c, cb7cd87).
+- **Gates (2026-10-28):** `cargo clippy --all-targets -- -D warnings` clean; `cargo test` with the test DB on 3307: 1730 passed / 0 failed across 65 binaries (+4: `dashboard_gaps::position_above_total_does_not_fill_a_slot`, three in `mcp_series_gaps_tools`); `cargo sqlx prepare --check --workspace -- --all-targets` clean; flake gate clean; `tsc --noEmit` clean; Playwright on a freshly reset stack, `CI=true --workers=2`: 362 passed, 2 skipped, 0 failed, 0 flaky.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -108,6 +126,7 @@ Claude Opus 5.5 (claude-opus-5-5)
 - `tests/common/mcp.rs`
 - `tests/mcp_catalog_read_tools.rs`
 - `tests/mcp_series_gaps_tools.rs` (new)
+- `tests/dashboard_gaps.rs` (review regression test)
 - `tests/e2e/helpers/mcp.ts`
 - `tests/e2e/specs/journeys/mcp-gaps-tools.spec.ts` (new)
 - `tests/e2e/specs/journeys/mcp-read-tools.spec.ts`
@@ -118,3 +137,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — story created (create-story).
 - 2026-10-28 — validated against the create-story checklist: SQL fragment sharing, dashboard regression net, E2E series flow, re-export keeps callers unchanged.
 - 2026-10-28 — dev-story complete (T0–T7): four MCP tools, #516 split, gates green → review.
+- 2026-10-28 — code review: 1 Medium + 5 Low fixed (gap rule above the total, D-11-8-8), 1 Low deferred to #519, second pass clean → done.
