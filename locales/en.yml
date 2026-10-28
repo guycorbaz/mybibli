@@ -1226,5 +1226,5 @@ expected_tome:
     position_taken: "Position %{position} already has an expected tome. A series names each missing position once. Edit the existing expected tome instead."
     duplicate_isbn: "ISBN %{isbn} is already used by another expected tome of this series. The same book cannot be expected twice. Check the ISBN or edit the other expected tome."
     settled: "This expected tome is already owned: a catalogued title holds its position, so it can no longer be edited. Delete it if you no longer need it."
-    version_conflict: "Someone else changed this expected tome while you were editing it. Reload the series page to see the latest version, then try again."
+    version_conflict: "Someone else changed this expected tome while you were editing it. The form now shows the latest version: make your change again, then save."
     database: "The expected tome could not be saved because of a server problem. Try again in a moment, and contact your administrator if it persists."

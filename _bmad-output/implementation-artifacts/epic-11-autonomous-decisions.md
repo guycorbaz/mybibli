@@ -575,3 +575,8 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Chosen:** the wishlist handler renders refusals into `#series-feedback`; a version conflict re-renders the form with the stored values and current version (the message still explains what happened); a vanished tome / series is a 404; a settled tome is never wished ("already in your catalog") and its edit form says it is read-only up front; French copy uses "wish list"; existing label keys reused; the ISBN hint is terse; the refusal page's layout links point at the GET form; the wishlist button disables itself during the request.
 **Accepted (Low):** locale-dependent no-ISBN dedup and an ISBN added after a no-ISBN wish (D-11-11-4); check-then-insert race between two librarians; non-integer positions read as out of range; tome squares keep position order under the title sort; inherited `CAST(… AS UNSIGNED)` in the wishlist model; E2E stamp wrap.
 **Reversible:** yes.
+
+### D-11-11-8 — Code review round 2: clean; two Lows fixed, one deferred
+**Context:** the confirmation pass found no Medium+. Lows: the version-conflict copy still told the librarian to reload; repeated tome controls had no accessible name; a failed delete-modal GET is invisible on the series page.
+**Chosen:** new conflict wording ("the form now shows the latest version: make your change again") in the four locales; `aria-label` "<action> — <tome title>" on the three controls; the missing `#feedback-list` on the series page (which also affects the series delete modal and CSRF rejections, pre-existing) goes to #526.
+**Reversible:** yes.

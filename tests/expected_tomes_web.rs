@@ -141,6 +141,11 @@ async fn a_librarian_sees_the_actions_and_the_name_this_tome_links(pool: DbPool)
     assert!(html.contains(&format!("/series/{s}/expected-tomes/new?position=3")));
     assert!(!html.contains(&format!("/series/{s}/expected-tomes/new?position=2")));
     assert!(!html.contains("hx-confirm"));
+    // Each repeated control names its tome for assistive technology.
+    assert!(
+        html.contains("aria-label=\"Modifier — Les Archers\""),
+        "{html}"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -340,7 +345,8 @@ async fn edit_through_the_form_and_a_stale_version_is_refused(pool: DbPool) {
     assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let html = body_string(res).await;
     assert!(
-        html.contains("Quelqu&#39;un d&#39;autre a modifié ce tome attendu"),
+        html.contains("Quelqu&#39;un d&#39;autre a modifié ce tome attendu")
+            && html.contains("Le formulaire affiche maintenant la dernière version"),
         "{html}"
     );
     let current = version_of(&pool, t).await;

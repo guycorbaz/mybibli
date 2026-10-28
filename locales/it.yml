@@ -1196,5 +1196,5 @@ expected_tome:
     position_taken: "La posizione %{position} ha già un volume atteso. Una serie nomina ogni posizione mancante una sola volta. Modifica invece il volume atteso esistente."
     duplicate_isbn: "L'ISBN %{isbn} è già usato da un altro volume atteso di questa serie. Lo stesso libro non può essere atteso due volte. Controlla l'ISBN o modifica l'altro volume atteso."
     settled: "Questo volume atteso è già posseduto: un titolo catalogato occupa la sua posizione, quindi non può più essere modificato. Eliminalo se non ti serve più."
-    version_conflict: "Qualcun altro ha modificato questo volume atteso mentre lo stavi modificando. Ricarica la pagina della serie per vedere l'ultima versione, poi riprova."
+    version_conflict: "Qualcun altro ha modificato questo volume atteso mentre lo stavi modificando. Il modulo mostra ora l'ultima versione: rifai la tua modifica, poi salva."
     database: "Il volume atteso non è stato salvato a causa di un problema del server. Riprova tra poco e contatta l'amministratore se il problema persiste."

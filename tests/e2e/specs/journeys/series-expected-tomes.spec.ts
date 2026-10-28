@@ -117,7 +117,7 @@ test.describe("Expected tomes on the series page (story 11-11)", () => {
     await expect(tomeCard(page, `Brouillon ${RUN}`)).toBeVisible();
 
     await tomeCard(page, `Brouillon ${RUN}`)
-      .getByRole("link", { name: /^(edit|modifier)$/i })
+      .getByRole("link", { name: /^(edit|modifier) —/i })
       .click();
     await page.waitForURL(/\/expected-tomes\/\d+\/edit$/);
     await expect(page.locator("#expected-tome-position")).toHaveValue("4");
@@ -125,7 +125,7 @@ test.describe("Expected tomes on the series page (story 11-11)", () => {
     const card = tomeCard(page, `Final ${RUN}`);
     await expect(card).toHaveAttribute("data-position", "5");
 
-    const del = card.getByRole("button", { name: /^(delete|supprimer)$/i });
+    const del = card.getByRole("button", { name: /^(delete|supprimer) —/i });
     await expect(del).not.toHaveAttribute("hx-confirm", /./);
     await del.click();
     const dialog = page.locator("dialog[open]");

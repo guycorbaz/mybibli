@@ -1,6 +1,6 @@
 # Story 11.11: Expected tomes — series page and wishlist
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR142, FR147, UX-DR34 (UX-DR16 grid, UX-DR8 Modal reused). Epic 11 — eleventh story; consumes 11-10 (`ExpectedTomeService`, auto-settle at scan). Carry-overs from 11-10: the scan-to-settle E2E (D-11-10-7), the localization of `ExpectedTomeError` (D-11-10-4), and a legible rendering of the states of #524 (tome above a lowered total, tome on a position a restored title holds again). Related open issues: #519 (`/series` list counting — out of scope), #524 (rendered here, not prevented).
 
@@ -90,6 +90,12 @@ Round 1 (2026-10-28, Blind Hunter + Edge Case Hunter + Acceptance Auditor on `gi
 - [x] [Review][Dismiss] "A settled tome can become invisible and block its position" — settled requires the title to hold the position, so the position is never a gap while the tome is hidden; once the title leaves, the tome reads unsettled and is shown again (D-11-10-10). "Delete works on a trashed series" — `find` joins the live series, already a 404 (now tested).
 - [x] [Review][Accept] No-ISBN dedup keyed on the localized note (locale / rename / hand edit can duplicate) and an ISBN added after a no-ISBN wish (D-11-11-4); check-then-insert race between two librarians; non-integer / overflowing position reads as out of range; tome squares do not sort by name under `?sort=title` (gaps bucket last by design, #235); inherited `CAST(publication_year AS UNSIGNED)` in the wishlist model; `expected_tome.error.series_not_found` / `.database` not reached from the web (generic messages there); E2E run stamp wraps every ~5.5 h.
 
+Round 2 (2026-10-28, confirmation pass on the round-1 fixes): **no Medium+ finding**. Lows (D-11-11-8):
+
+- [x] [Review][Patch] The version-conflict message said "reload the page" while the form already shows the latest version [Low] — wording changed in the four locales.
+- [x] [Review][Patch] Repeated Edit / Delete / Add-to-wishlist controls had no accessible context [Low] — `aria-label` names the tome.
+- [x] [Review][Defer] A failed delete-modal GET (tome deleted meanwhile) is invisible: the series page has no `#feedback-list` for the `AppError` retarget (same for the series delete modal and CSRF rejections) [Low] — #526.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -105,7 +111,8 @@ Claude Opus 5.5 (claude-opus-5-5)
 - Wishlist: title + ISBN + note "Series «name», tome N"; duplicate by ISBN, or for a tome without ISBN by title + note (D-11-11-4); shared `audit_wishlist_add` helper; `utils::feedback_html_with_link` for the link to the item.
 - `ExpectedTomeError::localized` / `into_app_error` with `expected_tome.error.*` in the four locales; MCP keeps the English `Display` (D-11-11-5).
 - E2E spec renamed `series-expected-tomes.spec.ts` (D-11-11-6): a series created early in the alphabetical schedule broke empty-states / dewey-code / classification-fieldset.
-- Gates: clippy `--all-targets -D warnings` clean; `cargo test` 1852 passed / 0 failed (test DB 3307); `cargo sqlx prepare --check` green; flake grep clean; `tsc --noEmit` clean; Playwright `CI=true --workers=2` on a reset stack (18080): 367 passed, 2 skipped, 0 failed.
+- Gates after review: clippy `--all-targets -D warnings` clean; `cargo test` 1854 passed / 0 failed; `cargo sqlx prepare --check` green; flake grep clean; `tsc --noEmit` clean; Playwright `CI=true --workers=2` on a reset stack (18080): 367 passed, 2 skipped, 0 failed.
+- Gates before review: clippy `--all-targets -D warnings` clean; `cargo test` 1852 passed / 0 failed (test DB 3307); `cargo sqlx prepare --check` green; flake grep clean; `tsc --noEmit` clean; Playwright `CI=true --workers=2` on a reset stack (18080): 367 passed, 2 skipped, 0 failed.
 
 ### File List
 
@@ -125,3 +132,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — story created (ready-for-dev).
 - 2026-10-28 — validated against the create-story checklist: GET forms use `require_role_with_return` (Anonymous bounces back to the form), mutations `require_role`; router-level tests build the router with `tests/common/mcp.rs::router` + `tests/common/web.rs::Browser`; the wishlist note is plain text (rendered escaped by the wishlist pages); placement must skip settled tomes using the predicate-reduced `settled_title_id` (`list_by_series`), never the raw column.
 - 2026-10-28 — implementation complete (review).
+- 2026-10-28 — code review: round 1 (3 layers) 4 Medium + Lows fixed, round 2 clean (2 Lows fixed, 1 deferred to #526) (done).

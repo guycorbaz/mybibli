@@ -1222,5 +1222,5 @@ expected_tome:
     position_taken: "La position %{position} a déjà un tome attendu. Une série ne nomme chaque position manquante qu'une fois. Modifiez plutôt le tome attendu existant."
     duplicate_isbn: "L'ISBN %{isbn} est déjà celui d'un autre tome attendu de cette série. Un même livre ne peut pas être attendu deux fois. Vérifiez l'ISBN ou modifiez l'autre tome attendu."
     settled: "Ce tome attendu est déjà possédé : un titre catalogué occupe sa position, il ne peut donc plus être modifié. Supprimez-le si vous n'en avez plus besoin."
-    version_conflict: "Quelqu'un d'autre a modifié ce tome attendu pendant que vous l'éditiez. Rechargez la page de la série pour voir la dernière version, puis réessayez."
+    version_conflict: "Quelqu'un d'autre a modifié ce tome attendu pendant que vous l'éditiez. Le formulaire affiche maintenant la dernière version : refaites votre modification, puis enregistrez."
     database: "Le tome attendu n'a pas pu être enregistré à cause d'un problème du serveur. Réessayez dans un instant et contactez votre administrateur si le problème persiste."

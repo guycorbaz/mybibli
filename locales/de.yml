@@ -1210,5 +1210,5 @@ expected_tome:
     position_taken: "Position %{position} hat bereits einen erwarteten Band. Eine Reihe benennt jede fehlende Position nur einmal. Bearbeiten Sie stattdessen den vorhandenen erwarteten Band."
     duplicate_isbn: "Die ISBN %{isbn} gehört bereits zu einem anderen erwarteten Band dieser Reihe. Dasselbe Buch kann nicht zweimal erwartet werden. Prüfen Sie die ISBN oder bearbeiten Sie den anderen erwarteten Band."
     settled: "Dieser erwartete Band ist bereits vorhanden: Ein katalogisierter Titel belegt seine Position, daher kann er nicht mehr bearbeitet werden. Löschen Sie ihn, wenn Sie ihn nicht mehr brauchen."
-    version_conflict: "Jemand anderes hat diesen erwarteten Band geändert, während Sie ihn bearbeitet haben. Laden Sie die Seite der Reihe neu, um die neueste Version zu sehen, und versuchen Sie es erneut."
+    version_conflict: "Jemand anderes hat diesen erwarteten Band geändert, während Sie ihn bearbeitet haben. Das Formular zeigt jetzt die neueste Version: Nehmen Sie Ihre Änderung erneut vor und speichern Sie."
     database: "Der erwartete Band konnte wegen eines Serverproblems nicht gespeichert werden. Versuchen Sie es gleich noch einmal und wenden Sie sich an Ihre Administration, falls das Problem bleibt."
