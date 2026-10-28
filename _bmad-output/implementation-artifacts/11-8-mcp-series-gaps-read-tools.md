@@ -52,9 +52,11 @@ so that I know what to look for on the web.
 
 - AR27: `tools/*.rs` → `services/*` → `models/*`; DTOs and pure mapping only in tools.
 - Gap rule = `list_with_gaps`; computing it in Rust from `find_by_series` rows gives the same number (same live filters, `position > 0`, distinct positions). Out-of-range positions (> total, legacy data only) count as held, as on the dashboard, so `gap_count` can then be smaller than the number of `missing_positions` — documented, unit-tested.
+- Shared "filled positions" derived table: a `macro_rules!` returning the literal, spliced with `concat!` into `count_with_gaps`, `list_with_gaps` and `list_summaries` (sqlx takes `&'static str`; a `const` cannot be `concat!`-ed). `tests/dashboard_gaps.rs` is the regression net for the two dashboard queries.
 - Incomplete predicates are fixed SQL fragments chosen from a Rust enum (never interpolated user text). Blank = `TRIM(col) = ''`.
 - No migration, no setting, no route, no dependency, no locale key (agent-facing English, as in 11-7).
 - Wire traps (11-6/11-7): `Host: localhost`, `Accept: application/json, text/event-stream`; `structuredContent` carries the JSON.
+- E2E series creation / assignment: copy the flow of `specs/journeys/series.spec.ts` (`#assign-series`, `#assign-series-submit`, position input).
 - Tests: `#[sqlx::test(migrations = "./migrations")]`, raw SQL seeding, `tests/common/mcp.rs`. E2E: `loginAs`, `specIsbn("MG", n)`, fresh request context for the agent, no `waitForTimeout`; full run on a freshly reset stack.
 
 ### References
@@ -78,3 +80,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 ## Change Log
 
 - 2026-10-28 — story created (create-story).
+- 2026-10-28 — validated against the create-story checklist: SQL fragment sharing, dashboard regression net, E2E series flow, re-export keeps callers unchanged.
