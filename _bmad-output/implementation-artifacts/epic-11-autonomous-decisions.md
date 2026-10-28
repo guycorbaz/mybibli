@@ -400,6 +400,7 @@ Because `scroll-margin` applies to every scroll-container ancestor, the three in
 **Context:** "created and configured next to `covers/`, unused for now"; `AppState` is built literally in 36 files.
 **Chosen:** `services::cover_staging::staging_dir_for(covers_dir)` → `./covers-staging` (Docker: `/app/covers-staging`), exposed by `AppState::cover_staging_dir()`, created at boot, never served (outside the `/covers` `ServeDir`, so an unreviewed agent image is never publicly reachable). No new env var: an operator moves it by moving `COVERS_DIR`.
 **Consequence flagged for 11-14:** in the shipped `docker-compose.yml` only `/app/covers` is a volume, so staged covers would not survive a container re-creation (every upgrade). 11-14 must either add a volume (and update `docker-compose.yml` / `docs/dockerhub-overview.md`) or handle a missing staged file on acceptance.
+Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `COVERS_DIR` parent is not writable must not fail to start for a directory nothing uses yet; 11-14 refuses cover proposals when it is missing.
 **Rejected:** a subdirectory of `covers/` (persistent, but served by `/covers` unless a guard route is added — untrusted images on the public origin); a new `AppState` field (36-file churn for an unused path).
 **Reversible:** yes.
 

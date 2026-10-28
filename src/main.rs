@@ -373,6 +373,22 @@ async fn main() {
     );
     std::fs::create_dir_all(&covers_dir).expect("Failed to create covers directory");
     tracing::info!(covers_dir = %covers_dir.display(), "Covers directory configured");
+    // Story 11-9: staging area for agent-proposed covers (story 11-14),
+    // next to `covers/` and never served. Fail-open (D-11-9-4): nothing
+    // uses it yet, so a parent directory the process cannot write to
+    // must not stop a deployment that boots today.
+    let cover_staging_dir = mybibli::services::cover_staging::staging_dir_for(&covers_dir);
+    match std::fs::create_dir_all(&cover_staging_dir) {
+        Ok(()) => tracing::info!(
+            cover_staging_dir = %cover_staging_dir.display(),
+            "Cover staging directory configured"
+        ),
+        Err(e) => tracing::warn!(
+            cover_staging_dir = %cover_staging_dir.display(),
+            error = %e,
+            "Cover staging directory could not be created; cover proposals will be unavailable"
+        ),
+    }
 
     // Admin → Health tab (story 8-1): provider-reachability map + MariaDB
     // version cache. Both start empty; the background ping task below

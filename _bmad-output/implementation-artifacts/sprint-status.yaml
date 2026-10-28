@@ -226,7 +226,7 @@ development_status:
   11-6-mcp-endpoint-rmcp-spike: done
   11-7-mcp-catalog-read-tools: done
   11-8-mcp-series-gaps-read-tools: done
-  11-9-proposals-schema-service: ready-for-dev
+  11-9-proposals-schema-service: in-progress
   11-10-expected-tomes-data-auto-settle: backlog
   11-11-expected-tomes-series-page-wishlist: backlog
   11-12-series-proposal-tools: backlog

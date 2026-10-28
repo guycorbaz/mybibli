@@ -151,6 +151,13 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Story 11-9: the cover staging directory, a sibling of
+    /// `covers_dir` never served by `/covers` (see
+    /// `services::cover_staging`).
+    pub fn cover_staging_dir(&self) -> PathBuf {
+        crate::services::cover_staging::staging_dir_for(&self.covers_dir)
+    }
+
     /// Read the currently-configured session inactivity timeout (seconds).
     /// Clones the scalar out of the `RwLock` so callers never hold the guard
     /// across `.await` points.
