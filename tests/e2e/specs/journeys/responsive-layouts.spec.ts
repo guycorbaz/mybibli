@@ -15,6 +15,7 @@
  */
 import { test, expect, Page } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { checkAccessibility } from "../../helpers/accessibility";
 
 const MOBILE = { width: 375, height: 667 };
 const TABLET = { width: 768, height: 1024 };
@@ -99,5 +100,180 @@ test.describe("Story 9-21 — responsive per-page layouts", () => {
 
     await page.goto("/series");
     await assertNoMajorHorizontalScroll(page, "/series desktop");
+  });
+});
+
+/**
+ * Story 11-4 (#496) — sticky navigation bar.
+ *
+ * The bar lives in the shared layout, so a few representative pages are
+ * enough. Each page is made reliably scrollable through the CSSOM
+ * (`style.minHeight` on #main-content — allowed by CSP, unlike an inline
+ * `style` attribute) so the assertions never depend on how much data the
+ * shared E2E database happens to hold. Read-only: no entity is created.
+ */
+const NAV = 'nav[aria-label="Main navigation"]';
+const LANDSCAPE_PHONE = { width: 667, height: 375 };
+
+async function scrollToBottomOfLongPage(page: Page) {
+  await page.waitForLoadState("load");
+  // Scroll inside the poll: a page-load autofocus (e.g. the catalog scan
+  // field) can scroll the document back to the top after a single
+  // scrollTo, so each attempt re-applies it until it sticks.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const main = document.getElementById("main-content");
+        if (main) main.style.minHeight = "3000px";
+        window.scrollTo(0, document.documentElement.scrollHeight);
+        return window.scrollY;
+      }),
+    )
+    .toBeGreaterThan(1000);
+}
+
+async function assertNavStuckAtTop(page: Page, label: string) {
+  const nav = page.locator(NAV);
+  await expect(nav, `${label}: nav in viewport`).toBeInViewport();
+  const box = await nav.boundingBox();
+  expect(box, `${label}: nav has a box`).not.toBeNull();
+  expect(Math.abs(box!.y), `${label}: nav top at the viewport top`).toBeLessThanOrEqual(1);
+}
+
+test.describe("Story 11-4 — sticky navigation bar", () => {
+  for (const [name, viewport] of [
+    ["mobile", MOBILE],
+    ["tablet", TABLET],
+    ["desktop", DESKTOP],
+  ] as const) {
+    test(`${name} (${viewport.width}px) — the bar stays at the top after scrolling to the bottom`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await loginAs(page, "admin");
+      for (const path of ["/", "/catalog", "/series", "/admin"]) {
+        await page.goto(path);
+        await scrollToBottomOfLongPage(page);
+        await assertNavStuckAtTop(page, `${path} ${name}`);
+      }
+    });
+  }
+
+  for (const [name, viewport] of [
+    ["mobile", MOBILE],
+    ["desktop", DESKTOP],
+  ] as const) {
+    test(`${name} — the skip link target is not hidden under the bar`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await loginAs(page, "admin");
+      await page.goto("/catalog");
+      await scrollToBottomOfLongPage(page);
+
+      await page.locator('a[href="#main-content"]').focus();
+      await page.keyboard.press("Enter");
+      await expect.poll(() => page.evaluate(() => location.hash)).toBe("#main-content");
+      // Let the fragment scroll settle (two frames), then measure once.
+      const geometry = await page.evaluate(
+        () =>
+          new Promise<{ mainTop: number; navBottom: number }>((resolve) =>
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() =>
+                resolve({
+                  mainTop: document.getElementById("main-content")!.getBoundingClientRect().top,
+                  navBottom: document
+                    .querySelector('nav[aria-label="Main navigation"]')!
+                    .getBoundingClientRect().bottom,
+                }),
+              ),
+            ),
+          ),
+      );
+      await expect(page.locator(NAV)).toBeInViewport();
+      expect(
+        geometry.mainTop,
+        `main top (${geometry.mainTop}) must sit below the bar bottom (${geometry.navBottom})`,
+      ).toBeGreaterThanOrEqual(geometry.navBottom - 1);
+    });
+  }
+
+  for (const [name, viewport] of [
+    ["portrait phone", MOBILE],
+    ["landscape phone", LANDSCAPE_PHONE],
+  ] as const) {
+    test(`${name} — the mobile menu stays usable and above the content while stuck`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await loginAs(page, "admin");
+      await page.goto("/catalog");
+      await scrollToBottomOfLongPage(page);
+
+      await page.locator("#mobile-menu-toggle").click();
+      const panel = page.locator("#mobile-nav");
+      await expect(panel).toBeVisible();
+      await expect(panel).toBeInViewport();
+      const navBox = (await page.locator(NAV).boundingBox())!;
+      const panelBox = (await panel.boundingBox())!;
+      expect(Math.abs(panelBox.y - (navBox.y + navBox.height))).toBeLessThanOrEqual(1);
+
+      // The menu sits above the page content: hit testing at a link's
+      // centre lands on that link, not on whatever scrolled underneath.
+      const seriesLink = panel.locator('a[href="/series"]');
+      const hit = await seriesLink.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return top !== null && el.contains(top);
+      });
+      expect(hit, "the menu link must be the topmost element at its centre").toBe(true);
+
+      // The last entry stays reachable even when the menu is taller than
+      // the space left under the stuck bar (landscape phone).
+      const logout = panel.locator('form[action="/logout"] button');
+      await logout.scrollIntoViewIfNeeded();
+      await expect(logout).toBeInViewport();
+      await assertNavStuckAtTop(page, `${name} menu open`);
+
+      await checkAccessibility(page);
+
+      await seriesLink.click();
+      await expect(page).toHaveURL(/\/series$/);
+    });
+  }
+
+  test("an open dialog renders above the stuck bar", async ({ page }) => {
+    await page.setViewportSize(DESKTOP);
+    await loginAs(page, "admin");
+    await page.goto("/");
+    await scrollToBottomOfLongPage(page);
+    await assertNavStuckAtTop(page, "/ before dialog");
+
+    await page.evaluate(() => {
+      const active = document.activeElement;
+      if (active && active !== document.body) (active as HTMLElement).blur();
+    });
+    await page.keyboard.press("?");
+    await expect(page.locator("dialog#shortcuts-cheat-sheet")).toHaveAttribute("open", "");
+
+    const coveredByOverlay = await page.evaluate(() => {
+      const nav = document.querySelector('nav[aria-label="Main navigation"]')!;
+      const r = nav.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return top !== null && !document.querySelector("header")!.contains(top);
+    });
+    expect(coveredByOverlay, "the dialog backdrop must cover the bar").toBe(true);
+  });
+
+  test("print — the bar falls back to normal flow and is not repeated", async ({
+    page,
+  }) => {
+    await page.setViewportSize(DESKTOP);
+    await loginAs(page, "admin");
+    await page.goto("/catalog");
+    const header = page.locator("header").first();
+    await expect(header).toHaveCSS("position", "sticky");
+    await page.emulateMedia({ media: "print" });
+    await expect(header).toHaveCSS("position", "static");
   });
 });

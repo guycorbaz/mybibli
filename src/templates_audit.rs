@@ -1061,3 +1061,48 @@ fn csrf_exempt_routes_frozen() {
          expected list in the same PR and justify in the review description."
     );
 }
+
+/// Story 11-4 (#496) — the navigation `<header>` is `sticky … z-40`. Every
+/// full-viewport overlay (`fixed inset-0`: modals, connection-lost overlay)
+/// must sit above it, so it must carry `z-50`. Modals promoted with
+/// `showModal()` reach the top layer anyway; this pins the declarative
+/// `<dialog open>` fallback and the non-dialog overlays.
+#[test]
+fn fixed_overlays_stack_above_sticky_nav() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let tpl_dir = root.join("templates");
+    let class_re = Regex::new(r#"\bclass\s*=\s*"([^"]*)""#).unwrap();
+
+    let mut overlays = 0usize;
+    let mut violations: Vec<String> = Vec::new();
+    visit(&tpl_dir, &mut |path| {
+        if path.extension().and_then(|e| e.to_str()) != Some("html") {
+            return;
+        }
+        let Ok(raw) = fs::read_to_string(path) else {
+            return;
+        };
+        let content = strip_html_comments(&raw);
+        for cap in class_re.captures_iter(&content) {
+            let classes: Vec<&str> = cap[1].split_whitespace().collect();
+            if classes.contains(&"fixed") && classes.contains(&"inset-0") {
+                overlays += 1;
+                if !classes.contains(&"z-50") {
+                    let rel = path.strip_prefix(&root).unwrap_or(path);
+                    violations.push(format!("  {} — class=\"{}\"", rel.display(), &cap[1]));
+                }
+            }
+        }
+    });
+
+    assert!(
+        overlays > 0,
+        "expected at least one `fixed inset-0` overlay in templates/"
+    );
+    assert!(
+        violations.is_empty(),
+        "full-viewport overlays must carry `z-50` to stay above the sticky \
+         nav bar (`z-40`, story 11-4):\n{}",
+        violations.join("\n")
+    );
+}
