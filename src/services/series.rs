@@ -534,6 +534,8 @@ pub struct AgentSeriesDetail {
     /// position then title id.
     pub positions: Vec<TitleSeriesRow>,
     pub gaps: SeriesGaps,
+    /// Story 11-10 — live expected tomes, by position then id.
+    pub expected_tomes: Vec<crate::models::expected_tome::ExpectedTomeRow>,
 }
 
 impl SeriesService {
@@ -561,10 +563,13 @@ impl SeriesService {
         positions.sort_by_key(|p| (p.position_number, p.title_id));
         let held: Vec<i32> = positions.iter().map(|p| p.position_number).collect();
         let gaps = series_gaps(series.series_type, series.total_volume_count, &held);
+        let expected_tomes =
+            crate::services::expected_tomes::ExpectedTomeService::list_by_series(pool, id).await?;
         Ok(Some(AgentSeriesDetail {
             series,
             positions,
             gaps,
+            expected_tomes,
         }))
     }
 }

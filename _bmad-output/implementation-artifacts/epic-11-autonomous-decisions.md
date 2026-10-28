@@ -491,3 +491,14 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Chosen:** handler-level integration tests drive the real router (`/catalog/scan`, `POST /catalog/title`) with login + CSRF and assert the banner; the E2E `mcp-gaps-tools.spec.ts` asserts the new `expected_tomes` key of `get_series`; the full Playwright suite runs as regression gate.
 **Rejected:** a throw-away seeding route (D-11-5-4, D-11-9-6 precedent).
 **Reversible:** yes.
+
+### D-11-10-8 — One banner helper for ISBN catalogue events; the manual form gains the wishlist auto-link [PRODUCT]
+**Context:** `routes/catalog.rs` is already 3 093 lines (Rule #12); the manual title form showed no wishlist auto-link, while FR145 asks for "the same mechanism as the wishlist auto-link".
+**Chosen:** `routes::catalog_isbn_banners::isbn_banners` returns the wishlist auto-link banner followed by one feedback entry per settle outcome; the ISBN scan arm swaps its auto-link call for it (net zero lines in `catalog.rs`), and `create_title` appends it when the new title has an ISBN — so a manually created title on the wishlist now also shows the "On your wish list" banner. Settle success is a `success` entry, a conflict a dismissable `warning` (what happened → why → what to do).
+**Rejected:** a settle-only call on the manual form (two code paths for "an ISBN was catalogued").
+**Reversible:** yes.
+
+### D-11-10-9 — Router-level test helpers in `tests/common/web.rs`
+**Context:** the scan / manual-creation tests need a real login + CSRF flow; it is written inline in `tests/scan_title_context.rs` and several other files.
+**Chosen:** a small `Browser { cookie, csrf }` helper in `tests/common/web.rs` used by the new test crate; the existing files are left as they are (no churn outside the story).
+**Reversible:** yes.

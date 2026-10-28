@@ -167,7 +167,7 @@ async fn get_series_reports_positions_omnibus_and_gaps(pool: DbPool) {
     assert_eq!(doc["gap_count"], 2);
     assert_eq!(doc["missing_positions"], json!([3, 6]));
     assert_eq!(doc["missing_positions_truncated"], false);
-    assert!(doc.get("expected_tomes").is_none(), "11-10 adds them");
+    assert_eq!(doc["expected_tomes"], json!([]), "story 11-10");
 
     let positions: Vec<(i64, u64, bool)> = doc["positions"]
         .as_array()

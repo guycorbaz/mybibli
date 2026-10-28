@@ -1163,3 +1163,12 @@ setup:
     overdue_must_be_positive: "Die Überfälligkeitsgrenze muss eine positive ganze Zahl sein."
     admin_already_created: "Ein Admin-Konto wurde durch einen anderen Browser erstellt. Bitte neu laden."
     admin_already_created_by_other_browser: "Ein anderer Browser hat das Admin-Konto bereits erstellt. Sie wurden zum nächsten Schritt weitergeleitet — bei Bedarf können Sie zum vorherigen Schritt zurück, um die Admin-Daten zu aktualisieren."
+
+expected_tome:
+  # Story 11-10 (FR145) — feedback when a catalogued ISBN matches an expected tome.
+  settled: "Erwarteter Band gefunden: Dieser Titel belegt jetzt Position %{position} von „%{series}“."
+  settled_suggestion: "Die Reihe führt ihn nicht mehr als fehlend."
+  conflict: "Erwarteter Band von „%{series}“ (Position %{position}): Es wurde nichts zugeordnet."
+  conflict_held: "Diese Position ist bereits mit „%{holder}“ belegt. Prüfen Sie auf der Seite der Reihe, welches Exemplar dorthin gehört."
+  conflict_elsewhere: "Dieser Titel steht bereits an Position %{other} der Reihe. Verschieben Sie ihn auf der Titelseite, falls Position %{position} die richtige ist."
+  conflict_out_of_range: "Die Reihe umfasst nur noch %{total} Bände. Erhöhen Sie die Gesamtzahl auf der Seite der Reihe und scannen Sie erneut."

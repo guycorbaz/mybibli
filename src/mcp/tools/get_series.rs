@@ -1,11 +1,12 @@
 //! Story 11-8 — `get_series`: one series with its positions, omnibus
-//! flags and missing positions. Expected tomes arrive in story 11-10.
+//! flags and missing positions; story 11-10 adds its expected tomes.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::{args, to_json};
 use crate::mcp::tool::{McpTool, ToolContext, ToolError, ToolFuture};
+use crate::models::expected_tome::ExpectedTomeRow;
 use crate::models::series::TitleSeriesRow;
 use crate::services::series::{AgentSeriesDetail, SeriesService};
 use crate::services::title_detail::has_cover;
@@ -54,6 +55,30 @@ impl From<TitleSeriesRow> for Position {
     }
 }
 
+/// Story 11-10 — a tome the library does not own yet.
+#[derive(Debug, Serialize)]
+struct ExpectedTome {
+    id: u64,
+    position: i32,
+    title: String,
+    isbn: Option<String>,
+    origin: &'static str,
+    settled_title_id: Option<u64>,
+}
+
+impl From<ExpectedTomeRow> for ExpectedTome {
+    fn from(r: ExpectedTomeRow) -> Self {
+        ExpectedTome {
+            id: r.id,
+            position: r.position,
+            title: r.title,
+            isbn: r.isbn,
+            origin: r.origin.as_str(),
+            settled_title_id: r.settled_title_id,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct Document {
     id: u64,
@@ -66,6 +91,7 @@ struct Document {
     missing_positions: Vec<i32>,
     missing_positions_truncated: bool,
     positions: Vec<Position>,
+    expected_tomes: Vec<ExpectedTome>,
 }
 
 impl From<AgentSeriesDetail> for Document {
@@ -81,6 +107,7 @@ impl From<AgentSeriesDetail> for Document {
             missing_positions: d.gaps.missing_positions,
             missing_positions_truncated: d.gaps.missing_positions_truncated,
             positions: d.positions.into_iter().map(Into::into).collect(),
+            expected_tomes: d.expected_tomes.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -105,7 +132,10 @@ impl McpTool for GetSeries {
          1000; `missing_positions_truncated` says when the list was cut) and `gap_count` \
          counts them as total minus `owned_positions` (the distinct positions held within \
          1..total; a title listed above the total fills no slot); an open series has no \
-         known gaps (`gap_count` null, `missing_positions` empty). Find ids with list_series; read a \
+         known gaps (`gap_count` null, `missing_positions` empty). `expected_tomes` lists the \
+         tomes the librarian expects but may not own yet, ordered by position: id, position, \
+         title, ISBN-13 (or null), `origin` (`manual` or `proposal`) and `settled_title_id` \
+         (the catalogued title that settled it, null while it is still missing). Find ids with list_series; read a \
          title with get_title. Deleted series are reported as not found. Read-only."
     }
 
@@ -163,5 +193,47 @@ mod tests {
     fn description_states_the_missing_positions_cap() {
         assert_eq!(MAX_LISTED_MISSING_POSITIONS, 1000);
         assert!(GetSeries.description().contains("at most 1000"));
+    }
+
+    #[test]
+    fn document_carries_the_expected_tomes() {
+        use crate::models::expected_tome::ExpectedTomeOrigin;
+        use crate::models::series::{SeriesModel, SeriesType};
+        use crate::services::series::series_gaps;
+        let detail = AgentSeriesDetail {
+            series: SeriesModel {
+                id: 4,
+                name: "S".into(),
+                description: None,
+                series_type: SeriesType::Closed,
+                total_volume_count: Some(3),
+                version: 1,
+            },
+            positions: Vec::new(),
+            gaps: series_gaps(SeriesType::Closed, Some(3), &[]),
+            expected_tomes: vec![ExpectedTomeRow {
+                id: 9,
+                series_id: 4,
+                position: 2,
+                title: "Tome 2".into(),
+                isbn: Some("9782070360246".into()),
+                origin: ExpectedTomeOrigin::Proposal,
+                settled_title_id: None,
+                version: 1,
+            }],
+        };
+        let v = serde_json::to_value(Document::from(detail)).unwrap();
+        assert_eq!(
+            v["expected_tomes"],
+            json!([{
+                "id": 9,
+                "position": 2,
+                "title": "Tome 2",
+                "isbn": "9782070360246",
+                "origin": "proposal",
+                "settled_title_id": null
+            }])
+        );
+        assert!(GetSeries.description().contains("expected_tomes"));
     }
 }

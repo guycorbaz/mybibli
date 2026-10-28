@@ -13,6 +13,7 @@ pub mod auth;
 pub mod borrowers;
 pub mod catalog;
 pub mod catalog_undo;
+pub mod catalog_isbn_banners;
 pub mod contributors;
 pub mod home;
 pub mod home_indicators;

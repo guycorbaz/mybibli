@@ -1,6 +1,6 @@
 # Story 11.10: Expected tomes — data and auto-settle at scan
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR129 (expected tomes), FR141, FR145, AR29. Epic 11 — tenth story; blocks 11-11 (series page + wishlist, manual CRUD UI) and 11-12 (series proposals that create expected tomes). Related open issues: #519 (`/series` list gap counting), #521 (writes that do not bump `version` — `title_series` attach included), #522 (cover staging).
 
@@ -48,15 +48,15 @@ so that its gaps have names and settle by themselves once I scan them.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Migration (AC1).
-- [ ] T2 — `TitleSeriesModel::assign_in` refactor (behaviour-preserving) (AC5).
-- [ ] T3 — Model `src/models/expected_tome.rs` (rows, insert/update/soft delete, locking reads, holder lookups) (AC1, AC3–AC5, AC9).
-- [ ] T4 — Service `src/services/expected_tomes.rs` (`ExpectedTomeError`, `normalize_isbn`, `validate_title`, CRUD, `settle_for_title`) (AC2–AC5).
-- [ ] T5 — `src/routes/catalog_isbn_banners.rs` + wiring in `catalog.rs` ISBN arm and `create_title`; locale keys ×4 (AC5, AC6).
-- [ ] T6 — MCP `get_series` + `AgentSeriesDetail.expected_tomes` (AC7).
-- [ ] T7 — Purge order, seed drift (AC8).
-- [ ] T8 — Tests (AC10); E2E assertion in `mcp-gaps-tools.spec.ts`.
-- [ ] T9 — Gates: clippy `--all-targets -D warnings`, full `cargo test` (test DB 3307), `cargo sqlx prepare --check --workspace -- --all-targets`, flake grep, `tsc --noEmit`, full Playwright `CI=true --workers=2` on a reset stack (port 18080).
+- [x] T1 — Migration (AC1).
+- [x] T2 — `TitleSeriesModel::assign_in` refactor (behaviour-preserving) (AC5).
+- [x] T3 — Model `src/models/expected_tome.rs` (rows, insert/update/soft delete, locking reads, holder lookups) (AC1, AC3–AC5, AC9).
+- [x] T4 — Service `src/services/expected_tomes.rs` (`ExpectedTomeError`, `normalize_isbn`, `validate_title`, CRUD, `settle_for_title`) (AC2–AC5).
+- [x] T5 — `src/routes/catalog_isbn_banners.rs` + wiring in `catalog.rs` ISBN arm and `create_title`; locale keys ×4 (AC5, AC6).
+- [x] T6 — MCP `get_series` + `AgentSeriesDetail.expected_tomes` (AC7).
+- [x] T7 — Purge order, seed drift (AC8).
+- [x] T8 — Tests (AC10); E2E assertion in `mcp-gaps-tools.spec.ts`.
+- [x] T9 — Gates: clippy `--all-targets -D warnings`, full `cargo test` (test DB 3307), `cargo sqlx prepare --check --workspace -- --all-targets`, flake grep, `tsc --noEmit`, full Playwright `CI=true --workers=2` on a reset stack (port 18080).
 
 ## Dev Notes
 
@@ -86,9 +86,34 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Completion Notes List
 
+- `series_expected_tomes` migration with CASCADE (series) / SET NULL (settled title) FKs and live-only unique keys via a stored `live_marker` (D-11-10-2).
+- `ExpectedTomeService`: create / `create_in` / update / delete / list_by_series / find, typed `ExpectedTomeError`; settled = settled title live (D-11-10-3); rules D-11-10-4.
+- `settle_for_title` wired into the `/catalog/scan` ISBN arm (new + existing title) and `POST /catalog/title` through `routes::catalog_isbn_banners::isbn_banners` (wishlist auto-link + settle feedback, D-11-10-5, D-11-10-8); `TitleSeriesModel::assign_in` extracted for the transaction.
+- MCP `get_series` returns `expected_tomes`; the 11-8 guard test flipped from "absent" to `[]`.
+- Locale keys `expected_tome.*` in en/fr/de/it.
+- No scan-settle E2E (D-11-10-7); router-level tests cover the scan and manual-form banners; E2E `mcp-gaps-tools.spec.ts` asserts `expected_tomes`.
+- Gates: clippy `--all-targets -D warnings` clean; `cargo test` 1816 passed / 0 failed (67 binaries, test DB 3307); `cargo sqlx prepare --check` green (no macro query); flake grep clean; `tsc --noEmit` clean; Playwright `CI=true --workers=2` on a reset stack (18080): 362 passed, 2 skipped, 0 failed.
+
 ### File List
+
+- migrations/20261028180000_create_series_expected_tomes.sql (new)
+- src/models/expected_tome.rs (new)
+- src/services/expected_tomes.rs (new)
+- src/routes/catalog_isbn_banners.rs (new)
+- src/models/mod.rs, src/services/mod.rs, src/routes/mod.rs
+- src/models/series.rs (`assign_in`)
+- src/routes/catalog.rs (ISBN scan arm, `create_title`)
+- src/services/series.rs (`AgentSeriesDetail.expected_tomes`)
+- src/services/auto_purge.rs (purge order)
+- src/mcp/tools/get_series.rs
+- locales/en.yml, locales/fr.yml, locales/de.yml, locales/it.yml
+- tests/expected_tomes.rs (new), tests/common/web.rs (new), tests/common/mod.rs
+- tests/mcp_series_gaps_tools.rs, tests/seed_drift.rs
+- tests/e2e/specs/journeys/mcp-gaps-tools.spec.ts
+- _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md, sprint-status.yaml
 
 ## Change Log
 
 - 2026-10-28 — story created (ready-for-dev).
 - 2026-10-28 — validated against the create-story checklist: added the Trash permanent-delete path (FK actions make it safe), confirmed `POST /catalog/title` is the manual creation route, `admin_reset` touches no catalogue table.
+- 2026-10-28 — implementation complete (review).

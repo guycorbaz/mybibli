@@ -1149,3 +1149,12 @@ setup:
     overdue_must_be_positive: "La soglia di ritardo deve essere un numero intero positivo."
     admin_already_created: "Un account amministratore è stato creato da un altro browser. Ricarica."
     admin_already_created_by_other_browser: "Un altro browser ha già creato l'account amministratore. Ti abbiamo portato al passo successivo — se necessario, puoi tornare al passo precedente per aggiornare i dati dell'amministratore."
+
+expected_tome:
+  # Story 11-10 (FR145) — feedback when a catalogued ISBN matches an expected tome.
+  settled: "Volume atteso trovato: questo titolo occupa ora la posizione %{position} di «%{series}»."
+  settled_suggestion: "La serie non lo segnala più come mancante."
+  conflict: "Volume atteso di «%{series}» (posizione %{position}): non è stato collegato nulla."
+  conflict_held: "Quella posizione è già occupata da «%{holder}». Controlla la pagina della serie per decidere quale copia vi appartiene."
+  conflict_elsewhere: "Questo titolo è già nella serie alla posizione %{other}. Spostalo dalla pagina del titolo se la posizione %{position} è quella giusta."
+  conflict_out_of_range: "La serie conta ora solo %{total} volumi. Aumenta il totale nella pagina della serie, poi scansiona di nuovo."

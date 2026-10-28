@@ -3,6 +3,7 @@ pub mod api_key;
 pub mod borrower;
 pub mod contributor;
 pub mod contributor_role;
+pub mod expected_tome;
 pub mod genre;
 pub mod label;
 pub mod loan;

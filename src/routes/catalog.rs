@@ -478,12 +478,11 @@ pub async fn handle_scan(
                         )
                         .await;
 
-                        // CR #242 — auto-link banner appended to either the
-                        // "title exists" or the new-title skeleton feedback so
-                        // a librarian who scans an ISBN that's on the wishlist
-                        // sees a one-click "Remove from wishlist" affordance.
-                        let autolink = crate::routes::wishlist::autolink_feedback_html(
-                            pool, &code, loc,
+                        // CR #242 wishlist auto-link + story 11-10 expected-tome
+                        // auto-settle, appended to either the "title exists" or
+                        // the new-title skeleton feedback.
+                        let autolink = crate::routes::catalog_isbn_banners::isbn_banners(
+                            pool, title.id, &code, loc,
                         )
                         .await;
 
@@ -1650,13 +1649,23 @@ pub async fn create_title(
                 tracing::warn!(error = %e, "Failed to update current title in session");
             }
 
+            // Story 11-10 — a manually created title carrying an ISBN
+            // settles its expected tomes like a scan does (FR145).
+            let banners = match title.isbn.as_deref() {
+                Some(isbn) => {
+                    crate::routes::catalog_isbn_banners::isbn_banners(pool, title.id, isbn, loc)
+                        .await
+                }
+                None => String::new(),
+            };
+
             if is_htmx {
                 let message = rust_i18n::t!("feedback.title_created", locale = loc).to_string();
                 let suggestion =
                     rust_i18n::t!("feedback.title_created_suggestion", locale = loc).to_string();
 
                 let resp = HtmxResponse {
-                    main: feedback_html("success", &message, &suggestion),
+                    main: feedback_html("success", &message, &suggestion) + &banners,
                     oob: vec![
                         OobUpdate { swap_mode: Default::default(),
                             target: "context-banner".to_string(),

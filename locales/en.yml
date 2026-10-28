@@ -1179,3 +1179,12 @@ setup:
     overdue_must_be_positive: "Overdue threshold must be a positive integer."
     admin_already_created: "An admin account was created by another browser. Please reload."
     admin_already_created_by_other_browser: "Another browser already created the administrator account. We've moved you on to the next step — you can return to update the admin details from the previous step if needed."
+
+expected_tome:
+  # Story 11-10 (FR145) — feedback when a catalogued ISBN matches an expected tome.
+  settled: "Expected tome found: this title now holds position %{position} of “%{series}”."
+  settled_suggestion: "The series no longer lists it as missing."
+  conflict: "Expected tome of “%{series}” (position %{position}): nothing was attached."
+  conflict_held: "That position is already held by “%{holder}”. Check the series page to decide which copy belongs there."
+  conflict_elsewhere: "This title is already in the series at position %{other}. Move it from the title page if position %{position} is the right one."
+  conflict_out_of_range: "The series now has only %{total} tomes. Raise its total on the series page, then scan again."

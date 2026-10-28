@@ -33,6 +33,8 @@ const ENTITY_TABLES_WITH_SOFT_DELETE: &[&str] = &[
     // Story 11-9 (AR29).
     "proposals",
     "proposal_items",
+    // Story 11-10 (AR29).
+    "series_expected_tomes",
 ];
 
 #[sqlx::test(migrations = "./migrations")]
