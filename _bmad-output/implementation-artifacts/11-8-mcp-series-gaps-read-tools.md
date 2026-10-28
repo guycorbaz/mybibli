@@ -1,6 +1,6 @@
 # Story 11.8: MCP series and gaps read tools
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here); resolves #516 (split `src/models/title.rs`). Covers: FR129. Epic 11 — eighth story; builds on 11-6 (`/api/mcp`, `McpTool` trait) and 11-7 (`search_titles`, shared `tools/args.rs`, `ListPage`, `tests/common/mcp.rs`, `helpers/mcp.ts`). 11-10 adds expected tomes to `get_series`.
 
@@ -39,14 +39,14 @@ so that I know what to look for on the web.
 
 ## Tasks / Subtasks
 
-- [ ] T0 — (#516) Move the search projection out of `src/models/title.rs` into `src/models/title_search.rs` (+ its unit tests), re-exported; no behaviour change. Own commit.
-- [ ] T1 — Models: shared "filled positions" SQL fragment in `models/series.rs`, `SeriesModel::list_summaries`; `TitleModel::list_incomplete_metadata` + `MetadataField` enum in `title_search.rs`.
-- [ ] T2 — Services: `services::series::{SeriesGaps, series_gaps, SeriesService::list_summaries, SeriesService::agent_series_detail}`; `CatalogSearch.no_cover_only`; `services::search::SearchService::list_incomplete_metadata` (thin pass-through).
-- [ ] T3 — Tools: `list_series.rs`, `get_series.rs`, `list_titles_without_cover.rs`, `list_titles_with_incomplete_metadata.rs`; shared media-type / genre helpers and title item; registry + tests.
-- [ ] T4 — Integration tests `tests/mcp_series_gaps_tools.rs`.
-- [ ] T5 — E2E `mcp-gaps-tools.spec.ts`; `mcp-read-tools.spec.ts` tool list updated.
-- [ ] T6 — Docs: `docs/route-role-matrix.md` § MCP lists the seven tools.
-- [ ] T7 — Gates (brief §5).
+- [x] T0 — (#516) Move the search projection out of `src/models/title.rs` into `src/models/title_search.rs` (+ its unit tests), re-exported; no behaviour change. Own commit.
+- [x] T1 — Models: shared "filled positions" SQL fragment in `models/series.rs`, `SeriesModel::list_summaries`; `TitleModel::list_incomplete_metadata` + `MetadataField` enum in `title_search.rs`.
+- [x] T2 — Services: `services::series::{SeriesGaps, series_gaps, SeriesService::list_summaries, SeriesService::agent_series_detail}`; `CatalogSearch.no_cover_only`; `services::search::SearchService::list_incomplete_metadata` (thin pass-through).
+- [x] T3 — Tools: `list_series.rs`, `get_series.rs`, `list_titles_without_cover.rs`, `list_titles_with_incomplete_metadata.rs`; shared media-type / genre helpers and title item; registry + tests.
+- [x] T4 — Integration tests `tests/mcp_series_gaps_tools.rs`.
+- [x] T5 — E2E `mcp-gaps-tools.spec.ts`; `mcp-read-tools.spec.ts` tool list updated.
+- [x] T6 — Docs: `docs/route-role-matrix.md` § MCP lists the seven tools.
+- [x] T7 — Gates (brief §5).
 
 ## Dev Notes
 
@@ -73,11 +73,48 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Debug Log References
 
+- Previous dev session killed by a kernel OOM (2026-10-28 15:23) during the gate phase; resumed from local commits 2caaeac..e618dfa plus uncommitted clippy clean-ups (`resolve_genre` takes `&ToolContext`; needless lifetime in the integration test), kept.
+
 ### Completion Notes List
 
+- T0: search projection moved to `src/models/title_search.rs`, re-exported from `models::title` (no caller change); `title.rs` 1942 → 1501 lines. Closes #516.
+- T1: `filled_positions_join!()` macro spliced with `concat!` into `count_with_gaps`, `list_with_gaps` and `list_summaries` (resume: `count_with_gaps` still had its own correlated subquery — moved onto the shared fragment; `tests/dashboard_gaps.rs` green). `TitleModel::list_incomplete_metadata` + `MetadataField` enum (fixed SQL predicates, never user text). `like_contains_pattern` moved to `utils.rs` (shared by contributors and series).
+- T2: pure `series_gaps` / `gap_count` (cap 1000, open series, out-of-range positions — unit-tested), `SeriesService::{list_summaries, agent_series_detail}`, `CatalogSearch.no_cover_only`, `SearchService::list_incomplete_metadata`.
+- T3: four tools (`list_series`, `get_series`, `list_titles_without_cover`, `list_titles_with_incomplete_metadata`); media-type / genre helpers and the title item shared with `search_titles`; registry test pins the seven tools.
+- T4: `tests/mcp_series_gaps_tools.rs` (9 tests); shared fixtures moved to `tests/common/mcp.rs`.
+- T5: `mcp-gaps-tools.spec.ts` (spec id `MG`); `MCP_TOOLS` constant in `helpers/mcp.ts` used by `mcp-read-tools.spec.ts`.
+- T6: `docs/route-role-matrix.md` § MCP lists the seven tools.
+- T7 gates (2026-10-28): `cargo clippy --all-targets -- -D warnings` clean; `cargo test` (lib + bins + all integration binaries, test DB on 3307) 1726 passed / 0 failed across 64 binaries (lib 1281; `mcp_series_gaps_tools` 9, `mcp_catalog_read_tools` 17, `dashboard_gaps` 16, `locale_parity` 3); `cargo sqlx prepare --check` clean; flake gate clean; `tsc --noEmit` clean; Playwright on a freshly reset stack, `CI=true --workers=2`: 361 passed, 2 skipped, 1 flaky (`shelving.spec.ts` "second shelve removes the earlier undo button", unrelated to this story, passed on retry).
+
 ### File List
+
+- `docs/route-role-matrix.md`
+- `src/mcp/tools/args.rs`
+- `src/mcp/tools/get_series.rs` (new)
+- `src/mcp/tools/list_series.rs` (new)
+- `src/mcp/tools/list_titles_with_incomplete_metadata.rs` (new)
+- `src/mcp/tools/list_titles_without_cover.rs` (new)
+- `src/mcp/tools/mod.rs`
+- `src/mcp/tools/search_contributors.rs`
+- `src/mcp/tools/search_titles.rs`
+- `src/models/contributor.rs`
+- `src/models/mod.rs`
+- `src/models/series.rs`
+- `src/models/title.rs`
+- `src/models/title_search.rs` (new)
+- `src/services/search.rs`
+- `src/services/series.rs`
+- `src/utils.rs`
+- `tests/common/mcp.rs`
+- `tests/mcp_catalog_read_tools.rs`
+- `tests/mcp_series_gaps_tools.rs` (new)
+- `tests/e2e/helpers/mcp.ts`
+- `tests/e2e/specs/journeys/mcp-gaps-tools.spec.ts` (new)
+- `tests/e2e/specs/journeys/mcp-read-tools.spec.ts`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ## Change Log
 
 - 2026-10-28 — story created (create-story).
 - 2026-10-28 — validated against the create-story checklist: SQL fragment sharing, dashboard regression net, E2E series flow, re-export keeps callers unchanged.
+- 2026-10-28 — dev-story complete (T0–T7): four MCP tools, #516 split, gates green → review.
