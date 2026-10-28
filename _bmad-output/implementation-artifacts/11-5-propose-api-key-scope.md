@@ -1,6 +1,6 @@
 # Story 11.5: The `propose` API-key scope
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR126, NFR44. Epic 11 — fifth story; prerequisite of 11-6 (the MCP endpoint accepts only `propose` keys).
 
@@ -139,4 +139,5 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-28 — validated against the create-story checklist: extractor order, consumer grep and manual-scope notes added.
 - 2026-10-28 — implemented (dev-story); status → review.
 - 2026-10-28 — code review round 1: 9 patches applied, 1 deferred (#511).
-- 2026-10-28 — code review round 2: 1 Medium + 1 Low patched; round 3 re-review.
+- 2026-10-28 — code review round 2: 1 Medium + 1 Low patched.
+- 2026-10-28 — code review round 3: clean; status → done.
