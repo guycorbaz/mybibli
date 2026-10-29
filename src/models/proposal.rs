@@ -145,6 +145,8 @@ pub struct ProposalRow {
     pub decided_by_username: Option<String>,
     pub decided_at: Option<NaiveDateTime>,
     pub rejection_reason: Option<String>,
+    /// Story 11-17 — the series an accepted `series_create` created.
+    pub applied_series_id: Option<u64>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
     pub version: i32,
@@ -240,6 +242,7 @@ const PROPOSAL_SELECT: &str = "SELECT p.id, p.kind, p.status, p.api_key_id, k.la
      CAST(p.sources AS CHAR) AS sources, CAST(p.decided_by AS SIGNED) AS decided_by, \
      CAST(COALESCE(u.username, p.decided_by_name) AS CHAR) AS decided_by_username, \
      CAST(p.decided_at AS DATETIME) AS decided_at, p.rejection_reason, \
+     CAST(p.applied_series_id AS SIGNED) AS applied_series_id, \
      CAST(p.created_at AS DATETIME) AS created_at, CAST(p.updated_at AS DATETIME) AS updated_at, \
      p.version \
      FROM proposals p \
@@ -267,6 +270,9 @@ impl ProposalModel {
             decided_by_username: r.try_get("decided_by_username")?,
             decided_at: r.try_get("decided_at")?,
             rejection_reason: r.try_get("rejection_reason")?,
+            applied_series_id: r
+                .try_get::<Option<i64>, _>("applied_series_id")?
+                .map(|v| v as u64),
             created_at: r.try_get("created_at")?,
             updated_at: r.try_get("updated_at")?,
             version: r.try_get("version")?,
@@ -911,6 +917,46 @@ impl ProposalModel {
             ))
         })
         .transpose()
+    }
+
+    /// Story 11-17 — lock a live proposal row (`FOR UPDATE`) and return
+    /// its kind, status and `version` (optimistic lock of the accept form).
+    pub async fn lock_for_decision(
+        conn: &mut MySqlConnection,
+        id: u64,
+    ) -> Result<Option<(ProposalKind, ProposalStatus, i32)>, AppError> {
+        let row = sqlx::query(
+            "SELECT kind, status, version FROM proposals \
+             WHERE id = ? AND deleted_at IS NULL FOR UPDATE",
+        )
+        .bind(id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        row.map(|r| {
+            let kind: String = r.try_get("kind")?;
+            let status: String = r.try_get("status")?;
+            Ok((
+                parse_enum(&kind, "proposals.kind", ProposalKind::parse)?,
+                parse_enum(&status, "proposals.status", ProposalStatus::parse)?,
+                r.try_get("version")?,
+            ))
+        })
+        .transpose()
+    }
+
+    /// Story 11-17 — record the series an accepted `series_create`
+    /// created (same transaction as the decision).
+    pub async fn set_applied_series_in(
+        conn: &mut MySqlConnection,
+        id: u64,
+        series_id: u64,
+    ) -> Result<(), AppError> {
+        sqlx::query("UPDATE proposals SET applied_series_id = ? WHERE id = ?")
+            .bind(series_id)
+            .bind(id)
+            .execute(&mut *conn)
+            .await?;
+        Ok(())
     }
 
     /// Live titles among `ids`: title, cover URL and media type (for the

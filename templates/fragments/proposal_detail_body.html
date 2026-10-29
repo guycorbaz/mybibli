@@ -1,4 +1,4 @@
-{# Story 11-16 — the proposal detail body (header, Reject action,
+{# Story 11-16 — the proposal detail body (header, Accept (11-17) and Reject actions,
    sources, items by shape). Rendered inside pages/proposal_detail.html
    and alone by POST /proposals/{id}/reject. Every agent value is
    escaped (NFR47): never `|safe` here. Sources open in a new tab with
@@ -31,6 +31,15 @@
 
     {% if body.can_reject %}
     <div class="mt-6 flex gap-3">
+        {% if body.can_accept %}
+        <button type="button" id="proposal-accept-button"
+                hx-get="/proposals/{{ body.id }}/accept-modal?version={{ body.version }}"
+                hx-target="#modal-slot" hx-swap="innerHTML"
+                data-modal-trigger aria-haspopup="dialog" aria-expanded="false"
+                class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-md">
+            {{ l.t("accept_button") }}
+        </button>
+        {% endif %}
         <button type="button" id="proposal-reject-button"
                 hx-get="/proposals/{{ body.id }}/reject-modal?version={{ body.version }}"
                 hx-target="#modal-slot" hx-swap="innerHTML"

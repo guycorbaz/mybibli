@@ -19,11 +19,13 @@ use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobSwapMode, OobUpdate};
 use crate::middleware::locale::Locale;
 use crate::models::proposal::ProposalStatus;
+use crate::services::proposal_accept;
 use crate::services::proposal_review::{
     self, LineView, ReviewDetail, ReviewError, display_utc, kind_filter_value, kind_label,
     parse_kind_filter, parse_status_filter, status_filter_value, status_label,
 };
 use crate::services::proposals::MAX_REJECTION_REASON_CHARS;
+use crate::services::series_acceptance::{self, AcceptOutcome};
 
 /// Labels of the `proposals.*` locale section, read by the templates
 /// as `l.t("key")`. The router tests (`tests/proposals_page.rs`) check
@@ -207,6 +209,8 @@ pub struct DetailBody {
     pub reason: Option<String>,
     pub is_rejected: bool,
     pub can_reject: bool,
+    /// Story 11-17 — a pending series proposal can be accepted here.
+    pub can_accept: bool,
     /// `(url, is_link)`: only `http` / `https` URLs become links (filing
     /// already refuses other schemes — defence in depth, NFR47).
     pub sources: Vec<(String, bool)>,
@@ -308,6 +312,7 @@ impl DetailBody {
             reason: p.rejection_reason.clone(),
             is_rejected: p.status == ProposalStatus::Rejected,
             can_reject: p.status == ProposalStatus::Pending,
+            can_accept: proposal_accept::can_accept(p.kind, p.status),
             sources: p
                 .sources
                 .iter()
@@ -532,10 +537,145 @@ pub async fn reject(
     .map_err(|e| e.into_app_error(loc))?;
     tracing::info!(proposal_id = id, user_id, "Proposal rejected from the web");
 
-    // The rejection is committed: a failure to re-render it must not read
-    // as a failed rejection (a retry would say "already decided").
-    // Reload the page instead.
-    let rendered = match load_detail(&state, id, loc).await {
+    let message = rust_i18n::t!("proposals.rejected_feedback", locale = loc, id = id);
+    decided_response(
+        &state,
+        id,
+        loc,
+        crate::utils::feedback_html("success", &message, ""),
+    )
+    .await
+}
+
+// ─── Accept (story 11-17, UX-DR8 modal) ─────────────────
+
+#[derive(Template)]
+#[template(path = "fragments/proposal_accept_modal.html")]
+pub struct ProposalAcceptModalTemplate {
+    pub title: String,
+    pub body_html: String,
+    pub confirm_label: String,
+    pub cancel_label: String,
+    pub action_url: String,
+    pub csrf_token: String,
+    pub version: i32,
+    pub inner_form_html: String,
+}
+
+/// `GET /proposals/{id}/accept-modal?version=N` — HTMX only (405
+/// otherwise). Summarises what accepting applies; the version the page
+/// showed is required (D-11-16-11).
+pub async fn accept_modal(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    HxRequest(is_htmx): HxRequest,
+    Path(id): Path<u64>,
+    Query(query): Query<RejectModalQuery>,
+) -> Result<Response, AppError> {
+    let loc = locale.0;
+    session.require_role_with_return(Role::Librarian, &format!("/proposals/{id}"), loc)?;
+    if !is_htmx {
+        return Ok(StatusCode::METHOD_NOT_ALLOWED.into_response());
+    }
+    let detail = load_detail(&state, id, loc).await?;
+    match detail.proposal.status {
+        ProposalStatus::Pending => {}
+        ProposalStatus::Stale => return Err(ReviewError::Stale.into_app_error(loc)),
+        status => return Err(ReviewError::NotPending { status }.into_app_error(loc)),
+    }
+    if !proposal_accept::can_accept(detail.proposal.kind, detail.proposal.status) {
+        return Err(proposal_accept::into_app_error(
+            series_acceptance::AcceptError::WrongKind {
+                kind: detail.proposal.kind,
+            },
+            loc,
+        ));
+    }
+    let Some(version) = query
+        .version
+        .as_deref()
+        .and_then(|v| v.trim().parse::<i32>().ok())
+    else {
+        return Err(ReviewError::Changed.into_app_error(loc));
+    };
+    let body_html = proposal_accept::AcceptSummary::of(&detail, loc)
+        .sentences(loc)
+        .iter()
+        .map(|s| format!("<p class=\"mb-2\">{}</p>", crate::utils::html_escape(s)))
+        .collect::<String>();
+    let template = ProposalAcceptModalTemplate {
+        title: rust_i18n::t!("proposals.accept_modal_title", locale = loc, id = id).to_string(),
+        body_html,
+        confirm_label: rust_i18n::t!("proposals.accept_button", locale = loc).to_string(),
+        cancel_label: rust_i18n::t!("common.cancel", locale = loc).to_string(),
+        action_url: format!("/proposals/{id}/accept"),
+        csrf_token: session.csrf_token.clone(),
+        version,
+        inner_form_html: String::new(),
+    };
+    render(&template, "proposal_accept_modal")
+}
+
+#[derive(Deserialize)]
+pub struct AcceptForm {
+    /// Absent reads as 0, which no proposal has: refused as a change.
+    #[serde(default)]
+    pub version: i32,
+}
+
+/// `POST /proposals/{id}/accept` — accept and apply a series proposal
+/// (FR138, FR140, FR146). Accepted or gone stale, the decision is
+/// committed: the answer re-renders the detail body, appends a success
+/// (applied result, link to the series) or warning (why it is outdated)
+/// entry, and closes the modal after the swap (D-11-16-6). A refusal or a
+/// failed apply (rolled back, still pending) lands in the modal.
+pub async fn accept(
+    State(state): State<AppState>,
+    session: Session,
+    Extension(locale): Extension<Locale>,
+    Path(id): Path<u64>,
+    axum::Form(form): axum::Form<AcceptForm>,
+) -> Result<Response, AppError> {
+    let loc = locale.0;
+    session.require_role(Role::Librarian, loc)?;
+    let user_id = session
+        .user_id
+        .ok_or_else(|| ReviewError::UnknownDecider.into_app_error(loc))?;
+    let outcome = series_acceptance::accept(&state.pool, id, user_id, form.version)
+        .await
+        .map_err(|e| proposal_accept::into_app_error(e, loc))?;
+    let entry = match &outcome {
+        AcceptOutcome::Accepted(applied) => {
+            let (message, suggestion) = proposal_accept::applied_messages(id, applied, loc);
+            crate::utils::feedback_html_with_link(
+                "success",
+                &message,
+                &suggestion,
+                &format!("/series/{}", applied.series_id),
+                &rust_i18n::t!("proposals.open_series", locale = loc),
+            )
+        }
+        AcceptOutcome::Stale(cause) => {
+            let (message, hint) = proposal_accept::stale_messages(id, cause, loc);
+            crate::utils::feedback_html("warning", &message, &hint)
+        }
+    };
+    decided_response(&state, id, loc, entry).await
+}
+
+/// The answer to a committed decision: the re-rendered detail body, the
+/// OOB feedback `entry`, `HX-Trigger-After-Swap: modal-close`. The
+/// decision is committed, so a re-render failure must not read as a
+/// failed decision (a retry would say "already decided"): the page is
+/// reloaded instead.
+async fn decided_response(
+    state: &AppState,
+    id: u64,
+    loc: &'static str,
+    entry: String,
+) -> Result<Response, AppError> {
+    let rendered = match load_detail(state, id, loc).await {
         Ok(detail) => ProposalDetailBodyTemplate {
             l: ProposalLabels { loc },
             body: DetailBody::build(detail, loc),
@@ -547,7 +687,7 @@ pub async fn reject(
     let main = match rendered {
         Ok(html) => html,
         Err(e) => {
-            tracing::error!(proposal_id = id, error = %e, "Rejected proposal not re-rendered");
+            tracing::error!(proposal_id = id, error = %e, "Decided proposal not re-rendered");
             return Ok((
                 StatusCode::OK,
                 [(
@@ -559,12 +699,11 @@ pub async fn reject(
                 .into_response());
         }
     };
-    let message = rust_i18n::t!("proposals.rejected_feedback", locale = loc, id = id);
     Ok(HtmxResponse {
         main,
         oob: vec![OobUpdate {
             target: "feedback-list".to_string(),
-            content: crate::utils::feedback_html("success", &message, ""),
+            content: entry,
             swap_mode: OobSwapMode::Append,
         }],
     }

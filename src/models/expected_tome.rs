@@ -125,6 +125,14 @@ pub struct SeriesShape {
     pub total_volume_count: Option<i32>,
 }
 
+/// Story 11-17 — the slot a live expected tome occupies in its series.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TomeSlot {
+    pub position: i32,
+    pub title: String,
+    pub isbn: Option<String>,
+}
+
 /// The live title holding a series position.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PositionHolder {
@@ -159,6 +167,35 @@ impl ExpectedTomeModel {
         rows.iter()
             .map(map_row)
             .collect::<Result<Vec<_>, _>>()
+            .map_err(AppError::Database)
+    }
+
+    /// Story 11-17 — position, title and ISBN of every live tome of a
+    /// series (settled or not), by position. A locking read (`LOCK IN
+    /// SHARE MODE`), for a caller already holding the series row lock:
+    /// it sees every tome committed before that lock was granted.
+    pub async fn live_slots_in(
+        conn: &mut MySqlConnection,
+        series_id: u64,
+    ) -> Result<Vec<TomeSlot>, AppError> {
+        let rows = sqlx::query(
+            "SELECT position, CAST(title AS CHAR) AS title, CAST(isbn AS CHAR) AS isbn \
+             FROM series_expected_tomes \
+             WHERE series_id = ? AND deleted_at IS NULL \
+             ORDER BY position ASC, id ASC LOCK IN SHARE MODE",
+        )
+        .bind(series_id)
+        .fetch_all(&mut *conn)
+        .await?;
+        rows.iter()
+            .map(|r| {
+                Ok(TomeSlot {
+                    position: r.try_get("position")?,
+                    title: r.try_get("title")?,
+                    isbn: r.try_get("isbn")?,
+                })
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()
             .map_err(AppError::Database)
     }
 
@@ -473,6 +510,20 @@ impl ExpectedTomeModel {
         .fetch_all(&mut *conn)
         .await?;
         Ok(positions)
+    }
+
+    /// Story 11-17 — the title of a live title row.
+    pub async fn live_title_name_in(
+        conn: &mut MySqlConnection,
+        title_id: u64,
+    ) -> Result<Option<String>, AppError> {
+        let name: Option<String> = sqlx::query_scalar(
+            "SELECT CAST(title AS CHAR) FROM titles WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(title_id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(name)
     }
 
     /// Record `title_id` as the title that settled the tome.

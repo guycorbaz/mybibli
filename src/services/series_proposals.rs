@@ -38,8 +38,9 @@ use serde_json::{Value, json};
 
 use crate::db::DbPool;
 use crate::error::AppError;
+use crate::models::expected_tome::TomeSlot;
 use crate::models::proposal::{ProposalKind, ProposalModel, ProposalTarget, ProposalTargetTable};
-use crate::models::series::SeriesType;
+use crate::models::series::{HeldPosition, SeriesType};
 use crate::services::expected_tomes::{
     ExpectedTomeError, closed_total_of, normalize_isbn, validate_title,
 };
@@ -493,7 +494,7 @@ pub struct ValidTitle {
 }
 
 impl ValidTitle {
-    fn end(&self) -> i32 {
+    pub fn end(&self) -> i32 {
         self.end_position.unwrap_or(self.position)
     }
 }
@@ -728,6 +729,76 @@ pub fn create_series_line(name: &str, series_type: SeriesType, total: Option<i32
     })
 }
 
+/// Check validated lines against a series as it is (pure — unit
+/// tested; story 11-17 extracted it from `propose_attach` so filing and
+/// acceptance apply the same rules): a title already in the series, a
+/// position held by a live title, a title line on the position of a live
+/// expected tome (D-11-12-10), a tome line on a held or tome-taken
+/// position, a tome ISBN another live tome carries. The first problem
+/// found is returned.
+pub fn check_against_series(
+    lines: &ValidLines,
+    held: &[HeldPosition],
+    tomes: &[TomeSlot],
+) -> Result<(), SeriesProposalError> {
+    for t in &lines.titles {
+        if let Some(row) = held.iter().find(|p| p.title_id == t.title_id) {
+            return Err(SeriesProposalError::TitleAlreadyInSeries {
+                title_id: t.title_id,
+                position: row.position,
+            });
+        }
+        if let Some(row) = held
+            .iter()
+            .find(|p| (t.position..=t.end()).contains(&p.position))
+        {
+            return Err(SeriesProposalError::PositionHeld {
+                line: LineRef::Title(t.title_id),
+                position: row.position,
+                holder_title_id: row.title_id,
+                holder: row.title.clone(),
+            });
+        }
+        // A settled tome's position is held by its title (above); an
+        // unsettled one names a gap a title line must not fill
+        // silently (D-11-12-10).
+        if let Some(tome) = tomes
+            .iter()
+            .find(|e| (t.position..=t.end()).contains(&e.position))
+        {
+            return Err(SeriesProposalError::TomePositionTaken {
+                position: tome.position,
+                tome_title: tome.title.clone(),
+            });
+        }
+    }
+    for t in &lines.tomes {
+        if let Some(row) = held.iter().find(|p| p.position == t.position) {
+            return Err(SeriesProposalError::PositionHeld {
+                line: LineRef::Tome(t.title.chars().take(80).collect()),
+                position: t.position,
+                holder_title_id: row.title_id,
+                holder: row.title.clone(),
+            });
+        }
+        if let Some(tome) = tomes.iter().find(|e| e.position == t.position) {
+            return Err(SeriesProposalError::TomePositionTaken {
+                position: t.position,
+                tome_title: tome.title.clone(),
+            });
+        }
+        if let Some(isbn) = &t.isbn
+            && let Some(tome) = tomes.iter().find(|e| e.isbn.as_ref() == Some(isbn))
+        {
+            return Err(SeriesProposalError::TomeIsbnTaken {
+                isbn: isbn.clone(),
+                tome_title: tome.title.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
 pub struct SeriesProposalService;
 
 impl SeriesProposalService {
@@ -787,74 +858,25 @@ impl SeriesProposalService {
         }
 
         // Against the series as it is now.
-        for t in &lines.titles {
-            if let Some(row) = detail.positions.iter().find(|p| p.title_id == t.title_id) {
-                return Err(SeriesProposalError::TitleAlreadyInSeries {
-                    title_id: t.title_id,
-                    position: row.position_number,
-                });
-            }
-            if let Some(row) = detail
-                .positions
-                .iter()
-                .find(|p| (t.position..=t.end()).contains(&p.position_number))
-            {
-                return Err(SeriesProposalError::PositionHeld {
-                    line: LineRef::Title(t.title_id),
-                    position: row.position_number,
-                    holder_title_id: row.title_id,
-                    holder: row.title_name.clone(),
-                });
-            }
-            // A settled tome's position is held by its title (above); an
-            // unsettled one names a gap a title line must not fill
-            // silently (D-11-12-10).
-            if let Some(tome) = detail
-                .expected_tomes
-                .iter()
-                .find(|e| (t.position..=t.end()).contains(&e.position))
-            {
-                return Err(SeriesProposalError::TomePositionTaken {
-                    position: tome.position,
-                    tome_title: tome.title.clone(),
-                });
-            }
-        }
-        for t in &lines.tomes {
-            if let Some(row) = detail
-                .positions
-                .iter()
-                .find(|p| p.position_number == t.position)
-            {
-                return Err(SeriesProposalError::PositionHeld {
-                    line: LineRef::Tome(t.title.chars().take(80).collect()),
-                    position: t.position,
-                    holder_title_id: row.title_id,
-                    holder: row.title_name.clone(),
-                });
-            }
-            if let Some(tome) = detail
-                .expected_tomes
-                .iter()
-                .find(|e| e.position == t.position)
-            {
-                return Err(SeriesProposalError::TomePositionTaken {
-                    position: t.position,
-                    tome_title: tome.title.clone(),
-                });
-            }
-            if let Some(isbn) = &t.isbn
-                && let Some(tome) = detail
-                    .expected_tomes
-                    .iter()
-                    .find(|e| e.isbn.as_ref() == Some(isbn))
-            {
-                return Err(SeriesProposalError::TomeIsbnTaken {
-                    isbn: isbn.clone(),
-                    tome_title: tome.title.clone(),
-                });
-            }
-        }
+        let held: Vec<HeldPosition> = detail
+            .positions
+            .iter()
+            .map(|p| HeldPosition {
+                title_id: p.title_id,
+                position: p.position_number,
+                title: p.title_name.clone(),
+            })
+            .collect();
+        let slots: Vec<TomeSlot> = detail
+            .expected_tomes
+            .iter()
+            .map(|e| TomeSlot {
+                position: e.position,
+                title: e.title.clone(),
+                isbn: e.isbn.clone(),
+            })
+            .collect();
+        check_against_series(&lines, &held, &slots)?;
 
         let series_line = NewProposalItem {
             target: Some(ProposalTarget {
