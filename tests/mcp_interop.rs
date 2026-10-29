@@ -3,17 +3,21 @@
 //!
 //! Pins what `tests/mcp_endpoint.rs` does not:
 //!
-//! - the **served-method inventory**: every JSON-RPC method named by the
-//!   `2025-11-25` and `2026-07-28` schemas (plus an unknown one) is sent
-//!   to `/api/mcp` under both revisions, and the exact outcome — a result
-//!   or a JSON-RPC error code — is compared with a table written here.
+//! - the **served-method inventory**: every client-to-server method rmcp
+//!   3.8.0 knows for the `2025-11-25` and `2026-07-28` schemas, a few
+//!   names it does not know, and an unknown one, are sent to `/api/mcp`
+//!   under both revisions; the exact outcome — a result or a JSON-RPC
+//!   error code, and the HTTP status — is compared with the table in
+//!   `tests/fixtures/mcp_method_inventory.json`.
 //!   An rmcp upgrade that changes a default handler (or a new handler in
 //!   `transport.rs`) turns this test red: the table is the place where
 //!   such a change is decided, not discovered in production;
 //! - the two client sequences seen in practice: Claude Code 2.1.312
 //!   (`server/discover` → `tools/list` → `tools/call`, session-less
 //!   `2026-07-28`, recorded through a header-logging proxy on 2026-10-29)
-//!   and the TypeScript-SDK handshake the MCP Inspector uses (`initialize`
+//!   and the TypeScript-SDK handshake the MCP Inspector uses —
+//!   reconstructed from the SDK's documented behaviour, not captured,
+//!   since running the Inspector was refused (D-11-22-5) — (`initialize`
 //!   without a version header, `notifications/initialized`, the GET probe
 //!   for a server stream, `ping`, `tools/list`, `tools/call`).
 //!
@@ -32,233 +36,67 @@ use mybibli::models::api_key::ApiKeyScope;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-/// What `/api/mcp` answers to one JSON-RPC request.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum Outcome {
-    /// A JSON-RPC `result`.
-    Result,
-    /// A JSON-RPC `error` with this code.
-    Error(i64),
+/// The inventory table, shared with the `transport.rs` unit test that
+/// checks every known method's params really parse as that method (a
+/// malformed body would fall back to rmcp's custom-request handler and
+/// answer -32601 for the wrong reason).
+const INVENTORY: &str = include_str!("fixtures/mcp_method_inventory.json");
+
+fn inventory() -> Vec<Value> {
+    let doc: Value = serde_json::from_str(INVENTORY).expect("inventory fixture is JSON");
+    doc["methods"].as_array().expect("methods array").clone()
 }
 
-use Outcome::{Error as Err_, Result as Ok_};
-
-/// `-32601` — method not found.
-const NOT_FOUND: i64 = -32601;
-/// `-32602` — invalid params.
-const INVALID_PARAMS: i64 = -32602;
-
-/// One method of the inventory: name, params (without `_meta`), the
-/// SEP-2243 `Mcp-Name` value when the method carries one, and the
-/// expected outcome on each revision.
-struct Method {
-    name: &'static str,
-    params: Value,
-    mcp_name: Option<&'static str>,
-    legacy: Outcome,
-    modern: Outcome,
-}
-
-fn inventory() -> Vec<Method> {
-    let m = |name, params, mcp_name, legacy, modern| Method {
-        name,
-        params,
-        mcp_name,
-        legacy,
-        modern,
-    };
-    vec![
-        // ── Served: the tools capability, liveness and discovery ──
-        // `ping` left the session-less revision: answered on 2025-11-25
-        // only.
-        m("ping", json!({}), None, Ok_, Err_(NOT_FOUND)),
-        m("tools/list", json!({}), None, Ok_, Ok_),
-        m(
-            "tools/call",
-            json!({"name": "list_series", "arguments": {}}),
-            Some("list_series"),
-            Ok_,
-            Ok_,
-        ),
-        // `server/discover` is a 2026-07-28 method: it needs the
-        // per-request `_meta`, which a 2025-11-25 request does not carry.
-        m(
-            "server/discover",
-            json!({}),
-            None,
-            Err_(INVALID_PARAMS),
-            Ok_,
-        ),
-        // ── Not declared in `capabilities`, answered by rmcp defaults ──
-        m("prompts/list", json!({}), None, Ok_, Ok_),
-        m("resources/list", json!({}), None, Ok_, Ok_),
-        m("resources/templates/list", json!({}), None, Ok_, Ok_),
-        m(
-            "completion/complete",
-            json!({"ref": {"type": "ref/prompt", "name": "x"},
-                   "argument": {"name": "a", "value": "b"}}),
-            None,
-            Ok_,
-            Ok_,
-        ),
-        // ── Refused ──
-        m(
-            "prompts/get",
-            json!({"name": "x"}),
-            Some("x"),
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "resources/read",
-            json!({"uri": "file:///x"}),
-            Some("file:///x"),
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "resources/subscribe",
-            json!({"uri": "file:///x"}),
-            Some("file:///x"),
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "resources/unsubscribe",
-            json!({"uri": "file:///x"}),
-            Some("file:///x"),
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "logging/setLevel",
-            json!({"level": "info"}),
-            None,
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "subscriptions/listen",
-            json!({"filter": {}}),
-            None,
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "tasks/get",
-            json!({"taskId": "t1"}),
-            Some("t1"),
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "tasks/cancel",
-            json!({"taskId": "t1"}),
-            Some("t1"),
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "tasks/update",
-            json!({"taskId": "t1"}),
-            Some("t1"),
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "tasks/list",
-            json!({}),
-            None,
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "tasks/result",
-            json!({"taskId": "t1"}),
-            None,
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        // Server → client methods sent the wrong way.
-        m(
-            "sampling/createMessage",
-            json!({"messages": [], "maxTokens": 1}),
-            None,
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "roots/list",
-            json!({}),
-            None,
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "elicitation/create",
-            json!({"message": "x", "requestedSchema": {"type": "object", "properties": {}}}),
-            None,
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-        m(
-            "mybibli/not-a-method",
-            json!({}),
-            None,
-            Err_(NOT_FOUND),
-            Err_(NOT_FOUND),
-        ),
-    ]
-}
-
-fn outcome(method: &str, status: StatusCode, body: &str) -> std::result::Result<Outcome, String> {
-    let v: Value = serde_json::from_str(body)
-        .map_err(|e| format!("{method}: HTTP {status}, not JSON ({e}): {body}"))?;
+/// `"result"` or the JSON-RPC error code, from a response body.
+fn outcome(body: &str) -> Option<Value> {
+    let v: Value = serde_json::from_str(body).ok()?;
     if v.get("result").is_some() {
-        Ok(Outcome::Result)
-    } else if let Some(code) = v["error"]["code"].as_i64() {
-        Ok(Outcome::Error(code))
+        Some(json!("result"))
     } else {
-        Err(format!(
-            "{method}: HTTP {status}, neither result nor error: {body}"
-        ))
+        v["error"]["code"].as_i64().map(Value::from)
     }
 }
 
 async fn run_inventory(pool: DbPool, modern: bool) {
     let key = seed_key(&pool, ApiKeyScope::Propose).await;
     let app = router(&pool);
+    let revision = if modern { "modern" } else { "legacy" };
     let mut mismatches = Vec::new();
-    for (i, method) in inventory().into_iter().enumerate() {
-        let mut params = method.params.clone();
+    let methods = inventory();
+    for (i, entry) in methods.iter().enumerate() {
+        let method = entry["method"].as_str().unwrap();
+        let mut params = entry["params"].clone();
         let call = if modern {
             params["_meta"] = modern_meta();
             let mut c = Call::new(
                 &key,
-                json!({"jsonrpc": "2.0", "id": i + 1, "method": method.name, "params": params}),
+                json!({"jsonrpc": "2.0", "id": i + 1, "method": method, "params": params}),
             )
             .version(V_MODERN)
-            .header("mcp-method", method.name);
-            if let Some(name) = method.mcp_name {
+            .header("mcp-method", method);
+            if let Some(name) = entry["mcp_name"].as_str() {
                 c = c.header("mcp-name", name);
             }
             c
         } else {
             Call::new(
                 &key,
-                json!({"jsonrpc": "2.0", "id": i + 1, "method": method.name, "params": params}),
+                json!({"jsonrpc": "2.0", "id": i + 1, "method": method, "params": params}),
             )
             .version(V_LEGACY)
         };
         let (status, body) = send(&app, call).await;
-        let expected = if modern { method.modern } else { method.legacy };
-        match outcome(method.name, status, &body) {
-            Ok(got) if got == expected => {}
-            Ok(got) => mismatches.push(format!(
-                "{}: expected {expected:?}, got {got:?} (HTTP {status}): {body}",
-                method.name
-            )),
-            Err(e) => mismatches.push(e),
+        let expected = &entry[revision];
+        let got = json!({"outcome": outcome(&body), "http": status.as_u16()});
+        if &got != expected {
+            mismatches.push(format!("{method}: expected {expected}, got {got}: {body}"));
+        }
+        // A served tool must have run successfully, not merely answered.
+        if method == "tools/call" && expected["outcome"] == "result" {
+            let v: Value = serde_json::from_str(&body).unwrap_or_default();
+            if v["result"]["isError"] != false {
+                mismatches.push(format!("tools/call: the tool failed: {body}"));
+            }
         }
     }
     assert!(
@@ -267,6 +105,7 @@ async fn run_inventory(pool: DbPool, modern: bool) {
         if modern { V_MODERN } else { V_LEGACY },
         mismatches.join("\n")
     );
+    assert!(methods.len() >= 24, "inventory truncated");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -280,7 +119,7 @@ async fn served_method_inventory_on_2026_07_28(pool: DbPool) {
 }
 
 /// The answers to methods whose capability is not declared carry no
-/// catalog data: empty lists, empty completion.
+/// catalog data: empty lists, empty completion — on both revisions.
 #[sqlx::test(migrations = "./migrations")]
 async fn undeclared_capabilities_answer_empty(pool: DbPool) {
     seed_title(&pool, "Not A Resource").await;
@@ -292,31 +131,45 @@ async fn undeclared_capabilities_answer_empty(pool: DbPool) {
     let declared: Vec<&str> = caps.keys().map(String::as_str).collect();
     assert_eq!(declared, vec!["tools"], "{init}");
 
-    for (method, field) in [
-        ("prompts/list", "prompts"),
-        ("resources/list", "resources"),
-        ("resources/templates/list", "resourceTemplates"),
-    ] {
+    let call = |method: &'static str, mut params: Value, modern: bool| {
+        if modern {
+            params["_meta"] = modern_meta();
+            Call::new(
+                &key,
+                json!({"jsonrpc": "2.0", "id": 5, "method": method, "params": params}),
+            )
+            .version(V_MODERN)
+            .header("mcp-method", method)
+        } else {
+            Call::new(
+                &key,
+                json!({"jsonrpc": "2.0", "id": 5, "method": method, "params": params}),
+            )
+            .version(V_LEGACY)
+        }
+    };
+    for modern in [false, true] {
+        for (method, field) in [
+            ("prompts/list", "prompts"),
+            ("resources/list", "resources"),
+            ("resources/templates/list", "resourceTemplates"),
+        ] {
+            let res = send_json(&app, call(method, json!({}), modern)).await;
+            assert_eq!(res["result"][field], json!([]), "{method} {modern}: {res}");
+        }
         let res = send_json(
             &app,
-            Call::new(&key, json!({"jsonrpc": "2.0", "id": 5, "method": method})).version(V_LEGACY),
+            call(
+                "completion/complete",
+                json!({"ref": {"type": "ref/prompt", "name": "x"},
+                       "argument": {"name": "a", "value": "Not"}}),
+                modern,
+            ),
         )
         .await;
-        assert_eq!(res["result"][field], json!([]), "{method}: {res}");
+        assert_eq!(res["result"]["completion"]["values"], json!([]), "{res}");
+        assert!(!res.to_string().contains("Not A Resource"), "{res}");
     }
-    let res = send_json(
-        &app,
-        Call::new(
-            &key,
-            json!({"jsonrpc": "2.0", "id": 6, "method": "completion/complete",
-                   "params": {"ref": {"type": "ref/prompt", "name": "x"},
-                              "argument": {"name": "a", "value": "Not"}}}),
-        )
-        .version(V_LEGACY),
-    )
-    .await;
-    assert_eq!(res["result"]["completion"]["values"], json!([]), "{res}");
-    assert!(!res.to_string().contains("Not A Resource"), "{res}");
 }
 
 // ─── Client sequences seen in practice ───────────────────────────

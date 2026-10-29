@@ -1,0 +1,390 @@
+{
+  "_comment": "Story 11-22 — the served-method inventory of /api/mcp on rmcp =3.8.0, read by tests/mcp_interop.rs (wire outcomes per revision) and by src/mcp/transport.rs unit tests (params really parse as the method rmcp knows, unless rmcp_custom). outcome: \"result\" or a JSON-RPC error code; http: the status rmcp answers with. Change this file only when deciding a behaviour change (D-11-22-3).",
+  "methods": [
+    {
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "t",
+          "version": "0"
+        }
+      },
+      "mcp_name": null,
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": "result",
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32600,
+        "http": 400
+      }
+    },
+    {
+      "method": "ping",
+      "params": {},
+      "mcp_name": null,
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": "result",
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "tools/list",
+      "params": {},
+      "mcp_name": null,
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": "result",
+        "http": 200
+      },
+      "modern": {
+        "outcome": "result",
+        "http": 200
+      }
+    },
+    {
+      "method": "tools/call",
+      "params": {
+        "name": "list_series",
+        "arguments": {}
+      },
+      "mcp_name": "list_series",
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": "result",
+        "http": 200
+      },
+      "modern": {
+        "outcome": "result",
+        "http": 200
+      }
+    },
+    {
+      "method": "server/discover",
+      "params": {},
+      "mcp_name": null,
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": -32602,
+        "http": 400
+      },
+      "modern": {
+        "outcome": "result",
+        "http": 200
+      }
+    },
+    {
+      "method": "prompts/list",
+      "params": {},
+      "mcp_name": null,
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": "result",
+        "http": 200
+      },
+      "modern": {
+        "outcome": "result",
+        "http": 200
+      }
+    },
+    {
+      "method": "resources/list",
+      "params": {},
+      "mcp_name": null,
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": "result",
+        "http": 200
+      },
+      "modern": {
+        "outcome": "result",
+        "http": 200
+      }
+    },
+    {
+      "method": "resources/templates/list",
+      "params": {},
+      "mcp_name": null,
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": "result",
+        "http": 200
+      },
+      "modern": {
+        "outcome": "result",
+        "http": 200
+      }
+    },
+    {
+      "method": "completion/complete",
+      "params": {
+        "ref": {
+          "type": "ref/prompt",
+          "name": "x"
+        },
+        "argument": {
+          "name": "a",
+          "value": "b"
+        }
+      },
+      "mcp_name": null,
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": "result",
+        "http": 200
+      },
+      "modern": {
+        "outcome": "result",
+        "http": 200
+      }
+    },
+    {
+      "method": "prompts/get",
+      "params": {
+        "name": "x"
+      },
+      "mcp_name": "x",
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "resources/read",
+      "params": {
+        "uri": "file:///x"
+      },
+      "mcp_name": "file:///x",
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "resources/subscribe",
+      "params": {
+        "uri": "file:///x"
+      },
+      "mcp_name": "file:///x",
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "resources/unsubscribe",
+      "params": {
+        "uri": "file:///x"
+      },
+      "mcp_name": "file:///x",
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "logging/setLevel",
+      "params": {
+        "level": "info"
+      },
+      "mcp_name": null,
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "subscriptions/listen",
+      "params": {
+        "notifications": {}
+      },
+      "mcp_name": null,
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "tasks/get",
+      "params": {
+        "taskId": "t1"
+      },
+      "mcp_name": "t1",
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "tasks/cancel",
+      "params": {
+        "taskId": "t1"
+      },
+      "mcp_name": "t1",
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "tasks/update",
+      "params": {
+        "taskId": "t1",
+        "inputResponses": {}
+      },
+      "mcp_name": "t1",
+      "rmcp_custom": false,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "tasks/list",
+      "params": {},
+      "mcp_name": null,
+      "rmcp_custom": true,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "tasks/result",
+      "params": {
+        "taskId": "t1"
+      },
+      "mcp_name": null,
+      "rmcp_custom": true,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "sampling/createMessage",
+      "params": {
+        "messages": [],
+        "maxTokens": 1
+      },
+      "mcp_name": null,
+      "rmcp_custom": true,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "roots/list",
+      "params": {},
+      "mcp_name": null,
+      "rmcp_custom": true,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "elicitation/create",
+      "params": {
+        "message": "x",
+        "requestedSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "mcp_name": null,
+      "rmcp_custom": true,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    },
+    {
+      "method": "mybibli/not-a-method",
+      "params": {},
+      "mcp_name": null,
+      "rmcp_custom": true,
+      "legacy": {
+        "outcome": -32601,
+        "http": 200
+      },
+      "modern": {
+        "outcome": -32601,
+        "http": 404
+      }
+    }
+  ]
+}

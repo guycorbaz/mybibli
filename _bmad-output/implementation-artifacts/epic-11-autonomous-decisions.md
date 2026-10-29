@@ -1216,6 +1216,16 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 
 ### D-11-22-5 — MCP Inspector: client handshake reproduced in a test; the real Inspector run stays with the librarian
 **Context:** the session permission policy refused `npx @modelcontextprotocol/inspector` again (external code), as in 11-6 (D-11-6-10).
-**Chosen:** `tests/mcp_interop.rs::typescript_sdk_handshake` reproduces the TypeScript-SDK streamable-HTTP handshake the Inspector uses; a real Claude Code session was redone through a header-logging proxy (wire recorded in the story file and the PR). The Inspector run (commands in PR #512) remains a manual step before the epic closes.
+**Chosen:** `tests/mcp_interop.rs::typescript_sdk_handshake` reconstructs (from the SDK's documented behaviour, not a capture) the TypeScript-SDK streamable-HTTP handshake the Inspector uses; a real Claude Code session was redone through a header-logging proxy (wire recorded in the story file and the PR). The Inspector run (commands in PR #512) remains a manual step before the epic closes — the [PRODUCT] deferral of D-11-6-10 stays open, unchanged.
 **Rejected:** working around the refusal.
+**Reversible:** yes.
+
+### D-11-22-6 — Code review round 1: the inventory pins HTTP status too, and its params are proven to parse
+**Context:** one combined layer (blind + edge cases + acceptance); no High, one Medium: `subscriptions/listen` and `tasks/update` were sent with params missing a required field, so rmcp's untagged request enum fell back to its custom-request handler and answered -32601 — the right code for the wrong reason, which would hide a default-handler change.
+**Chosen:** the table moves to `tests/fixtures/mcp_method_inventory.json` (Rule #1: read by the wire test and by a new unit test in `transport.rs` — the only file allowed to name rmcp — that parses each body as rmcp's `ClientJsonRpcMessage` and fails if a known method lands in `CustomRequest`; mutation checked). Lows fixed: the HTTP status is pinned per revision, `tools/call` must succeed, `initialize` joins the inventory, undeclared capabilities are checked on both revisions, figures and wording corrected (duplicate majors, timing remainder, advisory ranges, "reconstructed" Inspector sequence).
+**Reversible:** yes.
+
+### D-11-22-7 — Code review round 2: clean; two Lows fixed
+**Context:** confirmation pass on the round-1 delta and the full diff; no Medium+.
+**Chosen (Lows fixed):** the parse guard also parses each body with the 2026-07-28 `_meta` (a typed field that could otherwise send a modern request to the custom handler unseen); the story's status wording names the 2025-11-25 `server/discover` 400.
 **Reversible:** yes.

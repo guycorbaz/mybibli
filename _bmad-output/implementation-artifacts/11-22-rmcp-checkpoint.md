@@ -1,6 +1,6 @@
 # Story 11.22: `rmcp` checkpoint before the release
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: NFR46, AR31 (and re-confirms NFR42 / NFR43, AR27). Epic 11 — twenty-second story; runs before the epic smoke test (11-23), the documentation (11-24) and the release. Not here: the nav badge (11-21, on hold), any rmcp upgrade not forced by the decision rule below.
 
@@ -16,7 +16,7 @@ so that the release ships neither a needless change nor a known flaw.
 |---|---|---|
 | Versions published since `=3.8.0` | **none** — 3.8.0 (2026-10-26) is the latest of 71 versions; 18 versions since 3.0.0 (2026-07-28), majors 1.0.0 (2026-03-03), 2.0.0 (2026-06-29), 3.0.0 (2026-07-28) | `crates.io/api/v1/crates/rmcp/versions` |
 | Unreleased upstream work | one commit on `main` after the `rmcp-v3.8.0` tag: `9e0783d` "fix(transport): preserve protocol error replies across cancellation (#1370)", touching only `transport/async_rw.rs` (stdio / byte-stream transport, not compiled with our features) | `gh api repos/modelcontextprotocol/rust-sdk/compare/rmcp-v3.8.0...main` |
-| Security advisories on rmcp | 7 GHSA published; every affected range ends **before 3.8.0**: GHSA-89vp (DNS rebinding, < 1.4.0), GHSA-9pj6 (session-table leak, < 2.0.0), GHSA-33f5 / GHSA-c9xm / GHSA-9g45 (OAuth client / redirects, < 2.1.0), GHSA-4432 (unbounded `tool_schemas` cache, ≥ 3.0.0 < 3.6.0), GHSA-5p52 (OAuth SSRF, ≥ 2.0.0 ≤ 3.6.0) | `gh api repos/modelcontextprotocol/rust-sdk/security-advisories`, `gh api /advisories?ecosystem=rust&affects=rmcp` |
+| Security advisories on rmcp | 7 GHSA published; every affected range ends **before 3.8.0**: GHSA-89vp (DNS rebinding, < 1.4.0), GHSA-9pj6 (session-table leak, < 2.0.0), GHSA-33f5 / GHSA-c9xm (OAuth, < 2.0.0), GHSA-9g45 (client redirects, < 2.1.0), GHSA-4432 (unbounded `tool_schemas` cache, ≥ 3.0.0 < 3.6.0), GHSA-5p52 (OAuth SSRF, ≥ 2.0.0 ≤ 3.6.0) | `gh api repos/modelcontextprotocol/rust-sdk/security-advisories`, `gh api /advisories?ecosystem=rust&affects=rmcp` |
 | RustSec / `cargo audit` | 0 vulnerabilities in 482 lock entries; informational warnings only, none specific to rmcp (its tree shares `tokio` — RUSTSEC-2026-0386 "unsound", tree-wide, not rmcp-introduced) | `cargo audit` (advisory DB of 2026-10-29) |
 | Code touched by later stories | `src/mcp/transport.rs` unchanged since 11-6 (7d929c1); 11 tools added in 11-7..11-15 through `McpTool` only; `mod.rs` gained the timeout layer (11-14) | `git log -- src/mcp/transport.rs` |
 
@@ -35,10 +35,10 @@ Decision rule (epics.md § 11.22): upgrade only for (a) an open security advisor
 
 - [x] T1 (AC1) — record versions, release notes 3.5.1..3.8.0 (server-relevant lines), unreleased commits, advisories table.
 - [x] T2 (AC5) — measurements, each in a fresh `CARGO_TARGET_DIR` under `mem-guard`, `-j 2`, `SQLX_OFFLINE=true`:
-  - [x] T2.1 dependency weight: `cargo tree -e normal` with vs `--prune rmcp` (crates only reachable through rmcp), lock count, duplicate majors (`cargo tree -d`).
+  - [x] T2.1 dependency weight: `cargo tree -e normal,build` with vs `--prune rmcp` (crates only reachable through rmcp), lock count, duplicate majors (`cargo tree -d`).
   - [x] T2.2 a throw-away **rmcp-free variant** (scratch worktree, not committed): `rmcp` removed from `Cargo.toml`, `transport.rs` replaced by a minimal JSON dispatcher that still calls the tool registry (so the tools stay linked) — release build time + binary size vs HEAD.
   - [x] T2.3 `cargo build --release --timings` on HEAD: rmcp's own unit time and the sum over rmcp-only crates.
-- [x] T3 (AC4) — interop re-check: run the existing `tests/mcp_endpoint.rs`; add the served-method inventory test (`tests/mcp_endpoint.rs`); decide what to do with default handlers that answer methods whose capability is not declared; attempt the MCP Inspector CLI against the E2E stack.
+- [x] T3 (AC4) — interop re-check: run the existing `tests/mcp_endpoint.rs`; add the served-method inventory test (new `tests/mcp_interop.rs`); decide what to do with default handlers that answer methods whose capability is not declared; attempt the MCP Inspector CLI against the E2E stack.
 - [x] T4 (AC5) — frictions: read 11-6..11-20 story files and D-11-6..D-11-20 for rmcp-related items; upgrade-cost estimate.
 - [x] T5 (AC2) — decision D-11-22-k + "Report for Kesh" section.
 - [x] T6 (AC6) — gates.
@@ -103,9 +103,9 @@ Against the three-case rule: (a) no open advisory affects 3.8.0; (b) both target
 | `2026-07-28` session-less, SEP-2243 headers + `_meta` | `mcp_endpoint.rs::modern_revision_tool_call_without_initialize`, `discover_advertises_exactly_the_two_revisions`; new `mcp_interop.rs::claude_code_session_less_sequence` (string probe id, `resultType: complete`, all 12 tools) |
 | Unknown / older revisions refused | `mcp_endpoint.rs` (header 400, `_meta` -32020, headerless -32022, `initialize` negotiation) |
 | `Host` / `Origin` | `mcp_endpoint.rs::host_outside_the_allowlist_is_refused`, `configured_hosts_replace_the_loopback_default`, `origin_is_refused_unless_listed` |
-| **Served-method inventory** (new) | `mcp_interop.rs::served_method_inventory_on_{2025_11_25,2026_07_28}` — 23 methods × 2 revisions against a table: served `tools/list`, `tools/call`; `ping` on 2025-11-25 only (rmcp answers -32601 to a session-less `ping`: the 2026-07-28 revision dropped it); `server/discover` on 2026-07-28 (-32602 without `_meta`); `prompts/list`, `resources/list`, `resources/templates/list`, `completion/complete` answered **empty** by rmcp defaults although only `tools` is declared (D-11-22-3; `undeclared_capabilities_answer_empty` checks they carry no data); everything else -32601 |
+| **Served-method inventory** (new) | `mcp_interop.rs::served_method_inventory_on_{2025_11_25,2026_07_28}` — 24 entries (18 client methods rmcp knows, 5 names it does not know as client requests, 1 invented) × 2 revisions against `tests/fixtures/mcp_method_inventory.json` (outcome **and** HTTP status: 200 on 2025-11-25 except `server/discover` (400); 404 for -32601 and 400 for -32600 / -32602 on 2026-07-28); the unit test `transport::tests::inventory_params_parse_as_the_method_rmcp_knows` proves each known method's params parse as that method, with and without the 2026-07-28 `_meta` (rmcp's untagged request enum would otherwise fall back to its custom handler and answer -32601 for the wrong reason — code review round 1). Outcomes: served `tools/list`, `tools/call` (the tool must succeed); `initialize` on 2025-11-25 (-32600 on 2026-07-28); `ping` on 2025-11-25 only (rmcp answers -32601 to a session-less `ping`: the 2026-07-28 revision dropped it); `server/discover` on 2026-07-28 (-32602 without `_meta`); `prompts/list`, `resources/list`, `resources/templates/list`, `completion/complete` answered **empty** by rmcp defaults although only `tools` is declared (D-11-22-3; `undeclared_capabilities_answer_empty` checks on both revisions that they carry no data); everything else -32601 |
 | Real Claude Code session | `claude -p` (Claude Code 2.1.312) with `--mcp-config` against the E2E stack (`/api/mcp`, propose key created through Admin → API keys): `search_titles`, `list_series`, `get_title` answered. A header-logging proxy showed the wire: `server/discover` → `tools/list` → `tools/call`, all `MCP-Protocol-Version: 2026-07-28` + `Mcp-Method`, no `Origin`, no `initialize` |
-| MCP Inspector | its CLI (`npx @modelcontextprotocol/inspector --cli …`) was **refused again** by the session's permission policy (external code). Its client library's handshake is reproduced by `typescript_sdk_handshake`; the real Inspector run stays a librarian step before epic close (D-11-6-10, D-11-22-5) |
+| MCP Inspector | its CLI (`npx @modelcontextprotocol/inspector --cli …`) was **refused again** by the session's permission policy (external code). Its client library's handshake is **reconstructed** (from the TypeScript SDK's documented behaviour, not captured) by `typescript_sdk_handshake`; the real Inspector run stays a librarian step before epic close (D-11-6-10, D-11-22-5) |
 
 ## Report for Kesh (AR31) — final figures
 
@@ -115,11 +115,11 @@ Conditions: station 32 threads / 30 GiB, load ≈ 1–2 at start; `SQLX_OFFLINE=
 |---|---|---|---|
 | Clean release build, wall (`-j 2`) | 186.5 s | 202.6 s | **+16.1 s (+8.6 %)** |
 | Clean release build, CPU (user + sys) | 362.2 s | 393.2 s | +31.0 s (+8.6 %) |
-| Sum of `--timings` unit durations | 304.4 s | 330.7 s | +26.3 s: rmcp-only crates 19.1 s (rmcp itself 13.6 s, schemars 2.2 s, syn 3 0.8 s, others ≤ 0.5 s) + the `mybibli` lib unit 71.9 → 77.7 s (+5.8 s: rmcp's generic service code monomorphised into our crate) |
+| Sum of `--timings` unit durations | 304.4 s | 330.7 s | +26.3 s: rmcp-only crates 19.1 s (rmcp itself 13.6 s, schemars 2.2 s, syn 3 0.8 s, others ≤ 0.5 s) + the `mybibli` lib unit 71.9 → 77.7 s (+5.8 s: rmcp's generic service code monomorphised into our crate) + 1.4 s spread over shared crates (run-to-run noise) |
 | Peak RSS of the build | 4.80 GB | 4.87 GB | +0.07 GB |
 | Release binary | 33 547 120 B | 36 746 312 B | **+3 199 192 B (+9.5 %, ≈ 3.05 MiB)** |
 | `Cargo.lock` entries | 466 | 482 | **+16** |
-| Crates reachable only through rmcp (`cargo tree -e normal,build` vs `--prune rmcp`) | — | 17 incl. rmcp | `rmcp`, `schemars` + `schemars_derive` + `serde_derive_internals` + `dyn-clone` + `ref-cast(-impl)`, `pastey`, `sse-stream`, `uuid`, `chacha20`, and **six second majors** of crates already present: `syn 3.0.9` (besides 1.x, 2.x), `rand 0.10` / `rand_core 0.10` (besides 0.8 / 0.6), `getrandom 0.4` (besides 0.2), `base64 0.23` (besides 0.22), `cpufeatures 0.3` (besides 0.2) |
+| Crates reachable only through rmcp (`cargo tree -e normal,build` vs `--prune rmcp`) | — | 17 incl. rmcp | `rmcp`, `schemars` + `schemars_derive` + `serde_derive_internals` + `dyn-clone` + `ref-cast(-impl)`, `sse-stream`, `uuid`, `chacha20`, and **seven extra majors** of crates already in the lock: `syn 3.0.9` (a third, besides 1.x and 2.x), `rand 0.10` (besides 0.8, 0.9), `rand_core 0.10` (besides 0.6, 0.9), `getrandom 0.4` (besides 0.2, 0.3), `base64 0.23` (besides 0.22), `cpufeatures 0.3` (besides 0.2), `pastey 0.2` (besides 0.1). 17 crates vs +16 lock entries: `getrandom 0.4.2` is also pulled by the dev-dependency `tempfile`, outside `-e normal,build` |
 
 Frictions over the whole epic (11-6 → 11-20):
 
@@ -130,7 +130,7 @@ Frictions over the whole epic (11-6 → 11-20):
 5. **Tool growth cost nothing at the seam**: eleven tools (read, then propose) were added in 11-7..11-15 through the `McpTool` trait only; `src/mcp/transport.rs` (233 lines incl. tests) is unchanged since 11-6.
 6. Logs: rmcp logs per-request lifecycle at INFO → capped at `warn` (D-11-6-11).
 
-API churn: 71 versions; majors 1.0.0 (2026-03-03), 2.0.0 (2026-06-29), 3.0.0 (2026-07-28, the day of the revision); **no major in the three months since**, 18 releases inside 3.x — but minors still move public API (3.4.0 introduced `ServerConfig` and deprecated `ServerInfo`, which our handler uses). Seven advisories in seven months, all on the streamable-HTTP server or the OAuth client; the server-side ones were DoS / rebinding fixed within the major.
+API churn: 71 versions; majors 1.0.0 (2026-03-03), 2.0.0 (2026-06-29), 3.0.0 (2026-07-28, the day of the revision); **no major in the three months since**, 18 releases inside 3.x — but minors still move public API (3.4.0 introduced `ServerConfig`, which our handler's `get_info` returns, and deprecated the `ServerInfo` alias). Seven advisories in seven months, all on the streamable-HTTP server or the OAuth client; the server-side ones were DoS / rebinding fixed within the major.
 
 Cost of an upgrade (estimate from the seam, not exercised): a 3.x minor — `Cargo.toml` line + whatever `transport.rs` needs (0–20 lines), the confinement test, `mcp_endpoint.rs` + `mcp_interop.rs` (the inventory turns red on any default-handler change) + the MCP E2E specs + one Claude Code session: **≈ 1–2 hours**. A major — `transport.rs` rewritten at worst (≈ 200 lines), same verification: **≈ half a day**. The rmcp-free variant built for the measurements confirms the seam: removing rmcp touched exactly `Cargo.toml` and `transport.rs`.
 
@@ -157,12 +157,15 @@ Claude Opus 5.5 (claude-opus-5-5)
 - Decision: stay on `rmcp =3.8.0` (D-11-22-2); no version published since, no advisory open against it.
 - New `tests/mcp_interop.rs` (5 DB tests): served-method inventory on both revisions, undeclared capabilities carry no data, Claude Code 2.1.312 session-less sequence, TypeScript-SDK (MCP Inspector) handshake.
 - Measurements and the Report for Kesh above; manual Claude Code session redone through a header-logging proxy; MCP Inspector CLI refused by the permission policy (librarian step stays, D-11-22-5).
-- No production code change.
-- Gates: clippy `--all-targets -D warnings` clean; full `cargo test -j 2`: 2086 passed, 0 failed; `sqlx prepare --check` OK; flake grep clean; `tsc --noEmit` OK; full E2E `CI=true --workers=2` on a reset stack: 383 passed, 2 skipped.
+- No production code change (one unit test added in `src/mcp/transport.rs`).
+- Code review round 1: 1 Medium (two inventory rows sent params rmcp parsed as a custom request — fixed, plus the parse guard above), Lows fixed (HTTP status pinned, `tools/call` must succeed, `initialize` added, both revisions for undeclared capabilities, figures and wording corrected).
+- Gates after the last review round: clippy `--all-targets` clean, full `cargo test -j 2`: 2087 passed, 0 failed; CI green on the dev-story commit (incl. cargo-audit).
+- Gates (before review): clippy `--all-targets -D warnings` clean; full `cargo test -j 2`: 2086 passed, 0 failed (locale parity included, no new key); `sqlx prepare --check` OK; flake grep clean; `tsc --noEmit` OK; full E2E `CI=true --workers=2` on a reset stack: 383 passed, 2 skipped.
 
 ### File List
 
-- tests/mcp_interop.rs (new)
+- tests/mcp_interop.rs (new), tests/fixtures/mcp_method_inventory.json (new)
+- src/mcp/transport.rs (unit test only)
 - _bmad-output/implementation-artifacts/11-22-rmcp-checkpoint.md, epic-11-autonomous-decisions.md, sprint-status.yaml
 
 ## Change Log
@@ -170,3 +173,5 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-29 — story created (create-story), after the advisory / version pre-check.
 - 2026-10-29 — validated against the create-story checklist: test-DB prerequisite and measurement hygiene (linker keeps the tools in the rmcp-free variant) added.
 - 2026-10-29 — implemented (dev-story): checkpoint record, decision, interop tests, Report for Kesh; status → review.
+- 2026-10-29 — code review round 1: 1 Medium + Lows fixed.
+- 2026-10-29 — code review round 2: no Medium+; 2 Lows fixed (parse guard with `_meta`, status wording); status → done.

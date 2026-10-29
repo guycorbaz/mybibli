@@ -219,6 +219,52 @@ mod tests {
         assert!(!SUPPORTED_PROTOCOL_VERSIONS.contains(&ProtocolVersion::V_2025_03_26));
     }
 
+    /// Story 11-22: the served-method inventory
+    /// (`tests/fixtures/mcp_method_inventory.json`, driven over the wire
+    /// by `tests/mcp_interop.rs`) must send params that rmcp parses as
+    /// the method it names. rmcp's request enum is untagged and ends with
+    /// a catch-all custom request answered -32601, so a malformed body
+    /// would pin "method not found" for the wrong reason. Entries marked
+    /// `rmcp_custom` are names rmcp does not know as client requests.
+    #[test]
+    fn inventory_params_parse_as_the_method_rmcp_knows() {
+        use rmcp::model::{ClientJsonRpcMessage, ClientRequest, JsonRpcMessage};
+        let doc: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/mcp_method_inventory.json"
+        ))
+        .unwrap();
+        // The 2026-07-28 requests also carry `_meta` inside params (a
+        // typed field): each body is parsed without and with it.
+        let modern_meta = serde_json::json!({
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientInfo": {"name": "t", "version": "0"},
+            "io.modelcontextprotocol/clientCapabilities": {}
+        });
+        for entry in doc["methods"].as_array().unwrap() {
+            for with_meta in [false, true] {
+                let method = entry["method"].as_str().unwrap();
+                let mut params = entry["params"].clone();
+                if with_meta {
+                    params["_meta"] = modern_meta.clone();
+                }
+                let body = serde_json::json!({
+                    "jsonrpc": "2.0", "id": 1, "method": method, "params": params
+                });
+                let msg: ClientJsonRpcMessage = serde_json::from_value(body)
+                    .unwrap_or_else(|e| panic!("{method}: not a JSON-RPC request: {e}"));
+                let JsonRpcMessage::Request(req) = msg else {
+                    panic!("{method}: not parsed as a request");
+                };
+                let custom = matches!(req.request, ClientRequest::CustomRequest(_));
+                assert_eq!(
+                    custom,
+                    entry["rmcp_custom"].as_bool().unwrap(),
+                    "{method} (with _meta: {with_meta}): parsed as custom = {custom}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn tool_errors_become_is_error_results() {
         let r = tool_result(Err(ToolError::NotFound("No title with id 9.".into())));
