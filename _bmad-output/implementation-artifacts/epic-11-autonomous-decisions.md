@@ -1355,3 +1355,8 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Context:** one combined layer (blind + edge cases + acceptance) on `main...HEAD`, checking every statement against the code. No High.
 **Chosen:** Medium fixed — chapter 13 told operators to set `MYBIBLI_LOG_LEVEL=info,rmcp=debug` in `.env`, but the `settings` row (seeded `info`) wins at every boot; the chapter now says to enter it in Admin → System → Logging (applies at once) and why `.env` does not help. Lows fixed: the staging purge deletes a stale proposal's image at its next run (only an unfinished filing waits the hour); troubleshooting table gains JSON-RPC -32022 and 406 / 415; "a contributor role was deleted" added to the outdated causes; `CLAUDE.md` refusal typing (`Refusal` trait → `ToolError` in `proposal_args.rs`, `registry()`) and `ProposalLabels` location corrected; threat model § 5.10 / § 7 state that modal bodies are `html_escape`d before the macro's `|safe`. Accepted: § 5.10 sits under § 5 ("accepted posture") although it lists defences — it is read as the agent surface's posture, with its residual risk; the cover "adds / replaces" sentence shown only while acceptance is offered (detail too fine for the manual). Out of scope, filed: #552 (chapter 12 says the log-level env var applies before the first save; the seeded row means never).
 **Reversible:** yes.
+
+### D-11-24-10 — Code review round 2: clean
+**Context:** confirmation pass on the round-1 delta (53078e8) against the code.
+**Chosen:** no Medium+, no new Low; one nit accepted (the troubleshooting table mixes an HTTP status and a JSON-RPC code in one cell, explained in the row).
+**Reversible:** yes.

@@ -1,6 +1,6 @@
 # Story 11.24: Epic 11 documentation
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR126–FR147 (documentation), AR31. Epic 11 — twenty-fourth and last story before the retrospective. Docs-only story: no production code changes expected.
 
@@ -95,6 +95,7 @@ Claude Opus 5.5 (claude-opus-5-5)
 ### Completion Notes List
 
 - D-11-24-1 … D-11-24-8; **[PRODUCT]** D-11-24-3 (no new screenshots), D-11-24-4 (operator guidance: one key per agent, no `-s project`, Inspector origin).
+- Code review: round 1 one Medium (log-level advice) + Lows fixed, #552 filed for chapter 12 (D-11-24-9); round 2 clean (D-11-24-10).
 - Versions untouched (`main.tex` still says 1.20.1; README status line unchanged) — Rule 19 belongs to the release PR; the draft above is for it.
 
 ### File List
