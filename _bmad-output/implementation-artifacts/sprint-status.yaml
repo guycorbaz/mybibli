@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-10-29 (story 11-20 side-by-side view for metadata and covers (#493) → done)
+# last_updated: 2026-10-29 (story 11-22 rmcp checkpoint before the release (#493) → done)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -239,7 +239,7 @@ development_status:
   11-19-edit-proposal-before-accept: done
   11-20-proposal-side-by-side-view: done
   11-21-proposals-access-nav-dashboard: backlog
-  11-22-rmcp-checkpoint: backlog
+  11-22-rmcp-checkpoint: done
   11-23-epic-11-smoke-test: backlog
   11-24-epic-11-documentation: backlog
   epic-11-retrospective: backlog
