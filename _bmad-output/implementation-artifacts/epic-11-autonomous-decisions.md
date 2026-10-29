@@ -796,3 +796,56 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** confirmation pass, no Medium+; the permit / key-lock order verified (no share-to-exclusive upgrade, revocation and filing both take the key row first).
 **Chosen:** the permit is documented as bounding two filing jobs (decode, staging, filing and the key-lock wait); accepted: a filing stalled on one key's lock delays other keys' cover proposals (single tenant, at most `innodb_lock_wait_timeout`).
 **Reversible:** yes.
+
+## § 11-15 — Proposal history and resubmission delay (part of #493)
+
+### D-11-15-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-15-proposal-history-resubmission-delay` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-15-2 — One equivalence rule, stored as a key at filing [PRODUCT]
+**Context:** FR136 — "share the kind and the target: the series (by id, or by normalised name for a creation), the title plus the same set of fields for metadata, the title for a cover"; hints from 11-12..11-14.
+**Chosen:** `ProposalSubject` derived from the items as filed — `series_create:<fold_name(name)>` (the 11-13 fold: case, accents, inner whitespace), `series_attach:series/<id>` (whatever title / tome lines it carries), `metadata:titles/<id>:<sorted field keys>` (exact set: `{description}` ≠ `{description, subtitle}`), `cover:titles/<id>` — stored in `proposals.equivalence_key` (`VARCHAR(700)`, `utf8mb4_bin`, indexed; a folded name is cut at the width). Items that match no shape (service tests) get no key and are never checked. Item edits by 11-19 do not change the key: what the agent asked is what must not come back. Rows filed before the migration keep NULL (proposals are unreleased).
+**Rejected:** recomputing equivalence from items at check time (JSON predicates on an unindexed range, the D-11-12-13 lock problem); comparing series names with the SQL collation (charset-dependent; the Rust fold is testable and mirrors it).
+**Reversible:** yes (migration + backfill).
+
+### D-11-15-3 — Equivalence is library-wide, not per key [PRODUCT]
+**Context:** the AC does not say whose rejection counts.
+**Chosen:** a rejection of any key's proposal blocks an equivalent filing by every key, so creating a new key does not reset the delay. The refusal names the rejected proposal and its reason only when the same key filed it (another key's proposal is not in this agent's history).
+**Rejected:** per-key delay (trivially bypassed by the admin creating a second key for the same agent).
+**Reversible:** yes.
+
+### D-11-15-4 — Checked in `file_in` after the key lock; the delay read from `settings` in the filing transaction
+**Context:** "apply the resubmission delay at filing, inside the filing transaction / lock order of 11-12"; the three kinds reach `ProposalService::file_in` with the key already locked (series, cover: exclusive; metadata: the share lock inside `file_in`).
+**Chosen:** `check_resubmission` runs inside `file_in` right after `lock_filing_key`: plain reads of the `settings` row and of the newest live rejection on the indexed key (with the database `NOW()`), compared in Rust (`blocked_until`, pure, unit-tested with simulated instants; DB tests back-date `decided_at`). No `AppSettings` field: the row is read where it is enforced, so an admin change applies to the next filing without cache reload; an invalid value reads as 90 (logged). Only `rejected` blocks — pending, accepted, stale or soft-deleted proposals never do; the reopening instant itself is accepted. The refusal is `ProposalError::RecentlyRejected` → `Conflict` (`ProposalError::is_conflict()` used by the three kinds' `class()`, else it would surface as an internal error).
+**Rejected:** a check in each kind's service (three copies; metadata has no exclusive key lock); plumbing the cached value through every request struct.
+**Reversible:** yes.
+
+### D-11-15-5 — `list_my_proposals` document [PRODUCT]
+**Context:** FR135 — own proposals, status filter, decision date, optional reason.
+**Chosen:** read-only tool, `status?`, `kind?`, `page?`, the shared list-page shape; items `{proposal_id, kind, status, filed_at, decided_at, rejection_reason, item_count, subject, resubmittable_from}`, dates RFC 3339 UTC; `subject` from the live items through the same `ProposalSubject` (`{series_name}`, `{series_id}`, `{title_id, fields}`, `{title_id}`), `resubmittable_from` for rejected ones with the current delay (may be in the past). Stale proposals show their `decided_at` (key revoked or target moved).
+**Reversible:** yes.
+
+### D-11-15-6 — Setting bounds 0..=3650 days, own System section
+**Context:** AR30, default 90.
+**Chosen:** `proposal_resubmission_delay_days` seeded at 90; 0 disables the rule, at most ten years; a "Proposals" section at the bottom of Admin → System, handler in `routes/admin_system_proposals.rs` (Rule 12), shared `fetch_setting_rows` / `validation_error_response` / `success_feedback` made `pub(crate)`.
+**Reversible:** yes.
+
+### D-11-15-7 — E2E scope
+**Context:** Rule 3; no rejection surface before 11-16.
+**Chosen:** `mcp-proposal-history.spec.ts` (spec id `PH`): an admin sets and restores the delay from a blank browser; two agents file, each lists only its own proposal, filters work. The refusal inside the delay (all kinds, simulated clock, other key, setting change) is covered over the real router by `tests/proposal_history.rs`; 11-16 should add the E2E "reject, then the agent is refused".
+**Reversible:** yes.
+
+### D-11-15-8 — Code review round 1: reopening date as enforced, robust form, NFKC fold, check after targets [PRODUCT]
+**Context:** three review layers; Medium: `resubmittable_from` computed from each row's own rejection while the filing check uses the newest equivalent rejection (and showed a date for keyless rows that block nothing); a non-number in the admin form failed in the `Form` extractor (no re-render, the message never shown); Blind layer: metadata field-set evasion, history subject from live items.
+**Chosen:** (a) `resubmittable_from` = newest live rejection of the row's `equivalence_key` (any key) + delay, null without a key; description says so. (b) the form field is text, parsed and range-checked by `validate_resubmission_delay_days(&str) -> u32`, any failure re-renders with `HX-Trigger: validation-error`; the error copy takes `%{max}`. (c) Lows fixed: the key folds series names with NFKC first (fullwidth, ligatures); the check runs after the target checks (a deleted title is reported as such, not as "wait"); the librarian's reason is quoted as a JSON string in the agent message; index `(equivalence_key, status, decided_at)`; help text states the metadata rule exactly (title **and** fields); the E2E restores the setting in `finally`; tests for series-create and cover "filed after", the HX-Trigger header and the OOB success entry.
+**Not changed (by the AC / D-11-15-2/-3), tracked in #535:** metadata equivalence stays "same set of fields" (a superset is filed); cover rejection blocks every key for the title; a rejection committing during a filing is not seen; a blocked cover is still encoded before refusal; the history subject reflects the live items (11-19 note). #536: the reject-then-refused E2E belongs to 11-16.
+**Accepted (Low):** truncated keys of pathological names (> 680 folded characters) may collide; the settings row read lives in `ProposalModel` (pool-free variant needed in a transaction); a missing / soft-deleted settings row makes the form answer a conflict (the migration seeds it, same as every other System setting); dates assume the pool's UTC session (R3-N15).
+**Reversible:** yes.
+
+### D-11-15-9 — Code review round 2: clean; Lows fixed or accepted
+**Context:** confirmation pass (blind + edge/acceptance), no Medium+.
+**Chosen:** fixed — a regression test pins "deleted target reported before the delay"; the series name in the refusal is JSON-quoted like the reason; the `resubmittable_from` description says null only without a subject (with a delay of 0 it equals the rejection date); the `latest_rejection` doc states the snapshot limitation (#535); the E2E describe runs serially with a note on the coupling with 11-16 (#536); story ACs annotated. Accepted: when another key's equivalent rejection is newer, the refusal does not repeat this key's own reason (the history has it); the cover cap test now frees a slot with `stale` (rejection would start the delay for that title).
+**Reversible:** yes.
+

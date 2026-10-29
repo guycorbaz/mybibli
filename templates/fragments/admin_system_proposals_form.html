@@ -1,0 +1,31 @@
+{# Admin → System → Proposals form (story 11-15, AR30). Single integer
+   input: the delay, in days, before a rejected agent proposal may be
+   filed again (0 = no delay). CSRF token is the FIRST input (audit
+   invariant). #}
+<form id="admin-system-proposals-form"
+      method="POST"
+      action="/admin/system/proposals"
+      hx-post="/admin/system/proposals"
+      hx-target="#admin-system-proposals-form"
+      hx-swap="outerHTML"
+      class="border border-stone-200 dark:border-stone-700 rounded-lg p-4 bg-stone-50 dark:bg-stone-900">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token|e }}">
+    <input type="hidden" name="resubmission_delay_version" value="{{ delay_version }}">
+    <label class="block">
+        <span class="block text-sm font-medium mb-1">{{ delay_label }}</span>
+        <input type="number"
+               id="resubmission-delay-days"
+               name="resubmission_delay_days"
+               min="0"
+               max="{{ delay_max }}"
+               step="1"
+               required
+               value="{{ delay_value }}"
+               class="w-32 px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-md dark:bg-stone-800">
+        <span class="block text-xs text-stone-500 dark:text-stone-400 mt-1">{{ delay_help }}</span>
+    </label>
+    <div class="mt-3">
+        <button type="submit"
+                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm">{{ btn_save }}</button>
+    </div>
+</form>

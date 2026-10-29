@@ -131,6 +131,24 @@ pub fn validate_session_timeout_hours(value: u64, loc: &'static str) -> Result<(
     }
 }
 
+/// Story 11-15 (AR30) — parse and validate the resubmission delay for
+/// rejected proposals as typed (whole days, 0 disables). Bounds shared
+/// with the filing read (`services::proposal_history`).
+pub fn validate_resubmission_delay_days(raw: &str, loc: &'static str) -> Result<u32, AppError> {
+    use crate::services::proposal_history::MAX_RESUBMISSION_DELAY_DAYS;
+    match raw.trim().parse::<u32>() {
+        Ok(v) if v <= MAX_RESUBMISSION_DELAY_DAYS => Ok(v),
+        _ => Err(AppError::BadRequest(
+            rust_i18n::t!(
+                "error.system.resubmission_delay_invalid",
+                locale = loc,
+                max = MAX_RESUBMISSION_DELAY_DAYS
+            )
+            .to_string(),
+        )),
+    }
+}
+
 /// Validate the log-level setting. Accepts:
 ///   - a plain level: `trace`, `debug`, `info`, `warn`, `error`
 ///   - a `tracing-subscriber` `EnvFilter` directive list, e.g.
@@ -329,6 +347,22 @@ mod tests {
         assert!(validate_session_timeout_hours(1, "en").is_ok());
         assert!(validate_session_timeout_hours(4, "en").is_ok());
         assert!(validate_session_timeout_hours(720, "en").is_ok());
+    }
+
+    #[test]
+    fn validate_resubmission_delay_days_bounds() {
+        assert_eq!(validate_resubmission_delay_days("0", "en").unwrap(), 0);
+        assert_eq!(validate_resubmission_delay_days(" 90 ", "en").unwrap(), 90);
+        assert_eq!(validate_resubmission_delay_days("3650", "en").unwrap(), 3650);
+        for bad in ["3651", "-1", "1.5", "abc", "", "99999999999"] {
+            assert!(
+                matches!(
+                    validate_resubmission_delay_days(bad, "en"),
+                    Err(AppError::BadRequest(m)) if m.contains("3650")
+                ),
+                "{bad}"
+            );
+        }
     }
 
     /// The form edits the same row `AppSettings::load_from_db` reads —

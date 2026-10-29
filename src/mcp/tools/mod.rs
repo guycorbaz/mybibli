@@ -1,10 +1,11 @@
-//! The MCP tools (stories 11-6..11-8 read, 11-12..11-14 propose). Each one is a thin adapter over
+//! The MCP tools (stories 11-6..11-8 and 11-15 read, 11-12..11-14 propose). Each one is a thin adapter over
 //! `services/`, implementing [`super::tool::McpTool`]: it validates its
 //! arguments, calls one service and maps the result to JSON.
 
 mod args;
 mod get_series;
 mod get_title;
+mod list_my_proposals;
 mod list_series;
 mod list_titles_with_incomplete_metadata;
 mod list_titles_without_cover;
@@ -33,6 +34,7 @@ pub fn registry() -> ToolRegistry {
         .with(search_titles::SearchTitles)
         .with(search_contributors::SearchContributors)
         .with(list_series::ListSeries)
+        .with(list_my_proposals::ListMyProposals)
         .with(get_series::GetSeries)
         .with(list_titles_without_cover::ListTitlesWithoutCover)
         .with(list_titles_with_incomplete_metadata::ListTitlesWithIncompleteMetadata)
@@ -185,6 +187,7 @@ mod tests {
             [
                 "get_series",
                 "get_title",
+                "list_my_proposals",
                 "list_series",
                 "list_titles_with_incomplete_metadata",
                 "list_titles_without_cover",

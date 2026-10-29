@@ -444,6 +444,7 @@ error:
     provider_timeout_invalid: "Die Zeitüberschreitung muss zwischen 1 und 60 Sekunden liegen."
     bulk_refetch_delay_invalid: "Die Pause beim Cover-Nachzug muss zwischen 0 und 60000 Millisekunden liegen."
     session_timeout_invalid: "Das Sitzungs-Zeitlimit muss zwischen 1 und 720 Stunden liegen."
+    resubmission_delay_invalid: "Die Frist muss eine ganze Zahl von Tagen zwischen 0 und %{max} sein."
     version_mismatch: "Die Einstellungen wurden durch einen anderen Administrator geändert — neu laden und erneut versuchen"
     provider_version_mismatch: "%{provider} wurde durch einen anderen Administrator geändert — neu laden und erneut versuchen"
   code:
@@ -1000,6 +1001,10 @@ admin:
     session_timeout_label: "Inaktivitäts-Zeitlimit der Sitzung (Stunden)"
     session_timeout_help: "Wie lange eine angemeldete Sitzung ohne Aktivität bestehen bleibt, von 1 Stunde bis 720 (30 Tage). Bestimmt auch die Lebensdauer des Sitzungs-Cookies im Browser. Wirksam ab der nächsten Anfrage — bereits offene Sitzungen werden nicht rückwirkend beendet. Standard: 4 Stunden."
     btn_save_sessions: "Sitzungseinstellungen speichern"
+    section_proposals: "Vorschläge"
+    resubmission_delay_label: "Frist, bevor ein abgelehnter Vorschlag erneut eingereicht werden kann (Tage)"
+    resubmission_delay_help: "Wie lange ein KI-Agent warten muss, bevor er einen Vorschlag erneut einreicht, der einem von einem Bibliothekar abgelehnten entspricht (gleiche Art und gleiches Ziel: dieselbe Serie, derselbe Titel mit denselben Feldern bei Metadaten, derselbe Titel bei einem Cover). Von 0 (keine Frist) bis %{max} Tage. Gilt für den nächsten Vorschlag, ohne Neustart. Standard: 90 Tage."
+    btn_save_proposals: "Vorschlagseinstellungen speichern"
     # v1.7.9 fix #334 — Metadata-Chain + Provider-Health Zeitüberschreitungen.
     metadata_chain_timeout_label: "Zeitüberschreitung pro Metadaten-Anbieter (Sekunden)"
     metadata_chain_timeout_help: "Maximale Wartezeit für einen Anbieter, bevor die Kette zum nächsten übergeht. Standard 5. Erhöhen Sie den Wert, wenn DNS oder TLS langsam sind (ländliches Glasfasernetz, VPN, Satellit). Grenzen 1–60. Beim nächsten Scan wirksam — kein Neustart."
@@ -1105,6 +1110,7 @@ success:
     timeouts_saved: "Zeitüberschreitungen gespeichert — beim nächsten Scan / Ping wirksam, kein Neustart erforderlich"
     provider_timeouts_saved: "Zeitüberschreitungen pro Anbieter gespeichert — beim nächsten Scan wirksam, kein Neustart erforderlich"
     sessions_saved: "Sitzungseinstellungen gespeichert — ab der nächsten Anfrage wirksam, kein Neustart erforderlich"
+    proposals_saved: "Vorschlagseinstellungen gespeichert — gilt für den nächsten Vorschlag, ohne Neustart"
     no_changes: "Keine Änderungen"
     provider_set: "%{provider}-Schlüssel gespeichert"
     provider_cleared: "%{provider}-Schlüssel gelöscht"

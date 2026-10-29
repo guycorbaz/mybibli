@@ -173,6 +173,32 @@ pub struct ProposalSummaryRow {
     pub item_count: i64,
     pub created_at: NaiveDateTime,
     pub decided_at: Option<NaiveDateTime>,
+    /// Story 11-15 — the librarian's reason, for a rejected proposal.
+    pub rejection_reason: Option<String>,
+    /// Story 11-15 — the key stored at filing (`None`: never blocks).
+    pub equivalence_key: Option<String>,
+}
+
+/// Story 11-15 — the subject parts of one live item (see
+/// `services::proposal_history::SubjectLine`).
+#[derive(Debug, Clone)]
+pub struct SubjectLineRow {
+    pub proposal_id: u64,
+    pub target: Option<ProposalTarget>,
+    pub line: Option<String>,
+    pub field: Option<String>,
+    pub name: Option<String>,
+}
+
+/// Story 11-15 — the newest live rejection of an equivalence key, with
+/// the database clock read in the same statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LatestRejection {
+    pub proposal_id: u64,
+    pub api_key_id: u64,
+    pub decided_at: NaiveDateTime,
+    pub rejection_reason: Option<String>,
+    pub now: NaiveDateTime,
 }
 
 /// List filters; every `None` means "any".
@@ -247,10 +273,10 @@ impl ProposalModel {
         })
     }
 
-    fn item_from_row(r: &sqlx::mysql::MySqlRow) -> Result<ProposalItemRow, AppError> {
+    fn target_from_row(r: &sqlx::mysql::MySqlRow) -> Result<Option<ProposalTarget>, AppError> {
         let table: Option<String> = r.try_get("target_table")?;
         let target_id: Option<u64> = r.try_get::<Option<i64>, _>("target_id")?.map(|v| v as u64);
-        let target = match (table, target_id) {
+        Ok(match (table, target_id) {
             (Some(t), Some(id)) => Some(ProposalTarget {
                 table: parse_enum(
                     &t,
@@ -260,7 +286,11 @@ impl ProposalModel {
                 id,
             }),
             _ => None,
-        };
+        })
+    }
+
+    fn item_from_row(r: &sqlx::mysql::MySqlRow) -> Result<ProposalItemRow, AppError> {
+        let target = Self::target_from_row(r)?;
         Ok(ProposalItemRow {
             id: r.try_get("id")?,
             proposal_id: r.try_get("proposal_id")?,
@@ -271,19 +301,23 @@ impl ProposalModel {
         })
     }
 
-    /// Insert a pending proposal; returns its id.
+    /// Insert a pending proposal; returns its id. `equivalence_key` is
+    /// story 11-15's subject key (`None`: matches no subject shape).
     pub async fn insert_proposal(
         conn: &mut MySqlConnection,
         kind: ProposalKind,
         api_key_id: u64,
         sources_json: &str,
+        equivalence_key: Option<&str>,
     ) -> Result<u64, AppError> {
         let res = sqlx::query(
-            "INSERT INTO proposals (kind, status, api_key_id, sources) VALUES (?, 'pending', ?, ?)",
+            "INSERT INTO proposals (kind, status, api_key_id, sources, equivalence_key) \
+             VALUES (?, 'pending', ?, ?, ?)",
         )
         .bind(kind.as_str())
         .bind(api_key_id)
         .bind(sources_json)
+        .bind(equivalence_key)
         .execute(&mut *conn)
         .await?;
         Ok(res.last_insert_id())
@@ -589,7 +623,8 @@ impl ProposalModel {
         let list_sql = format!(
             "SELECT p.id, p.kind, p.status, p.api_key_id, k.label AS api_key_label, \
              (SELECT COUNT(*) FROM proposal_items i WHERE i.proposal_id = p.id AND i.deleted_at IS NULL) AS item_count, \
-             CAST(p.created_at AS DATETIME) AS created_at, CAST(p.decided_at AS DATETIME) AS decided_at \
+             CAST(p.created_at AS DATETIME) AS created_at, CAST(p.decided_at AS DATETIME) AS decided_at, \
+             p.rejection_reason, CAST(p.equivalence_key AS CHAR) AS equivalence_key \
              FROM proposals p LEFT JOIN api_keys k ON k.id = p.api_key_id \
              WHERE {where_sql} ORDER BY p.created_at DESC, p.id DESC LIMIT ? OFFSET ?"
         );
@@ -633,6 +668,8 @@ impl ProposalModel {
                     item_count: r.try_get("item_count")?,
                     created_at: r.try_get("created_at")?,
                     decided_at: r.try_get("decided_at")?,
+                    rejection_reason: r.try_get("rejection_reason")?,
+                    equivalence_key: r.try_get("equivalence_key")?,
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -717,6 +754,123 @@ impl ProposalModel {
         .fetch_one(&mut *conn)
         .await?;
         Ok(u64::try_from(n).unwrap_or(0))
+    }
+
+    // ── Story 11-15: history and resubmission delay ────────────────
+
+    /// The value of a live `settings` row, if any. Plain read.
+    pub async fn setting_value(
+        conn: &mut MySqlConnection,
+        key: &str,
+    ) -> Result<Option<String>, AppError> {
+        Ok(sqlx::query_scalar(
+            "SELECT CAST(setting_value AS CHAR) FROM settings \
+             WHERE setting_key = ? AND deleted_at IS NULL",
+        )
+        .bind(key)
+        .fetch_optional(&mut *conn)
+        .await?)
+    }
+
+    /// The newest live `rejected` proposal with this equivalence key, and
+    /// the database's `NOW()`. A plain read on the indexed key: called
+    /// after the filing key is locked, on the filing transaction's
+    /// snapshot: a rejection committing while the filing runs may be
+    /// missed (accepted, single librarian — D-11-15-8, #535).
+    pub async fn latest_rejection(
+        conn: &mut MySqlConnection,
+        equivalence_key: &str,
+    ) -> Result<Option<LatestRejection>, AppError> {
+        let row = sqlx::query(
+            "SELECT id, api_key_id, CAST(decided_at AS DATETIME) AS decided_at, \
+             rejection_reason, CAST(NOW() AS DATETIME) AS now_at FROM proposals \
+             WHERE equivalence_key = ? AND status = 'rejected' AND deleted_at IS NULL \
+               AND decided_at IS NOT NULL \
+             ORDER BY decided_at DESC, id DESC LIMIT 1",
+        )
+        .bind(equivalence_key)
+        .fetch_optional(&mut *conn)
+        .await?;
+        row.map(|r| {
+            Ok(LatestRejection {
+                proposal_id: r.try_get("id")?,
+                api_key_id: r.try_get("api_key_id")?,
+                decided_at: r.try_get("decided_at")?,
+                rejection_reason: r.try_get("rejection_reason")?,
+                now: r.try_get("now_at")?,
+            })
+        })
+        .transpose()
+    }
+
+    /// The newest live rejection date of each given equivalence key
+    /// (keys without one are absent). Plain read.
+    pub async fn latest_rejection_dates(
+        conn: &mut MySqlConnection,
+        keys: &[&str],
+    ) -> Result<HashMap<String, NaiveDateTime>, AppError> {
+        if keys.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let placeholders = vec!["?"; keys.len()].join(", ");
+        let sql = format!(
+            "SELECT CAST(equivalence_key AS CHAR) AS k, CAST(MAX(decided_at) AS DATETIME) AS at \
+             FROM proposals \
+             WHERE equivalence_key IN ({placeholders}) AND status = 'rejected' \
+               AND deleted_at IS NULL AND decided_at IS NOT NULL \
+             GROUP BY equivalence_key"
+        );
+        let mut q = sqlx::query(&sql);
+        for k in keys {
+            q = q.bind(*k);
+        }
+        let mut out = HashMap::new();
+        for r in q.fetch_all(&mut *conn).await? {
+            out.insert(r.try_get("k")?, r.try_get("at")?);
+        }
+        Ok(out)
+    }
+
+    /// The subject parts (target, `line`, `field`, `name`) of the live
+    /// series / field / cover lines of the given proposals, in filing
+    /// order. Title and expected-tome lines are skipped (a series
+    /// proposal may carry up to 999 of them).
+    pub async fn subject_lines(
+        conn: &mut MySqlConnection,
+        proposal_ids: &[u64],
+    ) -> Result<Vec<SubjectLineRow>, AppError> {
+        if proposal_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = vec!["?"; proposal_ids.len()].join(", ");
+        let sql = format!(
+            "SELECT proposal_id, target_table, CAST(target_id AS SIGNED) AS target_id, line, \
+                    CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.field')) AS CHAR) AS field, \
+                    CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.name')) AS CHAR) AS name \
+             FROM (SELECT id, proposal_id, target_table, target_id, proposed_values, \
+                          CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.line')) AS CHAR) AS line \
+                   FROM proposal_items \
+                   WHERE proposal_id IN ({placeholders}) AND deleted_at IS NULL) i \
+             WHERE line IN ('series', 'field', 'cover') \
+             ORDER BY proposal_id, id"
+        );
+        let mut q = sqlx::query(&sql);
+        for id in proposal_ids {
+            q = q.bind(id);
+        }
+        q.fetch_all(&mut *conn)
+            .await?
+            .iter()
+            .map(|r| {
+                Ok(SubjectLineRow {
+                    proposal_id: r.try_get("proposal_id")?,
+                    target: Self::target_from_row(r)?,
+                    line: r.try_get("line")?,
+                    field: r.try_get("field")?,
+                    name: r.try_get("name")?,
+                })
+            })
+            .collect()
     }
 
     /// Lock and return the ids of a key's live pending proposals (story

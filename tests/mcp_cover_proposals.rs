@@ -572,8 +572,9 @@ async fn a_key_with_too_many_pending_covers_is_refused(pool: DbPool) {
     assert!(msg.contains("already has 100 cover proposals"), "{msg}");
     assert_eq!(staged_files(&f.staging).len(), 1, "nothing staged for it");
 
-    // Deciding one makes room again.
-    sqlx::query("UPDATE proposals SET status = 'rejected', decided_at = NOW() WHERE id = ?")
+    // Deciding one makes room again (stale: a rejection would also start
+    // the resubmission delay for this title — story 11-15).
+    sqlx::query("UPDATE proposals SET status = 'stale', decided_at = NOW() WHERE id = ?")
         .bind(first["proposal_id"].as_u64().unwrap())
         .execute(&pool)
         .await

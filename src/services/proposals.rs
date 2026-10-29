@@ -32,6 +32,7 @@ use crate::models::proposal::{
     NewItemRow, ProposalFilter, ProposalItemRow, ProposalKind, ProposalModel, ProposalStatus,
     ProposalSummaryRow, ProposalTarget, ProposalTargetTable, StatusUpdate, TargetRowState,
 };
+use crate::services::proposal_history::{BlockingRejection, check_resubmission, rfc3339_utc};
 
 /// At most this many sources per proposal.
 pub const MAX_SOURCES: usize = 20;
@@ -165,6 +166,9 @@ pub enum ProposalError {
         id: u64,
         status: ProposalStatus,
     },
+    /// Story 11-15 (FR136): an equivalent proposal was rejected less than
+    /// the resubmission delay ago.
+    RecentlyRejected(Box<BlockingRejection>),
     Database(AppError),
 }
 
@@ -186,6 +190,16 @@ impl ProposalError {
                 | ProposalError::TargetNotFound { .. }
                 | ProposalError::TargetChanged { .. }
                 | ProposalError::ReasonTooLong { .. }
+        )
+    }
+
+    /// `true` when the library's state refuses a well-formed filing (a
+    /// key that may not file, a recent equivalent rejection): the kind
+    /// services present it as a refusal, not as a server error.
+    pub fn is_conflict(&self) -> bool {
+        matches!(
+            self,
+            ProposalError::KeyNotAllowed { .. } | ProposalError::RecentlyRejected(_)
         )
     }
 }
@@ -303,6 +317,32 @@ impl fmt::Display for ProposalError {
                 "Proposal {id} is already {}; only a pending proposal can be decided.",
                 status.as_str()
             ),
+            ProposalError::RecentlyRejected(b) => {
+                write!(
+                    f,
+                    "An equivalent proposal ({}) was rejected on {}",
+                    b.subject,
+                    rfc3339_utc(b.rejected_at)
+                )?;
+                match &b.own {
+                    // Quoted as a JSON string: line breaks and quotes in
+                    // the librarian's text cannot break the framing.
+                    Some((id, Some(reason))) => write!(
+                        f,
+                        " (your proposal {id}; reason: {})",
+                        serde_json::Value::String(reason.clone())
+                    )?,
+                    Some((id, None)) => write!(f, " (your proposal {id}; no reason given)")?,
+                    None => {}
+                }
+                write!(
+                    f,
+                    ". The library accepts an equivalent proposal again from {} (resubmission \
+                     delay: {} days). Do not file it before then; propose something else.",
+                    rfc3339_utc(b.open_from),
+                    b.delay_days
+                )
+            }
             // Never the database text: this message may reach an agent.
             ProposalError::Database(_) => write!(
                 f,
@@ -332,6 +372,7 @@ impl From<ProposalError> for AppError {
             ProposalError::NotPending { .. }
             | ProposalError::Stale { .. }
             | ProposalError::KeyNotAllowed { .. }
+            | ProposalError::RecentlyRejected(_)
             | ProposalError::NothingToApply { .. } => AppError::Conflict(e.to_string()),
             other => AppError::BadRequest(other.to_string()),
         }
@@ -730,10 +771,19 @@ impl ProposalService {
                 proposed_values_json: json,
             });
         }
+        // Story 11-15 (FR136): after the key lock (11-12 lock order) and
+        // after the targets are known to exist, so a deleted or moved
+        // target is reported as such rather than as "wait until…".
+        let equivalence_key = check_resubmission(tx, proposal).await?;
 
-        let id =
-            ProposalModel::insert_proposal(tx, proposal.kind, proposal.api_key_id, &sources_json)
-                .await?;
+        let id = ProposalModel::insert_proposal(
+            tx,
+            proposal.kind,
+            proposal.api_key_id,
+            &sources_json,
+            equivalence_key.as_deref(),
+        )
+        .await?;
         for row in &rows {
             ProposalModel::insert_item(tx, id, row).await?;
         }
