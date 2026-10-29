@@ -23,11 +23,14 @@
  * Spec ID "EK". ISBN sequences and the series name carry a per-run stamp,
  * so a re-run on a non-reset stack meets none of an earlier run's titles,
  * tomes or wish-list items; nothing is rejected, so the 90-day
- * resubmission delay (11-15) never applies. The file name sorts after
- * `classification-fieldset`, `dewey-code` and `empty-states`, which
- * assume no series exists (D-11-11-6, #528).
+ * resubmission delay (11-15) never applies. The file name starts with
+ * "series-" so it sorts well after `classification-fieldset`,
+ * `dewey-code` and `empty-states`, which assume no series exists
+ * (D-11-11-6, #528). The key is revoked in `afterEach` from a fresh
+ * browser context, so it is revoked even when the test times out.
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
+import { revokeApiKey } from "../../helpers/api-keys";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
 import { MCP_TOOLS, mcpCallTool, mcpPost } from "../../helpers/mcp";
@@ -35,14 +38,13 @@ import {
   NAV,
   acceptFromDetail,
   newProposeKey,
-  revokeProposeKey,
   scanSettledTitle,
   shownPendingCount,
 } from "../../helpers/proposals";
 
 const SPEC = "EK";
 // Seconds stamp, kept small enough for specIsbn's five-digit sequence.
-const RUN = Math.floor(Date.now() / 1000) % 20000;
+const RUN = Math.floor(Date.now() / 1000) % 24000;
 const seq = (k: number) => RUN * 4 + k;
 
 const SOURCE = "https://example.org/epic11-smoke";
@@ -82,6 +84,22 @@ test.describe("Epic 11 smoke — an agent proposes, a librarian decides", () => 
   // Two admin logins, a librarian session, two metadata fetches, a scan.
   test.setTimeout(120000);
 
+  // The key created by the test, revoked after it whatever happened.
+  let keyLabel: string | null = null;
+  test.afterEach(async ({ browser }) => {
+    if (keyLabel === null) return;
+    const context = await browser.newContext();
+    try {
+      const admin = await context.newPage();
+      await loginAs(admin, "admin");
+      await admin.goto("/admin?tab=api_keys");
+      await revokeApiKey(admin, keyLabel);
+    } finally {
+      keyLabel = null;
+      await context.close();
+    }
+  });
+
   test("propose key → MCP client files a series → badge → edit, accept → series → wish → scan", async ({
     page,
     baseURL,
@@ -89,6 +107,7 @@ test.describe("Epic 11 smoke — an agent proposes, a librarian decides", () => 
     // A blank browser: no cookie, nothing injected.
     expect(await page.context().cookies()).toEqual([]);
     const key = await newProposeKey(page, "smoke");
+    keyLabel = key.label;
     expect(baseURL, "baseURL must be configured").toBeTruthy();
     // The agent is a separate client: a fresh request context, no cookies.
     const agent = await playwrightRequest.newContext({ baseURL: baseURL! });
@@ -180,7 +199,7 @@ test.describe("Epic 11 smoke — an agent proposes, a librarian decides", () => 
         page.locator("#feedback-list .feedback-entry").filter({ hasText: UPDATED }).last(),
       ).toBeVisible({ timeout: 10000 });
       await expect(items.filter({ has: page.locator(`a[href="/title/${t2}"]`) })).toContainText(
-        /4/,
+        /\b(Position|Posizione) 4\b/,
       );
 
       await acceptFromDetail(page);
@@ -207,6 +226,12 @@ test.describe("Epic 11 smoke — an agent proposes, a librarian decides", () => 
         [t1, 1],
         [t2, 4],
       ]);
+      expect(
+        (detail.expected_tomes as { position: number; title: string; isbn: string | null }[]).map(
+          (t) => [t.position, t.title, t.isbn],
+        ),
+      ).toEqual([[3, tomeTitle, tomeIsbn]]);
+      expect(detail.missing_positions).toEqual([2, 3]);
 
       // The expected tome goes to the wish list.
       await tome.getByRole("button", { name: WISH_BUTTON }).click();
@@ -226,9 +251,25 @@ test.describe("Epic 11 smoke — an agent proposes, a librarian decides", () => 
       const owned = page.locator('a[role="gridcell"][href^="/title/"]');
       await expect(owned).toHaveCount(3);
       await expect(page.locator('a[role="gridcell"][aria-label*=" 3 — "]')).toHaveCount(1);
+      const tomeTitleId = (
+        await mcpCallTool(agent, key.plaintext, "search_titles", { query: tomeIsbn })
+      ).structuredContent.items[0].id as number;
+      const settled = (await mcpCallTool(agent, key.plaintext, "get_series", { id: seriesId }))
+        .structuredContent;
+      expect(
+        (settled.positions as { title_id: number; position: number }[]).find(
+          (p) => p.position === 3,
+        )?.title_id,
+      ).toBe(tomeTitleId);
+      // The tome is kept as settled by the scanned title, none left open.
+      expect(
+        (settled.expected_tomes as { title: string; settled_title_id: number | null }[]).map(
+          (t) => [t.title, t.settled_title_id],
+        ),
+      ).toEqual([[tomeTitle, tomeTitleId]]);
+      expect(settled.missing_positions).toEqual([2]);
     } finally {
       await agent.dispose();
-      await revokeProposeKey(page, key.label);
     }
   });
 });

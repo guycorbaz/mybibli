@@ -1301,3 +1301,8 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Chosen:** `push: branches: [main]`; `pull_request` unchanged — a story branch is checked once, by its PR; `main` on merge. Separate commit on this branch, requested by the project lead.
 **Rejected:** anything else in the workflows.
 **Reversible:** yes.
+
+### D-11-23-6 — Code review round 1: no Medium+; six Lows fixed, one deferred
+**Context:** one combined layer (blind + edge cases + acceptance) on `main...HEAD`; no High, no Medium.
+**Chosen (Lows fixed):** the moved-position check reads `Position 4` (a bare `/4/` could match the synthetic title's ISBN); the key is revoked in `afterEach` from a fresh browser context (a timeout closes the test page before `finally`); the spec is renamed `series-epic11-smoke.spec.ts` so it sorts far after the specs assuming no series (#528 margin); the run stamp uses `% 24000` (whole `specIsbn` range); `get_series` cross-checks the expected tome before the scan (position, title, ISBN, `missing_positions` [2, 3]) and after it (position 3 = the scanned title, tome settled by it, `missing_positions` [2]). Accepted as documented: the epic's literal "badge shows 1" and "over `fetch`" (D-11-23-1; `helpers/mcp.ts` is the helper the epic names). Deferred: #550 (no CI on branches without a PR / PRs in conflict — the trigger change was scoped to the trigger only). No Medium+ → no second round needed (Rule 6).
+**Reversible:** yes.
