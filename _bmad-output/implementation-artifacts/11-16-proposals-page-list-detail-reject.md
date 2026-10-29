@@ -53,6 +53,14 @@ so that the agent's suggestions are reviewed in one place.
 - **E2E:** spec id `PR`; a fresh title per run (specIsbn); a metadata proposal (unique title, so the rejection blocks nothing else); creates no series (#528); key created and revoked by an admin; then `clearCookies` + `loginAs(page, "librarian")` for the journey. French copy matched with i18n regexes.
 - Pitfalls: CI charset → `CAST(… AS CHAR)` on string / JSON expressions; no repo-wide `cargo fmt`; `mem-guard` on heavy commands.
 
+### Validation notes (create-story checklist, 2026-10-29)
+
+- Reuse verified: `staged_cover_files_of`, `discard_all`, `transition_in`, `subject_lines` + `ProposalSubject::from_lines`, the UX-DR8 macro (`inner_form_html`), `HtmxResponse::into_response_with_hx_trigger("modal-close")`, `utils::feedback_html`. No new crate, no migration, no typed `sqlx::query!` (no `.sqlx` change expected).
+- `X-Content-Type-Options: nosniff` is already set globally by `middleware/csp.rs`; the cover route only adds `Cache-Control: no-store`.
+- A Confirm error is kept in the modal by `ModalConfirmRetargetGuard` (`X-Modal-Confirm` set by `modal.js`), so refusals need no special target; the success body swaps `#proposal-detail-body` (`outerHTML`).
+- Regression watch: `templates_audit` (CSRF field first in each POST form, no inline handlers), the role-matrix count, `tests/locale_parity.rs`.
+- Disaster prevention: never build a path from a URL segment (the cover route takes a proposal id); never `|safe` an agent value; reason length counted in chars server-side (the textarea `maxlength` counts UTF-16 units — the server is authoritative).
+
 ### References
 
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 11.16] — FR137, FR138, FR146, UX-DR31, NFR47.
