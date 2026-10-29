@@ -55,6 +55,12 @@ so that I keep the agent's work while fixing its mistakes.
 - **E2E:** spec id `PE`; series proposal creates a series → name sorts after the specs that assume no series (`series-…`, D-11-11-6 / #528) — name the spec `series-proposal-edit.spec.ts`; wait for the metadata fetch to settle before filing (it bumps the title version).
 - Pitfalls: CI charset (`CAST(… AS CHAR)`), no repo-wide `cargo fmt`, `mem-guard` + `-j 2`, French copy in router tests, Askama escaping (`&#39;` etc.).
 
+### Validation notes (create-story checklist, 2026-10-29)
+
+- Reuse verified: `ProposalModel::{lock_for_decision, items, active_series_named}`, `series_acceptance::parse_items`, `series_proposals::{validate_series_name, validate_total, validate_lines, check_against_series, create_series_line}`, `ExpectedTomeModel::{lock_series_in, live_slots_in}`, `TitleSeriesModel::held_positions_in`, `expected_tomes::closed_total_of`, `metadata_proposals::validate_fields`, `metadata_acceptance::{parse_items, revalidate, paired_contributors}`, `ContributorRoleModel::find_all` (plain read before the transaction; acceptance re-checks role liveness under lock), `AcceptError::NothingToApply` + `proposals.error_nothing_to_apply`, the UX-DR8 `modal` macro (`remove` variant), `HtmxResponse::into_response_with_hx_trigger_after_swap` (Pattern A modal + OOB entry, D-11-16-6), `inline-form-add-toggle`.
+- Regression watch: `tests/proposals_page.rs`, `tests/proposal_accept_series.rs`, `tests/proposal_accept_metadata_cover.rs`, `tests/proposal_history.rs` (subject from live items), `templates_audit` (no `hx-confirm`, CSRF on `method="POST"` forms — the edit forms use `hx-post`, token via `csrf.js`), `locale_parity`, `tests/seed_drift.rs` (AR24 quartet unchanged).
+- Disaster prevention: never touch `current` / `current_date` / `current_truncated` / `target_version` / `equivalence_key`; never remove the series line; never save an edit that acceptance would refuse as malformed; one transaction per edit, proposal row locked first.
+
 ### References
 
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 11.19] — FR139, UX-DR31.
