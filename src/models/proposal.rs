@@ -638,6 +638,83 @@ impl ProposalModel {
             .collect::<Result<Vec<_>, AppError>>()?;
         Ok((items, total.max(0) as u64))
     }
+
+    // ── Story 11-14: cover staging ─────────────────────────────────
+
+    /// The staged-cover file names a cover proposal still needs: items
+    /// (live) of live cover proposals that are `pending`, or `accepted`
+    /// less than `grace_secs` ago (promotion runs after the accept
+    /// commit). Plain read.
+    pub async fn staged_cover_files_to_keep(
+        pool: &DbPool,
+        grace_secs: u64,
+    ) -> Result<Vec<String>, AppError> {
+        let names: Vec<Option<String>> = sqlx::query_scalar(
+            "SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(pi.proposed_values, '$.staged_file')) AS CHAR) \
+             FROM proposal_items pi JOIN proposals p ON p.id = pi.proposal_id \
+             WHERE p.kind = 'cover' AND p.deleted_at IS NULL AND pi.deleted_at IS NULL \
+               AND (p.status = 'pending' \
+                    OR (p.status = 'accepted' AND p.decided_at > NOW() - INTERVAL ? SECOND))",
+        )
+        .bind(grace_secs)
+        .fetch_all(pool)
+        .await?;
+        Ok(names.into_iter().flatten().collect())
+    }
+
+    /// Every staged-cover file name any cover proposal item names,
+    /// whatever its status or soft-delete state. Plain read.
+    pub async fn staged_cover_files_referenced(pool: &DbPool) -> Result<Vec<String>, AppError> {
+        let names: Vec<Option<String>> = sqlx::query_scalar(
+            "SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(pi.proposed_values, '$.staged_file')) AS CHAR) \
+             FROM proposal_items pi JOIN proposals p ON p.id = pi.proposal_id \
+             WHERE p.kind = 'cover'",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(names.into_iter().flatten().collect())
+    }
+
+    /// The staged-cover file names of the given proposals' items.
+    pub async fn staged_cover_files_of(
+        conn: &mut MySqlConnection,
+        proposal_ids: &[u64],
+    ) -> Result<Vec<String>, AppError> {
+        if proposal_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = vec!["?"; proposal_ids.len()].join(", ");
+        let sql = format!(
+            "SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(pi.proposed_values, '$.staged_file')) AS CHAR) \
+             FROM proposal_items pi JOIN proposals p ON p.id = pi.proposal_id \
+             WHERE p.kind = 'cover' AND p.id IN ({placeholders})"
+        );
+        let mut q = sqlx::query_scalar::<_, Option<String>>(&sql);
+        for id in proposal_ids {
+            q = q.bind(id);
+        }
+        Ok(q.fetch_all(&mut *conn)
+            .await?
+            .into_iter()
+            .flatten()
+            .collect())
+    }
+
+    /// Lock and return the ids of a key's live pending proposals (story
+    /// 11-14, revocation). Call after locking the key row (see
+    /// [`Self::lock_filing_key`] for the lock order).
+    pub async fn lock_pending_of_key(
+        conn: &mut MySqlConnection,
+        api_key_id: u64,
+    ) -> Result<Vec<u64>, AppError> {
+        Ok(sqlx::query_scalar(
+            "SELECT id FROM proposals WHERE api_key_id = ? AND status = 'pending' \
+             AND deleted_at IS NULL ORDER BY id FOR UPDATE",
+        )
+        .bind(api_key_id)
+        .fetch_all(&mut *conn)
+        .await?)
+    }
 }
 
 #[cfg(test)]

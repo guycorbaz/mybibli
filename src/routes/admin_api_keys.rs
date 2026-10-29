@@ -451,8 +451,16 @@ pub async fn admin_api_keys_revoke(
         ));
     }
 
-    let n = ApiKeyModel::revoke(&state.pool, id, form.version).await?;
-    if n == 0 {
+    // Story 11-14 (NFR48): the key's pending proposals go stale in the
+    // same transaction and their staged covers are discarded.
+    let revoked = crate::services::cover_proposals::revoke_key(
+        &state.pool,
+        state.cover_staging_dir().as_deref(),
+        id,
+        form.version,
+    )
+    .await?;
+    if !revoked {
         return Err(AppError::Conflict(
             rust_i18n::t!("admin.api_keys.error_version_conflict", locale = loc).to_string(),
         ));

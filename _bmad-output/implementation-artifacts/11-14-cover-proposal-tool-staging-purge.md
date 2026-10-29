@@ -1,6 +1,6 @@
 # Story 11.14: Cover proposal tool and staging purge
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Closes #522 (cover staging directory outside the Docker covers volume) and #514 (MCP body cap and request timeout). Covers: FR133, NFR45, NFR48 (with FR134, NFR44, NFR47, AR27, AR29 inherited from 11-5 / 11-6 / 11-9). Epic 11 — fourteenth story; the third and last kind of proposal an agent files. The agent never writes the catalog: each call files one `cover` proposal through `ProposalService::file` (story 11-9) and leaves one re-encoded image in the staging area. Rejection is story 11-16, acceptance 11-18; both call the *discard* / *promote* this story provides.
 
@@ -43,14 +43,14 @@ so that the librarian can approve it without downloading it.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `services::cover`: `encode_cover` (pure, shared), `MAX_PROPOSED_COVER_BYTES`, `ProposedImageFormat` detection; `process_and_save_bytes` reuses it.
-- [ ] T2 — `services::cover_staging`: `.staging` inside covers dir; name generation / validation; `stage`, `promote`, `discard`, `purge` (pure listing logic + DB reads through `ProposalModel`); `/covers` dot-segment guard; `main.rs` boot creation.
-- [ ] T3 — `services::cover_proposals`: request, `CoverProposalError` (`Refusal`), `propose` (validate → title → encode in `spawn_blocking` → stage → file → discard on failure).
-- [ ] T4 — Revocation: `ApiKeyModel::revoke_in`, `ProposalModel` stale-by-key + staged names, service `revoke_api_key`; admin handler uses it.
-- [ ] T5 — Scheduler: staging purge per tick.
-- [ ] T6 — MCP: `propose_cover` tool, registry, body cap from the new bound, `TimeoutLayer`.
-- [ ] T7 — Tests (unit, `tests/mcp_cover_proposals.rs`, tool counts in helpers), E2E `mcp-cover-proposal.spec.ts`, `MCP_TOOLS`.
-- [ ] T8 — Docs: `docs/auth-threat-model.md` (SSRF policy, staging not served), `docs/route-role-matrix.md` (tool, body cap, timeout), `docs/dockerhub-overview.md` / `docker-compose.yml` comment (covers volume also holds pending agent covers); decisions D-11-14-*.
+- [x] T1 — `services::cover`: `encode_cover` (pure, shared), `MAX_PROPOSED_COVER_BYTES`, `ProposedImageFormat` detection; `process_and_save_bytes` reuses it.
+- [x] T2 — `services::cover_staging`: `.staging` inside covers dir; name generation / validation; `stage`, `promote`, `discard`, `purge` (pure listing logic + DB reads through `ProposalModel`); `/covers` dot-segment guard; `main.rs` boot creation.
+- [x] T3 — `services::cover_proposals`: request, `CoverProposalError` (`Refusal`), `propose` (validate → title → encode in `spawn_blocking` → stage → file → discard on failure).
+- [x] T4 — Revocation: `ApiKeyModel::revoke_in`, `ProposalModel` stale-by-key + staged names, service `revoke_api_key`; admin handler uses it.
+- [x] T5 — Scheduler: staging purge per tick.
+- [x] T6 — MCP: `propose_cover` tool, registry, body cap from the new bound, `TimeoutLayer`.
+- [x] T7 — Tests (unit, `tests/mcp_cover_proposals.rs`, tool counts in helpers), E2E `mcp-cover-proposal.spec.ts`, `MCP_TOOLS`.
+- [x] T8 — Docs: `docs/auth-threat-model.md` (SSRF policy, staging not served), `docs/route-role-matrix.md` (tool, body cap, timeout), `docs/dockerhub-overview.md` / `docker-compose.yml` comment (covers volume also holds pending agent covers); decisions D-11-14-*.
 
 ## Dev Notes
 
@@ -81,11 +81,34 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Debug Log References
 
+- `cargo clippy --all-targets -- -D warnings`: clean.
+- `cargo test` (unit + DB integration on the 3307 test DB): 1935 passed, 0 failed.
+- `cargo sqlx prepare --check --workspace -- --all-targets`: up to date (no macro query added).
+- `tsc --noEmit`: clean; `waitForTimeout` grep: clean.
+- Playwright on a reset stack (`E2E_HOST_PORT=18080`, `CI=true --workers=2`): 370 passed, 2 skipped.
+
 ### Completion Notes List
 
+- New service `services::cover_proposals` (item-shape contract in its module doc, D-11-14-5): media type + base64 + size + signature checks, the shared `cover::encode_cover` (extracted from `process_and_save_bytes`) in `spawn_blocking`, staging, filing; typed `CoverProposalError` implementing `Refusal`.
+- `services::cover_staging` rewritten: `<COVERS_DIR>/.staging` (#522), random names, `stage` / `promote` / `discard` / `purge`; `/covers` refuses dot-segments.
+- Revocation: `ProposalService::revoke_key` (key row → pending proposals stale, one transaction) + `cover_proposals::revoke_key` (discard after commit); admin handler uses it.
+- Auto-purge scheduler runs the staging purge on each tick.
+- MCP: `propose_cover` (11 tools); body cap ≈ 3.7 MiB and 30 s timeout (#514).
+- Docs: threat model § 5.9 (no server-side fetch), route-role matrix, compose / Docker Hub comment. Decisions D-11-14-1..10.
+
 ### File List
+
+- `src/services/cover_proposals.rs` (new), `src/services/cover_staging.rs`, `src/services/cover.rs`, `src/services/proposals.rs`, `src/services/mod.rs`
+- `src/models/proposal.rs`, `src/models/api_key.rs`
+- `src/routes/admin_api_keys.rs`, `src/routes/mod.rs`, `src/lib.rs`, `src/main.rs`, `src/tasks/auto_purge_scheduler.rs`
+- `src/mcp/tools/propose_cover.rs` (new), `src/mcp/tools/mod.rs`, `src/mcp/config.rs`, `src/mcp/mod.rs`
+- `tests/mcp_cover_proposals.rs` (new), `tests/common/mcp.rs`
+- `tests/e2e/specs/journeys/mcp-cover-proposal.spec.ts` (new), `tests/e2e/helpers/mcp.ts`
+- `docs/auth-threat-model.md`, `docs/route-role-matrix.md`, `docs/dockerhub-overview.md`, `docker-compose.yml`
+- `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md`, `sprint-status.yaml`
 
 ## Change Log
 
 - 2026-10-29 — story created (ready-for-dev).
 - 2026-10-29 — validated against the create-story checklist: result shape and the admin-copy / E2E scope made explicit (dev notes); no AC change.
+- 2026-10-29 — implemented (dev-story); status review.

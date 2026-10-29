@@ -724,3 +724,59 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** confirmation pass, no Medium+.
 **Chosen:** fixed the `text()` doc comment, the spec's dev notes and a test for a tab in the current value; accepted: a current value that differs only in form cannot be cleaned by a proposal (D-11-13-10), the length message counts characters after NFC, the residual Greek final-sigma fold.
 **Reversible:** yes.
+
+## § 11-14 — Cover proposal tool and staging purge (part of #493)
+
+### D-11-14-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-14-cover-proposal-tool-staging-purge` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-14-2 — Staging inside the covers directory, `/covers` refuses dot-segments (#522) [PRODUCT]
+**Context:** D-11-9-4 put the staging area next to `COVERS_DIR` (`/app/covers-staging`); the shipped compose file and the Docker Hub overview mount only `/app/covers`, so staged covers would vanish at every container re-creation and promotion by `rename` would fail with `EXDEV`. Existing installs must keep working without editing their compose file.
+**Chosen:** `<COVERS_DIR>/.staging` — on the covers volume every install already has, same filesystem as `covers/` (atomic `rename`; a copy + fsync + rename fallback on `CrossesDevices` all the same). `/covers` is wrapped by a middleware answering 404 for any dot-segment, raw or `%2e`-encoded (`cover_staging::is_hidden_path`), so an unreviewed image is never served. Staged names are random (`<32 hex>.jpg`), written under `.tmp-…` then renamed, and re-validated before any path is built from an item. Boot creation stays fail-open; when the directory is missing `propose_cover` is refused as unavailable. The empty `<covers>-staging` sibling 11-9 created on unreleased `main` builds is left alone (nothing ever wrote to it). Docs: one comment line in `docker-compose.yml` and `docs/dockerhub-overview.md`; the user manual is story 11-24's.
+**Rejected:** a second volume (every operator would have to edit their compose file, and forgetting it loses data silently); a guard route serving staged files to librarians now (11-16's job).
+**Supersedes:** the placement of D-11-9-4.
+**Reversible:** yes.
+
+### D-11-14-3 — The image arrives as bytes; the server never fetches an agent-supplied URL (SSRF policy) [PRODUCT]
+**Context:** the AC gives `propose_cover` the image (base64), its media type and the source URL; an agent-supplied URL fetched by the server would be an SSRF surface on the LAN.
+**Chosen:** no outbound request at all: `sources` (the page / image URLs, 11-9 rules) are provenance only. Documented in `docs/auth-threat-model.md` § 5.9 with the rule any future fetching tool must follow (http/https, resolve once and refuse loopback / private / link-local / metadata addresses, no redirects or re-check each hop, #479 time and body bounds, magic bytes over `Content-Type`).
+**Rejected:** an `image_url` argument the server downloads (the SSRF policy would have to be implemented and kept right for no gain — an agent can fetch).
+**Reversible:** yes.
+
+### D-11-14-4 — Image checks: 2 MiB, declared type must match the bytes, re-encoded before staging [PRODUCT]
+**Context:** "the same checks as a manual upload (decode and size bounds of #479)"; #514 asks to confirm the body cap against the manual upload's effective bound (axum's 2 MiB `Multipart` default, not `MAX_COVER_SIZE`).
+**Chosen:** `MAX_PROPOSED_COVER_BYTES = 2 MiB` decoded; base64 standard alphabet, padding optional, ASCII whitespace ignored, a `data:` prefix refused with a hint; `media_type` one of image/jpeg, png, webp, gif (case-insensitive) and equal to the format detected from the magic bytes (stricter than the manual upload, which ignores the claimed type — a mismatch means the agent mixed up files); then the shared `cover::encode_cover` (extracted from `process_and_save_bytes`, Rule 1): #479 decode limits, ≤ 400 px wide, JPEG 80, run in `spawn_blocking`. The staged file is that JPEG, so promotion is a move and the librarian reviews exactly what acceptance installs. Order: arguments → image → sources → title / version pin → staging available → encode → stage → file; a filing error discards the staged file.
+**Rejected:** staging the original bytes (a polyglot would sit on disk and need its own review rendering); 10 MiB like `MAX_COVER_SIZE` (a 14 MiB body for an image the catalog shrinks to 400 px).
+**Reversible:** yes.
+
+### D-11-14-5 — Item shape: one `"line": "cover"` item [PRODUCT]
+**Context:** contract for 11-15 (equivalence = same title), 11-16 (display / reject), 11-18 (accept), 11-20.
+**Chosen:** one item targeting `titles/<id>` (pinned or read `version`): `{"line": "cover", "staged_file", "replaces_existing", "current", "media_type", "original_bytes", "width", "height", "bytes"}` — `current` is the cover URL at filing (cache-buster included) because the background cover fetch does not bump `titles.version` (#521); 11-18 compares it with the live value. The result is `{proposal_id, status, kind, item_count, replaces_existing}`; the staged name is never shown to the agent. Documented on `services/cover_proposals.rs`.
+**Reversible:** yes until 11-16 / 11-18 ship.
+
+### D-11-14-6 — No pending-duplicate rule for covers [PRODUCT]
+**Context:** the AC says nothing; D-11-13-5 precedent.
+**Chosen:** a second cover proposal for the same title is filed; the librarian picks one, the other goes stale when the accepted cover bumps `titles.version` (11-18). Disk use per proposal is one ≤ 400 px JPEG; 11-15's resubmission delay covers repeats of rejected ones.
+**Reversible:** yes.
+
+### D-11-14-7 — Revocation stales every pending proposal of the key in one transaction [PRODUCT]
+**Context:** NFR48 / AC "revoking an API key marks its pending proposals stale and purges their staged covers"; 11-9 documented the lock order (key row first).
+**Chosen:** `ProposalService::revoke_key`: `UPDATE api_keys` (optimistic `version`, locks the key row) → `SELECT … FOR UPDATE` of the key's live pending proposals → each to `stale` (`decided_at`, no decider, D-11-9-7) → their staged names read → commit; then `cover_staging::discard_all` (failures logged, left to the scheduled purge). Every kind goes stale, not only covers. The admin handler calls `cover_proposals::revoke_key`; its feedback copy is unchanged (no locale key — the stale marks show on 11-16's page).
+**Reversible:** yes.
+
+### D-11-14-8 — Scheduled staging purge on the 8-7 tick, with a one-hour grace
+**Context:** "the scheduled purge (story 8-7) also removes orphaned staged files"; promotion (11-18) runs after the accept commit, and a filing writes its file before committing.
+**Chosen:** `auto_purge_scheduler` runs `cover_staging::purge` after each `run_purge` (not at startup: it runs before the covers directory is configured, and the first tick follows a minute later). Kept: files of live pending cover proposals (live item), and of accepted ones decided less than an hour ago. Deleted: files referenced only by rejected / stale / soft-deleted / older accepted proposals; unreferenced files and `.tmp-` files older than an hour. Other names are left alone. Not recorded in `admin_audit` (no catalog row is touched); counts are logged.
+**Reversible:** yes.
+
+### D-11-14-9 — `/api/mcp`: body cap ≈ 3.7 MiB and a 30 s timeout (#514)
+**Context:** #514 — 14.3 MiB cap sized for 10 MiB covers, and no request timeout.
+**Chosen:** `max_request_body_bytes()` derived from `MAX_PROPOSED_COVER_BYTES` (2 796 204 + 1 MiB envelope); `tower_http::TimeoutLayer::with_status_code(408, 30 s)` outermost on the MCP router (key check and body read included). Closes #514.
+**Reversible:** yes.
+
+### D-11-14-10 — E2E scope
+**Context:** Rule 3; no proposals page before 11-16.
+**Chosen:** `mcp-cover-proposal.spec.ts` (spec id `PC`): the agent journey (list, file, refusal), the catalog unchanged through `get_title` (`version`, `has_cover`), `/covers/.staging/` 404 and the title page showing no staged image, revocation turning the agent away. The staged-file 404 on its real name, the revocation's stale mark and the purge are covered by `tests/mcp_cover_proposals.rs` over the real router.
+**Reversible:** yes.

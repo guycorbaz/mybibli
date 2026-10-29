@@ -250,6 +250,31 @@ pub async fn resolve_cover_url_with_fallback(
 /// the provider download and the manual upload.
 pub(crate) const MAX_COVER_SIZE: usize = 10 * 1024 * 1024;
 
+/// Story 11-14 (NFR45, #514) — ceiling on the decoded bytes of a cover
+/// an agent proposes. Aligned on the manual upload's effective bound:
+/// `POST /title/:id/cover` sits behind axum's default 2 MiB body limit,
+/// so a librarian can never upload more either. Also sizes the
+/// `/api/mcp` body cap (`mcp::config::max_request_body_bytes`).
+pub const MAX_PROPOSED_COVER_BYTES: usize = 2 * 1024 * 1024;
+const _: () = assert!(MAX_PROPOSED_COVER_BYTES <= MAX_COVER_SIZE);
+
+/// The image formats a cover may arrive in (manual upload form: JPG,
+/// PNG, WebP, GIF), with their media types.
+pub const COVER_MEDIA_TYPES: [&str; 4] = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+/// The media type of `bytes` according to their magic bytes, when it is
+/// one of [`COVER_MEDIA_TYPES`]; `None` for anything else (unknown
+/// bytes, or a format the decoder knows but covers do not accept).
+pub fn detected_cover_media_type(bytes: &[u8]) -> Option<&'static str> {
+    match image::guess_format(bytes).ok()? {
+        image::ImageFormat::Jpeg => Some("image/jpeg"),
+        image::ImageFormat::Png => Some("image/png"),
+        image::ImageFormat::WebP => Some("image/webp"),
+        image::ImageFormat::Gif => Some("image/gif"),
+        _ => None,
+    }
+}
+
 /// Ceiling on what one decode may allocate (issue #479).
 ///
 /// [`MAX_COVER_SIZE`] bounds the *compressed* input, which says nothing
@@ -280,6 +305,72 @@ fn decode_limits() -> image::Limits {
     limits.max_image_width = Some(MAX_DECODE_DIMENSION);
     limits.max_image_height = Some(MAX_DECODE_DIMENSION);
     limits
+}
+
+/// A cover as the catalog stores it: JPEG 80, at most 400 px wide.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncodedCover {
+    pub jpeg: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The checks and the re-encode every cover goes through, whatever its
+/// origin — provider download, manual upload (#335), agent proposal
+/// (story 11-14): non-empty, at most [`MAX_COVER_SIZE`], format detected
+/// from the magic bytes (a claimed type is never trusted), decoded under
+/// the #479 budget ([`decode_limits`]), resized to at most 400 px wide
+/// (Lanczos3, never upscaled), re-encoded as JPEG 80. Pure and
+/// CPU-bound: an async caller that is not already paying for a network
+/// round trip should run it in `spawn_blocking`.
+pub fn encode_cover(bytes: &[u8]) -> Result<EncodedCover, CoverError> {
+    if bytes.is_empty() {
+        return Err(CoverError::InvalidImage("Empty upload".to_string()));
+    }
+    if bytes.len() > MAX_COVER_SIZE {
+        return Err(CoverError::InvalidImage(format!(
+            "Image too large: {} bytes (max {MAX_COVER_SIZE})",
+            bytes.len()
+        )));
+    }
+
+    // Decode image (auto-detect format: JPEG, PNG, GIF, WebP, etc.)
+    // under an explicit allocation budget — see `decode_limits`.
+    let mut reader = ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|e| CoverError::InvalidImage(e.to_string()))?;
+    reader.limits(decode_limits());
+    let img = reader.decode().map_err(|e| match e {
+        // Say what the operator can act on. The crate's own wording
+        // ("Memory limit exceeded") reads like a server fault; from
+        // where the librarian sits, the file is simply too big to
+        // process. English like its sibling message above — the
+        // handler prefixes it with the localized copy.
+        image::ImageError::Limits(_) => CoverError::InvalidImage(format!(
+            "Image is too large to process (limit {} megapixels, or {MAX_DECODE_DIMENSION} px per side). Resize it and try again.",
+            MAX_DECODE_ALLOC / 4 / 1_000_000
+        )),
+        other => CoverError::InvalidImage(other.to_string()),
+    })?;
+
+    // Resize if wider than 400px (maintain aspect ratio, no upscaling)
+    let resized = if img.width() > 400 {
+        img.resize(400, u32::MAX, image::imageops::FilterType::Lanczos3)
+    } else {
+        img
+    };
+
+    // Encode as JPEG 80% quality
+    let mut jpeg = Vec::new();
+    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 80);
+    resized
+        .write_with_encoder(encoder)
+        .map_err(|e| CoverError::InvalidImage(format!("JPEG encode failed: {e}")))?;
+    Ok(EncodedCover {
+        jpeg,
+        width: resized.width(),
+        height: resized.height(),
+    })
 }
 
 pub struct CoverService;
@@ -374,48 +465,8 @@ impl CoverService {
         title_id: u64,
         covers_dir: &Path,
     ) -> Result<String, CoverError> {
-        if bytes.is_empty() {
-            return Err(CoverError::InvalidImage("Empty upload".to_string()));
-        }
-        if bytes.len() > MAX_COVER_SIZE {
-            return Err(CoverError::InvalidImage(format!(
-                "Image too large: {} bytes (max {MAX_COVER_SIZE})",
-                bytes.len()
-            )));
-        }
-
-        // Decode image (auto-detect format: JPEG, PNG, GIF, WebP, etc.)
-        // under an explicit allocation budget — see `decode_limits`.
-        let mut reader = ImageReader::new(Cursor::new(bytes))
-            .with_guessed_format()
-            .map_err(|e| CoverError::InvalidImage(e.to_string()))?;
-        reader.limits(decode_limits());
-        let img = reader.decode().map_err(|e| match e {
-            // Say what the operator can act on. The crate's own wording
-            // ("Memory limit exceeded") reads like a server fault; from
-            // where the librarian sits, the file is simply too big to
-            // process. English like its sibling message above — the
-            // handler prefixes it with the localized copy.
-            image::ImageError::Limits(_) => CoverError::InvalidImage(format!(
-                "Image is too large to process (limit {} megapixels, or {MAX_DECODE_DIMENSION} px per side). Resize it and try again.",
-                MAX_DECODE_ALLOC / 4 / 1_000_000
-            )),
-            other => CoverError::InvalidImage(other.to_string()),
-        })?;
-
-        // Resize if wider than 400px (maintain aspect ratio, no upscaling)
-        let resized = if img.width() > 400 {
-            img.resize(400, u32::MAX, image::imageops::FilterType::Lanczos3)
-        } else {
-            img
-        };
-
-        // Encode as JPEG 80% quality
-        let mut output = Vec::new();
-        let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut output, 80);
-        resized
-            .write_with_encoder(encoder)
-            .map_err(|e| CoverError::InvalidImage(format!("JPEG encode failed: {e}")))?;
+        let encoded = encode_cover(bytes)?;
+        let output = encoded.jpeg;
 
         // Save to filesystem (async to avoid blocking runtime)
         let output_path = covers_dir.join(format!("{title_id}.jpg"));
@@ -427,8 +478,8 @@ impl CoverService {
         tracing::info!(
             title_id = title_id,
             file_size_bytes = file_size,
-            width = resized.width(),
-            height = resized.height(),
+            width = encoded.width,
+            height = encoded.height,
             "Cover image saved"
         );
 
@@ -446,6 +497,62 @@ mod tests {
     /// shared thread pool — without this lock, parallel runs leak the env
     /// var between cases and the default-base-URL assertion fails.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn png_bytes(w: u32, h: u32) -> Vec<u8> {
+        let mut out = Vec::new();
+        image::DynamicImage::new_rgb8(w, h)
+            .write_to(&mut Cursor::new(&mut out), image::ImageFormat::Png)
+            .unwrap();
+        out
+    }
+
+    #[test]
+    fn encode_cover_resizes_and_reencodes_as_jpeg() {
+        let out = encode_cover(&png_bytes(800, 1200)).unwrap();
+        assert_eq!((out.width, out.height), (400, 600));
+        assert_eq!(detected_cover_media_type(&out.jpeg), Some("image/jpeg"));
+        let small = encode_cover(&png_bytes(120, 80)).unwrap();
+        assert_eq!((small.width, small.height), (120, 80), "never upscaled");
+    }
+
+    #[test]
+    fn encode_cover_refuses_what_the_upload_refuses() {
+        assert!(matches!(
+            encode_cover(&[]),
+            Err(CoverError::InvalidImage(_))
+        ));
+        assert!(matches!(
+            encode_cover(b"not an image at all"),
+            Err(CoverError::InvalidImage(_))
+        ));
+        let big = vec![0u8; MAX_COVER_SIZE + 1];
+        assert!(
+            matches!(encode_cover(&big), Err(CoverError::InvalidImage(m)) if m.contains("too large"))
+        );
+    }
+
+    #[test]
+    fn detected_media_types_follow_the_magic_bytes() {
+        assert_eq!(
+            detected_cover_media_type(&png_bytes(2, 2)),
+            Some("image/png")
+        );
+        assert_eq!(
+            detected_cover_media_type(b"GIF89a\x01\x00"),
+            Some("image/gif")
+        );
+        assert_eq!(
+            detected_cover_media_type(b"\xff\xd8\xff\xe0"),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            detected_cover_media_type(b"RIFF\x00\x00\x00\x00WEBPVP8 "),
+            Some("image/webp")
+        );
+        // BMP decodes, but is not a cover format.
+        assert_eq!(detected_cover_media_type(b"BM\x00\x00\x00\x00"), None);
+        assert_eq!(detected_cover_media_type(b"hello"), None);
+    }
 
     #[test]
     fn test_cover_error_display() {

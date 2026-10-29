@@ -373,26 +373,20 @@ async fn main() {
     );
     std::fs::create_dir_all(&covers_dir).expect("Failed to create covers directory");
     tracing::info!(covers_dir = %covers_dir.display(), "Covers directory configured");
-    // Story 11-9: staging area for agent-proposed covers (story 11-14),
-    // next to `covers/` and never served. Fail-open (D-11-9-4): nothing
-    // uses it yet, so a parent directory the process cannot write to
-    // must not stop a deployment that boots today.
-    match mybibli::services::cover_staging::staging_dir_for(&covers_dir) {
-        Some(dir) => match std::fs::create_dir_all(&dir) {
-            Ok(()) => tracing::info!(
-                cover_staging_dir = %dir.display(),
-                "Cover staging directory configured"
-            ),
-            Err(e) => tracing::warn!(
-                cover_staging_dir = %dir.display(),
-                error = %e,
-                "Cover staging directory could not be created; cover proposals will be unavailable"
-            ),
-        },
-        None => tracing::warn!(
-            covers_dir = %covers_dir.display(),
-            "No cover staging directory can sit next to the covers directory; \
-             cover proposals will be unavailable"
+    // Stories 11-9 / 11-14: staging area for agent-proposed covers,
+    // inside the covers directory (same volume, never served — see
+    // `services::cover_staging`). Fail-open: a failure only makes cover
+    // proposals unavailable (`propose_cover` refuses them).
+    let cover_staging_dir = mybibli::services::cover_staging::staging_dir_for(&covers_dir);
+    match std::fs::create_dir_all(&cover_staging_dir) {
+        Ok(()) => tracing::info!(
+            cover_staging_dir = %cover_staging_dir.display(),
+            "Cover staging directory configured"
+        ),
+        Err(e) => tracing::warn!(
+            cover_staging_dir = %cover_staging_dir.display(),
+            error = %e,
+            "Cover staging directory could not be created; cover proposals will be unavailable"
         ),
     }
 
@@ -514,7 +508,11 @@ async fn main() {
     // Story 8-7: daily auto-purge of soft-deleted items older than 30 days.
     // Cadence is read from `AppSettings::auto_purge_interval_seconds`
     // (default 86400 = 24h) with a 1-minute delay after startup.
-    auto_purge_scheduler::spawn(state.pool.clone(), state.settings.clone());
+    auto_purge_scheduler::spawn(
+        state.pool.clone(),
+        state.settings.clone(),
+        state.covers_dir.clone(),
+    );
 
     // CR #301 (v1.7.0): daily purge of rotated log files older than
     // `DEFAULT_RETENTION_DAYS` (30). Only runs when file logging was

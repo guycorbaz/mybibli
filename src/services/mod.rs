@@ -7,6 +7,7 @@ pub mod borrowers;
 pub mod bulk_cover_fetch;
 pub mod contributor;
 pub mod cover;
+pub mod cover_proposals;
 pub mod cover_staging;
 pub mod dashboard;
 pub mod expected_tomes;

@@ -187,7 +187,7 @@ this path (no anonymous `sessions` row).
 
 | method | path | role | csrf | note |
 |---|---|---|---|---|
-| POST | `/api/mcp` | API key *(propose)* | n/a | JSON-RPC; body capped at ≈ 14.3 MiB (413). GET / DELETE answer 405. |
+| POST | `/api/mcp` | API key *(propose)* | n/a | JSON-RPC; body capped at ≈ 3.7 MiB (413), 30 s timeout (408) — #514. GET / DELETE answer 405. |
 
 Read tools (soft-deleted rows never returned): `get_title`
 (11-6, enriched in 11-7 with `has_cover` and `manually_edited_fields`),
@@ -204,7 +204,14 @@ sources, refused while another proposal for the same series is pending).
 `propose_title_metadata` (11-13) proposes subtitle, description, publisher,
 publication year, Dewey code and contributors to add for one title; each
 field is stored next to the title's current value, unchanged fields are
-dropped, invalid ones refused field by field.
+dropped, invalid ones refused field by field. `propose_cover` (11-14) takes
+the image as base64 (≤ 2 MiB, JPEG / PNG / WebP / GIF matching its declared
+type, checked and re-encoded like a manual upload) and keeps it in
+`<COVERS_DIR>/.staging`, never served by `/covers` (404 on any dot-segment);
+a title that already has a cover gets a replacement proposal. The server
+never fetches an agent-supplied URL (`docs/auth-threat-model.md` § 5.9).
+Revoking a key (Admin → API keys) marks its pending proposals stale and
+discards their staged covers.
 
 ### Shelf audit (CR #237) (`src/routes/audit.rs`)
 

@@ -1,4 +1,4 @@
-//! The MCP tools (stories 11-6..11-8 read, 11-12 / 11-13 on propose). Each one is a thin adapter over
+//! The MCP tools (stories 11-6..11-8 read, 11-12..11-14 propose). Each one is a thin adapter over
 //! `services/`, implementing [`super::tool::McpTool`]: it validates its
 //! arguments, calls one service and maps the result to JSON.
 
@@ -9,6 +9,7 @@ mod list_series;
 mod list_titles_with_incomplete_metadata;
 mod list_titles_without_cover;
 mod proposal_args;
+mod propose_cover;
 mod propose_series_attach;
 mod propose_series_create;
 mod propose_title_metadata;
@@ -38,11 +39,13 @@ pub fn registry() -> ToolRegistry {
         .with(propose_series_create::ProposeSeriesCreate)
         .with(propose_series_attach::ProposeSeriesAttach)
         .with(propose_title_metadata::ProposeTitleMetadata)
+        .with(propose_cover::ProposeCover)
 }
 
 /// The tools that file proposals (story 11-12 on); every other tool reads.
 #[cfg(test)]
-const PROPOSE_TOOLS: [&str; 3] = [
+const PROPOSE_TOOLS: [&str; 4] = [
+    "propose_cover",
     "propose_series_attach",
     "propose_series_create",
     "propose_title_metadata",
@@ -185,6 +188,7 @@ mod tests {
                 "list_series",
                 "list_titles_with_incomplete_metadata",
                 "list_titles_without_cover",
+                "propose_cover",
                 "propose_series_attach",
                 "propose_series_create",
                 "propose_title_metadata",
