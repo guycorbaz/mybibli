@@ -523,10 +523,10 @@ impl ExpectedTomeService {
         Ok(id)
     }
 
-    /// Story 11-17 (#529) — when a tome with `isbn` were created at
-    /// `position` of the series, would its owner (the title
-    /// [`Self::create_in`] would settle it with) already sit at another
-    /// position of the series? Returns that title and its first position
+    /// Story 11-17 (#529) — does a live title carrying `isbn` already sit
+    /// at another position of the series, so that a tome created at
+    /// `position` would name a book the series holds? Returns the first
+    /// such title (by id) and its first position
     /// — the tome would stay unsettled next to its own book
     /// (`SettleResult::TitleElsewhere`), or a second title carrying the
     /// same ISBN would be attached at its position — so acceptance skips

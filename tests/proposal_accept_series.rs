@@ -855,6 +855,21 @@ async fn the_second_of_two_creations_of_one_name_goes_stale(pool: DbPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn concurrent_creations_of_one_name_create_one_series(pool: DbPool) {
+    concurrent_creations(&pool, false).await;
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn concurrent_creations_queue_on_a_non_empty_series_table(pool: DbPool) {
+    // With rows to scan, the second locking read waits on the first
+    // instead of deadlocking on the supremum gap.
+    concurrent_creations(&pool, true).await;
+}
+
+async fn concurrent_creations(pool: &DbPool, other_series: bool) {
+    let pool = pool.clone();
+    if other_series {
+        closed_series(&pool, "Sans rapport", 3).await;
+    }
     // The same-name check is a locking read: the two acceptances are
     // serialised (or one is retried after a deadlock), never both applied.
     let f = fx(&pool).await;

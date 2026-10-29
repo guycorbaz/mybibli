@@ -7,9 +7,12 @@
 //! 1. the proposal row is locked and its `version` compared with the one
 //!    the librarian saw (optimistic lock);
 //! 2. its items are read (share lock) and parsed back into lines;
-//! 3. for an attach, the target series row is locked — **before** the
-//!    title rows, the order auto-settle follows (series → `title_series`
-//!    insert, which share-locks the title through the FK);
+//! 3. series before titles — the order auto-settle follows (series →
+//!    `title_series` insert, which share-locks the title through the
+//!    FK): an attach locks its series row; a creation runs its same-name
+//!    check as a locking read, which locks the scanned `series` rows and
+//!    gaps until the end of the (short) transaction, so two creations of
+//!    one name are serialised (#529-2);
 //! 4. [`ProposalService::check_staleness_in`] locks the targets and marks
 //!    the proposal `stale` when one was changed (version) or deleted;
 //! 5. the lines are re-validated against the catalog **as it is now**
@@ -21,6 +24,8 @@
 //! 6. [`ProposalService::transition_in`] records the decision (FR146) and
 //!    the lines are applied — series, then titles, then expected tomes
 //!    (origin `proposal`, auto-settle rules of D-11-10-*).
+//!
+//! A deadlock is retried (up to three attempts) by [`accept`].
 //!
 //! A stale outcome is an `Ok`: the caller commits the mark. Any error is
 //! an `Err`: the caller rolls back, nothing is applied and the proposal
@@ -44,7 +49,6 @@ use crate::models::series::{HeldPosition, SeriesModel, SeriesType, TitleSeriesMo
 use crate::services::expected_tomes::{
     ExpectedTomeError, ExpectedTomeInput, ExpectedTomeService, closed_total_of,
 };
-use crate::services::loans::is_transient_conflict;
 use crate::services::proposals::{
     Decision, ProposalError, ProposalService, StaleTarget, Transition,
 };
@@ -391,21 +395,23 @@ pub async fn accept(
     user_id: u64,
     version: i32,
 ) -> Result<AcceptOutcome, AcceptError> {
-    // A deadlock or lock-wait timeout (concurrent scan-settle, hand
-    // assignment, or two creations of one name on an empty `series`
-    // table) is retried on a fresh transaction, like a loan creation
-    // (#16 pattern): the whole acceptance re-runs, re-checks included.
+    // A deadlock (concurrent scan-settle or hand assignment, or two
+    // creations of one name on an empty `series` table) is retried on a
+    // fresh transaction (#16 pattern): the whole acceptance re-runs,
+    // re-checks included, and every failed attempt was rolled back. A
+    // lock-wait timeout is not retried: the blocker is likely still there
+    // and each wait lasts `innodb_lock_wait_timeout` (review round 2).
     let mut attempt = 0;
     loop {
         attempt += 1;
-        match accept_once(pool, id, user_id, version).await {
+        match accept_once(pool, id, user_id, version, attempt < ACCEPT_MAX_ATTEMPTS).await {
             Err(AcceptError::Apply(AppError::Database(e)))
-                if is_transient_conflict(&e) && attempt < ACCEPT_MAX_ATTEMPTS =>
+                if is_deadlock(&e) && attempt < ACCEPT_MAX_ATTEMPTS =>
             {
                 tracing::warn!(
                     proposal_id = id,
                     attempt,
-                    "proposal acceptance hit a transient lock conflict, retrying"
+                    "proposal acceptance hit a deadlock, retrying"
                 );
             }
             other => return other,
@@ -413,14 +419,22 @@ pub async fn accept(
     }
 }
 
-/// Attempts of [`accept`] on a transient lock conflict.
+/// SQLSTATE 40001 — InnoDB picked this transaction as a deadlock victim.
+fn is_deadlock(e: &sqlx::Error) -> bool {
+    matches!(e, sqlx::Error::Database(db) if db.code().as_deref() == Some("40001"))
+}
+
+/// Attempts of [`accept`] on a deadlock.
 const ACCEPT_MAX_ATTEMPTS: usize = 3;
 
+/// One attempt of [`accept`]; `may_retry` keeps a deadlock that will be
+/// retried out of the error log.
 async fn accept_once(
     pool: &DbPool,
     id: u64,
     user_id: u64,
     version: i32,
+    may_retry: bool,
 ) -> Result<AcceptOutcome, AcceptError> {
     let mut tx = pool.begin().await?;
     match accept_in(&mut tx, id, user_id, version).await {
@@ -451,7 +465,9 @@ async fn accept_once(
             if let Err(rb) = tx.rollback().await {
                 tracing::warn!(error = %rb, "proposal acceptance rollback failed");
             }
-            if matches!(e, AcceptError::Apply(_) | AcceptError::Invalid(_)) {
+            let retried = may_retry
+                && matches!(&e, AcceptError::Apply(AppError::Database(d)) if is_deadlock(d));
+            if !retried && matches!(e, AcceptError::Apply(_) | AcceptError::Invalid(_)) {
                 tracing::error!(proposal_id = id, error = %e, "Series proposal not applied");
             }
             Err(e)
@@ -461,7 +477,7 @@ async fn accept_once(
 
 /// [`accept`] on a caller-held transaction (see the module doc for the
 /// order). On `Ok` the caller commits; on `Err` it rolls back.
-pub async fn accept_in(
+pub(crate) async fn accept_in(
     conn: &mut MySqlConnection,
     id: u64,
     user_id: u64,
@@ -802,6 +818,13 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    #[test]
+    fn only_database_deadlocks_are_retried() {
+        assert!(!is_deadlock(&sqlx::Error::RowNotFound));
+        assert!(!is_deadlock(&sqlx::Error::PoolTimedOut));
+        assert!(!is_deadlock(&sqlx::Error::Protocol("x".into())));
     }
 
     #[test]

@@ -588,9 +588,11 @@ impl ProposalModel {
     /// Story 11-12 — the oldest live series named `name` under the same
     /// comparison as [`Self::pending_series_create_named`] (case- and
     /// accent-insensitive, independent of the server charset), with its
-    /// stored name. A plain read: a share lock here would lock every
-    /// series row (no index serves the predicate) and could deadlock with
-    /// a proposal acceptance locking a series (review round 2).
+    /// stored name. A plain read: filing takes no series lock — a share
+    /// lock here would lock every series row (no index serves the
+    /// predicate) and could deadlock with an acceptance locking a series
+    /// (11-12 review round 2). Accepting a creation uses the locking
+    /// variant [`Self::lock_series_named`], taken before any title lock.
     pub async fn active_series_named(
         conn: &mut MySqlConnection,
         name: &str,
