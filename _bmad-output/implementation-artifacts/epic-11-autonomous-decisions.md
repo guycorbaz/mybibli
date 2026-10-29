@@ -1000,3 +1000,9 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Chosen:** `accept` retries only SQLSTATE 40001 (local `is_deadlock`; `loans::is_transient_conflict` back to private); a deadlock that will be retried is logged as a warning, not as "not applied"; `accept_in` is `pub(crate)` (callers go through `accept`, which owns the transaction and the retry); module, `active_series_named` and `owner_elsewhere_in` docs updated; a second concurrency test runs on a non-empty `series` table (the queueing path, not the deadlock path).
 **Accepted (Low):** a creation's acceptance X-locks the scanned `series` rows for its short transaction (renames, attach acceptances and scan-settles wait for it) — the price of serialising creations without a unique key or a session-scoped `GET_LOCK`; a duplicated `version` field gets Axum's 422 (hand-built request only); a proposal both stale and holding a now-invalid name answers "cannot be applied" rather than "outdated" (D-11-17-6 order).
 **Reversible:** yes.
+
+### D-11-17-12 — Code review round 3: clean; Lows fixed or accepted
+**Context:** confirmation pass on the round-2 delta (both skills); no Medium+. Confirmed: sqlx-mysql's `code()` is the SQLSTATE, MariaDB 10.11 reports a deadlock as 1213 / 40001, every path carries it to the retry as `AppError::Database`.
+**Chosen:** `accept_in` private; the retry warning carries the error; the non-empty-table concurrency test says it checks the outcome, not which path ran.
+**Accepted (Low):** no unit test can build a `MySqlDatabaseError` for the positive 40001 case (the DB-backed concurrency tests are the live check, same gap as `loans.rs`); a future MariaDB ≥ 11.8 with `innodb_snapshot_isolation` could surface REPEATABLE READ conflicts as 1020, not retried — to revisit if the pinned image moves.
+**Reversible:** yes.

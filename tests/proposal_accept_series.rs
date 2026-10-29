@@ -860,22 +860,22 @@ async fn concurrent_creations_of_one_name_create_one_series(pool: DbPool) {
 
 #[sqlx::test(migrations = "./migrations")]
 async fn concurrent_creations_queue_on_a_non_empty_series_table(pool: DbPool) {
-    // With rows to scan, the second locking read waits on the first
-    // instead of deadlocking on the supremum gap.
+    // With rows to scan, the second locking read can queue behind the
+    // first instead of deadlocking on the supremum gap; either way the
+    // outcome must be one series, one accepted, one outdated.
     concurrent_creations(&pool, true).await;
 }
 
 async fn concurrent_creations(pool: &DbPool, other_series: bool) {
-    let pool = pool.clone();
     if other_series {
-        closed_series(&pool, "Sans rapport", 3).await;
+        closed_series(pool, "Sans rapport", 3).await;
     }
     // The same-name check is a locking read: the two acceptances are
     // serialised (or one is retried after a deadlock), never both applied.
-    let f = fx(&pool).await;
+    let f = fx(pool).await;
     let (a, b) = file_both(
         &f,
-        &pool,
+        pool,
         "propose_series_create",
         json!({"name": "Course", "series_type": "open",
                "expected_tomes": [{"position": 1, "title": "Un"}], "sources": [SRC]}),
@@ -883,10 +883,10 @@ async fn concurrent_creations(pool: &DbPool, other_series: bool) {
                "expected_tomes": [{"position": 2, "title": "Deux"}], "sources": [SRC]}),
     )
     .await;
-    let (va, vb) = (version_of(&pool, a).await, version_of(&pool, b).await);
+    let (va, vb) = (version_of(pool, a).await, version_of(pool, b).await);
     let (ra, rb) = tokio::join!(
-        series_acceptance::accept(&pool, a, f.lib_id, va),
-        series_acceptance::accept(&pool, b, f.lib_id, vb),
+        series_acceptance::accept(pool, a, f.lib_id, va),
+        series_acceptance::accept(pool, b, f.lib_id, vb),
     );
     let outcomes = [ra.expect("a"), rb.expect("b")];
     let accepted = outcomes
@@ -904,7 +904,7 @@ async fn concurrent_creations(pool: &DbPool, other_series: bool) {
         .count();
     assert_eq!((accepted, stale), (1, 1), "{outcomes:?}");
     let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM series WHERE name = 'Course'")
-        .fetch_one(&pool)
+        .fetch_one(pool)
         .await
         .unwrap();
     assert_eq!(n, 1);

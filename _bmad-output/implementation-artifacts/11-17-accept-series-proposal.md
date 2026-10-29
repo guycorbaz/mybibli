@@ -1,6 +1,6 @@
 # Story 11.17: Accept a series proposal
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here); closes #529 (re-validation at acceptance); decides #521 for the series kinds (narrowed to what 11-18 must do). Covers: FR138 (accept, series), FR140, FR146 (accept). Epic 11 — seventeenth story, the **first story that applies a proposal to the catalog**. Not here: metadata / cover acceptance (11-18), editing a proposal before accepting it (11-19), side-by-side view (11-20), nav badge (11-21).
 
@@ -82,8 +82,9 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 - Acceptance in `services/series_acceptance.rs` (`accept` / `accept_in`, `parse_items`, `AcceptOutcome::{Accepted, Stale}`, `AcceptError`); web copy in `services/proposal_accept.rs`; handlers `accept_modal` / `accept` + shared `decided_response` in `routes/proposals.rs`.
 - #521 decided for the series kinds (state re-validation under the series lock, D-11-17-2); #529 closed (D-11-17-2, D-11-17-4). Filing checks extracted into `check_against_series` (filing behaviour unchanged — `mcp_series_proposals` green).
-- Decisions D-11-17-1..9.
-- Gates: `cargo clippy --all-targets -D warnings` clean; `cargo test` 2017 passed, 0 failed; `sqlx prepare --check` OK (no macro query added); `locale_parity` green; waitForTimeout grep clean; `tsc --noEmit` clean; E2E full suite on a reset stack `CI=true --workers=2`: 376 passed, 2 skipped.
+- Decisions D-11-17-1..12.
+- Code review: round 1 (3 layers) — Mediums fixed: concurrent same-name creations serialised (locking name read before title locks + deadlock retry), validated name/total applied, tests of competing proposals; round 2 — lock-wait timeouts no longer retried, logging; round 3 clean (D-11-17-10..12). No issue opened (Lows fixed or accepted in the decisions).
+- Gates (final): `cargo clippy --all-targets -D warnings` clean; `cargo test` 2023 passed, 0 failed; `sqlx prepare --check` OK (no macro query added); `locale_parity` green; waitForTimeout grep clean; `tsc --noEmit` clean; E2E full suite on a reset stack `CI=true --workers=2`: 376 passed, 2 skipped (after the last review fixes too).
 - Note: E2E specs scanning fixed `specIsbn` values are not re-runnable on the same stack without a reset (a re-scanned ISBN shows no skeleton) — same as 11-16's spec.
 
 ### File List

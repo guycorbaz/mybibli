@@ -411,6 +411,7 @@ pub async fn accept(
                 tracing::warn!(
                     proposal_id = id,
                     attempt,
+                    error = %e,
                     "proposal acceptance hit a deadlock, retrying"
                 );
             }
@@ -477,7 +478,7 @@ async fn accept_once(
 
 /// [`accept`] on a caller-held transaction (see the module doc for the
 /// order). On `Ok` the caller commits; on `Err` it rolls back.
-pub(crate) async fn accept_in(
+async fn accept_in(
     conn: &mut MySqlConnection,
     id: u64,
     user_id: u64,
