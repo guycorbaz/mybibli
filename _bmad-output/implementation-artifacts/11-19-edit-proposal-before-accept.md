@@ -1,6 +1,6 @@
 # Story 11.19: Edit a proposal before accepting it
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR139, UX-DR31 (inline edit and line removal before acceptance). Epic 11 — nineteenth story. Not here: side-by-side view (11-20), nav badge (11-21), cross-kind staleness (#542 stays open for the user).
 
@@ -37,22 +37,22 @@ so that I keep the agent's work while fixing its mistakes.
 
 ## Tasks / Subtasks
 
-- [ ] Migration `proposal_items` trail columns (AC4)
-- [ ] Model: trail read, item update / removal, guarded version bump (AC4, AC5)
-- [ ] `services/proposal_edit.rs`: edit / remove in one transaction, pure value building + validation, `EditError` localized (AC1–AC5)
-- [ ] `series_acceptance`: attach with nothing left → `NothingToApply`; `can_accept` aware of applicable lines (AC6)
-- [ ] Review detail: item ids, edit / remove flags, trail notes, removed lines, roles (AC1, AC4)
-- [ ] Routes + templates + `inline-form.js` slot cancel (AC1, AC2, AC8)
-- [ ] Locale keys ×4 (AC8)
-- [ ] Tests: unit, `tests/proposal_edit.rs`, E2E `proposal-edit-accept.spec.ts` (AC9)
-- [ ] Decisions D-11-19-*
+- [x] Migration `proposal_items` trail columns (AC4)
+- [x] Model: trail read, item update / removal, guarded version bump (AC4, AC5)
+- [x] `services/proposal_edit.rs`: edit / remove in one transaction, pure value building + validation, `EditError` localized (AC1–AC5)
+- [x] `series_acceptance`: attach with nothing left → `NothingToApply`; `can_accept` aware of applicable lines (AC6)
+- [x] Review detail: item ids, edit / remove flags, trail notes, removed lines, roles (AC1, AC4)
+- [x] Routes + templates + `inline-form.js` slot cancel (AC1, AC2, AC8)
+- [x] Locale keys ×4 (AC8)
+- [x] Tests: unit, `tests/proposal_edit.rs`, E2E `proposal-edit-accept.spec.ts` (AC9)
+- [x] Decisions D-11-19-*
 
 ## Dev Notes
 
 - **Transaction:** `lock_for_decision` (status, version) → items (share) → build + validate → for an attach, `lock_series_in` then the edited line against `held_positions_in` / `live_slots_in` → item `UPDATE` (`original_values` assigned **first**: MariaDB evaluates single-table `SET` left to right) → `UPDATE proposals SET version = version + 1 WHERE id = ? AND version = ?` → commit. Same lock order as acceptance (proposal → items → series), no file I/O.
 - **Stored shapes stay the contracts:** title line `{"line":"title","position","is_omnibus"[,"end_position"]}`; tome `{"line":"expected_tome","position","title","isbn"}`; creation `create_series_line(name, type, total)`; field items keep every key but `proposed`; contributors `{name, role, role_id}` with the library's role spelling.
 - **Forms:** one `POST /proposals/{id}/items/{item_id}` reading a `HashMap<String, String>` (indexed `contributor_name_N` / `contributor_role_N`); version missing or garbled → conflict.
-- **E2E:** spec id `PE`; series proposal creates a series → name sorts after the specs that assume no series (`series-…`, D-11-11-6 / #528) — name the spec `series-proposal-edit.spec.ts`; wait for the metadata fetch to settle before filing (it bumps the title version).
+- **E2E:** spec id `PE`; a series proposal creates a series → the spec sorts after the specs that assume no series (D-11-11-6 / #528): `series-proposal-edit.spec.ts`; wait for the metadata fetch to settle before filing (it bumps the title version).
 - Pitfalls: CI charset (`CAST(… AS CHAR)`), no repo-wide `cargo fmt`, `mem-guard` + `-j 2`, French copy in router tests, Askama escaping (`&#39;` etc.).
 
 ### Validation notes (create-story checklist, 2026-10-29)
@@ -78,4 +78,28 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Completion Notes List
 
+- Migration `20261030090000_proposal_item_edits.sql`: `proposal_items.original_values`, `edited_by_name`, `edited_at`; a removed line is a soft-deleted item (D-11-19-2).
+- `services/proposal_edit.rs`: `edit_line` / `remove_line` (one transaction each, proposal row lock + version, guarded bump), pure value building and filing-rule validation (`check_series_edit`, `edited_proposed`), what each line allows (`editable`, `removable`, `keep_of`, `has_lines_to_apply`), trail summaries (`line_summary`), localized `EditError`.
+- `series_acceptance`: an attach with no title / tome line left → `NothingToApply`; the detail page and the accept modal offer Accept only when something is left to apply.
+- Review detail: item ids, edit / remove flags, edit notes, removed lines, live roles for the contributor form; routes `routes/proposal_edit.rs`; templates `proposal_detail_body.html` + `proposal_line_edit.html`; `inline-form.js` gains `inline-form-slot-cancel`.
+- Decisions D-11-19-1..9.
+- Gates (dev): `cargo clippy --all-targets -D warnings` clean; `cargo test` 2071 passed, 0 failed; `sqlx prepare --check` OK (no macro query added); `locale_parity` green; waitForTimeout grep clean; `tsc --noEmit` clean; E2E full suite on a reset stack `CI=true --workers=2`: 380 passed, 2 skipped, 1 known flaky (shelving undo, passed on retry).
+
 ### File List
+
+- migrations/20261030090000_proposal_item_edits.sql (new)
+- src/models/proposal.rs
+- src/services/proposal_edit.rs (new)
+- src/services/proposal_review.rs
+- src/services/series_acceptance.rs
+- src/services/mod.rs
+- src/routes/proposal_edit.rs (new)
+- src/routes/proposals.rs
+- src/routes/mod.rs
+- templates/fragments/proposal_detail_body.html
+- templates/fragments/proposal_line_edit.html (new)
+- static/js/inline-form.js
+- locales/{en,fr,de,it}.yml
+- tests/proposal_edit.rs (new)
+- tests/e2e/specs/journeys/series-proposal-edit.spec.ts (new)
+- _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md

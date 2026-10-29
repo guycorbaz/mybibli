@@ -312,6 +312,14 @@ async fn accept_in(
     )
     .await?;
     let stored = parse_items(kind, &items).map_err(AcceptError::Invalid)?;
+    // Story 11-19 — an attach whose title and tome lines were all
+    // removed has nothing left to apply (its series line remains).
+    if matches!(stored.series, StoredSeries::Attach { .. })
+        && stored.titles.is_empty()
+        && stored.tomes.is_empty()
+    {
+        return Err(AcceptError::NothingToApply);
+    }
 
     // Series before titles (module doc, step 3). An attach locks its
     // series row; a creation runs its same-name check as a locking read

@@ -11,6 +11,9 @@
 //   - inline-form-add-cancel    → close the Add form, reset its input.
 //   - inline-form-edit          → swap a row's name <span> for a text input.
 //   - inline-form-edit-cancel   → revert the input back to a span (no roundtrip).
+//   - inline-form-slot-cancel   → hide a server-rendered edit slot, reset its form
+//                                 (story 11-19, proposal line edits; the slot is
+//                                 revealed by inline-form-add-toggle).
 //
 // Delete + loanable-toggle use straight HTMX attributes on the buttons
 // themselves (hx-get for the modal, hx-post for the toggle); no JS handler
@@ -130,6 +133,19 @@
             var nameInput = addSlot.querySelector('input[name="name"]');
             if (nameInput) nameInput.value = "";
             addSlot.classList.add("hidden");
+            return;
+        }
+
+        // Story 11-19: close a server-rendered edit slot and put its form
+        // back to the values it was rendered with (no field cleared by
+        // name — the slot may hold several fields).
+        if (action === "inline-form-slot-cancel") {
+            evt.preventDefault();
+            var editSlot = document.getElementById(target.getAttribute("data-slot"));
+            if (!editSlot) return;
+            var editForm = editSlot.querySelector("form");
+            if (editForm) editForm.reset();
+            editSlot.classList.add("hidden");
             return;
         }
 

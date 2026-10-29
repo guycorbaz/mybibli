@@ -35,6 +35,7 @@ mod status_message_tests;
 mod volume_detail_tests;
 pub mod labels_page;
 pub mod loans;
+pub mod proposal_edit;
 pub mod proposals;
 pub mod locations;
 pub mod series;
@@ -418,6 +419,19 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .route(
             "/proposals/{id}/accept",
             axum::routing::post(proposals::accept),
+        )
+        // Story 11-19 — edit / remove a pending proposal's lines.
+        .route(
+            "/proposals/{id}/items/{item_id}",
+            axum::routing::post(proposal_edit::edit_line),
+        )
+        .route(
+            "/proposals/{id}/items/{item_id}/remove-modal",
+            axum::routing::get(proposal_edit::remove_modal),
+        )
+        .route(
+            "/proposals/{id}/items/{item_id}/remove",
+            axum::routing::post(proposal_edit::remove_line),
         )
         // CR #367 — saved searches (Librarian+). Run path is just a link
         // to `/?q=...`; these routes cover create + rename/delete modals.

@@ -1039,6 +1039,132 @@ impl ProposalModel {
         }
         Ok(out)
     }
+
+    // ── Story 11-19: editing a proposal before deciding it ─────────
+
+    /// The edit trail of a proposal: every item a librarian edited or
+    /// removed (`edited_at` set), live **and removed** — this read
+    /// deliberately includes soft-deleted items (a removed line is part
+    /// of the decision trail, FR146). Filing order.
+    pub async fn item_trail(
+        conn: &mut MySqlConnection,
+        proposal_id: u64,
+    ) -> Result<Vec<ItemTrailRow>, AppError> {
+        let rows = sqlx::query(
+            "SELECT id, target_table, CAST(target_id AS SIGNED) AS target_id, \
+                    CAST(proposed_values AS CHAR) AS proposed_values, \
+                    CAST(original_values AS CHAR) AS original_values, \
+                    CAST(edited_by_name AS CHAR) AS edited_by_name, \
+                    CAST(edited_at AS DATETIME) AS edited_at, \
+                    CAST(deleted_at IS NOT NULL AS SIGNED) AS removed \
+             FROM proposal_items \
+             WHERE proposal_id = ? AND edited_at IS NOT NULL \
+             ORDER BY id",
+        )
+        .bind(proposal_id)
+        .fetch_all(&mut *conn)
+        .await?;
+        rows.iter()
+            .map(|r| {
+                Ok(ItemTrailRow {
+                    id: r.try_get("id")?,
+                    target: Self::target_from_row(r)?,
+                    proposed_values_json: r.try_get("proposed_values")?,
+                    original_values_json: r.try_get("original_values")?,
+                    edited_by_name: r.try_get("edited_by_name")?,
+                    edited_at: r.try_get("edited_at")?,
+                    removed: r.try_get::<i64, _>("removed")? != 0,
+                })
+            })
+            .collect()
+    }
+
+    /// Replace a live item's `proposed_values`, keeping the agent's
+    /// values in `original_values` (first edit only) and recording who
+    /// and when. `original_values` is assigned **first**: MariaDB
+    /// evaluates a single-table `SET` left to right, so it still reads
+    /// the old `proposed_values`. Returns the rows updated (0 or 1).
+    pub async fn edit_item_in(
+        conn: &mut MySqlConnection,
+        proposal_id: u64,
+        item_id: u64,
+        values_json: &str,
+        user_id: u64,
+    ) -> Result<u64, AppError> {
+        let res = sqlx::query(
+            "UPDATE proposal_items SET \
+                 original_values = COALESCE(original_values, proposed_values), \
+                 proposed_values = ?, \
+                 edited_by_name = (SELECT username FROM users WHERE id = ?), \
+                 edited_at = NOW(), version = version + 1 \
+             WHERE id = ? AND proposal_id = ? AND deleted_at IS NULL",
+        )
+        .bind(values_json)
+        .bind(user_id)
+        .bind(item_id)
+        .bind(proposal_id)
+        .execute(&mut *conn)
+        .await?;
+        Ok(res.rows_affected())
+    }
+
+    /// Remove a live item (soft delete), keeping the agent's values in
+    /// `original_values` and recording who and when. Returns the rows
+    /// updated (0 or 1).
+    pub async fn remove_item_in(
+        conn: &mut MySqlConnection,
+        proposal_id: u64,
+        item_id: u64,
+        user_id: u64,
+    ) -> Result<u64, AppError> {
+        let res = sqlx::query(
+            "UPDATE proposal_items SET \
+                 original_values = COALESCE(original_values, proposed_values), \
+                 edited_by_name = (SELECT username FROM users WHERE id = ?), \
+                 edited_at = NOW(), deleted_at = NOW(), version = version + 1 \
+             WHERE id = ? AND proposal_id = ? AND deleted_at IS NULL",
+        )
+        .bind(user_id)
+        .bind(item_id)
+        .bind(proposal_id)
+        .execute(&mut *conn)
+        .await?;
+        Ok(res.rows_affected())
+    }
+
+    /// Bump a pending proposal's `version` if it is still `version`
+    /// (optimistic lock of an edit). Returns the rows updated (0 or 1).
+    pub async fn bump_pending_version_in(
+        conn: &mut MySqlConnection,
+        id: u64,
+        version: i32,
+    ) -> Result<u64, AppError> {
+        let res = sqlx::query(
+            "UPDATE proposals SET version = version + 1 \
+             WHERE id = ? AND version = ? AND status = 'pending' AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(version)
+        .execute(&mut *conn)
+        .await?;
+        Ok(res.rows_affected())
+    }
+}
+
+/// Story 11-19 — an item a librarian edited or removed.
+#[derive(Debug, Clone)]
+pub struct ItemTrailRow {
+    pub id: u64,
+    pub target: Option<ProposalTarget>,
+    /// Raw JSON text of `proposed_values` (the values at removal for a
+    /// removed line).
+    pub proposed_values_json: String,
+    /// Raw JSON text of the agent's values (`None`: never copied — not
+    /// produced by 11-19, which copies on every edit and removal).
+    pub original_values_json: Option<String>,
+    pub edited_by_name: Option<String>,
+    pub edited_at: Option<NaiveDateTime>,
+    pub removed: bool,
 }
 
 /// A live title as the proposals page names it (story 11-16).

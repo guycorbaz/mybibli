@@ -1,0 +1,95 @@
+{# Story 11-19 (FR139, UX-DR31) — inline edit form of one proposal line,
+   included by proposal_detail_body.html inside the lines loop (`line`,
+   `body`, `l`). Revealed by `inline-form-add-toggle`, closed (and reset)
+   by `inline-form-slot-cancel` (static/js/inline-form.js). Posts with
+   hx-post (CSRF header from csrf.js) the page's proposal `version`; the
+   answer replaces #proposal-detail-body, a refusal lands in
+   #feedback-list. Agent values are escaped (NFR47). CSP-clean. #}
+<div id="proposal-edit-{{ line.item_id }}" data-edit-slot class="hidden mt-3 p-3 rounded-md border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800/50">
+<form hx-post="/proposals/{{ body.id }}/items/{{ line.item_id }}" hx-target="#proposal-detail-body" hx-swap="outerHTML" class="space-y-2">
+    <input type="hidden" name="version" value="{{ body.version }}">
+    {% if line.line.eq("series_new") %}
+    <div>
+        <label for="proposal-edit-{{ line.item_id }}-name" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("series_name") }}</label>
+        <input type="text" id="proposal-edit-{{ line.item_id }}-name" name="name" value="{{ line.name }}" maxlength="255" required class="w-full px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+    </div>
+    <div class="flex flex-wrap gap-4">
+        <div>
+            <label for="proposal-edit-{{ line.item_id }}-type" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("series_type") }}</label>
+            <select id="proposal-edit-{{ line.item_id }}-type" name="series_type" class="px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+                <option value="closed"{% if line.series_type_raw.eq("closed") %} selected{% endif %}>{{ l.t("edit_type_closed") }}</option>
+                <option value="open"{% if line.series_type_raw.eq("open") %} selected{% endif %}>{{ l.t("edit_type_open") }}</option>
+            </select>
+        </div>
+        <div>
+            <label for="proposal-edit-{{ line.item_id }}-total" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("series_total") }}</label>
+            <input type="number" id="proposal-edit-{{ line.item_id }}-total" name="total" value="{% if let Some(total) = line.total %}{{ total }}{% endif %}" min="1" max="10000" aria-describedby="proposal-edit-{{ line.item_id }}-total-help" class="w-28 px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+            <p id="proposal-edit-{{ line.item_id }}-total-help" class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ l.t("edit_total_help") }}</p>
+        </div>
+    </div>
+    {% else if line.line.eq("title") %}
+    <div class="flex flex-wrap items-end gap-4">
+        <div>
+            <label for="proposal-edit-{{ line.item_id }}-position" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("col_position") }}</label>
+            <input type="number" id="proposal-edit-{{ line.item_id }}-position" name="position" value="{{ line.position }}" min="1" max="10000" required class="w-28 px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+        </div>
+        <div class="flex items-center gap-2 pb-1">
+            <input type="checkbox" id="proposal-edit-{{ line.item_id }}-omnibus" name="is_omnibus"{% if line.end_position.is_some() %} checked{% endif %} class="rounded border-stone-300 dark:border-stone-600">
+            <label for="proposal-edit-{{ line.item_id }}-omnibus" class="text-xs font-medium text-stone-700 dark:text-stone-300">{{ l.t("edit_omnibus") }}</label>
+        </div>
+        <div>
+            <label for="proposal-edit-{{ line.item_id }}-end" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("edit_end_position") }}</label>
+            <input type="number" id="proposal-edit-{{ line.item_id }}-end" name="end_position" value="{% if let Some(end) = line.end_position %}{{ end }}{% endif %}" min="1" max="10000" class="w-28 px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+        </div>
+    </div>
+    {% else if line.line.eq("tome") %}
+    <div class="flex flex-wrap gap-4">
+        <div>
+            <label for="proposal-edit-{{ line.item_id }}-position" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("col_position") }}</label>
+            <input type="number" id="proposal-edit-{{ line.item_id }}-position" name="position" value="{{ line.position }}" min="1" max="10000" required class="w-28 px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+        </div>
+        <div class="grow">
+            <label for="proposal-edit-{{ line.item_id }}-title" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("edit_tome_title") }}</label>
+            <input type="text" id="proposal-edit-{{ line.item_id }}-title" name="title" value="{{ line.tome_title }}" required class="w-full px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+        </div>
+        <div>
+            <label for="proposal-edit-{{ line.item_id }}-isbn" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("edit_isbn") }}</label>
+            <input type="text" id="proposal-edit-{{ line.item_id }}-isbn" name="isbn" value="{% if let Some(isbn) = line.isbn %}{{ isbn }}{% endif %}" inputmode="numeric" class="w-44 px-2 py-1 text-sm font-mono border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+        </div>
+    </div>
+    {% else if line.line.eq("field") %}
+    <div>
+        <label for="proposal-edit-{{ line.item_id }}-value" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ line.field_label }} — {{ l.t("proposed") }}</label>
+        {% if line.field.eq("description") %}
+        <textarea id="proposal-edit-{{ line.item_id }}-value" name="value" rows="6" required class="w-full px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">{{ line.proposed }}</textarea>
+        {% else if line.field.eq("publication_year") %}
+        <input type="number" id="proposal-edit-{{ line.item_id }}-value" name="value" value="{{ line.proposed }}" required class="w-28 px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+        {% else %}
+        <input type="text" id="proposal-edit-{{ line.item_id }}-value" name="value" value="{{ line.proposed }}" required class="w-full px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+        {% endif %}
+    </div>
+    {% else if line.line.eq("contributors") %}
+    <p id="proposal-edit-{{ line.item_id }}-help" class="text-xs text-stone-500 dark:text-stone-400">{{ l.t("edit_contributors_help") }}</p>
+    {% for c in line.contributors_proposed %}
+    <div class="flex flex-wrap gap-4">
+        <div class="grow">
+            <label for="proposal-edit-{{ line.item_id }}-name-{{ loop.index0 }}" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("edit_contributor_name") }}</label>
+            <input type="text" id="proposal-edit-{{ line.item_id }}-name-{{ loop.index0 }}" name="contributor_name_{{ loop.index0 }}" value="{{ c.name }}" maxlength="255" aria-describedby="proposal-edit-{{ line.item_id }}-help" class="w-full px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+        </div>
+        <div>
+            <label for="proposal-edit-{{ line.item_id }}-role-{{ loop.index0 }}" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1">{{ l.t("edit_contributor_role") }}</label>
+            <select id="proposal-edit-{{ line.item_id }}-role-{{ loop.index0 }}" name="contributor_role_{{ loop.index0 }}" class="px-2 py-1 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+                {% for (rid, rname) in body.roles %}
+                <option value="{{ rid }}"{% if c.has_role(rid) %} selected{% endif %}>{{ rname }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+    <div class="flex gap-2 pt-1">
+        <button type="submit" class="px-3 py-1 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 rounded-md">{{ l.t("save_button") }}</button>
+        <button type="button" data-action="inline-form-slot-cancel" data-slot="proposal-edit-{{ line.item_id }}" class="px-3 py-1 text-sm text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-stone-600 rounded-md hover:bg-stone-100 dark:hover:bg-stone-700">{{ l.t("cancel_button") }}</button>
+    </div>
+</form>
+</div>

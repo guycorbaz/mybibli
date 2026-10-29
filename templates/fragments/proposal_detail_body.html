@@ -1,4 +1,5 @@
 {# Story 11-16 — the proposal detail body (header, Accept (11-17 / 11-18) and Reject actions,
+   line edit / removal and the edit trail (11-19),
    sources, items by shape). Rendered inside pages/proposal_detail.html
    and alone by POST /proposals/{id}/reject. Every agent value is
    escaped (NFR47): never `|safe` here. Sources open in a new tab with
@@ -143,8 +144,43 @@
                 <div class="text-stone-500 dark:text-stone-400">{{ l.t("unknown_line") }}</div>
                 <pre class="mt-1 text-xs whitespace-pre-wrap break-all text-stone-700 dark:text-stone-300">{{ line.raw_json }}</pre>
             {% endif %}
+            {% if line.edit.is_some() %}
+                <p data-edit-note class="mt-2 text-xs text-stone-600 dark:text-stone-400 whitespace-pre-line">{{ body.edit_notes[loop.index0] }}</p>
+            {% endif %}
+            {% if body.can_edit && (line.editable || line.removable) %}
+                <div class="mt-2 flex gap-2">
+                    {% if line.editable %}
+                    <button type="button" data-action="inline-form-add-toggle" data-slot="proposal-edit-{{ line.item_id }}"
+                            aria-controls="proposal-edit-{{ line.item_id }}"
+                            class="px-2 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
+                        {{ l.t("edit_button") }}
+                    </button>
+                    {% endif %}
+                    {% if line.removable %}
+                    <button type="button" data-remove-line="{{ line.item_id }}"
+                            hx-get="/proposals/{{ body.id }}/items/{{ line.item_id }}/remove-modal?version={{ body.version }}"
+                            hx-target="#modal-slot" hx-swap="innerHTML"
+                            data-modal-trigger aria-haspopup="dialog" aria-expanded="false"
+                            class="px-2 py-1 text-xs font-medium text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20">
+                        {{ l.t("remove_button") }}
+                    </button>
+                    {% endif %}
+                </div>
+                {% if line.editable %}{% include "fragments/proposal_line_edit.html" %}{% endif %}
+            {% endif %}
             </li>
             {% endfor %}
         </ul>
     </section>
+
+    {% if !body.removed_lines.is_empty() %}
+    <section class="mt-8" aria-labelledby="proposal-removed-heading">
+        <h2 id="proposal-removed-heading" class="text-lg font-semibold text-stone-900 dark:text-stone-100">{{ l.t("removed_heading") }}</h2>
+        <ul id="proposal-removed" class="mt-2 space-y-1 text-sm list-disc list-inside text-stone-600 dark:text-stone-400">
+            {% for removed in body.removed_lines %}
+            <li class="whitespace-pre-line">{{ removed }}</li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
 </div>
