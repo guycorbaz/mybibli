@@ -1,6 +1,6 @@
 # Story 11.17: Accept a series proposal
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here); closes #529 (re-validation at acceptance); decides #521 for the series kinds (narrowed to what 11-18 must do). Covers: FR138 (accept, series), FR140, FR146 (accept). Epic 11 — seventeenth story, the **first story that applies a proposal to the catalog**. Not here: metadata / cover acceptance (11-18), editing a proposal before accepting it (11-19), side-by-side view (11-20), nav badge (11-21).
 
@@ -35,15 +35,15 @@ so that the series, its attachments and its expected tomes enter the catalog in 
 
 ## Tasks / Subtasks
 
-- [ ] Migration `proposals.applied_series_id BIGINT UNSIGNED NULL` (no FK — purge); `ProposalRow` / `Proposal` field (AC2, AC5)
-- [ ] Models: `SeriesModel::create_in`, `TitleSeriesModel::assign_omnibus_in`, `TitleSeriesModel::held_positions_in` (locking read), `ExpectedTomeModel::list_by_series_in` (locking read), `ProposalModel::set_applied_series_in` (AC2, AC3)
-- [ ] `series_proposals.rs`: pure `check_against_series` extracted from `propose_attach` (filing unchanged in behaviour) (AC3)
-- [ ] New `services/series_acceptance.rs`: parse stored items → lines; `accept_series_in(conn, id, user, version)` → `AcceptOutcome::{Accepted(AppliedSeries), Stale(StaleCause)}`; typed `AcceptError` (AC2–AC4, AC6)
-- [ ] Web glue `services/proposal_accept.rs` (transaction wrapper, localized result / stale / error copy), handlers `accept_modal` + `accept` in `routes/proposals.rs`, routes registered (AC1, AC5, AC6)
-- [ ] Templates: Accept button in `fragments/proposal_detail_body.html`, `fragments/proposal_accept_modal.html`, series link for accepted creates (AC1, AC5)
-- [ ] Locale keys ×4; route-role matrix (AC7)
-- [ ] Tests: unit, `tests/proposal_accept_series.rs`, E2E `series-proposal-accept.spec.ts` (spec id `SA`) (AC8)
-- [ ] Decisions D-11-17-*; #521 narrowed for 11-18, #529 closed
+- [x] Migration `proposals.applied_series_id BIGINT UNSIGNED NULL` (no FK — purge); `ProposalRow` / `Proposal` field (AC2, AC5)
+- [x] Models: `SeriesModel::create_in`, `TitleSeriesModel::assign_omnibus_in`, `TitleSeriesModel::held_positions_in` (locking read), `ExpectedTomeModel::list_by_series_in` (locking read), `ProposalModel::set_applied_series_in` (AC2, AC3)
+- [x] `series_proposals.rs`: pure `check_against_series` extracted from `propose_attach` (filing unchanged in behaviour) (AC3)
+- [x] New `services/series_acceptance.rs`: parse stored items → lines; `accept_series_in(conn, id, user, version)` → `AcceptOutcome::{Accepted(AppliedSeries), Stale(StaleCause)}`; typed `AcceptError` (AC2–AC4, AC6)
+- [x] Web glue `services/proposal_accept.rs` (transaction wrapper, localized result / stale / error copy), handlers `accept_modal` + `accept` in `routes/proposals.rs`, routes registered (AC1, AC5, AC6)
+- [x] Templates: Accept button in `fragments/proposal_detail_body.html`, `fragments/proposal_accept_modal.html`, series link for accepted creates (AC1, AC5)
+- [x] Locale keys ×4; route-role matrix (AC7)
+- [x] Tests: unit, `tests/proposal_accept_series.rs`, E2E `series-proposal-accept.spec.ts` (spec id `SA`) (AC8)
+- [x] Decisions D-11-17-*; #521 narrowed for 11-18, #529 closed
 
 ## Dev Notes
 
@@ -80,4 +80,31 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Completion Notes List
 
+- Acceptance in `services/series_acceptance.rs` (`accept` / `accept_in`, `parse_items`, `AcceptOutcome::{Accepted, Stale}`, `AcceptError`); web copy in `services/proposal_accept.rs`; handlers `accept_modal` / `accept` + shared `decided_response` in `routes/proposals.rs`.
+- #521 decided for the series kinds (state re-validation under the series lock, D-11-17-2); #529 closed (D-11-17-2, D-11-17-4). Filing checks extracted into `check_against_series` (filing behaviour unchanged — `mcp_series_proposals` green).
+- Decisions D-11-17-1..9.
+- Gates: `cargo clippy --all-targets -D warnings` clean; `cargo test` 2017 passed, 0 failed; `sqlx prepare --check` OK (no macro query added); `locale_parity` green; waitForTimeout grep clean; `tsc --noEmit` clean; E2E full suite on a reset stack `CI=true --workers=2`: 376 passed, 2 skipped.
+- Note: E2E specs scanning fixed `specIsbn` values are not re-runnable on the same stack without a reset (a re-scanned ISBN shows no skeleton) — same as 11-16's spec.
+
 ### File List
+
+- migrations/20261029180000_proposals_applied_series.sql (new)
+- src/services/series_acceptance.rs (new)
+- src/services/proposal_accept.rs (new)
+- src/services/mod.rs
+- src/services/series_proposals.rs
+- src/services/expected_tomes.rs
+- src/services/proposals.rs
+- src/services/proposal_review.rs
+- src/models/proposal.rs
+- src/models/series.rs
+- src/models/expected_tome.rs
+- src/routes/proposals.rs
+- src/routes/mod.rs
+- templates/fragments/proposal_accept_modal.html (new)
+- templates/fragments/proposal_detail_body.html
+- locales/{en,fr,de,it}.yml
+- docs/route-role-matrix.md
+- tests/proposal_accept_series.rs (new)
+- tests/e2e/specs/journeys/series-proposal-accept.spec.ts (new)
+- _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md
