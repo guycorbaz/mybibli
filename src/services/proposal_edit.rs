@@ -52,13 +52,14 @@ use crate::models::series::{SeriesType, TitleSeriesModel};
 use crate::services::expected_tomes::closed_total_of;
 use crate::services::metadata_acceptance;
 use crate::services::metadata_proposals::{
-    FieldProblem, MAX_CONTRIBUTORS, MetadataProposalError, ProposedFields, validate_fields,
+    FieldProblem, MAX_CONTRIBUTORS, MetadataProposalError, ProposedFields, normalize_text,
+    validate_fields,
 };
 use crate::services::proposal_review::{LineView, field_label, status_label};
 use crate::services::series_acceptance::{self, StoredSeries};
 use crate::services::series_proposals::{
-    MAX_OMNIBUS_SPAN, MAX_POSITION, MAX_SERIES_NAME_CHARS, SeriesProposalError, ValidLines,
-    ValidTitle, ValidTome, check_against_series, create_series_line, validate_lines,
+    LineRef, MAX_OMNIBUS_SPAN, MAX_POSITION, MAX_SERIES_NAME_CHARS, SeriesProposalError,
+    ValidLines, ValidTitle, ValidTome, check_against_series, create_series_line, validate_lines,
     validate_series_name, validate_total,
 };
 
@@ -94,6 +95,13 @@ pub enum EditError {
     Field {
         field: String,
         problem: FieldProblem,
+    },
+    /// An attach whose series was deleted since filing (it will go
+    /// stale at acceptance): nothing to edit against.
+    SeriesGone,
+    /// A metadata value edited to the title's value at filing.
+    SameAsCurrent {
+        field: String,
     },
     /// The edited proposal would not parse back as acceptance reads it.
     Invalid(String),
@@ -177,6 +185,16 @@ impl EditError {
                 hint = field_hint(problem, loc).as_str()
             )
             .to_string(),
+            EditError::SeriesGone => {
+                t!("proposals.edit_error_series_gone", locale = loc).to_string()
+            }
+            EditError::SameAsCurrent { field } => t!(
+                "proposals.edit_field_hint",
+                locale = loc,
+                field = field_label(field, loc).as_str(),
+                hint = t!("proposals.edit_error_same_as_current", locale = loc).as_ref()
+            )
+            .to_string(),
             EditError::Invalid(_) => t!("proposals.edit_error_invalid", locale = loc).to_string(),
             EditError::Database(_) => t!("error.internal", locale = loc).to_string(),
         }
@@ -188,13 +206,15 @@ impl EditError {
         match self {
             EditError::Database(inner) => inner,
             EditError::NotFound | EditError::LineNotFound => AppError::NotFound(message),
-            EditError::Series(_) | EditError::Field { .. } | EditError::Invalid(_) => {
-                AppError::BadRequest(message)
-            }
+            EditError::Series(_)
+            | EditError::Field { .. }
+            | EditError::SameAsCurrent { .. }
+            | EditError::Invalid(_) => AppError::BadRequest(message),
             EditError::NotPending { .. }
             | EditError::Stale
             | EditError::Changed
             | EditError::NotEditable
+            | EditError::SeriesGone
             | EditError::NotRemovable(_) => AppError::Conflict(message),
         }
     }
@@ -452,7 +472,9 @@ pub enum EditedSeriesLine {
 /// filing rules (pure — unit tested) and return the values to store
 /// (rebuilt from the validated line, so they are in the stored shape)
 /// and the validated line. `attach_total` is the closed total of an
-/// attach's series as it is now.
+/// attach's series as it is now: only the edited line is checked
+/// against it (a total lowered since filing does not block fixing
+/// another line; acceptance re-checks every line).
 pub fn check_series_edit(
     kind: ProposalKind,
     rows: &[ProposalItemRow],
@@ -472,9 +494,40 @@ pub fn check_series_edit(
             let total = validate_total(*series_type, *total_volume_count)?;
             (total, Some((name, *series_type)))
         }
-        StoredSeries::Attach { .. } => (attach_total, None),
+        StoredSeries::Attach { .. } => (None, None),
     };
     let lines = validate_lines(&stored.titles, &stored.tomes, total)?;
+    let (value, line) = edited_series_line(raw, &rows, edited, &lines, total, create)?;
+    if let Some(total) = attach_total {
+        let (line_ref, end) = match &line {
+            EditedSeriesLine::Title(t) => (LineRef::Title(t.title_id), t.end()),
+            EditedSeriesLine::Tome(t) => (
+                LineRef::Tome(t.title.chars().take(80).collect()),
+                t.position,
+            ),
+            EditedSeriesLine::Series { .. } => return Ok((value, line)),
+        };
+        if end > total {
+            return Err(SeriesProposalError::BeyondTotal {
+                line: line_ref,
+                position: i64::from(end),
+                total,
+            }
+            .into());
+        }
+    }
+    Ok((value, line))
+}
+
+/// The stored values and the validated line of the edited item (pure).
+fn edited_series_line(
+    raw: &Value,
+    rows: &[ProposalItemRow],
+    edited: usize,
+    lines: &ValidLines,
+    total: Option<i32>,
+    create: Option<(String, SeriesType)>,
+) -> Result<(Value, EditedSeriesLine), EditError> {
     match line_of(raw) {
         Some("series") => {
             let (name, series_type) = create.ok_or(EditError::NotEditable)?;
@@ -606,6 +659,31 @@ fn proposed_value(field: &str, valid: &ProposedFields) -> Option<Value> {
     }
 }
 
+/// Whether an edited scalar item now proposes the title's value at
+/// filing (`current`, normal form; a year: `current`, else the year of
+/// `current_date`). Filing drops such a field as unchanged: accepting it
+/// would only mark the field as set by hand — and for a year, replace a
+/// full date with `YYYY-01-01` (pure). Contributors only add: never.
+pub fn same_as_current(item: &Value) -> bool {
+    let proposed = &item["proposed"];
+    match item.get("field").and_then(Value::as_str) {
+        Some("contributors") | None => false,
+        Some("publication_year") => {
+            let year = item["current"].as_i64().or_else(|| {
+                item["current_date"]
+                    .as_str()
+                    .and_then(|d| d.get(..4))
+                    .and_then(|y| y.parse().ok())
+            });
+            year.is_some() && proposed.as_i64() == year
+        }
+        Some(field) => match (item["current"].as_str(), proposed.as_str()) {
+            (Some(cur), Some(new)) => normalize_text(cur, field == "description") == new,
+            _ => false,
+        },
+    }
+}
+
 /// Check that an edited metadata proposal parses back and re-validates
 /// as acceptance reads it (pure).
 fn check_metadata_proposal(rows: &[ProposalItemRow], current_year: i32) -> Result<(), EditError> {
@@ -725,6 +803,9 @@ async fn edit_line_in(
                 }
                 _ => None,
             };
+            if kind == ProposalKind::SeriesAttach && series.is_none() {
+                return Err(EditError::SeriesGone);
+            }
             let total = series
                 .as_ref()
                 .and_then(|s| closed_total_of(s.series_type, s.total_volume_count));
@@ -761,6 +842,11 @@ async fn edit_line_in(
             }
             let mut values = old.clone();
             values["proposed"] = edited_proposed(&old, form, roles, year)?;
+            if same_as_current(&values) {
+                return Err(EditError::SameAsCurrent {
+                    field: values["field"].as_str().unwrap_or_default().to_string(),
+                });
+            }
             check_metadata_proposal(&with_values(&rows, edited, &values), year)?;
             values
         }
@@ -1127,6 +1213,67 @@ mod tests {
     }
 
     #[test]
+    fn an_attach_checks_only_the_edited_line_against_the_live_total() {
+        let rows = vec![
+            row(
+                1,
+                Some((ProposalTargetTable::Series, 3)),
+                json!({"line": "series"}),
+            ),
+            row(
+                2,
+                Some((ProposalTargetTable::Titles, 7)),
+                json!({"line": "title", "position": 8, "is_omnibus": false}),
+            ),
+            row(
+                3,
+                None,
+                json!({"line": "expected_tome", "position": 2, "title": "T", "isbn": null}),
+            ),
+        ];
+        let tome = json!({"line": "expected_tome", "position": 4, "title": "T", "isbn": null});
+        // The title at 8 is above a total lowered to 5: editing the tome works.
+        assert!(check_series_edit(ProposalKind::SeriesAttach, &rows, 2, &tome, Some(5)).is_ok());
+        let far = json!({"line": "expected_tome", "position": 6, "title": "T", "isbn": null});
+        assert!(matches!(
+            check_series_edit(ProposalKind::SeriesAttach, &rows, 2, &far, Some(5)),
+            Err(EditError::Series(SeriesProposalError::BeyondTotal {
+                position: 6,
+                total: 5,
+                ..
+            }))
+        ));
+        let title = json!({"line": "title", "position": 8, "is_omnibus": false});
+        assert!(matches!(
+            check_series_edit(ProposalKind::SeriesAttach, &rows, 1, &title, Some(5)),
+            Err(EditError::Series(SeriesProposalError::BeyondTotal {
+                position: 8,
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn a_value_edited_back_to_the_current_one_is_detected() {
+        let year = |proposed: i64| {
+            json!({"line": "field", "field": "publication_year", "current": 1987,
+                   "current_date": "1987-06-15", "proposed": proposed})
+        };
+        assert!(same_as_current(&year(1987)));
+        assert!(!same_as_current(&year(1988)));
+        let no_year = json!({"line": "field", "field": "publication_year", "current": null,
+                             "current_date": null, "proposed": 1987});
+        assert!(!same_as_current(&no_year));
+        let text = json!({"line": "field", "field": "subtitle", "current": " Le  tome ", "proposed": "Le tome"});
+        assert!(same_as_current(&text));
+        let empty = json!({"line": "field", "field": "subtitle", "current": null, "proposed": "x"});
+        assert!(!same_as_current(&empty));
+        let contributors =
+            json!({"line": "field", "field": "contributors", "current": [], "proposed": []});
+        assert!(!same_as_current(&contributors));
+    }
+
+    #[test]
     fn attach_series_line_and_unknown_lines_are_not_editable() {
         let attach = row(
             1,
@@ -1426,6 +1573,10 @@ mod tests {
             EditError::Field {
                 field: "contributors".into(),
                 problem: FieldProblem::UnknownRole { role: "x".into() },
+            },
+            EditError::SeriesGone,
+            EditError::SameAsCurrent {
+                field: "publication_year".into(),
             },
             EditError::Invalid("internal detail".into()),
             EditError::Database(AppError::Internal("secret db text".into())),

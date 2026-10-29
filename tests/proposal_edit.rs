@@ -876,3 +876,72 @@ async fn csrf_and_role_are_required(pool: DbPool) {
     assert_eq!(version_of(&pool, id).await, v);
     assert!(!item(&pool, items[1]).await.edited);
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn stale_proposals_gone_series_and_unchanged_values_are_refused(pool: DbPool) {
+    let f = fx(&pool).await;
+    // A metadata value edited back to the title's value at filing.
+    let title = seed_title(&pool, "Daté").await;
+    sqlx::query("UPDATE titles SET publication_date = '1987-06-15' WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let id = file(
+        &f,
+        "propose_title_metadata",
+        json!({"title_id": title, "fields": {"publication_year": 1988, "subtitle": "S"}, "sources": [SRC]}),
+    )
+    .await;
+    let items = item_ids(&pool, id).await;
+    let v = version_of(&pool, id).await;
+    let year_item = {
+        let mut found = None;
+        for i in &items {
+            if item(&pool, *i).await.proposed["field"] == json!("publication_year") {
+                found = Some(*i);
+            }
+        }
+        found.unwrap()
+    };
+    let (status, body) = edit(&f, id, year_item, v, "value=1987").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(body.contains("c'est déjà la valeur du titre"), "{body}");
+    assert!(!item(&pool, year_item).await.edited);
+
+    // A stale proposal refuses edits and removals.
+    sqlx::query("UPDATE proposals SET status = 'stale', decided_at = NOW() WHERE id = ?")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = edit(&f, id, year_item, v, "value=1990").await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains("périmée"), "{body}");
+    let (status, body) = get(
+        &f,
+        &format!("/proposals/{id}/items/{year_item}/remove-modal?version={v}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+
+    // An attach whose series was deleted since filing.
+    let series = closed_series(&pool, "Bientôt supprimée", 8).await;
+    let t = seed_title(&pool, "Orphelin").await;
+    let id = file(
+        &f,
+        "propose_series_attach",
+        json!({"series_id": series, "titles": [{"title_id": t, "position": 2}], "sources": [SRC]}),
+    )
+    .await;
+    soft_delete(&pool, "series", series).await;
+    let items = item_ids(&pool, id).await;
+    let v = version_of(&pool, id).await;
+    let (status, body) = edit(&f, id, items[1], v, "position=3").await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body.contains("La série de cette proposition n'existe plus"),
+        "{body}"
+    );
+    assert_eq!(version_of(&pool, id).await, v);
+}

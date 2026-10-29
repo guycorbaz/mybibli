@@ -217,6 +217,9 @@ pub struct DetailBody {
     /// Story 11-19 — per line (index-aligned with `lines`): "edited by
     /// X on D — the assistant proposed: …", empty when not edited.
     pub edit_notes: Vec<String>,
+    /// Story 11-19 — per line (index-aligned): the line as a sentence,
+    /// naming the Edit / Remove buttons for screen readers.
+    pub line_summaries: Vec<String>,
     /// Story 11-19 — lines removed before the decision, as sentences.
     pub removed_lines: Vec<String>,
     /// Story 11-19 — roles offered by the contributor edit form.
@@ -336,7 +339,13 @@ impl DetailBody {
             .collect();
         let can_accept = proposal_accept::can_accept(p.kind, p.status)
             && proposal_edit::has_lines_to_apply(p.kind, &d.lines);
+        let line_summaries = d
+            .lines
+            .iter()
+            .map(|line| proposal_edit::line_summary(line, loc))
+            .collect();
         DetailBody {
+            line_summaries,
             can_edit: d.can_edit,
             edit_notes,
             removed_lines,

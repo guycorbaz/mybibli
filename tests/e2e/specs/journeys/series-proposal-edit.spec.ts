@@ -26,8 +26,9 @@ import { createApiKey, revokeApiKey } from "../../helpers/api-keys";
 import { mcpCallTool } from "../../helpers/mcp";
 
 const SOURCE = "https://example.org/edit";
-const EDIT = /^(Edit|Modifier|Bearbeiten|Modifica)$/;
-const REMOVE = /^(Remove|Retirer|Entfernen|Rimuovi)$/;
+// The buttons are named "<verb> — <the line>" for screen readers.
+const EDIT = /^(Edit|Modifier|Bearbeiten|Modifica) —/;
+const REMOVE = /^(Remove|Retirer|Entfernen|Rimuovi) —/;
 const SAVE = /^(Save|Enregistrer|Speichern|Salva)$/;
 const UPDATED =
   /Line of proposal #\d+ updated|Ligne de la proposition n° \d+ modifiée|Zeile von Vorschlag Nr\. \d+ geändert|Riga della proposta n\. \d+ modificata/i;

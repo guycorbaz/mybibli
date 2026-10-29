@@ -118,8 +118,15 @@
             var slot = document.getElementById(target.getAttribute("data-slot"));
             if (!slot) return;
             slot.classList.toggle("hidden");
-            if (!slot.classList.contains("hidden")) {
-                var input = slot.querySelector('input[type="text"], input:not([type])');
+            var open = !slot.classList.contains("hidden");
+            if (target.hasAttribute("aria-expanded")) {
+                target.setAttribute("aria-expanded", open ? "true" : "false");
+            }
+            if (open) {
+                // Story 11-19: a slot without a text input (number fields,
+                // a textarea) focuses its first field instead.
+                var input = slot.querySelector('input[type="text"], input:not([type])') ||
+                    slot.querySelector('input:not([type="hidden"]), select, textarea');
                 if (input) input.focus();
             }
             return;
@@ -146,6 +153,13 @@
             var editForm = editSlot.querySelector("form");
             if (editForm) editForm.reset();
             editSlot.classList.add("hidden");
+            var trigger = document.querySelector(
+                '[data-action="inline-form-add-toggle"][data-slot="' + cssEscape(editSlot.id) + '"]'
+            );
+            if (trigger) {
+                trigger.setAttribute("aria-expanded", "false");
+                trigger.focus();
+            }
             return;
         }
 

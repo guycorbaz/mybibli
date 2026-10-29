@@ -151,13 +151,15 @@
                 <div class="mt-2 flex gap-2">
                     {% if line.editable %}
                     <button type="button" data-action="inline-form-add-toggle" data-slot="proposal-edit-{{ line.item_id }}"
-                            aria-controls="proposal-edit-{{ line.item_id }}"
+                            aria-controls="proposal-edit-{{ line.item_id }}" aria-expanded="false"
+                            aria-label="{{ l.t("edit_button") }} — {{ body.line_summaries[loop.index0] }}"
                             class="px-2 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700 rounded-md hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
                         {{ l.t("edit_button") }}
                     </button>
                     {% endif %}
                     {% if line.removable %}
                     <button type="button" data-remove-line="{{ line.item_id }}"
+                            aria-label="{{ l.t("remove_button") }} — {{ body.line_summaries[loop.index0] }}"
                             hx-get="/proposals/{{ body.id }}/items/{{ line.item_id }}/remove-modal?version={{ body.version }}"
                             hx-target="#modal-slot" hx-swap="innerHTML"
                             data-modal-trigger aria-haspopup="dialog" aria-expanded="false"
