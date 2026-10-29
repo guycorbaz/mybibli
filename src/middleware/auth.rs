@@ -146,23 +146,33 @@ pub(crate) fn should_skip_session_resolve(uri_path: &str) -> bool {
         || path.starts_with("/logo/")
 }
 
-/// Story 11-21 (AC7) — whether this request may render a full page, so
-/// the nav badge needs the pending-proposals count. Librarian+ only
-/// (anonymous visitors never see the entry, and run no query). An HTMX
-/// request swaps a fragment without the nav — except a history-restore
-/// request (htmx 2 sends those with `HX-Request` when its cache misses),
-/// which re-renders the whole page.
+/// Story 11-21 (AC7) — whether this request renders a page, so the nav
+/// badge needs the pending-proposals count. Librarian+ only (anonymous
+/// visitors never see the entry, and run no query). Not for:
+/// - HTMX requests (`HX-Request: true`): they swap a fragment without the
+///   nav (an htmx history-restore request is one too, and HTMX-aware
+///   handlers answer it with a fragment);
+/// - sub-resources and scripted fetches: when the browser says what it
+///   loads (`Sec-Fetch-Dest`), only a `document` counts; otherwise only a
+///   request that accepts `text/html` (an `<img>`, a JS `fetch()`
+///   autocomplete or a PDF export does not).
+///
+/// A request with neither header (a plain HTTP client) counts.
 pub(crate) fn wants_pending_count(role: &Role, headers: &axum::http::HeaderMap) -> bool {
     if *role < Role::Librarian {
         return false;
     }
-    let is = |name: &str| {
-        headers
-            .get(name)
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.eq_ignore_ascii_case("true"))
-    };
-    !is("hx-request") || is("hx-history-restore-request")
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    if header("hx-request") == Some("true") {
+        return false;
+    }
+    if let Some(dest) = header("sec-fetch-dest") {
+        return dest.eq_ignore_ascii_case("document");
+    }
+    match header("accept") {
+        Some(accept) => accept.to_ascii_lowercase().contains("text/html"),
+        None => true,
+    }
 }
 
 /// Build the authenticated-session cookie. Shared by the login handler
@@ -622,18 +632,32 @@ mod tests {
     }
 
     #[test]
-    fn pending_count_skipped_for_htmx_fragments() {
+    fn pending_count_skipped_for_htmx_requests() {
         let htmx = headers(&[("hx-request", "true")]);
         assert!(!wants_pending_count(&Role::Admin, &htmx));
-        // A value other than "true" is not an HTMX request.
+        let restore = headers(&[("hx-request", "true"), ("hx-history-restore-request", "true")]);
+        assert!(!wants_pending_count(&Role::Admin, &restore));
+        // A value other than "true" is not an HTMX request (as `HxRequest`).
         assert!(wants_pending_count(&Role::Admin, &headers(&[("hx-request", "false")])));
     }
 
     #[test]
-    fn pending_count_kept_for_htmx_history_restore() {
-        let restore = headers(&[("hx-request", "true"), ("hx-history-restore-request", "true")]);
-        assert!(wants_pending_count(&Role::Librarian, &restore));
-        assert!(!wants_pending_count(&Role::Anonymous, &restore));
+    fn pending_count_only_for_documents_when_the_browser_says() {
+        let doc = headers(&[("sec-fetch-dest", "document"), ("accept", "text/html")]);
+        assert!(wants_pending_count(&Role::Librarian, &doc));
+        for dest in ["image", "empty", "script", "iframe"] {
+            let h = headers(&[("sec-fetch-dest", dest), ("accept", "text/html")]);
+            assert!(!wants_pending_count(&Role::Librarian, &h), "{dest}");
+        }
+    }
+
+    #[test]
+    fn pending_count_without_fetch_metadata_needs_html() {
+        let page = headers(&[("accept", "text/html,application/xhtml+xml,*/*;q=0.8")]);
+        assert!(wants_pending_count(&Role::Admin, &page));
+        assert!(!wants_pending_count(&Role::Admin, &headers(&[("accept", "*/*")])));
+        assert!(!wants_pending_count(&Role::Admin, &headers(&[("accept", "image/avif,image/webp")])));
+        assert!(!wants_pending_count(&Role::Admin, &headers(&[("accept", "application/json")])));
     }
 
     /// Issue #36 — session resolver must not run on static-asset fetches

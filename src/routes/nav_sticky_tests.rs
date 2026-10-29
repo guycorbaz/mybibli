@@ -141,8 +141,10 @@ mod tests {
         );
         let toggle = opening_tag(&html, "<button id=\"mobile-menu-toggle\"");
         assert_has(toggle, &["xl:hidden"], "hamburger switches at `xl`");
+        let header_start = html.find("<header").expect("header");
+        let header = &html[header_start..html.find("</header>").expect("header end")];
         assert!(
-            !html.contains("lg:flex") && !html.contains("lg:hidden"),
+            !header.contains("lg:flex") && !header.contains("lg:hidden"),
             "no `lg` switch left in the bar"
         );
     }
@@ -226,6 +228,10 @@ mod tests {
             let labels = html.find("<a href=\"/labels\"").unwrap();
             let proposals = html.find("<a href=\"/proposals\"").unwrap();
             assert!(labels < proposals);
+            if role == "admin" {
+                let admin = html.find("<a href=\"/admin\"").unwrap();
+                assert!(proposals < admin, "the entry sits before Admin");
+            }
         }
     }
 

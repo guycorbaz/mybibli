@@ -72,7 +72,15 @@ test.describe("Story 11-21 — access to the proposals page", () => {
     try {
       await page.context().clearCookies();
       await loginAs(page, "librarian");
-      const titleId = await scanSettledTitle(page, agent, key.plaintext, "NB", 1);
+      // A retry gets a fresh title: the first attempt's rejection blocks an
+      // equivalent re-filing on the same one library-wide (11-15).
+      const titleId = await scanSettledTitle(
+        page,
+        agent,
+        key.plaintext,
+        "NB",
+        1 + test.info().retry,
+      );
       const version = (await mcpCallTool(agent, key.plaintext, "get_title", { id: titleId }))
         .structuredContent.version;
       const filed = await mcpCallTool(agent, key.plaintext, "propose_title_metadata", {
@@ -107,8 +115,12 @@ test.describe("Story 11-21 — access to the proposals page", () => {
         "page",
       );
 
-      // Decide it.
+      // Decide it. The baseline is the count rendered by the detail page
+      // itself, one request before the decision, so a sibling spec filing
+      // in between can hardly hide the drop.
       await page.goto(`/proposals/${proposalId}`);
+      const beforeDecision = await shownCount(page);
+      expect(beforeDecision).toBeGreaterThanOrEqual(1);
       await page.getByRole("button", { name: REJECT_BUTTON }).click();
       const dialog = page.locator("#modal-slot dialog");
       await expect(dialog).toBeVisible();
@@ -119,9 +131,10 @@ test.describe("Story 11-21 — access to the proposals page", () => {
         "rejected",
       );
 
-      // Next navigation: the count dropped (a sibling spec may have filed
-      // its own proposal meanwhile, hence the poll); at zero the badge and
-      // the pill are gone (checked inside shownCount).
+      // Next navigation: the count dropped (polled: a sibling spec may file
+      // and decide its own proposal meanwhile); at zero the badge and the
+      // pill are gone (checked inside shownCount). The exact drop to zero
+      // is proven deterministically by tests/proposals_access.rs.
       await expect
         .poll(
           async () => {
@@ -130,7 +143,7 @@ test.describe("Story 11-21 — access to the proposals page", () => {
           },
           { timeout: 20000 },
         )
-        .toBeLessThan(afterFiling);
+        .toBeLessThan(beforeDecision);
 
       // #545 — the list (this decided proposal at least) fits a phone:
       // no horizontal page scroll, the row and its Open link visible.
