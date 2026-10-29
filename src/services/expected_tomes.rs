@@ -528,8 +528,10 @@ impl ExpectedTomeService {
     /// [`Self::create_in`] would settle it with) already sit at another
     /// position of the series? Returns that title and its first position
     /// — the tome would stay unsettled next to its own book
-    /// (`SettleResult::TitleElsewhere`), so acceptance skips it. Same
-    /// owner choice as `settle_with_owned_title`.
+    /// (`SettleResult::TitleElsewhere`), or a second title carrying the
+    /// same ISBN would be attached at its position — so acceptance skips
+    /// it. Every owner is considered (review round 1): `None` when one of
+    /// them already holds `position` (the tome settles on creation).
     pub async fn owner_elsewhere_in(
         conn: &mut MySqlConnection,
         series_id: u64,
@@ -537,19 +539,19 @@ impl ExpectedTomeService {
         isbn: &str,
     ) -> Result<Option<(u64, i32)>, AppError> {
         let owners = ExpectedTomeModel::live_titles_with_isbn_in(conn, &stored_forms(isbn)).await?;
-        let Some(&first) = owners.first() else {
-            return Ok(None);
-        };
+        let mut elsewhere = None;
         for &owner in &owners {
-            if ExpectedTomeModel::title_positions_in(conn, owner, series_id)
-                .await?
-                .contains(&position)
-            {
+            let held = ExpectedTomeModel::title_positions_in(conn, owner, series_id).await?;
+            if held.contains(&position) {
                 return Ok(None);
             }
+            if elsewhere.is_none()
+                && let Some(&p) = held.first()
+            {
+                elsewhere = Some((owner, p));
+            }
         }
-        let held = ExpectedTomeModel::title_positions_in(conn, first, series_id).await?;
-        Ok(held.first().map(|&p| (first, p)))
+        Ok(elsewhere)
     }
 
     /// Update an unsettled tome under optimistic locking. The holder and

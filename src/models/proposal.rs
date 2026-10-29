@@ -608,6 +608,30 @@ impl ProposalModel {
         Ok(found)
     }
 
+    /// Story 11-17 — [`Self::active_series_named`] as a locking read
+    /// (`FOR UPDATE`), for accepting a `series_create`: no index serves
+    /// the comparison, so the scan locks the `series` rows and gaps it
+    /// reads, and a concurrent creation of the same name waits for this
+    /// transaction (then sees its series). Called before any title row is
+    /// locked (series before titles, like an attach). Returns the stored
+    /// name of the oldest match.
+    pub async fn lock_series_named(
+        conn: &mut MySqlConnection,
+        name: &str,
+    ) -> Result<Option<String>, AppError> {
+        let found: Option<String> = sqlx::query_scalar(
+            "SELECT CAST(name AS CHAR) FROM series \
+             WHERE deleted_at IS NULL \
+               AND CONVERT(name USING utf8mb4) COLLATE utf8mb4_unicode_ci \
+                   = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci \
+             ORDER BY id ASC LIMIT 1 FOR UPDATE",
+        )
+        .bind(name)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found)
+    }
+
     /// One page of live proposals, newest first.
     pub async fn list(
         pool: &DbPool,

@@ -30,7 +30,7 @@ const LOAN_CREATE_MAX_ATTEMPTS: usize = 3;
 /// message — that was too broad and could match unrelated errors whose
 /// message text happens to contain that word (e.g., user-named constraints
 /// or translated messages).
-fn is_transient_conflict(err: &sqlx::Error) -> bool {
+pub(crate) fn is_transient_conflict(err: &sqlx::Error) -> bool {
     let sqlx::Error::Database(db_err) = err else {
         return false;
     };

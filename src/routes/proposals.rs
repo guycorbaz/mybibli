@@ -446,7 +446,7 @@ fn reason_field_html(loc: &str) -> String {
 }
 
 #[derive(Deserialize, Default)]
-pub struct RejectModalQuery {
+pub struct VersionQuery {
     /// The proposal version the detail page showed; the modal posts it
     /// back so a change made after the page was opened is refused.
     #[serde(default)]
@@ -461,7 +461,7 @@ pub async fn reject_modal(
     Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
     Path(id): Path<u64>,
-    Query(query): Query<RejectModalQuery>,
+    Query(query): Query<VersionQuery>,
 ) -> Result<Response, AppError> {
     let loc = locale.0;
     session.require_role_with_return(Role::Librarian, &format!("/proposals/{id}"), loc)?;
@@ -571,7 +571,7 @@ pub async fn accept_modal(
     Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
     Path(id): Path<u64>,
-    Query(query): Query<RejectModalQuery>,
+    Query(query): Query<VersionQuery>,
 ) -> Result<Response, AppError> {
     let loc = locale.0;
     session.require_role_with_return(Role::Librarian, &format!("/proposals/{id}"), loc)?;
@@ -619,9 +619,10 @@ pub async fn accept_modal(
 
 #[derive(Deserialize)]
 pub struct AcceptForm {
-    /// Absent reads as 0, which no proposal has: refused as a change.
+    /// The version the page showed, as typed: missing or garbled is
+    /// refused as a change (localized), never as a bare 422.
     #[serde(default)]
-    pub version: i32,
+    pub version: Option<String>,
 }
 
 /// `POST /proposals/{id}/accept` — accept and apply a series proposal
@@ -642,7 +643,14 @@ pub async fn accept(
     let user_id = session
         .user_id
         .ok_or_else(|| ReviewError::UnknownDecider.into_app_error(loc))?;
-    let outcome = series_acceptance::accept(&state.pool, id, user_id, form.version)
+    let Some(version) = form
+        .version
+        .as_deref()
+        .and_then(|v| v.trim().parse::<i32>().ok())
+    else {
+        return Err(ReviewError::Changed.into_app_error(loc));
+    };
+    let outcome = series_acceptance::accept(&state.pool, id, user_id, version)
         .await
         .map_err(|e| proposal_accept::into_app_error(e, loc))?;
     let entry = match &outcome {

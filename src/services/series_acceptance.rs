@@ -44,6 +44,7 @@ use crate::models::series::{HeldPosition, SeriesModel, SeriesType, TitleSeriesMo
 use crate::services::expected_tomes::{
     ExpectedTomeError, ExpectedTomeInput, ExpectedTomeService, closed_total_of,
 };
+use crate::services::loans::is_transient_conflict;
 use crate::services::proposals::{
     Decision, ProposalError, ProposalService, StaleTarget, Transition,
 };
@@ -359,6 +360,15 @@ impl From<ProposalError> for AcceptError {
     }
 }
 
+/// A `series_create` once its series line is validated.
+struct ValidCreate {
+    name: String,
+    series_type: SeriesType,
+    total: Option<i32>,
+    /// The stored name of an active series that already has this name.
+    existing: Option<String>,
+}
+
 /// The positions of validated lines above `total` (pure): the first
 /// one, as a conflict.
 fn beyond_total(lines: &ValidLines, total: Option<i32>) -> Option<AcceptConflict> {
@@ -376,6 +386,37 @@ fn beyond_total(lines: &ValidLines, total: Option<i32>) -> Option<AcceptConflict
 /// committed when the outcome is `Accepted` or `Stale`, rolled back on
 /// any error.
 pub async fn accept(
+    pool: &DbPool,
+    id: u64,
+    user_id: u64,
+    version: i32,
+) -> Result<AcceptOutcome, AcceptError> {
+    // A deadlock or lock-wait timeout (concurrent scan-settle, hand
+    // assignment, or two creations of one name on an empty `series`
+    // table) is retried on a fresh transaction, like a loan creation
+    // (#16 pattern): the whole acceptance re-runs, re-checks included.
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match accept_once(pool, id, user_id, version).await {
+            Err(AcceptError::Apply(AppError::Database(e)))
+                if is_transient_conflict(&e) && attempt < ACCEPT_MAX_ATTEMPTS =>
+            {
+                tracing::warn!(
+                    proposal_id = id,
+                    attempt,
+                    "proposal acceptance hit a transient lock conflict, retrying"
+                );
+            }
+            other => return other,
+        }
+    }
+}
+
+/// Attempts of [`accept`] on a transient lock conflict.
+const ACCEPT_MAX_ATTEMPTS: usize = 3;
+
+async fn accept_once(
     pool: &DbPool,
     id: u64,
     user_id: u64,
@@ -447,12 +488,35 @@ pub async fn accept_in(
     }
     let stored = parse_items(kind, &items).map_err(AcceptError::Invalid)?;
 
-    // Series before titles (module doc, step 3).
-    let shape = match &stored.series {
-        StoredSeries::Attach { series_id } => {
-            ExpectedTomeModel::lock_series_in(conn, *series_id).await?
+    // Series before titles (module doc, step 3). An attach locks its
+    // series row; a creation runs its same-name check as a locking read
+    // (no index serves the comparison, so it locks the scanned `series`
+    // rows and gaps): two creations of one name are serialised, and the
+    // second sees the first's series once it commits (#529-2).
+    let invalid = |e: SeriesProposalError| AcceptError::Invalid(e.to_string());
+    let (shape, create) = match &stored.series {
+        StoredSeries::Attach { series_id } => (
+            ExpectedTomeModel::lock_series_in(conn, *series_id).await?,
+            None,
+        ),
+        StoredSeries::Create {
+            name,
+            series_type,
+            total_volume_count,
+        } => {
+            let name = validate_series_name(name).map_err(invalid)?;
+            let total = validate_total(*series_type, *total_volume_count).map_err(invalid)?;
+            let existing = ProposalModel::lock_series_named(conn, &name).await?;
+            (
+                None,
+                Some(ValidCreate {
+                    name,
+                    series_type: *series_type,
+                    total,
+                    existing,
+                }),
+            )
         }
-        StoredSeries::Create { .. } => None,
     };
     let check = ProposalService::check_staleness_in(conn, id).await?;
     if check.status == ProposalStatus::Stale {
@@ -462,28 +526,16 @@ pub async fn accept_in(
     }
 
     // Re-validation against the catalog as it is now (step 5).
-    let invalid = |e: SeriesProposalError| AcceptError::Invalid(e.to_string());
-    let (lines, conflict) = match &stored.series {
-        StoredSeries::Create {
-            name,
-            series_type,
-            total_volume_count,
-        } => {
-            let name = validate_series_name(name).map_err(invalid)?;
-            let total = validate_total(*series_type, *total_volume_count).map_err(invalid)?;
-            let lines = validate_lines(&stored.titles, &stored.tomes, total).map_err(invalid)?;
-            let conflict = ProposalModel::active_series_named(conn, &name)
-                .await?
-                .map(|(_, name)| AcceptConflict::SeriesExists { name });
+    let (lines, conflict) = match (&stored.series, &create, &shape) {
+        (_, Some(c), _) => {
+            let lines = validate_lines(&stored.titles, &stored.tomes, c.total).map_err(invalid)?;
+            let conflict = c
+                .existing
+                .clone()
+                .map(|name| AcceptConflict::SeriesExists { name });
             (lines, conflict)
         }
-        StoredSeries::Attach { series_id } => {
-            // Not stale, so the series is live and was locked above.
-            let shape = shape.as_ref().ok_or_else(|| {
-                AcceptError::Apply(AppError::Internal(format!(
-                    "series {series_id} not locked although not stale"
-                )))
-            })?;
+        (StoredSeries::Attach { series_id }, None, Some(shape)) => {
             let lines = validate_lines(&stored.titles, &stored.tomes, None).map_err(invalid)?;
             let total = closed_total_of(shape.series_type, shape.total_volume_count);
             let conflict = match beyond_total(&lines, total) {
@@ -503,6 +555,12 @@ pub async fn accept_in(
             };
             (lines, conflict)
         }
+        // Not stale, so an attach's series is live and was locked above.
+        _ => {
+            return Err(AcceptError::Apply(AppError::Internal(
+                "attach series not locked although not stale".to_string(),
+            )));
+        }
     };
     if let Some(conflict) = conflict {
         match ProposalService::transition_in(conn, id, &Decision::MarkStale).await? {
@@ -519,30 +577,18 @@ pub async fn accept_in(
             return Ok(AcceptOutcome::Stale(StaleCause::Targets(targets)));
         }
     }
-    let (series_id, series_name, created) = match (&stored.series, &shape) {
-        (
-            StoredSeries::Create {
-                name,
-                series_type,
-                total_volume_count,
-            },
-            _,
-        ) => {
-            let name = name.trim().to_string();
-            let total = (*series_type == SeriesType::Closed)
-                .then(|| total_volume_count.and_then(|t| i32::try_from(t).ok()))
-                .flatten();
-            let sid = SeriesModel::create_in(conn, &name, None, *series_type, total).await?;
+    let (series_id, series_name, created) = match (create, &shape) {
+        // The validated name and total, as checked above.
+        (Some(c), _) => {
+            let sid = SeriesModel::create_in(conn, &c.name, None, c.series_type, c.total).await?;
             ProposalModel::set_applied_series_in(conn, id, sid).await?;
-            (sid, name, true)
+            (sid, c.name, true)
         }
-        (StoredSeries::Attach { series_id }, Some(shape)) => {
-            (*series_id, shape.name.clone(), false)
-        }
-        (StoredSeries::Attach { series_id }, None) => {
-            return Err(AcceptError::Apply(AppError::Internal(format!(
-                "series {series_id} not locked although not stale"
-            ))));
+        (None, Some(shape)) => (shape.id, shape.name.clone(), false),
+        (None, None) => {
+            return Err(AcceptError::Apply(AppError::Internal(
+                "attach series not locked although not stale".to_string(),
+            )));
         }
     };
 

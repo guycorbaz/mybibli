@@ -1305,7 +1305,7 @@ proposals:
   accept_modal_title: "Vorschlag Nr. %{id} annehmen?"
   accept_modal_create: "Durch das Annehmen wird die Serie „%{name}“ im Katalog angelegt."
   accept_modal_attach: "Durch das Annehmen wird die Serie „%{name}“ ergänzt:"
-  accept_modal_counts: "in die Serie aufgenommene Titel: %{titles} — hinzugefügte erwartete Bände: %{tomes}."
+  accept_modal_counts: "In die Serie aufgenommene Titel: %{titles} — hinzugefügte erwartete Bände: %{tomes}."
   accept_modal_note: "Hat sich der Katalog seit dem Einreichen des Vorschlags geändert, wird nichts hinzugefügt und der Vorschlag als veraltet markiert."
   accepted_feedback: "Vorschlag Nr. %{id} angenommen."
   applied_created: "Serie „%{name}“ angelegt — aufgenommene Titel: %{titles}, hinzugefügte erwartete Bände: %{tomes} (bereits in Ihrem Katalog: %{settled})."

@@ -19,6 +19,7 @@ use common::web::{Browser, PW_HASH, body_string, seed_admin};
 use mybibli::db::DbPool;
 use mybibli::models::expected_tome::ExpectedTomeOrigin;
 use mybibli::services::expected_tomes::{ExpectedTomeInput, ExpectedTomeService};
+use mybibli::services::series_acceptance::{self, AcceptConflict, AcceptOutcome, StaleCause};
 use serde_json::{Value, json};
 
 const SRC: &str = "https://example.org/series";
@@ -202,7 +203,10 @@ async fn accepting_a_creation_applies_every_line(pool: DbPool) {
             || modal.contains("Les Aventures &lt;de&gt; Test"),
         "{modal}"
     );
-    assert!(modal.contains(": 2") && modal.contains(": 2."), "{modal}");
+    assert!(
+        modal.contains("Titres placés dans la série : 2 — tomes attendus ajoutés : 2."),
+        "{modal}"
+    );
     assert!(!modal.contains("<de>"), "agent text escaped");
 
     let res = f
@@ -222,6 +226,15 @@ async fn accepting_a_creation_applies_every_line(pool: DbPool) {
     assert!(!body.contains("id=\"proposal-accept-button\""));
     assert!(!body.contains("id=\"proposal-reject-button\""));
     assert!(body.contains("pa-lib"), "decider shown");
+    assert!(
+        !body.contains("<de>"),
+        "agent text escaped in the body and the entry"
+    );
+    assert!(
+        body.contains("Série « Les Aventures &#60;de&#62; Test » créée")
+            || body.contains("Série « Les Aventures &lt;de&gt; Test » créée"),
+        "{body}"
+    );
 
     let sid = series_named(&pool, "Les Aventures <de> Test")
         .await
@@ -606,7 +619,12 @@ async fn refusals_change_nothing(pool: DbPool) {
     let v = version_of(&pool, id).await;
 
     // A version that moved, or none.
-    for form in [format!("version={}", v + 1), String::new()] {
+    for form in [
+        format!("version={}", v + 1),
+        String::new(),
+        "version=abc".to_string(),
+        "version=99999999999".to_string(),
+    ] {
         let (status, body) = f.lib.post_form(&f.agent.app, &path, &form).await;
         let body = text(body);
         assert_eq!(status, StatusCode::CONFLICT, "{form}");
@@ -751,4 +769,157 @@ async fn rejected_and_metadata_proposals_cannot_be_accepted(pool: DbPool) {
         "hx-get=\"/proposals/{id2}/accept-modal?version={}\"",
         version_of(&pool, id2).await
     )));
+}
+
+// ─── Two proposals for the same series (#529-2, #529-3) ───────────
+
+/// File `a`, then `b`, as if two keys filed them at the same instant:
+/// the pending-duplicate rule is sidestepped by hiding `a` while `b` is
+/// filed (resubmission delay off, restored).
+async fn file_both(f: &Fx, pool: &DbPool, tool: &str, a: Value, b: Value) -> (u64, u64) {
+    sqlx::query(
+        "UPDATE settings SET setting_value = '0' \
+         WHERE setting_key = 'proposal_resubmission_delay_days'",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    let first = file(f, tool, a).await;
+    sqlx::query("UPDATE proposals SET status = 'rejected' WHERE id = ?")
+        .bind(first)
+        .execute(pool)
+        .await
+        .unwrap();
+    let second = file(f, tool, b).await;
+    sqlx::query("UPDATE proposals SET status = 'pending' WHERE id = ?")
+        .bind(first)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE settings SET setting_value = '90' \
+         WHERE setting_key = 'proposal_resubmission_delay_days'",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
+    (first, second)
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_second_of_two_attaches_on_the_same_positions_goes_stale(pool: DbPool) {
+    let f = fx(&pool).await;
+    let sid = closed_series(&pool, "Disputée", 5).await;
+    let ta = seed_title(&pool, "Premier arrivé").await;
+    let tb = seed_title(&pool, "Second arrivé").await;
+    let (a, b) = file_both(
+        &f,
+        &pool,
+        "propose_series_attach",
+        json!({"series_id": sid, "titles": [{"title_id": ta, "position": 2}], "sources": [SRC]}),
+        json!({"series_id": sid, "titles": [{"title_id": tb, "position": 2}], "sources": [SRC]}),
+    )
+    .await;
+    assert_eq!(accept(&f, &pool, a).await.0, StatusCode::OK);
+    let (status, body) = accept(&f, &pool, b).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_stale_and_untouched(&pool, b, &body).await;
+    assert!(
+        body.contains("la position 2 est maintenant occupée par « Premier arrivé »"),
+        "{body}"
+    );
+    assert_eq!(positions(&pool, sid).await, vec![(ta, 2, false)]);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_second_of_two_creations_of_one_name_goes_stale(pool: DbPool) {
+    let f = fx(&pool).await;
+    let (a, b) = file_both(
+        &f,
+        &pool,
+        "propose_series_create",
+        json!({"name": "Jumelle", "series_type": "open",
+               "expected_tomes": [{"position": 1, "title": "Un"}], "sources": [SRC]}),
+        json!({"name": "jumelle", "series_type": "open",
+               "expected_tomes": [{"position": 2, "title": "Deux"}], "sources": [SRC]}),
+    )
+    .await;
+    assert_eq!(accept(&f, &pool, a).await.0, StatusCode::OK);
+    let (_, body) = accept(&f, &pool, b).await;
+    assert_stale_and_untouched(&pool, b, &body).await;
+    assert!(
+        body.contains("une série nommée « Jumelle » existe désormais"),
+        "{body}"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn concurrent_creations_of_one_name_create_one_series(pool: DbPool) {
+    // The same-name check is a locking read: the two acceptances are
+    // serialised (or one is retried after a deadlock), never both applied.
+    let f = fx(&pool).await;
+    let (a, b) = file_both(
+        &f,
+        &pool,
+        "propose_series_create",
+        json!({"name": "Course", "series_type": "open",
+               "expected_tomes": [{"position": 1, "title": "Un"}], "sources": [SRC]}),
+        json!({"name": "Course", "series_type": "open",
+               "expected_tomes": [{"position": 2, "title": "Deux"}], "sources": [SRC]}),
+    )
+    .await;
+    let (va, vb) = (version_of(&pool, a).await, version_of(&pool, b).await);
+    let (ra, rb) = tokio::join!(
+        series_acceptance::accept(&pool, a, f.lib_id, va),
+        series_acceptance::accept(&pool, b, f.lib_id, vb),
+    );
+    let outcomes = [ra.expect("a"), rb.expect("b")];
+    let accepted = outcomes
+        .iter()
+        .filter(|o| matches!(o, AcceptOutcome::Accepted(_)))
+        .count();
+    let stale = outcomes
+        .iter()
+        .filter(|o| {
+            matches!(
+                o,
+                AcceptOutcome::Stale(StaleCause::Conflict(AcceptConflict::SeriesExists { .. }))
+            )
+        })
+        .count();
+    assert_eq!((accepted, stale), (1, 1), "{outcomes:?}");
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM series WHERE name = 'Course'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 1);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn any_owner_of_the_isbn_already_in_the_series_skips_the_tome(pool: DbPool) {
+    // Two titles share the ISBN (two copies or editions); the first by id
+    // is not in the series, the second sits at position 1: the tome must
+    // not attach the first one at position 2.
+    let f = fx(&pool).await;
+    let sid = closed_series(&pool, "Éditions", 4).await;
+    let first = add_title(&pool, "Première édition", "book", "Roman", Some(ISBN_A)).await;
+    let second = add_title(&pool, "Seconde édition", "book", "Roman", Some(ISBN_A)).await;
+    assert!(first < second);
+    assign(&pool, second, sid, 1).await;
+    let id = file(
+        &f,
+        "propose_series_attach",
+        json!({"series_id": sid,
+               "expected_tomes": [{"position": 2, "title": "Le même livre", "isbn": ISBN_A}],
+               "sources": [SRC]}),
+    )
+    .await;
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(positions(&pool, sid).await, vec![(second, 1, false)]);
+    assert!(tomes(&pool, sid).await.is_empty());
+    assert!(
+        body.contains("« Seconde édition » est déjà à la position 1"),
+        "{body}"
+    );
 }

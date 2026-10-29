@@ -1317,7 +1317,7 @@ proposals:
   accept_modal_title: "Accepter la proposition n° %{id} ?"
   accept_modal_create: "Accepter crée la série « %{name} » dans le catalogue."
   accept_modal_attach: "Accepter ajoute à la série « %{name} » :"
-  accept_modal_counts: "titres placés dans la série : %{titles} — tomes attendus ajoutés : %{tomes}."
+  accept_modal_counts: "Titres placés dans la série : %{titles} — tomes attendus ajoutés : %{tomes}."
   accept_modal_note: "Si le catalogue a changé depuis le dépôt de la proposition, rien n'est ajouté et la proposition est marquée périmée."
   accepted_feedback: "Proposition n° %{id} acceptée."
   applied_created: "Série « %{name} » créée — titres placés : %{titles}, tomes attendus ajoutés : %{tomes} (déjà dans votre catalogue : %{settled})."
