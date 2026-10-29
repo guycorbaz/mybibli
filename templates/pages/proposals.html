@@ -35,16 +35,22 @@
         <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ l.t("empty_body") }}</p>
     </div>
     {% else %}
-    <div class="overflow-x-auto rounded-lg border border-stone-200 dark:border-stone-700">
+    {# Story 11-21 (#545) — `relative`: the sr-only header label is
+       absolutely positioned; without a positioned ancestor its containing
+       block was the viewport, so it escaped this scroll box and widened
+       the whole page at phone width. Below `sm` the Filed / Key / Items
+       columns are dropped (shown on the detail page) so the list fits a
+       360 px screen without scrolling at all. #}
+    <div class="relative overflow-x-auto rounded-lg border border-stone-200 dark:border-stone-700">
         <table id="proposals-table" class="w-full text-sm text-left">
             <thead class="text-xs text-stone-500 dark:text-stone-400 uppercase bg-stone-50 dark:bg-stone-800/50 border-b border-stone-200 dark:border-stone-700">
                 <tr>
                     <th scope="col" class="px-3 py-2">{{ l.t("col_kind") }}</th>
                     <th scope="col" class="px-3 py-2">{{ l.t("col_target") }}</th>
-                    <th scope="col" class="px-3 py-2">{{ l.t("col_filed") }}</th>
-                    <th scope="col" class="px-3 py-2">{{ l.t("col_key") }}</th>
+                    <th scope="col" class="hidden sm:table-cell px-3 py-2">{{ l.t("col_filed") }}</th>
+                    <th scope="col" class="hidden sm:table-cell px-3 py-2">{{ l.t("col_key") }}</th>
                     <th scope="col" class="px-3 py-2">{{ l.t("col_status") }}</th>
-                    <th scope="col" class="px-3 py-2 text-right">{{ l.t("col_items") }}</th>
+                    <th scope="col" class="hidden sm:table-cell px-3 py-2 text-right">{{ l.t("col_items") }}</th>
                     <th scope="col" class="px-3 py-2"><span class="sr-only">{{ l.t("open") }}</span></th>
                 </tr>
             </thead>
@@ -55,10 +61,10 @@
                     <td class="px-3 py-2">
                         {% if let Some(href) = r.target_href %}<a href="{{ href }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ r.target_text }}</a>{% else %}<span class="text-stone-700 dark:text-stone-300">{{ r.target_text }}</span>{% endif %}
                     </td>
-                    <td class="px-3 py-2 text-xs tabular-nums text-stone-500 dark:text-stone-400 whitespace-nowrap">{{ r.filed }}</td>
-                    <td class="px-3 py-2 text-stone-700 dark:text-stone-300">{{ r.key_label }}</td>
+                    <td class="hidden sm:table-cell px-3 py-2 text-xs tabular-nums text-stone-500 dark:text-stone-400 whitespace-nowrap">{{ r.filed }}</td>
+                    <td class="hidden sm:table-cell px-3 py-2 text-stone-700 dark:text-stone-300">{{ r.key_label }}</td>
                     <td class="px-3 py-2">{% let badge_status = r.status %}{% let badge_label = r.status_label.as_str() %}{% let badge_class = r.status_class %}{% include "components/proposal_status_badge.html" %}</td>
-                    <td class="px-3 py-2 text-right tabular-nums text-stone-700 dark:text-stone-300">{{ r.item_count }}</td>
+                    <td class="hidden sm:table-cell px-3 py-2 text-right tabular-nums text-stone-700 dark:text-stone-300">{{ r.item_count }}</td>
                     <td class="px-3 py-2 text-right">
                         <a href="/proposals/{{ r.id }}" aria-label="{{ r.open_aria }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ l.t("open") }}</a>
                     </td>

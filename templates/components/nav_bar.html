@@ -7,7 +7,10 @@
    templates_audit::fixed_surfaces_stack_above_sticky_nav for templates/
    and static/js; HTML built in Rust is not scanned).
    `print:static`: a printed page shows the bar once, never per sheet.
-   The bar is NOT compacted (epic 11): heights and the `lg` switch stay. #}
+   The bar is NOT compacted (epic 11): labels, gaps and heights stay.
+   Story 11-21 (D-11-21-1, decided by the project lead) — the strip/menu
+   switch moved from `lg` to `xl` (1280 px) for every role: with the
+   Proposals entry an admin's full link set needs up to 1264 px (fr). #}
 <header class="sticky top-0 z-40 print:static">
 <nav aria-label="Main navigation" class="bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 h-12 md:h-14 flex items-center px-4 lg:px-8 relative">
     <a href="/" class="flex items-center gap-2 mr-4 lg:mr-8" aria-label="mybibli — home">
@@ -20,8 +23,9 @@
        Labels entry an admin carries eight links, which overflowed a 768 px
        viewport by 86 px (caught by responsive-layouts.spec.ts). Raising the
        breakpoint keeps every role on one consistent rule and leaves no
-       viewport where a nav entry is unreachable. #}
-    <div class="hidden lg:flex items-center gap-3 lg:gap-6 flex-1">
+       viewport where a nav entry is unreachable.
+       Story 11-21 (D-11-21-1) — same reasoning one step up: `lg` → `xl`. #}
+    <div class="hidden xl:flex items-center gap-3 lg:gap-6 flex-1">
         <!-- Read-only browsing: visible to everyone (anonymous + authenticated) -->
         <a href="/catalog" {% if base.current_page == "catalog" %}aria-current="page" class="border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_catalog }}</a>
         <a href="/locations" {% if base.current_page == "locations" %}aria-current="page" class="border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_locations }}</a>
@@ -34,6 +38,11 @@
            Librarian+ block; an anonymous visitor must not learn the feature
            exists (issue requirement 6). #}
         <a href="/labels" {% if base.current_page == "labels" %}aria-current="page" class="border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_labels }}</a>
+        {# Story 11-21 (FR143, UX-DR32) — Librarian+ entry with the pending
+           count. The badge is text (never colour alone), hidden from AT;
+           the link's aria-label carries the label then the exact count
+           (the badge caps at 99+, `utils::proposals_badge_text`). #}
+        <a href="/proposals"{% if let Some(aria) = base.nav_proposals_aria %} aria-label="{{ aria }}"{% endif %} {% if base.current_page == "proposals" %}aria-current="page" class="inline-flex items-center gap-1 border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="inline-flex items-center gap-1 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_proposals }}{% if let Some(badge) = base.nav_proposals_badge %}<span data-proposals-badge aria-hidden="true" class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 text-xs font-semibold tabular-nums">{{ badge }}</span>{% endif %}</a>
         {% endif %}
         {% if base.role == "admin" %}
         <a href="/admin" {% if base.current_page == "admin" %}aria-current="page" class="border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 pb-3"{% else %}class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_admin }}</a>
@@ -68,16 +77,22 @@
             <svg class="w-5 h-5 block dark:hidden" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
         </button>
         {% if base.role == "anonymous" %}
-        <a href="/login" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">{{ base.nav_login }}</a>
+        {# Story 11-21 (#545, D-11-21-4) — the visitor's main action stays in
+           the bar down to `sm`; on a phone ("Connexion" overflowed 360 px
+           by 2 px) it is in the panel (#150). #}
+        <a href="/login" class="hidden sm:inline text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">{{ base.nav_login }}</a>
         {% else %}
-        <form method="POST" action="/logout" class="contents">
+        {# Story 11-21 (#545) — below `xl` the bar keeps only the language
+           select, the theme toggle and the menu button: logout lives in
+           the panel (#150), so a 360 px bar no longer overflows. #}
+        <form method="POST" action="/logout" class="hidden xl:contents">
             <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
             <button type="submit" class="text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 bg-transparent border-none p-0 cursor-pointer">{{ base.nav_logout }}</button>
         </form>
         {% endif %}
 
         <!-- Mobile hamburger -->
-        <button id="mobile-menu-toggle" type="button" class="lg:hidden p-2 text-stone-600 dark:text-stone-400" aria-label="{{ base.nav_menu_open }}" aria-expanded="false" aria-controls="mobile-nav">
+        <button id="mobile-menu-toggle" type="button" class="xl:hidden p-2 text-stone-600 dark:text-stone-400" aria-label="{{ base.nav_menu_open }}" aria-expanded="false" aria-controls="mobile-nav">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
     </div>
@@ -90,7 +105,7 @@
    48 / 56 px, px like --spacing so a non-16px root font cannot drift)
    and let it scroll on its own. `vh` first, `dvh` where supported (the
    dynamic toolbar of mobile browsers); older engines keep the vh bound. #}
-<div id="mobile-nav" class="hidden lg:hidden max-h-[calc(100vh-48px)] md:max-h-[calc(100vh-56px)] supports-[height:100dvh]:max-h-[calc(100dvh-48px)] md:supports-[height:100dvh]:max-h-[calc(100dvh-56px)] overflow-y-auto overscroll-contain bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 px-4 py-2">
+<div id="mobile-nav" class="hidden xl:hidden max-h-[calc(100vh-48px)] md:max-h-[calc(100vh-56px)] supports-[height:100dvh]:max-h-[calc(100dvh-48px)] md:supports-[height:100dvh]:max-h-[calc(100dvh-56px)] overflow-y-auto overscroll-contain bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 px-4 py-2">
     <a href="/catalog" {% if base.current_page == "catalog" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_catalog }}</a>
     <a href="/locations" {% if base.current_page == "locations" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_locations }}</a>
     <a href="/series" {% if base.current_page == "series" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_series }}</a>
@@ -99,6 +114,7 @@
     <a href="/loans" {% if base.current_page == "loans" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_loans }}</a>
     <a href="/wishlist" {% if base.current_page == "wishlist" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_wishlist }}</a>
     <a href="/labels" {% if base.current_page == "labels" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_labels }}</a>
+    <a href="/proposals"{% if let Some(aria) = base.nav_proposals_aria %} aria-label="{{ aria }}"{% endif %} {% if base.current_page == "proposals" %}aria-current="page" class="flex items-center gap-2 py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="flex items-center gap-2 py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_proposals }}{% if let Some(badge) = base.nav_proposals_badge %}<span data-proposals-badge aria-hidden="true" class="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 text-xs font-semibold tabular-nums">{{ badge }}</span>{% endif %}</a>
     {% endif %}
     {% if base.role == "admin" %}
     <a href="/admin" {% if base.current_page == "admin" %}aria-current="page" class="block py-2 text-indigo-600 dark:text-indigo-400 font-semibold border-l-4 border-indigo-600 pl-3"{% else %}class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100"{% endif %}>{{ base.nav_admin }}</a>
@@ -126,7 +142,8 @@
     </form>
     {# Issue #150 — mobile parity with desktop login/logout (lines 40-47 above).
        Without this block, an authenticated user on a ≤768px viewport cannot
-       sign out via the navbar (the desktop strip is hidden by `lg:hidden`). #}
+       sign out via the navbar (the bar's own logout is hidden below `xl`,
+       story 11-21). #}
     {% if base.role == "anonymous" %}
     <a href="/login" class="block py-2 text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100">{{ base.nav_login }}</a>
     {% else %}

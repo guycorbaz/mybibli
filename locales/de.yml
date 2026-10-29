@@ -167,6 +167,9 @@ nav:
   skip_to_content: Zum Hauptinhalt springen
   theme_toggle: Thema umschalten
   language_toggle_aria: Sprache wechseln
+  # Story 11-21 (FR143) — nav entry + pending-count badge (accessible name).
+  proposals: "Vorschläge"
+  proposals_pending_aria: "Vorschläge, %{count} ausstehend"
 title:
   # #202 — Metadaten-Herkunft auf /title/:id. Der Anbietername wird NICHT
   # übersetzt (NFR41) — er ist ein Eigenname. Nur das Label wird übersetzt.
@@ -720,6 +723,8 @@ dashboard:
     recent_returns_clear_aria: "Filter aufheben: Kürzliche Rückgaben"
     recent_returns_heading: "Kürzlich zurückgegeben (letzte 7 Tage)"
     recent_returns_empty: "Keine Rückgaben in den letzten 7 Tagen — eine ruhige Woche!"
+    # Story 11-21 (UX-DR33) — links to /proposals, not to a ?filter=.
+    pending_proposals_label: "Offene Vorschläge"
   # CR #243 — opt-in "Library estimated value" card on the home page.
   value_indicator:
     label: "Geschätzter Bibliothekswert"

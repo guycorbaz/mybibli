@@ -1201,6 +1201,18 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Chosen (project lead, 2026-10-29):** the badge and the dashboard indicator count every live proposal with `status = 'pending'`, whatever its lines.
 **Reversible:** yes.
 
+### D-11-21-3 — The pending count rides on `Session`, taken once per page request
+**Context:** `utils::base_context()` is pool-free and called by 50 handlers; the badge must show on every page (AC7: cheap, indexed).
+**Chosen:** `Session.pending_proposals: Option<u64>`, filled by `session_resolve_middleware` with `ProposalModel::count_pending` (index-only on `idx_proposals_status`) when `wants_pending_count` holds — Librarian+ and not an HTMX fragment request (an htmx history-restore request counts: it re-renders the page). `base_context` turns it into the badge text (capped `99+`, `PROPOSALS_BADGE_CAP`) and the entry's aria-label ("Propositions, 3 en attente" — label first, WCAG 2.5.3); the home page reuses the same number for the "Pending proposals" pill (no second query). A failed count logs a warning and shows no badge. No cache: a decision shows on the next navigation (AC3).
+**Rejected:** a cached counter in `AppState` (invalidated from filing, accept, reject, staleness, key revocation — five write paths to keep in sync); an HTMX lazy-loaded badge (one more request per page, flicker); a new `base_context` parameter (50 call sites).
+**Reversible:** yes.
+
+### D-11-21-4 — Phone width (#545): the bar's login link also yields below `sm`; the proposals list drops three columns below `sm` [PRODUCT]
+**Context:** measured after the `xl` switch at 360 px: the authenticated bar fits once its logout is hidden (D-11-21-1), but the anonymous bar still overflowed by 2 px in French ("Connexion"). `/proposals` at 360 px overflowed by ~285 px although its table sat in an `overflow-x-auto` box: the header's `sr-only` label (absolutely positioned, no positioned ancestor) escaped the scroll box and widened the page.
+**Chosen:** the bar's own login link is `hidden sm:inline` (kept in the bar from 640 px; the panel's login, #150, below) — a visitor's main action stays visible on every tablet. The proposals table box gets `relative` (root cause), and the Filed / Key / Items columns are `hidden sm:table-cell` (they stay on the detail page), so the list fits 360 px without inner scrolling either.
+**Rejected:** hiding the login below `xl` like logout (would hide a visitor's main action on tablets for no layout need); the 10-3 card mode for the proposals list (a second markup to keep in sync for four columns).
+**Reversible:** yes.
+
 ## § 11-22 — `rmcp` checkpoint before the release (part of #493)
 
 ### D-11-22-1 — Sprint-status: the story line plus the line-2 header

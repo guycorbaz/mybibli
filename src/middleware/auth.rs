@@ -49,6 +49,12 @@ pub struct Session {
     /// Stored per-user UI language (`"fr"` / `"en"`). `None` for anonymous users
     /// and for authenticated users who have not clicked the language toggle.
     pub preferred_language: Option<String>,
+    /// Story 11-21 (FR143) — live pending proposals, for the nav badge
+    /// and the dashboard indicator. Filled by `session_resolve_middleware`
+    /// only for a Librarian+ request that may render a page
+    /// ([`wants_pending_count`]); `None` everywhere else (anonymous,
+    /// HTMX fragments, a failed count) — the templates then show no badge.
+    pub pending_proposals: Option<u64>,
 }
 
 impl Session {
@@ -62,6 +68,7 @@ impl Session {
             role: Role::Anonymous,
             csrf_token,
             preferred_language: None,
+            pending_proposals: None,
         }
     }
 
@@ -137,6 +144,25 @@ pub(crate) fn should_skip_session_resolve(uri_path: &str) -> bool {
         || path.starts_with("/static/")
         || path.starts_with("/covers/")
         || path.starts_with("/logo/")
+}
+
+/// Story 11-21 (AC7) — whether this request may render a full page, so
+/// the nav badge needs the pending-proposals count. Librarian+ only
+/// (anonymous visitors never see the entry, and run no query). An HTMX
+/// request swaps a fragment without the nav — except a history-restore
+/// request (htmx 2 sends those with `HX-Request` when its cache misses),
+/// which re-renders the whole page.
+pub(crate) fn wants_pending_count(role: &Role, headers: &axum::http::HeaderMap) -> bool {
+    if *role < Role::Librarian {
+        return false;
+    }
+    let is = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.eq_ignore_ascii_case("true"))
+    };
+    !is("hx-request") || is("hx-history-restore-request")
 }
 
 /// Build the authenticated-session cookie. Shared by the login handler
@@ -220,6 +246,19 @@ pub async fn session_resolve_middleware(
     } else {
         None
     };
+
+    let mut session = session;
+    if wants_pending_count(&session.role, request.headers()) {
+        session.pending_proposals =
+            match crate::models::proposal::ProposalModel::count_pending(&state.pool).await {
+                Ok(n) => Some(n),
+                Err(e) => {
+                    // A badge is not worth an error page (AC7).
+                    tracing::warn!(error = %e, "count_pending failed; rendering no proposals badge");
+                    None
+                }
+            };
+    }
 
     request.extensions_mut().insert(session);
     let mut response = next.run(request).await;
@@ -330,6 +369,7 @@ async fn resolve_or_mint(
                         role: Role::from_db(role_str),
                         csrf_token: row.csrf_token,
                         preferred_language: row.preferred_language,
+                        pending_proposals: None,
                     },
                     None,
                 );
@@ -384,6 +424,7 @@ async fn resolve_or_mint(
                         role: Role::Anonymous,
                         csrf_token: row.csrf_token,
                         preferred_language: None,
+                        pending_proposals: None,
                     },
                     None,
                 );
@@ -406,6 +447,7 @@ async fn resolve_or_mint(
                 role: Role::Anonymous,
                 csrf_token: new_csrf_token,
                 preferred_language: None,
+                pending_proposals: None,
             },
             Some(new_session_token),
         ),
@@ -523,6 +565,7 @@ impl FromRequestParts<crate::AppState> for Session {
                     role: Role::from_db(&row.role),
                     csrf_token: row.csrf_token,
                     preferred_language: row.preferred_language,
+                    pending_proposals: None,
                 })
             }
             _ => Ok(Session::anonymous_with_token(
@@ -558,6 +601,39 @@ mod tests {
     fn test_role_ordering() {
         assert!(Role::Anonymous < Role::Librarian);
         assert!(Role::Librarian < Role::Admin);
+    }
+
+    // ─── Story 11-21 — which requests count pending proposals ─────
+
+    fn headers(pairs: &[(&'static str, &'static str)]) -> axum::http::HeaderMap {
+        let mut h = axum::http::HeaderMap::new();
+        for (k, v) in pairs {
+            h.insert(*k, axum::http::HeaderValue::from_static(v));
+        }
+        h
+    }
+
+    #[test]
+    fn pending_count_only_for_librarian_and_admin() {
+        let page = headers(&[]);
+        assert!(!wants_pending_count(&Role::Anonymous, &page));
+        assert!(wants_pending_count(&Role::Librarian, &page));
+        assert!(wants_pending_count(&Role::Admin, &page));
+    }
+
+    #[test]
+    fn pending_count_skipped_for_htmx_fragments() {
+        let htmx = headers(&[("hx-request", "true")]);
+        assert!(!wants_pending_count(&Role::Admin, &htmx));
+        // A value other than "true" is not an HTMX request.
+        assert!(wants_pending_count(&Role::Admin, &headers(&[("hx-request", "false")])));
+    }
+
+    #[test]
+    fn pending_count_kept_for_htmx_history_restore() {
+        let restore = headers(&[("hx-request", "true"), ("hx-history-restore-request", "true")]);
+        assert!(wants_pending_count(&Role::Librarian, &restore));
+        assert!(!wants_pending_count(&Role::Anonymous, &restore));
     }
 
     /// Issue #36 — session resolver must not run on static-asset fetches
@@ -626,6 +702,7 @@ mod tests {
             role: Role::Librarian,
             csrf_token: String::new(),
             preferred_language: None,
+            pending_proposals: None,
         };
         assert!(session.require_role(Role::Librarian, "fr").is_ok());
     }
@@ -647,6 +724,7 @@ mod tests {
             role: Role::Librarian,
             csrf_token: String::new(),
             preferred_language: None,
+            pending_proposals: None,
         };
         match session.require_role(Role::Admin, "en") {
             Err(AppError::Forbidden(loc)) => assert_eq!(loc, "en"),
@@ -673,6 +751,7 @@ mod tests {
             role: Role::Librarian,
             csrf_token: String::new(),
             preferred_language: None,
+            pending_proposals: None,
         };
         match session.require_role_with_return(Role::Admin, "/admin", "fr") {
             Err(AppError::Forbidden(loc)) => assert_eq!(loc, "fr"),
@@ -693,6 +772,7 @@ mod tests {
                 role,
                 csrf_token: String::new(),
                 preferred_language: None,
+                pending_proposals: None,
             }
         }
     }
@@ -770,6 +850,7 @@ mod tests {
                 role: Role::from_db(&row.role),
                 csrf_token: row.csrf_token,
                 preferred_language: row.preferred_language,
+                pending_proposals: None,
             }
         }
     }
@@ -803,6 +884,7 @@ mod tests {
             role: Role::Admin,
             csrf_token: String::new(),
             preferred_language: None,
+            pending_proposals: None,
         };
         assert!(session.require_role(Role::Librarian, "fr").is_ok());
     }

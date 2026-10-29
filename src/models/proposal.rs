@@ -788,6 +788,20 @@ impl ProposalModel {
         Ok(u64::try_from(n).unwrap_or(0))
     }
 
+    /// Story 11-21 (FR143) — how many live proposals await a decision:
+    /// the nav badge and the dashboard indicator. Every `pending` row
+    /// counts, including one with no line left to apply (D-11-21-2).
+    /// Index-only on `idx_proposals_status (status, deleted_at)` — it
+    /// runs on every Librarian+ page render.
+    pub async fn count_pending(pool: &DbPool) -> Result<u64, AppError> {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM proposals WHERE status = 'pending' AND deleted_at IS NULL",
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(u64::try_from(n).unwrap_or(0))
+    }
+
     // ── Story 11-15: history and resubmission delay ────────────────
 
     /// The value of a live `settings` row, if any. Plain read.

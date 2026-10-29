@@ -916,6 +916,7 @@ mod tests {
             role: crate::middleware::auth::Role::Librarian,
             csrf_token: token.to_string(),
             preferred_language: None,
+            pending_proposals: None,
         };
         let app = build_app(state, authenticated);
 

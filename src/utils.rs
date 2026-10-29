@@ -436,6 +436,12 @@ pub struct BaseContextFields {
     pub nav_series: String,
     pub nav_borrowers: String,
     pub nav_admin: String,
+    /// Story 11-21 (FR143) — Librarian+ entry to `/proposals`.
+    pub nav_proposals: String,
+    /// Badge text ("3", "99+"); `None` at zero or when not counted.
+    pub nav_proposals_badge: Option<String>,
+    /// The entry's accessible name with the exact count; `None` with the badge.
+    pub nav_proposals_aria: Option<String>,
     pub nav_login: String,
     pub nav_logout: String,
     pub nav_menu_open: String,
@@ -489,6 +495,32 @@ pub fn build_js_i18n_bundle(locale: &str) -> String {
         .replace('&', "\\u0026")
 }
 
+/// Story 11-21 — above this many pending proposals the nav badge reads
+/// `99+`, so the widest badge is known and fits the bar at `xl` in every
+/// locale (D-11-21-1). The accessible name keeps the exact count.
+pub const PROPOSALS_BADGE_CAP: u64 = 99;
+
+/// The nav badge text for `count` pending proposals: `None` at zero or
+/// when the count was not taken (anonymous, HTMX fragment, failure).
+pub fn proposals_badge_text(count: Option<u64>) -> Option<String> {
+    match count {
+        None | Some(0) => None,
+        Some(n) if n > PROPOSALS_BADGE_CAP => Some(format!("{PROPOSALS_BADGE_CAP}+")),
+        Some(n) => Some(n.to_string()),
+    }
+}
+
+/// The nav entry's accessible name when a badge shows: the visible label
+/// first (WCAG 2.5.3 label in name), then the exact count.
+pub fn proposals_badge_aria(count: Option<u64>, locale: &str) -> Option<String> {
+    match count {
+        None | Some(0) => None,
+        Some(n) => Some(
+            rust_i18n::t!("nav.proposals_pending_aria", locale = locale, count = n).to_string(),
+        ),
+    }
+}
+
 /// Build the shared fields for a full-page render. Caller provides the
 /// page-specific `current_page` slug + the original request URI (used
 /// for the language-toggle hidden input and the lang-toggle aria label),
@@ -519,6 +551,9 @@ pub fn base_context(
         nav_series: rust_i18n::t!("nav.series", locale = locale).to_string(),
         nav_borrowers: rust_i18n::t!("nav.borrowers", locale = locale).to_string(),
         nav_admin: rust_i18n::t!("nav.admin", locale = locale).to_string(),
+        nav_proposals: rust_i18n::t!("nav.proposals", locale = locale).to_string(),
+        nav_proposals_badge: proposals_badge_text(session.pending_proposals),
+        nav_proposals_aria: proposals_badge_aria(session.pending_proposals, locale),
         nav_login: rust_i18n::t!("nav.login", locale = locale).to_string(),
         nav_logout: rust_i18n::t!("nav.logout", locale = locale).to_string(),
         nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
@@ -560,6 +595,9 @@ pub(crate) fn test_base_context(
         nav_series: rust_i18n::t!("nav.series", locale = locale).to_string(),
         nav_borrowers: rust_i18n::t!("nav.borrowers", locale = locale).to_string(),
         nav_admin: rust_i18n::t!("nav.admin", locale = locale).to_string(),
+        nav_proposals: rust_i18n::t!("nav.proposals", locale = locale).to_string(),
+        nav_proposals_badge: None,
+        nav_proposals_aria: None,
         nav_login: rust_i18n::t!("nav.login", locale = locale).to_string(),
         nav_logout: rust_i18n::t!("nav.logout", locale = locale).to_string(),
         nav_menu_open: rust_i18n::t!("nav.menu_open", locale = locale).to_string(),
@@ -572,6 +610,42 @@ pub(crate) fn test_base_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ─── Story 11-21 — proposals nav badge ─────────────────────────
+
+    #[test]
+    fn proposals_badge_hidden_at_zero_or_uncounted() {
+        assert_eq!(proposals_badge_text(None), None);
+        assert_eq!(proposals_badge_text(Some(0)), None);
+        assert_eq!(proposals_badge_aria(None, "en"), None);
+        assert_eq!(proposals_badge_aria(Some(0), "fr"), None);
+    }
+
+    #[test]
+    fn proposals_badge_caps_at_99_plus() {
+        assert_eq!(proposals_badge_text(Some(1)).as_deref(), Some("1"));
+        assert_eq!(proposals_badge_text(Some(99)).as_deref(), Some("99"));
+        assert_eq!(proposals_badge_text(Some(100)).as_deref(), Some("99+"));
+        assert_eq!(proposals_badge_text(Some(12_345)).as_deref(), Some("99+"));
+    }
+
+    #[test]
+    fn proposals_badge_aria_states_the_exact_count_after_the_label() {
+        assert_eq!(
+            proposals_badge_aria(Some(3), "en").as_deref(),
+            Some("Proposals, 3 pending")
+        );
+        assert_eq!(
+            proposals_badge_aria(Some(150), "fr").as_deref(),
+            Some("Propositions, 150 en attente")
+        );
+        for loc in ["en", "fr", "de", "it"] {
+            let label = rust_i18n::t!("nav.proposals", locale = loc).to_string();
+            let aria = proposals_badge_aria(Some(7), loc).unwrap();
+            assert!(aria.starts_with(&label), "{loc}: {aria}");
+            assert!(aria.contains('7'), "{loc}: {aria}");
+        }
+    }
 
     // ─── Story 11-1 (#497) — ISBN-10 → ISBN-13 ────────────────────
 

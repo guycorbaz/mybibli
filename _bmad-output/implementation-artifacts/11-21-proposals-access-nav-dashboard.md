@@ -1,6 +1,6 @@
 # Story 11.21: Access to the proposals page
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR143, UX-DR32, UX-DR33. Also closes #545 (phone-width overflow of the bar and of the `/proposals` list). Epic 11 — twenty-first story. Not here: CR #547 (left sidebar — explicitly out of scope until epic 11 is closed, decided by the project lead on 2026-10-29).
 
@@ -48,14 +48,14 @@ The AC below are the epic's AC amended accordingly (AC4 replaces "stop at `lg`")
 
 ## Tasks / Subtasks
 
-- [ ] T1 — Count (AC1, AC3, AC7): `ProposalModel::count_pending(pool)`; `Session.pending_proposals: Option<u64>`; filled in `session_resolve_middleware` for Librarian+ on non-HTMX requests (and HTMX history-restore requests); pure predicate `wants_pending_count(role, headers)` unit-tested; `sqlx` dynamic query (no offline cache change) or macro + `cargo sqlx prepare`.
-- [ ] T2 — Nav (AC1, AC4, AC6): `BaseContextFields` gains `nav_proposals`, `nav_proposals_badge` (`Option<String>`: "3" / "99+") and `nav_proposals_aria` (`Option<String>`); `nav_bar.html` entry in strip + panel; `lg` → `xl` for strip / hamburger / panel; logout `hidden xl:contents`; comments updated (CR #443 → 11-21).
-- [ ] T3 — Indicator (AC2): `IndicatorTag.href`; `pending_proposals_tag(count, loc)` in `home_indicators.rs`; one line in `home.rs`; macro uses `tag.href`.
-- [ ] T4 — `/proposals` list fits 360 px (AC6).
-- [ ] T5 — Locales ×4 (AC8).
-- [ ] T6 — Unit + router tests: badge text cap, aria, anonymous sees nothing, librarian/admin see the entry, count includes a pending proposal without lines to apply (DB test), indicator tag href, nav_sticky_tests `xl`.
-- [ ] T7 — E2E: `proposals-access.spec.ts` (new spec id), `responsive-layouts.spec.ts` tightened, `navbar-hamburger.spec.ts` locator.
-- [ ] T8 — Gates, decisions log, sprint-status.
+- [x] T1 — Count (AC1, AC3, AC7): `ProposalModel::count_pending(pool)`; `Session.pending_proposals: Option<u64>`; filled in `session_resolve_middleware` for Librarian+ on non-HTMX requests (and HTMX history-restore requests); pure predicate `wants_pending_count(role, headers)` unit-tested; `sqlx` dynamic query (no offline cache change) or macro + `cargo sqlx prepare`.
+- [x] T2 — Nav (AC1, AC4, AC6): `BaseContextFields` gains `nav_proposals`, `nav_proposals_badge` (`Option<String>`: "3" / "99+") and `nav_proposals_aria` (`Option<String>`); `nav_bar.html` entry in strip + panel; `lg` → `xl` for strip / hamburger / panel; logout `hidden xl:contents`; comments updated (CR #443 → 11-21).
+- [x] T3 — Indicator (AC2): `IndicatorTag.href`; `pending_proposals_tag(count, loc)` in `home_indicators.rs`; one line in `home.rs`; macro uses `tag.href`.
+- [x] T4 — `/proposals` list fits 360 px (AC6).
+- [x] T5 — Locales ×4 (AC8).
+- [x] T6 — Unit + router tests: badge text cap, aria, anonymous sees nothing, librarian/admin see the entry, count includes a pending proposal without lines to apply (DB test), indicator tag href, nav_sticky_tests `xl`.
+- [x] T7 — E2E: `proposals-access.spec.ts` (new spec id), `responsive-layouts.spec.ts` tightened, `navbar-hamburger.spec.ts` locator.
+- [x] T8 — Gates, decisions log, sprint-status.
 
 ## Dev Notes
 
@@ -86,8 +86,33 @@ Validated 2026-10-29 against `.claude/skills/bmad-create-story/checklist.md`. Ad
 
 ### Agent Model Used
 
+Claude Opus 5.5 (claude-opus-5-5)
+
 ### Debug Log References
+
+- First attempt (UX-DR32 stop): fr 1264 / de 1168 / it 1216 / en 1116 px minimum clean widths with the entry.
+- After the `xl` switch, Admin, worst-case `99+` badge, 360 / 1279 / 1280 / 1920 px, pages `/ /catalog /series /proposals /loans /borrowers /admin`: no page or bar overflow; at 1280 px the strip's last link ends 16 px (fr), 45 px (de), 164 px (en) before the right-hand group.
+- Anonymous bar at 360 px: 2 px overflow in French ("Connexion") → D-11-21-4.
+- `/proposals?status=all` at 360 px: page 645 px wide although the table sat in `overflow-x-auto` — the `sr-only` header label escaped the scroll box → `relative` + three columns dropped below `sm` (D-11-21-4).
 
 ### Completion Notes List
 
+- D-11-21-1 / D-11-21-2 ([PRODUCT], decided by the project lead): switch at `xl` for every role, no compaction; pending proposals with no line left still count.
+- D-11-21-3: the count rides on `Session` (`session_resolve_middleware`, Librarian+, page requests only), one index-only `COUNT(*)`; badge text capped `99+`, aria-label with the exact count; the dashboard pill reuses it.
+- D-11-21-4 ([PRODUCT]): below `sm` the anonymous bar's login link moves to the panel; `/proposals` drops Filed / Key / Items below `sm`.
+- Closes #545.
+
 ### File List
+
+- `src/models/proposal.rs` — `ProposalModel::count_pending`.
+- `src/middleware/auth.rs` — `Session.pending_proposals`, `wants_pending_count`, count in `session_resolve_middleware`; tests.
+- `src/utils.rs` — `nav_proposals*` fields, `proposals_badge_text`, `proposals_badge_aria`, `PROPOSALS_BADGE_CAP`; tests.
+- `src/routes/home_indicators.rs` — `IndicatorTag.href`, `pending_proposals_tag`; tests.
+- `src/routes/home.rs` — appends the pill (one line) + test helper `href`.
+- `src/routes/nav_sticky_tests.rs` — `xl` switch, logout/login visibility, Proposals entry render tests.
+- `src/middleware/csrf.rs`, `src/routes/{admin,catalog,titles}.rs` — `Session` literals in tests.
+- `templates/components/nav_bar.html`, `templates/components/filter_tag.html`, `templates/pages/home.html`, `templates/pages/proposals.html`.
+- `locales/{en,fr,de,it}.yml` — `nav.proposals`, `nav.proposals_pending_aria`, `dashboard.attention.pending_proposals_label`.
+- `tests/proposals_access.rs` (new), `tests/navbar_hamburger.rs`.
+- `tests/e2e/specs/journeys/proposals-access.spec.ts` (new, spec id `NB`), `responsive-layouts.spec.ts`, `navbar-hamburger.spec.ts`, `navbar-role-visibility.spec.ts`.
+- `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md`, `sprint-status.yaml`.

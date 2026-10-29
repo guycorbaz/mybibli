@@ -1883,6 +1883,7 @@ mod tests {
             role: crate::middleware::auth::Role::Anonymous,
             csrf_token: String::new(),
             preferred_language: None,
+            pending_proposals: None,
         };
 
         let html = metadata_display_html(&title, "BD", &session, false, "en");
@@ -1945,6 +1946,7 @@ mod tests {
             role: crate::middleware::auth::Role::Anonymous,
             csrf_token: String::new(),
             preferred_language: None,
+            pending_proposals: None,
         };
 
         let html = metadata_display_html(&title, "Fiction", &session, false, "en");

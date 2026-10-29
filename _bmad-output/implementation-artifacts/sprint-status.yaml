@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-10-29 (story 11-21 access to the proposals page (#493) → ready-for-dev)
+# last_updated: 2026-10-29 (story 11-21 access to the proposals page (#493) → review)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -238,7 +238,7 @@ development_status:
   11-18-accept-metadata-cover-proposal: done
   11-19-edit-proposal-before-accept: done
   11-20-proposal-side-by-side-view: done
-  11-21-proposals-access-nav-dashboard: ready-for-dev
+  11-21-proposals-access-nav-dashboard: review
   11-22-rmcp-checkpoint: done
   11-23-epic-11-smoke-test: backlog
   11-24-epic-11-documentation: backlog

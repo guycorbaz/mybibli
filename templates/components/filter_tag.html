@@ -9,10 +9,13 @@
    it with their own (label, count, filter_name, is_active,
    clear_aria_label) tuples.
 
+   Story 11-21 — `href` is passed in: `/?filter=<name>` for the five
+   filters, `/proposals` for the pending-proposals pill (UX-DR33).
+
    CSP-clean — Tailwind utility classes only, no inline styles, no
    event handlers. Plain <a href> works without JS; the page handler
    renders the right state based on the URL filter param. #}
-{%- macro tag(label, count, filter_name, is_active, clear_aria_label) -%}
+{%- macro tag(label, count, filter_name, href, is_active, clear_aria_label) -%}
 {%- if is_active -%}
 {# Active state — always rendered when its filter is active, regardless
    of count. This is the user's only visible escape hatch from the
@@ -26,7 +29,7 @@
 {# Default state — pill with count. Hidden when count=0 (UX-DR4
    zero-count rule) so the "What needs attention" section disappears
    entirely when there's nothing to act on. #}
-<a href="/?filter={{ filter_name }}" id="filter-tag-{{ filter_name }}" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 text-sm hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors" aria-label="{{ label }}: {{ count }}">
+<a href="{{ href }}" id="filter-tag-{{ filter_name }}" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 text-sm hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors" aria-label="{{ label }}: {{ count }}">
     <span>{{ label }}</span>
     <span class="font-semibold tabular-nums">{{ count }}</span>
 </a>

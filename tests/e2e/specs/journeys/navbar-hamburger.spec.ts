@@ -2,7 +2,8 @@
  * Story 9-17 — NavBar hamburger menu + scanner auto-close E2E.
  *
  * Covers AC11 — 5 scenarios:
- *   1. Hamburger visible on tablet (md breakpoint), hidden on desktop;
+ *   1. Hamburger visible on tablet, hidden on desktop (switch at `xl`
+ *      since story 11-21);
  *      reverse on resize.
  *   2. Open / link-click / Escape / outside-click — each path closes the
  *      panel and restores aria-expanded=false on the trigger.
@@ -31,9 +32,11 @@ test.describe("Story 9-17 — NavBar hamburger menu", () => {
     const trigger = page.locator("#mobile-menu-toggle");
     // CR #443 — the strip switches at `lg`, not `md`: with the Labels entry
     // an admin carries eight links, which overflowed a 768 px viewport.
-    // This locator names the utility class, so it had to move with it.
+    // Story 11-21 (D-11-21-1) moved it on to `xl` (1280 px) for the
+    // Proposals entry. This locator names the utility class, so it moves
+    // with it.
     const desktopNav = page
-      .locator("nav[aria-label='Main navigation'] > div.hidden.lg\\:flex")
+      .locator("nav[aria-label='Main navigation'] > div.hidden.xl\\:flex")
       .first();
 
     await expect(trigger).toBeVisible();
