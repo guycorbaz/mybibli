@@ -24,11 +24,13 @@ use serde_json::Value;
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::PaginatedList;
+use crate::models::contributor_role::ContributorRoleModel;
 use crate::models::proposal::{
     ProposalFilter, ProposalKind, ProposalModel, ProposalStatus, ProposalSummaryRow,
     ProposalTarget, ProposalTargetTable, TitleBrief,
 };
 use crate::services::cover_staging;
+use crate::services::proposal_edit;
 use crate::services::proposal_history::{ProposalSubject, SubjectLine};
 use crate::services::proposals::{
     Decision, Proposal, ProposalDetail, ProposalError, ProposalItem, ProposalService, Transition,
@@ -262,6 +264,17 @@ pub async fn list_page(
 pub struct ContributorView {
     pub name: String,
     pub role: String,
+    /// Story 11-19 — the role id of a proposed contributor (the edit
+    /// form's selected role); `None` for a current contributor.
+    pub role_id: Option<u64>,
+}
+
+impl ContributorView {
+    /// Story 11-19 — whether this proposed contributor has role `id`
+    /// (the edit form's selected option).
+    pub fn has_role(&self, id: &u64) -> bool {
+        self.role_id == Some(*id)
+    }
 }
 
 /// One item of a proposal, ready for display. `line` says which fields
@@ -270,12 +283,23 @@ pub struct ContributorView {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LineView {
     pub line: &'static str,
+    /// Story 11-19 — the item this line shows (0 for a line built from
+    /// a trail value).
+    pub item_id: u64,
+    /// Story 11-19 — the page offers to edit / remove this line.
+    pub editable: bool,
+    pub removable: bool,
+    /// Story 11-19 — set when a librarian edited the line: who, when and
+    /// the agent's values.
+    pub edit: Option<LineEdit>,
     pub target_id: Option<u64>,
     /// The live target's name (`None` when deleted or untargeted).
     pub target_name: Option<String>,
     // series_new
     pub name: String,
     pub series_type: String,
+    /// `open` / `closed` as stored (the edit form's selection).
+    pub series_type_raw: String,
     pub total: Option<String>,
     // title / tome
     pub position: String,
@@ -302,6 +326,25 @@ pub struct LineView {
     pub raw_json: String,
 }
 
+/// Story 11-19 — a librarian's edit of a live line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LineEdit {
+    /// The editor's username as recorded (`None`: not recorded).
+    pub by: Option<String>,
+    pub at: Option<NaiveDateTime>,
+    /// The line as the agent filed it.
+    pub original: Box<LineView>,
+}
+
+/// Story 11-19 — a line a librarian removed before the decision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemovedLine {
+    /// The line as the agent filed it.
+    pub line: LineView,
+    pub by: Option<String>,
+    pub at: Option<NaiveDateTime>,
+}
+
 /// A JSON scalar as display text; `null` / absent → `None`, an object or
 /// array → its JSON text.
 fn text_of(v: Option<&Value>) -> Option<String> {
@@ -325,6 +368,7 @@ fn contributors_of(v: Option<&Value>) -> Option<Vec<ContributorView>> {
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_string(),
+                role_id: c.get("role_id").and_then(Value::as_u64),
             })
         })
         .collect()
@@ -359,6 +403,10 @@ pub fn parse_line(target: Option<ProposalTarget>, values: &Value, loc: &str) -> 
                     line: "series_new",
                     name: name.to_string(),
                     series_type,
+                    series_type_raw: s("series_type")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
                     total: text_of(s("total_volume_count")),
                     ..LineView::default()
                 }
@@ -447,6 +495,15 @@ pub struct ReviewDetail {
     pub proposal: Proposal,
     pub target: TargetLabel,
     pub lines: Vec<LineView>,
+    /// Story 11-19 — lines removed before the decision (trail).
+    pub removed: Vec<RemovedLine>,
+    /// Story 11-19 — the page offers line edits (a pending proposal
+    /// that is not a cover proposal).
+    pub can_edit: bool,
+    /// Story 11-19 — the roles the contributor edit form offers: the
+    /// live roles, plus any proposed role no longer live (so the form
+    /// shows it; saving it is refused as an unknown role).
+    pub roles: Vec<(u64, String)>,
     /// Whether the cover route will serve an image: a pending cover
     /// proposal whose well-formed staged file is on disk
     /// (`servable_staged_name` + an existence check).
@@ -492,9 +549,19 @@ pub async fn review_detail(
         table: ProposalTargetTable::Series,
         id,
     });
+    // Story 11-19 — edited and removed lines (removed items included).
+    let trail = {
+        let mut conn = pool.acquire().await?;
+        ProposalModel::item_trail(&mut conn, id).await?
+    };
     let names = Names::load(
         pool,
-        detail.items.iter().filter_map(|i| i.target).chain(applied),
+        detail
+            .items
+            .iter()
+            .filter_map(|i| i.target)
+            .chain(trail.iter().filter_map(|t| t.target))
+            .chain(applied),
     )
     .await?;
     let subject_lines: Vec<SubjectLine<'_>> = detail
@@ -513,25 +580,78 @@ pub async fn review_detail(
             name: Some(name.clone()),
         };
     }
-    let lines = detail
-        .items
-        .iter()
-        .map(|item| {
-            let mut line = parse_line(item.target, &item.proposed_values, loc);
-            if let Some(id) = line.target_id {
-                match line.line {
-                    "series_target" => line.target_name = names.series.get(&id).cloned(),
-                    _ => {
-                        if let Some(t) = names.titles.get(&id) {
-                            line.target_name = Some(t.title.clone());
-                            line.current_cover_url = t.cover_image_url.clone().unwrap_or_default();
-                        }
+    let named = |target: Option<ProposalTarget>, values: &Value| {
+        let mut line = parse_line(target, values, loc);
+        if let Some(id) = line.target_id {
+            match line.line {
+                "series_target" => line.target_name = names.series.get(&id).cloned(),
+                _ => {
+                    if let Some(t) = names.titles.get(&id) {
+                        line.target_name = Some(t.title.clone());
+                        line.current_cover_url = t.cover_image_url.clone().unwrap_or_default();
                     }
                 }
             }
+        }
+        line
+    };
+    let kind = detail.proposal.kind;
+    let can_edit = detail.proposal.status == ProposalStatus::Pending && kind != ProposalKind::Cover;
+    let live_lines = detail.items.len();
+    let lines: Vec<LineView> = detail
+        .items
+        .iter()
+        .map(|item| {
+            let mut line = named(item.target, &item.proposed_values);
+            line.item_id = item.id;
+            if can_edit {
+                line.editable = proposal_edit::editable(kind, &line);
+                line.removable = proposal_edit::removable(kind, &line, live_lines);
+            }
+            line.edit = trail
+                .iter()
+                .find(|t| t.id == item.id && !t.removed)
+                .and_then(|t| {
+                    let original: Value =
+                        serde_json::from_str(t.original_values_json.as_deref()?).ok()?;
+                    Some(LineEdit {
+                        by: t.edited_by_name.clone(),
+                        at: t.edited_at,
+                        original: Box::new(named(t.target, &original)),
+                    })
+                });
             line
         })
         .collect();
+    let removed = trail
+        .iter()
+        .filter(|t| t.removed)
+        .map(|t| {
+            let raw = t
+                .original_values_json
+                .as_deref()
+                .unwrap_or(&t.proposed_values_json);
+            let values: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
+            RemovedLine {
+                line: named(t.target, &values),
+                by: t.edited_by_name.clone(),
+                at: t.edited_at,
+            }
+        })
+        .collect();
+    let roles = if can_edit && lines.iter().any(|l| l.line == "contributors") {
+        let mut roles = ContributorRoleModel::find_all(pool).await?;
+        for c in lines.iter().flat_map(|l| &l.contributors_proposed) {
+            if let Some(id) = c.role_id
+                && !roles.iter().any(|(rid, _)| *rid == id)
+            {
+                roles.push((id, c.role.clone()));
+            }
+        }
+        roles
+    } else {
+        Vec::new()
+    };
     // A decided proposal's staged file is discarded (reject, stale) or
     // promoted (accept, 11-18): only a pending one has an image to show,
     // and only while its file is on disk.
@@ -543,6 +663,9 @@ pub async fn review_detail(
         proposal: detail.proposal,
         target,
         lines,
+        removed,
+        can_edit,
+        roles,
         has_staged_cover,
     }))
 }

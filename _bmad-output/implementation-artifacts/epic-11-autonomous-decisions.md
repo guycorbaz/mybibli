@@ -1078,3 +1078,63 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Chosen:** the fetched cover is written to a `.tmp-` name and renamed (a failed write never truncates the cover in place; the 8-7 purge removes stray `.tmp-` files); the fetch comment describes the new path.
 **Accepted (Low):** bulk-fetch counts read "no cover found" for a cover set by hand during the download or a failed manual-cover lookup; `unmark_manually_edited` has no compare-and-set (a manual upload landing between the decision and a failed promotion loses its mark); the cover encode stays synchronous on the async worker (pre-existing).
 **Reversible:** yes.
+
+## § 11-19 — Edit a proposal before accepting it (part of #493)
+
+### D-11-19-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-19-edit-proposal-before-accept` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-19-2 — A removed line is a soft-deleted item; the trail lives on the item [PRODUCT]
+**Context:** AC "the agent's original values are kept next to the edited ones so the history shows what changed"; FR146 (decision trail); 11-9 already reads live items everywhere (`items`, `subject_lines`, the list count, the duplicate reads) and anticipated `NothingToApply` for 11-19.
+**Chosen:** migration `20261030090000` adds `proposal_items.original_values JSON NULL` (the agent's values, copied by the first edit or by the removal — assigned first in the `UPDATE`, MariaDB evaluating `SET` left to right), `edited_by_name` (username copied at the time, no FK, like `decided_by_name`) and `edited_at`. Removing a line sets `deleted_at`: acceptance, staleness, the subject (#535 unchanged) and the count ignore it with no further change; `proposal_items` is not in the purge whitelist, so the line stays on record. The detail page shows, under an edited line, "Edited by X on D. The assistant proposed: …", and a "Lines removed before the decision" section — before and after the decision. `list_my_proposals` (MCP) is unchanged: the agent sees the decision, not the librarian's edits.
+**Rejected:** a separate edit-log table (one row per change — more than the AC asks; the item already carries the before / after pair); keeping removed lines live with a flag (every live-item read would need a new predicate).
+**Reversible:** yes (migration).
+
+### D-11-19-3 — What can be edited; covers are accepted or rejected as they are [PRODUCT]
+**Context:** FR139 lists series name / type / total, positions and omnibus flags, proposed metadata values, expected tomes; the brief asks to decide what "edit" means for covers.
+**Chosen:** creation series line — name, type, total (ignored for an open series); title line — position, omnibus flag, last position; expected tome — position, title, ISBN; metadata scalar — the proposed value (`current`, `current_date`, `current_truncated` stay as filed: the staleness baseline, D-11-13-2); contributors — each entry's name and role (a select of the live roles, by id; a cleared name drops the entry). Nothing is added (FR139: edit and remove only). Not editable: an attach's series line (it only names the series) and a **cover line** — the staged image is the whole proposal; a different image is a new proposal, so a cover proposal is accepted or rejected as it is. Targets, target versions and the equivalence key never change (D-11-15-2).
+**Reversible:** yes.
+
+### D-11-19-4 — What can be removed; an attach left with its series line only can only be rejected [PRODUCT]
+**Context:** AC "I can remove any item" and "a proposal whose items were all removed can only be rejected"; D-11-12-2 ("11-19 must not let [the series line] be removed").
+**Chosen:** title, tome, field and contributor lines are removable through the UX-DR8 modal (`remove` variant). Never removable: the series line (D-11-12-2), the cover line (the proposal's only line), and the **last line of a metadata proposal** — with no field line left it would lose its subject (`ProposalSubject` is read from live items, #535), so the page says to reject instead. An attach whose title and tome lines were all removed keeps its series line: the page offers only Reject, the accept modal and the accept POST answer `NothingToApply` (409, nothing changed — new check in `series_acceptance::accept_in`, the existing copy). A creation with no title or tome line left still creates its series (filing allows that shape).
+**Rejected:** letting a metadata proposal lose every line (an unnamed proposal in the list and in the agent's history).
+**Reversible:** yes.
+
+### D-11-19-5 — Validation: the filing rules on the edited proposal, the edited line against the series [PRODUCT]
+**Context:** AC "edits pass the same validation as filing"; D-11-17-6 (a malformed stored proposal is refused at acceptance — an edit must never produce one).
+**Chosen:** the proposal is re-parsed with the edited item (`series_acceptance::parse_items`) and checked with `validate_series_name` / `validate_total` / `validate_lines` (positions, omnibus range, a position used twice, a closed total, tome title / ISBN, an ISBN twice); for an attach, the edited line alone against the series as it is now (`check_against_series` on the locked series' holders and live tomes — a conflict on an untouched line does not block fixing another, acceptance re-checks every line); for a creation, an active series already carrying the edited name. Metadata: `validate_fields` with the **live** roles, contributors as `{name, role}`; then the edited proposal must pass `metadata_acceptance::{parse_items, revalidate, paired_contributors}`. The stored values are the validated ones (trimmed, normalised, ISBN-13). Refusals are terse field hints (400, nothing saved), localized; an edit equal to the stored values records nothing ("Nothing changed").
+**Rejected:** checking every line against the series at each edit (an old conflict elsewhere would block the very edit that could fix it).
+**Reversible:** yes.
+
+### D-11-19-6 — Optimistic lock on the proposal; the project's usual conflict message
+**Context:** AC "optimistic locking on the proposal refuses the second save with the project's usual conflict message"; D-11-16-10/-11 (the page's version).
+**Chosen:** one transaction per edit or removal: `lock_for_decision` (`FOR UPDATE`; decided → 11-16 copy, stale → stale copy), version compared with the one the form carries (missing or garbled = conflict), items share-locked, for an attach the series row then its holders and tomes (the acceptance lock order proposal → items → series), item `UPDATE`, then `UPDATE proposals SET version = version + 1 WHERE id = ? AND version = ?`. A moved version answers `error.conflict` ("This record was modified by another user. Please reload and try again."). The re-rendered body carries the new version for the next edit, Accept and Reject. Roles are read before the transaction (plain read; acceptance re-checks role liveness under lock, D-11-18-3).
+**Reversible:** yes.
+
+### D-11-19-7 — UI: inline form via `inline-form.js`, removal through the modal
+**Context:** AC "inline editing reuses `static/js/inline-form.js`; CSP-clean"; UX-DR31; D-11-16-6.
+**Chosen:** each editable line has an Edit button (`inline-form-add-toggle`) revealing a server-rendered form (`fragments/proposal_line_edit.html`, `hx-post`, CSRF by `csrf.js`); a new `inline-form-slot-cancel` action hides the slot and resets its form (the existing `-add-cancel` clears `input[name=name]`, which would blank a series name). Saving answers the re-rendered `#proposal-detail-body` plus an OOB entry (no modal, no `modal-close`); a refusal lands in `#feedback-list`. Remove opens the reject modal template in its `remove` variant (`/items/{item}/remove-modal?version=N`), the POST answers like a decision (`HX-Trigger-After-Swap: modal-close`). Routes in `routes/proposal_edit.rs` (Rule 12), Librarian+.
+**Reversible:** yes.
+
+### D-11-19-8 — Unchanged behaviour, noted
+**Chosen:** cross-kind staleness stays as it is (#542 open for the user). A pending `series_create` duplicate check (11-12) reads the live series line, so after a rename the edited name is the one blocking a second pending creation; the equivalence key (resubmission delay) stays the filed name.
+**Reversible:** yes.
+
+### D-11-19-9 — E2E scope
+**Chosen:** `series-proposal-edit.spec.ts` (spec id `PE`, sorts after the specs that assume no series — D-11-11-6, #528): from a blank browser, the agent files a `series_create` over MCP; the librarian moves a title with the inline form (cancel checked too), removes an expected tome through the modal, accepts; `get_series` shows the title at its new position, the kept tome only; the decided page keeps the trail. Second journey: a metadata proposal's subtitle corrected, accepted, shown on the title page. Validation, locking, removal rules, the empty attach, the cover refusals, CSRF and roles are integration-tested (`tests/proposal_edit.rs`).
+**Reversible:** yes.
+
+### D-11-19-10 — Code review round 1: a value edited back to the current one is refused; only the edited line meets the live total; a deleted series refuses edits [PRODUCT]
+**Context:** two layers (blind + edge cases; acceptance auditor); no High. Medium (edge): filing drops a field whose proposed value equals the title's value, but an edit could bring it back — for `publication_year`, accepting it would replace a full date with `YYYY-01-01` (and mark any field "set by hand" for nothing).
+**Chosen:** (a) an edited scalar equal to its filing baseline (`current` in normal form; a year: `current`, else the year of `current_date`) is refused with a field hint "already the title's value; remove the line instead" (`same_as_current`). (b) Low fixed: for an attach, `validate_lines` runs without the live total and only the edited line is checked against it (D-11-19-5 promised it; a total lowered since filing no longer blocks fixing another line). (c) Low fixed: an attach whose series was deleted refuses edits (409, "the series no longer exists… reject the proposal") instead of saving into a proposal acceptance will mark stale. (d) Lows fixed: the Edit / Remove buttons are named after their line for screen readers (`aria-label`), the toggle carries `aria-expanded`, a slot without a text input focuses its first field, Cancel gives focus back to the toggle; the "cannot be edited" copy says why; the German copy uses the masculine generic of the rest of `de.yml`. Tests: stale proposal refuses edit and remove modal, value edited back refused, deleted series refused, attach total unit test.
+**Accepted (Low):** a save of untouched values on a line that has become invalid answers the validation hint, not "nothing changed"; a line edited back to the agent's values keeps its trail note (the edit happened); `proposals.save_button` / `cancel_button` duplicate common labels because the template's labels are read under `proposals.*`; no concurrent-save test (the guarded `UPDATE … AND version = ?` under the row lock is the mechanism, tested sequentially); field hints land in `#feedback-list` rather than next to the field (the form stays open with its values).
+**Reversible:** yes.
+
+### D-11-19-11 — Code review round 2: clean; Lows fixed or accepted
+**Context:** confirmation pass (blind + edge cases) on the round-1 delta and the full code; no Medium+. Verified: `same_as_current` matches filing's unchanged rule, the attach total check matches acceptance's (`end()`, same boundary), `SeriesGone` comes after the not-editable check, the `inline-form.js` changes leave the admin ref-data forms unchanged, agent text in `aria-label` is escaped by Askama.
+**Chosen:** button names use the line summary cut at 80 characters (a description is up to 10 000); `same_as_current` ignores a `current_truncated` baseline; the E2E "no edit after the decision" check targets `data-action` rather than the button name.
+**Accepted (Low):** a tome's edit form focuses its title field (the first text input) rather than its position; focus returns to `<body>` after Save re-renders the body (same as #538 for decisions).
+**Reversible:** yes.

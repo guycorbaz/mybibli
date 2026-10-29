@@ -21,6 +21,7 @@ use crate::middleware::locale::Locale;
 use crate::models::proposal::ProposalStatus;
 use crate::services::acceptance::{self, AcceptOutcome, CoverDirs};
 use crate::services::proposal_accept;
+use crate::services::proposal_edit;
 use crate::services::proposal_review::{
     self, LineView, ReviewDetail, ReviewError, display_utc, kind_filter_value, kind_label,
     parse_kind_filter, parse_status_filter, status_filter_value, status_label,
@@ -211,6 +212,18 @@ pub struct DetailBody {
     pub can_reject: bool,
     /// Story 11-17 — a pending series proposal can be accepted here.
     pub can_accept: bool,
+    /// Story 11-19 — the lines offer edit / remove affordances.
+    pub can_edit: bool,
+    /// Story 11-19 — per line (index-aligned with `lines`): "edited by
+    /// X on D — the assistant proposed: …", empty when not edited.
+    pub edit_notes: Vec<String>,
+    /// Story 11-19 — per line (index-aligned): the line as a sentence,
+    /// naming the Edit / Remove buttons for screen readers.
+    pub line_summaries: Vec<String>,
+    /// Story 11-19 — lines removed before the decision, as sentences.
+    pub removed_lines: Vec<String>,
+    /// Story 11-19 — roles offered by the contributor edit form.
+    pub roles: Vec<(u64, String)>,
     /// `(url, is_link)`: only `http` / `https` URLs become links (filing
     /// already refuses other schemes — defence in depth, NFR47).
     pub sources: Vec<(String, bool)>,
@@ -289,7 +302,62 @@ impl DetailBody {
             })
             .collect();
         let target_text = d.target.text(loc);
+        let edit_notes = d
+            .lines
+            .iter()
+            .map(|line| match &line.edit {
+                Some(e) => rust_i18n::t!(
+                    "proposals.edit_note",
+                    locale = loc,
+                    by =
+                        e.by.clone()
+                            .unwrap_or_else(|| l.t("editor_unknown"))
+                            .as_str(),
+                    at = e.at.map(display_utc).unwrap_or_default().as_str(),
+                    original = proposal_edit::line_summary(&e.original, loc).as_str()
+                )
+                .to_string(),
+                None => String::new(),
+            })
+            .collect();
+        let removed_lines = d
+            .removed
+            .iter()
+            .map(|r| {
+                rust_i18n::t!(
+                    "proposals.removed_line",
+                    locale = loc,
+                    line = proposal_edit::line_summary(&r.line, loc).as_str(),
+                    by =
+                        r.by.clone()
+                            .unwrap_or_else(|| l.t("editor_unknown"))
+                            .as_str(),
+                    at = r.at.map(display_utc).unwrap_or_default().as_str()
+                )
+                .to_string()
+            })
+            .collect();
+        let can_accept = proposal_accept::can_accept(p.kind, p.status)
+            && proposal_edit::has_lines_to_apply(p.kind, &d.lines);
+        let line_summaries = d
+            .lines
+            .iter()
+            .map(|line| {
+                // A button name, not the whole value (a description can
+                // hold 10 000 characters).
+                let summary = proposal_edit::line_summary(line, loc);
+                match summary.char_indices().nth(80) {
+                    Some((at, _)) => format!("{}…", &summary[..at]),
+                    None => summary,
+                }
+            })
+            .collect();
         DetailBody {
+            line_summaries,
+            can_edit: d.can_edit,
+            edit_notes,
+            removed_lines,
+            roles: d.roles.clone(),
             target_texts,
             id: p.id,
             version: p.version,
@@ -315,7 +383,7 @@ impl DetailBody {
             reason: p.rejection_reason.clone(),
             is_rejected: p.status == ProposalStatus::Rejected,
             can_reject: p.status == ProposalStatus::Pending,
-            can_accept: proposal_accept::can_accept(p.kind, p.status),
+            can_accept,
             sources: p
                 .sources
                 .iter()
@@ -352,7 +420,7 @@ pub struct ProposalDetailBodyTemplate {
     pub body: DetailBody,
 }
 
-async fn load_detail(
+pub(crate) async fn load_detail(
     state: &AppState,
     id: u64,
     loc: &'static str,
@@ -597,6 +665,13 @@ pub async fn accept_modal(
             loc,
         ));
     }
+    // Story 11-19 — every line to apply was removed: reject only.
+    if !proposal_edit::has_lines_to_apply(detail.proposal.kind, &detail.lines) {
+        return Err(proposal_accept::into_app_error(
+            acceptance::AcceptError::NothingToApply,
+            loc,
+        ));
+    }
     let Some(version) = query
         .version
         .as_deref()
@@ -683,6 +758,21 @@ async fn decided_response(
     loc: &'static str,
     entry: String,
 ) -> Result<Response, AppError> {
+    body_response(state, id, loc, entry, true).await
+}
+
+/// The re-rendered detail body with the OOB feedback `entry`; with
+/// `close_modal`, `HX-Trigger-After-Swap: modal-close` (a Pattern A
+/// modal action, D-11-16-6). Story 11-19 reuses it for line edits (no
+/// modal) and removals (modal). The change is committed, so a re-render
+/// failure reloads the page instead of reading as a failure.
+pub(crate) async fn body_response(
+    state: &AppState,
+    id: u64,
+    loc: &'static str,
+    entry: String,
+    close_modal: bool,
+) -> Result<Response, AppError> {
     let rendered = match load_detail(state, id, loc).await {
         Ok(detail) => ProposalDetailBodyTemplate {
             l: ProposalLabels { loc },
@@ -695,7 +785,7 @@ async fn decided_response(
     let main = match rendered {
         Ok(html) => html,
         Err(e) => {
-            tracing::error!(proposal_id = id, error = %e, "Decided proposal not re-rendered");
+            tracing::error!(proposal_id = id, error = %e, "Proposal not re-rendered");
             return Ok((
                 StatusCode::OK,
                 [(
@@ -707,15 +797,19 @@ async fn decided_response(
                 .into_response());
         }
     };
-    Ok(HtmxResponse {
+    let response = HtmxResponse {
         main,
         oob: vec![OobUpdate {
             target: "feedback-list".to_string(),
             content: entry,
             swap_mode: OobSwapMode::Append,
         }],
-    }
-    .into_response_with_hx_trigger_after_swap("modal-close"))
+    };
+    Ok(if close_modal {
+        response.into_response_with_hx_trigger_after_swap("modal-close")
+    } else {
+        response.into_response()
+    })
 }
 
 /// Colour classes of a status badge.
@@ -734,7 +828,7 @@ fn status_class(status: ProposalStatus) -> &'static str {
     }
 }
 
-fn render<T: Template>(template: &T, name: &'static str) -> Result<Response, AppError> {
+pub(crate) fn render<T: Template>(template: &T, name: &'static str) -> Result<Response, AppError> {
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),
         Err(_) => Err(AppError::TemplateRenderFailed { template: name }),

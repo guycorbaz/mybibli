@@ -22,6 +22,7 @@ pub mod metadata_proposals;
 pub mod password;
 pub mod proposal_history;
 pub mod proposal_accept;
+pub mod proposal_edit;
 pub mod proposal_review;
 pub mod proposals;
 pub mod scan_undo;
