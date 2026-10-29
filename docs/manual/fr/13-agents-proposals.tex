@@ -292,11 +292,14 @@ npx @modelcontextprotocol/inspector
 Chaque appel d'outil est journalisé au niveau \texttt{info} par une
 ligne \texttt{MCP tool call} qui nomme l'outil et l'identifiant de la
 clé (chapitre~\ref{ch:operations-debugging}). Les messages de la
-bibliothèque MCP elle-même sont limités au niveau \texttt{warn} ;
-pour les voir pendant une enquête, définissez :
-\begin{lstlisting}
-MYBIBLI_LOG_LEVEL=info,rmcp=debug
-\end{lstlisting}
+bibliothèque MCP elle-même sont limités au niveau \texttt{warn}. Pour
+les voir pendant une enquête, saisissez \texttt{info,rmcp=debug} comme
+\textbf{Niveau de journalisation} dans \textbf{Administration
+\(\rightarrow\) Système \(\rightarrow\) Journalisation} (effet
+immédiat, sans redémarrage), puis remettez la valeur précédente.
+Définir \texttt{MYBIBLI\_LOG\_LEVEL} dans \texttt{.env} ne sert à
+rien ici : le niveau enregistré dans le panneau l'emporte à chaque
+démarrage.
 
 \subsection{Quand la connexion échoue}
 
@@ -313,8 +316,11 @@ MYBIBLI_LOG_LEVEL=info,rmcp=debug
       dans \texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS}, ou la requête porte
       un \texttt{Origin} absent de
       \texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS}. \\
-400 & Le client parle une révision du protocole que mybibli ne sert
-      pas ; mettez le client à jour. \\
+400 / -32022 & (La seconde est une erreur JSON-RPC,
+      \emph{Unsupported protocol version}.) Le client parle une révision du protocole que mybibli ne sert pas ; mettez
+      le client à jour. \\
+406 / 415 & Le client ne parle pas streamable HTTP (\texttt{Accept}
+      ou \texttt{Content-Type} inadéquat). \\
 405 & Le client a tenté un \texttt{GET} ou un \texttt{DELETE} (un
       ancien client HTTP + SSE) ; choisissez le transport streamable
       HTTP. \\
@@ -500,7 +506,8 @@ Le message de succès renvoie à la série ou au titre.
 Une proposition est vérifiée à nouveau au moment où vous l'acceptez.
 Si son objet a changé depuis le dépôt --- le titre ou la série a été
 modifié ou supprimé, une position a été prise entre-temps, une série
-du même nom existe désormais, la couverture a changé ---,
+du même nom existe désormais, la couverture a changé, un rôle de
+contributeur a été supprimé ---,
 \textbf{rien n'est appliqué} et la proposition devient
 \emph{Périmée} ; le message explique pourquoi. Demandez à l'agent une
 nouvelle proposition fondée sur le catalogue tel qu'il est
@@ -603,9 +610,9 @@ dossier des couvertures} (\texttt{COVERS\_DIR} ; sous Docker,
   \item Le nettoyage est automatique. Refuser une proposition supprime
         son image ; l'accepter la met en place ; révoquer une clé
         supprime les images de ses propositions en attente. La purge
-        planifiée (section~\ref{sec:system}, \emph{intervalle d'auto-purge}) retire tout reste --- une proposition
-        devenue périmée, un dépôt jamais achevé --- après un délai de
-        grâce d'une heure.
+        planifiée (section~\ref{sec:system}, \emph{intervalle d'auto-purge}) retire tout reste à son passage
+        suivant --- l'image d'une proposition devenue périmée, par
+        exemple ; un dépôt jamais achevé seulement après une heure.
   \item Les sauvegardes du volume des couvertures
         (chapitre~\ref{ch:backup}) incluent ce dossier ; le restaurer
         est sans danger, la purge fait le tri.

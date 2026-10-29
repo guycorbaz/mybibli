@@ -271,11 +271,13 @@ npx @modelcontextprotocol/inspector
 
 Each tool call is logged at \texttt{info} level as an \texttt{MCP tool
 call} line naming the tool and the key id (chapter~\ref{ch:operations-debugging}).
-The MCP library's own messages are capped at \texttt{warn}; to see
-them while you investigate, set:
-\begin{lstlisting}
-MYBIBLI_LOG_LEVEL=info,rmcp=debug
-\end{lstlisting}
+The MCP library's own messages are capped at \texttt{warn}. To see
+them while you investigate, enter \texttt{info,rmcp=debug} as the
+\textbf{Log level} in \textbf{Administration \(\rightarrow\) System
+\(\rightarrow\) Logging} (it applies at once, no restart), then put
+the previous value back. Setting \texttt{MYBIBLI\_LOG\_LEVEL} in
+\texttt{.env} does not help here: the level saved in the panel wins at
+every start.
 
 \subsection{When the connection fails}
 
@@ -292,8 +294,11 @@ MYBIBLI_LOG_LEVEL=info,rmcp=debug
       \texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS}, or the request carries an
       \texttt{Origin} that is not in
       \texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS}. \\
-400 & The client speaks a protocol revision mybibli does not serve;
-      update the client. \\
+400 / -32022 & (The second one is a JSON-RPC error,
+      \emph{Unsupported protocol version}.) The client speaks a protocol revision mybibli does not serve; update the
+      client. \\
+406 / 415 & The client does not speak streamable HTTP (wrong
+      \texttt{Accept} or \texttt{Content-Type}). \\
 405 & The client tried \texttt{GET} or \texttt{DELETE} (an old
       HTTP + SSE client); choose the streamable-HTTP transport. \\
 413 / 408 & A request over $\approx$\,3.7\,MiB (a cover too large) or
@@ -461,7 +466,8 @@ The success message links to the series or title.
 A proposal is checked again at the moment you accept it. If its
 subject changed since the agent filed it --- the title or series was
 edited or deleted, a position was taken in the meantime, a series of
-the same name now exists, the cover changed --- \textbf{nothing is
+the same name now exists, the cover changed, a contributor role was
+deleted --- \textbf{nothing is
 applied} and the proposal becomes \emph{Outdated}; the message says
 why. Ask the agent for a new proposal based on the catalog as it is
 now, or make the change by hand.
@@ -557,8 +563,9 @@ Consequences:
         accepting moves it into place; revoking a key deletes the
         images of its pending proposals. The scheduled purge
         (section~\ref{sec:system}, \emph{auto-purge interval}) removes
-        anything left behind --- a proposal that went outdated, a
-        filing that never completed --- after a one-hour grace.
+        anything left behind at its next run --- the image of a
+        proposal that went outdated, for instance; a filing that never
+        completed only once it is an hour old.
   \item Backups of the covers volume (chapter~\ref{ch:backup}) include
         the folder; restoring it is harmless, the purge sorts it out.
 \end{itemize}
