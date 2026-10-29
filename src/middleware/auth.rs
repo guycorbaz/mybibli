@@ -150,8 +150,9 @@ pub(crate) fn should_skip_session_resolve(uri_path: &str) -> bool {
 /// badge needs the pending-proposals count. Librarian+ only (anonymous
 /// visitors never see the entry, and run no query). Not for:
 /// - HTMX requests (`HX-Request: true`): they swap a fragment without the
-///   nav (an htmx history-restore request is one too, and HTMX-aware
-///   handlers answer it with a fragment);
+///   nav — except an htmx history-restore request (htmx 2 sends it with
+///   `HX-Request` after a cache miss): some handlers answer it with the
+///   full page (e.g. `home()` with an empty query), so it counts;
 /// - sub-resources and scripted fetches: when the browser says what it
 ///   loads (`Sec-Fetch-Dest`), only a `document` counts; otherwise only a
 ///   request that accepts `text/html` (an `<img>`, a JS `fetch()`
@@ -164,7 +165,7 @@ pub(crate) fn wants_pending_count(role: &Role, headers: &axum::http::HeaderMap) 
     }
     let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
     if header("hx-request") == Some("true") {
-        return false;
+        return header("hx-history-restore-request") == Some("true");
     }
     if let Some(dest) = header("sec-fetch-dest") {
         return dest.eq_ignore_ascii_case("document");
@@ -636,7 +637,8 @@ mod tests {
         let htmx = headers(&[("hx-request", "true")]);
         assert!(!wants_pending_count(&Role::Admin, &htmx));
         let restore = headers(&[("hx-request", "true"), ("hx-history-restore-request", "true")]);
-        assert!(!wants_pending_count(&Role::Admin, &restore));
+        assert!(wants_pending_count(&Role::Admin, &restore), "may re-render the page");
+        assert!(!wants_pending_count(&Role::Anonymous, &restore));
         // A value other than "true" is not an HTMX request (as `HxRequest`).
         assert!(wants_pending_count(&Role::Admin, &headers(&[("hx-request", "false")])));
     }
@@ -645,6 +647,9 @@ mod tests {
     fn pending_count_only_for_documents_when_the_browser_says() {
         let doc = headers(&[("sec-fetch-dest", "document"), ("accept", "text/html")]);
         assert!(wants_pending_count(&Role::Librarian, &doc));
+        // Sec-Fetch-Dest wins over Accept, case-insensitively.
+        let doc_any = headers(&[("sec-fetch-dest", "Document"), ("accept", "*/*")]);
+        assert!(wants_pending_count(&Role::Librarian, &doc_any));
         for dest in ["image", "empty", "script", "iframe"] {
             let h = headers(&[("sec-fetch-dest", dest), ("accept", "text/html")]);
             assert!(!wants_pending_count(&Role::Librarian, &h), "{dest}");

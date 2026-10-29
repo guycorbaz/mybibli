@@ -1215,8 +1215,13 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 
 ### D-11-21-5 — Code review round 1: the E2E baseline is taken one request before the decision; the count is for documents only
 **Context:** one combined layer (blind + edge cases + acceptance); no High, one Medium: `proposals-access.spec.ts` compared the post-decision count with a baseline taken several steps earlier (a sibling spec filing meanwhile could hide the drop), and a CI retry re-filed the same field set on the same title — refused for 90 days by the first attempt's rejection (11-15), a deterministic red.
-**Chosen:** the baseline is the count rendered by the detail page right before Reject; a retry scans `specIsbn("NB", 1 + retry)`. Lows fixed: `wants_pending_count` now skips sub-resources and scripted fetches (`Sec-Fetch-Dest` must be `document`; without it, `Accept` must include `text/html`; neither header → counts) and HTMX history-restore requests (HTMX-aware handlers answer them with a fragment); the "no `lg` left" check is scoped to `<header>`; the entry is asserted before Admin.
+**Chosen:** the baseline is the count rendered by the detail page right before Reject; a retry scans `specIsbn("NB", 1 + retry)`. Lows fixed: `wants_pending_count` now skips sub-resources and scripted fetches (`Sec-Fetch-Dest` must be `document`; without it, `Accept` must include `text/html`; neither header → counts); the "no `lg` left" check is scoped to `<header>`; the entry is asserted before Admin.
 **Accepted (Low, known edge):** the 1280 px fit is measured with overlay scrollbars (headless Chromium). With classic 15–17 px scrollbars, a 1280 px window shows ~1263–1265 px of layout while `xl` still matches; an Admin in French (minimum clean width 1264 px) may then see the strip touch the right-hand group at exactly 1280 px. Left to CR #547 (sidebar); the note on #547 itself is left to the project lead (adding the comment was not permitted in this session).
+**Reversible:** yes.
+
+### D-11-21-6 — Code review round 2: clean; Lows fixed
+**Context:** confirmation pass (blind + edge cases + acceptance) on the round-1 delta and the full diff; no Medium+. Verified that every full-page path keeps its badge after the round-1 predicate change (navigations, form POSTs and redirect targets send `Sec-Fetch-Dest: document`; over plain HTTP the navigation `Accept` carries `text/html`; `HX-Redirect` ends in a document request).
+**Chosen (Lows fixed):** the htmx history-restore exception is back (round 1 had dropped it, but `home()` with an empty query and handlers ignoring `HxRequest` answer such a restore with the full page); a unit case pins `Sec-Fetch-Dest` precedence over `Accept`; the E2E subtitle is unique per run (a local re-run on a non-reset stack would be refused by the previous rejection). **Dismissed:** two indexed counts per post/redirect/get cycle.
 **Reversible:** yes.
 
 ## § 11-22 — `rmcp` checkpoint before the release (part of #493)

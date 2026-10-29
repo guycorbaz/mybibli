@@ -86,7 +86,9 @@ test.describe("Story 11-21 — access to the proposals page", () => {
       const filed = await mcpCallTool(agent, key.plaintext, "propose_title_metadata", {
         title_id: titleId,
         version,
-        fields: { subtitle: "Badge" },
+        // Unique per run: a local re-run on a non-reset stack would
+        // otherwise be refused by the previous run's rejection (11-15).
+        fields: { subtitle: `Badge ${Date.now()}` },
         sources: ["https://example.org/badge"],
       });
       expect(filed.isError, JSON.stringify(filed.content)).toBe(false);
