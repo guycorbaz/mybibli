@@ -469,11 +469,16 @@ pub async fn reject_modal(
         ProposalStatus::Stale => return Err(ReviewError::Stale.into_app_error(loc)),
         status => return Err(ReviewError::NotPending { status }.into_app_error(loc)),
     }
-    let version = query
+    // The version the page showed is the lock: without it (hand-built
+    // URL, garbled query) the change check could never fire, so refuse
+    // as a change rather than fall back to the current version.
+    let Some(version) = query
         .version
         .as_deref()
         .and_then(|v| v.trim().parse::<i32>().ok())
-        .unwrap_or(detail.proposal.version);
+    else {
+        return Err(ReviewError::Changed.into_app_error(loc));
+    };
     let body = rust_i18n::t!("proposals.reject_modal_body", locale = loc);
     let template = ProposalRejectModalTemplate {
         title: rust_i18n::t!("proposals.reject_modal_title", locale = loc, id = id).to_string(),

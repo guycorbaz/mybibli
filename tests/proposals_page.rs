@@ -458,7 +458,10 @@ async fn the_reject_modal_is_a_ux_dr8_modal_with_a_reason(pool: DbPool) {
     let (lib, _) = librarian(&pool, &f).await;
     let title = seed_title(&pool, "Modale").await;
     let id = file_metadata(&f, title, json!({"subtitle": "S"})).await;
-    let path = format!("/proposals/{id}/reject-modal");
+    let path = format!(
+        "/proposals/{id}/reject-modal?version={}",
+        version_of(&pool, id).await
+    );
 
     let res = lib.send(&f.agent.app, "GET", &path, "", false).await;
     assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED);
@@ -755,6 +758,11 @@ async fn a_cover_is_shown_and_served_only_while_pending_and_on_disk(pool: DbPool
     assert!(f.staging.join(&name).exists());
     let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{stale}")).await;
     assert!(!html.contains("proposal-staged-cover"));
+    // Round 2: the item's dimensions and size stay visible without the image.
+    assert!(
+        html.contains(" px, ") && (html.contains(" octets") || html.contains(" bytes")),
+        "cover dimensions shown on a decided proposal"
+    );
     let res = lib
         .send(
             &f.agent.app,
@@ -871,4 +879,30 @@ async fn a_page_past_the_end_links_back_to_the_last_page(pool: DbPool) {
         html.contains("/proposals?status=pending&#38;kind=all&#38;page=1"),
         "{html}"
     );
+}
+
+// ─── Review round 2 ───────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_modal_refuses_a_missing_or_garbled_version(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let (lib, _) = librarian(&pool, &f).await;
+    let title = seed_title(&pool, "Sans version").await;
+    let id = file_metadata(&f, title, json!({"subtitle": "S"})).await;
+    for query in ["", "?version=", "?version=abc"] {
+        let res = lib
+            .send(
+                &f.agent.app,
+                "GET",
+                &format!("/proposals/{id}/reject-modal{query}"),
+                "",
+                true,
+            )
+            .await;
+        assert_eq!(res.status(), StatusCode::CONFLICT, "query {query:?}");
+        let body = body_string(res).await;
+        assert!(!body.contains("name=\"version\""), "no modal for {query:?}");
+        assert!(!body.contains("proposals."), "raw locale key leaked");
+    }
+    assert_eq!(decision_of(&pool, id).await.0, "pending");
 }

@@ -97,10 +97,10 @@
                         <figcaption class="mb-1 text-stone-500 dark:text-stone-400">{{ l.t("cover_proposed") }}</figcaption>
                         {% if body.has_staged_cover %}
                         <img id="proposal-staged-cover" src="/proposals/{{ body.id }}/cover" alt="{{ body.cover_alt }}" class="w-[150px] h-auto rounded-lg border border-stone-200 dark:border-stone-700" loading="lazy">
-                        <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ body.cover_dims[loop.index0] }}</p>
                         {% else %}
                         <p class="text-stone-500 dark:text-stone-400">{{ l.t("cover_missing") }}</p>
                         {% endif %}
+                        <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ body.cover_dims[loop.index0] }}</p>
                     </figure>
                     <figure>
                         <figcaption class="mb-1 text-stone-500 dark:text-stone-400">{{ l.t("cover_current") }}</figcaption>

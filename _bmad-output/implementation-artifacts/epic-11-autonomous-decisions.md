@@ -906,3 +906,23 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Accepted (Low):** a forged non-numeric `version` gets Axum's plain 4xx; `UnknownDecider` answers 409; non-HTMX `reject-modal` answers 405 (project convention); error copy under `proposals.error_*` (precedent `expected_tome.errors.*`); no router test for a missing staging directory (the same `None` branch as a missing file); malformed `is_omnibus` / cover dimensions are not reachable through filing validation. Note for 11-18: after an acceptance the cover column will say "no longer available" — 11-18 should show the promoted cover instead.
 **Reversible:** yes.
 
+### D-11-16-11 — Code review round 2: the modal requires the page's version
+**Context:** three layers (blind, edge cases, acceptance); no High. One Medium, raised by two layers: when `/proposals/{id}/reject-modal` had no `version`, or one that did not parse, it fell back to the current version, so the "changed since you opened it" check could never fire for that request.
+**Chosen:** the modal refuses a missing or unparsable `version` with the localized "changed" conflict (409), as the POST already did. A version that has moved still opens the modal; the POST refuses it, as D-11-16-10(b) decided and tests. Lows fixed:
+- the detail page and the cover route share one predicate (`servable_staged_name`: a pending **cover** proposal), so a non-cover proposal can never show a broken image;
+- a rejection that unexpectedly comes back `WentStale` answers the localized stale refusal instead of a 500;
+- a cover item's dimensions and size stay visible once the image is gone (AC3);
+- the unused `media_type` read on the title brief is removed.
+
+Tests: a missing, empty or garbled modal version answers 409; dimensions are shown on a stale cover; a unit test of the shared predicate.
+**Dismissed:** "decided by the system" for a purged human decider (reads use `COALESCE(u.username, p.decided_by_name)`, the copy made at decision time, D-11-9-11); a duplicate `#feedback-list` (the base layout has none); several cover lines (a cover proposal holds exactly one item).
+**Accepted (Low):**
+- a non-HTMX POST to `/reject` gets the fragment (it is CSRF-guarded; there is no no-JS path);
+- a non-numeric POST `version` gets Axum's 422 (as in round 1);
+- the cover image can 404 in a second tab after a rejection elsewhere (the modal re-checks the status);
+- the `HX-Redirect` fallback after a commit leads to "not found" if the proposal was also soft-deleted in between (nothing in the UI soft-deletes proposals);
+- "Page N of M" with N > M when the page is past the end (the previous-page link already leads back);
+- index-aligned side vectors in the template (built from the same `lines`).
+
+Focus after the swap remains #538.
+**Reversible:** yes.

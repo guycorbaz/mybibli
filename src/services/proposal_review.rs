@@ -31,7 +31,7 @@ use crate::models::proposal::{
 use crate::services::cover_staging;
 use crate::services::proposal_history::{ProposalSubject, SubjectLine};
 use crate::services::proposals::{
-    Decision, Proposal, ProposalError, ProposalItem, ProposalService, Transition,
+    Decision, Proposal, ProposalDetail, ProposalError, ProposalItem, ProposalService, Transition,
 };
 
 // ─── Filters ────────────────────────────────────────────
@@ -294,7 +294,6 @@ pub struct LineView {
     // cover
     pub replaces_existing: bool,
     pub current_cover_url: String,
-    pub media_type: String,
     pub cover_media_type: String,
     pub width: String,
     pub height: String,
@@ -463,6 +462,17 @@ fn staged_name(items: &[ProposalItem]) -> Option<&str> {
         .filter(|n| cover_staging::is_staged_name(n))
 }
 
+/// The staged file the cover route may serve: a pending cover
+/// proposal's first well-formed staged name. The detail page and the
+/// cover route share this predicate so the page never shows an image the
+/// route refuses.
+fn servable_staged_name(detail: &ProposalDetail) -> Option<&str> {
+    (detail.proposal.kind == ProposalKind::Cover
+        && detail.proposal.status == ProposalStatus::Pending)
+        .then(|| staged_name(&detail.items))
+        .flatten()
+}
+
 /// A live proposal for review; `None` when unknown or soft-deleted.
 /// `staging_dir` is used to check that a pending cover proposal's
 /// staged file still exists (else the page says the image is gone
@@ -496,7 +506,6 @@ pub async fn review_detail(
                         if let Some(t) = names.titles.get(&id) {
                             line.target_name = Some(t.title.clone());
                             line.current_cover_url = t.cover_image_url.clone().unwrap_or_default();
-                            line.media_type = t.media_type.clone();
                         }
                     }
                 }
@@ -507,14 +516,8 @@ pub async fn review_detail(
     // A decided proposal's staged file is discarded (reject, stale) or
     // promoted (accept, 11-18): only a pending one has an image to show,
     // and only while its file is on disk.
-    let has_staged_cover = match (
-        detail.proposal.status,
-        staging_dir,
-        staged_name(&detail.items),
-    ) {
-        (ProposalStatus::Pending, Some(dir), Some(name)) => {
-            tokio::fs::try_exists(dir.join(name)).await.unwrap_or(false)
-        }
+    let has_staged_cover = match (staging_dir, servable_staged_name(&detail)) {
+        (Some(dir), Some(name)) => tokio::fs::try_exists(dir.join(name)).await.unwrap_or(false),
         _ => false,
     };
     Ok(Some(ReviewDetail {
@@ -541,12 +544,7 @@ pub async fn staged_cover(
     let Some(detail) = ProposalService::detail(pool, id).await? else {
         return Ok(None);
     };
-    if detail.proposal.kind != ProposalKind::Cover
-        || detail.proposal.status != ProposalStatus::Pending
-    {
-        return Ok(None);
-    }
-    let Some(name) = staged_name(&detail.items) else {
+    let Some(name) = servable_staged_name(&detail) else {
         return Ok(None);
     };
     match tokio::fs::read(dir.join(name)).await {
@@ -717,12 +715,9 @@ async fn reject_in(
     };
     match ProposalService::transition_in(conn, id, &decision).await? {
         Transition::Decided(_) => {}
-        // Only an accept can go stale.
-        Transition::WentStale(_) => {
-            return Err(ReviewError::Database(AppError::Internal(
-                "rejection went stale".to_string(),
-            )));
-        }
+        // Only an accept is expected to go stale; should a rejection ever
+        // do so, say it as the stale refusal it is.
+        Transition::WentStale(_) => return Err(ReviewError::Stale),
     }
     Ok(ProposalModel::staged_cover_files_of(conn, &[id])
         .await?
@@ -951,6 +946,54 @@ mod tests {
             ReviewError::Changed.into_app_error("en"),
             AppError::Conflict(_)
         ));
+    }
+
+    fn detail_of(kind: ProposalKind, status: ProposalStatus) -> ProposalDetail {
+        let at = chrono::NaiveDate::from_ymd_opt(2026, 10, 29)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        ProposalDetail {
+            proposal: Proposal {
+                id: 1,
+                kind,
+                status,
+                api_key_id: 1,
+                api_key_label: None,
+                sources: vec![],
+                decided_by: None,
+                decided_by_username: None,
+                decided_at: None,
+                rejection_reason: None,
+                created_at: at,
+                updated_at: at,
+                version: 1,
+            },
+            items: vec![ProposalItem {
+                id: 1,
+                target: None,
+                target_version: None,
+                proposed_values: serde_json::json!({
+                    "line": "cover",
+                    "staged_file": "0123456789abcdef0123456789abcdef.jpg"
+                }),
+                version: 1,
+            }],
+        }
+    }
+
+    #[test]
+    fn only_a_pending_cover_proposal_has_a_servable_staged_file() {
+        // The page and the cover route share this predicate (round 2):
+        // a non-cover proposal carrying a cover-shaped item shows no image.
+        let name = "0123456789abcdef0123456789abcdef.jpg";
+        assert!(cover_staging::is_staged_name(name));
+        let pending_cover = detail_of(ProposalKind::Cover, ProposalStatus::Pending);
+        assert_eq!(servable_staged_name(&pending_cover), Some(name));
+        let other = detail_of(ProposalKind::Metadata, ProposalStatus::Pending);
+        assert_eq!(servable_staged_name(&other), None);
+        let decided = detail_of(ProposalKind::Cover, ProposalStatus::Rejected);
+        assert_eq!(servable_staged_name(&decided), None);
     }
 
     #[test]
