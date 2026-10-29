@@ -1006,3 +1006,75 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Chosen:** `accept_in` private; the retry warning carries the error; the non-empty-table concurrency test says it checks the outcome, not which path ran.
 **Accepted (Low):** no unit test can build a `MySqlDatabaseError` for the positive 40001 case (the DB-backed concurrency tests are the live check, same gap as `loans.rs`); a future MariaDB ≥ 11.8 with `innodb_snapshot_isolation` could surface REPEATABLE READ conflicts as 1020, not retried — to revisit if the pinned image moves.
 **Reversible:** yes.
+
+## § 11-18 — Accept a metadata or cover proposal (part of #493)
+
+### D-11-18-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-18-accept-metadata-cover-proposal` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-18-2 — One shared acceptance module, dispatch on the kind
+**Context:** a second and third acceptance kind; 11-17 kept its types, retry and preamble in `series_acceptance.rs` (Rule 1, Rule 12).
+**Chosen:** `services/acceptance.rs` holds `AcceptError` (+ `CoverMissing`), a generic `AcceptOutcome<A = AppliedSeries>`, `StaleCause`, `AcceptConflict` (+ `FieldChanged`, `RoleGone`, `CoverChanged`), `in_retried_transaction` (deadlock-only retry, D-11-17-11), `lock_pending_in` (proposal lock, status, version, kind, items) and `mark_stale_in`; `accept` reads the kind and dispatches to `series_acceptance` / `metadata_acceptance` / `cover_acceptance`, returning the kind for the message. `series_acceptance` re-exports the types (callers unchanged); its `AcceptConflict::from_check` stays there as an inherent impl. The route `POST /proposals/{id}/accept` serves every kind — no new route.
+**Reversible:** yes.
+
+### D-11-18-3 — #521 for metadata: the recorded `current` value, in normal form, under the title lock [PRODUCT]
+**Context:** #521 narrowed by 11-17; contributor writes bump no `version`.
+**Chosen:** after `check_staleness_in` (title `version`), the title row is read `FOR UPDATE` and each scalar item's stored `current` compared with the live value through `normalize_text` (empty = absent), so spacing / NFD alone is no change; `publication_year` compares the stored `current_date` (else the year). An item with `current_truncated` relies on `version` only. Contributors only add (D-11-13-4): their `current` list is display only, never a baseline; a proposed contributor whose role was deleted since filing is a conflict. Any conflict marks the proposal stale with the field / role named. Stored values are re-validated with `validate_fields` (roles matched by stored id through a `#<id>` placeholder, so a renamed role is no problem); a malformed proposal is refused (400, still pending — D-11-17-6).
+**Rejected:** comparing the contributor lists (a credit added or removed elsewhere on the title would block an unrelated addition).
+**Reversible:** yes.
+
+### D-11-18-4 — Contributors: resolved by the collation, skipped when credited, no version bump of their own [PRODUCT]
+**Context:** module contract of `metadata_proposals.rs`; #531.
+**Chosen:** the title's junction rows are locked `FOR UPDATE` (removed ones included — next-key locks keep a concurrent manual add for the title out) after the title row. Each entry is resolved with `ContributorService::find_or_create_in` (`name = ?` with the column collation, oldest match), then skipped when the title already credits that contributor id in that role — including two entries of the item resolving to the same one — else credited (`add_to_title_in`, which reactivates a removed credit). The success entry lists the credited contributors and, as a hint, those already credited. A contributor-only acceptance bumps no `titles.version` (no title column changes, like the manual contributor add) and marks no field (contributors are not tracked by `manually_edited_fields`; a re-download only adds an author with `INSERT IGNORE`).
+**Reversible:** yes.
+
+### D-11-18-5 — FR144: written fields marked, one version bump [PRODUCT]
+**Context:** FR144 / AC "a later automatic metadata re-download leaves the accepted fields untouched".
+**Chosen:** the validated values are written (`publication_year` as `YYYY-01-01`) with `manually_edited_fields` ∪ the written fields (`publication_year` tracked as `publication_date`, the name the re-download guard uses) and `version + 1`, in the decision transaction. A cover adds `cover_image_url`. Integration tests drive `update_title_from_metadata` and `update_cover_image_url` after acceptance and find the accepted values unchanged.
+**Reversible:** yes.
+
+### D-11-18-6 — #531: a removed credit is reactivated, in the manual flow too [PRODUCT]
+**Context:** the unique key `(title_id, contributor_id, role_id)` ignores `deleted_at`.
+**Chosen:** `TitleContributorModel::add_to_title_in` first reactivates a soft-deleted junction row (`deleted_at = NULL`, `version + 1`), else inserts (a live row still answers `DUPLICATE_CONTRIBUTOR_ROLE`). The pool variant delegates, so the title page's "Add contributor" is fixed as well (regression test through `ContributorService`). The background fetch's `INSERT IGNORE` is left as is: a re-download does not bring back an author the librarian removed.
+**Rejected:** a unique key over live rows only (generated column) — it would also let the re-download re-add removed authors.
+**Reversible:** yes.
+
+### D-11-18-7 — Cover: checked before, decided inside, promoted after [PRODUCT]
+**Context:** #533, D-11-9-12 (no file I/O in a decision transaction), #521 (the background cover fetch bumps no version), D-11-14-6 (the accepted cover must make the other proposals stale).
+**Chosen:** (1) before the transaction, a pending cover proposal's staged file must exist (plain reads; staging unavailable counts as missing) — else 409 "the proposed image is no longer available … reject it", still pending; (2) the transaction: lock, `version`, `check_staleness_in`, live `cover_image_url` compared exactly with the stored `current` (empty = none) → `stale` on a difference, else accept and bump `titles.version` (a second cover or metadata proposal for the title then goes stale); (3) after the commit, `cover_staging::promote` (replaces `covers/{id}.jpg`) and, in a short transaction of its own under the title lock, `cover_image_url = /covers/{id}.jpg?v=<unix time>` plus the `cover_image_url` mark (no second version bump). *(Superseded in part by D-11-18-10 (a): the mark moved into the decision transaction; the URL write is a single plain UPDATE.)* A failed promotion or URL write after the commit leaves the proposal accepted and answers a **warning** entry ("could not be installed … keeps its previous cover; upload it by hand or ask again"). A stale cover proposal's staged file is left to the scheduled purge (D-11-14-8).
+**Rejected:** writing the URL inside the transaction (a failed promotion would leave the title pointing at the old or no file); promoting before the commit (file I/O inside, and an orphaned promotion on rollback).
+**Reversible:** yes.
+
+### D-11-18-8 — UI: Accept on every pending proposal; per-kind summary and results [PRODUCT]
+**Context:** AC; D-11-17-8; D-11-16-10 note.
+**Chosen:** `can_accept` = pending, any kind. The modal says which fields are written to «title» and how many contributors are credited, or that the image becomes the title's cover (and replaces the current one); note "if the title changed … nothing is changed". Success entries link "Open the title"; stale entries for title kinds say "nothing was changed in the catalog" and name the field, role or cover. An accepted cover proposal's detail shows the title's live cover ("Accepted cover (now the title's cover)") instead of "no longer available". The 11-17 test asserting that metadata proposals cannot be accepted was narrowed to rejected proposals.
+**Reversible:** yes.
+
+### D-11-18-9 — E2E scope
+**Chosen:** `metadata-cover-proposal-accept.spec.ts` (spec id `MA`, no series): from a blank browser, an agent files a metadata proposal (subtitle, Dewey code, a contributor) and a cover proposal; the librarian accepts both in the modal; the title page shows the subtitle, the code, the contributor and the cover (served as JPEG). Stale path: two cover proposals and a metadata proposal for one title — accepting the first cover makes the two others outdated, and accepting them changes nothing. State-based staleness (field changed without version bump, deleted role, background cover), the missing staged file, re-download protection and #531 are integration-tested in `tests/proposal_accept_metadata_cover.rs`.
+**Reversible:** yes.
+
+### D-11-18-10 — Code review round 1: cover marked in the decision, no download over a hand-set cover, written fields only [PRODUCT]
+**Context:** three layers (blind, edge cases, acceptance); no High. Medium: (a) between the decision commit and the URL write, `cover_image_url` was not yet marked, so a background cover fetch could overwrite the promoted image (edge + blind); (b) the background fetch writes `covers/{id}.jpg` itself before its URL guard, so a hand-set cover (manual upload or accepted proposal) was replaced on disk under its protected URL — AC7 broken on disk, pre-existing for uploads (edge); (c) a URL write failing after a successful promotion, and a title deleted meanwhile reported as installed (blind + edge + auditor); (d) #531 had no E2E of the title-page flow (auditor, Rule 3).
+**Chosen:** (a) the decision transaction marks `cover_image_url` in `manually_edited_fields` along with the version bump; the post-commit step only writes the URL (`TitleModel::set_cover_url`, tried twice, `false` when the title is gone → reported as not installed); (b) `metadata_fetch` skips the cover download when the cover is marked (`cover_is_manual`), fixing manual uploads too; (c) as (a); a URL write that fails twice after the promotion leaves the new image under the old URL (logged) — accepted, see below; (d) E2E journey "#531 — a contributor removed from a title can be added back" on `/title/{id}`. Lows fixed: only fields actually written are reported and marked; contributors take the validated `role_id` and the lengths are checked; an empty stored role name reads `#<id>`; acceptance logs carry the decider; the failed-install hint offers actions the librarian can take; the accepted-cover caption says "the title's current cover"; the duplicate test asserts the message; AC2 / AC3 wording aligned with D-11-18-4 / this decision. Tests: promotion failure (accepted, no URL, staged file kept), `cover_is_manual` after acceptance.
+**Accepted (Low):** a failed promotion leaves the title marked "cover set by hand" without a new cover (the warning tells the librarian to upload one or ask again); after a failed install the detail page shows the title's current cover under "proposal accepted"; `manually_edited_with` treats a corrupt set as empty (same as every writer); a role soft-deleted while an acceptance holds a share lock is the ref-data screen's own check-then-act.
+**Reversible:** yes.
+
+### D-11-18-11 — Deferred: duplicate contributors (#541); cross-kind staleness (#542) [PRODUCT]
+**Context:** E2E showed that accepting a metadata proposal makes a pending cover proposal for the same title stale (version bump, AR29), and the reverse; review raised concurrent find-or-create duplicates.
+**Chosen:** keep AR29's version rule (a proposal filed before any accepted change to its title is outdated); the E2E journey files the cover after the metadata acceptance. #542 (type:change-request) records the options now that field-level baselines exist. #541 (type:code-review-finding): `contributors.name` has no unique key, so concurrent find-or-create can duplicate a name — pre-existing in the manual flow; fix with a unique key over live names or a named lock.
+**Reversible:** yes.
+
+### D-11-18-12 — Code review round 2: fetched covers stored under the title lock, mark taken back on a failed promotion [PRODUCT]
+**Context:** two layers on the round-1 delta (blind; edge + acceptance). Medium, raised by both: the round-1 `cover_is_manual` check ran before the network download, so a fetch in flight (a fresh scan, an admin bulk cover fetch — which targets exactly the cover-less titles proposals fill) could still write `covers/{id}.jpg` over a cover accepted meanwhile. Medium (blind): a failed promotion left the title marked "cover set by hand" for good, so every later fetch (and every bulk run) skipped it. Medium (blind): the role-liveness check used the stored role id and the write the validated one.
+**Chosen:** the background fetch downloads and encodes in memory (`CoverService::download_bytes` + `encode_cover`, `download_and_resize` unchanged for its other callers), then `metadata_fetch::store_fetched_cover` writes the file and the URL in one short transaction holding the title row lock, after re-checking the mark — the acceptance marks under that same lock before it promotes, so the two are serialised (a fetch that stores first is replaced by the promotion; one that comes later sees the mark). `cover_is_manual` stays as an early skip and now fails closed. A failed promotion takes the mark back when the acceptance added it (`TitleModel::unmark_manually_edited`). Contributors are paired (count and role ids) before the decision (`paired_contributors`) and the stored role id is used throughout; the `set_cover_url` blind retry is gone (single attempt, like every other write). Tests: pairing unit test, the mark taken back after a failed promotion.
+**Accepted (Low):** a manual upload (#335) still writes its file before taking the lock — a fetch in flight can replace an upload made during its download (pre-existing, much narrower now); a title soft-deleted between the decision and the promotion has its old `covers/{id}.jpg` replaced (restoring it from the trash shows the proposed image; the librarian is told the cover was not installed); a URL write failing after a successful promotion leaves the new image under the old URL (D-11-18-10).
+**Reversible:** yes.
+
+### D-11-18-13 — Code review round 3: clean; Lows fixed or accepted
+**Context:** confirmation pass (both skills) on the round-2 delta; no Medium+. Verified: `store_fetched_cover` takes only the title row lock (no cycle with acceptance, which locks proposal then title), the serialisation with cover acceptance, `was_hand_set` read before the mark, other `download_and_resize` callers unchanged.
+**Chosen:** the fetched cover is written to a `.tmp-` name and renamed (a failed write never truncates the cover in place; the 8-7 purge removes stray `.tmp-` files); the fetch comment describes the new path.
+**Accepted (Low):** bulk-fetch counts read "no cover found" for a cover set by hand during the download or a failed manual-cover lookup; `unmark_manually_edited` has no compare-and-set (a manual upload landing between the decision and a failed promotion loses its mark); the cover encode stays synchronous on the async worker (pre-existing).
+**Reversible:** yes.

@@ -19,13 +19,13 @@ use crate::middleware::auth::{Role, Session};
 use crate::middleware::htmx::{HtmxResponse, HxRequest, OobSwapMode, OobUpdate};
 use crate::middleware::locale::Locale;
 use crate::models::proposal::ProposalStatus;
+use crate::services::acceptance::{self, AcceptOutcome, CoverDirs};
 use crate::services::proposal_accept;
 use crate::services::proposal_review::{
     self, LineView, ReviewDetail, ReviewError, display_utc, kind_filter_value, kind_label,
     parse_kind_filter, parse_status_filter, status_filter_value, status_label,
 };
 use crate::services::proposals::MAX_REJECTION_REASON_CHARS;
-use crate::services::series_acceptance::{self, AcceptOutcome};
 
 /// Labels of the `proposals.*` locale section, read by the templates
 /// as `l.t("key")`. The router tests (`tests/proposals_page.rs`) check
@@ -216,6 +216,9 @@ pub struct DetailBody {
     pub sources: Vec<(String, bool)>,
     pub lines: Vec<LineView>,
     pub has_staged_cover: bool,
+    /// Story 11-18 — an accepted cover proposal: its image was promoted,
+    /// so the page shows the title's cover instead of the staged file.
+    pub accepted_cover: bool,
     pub cover_alt: String,
     pub omnibus_labels: Vec<String>,
     pub current_date_labels: Vec<String>,
@@ -324,6 +327,8 @@ impl DetailBody {
                 .collect(),
             lines: d.lines,
             has_staged_cover: d.has_staged_cover,
+            accepted_cover: p.kind == crate::models::proposal::ProposalKind::Cover
+                && p.status == ProposalStatus::Accepted,
             omnibus_labels,
             current_date_labels,
             cover_dims,
@@ -586,7 +591,7 @@ pub async fn accept_modal(
     }
     if !proposal_accept::can_accept(detail.proposal.kind, detail.proposal.status) {
         return Err(proposal_accept::into_app_error(
-            series_acceptance::AcceptError::WrongKind {
+            acceptance::AcceptError::WrongKind {
                 kind: detail.proposal.kind,
             },
             loc,
@@ -599,8 +604,7 @@ pub async fn accept_modal(
     else {
         return Err(ReviewError::Changed.into_app_error(loc));
     };
-    let body_html = proposal_accept::AcceptSummary::of(&detail, loc)
-        .sentences(loc)
+    let body_html = proposal_accept::modal_sentences(&detail, loc)
         .iter()
         .map(|s| format!("<p class=\"mb-2\">{}</p>", crate::utils::html_escape(s)))
         .collect::<String>();
@@ -625,12 +629,15 @@ pub struct AcceptForm {
     pub version: Option<String>,
 }
 
-/// `POST /proposals/{id}/accept` — accept and apply a series proposal
-/// (FR138, FR140, FR146). Accepted or gone stale, the decision is
-/// committed: the answer re-renders the detail body, appends a success
-/// (applied result, link to the series) or warning (why it is outdated)
-/// entry, and closes the modal after the swap (D-11-16-6). A refusal or a
-/// failed apply (rolled back, still pending) lands in the modal.
+/// `POST /proposals/{id}/accept` — accept and apply a proposal of any
+/// kind (FR138, FR140, FR144, FR146; series 11-17, metadata and cover
+/// 11-18). Accepted or gone stale, the decision is committed: the answer
+/// re-renders the detail body, appends a success (applied result, link
+/// to the series or title) or warning (why it is outdated) entry, and
+/// closes the modal after the swap (D-11-16-6). A cover is promoted after
+/// the commit; one that cannot be installed reads as a warning entry (the
+/// proposal stays accepted). A refusal or a failed apply (rolled back,
+/// still pending) lands in the modal.
 pub async fn accept(
     State(state): State<AppState>,
     session: Session,
@@ -650,24 +657,17 @@ pub async fn accept(
     else {
         return Err(ReviewError::Changed.into_app_error(loc));
     };
-    let outcome = series_acceptance::accept(&state.pool, id, user_id, version)
+    let staging = state.cover_staging_dir();
+    let dirs = CoverDirs {
+        covers_dir: &state.covers_dir,
+        staging_dir: staging.as_deref(),
+    };
+    let (kind, outcome) = acceptance::accept(&state.pool, dirs, id, user_id, version)
         .await
         .map_err(|e| proposal_accept::into_app_error(e, loc))?;
     let entry = match &outcome {
-        AcceptOutcome::Accepted(applied) => {
-            let (message, suggestion) = proposal_accept::applied_messages(id, applied, loc);
-            crate::utils::feedback_html_with_link(
-                "success",
-                &message,
-                &suggestion,
-                &format!("/series/{}", applied.series_id),
-                &rust_i18n::t!("proposals.open_series", locale = loc),
-            )
-        }
-        AcceptOutcome::Stale(cause) => {
-            let (message, hint) = proposal_accept::stale_messages(id, cause, loc);
-            crate::utils::feedback_html("warning", &message, &hint)
-        }
+        AcceptOutcome::Accepted(applied) => proposal_accept::applied_entry(id, applied, loc),
+        AcceptOutcome::Stale(cause) => proposal_accept::stale_entry(id, kind, cause, loc),
     };
     decided_response(&state, id, loc, entry).await
 }

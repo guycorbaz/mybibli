@@ -33,6 +33,27 @@ impl ContributorRoleModel {
         Ok(row.is_some())
     }
 
+    /// Story 11-18 — the live roles among `ids`, `(id, name)`, read with a
+    /// share lock so none is deleted before the caller's transaction ends.
+    pub async fn live_among_in(
+        conn: &mut sqlx::MySqlConnection,
+        ids: &[u64],
+    ) -> Result<Vec<(u64, String)>, AppError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = vec!["?"; ids.len()].join(", ");
+        let sql = format!(
+            "SELECT id, name FROM contributor_roles \
+             WHERE id IN ({placeholders}) AND deleted_at IS NULL LOCK IN SHARE MODE"
+        );
+        let mut q = sqlx::query_as::<_, (u64, String)>(&sql);
+        for id in ids {
+            q = q.bind(id);
+        }
+        Ok(q.fetch_all(&mut *conn).await?)
+    }
+
     /// Legacy id+name pair listing kept for the title-form dropdown
     /// population. Story 8-4 admin handlers use `list_all` instead.
     pub async fn find_all(pool: &DbPool) -> Result<Vec<(u64, String)>, AppError> {

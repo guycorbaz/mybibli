@@ -701,7 +701,7 @@ async fn csrf_and_role_are_required(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn rejected_and_metadata_proposals_cannot_be_accepted(pool: DbPool) {
+async fn rejected_proposals_cannot_be_accepted(pool: DbPool) {
     let f = fx(&pool).await;
     let id = file(
         &f,
@@ -727,33 +727,6 @@ async fn rejected_and_metadata_proposals_cannot_be_accepted(pool: DbPool) {
         "{body}"
     );
     assert_eq!(series_named(&pool, "Refusée").await, None);
-
-    // A metadata proposal shows no Accept button and its modal refuses.
-    let t = seed_title(&pool, "Métadonnées").await;
-    let meta = file(
-        &f,
-        "propose_title_metadata",
-        json!({"title_id": t, "fields": {"subtitle": "S"}, "sources": [SRC]}),
-    )
-    .await;
-    let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{meta}")).await;
-    assert!(page.contains("id=\"proposal-reject-button\""));
-    assert!(!page.contains("id=\"proposal-accept-button\""));
-    let mv = version_of(&pool, meta).await;
-    let res = f
-        .lib
-        .send(
-            &f.agent.app,
-            "GET",
-            &format!("/proposals/{meta}/accept-modal?version={mv}"),
-            "",
-            true,
-        )
-        .await;
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-    let (status, _) = accept(&f, &pool, meta).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(decision(&pool, meta).await.0, "pending");
 
     // A pending series proposal shows both buttons.
     let id2 = file(

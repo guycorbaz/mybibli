@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-10-29 (story 11-17 accept a series proposal (#493) → done)
+# last_updated: 2026-10-29 (story 11-18 accept a metadata or cover proposal (#493) → done)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -235,7 +235,7 @@ development_status:
   11-15-proposal-history-resubmission-delay: done
   11-16-proposals-page-list-detail-reject: done
   11-17-accept-series-proposal: done
-  11-18-accept-metadata-cover-proposal: backlog
+  11-18-accept-metadata-cover-proposal: done
   11-19-edit-proposal-before-accept: backlog
   11-20-proposal-side-by-side-view: backlog
   11-21-proposals-access-nav-dashboard: backlog

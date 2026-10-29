@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
+use sqlx::{MySqlConnection, Row};
 
 use crate::db::DbPool;
 use crate::error::AppError;
@@ -47,11 +47,23 @@ impl ContributorModel {
         pool: &DbPool,
         name: &str,
     ) -> Result<Option<ContributorModel>, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::find_by_name_exact_in(&mut conn, name).await
+    }
+
+    /// [`Self::find_by_name_exact`] on the given connection (story 11-18:
+    /// inside a proposal acceptance). The comparison uses the column's
+    /// collation (case- and accent-insensitive); the oldest match wins.
+    pub async fn find_by_name_exact_in(
+        conn: &mut MySqlConnection,
+        name: &str,
+    ) -> Result<Option<ContributorModel>, AppError> {
         let row = sqlx::query(
-            "SELECT id, name, biography, version FROM contributors WHERE name = ? AND deleted_at IS NULL",
+            "SELECT id, name, biography, version FROM contributors \
+             WHERE name = ? AND deleted_at IS NULL ORDER BY id LIMIT 1",
         )
         .bind(name)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *conn)
         .await?;
 
         match row {
@@ -154,12 +166,22 @@ impl ContributorModel {
         name: &str,
         biography: Option<&str>,
     ) -> Result<ContributorModel, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::create_in(&mut conn, name, biography).await
+    }
+
+    /// [`Self::create`] on the given connection.
+    pub async fn create_in(
+        conn: &mut MySqlConnection,
+        name: &str,
+        biography: Option<&str>,
+    ) -> Result<ContributorModel, AppError> {
         tracing::info!(name = %name, "Creating contributor");
 
         let result = sqlx::query("INSERT INTO contributors (name, biography) VALUES (?, ?)")
             .bind(name)
             .bind(biography)
-            .execute(pool)
+            .execute(&mut *conn)
             .await?;
 
         let id = result.last_insert_id();
@@ -343,6 +365,22 @@ impl TitleContributorModel {
         contributor_id: u64,
         role_id: u64,
     ) -> Result<(), AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::add_to_title_in(&mut conn, title_id, contributor_id, role_id).await
+    }
+
+    /// [`Self::add_to_title`] on the given connection. A junction row
+    /// soft-deleted earlier (the contributor was removed from the title)
+    /// is reactivated rather than inserted: the unique key
+    /// `uq_title_contributor_role` ignores `deleted_at`, so an INSERT
+    /// would collide with it (#531). A live row still answers
+    /// `DUPLICATE_CONTRIBUTOR_ROLE`.
+    pub async fn add_to_title_in(
+        conn: &mut MySqlConnection,
+        title_id: u64,
+        contributor_id: u64,
+        role_id: u64,
+    ) -> Result<(), AppError> {
         tracing::info!(
             title_id = title_id,
             contributor_id = contributor_id,
@@ -350,13 +388,34 @@ impl TitleContributorModel {
             "Adding contributor to title"
         );
 
+        let reactivated = sqlx::query(
+            "UPDATE title_contributors SET deleted_at = NULL, version = version + 1 \
+             WHERE title_id = ? AND contributor_id = ? AND role_id = ? \
+             AND deleted_at IS NOT NULL",
+        )
+        .bind(title_id)
+        .bind(contributor_id)
+        .bind(role_id)
+        .execute(&mut *conn)
+        .await?
+        .rows_affected();
+        if reactivated > 0 {
+            tracing::info!(
+                title_id,
+                contributor_id,
+                role_id,
+                "Removed contributor credit reactivated"
+            );
+            return Ok(());
+        }
+
         let result = sqlx::query(
             "INSERT INTO title_contributors (title_id, contributor_id, role_id) VALUES (?, ?, ?)",
         )
         .bind(title_id)
         .bind(contributor_id)
         .bind(role_id)
-        .execute(pool)
+        .execute(&mut *conn)
         .await;
 
         match result {
@@ -374,6 +433,29 @@ impl TitleContributorModel {
                 }
             }
         }
+    }
+
+    /// Story 11-18 — the live `(contributor_id, role_id)` credits of a
+    /// title, read `FOR UPDATE` over every junction row of the title
+    /// (removed ones included): the next-key locks on
+    /// `idx_title_contributors_title` keep a concurrent add for this title
+    /// out until the caller's transaction ends.
+    pub async fn lock_credits_in(
+        conn: &mut MySqlConnection,
+        title_id: u64,
+    ) -> Result<Vec<(u64, u64)>, AppError> {
+        let rows: Vec<(u64, u64, i64)> = sqlx::query_as(
+            "SELECT contributor_id, role_id, CAST(deleted_at IS NULL AS SIGNED) \
+             FROM title_contributors WHERE title_id = ? FOR UPDATE",
+        )
+        .bind(title_id)
+        .fetch_all(&mut *conn)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .filter(|(_, _, live)| *live != 0)
+            .map(|(c, r, _)| (c, r))
+            .collect())
     }
 
     pub async fn remove_from_title(pool: &DbPool, id: u64) -> Result<(), AppError> {

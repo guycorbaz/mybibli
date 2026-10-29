@@ -141,7 +141,8 @@ pub async fn fetch_metadata_chain_outcome(
     );
 
     if force_refresh
-        && let Err(e) = crate::services::title::TitleService::invalidate_metadata_cache(&pool, &code).await
+        && let Err(e) =
+            crate::services::title::TitleService::invalidate_metadata_cache(&pool, &code).await
     {
         // Non-fatal — log and continue. A stale cache row will then
         // short-circuit the chain, which is the pre-fix behaviour, so
@@ -187,27 +188,33 @@ pub async fn fetch_metadata_chain_outcome(
                 record_metadata_source(&pool, title_id, source).await;
             }
 
-            // Resolve cover URL via the shared fallback helper (fix #225 + #228).
-            let cover_url =
-                resolve_cover_url_with_fallback(&http_client, &metadata, &code, &code_type).await;
+            // Story 11-18 — a cover set by hand (upload, accepted proposal)
+            // is not downloaded at all (early skip); a cover set by hand
+            // while the download runs is caught by `store_fetched_cover`,
+            // which re-checks under the title row lock before writing.
+            let cover_url = if cover_is_manual(&pool, title_id).await {
+                tracing::debug!(title_id, "Cover set by hand; no cover download");
+                None
+            } else {
+                // Resolve cover URL via the shared fallback helper (fix #225 + #228).
+                resolve_cover_url_with_fallback(&http_client, &metadata, &code, &code_type).await
+            };
 
             let outcome = if let Some(cover_url) = cover_url.as_deref() {
-                match CoverService::download_and_resize(
-                    &http_client,
-                    cover_url,
-                    title_id,
-                    &covers_dir,
-                )
-                .await
-                {
-                    Ok(local_path) => {
-                        if let Err(e) =
-                            update_cover_image_url(&pool, title_id, Some(&local_path)).await
-                        {
-                            tracing::warn!(title_id = title_id, error = %e, "Failed to update cover_image_url");
-                            FetchOutcome::Failed
-                        } else {
-                            FetchOutcome::CoverRecovered
+                let fetched = match CoverService::download_bytes(&http_client, cover_url).await {
+                    Ok(bytes) => crate::services::cover::encode_cover(&bytes).map(|e| e.jpeg),
+                    Err(e) => Err(e),
+                };
+                match fetched {
+                    Ok(jpeg) => {
+                        match store_fetched_cover(&pool, title_id, &covers_dir, &jpeg).await {
+                            Ok(true) => FetchOutcome::CoverRecovered,
+                            // Set by hand while the download ran: nothing to recover.
+                            Ok(false) => FetchOutcome::NotFound,
+                            Err(e) => {
+                                tracing::warn!(title_id = title_id, error = %e, "Failed to store the fetched cover");
+                                FetchOutcome::Failed
+                            }
                         }
                     }
                     Err(e) => {
@@ -516,6 +523,79 @@ async fn add_author_contributor(
 
     tracing::debug!(title_id = title_id, author = %author_name, "Added author contributor from metadata");
     Ok(())
+}
+
+/// Story 11-18 — whether the title's cover was set by hand
+/// (`cover_image_url` in `manually_edited_fields`: a manual upload or an
+/// accepted cover proposal). A lookup error reads as "manual": skipping
+/// one download is better than replacing a hand-set image on disk.
+pub async fn cover_is_manual(pool: &DbPool, title_id: u64) -> bool {
+    match TitleModel::find_by_id(pool, title_id).await {
+        Ok(Some(t)) => t
+            .parsed_manually_edited_fields()
+            .iter()
+            .any(|f| f == "cover_image_url"),
+        Ok(None) => false,
+        Err(e) => {
+            tracing::warn!(title_id, error = %e, "Manual-cover check failed; no cover download");
+            true
+        }
+    }
+}
+
+/// Story 11-18 — write a fetched cover (already encoded) to
+/// `covers/{id}.jpg` and record its URL, in one short transaction under
+/// the title row lock, unless the cover was set by hand meanwhile: an
+/// accepted cover proposal marks it under that lock before its file is
+/// promoted, so a download that was in flight never replaces it on disk
+/// (a manual upload still writes its file before marking — pre-existing
+/// window, D-11-18-12). Returns whether the cover was stored.
+pub async fn store_fetched_cover(
+    pool: &DbPool,
+    title_id: u64,
+    covers_dir: &std::path::Path,
+    jpeg: &[u8],
+) -> Result<bool, AppError> {
+    let mut tx = pool.begin().await?;
+    let Some(title) = TitleModel::find_by_id_in(&mut tx, title_id, true).await? else {
+        return Ok(false);
+    };
+    if title
+        .parsed_manually_edited_fields()
+        .iter()
+        .any(|f| f == "cover_image_url")
+    {
+        tracing::debug!(
+            title_id,
+            "Cover set by hand meanwhile; fetched cover dropped"
+        );
+        return Ok(false);
+    }
+    // Written aside, then renamed: a failed write never truncates the
+    // cover in place.
+    let target = covers_dir.join(format!("{title_id}.jpg"));
+    let tmp = covers_dir.join(format!(
+        ".tmp-{}",
+        crate::services::cover_staging::new_staged_name()
+    ));
+    if let Err(e) = tokio::fs::write(&tmp, jpeg).await {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(AppError::Internal(format!("cover write: {e}")));
+    }
+    if let Err(e) = tokio::fs::rename(&tmp, &target).await {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(AppError::Internal(format!("cover rename: {e}")));
+    }
+    sqlx::query(
+        "UPDATE titles SET cover_image_url = ?, updated_at = NOW() \
+         WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(format!("/covers/{title_id}.jpg"))
+    .bind(title_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(true)
 }
 
 /// Update cover_image_url for a title (set to local path or NULL).

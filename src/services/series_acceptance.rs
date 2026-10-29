@@ -25,7 +25,8 @@
 //!    the lines are applied — series, then titles, then expected tomes
 //!    (origin `proposal`, auto-settle rules of D-11-10-*).
 //!
-//! A deadlock is retried (up to three attempts) by [`accept`].
+//! A deadlock is retried (up to three attempts) by [`accept`]. The
+//! kind-independent pieces live in [`crate::services::acceptance`].
 //!
 //! A stale outcome is an `Ok`: the caller commits the mark. Any error is
 //! an `Err`: the caller rolls back, nothing is applied and the proposal
@@ -33,8 +34,6 @@
 //!
 //! Every read before the series lock is a locking read, so no snapshot
 //! predates that lock (D-11-12-13 argument).
-
-use std::fmt;
 
 use serde_json::Value;
 use sqlx::MySqlConnection;
@@ -46,12 +45,12 @@ use crate::models::proposal::{
     ProposalItemRow, ProposalKind, ProposalModel, ProposalStatus, ProposalTargetTable,
 };
 use crate::models::series::{HeldPosition, SeriesModel, SeriesType, TitleSeriesModel};
-use crate::services::expected_tomes::{
-    ExpectedTomeError, ExpectedTomeInput, ExpectedTomeService, closed_total_of,
-};
-use crate::services::proposals::{
-    Decision, ProposalError, ProposalService, StaleTarget, Transition,
-};
+// The shared acceptance types (story 11-18), re-exported for the callers
+// of this module.
+pub use crate::services::acceptance::{AcceptConflict, AcceptError, AcceptOutcome, StaleCause};
+use crate::services::acceptance::{in_retried_transaction, lock_pending_in, mark_stale_in};
+use crate::services::expected_tomes::{ExpectedTomeInput, ExpectedTomeService, closed_total_of};
+use crate::services::proposals::{Decision, ProposalService, Transition};
 use crate::services::series_proposals::{
     SeriesProposalError, TitleLine, TomeLine, ValidLines, check_against_series, validate_lines,
     validate_series_name, validate_total,
@@ -196,24 +195,6 @@ pub fn parse_items(
     })
 }
 
-/// Why the catalog no longer admits a proposal (the proposal goes
-/// stale). Names come from the catalog, for the librarian's message.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AcceptConflict {
-    /// An active series with the proposed name exists now.
-    SeriesExists { name: String },
-    /// A title of the proposal is already in the series.
-    TitleInSeries { title: String, position: i32 },
-    /// A live title holds a proposed position.
-    PositionHeld { position: i32, holder: String },
-    /// A live expected tome sits at a proposed position.
-    TomePositionTaken { position: i32, tome_title: String },
-    /// A live expected tome already carries a proposed tome's ISBN.
-    TomeIsbnTaken { isbn: String, tome_title: String },
-    /// A proposed position is above the series' closed total.
-    BeyondTotal { position: i32, total: i32 },
-}
-
 impl AcceptConflict {
     /// The conflict of a re-validation error, named from `held` (the
     /// series' current holders). `None` for an error that is not a state
@@ -252,15 +233,6 @@ impl AcceptConflict {
     }
 }
 
-/// Why an accept went stale.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StaleCause {
-    /// Targets changed (`version`) or were deleted since filing.
-    Targets(Vec<StaleTarget>),
-    /// The catalog changed in a way no `version` records (#521).
-    Conflict(AcceptConflict),
-}
-
 /// A tome line not created because its book is already in the series.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkippedTome {
@@ -283,85 +255,6 @@ pub struct AppliedSeries {
     /// their ISBN.
     pub tomes_settled: usize,
     pub tomes_skipped: Vec<SkippedTome>,
-}
-
-/// Outcome of an accept that did not fail.
-#[must_use]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AcceptOutcome {
-    Accepted(AppliedSeries),
-    /// Nothing applied; the proposal is now `stale` (commit the mark).
-    Stale(StaleCause),
-}
-
-/// Why an accept was refused or failed (roll back: nothing applied,
-/// the proposal stays as it was).
-#[derive(Debug)]
-pub enum AcceptError {
-    NotFound,
-    NotPending {
-        status: ProposalStatus,
-    },
-    /// The proposal's `version` moved since the page was opened.
-    Changed,
-    /// Not a series proposal (metadata / cover: story 11-18).
-    WrongKind {
-        kind: ProposalKind,
-    },
-    /// Every item was removed (story 11-19).
-    NothingToApply,
-    UnknownDecider,
-    /// The stored items cannot be applied as they are (never produced by
-    /// filing; a librarian rejects such a proposal).
-    Invalid(String),
-    /// A failure while applying.
-    Apply(AppError),
-}
-
-impl fmt::Display for AcceptError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AcceptError::NotFound => write!(f, "proposal not found"),
-            AcceptError::NotPending { status } => write!(f, "proposal is {}", status.as_str()),
-            AcceptError::Changed => write!(f, "proposal version moved"),
-            AcceptError::WrongKind { kind } => write!(f, "{} is not a series kind", kind.as_str()),
-            AcceptError::NothingToApply => write!(f, "nothing to apply"),
-            AcceptError::UnknownDecider => write!(f, "unknown decider"),
-            AcceptError::Invalid(why) => write!(f, "invalid proposal: {why}"),
-            AcceptError::Apply(e) => write!(f, "apply failed: {e}"),
-        }
-    }
-}
-
-impl From<AppError> for AcceptError {
-    fn from(e: AppError) -> Self {
-        AcceptError::Apply(e)
-    }
-}
-
-impl From<sqlx::Error> for AcceptError {
-    fn from(e: sqlx::Error) -> Self {
-        AcceptError::Apply(AppError::from(e))
-    }
-}
-
-impl From<ExpectedTomeError> for AcceptError {
-    fn from(e: ExpectedTomeError) -> Self {
-        AcceptError::Apply(AppError::from(e))
-    }
-}
-
-impl From<ProposalError> for AcceptError {
-    fn from(e: ProposalError) -> Self {
-        match e {
-            ProposalError::NotFound { .. } => AcceptError::NotFound,
-            ProposalError::NotPending { status, .. } => AcceptError::NotPending { status },
-            ProposalError::NothingToApply { .. } => AcceptError::NothingToApply,
-            ProposalError::UnknownDecider { .. } => AcceptError::UnknownDecider,
-            ProposalError::Database(inner) => AcceptError::Apply(inner),
-            other => AcceptError::Apply(AppError::Internal(other.to_string())),
-        }
-    }
 }
 
 /// A `series_create` once its series line is validated.
@@ -388,92 +281,19 @@ fn beyond_total(lines: &ValidLines, total: Option<i32>) -> Option<AcceptConflict
 
 /// Accept proposal `id` on behalf of `user_id`, in its own transaction:
 /// committed when the outcome is `Accepted` or `Stale`, rolled back on
-/// any error.
+/// any error. A deadlock (concurrent scan-settle or hand assignment, or
+/// two creations of one name on an empty `series` table) is retried
+/// (`acceptance::in_retried_transaction`).
 pub async fn accept(
     pool: &DbPool,
     id: u64,
     user_id: u64,
     version: i32,
 ) -> Result<AcceptOutcome, AcceptError> {
-    // A deadlock (concurrent scan-settle or hand assignment, or two
-    // creations of one name on an empty `series` table) is retried on a
-    // fresh transaction (#16 pattern): the whole acceptance re-runs,
-    // re-checks included, and every failed attempt was rolled back. A
-    // lock-wait timeout is not retried: the blocker is likely still there
-    // and each wait lasts `innodb_lock_wait_timeout` (review round 2).
-    let mut attempt = 0;
-    loop {
-        attempt += 1;
-        match accept_once(pool, id, user_id, version, attempt < ACCEPT_MAX_ATTEMPTS).await {
-            Err(AcceptError::Apply(AppError::Database(e)))
-                if is_deadlock(&e) && attempt < ACCEPT_MAX_ATTEMPTS =>
-            {
-                tracing::warn!(
-                    proposal_id = id,
-                    attempt,
-                    error = %e,
-                    "proposal acceptance hit a deadlock, retrying"
-                );
-            }
-            other => return other,
-        }
-    }
-}
-
-/// SQLSTATE 40001 — InnoDB picked this transaction as a deadlock victim.
-fn is_deadlock(e: &sqlx::Error) -> bool {
-    matches!(e, sqlx::Error::Database(db) if db.code().as_deref() == Some("40001"))
-}
-
-/// Attempts of [`accept`] on a deadlock.
-const ACCEPT_MAX_ATTEMPTS: usize = 3;
-
-/// One attempt of [`accept`]; `may_retry` keeps a deadlock that will be
-/// retried out of the error log.
-async fn accept_once(
-    pool: &DbPool,
-    id: u64,
-    user_id: u64,
-    version: i32,
-    may_retry: bool,
-) -> Result<AcceptOutcome, AcceptError> {
-    let mut tx = pool.begin().await?;
-    match accept_in(&mut tx, id, user_id, version).await {
-        Ok(outcome) => {
-            tx.commit().await?;
-            match &outcome {
-                AcceptOutcome::Accepted(a) => tracing::info!(
-                    proposal_id = id,
-                    user_id,
-                    series_id = a.series_id,
-                    created = a.created,
-                    titles = a.titles_attached,
-                    tomes = a.tomes_created,
-                    tomes_settled = a.tomes_settled,
-                    tomes_skipped = a.tomes_skipped.len(),
-                    "Series proposal accepted and applied"
-                ),
-                AcceptOutcome::Stale(cause) => tracing::info!(
-                    proposal_id = id,
-                    user_id,
-                    cause = ?cause,
-                    "Series proposal went stale at acceptance"
-                ),
-            }
-            Ok(outcome)
-        }
-        Err(e) => {
-            if let Err(rb) = tx.rollback().await {
-                tracing::warn!(error = %rb, "proposal acceptance rollback failed");
-            }
-            let retried = may_retry
-                && matches!(&e, AcceptError::Apply(AppError::Database(d)) if is_deadlock(d));
-            if !retried && matches!(e, AcceptError::Apply(_) | AcceptError::Invalid(_)) {
-                tracing::error!(proposal_id = id, error = %e, "Series proposal not applied");
-            }
-            Err(e)
-        }
-    }
+    in_retried_transaction(pool, id, user_id, "series", |conn| {
+        Box::pin(accept_in(conn, id, user_id, version))
+    })
+    .await
 }
 
 /// [`accept`] on a caller-held transaction (see the module doc for the
@@ -484,25 +304,13 @@ async fn accept_in(
     user_id: u64,
     version: i32,
 ) -> Result<AcceptOutcome, AcceptError> {
-    let (kind, status, current) = ProposalModel::lock_for_decision(conn, id)
-        .await?
-        .ok_or(AcceptError::NotFound)?;
-    if status != ProposalStatus::Pending {
-        return Err(AcceptError::NotPending { status });
-    }
-    if current != version {
-        return Err(AcceptError::Changed);
-    }
-    if !matches!(
-        kind,
-        ProposalKind::SeriesCreate | ProposalKind::SeriesAttach
-    ) {
-        return Err(AcceptError::WrongKind { kind });
-    }
-    let items = ProposalModel::items(conn, id, true).await?;
-    if items.is_empty() {
-        return Err(AcceptError::NothingToApply);
-    }
+    let (kind, items) = lock_pending_in(
+        conn,
+        id,
+        version,
+        &[ProposalKind::SeriesCreate, ProposalKind::SeriesAttach],
+    )
+    .await?;
     let stored = parse_items(kind, &items).map_err(AcceptError::Invalid)?;
 
     // Series before titles (module doc, step 3). An attach locks its
@@ -580,10 +388,7 @@ async fn accept_in(
         }
     };
     if let Some(conflict) = conflict {
-        match ProposalService::transition_in(conn, id, &Decision::MarkStale).await? {
-            Transition::Decided(_) | Transition::WentStale(_) => {}
-        }
-        return Ok(AcceptOutcome::Stale(StaleCause::Conflict(conflict)));
+        return mark_stale_in(conn, id, conflict).await;
     }
 
     // The decision (FR146), then the apply (step 6).
@@ -819,13 +624,6 @@ mod tests {
                 })
                 .collect(),
         }
-    }
-
-    #[test]
-    fn only_database_deadlocks_are_retried() {
-        assert!(!is_deadlock(&sqlx::Error::RowNotFound));
-        assert!(!is_deadlock(&sqlx::Error::PoolTimedOut));
-        assert!(!is_deadlock(&sqlx::Error::Protocol("x".into())));
     }
 
     #[test]
