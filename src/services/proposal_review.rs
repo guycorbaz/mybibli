@@ -447,8 +447,9 @@ pub struct ReviewDetail {
     pub proposal: Proposal,
     pub target: TargetLabel,
     pub lines: Vec<LineView>,
-    /// Whether the proposal has a cover item with a well-formed staged
-    /// name (the image is then requested from the cover route).
+    /// Whether the cover route will serve an image: a pending cover
+    /// proposal whose well-formed staged file is on disk
+    /// (`servable_staged_name` + an existence check).
     pub has_staged_cover: bool,
 }
 
@@ -715,8 +716,9 @@ async fn reject_in(
     };
     match ProposalService::transition_in(conn, id, &decision).await? {
         Transition::Decided(_) => {}
-        // Only an accept is expected to go stale; should a rejection ever
-        // do so, say it as the stale refusal it is.
+        // Unreachable today: `transition_in` only goes stale on an
+        // accept. Should that change, the refusal names the stale case;
+        // note the caller rolls back, so the stale mark is not kept.
         Transition::WentStale(_) => return Err(ReviewError::Stale),
     }
     Ok(ProposalModel::staged_cover_files_of(conn, &[id])

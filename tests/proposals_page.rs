@@ -534,17 +534,26 @@ async fn rejecting_with_a_reason_records_the_decision(pool: DbPool) {
         Some("Mauvaise <édition>")
     );
 
-    // The modal of a decided proposal is refused too.
+    // The modal of a decided proposal is refused too — by the status
+    // gate, not the version check (round 3: the current version is sent).
     let res = lib
         .send(
             &f.agent.app,
             "GET",
-            &format!("/proposals/{id}/reject-modal"),
+            &format!(
+                "/proposals/{id}/reject-modal?version={}",
+                version_of(&pool, id).await
+            ),
             "",
             true,
         )
         .await;
     assert_eq!(res.status(), StatusCode::CONFLICT);
+    let body = body_string(res).await;
+    assert!(
+        body.contains("already been decided") || body.contains("déjà été tranchée"),
+        "{body}"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -837,12 +846,20 @@ async fn a_stale_proposal_says_it_is_outdated(pool: DbPool) {
         .send(
             &f.agent.app,
             "GET",
-            &format!("/proposals/{id}/reject-modal"),
+            &format!(
+                "/proposals/{id}/reject-modal?version={}",
+                version_of(&pool, id).await
+            ),
             "",
             true,
         )
         .await;
     assert_eq!(res.status(), StatusCode::CONFLICT);
+    let body = body_string(res).await;
+    assert!(
+        body.contains("outdated") || body.contains("périmée"),
+        "{body}"
+    );
 }
 
 #[sqlx::test(migrations = "./migrations")]

@@ -1,6 +1,6 @@
 # Story 11.16: Proposals page — list, detail, reject
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here); closes #536 (reject-then-refused E2E). Covers: FR137, FR138 (reject), FR146 (reject), UX-DR31 (list, detail, reject part). Epic 11 — sixteenth story, the **first librarian-facing web surface for proposals**. Not here: accept (11-17 series, 11-18 metadata / cover), edit before accepting (11-19), side-by-side current vs proposed view (11-20), nav entry + pending badge + dashboard indicator (11-21).
 
@@ -83,6 +83,9 @@ Claude Opus 5.5
 - The staged image is shown only while the proposal is pending (a decided proposal's file is gone or promoted).
 - Gates: clippy `-D warnings` clean; `cargo test` 1987 passed / 0 failed; `cargo sqlx prepare --check` clean (no typed query); waitForTimeout grep clean; `tsc --noEmit` clean; Playwright `CI=true --workers=2` on a reset stack: 374 passed, 2 skipped.
 - Askama escapes `<`, `>`, `&` as numeric entities (`&#60;` …): router tests assert on those.
+- Code review round 1 (D-11-16-10): no High; Mediums fixed in f43020b; #538 deferred (focus after swap).
+- Code review round 2 (D-11-16-11): no High; one Medium (two layers): the reject modal fell back to the current version when `?version=` was missing or garbled. Fixed: it now refuses with the localized "changed" conflict. Lows fixed: one shared servable-staged-file predicate for the page and the cover route; a stale rejection answers the stale refusal; cover dimensions are shown without the image; the unused `media_type` read is dropped. Round 3 on the delta: no Medium+; its Lows were fixed (status-specific modal tests, dimensions hidden when incomplete, comments).
+- Final gates after round 3: clippy `-D warnings` clean; `cargo test` 1996 passed / 0 failed (locale parity included); `cargo sqlx prepare --check` clean; waitForTimeout grep clean; `tsc --noEmit` clean; Playwright `CI=true --workers=2` on a reset stack: 374 passed, 2 skipped.
 
 ### File List
 

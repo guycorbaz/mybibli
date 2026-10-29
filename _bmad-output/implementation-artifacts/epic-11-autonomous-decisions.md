@@ -925,4 +925,9 @@ Tests: a missing, empty or garbled modal version answers 409; dimensions are sho
 - index-aligned side vectors in the template (built from the same `lines`).
 
 Focus after the swap remains #538.
+
+**Round 3** (on the round-2 delta) found no Medium+. Its Lows were fixed:
+- the decided-modal and stale-modal tests now send the current version and assert the status-specific copy, so they no longer pass through the version branch;
+- the cover dimensions line is hidden when `width`, `height` or `bytes` is missing;
+- the unreachable `WentStale` arm and the `has_staged_cover` doc are commented accurately.
 **Reversible:** yes.

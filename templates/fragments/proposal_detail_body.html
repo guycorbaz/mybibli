@@ -100,7 +100,9 @@
                         {% else %}
                         <p class="text-stone-500 dark:text-stone-400">{{ l.t("cover_missing") }}</p>
                         {% endif %}
+                        {% if !line.width.is_empty() && !line.height.is_empty() && !line.bytes.is_empty() %}
                         <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ body.cover_dims[loop.index0] }}</p>
+                        {% endif %}
                     </figure>
                     <figure>
                         <figcaption class="mb-1 text-stone-500 dark:text-stone-400">{{ l.t("cover_current") }}</figcaption>
