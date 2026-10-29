@@ -139,6 +139,83 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.21.0}\label{sec:whats-new-1.21.0}
+
+Version 1.21.0 is a minor release on 1.20.1 and closes the epic that
+1.20.1 started (\#493). It brings \emph{six additive migrations}, run
+automatically at the first boot (new tables for proposals and expected
+tomes, a new key scope): take a database backup first, as for every
+upgrade (chapter~\ref{ch:backup}). There is no setting to change for
+an install that does not use an AI agent.
+
+\begin{itemize}
+  \item \textbf{AI agents, under supervision.} mybibli now includes an
+        MCP server at \texttt{/api/mcp}. An AI agent --- Claude Code,
+        Hermes Agent or any MCP client over streamable HTTP ---
+        connects with a new \textbf{Read + propose} API key
+        (Administration \(\rightarrow\) API keys), reads the catalog
+        through twelve tools and \emph{proposes}: a new series and the
+        tomes you are missing, additions to a series, a missing
+        subtitle, description, publisher, year, Dewey code or
+        contributor, a cover --- always citing its sources. It never
+        changes the catalog itself. Chapter~\ref{ch:agents} is new and
+        covers the whole workflow.
+  \item \textbf{The Proposals page.} Librarians and Admins get a
+        \textbf{Proposals} entry in the navigation bar, with a badge
+        counting the pending proposals, and a \textbf{Pending
+        proposals} indicator on the home page. Each proposal shows its
+        sources, the current and the proposed values side by side
+        (with \emph{New} / \emph{Changed} badges) or the current and
+        the proposed cover. You can edit or remove lines, accept, or
+        reject with a reason the agent can read. A proposal whose
+        subject changed in the meantime becomes \emph{Outdated} and
+        nothing is applied. Accepted values count as edited by hand:
+        an automatic metadata download never overwrites them
+        (section~\ref{sec:proposals}).
+  \item \textbf{Resubmission delay.} After a rejection, an equivalent
+        proposal is refused for 90 days, whichever key files it. The
+        delay is a new setting under Administration \(\rightarrow\)
+        System \(\rightarrow\) Proposals, from 0 to 3650 days
+        (section~\ref{sec:agents-delay}).
+  \item \textbf{Expected tomes.} A series can now name the tomes you
+        do not own yet --- by hand, with or without an agent, or from
+        an accepted proposal. They fill their gap on the series page,
+        go to the wish list in one click, and take their position
+        automatically when you scan the book
+        (section~\ref{sec:expected-tomes}).
+  \item \textbf{\#496 \string— the navigation bar stays at the top}
+        while you scroll. It now switches to the hamburger menu below
+        1280 pixels instead of 1024, so that every entry --- including
+        the new Proposals one --- fits on one line in every language
+        (section~\ref{sec:navbar}).
+\end{itemize}
+
+\subsection*{For the operator}
+
+\begin{itemize}
+  \item \textbf{The endpoint answers on the LAN only, and only to
+        known names.} By default \texttt{/api/mcp} accepts requests
+        addressed to \texttt{localhost} only. To let an agent on
+        another computer connect, set
+        \texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS} to the name or address it
+        uses to reach the NAS, then restart
+        (section~\ref{sec:agents-hosts}). The \texttt{docker-compose.yml}
+        of 1.21.0 passes this variable and
+        \texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS} through; if you keep an
+        older copy, download the new one or add the two lines.
+  \item \textbf{Proposed covers wait in the covers volume}, in a hidden
+        \texttt{.staging} folder that is never served and is cleaned up
+        by the scheduled purge. Nothing to configure; your backups of
+        the covers volume include it (section~\ref{sec:agents-staging}).
+  \item \textbf{One new dependency}, the MCP library \texttt{rmcp},
+        pinned to an exact version and upgraded only for a security
+        advisory.
+\end{itemize}
+
+ISBN-10 at scan, the Library of Congress through SRU and the
+\emph{Recent additions} triangle, also part of this epic, already
+shipped in 1.20.1 (below).
+
 \section{What's new in 1.20.1}\label{sec:whats-new-1.20.1}
 
 Version 1.20.1 is a patch release on 1.20.0. \emph{No migration}, no

@@ -61,7 +61,7 @@ services:
       # reachability check. Bump on fragile uplinks (default 10s
       # is conservative for home-NAS networks).
       MYBIBLI_PROVIDER_HEALTH_TIMEOUT_SECS: "10"
-      # Optional — AI agents (MCP endpoint /api/mcp). The `Host` names
+      # v1.21.0+, optional — AI agents (MCP endpoint /api/mcp). The `Host` names
       # an agent may use; the default only allows localhost. List the
       # NAS name/IP your agent reaches it by (a set value replaces the
       # default). See chapter 13 of the manual.
@@ -126,7 +126,7 @@ Both `mybibli-covers` and `mybibli-logs` can be swapped from Docker-named volume
 ## Tags
 
 - `:latest` — tracks the highest semver release tag.
-- `:1.20.1` (current), `:1.20.0`, `:1.19.0` and every prior release tag back to `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; tracking `:latest` is reasonable for homelab. The full tag list is on the [Tags tab](https://hub.docker.com/r/gcorbaz/mybibli/tags).
+- `:1.21.0` (current), `:1.20.1`, `:1.20.0` and every prior release tag back to `:1.1.0` — specific releases. Pin to a specific tag in production-style setups; tracking `:latest` is reasonable for homelab. The full tag list is on the [Tags tab](https://hub.docker.com/r/gcorbaz/mybibli/tags).
 - **No `:dev`, no `:main`, no `:beta` published** — tagged releases only.
 
 ## Docs

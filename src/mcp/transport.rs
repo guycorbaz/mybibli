@@ -70,9 +70,9 @@ fn ensure_supported_version(context: &RequestContext<RoleServer>) -> Result<(), 
     }
 }
 
-const INSTRUCTIONS: &str = "mybibli is a home library catalog. These tools read the catalog. \
-     The catalog is never modified through this server: later tools only file proposals \
-     that the librarian reviews.";
+const INSTRUCTIONS: &str = "mybibli is a home library catalog. The read tools read the catalog; \
+     the propose tools file proposals that the librarian reviews. \
+     The catalog is never modified through this server.";
 
 /// One handler per request (stateless).
 #[derive(Clone)]
@@ -217,6 +217,16 @@ mod tests {
         assert_eq!(wire, supported_protocol_version_strings());
         assert_eq!(wire, vec!["2025-11-25", "2026-07-28"]);
         assert!(!SUPPORTED_PROTOCOL_VERSIONS.contains(&ProtocolVersion::V_2025_03_26));
+    }
+
+    /// The instructions describe both tool families (the read-only
+    /// wording of story 11-1 outlived the propose tools).
+    #[test]
+    fn instructions_describe_read_and_propose_tools() {
+        assert!(INSTRUCTIONS.contains("read tools"));
+        assert!(INSTRUCTIONS.contains("propose tools"));
+        assert!(INSTRUCTIONS.contains("never modified"));
+        assert!(!INSTRUCTIONS.contains("later tools"));
     }
 
     /// Story 11-22: the served-method inventory

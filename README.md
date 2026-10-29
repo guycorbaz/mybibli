@@ -9,7 +9,7 @@
 [![Version](https://img.shields.io/github/v/tag/guycorbaz/mybibli?label=version&sort=semver&color=blue)](https://github.com/guycorbaz/mybibli/releases)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-lightgrey)](LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/gcorbaz/mybibli?logo=docker&label=docker%20pulls)](https://hub.docker.com/r/gcorbaz/mybibli)
-[![Docker Image Size](https://img.shields.io/docker/image-size/gcorbaz/mybibli/1.20.1?logo=docker&label=image%20size)](https://hub.docker.com/r/gcorbaz/mybibli/tags)
+[![Docker Image Size](https://img.shields.io/docker/image-size/gcorbaz/mybibli/1.21.0?logo=docker&label=image%20size)](https://hub.docker.com/r/gcorbaz/mybibli/tags)
 [![Open Issues](https://img.shields.io/github/issues/guycorbaz/mybibli?logo=github)](https://github.com/guycorbaz/mybibli/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/guycorbaz/mybibli/main?logo=github)](https://github.com/guycorbaz/mybibli/commits/main)
 [![Stars](https://img.shields.io/github/stars/guycorbaz/mybibli?logo=github&style=flat)](https://github.com/guycorbaz/mybibli/stargazers)
@@ -17,7 +17,7 @@
 
 > Personal library cataloging for home collectors.
 
-**Status:** in production since v1.1.1 (2026-05-14). 10 epics shipped; epic 11 (a built-in MCP server, [#493](https://github.com/guycorbaz/mybibli/issues/493)) in progress. Current release: `v1.20.1`. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli). See [ROADMAP.md](ROADMAP.md) for what's coming next.
+**Status:** in production since v1.1.1 (2026-05-14). 11 epics shipped, the latest a built-in MCP server through which an AI agent proposes and the librarian decides ([#493](https://github.com/guycorbaz/mybibli/issues/493)). Current release: `v1.21.0`. Pre-built images on Docker Hub at [`gcorbaz/mybibli`](https://hub.docker.com/r/gcorbaz/mybibli). See [ROADMAP.md](ROADMAP.md) for what's coming next.
 
 ## What it is
 
@@ -39,7 +39,7 @@ Built for collectors who want more than a spreadsheet:
 
 ## Screenshots
 
-Live production install (`v1.20.1`, household NAS, 140+ volumes catalogued and growing):
+Live production install (`v1.21.0`, household NAS, 140+ volumes catalogued and growing):
 
 <p align="center">
   <img src="docs/screenshots/01-home-desktop.png" alt="mybibli home page — search bar, genre filters, dashboard counters, and a recent-additions strip with cover thumbnails." width="780">
@@ -414,10 +414,11 @@ Versioned under `_bmad-output/`:
 | 8 | Administration & Configuration | ✅ done |
 | 9 | Polish UX & Accessibilité | ✅ done |
 | 10 | Mobile UX & sécurité closeout | ✅ done |
+| 11 | An AI assistant proposes, the librarian decides | ✅ done |
 
 mybibli has been live in production since v1.1.1 (2026-05-14) on the household NAS that drove the project. v1.0.0 shipped after Epic 9 close (2026-05-10) as the first production-ready build; v1.1.0 added the seed-gate + audit trio (mandatory install floor — see "Installation notes" above); the themed minors v1.2 through v1.8 then delivered the original feature roadmap (browse & find, wishlist, HTTP API, valuation & stats, catalog hygiene, de/it locales + runtime logging, cover handling), each followed by production-driven patch trains. Since v1.8 the project runs in GH-issue-driven polish mode.
 
-**Current release: `v1.20.1`** (2026-10-27) — three production fixes, the planned intermediate release of epic 11. [#497](https://github.com/guycorbaz/mybibli/issues/497): an ISBN-10 scanned or searched is recognised and converted to its ISBN-13 (titles catalogued earlier under the raw ISBN-10 are not merged automatically). [#495](https://github.com/guycorbaz/mybibli/issues/495): the Library of Congress provider reads MARC 21 through SRU, its JSON search now being behind a bot challenge — SRU is reached over plain HTTP on port 210. [#494](https://github.com/guycorbaz/mybibli/issues/494): the *Recent additions* triangle rotates when the section is open. **No migration.** The preceding release, `v1.20.0` (2026-09-23), showed the last volume number and the last shelf number in use on the admin Health tab, with the next free number after each ([#489](https://github.com/guycorbaz/mybibli/issues/489)). **No migration.** Before it, `v1.19.0` (2026-09-11), carried the three change requests of a security review run against the 1.18.0 code ([#478](https://github.com/guycorbaz/mybibli/issues/478), [#480](https://github.com/guycorbaz/mybibli/issues/480), [#479](https://github.com/guycorbaz/mybibli/issues/479)).
+**Current release: `v1.21.0`** (2026-10-29) — the closing release of epic 11 ([#493](https://github.com/guycorbaz/mybibli/issues/493)): AI agents, under supervision. A built-in MCP server at `/api/mcp` lets an AI agent with a new *Read + propose* API key read the catalog through twelve tools and propose series, missing tomes, metadata and covers, citing its sources; it never changes the catalog. Librarians review each proposal on the new Proposals page (side-by-side comparison, edit, accept, or reject with a reason; outdated proposals apply nothing; a rejection blocks equivalent re-filings for 90 days, admin-configurable). Series can name *expected tomes* (one click to the wish list, filled automatically when the book is scanned), and the navigation bar stays at the top and switches to the menu below 1280 px ([#496](https://github.com/guycorbaz/mybibli/issues/496)). **Six additive migrations** — back up first. To let an agent on another machine connect, set `MYBIBLI_MCP_ALLOWED_HOSTS` (default: localhost only). The preceding release, `v1.20.1` (2026-10-27), carried three production fixes from the same epic: ISBN-10 recognised at scan and in search ([#497](https://github.com/guycorbaz/mybibli/issues/497)), the Library of Congress read through SRU on port 210 ([#495](https://github.com/guycorbaz/mybibli/issues/495)), and the *Recent additions* triangle ([#494](https://github.com/guycorbaz/mybibli/issues/494)). **No migration.** Before it, `v1.20.0` (2026-09-23), showed the last volume number and the last shelf number in use on the admin Health tab, with the next free number after each ([#489](https://github.com/guycorbaz/mybibli/issues/489)). **No migration.** Before it, `v1.19.0` (2026-09-11), carried the three change requests of a security review run against the 1.18.0 code ([#478](https://github.com/guycorbaz/mybibli/issues/478), [#480](https://github.com/guycorbaz/mybibli/issues/480), [#479](https://github.com/guycorbaz/mybibli/issues/479)).
 
 **Release-by-release history lives in [ROADMAP.md](ROADMAP.md)** — one section per version, and the canonical copy. It is deliberately not repeated here: the [GitHub releases page](https://github.com/guycorbaz/mybibli/releases) carries the same notes as published artifacts, chapter 8 of the [user manual](docs/manual/) carries them offline, and the [website roadmap](https://guycorbaz.github.io/mybibli/roadmap.html) tells the same story for a different audience. See [`epics.md`](_bmad-output/planning-artifacts/epics.md) for the epic breakdown and [`sprint-status.yaml`](_bmad-output/implementation-artifacts/sprint-status.yaml) for the story-by-story state.
 
