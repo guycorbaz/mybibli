@@ -1073,6 +1073,18 @@ async fn a_cover_is_compared_with_the_placeholder_or_the_current_cover(pool: DbP
     assert!(html.contains("data-cover-flag=\"replace\""));
     assert!(html.contains("remplace la couverture actuelle"));
 
+    // Review round 1: no "accepting …" flag once acceptance is not
+    // offered — a decided proposal, or a pending one whose image is gone.
+    let stale = file_cover(&f, title).await;
+    mark_stale(&pool, stale).await;
+    let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{stale}")).await;
+    assert!(html.contains("data-cover-compare"));
+    assert!(!html.contains("data-cover-flag"), "decided: no flag");
+    let lost = file_cover(&f, title).await;
+    std::fs::remove_file(f.staging.join(staged_file_of(&pool, lost).await)).unwrap();
+    let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{lost}")).await;
+    assert!(!html.contains("data-cover-flag"), "image gone: no flag");
+
     // The staged image route stays Librarian-only.
     let res = get_anonymous(&f.agent.app, &format!("/proposals/{first}/cover")).await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);

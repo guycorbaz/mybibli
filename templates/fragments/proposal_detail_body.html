@@ -110,9 +110,9 @@
                             </td>
                             <td class="pl-3 align-top break-words border-l-4 {% if line.change.as_str() == "unchanged" %}border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300{% else %}border-indigo-500 dark:border-indigo-400 font-medium text-stone-900 dark:text-stone-100{% endif %}">
                             {% if line.line.eq("contributors") %}
-                                <div data-proposed>{% for c in line.contributors_proposed %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}</div>
+                                <div data-proposed>{% if line.contributors_proposed.is_empty() %}<span class="font-normal text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}{% for c in line.contributors_proposed %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}</div>
                             {% else %}
-                                <div data-proposed class="whitespace-pre-line">{{ line.proposed }}</div>
+                                {% if line.proposed.trim().is_empty() %}<div data-proposed class="font-normal text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</div>{% else %}<div data-proposed class="whitespace-pre-line">{{ line.proposed }}</div>{% endif %}
                             {% endif %}
                             {% if let Some(e) = line.edit %}
                                 <div data-original class="mt-2 text-xs font-normal text-stone-600 dark:text-stone-400">
@@ -168,12 +168,8 @@
                         {% endif %}
                     </figure>
                 </div>
-                {% if line.target_name.is_some() %}
-                {% if line.current_cover_url.is_empty() %}
-                <p data-cover-flag="new" class="mt-2 font-medium text-stone-900 dark:text-stone-100">{{ l.t("cover_flag_new") }}</p>
-                {% else %}
-                <p data-cover-flag="replace" class="mt-2 font-medium text-amber-800 dark:text-amber-300">{{ l.t("cover_flag_replace") }}</p>
-                {% endif %}
+                {% if let Some((flag, text)) = body.cover_flags[loop.index0] %}
+                <p data-cover-flag="{{ flag }}" class="mt-2 font-medium {% if flag == &"replace" %}text-amber-800 dark:text-amber-300{% else %}text-stone-900 dark:text-stone-100{% endif %}">{{ text }}</p>
                 {% endif %}
             {% else %}
                 <div class="text-stone-500 dark:text-stone-400">{{ l.t("unknown_line") }}</div>

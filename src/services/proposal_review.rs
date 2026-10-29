@@ -359,22 +359,49 @@ impl Change {
     }
 }
 
-/// Story 11-20 — compare a line's proposed value with the value recorded
-/// at filing (`current`, the staleness baseline — never the live title).
-/// A truncated baseline cannot equal the proposed value; contributors
-/// are always additions.
-pub fn change_of(line: &LineView) -> Change {
+/// Story 11-20 — compare a parsed line's proposed value with the value
+/// recorded at filing (`current`, the staleness baseline — never the
+/// live title). "Unchanged" is [`proposal_edit::same_as_current`] — the
+/// rule filing and editing use (normal form; a year against `current`,
+/// else the year of `current_date`; a truncated baseline never equals).
+/// "New" when there is no baseline at all; contributors are additions
+/// (a proposed name already credited is dropped at filing and skipped at
+/// acceptance, so it is not singled out here).
+pub fn change_of(line: &LineView, values: &Value) -> Change {
     match line.line {
-        "field" => match line.current.as_deref().map(str::trim) {
-            None | Some("") => Change::New,
-            Some(_) if line.current_truncated => Change::Changed,
-            Some(cur) if cur == line.proposed.trim() => Change::Unchanged,
-            Some(_) => Change::Changed,
-        },
+        "field" if proposal_edit::same_as_current(values) => Change::Unchanged,
+        "field" => {
+            let blank = |k: &str| match values.get(k) {
+                None | Some(Value::Null) => true,
+                Some(Value::String(s)) => s.trim().is_empty(),
+                Some(_) => false,
+            };
+            if blank("current") && blank("current_date") {
+                Change::New
+            } else {
+                Change::Changed
+            }
+        }
         "contributors" if line.contributors_proposed.is_empty() => Change::Unchanged,
         "contributors" => Change::New,
         _ => Change::None,
     }
+}
+
+/// Story 11-20 — what accepting a cover line does, for its flag:
+/// `Some("new")` (the title has no cover) or `Some("replace")`, read
+/// from the live cover shown beside it. Only offered while acceptance is
+/// possible (`offered`: a pending proposal whose staged image is on
+/// disk) and the title is live.
+pub fn cover_flag(line: &LineView, offered: bool) -> Option<&'static str> {
+    if line.line != "cover" || !offered || line.target_name.is_none() {
+        return None;
+    }
+    Some(if line.current_cover_url.is_empty() {
+        "new"
+    } else {
+        "replace"
+    })
 }
 
 /// Story 11-20 — the placeholder icon of a title without a cover
@@ -552,7 +579,7 @@ pub fn parse_line(target: Option<ProposalTarget>, values: &Value, loc: &str) -> 
         _ => None,
     };
     let mut line = parsed.unwrap_or_else(|| unknown(values));
-    line.change = change_of(&line);
+    line.change = change_of(&line, values);
     line
 }
 
@@ -1065,6 +1092,26 @@ mod tests {
     #[test]
     fn compared_lines_name_their_change() {
         let field = |v: Value| parse_line(title(9), &v, "en").change;
+        // A year with no recorded year but a recorded date is a change.
+        assert_eq!(
+            field(
+                json!({"line":"field","field":"publication_year","current":null,"current_date":"1999-05-02","proposed":2001})
+            ),
+            Change::Changed
+        );
+        assert_eq!(
+            field(
+                json!({"line":"field","field":"publication_year","current":null,"current_date":"1999-05-02","proposed":1999})
+            ),
+            Change::Unchanged
+        );
+        // Normal form: inner whitespace of a one-line value.
+        assert_eq!(
+            field(
+                json!({"line":"field","field":"publisher","current":"Grand  Éditeur","proposed":"Grand Éditeur"})
+            ),
+            Change::Unchanged
+        );
         // Empty today → new; a different value → changed.
         assert_eq!(
             field(json!({"line":"field","field":"subtitle","current":null,"proposed":"S"})),
@@ -1134,6 +1181,29 @@ mod tests {
                 assert!(!label.starts_with("proposals."), "{loc} {key}");
             }
         }
+    }
+
+    #[test]
+    fn the_cover_flag_follows_the_live_cover_while_acceptance_is_offered() {
+        let mut line = parse_line(
+            title(1),
+            &json!({"line":"cover","staged_file":"0123456789abcdef0123456789abcdef.jpg","replaces_existing":false}),
+            "en",
+        );
+        // Deleted title: no flag.
+        assert_eq!(cover_flag(&line, true), None);
+        line.target_name = Some("T".into());
+        assert_eq!(cover_flag(&line, true), Some("new"));
+        line.current_cover_url = "/covers/1.jpg?v=2".into();
+        assert_eq!(cover_flag(&line, true), Some("replace"));
+        // Decided, or the staged image is gone: nothing to accept.
+        assert_eq!(cover_flag(&line, false), None);
+        let field = parse_line(
+            title(1),
+            &json!({"line":"field","field":"subtitle","current":null,"proposed":"S"}),
+            "en",
+        );
+        assert_eq!(cover_flag(&field, true), None);
     }
 
     #[test]

@@ -220,6 +220,9 @@ pub struct DetailBody {
     /// Story 11-20 — per line (index-aligned): the change badge of a
     /// compared line ("New", "Changed", "Unchanged"), empty otherwise.
     pub change_labels: Vec<String>,
+    /// Story 11-20 — per line (index-aligned): a cover line's flag
+    /// (`new` / `replace`) and its text, while acceptance is offered.
+    pub cover_flags: Vec<Option<(&'static str, String)>>,
     /// Story 11-19 — per line (index-aligned): the line as a sentence,
     /// naming the Edit / Remove buttons for screen readers.
     pub line_summaries: Vec<String>,
@@ -376,7 +379,17 @@ impl DetailBody {
                 }
             })
             .collect();
+        let offered = p.status == ProposalStatus::Pending && d.has_staged_cover;
+        let cover_flags = d
+            .lines
+            .iter()
+            .map(|line| {
+                proposal_review::cover_flag(line, offered)
+                    .map(|flag| (flag, l.t(&format!("cover_flag_{flag}"))))
+            })
+            .collect();
         DetailBody {
+            cover_flags,
             change_labels,
             line_summaries,
             can_edit: d.can_edit,
