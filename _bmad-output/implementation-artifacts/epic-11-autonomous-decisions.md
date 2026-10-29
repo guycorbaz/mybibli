@@ -1188,6 +1188,48 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Chosen (Lows fixed):** the cover flag is also withheld when the live cover no longer matches the one recorded at filing (`replaces_existing`) — acceptance would refuse such a proposal as outdated, so the page promises nothing; an empty original shows "(empty)"; a router test covers an edited contributors line (`[data-original]` list, escaped).
 **Reversible:** yes.
 
+## § 11-21 — Access to the proposals page (part of #493)
+
+### D-11-21-1 — The nav bar switches at `xl` (1280 px) for every role; still not compacted [PRODUCT] — decided by the project lead
+**Context:** the UX-DR32 stop clause fired on the first attempt: with an Admin's full link set the bar already overflowed at the `lg` switch (1024 px) by 4 px in French and 8 px in German, 0 px slack in Italian, before the Proposals entry. Measured minimum clean widths with the entry and a two-digit badge: fr 1264, de 1168, it 1216, en 1116 px.
+**Chosen (project lead, 2026-10-29):** the desktop-strip / hamburger switch moves from `lg` to `xl` (1280 px) for every role (same kind of fix as CR #443); it supersedes story 11-4's "breakpoints unchanged". No compaction (labels, font, gaps, heights unchanged). Below `xl` the bar's own logout button is hidden — the mobile panel has its own (#150) — which also fixes the 360 px bar overflow of #545. `responsive-layouts.spec.ts` is tightened (Admin, four locales, 360 / 1279 / 1280 / 1920 px, 1 px tolerance, no wrapped link).
+**Rejected:** compacting the bar (epic-11 planning decision); the left sidebar (CR #547 — the longer-term answer, out of scope until epic 11 is closed).
+**Reversible:** yes — moot if CR #547 is adopted.
+
+### D-11-21-2 — A pending proposal with nothing left to apply still counts [PRODUCT] — decided by the project lead
+**Context:** after 11-19 a pending proposal can have every line removed (`has_lines_to_apply` false); it still needs a decision.
+**Chosen (project lead, 2026-10-29):** the badge and the dashboard indicator count every live proposal with `status = 'pending'`, whatever its lines.
+**Reversible:** yes.
+
+### D-11-21-3 — The pending count rides on `Session`, taken once per page request
+**Context:** `utils::base_context()` is pool-free and called by 50 handlers; the badge must show on every page (AC7: cheap, indexed).
+**Chosen:** `Session.pending_proposals: Option<u64>`, filled by `session_resolve_middleware` with `ProposalModel::count_pending` (index-only on `idx_proposals_status`) when `wants_pending_count` holds — Librarian+ and not an HTMX fragment request (an htmx history-restore request counts: it re-renders the page). `base_context` turns it into the badge text (capped `99+`, `PROPOSALS_BADGE_CAP`) and the entry's aria-label ("Propositions, 3 en attente" — label first, WCAG 2.5.3); the home page reuses the same number for the "Pending proposals" pill (no second query). A failed count logs a warning and shows no badge. No cache: a decision shows on the next navigation (AC3).
+**Rejected:** a cached counter in `AppState` (invalidated from filing, accept, reject, staleness, key revocation — five write paths to keep in sync); an HTMX lazy-loaded badge (one more request per page, flicker); a new `base_context` parameter (50 call sites).
+**Reversible:** yes.
+
+### D-11-21-4 — Phone width (#545): the bar's login link also yields below `sm`; the proposals list drops three columns below `sm` [PRODUCT]
+**Context:** measured after the `xl` switch at 360 px: the authenticated bar fits once its logout is hidden (D-11-21-1), but the anonymous bar still overflowed by 2 px in French ("Connexion"). `/proposals` at 360 px overflowed by ~285 px although its table sat in an `overflow-x-auto` box: the header's `sr-only` label (absolutely positioned, no positioned ancestor) escaped the scroll box and widened the page.
+**Chosen:** the bar's own login link is `hidden sm:inline` (kept in the bar from 640 px; the panel's login, #150, below) — a visitor's main action stays visible on every tablet. The proposals table box gets `relative` (root cause), and the Filed / Key / Items columns are `hidden sm:table-cell` (they stay on the detail page), so the list fits 360 px without inner scrolling either.
+**Rejected:** hiding the login below `xl` like logout (would hide a visitor's main action on tablets for no layout need); the 10-3 card mode for the proposals list (a second markup to keep in sync for four columns).
+**Reversible:** yes.
+
+### D-11-21-5 — Code review round 1: the E2E baseline is taken one request before the decision; the count is for documents only
+**Context:** one combined layer (blind + edge cases + acceptance); no High, one Medium: `proposals-access.spec.ts` compared the post-decision count with a baseline taken several steps earlier (a sibling spec filing meanwhile could hide the drop), and a CI retry re-filed the same field set on the same title — refused for 90 days by the first attempt's rejection (11-15), a deterministic red.
+**Chosen:** the baseline is the count rendered by the detail page right before Reject; a retry scans `specIsbn("NB", 1 + retry)`. Lows fixed: `wants_pending_count` now skips sub-resources and scripted fetches (`Sec-Fetch-Dest` must be `document`; without it, `Accept` must include `text/html`; neither header → counts); the "no `lg` left" check is scoped to `<header>`; the entry is asserted before Admin.
+**Accepted (Low, known edge):** the 1280 px fit is measured with overlay scrollbars (headless Chromium). With classic 15–17 px scrollbars, a 1280 px window shows ~1263–1265 px of layout while `xl` still matches; an Admin in French (minimum clean width 1264 px) may then see the strip touch the right-hand group at exactly 1280 px. Left to CR #547 (sidebar); the note on #547 itself is left to the project lead (adding the comment was not permitted in this session).
+**Reversible:** yes.
+
+### D-11-21-6 — Code review round 2: clean; Lows fixed
+**Context:** confirmation pass (blind + edge cases + acceptance) on the round-1 delta and the full diff; no Medium+. Verified that every full-page path keeps its badge after the round-1 predicate change (navigations, form POSTs and redirect targets send `Sec-Fetch-Dest: document`; over plain HTTP the navigation `Accept` carries `text/html`; `HX-Redirect` ends in a document request).
+**Chosen (Lows fixed):** the htmx history-restore exception is back (round 1 had dropped it, but `home()` with an empty query and handlers ignoring `HxRequest` answer such a restore with the full page); a unit case pins `Sec-Fetch-Dest` precedence over `Accept`; the E2E subtitle is unique per run (a local re-run on a non-reset stack would be refused by the previous rejection). **Dismissed:** two indexed counts per post/redirect/get cycle.
+**Reversible:** yes.
+
+### D-11-21-7 — Full E2E gate: `/series` list scrolls inside its own box at phone width
+**Context:** the first full `CI=true --workers=2` run (with the series created by the other specs) failed the tightened responsive spec: `/series` at 360 px overflowed by 11 px in fr / de / it (its five-column table had no wrapper; the old 32 px tolerance hid it). The new proposals spec also asserted its row "in viewport" without scrolling a long shared list.
+**Chosen:** the `/series` table is wrapped in `relative overflow-x-auto` (the page no longer scrolls; the table may, by a few pixels); the spec scrolls the row into view before checking it.
+**Rejected:** dropping a column below `sm` (Type / Owned / Total / Gaps are all short and useful at a glance); keeping a tolerance above 1 px.
+**Reversible:** yes.
+
 ## § 11-22 — `rmcp` checkpoint before the release (part of #493)
 
 ### D-11-22-1 — Sprint-status: the story line plus the line-2 header

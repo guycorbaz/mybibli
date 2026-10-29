@@ -4,7 +4,7 @@
 //!   1. `<script src="/static/js/nav.js">` is registered in base.html.
 //!   2. The mobile-menu toggle button renders with the correct
 //!      attributes (id, aria-label via i18n, aria-expanded="false",
-//!      aria-controls, lg:hidden class).
+//!      aria-controls, xl:hidden class).
 //!   3. The mobile-nav panel applies the same role gates as the desktop
 //!      list — anonymous sees only catalog/locations/series; librarian
 //!      adds borrowers/loans; admin adds /admin.
@@ -146,8 +146,8 @@ async fn mobile_menu_button_renders_with_correct_attributes(pool: MySqlPool) {
         html.contains(r#"aria-controls="mobile-nav""#),
         "trigger must announce the controlled panel via aria-controls; got: {html}"
     );
-    // Visibility breakpoint — lg:hidden hides the trigger on ≥ 1024px
-    // (Tailwind lg). Locked here as a regression guard against ACCIDENTAL
+    // Visibility breakpoint — xl:hidden hides the trigger on ≥ 1280px
+    // (Tailwind xl). Locked here as a regression guard against ACCIDENTAL
     // breakpoint flips; this one was deliberate.
     //
     // CR #443 moved it from `md` to `lg`. The Labels nav entry brought an
@@ -157,11 +157,16 @@ async fn mobile_menu_button_renders_with_correct_attributes(pool: MySqlPool) {
     // entry below `lg`, which would have left /labels reachable by URL only
     // between 768 and 1023 px.
     //
+    // Story 11-21 (D-11-21-1) moved it on from `lg` to `xl`: with the
+    // Proposals entry an admin's link set overflowed 1024 px in fr / de;
+    // the project lead chose the breakpoint again, for every role, rather
+    // than compacting the bar.
+    //
     // The guard did its job: it forced the change to be stated rather than
     // slipped in. Keep it locked to whatever the current decision is.
     assert!(
-        html.contains(r#"class="lg:hidden p-2"#),
-        "trigger must keep the lg:hidden visibility gate; got: {html}"
+        html.contains(r#"class="xl:hidden p-2"#),
+        "trigger must keep the xl:hidden visibility gate; got: {html}"
     );
     // Stable panel id (the trigger's aria-controls target)
     assert!(

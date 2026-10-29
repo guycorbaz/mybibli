@@ -1688,6 +1688,7 @@ mod tests {
                 role,
                 csrf_token: String::new(),
                 preferred_language: None,
+                pending_proposals: None,
             }
         }
     }

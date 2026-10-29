@@ -220,7 +220,7 @@
         <h2 id="attention-heading" class="text-sm font-medium text-stone-600 dark:text-stone-400 uppercase tracking-wide">{{ attention_heading }}</h2>
         <div class="flex flex-wrap gap-2 mt-2">
             {% for tag in indicator_tags %}
-            {% call filter_tag::tag(tag.label, tag.count, tag.filter_name, tag.is_active, tag.clear_aria_label) %}{% endcall %}
+            {% call filter_tag::tag(tag.label, tag.count, tag.filter_name, tag.href, tag.is_active, tag.clear_aria_label) %}{% endcall %}
             {% endfor %}
         </div>
     </section>

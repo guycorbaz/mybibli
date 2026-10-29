@@ -599,7 +599,7 @@ pub async fn home(
         Vec::new()
     };
 
-    let indicator_tags = build_indicator_tags(
+    let mut indicator_tags = build_indicator_tags(
         unshelved_count,
         overdue_count,
         gaps_count,
@@ -608,6 +608,7 @@ pub async fn home(
         active_indicator_filter,
         loc,
     );
+    indicator_tags.extend(super::home_indicators::pending_proposals_tag(session.pending_proposals, loc));
 
     // "Collection at a glance" card — three counts in a single SQL round-trip (story 9-1).
     // Soft-degrade on DB error: a transient lock or timeout MUST NOT take down the
@@ -1504,6 +1505,7 @@ pub(crate) mod tests {
             label: label.to_string(),
             count,
             filter_name: filter_name.to_string(),
+            href: format!("/?filter={filter_name}"),
             is_active,
             clear_aria_label: format!("Clear filter: {label}"),
         }

@@ -75,6 +75,10 @@ pub struct IndicatorTag {
     /// The bare-name `?filter=<name>` enum value matching the
     /// `IndicatorFilter` variant. Used to compose the href.
     pub filter_name: String,
+    /// Where the default-state pill links: `/?filter=<filter_name>` for
+    /// the five filters; `/proposals` for the pending-proposals pill
+    /// (story 11-21, UX-DR33), which is not a dashboard filter.
+    pub href: String,
     /// True when this filter matches the currently active URL filter.
     /// Drives the macro's pill-vs-active-badge rendering.
     pub is_active: bool,
@@ -114,6 +118,7 @@ pub(crate) fn build_indicator_tags(
             label: rust_i18n::t!("dashboard.attention.unshelved_label", locale = loc).to_string(),
             count: unshelved_count.max(0) as u64,
             filter_name: "unshelved".to_string(),
+            href: "/?filter=unshelved".to_string(),
             is_active: unshelved_is_active,
             clear_aria_label: rust_i18n::t!(
                 "dashboard.attention.unshelved_clear_aria",
@@ -128,6 +133,7 @@ pub(crate) fn build_indicator_tags(
             label: rust_i18n::t!("dashboard.attention.overdue_label", locale = loc).to_string(),
             count: overdue_count.max(0) as u64,
             filter_name: "overdue".to_string(),
+            href: "/?filter=overdue".to_string(),
             is_active: overdue_is_active,
             clear_aria_label: rust_i18n::t!(
                 "dashboard.attention.overdue_clear_aria",
@@ -142,6 +148,7 @@ pub(crate) fn build_indicator_tags(
             label: rust_i18n::t!("dashboard.attention.gaps_label", locale = loc).to_string(),
             count: gaps_count.max(0) as u64,
             filter_name: "gaps".to_string(),
+            href: "/?filter=gaps".to_string(),
             is_active: gaps_is_active,
             clear_aria_label: rust_i18n::t!(
                 "dashboard.attention.gaps_clear_aria",
@@ -160,6 +167,7 @@ pub(crate) fn build_indicator_tags(
             .to_string(),
             count: recent_cataloged_count.max(0) as u64,
             filter_name: "recent-cataloged".to_string(),
+            href: "/?filter=recent-cataloged".to_string(),
             is_active: recent_cataloged_is_active,
             clear_aria_label: rust_i18n::t!(
                 "dashboard.attention.recent_cataloged_clear_aria",
@@ -178,6 +186,7 @@ pub(crate) fn build_indicator_tags(
             .to_string(),
             count: recent_returns_count.max(0) as u64,
             filter_name: "recent-returns".to_string(),
+            href: "/?filter=recent-returns".to_string(),
             is_active: recent_returns_is_active,
             clear_aria_label: rust_i18n::t!(
                 "dashboard.attention.recent_returns_clear_aria",
@@ -187,6 +196,26 @@ pub(crate) fn build_indicator_tags(
         });
     }
     tags
+}
+
+/// Story 11-21 (UX-DR33) — the "Pending proposals" pill, appended after
+/// the five filters. `count` is the session's pending count (taken by
+/// `session_resolve_middleware` for Librarian+ only, so `None` for an
+/// anonymous visitor); absent at zero (UX-DR4 zero-count rule). It
+/// links to `/proposals`, so it is never in the active (✕) state and no
+/// `IndicatorFilter` variant exists for it.
+pub(crate) fn pending_proposals_tag(count: Option<u64>, loc: &str) -> Option<IndicatorTag> {
+    let count = count.filter(|n| *n > 0)?;
+    let label =
+        rust_i18n::t!("dashboard.attention.pending_proposals_label", locale = loc).to_string();
+    Some(IndicatorTag {
+        clear_aria_label: label.clone(),
+        label,
+        count,
+        filter_name: "pending-proposals".to_string(),
+        href: "/proposals".to_string(),
+        is_active: false,
+    })
 }
 
 /// Story 9-6 — role-gate the parsed indicator filter for the TAG.
@@ -731,5 +760,51 @@ mod tests {
             );
             assert_eq!(role_gated_indicator_filter(None, role), None);
         }
+    }
+
+    // ─── Story 11-21 — pending-proposals pill (UX-DR33) ────────────
+
+    #[test]
+    fn pending_proposals_tag_absent_at_zero_or_uncounted() {
+        assert!(pending_proposals_tag(None, "en").is_none());
+        assert!(pending_proposals_tag(Some(0), "en").is_none());
+    }
+
+    #[test]
+    fn pending_proposals_tag_links_to_the_proposals_page() {
+        let tag = pending_proposals_tag(Some(4), "fr").expect("tag");
+        assert_eq!(tag.count, 4);
+        assert_eq!(tag.href, "/proposals");
+        assert!(!tag.is_active, "not a dashboard filter");
+        assert_eq!(tag.label, "Propositions en attente");
+        assert_eq!(tag.filter_name, "pending-proposals");
+    }
+
+    #[test]
+    fn filter_tags_keep_their_filter_href() {
+        let tags = build_indicator_tags(1, 1, 1, 1, 1, None, "en");
+        for t in &tags {
+            assert_eq!(t.href, format!("/?filter={}", t.filter_name));
+        }
+    }
+
+    #[test]
+    fn pending_proposals_pill_renders_on_the_dashboard() {
+        use askama::Template;
+        let tag = pending_proposals_tag(Some(2), "en").expect("tag");
+        let html = crate::routes::home::tests::make_test_home_template_with_indicators(
+            "librarian",
+            vec![tag],
+            false,
+            Vec::new(),
+        )
+        .render()
+        .expect("render");
+        assert!(html.contains("id=\"what-needs-attention\""));
+        assert!(
+            html.contains("<a href=\"/proposals\" id=\"filter-tag-pending-proposals\""),
+            "the pill links to /proposals"
+        );
+        assert!(html.contains("aria-label=\"Pending proposals: 2\""));
     }
 }

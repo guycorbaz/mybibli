@@ -1,15 +1,22 @@
 /**
- * Story 9-21 — responsive per-page layouts E2E.
+ * Story 9-21 — responsive per-page layouts E2E; tightened by story 11-21.
  *
- * Verifies the app adapts cleanly at 3 representative viewport widths:
- *   - Mobile (375x667 — iPhone SE)
- *   - Tablet (768x1024 — iPad portrait)
- *   - Desktop (1280x800 — modern laptop)
+ * Story 11-21 (D-11-21-1, decided by the project lead): the nav bar's
+ * desktop-strip / hamburger switch moved from `lg` to `xl` (1280 px)
+ * for every role, without compacting the bar. As an Admin (the longest
+ * link set, with the Proposals entry and a worst-case `99+` badge), in
+ * all four locales, at 360, 1279, 1280 and 1920 px:
+ *   - no horizontal page overflow beyond 1 px (was 32 px, which hid
+ *     #545's 18 px bar overflow at phone width);
+ *   - the bar itself does not overflow, no nav link wraps, the strip's
+ *     last link stays left of the right-hand group;
+ *   - below 1280 px the hamburger shows and the strip is hidden; from
+ *     1280 px the reverse.
+ * Plus the tablet (768 px, librarian) and anonymous phone checks of 9-21.
  *
- * Asserts on each viewport:
- *   - No horizontal page scroll (body width ≤ viewport width + 1px tol).
- *   - Key elements remain visible (search field, table cells, etc.).
- *   - Column-hide on small viewports (loans + borrowers tables).
+ * The locale comes from `?lang=` (highest-priority source, no write):
+ * switching through the toggle would store the seeded admin's
+ * `preferred_language`, shared with every parallel spec.
  *
  * Spec ID "RL" — no ISBNs generated.
  */
@@ -20,86 +27,149 @@ import { checkAccessibility } from "../../helpers/accessibility";
 const MOBILE = { width: 375, height: 667 };
 const TABLET = { width: 768, height: 1024 };
 const DESKTOP = { width: 1280, height: 800 };
+const PHONE = { width: 360, height: 740 };
 
-async function assertNoMajorHorizontalScroll(page: Page, label: string) {
-  const overflow = await page.evaluate(() => {
-    return {
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth,
-    };
-  });
-  // 32px tolerance — the AC is "no horizontal scroll forcing the user to
-  // pan the page". A few extra pixels from scrollbar gutter, sub-pixel
-  // rendering, or a wide content cell are acceptable. The catastrophic
-  // case (e.g., a 1200px-wide table on a 375px viewport) blows past this
-  // tolerance by hundreds of pixels.
+/** Widths around the `xl` switch (1280 px) plus a phone and a wide screen. */
+const NAV_WIDTHS = [360, 1279, 1280, 1920] as const;
+const XL = 1280;
+const LOCALES = ["fr", "en", "de", "it"] as const;
+const ADMIN_PAGES = ["/", "/catalog", "/series", "/proposals", "/loans", "/borrowers"];
+
+async function assertNoHorizontalScroll(page: Page, label: string) {
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  // 1 px for sub-pixel rounding only (story 11-21; was 32 px).
   const overflowAmount = overflow.scrollWidth - overflow.clientWidth;
   expect(
     overflowAmount,
-    `${label}: significant horizontal overflow (scrollWidth=${overflow.scrollWidth}, clientWidth=${overflow.clientWidth}, overflow=${overflowAmount}px)`,
-  ).toBeLessThanOrEqual(32);
+    `${label}: horizontal overflow (scrollWidth=${overflow.scrollWidth}, clientWidth=${overflow.clientWidth})`,
+  ).toBeLessThanOrEqual(1);
 }
 
-test.describe("Story 9-21 — responsive per-page layouts", () => {
-  test("mobile (375px) — no horizontal scroll on key surfaces", async ({
-    page,
-  }) => {
-    await page.setViewportSize(MOBILE);
+interface NavFit {
+  stripShown: boolean;
+  toggleShown: boolean;
+  navOverflow: number;
+  rightGroupOverflow: number;
+  stripToRightGroup: number | null;
+  wrapped: string[];
+}
 
-    // Anonymous home
-    await page.goto("/");
-    await assertNoMajorHorizontalScroll(page, "/ mobile");
-    await expect(page.locator("#search-field")).toBeVisible();
+/**
+ * Measures the bar after forcing the worst-case Proposals badge (`99+`,
+ * the cap of `utils::proposals_badge_text`): whatever the shared DB
+ * holds, the widest badge the server can render is the one measured.
+ */
+async function measureNav(page: Page): Promise<NavFit> {
+  await page.waitForLoadState("load");
+  return page.evaluate(() => {
+    const nav = document.querySelector('nav[aria-label="Main navigation"]')!;
+    const strip = nav.querySelector(":scope > div.hidden") as HTMLElement;
+    const entry = strip.querySelector('a[href="/proposals"]');
+    if (entry) {
+      let badge = entry.querySelector("[data-proposals-badge]");
+      if (!badge) {
+        // Same classes as the template (compiled into output.css).
+        badge = document.createElement("span");
+        badge.setAttribute("data-proposals-badge", "");
+        badge.className =
+          "inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold tabular-nums";
+        entry.appendChild(badge);
+      }
+      badge.textContent = "99+";
+    }
+    const stripShown = getComputedStyle(strip).display !== "none";
+    const toggle = document.getElementById("mobile-menu-toggle")!;
+    const right = (nav.querySelector(":scope > div.ml-auto") as HTMLElement).getBoundingClientRect();
+    const links = Array.from(strip.querySelectorAll("a"));
+    // A wrapped link has several line boxes, or is taller than one line.
+    const wrapped = stripShown
+      ? links
+          .filter((l) => {
+            const lh = parseFloat(getComputedStyle(l).lineHeight) || 24;
+            const textRects = Array.from(l.childNodes)
+              .filter((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim() !== "")
+              .map((n) => {
+                const r = document.createRange();
+                r.selectNodeContents(n);
+                return r.getClientRects().length;
+              });
+            return textRects.some((c) => c > 1) || l.getBoundingClientRect().height > lh * 1.5 + 12;
+          })
+          .map((l) => l.textContent!.trim())
+      : [];
+    const lastLink = links.at(-1);
+    const last = lastLink ? lastLink.getBoundingClientRect().right : 0;
+    return {
+      stripShown,
+      toggleShown: getComputedStyle(toggle).display !== "none",
+      navOverflow: nav.scrollWidth - nav.clientWidth,
+      rightGroupOverflow: right.right - window.innerWidth,
+      stripToRightGroup: stripShown ? right.left - last : null,
+      wrapped,
+    };
+  });
+}
 
-    // Anonymous catalog (page layout should fit)
-    await page.goto("/catalog");
-    await assertNoMajorHorizontalScroll(page, "/catalog mobile");
+function withLang(path: string, lang: string): string {
+  return `${path}${path.includes("?") ? "&" : "?"}lang=${lang}`;
+}
 
-    // Librarian surfaces
-    await loginAs(page, "librarian");
-    await page.goto("/borrowers");
-    await assertNoMajorHorizontalScroll(page, "/borrowers mobile");
+test.describe("Story 9-21 / 11-21 — responsive layouts and the nav bar", () => {
+  for (const lang of LOCALES) {
+    test(`admin, ${lang} — the bar fits and no page scrolls sideways at 360 / 1279 / 1280 / 1920 px`, async ({
+      page,
+    }) => {
+      test.setTimeout(90000);
+      await loginAs(page, "admin");
+      for (const width of NAV_WIDTHS) {
+        await page.setViewportSize({ width, height: 800 });
+        for (const path of ADMIN_PAGES) {
+          await page.goto(withLang(path, lang));
+          await expect(page.locator("html")).toHaveAttribute("lang", lang);
+          const label = `${path} ${lang} ${width}px`;
+          const fit = await measureNav(page);
+          const desktop = width >= XL;
+          expect(fit.stripShown, `${label}: desktop strip shown`).toBe(desktop);
+          expect(fit.toggleShown, `${label}: hamburger shown`).toBe(!desktop);
+          expect(fit.navOverflow, `${label}: the bar overflows`).toBeLessThanOrEqual(1);
+          expect(fit.rightGroupOverflow, `${label}: right-hand group off screen`).toBeLessThanOrEqual(1);
+          if (desktop) {
+            expect(fit.wrapped, `${label}: wrapped nav links`).toEqual([]);
+            expect(
+              fit.stripToRightGroup!,
+              `${label}: the strip runs into the right-hand group`,
+            ).toBeGreaterThanOrEqual(-1);
+          }
+          await assertNoHorizontalScroll(page, label);
+        }
+      }
+    });
+  }
 
-    await page.goto("/loans");
-    await assertNoMajorHorizontalScroll(page, "/loans mobile");
-
-    await page.goto("/series");
-    await assertNoMajorHorizontalScroll(page, "/series mobile");
+  test("anonymous, phone (360 / 375 px) — home and catalog fit", async ({ page }) => {
+    for (const viewport of [PHONE, MOBILE]) {
+      await page.setViewportSize(viewport);
+      await page.goto("/");
+      await assertNoHorizontalScroll(page, `/ anonymous ${viewport.width}px`);
+      await expect(page.locator("#search-field")).toBeVisible();
+      const fit = await measureNav(page);
+      expect(fit.navOverflow, "anonymous bar overflows").toBeLessThanOrEqual(1);
+      expect(fit.rightGroupOverflow).toBeLessThanOrEqual(1);
+      await page.goto("/catalog");
+      await assertNoHorizontalScroll(page, `/catalog anonymous ${viewport.width}px`);
+    }
   });
 
-  test("tablet (768px) — no horizontal scroll on key surfaces", async ({
-    page,
-  }) => {
+  test("tablet (768px) — no horizontal scroll on key surfaces", async ({ page }) => {
     await page.setViewportSize(TABLET);
     await loginAs(page, "librarian");
-
-    await page.goto("/borrowers");
-    await assertNoMajorHorizontalScroll(page, "/borrowers tablet");
-
-    await page.goto("/loans");
-    await assertNoMajorHorizontalScroll(page, "/loans tablet");
-
-    await page.goto("/");
-    await assertNoMajorHorizontalScroll(page, "/ tablet");
-  });
-
-  test("desktop (1280px) — no horizontal scroll on key surfaces", async ({
-    page,
-  }) => {
-    await page.setViewportSize(DESKTOP);
-    await loginAs(page, "librarian");
-
-    await page.goto("/borrowers");
-    await assertNoMajorHorizontalScroll(page, "/borrowers desktop");
-
-    await page.goto("/loans");
-    await assertNoMajorHorizontalScroll(page, "/loans desktop");
-
-    await page.goto("/");
-    await assertNoMajorHorizontalScroll(page, "/ desktop");
-
-    await page.goto("/series");
-    await assertNoMajorHorizontalScroll(page, "/series desktop");
+    for (const path of ["/borrowers", "/loans", "/", "/proposals"]) {
+      await page.goto(path);
+      await assertNoHorizontalScroll(page, `${path} tablet`);
+    }
   });
 });
 

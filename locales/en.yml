@@ -167,6 +167,9 @@ nav:
   skip_to_content: Skip to main content
   theme_toggle: Toggle theme
   language_toggle_aria: Change language
+  # Story 11-21 (FR143) — nav entry + pending-count badge (accessible name).
+  proposals: "Proposals"
+  proposals_pending_aria: "Proposals, %{count} pending"
 title:
   # #202 — metadata provenance shown on /title/:id. The provider name
   # is NOT translated (NFR41) — it is a proper noun. Only the label is.
@@ -729,6 +732,8 @@ dashboard:
     recent_returns_clear_aria: "Clear filter: Recent returns"
     recent_returns_heading: "Recently returned (last 7 days)"
     recent_returns_empty: "No recent returns in the last 7 days — quiet week!"
+    # Story 11-21 (UX-DR33) — links to /proposals, not to a ?filter=.
+    pending_proposals_label: "Pending proposals"
   # CR #243 — opt-in "Library estimated value" card on the home page.
   value_indicator:
     label: "Library estimated value"

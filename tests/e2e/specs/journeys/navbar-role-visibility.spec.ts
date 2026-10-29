@@ -39,6 +39,8 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     await expect(desktopNav.locator("a[href='/loans']")).toHaveCount(0);
     await expect(desktopNav.locator("a[href='/admin']")).toHaveCount(0);
     await expect(desktopNav.locator("form[action='/logout']")).toHaveCount(0);
+    // Story 11-21 — no Proposals entry for anonymous visitors.
+    await expect(page.locator("a[href='/proposals']")).toHaveCount(0);
 
     // Mobile panel — switch to tablet viewport, open the hamburger
     await page.setViewportSize(TABLET);
@@ -59,6 +61,9 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
 
     // Mobile — visible (issue #150 — Sign in now in panel for parity)
     await expect(panel.locator("a[href='/login']")).toBeVisible();
+    // Story 11-21 (D-11-21-4) — below `sm` (600 px here) the bar's own
+    // Sign-in link gives way to the panel's.
+    await expect(desktopNav.locator("a[href='/login']")).toBeHidden();
   });
 
   test("librarian — nav link set on /loans (desktop + mobile panel)", async ({
@@ -76,6 +81,7 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     await expect(desktopNav.locator("a[href='/series']")).toBeVisible();
     await expect(desktopNav.locator("a[href='/borrowers']")).toBeVisible();
     await expect(desktopNav.locator("a[href='/loans']")).toBeVisible();
+    await expect(desktopNav.locator("a[href='/proposals']")).toBeVisible();
     await expect(desktopNav.locator("form[action='/logout']")).toBeVisible();
 
     // Desktop — hidden
@@ -94,7 +100,11 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     await expect(panel.locator("a[href='/series']")).toBeVisible();
     await expect(panel.locator("a[href='/borrowers']")).toBeVisible();
     await expect(panel.locator("a[href='/loans']")).toBeVisible();
+    await expect(panel.locator("a[href='/proposals']")).toBeVisible();
     await expect(panel.locator("form[action='/logout']")).toBeVisible();
+    // Story 11-21 (#545) — below `xl` the bar's own logout is hidden; the
+    // panel's one (above) is the way out.
+    await expect(desktopNav.locator("form[action='/logout'] button")).toBeHidden();
 
     // Mobile — hidden
     await expect(panel.locator("a[href='/admin']")).toHaveCount(0);
@@ -118,6 +128,7 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     await expect(desktopNav.locator("a[href='/borrowers']")).toBeVisible();
     await expect(desktopNav.locator("a[href='/loans']")).toBeVisible();
     await expect(desktopNav.locator("a[href='/admin']")).toBeVisible();
+    await expect(desktopNav.locator("a[href='/proposals']")).toBeVisible();
     await expect(desktopNav.locator("form[action='/logout']")).toBeVisible();
 
     // Desktop — hidden
@@ -136,7 +147,9 @@ test.describe("Story 9-18 — NavBar role-based visibility", () => {
     await expect(panel.locator("a[href='/borrowers']")).toBeVisible();
     await expect(panel.locator("a[href='/loans']")).toBeVisible();
     await expect(panel.locator("a[href='/admin']")).toBeVisible();
+    await expect(panel.locator("a[href='/proposals']")).toBeVisible();
     await expect(panel.locator("form[action='/logout']")).toBeVisible();
+    await expect(desktopNav.locator("form[action='/logout'] button")).toBeHidden();
 
     // Mobile — hidden
     await expect(panel.locator("a[href='/login']")).toHaveCount(0);

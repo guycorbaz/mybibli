@@ -164,6 +164,9 @@ nav:
   skip_to_content: Vai al contenuto principale
   theme_toggle: Cambia tema
   language_toggle_aria: Cambia lingua
+  # Story 11-21 (FR143) — nav entry + pending-count badge (accessible name).
+  proposals: "Proposte"
+  proposals_pending_aria: "Proposte, %{count} in attesa"
 title:
   # #202 — provenienza dei metadati su /title/:id. Il nome del fornitore NON
   # è tradotto (NFR41): è un nome proprio. Solo l'etichetta lo è.
@@ -710,6 +713,8 @@ dashboard:
     recent_returns_clear_aria: "Rimuovi filtro: restituzioni recenti"
     recent_returns_heading: "Restituiti di recente (ultimi 7 giorni)"
     recent_returns_empty: "Nessuna restituzione negli ultimi 7 giorni — settimana tranquilla!"
+    # Story 11-21 (UX-DR33) — links to /proposals, not to a ?filter=.
+    pending_proposals_label: "Proposte in attesa"
   value_indicator:
     label: "Valore stimato della biblioteca"
     cta: "Vedi suddivisione"

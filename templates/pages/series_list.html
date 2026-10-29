@@ -26,6 +26,11 @@
         base.role,
     ) %}{% endcall %}
     {% else %}
+    {# Story 11-21 — five columns overflowed a 360 px screen by ~17 px
+       (caught once responsive-layouts.spec.ts dropped its 32 px
+       tolerance): the table scrolls inside its own box, never the page.
+       `relative` keeps any absolutely positioned descendant inside it. #}
+    <div class="relative overflow-x-auto">
     <table class="w-full text-sm">
         <thead>
             <tr class="border-b border-stone-200 dark:border-stone-700 text-left">
@@ -66,6 +71,7 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
 
     {% if series.total_pages > 1 %}
     <nav aria-label="{{ pagination_aria }}" class="flex justify-center gap-2 mt-6">

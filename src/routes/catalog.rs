@@ -2981,6 +2981,7 @@ mod tests {
             role: Role::Librarian,
             csrf_token: String::new(),
             preferred_language: None,
+            pending_proposals: None,
         };
         let template = CatalogTemplate::new(
             &session,
@@ -3006,6 +3007,7 @@ mod tests {
             role: Role::Librarian,
             csrf_token: String::new(),
             preferred_language: None,
+            pending_proposals: None,
         };
         let template = CatalogTemplate::new(
             &session,
@@ -3055,6 +3057,7 @@ mod tests {
             role: Role::Librarian,
             csrf_token: String::new(),
             preferred_language: None,
+            pending_proposals: None,
         };
         assert!(session.token.is_some());
     }
