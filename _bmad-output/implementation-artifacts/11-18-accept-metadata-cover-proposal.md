@@ -55,6 +55,12 @@ so that a title I could not complete gets the information or cover the agent fou
 - **E2E:** spec id `MA`; titles created by scanning `specIsbn("MA", n)`, wait for the metadata fetch to settle before filing (it bumps the version); no series.
 - Pitfalls: CI charset (`CAST(… AS CHAR)`), no repo-wide `cargo fmt`, `mem-guard` + `-j 2`, French copy in router tests, Askama escaping.
 
+### Validation notes (create-story checklist, 2026-10-29)
+
+- Reuse verified: `ProposalModel::lock_for_decision` / `items(conn, id, true)`, `ProposalService::check_staleness_in` / `transition_in`, `metadata_proposals::{validate_fields, normalize_text}`, `cover_staging::{promote, is_staged_name, staging_dir_for}`, `AppState::cover_staging_dir()` / `covers_dir`, `tasks::metadata_fetch::{update_title_from_metadata, update_cover_image_url}` (pub, used by existing tests), 11-17's accept modal / handler / `decided_response`, E2E `mcpCallTool` and the proposals-review / series-proposal-accept specs' key and scan helpers. No new crate, no migration, no new route.
+- Regression watch: `tests/proposal_accept_series.rs` (types moved but re-exported), `proposals_page.rs` (Accept button now on every pending kind), `contributor` manual flow (duplicate message kept for a live row), `cover_manual_survives_refetch.rs`, `templates_audit`, `locale_parity`.
+- Disaster prevention: no file I/O inside the decision transaction; never write `cover_image_url` unless the promotion succeeded; never mark `accepted` without the metadata writes (same transaction); lock the title before its junction rows (same order as `check_staleness_in`).
+
 ### References
 
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 11.18] — FR138, FR140, FR144, FR146.
