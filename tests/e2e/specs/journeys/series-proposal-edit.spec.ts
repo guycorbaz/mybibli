@@ -199,7 +199,7 @@ test.describe("Story 11-19 — edit a proposal before accepting it", () => {
       await page.goto(`/proposals/${proposalId}`);
       await expect(page.locator("[data-edit-note]").first()).toContainText(EDITED_BY);
       await expect(page.locator("#proposal-removed")).toContainText("PE tome retiré");
-      await expect(page.getByRole("button", { name: EDIT })).toHaveCount(0);
+      await expect(page.locator('[data-action="inline-form-add-toggle"]')).toHaveCount(0);
     } finally {
       await agent.dispose();
       await revoke(page, key.label);

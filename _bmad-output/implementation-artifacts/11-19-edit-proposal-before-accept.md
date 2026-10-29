@@ -1,6 +1,6 @@
 # Story 11.19: Edit a proposal before accepting it
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR139, UX-DR31 (inline edit and line removal before acceptance). Epic 11 — nineteenth story. Not here: side-by-side view (11-20), nav badge (11-21), cross-kind staleness (#542 stays open for the user).
 
@@ -82,7 +82,9 @@ Claude Opus 5.5 (claude-opus-5-5)
 - `services/proposal_edit.rs`: `edit_line` / `remove_line` (one transaction each, proposal row lock + version, guarded bump), pure value building and filing-rule validation (`check_series_edit`, `edited_proposed`), what each line allows (`editable`, `removable`, `keep_of`, `has_lines_to_apply`), trail summaries (`line_summary`), localized `EditError`.
 - `series_acceptance`: an attach with no title / tome line left → `NothingToApply`; the detail page and the accept modal offer Accept only when something is left to apply.
 - Review detail: item ids, edit / remove flags, edit notes, removed lines, live roles for the contributor form; routes `routes/proposal_edit.rs`; templates `proposal_detail_body.html` + `proposal_line_edit.html`; `inline-form.js` gains `inline-form-slot-cancel`.
-- Decisions D-11-19-1..9.
+- Decisions D-11-19-1..11.
+- Code review: round 1 (2 layers: blind + edge cases, acceptance auditor) — Medium fixed: a metadata value edited back to the title's value is refused (a year would have replaced a full date with `YYYY-01-01`); Lows fixed: attach total checked on the edited line only, deleted series refuses edits, button names / `aria-expanded` / focus, copy, German gender. Round 2 clean (no Medium+); Lows fixed (label length, truncated baseline, E2E selector) or accepted. No issue opened.
+- Gates (final): clippy clean; `cargo test` 2074 passed, 0 failed; `tsc --noEmit` clean; waitForTimeout grep clean; E2E full suite on a reset stack `CI=true --workers=2`: 381 passed, 2 skipped.
 - Gates (dev): `cargo clippy --all-targets -D warnings` clean; `cargo test` 2071 passed, 0 failed; `sqlx prepare --check` OK (no macro query added); `locale_parity` green; waitForTimeout grep clean; `tsc --noEmit` clean; E2E full suite on a reset stack `CI=true --workers=2`: 380 passed, 2 skipped, 1 known flaky (shelving undo, passed on retry).
 
 ### File List

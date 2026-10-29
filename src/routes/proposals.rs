@@ -342,7 +342,15 @@ impl DetailBody {
         let line_summaries = d
             .lines
             .iter()
-            .map(|line| proposal_edit::line_summary(line, loc))
+            .map(|line| {
+                // A button name, not the whole value (a description can
+                // hold 10 000 characters).
+                let summary = proposal_edit::line_summary(line, loc);
+                match summary.char_indices().nth(80) {
+                    Some((at, _)) => format!("{}…", &summary[..at]),
+                    None => summary,
+                }
+            })
             .collect();
         DetailBody {
             line_summaries,

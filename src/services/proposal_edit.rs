@@ -666,6 +666,10 @@ fn proposed_value(field: &str, valid: &ProposedFields) -> Option<Value> {
 /// full date with `YYYY-01-01` (pure). Contributors only add: never.
 pub fn same_as_current(item: &Value) -> bool {
     let proposed = &item["proposed"];
+    // A value cut at filing is no complete baseline.
+    if item["current_truncated"] == Value::Bool(true) {
+        return false;
+    }
     match item.get("field").and_then(Value::as_str) {
         Some("contributors") | None => false,
         Some("publication_year") => {
@@ -1266,6 +1270,9 @@ mod tests {
         assert!(!same_as_current(&no_year));
         let text = json!({"line": "field", "field": "subtitle", "current": " Le  tome ", "proposed": "Le tome"});
         assert!(same_as_current(&text));
+        let mut cut = text.clone();
+        cut["current_truncated"] = json!(true);
+        assert!(!same_as_current(&cut));
         let empty = json!({"line": "field", "field": "subtitle", "current": null, "proposed": "x"});
         assert!(!same_as_current(&empty));
         let contributors =
