@@ -1,0 +1,126 @@
+{# Story 11-16 — the proposal detail body (header, Reject action,
+   sources, items by shape). Rendered inside pages/proposal_detail.html
+   and alone by POST /proposals/{id}/reject. Every agent value is
+   escaped (NFR47): never `|safe` here. Sources open in a new tab with
+   `rel="noopener noreferrer"`. #}
+<div id="proposal-detail-body" data-proposal-status="{{ body.status }}">
+    <dl class="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+        <dt class="font-medium text-stone-500 dark:text-stone-400">{{ l.t("col_kind") }}</dt>
+        <dd class="text-stone-900 dark:text-stone-100">{{ body.kind_label }}</dd>
+        <dt class="font-medium text-stone-500 dark:text-stone-400">{{ l.t("col_status") }}</dt>
+        <dd>{% let badge_status = body.status %}{% let badge_label = body.status_label.as_str() %}{% let badge_class = body.status_class %}{% include "components/proposal_status_badge.html" %}</dd>
+        <dt class="font-medium text-stone-500 dark:text-stone-400">{{ l.t("label_subject") }}</dt>
+        <dd class="text-stone-900 dark:text-stone-100">{% if let Some(href) = body.target_href %}<a href="{{ href }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ body.target_text }}</a>{% else %}{{ body.target_text }}{% endif %}</dd>
+        <dt class="font-medium text-stone-500 dark:text-stone-400">{{ l.t("col_filed") }}</dt>
+        <dd class="tabular-nums text-stone-900 dark:text-stone-100">{{ body.filed }}</dd>
+        <dt class="font-medium text-stone-500 dark:text-stone-400">{{ l.t("col_key") }}</dt>
+        <dd class="text-stone-900 dark:text-stone-100">{{ body.key_label }}</dd>
+        {% if let Some(at) = body.decided_at %}
+        <dt class="font-medium text-stone-500 dark:text-stone-400">{{ l.t("label_decided") }}</dt>
+        <dd id="proposal-decided-at" class="tabular-nums text-stone-900 dark:text-stone-100">{{ at }}</dd>
+        {% endif %}
+        {% if let Some(by) = body.decided_by %}
+        <dt class="font-medium text-stone-500 dark:text-stone-400">{{ l.t("label_decided_by") }}</dt>
+        <dd id="proposal-decided-by" class="text-stone-900 dark:text-stone-100">{{ by }}</dd>
+        {% endif %}
+        {% if body.is_rejected %}
+        <dt class="font-medium text-stone-500 dark:text-stone-400">{{ l.t("label_reason") }}</dt>
+        <dd id="proposal-reason" class="text-stone-900 dark:text-stone-100 whitespace-pre-line">{% if let Some(reason) = body.reason %}{{ reason }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("no_reason") }}</span>{% endif %}</dd>
+        {% endif %}
+    </dl>
+
+    {% if body.can_reject %}
+    <div class="mt-6 flex gap-3">
+        <button type="button" id="proposal-reject-button"
+                hx-get="/proposals/{{ body.id }}/reject-modal?version={{ body.version }}"
+                hx-target="#modal-slot" hx-swap="innerHTML"
+                data-modal-trigger aria-haspopup="dialog" aria-expanded="false"
+                class="px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20">
+            {{ l.t("reject_button") }}
+        </button>
+    </div>
+    {% endif %}
+
+    <section class="mt-8" aria-labelledby="proposal-sources-heading">
+        <h2 id="proposal-sources-heading" class="text-lg font-semibold text-stone-900 dark:text-stone-100">{{ l.t("sources_heading") }}</h2>
+        <ul id="proposal-sources" class="mt-2 space-y-1 text-sm list-disc list-inside">
+            {% for (src, is_link) in body.sources %}
+            <li class="break-all">{% if *is_link %}<a href="{{ src }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ src }}</a> <span class="sr-only">{{ l.t("new_tab") }}</span>{% else %}{{ src }}{% endif %}</li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    <section class="mt-8" aria-labelledby="proposal-items-heading">
+        <h2 id="proposal-items-heading" class="text-lg font-semibold text-stone-900 dark:text-stone-100">{{ l.t("items_heading") }}</h2>
+        <ul id="proposal-items" class="mt-2 space-y-3 text-sm">
+            {% for line in body.lines %}
+            <li data-line="{{ line.line }}" class="p-3 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900">
+            {% if line.line.eq("series_new") %}
+                <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("series_name") }}</dt><dd class="font-medium text-stone-900 dark:text-stone-100">{{ line.name }}</dd>
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("series_type") }}</dt><dd class="text-stone-900 dark:text-stone-100">{{ line.series_type }}</dd>
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("series_total") }}</dt><dd class="text-stone-900 dark:text-stone-100">{% if let Some(total) = line.total %}{{ total }}{% else %}{{ l.t("series_total_open") }}{% endif %}</dd>
+                </dl>
+            {% else if line.line.eq("series_target") %}
+                <span class="text-stone-500 dark:text-stone-400">{{ l.t("series_target") }} —</span>
+                {% if line.target_name.is_some() %}<a href="/series/{{ line.target_id.unwrap_or_default() }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ body.target_texts[loop.index0] }}</a>{% else %}{{ body.target_texts[loop.index0] }}{% endif %}
+            {% else if line.line.eq("title") %}
+                <span class="tabular-nums text-stone-500 dark:text-stone-400">{{ l.t("col_position") }} {{ line.position }}</span> —
+                {% if line.target_name.is_some() %}<a href="/title/{{ line.target_id.unwrap_or_default() }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ body.target_texts[loop.index0] }}</a>{% else %}{{ body.target_texts[loop.index0] }}{% endif %}
+                {% if line.end_position.is_some() %}<span class="ml-2 text-xs text-stone-500 dark:text-stone-400">{{ body.omnibus_labels[loop.index0] }}</span>{% endif %}
+            {% else if line.line.eq("tome") %}
+                <span class="text-stone-500 dark:text-stone-400">{{ l.t("tomes_heading") }} —</span>
+                <span class="tabular-nums">{{ l.t("col_position") }} {{ line.position }}</span> —
+                <span class="font-medium text-stone-900 dark:text-stone-100">{{ line.tome_title }}</span>
+                <span class="font-mono text-xs text-stone-500 dark:text-stone-400">{% if let Some(isbn) = line.isbn %}{{ isbn }}{% else %}{{ l.t("no_isbn") }}{% endif %}</span>
+            {% else if line.line.eq("field") %}
+                <div class="font-medium text-stone-900 dark:text-stone-100">{{ line.field_label }}</div>
+                <dl class="mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("current") }}</dt>
+                    <dd class="whitespace-pre-line text-stone-700 dark:text-stone-300">{% if let Some(cur) = line.current %}{{ cur }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}{% if line.current_date.is_some() %} <span class="text-xs text-stone-500 dark:text-stone-400">({{ body.current_date_labels[loop.index0] }})</span>{% endif %}</dd>
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("proposed") }}</dt>
+                    <dd data-proposed class="whitespace-pre-line font-medium text-stone-900 dark:text-stone-100">{{ line.proposed }}</dd>
+                </dl>
+                {% if line.current_truncated %}<p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ l.t("current_truncated") }}</p>{% endif %}
+            {% else if line.line.eq("contributors") %}
+                <div class="font-medium text-stone-900 dark:text-stone-100">{{ line.field_label }}</div>
+                <dl class="mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("current") }}</dt>
+                    <dd class="text-stone-700 dark:text-stone-300">{% if line.contributors_current.is_empty() %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% else %}{% for c in line.contributors_current %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}{% endif %}</dd>
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("contributors_added") }}</dt>
+                    <dd data-proposed class="font-medium text-stone-900 dark:text-stone-100">{% for c in line.contributors_proposed %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}</dd>
+                </dl>
+                {% if line.current_truncated %}<p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ l.t("current_truncated") }}</p>{% endif %}
+            {% else if line.line.eq("cover") %}
+                <div class="flex flex-wrap gap-6">
+                    <figure>
+                        <figcaption class="mb-1 text-stone-500 dark:text-stone-400">{{ l.t("cover_proposed") }}</figcaption>
+                        {% if body.has_staged_cover %}
+                        <img id="proposal-staged-cover" src="/proposals/{{ body.id }}/cover" alt="{{ body.cover_alt }}" class="w-[150px] h-auto rounded-lg border border-stone-200 dark:border-stone-700" loading="lazy">
+                        {% else %}
+                        <p class="text-stone-500 dark:text-stone-400">{{ l.t("cover_missing") }}</p>
+                        {% endif %}
+                        {% if !line.width.is_empty() && !line.height.is_empty() && !line.bytes.is_empty() %}
+                        <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ body.cover_dims[loop.index0] }}</p>
+                        {% endif %}
+                    </figure>
+                    <figure>
+                        <figcaption class="mb-1 text-stone-500 dark:text-stone-400">{{ l.t("cover_current") }}</figcaption>
+                        {% if line.target_name.is_none() %}
+                        <p class="text-stone-500 dark:text-stone-400">{{ body.target_texts[loop.index0] }}</p>
+                        {% else if line.current_cover_url.is_empty() %}
+                        <p class="text-stone-500 dark:text-stone-400">{{ l.t("cover_none") }}</p>
+                        {% else %}
+                        <img src="{{ line.current_cover_url }}" alt="{{ l.t("cover_current") }}" class="w-[150px] h-auto rounded-lg border border-stone-200 dark:border-stone-700" loading="lazy">
+                        {% endif %}
+                    </figure>
+                </div>
+            {% else %}
+                <div class="text-stone-500 dark:text-stone-400">{{ l.t("unknown_line") }}</div>
+                <pre class="mt-1 text-xs whitespace-pre-wrap break-all text-stone-700 dark:text-stone-300">{{ line.raw_json }}</pre>
+            {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+</div>

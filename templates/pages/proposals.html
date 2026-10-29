@@ -1,0 +1,78 @@
+{# Story 11-16 (FR137, UX-DR31) — the proposals list: filters by status
+   and kind (GET form), one row per proposal, pagination. Librarian+.
+   Agent values are escaped (NFR47). CSP-clean. #}
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ l.t("page_title") }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ l.t("page_title") }}</h1>
+    <p class="mt-2 text-sm text-stone-600 dark:text-stone-400">{{ l.t("intro") }}</p>
+
+    {# #526 lesson — AppError responses retarget to #feedback-list. #}
+    <div id="feedback-list" aria-live="polite" aria-relevant="additions" class="space-y-2 my-4"></div>
+
+    <form method="get" action="/proposals" id="proposals-filters" class="flex flex-wrap items-end gap-3 mb-6">
+        <div>
+            <label for="proposals-filter-status" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ l.t("filter_status") }}</label>
+            <select id="proposals-filter-status" name="status" class="mt-1 px-2 py-1.5 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+                {% for o in status_options %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="proposals-filter-kind" class="block text-sm font-medium text-stone-700 dark:text-stone-300">{{ l.t("filter_kind") }}</label>
+            <select id="proposals-filter-kind" name="kind" class="mt-1 px-2 py-1.5 text-sm border border-stone-300 dark:border-stone-600 rounded-md bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100">
+                {% for o in kind_options %}<option value="{{ o.value }}"{% if o.selected %} selected{% endif %}>{{ o.label }}</option>{% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">{{ l.t("filter_apply") }}</button>
+    </form>
+
+    {% if rows.is_empty() %}
+    <div id="proposals-empty" class="text-center py-12 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg">
+        <h2 class="text-lg font-semibold text-stone-700 dark:text-stone-300">{{ l.t("empty_heading") }}</h2>
+        <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ l.t("empty_body") }}</p>
+    </div>
+    {% else %}
+    <div class="overflow-x-auto rounded-lg border border-stone-200 dark:border-stone-700">
+        <table id="proposals-table" class="w-full text-sm text-left">
+            <thead class="text-xs text-stone-500 dark:text-stone-400 uppercase bg-stone-50 dark:bg-stone-800/50 border-b border-stone-200 dark:border-stone-700">
+                <tr>
+                    <th scope="col" class="px-3 py-2">{{ l.t("col_kind") }}</th>
+                    <th scope="col" class="px-3 py-2">{{ l.t("col_target") }}</th>
+                    <th scope="col" class="px-3 py-2">{{ l.t("col_filed") }}</th>
+                    <th scope="col" class="px-3 py-2">{{ l.t("col_key") }}</th>
+                    <th scope="col" class="px-3 py-2">{{ l.t("col_status") }}</th>
+                    <th scope="col" class="px-3 py-2 text-right">{{ l.t("col_items") }}</th>
+                    <th scope="col" class="px-3 py-2"><span class="sr-only">{{ l.t("open") }}</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr data-proposal-id="{{ r.id }}" class="border-b border-stone-100 dark:border-stone-800 last:border-b-0 hover:bg-stone-50 dark:hover:bg-stone-800/50">
+                    <td class="px-3 py-2 text-stone-700 dark:text-stone-300">{{ r.kind_label }}</td>
+                    <td class="px-3 py-2">
+                        {% if let Some(href) = r.target_href %}<a href="{{ href }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ r.target_text }}</a>{% else %}<span class="text-stone-700 dark:text-stone-300">{{ r.target_text }}</span>{% endif %}
+                    </td>
+                    <td class="px-3 py-2 text-xs tabular-nums text-stone-500 dark:text-stone-400 whitespace-nowrap">{{ r.filed }}</td>
+                    <td class="px-3 py-2 text-stone-700 dark:text-stone-300">{{ r.key_label }}</td>
+                    <td class="px-3 py-2">{% let badge_status = r.status %}{% let badge_label = r.status_label.as_str() %}{% let badge_class = r.status_class %}{% include "components/proposal_status_badge.html" %}</td>
+                    <td class="px-3 py-2 text-right tabular-nums text-stone-700 dark:text-stone-300">{{ r.item_count }}</td>
+                    <td class="px-3 py-2 text-right">
+                        <a href="/proposals/{{ r.id }}" aria-label="{{ r.open_aria }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ l.t("open") }}</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <nav class="mt-4 flex items-center justify-between text-sm text-stone-600 dark:text-stone-400" aria-label="{{ l.t("page_title") }}">
+        <span>{% if let Some(href) = prev_href %}<a href="{{ href }}" rel="prev" class="text-indigo-600 dark:text-indigo-400 hover:underline">&larr; {{ l.t("pagination_prev") }}</a>{% endif %}</span>
+        <span>{{ pagination_info }}</span>
+        <span>{% if let Some(href) = next_href %}<a href="{{ href }}" rel="next" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ l.t("pagination_next") }} &rarr;</a>{% endif %}</span>
+    </nav>
+</div>
+{% endblock %}

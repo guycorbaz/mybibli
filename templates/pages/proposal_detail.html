@@ -1,0 +1,20 @@
+{# Story 11-16 (FR137, FR138, UX-DR31) — one proposal: header, sources,
+   items by shape, and the Reject action (UX-DR8 modal). Librarian+.
+   The body is a fragment so the rejection can re-render it. #}
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ heading }} — mybibli{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+    <div class="mb-4">
+        <a href="/proposals" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">&larr; {{ l.t("back_to_list") }}</a>
+    </div>
+    <h1 class="text-2xl font-bold text-stone-900 dark:text-stone-100">{{ heading }}</h1>
+
+    {# #526 lesson — AppError responses retarget to #feedback-list. #}
+    <div id="feedback-list" aria-live="polite" aria-relevant="additions" class="space-y-2 my-4"></div>
+
+    {% include "fragments/proposal_detail_body.html" %}
+</div>
+{% endblock %}

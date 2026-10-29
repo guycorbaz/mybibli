@@ -849,3 +849,85 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Chosen:** fixed — a regression test pins "deleted target reported before the delay"; the series name in the refusal is JSON-quoted like the reason; the `resubmittable_from` description says null only without a subject (with a delay of 0 it equals the rejection date); the `latest_rejection` doc states the snapshot limitation (#535); the E2E describe runs serially with a note on the coupling with 11-16 (#536); story ACs annotated. Accepted: when another key's equivalent rejection is newer, the refusal does not repeat this key's own reason (the history has it); the cover cap test now frees a slot with `stale` (rejection would start the delay for that title).
 **Reversible:** yes.
 
+## § 11-16 — Proposals page: list, detail, reject (part of #493)
+
+### D-11-16-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-16-proposals-page-list-detail-reject` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-16-2 — Every proposals route is Librarian+ [PRODUCT]
+**Context:** FR137 / FR138 say "Librarian and Admin"; the story asks anonymous visitors to be redirected to login.
+**Chosen:** `/proposals`, `/proposals/{id}`, `/proposals/{id}/cover`, `/proposals/{id}/reject-modal`, `POST /proposals/{id}/reject` all require `Role::Librarian` (pages with a `next` back to themselves). No per-key or per-user scoping (single tenant).
+**Reversible:** yes.
+
+### D-11-16-3 — The list: pending by default, GET filters, live target names [PRODUCT]
+**Context:** "filterable by status and kind"; FR137 speaks of listing *pending* proposals.
+**Chosen:** a plain GET form (`status` = pending by default, `all`, or a status; `kind` = all or a kind; unknown values fall back to the defaults), 25 per page newest first with previous / next links keeping the filters. The "subject" column comes from 11-15's `ProposalSubject` over the live items: the proposed name for a creation, otherwise the live series / title name linked to its page, or "#id (no longer in the catalog)" unlinked when the target is soft-deleted or purged. The stale status is labelled "Outdated" (fr "Périmée") — "stale" is jargon.
+**Rejected:** HTMX filtering (no gain for a short list; the GET form keeps the URL shareable and works without JS).
+**Reversible:** yes.
+
+### D-11-16-4 — Staged covers served by proposal id, pending only [PRODUCT]
+**Context:** D-11-14-2 keeps `.staging` unreachable through `/covers`; 11-14 left a librarian-only route to this story.
+**Chosen:** `GET /proposals/{id}/cover` reads the cover item of the proposal, re-validates its `staged_file` with `is_staged_name`, and answers the JPEG with `Cache-Control: no-store` (nosniff is global); 404 for a non-cover proposal, an invalid stored name, a missing staging directory or file. The file name never appears in a URL or a page. The detail page shows the image only while the proposal is pending (a decided proposal's file is discarded or promoted), next to the title's current cover (the side-by-side review of all fields stays 11-20's).
+**Rejected:** a route taking the staged file name (a guessable-path surface and a second validation point).
+**Reversible:** yes.
+
+### D-11-16-5 — Reject: optimistic lock on the proposal, reason optional, discard after commit [PRODUCT]
+**Context:** UX-DR8 modal, D-11-9-7 reason rules, D-11-9-12 (no file I/O inside a decision transaction), cover contract (11-16 calls `discard`).
+**Chosen:** the modal (`remove` variant, amber — a decision, not a deletion) carries CSRF, the proposal `version` and an optional `<textarea maxlength="1000">`. The handler runs one transaction: `SELECT status, version … FOR UPDATE` → unknown (404) / already decided (409, names the status) / version moved (409, "reload, then decide again") → `ProposalService::transition_in(Reject)` (reason trimmed, empty → none, > 1000 characters → 400 field hint) → the proposal's staged names read → commit → `cover_staging::discard_all` (failures logged; the scheduled purge catches leftovers). Opening the modal of a decided proposal answers the same 409. Errors are localized web copy (`ReviewError`), MCP copy untouched.
+**Reversible:** yes.
+
+### D-11-16-6 — Success answer: re-rendered body, OOB entry, `HX-Trigger-After-Swap: modal-close`
+**Context:** the AC asks modals to close via `HX-Trigger: modal-close`. E2E showed that with `HX-Trigger`, HTMX fires the event as soon as the response arrives; `modal.js` then wipes `#modal-slot`, the Confirm form (HTMX's context element) is detached, and the OOB success entry fails (`htmx:oobErrorNoTarget`).
+**Chosen:** the same `modal-close` event, sent as `HX-Trigger-After-Swap` (new `HtmxResponse::into_response_with_hx_trigger_after_swap`); the main body replaces `#proposal-detail-body` (status, decider, reason, no Reject button) and the success entry lands in `#feedback-list`.
+**Rejected:** `HX-Redirect` to the detail page (the AC wants the modal-close signal; a full reload loses the feedback entry); dropping the OOB entry.
+**Note for 11-17 / 11-18:** an accept answering OOB updates from a Pattern A modal needs the after-swap variant too.
+**Reversible:** yes.
+
+### D-11-16-7 — Display: one card per item, escaped text, unknown shapes as JSON
+**Context:** NFR47; four item contracts (11-12, 11-13, 11-14, 11-15).
+**Chosen:** `services/proposal_review.rs::parse_line` turns each item into a display line (series name / type / total, target series, title + position + omnibus range, expected tome, metadata field current → proposed with `current_date` and the truncation note, contributors current / to add, cover); anything else is shown as pretty-printed JSON text, never dropped. Templates never use `|safe` on agent data. Dates as `YYYY-MM-DD HH:MM UTC`. Template labels go through `ProposalLabels::t(key)` (`proposals.*`); router tests assert no raw key leaks.
+**Reversible:** yes.
+
+### D-11-16-8 — `#feedback-list` on the new pages; #526 stays open
+**Context:** #526 (series page without `#feedback-list`).
+**Chosen:** both proposals pages carry a `#feedback-list`; the series page itself is not changed here (out of scope).
+**Reversible:** yes.
+
+### D-11-16-9 — E2E scope; closes #536
+**Chosen:** `proposals-review.spec.ts` (spec id `PR`): a librarian from a blank browser opens a metadata proposal (escaped value, source in a new tab), rejects it with a reason through the modal (reason and decider shown, survive a reload), then the agent's equivalent re-filing is refused with the reopening date and `list_my_proposals` shows the reason and `resubmittable_from`; a cover proposal shows its staged image until a reason-less rejection discards it. Proposals target the spec's own titles (no cross-spec blocking); no series created (#528).
+**Reversible:** yes.
+
+### D-11-16-10 — Code review round 1: version from the page, pending-only covers, stale named as such [PRODUCT]
+**Context:** three layers (blind, edge cases, acceptance); no High. Medium: a pending cover whose staged file is missing showed a broken image; the reject modal re-read the current version, so "changed since you opened it" could never fire; the anonymous-reject test accepted any non-200; leak checks did not cover every line kind.
+**Chosen:** (a) the detail page shows the staged image only when the proposal is pending **and** the file exists, else "the proposed image is no longer available"; `/proposals/{id}/cover` also answers 404 for any decided proposal (a failed discard no longer leaves a rejected image reachable). (b) The Reject button sends the version the page showed (`/reject-modal?version=N`) and the modal posts it back. (c) Rejecting a stale proposal says it is outdated (subject changed or key revoked), not "someone else decided" (`proposals.error_stale`). (d) Lows fixed: CRLF line breaks count as one character (as the textarea's `maxlength` does); a page past the end links back to the last page; a post-commit re-render failure answers `HX-Redirect` to the detail instead of an error; only `http(s)` sources become links (defence in depth); a deleted cover target is named; "Series —" instead of a hard-coded French " :"; four unused locale keys removed; stale comments fixed. Tests: contributors lines, deleted-target text, missing / stale cover, version from the page, stale refusal, CRLF, page past the end, stricter anonymous assertion, leak checks on the rejected body and the cover detail.
+**Deferred:** #538 (focus lands on `<body>` after the swap removes the Reject trigger — `modal.js`).
+**Accepted (Low):** a forged non-numeric `version` gets Axum's plain 4xx; `UnknownDecider` answers 409; non-HTMX `reject-modal` answers 405 (project convention); error copy under `proposals.error_*` (precedent `expected_tome.errors.*`); no router test for a missing staging directory (the same `None` branch as a missing file); malformed `is_omnibus` / cover dimensions are not reachable through filing validation. Note for 11-18: after an acceptance the cover column will say "no longer available" — 11-18 should show the promoted cover instead.
+**Reversible:** yes.
+
+### D-11-16-11 — Code review round 2: the modal requires the page's version
+**Context:** three layers (blind, edge cases, acceptance); no High. One Medium, raised by two layers: when `/proposals/{id}/reject-modal` had no `version`, or one that did not parse, it fell back to the current version, so the "changed since you opened it" check could never fire for that request.
+**Chosen:** the modal refuses a missing or unparsable `version` with the localized "changed" conflict (409), as the POST already did. A version that has moved still opens the modal; the POST refuses it, as D-11-16-10(b) decided and tests. Lows fixed:
+- the detail page and the cover route share one predicate (`servable_staged_name`: a pending **cover** proposal), so a non-cover proposal can never show a broken image;
+- a rejection that unexpectedly comes back `WentStale` answers the localized stale refusal instead of a 500;
+- a cover item's dimensions and size stay visible once the image is gone (AC3);
+- the unused `media_type` read on the title brief is removed.
+
+Tests: a missing, empty or garbled modal version answers 409; dimensions are shown on a stale cover; a unit test of the shared predicate.
+**Dismissed:** "decided by the system" for a purged human decider (reads use `COALESCE(u.username, p.decided_by_name)`, the copy made at decision time, D-11-9-11); a duplicate `#feedback-list` (the base layout has none); several cover lines (a cover proposal holds exactly one item).
+**Accepted (Low):**
+- a non-HTMX POST to `/reject` gets the fragment (it is CSRF-guarded; there is no no-JS path);
+- a non-numeric POST `version` gets Axum's 422 (as in round 1);
+- the cover image can 404 in a second tab after a rejection elsewhere (the modal re-checks the status);
+- the `HX-Redirect` fallback after a commit leads to "not found" if the proposal was also soft-deleted in between (nothing in the UI soft-deletes proposals);
+- "Page N of M" with N > M when the page is past the end (the previous-page link already leads back);
+- index-aligned side vectors in the template (built from the same `lines`).
+
+Focus after the swap remains #538.
+
+**Round 3** (on the round-2 delta) found no Medium+. Its Lows were fixed:
+- the decided-modal and stale-modal tests now send the current version and assert the status-specific copy, so they no longer pass through the version branch;
+- the cover dimensions line is hidden when `width`, `height` or `bytes` is missing;
+- the unreachable `WentStale` arm and the `has_staged_cover` doc are commented accurately.
+**Reversible:** yes.

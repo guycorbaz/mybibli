@@ -18,6 +18,7 @@ pub mod metadata_diagnosis;
 pub mod metadata_proposals;
 pub mod password;
 pub mod proposal_history;
+pub mod proposal_review;
 pub mod proposals;
 pub mod scan_undo;
 pub mod search;

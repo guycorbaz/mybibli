@@ -336,6 +336,16 @@ series id / title + set of fields / title), across all keys.
 | POST | `/loans/{id}/return` | Librarian | no | — |
 | GET | `/loans/{id}/return-modal` | Librarian | — |  |
 
+### Proposals (story 11-16) (`src/routes/proposals.rs`)
+
+| method | path | role | csrf | note |
+|---|---|---|---|---|
+| GET | `/proposals` | Librarian | — | List of agent proposals; `?status=` (default `pending`, `all`), `?kind=`, `?page=`. |
+| GET | `/proposals/{id}` | Librarian | — | Detail: items by shape, sources (`target="_blank" rel="noopener noreferrer"`). |
+| GET | `/proposals/{id}/cover` | Librarian | — | The staged JPEG of a pending cover proposal (`Cache-Control: no-store`); the file name comes from the proposal, never from the URL. `/covers` never serves `.staging`. |
+| GET | `/proposals/{id}/reject-modal` | Librarian | — | UX-DR8 modal fragment, HTMX only (405 otherwise). |
+| POST | `/proposals/{id}/reject` | Librarian | no | Optimistic lock on `version`; optional reason ≤ 1000 characters; discards a staged cover after the commit. |
+
 ### Storage locations (`src/routes/locations.rs`)
 
 | method | path | role | csrf | note |

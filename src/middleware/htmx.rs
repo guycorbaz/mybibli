@@ -121,10 +121,29 @@ impl HtmxResponse {
     /// passes a literal, not user-derived data. No HX-Trigger injection
     /// vector by construction.
     pub fn into_response_with_hx_trigger(self, trigger: &'static str) -> Response {
+        self.into_response_with_trigger_header("hx-trigger", trigger)
+    }
+
+    /// Story 11-16 — like [`Self::into_response_with_hx_trigger`], but the
+    /// event fires **after the swap** (`HX-Trigger-After-Swap`). Needed
+    /// when a Pattern A modal Confirm (`#modal-slot`, `static/js/modal.js`)
+    /// answers with OOB updates: `HX-Trigger` fires as soon as the
+    /// response arrives, `modal.js` then wipes the slot, the Confirm form
+    /// (HTMX's context element) is detached, and every OOB target lookup
+    /// fails (`htmx:oobErrorNoTarget`).
+    pub fn into_response_with_hx_trigger_after_swap(self, trigger: &'static str) -> Response {
+        self.into_response_with_trigger_header("hx-trigger-after-swap", trigger)
+    }
+
+    fn into_response_with_trigger_header(
+        self,
+        header: &'static str,
+        trigger: &'static str,
+    ) -> Response {
         let body = self.body();
         (
             [(
-                axum::http::HeaderName::from_static("hx-trigger"),
+                axum::http::HeaderName::from_static(header),
                 axum::http::HeaderValue::from_static(trigger),
             )],
             Html(body),
@@ -273,5 +292,25 @@ mod tests {
             body.contains(r#"<div id="admin-modal-slot" hx-swap-oob="true"></div>"#),
             "expected the empty-content clear marker to be present in body, got: {body}"
         );
+    }
+
+    /// Story 11-16 — the after-swap variant carries the event in
+    /// `HX-Trigger-After-Swap` only (an `HX-Trigger` would fire before
+    /// the OOB updates are placed).
+    #[test]
+    fn hx_trigger_after_swap_uses_its_own_header() {
+        let response = HtmxResponse {
+            main: String::new(),
+            oob: vec![],
+        }
+        .into_response_with_hx_trigger_after_swap("modal-close");
+        assert_eq!(response.headers()["hx-trigger-after-swap"], "modal-close");
+        assert!(response.headers().get("hx-trigger").is_none());
+        let before = HtmxResponse {
+            main: String::new(),
+            oob: vec![],
+        }
+        .into_response_with_hx_trigger("modal-close");
+        assert_eq!(before.headers()["hx-trigger"], "modal-close");
     }
 }
