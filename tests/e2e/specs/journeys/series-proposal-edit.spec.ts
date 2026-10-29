@@ -233,7 +233,12 @@ test.describe("Story 11-19 — edit a proposal before accepting it", () => {
       await expect(page.locator("#proposal-items > li").first().locator("[data-proposed]")).toHaveText(
         "Sous-titre corrigé PE",
       );
-      await expect(page.locator("[data-edit-note]")).toContainText("Sous-titre de l'agent PE");
+      // Story 11-20 — the agent's original sits in the comparison; the
+      // note says who edited the line.
+      await expect(page.locator("#proposal-items > li").first().locator("[data-original]")).toContainText(
+        "Sous-titre de l'agent PE",
+      );
+      await expect(page.locator("[data-edit-note]")).toContainText(EDITED_BY);
 
       await acceptFromDetail(page);
       await page.goto(`/title/${titleId}`);

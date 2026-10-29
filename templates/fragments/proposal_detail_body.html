@@ -1,5 +1,6 @@
 {# Story 11-16 — the proposal detail body (header, Accept (11-17 / 11-18) and Reject actions,
-   line edit / removal and the edit trail (11-19),
+   line edit / removal and the edit trail (11-19), the side-by-side
+   comparison of metadata and covers (11-20),
    sources, items by shape). Rendered inside pages/proposal_detail.html
    and alone by POST /proposals/{id}/reject. Every agent value is
    escaped (NFR47): never `|safe` here. Sources open in a new tab with
@@ -83,23 +84,46 @@
                 <span class="tabular-nums">{{ l.t("col_position") }} {{ line.position }}</span> —
                 <span class="font-medium text-stone-900 dark:text-stone-100">{{ line.tome_title }}</span>
                 <span class="font-mono text-xs text-stone-500 dark:text-stone-400">{% if let Some(isbn) = line.isbn %}{{ isbn }}{% else %}{{ l.t("no_isbn") }}{% endif %}</span>
-            {% else if line.line.eq("field") %}
-                <div class="font-medium text-stone-900 dark:text-stone-100">{{ line.field_label }}</div>
-                <dl class="mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("current") }}</dt>
-                    <dd class="whitespace-pre-line text-stone-700 dark:text-stone-300">{% if let Some(cur) = line.current %}{{ cur }}{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}{% if line.current_date.is_some() %} <span class="text-xs text-stone-500 dark:text-stone-400">({{ body.current_date_labels[loop.index0] }})</span>{% endif %}</dd>
-                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("proposed") }}</dt>
-                    <dd data-proposed class="whitespace-pre-line font-medium text-stone-900 dark:text-stone-100">{{ line.proposed }}</dd>
-                </dl>
-                {% if line.current_truncated %}<p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ l.t("current_truncated") }}</p>{% endif %}
-            {% else if line.line.eq("contributors") %}
-                <div class="font-medium text-stone-900 dark:text-stone-100">{{ line.field_label }}</div>
-                <dl class="mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("current") }}</dt>
-                    <dd class="text-stone-700 dark:text-stone-300">{% if line.contributors_current.is_empty() %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% else %}{% for c in line.contributors_current %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}{% endif %}</dd>
-                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("contributors_added") }}</dt>
-                    <dd data-proposed class="font-medium text-stone-900 dark:text-stone-100">{% for c in line.contributors_proposed %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}</dd>
-                </dl>
+            {% else if line.line.eq("field") || line.line.eq("contributors") %}
+                {# Story 11-20 — current vs proposed side by side; the change is
+                   named by a text badge and a border, never by colour alone. #}
+                <table data-compare class="w-full table-fixed border-collapse">
+                    <caption class="pb-2 text-left font-medium text-stone-900 dark:text-stone-100">
+                        {{ line.field_label }}
+                        <span data-change="{{ line.change.as_str() }}" class="ml-2 inline-block px-1.5 py-0.5 text-xs font-semibold rounded border {% if line.change.as_str() == "unchanged" %}text-stone-700 dark:text-stone-300 border-stone-300 dark:border-stone-600{% else %}text-indigo-800 dark:text-indigo-200 bg-indigo-50 dark:bg-indigo-900/40 border-indigo-300 dark:border-indigo-700{% endif %}">{{ body.change_labels[loop.index0] }}</span>
+                    </caption>
+                    <thead>
+                        <tr>
+                            <th scope="col" class="w-1/2 pr-3 pb-1 text-left text-xs font-medium text-stone-500 dark:text-stone-400">{{ l.t("current") }}</th>
+                            <th scope="col" class="w-1/2 pl-3 pb-1 text-left text-xs font-medium text-stone-500 dark:text-stone-400">{% if line.line.eq("contributors") %}{{ l.t("contributors_added") }}{% else %}{{ l.t("proposed") }}{% endif %}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td data-current class="pr-3 align-top break-words text-stone-700 dark:text-stone-300">
+                            {% if line.line.eq("contributors") %}
+                                {% if line.contributors_current.is_empty() %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% else %}{% for c in line.contributors_current %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}{% endif %}
+                            {% else %}
+                                {% if let Some(cur) = line.current %}<div class="whitespace-pre-line">{{ cur }}</div>{% else %}<span class="text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}
+                                {% if line.current_date.is_some() %}<div class="text-xs text-stone-500 dark:text-stone-400">({{ body.current_date_labels[loop.index0] }})</div>{% endif %}
+                            {% endif %}
+                            </td>
+                            <td class="pl-3 align-top break-words border-l-4 {% if line.change.as_str() == "unchanged" %}border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300{% else %}border-indigo-500 dark:border-indigo-400 font-medium text-stone-900 dark:text-stone-100{% endif %}">
+                            {% if line.line.eq("contributors") %}
+                                <div data-proposed>{% if line.contributors_proposed.is_empty() %}<span class="font-normal text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</span>{% endif %}{% for c in line.contributors_proposed %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}</div>
+                            {% else %}
+                                {% if line.proposed.trim().is_empty() %}<div data-proposed class="font-normal text-stone-500 dark:text-stone-400">{{ l.t("empty_value") }}</div>{% else %}<div data-proposed class="whitespace-pre-line">{{ line.proposed }}</div>{% endif %}
+                            {% endif %}
+                            {% if let Some(e) = line.edit %}
+                                <div data-original class="mt-2 text-xs font-normal text-stone-600 dark:text-stone-400">
+                                    <span class="font-medium">{{ l.t("original_value") }}</span>
+                                    {% if line.line.eq("contributors") %}<span>{% if e.original.contributors_proposed.is_empty() %}{{ l.t("empty_value") }}{% endif %}{% for c in e.original.contributors_proposed %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}</span>{% else %}<span class="whitespace-pre-line">{% if e.original.proposed.trim().is_empty() %}{{ l.t("empty_value") }}{% else %}{{ e.original.proposed }}{% endif %}</span>{% endif %}
+                                </div>
+                            {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
                 {% if line.current_truncated %}<p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ l.t("current_truncated") }}</p>{% endif %}
             {% else if line.line.eq("cover") && body.accepted_cover %}
                 {# Story 11-18 — the staged file was promoted: show the title's cover now. #}
@@ -117,11 +141,25 @@
                     {% endif %}
                 </figure>
             {% else if line.line.eq("cover") %}
-                <div class="flex flex-wrap gap-6">
-                    <figure>
+                {# Story 11-20 — current (or the placeholder) then proposed, side
+                   by side at every width; the flag says what accepting does. #}
+                <div data-cover-compare class="grid grid-cols-2 gap-4">
+                    <figure class="min-w-0">
+                        <figcaption class="mb-1 text-stone-500 dark:text-stone-400">{{ l.t("cover_current") }}</figcaption>
+                        {% if line.target_name.is_none() %}
+                        <p class="text-stone-500 dark:text-stone-400">{{ body.target_texts[loop.index0] }}</p>
+                        {% else if line.current_cover_url.is_empty() %}
+                        <div id="proposal-current-cover-placeholder" role="img" aria-label="{{ l.t("cover_none") }}" class="w-full max-w-[150px] aspect-[2/3] flex items-center justify-center rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-100 dark:bg-stone-800">
+                            <img src="/static/icons/{{ line.current_media_type }}.svg" alt="" class="w-1/3 h-1/3 opacity-50">
+                        </div>
+                        {% else %}
+                        <img id="proposal-current-cover" src="{{ line.current_cover_url }}" alt="{{ l.t("cover_current") }}" class="w-full max-w-[150px] h-auto rounded-lg border border-stone-200 dark:border-stone-700" loading="lazy">
+                        {% endif %}
+                    </figure>
+                    <figure class="min-w-0">
                         <figcaption class="mb-1 text-stone-500 dark:text-stone-400">{{ l.t("cover_proposed") }}</figcaption>
                         {% if body.has_staged_cover %}
-                        <img id="proposal-staged-cover" src="/proposals/{{ body.id }}/cover" alt="{{ body.cover_alt }}" class="w-[150px] h-auto rounded-lg border border-stone-200 dark:border-stone-700" loading="lazy">
+                        <img id="proposal-staged-cover" src="/proposals/{{ body.id }}/cover" alt="{{ body.cover_alt }}" class="w-full max-w-[150px] h-auto rounded-lg border-4 border-indigo-500 dark:border-indigo-400" loading="lazy">
                         {% else %}
                         <p class="text-stone-500 dark:text-stone-400">{{ l.t("cover_missing") }}</p>
                         {% endif %}
@@ -129,17 +167,10 @@
                         <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ body.cover_dims[loop.index0] }}</p>
                         {% endif %}
                     </figure>
-                    <figure>
-                        <figcaption class="mb-1 text-stone-500 dark:text-stone-400">{{ l.t("cover_current") }}</figcaption>
-                        {% if line.target_name.is_none() %}
-                        <p class="text-stone-500 dark:text-stone-400">{{ body.target_texts[loop.index0] }}</p>
-                        {% else if line.current_cover_url.is_empty() %}
-                        <p class="text-stone-500 dark:text-stone-400">{{ l.t("cover_none") }}</p>
-                        {% else %}
-                        <img src="{{ line.current_cover_url }}" alt="{{ l.t("cover_current") }}" class="w-[150px] h-auto rounded-lg border border-stone-200 dark:border-stone-700" loading="lazy">
-                        {% endif %}
-                    </figure>
                 </div>
+                {% if let Some((flag, text)) = body.cover_flags[loop.index0] %}
+                <p data-cover-flag="{{ flag }}" class="mt-2 font-medium {% if flag == &"replace" %}text-amber-800 dark:text-amber-300{% else %}text-stone-900 dark:text-stone-100{% endif %}">{{ text }}</p>
+                {% endif %}
             {% else %}
                 <div class="text-stone-500 dark:text-stone-400">{{ l.t("unknown_line") }}</div>
                 <pre class="mt-1 text-xs whitespace-pre-wrap break-all text-stone-700 dark:text-stone-300">{{ line.raw_json }}</pre>
