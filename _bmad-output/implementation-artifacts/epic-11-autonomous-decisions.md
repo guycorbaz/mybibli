@@ -1306,3 +1306,47 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Context:** one combined layer (blind + edge cases + acceptance) on `main...HEAD`; no High, no Medium.
 **Chosen (Lows fixed):** the moved-position check reads `Position 4` (a bare `/4/` could match the synthetic title's ISBN); the key is revoked in `afterEach` from a fresh browser context (a timeout closes the test page before `finally`); the spec is renamed `series-epic11-smoke.spec.ts` so it sorts far after the specs assuming no series (#528 margin); the run stamp uses `% 24000` (whole `specIsbn` range); `get_series` cross-checks the expected tome before the scan (position, title, ISBN, `missing_positions` [2, 3]) and after it (position 3 = the scanned title, tome settled by it, `missing_positions` [2]). Accepted as documented: the epic's literal "badge shows 1" and "over `fetch`" (D-11-23-1; `helpers/mcp.ts` is the helper the epic names). Deferred: #550 (no CI on branches without a PR / PRs in conflict — the trigger change was scoped to the trigger only). No Medium+ → no second round needed (Rule 6).
 **Reversible:** yes.
+
+## § 11-24 — Epic 11 documentation (part of #493)
+
+### D-11-24-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-24-epic-11-documentation` and the `# last_updated:` header change on this branch; `epic-11` stays `in-progress` (its retrospective is next).
+**Reversible:** yes.
+
+### D-11-24-2 — A new chapter 13, appended after operations
+**Context:** the AC asks for "a new chapter"; README, the Docker Hub overview, Rule 19 and release notes refer to chapters 1, 8 and 12 by number.
+**Chosen:** `docs/manual/{en,fr}/13-agents-proposals.tex` ("AI agents and proposals" / "Agents IA et propositions", `\label{ch:agents}`), input after chapter 12 and before the glossary, so no existing chapter number moves. Existing chapters only gain cross-references (1 env table, 2 System → Proposals and the third key scope, 3 navigation bar and wish-list pointer, 6 role rows, 7 covers backup, 11 scopes, glossary).
+**Rejected:** inserting it next to chapter 11 (renumbers 12 — every "chapter 12" reference would go stale).
+**Reversible:** yes.
+
+### D-11-24-3 — No new screenshots [PRODUCT]
+**Context:** the brief says "screenshots if the manual uses them"; the manual carries two general screenshots (home page, locations), none per feature.
+**Chosen:** no screenshot of the proposals pages: the chapter describes them with the UI's exact labels. A screenshot would need a seeded stack, adds ~100 KB of binary per language, and the navigation is expected to change (CR #547, left sidebar).
+**Rejected:** screenshots of `/proposals` and a proposal detail.
+**Reversible:** yes — the operator can add them at release time.
+
+### D-11-24-4 — Operator guidance written into the chapter [PRODUCT]
+**Context:** the chapter has to tell an operator how to connect safely; some choices are recommendations, not code facts.
+**Chosen:** one `propose` key per agent (revocation then stops exactly one agent); Claude Code registration with `-s local` (default) or `-s user`, **not** `-s project` (it writes the key into a `.mcp.json` meant to be shared); a `--mcp-config` file kept `chmod 600`; the MCP Inspector's web UI may need its proxy origin (typically `http://localhost:6274`) added to `MYBIBLI_MCP_ALLOWED_ORIGINS` temporarily, removed afterwards. The connection facts (address, transport, header, scope, revisions) come first and are client-neutral (Hermes Agent or any MCP client), as the AC asks. Claude Code syntax checked against `claude mcp add --help` on the station.
+**Reversible:** yes.
+
+### D-11-24-5 — MCP Inspector check written as an operator procedure
+**Context:** D-11-6-10 / D-11-22-5 left the Inspector run to the librarian; the autonomous sessions' permission policy refuses `npx @modelcontextprotocol/inspector`.
+**Chosen:** manual § "Checking the endpoint with the MCP Inspector" (CLI `tools/list`, `tools/call get_title id=1`, then the UI in proxy mode) plus a "when the connection fails" table (401 / 403 scope / 403 host-origin / 400 / 405 / 413-408). The D-11-6-10 deferral stays open for the librarian before the epic closes; this story does not run it either.
+**Reversible:** yes.
+
+### D-11-24-6 — Manual build fixes kept local to the touched tables
+**Context:** the two MCP rows pushed the chapter-1 environment table past the page in French (`\vbox` 123 pt too high); long role rows widened the chapter-6 table; long `MYBIBLI_MCP_ALLOWED_*` index entries overflowed the two-column index.
+**Chosen:** the environment table becomes a `longtable` (header repeated) in both languages; role rows shortened ("Decide AI-agent proposals", "Manage expected tomes"); one index entry `MYBIBLI_MCP_ALLOWED_*`. Overfull boxes back to the pre-story count (EN 15); no undefined reference.
+**Reversible:** yes.
+
+### D-11-24-7 — `CLAUDE.md` gains four descriptive pattern entries
+**Context:** the epic AC requires `CLAUDE.md` to document the `src/mcp/` layer, the proposal lifecycle, expected tomes, and cover staging with its purge.
+**Chosen:** one Source Layout line for `src/mcp/` and four Key Patterns bullets (MCP layer, proposal lifecycle, expected tomes, cover staging and purge), each naming the files, invariants and tests a maintainer must keep; identifiers checked against the code. No rule, permission or workflow instruction was added or changed.
+**Reversible:** yes.
+
+### D-11-24-8 — Route matrix completed by diffing the router
+**Context:** the 11-11 expected-tome routes (7) and the 11-19 line edit / remove routes (3) had no row; the header count (172) was stale.
+**Chosen:** ten rows added (roles read from each handler's `require_role*` call), the accept rows reworded for every kind (11-18), header now "191 method+path pairs over 167 paths", checked by a script diffing `.route(…)` calls with the table (not committed — one-off).
+**Reversible:** yes.

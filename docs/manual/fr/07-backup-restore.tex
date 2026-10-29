@@ -23,7 +23,10 @@ Trois artefacts forment ensemble une sauvegarde mybibli complète :
         affiche un placeholder générique tant que vous n'avez pas
         re-fetché les métadonnées titre par titre (issue~\#213 — les
         installs antérieures à 1.1.4 sans ce volume perdaient les
-        couvertures à chaque mise à jour du conteneur).
+        couvertures à chaque mise à jour du conteneur). Le même
+        volume contient, dans un dossier caché \texttt{.staging},
+        les couvertures proposées par des agents IA et pas encore
+        décidées (section~\ref{sec:agents-staging}).
   \item \textbf{Le fichier \texttt{.env}.}\index{sauvegarde!.env}
         Contient les mots de passe (base, clés d'API non encore
         migrées). Le perdre, un re-déploiement vous oblige à

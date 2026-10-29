@@ -1,0 +1,573 @@
+\chapter{AI agents and proposals}
+\label{ch:agents}
+
+mybibli can be opened to an AI agent --- Claude Code, Hermes Agent or
+any other client of the \emph{Model Context
+Protocol}\index{MCP}\index{Model Context Protocol} (MCP). The agent
+reads your catalog and suggests improvements: a series and its missing
+tomes, a missing description or publisher, a cover. Every suggestion
+arrives as a \emph{proposal}\index{proposal} that waits on the
+\textbf{Proposals} page until a librarian accepts, edits or rejects
+it.
+
+This chapter walks through:
+
+\begin{itemize}
+  \item what an agent can and cannot do,
+  \item creating a \emph{propose} key and allowing the agent's
+        address,
+  \item connecting an MCP client --- the generic facts first, then
+        Claude Code,
+  \item the tools the agent sees,
+  \item reviewing proposals: list, detail, comparison, edit, accept,
+        reject,
+  \item expected tomes and the wish list,
+  \item where proposed covers wait, and how they are cleaned up.
+\end{itemize}
+
+\section{What an agent can and cannot do}
+\label{sec:agents-scope}
+
+\begin{note}
+\textbf{An agent never writes the catalog.} It reads titles, series
+and contributors, and it files proposals. Nothing changes in the
+catalog until a Librarian or an Admin accepts a proposal on the
+Proposals page. Rejecting, or simply ignoring, a proposal leaves the
+catalog exactly as it was.
+\end{note}
+
+With a \emph{propose} key an agent can:
+
+\begin{itemize}
+  \item search and read titles (bibliographic fields, contributors,
+        volumes with their shelf location, series positions),
+        contributors and series --- including the gaps of a closed
+        series;
+  \item list the titles without a cover, or with incomplete metadata;
+  \item propose a new series, or additions to an existing one (titles
+        you hold, and \emph{expected tomes} you do not own yet);
+  \item propose values for a title's subtitle, description,
+        publisher, publication year, Dewey code, and contributors to
+        add;
+  \item propose a cover image;
+  \item read the history of its own proposals, with your decisions
+        and your rejection reasons.
+\end{itemize}
+
+It cannot:
+
+\begin{itemize}
+  \item create, change or delete anything in the catalog --- titles,
+        volumes, series, contributors, locations, loans;
+  \item see borrowers, loans, users, settings or other keys'
+        proposals;
+  \item erase a value: a proposal only fills or corrects a field, it
+        never empties one, and it only \emph{adds} contributors;
+  \item make the server download anything: a proposed cover is sent
+        as an image, and the web addresses the agent cites as
+        sources are shown to you as links, never fetched by mybibli.
+\end{itemize}
+
+Every proposal must cite its \textbf{sources} --- the \texttt{http}
+or \texttt{https} pages where the agent found the information --- so
+you can check them before deciding.
+
+\section{Before you start: the network}
+\label{sec:agents-network}
+
+The MCP endpoint lives at \texttt{/api/mcp}\index{api/mcp@\texttt{/api/mcp}}
+on the same web server as the rest of mybibli. It is meant for an
+agent running on a computer \emph{of your local network}. Like the
+rest of mybibli (chapter~\ref{ch:installation}), it must never be
+published on the Internet: the key travels in every request, in clear
+text on a plain-HTTP LAN.
+
+\section{Step 1 --- create a \emph{propose} key}
+\label{sec:agents-key}
+
+\begin{enumerate}
+  \item As an Admin, open \textbf{Administration \(\rightarrow\) API
+        keys} (section~\ref{sec:api-keys-create}).
+  \item Give the key a label that names the agent, e.g.\
+        \emph{``Claude Code on the office laptop''}. The label is
+        shown next to each proposal the key files.
+  \item Choose the scope \textbf{Read + propose}\index{propose key}.
+  \item Click \textbf{Create key} and copy the key from the dialog:
+        it is shown only once. A propose key starts with
+        \texttt{mybibli\_pr\_}.
+\end{enumerate}
+
+Only a propose key opens \texttt{/api/mcp}; a read-only or
+read-write key is refused there. Use one key per agent: revoking it
+(section~\ref{sec:agents-revoke}) then stops exactly that agent.
+
+\section{Step 2 --- allow the address the agent uses}
+\label{sec:agents-hosts}
+
+To defend against \emph{DNS rebinding} (a web page tricking a browser
+into talking to your NAS under a foreign name), the endpoint answers
+only requests whose \texttt{Host} header is on a list. Two environment
+variables, read at start-up, control it (chapter~\ref{ch:installation},
+table of section~\ref{sec:env-vars}):
+
+\begin{description}
+  \item[\texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS}]\index{env vars!MYBIBLI\_MCP\_ALLOWED\_*}
+        Comma-separated host names or addresses, each optionally with
+        a port (\texttt{host} or \texttt{host:port}; an entry without
+        a port matches any port). Default when unset or empty:
+        \texttt{localhost,127.0.0.1,::1} --- enough only when the
+        agent runs on the machine that hosts mybibli. A set value
+        \emph{replaces} the default, so on a NAS list every name and
+        address the agent uses, and keep the loopback names if a
+        local client needs them:
+\begin{lstlisting}
+MYBIBLI_MCP_ALLOWED_HOSTS=nas.local,192.168.1.10,localhost
+\end{lstlisting}
+  \item[\texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS}]\index{env vars!MYBIBLI\_MCP\_ALLOWED\_*}
+        Comma-separated origins (\texttt{scheme://host:port},
+        \texttt{:*} for any port). Default: empty. MCP clients such as
+        Claude Code send no \texttt{Origin} header and need nothing
+        here; a request that carries an \texttt{Origin} is refused
+        unless it is listed. List one only for a client or proxy that
+        forwards one (the MCP Inspector, section~\ref{sec:agents-inspector}).
+        Browser pages cannot call the endpoint at all: it sends no
+        CORS headers.
+\end{description}
+
+Set them in \texttt{.env} (the shipped \texttt{docker-compose.yml}
+passes both through) and restart the container. These are deployment
+settings, not Admin settings, on purpose: a page of the web interface
+must not be able to widen a network defence.
+
+\section{Step 3 --- connect the agent}
+\label{sec:agents-connect}
+
+\subsection{What any MCP client needs}
+\label{sec:agents-connection-facts}
+
+Whatever the client --- Claude Code, Hermes Agent, or another one ---
+it needs these facts:
+
+\begin{center}\small
+\begin{tabular}{@{} l >{\raggedright\arraybackslash}p{9.5cm} @{}}
+\toprule
+\textbf{Setting} & \textbf{Value} \\
+\midrule
+Address   & \texttt{http://<host>:<port>/api/mcp}, where
+            \texttt{<host>} is one of the allowed hosts of
+            section~\ref{sec:agents-hosts} and \texttt{<port>} the
+            port you open mybibli on (\texttt{HOST\_PORT}, default
+            8080). \\
+Transport & \emph{Streamable HTTP} (sometimes listed as just
+            \emph{HTTP}). The server is stateless: every call is one
+            \texttt{POST} answered with JSON; there is no event
+            stream and no session to keep. \\
+Header    & \texttt{Authorization: Bearer <propose key>} on every
+            request. \\
+Scope     & The key must be a \emph{propose} key
+            (section~\ref{sec:agents-key}). No OAuth, no login. \\
+Protocol  & MCP revisions \texttt{2025-11-25} and
+            \texttt{2026-07-28}. Older revisions are refused. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A client that can set a custom header on a streamable-HTTP server can
+connect. stdio-only clients and the older ``HTTP + SSE'' transport are
+not supported.
+
+\subsection{Claude Code}
+\label{sec:agents-claude-code}
+
+Register the server once with \texttt{claude mcp add}. Replace the
+address and the key with yours:
+
+\begin{lstlisting}
+claude mcp add --transport http mybibli \
+  http://nas.local:8080/api/mcp \
+  --header "Authorization: Bearer mybibli_pr_..."
+\end{lstlisting}
+
+The default scope (\texttt{-s local}) keeps the server --- and its
+key --- in your own Claude Code configuration for the current
+directory; \texttt{-s user} makes it available in every directory.
+Avoid \texttt{-s project}: it writes the key into a
+\texttt{.mcp.json} file meant to be shared with a repository.
+
+Check it with \texttt{claude mcp list} (the server should show as
+connected), or with \texttt{/mcp} inside a session. The tools appear
+to Claude as \texttt{mcp\_\_mybibli\_\_<tool>}, e.g.\
+\texttt{mcp\_\_mybibli\_\_search\_titles}.
+
+\subsubsection*{Without registering: \texttt{--mcp-config}}
+
+For a one-off or scripted session, describe the server in a JSON file
+and pass it on the command line. Keep the file private (it holds the
+key), e.g.\ \texttt{chmod 600 mybibli-mcp.json}:
+
+\begin{lstlisting}
+{
+  "mcpServers": {
+    "mybibli": {
+      "type": "http",
+      "url": "http://nas.local:8080/api/mcp",
+      "headers": { "Authorization": "Bearer mybibli_pr_..." }
+    }
+  }
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+claude --mcp-config mybibli-mcp.json
+# non-interactive, mybibli tools only:
+claude -p "Which closed series have gaps?" \
+  --strict-mcp-config --mcp-config mybibli-mcp.json \
+  --allowedTools "mcp__mybibli__list_series"
+\end{lstlisting}
+
+\subsection{Checking the endpoint with the MCP Inspector}
+\label{sec:agents-inspector}
+
+The MCP Inspector is the protocol's reference test client. It is the
+quickest way to tell a network or key problem from an agent problem.
+It runs with Node.js (\texttt{npx} downloads it on first use) on any
+machine that can reach mybibli. In the commands below, replace the
+address and the key.
+
+\begin{enumerate}
+  \item \textbf{List the tools} (command-line mode):
+\begin{lstlisting}
+npx @modelcontextprotocol/inspector --cli \
+  http://nas.local:8080/api/mcp --transport http \
+  --header "Authorization: Bearer mybibli_pr_..." \
+  --method tools/list
+\end{lstlisting}
+        Expected: the twelve tools of section~\ref{sec:agents-tools}.
+  \item \textbf{Call one}:
+\begin{lstlisting}
+npx @modelcontextprotocol/inspector --cli \
+  http://nas.local:8080/api/mcp --transport http \
+  --header "Authorization: Bearer mybibli_pr_..." \
+  --method tools/call --tool-name get_title --tool-arg id=1
+\end{lstlisting}
+        Expected: the record of title~1 (or an ``unknown title''
+        error if that id does not exist --- any answer from the tool
+        proves the connection).
+  \item \textbf{Optionally, the web interface}: run
+\begin{lstlisting}
+npx @modelcontextprotocol/inspector
+\end{lstlisting}
+        without arguments, open the address it prints, choose the transport
+        \emph{Streamable HTTP}, enter the address, add the
+        \texttt{Authorization} header, then \emph{Connect},
+        \emph{List Tools}, and run \texttt{get\_title}. The Inspector
+        talks to mybibli through its own local proxy; if that proxy
+        forwards its \texttt{Origin} and the connection is refused
+        with \emph{403}, add the origin it shows (typically
+        \texttt{http://localhost:6274}) to
+        \texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS}, restart, and remove
+        it again when you are done.
+\end{enumerate}
+
+Each tool call is logged at \texttt{info} level as an \texttt{MCP tool
+call} line naming the tool and the key id (chapter~\ref{ch:operations-debugging}).
+The MCP library's own messages are capped at \texttt{warn}; to see
+them while you investigate, set:
+\begin{lstlisting}
+MYBIBLI_LOG_LEVEL=info,rmcp=debug
+\end{lstlisting}
+
+\subsection{When the connection fails}
+
+\begin{center}\small
+\begin{tabular}{@{} l >{\raggedright\arraybackslash}p{10cm} @{}}
+\toprule
+\textbf{Answer} & \textbf{Likely cause} \\
+\midrule
+401 & No \texttt{Authorization} header, a mistyped key, or a revoked
+      key. \\
+403 \texttt{insufficient\_scope} & The key is read-only or
+      read-write; create a propose key. \\
+403, other & The \texttt{Host} the client uses is not in
+      \texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS}, or the request carries an
+      \texttt{Origin} that is not in
+      \texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS}. \\
+400 & The client speaks a protocol revision mybibli does not serve;
+      update the client. \\
+405 & The client tried \texttt{GET} or \texttt{DELETE} (an old
+      HTTP + SSE client); choose the streamable-HTTP transport. \\
+413 / 408 & A request over $\approx$\,3.7\,MiB (a cover too large) or
+      longer than 30\,s. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{The tools}
+\label{sec:agents-tools}
+
+The agent discovers the tools by itself; each carries a description
+written for it. For reference:
+
+\subsubsection*{Reading}
+
+\begin{description}[style=nextline]
+  \item[\texttt{search\_titles}] Free-text search, or an exact ISBN or
+        volume label (V-code); filters by media type and genre.
+  \item[\texttt{get\_title}] One title in full: fields, contributors
+        and roles, volumes and their location, series positions,
+        whether it has a cover, fields edited by hand.
+  \item[\texttt{search\_contributors}] Contributors by name, with how
+        many titles each one has.
+  \item[\texttt{list\_series}] Series by name, with owned positions
+        and gap count; can list only series with gaps.
+  \item[\texttt{get\_series}] One series: its positions, the missing
+        ones of a closed series, its expected tomes.
+  \item[\texttt{list\_titles\_without\_cover}] Titles with no cover
+        image.
+  \item[\texttt{list\_titles\_with\_incomplete\_metadata}] Titles
+        missing a description, publisher, contributor or publication
+        year.
+  \item[\texttt{list\_my\_proposals}] The proposals filed with
+        \emph{this} key: status, decision date, your rejection reason,
+        and when an equivalent proposal may be filed again.
+\end{description}
+
+\subsubsection*{Proposing}
+
+\begin{description}[style=nextline]
+  \item[\texttt{propose\_series\_create}] A new series --- name,
+        closed (with its number of volumes) or open --- with the
+        titles you hold at their positions and expected tomes.
+  \item[\texttt{propose\_series\_attach}] Titles to place in an
+        existing series, and/or expected tomes to add to it.
+  \item[\texttt{propose\_title\_metadata}] Subtitle, description,
+        publisher, publication year, Dewey code, and contributors to
+        add, for one title.
+  \item[\texttt{propose\_cover}] A cover image for one title (JPEG,
+        PNG, WebP or GIF, at most 2\,MiB).
+\end{description}
+
+A tool refuses, with an explanation the agent can act on, a proposal
+that could never be accepted: an unknown title, a position already
+taken, a value a librarian's form would refuse, a missing source, a
+second pending proposal for the same series, or a proposal you
+rejected recently (section~\ref{sec:agents-delay}). Each agent may
+have at most 100 pending cover proposals at a time.
+
+\section{Reviewing proposals}
+\label{sec:proposals}
+
+\subsection{Seeing that proposals are waiting}
+
+Librarians and Admins see a \textbf{Proposals}\index{proposals page}
+entry in the navigation bar. While proposals are pending it carries a
+badge with their number (\texttt{99+} above 99), and the home page's
+attention section shows a \textbf{Pending proposals} indicator. Both
+lead to \texttt{/proposals}. Anonymous visitors see neither.
+
+\subsection{The list}
+
+\texttt{/proposals} shows the pending proposals by default, newest
+first, 25 per page. Two filters narrow it:
+
+\begin{itemize}
+  \item \textbf{Status} --- \emph{Pending}, \emph{Accepted},
+        \emph{Rejected}, \emph{Outdated}, or all;
+  \item \textbf{Kind} --- \emph{New series}, \emph{Series additions},
+        \emph{Metadata}, \emph{Cover}, or all.
+\end{itemize}
+
+Each row names the subject (the proposed series name, or the series
+or title concerned, linked to its page), when it was filed, by which
+key, its status and its number of lines. \textbf{Open} leads to the
+detail.
+
+\subsection{The detail page}
+
+The detail page shows who filed the proposal and when, its status,
+the \textbf{Sources} the agent cited (links that open in a new tab ---
+check them), and the \textbf{Proposed changes}, one card per line:
+
+\begin{itemize}
+  \item \textbf{Series proposals} --- the series line (name, type,
+        number of volumes), then each title with its position (and
+        the positions an omnibus covers), then each expected tome
+        with its position, title and ISBN.
+  \item \textbf{Metadata proposals} --- one comparison table per
+        field, \textbf{Current} next to \textbf{Proposed} (for
+        contributors: \textbf{To add}), side by side even on a phone.
+        A badge in words says whether the field is \emph{New} (empty
+        today), \emph{Changed} or \emph{Unchanged}; the proposed value
+        of a new or changed field is also set off by a thick border,
+        so the highlight never relies on colour alone.
+  \item \textbf{Cover proposals} --- the current cover (or the
+        placeholder) next to the proposed image, and a sentence that
+        says whether accepting \emph{adds} a cover or \emph{replaces}
+        the current one.
+\end{itemize}
+
+\subsection{Editing before you accept}
+
+While a proposal is pending you can correct it instead of rejecting
+it. \textbf{Edit} opens a line in place; \textbf{Save} checks it with
+the same rules as when the agent filed it.
+
+\begin{itemize}
+  \item A new series: its name, type and number of volumes.
+  \item A title line: its position, the omnibus flag and the last
+        position.
+  \item An expected tome: its position, title and ISBN.
+  \item A metadata field: the proposed value (the current value is
+        the reference and does not change); for contributors, each
+        name and role --- clear a name to drop that contributor.
+\end{itemize}
+
+\textbf{Remove} takes a line out of the proposal (title, expected
+tome, metadata field or contributor line). The line is not applied
+when you accept, but it stays on record in a \emph{Lines removed
+before the decision} section. Some lines cannot be removed: the series
+line, the single line of a cover proposal, and the last line of a
+metadata proposal --- reject the proposal instead. A cover cannot be
+edited: a different image is a new proposal.
+
+An edited line keeps the agent's value under it (\emph{The assistant
+proposed: \dots}) and says who edited it and when. The agent's own
+history still shows what it filed.
+
+\subsection{Accepting}
+
+\textbf{Accept} opens a confirmation that summarises what will be
+written --- the series created or updated and how many titles and
+expected tomes, the fields written to the title, the contributors
+credited, or the cover installed. On confirmation:
+
+\begin{itemize}
+  \item a series proposal creates the series, places the titles and
+        adds the expected tomes; an expected tome whose book the
+        series already holds at another position is skipped and
+        reported;
+  \item a metadata proposal writes the fields and credits the
+        contributors (one already credited in that role is skipped).
+        The written fields count as \emph{edited by hand}: a later
+        automatic metadata download never overwrites them;
+  \item a cover proposal installs the image as the title's cover,
+        also protected from automatic cover downloads.
+\end{itemize}
+
+The success message links to the series or title.
+
+\subsection{Outdated proposals}
+
+A proposal is checked again at the moment you accept it. If its
+subject changed since the agent filed it --- the title or series was
+edited or deleted, a position was taken in the meantime, a series of
+the same name now exists, the cover changed --- \textbf{nothing is
+applied} and the proposal becomes \emph{Outdated}; the message says
+why. Ask the agent for a new proposal based on the catalog as it is
+now, or make the change by hand.
+
+Accepting a proposal that writes fields or a cover changes the title,
+so the other pending proposals for the same title become outdated when
+you try to accept them. Decide them in the order you prefer, and ask the agent to
+file again what still matters.
+
+Revoking a key (section~\ref{sec:agents-revoke}) also marks all its
+pending proposals as outdated; the detail page then says they were
+decided by \emph{the system}.
+
+\subsection{Rejecting}
+
+\textbf{Reject} closes the proposal without changing anything. You
+may give a \textbf{reason} (optional, at most 1000 characters): the
+agent reads it in its history (\texttt{list\_my\_proposals}) and can
+learn from it. A proposed cover is deleted when its proposal is
+rejected.
+
+\subsection{The resubmission delay}
+\label{sec:agents-delay}
+
+After a rejection, an \emph{equivalent} proposal is refused for a
+while, so an agent does not file the same thing again and again.
+Equivalent means the same kind and the same subject: the same series
+(a new series by its name, ignoring case and accents), the same title
+\emph{and} the same set of fields for metadata, the same title for a
+cover. The rule applies to every key: creating a new key does not
+reset it.
+
+The delay is set in \textbf{Administration \(\rightarrow\) System
+\(\rightarrow\) Proposals}\index{resubmission delay}
+(section~\ref{sec:system}): from 0 (no delay) to 3650 days, default
+\textbf{90 days}. A change applies to the next proposal, without a
+restart.
+
+\section{Expected tomes and the wish list}
+\label{sec:expected-tomes}
+
+An \emph{expected tome}\index{expected tome} names a tome of a series
+that you do not own yet: a position, a title and, if known, an ISBN.
+Expected tomes come from accepted series proposals, or you enter them
+yourself.
+
+\begin{itemize}
+  \item \textbf{On the series page}, an expected tome fills its gap
+        square with its title, its ISBN and an \emph{Expected}
+        marker. Everyone sees it; the owned / missing counters do not
+        change, since the tome is still missing.
+  \item \textbf{Entering one by hand} (Librarian or Admin):
+        \textbf{Add expected tome} in the series actions, or
+        \textbf{Name this tome} on an empty gap. \textbf{Edit} and
+        \textbf{Delete} appear under each tome.
+  \item \textbf{Add to wish list} puts the tome on your wish list
+        (section~\ref{sec:wishlist}) with its title, its ISBN, and a
+        note naming the series and the position. Clicking twice does
+        not create a second entry.
+  \item \textbf{When you catalog the book} --- scan its ISBN, or
+        create the title by hand with that ISBN --- mybibli recognises
+        the expected tome, places the new title at that position of
+        the series, and the gap disappears. If the book was on your
+        wish list, the usual banner offers to remove it
+        (section~\ref{sec:wishlist}). If the position is meanwhile
+        held by another title, nothing is attached and a warning says
+        what to check.
+  \item \textbf{Expected tomes to review} --- a tome that no longer
+        fits a gap (the series' number of volumes was lowered below
+        its position, or a title now holds its position) is listed
+        under the grid with the reason. Change its position or delete
+        it.
+\end{itemize}
+
+\section{Proposed covers: the staging area}
+\label{sec:agents-staging}
+
+A proposed cover is checked like a cover you upload yourself, then
+reduced to at most 400\,px wide (JPEG) --- what you review is exactly
+what acceptance installs. Until you decide, it waits in a hidden
+\texttt{.staging}\index{covers!.staging} folder \emph{inside the
+covers directory} (\texttt{COVERS\_DIR}; in Docker,
+\texttt{/app/covers/.staging} on the \texttt{mybibli\_covers} volume).
+Consequences:
+
+\begin{itemize}
+  \item Nothing to configure: every install that persists its covers
+        also persists the proposed ones across upgrades.
+  \item A proposed image is never public: the \texttt{/covers}
+        address refuses hidden folders, and the Proposals page serves
+        it to librarians only, while the proposal is pending.
+  \item Cleanup is automatic. Rejecting a proposal deletes its image;
+        accepting moves it into place; revoking a key deletes the
+        images of its pending proposals. The scheduled purge
+        (section~\ref{sec:system}, \emph{auto-purge interval}) removes
+        anything left behind --- a proposal that went outdated, a
+        filing that never completed --- after a one-hour grace.
+  \item Backups of the covers volume (chapter~\ref{ch:backup}) include
+        the folder; restoring it is harmless, the purge sorts it out.
+\end{itemize}
+
+\section{Revoking an agent's key}
+\label{sec:agents-revoke}
+
+In \textbf{Administration \(\rightarrow\) API keys}, revoke the key.
+The agent is refused from its next request, all its pending proposals
+become outdated, and their proposed covers are deleted. Its accepted
+and rejected proposals stay in the history. To let the agent back in,
+create a new key and update the client configuration.

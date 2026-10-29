@@ -57,6 +57,12 @@
         Used by some French libraries; mybibli prefers
         \emph{volume}.
 
+  \item[Expected tome]\index{expected tome} A tome of a series the
+        library does not own yet, named by its position, title and
+        optional ISBN. Shown in its gap on the series page; settled
+        automatically when its ISBN is catalogued
+        (section~\ref{sec:expected-tomes}).
+
   \item[Genre]\index{genres} A free-form classification of a title's
         subject (Fiction, Non-fiction, Mystery, \dots). Defined in
         the genres reference table.
@@ -98,6 +104,10 @@
   \item[MariaDB] The database engine mybibli stores its data in.
         A fork of MySQL.
 
+  \item[MCP]\index{MCP} Model Context Protocol. The open protocol AI
+        agents use to call tools; mybibli serves it at
+        \texttt{/api/mcp} (chapter~\ref{ch:agents}).
+
   \item[Media type]\index{media types} The kind of object a title
         represents: Book, Comic / BD, Audio, Film / series. Drives
         provider selection and field display.
@@ -125,6 +135,16 @@
         concurrent edits. Two users editing the same title get a
         clear error on the second save instead of silently
         overwriting each other.
+
+  \item[Propose key]\index{propose key} An API key with the scope
+        \emph{Read + propose}: it can read the catalog and file
+        proposals, never change the catalog. The only key accepted by
+        \texttt{/api/mcp}.
+
+  \item[Proposal]\index{proposal} A change suggested by an AI agent,
+        waiting on the Proposals page until a librarian accepts,
+        edits or rejects it. \emph{Outdated} when its subject changed
+        before the decision.
 
   \item[Reactivation] Restoring a soft-deleted row. For users,
         clears \texttt{deleted\_at} and lets them log in again.

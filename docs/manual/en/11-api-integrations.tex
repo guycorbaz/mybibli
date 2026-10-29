@@ -10,7 +10,8 @@ This chapter walks through:
 
 \begin{itemize}
   \item creating an API key in the admin panel,
-  \item the two scopes (\emph{read only} vs. \emph{read + write}),
+  \item the scopes (\emph{read only}, \emph{read + write}, and
+        \emph{read + propose} for AI agents),
   \item the endpoints exposed under \texttt{/api/v1/*},
   \item three end-to-end examples (\texttt{curl}, Python, an AI
         classifier loop).
@@ -55,6 +56,12 @@ API keys}. Only Admin users see this tab.
                 narrow allow-list of fields (genre, dewey,
                 description, subtitle). Use this for LLM agents
                 or curation tools.
+          \item \textbf{Read + propose} — for an AI agent connected
+                through the MCP endpoint \texttt{/api/mcp}: it reads
+                like a read-only key and files proposals a librarian
+                reviews, never changing the catalog. See
+                chapter~\ref{ch:agents}; on \texttt{/api/v1/*} it
+                behaves as a read-only key.
         \end{itemize}
   \item Click \textbf{Create key}. A modal appears showing the
         full plaintext exactly once — copy it now. Once you
@@ -64,7 +71,7 @@ API keys}. Only Admin users see this tab.
 
 The plaintext shape is
 \texttt{mybibli\_<scope>\_<random40>}, where \texttt{<scope>} is
-\texttt{ro} or \texttt{rw}. Only the argon2 hash and the first
+\texttt{ro}, \texttt{rw} or \texttt{pr}. Only the argon2 hash and the first
 12 characters of the plaintext (the prefix) are persisted; the
 prefix is what mybibli uses to narrow candidates during
 authentication. The hash itself cannot be reversed.

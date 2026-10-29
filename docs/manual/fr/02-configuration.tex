@@ -29,7 +29,9 @@ configuration séparé. Le panneau a six onglets :
         les éléments soft-deleted.
   \item \textbf{System} — paramètres globaux.
   \item \textbf{API keys} — créer et révoquer les clés avec
-        lesquelles l'API HTTP s'authentifie (chapitre~\ref{ch:api}).
+        lesquelles l'API HTTP s'authentifie (chapitre~\ref{ch:api}),
+        ainsi que les clés \emph{propositions} des agents IA
+        (chapitre~\ref{ch:agents}).
 \end{itemize}
 
 Seul le rôle \texttt{Admin} voit le panneau ; les utilisateurs
@@ -371,6 +373,15 @@ fait que combler les manques : une valeur déjà présente, ou modifiée
 à la main, n'est jamais écrasée. Les deux actions en lot partagent
 le même délai de rythme, le même back-off anti-blocage et le même
 verrou d'exécution unique — une seule peut tourner à la fois.
+
+\subsection*{Propositions}
+
+Le \textbf{délai avant qu'une proposition refusée puisse être soumise
+à nouveau}, en jours (0--3650, 90 par défaut). Tant qu'il court, un
+agent IA ne peut pas déposer une proposition équivalente à celle
+qu'un bibliothécaire a refusée --- même type et même objet, quelle que
+soit la clé qui la dépose. Appliqué à la proposition suivante, sans
+redémarrage. Voir section~\ref{sec:agents-delay}.
 
 \subsection*{Langue}
 

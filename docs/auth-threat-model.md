@@ -1,8 +1,8 @@
 # mybibli Auth Threat Model
 
-**Status:** authoritative baseline for changes to the session, cookie, CSRF and login surfaces.
+**Status:** authoritative baseline for changes to the session, cookie, CSRF and login surfaces, and (epic 11) the API-key / MCP agent surface.
 **Scope:** what the auth layer defends against, what it does not, and why the current posture is appropriate for the deployment shape.
-**Audience:** maintainers reviewing PRs that touch `src/middleware/auth.rs`, `src/middleware/csrf.rs`, `src/routes/auth.rs`, the `sessions` schema, or any cookie set/read code.
+**Audience:** maintainers reviewing PRs that touch `src/middleware/auth.rs`, `src/middleware/csrf.rs`, `src/routes/auth.rs`, the `sessions` schema, any cookie set/read code, `src/middleware/api_key.rs`, `src/mcp/`, or the proposal pages.
 
 This document closes the four-deferral chain captured in [#17](https://github.com/guycorbaz/mybibli/issues/17) (sub-items deferred across stories 1-2, 7-1, 7-3, and a CodeQL alert). It is referenced from `README.md` § Security and `CLAUDE.md` § Architecture.
 
@@ -90,6 +90,8 @@ An attacker gains LAN access (e.g., compromised guest device) and tries to escal
 | **Anonymous-session purge** — `sessions` rows for anonymous visitors expire after 7 days of inactivity | `src/tasks/anonymous_session_purge.rs` | `purges_old_anonymous_rows_only` integration test |
 | **CSRF token never logged** | `tracing` macros never bind the raw token | Code review |
 | **MCP endpoint `/api/mcp` (story 11-6)** — `propose`-scope bearer key only (no cookie, no session row); `Host` checked against `MYBIBLI_MCP_ALLOWED_HOSTS` (default loopback names) and any present `Origin` against `MYBIBLI_MCP_ALLOWED_ORIGINS` (default none) — DNS-rebinding defence in depth for a LAN-only endpoint (NFR43); request body capped (NFR45); only protocol revisions `2025-11-25` / `2026-07-28` | `src/mcp/` (guard in `mod.rs`, Host/Origin/body cap configured in `transport.rs`) | `tests/mcp_endpoint.rs` |
+| **`propose` scope (story 11-5, NFR44)** — the only scope `/api/mcp` accepts (`ApiKeyPropose`); a `propose` key passes `ApiKeyAuth` on `/api/v1` GETs but never `ApiKeyWrite`, and no MCP tool writes catalog rows: proposal tools insert into `proposals` / `proposal_items` (and stage a re-encoded cover) only | `src/middleware/api_key.rs`, `src/mcp/tools/` | `tests/api_key_propose_scope.rs` (key matrix), `tests/mcp_endpoint.rs`, registry test in `src/mcp/tools/mod.rs` (propose tools flagged not read-only), `no_sql_under_src_mcp` |
+| **Proposals decided by a person (stories 11-16 … 11-19)** — every `/proposals*` route requires Librarian+ and CSRF; acceptance re-checks the proposal under row locks and applies nothing when its subject moved (§ 5.10) | `src/routes/proposals.rs`, `src/routes/proposal_edit.rs`, `src/services/acceptance.rs` | `tests/proposals_page.rs`, `tests/proposals_access.rs`, `tests/proposal_accept_series.rs`, `tests/proposal_accept_metadata_cover.rs`, `tests/proposal_edit.rs` |
 
 ---
 
@@ -155,6 +157,20 @@ The server makes **no outbound request on behalf of an agent**. `propose_cover` 
 
 The image is checked before anything is written: decoded size ≤ 2 MiB (the manual upload's effective bound), signature JPEG / PNG / WebP / GIF matching the declared type, decoded under the #479 limits, then **re-encoded** (≤ 400 px wide, JPEG 80) — the original bytes never reach disk, so a polyglot or crafted file is neutralised. The re-encoded file waits in `<COVERS_DIR>/.staging` under a random name; the `/covers` static route answers 404 for any dot-segment (raw or `%2e`), so an unreviewed image is never publicly reachable (the path is percent-decoded before the check, so an encoded `/` cannot hide one). `/api/mcp` bodies are capped at ≈ 3.7 MiB (base64 of 2 MiB + 1 MiB envelope) and requests time out after 30 s (#514); at most two cover filings (image decode included) run at once server-wide, and a key may hold at most 100 pending cover proposals, so a leaked `propose` key can neither exhaust memory with parallel calls nor fill the covers volume. A timed-out call may still complete its filing (the filing runs to its end once started).
 
+### 5.10 Agent content is untrusted (stories 11-9 … 11-20)
+
+Everything an agent sends — series and title names, descriptions, contributor names, source URLs, images — is **attacker-controlled input** as far as the app is concerned: the agent may be wrong, may have read a page written to manipulate it (prompt injection), or the `propose` key may have leaked. The defences do not try to judge the content; they make sure it can neither execute nor apply itself:
+
+- **Nothing applies without a person.** A proposal is inert data until a Librarian or Admin accepts it on `/proposals/{id}` (CSRF, role check). An agent cannot accept, edit or reject, and cannot see other keys' proposals (`list_my_proposals` is scoped to the calling key).
+- **Validated at filing, re-validated at acceptance.** Filing applies the web forms' rules and more (bounded lengths and counts, control / zero-width / direction characters refused in one-line values, NFC normal form, ISBN checksums, positions ≤ 10 000, ≤ 1000 items and 1 MiB per proposal, JSON depth ≤ 20). Acceptance parses the stored lines again (a malformed line is refused, nothing applied) and checks the catalog's live state under row locks (a moved subject marks the proposal stale) — so a librarian's edit or a stored row can never smuggle in what filing would refuse.
+- **Escaped on display.** The review pages render every agent value through Askama's escaping — no `|safe` in `templates/pages/proposals.html`, `proposal_detail.html` or `fragments/proposal_detail_body.html`; values of unknown shape are shown as escaped JSON. Strict CSP (§ 4) is the second layer.
+- **Sources are links, never fetched.** Only `http(s)` URLs without embedded credentials are stored (D-11-9-5); the page links them with `target="_blank" rel="noopener noreferrer"` and renders any other stored string as text. The server never dereferences them (§ 5.9).
+- **Images are re-encoded and private** (§ 5.9): the staged file is the server's own JPEG, never served by `/covers`, reachable only by a Librarian through `/proposals/{id}/cover` while the proposal is pending.
+- **Accepted values are owned by the librarian.** Fields written by an acceptance are marked hand-edited (`manually_edited_fields`), so a later automatic metadata or cover download never overwrites what a person approved — and an agent cannot use the automatic pipeline to undo a decision.
+- **Bounded volume.** The resubmission delay blocks equivalent re-filings library-wide after a rejection (default 90 days), a key holds at most 100 pending cover proposals, and revoking the key marks all its pending proposals stale and deletes their staged images.
+
+Accepted residual risk: a librarian can still accept a plausible but wrong value (the sources are shown so it can be checked), and a pending proposal's text is visible to every Librarian+ account. Agent-facing messages (MCP) are English and never echo database text.
+
 ---
 
 ## 6. Cross-reference with issue #17 sub-items
@@ -177,6 +193,8 @@ A PR that touches any of the following must:
 - The `CSRF_EXEMPT_ROUTES` constant — update § 5.6 with the new entry's rationale
 - The cookie attribute set in `auth.rs` or `csrf.rs` — update § 5.1 / § 5.2 if the default changes
 - The CSP header in `csrf.rs::csp` — update § 4 "Strict CSP" row
+- `src/mcp/` (a new tool, a change to the guard, the Host / Origin / body / timeout settings) or `src/middleware/api_key.rs` — re-read § 5.8 – § 5.10; a new tool states in its description whether it changes the catalog, and a tool that would write catalog data or fetch a URL needs a section here first
+- The proposal pages or acceptance (`src/routes/proposals.rs`, `proposal_edit.rs`, `src/services/*_acceptance.rs`, the `proposal_*` templates) — keep § 5.10 true: escaped rendering only, Librarian+ and CSRF on every route, re-validation under locks before anything is applied
 
 If a PR is adding a brand-new authentication factor (TOTP, WebAuthn, OIDC), this document needs a new section 3.x covering the new attacker surface that factor opens. Don't ship the feature without the doc update.
 

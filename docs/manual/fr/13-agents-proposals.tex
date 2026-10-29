@@ -1,0 +1,622 @@
+\chapter{Agents IA et propositions}
+\label{ch:agents}
+
+mybibli peut s'ouvrir à un agent d'intelligence artificielle ---
+Claude Code, Hermes Agent ou tout autre client du \emph{Model Context
+Protocol}\index{MCP}\index{Model Context Protocol} (MCP). L'agent lit
+votre catalogue et suggère des améliorations : une série et ses tomes
+manquants, une description ou un éditeur absents, une couverture.
+Chaque suggestion arrive sous la forme d'une
+\emph{proposition}\index{proposition} qui attend sur la page
+\textbf{Propositions} qu'un bibliothécaire l'accepte, la modifie ou
+la refuse.
+
+Ce chapitre couvre :
+
+\begin{itemize}
+  \item ce qu'un agent peut faire, et ce qu'il ne peut pas faire,
+  \item la création d'une clé \emph{propositions} et l'autorisation
+        de l'adresse de l'agent,
+  \item la connexion d'un client MCP --- d'abord les éléments
+        génériques, puis Claude Code,
+  \item les outils que l'agent voit,
+  \item l'examen des propositions : liste, détail, comparaison,
+        modification, acceptation, refus,
+  \item les tomes attendus et la wish list,
+  \item où attendent les couvertures proposées, et comment elles
+        sont nettoyées.
+\end{itemize}
+
+\section{Ce qu'un agent peut faire, et ce qu'il ne peut pas faire}
+\label{sec:agents-scope}
+
+\begin{note}
+\textbf{Un agent n'écrit jamais dans le catalogue.} Il lit les
+titres, les séries et les contributeurs, et il dépose des
+propositions. Rien ne change dans le catalogue tant qu'un
+Bibliothécaire ou un Admin n'accepte pas une proposition sur la page
+Propositions. Refuser une proposition, ou simplement l'ignorer, laisse
+le catalogue exactement tel qu'il était.
+\end{note}
+
+Avec une clé \emph{propositions}, un agent peut :
+
+\begin{itemize}
+  \item chercher et lire les titres (champs bibliographiques,
+        contributeurs, volumes et leur emplacement, positions dans
+        les séries), les contributeurs et les séries --- y compris
+        les lacunes d'une série fermée ;
+  \item lister les titres sans couverture, ou aux métadonnées
+        incomplètes ;
+  \item proposer une nouvelle série, ou des ajouts à une série
+        existante (des titres que vous possédez, et des \emph{tomes
+        attendus} que vous n'avez pas encore) ;
+  \item proposer des valeurs pour le sous-titre, la description,
+        l'éditeur, l'année de publication, le code Dewey d'un titre,
+        et des contributeurs à ajouter ;
+  \item proposer une image de couverture ;
+  \item consulter l'historique de ses propres propositions, avec vos
+        décisions et les motifs de vos refus.
+\end{itemize}
+
+Il ne peut pas :
+
+\begin{itemize}
+  \item créer, modifier ou supprimer quoi que ce soit dans le
+        catalogue --- titres, volumes, séries, contributeurs,
+        emplacements, prêts ;
+  \item voir les emprunteurs, les prêts, les utilisateurs, les
+        réglages ni les propositions d'une autre clé ;
+  \item effacer une valeur : une proposition complète ou corrige un
+        champ, elle ne le vide jamais, et elle ne fait
+        qu'\emph{ajouter} des contributeurs ;
+  \item faire télécharger quoi que ce soit au serveur : une
+        couverture proposée est envoyée sous forme d'image, et les
+        adresses web que l'agent cite comme sources vous sont
+        présentées comme liens, jamais consultées par mybibli.
+\end{itemize}
+
+Chaque proposition doit citer ses \textbf{sources} --- les pages
+\texttt{http} ou \texttt{https} où l'agent a trouvé l'information ---
+pour que vous puissiez les vérifier avant de décider.
+
+\section{Avant de commencer : le réseau}
+\label{sec:agents-network}
+
+Le point d'entrée MCP se trouve à
+\texttt{/api/mcp}\index{api/mcp@\texttt{/api/mcp}}, sur le même
+serveur web que le reste de mybibli. Il est prévu pour un agent qui
+tourne sur un ordinateur \emph{de votre réseau local}. Comme le reste
+de mybibli (chapitre~\ref{ch:installation}), il ne doit jamais être
+publié sur Internet : la clé circule dans chaque requête, en clair
+sur un réseau local en HTTP simple.
+
+\section{Étape 1 --- créer une clé \emph{propositions}}
+\label{sec:agents-key}
+
+\begin{enumerate}
+  \item En tant qu'Admin, ouvrez \textbf{Administration
+        \(\rightarrow\) Clés d'API} (section~\ref{sec:api-keys-create}).
+  \item Donnez à la clé un libellé qui nomme l'agent, par ex.\
+        \emph{« Claude Code sur le portable du bureau »}. Le libellé
+        s'affiche à côté de chaque proposition que la clé dépose.
+  \item Choisissez la portée \textbf{Lecture +
+        propositions}\index{clé propositions}.
+  \item Cliquez sur \textbf{Créer la clé} et copiez-la depuis la
+        boîte de dialogue : elle n'est affichée qu'une fois. Une clé
+        propositions commence par \texttt{mybibli\_pr\_}.
+\end{enumerate}
+
+Seule une clé propositions ouvre \texttt{/api/mcp} ; une clé en
+lecture seule ou en lecture + écriture y est refusée. Utilisez une clé
+par agent : la révoquer (section~\ref{sec:agents-revoke}) arrête alors
+exactement cet agent.
+
+\section{Étape 2 --- autoriser l'adresse utilisée par l'agent}
+\label{sec:agents-hosts}
+
+Pour se défendre du \emph{DNS rebinding} (une page web qui amène un
+navigateur à parler à votre NAS sous un nom étranger), le point
+d'entrée ne répond qu'aux requêtes dont l'en-tête \texttt{Host}
+figure sur une liste. Deux variables d'environnement, lues au
+démarrage, la règlent (chapitre~\ref{ch:installation}, tableau de la
+section~\ref{sec:env-vars}) :
+
+\begin{description}
+  \item[\texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS}]\index{variables d'env!MYBIBLI\_MCP\_ALLOWED\_*}
+        Noms d'hôte ou adresses séparés par des virgules, chacun avec
+        ou sans port (\texttt{hôte} ou \texttt{hôte:port} ; une
+        entrée sans port vaut pour tous les ports). Par défaut, non
+        définie ou vide : \texttt{localhost,127.0.0.1,::1} --- ce qui
+        ne suffit que si l'agent tourne sur la machine qui héberge
+        mybibli. Une valeur définie \emph{remplace} celle par
+        défaut : sur un NAS, listez chaque nom et chaque adresse que
+        l'agent utilise, et gardez les noms locaux si un client local
+        en a besoin :
+\begin{lstlisting}
+MYBIBLI_MCP_ALLOWED_HOSTS=nas.local,192.168.1.10,localhost
+\end{lstlisting}
+  \item[\texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS}]\index{variables d'env!MYBIBLI\_MCP\_ALLOWED\_*}
+        Origines séparées par des virgules (\texttt{schéma://hôte:port},
+        \texttt{:*} pour tout port). Par défaut : vide. Les clients
+        MCP comme Claude Code n'envoient pas d'en-tête
+        \texttt{Origin} et n'ont besoin de rien ici ; une requête qui
+        porte un \texttt{Origin} est refusée s'il ne figure pas dans
+        la liste. N'en listez une que pour un client ou un proxy qui
+        en transmet une (le MCP Inspector,
+        section~\ref{sec:agents-inspector}). Les pages web ne peuvent
+        pas du tout appeler le point d'entrée : il n'envoie aucun
+        en-tête CORS.
+\end{description}
+
+Définissez-les dans \texttt{.env} (le \texttt{docker-compose.yml}
+fourni transmet les deux) et redémarrez le conteneur. Ce sont des
+réglages de déploiement, et non des réglages d'administration, à
+dessein : une page de l'interface web ne doit pas pouvoir élargir une
+défense réseau.
+
+\section{Étape 3 --- connecter l'agent}
+\label{sec:agents-connect}
+
+\subsection{Ce dont tout client MCP a besoin}
+\label{sec:agents-connection-facts}
+
+Quel que soit le client --- Claude Code, Hermes Agent ou un autre ---,
+il lui faut ces éléments :
+
+\begin{center}\small
+\begin{tabular}{@{} l >{\raggedright\arraybackslash}p{9.5cm} @{}}
+\toprule
+\textbf{Réglage} & \textbf{Valeur} \\
+\midrule
+Adresse   & \texttt{http://<hôte>:<port>/api/mcp}, où \texttt{<hôte>}
+            est l'un des hôtes autorisés de la
+            section~\ref{sec:agents-hosts} et \texttt{<port>} le port
+            sur lequel vous ouvrez mybibli (\texttt{HOST\_PORT}, 8080
+            par défaut). \\
+Transport & \emph{Streamable HTTP} (parfois simplement appelé
+            \emph{HTTP}). Le serveur est sans état : chaque appel est
+            un \texttt{POST} auquel il répond en JSON ; pas de flux
+            d'événements, pas de session à conserver. \\
+En-tête   & \texttt{Authorization: Bearer <clé propositions>} sur
+            chaque requête. \\
+Portée    & La clé doit être une clé \emph{propositions}
+            (section~\ref{sec:agents-key}). Ni OAuth, ni connexion. \\
+Protocole & Révisions MCP \texttt{2025-11-25} et
+            \texttt{2026-07-28}. Les révisions plus anciennes sont
+            refusées. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Un client capable de poser un en-tête personnalisé sur un serveur
+streamable HTTP peut se connecter. Les clients uniquement stdio et
+l'ancien transport « HTTP + SSE » ne sont pas pris en charge.
+
+\subsection{Claude Code}
+\label{sec:agents-claude-code}
+
+Enregistrez le serveur une fois pour toutes avec \texttt{claude mcp
+add}. Remplacez l'adresse et la clé par les vôtres :
+
+\begin{lstlisting}
+claude mcp add --transport http mybibli \
+  http://nas.local:8080/api/mcp \
+  --header "Authorization: Bearer mybibli_pr_..."
+\end{lstlisting}
+
+La portée par défaut (\texttt{-s local}) garde le serveur --- et sa
+clé --- dans votre propre configuration de Claude Code, pour le
+dossier courant ; \texttt{-s user} le rend disponible dans tous les
+dossiers. Évitez \texttt{-s project} : la clé serait écrite dans un
+fichier \texttt{.mcp.json} destiné à être partagé avec un dépôt.
+
+Vérifiez avec \texttt{claude mcp list} (le serveur doit apparaître
+connecté), ou avec \texttt{/mcp} dans une session. Claude voit les
+outils sous le nom \texttt{mcp\_\_mybibli\_\_<outil>}, par ex.\
+\texttt{mcp\_\_mybibli\_\_search\_titles}.
+
+\subsubsection*{Sans enregistrement : \texttt{--mcp-config}}
+
+Pour une session ponctuelle ou un script, décrivez le serveur dans un
+fichier JSON et passez-le sur la ligne de commande. Gardez ce fichier
+privé (il contient la clé), par ex.\ \texttt{chmod 600
+mybibli-mcp.json} :
+
+\begin{lstlisting}
+{
+  "mcpServers": {
+    "mybibli": {
+      "type": "http",
+      "url": "http://nas.local:8080/api/mcp",
+      "headers": { "Authorization": "Bearer mybibli_pr_..." }
+    }
+  }
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+claude --mcp-config mybibli-mcp.json
+# non interactif, outils mybibli seulement :
+claude -p "Quelles séries fermées ont des lacunes ?" \
+  --strict-mcp-config --mcp-config mybibli-mcp.json \
+  --allowedTools "mcp__mybibli__list_series"
+\end{lstlisting}
+
+\subsection{Vérifier le point d'entrée avec le MCP Inspector}
+\label{sec:agents-inspector}
+
+Le MCP Inspector est le client de test de référence du protocole.
+C'est le moyen le plus rapide de distinguer un problème de réseau ou
+de clé d'un problème d'agent. Il tourne avec Node.js (\texttt{npx} le
+télécharge au premier usage) sur n'importe quelle machine qui atteint
+mybibli. Dans les commandes ci-dessous, remplacez l'adresse et la
+clé.
+
+\begin{enumerate}
+  \item \textbf{Lister les outils} (mode ligne de commande) :
+\begin{lstlisting}
+npx @modelcontextprotocol/inspector --cli \
+  http://nas.local:8080/api/mcp --transport http \
+  --header "Authorization: Bearer mybibli_pr_..." \
+  --method tools/list
+\end{lstlisting}
+        Attendu : les douze outils de la
+        section~\ref{sec:agents-tools}.
+  \item \textbf{En appeler un} :
+\begin{lstlisting}
+npx @modelcontextprotocol/inspector --cli \
+  http://nas.local:8080/api/mcp --transport http \
+  --header "Authorization: Bearer mybibli_pr_..." \
+  --method tools/call --tool-name get_title --tool-arg id=1
+\end{lstlisting}
+        Attendu : la fiche du titre~1 (ou une erreur si cet
+        identifiant n'existe pas --- toute réponse de l'outil prouve
+        la connexion).
+  \item \textbf{Facultatif, l'interface web} : lancez
+\begin{lstlisting}
+npx @modelcontextprotocol/inspector
+\end{lstlisting}
+        sans argument, ouvrez l'adresse qu'il affiche, choisissez le
+        transport \emph{Streamable HTTP}, saisissez l'adresse, ajoutez
+        l'en-tête \texttt{Authorization}, puis \emph{Connect},
+        \emph{List Tools}, et lancez \texttt{get\_title}. L'Inspector
+        parle à mybibli au travers de son propre proxy local ; si ce
+        proxy transmet son \texttt{Origin} et que la connexion est
+        refusée avec un \emph{403}, ajoutez l'origine qu'il affiche
+        (en général \texttt{http://localhost:6274}) à
+        \texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS}, redémarrez, puis
+        retirez-la une fois la vérification faite.
+\end{enumerate}
+
+Chaque appel d'outil est journalisé au niveau \texttt{info} par une
+ligne \texttt{MCP tool call} qui nomme l'outil et l'identifiant de la
+clé (chapitre~\ref{ch:operations-debugging}). Les messages de la
+bibliothèque MCP elle-même sont limités au niveau \texttt{warn} ;
+pour les voir pendant une enquête, définissez :
+\begin{lstlisting}
+MYBIBLI_LOG_LEVEL=info,rmcp=debug
+\end{lstlisting}
+
+\subsection{Quand la connexion échoue}
+
+\begin{center}\small
+\begin{tabular}{@{} l >{\raggedright\arraybackslash}p{10cm} @{}}
+\toprule
+\textbf{Réponse} & \textbf{Cause probable} \\
+\midrule
+401 & Pas d'en-tête \texttt{Authorization}, une clé mal recopiée ou
+      révoquée. \\
+403 \texttt{insufficient\_scope} & La clé est en lecture seule ou en
+      lecture + écriture ; créez une clé propositions. \\
+403, autre & Le \texttt{Host} utilisé par le client ne figure pas
+      dans \texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS}, ou la requête porte
+      un \texttt{Origin} absent de
+      \texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS}. \\
+400 & Le client parle une révision du protocole que mybibli ne sert
+      pas ; mettez le client à jour. \\
+405 & Le client a tenté un \texttt{GET} ou un \texttt{DELETE} (un
+      ancien client HTTP + SSE) ; choisissez le transport streamable
+      HTTP. \\
+413 / 408 & Une requête de plus de $\approx$\,3,7\,Mio (couverture
+      trop lourde) ou de plus de 30\,s. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Les outils}
+\label{sec:agents-tools}
+
+L'agent découvre les outils de lui-même ; chacun porte une
+description rédigée à son intention. Pour mémoire :
+
+\subsubsection*{Lecture}
+
+\begin{description}[style=nextline]
+  \item[\texttt{search\_titles}] Recherche en texte libre, ou par ISBN
+        ou étiquette de volume (code V) exacts ; filtres par type de
+        média et par genre.
+  \item[\texttt{get\_title}] Un titre complet : champs, contributeurs
+        et rôles, volumes et leur emplacement, positions dans les
+        séries, présence d'une couverture, champs modifiés à la main.
+  \item[\texttt{search\_contributors}] Les contributeurs par nom, avec
+        le nombre de titres de chacun.
+  \item[\texttt{list\_series}] Les séries par nom, avec les positions
+        possédées et le nombre de lacunes ; peut se limiter aux
+        séries lacunaires.
+  \item[\texttt{get\_series}] Une série : ses positions, celles qui
+        manquent à une série fermée, ses tomes attendus.
+  \item[\texttt{list\_titles\_without\_cover}] Les titres sans image
+        de couverture.
+  \item[\texttt{list\_titles\_with\_incomplete\_metadata}] Les titres
+        sans description, éditeur, contributeur ou année de
+        publication.
+  \item[\texttt{list\_my\_proposals}] Les propositions déposées avec
+        \emph{cette} clé : statut, date de décision, motif de votre
+        refus, et date à partir de laquelle une proposition
+        équivalente peut être déposée à nouveau.
+\end{description}
+
+\subsubsection*{Propositions}
+
+\begin{description}[style=nextline]
+  \item[\texttt{propose\_series\_create}] Une nouvelle série --- nom,
+        fermée (avec son nombre de volumes) ou ouverte --- avec les
+        titres que vous possédez à leur position, et des tomes
+        attendus.
+  \item[\texttt{propose\_series\_attach}] Des titres à placer dans une
+        série existante, et/ou des tomes attendus à lui ajouter.
+  \item[\texttt{propose\_title\_metadata}] Sous-titre, description,
+        éditeur, année de publication, code Dewey et contributeurs à
+        ajouter, pour un titre.
+  \item[\texttt{propose\_cover}] Une image de couverture pour un titre
+        (JPEG, PNG, WebP ou GIF, 2\,Mio au plus).
+\end{description}
+
+Un outil refuse, avec une explication sur laquelle l'agent peut agir,
+une proposition qui ne pourrait jamais être acceptée : un titre
+inconnu, une position déjà prise, une valeur qu'un formulaire de
+bibliothécaire refuserait, une source manquante, une seconde
+proposition en attente pour la même série, ou une proposition que
+vous avez refusée récemment (section~\ref{sec:agents-delay}). Chaque
+agent peut avoir au plus 100 propositions de couverture en attente à
+la fois.
+
+\section{Examiner les propositions}
+\label{sec:proposals}
+
+\subsection{Voir que des propositions attendent}
+
+Les Bibliothécaires et les Admins voient une entrée
+\textbf{Propositions}\index{page Propositions} dans la barre de
+navigation. Tant que des propositions sont en attente, elle porte un
+badge avec leur nombre (\texttt{99+} au-delà de 99), et la section
+d'attention de la page d'accueil affiche un indicateur
+\textbf{Propositions en attente}. Les deux mènent à
+\texttt{/proposals}. Les visiteurs anonymes ne voient ni l'un ni
+l'autre.
+
+\subsection{La liste}
+
+\texttt{/proposals} affiche par défaut les propositions en attente,
+les plus récentes d'abord, 25 par page. Deux filtres la restreignent :
+
+\begin{itemize}
+  \item \textbf{Statut} --- \emph{En attente}, \emph{Acceptée},
+        \emph{Refusée}, \emph{Périmée}, ou tous ;
+  \item \textbf{Type} --- \emph{Nouvelle série}, \emph{Ajouts à une
+        série}, \emph{Métadonnées}, \emph{Couverture}, ou tous.
+\end{itemize}
+
+Chaque ligne nomme l'objet (le nom de série proposé, ou la série ou le
+titre concerné, avec un lien vers sa page), la date de dépôt, la clé,
+le statut et le nombre de lignes. \textbf{Ouvrir} mène au détail.
+
+\subsection{La page de détail}
+
+La page de détail indique qui a déposé la proposition et quand, son
+statut, les \textbf{Sources} citées par l'agent (des liens qui
+s'ouvrent dans un nouvel onglet --- vérifiez-les), et les
+\textbf{Changements proposés}, une carte par ligne :
+
+\begin{itemize}
+  \item \textbf{Propositions de série} --- la ligne de série (nom,
+        type, nombre de volumes), puis chaque titre avec sa position
+        (et les positions que couvre une intégrale), puis chaque tome
+        attendu avec sa position, son titre et son ISBN.
+  \item \textbf{Propositions de métadonnées} --- un tableau de
+        comparaison par champ, \textbf{Actuel} à côté de
+        \textbf{Proposé} (pour les contributeurs : \textbf{À
+        ajouter}), côte à côte même sur un téléphone. Un badge en
+        toutes lettres indique si le champ est \emph{Nouveau} (vide
+        aujourd'hui), \emph{Modifié} ou \emph{Inchangé} ; la valeur
+        proposée d'un champ nouveau ou modifié est aussi marquée d'une
+        bordure épaisse, si bien que la mise en évidence ne repose
+        jamais sur la seule couleur.
+  \item \textbf{Propositions de couverture} --- la couverture actuelle
+        (ou l'image par défaut) à côté de l'image proposée, et une
+        phrase qui dit si accepter \emph{ajoute} une couverture ou
+        \emph{remplace} l'actuelle.
+\end{itemize}
+
+\subsection{Modifier avant d'accepter}
+
+Tant qu'une proposition est en attente, vous pouvez la corriger
+plutôt que la refuser. \textbf{Modifier} ouvre une ligne sur place ;
+\textbf{Enregistrer} la vérifie avec les mêmes règles qu'au dépôt
+par l'agent.
+
+\begin{itemize}
+  \item Une nouvelle série : son nom, son type et son nombre de
+        volumes.
+  \item Une ligne de titre : sa position, la case intégrale et la
+        dernière position.
+  \item Un tome attendu : sa position, son titre et son ISBN.
+  \item Un champ de métadonnées : la valeur proposée (la valeur
+        actuelle sert de référence et ne change pas) ; pour les
+        contributeurs, chaque nom et rôle --- videz un nom pour
+        écarter ce contributeur.
+\end{itemize}
+
+\textbf{Retirer} enlève une ligne de la proposition (titre, tome
+attendu, champ de métadonnées ou ligne de contributeurs). La ligne
+n'est pas appliquée à l'acceptation, mais elle reste consignée dans
+une section \emph{Lignes retirées avant la décision}. Certaines lignes
+ne peuvent pas être retirées : la ligne de série, l'unique ligne d'une
+proposition de couverture et la dernière ligne d'une proposition de
+métadonnées --- refusez alors la proposition. Une couverture ne se
+modifie pas : une autre image est une nouvelle proposition.
+
+Une ligne modifiée garde sous elle la valeur de l'agent
+(\emph{L'assistant proposait : \dots}) et indique qui l'a modifiée et
+quand. L'historique de l'agent montre toujours ce qu'il a déposé.
+
+\subsection{Accepter}
+
+\textbf{Accepter} ouvre une confirmation qui résume ce qui sera
+écrit --- la série créée ou complétée et le nombre de titres et de
+tomes attendus, les champs écrits sur le titre, les contributeurs
+crédités, ou la couverture installée. Une fois confirmé :
+
+\begin{itemize}
+  \item une proposition de série crée la série, place les titres et
+        ajoute les tomes attendus ; un tome attendu dont la série
+        possède déjà le livre à une autre position est écarté, et le
+        message le signale ;
+  \item une proposition de métadonnées écrit les champs et crédite
+        les contributeurs (celui qui est déjà crédité dans ce rôle est
+        écarté). Les champs écrits comptent comme \emph{modifiés à la
+        main} : un téléchargement automatique ultérieur des
+        métadonnées ne les écrase jamais ;
+  \item une proposition de couverture installe l'image comme
+        couverture du titre, elle aussi protégée des téléchargements
+        automatiques de couverture.
+\end{itemize}
+
+Le message de succès renvoie à la série ou au titre.
+
+\subsection{Propositions périmées}
+
+Une proposition est vérifiée à nouveau au moment où vous l'acceptez.
+Si son objet a changé depuis le dépôt --- le titre ou la série a été
+modifié ou supprimé, une position a été prise entre-temps, une série
+du même nom existe désormais, la couverture a changé ---,
+\textbf{rien n'est appliqué} et la proposition devient
+\emph{Périmée} ; le message explique pourquoi. Demandez à l'agent une
+nouvelle proposition fondée sur le catalogue tel qu'il est
+aujourd'hui, ou faites la modification à la main.
+
+Accepter une proposition qui écrit des champs ou une couverture
+modifie le titre : les autres propositions en attente pour ce même
+titre deviennent alors périmées quand vous tentez de les accepter.
+Décidez-les dans l'ordre qui vous convient, et demandez à l'agent de
+déposer à nouveau ce qui compte encore.
+
+Révoquer une clé (section~\ref{sec:agents-revoke}) rend aussi
+périmées toutes ses propositions en attente ; la page de détail
+indique alors qu'elles ont été décidées par \emph{le système}.
+
+\subsection{Refuser}
+
+\textbf{Refuser} clôt la proposition sans rien changer. Vous pouvez
+donner un \textbf{motif} (facultatif, 1000 caractères au plus) :
+l'agent le lit dans son historique (\texttt{list\_my\_proposals}) et
+peut en tirer parti. Une couverture proposée est supprimée quand sa
+proposition est refusée.
+
+\subsection{Le délai avant nouvelle soumission}
+\label{sec:agents-delay}
+
+Après un refus, une proposition \emph{équivalente} est refusée pendant
+un certain temps, pour qu'un agent ne dépose pas la même chose encore
+et encore. Équivalente signifie de même type et de même objet : la
+même série (une nouvelle série par son nom, sans tenir compte de la
+casse ni des accents), le même titre \emph{et} le même ensemble de
+champs pour des métadonnées, le même titre pour une couverture. La
+règle vaut pour toutes les clés : créer une nouvelle clé ne la remet
+pas à zéro.
+
+Le délai se règle dans \textbf{Administration \(\rightarrow\) Système
+\(\rightarrow\) Propositions}\index{délai avant nouvelle soumission}
+(section~\ref{sec:system}) : de 0 (aucun délai) à 3650 jours,
+\textbf{90 jours} par défaut. Un changement s'applique à la
+proposition suivante, sans redémarrage.
+
+\section{Tomes attendus et wish list}
+\label{sec:expected-tomes}
+
+Un \emph{tome attendu}\index{tome attendu} nomme un tome d'une série
+que vous ne possédez pas encore : une position, un titre et, s'il est
+connu, un ISBN. Les tomes attendus viennent de propositions de série
+acceptées, ou vous les saisissez vous-même.
+
+\begin{itemize}
+  \item \textbf{Sur la page de la série}, un tome attendu occupe la
+        case de sa lacune avec son titre, son ISBN et la mention
+        \emph{Attendu}. Tout le monde le voit ; les compteurs de
+        tomes possédés et manquants ne changent pas, puisque le tome
+        manque toujours.
+  \item \textbf{En saisir un à la main} (Bibliothécaire ou Admin) :
+        \textbf{Ajouter un tome attendu} dans les actions de la
+        série, ou \textbf{Nommer ce tome} sur une lacune vide.
+        \textbf{Modifier} et \textbf{Supprimer} apparaissent sous
+        chaque tome.
+  \item \textbf{Ajouter à la wish list} inscrit le tome sur votre
+        wish list (section~\ref{sec:wishlist}) avec son titre, son
+        ISBN et une note qui nomme la série et la position. Un double
+        clic ne crée pas de seconde entrée.
+  \item \textbf{Quand vous cataloguez le livre} --- en scannant son
+        ISBN, ou en créant le titre à la main avec cet ISBN ---,
+        mybibli reconnaît le tome attendu, place le nouveau titre à
+        cette position de la série, et la lacune disparaît. Si le
+        livre figurait sur votre wish list, le bandeau habituel
+        propose de l'en retirer (section~\ref{sec:wishlist}). Si la
+        position est entre-temps occupée par un autre titre, rien
+        n'est rattaché et un avertissement indique quoi vérifier.
+  \item \textbf{Tomes attendus à revoir} --- un tome qui ne tient plus
+        dans une lacune (le nombre de volumes de la série a été
+        abaissé sous sa position, ou un titre occupe désormais sa
+        position) est listé sous la grille avec la raison. Changez sa
+        position ou supprimez-le.
+\end{itemize}
+
+\section{Couvertures proposées : la zone d'attente}
+\label{sec:agents-staging}
+
+Une couverture proposée est contrôlée comme une couverture que vous
+téléversez vous-même, puis réduite à 400\,px de large au plus
+(JPEG) --- ce que vous examinez est exactement ce que l'acceptation
+installe. Jusqu'à votre décision, elle attend dans un dossier caché
+\texttt{.staging}\index{couvertures!.staging} \emph{à l'intérieur du
+dossier des couvertures} (\texttt{COVERS\_DIR} ; sous Docker,
+\texttt{/app/covers/.staging} sur le volume
+\texttt{mybibli\_covers}). Conséquences :
+
+\begin{itemize}
+  \item Rien à configurer : toute installation qui conserve ses
+        couvertures conserve aussi les couvertures proposées d'une
+        mise à jour à l'autre.
+  \item Une image proposée n'est jamais publique : l'adresse
+        \texttt{/covers} refuse les dossiers cachés, et la page
+        Propositions la sert aux seuls bibliothécaires, tant que la
+        proposition est en attente.
+  \item Le nettoyage est automatique. Refuser une proposition supprime
+        son image ; l'accepter la met en place ; révoquer une clé
+        supprime les images de ses propositions en attente. La purge
+        planifiée (section~\ref{sec:system}, \emph{intervalle d'auto-purge}) retire tout reste --- une proposition
+        devenue périmée, un dépôt jamais achevé --- après un délai de
+        grâce d'une heure.
+  \item Les sauvegardes du volume des couvertures
+        (chapitre~\ref{ch:backup}) incluent ce dossier ; le restaurer
+        est sans danger, la purge fait le tri.
+\end{itemize}
+
+\section{Révoquer la clé d'un agent}
+\label{sec:agents-revoke}
+
+Dans \textbf{Administration \(\rightarrow\) Clés d'API}, révoquez la
+clé. L'agent est refusé dès sa requête suivante, toutes ses
+propositions en attente deviennent périmées et leurs couvertures
+proposées sont supprimées. Ses propositions acceptées et refusées
+restent dans l'historique. Pour réadmettre l'agent, créez une nouvelle
+clé et mettez à jour la configuration du client.

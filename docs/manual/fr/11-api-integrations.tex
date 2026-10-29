@@ -12,8 +12,9 @@ Ce chapitre couvre :
 
 \begin{itemize}
   \item la création d'une clé d'API dans le panneau d'administration,
-  \item les deux portées (\emph{lecture seule} et \emph{lecture +
-        écriture}),
+  \item les portées (\emph{lecture seule}, \emph{lecture +
+        écriture}, et \emph{lecture + propositions} pour les agents
+        IA),
   \item les points d'entrée exposés sous \texttt{/api/v1/*},
   \item trois exemples de bout en bout (\texttt{curl}, Python, boucle
         de classificateur IA).
@@ -61,6 +62,13 @@ Clés d'API}. Seuls les utilisateurs Admin voient cet onglet.
                 liste blanche restreinte de champs (genre, Dewey,
                 description, sous-titre). À utiliser pour des
                 agents LLM ou des outils de curation.
+          \item \textbf{Lecture + propositions} — pour un agent IA
+                qui se connecte au point d'entrée MCP
+                (\texttt{/api/mcp}) : elle lit comme une clé en lecture seule et dépose des
+                propositions qu'un bibliothécaire examine, sans
+                jamais modifier le catalogue. Voir
+                chapitre~\ref{ch:agents} ; sur \texttt{/api/v1/*},
+                elle se comporte comme une clé en lecture seule.
         \end{itemize}
   \item Cliquez sur \textbf{Créer la clé}. Une boîte de dialogue
         affiche la valeur complète une seule fois — copiez-la
@@ -70,7 +78,7 @@ Clés d'API}. Seuls les utilisateurs Admin voient cet onglet.
 \end{enumerate}
 
 La clé a la forme \texttt{mybibli\_<portée>\_<aléa40>}, où
-\texttt{<portée>} vaut \texttt{ro} ou \texttt{rw}. Seuls le hachage
+\texttt{<portée>} vaut \texttt{ro}, \texttt{rw} ou \texttt{pr}. Seuls le hachage
 argon2 et les 12 premiers caractères du texte clair (le préfixe)
 sont persistés en base ; le préfixe sert à restreindre les candidats
 lors de l'authentification. Le hachage ne peut pas être inversé.

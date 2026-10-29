@@ -345,11 +345,12 @@ comptent comme « activé ». Toute autre valeur (chaîne vide,
 évite le piège classique où une valeur shell éculée comme \texttt{0}
 se lit comme « positionnée » et bascule silencieusement un opt-out.
 
-\begin{center}\small
-\begin{tabular}{l l >{\raggedright\arraybackslash}p{6.2cm}}
+{\small
+\begin{longtable}{l l >{\raggedright\arraybackslash}p{6.2cm}}
 \toprule
 \textbf{Variable} & \textbf{Défaut} & \textbf{Rôle} \\
 \midrule
+\endhead
 \multicolumn{3}{l}{\emph{Base de données}} \\
 \texttt{DATABASE\_URL}        & --- (requis) & Chaîne de connexion MariaDB (DSN). \\
 \texttt{MYSQL\_HOST}          & \texttt{db}    & Hôte pour le service DB embarqué. \\
@@ -376,6 +377,8 @@ se lit comme « positionnée » et bascule silencieusement un opt-out.
 \multicolumn{3}{l}{\emph{Durcissement}} \\
 \texttt{MYBIBLI\_COOKIE\_SECURE} & \texttt{false} & Mettre à \texttt{true} uniquement derrière HTTPS. \\
 \texttt{CSP\_REPORT\_ONLY}     & \texttt{false} & Bascule l'en-tête CSP en mode report-only. \\
+\texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS} & boucle locale & Valeurs de \texttt{Host} auxquelles répond le point d'entrée des agents IA \texttt{/api/mcp} (\texttt{hôte} ou \texttt{hôte:port}, séparés par des virgules). Par défaut \texttt{localhost,127.0.0.1,::1} ; une valeur définie la remplace. Voir section~\ref{sec:agents-hosts}. \\
+\texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS} & --- & Valeurs d'\texttt{Origin} acceptées sur \texttt{/api/mcp} ; vide, toute requête qui en porte une est refusée. \\
 \midrule
 \multicolumn{3}{l}{\emph{Fournisseurs de métadonnées (migrés en DB au premier boot)}} \\
 \texttt{GOOGLE\_BOOKS\_API\_KEY} & --- & Clé optionnelle pour Google Books. \\
@@ -387,8 +390,8 @@ se lit comme « positionnée » et bascule silencieusement un opt-out.
 \texttt{MYBIBLI\_SKIP\_STARTUP\_PURGE} & \texttt{false} & Saute l'auto-purge au démarrage. \\
 \texttt{MYBIBLI\_SEED\_DEV\_USERS} & \texttt{false} & Crée les utilisateurs dev \texttt{admin/admin} + \texttt{librarian/librarian}. \emph{Jamais en prod.} \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{longtable}
+}
 
 Les overrides d'URL de base des fournisseurs
 (\texttt{BNF\_API\_BASE\_URL},
