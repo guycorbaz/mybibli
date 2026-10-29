@@ -345,42 +345,45 @@ impl TitleModel {
         Ok(())
     }
 
-    /// Story 11-18 — bump a title's `version` (an accepted cover proposal:
-    /// the other pending proposals for the title go stale at their own
-    /// acceptance, before the cover file is promoted after the commit).
-    pub async fn bump_version_in(
+    /// Story 11-18 — the decision half of an accepted cover proposal:
+    /// `cover_image_url` joins `manually_edited_fields` (so a background
+    /// cover fetch landing before the promotion leaves the title alone)
+    /// and `version` is bumped (the other pending proposals for the title
+    /// go stale at their own acceptance). The caller holds the row lock.
+    pub async fn mark_cover_accepted_in(
         conn: &mut sqlx::MySqlConnection,
         id: u64,
-    ) -> Result<(), AppError> {
-        sqlx::query(
-            "UPDATE titles SET version = version + 1, updated_at = NOW() \
-             WHERE id = ? AND deleted_at IS NULL",
-        )
-        .bind(id)
-        .execute(&mut *conn)
-        .await?;
-        Ok(())
-    }
-
-    /// Story 11-18 — record a promoted cover: `cover_image_url` and the
-    /// `manually_edited_fields` set (the caller holds the row lock). No
-    /// `version` bump: the acceptance already bumped it.
-    pub async fn set_cover_edited_in(
-        conn: &mut sqlx::MySqlConnection,
-        id: u64,
-        cover_url: &str,
         manually_edited_json: &str,
     ) -> Result<(), AppError> {
-        sqlx::query(
-            "UPDATE titles SET cover_image_url = ?, manually_edited_fields = ?, \
+        let done = sqlx::query(
+            "UPDATE titles SET manually_edited_fields = ?, version = version + 1, \
              updated_at = NOW() WHERE id = ? AND deleted_at IS NULL",
         )
-        .bind(cover_url)
         .bind(manually_edited_json)
         .bind(id)
         .execute(&mut *conn)
         .await?;
+        if done.rows_affected() != 1 {
+            return Err(AppError::Internal(format!(
+                "title {id} not updated by an accepted cover"
+            )));
+        }
         Ok(())
+    }
+
+    /// Story 11-18 — record a promoted cover's URL; `false` when the
+    /// title is gone (soft-deleted since the decision). No `version`
+    /// bump: the decision already bumped it.
+    pub async fn set_cover_url(pool: &DbPool, id: u64, cover_url: &str) -> Result<bool, AppError> {
+        let done = sqlx::query(
+            "UPDATE titles SET cover_image_url = ?, updated_at = NOW() \
+             WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(cover_url)
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(done.rows_affected() == 1)
     }
 
     /// #202 — which provider resolved this title's metadata, or `None` when

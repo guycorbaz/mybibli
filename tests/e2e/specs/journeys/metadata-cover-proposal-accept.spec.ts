@@ -4,11 +4,12 @@
  *
  * Journey 1, from a blank browser: an admin creates a `propose` key →
  * cookies cleared → loginAs(librarian) → an ISBN scanned → the agent
- * files a metadata proposal (subtitle, Dewey code, a contributor)
- * and a cover proposal over MCP → the librarian accepts both through the
- * UX-DR8 modal → "Accepted", success entries → the title page shows the
- * new subtitle, Dewey code, contributor and the proposed cover; the accepted
- * cover proposal shows the cover now installed.
+ * files a metadata proposal (subtitle, Dewey code, a contributor) over
+ * MCP → the librarian accepts it through the UX-DR8 modal → the agent
+ * files a cover proposal → the librarian accepts it → "Accepted",
+ * success entries → the title page shows the new subtitle, Dewey code,
+ * contributor and the proposed cover; the accepted cover proposal shows
+ * the cover now installed. Journey 3: #531 on the title page.
  *
  * Journey 2 (stale): the agent files two cover proposals and a metadata
  * proposal for one title → the librarian accepts the first cover → the
@@ -21,7 +22,7 @@
 import { test, expect, request as playwrightRequest, Page, APIRequestContext } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
-import { titleIdFromSkeleton } from "../../helpers/catalog";
+import { selectFirstRealOption, titleIdFromSkeleton } from "../../helpers/catalog";
 import { createApiKey, revokeApiKey } from "../../helpers/api-keys";
 import { mcpCallTool } from "../../helpers/mcp";
 
@@ -125,11 +126,6 @@ test.describe("Story 11-18 — accept a metadata or cover proposal", () => {
           contributors: [{ name: contributor, role: "Illustrateur" }],
         },
       });
-      const coverId = await fileOk(agent, key.plaintext, "propose_cover", {
-        title_id: titleId,
-        image_base64: PNG_1X1,
-        media_type: "image/png",
-      });
 
       // Metadata: the modal names the fields, then the decision.
       await page.goto(`/proposals/${metaId}`);
@@ -148,7 +144,14 @@ test.describe("Story 11-18 — accept a metadata or cover proposal", () => {
         page.locator("#feedback-list .feedback-entry").filter({ hasText: ACCEPTED }),
       ).toBeVisible({ timeout: 10000 });
 
-      // Cover: accepted, and the detail now shows the installed cover.
+      // Cover: filed once the metadata is in (accepting a proposal bumps
+      // the title's version, which makes proposals filed before it
+      // outdated — journey 2), accepted, and the detail shows the cover.
+      const coverId = await fileOk(agent, key.plaintext, "propose_cover", {
+        title_id: titleId,
+        image_base64: PNG_1X1,
+        media_type: "image/png",
+      });
       await acceptProposal(page, coverId);
       await expect(page.locator("#proposal-detail-body")).toHaveAttribute(
         "data-proposal-status",
@@ -218,5 +221,39 @@ test.describe("Story 11-18 — accept a metadata or cover proposal", () => {
       await agent.dispose();
     }
     await revoke(page, key.label);
+  });
+
+  test("#531 — a contributor removed from a title can be added back", async ({ page }) => {
+    await page.context().clearCookies();
+    await loginAs(page, "librarian");
+    await page.goto("/catalog");
+    const scanField = page.locator("#scan-field");
+    await scanField.fill(specIsbn("MA", 3));
+    await scanField.press("Enter");
+    const titleId = Number(await titleIdFromSkeleton(page));
+    expect(titleId).toBeGreaterThan(0);
+    await page.goto(`/title/${titleId}`);
+
+    const name = `Retour MA ${Date.now()}`;
+    const list = page.locator("#contributor-list");
+    const add = async () => {
+      await page.locator(`button[hx-get="/title/${titleId}/contributor-form"]`).click();
+      const form = page.locator("#contributor-form-slot form");
+      await expect(form).toBeVisible();
+      await form.locator("#contributor-name-input").fill(name);
+      await selectFirstRealOption(form.locator("#contributor-role-select"));
+      await form.locator('button[type="submit"]').click();
+      await expect(list).toContainText(name, { timeout: 10000 });
+    };
+
+    await add();
+    await list.locator(`button[aria-label$="${name}"]`).click();
+    await expect(list).not.toContainText(name, { timeout: 10000 });
+
+    // Added back: no "already has this role" error, the credit is shown.
+    await add();
+    await expect(page.locator('.feedback-entry[data-feedback-variant="error"]')).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator("#contributor-list")).toContainText(name);
   });
 });

@@ -175,10 +175,11 @@ pub(crate) type AcceptAttempt<'c, A> =
 /// a fresh transaction — the whole acceptance re-runs, checks included.
 /// A lock-wait timeout is not retried: the blocker is likely still there
 /// and each wait lasts `innodb_lock_wait_timeout` (D-11-17-11). `what`
-/// names the kind in the logs.
+/// names the kind and `user_id` the decider in the logs.
 pub(crate) async fn in_retried_transaction<A, F>(
     pool: &DbPool,
     id: u64,
+    user_id: u64,
     what: &'static str,
     mut attempt: F,
 ) -> Result<AcceptOutcome<A>, AcceptError>
@@ -197,12 +198,14 @@ where
                 match &outcome {
                     AcceptOutcome::Accepted(applied) => tracing::info!(
                         proposal_id = id,
+                        user_id,
                         kind = what,
                         applied = ?applied,
                         "Proposal accepted and applied"
                     ),
                     AcceptOutcome::Stale(cause) => tracing::info!(
                         proposal_id = id,
+                        user_id,
                         kind = what,
                         cause = ?cause,
                         "Proposal went stale at acceptance"

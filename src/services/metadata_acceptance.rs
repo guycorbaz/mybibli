@@ -154,8 +154,9 @@ pub fn parse_items(items: &[ProposalItemRow]) -> Result<StoredMetadata, String> 
                         role: c
                             .get("role")
                             .and_then(Value::as_str)
-                            .unwrap_or("")
-                            .to_string(),
+                            .filter(|r| !r.trim().is_empty())
+                            .map(str::to_string)
+                            .unwrap_or_else(|| format!("#{}", c["role_id"])),
                     })
                 })
                 .collect::<Option<Vec<_>>>()
@@ -281,7 +282,7 @@ pub async fn accept(
     user_id: u64,
     version: i32,
 ) -> Result<AcceptOutcome<AppliedMetadata>, AcceptError> {
-    in_retried_transaction(pool, id, "metadata", |conn| {
+    in_retried_transaction(pool, id, user_id, "metadata", |conn| {
         Box::pin(accept_in(conn, id, user_id, version))
     })
     .await
@@ -357,18 +358,31 @@ async fn accept_in(
         }
     }
 
-    let fields: Vec<&'static str> = stored.scalars.iter().map(|s| s.field).collect();
+    let publication_date = valid
+        .publication_year
+        .and_then(|y| NaiveDate::from_ymd_opt(y, 1, 1));
+    let writes = ProposedFieldWrites {
+        subtitle: valid.subtitle.as_deref(),
+        description: valid.description.as_deref(),
+        publisher: valid.publisher.as_deref(),
+        publication_date,
+        dewey_code: valid.dewey_code.as_deref(),
+    };
+    // Only the fields actually written are reported and marked.
+    let fields: Vec<&'static str> = stored
+        .scalars
+        .iter()
+        .map(|s| s.field)
+        .filter(|f| match *f {
+            "subtitle" => writes.subtitle.is_some(),
+            "description" => writes.description.is_some(),
+            "publisher" => writes.publisher.is_some(),
+            "publication_year" => writes.publication_date.is_some(),
+            "dewey_code" => writes.dewey_code.is_some(),
+            _ => false,
+        })
+        .collect();
     if !fields.is_empty() {
-        let publication_date = valid
-            .publication_year
-            .and_then(|y| NaiveDate::from_ymd_opt(y, 1, 1));
-        let writes = ProposedFieldWrites {
-            subtitle: valid.subtitle.as_deref(),
-            description: valid.description.as_deref(),
-            publisher: valid.publisher.as_deref(),
-            publication_date,
-            dewey_code: valid.dewey_code.as_deref(),
-        };
         // `publication_year` is tracked as `publication_date`, the column
         // the re-download guard knows.
         let edited: Vec<&str> = fields
@@ -396,18 +410,24 @@ async fn accept_in(
     };
     if let (Some(list), Some(valid_list)) = (&stored.contributors, &valid.contributors) {
         // `valid_list` is in the stored order (validation keeps it).
+        // Validation keeps every entry, in order, or fails as a whole.
+        if list.len() != valid_list.len() {
+            return Err(AcceptError::Invalid(
+                "contributors changed in validation".to_string(),
+            ));
+        }
         for (c, v) in list.iter().zip(valid_list) {
             let contributor = ContributorService::find_or_create_in(conn, &v.name).await?;
             let role = live_roles
                 .iter()
-                .find(|(rid, _)| *rid == c.role_id)
+                .find(|(rid, _)| *rid == v.role_id)
                 .map(|(_, name)| name.clone())
                 .unwrap_or_else(|| c.role.clone());
-            if !credits.insert((contributor.id, c.role_id)) {
+            if !credits.insert((contributor.id, v.role_id)) {
                 applied.contributors_present.push((contributor.name, role));
                 continue;
             }
-            TitleContributorModel::add_to_title_in(conn, title.id, contributor.id, c.role_id)
+            TitleContributorModel::add_to_title_in(conn, title.id, contributor.id, v.role_id)
                 .await?;
             applied.contributors_added.push((contributor.name, role));
         }

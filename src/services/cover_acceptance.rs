@@ -15,12 +15,13 @@
 //!    recorded at filing — the background cover fetch does not bump
 //!    `titles.version` (#521), so a cover fetched since is found here; a
 //!    mismatch marks the proposal `stale`. Otherwise the decision is
-//!    recorded and `titles.version` bumped, so another pending cover or
-//!    metadata proposal for the title goes stale at its own acceptance;
+//!    recorded, `cover_image_url` marked as manually edited (FR144 — a
+//!    background cover fetch landing before the promotion leaves the
+//!    title alone) and `titles.version` bumped, so another pending cover
+//!    or metadata proposal for the title goes stale at its own acceptance;
 //! 3. **after** the commit, [`cover_staging::promote`] moves the file to
 //!    `covers/{title_id}.jpg` (replacing the current cover), then
-//!    `cover_image_url` is set with a cache-busting suffix and marked as
-//!    manually edited (FR144: a later re-fetch leaves it alone). If the
+//!    `cover_image_url` is set with a cache-busting suffix. If the
 //!    promotion fails (the file vanished meanwhile, an I/O error), the
 //!    cover is left as it was and [`AppliedCover::installed`] is `false`:
 //!    the proposal is accepted, the librarian is told the image could not
@@ -166,7 +167,7 @@ pub async fn accept(
     }
 
     // Step 2 — the decision.
-    let outcome = in_retried_transaction(pool, id, "cover", |conn| {
+    let outcome = in_retried_transaction(pool, id, user_id, "cover", |conn| {
         Box::pin(accept_in(conn, id, user_id, version))
     })
     .await?;
@@ -210,7 +211,12 @@ async fn accept_in(
             return Ok(AcceptOutcome::Stale(StaleCause::Targets(targets)));
         }
     }
-    TitleModel::bump_version_in(conn, title.id).await?;
+    TitleModel::mark_cover_accepted_in(
+        conn,
+        title.id,
+        &title.manually_edited_with(&["cover_image_url"]),
+    )
+    .await?;
     Ok(AcceptOutcome::Accepted(AppliedCover {
         title_id: title.id,
         // "Changed from no cover" = the title had one.
@@ -221,9 +227,10 @@ async fn accept_in(
     }))
 }
 
-/// Promote the staged file and record the cover; `false` (logged) when
-/// either fails — the cover is then left as it was, as far as the
-/// database is concerned.
+/// Promote the staged file and record its URL; `false` (logged) when
+/// either fails. A failed promotion leaves the files and the URL as they
+/// were; a URL that cannot be written (tried twice) after a successful
+/// promotion leaves the new image in `covers/{id}.jpg` under the old URL.
 async fn install(pool: &DbPool, dirs: CoverDirs<'_>, applied: &AppliedCover) -> bool {
     let Some(staging) = dirs.staging_dir else {
         tracing::error!(
@@ -247,36 +254,28 @@ async fn install(pool: &DbPool, dirs: CoverDirs<'_>, applied: &AppliedCover) -> 
         }
     };
     let url = cache_busted(&path, chrono::Utc::now().timestamp());
-    match record_cover(pool, applied.title_id, &url).await {
-        Ok(()) => true,
-        Err(e) => {
-            tracing::error!(
-                title_id = applied.title_id,
-                error = %e,
-                "Accepted cover promoted but its URL not recorded"
-            );
-            false
+    let mut last_error = None;
+    for _ in 0..2 {
+        match TitleModel::set_cover_url(pool, applied.title_id, &url).await {
+            Ok(true) => return true,
+            Ok(false) => {
+                tracing::warn!(
+                    title_id = applied.title_id,
+                    "Accepted cover promoted but the title was deleted meanwhile"
+                );
+                return false;
+            }
+            Err(e) => last_error = Some(e),
         }
     }
-}
-
-/// `cover_image_url` + `manually_edited_fields` under the title row lock
-/// (a short transaction of its own).
-async fn record_cover(pool: &DbPool, title_id: u64, url: &str) -> Result<(), AppError> {
-    let mut tx = pool.begin().await?;
-    let Some(title) = TitleModel::find_by_id_in(&mut tx, title_id, true).await? else {
-        // Deleted since the decision: nothing to point at the file.
-        return Ok(());
-    };
-    TitleModel::set_cover_edited_in(
-        &mut tx,
-        title_id,
-        url,
-        &title.manually_edited_with(&["cover_image_url"]),
-    )
-    .await?;
-    tx.commit().await?;
-    Ok(())
+    if let Some(e) = last_error {
+        tracing::error!(
+            title_id = applied.title_id,
+            error = %e,
+            "Accepted cover promoted but its URL not recorded"
+        );
+    }
+    false
 }
 
 #[cfg(test)]

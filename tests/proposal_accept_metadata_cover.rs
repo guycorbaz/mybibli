@@ -644,6 +644,49 @@ async fn a_removed_contributor_can_be_added_back_by_hand(pool: DbPool) {
         vec![("Hergé".to_string(), "Auteur".to_string())]
     );
     // A live credit still answers the duplicate message.
-    let again = ContributorService::add_to_title(&pool, title, "Hergé", role).await;
-    assert!(again.is_err(), "duplicate refused");
+    match ContributorService::add_to_title(&pool, title, "Hergé", role).await {
+        Err(mybibli::error::AppError::BadRequest(m)) => {
+            assert!(m.contains("Hergé") && !m.contains("DUPLICATE"), "{m}")
+        }
+        other => panic!("expected the duplicate message, got {other:?}"),
+    }
+}
+
+// ─── Review round 1 ───────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_cover_that_cannot_be_promoted_is_accepted_but_not_installed(pool: DbPool) {
+    use mybibli::services::acceptance::{self, AcceptOutcome, Applied, CoverDirs};
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Tintin en Amérique").await;
+    let id = file_cover(&f, title, 150).await;
+    let staged = staged_name(&pool, id).await;
+    let v = version_of(&pool, id).await;
+    // The covers directory is gone: the promotion fails after the commit.
+    let missing = f.covers.join("nowhere");
+    let dirs = CoverDirs {
+        covers_dir: &missing,
+        staging_dir: Some(&f.staging),
+    };
+    let (_, outcome) = acceptance::accept(&pool, dirs, id, f.lib_id, v)
+        .await
+        .unwrap();
+    match outcome {
+        AcceptOutcome::Accepted(Applied::Cover(a)) => assert!(!a.installed),
+        other => panic!("expected an accepted cover, got {other:?}"),
+    }
+    assert_eq!(decision(&pool, id).await.0, "accepted");
+    assert_eq!(cover_url(&pool, title).await, None, "no URL without a file");
+    assert!(f.staging.join(&staged).exists(), "staged file kept");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_accepted_cover_stops_the_background_cover_download(pool: DbPool) {
+    use mybibli::tasks::metadata_fetch::cover_is_manual;
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Le Temple du Soleil").await;
+    assert!(!cover_is_manual(&pool, title).await);
+    let id = file_cover(&f, title, 40).await;
+    assert_eq!(accept(&f, &pool, id).await.0, StatusCode::OK);
+    assert!(cover_is_manual(&pool, title).await);
 }

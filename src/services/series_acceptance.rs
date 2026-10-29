@@ -290,7 +290,7 @@ pub async fn accept(
     user_id: u64,
     version: i32,
 ) -> Result<AcceptOutcome, AcceptError> {
-    in_retried_transaction(pool, id, "series", |conn| {
+    in_retried_transaction(pool, id, user_id, "series", |conn| {
         Box::pin(accept_in(conn, id, user_id, version))
     })
     .await

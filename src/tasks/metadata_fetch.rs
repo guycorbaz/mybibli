@@ -187,9 +187,17 @@ pub async fn fetch_metadata_chain_outcome(
                 record_metadata_source(&pool, title_id, source).await;
             }
 
-            // Resolve cover URL via the shared fallback helper (fix #225 + #228).
-            let cover_url =
-                resolve_cover_url_with_fallback(&http_client, &metadata, &code, &code_type).await;
+            // Story 11-18 — a cover set by hand (upload, accepted proposal)
+            // is never downloaded over: `update_cover_image_url` already
+            // keeps its URL, but the download writes `covers/{id}.jpg`
+            // itself, which would replace the image under that URL.
+            let cover_url = if cover_is_manual(&pool, title_id).await {
+                tracing::debug!(title_id, "Cover set by hand; no cover download");
+                None
+            } else {
+                // Resolve cover URL via the shared fallback helper (fix #225 + #228).
+                resolve_cover_url_with_fallback(&http_client, &metadata, &code, &code_type).await
+            };
 
             let outcome = if let Some(cover_url) = cover_url.as_deref() {
                 match CoverService::download_and_resize(
@@ -516,6 +524,24 @@ async fn add_author_contributor(
 
     tracing::debug!(title_id = title_id, author = %author_name, "Added author contributor from metadata");
     Ok(())
+}
+
+/// Story 11-18 — whether the title's cover was set by hand
+/// (`cover_image_url` in `manually_edited_fields`: a manual upload or an
+/// accepted cover proposal). A lookup error reads as "not manual" (the
+/// URL guard of [`update_cover_image_url`] still applies).
+pub async fn cover_is_manual(pool: &DbPool, title_id: u64) -> bool {
+    match TitleModel::find_by_id(pool, title_id).await {
+        Ok(Some(t)) => t
+            .parsed_manually_edited_fields()
+            .iter()
+            .any(|f| f == "cover_image_url"),
+        Ok(None) => false,
+        Err(e) => {
+            tracing::warn!(title_id, error = %e, "Manual-cover check failed");
+            false
+        }
+    }
 }
 
 /// Update cover_image_url for a title (set to local path or NULL).
