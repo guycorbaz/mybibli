@@ -993,7 +993,11 @@ async fn an_edited_line_shows_the_agent_original_in_the_comparison(pool: DbPool)
     let id = file_metadata(
         &f,
         title,
-        json!({"subtitle": "Sous-titre <agent>", "publisher": "Éditeur"}),
+        json!({
+            "subtitle": "Sous-titre <agent>",
+            "publisher": "Éditeur",
+            "contributors": [{"name": "Auteur <erroné>", "role": "Auteur"}]
+        }),
     )
     .await;
     let item: u64 = sqlx::query_scalar(
@@ -1032,6 +1036,29 @@ async fn an_edited_line_shows_the_agent_original_in_the_comparison(pool: DbPool)
     // The other line was not edited.
     assert!(!tables[1].contains("data-original"));
     assert_eq!(html.matches("data-edit-note").count(), 1);
+
+    // Round 2: an edited contributors line shows the agent's list.
+    let contributors: u64 = sqlx::query_scalar(
+        "SELECT id FROM proposal_items WHERE proposal_id = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1",
+    )
+    .bind(id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let auteur = role_id(&pool, "Auteur").await;
+    let v = version_of(&pool, id).await;
+    let (status, body) = lib
+        .post_form(
+            &f.agent.app,
+            &format!("/proposals/{id}/items/{contributors}"),
+            &format!("version={v}&contributor_name_0=Autrice+Juste&contributor_role_0={auteur}"),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    let edited = compare_tables(&html)[2];
+    assert!(edited.contains("<div data-proposed>Autrice Juste (Auteur)</div>"), "{edited}");
+    assert!(edited.contains("Auteur &#60;erroné&#62; (Auteur)"), "{edited}");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -1067,7 +1094,13 @@ async fn a_cover_is_compared_with_the_placeholder_or_the_current_cover(pool: DbP
         .execute(&pool)
         .await
         .unwrap();
+    // Round 2: the first proposal was filed without a cover — acceptance
+    // would refuse it as outdated, so it promises nothing.
     let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{first}")).await;
+    assert!(html.contains("id=\"proposal-current-cover\" src=\"/covers/1.jpg?v=7\""));
+    assert!(!html.contains("data-cover-flag"));
+    let replacing = file_cover(&f, title).await;
+    let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{replacing}")).await;
     assert!(html.contains("id=\"proposal-current-cover\" src=\"/covers/1.jpg?v=7\""));
     assert!(!html.contains("proposal-current-cover-placeholder"));
     assert!(html.contains("data-cover-flag=\"replace\""));

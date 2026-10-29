@@ -1,6 +1,6 @@
 # Story 11.20: Side-by-side view for metadata and covers
 
-Status: ready-for-dev
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR137 (a proposed cover is shown next to the current one), NFR47, UX-DR31 (side-by-side current vs proposed values). Epic 11 — twentieth story. Not here: nav badge and dashboard indicator (11-21), cross-kind staleness (#542 stays open for the user — no behaviour change).
 
@@ -75,7 +75,8 @@ Claude Opus 5.5 (claude-opus-5-5)
 - `fragments/proposal_detail_body.html`: `<table data-compare>` per field / contributors line (caption + badge, `th scope="col"`, `[data-current]`, `[data-proposed]`, `[data-original]`); cover: current (or placeholder) then proposed in a two-column grid, `[data-cover-flag]`.
 - Locale keys ×4: `change_new`, `change_changed`, `change_unchanged`, `original_value`, `edit_note_by`, `cover_flag_new`, `cover_flag_replace`.
 - Tests: unit (`compared_lines_name_their_change`, `change_badges_exist_in_every_locale`, `placeholder_icons_are_known_media_types`); `tests/proposals_page.rs` (3 new); E2E `proposal-side-by-side.spec.ts` (new, helper `helpers/proposals.ts`), `series-proposal-edit.spec.ts` (original read from `[data-original]`).
-- Decisions D-11-20-1..7.
+- Decisions D-11-20-1..9.
+- Code review: round 1 (one layer: blind + edge cases + acceptance auditor) — 2 Medium fixed: `change_of` now answers "unchanged" through `proposal_edit::same_as_current` (a year recorded only as a date, inner whitespace); the cover flag only shows while acceptance is offered (pending + staged image on disk), via a pure `cover_flag`. Lows fixed: "(empty)" in an empty proposed cell; phone-width E2E check scoped to the proposal body. Issue #545 opened (proposals list table and nav bar overflow at 360 px, pre-existing). Round 2 clean (no Medium+); Lows fixed (flag withheld when the live cover no longer matches filing, empty original, contributors edit router test).
 
 ### File List
 

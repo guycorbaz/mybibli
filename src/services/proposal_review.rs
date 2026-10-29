@@ -390,11 +390,17 @@ pub fn change_of(line: &LineView, values: &Value) -> Change {
 
 /// Story 11-20 — what accepting a cover line does, for its flag:
 /// `Some("new")` (the title has no cover) or `Some("replace")`, read
-/// from the live cover shown beside it. Only offered while acceptance is
+/// from the live cover shown beside it (none when it no longer matches
+/// the cover recorded at filing — acceptance would refuse). Only offered while acceptance is
 /// possible (`offered`: a pending proposal whose staged image is on
 /// disk) and the title is live.
 pub fn cover_flag(line: &LineView, offered: bool) -> Option<&'static str> {
     if line.line != "cover" || !offered || line.target_name.is_none() {
+        return None;
+    }
+    // The cover changed since filing (added or removed): acceptance will
+    // refuse it as outdated, so no flag promises what will not happen.
+    if line.replaces_existing == line.current_cover_url.is_empty() {
         return None;
     }
     Some(if line.current_cover_url.is_empty() {
@@ -1194,7 +1200,10 @@ mod tests {
         assert_eq!(cover_flag(&line, true), None);
         line.target_name = Some("T".into());
         assert_eq!(cover_flag(&line, true), Some("new"));
+        // A cover added since filing: acceptance would refuse, no flag.
         line.current_cover_url = "/covers/1.jpg?v=2".into();
+        assert_eq!(cover_flag(&line, true), None);
+        line.replaces_existing = true;
         assert_eq!(cover_flag(&line, true), Some("replace"));
         // Decided, or the staged image is gone: nothing to accept.
         assert_eq!(cover_flag(&line, false), None);

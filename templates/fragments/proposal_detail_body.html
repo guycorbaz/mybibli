@@ -117,7 +117,7 @@
                             {% if let Some(e) = line.edit %}
                                 <div data-original class="mt-2 text-xs font-normal text-stone-600 dark:text-stone-400">
                                     <span class="font-medium">{{ l.t("original_value") }}</span>
-                                    {% if line.line.eq("contributors") %}<span>{% for c in e.original.contributors_proposed %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}</span>{% else %}<span class="whitespace-pre-line">{{ e.original.proposed }}</span>{% endif %}
+                                    {% if line.line.eq("contributors") %}<span>{% if e.original.contributors_proposed.is_empty() %}{{ l.t("empty_value") }}{% endif %}{% for c in e.original.contributors_proposed %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}</span>{% else %}<span class="whitespace-pre-line">{% if e.original.proposed.trim().is_empty() %}{{ l.t("empty_value") }}{% else %}{{ e.original.proposed }}{% endif %}</span>{% endif %}
                                 </div>
                             {% endif %}
                             </td>
