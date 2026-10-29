@@ -1187,3 +1187,35 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Context:** confirmation pass (blind + edge cases + acceptance) on the round-1 delta and the full diff; no Medium+. Verified: `change_of` cannot drift from `same_as_current`, every `loop.index0` is the outer loop's, the flag tuple comparison, escaping, CSP, no regression on series lines / accepted cover / edit buttons / staged route.
 **Chosen (Lows fixed):** the cover flag is also withheld when the live cover no longer matches the one recorded at filing (`replaces_existing`) — acceptance would refuse such a proposal as outdated, so the page promises nothing; an empty original shows "(empty)"; a router test covers an edited contributors line (`[data-original]` list, escaped).
 **Reversible:** yes.
+
+## § 11-22 — `rmcp` checkpoint before the release (part of #493)
+
+### D-11-22-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-22-rmcp-checkpoint` and the `# last_updated:` header change on this branch.
+**Rejected:** touching `epic-11` or sibling lines (11-21 is on hold).
+**Reversible:** yes.
+
+### D-11-22-2 — Stay on `rmcp =3.8.0`
+**Context:** the checkpoint rule (epics.md § 11.22) allows an upgrade only for an open advisory, a protocol revision a targeted client needs, or a fix we need. On 2026-10-29 no version is published after 3.8.0 (2026-10-26); the only unreleased upstream commit touches the stdio transport; all seven rmcp advisories end before 3.8.0; `cargo audit` reports no vulnerability; Claude Code 2.1.312 negotiates `2026-07-28` with 3.8.0.
+**Chosen:** keep 3.8.0 and the `=` pin; no fallback to a hand-written transport (weight ≈ 3 MiB / +9 % clean build, seam unchanged since 11-6). Checkpoint record and Report for Kesh in the story file.
+**Rejected:** a hand-written transport behind `McpTool` (re-implements Host/Origin, body cap, negotiation, SEP-2243 checks for no gain); tracking upstream `main`.
+**Reversible:** yes — the daily advisory scan (#481) still applies until the release.
+
+### D-11-22-3 — rmcp's empty answers for undeclared capabilities kept, pinned by an inventory test
+**Context:** the new inventory test shows rmcp 3.8.0 answering `prompts/list`, `resources/list`, `resources/templates/list` and `completion/complete` with empty successes although `initialize` / `server/discover` declare only `tools`; `ping` is answered on 2025-11-25 only (rmcp follows the session-less revision, which dropped it).
+**Chosen:** keep the defaults (they carry no data — tested; clients gate those calls on the declared capabilities anyway) and pin every method's outcome on both revisions in `tests/mcp_interop.rs`, so an upgrade that changes a default is decided, not discovered.
+**Rejected:** four `-32601` overrides in `transport.rs` before the release (behaviour change with no user-visible benefit, late in the epic; noted for Kesh as the cost of a closed inventory).
+**Reversible:** yes.
+
+### D-11-22-4 — Weight measured against an rmcp-free variant of HEAD, at `-j 2`
+**Context:** AR31 asks for the final weight; the 11-6 figures compared with pre-MCP `main` at `-j 8` (mixing rmcp with our own MCP code); the brief now imposes `-j 2`.
+**Chosen:** a throw-away scratch worktree of HEAD with `rmcp` removed and `transport.rs` replaced by a minimal JSON dispatcher that still calls the tool registry (tools stay linked); clean release builds with `--timings`, fresh target dirs, one at a time under `mem-guard`. Nothing committed.
+**Rejected:** reusing the 11-6 numbers (not comparable); `cargo bloat` (not installed, external code).
+**Reversible:** yes.
+
+### D-11-22-5 — MCP Inspector: client handshake reproduced in a test; the real Inspector run stays with the librarian
+**Context:** the session permission policy refused `npx @modelcontextprotocol/inspector` again (external code), as in 11-6 (D-11-6-10).
+**Chosen:** `tests/mcp_interop.rs::typescript_sdk_handshake` reproduces the TypeScript-SDK streamable-HTTP handshake the Inspector uses; a real Claude Code session was redone through a header-logging proxy (wire recorded in the story file and the PR). The Inspector run (commands in PR #512) remains a manual step before the epic closes.
+**Rejected:** working around the refusal.
+**Reversible:** yes.
