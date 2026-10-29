@@ -26,8 +26,8 @@ use crate::services::proposal_review::{
 use crate::services::proposals::MAX_REJECTION_REASON_CHARS;
 
 /// Labels of the `proposals.*` locale section, read by the templates
-/// as `l.t("key")`. A unit test renders every template and checks no
-/// raw key leaks.
+/// as `l.t("key")`. The router tests (`tests/proposals_page.rs`) check
+/// that no raw `proposals.` key leaks into the rendered pages.
 #[derive(Debug, Clone, Copy)]
 pub struct ProposalLabels {
     pub loc: &'static str,
@@ -179,7 +179,10 @@ pub async fn proposals_page(
             total = list.total_pages
         )
         .to_string(),
-        prev_href: (list.page > 1).then(|| list_href(sv, kv, list.page - 1)),
+        // A page past the end (bookmark, last page emptied by decisions)
+        // links back to the last page that has rows.
+        prev_href: (list.page > 1)
+            .then(|| list_href(sv, kv, (list.page - 1).min(list.total_pages))),
         next_href: (list.page < list.total_pages).then(|| list_href(sv, kv, list.page + 1)),
     };
     render(&template, "proposals")
@@ -204,7 +207,9 @@ pub struct DetailBody {
     pub reason: Option<String>,
     pub is_rejected: bool,
     pub can_reject: bool,
-    pub sources: Vec<String>,
+    /// `(url, is_link)`: only `http` / `https` URLs become links (filing
+    /// already refuses other schemes — defence in depth, NFR47).
+    pub sources: Vec<(String, bool)>,
     pub lines: Vec<LineView>,
     pub has_staged_cover: bool,
     pub cover_alt: String,
@@ -303,7 +308,15 @@ impl DetailBody {
             reason: p.rejection_reason.clone(),
             is_rejected: p.status == ProposalStatus::Rejected,
             can_reject: p.status == ProposalStatus::Pending,
-            sources: p.sources.clone(),
+            sources: p
+                .sources
+                .iter()
+                .map(|s| {
+                    let lower = s.to_ascii_lowercase();
+                    let is_link = lower.starts_with("https://") || lower.starts_with("http://");
+                    (s.clone(), is_link)
+                })
+                .collect(),
             lines: d.lines,
             has_staged_cover: d.has_staged_cover,
             omnibus_labels,
@@ -334,7 +347,8 @@ async fn load_detail(
     id: u64,
     loc: &'static str,
 ) -> Result<ReviewDetail, AppError> {
-    proposal_review::review_detail(&state.pool, id, loc)
+    let dir = state.cover_staging_dir();
+    proposal_review::review_detail(&state.pool, dir.as_deref(), id, loc)
         .await?
         .ok_or_else(|| ReviewError::NotFound.into_app_error(loc))
 }
@@ -426,13 +440,23 @@ fn reason_field_html(loc: &str) -> String {
     )
 }
 
-/// `GET /proposals/{id}/reject-modal` — HTMX only (405 otherwise).
+#[derive(Deserialize, Default)]
+pub struct RejectModalQuery {
+    /// The proposal version the detail page showed; the modal posts it
+    /// back so a change made after the page was opened is refused.
+    #[serde(default)]
+    pub version: Option<String>,
+}
+
+/// `GET /proposals/{id}/reject-modal[?version=N]` — HTMX only (405
+/// otherwise).
 pub async fn reject_modal(
     State(state): State<AppState>,
     session: Session,
     Extension(locale): Extension<Locale>,
     HxRequest(is_htmx): HxRequest,
     Path(id): Path<u64>,
+    Query(query): Query<RejectModalQuery>,
 ) -> Result<Response, AppError> {
     let loc = locale.0;
     session.require_role_with_return(Role::Librarian, &format!("/proposals/{id}"), loc)?;
@@ -440,12 +464,16 @@ pub async fn reject_modal(
         return Ok(StatusCode::METHOD_NOT_ALLOWED.into_response());
     }
     let detail = load_detail(&state, id, loc).await?;
-    if detail.proposal.status != ProposalStatus::Pending {
-        return Err(ReviewError::NotPending {
-            status: detail.proposal.status,
-        }
-        .into_app_error(loc));
+    match detail.proposal.status {
+        ProposalStatus::Pending => {}
+        ProposalStatus::Stale => return Err(ReviewError::Stale.into_app_error(loc)),
+        status => return Err(ReviewError::NotPending { status }.into_app_error(loc)),
     }
+    let version = query
+        .version
+        .as_deref()
+        .and_then(|v| v.trim().parse::<i32>().ok())
+        .unwrap_or(detail.proposal.version);
     let body = rust_i18n::t!("proposals.reject_modal_body", locale = loc);
     let template = ProposalRejectModalTemplate {
         title: rust_i18n::t!("proposals.reject_modal_title", locale = loc, id = id).to_string(),
@@ -454,7 +482,7 @@ pub async fn reject_modal(
         cancel_label: rust_i18n::t!("common.cancel", locale = loc).to_string(),
         action_url: format!("/proposals/{id}/reject"),
         csrf_token: session.csrf_token.clone(),
-        version: detail.proposal.version,
+        version,
         inner_form_html: reason_field_html(loc),
     };
     render(&template, "proposal_reject_modal")
@@ -499,16 +527,33 @@ pub async fn reject(
     .map_err(|e| e.into_app_error(loc))?;
     tracing::info!(proposal_id = id, user_id, "Proposal rejected from the web");
 
-    let detail = load_detail(&state, id, loc).await?;
-    let fragment = ProposalDetailBodyTemplate {
-        l: ProposalLabels { loc },
-        body: DetailBody::build(detail, loc),
-    };
-    let main = fragment
+    // The rejection is committed: a failure to re-render it must not read
+    // as a failed rejection (a retry would say "already decided").
+    // Reload the page instead.
+    let rendered = match load_detail(&state, id, loc).await {
+        Ok(detail) => ProposalDetailBodyTemplate {
+            l: ProposalLabels { loc },
+            body: DetailBody::build(detail, loc),
+        }
         .render()
-        .map_err(|_| AppError::TemplateRenderFailed {
-            template: "proposal_detail_body",
-        })?;
+        .map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    };
+    let main = match rendered {
+        Ok(html) => html,
+        Err(e) => {
+            tracing::error!(proposal_id = id, error = %e, "Rejected proposal not re-rendered");
+            return Ok((
+                StatusCode::OK,
+                [(
+                    axum::http::HeaderName::from_static("hx-redirect"),
+                    format!("/proposals/{id}"),
+                )],
+                String::new(),
+            )
+                .into_response());
+        }
+    };
     let message = rust_i18n::t!("proposals.rejected_feedback", locale = loc, id = id);
     Ok(HtmxResponse {
         main,

@@ -464,8 +464,12 @@ fn staged_name(items: &[ProposalItem]) -> Option<&str> {
 }
 
 /// A live proposal for review; `None` when unknown or soft-deleted.
+/// `staging_dir` is used to check that a pending cover proposal's
+/// staged file still exists (else the page says the image is gone
+/// rather than showing a broken image).
 pub async fn review_detail(
     pool: &DbPool,
+    staging_dir: Option<&Path>,
     id: u64,
     loc: &str,
 ) -> Result<Option<ReviewDetail>, AppError> {
@@ -501,9 +505,18 @@ pub async fn review_detail(
         })
         .collect();
     // A decided proposal's staged file is discarded (reject, stale) or
-    // promoted (accept, 11-18): only a pending one has an image to show.
-    let has_staged_cover =
-        detail.proposal.status == ProposalStatus::Pending && staged_name(&detail.items).is_some();
+    // promoted (accept, 11-18): only a pending one has an image to show,
+    // and only while its file is on disk.
+    let has_staged_cover = match (
+        detail.proposal.status,
+        staging_dir,
+        staged_name(&detail.items),
+    ) {
+        (ProposalStatus::Pending, Some(dir), Some(name)) => {
+            tokio::fs::try_exists(dir.join(name)).await.unwrap_or(false)
+        }
+        _ => false,
+    };
     Ok(Some(ReviewDetail {
         proposal: detail.proposal,
         target,
@@ -512,8 +525,9 @@ pub async fn review_detail(
     }))
 }
 
-/// The staged JPEG of a cover proposal; `None` when the proposal is
-/// unknown, not a cover proposal, its stored name is not a staged name,
+/// The staged JPEG of a pending cover proposal; `None` when the proposal
+/// is unknown, decided, not a cover proposal, its stored name is not a
+/// staged name,
 /// staging is unavailable, or the file is gone. The name comes from the
 /// database and is re-validated before any path is built (D-11-14-2).
 pub async fn staged_cover(
@@ -527,7 +541,9 @@ pub async fn staged_cover(
     let Some(detail) = ProposalService::detail(pool, id).await? else {
         return Ok(None);
     };
-    if detail.proposal.kind != ProposalKind::Cover {
+    if detail.proposal.kind != ProposalKind::Cover
+        || detail.proposal.status != ProposalStatus::Pending
+    {
         return Ok(None);
     }
     let Some(name) = staged_name(&detail.items) else {
@@ -550,6 +566,9 @@ pub enum ReviewError {
     NotPending {
         status: ProposalStatus,
     },
+    /// The proposal went stale (its subject changed or its key was
+    /// revoked) — not "someone else decided".
+    Stale,
     /// The proposal's `version` moved since the page was opened.
     Changed,
     ReasonTooLong {
@@ -575,6 +594,10 @@ impl From<ProposalError> for ReviewError {
     fn from(e: ProposalError) -> Self {
         match e {
             ProposalError::NotFound { .. } => ReviewError::NotFound,
+            ProposalError::NotPending {
+                status: ProposalStatus::Stale,
+                ..
+            } => ReviewError::Stale,
             ProposalError::NotPending { status, .. } => ReviewError::NotPending { status },
             ProposalError::ReasonTooLong { chars } => ReviewError::ReasonTooLong { chars },
             ProposalError::UnknownDecider { .. } => ReviewError::UnknownDecider,
@@ -597,6 +620,7 @@ impl ReviewError {
                 status = status_label(*status, loc).as_str()
             )
             .to_string(),
+            ReviewError::Stale => rust_i18n::t!("proposals.error_stale", locale = loc).to_string(),
             ReviewError::Changed => {
                 rust_i18n::t!("proposals.error_changed", locale = loc).to_string()
             }
@@ -620,9 +644,10 @@ impl ReviewError {
             ReviewError::Database(inner) => inner,
             ReviewError::NotFound => AppError::NotFound(message),
             ReviewError::ReasonTooLong { .. } => AppError::BadRequest(message),
-            ReviewError::NotPending { .. } | ReviewError::Changed | ReviewError::UnknownDecider => {
-                AppError::Conflict(message)
-            }
+            ReviewError::NotPending { .. }
+            | ReviewError::Stale
+            | ReviewError::Changed
+            | ReviewError::UnknownDecider => AppError::Conflict(message),
         }
     }
 }
@@ -675,15 +700,20 @@ async fn reject_in(
     let (status, current) = ProposalModel::lock_status_version(conn, id)
         .await?
         .ok_or(ReviewError::NotFound)?;
+    if status == ProposalStatus::Stale {
+        return Err(ReviewError::Stale);
+    }
     if status != ProposalStatus::Pending {
         return Err(ReviewError::NotPending { status });
     }
     if current != version {
         return Err(ReviewError::Changed);
     }
+    // A browser submits a textarea's line breaks as CRLF but counts them
+    // as one character for `maxlength`: count them the same way.
     let decision = Decision::Reject {
         by: user_id,
-        reason: reason.map(str::to_string),
+        reason: reason.map(|r| r.replace("\r\n", "\n")),
     };
     match ProposalService::transition_in(conn, id, &decision).await? {
         Transition::Decided(_) => {}
@@ -884,6 +914,7 @@ mod tests {
                 status: ProposalStatus::Accepted,
             },
             ReviewError::Changed,
+            ReviewError::Stale,
             ReviewError::ReasonTooLong { chars: 1001 },
             ReviewError::UnknownDecider,
         ];

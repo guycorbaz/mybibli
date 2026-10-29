@@ -2,7 +2,7 @@
    macro, `remove` variant (a decision, not a deletion); the optional
    reason textarea travels in `inner_form_html`. Confirm posts CSRF +
    version; success swaps #proposal-detail-body and answers
-   `HX-Trigger: modal-close`; refusals stay in the modal's error region
+   `HX-Trigger-After-Swap: modal-close` (D-11-16-6); refusals stay in the modal's error region
    (ModalConfirmRetargetGuard). CSP-clean, no hx-confirm. #}
 {% import "components/modal.html" as modal %}
 {% call modal::modal(

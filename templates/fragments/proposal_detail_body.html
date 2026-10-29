@@ -32,7 +32,7 @@
     {% if body.can_reject %}
     <div class="mt-6 flex gap-3">
         <button type="button" id="proposal-reject-button"
-                hx-get="/proposals/{{ body.id }}/reject-modal"
+                hx-get="/proposals/{{ body.id }}/reject-modal?version={{ body.version }}"
                 hx-target="#modal-slot" hx-swap="innerHTML"
                 data-modal-trigger aria-haspopup="dialog" aria-expanded="false"
                 class="px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20">
@@ -44,8 +44,8 @@
     <section class="mt-8" aria-labelledby="proposal-sources-heading">
         <h2 id="proposal-sources-heading" class="text-lg font-semibold text-stone-900 dark:text-stone-100">{{ l.t("sources_heading") }}</h2>
         <ul id="proposal-sources" class="mt-2 space-y-1 text-sm list-disc list-inside">
-            {% for src in body.sources %}
-            <li class="break-all"><a href="{{ src }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ src }}</a> <span class="sr-only">{{ l.t("new_tab") }}</span></li>
+            {% for (src, is_link) in body.sources %}
+            <li class="break-all">{% if *is_link %}<a href="{{ src }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ src }}</a> <span class="sr-only">{{ l.t("new_tab") }}</span>{% else %}{{ src }}{% endif %}</li>
             {% endfor %}
         </ul>
     </section>
@@ -62,7 +62,7 @@
                     <dt class="text-stone-500 dark:text-stone-400">{{ l.t("series_total") }}</dt><dd class="text-stone-900 dark:text-stone-100">{% if let Some(total) = line.total %}{{ total }}{% else %}{{ l.t("series_total_open") }}{% endif %}</dd>
                 </dl>
             {% else if line.line.eq("series_target") %}
-                <span class="text-stone-500 dark:text-stone-400">{{ l.t("series_target") }} :</span>
+                <span class="text-stone-500 dark:text-stone-400">{{ l.t("series_target") }} —</span>
                 {% if line.target_name.is_some() %}<a href="/series/{{ line.target_id.unwrap_or_default() }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ body.target_texts[loop.index0] }}</a>{% else %}{{ body.target_texts[loop.index0] }}{% endif %}
             {% else if line.line.eq("title") %}
                 <span class="tabular-nums text-stone-500 dark:text-stone-400">{{ l.t("col_position") }} {{ line.position }}</span> —
@@ -104,7 +104,9 @@
                     </figure>
                     <figure>
                         <figcaption class="mb-1 text-stone-500 dark:text-stone-400">{{ l.t("cover_current") }}</figcaption>
-                        {% if line.current_cover_url.is_empty() %}
+                        {% if line.target_name.is_none() %}
+                        <p class="text-stone-500 dark:text-stone-400">{{ body.target_texts[loop.index0] }}</p>
+                        {% else if line.current_cover_url.is_empty() %}
                         <p class="text-stone-500 dark:text-stone-400">{{ l.t("cover_none") }}</p>
                         {% else %}
                         <img src="{{ line.current_cover_url }}" alt="{{ l.t("cover_current") }}" class="w-[150px] h-auto rounded-lg border border-stone-200 dark:border-stone-700" loading="lazy">

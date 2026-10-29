@@ -176,7 +176,18 @@ async fn anonymous_visitors_are_sent_to_login(pool: DbPool) {
             true,
         )
         .await;
-    assert_ne!(res.status(), StatusCode::OK);
+    // The role gate answers (not CSRF, not the form extractor): a
+    // redirect to the login page.
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let to = res
+        .headers()
+        .get("hx-redirect")
+        .or_else(|| res.headers().get("location"))
+        .expect("redirect")
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(to.starts_with("/login"), "{to}");
     assert_eq!(decision_of(&pool, id).await.0, "pending");
 }
 
@@ -229,7 +240,10 @@ async fn the_list_filters_by_status_and_kind_and_names_targets(pool: DbPool) {
         assert!(html.contains(&row(id)), "pending {id}");
     }
     assert!(!html.contains(&row(created)), "rejected hidden by default");
-    assert!(html.contains("Le &#60;Titre&#62; &#38; co"), "escaped title");
+    assert!(
+        html.contains("Le &#60;Titre&#62; &#38; co"),
+        "escaped title"
+    );
     assert!(html.contains(&format!("href=\"/title/{title}\"")));
     assert!(
         !html.contains(&format!("href=\"/title/{gone}\"")),
@@ -493,6 +507,7 @@ async fn rejecting_with_a_reason_records_the_decision(pool: DbPool) {
         "no Reject once decided"
     );
     assert!(html.contains("<div id=\"feedback-list\" hx-swap-oob=\"beforeend\">"));
+    assert!(!html.contains("proposals."), "raw locale key leaked");
 
     let (status, by, at, reason) = decision_of(&pool, id).await;
     assert_eq!(status, "rejected");
@@ -670,4 +685,190 @@ async fn after_a_web_rejection_the_agent_is_refused_and_sees_the_reason(pool: Db
         .await;
     assert_eq!(page["items"][0]["rejection_reason"], "Pas cette édition");
     assert!(page["items"][0]["resubmittable_from"].is_string());
+}
+
+// ─── Review round 1 ───────────────────────────────────────────────
+
+/// Mark a proposal stale (as a key revocation or a moved target would).
+async fn mark_stale(pool: &DbPool, id: u64) {
+    mybibli::services::proposals::ProposalService::transition(
+        pool,
+        id,
+        &mybibli::services::proposals::Decision::MarkStale,
+    )
+    .await
+    .unwrap();
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn contributors_lines_and_deleted_targets_are_named(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let (lib, _) = librarian(&pool, &f).await;
+    let title = seed_title(&pool, "Contributeurs").await;
+    let c = add_contributor(&pool, "Ancien <Auteur>").await;
+    credit(&pool, title, c, "Auteur").await;
+    let id = file_metadata(
+        &f,
+        title,
+        json!({"contributors": [{"name": "Nouvel & Illustrateur", "role": "Illustrateur"}]}),
+    )
+    .await;
+    let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    assert!(html.contains("data-line=\"contributors\""));
+    assert!(html.contains("Ancien &#60;Auteur&#62; (Auteur)"));
+    assert!(html.contains("Nouvel &#38; Illustrateur (Illustrateur)"));
+    assert!(!html.contains("proposals."), "raw locale key leaked");
+
+    // Target deleted: named by id, not linked, in the list and the detail.
+    soft_delete(&pool, "titles", title).await;
+    let gone = |html: &str| {
+        html.contains(&format!("#{title} (no longer in the catalog)"))
+            || html.contains(&format!("n° {title} (plus dans le catalogue)"))
+    };
+    let (_, list) = lib.get(&f.agent.app, "/proposals").await;
+    assert!(gone(&list), "list names the deleted target");
+    let (_, detail) = lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    assert!(gone(&detail), "detail names the deleted target");
+    assert!(!detail.contains(&format!("href=\"/title/{title}\"")));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_cover_is_shown_and_served_only_while_pending_and_on_disk(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let (lib, _) = librarian(&pool, &f).await;
+    let title = seed_title(&pool, "Couverture perdue").await;
+    let lost = file_cover(&f, title).await;
+    let name = staged_file_of(&pool, lost).await;
+    std::fs::remove_file(f.staging.join(&name)).unwrap();
+    let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{lost}")).await;
+    assert!(!html.contains("proposal-staged-cover"), "no broken image");
+    assert!(
+        html.contains("no longer available") || html.contains("plus disponible"),
+        "says the image is gone"
+    );
+    assert!(!html.contains("proposals."), "raw locale key leaked");
+
+    // A stale proposal whose file is still on disk: neither shown nor served.
+    let stale = file_cover(&f, title).await;
+    let name = staged_file_of(&pool, stale).await;
+    mark_stale(&pool, stale).await;
+    assert!(f.staging.join(&name).exists());
+    let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{stale}")).await;
+    assert!(!html.contains("proposal-staged-cover"));
+    let res = lib
+        .send(
+            &f.agent.app,
+            "GET",
+            &format!("/proposals/{stale}/cover"),
+            "",
+            false,
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_modal_carries_the_version_the_page_showed(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let (lib, _) = librarian(&pool, &f).await;
+    let title = seed_title(&pool, "Version").await;
+    let id = file_metadata(&f, title, json!({"subtitle": "S"})).await;
+    let v = version_of(&pool, id).await;
+    let (_, page) = lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    assert!(page.contains(&format!("/proposals/{id}/reject-modal?version={v}")));
+
+    // The proposal changes after the page was opened (11-19 edits will).
+    sqlx::query("UPDATE proposals SET version = version + 1 WHERE id = ?")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let res = lib
+        .send(
+            &f.agent.app,
+            "GET",
+            &format!("/proposals/{id}/reject-modal?version={v}"),
+            "",
+            true,
+        )
+        .await;
+    let modal = body_string(res).await;
+    assert!(modal.contains(&format!("name=\"version\" value=\"{v}\"")));
+    let (status, body) = lib
+        .post_form(
+            &f.agent.app,
+            &format!("/proposals/{id}/reject"),
+            &form(v, ""),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(decision_of(&pool, id).await.0, "pending");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_stale_proposal_says_it_is_outdated(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let (lib, _) = librarian(&pool, &f).await;
+    let title = seed_title(&pool, "Périmée").await;
+    let id = file_metadata(&f, title, json!({"subtitle": "S"})).await;
+    let v = version_of(&pool, id).await;
+    mark_stale(&pool, id).await;
+    let (status, body) = lib
+        .post_form(
+            &f.agent.app,
+            &format!("/proposals/{id}/reject"),
+            &form(v, ""),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(
+        body.contains("outdated") || body.contains("périmée"),
+        "{body}"
+    );
+    let res = lib
+        .send(
+            &f.agent.app,
+            "GET",
+            &format!("/proposals/{id}/reject-modal"),
+            "",
+            true,
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::CONFLICT);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn crlf_line_breaks_count_as_one_character(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let (lib, _) = librarian(&pool, &f).await;
+    let title = seed_title(&pool, "Lignes").await;
+    let id = file_metadata(&f, title, json!({"subtitle": "S"})).await;
+    // 1000 characters as the textarea counts them, 1001 with CRLF.
+    let reason = format!("{}\r\nb", "a".repeat(998));
+    let (status, body) = lib
+        .post_form(
+            &f.agent.app,
+            &format!("/proposals/{id}/reject"),
+            &form(version_of(&pool, id).await, &reason),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        decision_of(&pool, id).await.3,
+        Some(format!("{}\nb", "a".repeat(998)))
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_page_past_the_end_links_back_to_the_last_page(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let (lib, _) = librarian(&pool, &f).await;
+    let title = seed_title(&pool, "Fin").await;
+    file_metadata(&f, title, json!({"subtitle": "S"})).await;
+    let (status, html) = lib.get(&f.agent.app, "/proposals?page=9").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        html.contains("/proposals?status=pending&#38;kind=all&#38;page=1"),
+        "{html}"
+    );
 }
