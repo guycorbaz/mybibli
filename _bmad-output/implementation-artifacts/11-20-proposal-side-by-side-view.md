@@ -48,6 +48,12 @@ so that I can decide at a glance.
 - E2E: spec id `SB`, file `proposal-side-by-side.spec.ts`; creates no series (#528); wait for the metadata fetch to settle before filing (it bumps the title version, which makes earlier proposals stale); accepting the first cover bumps the version, so the second cover is filed after it (#542 unchanged).
 - Pitfalls: French copy in router tests, Askama escaping (`&#60;`), `mem-guard` + `-j 2`, no repo-wide `cargo fmt`.
 
+### Validation notes (create-story checklist, 2026-10-29)
+
+- Reuse verified: `GET /proposals/{id}/cover` and its router tests (`anonymous_visitors_are_sent_to_login` covers `/proposals/{id}/cover`; `the_staged_cover_is_served_to_librarians_only_by_proposal`), `LineView.edit.original` built by `review_detail` from `original_values`, `titles.media_type` ENUM (`book`, `bd`, `cd`, `dvd`, `magazine`, `report`) = the six icons in `static/icons/`, the `components/cover.html` placeholder look. No migration, no `sqlx::query!` (the brief query is dynamic).
+- Regression watch: `tests/proposals_page.rs`, `tests/proposal_edit.rs`, `tests/proposal_accept_metadata_cover.rs`, `templates_audit` (no inline style / script, no `hx-confirm`), `locale_parity`, E2E `series-proposal-edit`, `metadata-cover-proposal-accept`, `mcp-cover-proposal`, `proposals-review`.
+- Disaster prevention: never `|safe` an agent value; never put the staged file name or a `/covers/.staging` URL in the page; do not touch acceptance, staleness or the edit flow (#542 unchanged).
+
 ### References
 
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 11.20] — FR137, NFR47, UX-DR31.
