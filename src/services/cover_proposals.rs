@@ -447,7 +447,7 @@ struct FilingJob {
     declared: &'static str,
     original: Vec<u8>,
     sources: Vec<String>,
-    /// Held for the job's whole life (decode included).
+    /// Held for the job's whole life (decode, staging and filing, key-lock wait included).
     _permit: tokio::sync::SemaphorePermit<'static>,
 }
 

@@ -791,3 +791,8 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Context:** round 2 (Medium): with the round-1 spawned job, the semaphore was awaited inside the job — dropped requests left jobs (holding the decoded image) queued without bound — and the 100-per-key cap was a plain read before the job, so a burst of parallel calls passed it together.
 **Chosen:** the request awaits the permit (bounded by the 30 s timeout, cancellable), then hands it to the job, which holds it to its end: at most two jobs exist. Filing runs in `file_capped`: `BEGIN` → `lock_filing_key_exclusive` → plain count → `ProposalService::file_in` → commit → `log_filed` (the 11-12 pattern, D-11-12-13); a refusal discards the staged file. Same-key filings are serialised, which the two-permit bound already implied.
 **Reversible:** yes.
+
+### D-11-14-13 — Code review round 3: clean; Lows accepted
+**Context:** confirmation pass, no Medium+; the permit / key-lock order verified (no share-to-exclusive upgrade, revocation and filing both take the key row first).
+**Chosen:** the permit is documented as bounding two filing jobs (decode, staging, filing and the key-lock wait); accepted: a filing stalled on one key's lock delays other keys' cover proposals (single tenant, at most `innodb_lock_wait_timeout`).
+**Reversible:** yes.

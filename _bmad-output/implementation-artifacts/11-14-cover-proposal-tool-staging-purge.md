@@ -1,6 +1,6 @@
 # Story 11.14: Cover proposal tool and staging purge
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Closes #522 (cover staging directory outside the Docker covers volume) and #514 (MCP body cap and request timeout). Covers: FR133, NFR45, NFR48 (with FR134, NFR44, NFR47, AR27, AR29 inherited from 11-5 / 11-6 / 11-9). Epic 11 — fourteenth story; the third and last kind of proposal an agent files. The agent never writes the catalog: each call files one `cover` proposal through `ProposalService::file` (story 11-9) and leaves one re-encoded image in the staging area. Rejection is story 11-16, acceptance 11-18; both call the *discard* / *promote* this story provides.
 
@@ -93,6 +93,12 @@ Round 2:
 - [x] [Review][Patch] (Low) The encoded-slash router cases were not discriminating — the test now plants `covers/x/.staging/<name>`, which `ServeDir` would serve through `x%2F.staging%2F…` without the guard
 - Accepted (Low): the purge skips old `.tmp-` files of the covers directory when the staging directory is missing (no promotion can create them then).
 
+Round 3 (confirmation): no Medium+ finding. Low fixed: the permit's scope is two filing jobs (lock wait included), wording aligned in the threat model and the field doc. Accepted: a filing stalled on one key's lock delays cover proposals of other keys (single tenant); explicit acquire / drop in the early count.
+
+### Senior Developer Review (AI)
+
+Three rounds (Blind Hunter, Edge Case Hunter, Acceptance Auditor in round 1; combined confirmation passes in rounds 2–3). Rounds 1–2 fixed (7 Medium, one deferred to 11-18 as #533); round 3 clean. Outcome: approved.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -105,7 +111,8 @@ Claude Opus 5.5 (claude-opus-5-5)
 - `cargo test` (unit + DB integration on the 3307 test DB): 1935 passed, 0 failed.
 - `cargo sqlx prepare --check --workspace -- --all-targets`: up to date (no macro query added).
 - `tsc --noEmit`: clean; `waitForTimeout` grep: clean.
-- Playwright on a reset stack (`E2E_HOST_PORT=18080`, `CI=true --workers=2`): 370 passed, 2 skipped.
+- Playwright on a reset stack (`E2E_HOST_PORT=18080`, `CI=true --workers=2`): 370 passed, 2 skipped (also after review rounds 1–3).
+- After review: `cargo test` 1938 passed, 0 failed; clippy clean.
 
 ### Completion Notes List
 
@@ -134,3 +141,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-29 — implemented (dev-story); status review.
 - 2026-10-29 — code review round 1 (D-11-14-11); fixes applied.
 - 2026-10-29 — code review round 2 (D-11-14-12); fixes applied.
+- 2026-10-29 — code review round 3 clean; status done.
