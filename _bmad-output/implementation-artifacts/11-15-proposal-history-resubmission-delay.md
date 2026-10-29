@@ -1,6 +1,6 @@
 # Story 11.15: Proposal history and resubmission delay
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR135, FR136, AR30 (with FR134, AR29 inherited from 11-9). Epic 11 — fifteenth story. The three proposal kinds exist (series 11-12, metadata 11-13, cover 11-14); this story gives the agent its own history (`list_my_proposals`) and stops it from re-filing what a librarian rejected recently. Rejecting itself is story 11-16 (web page); here rejections are made through `ProposalService::transition` in tests.
 
@@ -33,7 +33,7 @@ so that the librarian is not asked the same thing over and over.
 
 ## Tasks / Subtasks
 
-- [x] Migration `20261029120000_proposals_equivalence_key.sql`: `proposals.equivalence_key VARCHAR(700) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL` + `INDEX idx_proposals_equivalence (equivalence_key)`; seed `proposal_resubmission_delay_days = '90'` (AC2, AC3)
+- [x] Migration `20261029120000_proposals_equivalence_key.sql`: `proposals.equivalence_key VARCHAR(700) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL` + `INDEX idx_proposals_equivalence (equivalence_key, status, decided_at)` (composite since review round 1); seed `proposal_resubmission_delay_days = '90'` (AC2, AC3)
 - [x] `services/proposal_history.rs`: `ProposalSubject` (+ `from_items`, `equivalence_key`, JSON), `resubmission_open_from`, delay constants/parse, `list_mine` (AC1, AC3, AC4)
 - [x] `ProposalError::RecentlyRejected` + `is_conflict()`; check in `ProposalService::file_in`; three `class()` updated (AC4)
 - [x] Model: `insert_proposal` stores the key; `latest_rejection(conn, key)`; `resubmission_delay_days(conn)`; summary `rejection_reason`; `subject_lines(ids)` (AC1, AC4)
@@ -58,6 +58,13 @@ so that the librarian is not asked the same thing over and over.
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 11.15] — FR135, FR136, AR30.
 - [Source: _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md] — D-11-9-7 (reason rules), D-11-12-5/-11/-13 (series duplicates, key-first lock order), D-11-13-2/-5 (metadata items, no pending rule), D-11-14-5/-6/-12 (cover item, `file_capped`).
 - [Source: src/services/series_proposals.rs, metadata_proposals.rs, cover_proposals.rs module docs] — item shapes.
+
+## Review amendments
+
+- **AC1** (D-11-15-8): `resubmittable_from` is the newest live rejection of an equivalent proposal (any key) plus the current delay — what the filing check enforces — and null for a proposal without an equivalence key.
+- **AC3** (D-11-15-8): the series-creation name is folded with NFKC first (fullwidth letters, ligatures), then `fold_name`.
+- **AC4** (D-11-15-8): the check runs after the item target checks, still after the key lock and before the insert.
+- Code review: round 1 (3 layers) — 2 Medium fixed, Lows fixed or tracked (#535, #536); round 2 — no Medium+, Lows fixed (D-11-15-9).
 
 ## Dev Agent Record
 

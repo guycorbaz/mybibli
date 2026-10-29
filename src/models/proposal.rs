@@ -774,8 +774,9 @@ impl ProposalModel {
 
     /// The newest live `rejected` proposal with this equivalence key, and
     /// the database's `NOW()`. A plain read on the indexed key: called
-    /// after the filing key is locked (a locking read, which opens no
-    /// snapshot), it sees every rejection committed before that lock.
+    /// after the filing key is locked, on the filing transaction's
+    /// snapshot: a rejection committing while the filing runs may be
+    /// missed (accepted, single librarian — D-11-15-8, #535).
     pub async fn latest_rejection(
         conn: &mut MySqlConnection,
         equivalence_key: &str,

@@ -106,7 +106,7 @@ impl McpTool for ListMyProposals {
          edited it). For a rejected proposal, `resubmittable_from` is the instant from which \
          an equivalent proposal is accepted again: the newest rejection of an equivalent \
          proposal (by any key) plus the library's resubmission delay, at most 3650 days; it \
-         may be in the past, and it is null when the proposal blocks nothing. Equivalent means the same kind and target: the same series name (case and accents \
+         may be in the past, and it is null when the proposal has no subject (it then blocks nothing). Equivalent means the same kind and target: the same series name (case and accents \
          ignored) for a creation, the same series for additions, the same title and the same \
          set of fields for metadata, the same title for a cover. Before that instant an \
          equivalent proposal is refused, whichever key files it — read the reason and propose \

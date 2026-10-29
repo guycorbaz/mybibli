@@ -843,3 +843,9 @@ Creation at boot is fail-open (warn, keep booting): bare-metal installs whose `C
 **Not changed (by the AC / D-11-15-2/-3), tracked in #535:** metadata equivalence stays "same set of fields" (a superset is filed); cover rejection blocks every key for the title; a rejection committing during a filing is not seen; a blocked cover is still encoded before refusal; the history subject reflects the live items (11-19 note). #536: the reject-then-refused E2E belongs to 11-16.
 **Accepted (Low):** truncated keys of pathological names (> 680 folded characters) may collide; the settings row read lives in `ProposalModel` (pool-free variant needed in a transaction); a missing / soft-deleted settings row makes the form answer a conflict (the migration seeds it, same as every other System setting); dates assume the pool's UTC session (R3-N15).
 **Reversible:** yes.
+
+### D-11-15-9 — Code review round 2: clean; Lows fixed or accepted
+**Context:** confirmation pass (blind + edge/acceptance), no Medium+.
+**Chosen:** fixed — a regression test pins "deleted target reported before the delay"; the series name in the refusal is JSON-quoted like the reason; the `resubmittable_from` description says null only without a subject (with a delay of 0 it equals the rejection date); the `latest_rejection` doc states the snapshot limitation (#535); the E2E describe runs serially with a note on the coupling with 11-16 (#536); story ACs annotated. Accepted: when another key's equivalent rejection is newer, the refusal does not repeat this key's own reason (the history has it); the cover cap test now frees a slot with `stale` (rejection would start the delay for that title).
+**Reversible:** yes.
+

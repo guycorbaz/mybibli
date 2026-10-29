@@ -33,6 +33,11 @@ const DELAY_INPUT = 'form#admin-system-proposals-form input[name="resubmission_d
 const DELAY_SAVE = 'form#admin-system-proposals-form button[type="submit"]';
 
 test.describe("Story 11-15 — proposal history and resubmission delay", () => {
+  // The delay row is stack-global. Nothing else depends on it until a
+  // web rejection exists (11-16, #536): a spec that rejects then
+  // re-files must then not run while this one holds 45 days.
+  test.describe.configure({ mode: "serial" });
+
   test("an admin sets the resubmission delay in Admin → System", async ({ page }) => {
     await page.context().clearCookies();
     await loginAs(page, "admin");

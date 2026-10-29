@@ -263,7 +263,7 @@ impl ProposalSubject {
     pub fn describe(&self) -> String {
         match self {
             ProposalSubject::SeriesCreate { name } => {
-                format!("creation of the series \"{name}\"")
+                format!("creation of the series {}", Value::String(name.clone()))
             }
             ProposalSubject::SeriesAttach { series_id } => {
                 format!("additions to series {series_id}")

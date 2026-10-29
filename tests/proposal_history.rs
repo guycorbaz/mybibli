@@ -545,6 +545,68 @@ async fn a_cover_for_the_same_title_is_refused_and_nothing_stays_staged(pool: Db
     assert_eq!(proposal_count(&pool).await, 2);
 }
 
+/// Review round 2: a target that is gone is reported as such, before
+/// the resubmission check (which would only say "wait").
+#[sqlx::test(migrations = "./migrations")]
+async fn a_deleted_target_is_reported_before_the_delay(pool: DbPool) {
+    let agent = Agent::new(&pool).await;
+    let title = seed_title(&pool, "Supprimé").await;
+    let by = decider(&pool).await;
+    let first = id_of(
+        &agent
+            .ok(
+                "propose_title_metadata",
+                metadata(title, json!({"subtitle": "A"})),
+            )
+            .await,
+    );
+    reject(&pool, by, first, None).await;
+    sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let msg = agent
+        .err(
+            "propose_title_metadata",
+            metadata(title, json!({"subtitle": "B"})),
+        )
+        .await;
+    assert!(!msg.contains("was rejected on"), "{msg}");
+    assert_eq!(proposal_count(&pool).await, 1);
+    // Directly through the service: the item-level check comes first.
+    let key_id: u64 = sqlx::query_scalar("SELECT api_key_id FROM proposals WHERE id = ?")
+        .bind(first)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let err = ProposalService::file(
+        &pool,
+        &mybibli::services::proposals::NewProposal {
+            kind: mybibli::models::proposal::ProposalKind::Metadata,
+            api_key_id: key_id,
+            sources: vec![SRC.to_string()],
+            items: vec![mybibli::services::proposals::NewProposalItem {
+                target: Some(mybibli::models::proposal::ProposalTarget {
+                    table: mybibli::models::proposal::ProposalTargetTable::Titles,
+                    id: title,
+                }),
+                expected_version: None,
+                proposed_values: json!({"line": "field", "field": "subtitle"}),
+            }],
+        },
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            mybibli::services::proposals::ProposalError::TargetNotFound { .. }
+        ),
+        "{err:?}"
+    );
+}
+
 // ─── Admin → System setting (AR30) ────────────────────────────────
 
 async fn delay_row(pool: &DbPool) -> (String, i32) {
