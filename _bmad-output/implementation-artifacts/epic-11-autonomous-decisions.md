@@ -1271,3 +1271,33 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Context:** confirmation pass on the round-1 delta and the full diff; no Medium+.
 **Chosen (Lows fixed):** the parse guard also parses each body with the 2026-07-28 `_meta` (a typed field that could otherwise send a modern request to the custom handler unseen); the story's status wording names the 2025-11-25 `server/discover` 400.
 **Reversible:** yes.
+
+## § 11-23 — Epic 11 smoke test (part of #493)
+
+### D-11-23-1 — The badge assertion is relative, not "shows 1"
+**Context:** the epic AC says "the badge shows 1"; the pending count is library-wide (D-11-21-2) and parallel specs file and decide proposals on the shared E2E DB.
+**Chosen:** after filing, the count is ≥ 1 and the badge text, the link's aria-label and the dashboard pill agree on the same response (`shownPendingCount`); the nav entry then leads to `/proposals`, which links this very proposal. The exact count is proven deterministically by `tests/proposals_access.rs` (11-21).
+**Rejected:** asserting exactly 1 (flaky under `--workers=2`); a before/after delta (another spec may decide its proposal in between).
+**Reversible:** yes.
+
+### D-11-23-2 — Both protocol revisions on the agent's read step
+**Context:** the brief asks for both revisions (NFR42); the epic AC says "searches two titles".
+**Chosen:** `initialize` + `tools/list` on 2025-11-25; the two `search_titles` calls split one per revision (2025-11-25 header-only, 2026-07-28 session-less with `_meta`); filing and `get_series` on 2025-11-25 (`mcpCallTool`).
+**Rejected:** a second `mcpCallTool` variant for 2026-07-28 in `helpers/mcp.ts` (one call site; the shape is inlined in the spec as `modernCall`).
+**Reversible:** yes.
+
+### D-11-23-3 — The badge reader moves to `helpers/proposals.ts`
+**Context:** Rule #1; the smoke needs the 11-21 spec's `shownCount`.
+**Chosen:** `shownPendingCount` and `NAV` exported from `helpers/proposals.ts`, used by both specs.
+**Reversible:** yes.
+
+### D-11-23-4 — The change of position: second title 2 → 4, tome at 3
+**Context:** the AC says "change a position" and checks "both titles at the right positions and the expected tome".
+**Chosen:** closed series of 4; titles at 1 and 2, tome at 3; the librarian moves the second title to 4 with the line's inline form; after the scan, all three positions 1, 3, 4 are owned. Nothing is rejected, so the 90-day resubmission delay (11-15) never applies; a per-run stamp in ISBN sequences and the series name makes a re-run on a non-reset stack safe.
+**Reversible:** yes.
+
+### D-11-23-5 — **[PRODUCT]** (decided by the project lead) CI runs once per push
+**Context:** `ci.yml` triggered on `push: branches: ["**"]` and on `pull_request: branches: [main]`, so every push to a story branch with an open PR ran the gates twice.
+**Chosen:** `push: branches: [main]`; `pull_request` unchanged — a story branch is checked once, by its PR; `main` on merge. Separate commit on this branch, requested by the project lead.
+**Rejected:** anything else in the workflows.
+**Reversible:** yes.

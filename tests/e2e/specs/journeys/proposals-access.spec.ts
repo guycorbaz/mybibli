@@ -19,44 +19,18 @@
  * Spec ID "NB" for ISBNs; the proposal targets this spec's own title, so
  * its rejection blocks nothing elsewhere. Creates no series (#528).
  */
-import { test, expect, request as playwrightRequest, Page } from "@playwright/test";
+import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { mcpCallTool } from "../../helpers/mcp";
-import { newProposeKey, revokeProposeKey, scanSettledTitle } from "../../helpers/proposals";
+import {
+  NAV,
+  newProposeKey,
+  revokeProposeKey,
+  scanSettledTitle,
+  shownPendingCount as shownCount,
+} from "../../helpers/proposals";
 
-const NAV = 'nav[aria-label="Main navigation"]';
 const REJECT_BUTTON = /^(Reject|Refuser|Ablehnen|Rifiuta)$/;
-const PILL_LABEL = /Pending proposals|Propositions en attente|Offene Vorschläge|Proposte in attesa/;
-
-/**
- * The pending count shown on the current page: the strip entry's
- * accessible name ("Propositions, 3 en attente"), 0 when it carries none.
- * Checks the badge text matches (capped at 99+) and, on the home page,
- * that the dashboard pill shows the same number.
- */
-async function shownCount(page: Page): Promise<number> {
-  const entry = page.locator(`${NAV} > div a[href="/proposals"]`);
-  await expect(entry).toHaveCount(1);
-  const aria = await entry.getAttribute("aria-label");
-  const badge = entry.locator("[data-proposals-badge]");
-  const onHome = new URL(page.url()).pathname === "/";
-  const pill = page.locator("#filter-tag-pending-proposals");
-  if (aria === null) {
-    await expect(badge).toHaveCount(0);
-    if (onHome) await expect(pill).toHaveCount(0);
-    return 0;
-  }
-  const n = Number(/(\d+)/.exec(aria)![1]);
-  expect(aria).toMatch(/^(Proposals|Propositions|Vorschläge|Proposte), \d+ /);
-  await expect(badge).toHaveText(n > 99 ? "99+" : String(n));
-  await expect(badge).toHaveAttribute("aria-hidden", "true");
-  if (onHome) {
-    await expect(pill).toHaveAttribute("href", "/proposals");
-    await expect(pill).toHaveAttribute("aria-label", new RegExp(`: ${n}$`));
-    await expect(pill).toContainText(PILL_LABEL);
-  }
-  return n;
-}
 
 test.describe("Story 11-21 — access to the proposals page", () => {
   // Two admin logins around the librarian's session plus a metadata fetch.

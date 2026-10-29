@@ -1,6 +1,6 @@
 # Story 11.23: Epic 11 smoke test (Foundation Rule #7)
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: Foundation Rule #7 (FR126–FR147 end to end). Epic 11 — twenty-third story. Test-only story: no production code changes expected.
 
@@ -23,10 +23,10 @@ so that I know the pieces work together.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — DRY: move the badge/pill reader `shownCount` of `proposals-access.spec.ts` into `helpers/proposals.ts` (`shownPendingCount`) and use it from both specs.
-- [ ] T2 — `tests/e2e/specs/journeys/epic11-smoke.spec.ts` (AC1–AC7).
-- [ ] T3 — Gates: waitForTimeout grep, `tsc --noEmit`, the new spec + `proposals-access.spec.ts` targeted, then the full suite once on a reset stack before the push.
-- [ ] T4 — Decisions log, sprint-status.
+- [x] T1 — DRY: move the badge/pill reader `shownCount` of `proposals-access.spec.ts` into `helpers/proposals.ts` (`shownPendingCount`) and use it from both specs.
+- [x] T2 — `tests/e2e/specs/journeys/epic11-smoke.spec.ts` (AC1–AC7).
+- [x] T3 — Gates: waitForTimeout grep, `tsc --noEmit`, the new spec + `proposals-access.spec.ts` targeted, then the full suite once on a reset stack before the push.
+- [x] T4 — Decisions log, sprint-status.
 
 ## Dev Notes
 
@@ -50,6 +50,17 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Debug Log References
 
+- Targeted run on the 18080 stack (`--workers=2`, with `proposals-access.spec.ts`): smoke green; a re-run on the same non-reset stack green (per-run stamp). `proposals-access` timed out in `scanSettledTitle` on that non-reset stack — its fixed `specIsbn("NB", 1)` already existed from an earlier run (pre-existing, fixed ISBN; green on a reset stack).
+
 ### Completion Notes List
 
+- D-11-23-1..4 (test design), D-11-23-5 **[PRODUCT]** (CI trigger, decided by the project lead, separate commit).
+- No production code changed.
+
 ### File List
+
+- `tests/e2e/specs/journeys/epic11-smoke.spec.ts` (new, spec id `EK`).
+- `tests/e2e/helpers/proposals.ts` — `NAV`, `shownPendingCount` (moved from the 11-21 spec).
+- `tests/e2e/specs/journeys/proposals-access.spec.ts` — uses the helper.
+- `.github/workflows/ci.yml` — push trigger limited to `main` (separate commit, D-11-23-5).
+- `_bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md`, `sprint-status.yaml`.
