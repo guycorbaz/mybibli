@@ -9,6 +9,17 @@ use crate::error::AppError;
 // so `models::title::SearchResult` keeps working for every caller.
 pub use super::title_search::SearchResult;
 
+/// Story 11-18 — the columns an accepted metadata proposal writes
+/// (`None` = not proposed, left as it is).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ProposedFieldWrites<'a> {
+    pub subtitle: Option<&'a str>,
+    pub description: Option<&'a str>,
+    pub publisher: Option<&'a str>,
+    pub publication_date: Option<NaiveDate>,
+    pub dewey_code: Option<&'a str>,
+}
+
 /// Matches the `titles` table schema exactly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TitleModel {
@@ -238,9 +249,21 @@ impl TitleModel {
     }
 
     pub async fn find_by_id(pool: &DbPool, id: u64) -> Result<Option<TitleModel>, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::find_by_id_in(&mut conn, id, false).await
+    }
+
+    /// [`Self::find_by_id`] on the given connection. With `lock` the read
+    /// is `FOR UPDATE` (story 11-18: a proposal acceptance reads the live
+    /// values it compares and overwrites under the title row lock).
+    pub async fn find_by_id_in(
+        conn: &mut sqlx::MySqlConnection,
+        id: u64,
+        lock: bool,
+    ) -> Result<Option<TitleModel>, AppError> {
         tracing::debug!(id = id, "Looking up title by ID");
 
-        let row = sqlx::query(
+        let sql = format!(
             r#"SELECT id, title, original_title, subtitle, statement_of_responsibility,
                       description, general_note, language,
                       media_type, publication_date, publisher,
@@ -251,16 +274,113 @@ impl TitleModel {
                       age_rating, issue_number,
                       CAST(manually_edited_fields AS CHAR) as manually_edited_fields, version
                FROM titles
-               WHERE id = ? AND deleted_at IS NULL"#,
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+               WHERE id = ? AND deleted_at IS NULL{}"#,
+            if lock { " FOR UPDATE" } else { "" }
+        );
+        let row = sqlx::query(&sql)
+            .bind(id)
+            .fetch_optional(&mut *conn)
+            .await?;
 
         match row {
             Some(r) => Ok(Some(row_to_title(r)?)),
             None => Ok(None),
         }
+    }
+
+    /// Story 11-18 — write the fields of an accepted metadata proposal
+    /// (each `Some` column is set; `None` leaves it as it is), the new
+    /// `manually_edited_fields` set, and bump `version`. The caller holds
+    /// the title row lock (`find_by_id_in(…, true)`).
+    pub async fn apply_proposed_fields_in(
+        conn: &mut sqlx::MySqlConnection,
+        id: u64,
+        fields: &ProposedFieldWrites<'_>,
+        manually_edited_json: &str,
+    ) -> Result<(), AppError> {
+        let mut sets: Vec<&str> = Vec::new();
+        if fields.subtitle.is_some() {
+            sets.push("subtitle = ?");
+        }
+        if fields.description.is_some() {
+            sets.push("description = ?");
+        }
+        if fields.publisher.is_some() {
+            sets.push("publisher = ?");
+        }
+        if fields.publication_date.is_some() {
+            sets.push("publication_date = ?");
+        }
+        if fields.dewey_code.is_some() {
+            sets.push("dewey_code = ?");
+        }
+        let sql = format!(
+            "UPDATE titles SET {}manually_edited_fields = ?, version = version + 1, \
+             updated_at = NOW() WHERE id = ? AND deleted_at IS NULL",
+            sets.iter().map(|s| format!("{s}, ")).collect::<String>()
+        );
+        let mut q = sqlx::query(&sql);
+        for v in [fields.subtitle, fields.description, fields.publisher]
+            .into_iter()
+            .flatten()
+        {
+            q = q.bind(v);
+        }
+        if let Some(d) = fields.publication_date {
+            q = q.bind(d);
+        }
+        if let Some(v) = fields.dewey_code {
+            q = q.bind(v);
+        }
+        let done = q
+            .bind(manually_edited_json)
+            .bind(id)
+            .execute(&mut *conn)
+            .await?;
+        if done.rows_affected() != 1 {
+            return Err(AppError::Internal(format!(
+                "title {id} not updated by an accepted proposal"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Story 11-18 — bump a title's `version` (an accepted cover proposal:
+    /// the other pending proposals for the title go stale at their own
+    /// acceptance, before the cover file is promoted after the commit).
+    pub async fn bump_version_in(
+        conn: &mut sqlx::MySqlConnection,
+        id: u64,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            "UPDATE titles SET version = version + 1, updated_at = NOW() \
+             WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .execute(&mut *conn)
+        .await?;
+        Ok(())
+    }
+
+    /// Story 11-18 — record a promoted cover: `cover_image_url` and the
+    /// `manually_edited_fields` set (the caller holds the row lock). No
+    /// `version` bump: the acceptance already bumped it.
+    pub async fn set_cover_edited_in(
+        conn: &mut sqlx::MySqlConnection,
+        id: u64,
+        cover_url: &str,
+        manually_edited_json: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            "UPDATE titles SET cover_image_url = ?, manually_edited_fields = ?, \
+             updated_at = NOW() WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(cover_url)
+        .bind(manually_edited_json)
+        .bind(id)
+        .execute(&mut *conn)
+        .await?;
+        Ok(())
     }
 
     /// #202 — which provider resolved this title's metadata, or `None` when
@@ -815,6 +935,16 @@ impl TitleModel {
                 Vec::new()
             }
         }
+    }
+
+    /// Story 11-18 — the `manually_edited_fields` JSON once `fields` are
+    /// added to the current set (sorted, duplicates dropped), so a later
+    /// metadata re-download leaves them alone (FR144, #232).
+    pub fn manually_edited_with(&self, fields: &[&str]) -> String {
+        let mut set: std::collections::BTreeSet<String> =
+            self.parsed_manually_edited_fields().into_iter().collect();
+        set.extend(fields.iter().map(|f| (*f).to_string()));
+        serde_json::to_string(&set.into_iter().collect::<Vec<_>>()).unwrap_or_else(|_| "[]".into())
     }
 
     /// Find up to 8 related titles for a title detail page.

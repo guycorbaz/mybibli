@@ -27,6 +27,16 @@ impl ContributorService {
 
     /// Find an existing contributor by exact name, or create a new one.
     pub async fn find_or_create(pool: &DbPool, name: &str) -> Result<ContributorModel, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::find_or_create_in(&mut conn, name).await
+    }
+
+    /// [`Self::find_or_create`] on the given connection (story 11-18: a
+    /// proposal acceptance resolves contributors inside its transaction).
+    pub async fn find_or_create_in(
+        conn: &mut sqlx::MySqlConnection,
+        name: &str,
+    ) -> Result<ContributorModel, AppError> {
         let trimmed = name.trim();
         if trimmed.is_empty() {
             return Err(AppError::BadRequest(
@@ -39,11 +49,11 @@ impl ContributorService {
             ));
         }
 
-        if let Some(existing) = ContributorModel::find_by_name_exact(pool, trimmed).await? {
+        if let Some(existing) = ContributorModel::find_by_name_exact_in(conn, trimmed).await? {
             return Ok(existing);
         }
 
-        ContributorModel::create(pool, trimmed, None).await
+        ContributorModel::create_in(conn, trimmed, None).await
     }
 
     /// Add a contributor to a title with a specific role.

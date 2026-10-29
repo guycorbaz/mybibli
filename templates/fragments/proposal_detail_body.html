@@ -1,4 +1,4 @@
-{# Story 11-16 — the proposal detail body (header, Accept (11-17) and Reject actions,
+{# Story 11-16 — the proposal detail body (header, Accept (11-17 / 11-18) and Reject actions,
    sources, items by shape). Rendered inside pages/proposal_detail.html
    and alone by POST /proposals/{id}/reject. Every agent value is
    escaped (NFR47): never `|safe` here. Sources open in a new tab with
@@ -100,6 +100,21 @@
                     <dd data-proposed class="font-medium text-stone-900 dark:text-stone-100">{% for c in line.contributors_proposed %}{{ c.name }} ({{ c.role }}){% if !loop.last %}, {% endif %}{% endfor %}</dd>
                 </dl>
                 {% if line.current_truncated %}<p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ l.t("current_truncated") }}</p>{% endif %}
+            {% else if line.line.eq("cover") && body.accepted_cover %}
+                {# Story 11-18 — the staged file was promoted: show the title's cover now. #}
+                <figure>
+                    <figcaption class="mb-1 text-stone-500 dark:text-stone-400">{{ l.t("cover_accepted") }}</figcaption>
+                    {% if line.target_name.is_none() %}
+                    <p class="text-stone-500 dark:text-stone-400">{{ body.target_texts[loop.index0] }}</p>
+                    {% else if line.current_cover_url.is_empty() %}
+                    <p class="text-stone-500 dark:text-stone-400">{{ l.t("cover_none") }}</p>
+                    {% else %}
+                    <img id="proposal-accepted-cover" src="{{ line.current_cover_url }}" alt="{{ body.cover_alt }}" class="w-[150px] h-auto rounded-lg border border-stone-200 dark:border-stone-700" loading="lazy">
+                    {% endif %}
+                    {% if !line.width.is_empty() && !line.height.is_empty() && !line.bytes.is_empty() %}
+                    <p class="mt-1 text-xs text-stone-500 dark:text-stone-400">{{ body.cover_dims[loop.index0] }}</p>
+                    {% endif %}
+                </figure>
             {% else if line.line.eq("cover") %}
                 <div class="flex flex-wrap gap-6">
                     <figure>

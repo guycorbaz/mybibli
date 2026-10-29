@@ -37,14 +37,14 @@ so that a title I could not complete gets the information or cover the agent fou
 
 ## Tasks / Subtasks
 
-- [ ] `services/acceptance.rs`: shared `AcceptError`, generic `AcceptOutcome<A>`, `StaleCause`, `AcceptConflict` (+ metadata / cover variants), deadlock retry, locked preamble; `accept` dispatching on the kind; `series_acceptance` re-exports and uses them (AC2–AC5)
-- [ ] #531: `TitleContributorModel::add_to_title_in` reactivates a soft-deleted row; `ContributorModel::find_by_name_exact_in` / `create_in`; regression test (AC8)
-- [ ] `services/metadata_acceptance.rs`: parse items, compare, apply (AC2, AC4, AC5)
-- [ ] `services/cover_acceptance.rs`: pre-check, transaction, post-commit promotion and write (AC3–AC5)
-- [ ] Web: `can_accept` for every kind, modal summary per kind, result / stale / refusal copy, handler dispatch, accepted cover display (AC1, AC6)
-- [ ] Locale keys ×4 (AC9)
-- [ ] Tests: unit, `tests/proposal_accept_metadata_cover.rs`, E2E `metadata-cover-proposal-accept.spec.ts` (AC10)
-- [ ] Decisions D-11-18-*; close #521, #531, #533
+- [x] `services/acceptance.rs`: shared `AcceptError`, generic `AcceptOutcome<A>`, `StaleCause`, `AcceptConflict` (+ metadata / cover variants), deadlock retry, locked preamble; `accept` dispatching on the kind; `series_acceptance` re-exports and uses them (AC2–AC5)
+- [x] #531: `TitleContributorModel::add_to_title_in` reactivates a soft-deleted row; `ContributorModel::find_by_name_exact_in` / `create_in`; regression test (AC8)
+- [x] `services/metadata_acceptance.rs`: parse items, compare, apply (AC2, AC4, AC5)
+- [x] `services/cover_acceptance.rs`: pre-check, transaction, post-commit promotion and write (AC3–AC5)
+- [x] Web: `can_accept` for every kind, modal summary per kind, result / stale / refusal copy, handler dispatch, accepted cover display (AC1, AC6)
+- [x] Locale keys ×4 (AC9)
+- [x] Tests: unit, `tests/proposal_accept_metadata_cover.rs`, E2E `metadata-cover-proposal-accept.spec.ts` (AC10)
+- [x] Decisions D-11-18-*; close #521, #531, #533
 
 ## Dev Notes
 
@@ -79,4 +79,27 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Completion Notes List
 
+- Shared acceptance pieces in `services/acceptance.rs` (`AcceptError`, generic `AcceptOutcome`, `StaleCause`, `AcceptConflict`, deadlock retry, locked preamble, kind dispatch); `series_acceptance` re-exports them.
+- `services/metadata_acceptance.rs` (parse, re-validate, compare in normal form, write fields + marks + version, contributors resolved / skipped / reactivated) and `services/cover_acceptance.rs` (pre-check #533, decision + version bump, promotion and cache-busted URL after the commit).
+- #531 fixed in `TitleContributorModel::add_to_title_in` (manual flow too); #521 decided for metadata / cover; #533 refused cleanly.
+- Decisions D-11-18-1..9.
+
 ### File List
+
+- src/services/acceptance.rs (new)
+- src/services/metadata_acceptance.rs (new)
+- src/services/cover_acceptance.rs (new)
+- src/services/series_acceptance.rs
+- src/services/proposal_accept.rs
+- src/services/contributor.rs
+- src/services/mod.rs
+- src/models/contributor.rs
+- src/models/contributor_role.rs
+- src/models/title.rs
+- src/routes/proposals.rs
+- templates/fragments/proposal_detail_body.html
+- locales/{en,fr,de,it}.yml
+- tests/proposal_accept_metadata_cover.rs (new)
+- tests/proposal_accept_series.rs
+- tests/e2e/specs/journeys/metadata-cover-proposal-accept.spec.ts (new)
+- _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md
