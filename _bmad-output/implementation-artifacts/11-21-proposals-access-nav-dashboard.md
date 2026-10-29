@@ -1,6 +1,6 @@
 # Story 11.21: Access to the proposals page
 
-Status: review
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR143, UX-DR32, UX-DR33. Also closes #545 (phone-width overflow of the bar and of the `/proposals` list). Epic 11 — twenty-first story. Not here: CR #547 (left sidebar — explicitly out of scope until epic 11 is closed, decided by the project lead on 2026-10-29).
 
@@ -101,6 +101,7 @@ Claude Opus 5.5 (claude-opus-5-5)
 - D-11-21-3: the count rides on `Session` (`session_resolve_middleware`, Librarian+, page requests only), one index-only `COUNT(*)`; badge text capped `99+`, aria-label with the exact count; the dashboard pill reuses it.
 - D-11-21-4 ([PRODUCT]): below `sm` the anonymous bar's login link moves to the panel; `/proposals` drops Filed / Key / Items below `sm`.
 - Closes #545.
+- Code review (blind + edge cases + acceptance, combined): round 1 — one Medium (racy E2E baseline, non-retry-safe filing) and four Lows fixed, one Low accepted (scrollbar edge at exactly 1280 px, D-11-21-5); round 2 — no Medium+, three Lows fixed (D-11-21-6). No issue opened.
 
 ### File List
 
