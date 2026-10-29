@@ -1,6 +1,6 @@
 # Story 11.18: Accept a metadata or cover proposal
 
-Status: ready-for-dev
+Status: done
 
 GitHub issue: part of #493 (MCP server — do NOT close it here); closes #521 (staleness of writes that do not bump `version`, narrowed by 11-17 to the metadata / cover kinds), #531 (a contributor removed from a title cannot be re-added), #533 (refuse an acceptance whose staged cover is missing). Covers: FR138 (accept, metadata and cover), FR140, FR144, FR146 (accept). Epic 11 — eighteenth story. Not here: editing a proposal before accepting it (11-19), side-by-side view (11-20), nav badge (11-21).
 
@@ -82,7 +82,10 @@ Claude Opus 5.5 (claude-opus-5-5)
 - Shared acceptance pieces in `services/acceptance.rs` (`AcceptError`, generic `AcceptOutcome`, `StaleCause`, `AcceptConflict`, deadlock retry, locked preamble, kind dispatch); `series_acceptance` re-exports them.
 - `services/metadata_acceptance.rs` (parse, re-validate, compare in normal form, write fields + marks + version, contributors resolved / skipped / reactivated) and `services/cover_acceptance.rs` (pre-check #533, decision + version bump, promotion and cache-busted URL after the commit).
 - #531 fixed in `TitleContributorModel::add_to_title_in` (manual flow too); #521 decided for metadata / cover; #533 refused cleanly.
-- Decisions D-11-18-1..9.
+- Decisions D-11-18-1..13.
+- Code review: round 1 (3 layers) — Mediums fixed: cover marked hand-set in the decision transaction, background fetch no longer downloads over a hand-set cover, URL write / deleted title reported as not installed, E2E for #531 on the title page; round 2 (2 layers) — Mediums fixed: fetched cover stored under the title row lock after re-checking the mark, mark taken back after a failed promotion, contributors paired before the decision; round 3 clean (Lows fixed or accepted). Issues opened: #541 (duplicate contributors, type:code-review-finding), #542 (cross-kind staleness, type:change-request).
+- E2E finding: accepting any proposal bumps `titles.version`, so other pending proposals for the title go stale whatever their kind (AR29 kept, #542); the journey files the cover after the metadata acceptance.
+- Gates (final): `cargo clippy --all-targets -D warnings` clean; `cargo test` 2050 passed, 0 failed; `sqlx prepare --check` OK (no macro query added); `locale_parity` green; waitForTimeout grep clean; `tsc --noEmit` clean; E2E full suite on a reset stack `CI=true --workers=2`: 379 passed, 2 skipped.
 
 ### File List
 
@@ -92,6 +95,8 @@ Claude Opus 5.5 (claude-opus-5-5)
 - src/services/series_acceptance.rs
 - src/services/proposal_accept.rs
 - src/services/contributor.rs
+- src/services/cover.rs
+- src/tasks/metadata_fetch.rs
 - src/services/mod.rs
 - src/models/contributor.rs
 - src/models/contributor_role.rs

@@ -189,9 +189,9 @@ pub async fn fetch_metadata_chain_outcome(
             }
 
             // Story 11-18 — a cover set by hand (upload, accepted proposal)
-            // is never downloaded over: `update_cover_image_url` already
-            // keeps its URL, but the download writes `covers/{id}.jpg`
-            // itself, which would replace the image under that URL.
+            // is not downloaded at all (early skip); a cover set by hand
+            // while the download runs is caught by `store_fetched_cover`,
+            // which re-checks under the title row lock before writing.
             let cover_url = if cover_is_manual(&pool, title_id).await {
                 tracing::debug!(title_id, "Cover set by hand; no cover download");
                 None
@@ -571,9 +571,21 @@ pub async fn store_fetched_cover(
         );
         return Ok(false);
     }
-    tokio::fs::write(covers_dir.join(format!("{title_id}.jpg")), jpeg)
-        .await
-        .map_err(|e| AppError::Internal(format!("cover write: {e}")))?;
+    // Written aside, then renamed: a failed write never truncates the
+    // cover in place.
+    let target = covers_dir.join(format!("{title_id}.jpg"));
+    let tmp = covers_dir.join(format!(
+        ".tmp-{}",
+        crate::services::cover_staging::new_staged_name()
+    ));
+    if let Err(e) = tokio::fs::write(&tmp, jpeg).await {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(AppError::Internal(format!("cover write: {e}")));
+    }
+    if let Err(e) = tokio::fs::rename(&tmp, &target).await {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(AppError::Internal(format!("cover rename: {e}")));
+    }
     sqlx::query(
         "UPDATE titles SET cover_image_url = ?, updated_at = NOW() \
          WHERE id = ? AND deleted_at IS NULL",
