@@ -139,6 +139,15 @@ impl<'a> SubjectLine<'a> {
     }
 }
 
+/// A series name folded for the equivalence key: compatibility forms
+/// first (NFKC: fullwidth letters, ligatures), then [`fold_name`]
+/// (case, accents, inner whitespace). Changing it changes stored keys:
+/// the unit test `series_create_key_folds_the_name` pins it.
+fn fold_key_name(name: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    fold_name(&name.nfkc().collect::<String>())
+}
+
 /// What a proposal is about: its kind and target (FR136).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProposalSubject {
@@ -172,7 +181,7 @@ impl ProposalSubject {
                 .find(|l| l.line == Some("series") && l.target.is_none())
                 .and_then(|l| l.name)
                 .map(str::trim)
-                .filter(|n| !fold_name(n).is_empty())
+                .filter(|n| !fold_key_name(n).is_empty())
                 .map(|n| ProposalSubject::SeriesCreate {
                     name: n.to_string(),
                 }),
@@ -220,7 +229,7 @@ impl ProposalSubject {
     pub fn equivalence_key(&self) -> String {
         let key = match self {
             ProposalSubject::SeriesCreate { name } => {
-                format!("series_create:{}", fold_name(name))
+                format!("series_create:{}", fold_key_name(name))
             }
             ProposalSubject::SeriesAttach { series_id } => {
                 format!("series_attach:series/{series_id}")
@@ -332,7 +341,9 @@ pub struct HistoryEntry {
     /// `None` when the live items match no subject shape.
     pub subject: Option<ProposalSubject>,
     /// For a rejected proposal: from when an equivalent one is accepted
-    /// again, with the current delay (may be in the past).
+    /// again — the newest live equivalent rejection (any key) plus the
+    /// current delay (may be in the past); `None` when the proposal has
+    /// no equivalence key (it never blocks).
     pub resubmittable_from: Option<NaiveDateTime>,
 }
 
@@ -359,6 +370,12 @@ impl ProposalHistoryService {
         let mut conn = pool.acquire().await?;
         let lines = ProposalModel::subject_lines(&mut conn, &ids).await?;
         let delay_days = resubmission_delay_days(&mut conn).await?;
+        let keys: Vec<&str> = rows
+            .iter()
+            .filter(|r| r.status == ProposalStatus::Rejected)
+            .filter_map(|r| r.equivalence_key.as_deref())
+            .collect();
+        let latest = ProposalModel::latest_rejection_dates(&mut conn, &keys).await?;
         drop(conn);
 
         let items = rows
@@ -371,10 +388,13 @@ impl ProposalHistoryService {
                     .collect();
                 HistoryEntry {
                     subject: ProposalSubject::from_lines(r.kind, &own),
+                    // What the filing check enforces: the newest live
+                    // equivalent rejection (any key), not this row's own.
                     resubmittable_from: (r.status == ProposalStatus::Rejected)
-                        .then_some(r.decided_at)
+                        .then_some(r.equivalence_key.as_ref())
                         .flatten()
-                        .map(|at| resubmission_open_from(at, delay_days)),
+                        .and_then(|k| latest.get(k))
+                        .map(|at| resubmission_open_from(*at, delay_days)),
                     proposal_id: r.id,
                     kind: r.kind,
                     status: r.status,
@@ -483,6 +503,9 @@ mod tests {
             Some("series_create:les schtroumpfs")
         );
         assert_eq!(create("  LES   SCHTRÖUMPFS "), create("Les Schtroumpfs"));
+        // Compatibility forms (fullwidth letters, ligatures) fold too.
+        assert_eq!(create("Ｌes Schtroumpfs"), create("Les Schtroumpfs"));
+        assert_eq!(create("Les Schtroumpﬁ"), create("les schtroumpfi"));
         assert_ne!(create("Gaston"), create("Les Schtroumpfs"));
         assert_eq!(create("   "), None);
         // A long name is cut to the column width.

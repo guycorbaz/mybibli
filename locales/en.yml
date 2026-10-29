@@ -451,7 +451,7 @@ error:
     provider_timeout_invalid: "Timeout must be between 1 and 60 seconds."
     bulk_refetch_delay_invalid: "Bulk re-fetch delay must be between 0 and 60000 milliseconds."
     session_timeout_invalid: "Session timeout must be between 1 and 720 hours."
-    resubmission_delay_invalid: "The delay must be a whole number of days between 0 and 3650."
+    resubmission_delay_invalid: "The delay must be a whole number of days between 0 and %{max}."
     version_mismatch: "Settings were modified by another admin — reload and retry"
     provider_version_mismatch: "%{provider} was modified by another admin — reload and retry"
   code:
@@ -1019,7 +1019,7 @@ admin:
     btn_save_sessions: "Save session settings"
     section_proposals: "Proposals"
     resubmission_delay_label: "Delay before a rejected proposal can be resubmitted (days)"
-    resubmission_delay_help: "How long an AI agent must wait before filing again a proposal equivalent to one a librarian rejected (same kind and same series, title or set of fields). From 0 (no delay) to %{max} days. Applied to the next proposal, no restart required. Default: 90 days."
+    resubmission_delay_help: "How long an AI agent must wait before filing again a proposal equivalent to one a librarian rejected (same kind and same target: the same series, the same title and set of fields for metadata, the same title for a cover). From 0 (no delay) to %{max} days. Applied to the next proposal, no restart required. Default: 90 days."
     btn_save_proposals: "Save proposal settings"
     # v1.7.9 fix #334 — Metadata-chain + provider-health timeouts.
     metadata_chain_timeout_label: "Per-provider metadata timeout (seconds)"

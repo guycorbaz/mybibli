@@ -7,8 +7,8 @@
 --   series_attach:series/<id>
 --   metadata:titles/<id>:<sorted field keys, comma-separated>
 --   cover:titles/<id>
--- Binary collation: the Rust side already normalises (case, accents,
--- whitespace), so the comparison must not depend on the server charset.
+-- Binary collation: the Rust side already normalises (compatibility
+-- forms, case, accents, whitespace), so the comparison must not depend on the server charset.
 -- NULL for a proposal whose items match none of these shapes, and for
 -- rows filed before this migration (proposals are unreleased): they
 -- never block a filing.
@@ -20,7 +20,7 @@
 ALTER TABLE proposals
     ADD COLUMN equivalence_key VARCHAR(700) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL
         AFTER sources,
-    ADD INDEX idx_proposals_equivalence (equivalence_key);
+    ADD INDEX idx_proposals_equivalence (equivalence_key, status, decided_at);
 
 INSERT INTO settings (setting_key, setting_value, version) VALUES
 ('proposal_resubmission_delay_days', '90', 1)

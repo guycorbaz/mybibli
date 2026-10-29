@@ -203,6 +203,75 @@ async fn history_tool_is_listed_read_only(pool: DbPool) {
     assert_eq!(tool["inputSchema"]["additionalProperties"], false);
 }
 
+#[sqlx::test(migrations = "./migrations")]
+async fn history_reopening_follows_the_newest_equivalent_rejection(pool: DbPool) {
+    let a = Agent::new(&pool).await;
+    let b = Agent {
+        app: a.app.clone(),
+        key: seed_key(&pool, ApiKeyScope::Propose).await,
+    };
+    let title = seed_title(&pool, "Réouverture").await;
+    let by = decider(&pool).await;
+    let old = id_of(
+        &a.ok(
+            "propose_title_metadata",
+            metadata(title, json!({"subtitle": "A"})),
+        )
+        .await,
+    );
+    reject(&pool, by, old, None).await;
+    back_date(&pool, old, 100).await;
+    // B files the equivalent proposal (A's rejection has expired); it is
+    // rejected now, which blocks A again.
+    let newer = id_of(
+        &b.ok(
+            "propose_title_metadata",
+            metadata(title, json!({"subtitle": "B"})),
+        )
+        .await,
+    );
+    reject(&pool, by, newer, None).await;
+    let page = a.ok(LIST, json!({"status": "rejected"})).await;
+    let entry = &page["items"][0];
+    assert_eq!(id_of(entry), old);
+    let newer_at: NaiveDateTime =
+        sqlx::query_scalar("SELECT CAST(decided_at AS DATETIME) FROM proposals WHERE id = ?")
+            .bind(newer)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        parse_utc(&entry["resubmittable_from"]),
+        newer_at + chrono::Duration::days(90)
+    );
+    a.err(
+        "propose_title_metadata",
+        metadata(title, json!({"subtitle": "C"})),
+    )
+    .await;
+
+    // A rejected proposal without an equivalence key blocks nothing.
+    let key_id: u64 = sqlx::query_scalar("SELECT api_key_id FROM proposals WHERE id = ?")
+        .bind(old)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO proposals (kind, status, api_key_id, sources, decided_at) \
+         VALUES ('cover', 'rejected', ?, '[]', NOW())",
+    )
+    .bind(key_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let page = a
+        .ok(LIST, json!({"status": "rejected", "kind": "cover"}))
+        .await;
+    assert_eq!(page["total_items"], 1);
+    assert!(page["items"][0]["resubmittable_from"].is_null());
+    assert!(page["items"][0]["subject"].is_null());
+}
+
 // ─── Resubmission delay (FR136) ───────────────────────────────────
 
 #[sqlx::test(migrations = "./migrations")]
@@ -296,6 +365,10 @@ async fn series_equivalence_by_normalised_name_and_by_series_id(pool: DbPool) {
     assert!(msg.contains("no reason given"), "{msg}");
     agent
         .ok("propose_series_create", create("Johan et Pirlouit"))
+        .await;
+    back_date(&pool, created, 90).await;
+    agent
+        .ok("propose_series_create", create("LES SCHTROUMPFS"))
         .await;
 
     let series: u64 =
@@ -467,6 +540,9 @@ async fn a_cover_for_the_same_title_is_refused_and_nothing_stays_staged(pool: Db
     assert!(msg.contains(&format!("cover of title {title}")), "{msg}");
     assert_eq!(std::fs::read_dir(&staging).unwrap().count(), staged_before);
     assert_eq!(proposal_count(&pool).await, 1);
+    back_date(&pool, first, 90).await;
+    agent.ok("propose_cover", png(6)).await;
+    assert_eq!(proposal_count(&pool).await, 2);
 }
 
 // ─── Admin → System setting (AR30) ────────────────────────────────
@@ -508,6 +584,7 @@ async fn admin_sets_the_delay_in_admin_system(pool: DbPool) {
         .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body.contains("value=\"30\""), "{body}");
+    assert!(body.contains("feedback-list"), "OOB success entry: {body}");
     assert!(
         body.contains("name=\"resubmission_delay_version\" value=\"2\""),
         "{body}"
@@ -530,6 +607,28 @@ async fn admin_sets_the_delay_in_admin_system(pool: DbPool) {
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body.contains("value=\"4000\""), "{body}");
+    assert_eq!(delay_row(&pool).await, ("30".to_string(), 2));
+
+    // Not a whole number: re-rendered too, with the validation trigger.
+    let res = admin
+        .send(
+            &app,
+            "POST",
+            "/admin/system/proposals",
+            "resubmission_delay_days=abc&resubmission_delay_version=2&_csrf_token=x",
+            true,
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        res.headers()
+            .get("hx-trigger")
+            .and_then(|v| v.to_str().ok()),
+        Some("validation-error")
+    );
+    let body = common::web::body_string(res).await;
+    assert!(body.contains("value=\"abc\""), "{body}");
+    assert!(body.contains("3650"), "the message names the bound: {body}");
     assert_eq!(delay_row(&pool).await, ("30".to_string(), 2));
 
     // A stale version is a conflict.

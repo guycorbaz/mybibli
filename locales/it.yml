@@ -438,7 +438,7 @@ error:
     provider_timeout_invalid: "Il timeout deve essere compreso tra 1 e 60 secondi."
     bulk_refetch_delay_invalid: "La pausa del riscaricamento in blocco deve essere compresa tra 0 e 60000 millisecondi."
     session_timeout_invalid: "Il timeout di sessione deve essere compreso tra 1 e 720 ore."
-    resubmission_delay_invalid: "L'attesa deve essere un numero intero di giorni tra 0 e 3650."
+    resubmission_delay_invalid: "L'attesa deve essere un numero intero di giorni tra 0 e %{max}."
     version_mismatch: "Le impostazioni sono state modificate da un altro amministratore — ricarica e riprova"
     provider_version_mismatch: "%{provider} è stato modificato da un altro amministratore — ricarica e riprova"
   code:
@@ -990,7 +990,7 @@ admin:
     btn_save_sessions: "Salva impostazioni di sessione"
     section_proposals: "Proposte"
     resubmission_delay_label: "Attesa prima che una proposta rifiutata possa essere ripresentata (giorni)"
-    resubmission_delay_help: "Quanto deve attendere un agente IA prima di presentare di nuovo una proposta equivalente a una rifiutata da un bibliotecario (stesso tipo e stessa serie, titolo o insieme di campi). Da 0 (nessuna attesa) a %{max} giorni. Applicato alla prossima proposta, senza riavvio. Predefinito: 90 giorni."
+    resubmission_delay_help: "Quanto deve attendere un agente IA prima di presentare di nuovo una proposta equivalente a una rifiutata da un bibliotecario (stesso tipo e stesso obiettivo: la stessa serie, lo stesso titolo con gli stessi campi per i metadati, lo stesso titolo per una copertina). Da 0 (nessuna attesa) a %{max} giorni. Applicato alla prossima proposta, senza riavvio. Predefinito: 90 giorni."
     btn_save_proposals: "Salva le impostazioni delle proposte"
     # v1.7.9 fix #334 — timeout metadata-chain + provider-health.
     metadata_chain_timeout_label: "Timeout per fornitore di metadati (secondi)"

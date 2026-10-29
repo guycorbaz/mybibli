@@ -447,7 +447,7 @@ error:
     provider_timeout_invalid: "Le délai doit être compris entre 1 et 60 secondes."
     bulk_refetch_delay_invalid: "Le délai du re-fetch en lot doit être compris entre 0 et 60000 millisecondes."
     session_timeout_invalid: "Le délai de session doit être compris entre 1 et 720 heures."
-    resubmission_delay_invalid: "Le délai doit être un nombre entier de jours entre 0 et 3650."
+    resubmission_delay_invalid: "Le délai doit être un nombre entier de jours entre 0 et %{max}."
     version_mismatch: "Les paramètres ont été modifiés par un autre administrateur — rechargez et réessayez"
     provider_version_mismatch: "%{provider} a été modifié par un autre administrateur — rechargez et réessayez"
   code:
@@ -1015,7 +1015,7 @@ admin:
     btn_save_sessions: "Enregistrer les préférences de session"
     section_proposals: "Propositions"
     resubmission_delay_label: "Délai avant qu'une proposition refusée puisse être soumise à nouveau (jours)"
-    resubmission_delay_help: "Combien de temps un agent IA doit attendre avant de déposer à nouveau une proposition équivalente à une proposition refusée par un bibliothécaire (même type et même série, titre ou ensemble de champs). De 0 (aucun délai) à %{max} jours. Appliqué à la prochaine proposition, sans redémarrage. Par défaut : 90 jours."
+    resubmission_delay_help: "Combien de temps un agent IA doit attendre avant de déposer à nouveau une proposition équivalente à une proposition refusée par un bibliothécaire (même type et même cible : la même série, le même titre et les mêmes champs pour des métadonnées, le même titre pour une couverture). De 0 (aucun délai) à %{max} jours. Appliqué à la prochaine proposition, sans redémarrage. Par défaut : 90 jours."
     btn_save_proposals: "Enregistrer les réglages des propositions"
     # v1.7.9 fix #334 — Délais d'attente metadata-chain + provider-health.
     metadata_chain_timeout_label: "Délai d'attente par fournisseur de métadonnées (secondes)"

@@ -30,7 +30,9 @@ use crate::services::proposal_history::{
 
 #[derive(Deserialize)]
 pub struct ProposalsSettingsForm {
-    pub resubmission_delay_days: u32,
+    /// Kept as text so a non-number (`abc`, `-1`, `1.5`) reaches the
+    /// validator and re-renders the form instead of failing extraction.
+    pub resubmission_delay_days: String,
     pub resubmission_delay_version: i32,
     pub _csrf_token: String,
 }
@@ -41,13 +43,18 @@ struct AdminSystemProposalsForm {
     csrf_token: String,
     delay_label: String,
     delay_help: String,
-    delay_value: u32,
+    delay_value: String,
     delay_version: i32,
     delay_max: u32,
     btn_save: String,
 }
 
-fn render_form(csrf: &str, loc: &'static str, days: u32, version: i32) -> Result<String, AppError> {
+fn render_form(
+    csrf: &str,
+    loc: &'static str,
+    days: &str,
+    version: i32,
+) -> Result<String, AppError> {
     AdminSystemProposalsForm {
         csrf_token: csrf.to_string(),
         delay_label: rust_i18n::t!("admin.system.resubmission_delay_label", locale = loc)
@@ -58,7 +65,7 @@ fn render_form(csrf: &str, loc: &'static str, days: u32, version: i32) -> Result
             max = MAX_RESUBMISSION_DELAY_DAYS
         )
         .to_string(),
-        delay_value: days,
+        delay_value: days.to_string(),
         delay_version: version,
         delay_max: MAX_RESUBMISSION_DELAY_DAYS,
         btn_save: rust_i18n::t!("admin.system.btn_save_proposals", locale = loc).to_string(),
@@ -77,7 +84,7 @@ pub(crate) fn render_from_rows(
         Some((value, version)) => (parse_resubmission_delay_days(Some(value)), *version),
         None => (parse_resubmission_delay_days(None), 1),
     };
-    render_form(csrf, loc, days, version)
+    render_form(csrf, loc, &days.to_string(), version)
 }
 
 pub async fn save_proposals_settings(
@@ -89,26 +96,26 @@ pub async fn save_proposals_settings(
     session.require_role_with_return(Role::Admin, "/admin?tab=system", locale.0)?;
     let loc = locale.0;
 
-    if let Err(e) = validate_resubmission_delay_days(form.resubmission_delay_days, loc) {
-        let error_msg = match e {
-            AppError::BadRequest(msg) => msg,
-            other => return Err(other),
-        };
-        return Ok(validation_error_response(
-            render_form(
-                &session.csrf_token,
-                loc,
-                form.resubmission_delay_days,
-                form.resubmission_delay_version,
-            )?,
-            error_msg,
-        ));
-    }
+    let days = match validate_resubmission_delay_days(&form.resubmission_delay_days, loc) {
+        Ok(days) => days,
+        Err(AppError::BadRequest(error_msg)) => {
+            return Ok(validation_error_response(
+                render_form(
+                    &session.csrf_token,
+                    loc,
+                    &form.resubmission_delay_days,
+                    form.resubmission_delay_version,
+                )?,
+                error_msg,
+            ));
+        }
+        Err(other) => return Err(other),
+    };
 
     save_setting(
         &state.pool,
         KEY_RESUBMISSION_DELAY_DAYS,
-        &form.resubmission_delay_days.to_string(),
+        &days.to_string(),
         form.resubmission_delay_version,
     )
     .await?;

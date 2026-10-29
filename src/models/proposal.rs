@@ -175,6 +175,8 @@ pub struct ProposalSummaryRow {
     pub decided_at: Option<NaiveDateTime>,
     /// Story 11-15 — the librarian's reason, for a rejected proposal.
     pub rejection_reason: Option<String>,
+    /// Story 11-15 — the key stored at filing (`None`: never blocks).
+    pub equivalence_key: Option<String>,
 }
 
 /// Story 11-15 — the subject parts of one live item (see
@@ -622,7 +624,7 @@ impl ProposalModel {
             "SELECT p.id, p.kind, p.status, p.api_key_id, k.label AS api_key_label, \
              (SELECT COUNT(*) FROM proposal_items i WHERE i.proposal_id = p.id AND i.deleted_at IS NULL) AS item_count, \
              CAST(p.created_at AS DATETIME) AS created_at, CAST(p.decided_at AS DATETIME) AS decided_at, \
-             p.rejection_reason \
+             p.rejection_reason, CAST(p.equivalence_key AS CHAR) AS equivalence_key \
              FROM proposals p LEFT JOIN api_keys k ON k.id = p.api_key_id \
              WHERE {where_sql} ORDER BY p.created_at DESC, p.id DESC LIMIT ? OFFSET ?"
         );
@@ -667,6 +669,7 @@ impl ProposalModel {
                     created_at: r.try_get("created_at")?,
                     decided_at: r.try_get("decided_at")?,
                     rejection_reason: r.try_get("rejection_reason")?,
+                    equivalence_key: r.try_get("equivalence_key")?,
                 })
             })
             .collect::<Result<Vec<_>, AppError>>()?;
@@ -797,6 +800,34 @@ impl ProposalModel {
             })
         })
         .transpose()
+    }
+
+    /// The newest live rejection date of each given equivalence key
+    /// (keys without one are absent). Plain read.
+    pub async fn latest_rejection_dates(
+        conn: &mut MySqlConnection,
+        keys: &[&str],
+    ) -> Result<HashMap<String, NaiveDateTime>, AppError> {
+        if keys.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let placeholders = vec!["?"; keys.len()].join(", ");
+        let sql = format!(
+            "SELECT CAST(equivalence_key AS CHAR) AS k, CAST(MAX(decided_at) AS DATETIME) AS at \
+             FROM proposals \
+             WHERE equivalence_key IN ({placeholders}) AND status = 'rejected' \
+               AND deleted_at IS NULL AND decided_at IS NOT NULL \
+             GROUP BY equivalence_key"
+        );
+        let mut q = sqlx::query(&sql);
+        for k in keys {
+            q = q.bind(*k);
+        }
+        let mut out = HashMap::new();
+        for r in q.fetch_all(&mut *conn).await? {
+            out.insert(r.try_get("k")?, r.try_get("at")?);
+        }
+        Ok(out)
     }
 
     /// The subject parts (target, `line`, `field`, `name`) of the live

@@ -46,19 +46,25 @@ test.describe("Story 11-15 — proposal history and resubmission delay", () => {
     await expect(input).toHaveAttribute("min", "0");
     await expect(input).toHaveAttribute("max", "3650");
 
-    await input.fill("45");
-    await page.locator(DELAY_SAVE).click();
-    await expect(page.locator("#feedback-list").getByText(SAVED)).toBeVisible({ timeout: 10000 });
+    try {
+      await input.fill("45");
+      await page.locator(DELAY_SAVE).click();
+      await expect(page.locator("#feedback-list").getByText(SAVED)).toBeVisible({
+        timeout: 10000,
+      });
 
-    await page.goto("/admin?tab=system");
-    await expect(page.locator(DELAY_INPUT)).toHaveValue("45");
-
-    // Restore the seeded default.
-    await page.locator(DELAY_INPUT).fill("90");
-    await page.locator(DELAY_SAVE).click();
-    await expect(page.locator("#feedback-list").getByText(SAVED).last()).toBeVisible({
-      timeout: 10000,
-    });
+      await page.goto("/admin?tab=system");
+      await expect(page.locator(DELAY_INPUT)).toHaveValue("45");
+    } finally {
+      // Restore the seeded default even when an assertion failed (the
+      // settings row is stack-global).
+      await page.goto("/admin?tab=system");
+      await page.locator(DELAY_INPUT).fill("90");
+      await page.locator(DELAY_SAVE).click();
+      await expect(page.locator("#feedback-list").getByText(SAVED).last()).toBeVisible({
+        timeout: 10000,
+      });
+    }
     await page.goto("/admin?tab=system");
     await expect(page.locator(DELAY_INPUT)).toHaveValue("90");
   });

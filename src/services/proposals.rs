@@ -325,9 +325,13 @@ impl fmt::Display for ProposalError {
                     rfc3339_utc(b.rejected_at)
                 )?;
                 match &b.own {
-                    Some((id, Some(reason))) => {
-                        write!(f, " (your proposal {id}; reason: \"{reason}\")")?
-                    }
+                    // Quoted as a JSON string: line breaks and quotes in
+                    // the librarian's text cannot break the framing.
+                    Some((id, Some(reason))) => write!(
+                        f,
+                        " (your proposal {id}; reason: {})",
+                        serde_json::Value::String(reason.clone())
+                    )?,
                     Some((id, None)) => write!(f, " (your proposal {id}; no reason given)")?,
                     None => {}
                 }
@@ -728,8 +732,6 @@ impl ProposalService {
                 api_key_id: proposal.api_key_id,
             });
         }
-        // Story 11-15 (FR136): after the key lock, before anything else.
-        let equivalence_key = check_resubmission(tx, proposal).await?;
         let states = read_target_states(
             tx,
             proposal.items.iter().filter_map(|i| i.target),
@@ -769,6 +771,10 @@ impl ProposalService {
                 proposed_values_json: json,
             });
         }
+        // Story 11-15 (FR136): after the key lock (11-12 lock order) and
+        // after the targets are known to exist, so a deleted or moved
+        // target is reported as such rather than as "wait until…".
+        let equivalence_key = check_resubmission(tx, proposal).await?;
 
         let id = ProposalModel::insert_proposal(
             tx,
