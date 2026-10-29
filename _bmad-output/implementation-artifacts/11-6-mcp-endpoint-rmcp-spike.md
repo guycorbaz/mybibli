@@ -52,7 +52,7 @@ Conclusion: no fallback to a hand-written transport is needed. The fallback seam
 7. **AC7 — body size (NFR45).** The maximum request body on `/api/mcp` is set explicitly: `MAX_COVER_SIZE` (10 MiB) base64-inflated (×4/3, rounded up) + 1 MiB JSON envelope ≈ 14.3 MiB; an oversized POST → 413.
 8. **AC8 — CSRF (AR28).** `/api/mcp` works without a CSRF token through the `/api/*` short-circuit; `csrf_exempt_routes_frozen` stays green, the allowlist is unchanged.
 9. **AC9 — tests.** Rust integration tests (`tests/mcp_endpoint.rs`, full `build_router_with_mcp`, isolated DB) cover AC2–AC8; unit tests cover config parsing, the body-limit arithmetic, the confinement walk and the tool registry; one E2E journey creates a `propose` key in Admin → API keys and drives `initialize` → `tools/list` → `tools/call get_title` through `page.request`. The MCP Inspector check and a real Claude Code session are manual steps recorded in the PR (D-11-6-8).
-10. **AC10 — spike record (AR31).** The story file records crates added, clean release build-time delta, release binary-size delta, and the frictions met with Axum 0.8 and the middleware stack — input for story 11-22 and Kesh Q8.
+10. **AC10 — spike record (AR31).** The story file records crates added, clean release build-time delta, release binary-size delta, and the frictions met with Axum 0.8 and the middleware stack — input for story 11-22.
 
 ## Tasks / Subtasks
 
@@ -118,7 +118,6 @@ Integration tests drive the full router (`build_router_with_mcp`) with `oneshot`
 - [Source: src/middleware/api_key.rs] — `ApiKeyPropose`.
 - [Source: src/middleware/csrf.rs:140] — `/api/*` short-circuit.
 - [Source: rmcp-3.8.0 src/transport/streamable_http_server/tower.rs] — config, Host/Origin, stateless handling.
-- [Source: ~/devel/kesh/_bmad-output/planning-artifacts/epic-32-spike-mcp.md §5] — Kesh's hand-written choice and Q8 (read only).
 - [Source: _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md] — D-11-6-*.
 
 ## Spike record (AR31) — measured 2026-10-28
@@ -148,7 +147,7 @@ Frictions met (Axum 0.8 + mybibli middleware stack):
 8. **API surface:** `ServerHandler` with `async fn` in the impl (RPITIT) and `#[non_exhaustive]` model types with builder constructors (`Tool::new(...).with_title(...)`, `CallToolResult::structured`, `ListToolsResult::with_all_items`) — no macro needed; the hand-written handler is ~100 lines.
 9. **Major-upgrade cost (for 11-22):** everything rmcp-specific is in `src/mcp/transport.rs` (≈ 200 lines incl. tests); the trait, tools, config and guard are rmcp-free. The confinement test `mcp::tests::rmcp_is_confined_to_the_transport_file` fails if that ever changes.
 
-For Kesh Q8: on this stack rmcp cost ≈ 3 MiB of binary, ≈ 4 s of clean release build, 16 lock entries (including a third `syn` major), and an integration done in one working session with no blocking friction; it brought both protocol eras, SEP-2243 header validation, Host/Origin checks and a streaming body cap that a hand-written transport would have to re-implement and test.
+In short: on this stack rmcp cost ≈ 3 MiB of binary, ≈ 4 s of clean release build, 16 lock entries (including a third `syn` major), and an integration done in one working session with no blocking friction; it brought both protocol eras, SEP-2243 header validation, Host/Origin checks and a streaming body cap that a hand-written transport would have to re-implement and test.
 
 ## Dev Agent Record
 

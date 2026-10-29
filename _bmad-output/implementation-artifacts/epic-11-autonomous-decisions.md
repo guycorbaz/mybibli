@@ -1234,14 +1234,14 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 
 ### D-11-22-2 — Stay on `rmcp =3.8.0`
 **Context:** the checkpoint rule (epics.md § 11.22) allows an upgrade only for an open advisory, a protocol revision a targeted client needs, or a fix we need. On 2026-10-29 no version is published after 3.8.0 (2026-10-26); the only unreleased upstream commit touches the stdio transport; all seven rmcp advisories end before 3.8.0; `cargo audit` reports no vulnerability; Claude Code 2.1.312 negotiates `2026-07-28` with 3.8.0.
-**Chosen:** keep 3.8.0 and the `=` pin; no fallback to a hand-written transport (weight ≈ 3 MiB / +9 % clean build, seam unchanged since 11-6). Checkpoint record and Report for Kesh in the story file.
+**Chosen:** keep 3.8.0 and the `=` pin; no fallback to a hand-written transport (weight ≈ 3 MiB / +9 % clean build, seam unchanged since 11-6). Checkpoint record and rmcp cost record in the story file.
 **Rejected:** a hand-written transport behind `McpTool` (re-implements Host/Origin, body cap, negotiation, SEP-2243 checks for no gain); tracking upstream `main`.
 **Reversible:** yes — the daily advisory scan (#481) still applies until the release.
 
 ### D-11-22-3 — rmcp's empty answers for undeclared capabilities kept, pinned by an inventory test
 **Context:** the new inventory test shows rmcp 3.8.0 answering `prompts/list`, `resources/list`, `resources/templates/list` and `completion/complete` with empty successes although `initialize` / `server/discover` declare only `tools`; `ping` is answered on 2025-11-25 only (rmcp follows the session-less revision, which dropped it).
 **Chosen:** keep the defaults (they carry no data — tested; clients gate those calls on the declared capabilities anyway) and pin every method's outcome on both revisions in `tests/mcp_interop.rs`, so an upgrade that changes a default is decided, not discovered.
-**Rejected:** four `-32601` overrides in `transport.rs` before the release (behaviour change with no user-visible benefit, late in the epic; noted for Kesh as the cost of a closed inventory).
+**Rejected:** four `-32601` overrides in `transport.rs` before the release (behaviour change with no user-visible benefit, late in the epic; recorded as the cost of a closed inventory).
 **Reversible:** yes.
 
 ### D-11-22-4 — Weight measured against an rmcp-free variant of HEAD, at `-j 2`
