@@ -114,6 +114,9 @@ pub struct AppliedCover {
     /// write succeeded after the commit).
     pub installed: bool,
     staged_file: String,
+    /// Whether the cover was already marked as set by hand before this
+    /// acceptance (a failed promotion then keeps the mark).
+    was_hand_set: bool,
 }
 
 impl AppliedCover {
@@ -126,6 +129,7 @@ impl AppliedCover {
             replaced,
             installed,
             staged_file: String::new(),
+            was_hand_set: false,
         }
     }
 }
@@ -221,61 +225,67 @@ async fn accept_in(
         title_id: title.id,
         // "Changed from no cover" = the title had one.
         replaced: cover_changed(None, title.cover_image_url.as_deref()),
-        title: title.title,
+        title: title.title.clone(),
         installed: false,
         staged_file: stored.staged_file,
+        was_hand_set: title
+            .parsed_manually_edited_fields()
+            .iter()
+            .any(|f| f == "cover_image_url"),
     }))
 }
 
 /// Promote the staged file and record its URL; `false` (logged) when
 /// either fails. A failed promotion leaves the files and the URL as they
-/// were; a URL that cannot be written (tried twice) after a successful
-/// promotion leaves the new image in `covers/{id}.jpg` under the old URL.
+/// were and takes back the "set by hand" mark the decision added (so
+/// automatic cover fetches keep working for the title); a URL write that
+/// fails after a successful promotion leaves the new image in
+/// `covers/{id}.jpg` under the old URL (logged — D-11-18-10).
 async fn install(pool: &DbPool, dirs: CoverDirs<'_>, applied: &AppliedCover) -> bool {
-    let Some(staging) = dirs.staging_dir else {
-        tracing::error!(
-            title_id = applied.title_id,
-            "Accepted cover not installed: staging unavailable"
-        );
-        return false;
+    let promoted = match dirs.staging_dir {
+        None => Err("staging unavailable".to_string()),
+        Some(staging) => cover_staging::promote(
+            staging,
+            dirs.covers_dir,
+            &applied.staged_file,
+            applied.title_id,
+        )
+        .await
+        .map_err(|e| e.to_string()),
     };
-    let path = match cover_staging::promote(
-        staging,
-        dirs.covers_dir,
-        &applied.staged_file,
-        applied.title_id,
-    )
-    .await
-    {
+    let path = match promoted {
         Ok(path) => path,
         Err(e) => {
             tracing::error!(title_id = applied.title_id, error = %e, "Accepted cover not installed");
+            if !applied.was_hand_set
+                && let Err(e) =
+                    TitleModel::unmark_manually_edited(pool, applied.title_id, "cover_image_url")
+                        .await
+            {
+                tracing::warn!(title_id = applied.title_id, error = %e, "Hand-set cover mark not removed");
+            }
             return false;
         }
     };
     let url = cache_busted(&path, chrono::Utc::now().timestamp());
-    let mut last_error = None;
-    for _ in 0..2 {
-        match TitleModel::set_cover_url(pool, applied.title_id, &url).await {
-            Ok(true) => return true,
-            Ok(false) => {
-                tracing::warn!(
-                    title_id = applied.title_id,
-                    "Accepted cover promoted but the title was deleted meanwhile"
-                );
-                return false;
-            }
-            Err(e) => last_error = Some(e),
+    match TitleModel::set_cover_url(pool, applied.title_id, &url).await {
+        Ok(true) => true,
+        Ok(false) => {
+            tracing::warn!(
+                title_id = applied.title_id,
+                "Accepted cover promoted but the title was deleted meanwhile"
+            );
+            false
+        }
+        Err(e) => {
+            tracing::error!(
+                title_id = applied.title_id,
+                error = %e,
+                "Accepted cover promoted but its URL not recorded"
+            );
+            false
         }
     }
-    if let Some(e) = last_error {
-        tracing::error!(
-            title_id = applied.title_id,
-            error = %e,
-            "Accepted cover promoted but its URL not recorded"
-        );
-    }
-    false
 }
 
 #[cfg(test)]

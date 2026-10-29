@@ -384,6 +384,18 @@ impl CoverService {
         title_id: u64,
         covers_dir: &Path,
     ) -> Result<String, CoverError> {
+        let bytes = Self::download_bytes(client, cover_url).await?;
+        Self::process_and_save_bytes(&bytes, title_id, covers_dir).await
+    }
+
+    /// The raw image bytes at `cover_url` (bounded by `MAX_COVER_SIZE`),
+    /// not yet decoded nor written. Story 11-18: the background fetch
+    /// downloads first and writes `covers/{id}.jpg` only after checking,
+    /// under the title row lock, that no cover was set by hand meanwhile.
+    pub async fn download_bytes(
+        client: &reqwest::Client,
+        cover_url: &str,
+    ) -> Result<Vec<u8>, CoverError> {
         // Prefer https:// over a declared http:// scheme (provider
         // thumbnails are often listed as http:// but serve https fine).
         // #427: on a CONNECTION-level failure of the upgraded URL, fall
@@ -446,8 +458,7 @@ impl CoverService {
             }
             bytes.extend_from_slice(&chunk);
         }
-
-        Self::process_and_save_bytes(&bytes, title_id, covers_dir).await
+        Ok(bytes)
     }
 
     /// Issue #335 — decode + resize + JPEG-encode + persist raw image bytes.

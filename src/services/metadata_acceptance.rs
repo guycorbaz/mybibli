@@ -148,15 +148,16 @@ pub fn parse_items(items: &[ProposalItemRow]) -> Result<StoredMetadata, String> 
             let parsed = list
                 .iter()
                 .map(|c| {
+                    let role_id = c.get("role_id")?.as_u64()?;
                     Some(StoredContributor {
                         name: c.get("name")?.as_str()?.to_string(),
-                        role_id: c.get("role_id")?.as_u64()?,
+                        role_id,
                         role: c
                             .get("role")
                             .and_then(Value::as_str)
                             .filter(|r| !r.trim().is_empty())
                             .map(str::to_string)
-                            .unwrap_or_else(|| format!("#{}", c["role_id"])),
+                            .unwrap_or_else(|| format!("#{role_id}")),
                     })
                 })
                 .collect::<Option<Vec<_>>>()
@@ -221,6 +222,21 @@ pub fn revalidate(stored: &StoredMetadata, current_year: i32) -> Result<Proposed
         map.insert("contributors".into(), Value::Array(entries));
     }
     validate_fields(&map, &roles, current_year).map_err(|e| e.to_string())
+}
+
+/// Validation keeps every contributor entry, in order, with its stored
+/// role id, or fails as a whole; checked before anything is decided, so
+/// the apply can pair the stored and validated lists (pure).
+pub fn paired_contributors(stored: &StoredMetadata, valid: &ProposedFields) -> Result<(), String> {
+    match (&stored.contributors, &valid.contributors) {
+        (None, None) => Ok(()),
+        (Some(s), Some(v))
+            if s.len() == v.len() && s.iter().zip(v).all(|(a, b)| a.role_id == b.role_id) =>
+        {
+            Ok(())
+        }
+        _ => Err("contributors changed in validation".to_string()),
+    }
 }
 
 /// A text value as compared: normal form, empty as absent.
@@ -297,6 +313,7 @@ async fn accept_in(
     let (_, items) = lock_pending_in(conn, id, version, &[ProposalKind::Metadata]).await?;
     let stored = parse_items(&items).map_err(AcceptError::Invalid)?;
     let valid = revalidate(&stored, chrono::Utc::now().year()).map_err(AcceptError::Invalid)?;
+    paired_contributors(&stored, &valid).map_err(AcceptError::Invalid)?;
 
     let check = ProposalService::check_staleness_in(conn, id).await?;
     if check.status != crate::models::proposal::ProposalStatus::Pending {
@@ -409,25 +426,19 @@ async fn accept_in(
         contributors_present: Vec::new(),
     };
     if let (Some(list), Some(valid_list)) = (&stored.contributors, &valid.contributors) {
-        // `valid_list` is in the stored order (validation keeps it).
-        // Validation keeps every entry, in order, or fails as a whole.
-        if list.len() != valid_list.len() {
-            return Err(AcceptError::Invalid(
-                "contributors changed in validation".to_string(),
-            ));
-        }
+        // Paired before the decision (`paired_contributors`).
         for (c, v) in list.iter().zip(valid_list) {
             let contributor = ContributorService::find_or_create_in(conn, &v.name).await?;
             let role = live_roles
                 .iter()
-                .find(|(rid, _)| *rid == v.role_id)
+                .find(|(rid, _)| *rid == c.role_id)
                 .map(|(_, name)| name.clone())
                 .unwrap_or_else(|| c.role.clone());
-            if !credits.insert((contributor.id, v.role_id)) {
+            if !credits.insert((contributor.id, c.role_id)) {
                 applied.contributors_present.push((contributor.name, role));
                 continue;
             }
-            TitleContributorModel::add_to_title_in(conn, title.id, contributor.id, v.role_id)
+            TitleContributorModel::add_to_title_in(conn, title.id, contributor.id, c.role_id)
                 .await?;
             applied.contributors_added.push((contributor.name, role));
         }
@@ -604,6 +615,26 @@ mod tests {
             let p = parse_items(&[row(1, 7, bad.clone())]).unwrap();
             assert!(revalidate(&p, 2026).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn contributors_pair_by_stored_role_id() {
+        let items = vec![row(
+            1,
+            7,
+            json!({"line":"field","field":"contributors","current":[],
+                   "proposed":[{"name":"A","role":"","role_id":2},{"name":"B","role":"X","role_id":5}]}),
+        )];
+        let stored = parse_items(&items).unwrap();
+        assert_eq!(stored.contributors.as_ref().unwrap()[0].role, "#2");
+        let valid = revalidate(&stored, 2026).unwrap();
+        assert!(paired_contributors(&stored, &valid).is_ok());
+        let mut other = valid.clone();
+        other.contributors.as_mut().unwrap()[1].role_id = 9;
+        assert!(paired_contributors(&stored, &other).is_err());
+        other.contributors.as_mut().unwrap().pop();
+        assert!(paired_contributors(&stored, &other).is_err());
+        assert!(paired_contributors(&stored, &ProposedFields::default()).is_err());
     }
 
     #[test]

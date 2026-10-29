@@ -371,6 +371,37 @@ impl TitleModel {
         Ok(())
     }
 
+    /// Story 11-18 — take `field` out of `manually_edited_fields` (an
+    /// accepted cover whose file could not be installed), in a short
+    /// transaction under the title row lock.
+    pub async fn unmark_manually_edited(
+        pool: &DbPool,
+        id: u64,
+        field: &str,
+    ) -> Result<(), AppError> {
+        let mut tx = pool.begin().await?;
+        let Some(title) = Self::find_by_id_in(&mut tx, id, true).await? else {
+            return Ok(());
+        };
+        let kept: Vec<String> = title
+            .parsed_manually_edited_fields()
+            .into_iter()
+            .filter(|f| f != field)
+            .collect();
+        let json = (!kept.is_empty())
+            .then(|| serde_json::to_string(&kept).unwrap_or_else(|_| "[]".into()));
+        sqlx::query(
+            "UPDATE titles SET manually_edited_fields = ?, updated_at = NOW() \
+             WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(json)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Story 11-18 — record a promoted cover's URL; `false` when the
     /// title is gone (soft-deleted since the decision). No `version`
     /// bump: the decision already bumped it.

@@ -247,8 +247,14 @@ test.describe("Story 11-18 — accept a metadata or cover proposal", () => {
     };
 
     await add();
+    // The page as served lists the credit with its Remove button.
+    await page.reload();
     await list.locator(`button[aria-label$="${name}"]`).click();
-    await expect(list).not.toContainText(name, { timeout: 10000 });
+    await expect(page.locator("#feedback-list .feedback-entry").first()).toBeVisible({
+      timeout: 10000,
+    });
+    await page.reload();
+    await expect(list).not.toContainText(name);
 
     // Added back: no "already has this role" error, the credit is shown.
     await add();

@@ -678,6 +678,9 @@ async fn a_cover_that_cannot_be_promoted_is_accepted_but_not_installed(pool: DbP
     assert_eq!(decision(&pool, id).await.0, "accepted");
     assert_eq!(cover_url(&pool, title).await, None, "no URL without a file");
     assert!(f.staging.join(&staged).exists(), "staged file kept");
+    // The "set by hand" mark the decision added is taken back, so
+    // automatic cover fetches still serve this title.
+    assert!(!edited(&fields(&pool, title).await.4).contains(&"cover_image_url".to_string()));
 }
 
 #[sqlx::test(migrations = "./migrations")]
