@@ -148,6 +148,91 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.21.0}\label{sec:whats-new-1.21.0}
+
+La version 1.21.0 est une version mineure sur la 1.20.1 ; elle clôt
+l'epic que la 1.20.1 avait ouvert (\#493). Elle apporte \emph{six
+migrations additives}, exécutées automatiquement au premier démarrage
+(nouvelles tables pour les propositions et les tomes attendus, nouvelle
+portée de clé) : faites d'abord une sauvegarde de la base, comme pour
+toute mise à jour (chapitre~\ref{ch:backup}). Aucun réglage à modifier
+pour une installation qui n'utilise pas d'agent IA.
+
+\begin{itemize}
+  \item \textbf{Des agents IA, sous surveillance.} mybibli intègre
+        désormais un serveur MCP sur \texttt{/api/mcp}. Un agent IA ---
+        Claude Code, Hermes Agent ou tout client MCP en HTTP
+        \emph{streamable} --- se connecte avec une nouvelle clé d'API
+        \textbf{Lecture + propositions} (Administration
+        \(\rightarrow\) Clés d'API), lit le catalogue par douze outils
+        et \emph{propose} : une nouvelle série et les tomes qui vous
+        manquent, des ajouts à une série, un sous-titre, un résumé, un
+        éditeur, une année, une cote Dewey ou un contributeur
+        manquants, une couverture --- en citant toujours ses sources.
+        Il ne modifie jamais le catalogue lui-même. Le
+        chapitre~\ref{ch:agents}, nouveau, décrit toute la démarche.
+  \item \textbf{La page Propositions.} Les Bibliothécaires et les
+        Admins trouvent une entrée \textbf{Propositions} dans la barre
+        de navigation, avec un badge qui compte les propositions en
+        attente, et un indicateur \textbf{Propositions en attente} sur
+        la page d'accueil. Chaque proposition montre ses sources, les
+        valeurs actuelles et proposées côte à côte (avec les badges
+        \emph{Nouveau} / \emph{Modifié}) ou la couverture actuelle et
+        la couverture proposée. Vous pouvez modifier ou retirer des
+        lignes, accepter, ou refuser avec un motif que l'agent peut
+        lire. Une proposition dont le sujet a changé entre-temps devient
+        \emph{Périmée} et rien n'est appliqué. Les valeurs acceptées
+        comptent comme saisies à la main : un téléchargement
+        automatique de métadonnées ne les écrase jamais
+        (section~\ref{sec:proposals}).
+  \item \textbf{Délai avant nouvelle soumission.} Après un refus, une
+        proposition équivalente est refusée pendant 90 jours, quelle
+        que soit la clé qui la dépose. Le délai est un nouveau réglage
+        sous Administration \(\rightarrow\) Système \(\rightarrow\)
+        Propositions, de 0 à 3650 jours
+        (section~\ref{sec:agents-delay}).
+  \item \textbf{Tomes attendus.} Une série peut désormais nommer les
+        tomes que vous ne possédez pas encore --- à la main, avec ou
+        sans agent, ou depuis une proposition acceptée. Ils occupent
+        leur trou sur la page de la série, passent dans la wish list en
+        un clic, et prennent leur position automatiquement quand vous
+        scannez le livre (section~\ref{sec:expected-tomes}).
+  \item \textbf{\#496 \string— la barre de navigation reste en haut}
+        quand vous faites défiler. Elle passe désormais au menu
+        hamburger en dessous de 1280 pixels au lieu de 1024, pour que
+        toutes ses entrées --- y compris la nouvelle entrée
+        Propositions --- tiennent sur une ligne dans toutes les langues
+        (section~\ref{sec:navbar}).
+\end{itemize}
+
+\subsection*{Pour l'exploitant}
+
+\begin{itemize}
+  \item \textbf{Le point d'accès ne répond que sur le réseau local, et
+        qu'aux noms connus.} Par défaut, \texttt{/api/mcp} n'accepte
+        que les requêtes adressées à \texttt{localhost}. Pour qu'un
+        agent sur un autre ordinateur puisse se connecter, renseignez
+        \texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS} avec le nom ou l'adresse
+        qu'il utilise pour joindre le NAS, puis redémarrez
+        (section~\ref{sec:agents-hosts}). Le \texttt{docker-compose.yml}
+        de la 1.21.0 transmet cette variable et
+        \texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS} ; si vous gardez une
+        copie plus ancienne, téléchargez la nouvelle ou ajoutez les
+        deux lignes.
+  \item \textbf{Les couvertures proposées attendent dans le volume des
+        couvertures}, dans un dossier caché \texttt{.staging} qui n'est
+        jamais servi et que la purge planifiée nettoie. Rien à
+        configurer ; vos sauvegardes du volume des couvertures
+        l'incluent (section~\ref{sec:agents-staging}).
+  \item \textbf{Une nouvelle dépendance}, la bibliothèque MCP
+        \texttt{rmcp}, figée sur une version exacte et mise à jour
+        seulement pour un avis de sécurité.
+\end{itemize}
+
+L'ISBN-10 au scan, la Library of Congress par SRU et le triangle des
+\emph{Ajouts récents}, qui font aussi partie de cet epic, sont déjà
+sortis avec la 1.20.1 (ci-dessous).
+
 \section{Nouveautés de la 1.20.1}\label{sec:whats-new-1.20.1}
 
 La version 1.20.1 est une version corrective sur la 1.20.0.

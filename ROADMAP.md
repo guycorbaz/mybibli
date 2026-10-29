@@ -32,24 +32,77 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.20.1`](https://github.com/guycorbaz/mybibli/releases/tag/v1.20.1)**
-(2026-10-27) — three production fixes: an ISBN-10 is recognised at
-scan, the Library of Congress answers again through SRU, and the
-*Recent additions* triangle turns. **No migration.** The section below
-has the detail; every release before it has its own section further
-down, and this is the file that carries them — the README quotes only
-the current release, and the website tells the same story for a
-different audience.
+**Current stable: [`v1.21.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.21.0)**
+(2026-10-29) — AI agents, under supervision: a built-in MCP server
+through which an AI agent proposes series, missing tomes, metadata and
+covers, and a Proposals page where the librarian decides. Expected
+tomes and the sticky navigation bar ship with it. **Six additive
+migrations.** The section below has the detail; every release before it
+has its own section further down, and this is the file that carries
+them — the README quotes only the current release, and the website
+tells the same story for a different audience.
 
-**In progress: epic 11** — a built-in MCP server that lets a local AI
-agent propose series, metadata and covers for the librarian to review
-([#493](https://github.com/guycorbaz/mybibli/issues/493)), led by the
-three fixes shipped in v1.20.1 and followed by the sticky navigation
-bar ([#496](https://github.com/guycorbaz/mybibli/issues/496)). v1.20.1
-is the planned intermediate release; the rest of the epic ships when
-it closes. A base-path setting for reverse proxies
-([#492](https://github.com/guycorbaz/mybibli/issues/492)) is queued
-for after it. Everything else open lives in the issue tracker.
+**Next:** no epic is scheduled yet. Two change requests are the
+candidates, to be ordered together because both touch the page shell:
+a base-path setting for reverse proxies
+([#492](https://github.com/guycorbaz/mybibli/issues/492)) and a
+collapsible left sidebar in place of the top navigation bar
+([#547](https://github.com/guycorbaz/mybibli/issues/547)). Everything
+else open lives in the issue tracker.
+
+## v1.21.0 — AI agents, under supervision *(shipped)*
+
+Shipped 2026-10-29. The closing release of epic 11
+([#493](https://github.com/guycorbaz/mybibli/issues/493)), whose three
+leading fixes already shipped in v1.20.1. **Six additive migrations**
+(the `propose` key scope, proposals and their items, expected tomes,
+the equivalence key, the series a creation produced, line edits); no
+existing column changes.
+
+- **MCP server at `/api/mcp`.** An AI agent — Claude Code, Hermes Agent
+  or any MCP client over streamable HTTP — connects with a new
+  *Read + propose* API key (`mybibli_pr_…`, minted in Admin → API keys)
+  and sees twelve tools: eight read tools (`search_titles`, `get_title`,
+  `search_contributors`, `list_series`, `get_series`,
+  `list_titles_without_cover`, `list_titles_with_incomplete_metadata`,
+  `list_my_proposals`) and four propose tools (`propose_series_create`,
+  `propose_series_attach`, `propose_title_metadata`, `propose_cover`).
+  Every proposal cites its sources; the agent never changes the
+  catalog. Built on `rmcp` pinned at `=3.8.0`, confined to `src/mcp/`.
+  **LAN only:** requests are refused unless their `Host` is in
+  `MYBIBLI_MCP_ALLOWED_HOSTS` (default `localhost,127.0.0.1,::1`) and
+  any `Origin` is in `MYBIBLI_MCP_ALLOWED_ORIGINS` (default empty) —
+  DNS-rebinding defence, deployment settings on purpose.
+- **Proposals page (`/proposals`).** A navigation entry with a
+  pending-count badge and a home-page indicator for Librarians and
+  Admins. List with status and kind filters; detail with the sources,
+  current and proposed values side by side (*New* / *Changed* badges),
+  current and proposed cover. Lines can be edited or removed before
+  accepting (with an audit trail); accept applies under locks and
+  re-checks the live catalog — a proposal whose subject changed is
+  marked *Outdated* and applies nothing. Accepted fields and covers
+  count as edited by hand, so automatic metadata downloads never
+  overwrite them. Reject takes an optional reason the agent reads back.
+- **Resubmission delay.** After a rejection, an equivalent proposal is
+  refused library-wide for 90 days by default (Admin → System →
+  Proposals, 0–3650 days).
+- **Expected tomes.** A series can name the tomes you do not own yet —
+  by hand or from an accepted proposal. They fill their gap on the
+  series page, go to the wish list in one click, and take their
+  position automatically when the book is catalogued.
+- **Cover staging.** A proposed cover is validated and re-encoded, then
+  waits in `<COVERS_DIR>/.staging` on the existing covers volume — never
+  served by `/covers`, shown to librarians only while pending, cleaned
+  up by the scheduled purge. The server never downloads an
+  agent-supplied URL. Revoking a key marks its pending proposals
+  outdated and deletes their staged covers.
+- [#496](https://github.com/guycorbaz/mybibli/issues/496) — **the
+  navigation bar stays at the top** while scrolling, and switches to
+  the hamburger menu below 1280 px (was 1024 px) so every entry fits
+  on one line in all four languages.
+- **Documentation.** New manual chapter 13, "AI agents and proposals"
+  (EN + FR): connecting an MCP client, the tools, the review workflow,
+  expected tomes, staging, and an MCP Inspector check for operators.
 
 ## v1.20.1 — three production fixes *(shipped)*
 
