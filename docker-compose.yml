@@ -5,7 +5,8 @@
 # Persistent state lives in three named volumes (all survive `docker compose
 # down` AND `docker compose up -d` after a `pull`):
 #   - `mybibli_db_data`  — MariaDB data directory
-#   - `mybibli_covers`   — downloaded cover JPGs (issue #213)
+#   - `mybibli_covers`   — downloaded cover JPGs (issue #213), plus `.staging/`
+#                          (agent-proposed covers awaiting review, never served)
 #   - `mybibli_logs`     — rotated daily log files (CR #301, v1.7.0)
 # Back the data + covers volumes up together — losing one without the other
 # will surface as half-broken (DB references that point at missing covers or

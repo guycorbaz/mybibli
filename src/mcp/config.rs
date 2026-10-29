@@ -17,7 +17,9 @@
 //!   directly are not supported: no CORS headers are sent (D-11-6-13).
 //!   Requests without an `Origin` header always pass this check.
 
-use crate::services::cover::MAX_COVER_SIZE;
+use std::time::Duration;
+
+use crate::services::cover::MAX_PROPOSED_COVER_BYTES;
 
 /// Environment variable naming the allowed `Host` values.
 pub const ALLOWED_HOSTS_ENV: &str = "MYBIBLI_MCP_ALLOWED_HOSTS";
@@ -30,12 +32,19 @@ pub const DEFAULT_ALLOWED_HOSTS: &[&str] = &["localhost", "127.0.0.1", "::1"];
 /// JSON-RPC envelope allowance on top of the largest base64 payload.
 const ENVELOPE_ALLOWANCE_BYTES: usize = 1024 * 1024;
 
-/// Maximum POST body accepted on `/api/mcp` (NFR45, D-11-6-5): the cover
-/// bound base64-encoded (4 bytes per 3, rounded up) plus a 1 MiB JSON
-/// envelope. Derived from [`MAX_COVER_SIZE`] so the two cannot drift.
+/// Maximum POST body accepted on `/api/mcp` (NFR45, D-11-6-5, #514):
+/// the largest image `propose_cover` accepts, base64-encoded (4 bytes per
+/// 3, rounded up), plus a 1 MiB JSON envelope (≈ 3.7 MiB). Derived from
+/// [`MAX_PROPOSED_COVER_BYTES`] so the two cannot drift.
 pub const fn max_request_body_bytes() -> usize {
-    MAX_COVER_SIZE.div_ceil(3) * 4 + ENVELOPE_ALLOWANCE_BYTES
+    MAX_PROPOSED_COVER_BYTES.div_ceil(3) * 4 + ENVELOPE_ALLOWANCE_BYTES
 }
+
+/// Story 11-14 (#514) — time allowed to one `/api/mcp` request, body
+/// upload included; past it the client gets `408 Request Timeout` and
+/// the request's buffer is released. Generous for a LAN client sending
+/// a few MiB and a cover being re-encoded.
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Transport-independent configuration of the MCP endpoint. A
 /// hand-written transport (AR27 fallback) would consume the same struct.
@@ -180,10 +189,10 @@ mod tests {
 
     #[test]
     fn body_limit_is_base64_cover_bound_plus_envelope() {
-        // 10 MiB → ceil(10 MiB / 3) * 4 = 13 981 016 bytes, + 1 MiB.
-        assert_eq!(MAX_COVER_SIZE, 10 * 1024 * 1024);
-        assert_eq!(max_request_body_bytes(), 13_981_016 + 1_048_576);
-        assert!(max_request_body_bytes() > MAX_COVER_SIZE * 4 / 3);
+        // 2 MiB → ceil(2 MiB / 3) * 4 = 2 796 204 bytes, + 1 MiB.
+        assert_eq!(MAX_PROPOSED_COVER_BYTES, 2 * 1024 * 1024);
+        assert_eq!(max_request_body_bytes(), 2_796_204 + 1_048_576);
+        assert!(max_request_body_bytes() > MAX_PROPOSED_COVER_BYTES * 4 / 3);
         assert_eq!(
             McpConfig::default().max_request_body_bytes,
             max_request_body_bytes()

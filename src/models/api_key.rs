@@ -228,8 +228,24 @@ impl ApiKeyModel {
 
     /// Soft-revoke. Optimistic-lock on `version` so two admins
     /// hitting the same Revoke button concurrently produce one
-    /// success + one conflict.
-    pub async fn revoke(pool: &DbPool, id: u64, version: i32) -> Result<u64, AppError> {
+    /// success + one conflict. Test-only since story 11-14: production
+    /// code revokes through `services::cover_proposals::revoke_key`,
+    /// which also marks the key's pending proposals stale (NFR48).
+    #[cfg(test)]
+    pub(crate) async fn revoke(pool: &DbPool, id: u64, version: i32) -> Result<u64, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::revoke_in(&mut conn, id, version).await
+    }
+
+    /// [`Self::revoke`] on a caller-held connection (story 11-14 marks the
+    /// key's pending proposals stale in the same transaction; this UPDATE
+    /// locks the key row first, the order `ProposalModel::lock_filing_key`
+    /// documents).
+    pub async fn revoke_in(
+        conn: &mut sqlx::MySqlConnection,
+        id: u64,
+        version: i32,
+    ) -> Result<u64, AppError> {
         let result = sqlx::query(
             "UPDATE api_keys \
              SET revoked_at = NOW(), version = version + 1 \
@@ -237,7 +253,7 @@ impl ApiKeyModel {
         )
         .bind(id)
         .bind(version)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
         Ok(result.rows_affected())
     }

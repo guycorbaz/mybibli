@@ -953,6 +953,56 @@ impl ProposalService {
     }
 }
 
+/// The effect of revoking an API key on its proposals (story 11-14).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KeyRevocation {
+    /// The key's proposals that were pending and are now `stale`.
+    pub stale_proposal_ids: Vec<u64>,
+    /// Their staged covers, to discard once committed.
+    pub staged_files: Vec<String>,
+}
+
+impl ProposalService {
+    /// Revoke an API key (optimistic lock on its `version`) and, in the
+    /// same transaction, mark its pending proposals `stale` (NFR48; no
+    /// decider, `decided_at` set — D-11-9-7). Lock order: the key row
+    /// (the `UPDATE`), then the proposals — see
+    /// `ProposalModel::lock_filing_key`. Returns `None` when the key was
+    /// not revoked (unknown, already revoked or deleted, or `version`
+    /// moved); nothing is changed then. The caller discards
+    /// [`KeyRevocation::staged_files`] after this returns.
+    pub async fn revoke_key(
+        pool: &DbPool,
+        api_key_id: u64,
+        version: i32,
+    ) -> Result<Option<KeyRevocation>, AppError> {
+        let mut tx = pool.begin().await?;
+        if crate::models::api_key::ApiKeyModel::revoke_in(&mut tx, api_key_id, version).await? == 0
+        {
+            tx.rollback().await?;
+            return Ok(None);
+        }
+        let ids = ProposalModel::lock_pending_of_key(&mut tx, api_key_id).await?;
+        for &id in &ids {
+            ProposalModel::update_status_from_pending(&mut tx, id, &stale_update()).await?;
+        }
+        let staged_files = ProposalModel::staged_cover_files_of(&mut tx, &ids).await?;
+        tx.commit().await?;
+        if !ids.is_empty() {
+            tracing::info!(
+                api_key_id,
+                stale_proposals = ids.len(),
+                staged_covers = staged_files.len(),
+                "API key revoked: pending proposals marked stale"
+            );
+        }
+        Ok(Some(KeyRevocation {
+            stale_proposal_ids: ids,
+            staged_files,
+        }))
+    }
+}
+
 /// Log a committed filing (after the commit, so a failed commit never
 /// leaves a "filed" line for a proposal that does not exist).
 pub fn log_filed(id: u64, proposal: &NewProposal) {

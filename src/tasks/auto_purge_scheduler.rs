@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -6,6 +7,7 @@ use tokio::time::{MissedTickBehavior, interval};
 use crate::config::{AUTO_PURGE_INTERVAL_MAX_SECS, AUTO_PURGE_INTERVAL_MIN_SECS, AppSettings};
 use crate::db::DbPool;
 use crate::services::auto_purge::AutoPurgeService;
+use crate::services::cover_staging;
 
 /// Spawn a background task that runs auto-purge on the cadence configured
 /// in `AppSettings::auto_purge_interval_seconds` (default 24 h, P2). The
@@ -22,7 +24,10 @@ use crate::services::auto_purge::AutoPurgeService;
 ///   - Audit recording lives inside `AutoPurgeService::run_purge` itself
 ///     (P1) so startup + scheduler share the same path. The scheduler is
 ///     intentionally NOT calling `record_purge_audit` again here.
-pub fn spawn(pool: DbPool, settings: Arc<RwLock<AppSettings>>) {
+///   - Story 11-14 (NFR48): each tick also purges the cover staging area
+///     of `covers_dir` ([`cover_staging::purge`]) — staged covers no
+///     pending proposal needs.
+pub fn spawn(pool: DbPool, settings: Arc<RwLock<AppSettings>>, covers_dir: PathBuf) {
     tokio::spawn(async move {
         // Wait 1 minute before first run to avoid competing with startup purge.
         tokio::time::sleep(Duration::from_secs(60)).await;
@@ -59,6 +64,7 @@ pub fn spawn(pool: DbPool, settings: Arc<RwLock<AppSettings>>) {
                     // Task continues; will retry on next scheduled time.
                 }
             }
+            purge_cover_staging(&pool, &covers_dir).await;
 
             // Pick up live settings changes for next cycle. `interval()` does
             // not expose a setter, so we just re-create it when the value
@@ -81,6 +87,21 @@ pub fn spawn(pool: DbPool, settings: Arc<RwLock<AppSettings>>) {
             }
         }
     });
+}
+
+/// Story 11-14 — one pass of the staging purge, logged; errors never stop
+/// the scheduler.
+async fn purge_cover_staging(pool: &DbPool, covers_dir: &Path) {
+    let dir = cover_staging::staging_dir_for(covers_dir);
+    match cover_staging::purge(pool, &dir).await {
+        Ok(stats) => tracing::info!(
+            kept = stats.kept,
+            deleted = stats.deleted,
+            errors = stats.errors,
+            "Cover staging purge completed"
+        ),
+        Err(e) => tracing::error!(error = %e, "Cover staging purge failed"),
+    }
 }
 
 /// Read the auto-purge interval (seconds) from settings, falling back to the

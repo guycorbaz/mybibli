@@ -64,6 +64,8 @@ services:
       # Issue #213 — cover JPGs MUST persist across container upgrades.
       # Without this mount, every `docker compose up -d` after a pull
       # destroys the writable layer and the cataloged covers vanish.
+      # It also holds `.staging/`: covers proposed by an AI
+      # agent and waiting for a librarian's decision (never served).
       - mybibli-covers:/app/covers
       # v1.7.0+ — persistent daily-rotating log files (Operator can
       # `docker compose exec mybibli tail -f /var/log/mybibli/mybibli.log.$(date -u +%Y-%m-%d)`).

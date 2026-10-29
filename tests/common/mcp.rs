@@ -19,12 +19,13 @@ pub const V_LEGACY: &str = "2025-11-25";
 pub const V_MODERN: &str = "2026-07-28";
 
 /// Every tool `/api/mcp` serves, sorted by name.
-pub const ALL_TOOLS: [&str; 10] = [
+pub const ALL_TOOLS: [&str; 11] = [
     "get_series",
     "get_title",
     "list_series",
     "list_titles_with_incomplete_metadata",
     "list_titles_without_cover",
+    "propose_cover",
     "propose_series_attach",
     "propose_series_create",
     "propose_title_metadata",
@@ -32,8 +33,9 @@ pub const ALL_TOOLS: [&str; 10] = [
     "search_titles",
 ];
 
-/// The tools that file proposals (stories 11-12, 11-13); the others read.
-pub const PROPOSE_TOOLS: [&str; 3] = [
+/// The tools that file proposals (stories 11-12..11-14); the others read.
+pub const PROPOSE_TOOLS: [&str; 4] = [
+    "propose_cover",
     "propose_series_attach",
     "propose_series_create",
     "propose_title_metadata",
@@ -60,6 +62,18 @@ pub fn state_with_pool(pool: DbPool) -> mybibli::AppState {
 
 pub fn router(pool: &DbPool) -> Router {
     router_with(pool, McpConfig::default())
+}
+
+/// Story 11-14 — the router over a private covers directory (and its
+/// staging area, created like `main.rs` does).
+pub fn router_with_covers(pool: &DbPool, covers_dir: &std::path::Path) -> Router {
+    std::fs::create_dir_all(mybibli::services::cover_staging::staging_dir_for(
+        covers_dir,
+    ))
+    .unwrap();
+    let mut state = state_with_pool(pool.clone());
+    state.covers_dir = covers_dir.to_path_buf();
+    mybibli::routes::build_router_with_mcp(state, McpConfig::default())
 }
 
 pub fn router_with(pool: &DbPool, config: McpConfig) -> Router {

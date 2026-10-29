@@ -7,7 +7,8 @@
 //! Request path:
 //!
 //! ```text
-//! … → CSRF (`/api/*` short-circuit, AR28) → mcp_guard (this file:
+//! … → CSRF (`/api/*` short-circuit, AR28) → 30 s timeout (#514) →
+//! mcp_guard (this file:
 //! propose key, protocol-version header) → rmcp service (`transport.rs`:
 //! Host/Origin, body cap, JSON-RPC) → `MybibliMcpServer` → tool registry
 //! (`tools/`) → `services/`
@@ -37,7 +38,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
 pub use config::{
-    ALLOWED_HOSTS_ENV, ALLOWED_ORIGINS_ENV, DEFAULT_ALLOWED_HOSTS, McpConfig,
+    ALLOWED_HOSTS_ENV, ALLOWED_ORIGINS_ENV, DEFAULT_ALLOWED_HOSTS, McpConfig, REQUEST_TIMEOUT,
     max_request_body_bytes,
 };
 
@@ -59,6 +60,11 @@ pub fn router(state: AppState, config: &McpConfig) -> Router<AppState> {
     Router::new()
         .route_service(MCP_PATH, service)
         .layer(axum::middleware::from_fn_with_state(state, mcp_guard))
+        // #514: outermost, so the key check and the body read are timed too.
+        .layer(tower_http::timeout::TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            REQUEST_TIMEOUT,
+        ))
 }
 
 /// Transport-independent checks that run before any MCP processing:

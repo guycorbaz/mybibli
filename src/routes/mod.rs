@@ -725,7 +725,14 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .route("/setup/complete", axum::routing::post(setup::complete_submit))
         .route("/health", axum::routing::get(health_check))
         .nest_service("/static", ServeDir::new("static"))
-        .nest_service("/covers", ServeDir::new(&state.covers_dir))
+        // Story 11-14 (#522): the cover staging area lives in
+        // `covers/.staging`; no dot-segment is ever served.
+        .nest_service(
+            "/covers",
+            Router::new()
+                .fallback_service(ServeDir::new(&state.covers_dir))
+                .layer(axum::middleware::from_fn(deny_hidden_cover_paths)),
+        )
         // Logo assets (SVG icon + horizontal wordmark in light/dark + PNG
         // multi-size + favicon.ico). Lives in `docs/mybibli-logo/` (the
         // source-of-truth dir, with README explaining colors / file role
@@ -797,6 +804,20 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .with_state(state);
 
     apply_csp_layer(app, report_only)
+}
+
+/// Story 11-14 — 404 for any `/covers` path naming a dot-segment (the
+/// cover staging area `covers/.staging`, temporary files), raw or
+/// percent-encoded; see `services::cover_staging::is_hidden_path`.
+async fn deny_hidden_cover_paths(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if crate::services::cover_staging::is_hidden_path(request.uri().path()) {
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    }
+    next.run(request).await
 }
 
 /// Liveness + DB-readiness probe (#21). Returns `200 "ok"` only when a
