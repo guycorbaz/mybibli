@@ -336,7 +336,7 @@ series id / title + set of fields / title), across all keys.
 | POST | `/loans/{id}/return` | Librarian | no | — |
 | GET | `/loans/{id}/return-modal` | Librarian | — |  |
 
-### Proposals (story 11-16) (`src/routes/proposals.rs`)
+### Proposals (stories 11-16, 11-17) (`src/routes/proposals.rs`)
 
 | method | path | role | csrf | note |
 |---|---|---|---|---|
@@ -345,6 +345,8 @@ series id / title + set of fields / title), across all keys.
 | GET | `/proposals/{id}/cover` | Librarian | — | The staged JPEG of a pending cover proposal (`Cache-Control: no-store`); the file name comes from the proposal, never from the URL. `/covers` never serves `.staging`. |
 | GET | `/proposals/{id}/reject-modal` | Librarian | — | UX-DR8 modal fragment, HTMX only (405 otherwise). |
 | POST | `/proposals/{id}/reject` | Librarian | no | Optimistic lock on `version`; optional reason ≤ 1000 characters; discards a staged cover after the commit. |
+| GET | `/proposals/{id}/accept-modal` | Librarian | — | 11-17 — UX-DR8 modal fragment for a pending series proposal, HTMX only (405 otherwise); requires the page's `version`. |
+| POST | `/proposals/{id}/accept` | Librarian | no | 11-17 — optimistic lock on `version`; staleness (versions + catalog state) re-checked under locks; applies the series proposal in one transaction, or marks it stale. |
 
 ### Storage locations (`src/routes/locations.rs`)
 

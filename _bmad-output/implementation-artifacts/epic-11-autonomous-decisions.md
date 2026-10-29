@@ -931,3 +931,78 @@ Focus after the swap remains #538.
 - the cover dimensions line is hidden when `width`, `height` or `bytes` is missing;
 - the unreachable `WentStale` arm and the `has_staged_cover` doc are commented accurately.
 **Reversible:** yes.
+
+## § 11-17 — Accept a series proposal (part of #493)
+
+### D-11-17-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-17-accept-series-proposal` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-17-2 — #521 for the series kinds: re-validate the catalog's state at acceptance, bump no version [PRODUCT]
+**Context:** #521 — `title_series` attach / detach and expected-tome writes bump neither `titles.version` nor `series.version`, so a version comparison misses "a position was taken", "the title was attached by hand", "a tome was entered" since filing.
+**Chosen:** acceptance keeps the version check (`check_staleness_in`) **and** re-runs the filing rules against the series as it is now, under the series row lock (locking reads of `title_series` and the live tomes): title already in the series, position held by a live title, position or ISBN of a live expected tome, position above a closed total; for a creation, an active series with the same name (the filing comparison, case- and accent-insensitive). Any such conflict marks the proposal `stale` (committed) with a reason naming the title / tome / position. The filing checks were extracted into one pure `series_proposals::check_against_series` used by both. No writer was changed to bump versions.
+**For 11-18 (#521 narrowed to it):** a metadata acceptance compares the item's stored `current` values with the title's live values under the title lock (and skips contributors already present); a cover acceptance compares the cover state recorded at filing with the live `cover_image_url`. A mismatch = stale, same pattern.
+**Rejected:** bumping `titles.version` / `series.version` from every `title_series` / tome writer (an open title or series edit form would then fail with a version conflict after a scan-settle or a hand assignment — the user-visible cost D-11-9-8 avoided).
+**Reversible:** yes.
+
+### D-11-17-3 — One short transaction; lock order proposal → items → series → titles
+**Context:** D-11-9-9 / -11 / -12; auto-settle locks the series row first and its `title_series` insert share-locks the title through the FK.
+**Chosen:** `lock_for_decision` (kind, status, version — optimistic lock on the version the page showed) → items (`LOCK IN SHARE MODE`) → for an attach `lock_series_in` → `check_staleness_in` (titles then series, already held) → re-validation → `transition_in(MarkStale)` + commit on a conflict, else `transition_in(Accept)` → apply (series, then titles, then tomes through `ExpectedTomeService::create_in`, origin `proposal`) → commit. Every read before the series lock is a locking read, so no snapshot predates it. No file or network I/O inside.
+**Reversible:** yes.
+
+### D-11-17-4 — #529: a tome whose book the series already holds elsewhere is skipped and reported [PRODUCT]
+**Context:** #529-1 — a tome line whose ISBN is carried by a title that this acceptance (or the series already) places at another position; `create_in` would leave it unsettled next to its own book (`TitleElsewhere`).
+**Chosen:** before creating each tome, `ExpectedTomeService::owner_elsewhere_in` applies the owner choice of `settle_with_owned_title`; when that owner sits at another position of the series the tome is not created and the success entry says so ("its book «T» is already at position N — fix the position on the series page if one is wrong"). #529-2 (two keys) and #529-3 (title in two proposals) are covered by D-11-17-2: the second acceptance goes stale with the reason. #529 closed.
+**Rejected:** refusing the whole acceptance (the librarian would lose the rest of the proposal until 11-19 lets them edit it); creating the tome anyway (a gap marker for a book already in the series).
+**Reversible:** yes.
+
+### D-11-17-5 — Answers: stale is a decision, a failed apply is a refusal [PRODUCT]
+**Context:** AC "nothing is applied, the proposal is marked stale, and the message explains why"; AC "a failure rolls back and the proposal stays pending"; D-11-16-6.
+**Chosen:** accepted **and** went-stale both answer 200 with the re-rendered `#proposal-detail-body`, an OOB entry (success with "Open the series" link / warning "Proposal #N is now outdated and nothing was added: <why>. Ask the assistant for a new proposal…") and `HX-Trigger-After-Swap: modal-close`. A failed apply (database error, unexpected conflict) rolls back and answers 409 "could not be applied, nothing was changed and it is still pending" in the modal — never the database text. Already decided / changed since opened / unknown / unknown decider reuse 11-16's copy.
+**Rejected:** a 409 for stale (the page would keep showing "pending" with an Accept button behind the modal).
+**Reversible:** yes.
+
+### D-11-17-6 — Stored lines that cannot be applied are refused, not marked stale [PRODUCT]
+**Context:** filing validates every line, but 11-19 will let a librarian edit items; a malformed or self-contradictory proposal is not "the catalog changed".
+**Chosen:** stored items are parsed back and re-validated (`validate_series_name`, `validate_total`, `validate_lines`); a failure answers 400 "cannot be applied as it is… reject it" and leaves the proposal pending. Only state conflicts (D-11-17-2) mark it stale; a position above a closed total that was lowered since filing is a state conflict.
+**Reversible:** yes.
+
+### D-11-17-7 — `proposals.applied_series_id` links the series a creation produced [PRODUCT]
+**Context:** "show the applied result"; a `series_create` item names no target, so a reloaded page could not link the created series.
+**Chosen:** migration `20261029180000` adds `applied_series_id BIGINT UNSIGNED NULL` (no FK — the 30-day purge must not be blocked), written in the acceptance transaction; the detail page's subject then links the live series. Accepting bumps no `series` / `titles` version (D-11-10-6 precedent); the created series has no description.
+**Rejected:** looking the series up by name at display time (breaks on a rename); writing a target into the agent's item (mutates the proposal as filed).
+**Reversible:** yes (migration).
+
+### D-11-17-8 — Accept UI: primary button, `warning` modal variant, summary of what is applied
+**Context:** UX-DR8; the modal macro's variants (red delete, amber remove, indigo warning).
+**Chosen:** "Accept" sits before "Reject" (indigo primary button) on pending `series_create` / `series_attach` proposals only; the modal (`warning`, indigo confirm) says whether the series is created or completed, how many titles and expected tomes, and that a changed catalog means nothing is added. `accept-modal` requires the page's `version` like `reject-modal` (D-11-16-11). The reject handler now shares the post-decision answer (`decided_response`) with accept.
+**Reversible:** yes.
+
+### D-11-17-9 — E2E scope
+**Chosen:** `series-proposal-accept.spec.ts` (spec id `SA`, sorts after the specs that assume no series — D-11-11-6, #528): an agent files a `series_create` over MCP after the titles' metadata fetch settled (it bumps their version); a librarian from a blank browser accepts it in the modal, sees "accepted", follows the subject link to the series page and finds both titles and both expected tomes; a stale path where the series is renamed before acceptance. State-based staleness, the #529 cases and the rollback are integration-tested (`tests/proposal_accept_series.rs`, rollback through a test trigger on `series_expected_tomes`).
+**Reversible:** yes.
+
+### D-11-17-10 — Code review round 1: creations serialised by name, validated values applied, transient conflicts retried [PRODUCT]
+**Context:** three layers (blind, edge cases, acceptance); no High. Medium, raised by all three: two concurrent acceptances of `series_create` with one name both passed the plain same-name read and both created the series (#529-2 only held sequentially). Medium (blind): the apply re-derived the name (`trim`) and total (`try_from(..).ok()`) from the raw item instead of the validated values. Medium (auditor): no test of the second of two real proposals (attach on the same positions, create of the same name).
+**Chosen:**
+- the creation's same-name check is a locking read (`ProposalModel::lock_series_named`, `FOR UPDATE`, taken **before** the title rows — series before titles, like an attach): concurrent creations of one name wait for each other and the second goes stale with "a series named «X» now exists"; on an empty `series` table the two gap locks can deadlock instead, so `series_acceptance::accept` retries a deadlock / lock-wait timeout up to 3 times on a fresh transaction (`loans::is_transient_conflict`, now `pub(crate)`, the #16 pattern) — which also covers a scan-settle or hand assignment deadlocking with an acceptance;
+- the series is created from the validated name and total;
+- `owner_elsewhere_in` considers every live title carrying the ISBN (a second copy / edition already in the series skips the tome; one holding the tome's position lets it settle);
+- a garbled or overflowing POST `version` answers the localized "changed" conflict (not Axum's 422); the modal query struct is shared as `VersionQuery`; the counts sentence starts with a capital.
+Tests: second of two attaches / creates, concurrent creations (one accepted, one stale, one series), escaping of the agent's name in the success entry, exact counts sentence, garbled version, multi-owner skip.
+**Accepted (Low):** a commit that fails on a lost connection is reported as "nothing changed" (rare, and the page reload shows the truth); an attach whose tome lines are all skipped is still recorded as accepted (the entry reports zero additions and each skip); `live_title_name_in` sits on the expected-tome model next to the other title reads it uses; `set_applied_series_in` relies on the proposal row lock held by the transaction; the modal opens on a moved version and the POST refuses it (D-11-16-10 decision); a non-HTMX POST gets the fragment (CSRF-guarded, as reject); a scan committing during a creation's acceptance can leave a new tome unsettled until the next catalogue event of its ISBN; the `#id` name fallbacks are unreachable (rows read under lock).
+**Dismissed:** "soft-deleted titles' assignments are invisible" — a soft-deleted title holds no position anywhere in the app (`position_holder_in`, the grid), and `title_series` has no unique key on a series position.
+**Reversible:** yes.
+
+### D-11-17-11 — Code review round 2: retry deadlocks only; whole-table lock of a creation accepted
+**Context:** two layers on the round-1 delta and the full diff. Medium (blind): a lock-wait timeout (1205) was retried, so one accept could hold a request ~150 s (3 × `innodb_lock_wait_timeout`). Other blind "Mediums" were checked and dismissed: deadlocks from `create_in` / `transition_in` keep their `AppError::Database` and are retried (confirmed by the edge layer); the manual series form's own unlocked name check predates this story (it now waits behind an accepting creation, but its check-then-insert race with itself is unchanged).
+**Chosen:** `accept` retries only SQLSTATE 40001 (local `is_deadlock`; `loans::is_transient_conflict` back to private); a deadlock that will be retried is logged as a warning, not as "not applied"; `accept_in` is `pub(crate)` (callers go through `accept`, which owns the transaction and the retry); module, `active_series_named` and `owner_elsewhere_in` docs updated; a second concurrency test runs on a non-empty `series` table (the queueing path, not the deadlock path).
+**Accepted (Low):** a creation's acceptance X-locks the scanned `series` rows for its short transaction (renames, attach acceptances and scan-settles wait for it) — the price of serialising creations without a unique key or a session-scoped `GET_LOCK`; a duplicated `version` field gets Axum's 422 (hand-built request only); a proposal both stale and holding a now-invalid name answers "cannot be applied" rather than "outdated" (D-11-17-6 order).
+**Reversible:** yes.
+
+### D-11-17-12 — Code review round 3: clean; Lows fixed or accepted
+**Context:** confirmation pass on the round-2 delta (both skills); no Medium+. Confirmed: sqlx-mysql's `code()` is the SQLSTATE, MariaDB 10.11 reports a deadlock as 1213 / 40001, every path carries it to the retry as `AppError::Database`.
+**Chosen:** `accept_in` private; the retry warning carries the error; the non-empty-table concurrency test says it checks the outcome, not which path ran.
+**Accepted (Low):** no unit test can build a `MySqlDatabaseError` for the positive 40001 case (the DB-backed concurrency tests are the live check, same gap as `loans.rs`); a future MariaDB ≥ 11.8 with `innodb_snapshot_isolation` could surface REPEATABLE READ conflicts as 1020, not retried — to revisit if the pinned image moves.
+**Reversible:** yes.

@@ -190,8 +190,26 @@ impl SeriesModel {
         series_type: SeriesType,
         total_volume_count: Option<i32>,
     ) -> Result<SeriesModel, AppError> {
-        tracing::info!(name = %name, series_type = %series_type, "Creating series");
+        let mut conn = pool.acquire().await?;
+        let id =
+            Self::create_in(&mut conn, name, description, series_type, total_volume_count).await?;
+        drop(conn);
+        SeriesModel::active_find_by_id(pool, id)
+            .await?
+            .ok_or_else(|| AppError::Internal("Failed to retrieve created series".to_string()))
+    }
 
+    /// Insert a series on a caller-held connection (story 11-17: proposal
+    /// acceptance runs it inside its transaction); returns the new id.
+    /// No validation here — callers validate first.
+    pub async fn create_in(
+        conn: &mut sqlx::MySqlConnection,
+        name: &str,
+        description: Option<&str>,
+        series_type: SeriesType,
+        total_volume_count: Option<i32>,
+    ) -> Result<u64, AppError> {
+        tracing::info!(name = %name, series_type = %series_type, "Creating series");
         let result = sqlx::query(
             "INSERT INTO series (name, description, series_type, total_volume_count) \
              VALUES (?, ?, ?, ?)",
@@ -200,13 +218,9 @@ impl SeriesModel {
         .bind(description)
         .bind(series_type.to_string())
         .bind(total_volume_count)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
-
-        let id = result.last_insert_id();
-        SeriesModel::active_find_by_id(pool, id)
-            .await?
-            .ok_or_else(|| AppError::Internal("Failed to retrieve created series".to_string()))
+        Ok(result.last_insert_id())
     }
 
     pub async fn update_with_locking(
@@ -476,6 +490,14 @@ pub struct TitleSeriesAssignment {
     pub is_omnibus: bool,
 }
 
+/// Story 11-17 — a position of a series held by a live title.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeldPosition {
+    pub title_id: u64,
+    pub position: i32,
+    pub title: String,
+}
+
 pub struct TitleSeriesModel;
 
 impl TitleSeriesModel {
@@ -672,7 +694,21 @@ impl TitleSeriesModel {
         end: i32,
     ) -> Result<(), AppError> {
         let mut tx = pool.begin().await.map_err(AppError::Database)?;
+        Self::assign_omnibus_in(&mut tx, title_id, series_id, start, end).await?;
+        tx.commit().await.map_err(AppError::Database)?;
+        Ok(())
+    }
 
+    /// [`Self::assign_omnibus`] on a caller-held transaction (story
+    /// 11-17); the caller commits or rolls back.
+    pub async fn assign_omnibus_in(
+        conn: &mut sqlx::MySqlConnection,
+        title_id: u64,
+        series_id: u64,
+        start: i32,
+        end: i32,
+    ) -> Result<(), AppError> {
+        let tx = conn;
         for pos in start..=end {
             // Check for soft-deleted row first
             let existing = sqlx::query(
@@ -715,9 +751,38 @@ impl TitleSeriesModel {
                 }
             }
         }
-
-        tx.commit().await.map_err(AppError::Database)?;
         Ok(())
+    }
+
+    /// Story 11-17 — the live titles holding positions of a series (one
+    /// row per position of an omnibus), by position then title id. A
+    /// locking read (`LOCK IN SHARE MODE`): it sees the latest committed
+    /// assignments and keeps new ones out of the series until the
+    /// caller's transaction ends (a hand assignment takes no series lock).
+    pub async fn held_positions_in(
+        conn: &mut sqlx::MySqlConnection,
+        series_id: u64,
+    ) -> Result<Vec<HeldPosition>, AppError> {
+        let rows = sqlx::query(
+            "SELECT ts.title_id, ts.position_number, CAST(t.title AS CHAR) AS title \
+             FROM title_series ts \
+             JOIN titles t ON t.id = ts.title_id AND t.deleted_at IS NULL \
+             WHERE ts.series_id = ? AND ts.deleted_at IS NULL \
+             ORDER BY ts.position_number ASC, ts.title_id ASC LOCK IN SHARE MODE",
+        )
+        .bind(series_id)
+        .fetch_all(&mut *conn)
+        .await?;
+        rows.iter()
+            .map(|r| {
+                Ok(HeldPosition {
+                    title_id: r.try_get("title_id")?,
+                    position: r.try_get("position_number")?,
+                    title: r.try_get("title")?,
+                })
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()
+            .map_err(AppError::Database)
     }
 
     /// Soft-delete ALL assignments for a title in a specific series (for omnibus removal).

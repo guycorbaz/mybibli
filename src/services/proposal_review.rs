@@ -487,14 +487,32 @@ pub async fn review_detail(
     let Some(detail) = ProposalService::detail(pool, id).await? else {
         return Ok(None);
     };
-    let names = Names::load(pool, detail.items.iter().filter_map(|i| i.target)).await?;
+    // Story 11-17 — the series an accepted creation produced.
+    let applied = detail.proposal.applied_series_id.map(|id| ProposalTarget {
+        table: ProposalTargetTable::Series,
+        id,
+    });
+    let names = Names::load(
+        pool,
+        detail.items.iter().filter_map(|i| i.target).chain(applied),
+    )
+    .await?;
     let subject_lines: Vec<SubjectLine<'_>> = detail
         .items
         .iter()
         .map(|i| SubjectLine::of(i.target, &i.proposed_values))
         .collect();
     let subject = ProposalSubject::from_lines(detail.proposal.kind, &subject_lines);
-    let target = TargetLabel::of(subject.as_ref(), &names);
+    let mut target = TargetLabel::of(subject.as_ref(), &names);
+    // An accepted creation links the series it created while it is live.
+    if let (TargetLabel::NewSeries(_), Some(id)) = (&target, detail.proposal.applied_series_id)
+        && let Some(name) = names.series.get(&id)
+    {
+        target = TargetLabel::Series {
+            id,
+            name: Some(name.clone()),
+        };
+    }
     let lines = detail
         .items
         .iter()
@@ -967,6 +985,7 @@ mod tests {
                 decided_by_username: None,
                 decided_at: None,
                 rejection_reason: None,
+                applied_series_id: None,
                 created_at: at,
                 updated_at: at,
                 version: 1,

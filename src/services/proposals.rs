@@ -417,6 +417,8 @@ pub struct Proposal {
     pub decided_by_username: Option<String>,
     pub decided_at: Option<NaiveDateTime>,
     pub rejection_reason: Option<String>,
+    /// Story 11-17 — the series an accepted `series_create` created.
+    pub applied_series_id: Option<u64>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
     pub version: i32,
@@ -830,6 +832,7 @@ impl ProposalService {
                 decided_by_username: row.decided_by_username,
                 decided_at: row.decided_at,
                 rejection_reason: row.rejection_reason,
+                applied_series_id: row.applied_series_id,
                 created_at: row.created_at,
                 updated_at: row.updated_at,
                 version: row.version,

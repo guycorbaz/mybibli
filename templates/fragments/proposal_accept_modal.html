@@ -1,0 +1,22 @@
+{# Story 11-17 (FR138) — accept confirmation: the shared UX-DR8 `modal`
+   macro, `warning` variant (a decision that adds to the catalog, nothing
+   is destroyed). The body summarises what is applied (escaped by the
+   handler). Confirm posts CSRF + version; success swaps
+   #proposal-detail-body and answers `HX-Trigger-After-Swap: modal-close`
+   (D-11-16-6); refusals stay in the modal's error region
+   (ModalConfirmRetargetGuard). CSP-clean, no hx-confirm. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "warning",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "POST",
+    csrf_token,
+    "#proposal-detail-body",
+    "outerHTML",
+    version,
+    inner_form_html,
+) %}{% endcall %}

@@ -410,6 +410,15 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
             "/proposals/{id}/reject",
             axum::routing::post(proposals::reject),
         )
+        // Story 11-17 — accept a series proposal (UX-DR8 modal).
+        .route(
+            "/proposals/{id}/accept-modal",
+            axum::routing::get(proposals::accept_modal),
+        )
+        .route(
+            "/proposals/{id}/accept",
+            axum::routing::post(proposals::accept),
+        )
         // CR #367 — saved searches (Librarian+). Run path is just a link
         // to `/?q=...`; these routes cover create + rename/delete modals.
         .route(

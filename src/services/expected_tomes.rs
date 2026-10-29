@@ -523,6 +523,37 @@ impl ExpectedTomeService {
         Ok(id)
     }
 
+    /// Story 11-17 (#529) — does a live title carrying `isbn` already sit
+    /// at another position of the series, so that a tome created at
+    /// `position` would name a book the series holds? Returns the first
+    /// such title (by id) and its first position
+    /// — the tome would stay unsettled next to its own book
+    /// (`SettleResult::TitleElsewhere`), or a second title carrying the
+    /// same ISBN would be attached at its position — so acceptance skips
+    /// it. Every owner is considered (review round 1): `None` when one of
+    /// them already holds `position` (the tome settles on creation).
+    pub async fn owner_elsewhere_in(
+        conn: &mut MySqlConnection,
+        series_id: u64,
+        position: i32,
+        isbn: &str,
+    ) -> Result<Option<(u64, i32)>, AppError> {
+        let owners = ExpectedTomeModel::live_titles_with_isbn_in(conn, &stored_forms(isbn)).await?;
+        let mut elsewhere = None;
+        for &owner in &owners {
+            let held = ExpectedTomeModel::title_positions_in(conn, owner, series_id).await?;
+            if held.contains(&position) {
+                return Ok(None);
+            }
+            if elsewhere.is_none()
+                && let Some(&p) = held.first()
+            {
+                elsewhere = Some((owner, p));
+            }
+        }
+        Ok(elsewhere)
+    }
+
     /// Update an unsettled tome under optimistic locking. The holder and
     /// range checks only apply when the position changes, so a tome whose
     /// position got taken (or fell above a lowered total) can still be
