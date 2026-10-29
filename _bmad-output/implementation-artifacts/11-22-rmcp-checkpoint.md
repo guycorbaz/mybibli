@@ -51,6 +51,8 @@ Decision rule (epics.md § 11.22): upgrade only for (a) an open security advisor
 - **Measurement conditions.** The 11-6 spike measured at `-j 8`; the brief now imposes `-j 2` — the comparison baseline is therefore re-measured here under the same conditions rather than reused. One sample per figure; record the station load.
 - **Kesh comparison points** (`~/devel/kesh/_bmad-output/planning-artifacts/epic-32-spike-mcp.md` § 5): C-32-2-6 keeps hand-written MCP because of API churn (three majors in five months) and a tiny need (six requests, stateless, JSON, ≈ 150 lines); Q8 re-examines rmcp when Kesh must serve `2026-07-28`; E2 asks for a closed, tested method inventory with `-32601` for the rest; E3 no resources; E5 fixed error texts; E1 every outgoing payload validated. The report says what rmcp gives and costs against each.
 - Read-only references: Kesh files are never modified.
+- **Integration tests** need the test DB (`docker compose -f tests/docker-compose.rust-test.yml up -d`, port 3307, `DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test'`, `SQLX_OFFLINE=true`). Stop the container at the end.
+- **Measurement hygiene.** Never two heavy builds at once (OOM history); the rmcp-free variant lives in a scratch worktree removed afterwards; nothing of it is committed. Its dispatcher must exercise `ToolRegistry::get` + `McpTool::call` so the linker keeps the 12 tools and only rmcp's share differs.
 
 ### References
 
@@ -75,3 +77,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 ## Change Log
 
 - 2026-10-29 — story created (create-story), after the advisory / version pre-check.
+- 2026-10-29 — validated against the create-story checklist: test-DB prerequisite and measurement hygiene (linker keeps the tools in the rmcp-free variant) added.
