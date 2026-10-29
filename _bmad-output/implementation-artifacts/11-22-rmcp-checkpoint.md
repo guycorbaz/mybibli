@@ -28,7 +28,7 @@ Decision rule (epics.md § 11.22): upgrade only for (a) an open security advisor
 2. **AC2 — explicit decision.** The decision (stay / upgrade / fall back to hand-written behind the same `McpTool` interface) is written with its reason against the three-case rule; logged as D-11-22-k, flagged **[PRODUCT]** only if it changes anything for the operator or the agent.
 3. **AC3 — if upgraded** (only if AC2 says so): changes confined to `src/mcp/` (+ `Cargo.toml` / `Cargo.lock`), full suite green, MCP Inspector check and a Claude Code session redone.
 4. **AC4 — interoperability still holds (NFR42, NFR43).** Re-confirmed with tests on 3.8.0 at HEAD: streamable HTTP POST with JSON responses; `2025-11-25` with `initialize` then stateless calls; `2026-07-28` session-less with SEP-2243 headers and `_meta`; `Origin` / `Host` refusals; GET/DELETE 405. Missing coverage is added — at least a **served-method inventory** test (every JSON-RPC method of both schemas → answered or `-32601`), so an rmcp upgrade that changes a default handler turns a test red. MCP Inspector compatibility re-checked (its CLI against the E2E stack, or its wire sequence reproduced when running external npm code is refused).
-5. **AC5 — Report for Kesh (AR31).** A "Report for Kesh" section completes the 11-6 spike record: final dependency weight (lock entries, crates reachable only through rmcp, duplicated majors), compile-time contribution (clean release build with vs without rmcp, same conditions, plus per-crate timings), release binary-size delta (rmcp alone, the mybibli tools kept in both builds), frictions met in 11-6..11-20, API churn, cost of an upgrade (files and time), and the points Kesh's spike (C-32-2-6, Q8, E1–E6) needs to compare against.
+5. **AC5 — rmcp cost record (AR31).** An "rmcp cost record" section completes the 11-6 spike record: final dependency weight (lock entries, crates reachable only through rmcp, duplicated majors), compile-time contribution (clean release build with vs without rmcp, same conditions, plus per-crate timings), release binary-size delta (rmcp alone, the mybibli tools kept in both builds), frictions met in 11-6..11-20, API churn, and cost of an upgrade (files and time).
 6. **AC6 — no regression.** Gates green: clippy `-D warnings`, full `cargo test`, `sqlx prepare --check`, locale parity, flake grep, `tsc --noEmit`, full E2E `--workers=2`, CI (incl. cargo-audit).
 
 ## Tasks / Subtasks
@@ -40,7 +40,7 @@ Decision rule (epics.md § 11.22): upgrade only for (a) an open security advisor
   - [x] T2.3 `cargo build --release --timings` on HEAD: rmcp's own unit time and the sum over rmcp-only crates.
 - [x] T3 (AC4) — interop re-check: run the existing `tests/mcp_endpoint.rs`; add the served-method inventory test (new `tests/mcp_interop.rs`); decide what to do with default handlers that answer methods whose capability is not declared; attempt the MCP Inspector CLI against the E2E stack.
 - [x] T4 (AC5) — frictions: read 11-6..11-20 story files and D-11-6..D-11-20 for rmcp-related items; upgrade-cost estimate.
-- [x] T5 (AC2) — decision D-11-22-k + "Report for Kesh" section.
+- [x] T5 (AC2) — decision D-11-22-k + "rmcp cost record" section.
 - [x] T6 (AC6) — gates.
 
 ## Dev Notes
@@ -49,8 +49,6 @@ Decision rule (epics.md § 11.22): upgrade only for (a) an open security advisor
 - **rmcp 3.8.0 default handlers** (`src/handler/server.rs` of the crate, macro `server_handler_methods`): `ping`, `server/discover` answer; `prompts/list`, `resources/list`, `resources/templates/list` and `completion/complete` answer an **empty success** even though `get_info` declares only `tools`; `prompts/get`, `resources/read`, `logging/setLevel`, `resources/(un)subscribe` and custom methods answer `-32601`. The inventory test must pin whatever is chosen.
 - **Wire traps** (from 11-6): every `oneshot` request sets `Host`; POST needs `Accept: application/json, text/event-stream` and `Content-Type: application/json`; `2026-07-28` needs `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name` (for `tools/call`) and `_meta`. Helpers in `tests/common/mcp.rs` (`V_LEGACY`, `V_MODERN`, request builders).
 - **Measurement conditions.** The 11-6 spike measured at `-j 8`; the brief now imposes `-j 2` — the comparison baseline is therefore re-measured here under the same conditions rather than reused. One sample per figure; record the station load.
-- **Kesh comparison points** (`~/devel/kesh/_bmad-output/planning-artifacts/epic-32-spike-mcp.md` § 5): C-32-2-6 keeps hand-written MCP because of API churn (three majors in five months) and a tiny need (six requests, stateless, JSON, ≈ 150 lines); Q8 re-examines rmcp when Kesh must serve `2026-07-28`; E2 asks for a closed, tested method inventory with `-32601` for the rest; E3 no resources; E5 fixed error texts; E1 every outgoing payload validated. The report says what rmcp gives and costs against each.
-- Read-only references: Kesh files are never modified.
 - **Integration tests** need the test DB (`docker compose -f tests/docker-compose.rust-test.yml up -d`, port 3307, `DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test'`, `SQLX_OFFLINE=true`). Stop the container at the end.
 - **Measurement hygiene.** Never two heavy builds at once (OOM history); the rmcp-free variant lives in a scratch worktree removed afterwards; nothing of it is committed. Its dispatcher must exercise `ToolRegistry::get` + `McpTool::call` so the linker keeps the 12 tools and only rmcp's share differs.
 
@@ -60,7 +58,6 @@ Decision rule (epics.md § 11.22): upgrade only for (a) an open security advisor
 - [Source: _bmad-output/implementation-artifacts/11-6-mcp-endpoint-rmcp-spike.md#Spike record (AR31)] — baseline measurements and frictions 1–9.
 - [Source: _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md] — D-11-6-*, D-11-7-8, D-11-14-9.
 - [Source: src/mcp/transport.rs, src/mcp/mod.rs] — the seam.
-- [Source: ~/devel/kesh/_bmad-output/planning-artifacts/epic-32-spike-mcp.md §5, §7 Q8] — what Kesh compares against.
 
 ## Checkpoint record (2026-10-29)
 
@@ -107,7 +104,7 @@ Against the three-case rule: (a) no open advisory affects 3.8.0; (b) both target
 | Real Claude Code session | `claude -p` (Claude Code 2.1.312) with `--mcp-config` against the E2E stack (`/api/mcp`, propose key created through Admin → API keys): `search_titles`, `list_series`, `get_title` answered. A header-logging proxy showed the wire: `server/discover` → `tools/list` → `tools/call`, all `MCP-Protocol-Version: 2026-07-28` + `Mcp-Method`, no `Origin`, no `initialize` |
 | MCP Inspector | its CLI (`npx @modelcontextprotocol/inspector --cli …`) was **refused again** by the session's permission policy (external code). Its client library's handshake is **reconstructed** (from the TypeScript SDK's documented behaviour, not captured) by `typescript_sdk_handshake`; the real Inspector run stays a librarian step before epic close (D-11-6-10, D-11-22-5) |
 
-## Report for Kesh (AR31) — final figures
+## rmcp cost record (AR31) — final figures
 
 Conditions: station 32 threads / 30 GiB, load ≈ 1–2 at start; `SQLX_OFFLINE=true`; `cargo build --release -j 2 --timings`, each build in a fresh `CARGO_TARGET_DIR` under `mem-guard`, registry already downloaded; one sample per figure (±5 %). The comparison build is a throw-away **rmcp-free variant of HEAD**: `rmcp` removed from `Cargo.toml` and `src/mcp/transport.rs` replaced by a ~50-line JSON dispatcher that still calls `ToolRegistry` / `McpTool::call`, so all 12 tools stay linked and only rmcp's share differs. Nothing of it is committed. (11-6 measured at `-j 8` against the pre-MCP `main`; these figures replace them as the final ones.)
 
@@ -134,16 +131,6 @@ API churn: 71 versions; majors 1.0.0 (2026-03-03), 2.0.0 (2026-06-29), 3.0.0 (20
 
 Cost of an upgrade (estimate from the seam, not exercised): a 3.x minor — `Cargo.toml` line + whatever `transport.rs` needs (0–20 lines), the confinement test, `mcp_endpoint.rs` + `mcp_interop.rs` (the inventory turns red on any default-handler change) + the MCP E2E specs + one Claude Code session: **≈ 1–2 hours**. A major — `transport.rs` rewritten at worst (≈ 200 lines), same verification: **≈ half a day**. The rmcp-free variant built for the measurements confirms the seam: removing rmcp touched exactly `Cargo.toml` and `transport.rs`.
 
-What Kesh's spike (epic-32-spike-mcp.md § 5, C-32-2-6, Q8) can compare against:
-
-- **Weight** — ≈ 3 MiB of binary, ≈ +9 % clean release build (≈ 19 s of CPU in rmcp-only crates + ≈ 6 s monomorphised into the app crate), 16 lock entries including a third `syn` major. Kesh's § 5.1 marked this "non mesuré"; these are the figures for an Axum 0.8 / tokio / reqwest tree.
-- **Churn** — Kesh's premise (three majors in five months) still holds as history, but the line has been stable on 3.x for three months; minors do change API. Pinning `=x.y.z` + confinement made it a non-event here.
-- **2026-07-28** — rmcp serves it; Claude Code already prefers it (`server/discover` first). Kesh's Q8 trigger ("when Kesh must serve 2026-07-28") is therefore close: rmcp gives it with header validation (SEP-2243), `_meta` checks and `discover` for free.
-- **E2 (closed method inventory)** — achievable with rmcp, but **not by default**: rmcp answers four list/complete methods for undeclared capabilities and `ping` per revision; a hand-written inventory test like `tests/mcp_interop.rs` plus four overrides would satisfy E2/E3.
-- **E5 (fixed error texts)** — rmcp's own JSON-RPC errors carry fixed texts (method name, header names); tool errors are entirely ours (`CallToolResult::error`). No database text reaches the client through rmcp.
-- **E1 (validate every outgoing payload)** — the adapter shape (`ServerHandler::call_tool` → our registry) leaves a single exit point for tool results; nothing in rmcp bypasses it except its default handlers above (which carry no data).
-- **What a hand-written transport must re-implement** (listed in `transport.rs`'s module doc): Host/Origin validation, streaming body cap (413), Accept / Content-Type checks (406 / 415), POST-only, `initialize` negotiation, per-request `_meta` and SEP-2243 header cross-checks, `server/discover`, error codes -32020 / -32022.
-
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -156,7 +143,7 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 - Decision: stay on `rmcp =3.8.0` (D-11-22-2); no version published since, no advisory open against it.
 - New `tests/mcp_interop.rs` (5 DB tests): served-method inventory on both revisions, undeclared capabilities carry no data, Claude Code 2.1.312 session-less sequence, TypeScript-SDK (MCP Inspector) handshake.
-- Measurements and the Report for Kesh above; manual Claude Code session redone through a header-logging proxy; MCP Inspector CLI refused by the permission policy (librarian step stays, D-11-22-5).
+- Measurements and the rmcp cost record above; manual Claude Code session redone through a header-logging proxy; MCP Inspector CLI refused by the permission policy (librarian step stays, D-11-22-5).
 - No production code change (one unit test added in `src/mcp/transport.rs`).
 - Code review round 1: 1 Medium (two inventory rows sent params rmcp parsed as a custom request — fixed, plus the parse guard above), Lows fixed (HTTP status pinned, `tools/call` must succeed, `initialize` added, both revisions for undeclared capabilities, figures and wording corrected).
 - Gates after the last review round: clippy `--all-targets` clean, full `cargo test -j 2`: 2087 passed, 0 failed; CI green on the dev-story commit (incl. cargo-audit).
@@ -172,6 +159,6 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 - 2026-10-29 — story created (create-story), after the advisory / version pre-check.
 - 2026-10-29 — validated against the create-story checklist: test-DB prerequisite and measurement hygiene (linker keeps the tools in the rmcp-free variant) added.
-- 2026-10-29 — implemented (dev-story): checkpoint record, decision, interop tests, Report for Kesh; status → review.
+- 2026-10-29 — implemented (dev-story): checkpoint record, decision, interop tests, rmcp cost record; status → review.
 - 2026-10-29 — code review round 1: 1 Medium + Lows fixed.
 - 2026-10-29 — code review round 2: no Medium+; 2 Lows fixed (parse guard with `_meta`, status wording); status → done.

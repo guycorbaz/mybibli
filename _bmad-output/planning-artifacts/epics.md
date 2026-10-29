@@ -252,7 +252,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - AR28: The MCP endpoint is mounted at `/api/mcp` and inherits the existing CSRF short-circuit on `/api/*` (`src/middleware/csrf.rs`); the frozen exempt-route allowlist is unchanged
 - AR29: New tables `proposals`, `proposal_items` (carrying the target entity's `version` at filing time, for staleness detection) and `series_expected_tomes`, plus a cover staging directory; all tables follow AR24
 - AR30: The resubmission delay is a K/V row of the `settings` table (story 8-5 pattern), editable in Admin → System
-- AR31: For Kesh's SDK re-examination (Kesh epic 32, Q8), stories 11.6 and 11.22 and the Epic 11 retrospective record: crates added, build-time and binary-size deltas, integration friction with Axum 0.8 and the middleware stack, and the cost of any major upgrade
+- AR31: For a future re-examination of the MCP SDK choice, stories 11.6 and 11.22 and the Epic 11 retrospective record: crates added, build-time and binary-size deltas, integration friction with Axum 0.8 and the middleware stack, and the cost of any major upgrade
 
 ### UX Design Requirements
 
@@ -2314,7 +2314,7 @@ So that the release ships neither a needless change nor a known flaw.
 **Given** an upgrade
 **Then** it touches only `src/mcp/`, the full suite passes again, and the MCP Inspector check and the Claude Code session are redone
 
-**And** the AR31 measurements are completed (final dependency weight; upgrade cost in files and time, if any) in a "Report for Kesh" section of the story file, feeding the retrospective
+**And** the AR31 measurements are completed (final dependency weight; upgrade cost in files and time, if any) in an "rmcp cost record" section of the story file, feeding the retrospective
 
 #### Story 11.23: Epic 11 smoke test (Foundation Rule #7)
 
