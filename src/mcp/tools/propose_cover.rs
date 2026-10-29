@@ -8,9 +8,7 @@ use super::args;
 use super::proposal_args::{filed_document, sources_property, tool_error};
 use crate::mcp::tool::{McpTool, ToolContext, ToolError, ToolFuture};
 use crate::services::cover::COVER_MEDIA_TYPES;
-use crate::services::cover_proposals::{
-    CoverProposalRequest, CoverProposalService, MAX_IMAGE_BASE64_CHARS,
-};
+use crate::services::cover_proposals::{CoverProposalRequest, CoverProposalService};
 
 pub struct ProposeCover;
 
@@ -70,7 +68,9 @@ impl McpTool for ProposeCover {
          smaller version); the bytes are not a JPEG, PNG, WebP or GIF, or not the declared \
          `media_type`; the image cannot be decoded or exceeds 10000 px per side or about 16 \
          megapixels; a source is not an http(s) URL; the key was revoked or lacks the propose \
-         scope. Calls are limited to about 3.7 MiB and 30 seconds."
+         scope; the key already has 100 cover proposals waiting for a decision. Calls are \
+         limited to about 3.7 MiB and 30 seconds; a call that times out may still have filed \
+         its proposal, so do not resend it blindly."
     }
 
     fn input_schema(&self) -> Value {
@@ -89,7 +89,6 @@ impl McpTool for ProposeCover {
                 "image_base64": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": MAX_IMAGE_BASE64_CHARS,
                     "description": "The image file's bytes, base64-encoded (standard alphabet; padding optional; line breaks ignored; no `data:` prefix). At most 2 MiB once decoded."
                 },
                 "media_type": {
@@ -125,6 +124,8 @@ impl McpTool for ProposeCover {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::cover::MAX_PROPOSED_COVER_BYTES;
+    use crate::services::cover_proposals::{MAX_IMAGE_BASE64_CHARS, MAX_PENDING_COVERS_PER_KEY};
 
     #[test]
     fn parse_args_reads_the_whole_request() {
@@ -180,8 +181,21 @@ mod tests {
     fn schema_bounds_follow_the_service() {
         let s = ProposeCover.input_schema();
         let p = &s["properties"];
-        assert_eq!(p["image_base64"]["maxLength"], MAX_IMAGE_BASE64_CHARS);
+        // No `maxLength`: line breaks are ignored, so the raw length may
+        // exceed the bound the service checks after removing them.
+        assert!(p["image_base64"].get("maxLength").is_none());
         assert_eq!(p["media_type"]["enum"], json!(COVER_MEDIA_TYPES));
+        // The figures quoted in the description follow the constants.
+        let d = ProposeCover.description();
+        assert_eq!(MAX_PROPOSED_COVER_BYTES, 2 * 1024 * 1024);
+        assert!(d.contains("exceeds 2 MiB"));
+        assert_eq!(MAX_PENDING_COVERS_PER_KEY, 100);
+        assert!(d.contains("already has 100 cover proposals"));
+        assert_eq!(crate::mcp::REQUEST_TIMEOUT.as_secs(), 30);
+        assert!(d.contains("30 seconds"));
+        let cap_mib = crate::mcp::max_request_body_bytes() as f64 / (1024.0 * 1024.0);
+        assert!((cap_mib - 3.7).abs() < 0.05, "{cap_mib}");
+        assert!(d.contains("about 3.7 MiB"));
         // The largest image fits the body cap.
         const { assert!(MAX_IMAGE_BASE64_CHARS < crate::mcp::max_request_body_bytes()) };
     }

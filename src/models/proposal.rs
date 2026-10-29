@@ -700,6 +700,24 @@ impl ProposalModel {
             .collect())
     }
 
+    /// Story 11-14 — how many live pending proposals of `kind` the key
+    /// has filed. Plain read.
+    pub async fn count_pending_of_kind_for_key(
+        pool: &DbPool,
+        api_key_id: u64,
+        kind: ProposalKind,
+    ) -> Result<u64, AppError> {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM proposals WHERE api_key_id = ? AND kind = ? \
+             AND status = 'pending' AND deleted_at IS NULL",
+        )
+        .bind(api_key_id)
+        .bind(kind.as_str())
+        .fetch_one(pool)
+        .await?;
+        Ok(u64::try_from(n).unwrap_or(0))
+    }
+
     /// Lock and return the ids of a key's live pending proposals (story
     /// 11-14, revocation). Call after locking the key row (see
     /// [`Self::lock_filing_key`] for the lock order).

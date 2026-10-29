@@ -228,8 +228,11 @@ impl ApiKeyModel {
 
     /// Soft-revoke. Optimistic-lock on `version` so two admins
     /// hitting the same Revoke button concurrently produce one
-    /// success + one conflict.
-    pub async fn revoke(pool: &DbPool, id: u64, version: i32) -> Result<u64, AppError> {
+    /// success + one conflict. Test-only since story 11-14: production
+    /// code revokes through `services::cover_proposals::revoke_key`,
+    /// which also marks the key's pending proposals stale (NFR48).
+    #[cfg(test)]
+    pub(crate) async fn revoke(pool: &DbPool, id: u64, version: i32) -> Result<u64, AppError> {
         let mut conn = pool.acquire().await?;
         Self::revoke_in(&mut conn, id, version).await
     }

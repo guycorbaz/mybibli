@@ -66,10 +66,13 @@ pub fn staging_dir_for(covers_dir: &Path) -> PathBuf {
 /// a dot-segment — raw (`.staging`) or percent-encoded (`%2estaging`),
 /// since the file server decodes before resolving. Such paths are never
 /// served: the staging area and any other hidden file stay private.
+///
+/// The path is percent-decoded first and split on `/` and `\\`, so an
+/// encoded separator (`x%2F.staging%2F…`) cannot hide a dot-segment
+/// inside an ordinary-looking one.
 pub fn is_hidden_path(path: &str) -> bool {
-    path.split('/').any(|seg| {
-        seg.starts_with('.') || seg.get(..3).is_some_and(|p| p.eq_ignore_ascii_case("%2e"))
-    })
+    let decoded = percent_encoding::percent_decode_str(path).decode_utf8_lossy();
+    decoded.split(['/', '\\']).any(|seg| seg.starts_with('.'))
 }
 
 /// A fresh random staged-file name.
@@ -145,7 +148,11 @@ pub async fn promote(
     let to = covers_dir.join(format!("{title_id}.jpg"));
     match tokio::fs::rename(&from, &to).await {
         Ok(()) => {}
-        Err(e) if e.kind() == ErrorKind::NotFound => return Err(StagingError::Missing),
+        // `NotFound` also fires for a missing covers directory: only a
+        // missing source is `Missing`.
+        Err(e) if e.kind() == ErrorKind::NotFound && !from.exists() => {
+            return Err(StagingError::Missing);
+        }
         Err(e) if e.kind() == ErrorKind::CrossesDevices => {
             copy_across(&from, covers_dir, &to).await?;
         }
@@ -172,16 +179,14 @@ async fn copy_across(from: &Path, covers_dir: &Path, to: &Path) -> Result<(), St
         let _ = tokio::fs::remove_file(&tmp).await;
         return Err(StagingError::Io(e));
     }
-    tokio::fs::remove_file(from)
-        .await
-        .or_else(|e| {
-            if e.kind() == ErrorKind::NotFound {
-                Ok(())
-            } else {
-                Err(e)
-            }
-        })
-        .map_err(StagingError::Io)
+    // The cover is in place: a staged copy left behind is the purge's
+    // business, not a failed promotion.
+    if let Err(e) = tokio::fs::remove_file(from).await
+        && e.kind() != ErrorKind::NotFound
+    {
+        tracing::warn!(file = %from.display(), error = %e, "Promoted cover left in staging");
+    }
+    Ok(())
 }
 
 /// Delete a staged cover. A file already gone is not an error.
@@ -239,8 +244,10 @@ pub async fn purge(pool: &DbPool, staging_dir: &Path) -> Result<StagingPurgeStat
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(StagingPurgeStats::default()),
         Err(e) => return Err(AppError::Internal(format!("read cover staging dir: {e}"))),
     };
-    // Read the references after listing: a file listed before its
-    // proposal committed is either young (grace) or now referenced.
+    // Read the references after listing, `referenced` BEFORE `keep`: a
+    // filing that commits between the two reads is then in `keep` (kept)
+    // or in neither (young, kept by the grace) — never "referenced but
+    // not kept", which would delete a pending proposal's file.
     let mut listed = Vec::new();
     while let Some(entry) = entries
         .next_entry()
@@ -249,15 +256,15 @@ pub async fn purge(pool: &DbPool, staging_dir: &Path) -> Result<StagingPurgeStat
     {
         listed.push(entry);
     }
+    let referenced: HashSet<String> = ProposalModel::staged_cover_files_referenced(pool)
+        .await?
+        .into_iter()
+        .collect();
     let keep: HashSet<String> =
         ProposalModel::staged_cover_files_to_keep(pool, PURGE_GRACE.as_secs())
             .await?
             .into_iter()
             .collect();
-    let referenced: HashSet<String> = ProposalModel::staged_cover_files_referenced(pool)
-        .await?
-        .into_iter()
-        .collect();
 
     let now = SystemTime::now();
     let mut stats = StagingPurgeStats::default();
@@ -289,7 +296,41 @@ pub async fn purge(pool: &DbPool, staging_dir: &Path) -> Result<StagingPurgeStat
             }
         }
     }
+    // Temporary files of an interrupted cross-filesystem promotion sit in
+    // the covers directory itself.
+    if let Some(covers_dir) = staging_dir.parent() {
+        purge_old_tmp_files(covers_dir, now, &mut stats).await;
+    }
     Ok(stats)
+}
+
+async fn purge_old_tmp_files(dir: &Path, now: SystemTime, stats: &mut StagingPurgeStats) {
+    let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
+        return;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let is_tmp = entry
+            .file_name()
+            .to_str()
+            .is_some_and(|n| n.starts_with(TMP_PREFIX));
+        if !is_tmp {
+            continue;
+        }
+        let Ok(meta) = entry.metadata().await else {
+            continue;
+        };
+        let old = meta
+            .modified()
+            .ok()
+            .and_then(|m| now.duration_since(m).ok())
+            .is_some_and(|age| age >= PURGE_GRACE);
+        if meta.is_file() && old {
+            match tokio::fs::remove_file(entry.path()).await {
+                Ok(()) => stats.deleted += 1,
+                Err(_) => stats.errors += 1,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -317,6 +358,9 @@ mod tests {
             "/%2Estaging/",
             "/a/.hidden",
             "/..",
+            "/x%2F.staging%2F0123.jpg",
+            "/x%2f%2estaging%2f0123.jpg",
+            "/x%5C.staging",
         ] {
             assert!(is_hidden_path(p), "{p}");
         }
@@ -404,6 +448,20 @@ mod tests {
             discard(&staging, "7.jpg").await,
             Err(StagingError::InvalidName)
         ));
+    }
+
+    #[tokio::test]
+    async fn a_missing_covers_dir_is_not_a_missing_staged_file() {
+        let root = tempfile::tempdir().unwrap();
+        let staging = root.path().join("stage");
+        std::fs::create_dir_all(&staging).unwrap();
+        let name = stage(&staging, b"abc").await.unwrap();
+        let gone = root.path().join("no-such-covers-dir");
+        assert!(matches!(
+            promote(&staging, &gone, &name, 1).await,
+            Err(StagingError::Io(_))
+        ));
+        assert!(staging.join(&name).exists(), "the staged file is kept");
     }
 
     #[tokio::test]

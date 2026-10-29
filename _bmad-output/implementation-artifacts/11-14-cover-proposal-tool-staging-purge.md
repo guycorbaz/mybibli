@@ -54,7 +54,7 @@ so that the librarian can approve it without downloading it.
 
 ## Dev Notes
 
-- **Order inside `propose`** (nothing written on refusal): arguments → sources → title (live) + version pin → image checks + re-encode (`spawn_blocking`, CPU) → staging available? → write staged file (temp name + rename, so a half-written file never carries a valid name) → `ProposalService::file` → on any filing error delete the staged file. A crash or timeout between write and commit leaves an unreferenced file, removed by the purge after its hour of grace.
+- **Order inside `propose`** (nothing written on refusal; as implemented, D-11-14-4 / D-11-14-11): arguments → image checks (type, base64, size, signature) → sources → title (live) + version pin → staging available? → pending cap → [own task] re-encode (`spawn_blocking`, at most two at once) → write staged file (temp name + rename, so a half-written file never carries a valid name) → `ProposalService::file` → on any filing error delete the staged file. A crash or timeout between write and commit leaves an unreferenced file, removed by the purge after its hour of grace.
 - **Why re-encode before staging:** the staged file is what acceptance installs (promotion = move), and the librarian reviews the image the catalog would show; a polyglot or oversized original never reaches disk.
 - **`media_type` mismatch is refused** (stricter than the manual upload, which ignores the claimed type): an agent sending a PNG as `image/jpeg` has likely mixed up two downloads.
 - **No pending-duplicate rule** (D-11-13-5 precedent): a second cover proposal for the same title is filed; the librarian picks one, the other goes stale on acceptance (the cover write bumps `titles.version` in 11-18). 11-15's resubmission delay covers repeats of rejected ones. Disk use per proposal is one ≤ 400 px JPEG.
@@ -72,6 +72,21 @@ so that the librarian can approve it without downloading it.
 - [Source: src/services/cover.rs] — #479 decode limits, upload pipeline.
 - [Source: epic-11-autonomous-decisions.md] — D-11-6-5 (body cap), D-11-9-4 (staging placement), D-11-9-10/11 (lock order), D-11-13-8 (shared pieces).
 - Issues #522, #514.
+
+### Review Findings
+
+Code review 2026-10-29 (bmad-code-review: Blind Hunter, Edge Case Hunter, Acceptance Auditor).
+
+Round 1:
+- [x] [Review][Patch] (Medium) Staging purge read `keep` before `referenced`: a filing committing between the two reads had its file deleted — `referenced` read first [src/services/cover_staging.rs]
+- [x] [Review][Patch] (Medium) `/covers` guard checked raw segments; `ServeDir` decodes `%2F` — the path is percent-decoded and split on `/` and `\` before the check; router test with an encoded slash
+- [x] [Review][Patch] (Medium) Unbounded concurrent decodes (a timed-out `spawn_blocking` keeps running) — semaphore of two permits held by the blocking task
+- [x] [Review][Patch] (Medium) No bound on staged files per key — at most 100 pending cover proposals per key (D-11-14-11)
+- [x] [Review][Patch] (Medium) `ApiKeyModel::revoke` (pool) stayed public and bypassed NFR48 — test-only now
+- [x] [Review][Patch] (Medium) A timeout after the commit answered 408 for a filed proposal, a timeout before it could orphan a staged file — the encode / stage / file part runs in its own task to completion; the description warns a timed-out call may have filed
+- [x] [Review][Defer] (Medium) #522's "refuse acceptance cleanly when the staged file is missing" belongs to 11-18 — #533
+- [x] [Review][Patch] (Low) `promote` called a missing covers directory `Missing`; a failed staged-copy removal after a cross-device promotion failed the promotion; `.tmp-` files of that fallback were never purged; the schema `maxLength` contradicted "line breaks ignored"; description figures untested; dev-note order stale; timeout constant untested
+- Accepted (Low): a commit reported as failed although it reached the server discards the staged file (rare; acceptance then hits `Missing`, #533); `staged_cover_files_referenced` scans every cover item (small table); `StagingUnavailable` stays a refusal (its message must reach the agent); sync `is_dir` in `cover_staging_dir` (one stat); the empty 11-9 sibling directory is left; E2E checks the title through `get_title` rather than the page's cover (the mock may supply one).
 
 ## Dev Agent Record
 
@@ -112,3 +127,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-29 — story created (ready-for-dev).
 - 2026-10-29 — validated against the create-story checklist: result shape and the admin-copy / E2E scope made explicit (dev notes); no AC change.
 - 2026-10-29 — implemented (dev-story); status review.
+- 2026-10-29 — code review round 1 (D-11-14-11); fixes applied.

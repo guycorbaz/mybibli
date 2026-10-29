@@ -208,7 +208,8 @@ dropped, invalid ones refused field by field. `propose_cover` (11-14) takes
 the image as base64 (≤ 2 MiB, JPEG / PNG / WebP / GIF matching its declared
 type, checked and re-encoded like a manual upload) and keeps it in
 `<COVERS_DIR>/.staging`, never served by `/covers` (404 on any dot-segment);
-a title that already has a cover gets a replacement proposal. The server
+a title that already has a cover gets a replacement proposal; a key holds at
+most 100 pending cover proposals. The server
 never fetches an agent-supplied URL (`docs/auth-threat-model.md` § 5.9).
 Revoking a key (Admin → API keys) marks its pending proposals stale and
 discards their staged covers.

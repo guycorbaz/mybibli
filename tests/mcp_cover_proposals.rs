@@ -27,6 +27,7 @@ use mybibli::db::DbPool;
 use mybibli::models::api_key::ApiKeyScope;
 use mybibli::models::proposal::{ProposalKind, ProposalStatus, ProposalTargetTable};
 use mybibli::services::cover::MAX_PROPOSED_COVER_BYTES;
+use mybibli::services::cover_proposals::MAX_PENDING_COVERS_PER_KEY;
 use mybibli::services::cover_staging::{self, PURGE_GRACE, StagingError};
 use mybibli::services::proposals::{Decision, ProposalService};
 use serde_json::{Value, json};
@@ -450,7 +451,17 @@ async fn the_scheduled_purge_keeps_only_what_pending_proposals_need(pool: DbPool
         age(&f.staging.join(n), old);
     }
 
+    // A temporary file of an interrupted cross-filesystem promotion, in
+    // the covers directory itself; and a fresh one, kept.
+    let covers_tmp_old = f.covers.join(".tmp-promote-old.jpg");
+    let covers_tmp_young = f.covers.join(".tmp-promote-young.jpg");
+    std::fs::write(&covers_tmp_old, b"x").unwrap();
+    std::fs::write(&covers_tmp_young, b"x").unwrap();
+    age(&covers_tmp_old, old);
+
     let stats = cover_staging::purge(&pool, &f.staging).await.unwrap();
+    assert!(!covers_tmp_old.exists());
+    assert!(covers_tmp_young.exists());
     let mut expected = vec![
         n_pending.clone(),
         n_acc_now.clone(),
@@ -459,7 +470,7 @@ async fn the_scheduled_purge_keeps_only_what_pending_proposals_need(pool: DbPool
     ];
     expected.sort();
     assert_eq!(staged_files(&f.staging), expected);
-    assert_eq!(stats.deleted, 5, "{stats:?}");
+    assert_eq!(stats.deleted, 6, "{stats:?}");
     assert_eq!(stats.errors, 0);
     for gone in [&n_rejected, &n_acc_old, &n_deleted, &orphan_old, &tmp_old] {
         assert!(!f.staging.join(gone).exists(), "{gone}");
@@ -504,6 +515,8 @@ async fn the_covers_route_never_serves_the_staging_area(pool: DbPool) {
     let res = f.agent.ok(TOOL, args(title, &png(8, 8), "image/png")).await;
     let staged = staged_file_of(&pool, res["proposal_id"].as_u64().unwrap()).await;
     std::fs::write(f.covers.join("42.jpg"), b"public").unwrap();
+    // A sub-directory lets an encoded slash try to reach the staging area.
+    std::fs::create_dir_all(f.covers.join("x")).unwrap();
 
     let get = |path: String| {
         let app = f.agent.app.clone();
@@ -524,7 +537,43 @@ async fn the_covers_route_never_serves_the_staging_area(pool: DbPool) {
         format!("/covers/%2estaging/{staged}"),
         format!("/covers/%2Estaging/{staged}"),
         "/covers/.staging/".to_string(),
+        format!("/covers/x%2F..%2F.staging%2F{staged}"),
+        format!("/covers/x%2f.staging%2f{staged}"),
     ] {
         assert_eq!(get(path.clone()).await, StatusCode::NOT_FOUND, "{path}");
     }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_key_with_too_many_pending_covers_is_refused(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let title = seed_title(&pool, "Plafond").await;
+    let first = f.agent.ok(TOOL, args(title, &png(4, 4), "image/png")).await;
+    let key_id: u64 = sqlx::query_scalar("SELECT api_key_id FROM proposals WHERE id = ?")
+        .bind(first["proposal_id"].as_u64().unwrap())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    // 99 more pending cover proposals for the same key (rows only).
+    for _ in 1..MAX_PENDING_COVERS_PER_KEY {
+        sqlx::query("INSERT INTO proposals (kind, api_key_id, sources) VALUES ('cover', ?, '[]')")
+            .bind(key_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let msg = f
+        .agent
+        .err(TOOL, args(title, &png(4, 4), "image/png"))
+        .await;
+    assert!(msg.contains("already has 100 cover proposals"), "{msg}");
+    assert_eq!(staged_files(&f.staging).len(), 1, "nothing staged for it");
+
+    // Deciding one makes room again.
+    sqlx::query("UPDATE proposals SET status = 'rejected', decided_at = NOW() WHERE id = ?")
+        .bind(first["proposal_id"].as_u64().unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    f.agent.ok(TOOL, args(title, &png(4, 4), "image/png")).await;
 }

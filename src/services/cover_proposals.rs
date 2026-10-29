@@ -49,7 +49,7 @@
 //! messages (D-11-9-2 precedent).
 
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use base64::Engine;
 use base64::alphabet;
@@ -58,7 +58,7 @@ use serde_json::{Value, json};
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::proposal::{ProposalKind, ProposalTarget, ProposalTargetTable};
+use crate::models::proposal::{ProposalKind, ProposalModel, ProposalTarget, ProposalTargetTable};
 use crate::models::title::TitleModel;
 use crate::services::cover::{
     COVER_MEDIA_TYPES, CoverError, EncodedCover, MAX_PROPOSED_COVER_BYTES,
@@ -80,6 +80,17 @@ const BASE64: GeneralPurpose = GeneralPurpose::new(
 /// Longest base64 text (whitespace removed) that can decode to at most
 /// [`MAX_PROPOSED_COVER_BYTES`]; longer text is refused before decoding.
 pub const MAX_IMAGE_BASE64_CHARS: usize = MAX_PROPOSED_COVER_BYTES.div_ceil(3) * 4;
+
+/// At most this many pending cover proposals per key (D-11-14-11): each
+/// holds a staged file until a librarian decides, so an agent in a loop
+/// cannot fill the covers volume.
+pub const MAX_PENDING_COVERS_PER_KEY: u64 = 100;
+
+/// Concurrent image decodes across all cover proposals (each may use up
+/// to the #479 budget, 64 MiB).
+const MAX_CONCURRENT_ENCODES: usize = 2;
+static ENCODE_PERMITS: tokio::sync::Semaphore =
+    tokio::sync::Semaphore::const_new(MAX_CONCURRENT_ENCODES);
 
 /// A cover proposal as the agent sends it.
 #[derive(Debug, Clone)]
@@ -173,6 +184,11 @@ pub enum CoverProposalError {
     /// The staging directory does not exist (its creation at boot
     /// failed): an operator problem, not the agent's.
     StagingUnavailable,
+    /// The key already has [`MAX_PENDING_COVERS_PER_KEY`] pending cover
+    /// proposals.
+    TooManyPending {
+        pending: u64,
+    },
     Staging(StagingError),
     Proposal(ProposalError),
 }
@@ -183,7 +199,9 @@ impl Refusal for CoverProposalError {
         match self {
             Image(_) => RefusalClass::InvalidInput,
             TitleNotFound { .. } => RefusalClass::NotFound,
-            TargetChanged { .. } | StagingUnavailable => RefusalClass::Conflict,
+            TargetChanged { .. } | StagingUnavailable | TooManyPending { .. } => {
+                RefusalClass::Conflict
+            }
             Staging(_) => RefusalClass::Internal,
             Proposal(e) if e.is_invalid_input() => RefusalClass::InvalidInput,
             Proposal(ProposalError::KeyNotAllowed { .. }) => RefusalClass::Conflict,
@@ -225,6 +243,12 @@ impl fmt::Display for CoverProposalError {
                 f,
                 "This library cannot receive cover proposals right now (its cover staging \
                  directory is unavailable). Nothing was filed; tell the library's administrator."
+            ),
+            TooManyPending { pending } => write!(
+                f,
+                "This key already has {pending} cover proposals waiting for a librarian (at most \
+                 {MAX_PENDING_COVERS_PER_KEY}). Nothing was filed; propose more once some are \
+                 decided."
             ),
             Staging(e) => write!(f, "{e}"),
             Proposal(e) => write!(f, "{e}"),
@@ -356,50 +380,108 @@ impl CoverProposalService {
                 pinned: true,
             });
         }
-        let staging_dir = staging_dir.ok_or(CoverProposalError::StagingUnavailable)?;
+        let staging_dir = staging_dir
+            .ok_or(CoverProposalError::StagingUnavailable)?
+            .to_path_buf();
+        let pending =
+            ProposalModel::count_pending_of_kind_for_key(pool, req.api_key_id, ProposalKind::Cover)
+                .await?;
+        if pending >= MAX_PENDING_COVERS_PER_KEY {
+            return Err(CoverProposalError::TooManyPending { pending });
+        }
 
-        let original_bytes = original.len();
-        let encoded = tokio::task::spawn_blocking(move || encode_cover(&original))
+        // The rest runs in its own task: a request dropped by the 30 s
+        // timeout or a disconnect does not abort it half-way (a staged
+        // file without its proposal, or a filing cut off), it completes
+        // and the agent may find the proposal filed (#514).
+        let version = req.version.unwrap_or(title.version);
+        let job = FilingJob {
+            pool: pool.clone(),
+            staging_dir,
+            api_key_id: req.api_key_id,
+            pinned: req.version.is_some(),
+            title_id: title.id,
+            version,
+            current_cover: title.cover_image_url,
+            declared,
+            original,
+            sources,
+        };
+        tokio::spawn(job.run())
             .await
-            .map_err(|e| AppError::Internal(format!("cover encode task: {e}")))?
-            .map_err(|e| match e {
-                CoverError::InvalidImage(msg) => {
-                    CoverProposalError::Image(ImageProblem::Undecodable(msg))
-                }
-                other => AppError::Internal(other.to_string()).into(),
-            })?;
+            .map_err(|e| AppError::Internal(format!("cover proposal task: {e}")))?
+    }
+}
 
-        let staged_file = cover_staging::stage(staging_dir, &encoded.jpeg)
+/// The part of a cover proposal that writes (encode, stage, file).
+struct FilingJob {
+    pool: DbPool,
+    staging_dir: PathBuf,
+    api_key_id: u64,
+    pinned: bool,
+    title_id: u64,
+    version: i32,
+    current_cover: Option<String>,
+    declared: &'static str,
+    original: Vec<u8>,
+    sources: Vec<String>,
+}
+
+impl FilingJob {
+    async fn run(self) -> Result<FiledCoverProposal, CoverProposalError> {
+        let original_bytes = self.original.len();
+        // At most `MAX_CONCURRENT_ENCODES` decodes at once; the permit
+        // moves into the blocking task, so it is held until the decode
+        // really ends.
+        let permit = ENCODE_PERMITS
+            .acquire()
+            .await
+            .map_err(|e| AppError::Internal(format!("cover encode permits: {e}")))?;
+        let original = self.original;
+        let encoded = tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            encode_cover(&original)
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("cover encode task: {e}")))?
+        .map_err(|e| match e {
+            CoverError::InvalidImage(msg) => {
+                CoverProposalError::Image(ImageProblem::Undecodable(msg))
+            }
+            other => AppError::Internal(other.to_string()).into(),
+        })?;
+
+        let staged_file = cover_staging::stage(&self.staging_dir, &encoded.jpeg)
             .await
             .map_err(CoverProposalError::Staging)?;
         let values = cover_item(
             &staged_file,
-            title.cover_image_url.as_deref(),
-            declared,
+            self.current_cover.as_deref(),
+            self.declared,
             original_bytes,
             &encoded,
         );
         let replaces_existing = values["replaces_existing"] == json!(true);
         let target = ProposalTarget {
             table: ProposalTargetTable::Titles,
-            id: title.id,
+            id: self.title_id,
         };
-        // The version the `current` cover was read at (D-11-12-13).
-        let version = req.version.unwrap_or(title.version);
         let proposal = NewProposal {
             kind: ProposalKind::Cover,
-            api_key_id: req.api_key_id,
-            sources,
+            api_key_id: self.api_key_id,
+            sources: self.sources,
             items: vec![NewProposalItem {
                 target: Some(target),
-                expected_version: Some(version),
+                // The version the `current` cover was read at (D-11-12-13).
+                expected_version: Some(self.version),
                 proposed_values: values,
             }],
         };
-        let proposal_id = match ProposalService::file(pool, &proposal).await {
+        let proposal_id = match ProposalService::file(&self.pool, &proposal).await {
             Ok(id) => id,
             Err(e) => {
-                cover_staging::discard_all(staging_dir, std::slice::from_ref(&staged_file)).await;
+                cover_staging::discard_all(&self.staging_dir, std::slice::from_ref(&staged_file))
+                    .await;
                 return Err(match e {
                     ProposalError::TargetNotFound { .. } => CoverProposalError::TitleNotFound {
                         title_id: target.id,
@@ -410,7 +492,7 @@ impl CoverProposalService {
                         title_id: target.id,
                         expected,
                         current,
-                        pinned: req.version.is_some(),
+                        pinned: self.pinned,
                     },
                     other => CoverProposalError::Proposal(other),
                 });
