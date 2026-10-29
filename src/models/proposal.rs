@@ -888,6 +888,95 @@ impl ProposalModel {
         .fetch_all(&mut *conn)
         .await?)
     }
+
+    // ── Story 11-16: the proposals page ────────────────────────────
+
+    /// Lock a live proposal row (`FOR UPDATE`) and return its status and
+    /// `version` (optimistic lock of the reject form).
+    pub async fn lock_status_version(
+        conn: &mut MySqlConnection,
+        id: u64,
+    ) -> Result<Option<(ProposalStatus, i32)>, AppError> {
+        let row = sqlx::query(
+            "SELECT status, version FROM proposals WHERE id = ? AND deleted_at IS NULL FOR UPDATE",
+        )
+        .bind(id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        row.map(|r| {
+            let status: String = r.try_get("status")?;
+            Ok((
+                parse_enum(&status, "proposals.status", ProposalStatus::parse)?,
+                r.try_get("version")?,
+            ))
+        })
+        .transpose()
+    }
+
+    /// Live titles among `ids`: title, cover URL and media type (for the
+    /// proposals page labels). Deleted titles are absent.
+    pub async fn live_title_briefs(
+        pool: &DbPool,
+        ids: &[u64],
+    ) -> Result<HashMap<u64, TitleBrief>, AppError> {
+        let mut out = HashMap::new();
+        if ids.is_empty() {
+            return Ok(out);
+        }
+        let placeholders = vec!["?"; ids.len()].join(", ");
+        let sql = format!(
+            "SELECT id, CAST(title AS CHAR) AS title, CAST(cover_image_url AS CHAR) AS cover_image_url, \
+                    CAST(media_type AS CHAR) AS media_type \
+             FROM titles WHERE id IN ({placeholders}) AND deleted_at IS NULL"
+        );
+        let mut q = sqlx::query(&sql);
+        for id in ids {
+            q = q.bind(id);
+        }
+        for r in q.fetch_all(pool).await? {
+            out.insert(
+                r.try_get("id")?,
+                TitleBrief {
+                    title: r.try_get("title")?,
+                    cover_image_url: r.try_get("cover_image_url")?,
+                    media_type: r.try_get("media_type")?,
+                },
+            );
+        }
+        Ok(out)
+    }
+
+    /// Names of the live series among `ids`. Deleted series are absent.
+    pub async fn live_series_names(
+        pool: &DbPool,
+        ids: &[u64],
+    ) -> Result<HashMap<u64, String>, AppError> {
+        let mut out = HashMap::new();
+        if ids.is_empty() {
+            return Ok(out);
+        }
+        let placeholders = vec!["?"; ids.len()].join(", ");
+        let sql = format!(
+            "SELECT id, CAST(name AS CHAR) AS name FROM series \
+             WHERE id IN ({placeholders}) AND deleted_at IS NULL"
+        );
+        let mut q = sqlx::query(&sql);
+        for id in ids {
+            q = q.bind(id);
+        }
+        for r in q.fetch_all(pool).await? {
+            out.insert(r.try_get("id")?, r.try_get("name")?);
+        }
+        Ok(out)
+    }
+}
+
+/// A live title as the proposals page names it (story 11-16).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TitleBrief {
+    pub title: String,
+    pub cover_image_url: Option<String>,
+    pub media_type: String,
 }
 
 #[cfg(test)]

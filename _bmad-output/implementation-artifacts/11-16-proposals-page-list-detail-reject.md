@@ -1,6 +1,6 @@
 # Story 11.16: Proposals page — list, detail, reject
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here); closes #536 (reject-then-refused E2E). Covers: FR137, FR138 (reject), FR146 (reject), UX-DR31 (list, detail, reject part). Epic 11 — sixteenth story, the **first librarian-facing web surface for proposals**. Not here: accept (11-17 series, 11-18 metadata / cover), edit before accepting (11-19), side-by-side current vs proposed view (11-20), nav entry + pending badge + dashboard indicator (11-21).
 
@@ -28,19 +28,19 @@ so that the agent's suggestions are reviewed in one place.
 2. **AC2 — the list (FR137, UX-DR31).** `/proposals` shows one row per live proposal: kind (localized), target (the proposed series name for a creation, else the live series / title name linking to its page, or "no longer in the catalog" with its id when the target is deleted), filing date, API key label, status (localized badge), item count, and a link to the detail. Filters `status` (pending — the default —, accepted, rejected, stale, all) and `kind` (all, series_create, series_attach, metadata, cover) via a GET form; unknown values fall back to the default. 25 per page, newest first, with previous / next links that keep the filters. An empty result shows an empty state. The page has a `#feedback-list` region (#526 lesson).
 3. **AC3 — the detail (FR137, NFR47).** `GET /proposals/{id}` shows the header (kind, status, filing date, key label; for a decided proposal who decided and when — "the system" for stale — and the rejection reason), the sources as links opening in a new tab (`target="_blank" rel="noopener noreferrer"`), and the items by shape: series line (name / type / total, or the target series), title lines (title link, position, omnibus range), expected-tome lines (position, title, ISBN), metadata fields (field label, current value, proposed value; contributors as name + role lists; `publication_year` with its current full date), cover (proposed image served by AC4, the title's current cover next to it, dimensions and size). Every agent value is rendered as escaped text (Askama auto-escape, never `|safe`). An unknown / soft-deleted proposal is a 404. An item matching no shape is shown as escaped JSON.
 4. **AC4 — staged cover route.** `GET /proposals/{id}/cover` (Librarian+) answers the staged JPEG of a cover proposal (`image/jpeg`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`); 404 when the proposal is unknown, not a cover proposal, the stored name fails `cover_staging::is_staged_name`, staging is unavailable, or the file is gone. The file name never appears in a URL. `/covers/.staging/…` stays 404.
-5. **AC5 — reject (FR138, FR146, D-11-9-7).** A pending proposal's detail shows a "Reject" button opening a UX-DR8 modal (`#modal-slot`, no `hx-confirm`) with an optional reason (`<textarea maxlength="1000">`), CSRF token and the proposal's `version`. `POST /proposals/{id}/reject`: role check, optimistic lock (a version that moved → localized conflict), `transition_in(Reject)` in one transaction → status `rejected`, `decided_by` / `decided_by_name` / `decided_at` recorded, reason trimmed (empty → none); after the commit every cover item's staged file is discarded (`cover_staging::discard`; failure logged, not shown). Success: `HX-Trigger: modal-close`, the re-rendered detail body (status rejected, decider, reason, no Reject button) and an OOB success entry in `#feedback-list`. Refusals, localized per `docs/error-message-style.md`: reason over 1000 characters (field hint), already decided (names the status, tells to reload), changed since opened, unknown proposal; they land in the modal's error region (retarget guard). Non-pending proposals show no Reject button.
+5. **AC5 — reject (FR138, FR146, D-11-9-7).** A pending proposal's detail shows a "Reject" button opening a UX-DR8 modal (`#modal-slot`, no `hx-confirm`) with an optional reason (`<textarea maxlength="1000">`), CSRF token and the proposal's `version`. `POST /proposals/{id}/reject`: role check, optimistic lock (a version that moved → localized conflict), `transition_in(Reject)` in one transaction → status `rejected`, `decided_by` / `decided_by_name` / `decided_at` recorded, reason trimmed (empty → none); after the commit every cover item's staged file is discarded (`cover_staging::discard`; failure logged, not shown). Success: `modal-close` (sent as `HX-Trigger-After-Swap`, D-11-16-6), the re-rendered detail body (status rejected, decider, reason, no Reject button) and an OOB success entry in `#feedback-list`. Refusals, localized per `docs/error-message-style.md`: reason over 1000 characters (field hint), already decided (names the status, tells to reload), changed since opened, unknown proposal; they land in the modal's error region (retarget guard). Non-pending proposals show no Reject button.
 6. **AC6 — labels, CSP.** Every new label and message in `locales/{en,fr,de,it}.yml` (`cargo test --test locale_parity`); no inline script / style / handlers (`templates_audit` green); every POST form has the CSRF hidden field; no `hx-confirm`.
 7. **AC7 — tests.** Unit: shape parsing per kind (incl. unknown shape fallback), filter parsing, target labels, error localization in four locales. DB integration (`#[sqlx::test]`, real router): listing (default pending, status / kind filters, pagination, key label, deleted target), detail (escaping of a `<script>` value, sources `target=_blank rel=noopener noreferrer`, items per kind), role guard (anonymous → login, librarian OK), reject with and without a reason (decided by / at, reason stored, too-long reason refused, not pending refused, version conflict refused, CSRF required), discard of a staged cover on rejection, staged-cover route (served, 404 cases, non-cover). E2E: a Librarian logs in from a blank browser, opens a proposal, rejects it with a reason; then the agent's equivalent re-filing is refused with the reopening date and `list_my_proposals` shows the reason and `resubmittable_from` (#536).
 
 ## Tasks / Subtasks
 
-- [ ] Model: `lock_status_version`, `live_title_briefs(ids)`, `live_series_names(ids)` (AC2, AC3, AC5)
-- [ ] `services/proposal_review.rs`: `ListFilter` parsing, `list_page` (rows + subject + target label), `ReviewLine` parsing per shape, `review_detail`, `reject` (+ discard after commit), `ReviewError` with `localized(loc)` / `into_app_error(loc)` (AC2, AC3, AC5)
-- [ ] `routes/proposals.rs`: list, detail, cover, reject-modal, reject; register in `routes/mod.rs` (AC1–AC5)
-- [ ] Templates: `pages/proposals.html`, `pages/proposal_detail.html`, `fragments/proposal_detail_body.html`, `fragments/proposal_reject_modal.html` (AC2–AC6)
-- [ ] Locale keys ×4 (AC6)
-- [ ] Tests: unit, `tests/proposals_page.rs`, E2E `proposals-review.spec.ts` (AC7)
-- [ ] `docs/route-role-matrix.md` rows; decisions D-11-16-*
+- [x] Model: `lock_status_version`, `live_title_briefs(ids)`, `live_series_names(ids)` (AC2, AC3, AC5)
+- [x] `services/proposal_review.rs`: filter parsing, `list_page` (rows + subject + target label), `parse_line` (display line per shape), `review_detail`, `reject` (+ discard after commit), `ReviewError` with `localized(loc)` / `into_app_error(loc)` (AC2, AC3, AC5)
+- [x] `routes/proposals.rs`: list, detail, cover, reject-modal, reject; register in `routes/mod.rs` (AC1–AC5)
+- [x] Templates: `pages/proposals.html`, `pages/proposal_detail.html`, `fragments/proposal_detail_body.html`, `fragments/proposal_reject_modal.html` (AC2–AC6)
+- [x] Locale keys ×4 (AC6)
+- [x] Tests: unit, `tests/proposals_page.rs`, E2E `proposals-review.spec.ts` (AC7)
+- [x] `docs/route-role-matrix.md` rows; decisions D-11-16-*
 
 ## Dev Notes
 
@@ -78,4 +78,20 @@ Claude Opus 5.5
 
 ### Completion Notes List
 
+- Reject runs `lock_status_version` → `transition_in(Reject)` → staged names → commit → `discard_all` (`services/proposal_review.rs::reject`).
+- E2E found that `HX-Trigger: modal-close` fires before the swap: `modal.js` wipes `#modal-slot`, the Confirm form is detached and the OOB success entry fails (`htmx:oobErrorNoTarget`). The handler sends `HX-Trigger-After-Swap: modal-close` through a new `HtmxResponse::into_response_with_hx_trigger_after_swap` (D-11-16-6).
+- The staged image is shown only while the proposal is pending (a decided proposal's file is gone or promoted).
+- Gates: clippy `-D warnings` clean; `cargo test` 1987 passed / 0 failed; `cargo sqlx prepare --check` clean (no typed query); waitForTimeout grep clean; `tsc --noEmit` clean; Playwright `CI=true --workers=2` on a reset stack: 374 passed, 2 skipped.
+- Askama escapes `<`, `>`, `&` as numeric entities (`&#60;` …): router tests assert on those.
+
 ### File List
+
+- src/services/proposal_review.rs (new)
+- src/routes/proposals.rs (new)
+- templates/pages/proposals.html, templates/pages/proposal_detail.html (new)
+- templates/fragments/proposal_detail_body.html, templates/fragments/proposal_reject_modal.html (new)
+- templates/components/proposal_status_badge.html (new)
+- tests/proposals_page.rs (new)
+- tests/e2e/specs/journeys/proposals-review.spec.ts (new)
+- src/models/proposal.rs, src/services/mod.rs, src/routes/mod.rs, src/middleware/htmx.rs
+- locales/{en,fr,de,it}.yml, docs/route-role-matrix.md

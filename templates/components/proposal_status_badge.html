@@ -1,0 +1,5 @@
+{# Story 11-16 — a proposal status badge. Callers bind `badge_status`
+   (the status value), `badge_class` (its colour classes) and
+   `badge_label` (its localized name) with `{% let %}` before including
+   (story 9-19 binding idiom). #}
+<span data-proposal-status="{{ badge_status }}" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ badge_class }}">{{ badge_label }}</span>

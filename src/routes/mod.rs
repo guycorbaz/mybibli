@@ -35,6 +35,7 @@ mod status_message_tests;
 mod volume_detail_tests;
 pub mod labels_page;
 pub mod loans;
+pub mod proposals;
 pub mod locations;
 pub mod series;
 pub mod series_expected_tomes;
@@ -389,6 +390,25 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .route(
             "/wishlist/{id}/delete-modal",
             axum::routing::get(wishlist::wishlist_delete_modal),
+        )
+        // Story 11-16 — the proposals page (Librarian+): list, detail,
+        // staged cover, rejection through the UX-DR8 modal.
+        .route("/proposals", axum::routing::get(proposals::proposals_page))
+        .route(
+            "/proposals/{id}",
+            axum::routing::get(proposals::proposal_detail_page),
+        )
+        .route(
+            "/proposals/{id}/cover",
+            axum::routing::get(proposals::staged_cover),
+        )
+        .route(
+            "/proposals/{id}/reject-modal",
+            axum::routing::get(proposals::reject_modal),
+        )
+        .route(
+            "/proposals/{id}/reject",
+            axum::routing::post(proposals::reject),
         )
         // CR #367 — saved searches (Librarian+). Run path is just a link
         // to `/?q=...`; these routes cover create + rename/delete modals.
