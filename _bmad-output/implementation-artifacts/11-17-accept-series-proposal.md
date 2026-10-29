@@ -55,6 +55,13 @@ so that the series, its attachments and its expected tomes enter the catalog in 
 - **E2E:** spec `series-proposal-accept.spec.ts` (sorts after `empty-states`, `dewey-code`, `classification-fieldset` — D-11-11-6, #528); series names unique per run; key created by admin via the UI helper used in `mcp-series-proposals.spec.ts`.
 - Pitfalls: CI charset (`CAST(… AS CHAR)`), no repo-wide `cargo fmt`, `mem-guard` + `-j 2`, French copy in router tests, Askama escapes `<`/`&` as `&#60;`/`&#38;`.
 
+### Validation notes (create-story checklist, 2026-10-29)
+
+- Reuse verified: `check_staleness_in`, `transition_in`, `lock_status_version`, `ExpectedTomeService::create_in`, `TitleSeriesModel::assign_in`, `ProposalModel::active_series_named`, `validate_lines`, the UX-DR8 macro, `into_response_with_hx_trigger_after_swap`, `utils::feedback_html_with_link`, E2E helpers `createApiKey` / `mcpCallTool` / `titleIdFromSkeleton`. No new crate.
+- One migration (`applied_series_id`): `ProposalRow` / `Proposal` are built in `proposals.rs::detail` and a test in `proposal_review.rs` — both get the field. Dynamic queries only, no `.sqlx` change expected.
+- Regression watch: `propose_attach` must keep its exact refusals after the `check_against_series` extraction (`tests/mcp_series_proposals.rs`); `templates_audit` (CSRF, no inline handlers); route-role matrix; `locale_parity`; `proposals_page.rs` assertions on the reject button.
+- Disaster prevention: never apply after a `WentStale` / state conflict; never leave the `accepted` status without the applied rows (same transaction); no file or network I/O in the transaction (D-11-9-12); lock series before titles.
+
 ### References
 
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 11.17] — FR138, FR140, FR146.
