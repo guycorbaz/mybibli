@@ -25,7 +25,8 @@ configuration file. The panel has six tabs:
         soft-deleted items.
   \item \textbf{System} — global settings.
   \item \textbf{API keys} — mint and revoke the keys the HTTP API
-        authenticates with (chapter~\ref{ch:api}).
+        authenticates with (chapter~\ref{ch:api}), and the
+        \emph{propose} keys of AI agents (chapter~\ref{ch:agents}).
 \end{itemize}
 
 Only the \texttt{Admin} role sees the panel; \texttt{Librarian} and
@@ -340,6 +341,14 @@ It only ever fills gaps: a value already present, or one you edited
 by hand, is never overwritten. Both bulk actions share the same
 pacing delay, throttle back-off and single-run lock, so only one of
 them can run at a time.
+
+\subsection*{Proposals}
+
+The \textbf{delay before a rejected proposal can be resubmitted}, in
+days (0--3650, default 90). While it runs, an AI agent cannot file a
+proposal equivalent to one a librarian rejected --- same kind and same
+subject, whichever key files it. Applied to the next proposal, no
+restart. See section~\ref{sec:agents-delay}.
 
 \subsection*{Language}
 

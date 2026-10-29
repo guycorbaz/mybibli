@@ -27,7 +27,8 @@ Built for collectors who want more than a spreadsheet:
 
 - **Barcode-first cataloging.** Scan an ISBN / EAN-13 and the title resolves asynchronously through a metadata provider chain (BnF, Google Books, Open Library, Library of Congress, K10plus, MusicBrainz, OMDb, TMDb, BDGest), with cover-image download and similar-title detection.
 - **Multi-media support.** Books, BD/comics (with multi-position omnibus volumes), audio releases, films/series — each typed correctly and with the right metadata provider chosen automatically.
-- **Series + collection awareness.** Gap detection on series volumes, Dewey-based browsing, similar-titles section.
+- **Series + collection awareness.** Gap detection on series volumes, *expected tomes* that name the missing ones (one click puts a missing tome on the wish list; scanning it later fills the gap), Dewey-based browsing, similar-titles section.
+- **AI agents, under supervision.** A built-in MCP server at `/api/mcp` lets an AI agent (Claude Code, or any MCP client over streamable HTTP) with a *propose* API key read the catalog and **propose** new series and their missing tomes, missing metadata or covers — with the sources it used. It never writes the catalog: a librarian reviews each proposal on the Proposals page (side-by-side comparison, edit, accept or reject with a reason). LAN-only, Host/Origin-checked; see chapter 13 of the manual and [`docs/auth-threat-model.md`](docs/auth-threat-model.md).
 - **Storage-location tracking.** Configurable hierarchy (room → shelf → row → …), barcode-on-shelf workflow, with a 30-second **Undo** on the last shelving or batch-location action.
 - **Loan management.** Borrower CRUD, loan registration with automatic location restoration on return, overdue threshold (admin-configurable), per-borrower history.
 - **Multi-role auth.** Anonymous (read-only), Librarian (catalog + loans), Admin (everything). Session inactivity timeout with keep-alive toast. FR/EN language toggle with per-user preference.
@@ -372,7 +373,7 @@ tests/
 
 ### For people running mybibli
 
-- **[User manual](docs/manual/)** — the end-user book, one self-contained PDF per language: [English](docs/manual/mybibli-manual-en.pdf) · [French](docs/manual/mybibli-manual-fr.pdf). Installation, configuration, daily use, metadata providers, roles, backup and restore, upgrades and release notes, troubleshooting, the HTTP API, operations. LaTeX sources under `docs/manual/{en,fr}/`, built with `docs/manual/build.sh`.
+- **[User manual](docs/manual/)** — the end-user book, one self-contained PDF per language: [English](docs/manual/mybibli-manual-en.pdf) · [French](docs/manual/mybibli-manual-fr.pdf). Installation, configuration, daily use, metadata providers, roles, backup and restore, upgrades and release notes, troubleshooting, the HTTP API, operations, AI agents and proposals (connecting an MCP client, reviewing proposals). LaTeX sources under `docs/manual/{en,fr}/`, built with `docs/manual/build.sh`.
 - [`SECURITY.md`](SECURITY.md) — supported versions, and how to report a vulnerability privately.
 
 ### For people working on it

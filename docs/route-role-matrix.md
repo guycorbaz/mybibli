@@ -4,11 +4,13 @@
 requires and whether it is subject to CSRF. Generated from
 `src/routes/*.rs` and verified by hand.
 
-**Last updated:** 2026-09-11 — **complete**: 172 method+path pairs over
-148 paths. The previous revision stopped at story 8-5 (2026-04-28) and
-documented 82 of them; everything added since — the setup wizard, the
-HTTP API, the wishlist, saved searches, labels, API keys, the shelf
-audit, every confirmation modal — was missing.
+**Last updated:** 2026-10-29 (story 11-24) — **complete**: 191
+method+path pairs over 167 paths, checked by diffing the router's
+`.route(…)` calls (`src/routes/`, `src/mcp/`) against this file. The
+2026-09-11 revision (172 pairs) had been made complete after the
+8-5 revision stopped at 82; epic 11 then added the MCP endpoint, the
+proposals pages, expected tomes and proposal line edits, of which the
+expected-tome and line-edit routes were missing until this revision.
 
 **How the roles below were established:** each row's role is the
 `Session::require_role` / `require_role_with_return` call at the top of
@@ -336,7 +338,7 @@ series id / title + set of fields / title), across all keys.
 | POST | `/loans/{id}/return` | Librarian | no | — |
 | GET | `/loans/{id}/return-modal` | Librarian | — |  |
 
-### Proposals (stories 11-16, 11-17) (`src/routes/proposals.rs`)
+### Proposals (stories 11-16 … 11-19) (`src/routes/proposals.rs`, `src/routes/proposal_edit.rs`)
 
 | method | path | role | csrf | note |
 |---|---|---|---|---|
@@ -345,8 +347,11 @@ series id / title + set of fields / title), across all keys.
 | GET | `/proposals/{id}/cover` | Librarian | — | The staged JPEG of a pending cover proposal (`Cache-Control: no-store`); the file name comes from the proposal, never from the URL. `/covers` never serves `.staging`. |
 | GET | `/proposals/{id}/reject-modal` | Librarian | — | UX-DR8 modal fragment, HTMX only (405 otherwise). |
 | POST | `/proposals/{id}/reject` | Librarian | no | Optimistic lock on `version`; optional reason ≤ 1000 characters; discards a staged cover after the commit. |
-| GET | `/proposals/{id}/accept-modal` | Librarian | — | 11-17 — UX-DR8 modal fragment for a pending series proposal, HTMX only (405 otherwise); requires the page's `version`. |
-| POST | `/proposals/{id}/accept` | Librarian | no | 11-17 — optimistic lock on `version`; staleness (versions + catalog state) re-checked under locks; applies the series proposal in one transaction, or marks it stale. |
+| GET | `/proposals/{id}/accept-modal` | Librarian | — | 11-17 / 11-18 — UX-DR8 modal fragment for a pending proposal of any kind, HTMX only (405 otherwise); requires the page's `version`. |
+| POST | `/proposals/{id}/accept` | Librarian | no | 11-17 / 11-18 — optimistic lock on `version`; staleness (versions + catalog state) re-checked under locks; applies the proposal (series, metadata or cover) in one transaction, or marks it stale; a cover is promoted from staging after the commit. |
+| POST | `/proposals/{id}/items/{item_id}` | Librarian | no | 11-19 — edit one line of a pending proposal (inline form); filing rules re-applied; the agent's values kept in `original_values`. |
+| GET | `/proposals/{id}/items/{item_id}/remove-modal` | Librarian | — | 11-19 — UX-DR8 modal fragment, HTMX only (405 otherwise); refuses a line that cannot be removed (series line, cover line, last metadata line). |
+| POST | `/proposals/{id}/items/{item_id}/remove` | Librarian | no | 11-19 — soft-deletes the line (kept on record, never applied). |
 
 ### Storage locations (`src/routes/locations.rs`)
 
@@ -380,6 +385,13 @@ series id / title + set of fields / title), across all keys.
 | GET | `/series/{id}` | Anonymous | — | — |
 | POST | `/series/{id}` | Librarian | no | — |
 | GET | `/series/{id}/edit` | Librarian | — | — |
+| POST | `/series/{id}/expected-tomes` | Librarian | no | 11-11 — create an expected tome (303 to the series; refusal re-renders the form, 422). |
+| GET | `/series/{id}/expected-tomes/new` | Librarian | — | 11-11 — full-page form; `?position=N` pre-fills a gap. |
+| POST | `/series/{id}/expected-tomes/{tome_id}` | Librarian | no | 11-11 — update (optimistic lock on `version`; a settled tome is refused). |
+| GET | `/series/{id}/expected-tomes/{tome_id}/edit` | Librarian | — | 11-11 — full-page form. |
+| GET | `/series/{id}/expected-tomes/{tome_id}/delete-modal` | Librarian | — | 11-11 — UX-DR8 modal fragment, HTMX only (405 otherwise). |
+| POST | `/series/{id}/expected-tomes/{tome_id}/delete` | Librarian | no | 11-11 — soft delete; answers `HX-Redirect` to the series. |
+| POST | `/series/{id}/expected-tomes/{tome_id}/wishlist` | Librarian | no | 11-11 — adds the tome to the wish list (note "Series «name», tome N"); a duplicate or an owned tome adds nothing. |
 
 ### First-launch setup wizard (story 8-8) (`src/routes/setup.rs`)
 

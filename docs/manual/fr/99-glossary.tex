@@ -28,6 +28,11 @@
         volume dans la base. Typiquement piloté au code-barres :
         scanner, confirmer, coller l'étiquette, recommencer.
 
+  \item[Clé propositions]\index{clé propositions} Clé d'API de
+        portée \emph{Lecture + propositions} : elle peut lire le
+        catalogue et déposer des propositions, jamais modifier le
+        catalogue. La seule clé acceptée par \texttt{/api/mcp}.
+
   \item[Code L]\index{code L} Étiquette code-barres d'un lieu de
         stockage. Format : \texttt{L} suivi d'un numéro
         zéro-paddé.
@@ -99,6 +104,10 @@
   \item[MariaDB] Le moteur de base où mybibli stocke ses données.
         Fork de MySQL.
 
+  \item[MCP]\index{MCP} Model Context Protocol. Le protocole ouvert
+        par lequel les agents IA appellent des outils ; mybibli le
+        sert sur \texttt{/api/mcp} (chapitre~\ref{ch:agents}).
+
   \item[Multi-position (volume)]\index{multi-position} Un volume
         physique unique qui contient plusieurs positions dans une
         série — typiquement un album BD omnibus.
@@ -123,6 +132,11 @@
         actuellement sorti chez un emprunteur précis. Note la date
         de prêt, la date de retour prévue, la date de retour, et
         le lieu pré-prêt du volume.
+
+  \item[Proposition]\index{proposition} Changement proposé par
+        un agent IA. Elle attend qu'un bibliothécaire l'accepte, la
+        modifie ou la refuse (page Propositions).
+        \emph{Périmée} quand son objet a changé avant la décision.
 
   \item[Réactivation] Restauration d'une ligne soft-deleted. Pour
         les utilisateurs, efface \texttt{deleted\_at} et leur
@@ -154,6 +168,12 @@
 
   \item[TMDb]\index{TMDb} The Movie Database. Source de
         métadonnées communautaire pour films et séries TV.
+
+  \item[Tome attendu]\index{tome attendu} Tome d'une série que la
+        bibliothèque ne possède pas encore, désigné par sa position,
+        son titre et éventuellement son ISBN. Affiché dans sa lacune
+        sur la page de la série ; résolu automatiquement quand son
+        ISBN est catalogué (section~\ref{sec:expected-tomes}).
 
   \item[Type de média]\index{types de médias} La nature de l'objet
         que représente un titre : Livre, BD / comic, Audio, Film /

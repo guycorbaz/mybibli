@@ -318,11 +318,12 @@ strings \texttt{1}, \texttt{true} and \texttt{TRUE} count as
 footgun where a stale shell value like \texttt{0} reads as ``set''
 and silently flips an opt-out.
 
-\begin{center}\small
-\begin{tabular}{l l >{\raggedright\arraybackslash}p{6.2cm}}
+{\small
+\begin{longtable}{l l >{\raggedright\arraybackslash}p{6.2cm}}
 \toprule
 \textbf{Variable} & \textbf{Default} & \textbf{Purpose} \\
 \midrule
+\endhead
 \multicolumn{3}{l}{\emph{Database}} \\
 \texttt{DATABASE\_URL}        & --- (required) & MariaDB connection string (DSN). \\
 \texttt{MYSQL\_HOST}          & \texttt{db}    & Hostname for the bundled DB service. \\
@@ -349,6 +350,8 @@ and silently flips an opt-out.
 \multicolumn{3}{l}{\emph{Hardening}} \\
 \texttt{MYBIBLI\_COOKIE\_SECURE} & \texttt{false} & Set to \texttt{true} only behind HTTPS. \\
 \texttt{CSP\_REPORT\_ONLY}     & \texttt{false} & Switch CSP header to report-only mode. \\
+\texttt{MYBIBLI\_MCP\_ALLOWED\_HOSTS} & loopback & \texttt{Host} values the AI-agent endpoint \texttt{/api/mcp} answers (comma-separated \texttt{host} or \texttt{host:port}). Default \texttt{localhost,127.0.0.1,::1}; a set value replaces it. See section~\ref{sec:agents-hosts}. \\
+\texttt{MYBIBLI\_MCP\_ALLOWED\_ORIGINS} & --- & \texttt{Origin} values accepted on \texttt{/api/mcp}; empty refuses any request carrying one. \\
 \midrule
 \multicolumn{3}{l}{\emph{Metadata providers (migrated to DB on first boot)}} \\
 \texttt{GOOGLE\_BOOKS\_API\_KEY} & --- & Optional key for Google Books. \\
@@ -360,8 +363,8 @@ and silently flips an opt-out.
 \texttt{MYBIBLI\_SKIP\_STARTUP\_PURGE} & \texttt{false} & Skip the boot-time auto-purge. \\
 \texttt{MYBIBLI\_SEED\_DEV\_USERS} & \texttt{false} & Seed dev \texttt{admin/admin} + \texttt{librarian/librarian}. \emph{Never on prod.} \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{longtable}
+}
 
 Provider base-URL overrides (\texttt{BNF\_API\_BASE\_URL},
 \texttt{GOOGLE\_BOOKS\_API\_BASE\_URL}, \dots) exist solely to point

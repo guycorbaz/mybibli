@@ -20,7 +20,10 @@ Three artifacts together form a complete mybibli backup:
         catalog still works, but every title page shows a generic
         placeholder until you re-fetch metadata title-by-title
         (issue~\#213 — pre-1.1.4 installs without this volume had
-        covers disappear on every container upgrade).
+        covers disappear on every container upgrade). The same
+        volume holds, in a hidden \texttt{.staging} folder, the
+        covers proposed by AI agents and not yet decided
+        (section~\ref{sec:agents-staging}).
   \item \textbf{The \texttt{.env} file.}\index{backup!.env} Holds
         passwords (database, API keys not yet migrated). Lose this
         and a re-deploy needs you to re-enter every credential.
