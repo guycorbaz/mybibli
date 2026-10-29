@@ -88,6 +88,11 @@ Round 1:
 - [x] [Review][Patch] (Low) `promote` called a missing covers directory `Missing`; a failed staged-copy removal after a cross-device promotion failed the promotion; `.tmp-` files of that fallback were never purged; the schema `maxLength` contradicted "line breaks ignored"; description figures untested; dev-note order stale; timeout constant untested
 - Accepted (Low): a commit reported as failed although it reached the server discards the staged file (rare; acceptance then hits `Missing`, #533); `staged_cover_files_referenced` scans every cover item (small table); `StagingUnavailable` stays a refusal (its message must reach the agent); sync `is_dir` in `cover_staging_dir` (one stat); the empty 11-9 sibling directory is left; E2E checks the title through `get_title` rather than the page's cover (the mock may supply one).
 
+Round 2:
+- [x] [Review][Patch] (Medium) Round-1 fixes (c) + (f) combined: the encode permit was awaited inside the spawned job, so abandoned requests queued unbounded jobs (2 MiB each), and the per-key cap was a plain read before them — concurrent calls passed it together. Now the permit is awaited in the request before spawning (at most two jobs exist) and held for the job's life; the cap is re-checked inside the filing transaction under the exclusive key lock (`file_capped`, 11-12 order); concurrency test added (D-11-14-12)
+- [x] [Review][Patch] (Low) The encoded-slash router cases were not discriminating — the test now plants `covers/x/.staging/<name>`, which `ServeDir` would serve through `x%2F.staging%2F…` without the guard
+- Accepted (Low): the purge skips old `.tmp-` files of the covers directory when the staging directory is missing (no promotion can create them then).
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -128,3 +133,4 @@ Claude Opus 5.5 (claude-opus-5-5)
 - 2026-10-29 — validated against the create-story checklist: result shape and the admin-copy / E2E scope made explicit (dev notes); no AC change.
 - 2026-10-29 — implemented (dev-story); status review.
 - 2026-10-29 — code review round 1 (D-11-14-11); fixes applied.
+- 2026-10-29 — code review round 2 (D-11-14-12); fixes applied.

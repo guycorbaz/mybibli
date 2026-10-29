@@ -515,8 +515,10 @@ async fn the_covers_route_never_serves_the_staging_area(pool: DbPool) {
     let res = f.agent.ok(TOOL, args(title, &png(8, 8), "image/png")).await;
     let staged = staged_file_of(&pool, res["proposal_id"].as_u64().unwrap()).await;
     std::fs::write(f.covers.join("42.jpg"), b"public").unwrap();
-    // A sub-directory lets an encoded slash try to reach the staging area.
-    std::fs::create_dir_all(f.covers.join("x")).unwrap();
+    // A hidden directory below an ordinary one: without the decoding
+    // guard, `ServeDir` would serve `x%2F.staging%2F<name>`.
+    std::fs::create_dir_all(f.covers.join("x/.staging")).unwrap();
+    std::fs::write(f.covers.join("x/.staging").join(&staged), b"hidden").unwrap();
 
     let get = |path: String| {
         let app = f.agent.app.clone();
@@ -537,8 +539,9 @@ async fn the_covers_route_never_serves_the_staging_area(pool: DbPool) {
         format!("/covers/%2estaging/{staged}"),
         format!("/covers/%2Estaging/{staged}"),
         "/covers/.staging/".to_string(),
-        format!("/covers/x%2F..%2F.staging%2F{staged}"),
-        format!("/covers/x%2f.staging%2f{staged}"),
+        format!("/covers/x%2F.staging%2F{staged}"),
+        format!("/covers/x%2f%2estaging%2f{staged}"),
+        format!("/covers/x/.staging/{staged}"),
     ] {
         assert_eq!(get(path.clone()).await, StatusCode::NOT_FOUND, "{path}");
     }
@@ -576,4 +579,42 @@ async fn a_key_with_too_many_pending_covers_is_refused(pool: DbPool) {
         .await
         .unwrap();
     f.agent.ok(TOOL, args(title, &png(4, 4), "image/png")).await;
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn concurrent_calls_cannot_pass_the_pending_cap_together(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let title = seed_title(&pool, "Concurrence").await;
+    let first = f.agent.ok(TOOL, args(title, &png(4, 4), "image/png")).await;
+    let key_id: u64 = sqlx::query_scalar("SELECT api_key_id FROM proposals WHERE id = ?")
+        .bind(first["proposal_id"].as_u64().unwrap())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    // One slot left.
+    for _ in 2..MAX_PENDING_COVERS_PER_KEY {
+        sqlx::query("INSERT INTO proposals (kind, api_key_id, sources) VALUES ('cover', ?, '[]')")
+            .bind(key_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let calls = (0..4).map(|i| {
+        let agent = &f.agent;
+        let a = args(title, &png(4 + i, 4), "image/png");
+        async move { agent.call(TOOL, a).await }
+    });
+    let results = futures::future::join_all(calls).await;
+    let filed = results.iter().filter(|r| r["isError"] == false).count();
+    assert_eq!(filed, 1, "{results:?}");
+    let pending: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM proposals WHERE api_key_id = ? AND status = 'pending'",
+    )
+    .bind(key_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(pending as u64, MAX_PENDING_COVERS_PER_KEY);
+    // The refused calls left no staged file behind.
+    assert_eq!(staged_files(&f.staging).len(), 2);
 }

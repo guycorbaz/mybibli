@@ -67,7 +67,7 @@ use crate::services::cover::{
 use crate::services::cover_staging::{self, StagingError};
 use crate::services::proposals::{
     FiledProposal, NewProposal, NewProposalItem, ProposalError, ProposalService, Refusal,
-    RefusalClass, validate_sources,
+    RefusalClass, log_filed, validate_sources,
 };
 use crate::services::title_detail::has_cover;
 
@@ -262,6 +262,12 @@ impl From<AppError> for CoverProposalError {
     }
 }
 
+impl From<sqlx::Error> for CoverProposalError {
+    fn from(e: sqlx::Error) -> Self {
+        CoverProposalError::Proposal(ProposalError::from(e))
+    }
+}
+
 impl From<ProposalError> for CoverProposalError {
     fn from(e: ProposalError) -> Self {
         CoverProposalError::Proposal(e)
@@ -383,12 +389,27 @@ impl CoverProposalService {
         let staging_dir = staging_dir
             .ok_or(CoverProposalError::StagingUnavailable)?
             .to_path_buf();
-        let pending =
-            ProposalModel::count_pending_of_kind_for_key(pool, req.api_key_id, ProposalKind::Cover)
-                .await?;
+        // Fast refusal before any work; the binding check runs again
+        // under the key lock when filing.
+        let mut conn = pool.acquire().await?;
+        let pending = ProposalModel::count_pending_of_kind_for_key(
+            &mut conn,
+            req.api_key_id,
+            ProposalKind::Cover,
+        )
+        .await?;
+        drop(conn);
         if pending >= MAX_PENDING_COVERS_PER_KEY {
             return Err(CoverProposalError::TooManyPending { pending });
         }
+        // At most `MAX_CONCURRENT_ENCODES` jobs exist at once: the permit
+        // is awaited HERE, in the request (a dropped request stops
+        // waiting — no unbounded queue), then held by the job until it
+        // ends.
+        let permit = ENCODE_PERMITS
+            .acquire()
+            .await
+            .map_err(|e| AppError::Internal(format!("cover encode permits: {e}")))?;
 
         // The rest runs in its own task: a request dropped by the 30 s
         // timeout or a disconnect does not abort it half-way (a staged
@@ -406,6 +427,7 @@ impl CoverProposalService {
             declared,
             original,
             sources,
+            _permit: permit,
         };
         tokio::spawn(job.run())
             .await
@@ -425,31 +447,23 @@ struct FilingJob {
     declared: &'static str,
     original: Vec<u8>,
     sources: Vec<String>,
+    /// Held for the job's whole life (decode included).
+    _permit: tokio::sync::SemaphorePermit<'static>,
 }
 
 impl FilingJob {
     async fn run(self) -> Result<FiledCoverProposal, CoverProposalError> {
         let original_bytes = self.original.len();
-        // At most `MAX_CONCURRENT_ENCODES` decodes at once; the permit
-        // moves into the blocking task, so it is held until the decode
-        // really ends.
-        let permit = ENCODE_PERMITS
-            .acquire()
-            .await
-            .map_err(|e| AppError::Internal(format!("cover encode permits: {e}")))?;
         let original = self.original;
-        let encoded = tokio::task::spawn_blocking(move || {
-            let _permit = permit;
-            encode_cover(&original)
-        })
-        .await
-        .map_err(|e| AppError::Internal(format!("cover encode task: {e}")))?
-        .map_err(|e| match e {
-            CoverError::InvalidImage(msg) => {
-                CoverProposalError::Image(ImageProblem::Undecodable(msg))
-            }
-            other => AppError::Internal(other.to_string()).into(),
-        })?;
+        let encoded = tokio::task::spawn_blocking(move || encode_cover(&original))
+            .await
+            .map_err(|e| AppError::Internal(format!("cover encode task: {e}")))?
+            .map_err(|e| match e {
+                CoverError::InvalidImage(msg) => {
+                    CoverProposalError::Image(ImageProblem::Undecodable(msg))
+                }
+                other => AppError::Internal(other.to_string()).into(),
+            })?;
 
         let staged_file = cover_staging::stage(&self.staging_dir, &encoded.jpeg)
             .await
@@ -477,24 +491,28 @@ impl FilingJob {
                 proposed_values: values,
             }],
         };
-        let proposal_id = match ProposalService::file(&self.pool, &proposal).await {
+        let proposal_id = match file_capped(&self.pool, &proposal).await {
             Ok(id) => id,
             Err(e) => {
                 cover_staging::discard_all(&self.staging_dir, std::slice::from_ref(&staged_file))
                     .await;
                 return Err(match e {
-                    ProposalError::TargetNotFound { .. } => CoverProposalError::TitleNotFound {
-                        title_id: target.id,
-                    },
-                    ProposalError::TargetChanged {
-                        expected, current, ..
-                    } => CoverProposalError::TargetChanged {
+                    CoverProposalError::Proposal(ProposalError::TargetNotFound { .. }) => {
+                        CoverProposalError::TitleNotFound {
+                            title_id: target.id,
+                        }
+                    }
+                    CoverProposalError::Proposal(ProposalError::TargetChanged {
+                        expected,
+                        current,
+                        ..
+                    }) => CoverProposalError::TargetChanged {
                         title_id: target.id,
                         expected,
                         current,
                         pinned: self.pinned,
                     },
-                    other => CoverProposalError::Proposal(other),
+                    other => other,
                 });
             }
         };
@@ -507,6 +525,33 @@ impl FilingJob {
             replaces_existing,
         })
     }
+}
+
+/// File under the exclusive key lock (story 11-12 order: key row first),
+/// re-checking the per-key cap there, so concurrent calls cannot pass
+/// it together. A plain count right after the locking read sees every
+/// filing committed before the lock was granted (D-11-12-13).
+async fn file_capped(pool: &DbPool, proposal: &NewProposal) -> Result<u64, CoverProposalError> {
+    let mut tx = pool.begin().await?;
+    if !ProposalModel::lock_filing_key_exclusive(&mut tx, proposal.api_key_id).await? {
+        return Err(ProposalError::KeyNotAllowed {
+            api_key_id: proposal.api_key_id,
+        }
+        .into());
+    }
+    let pending = ProposalModel::count_pending_of_kind_for_key(
+        &mut tx,
+        proposal.api_key_id,
+        ProposalKind::Cover,
+    )
+    .await?;
+    if pending >= MAX_PENDING_COVERS_PER_KEY {
+        return Err(CoverProposalError::TooManyPending { pending });
+    }
+    let id = ProposalService::file_in(&mut tx, proposal).await?;
+    tx.commit().await?;
+    log_filed(id, proposal);
+    Ok(id)
 }
 
 /// Revoke an API key: its pending proposals become `stale` in the same

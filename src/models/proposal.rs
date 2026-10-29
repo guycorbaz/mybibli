@@ -701,9 +701,10 @@ impl ProposalModel {
     }
 
     /// Story 11-14 — how many live pending proposals of `kind` the key
-    /// has filed. Plain read.
+    /// has filed. Plain read (after `lock_filing_key_exclusive` when it
+    /// must bind).
     pub async fn count_pending_of_kind_for_key(
-        pool: &DbPool,
+        conn: &mut MySqlConnection,
         api_key_id: u64,
         kind: ProposalKind,
     ) -> Result<u64, AppError> {
@@ -713,7 +714,7 @@ impl ProposalModel {
         )
         .bind(api_key_id)
         .bind(kind.as_str())
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await?;
         Ok(u64::try_from(n).unwrap_or(0))
     }
