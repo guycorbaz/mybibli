@@ -1224,6 +1224,12 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Chosen (Lows fixed):** the htmx history-restore exception is back (round 1 had dropped it, but `home()` with an empty query and handlers ignoring `HxRequest` answer such a restore with the full page); a unit case pins `Sec-Fetch-Dest` precedence over `Accept`; the E2E subtitle is unique per run (a local re-run on a non-reset stack would be refused by the previous rejection). **Dismissed:** two indexed counts per post/redirect/get cycle.
 **Reversible:** yes.
 
+### D-11-21-7 — Full E2E gate: `/series` list scrolls inside its own box at phone width
+**Context:** the first full `CI=true --workers=2` run (with the series created by the other specs) failed the tightened responsive spec: `/series` at 360 px overflowed by 11 px in fr / de / it (its five-column table had no wrapper; the old 32 px tolerance hid it). The new proposals spec also asserted its row "in viewport" without scrolling a long shared list.
+**Chosen:** the `/series` table is wrapped in `relative overflow-x-auto` (the page no longer scrolls; the table may, by a few pixels); the spec scrolls the row into view before checking it.
+**Rejected:** dropping a column below `sm` (Type / Owned / Total / Gaps are all short and useful at a glance); keeping a tolerance above 1 px.
+**Reversible:** yes.
+
 ## § 11-22 — `rmcp` checkpoint before the release (part of #493)
 
 ### D-11-22-1 — Sprint-status: the story line plus the line-2 header

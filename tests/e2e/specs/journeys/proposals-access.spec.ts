@@ -153,7 +153,11 @@ test.describe("Story 11-21 — access to the proposals page", () => {
       await page.goto("/proposals?status=all");
       const row = page.locator(`tr[data-proposal-id="${proposalId}"]`);
       await expect(row).toBeVisible();
-      await expect(row.locator(`a[href="/proposals/${proposalId}"]`)).toBeInViewport();
+      // The list may be long (shared DB): bring the row into view, then
+      // its Open link must not sit beyond the right edge.
+      const open = row.locator(`a[href="/proposals/${proposalId}"]`);
+      await open.scrollIntoViewIfNeeded();
+      await expect(open).toBeInViewport();
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );
