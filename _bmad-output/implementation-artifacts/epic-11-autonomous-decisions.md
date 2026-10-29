@@ -1188,6 +1188,19 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Chosen (Lows fixed):** the cover flag is also withheld when the live cover no longer matches the one recorded at filing (`replaces_existing`) — acceptance would refuse such a proposal as outdated, so the page promises nothing; an empty original shows "(empty)"; a router test covers an edited contributors line (`[data-original]` list, escaped).
 **Reversible:** yes.
 
+## § 11-21 — Access to the proposals page (part of #493)
+
+### D-11-21-1 — The nav bar switches at `xl` (1280 px) for every role; still not compacted [PRODUCT] — decided by the project lead
+**Context:** the UX-DR32 stop clause fired on the first attempt: with an Admin's full link set the bar already overflowed at the `lg` switch (1024 px) by 4 px in French and 8 px in German, 0 px slack in Italian, before the Proposals entry. Measured minimum clean widths with the entry and a two-digit badge: fr 1264, de 1168, it 1216, en 1116 px.
+**Chosen (project lead, 2026-10-29):** the desktop-strip / hamburger switch moves from `lg` to `xl` (1280 px) for every role (same kind of fix as CR #443); it supersedes story 11-4's "breakpoints unchanged". No compaction (labels, font, gaps, heights unchanged). Below `xl` the bar's own logout button is hidden — the mobile panel has its own (#150) — which also fixes the 360 px bar overflow of #545. `responsive-layouts.spec.ts` is tightened (Admin, four locales, 360 / 1279 / 1280 / 1920 px, 1 px tolerance, no wrapped link).
+**Rejected:** compacting the bar (epic-11 planning decision); the left sidebar (CR #547 — the longer-term answer, out of scope until epic 11 is closed).
+**Reversible:** yes — moot if CR #547 is adopted.
+
+### D-11-21-2 — A pending proposal with nothing left to apply still counts [PRODUCT] — decided by the project lead
+**Context:** after 11-19 a pending proposal can have every line removed (`has_lines_to_apply` false); it still needs a decision.
+**Chosen (project lead, 2026-10-29):** the badge and the dashboard indicator count every live proposal with `status = 'pending'`, whatever its lines.
+**Reversible:** yes.
+
 ## § 11-22 — `rmcp` checkpoint before the release (part of #493)
 
 ### D-11-22-1 — Sprint-status: the story line plus the line-2 header
