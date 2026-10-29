@@ -68,7 +68,13 @@ The AC below are the epic's AC amended accordingly (AC4 replaces "stop at `lg`")
 
 ### Validation notes (create-story checklist)
 
-See below, after validation.
+Validated 2026-10-29 against `.claude/skills/bmad-create-story/checklist.md`. Added after the pass:
+- **Anonymous bar at 360 px:** the anonymous "Login" link stays in the bar (it is the visitor's main action); if the 360 px measure shows the anonymous bar overflowing, it gets the same `hidden xl:…` treatment (the panel has its own login link, #150). Measured, not assumed.
+- **No JS depends on the breakpoint** (`static/js` has no width `matchMedia`); the switch is pure Tailwind classes, and `static/css/output.css` is compiled from the templates in the Docker build (Tailwind v4 scans them), so new `xl:` classes need no extra wiring — the E2E stack proves they are generated.
+- **Detail pages:** `/proposals/{id}` renders with `current_page = "proposals"`, so `aria-current` covers it.
+- **Label-in-name (WCAG 2.5.3):** the link's aria-label starts with the visible label, then the count.
+- **Rule #12:** `home.rs` is already 2562 lines — add one line there at most; logic in `home_indicators.rs`.
+- **Mobile panel landscape test (11-4):** adding an entry keeps the admin panel overflowing a 375 px-high viewport, the assertion stays true.
 
 ### References
 
