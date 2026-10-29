@@ -132,6 +132,7 @@ Columns: `method | path | role | csrf | note`. `csrf` is `—` for GET (the midd
 | POST | `/admin/system/language` | Admin | no | Save default language (FR / EN); reloads cache; takes effect on next anonymous fresh-visitor request. |
 | POST | `/admin/system/loans` | Admin | no | Save overdue threshold; reloads `AppSettings` cache. |
 | POST | `/admin/system/log-level` | Admin | no |  |
+| POST | `/admin/system/proposals` | Admin | no | 11-15 — resubmission delay for rejected proposals (days, 0..=3650) |
 | POST | `/admin/system/provider-timeouts` | Admin | no |  |
 | POST | `/admin/system/providers` | Admin | no | Save 3 provider API keys (Google Books / OMDb / TMDb) in one transaction; NoChange/Clear/Set state machine; reloads cache. |
 | POST | `/admin/system/sessions` | Admin | no |  |
@@ -213,6 +214,13 @@ most 100 pending cover proposals. The server
 never fetches an agent-supplied URL (`docs/auth-threat-model.md` § 5.9).
 Revoking a key (Admin → API keys) marks its pending proposals stale and
 discards their staged covers.
+
+History (11-15): `list_my_proposals` (read-only) lists the calling key's own
+proposals — status, decision date, rejection reason, subject — never another
+key's. A proposal equivalent to one rejected less than the resubmission delay
+ago (Admin → System, default 90 days) is refused at filing with the date it
+is accepted again; equivalence = same kind and target (series name folded /
+series id / title + set of fields / title), across all keys.
 
 ### Shelf audit (CR #237) (`src/routes/audit.rs`)
 

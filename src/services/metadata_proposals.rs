@@ -248,7 +248,7 @@ impl Refusal for MetadataProposalError {
             TitleNotFound { .. } => RefusalClass::NotFound,
             TargetChanged { .. } | NothingChanges { .. } => RefusalClass::Conflict,
             Proposal(e) if e.is_invalid_input() => RefusalClass::InvalidInput,
-            Proposal(ProposalError::KeyNotAllowed { .. }) => RefusalClass::Conflict,
+            Proposal(e) if e.is_conflict() => RefusalClass::Conflict,
             Proposal(_) => RefusalClass::Internal,
         }
     }

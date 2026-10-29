@@ -1,6 +1,6 @@
 # Story 11.15: Proposal history and resubmission delay
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: part of #493 (MCP server — do NOT close it here). Covers: FR135, FR136, AR30 (with FR134, AR29 inherited from 11-9). Epic 11 — fifteenth story. The three proposal kinds exist (series 11-12, metadata 11-13, cover 11-14); this story gives the agent its own history (`list_my_proposals`) and stops it from re-filing what a librarian rejected recently. Rejecting itself is story 11-16 (web page); here rejections are made through `ProposalService::transition` in tests.
 
@@ -33,14 +33,14 @@ so that the librarian is not asked the same thing over and over.
 
 ## Tasks / Subtasks
 
-- [ ] Migration `20261029120000_proposals_equivalence_key.sql`: `proposals.equivalence_key VARCHAR(700) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL` + `INDEX idx_proposals_equivalence (equivalence_key)`; seed `proposal_resubmission_delay_days = '90'` (AC2, AC3)
-- [ ] `services/proposal_history.rs`: `ProposalSubject` (+ `from_items`, `equivalence_key`, JSON), `resubmission_open_from`, delay constants/parse, `list_mine` (AC1, AC3, AC4)
-- [ ] `ProposalError::RecentlyRejected` + `is_conflict()`; check in `ProposalService::file_in`; three `class()` updated (AC4)
-- [ ] Model: `insert_proposal` stores the key; `latest_rejection(conn, key)`; `resubmission_delay_days(conn)`; summary `rejection_reason`; `subject_lines(ids)` (AC1, AC4)
-- [ ] MCP tool `list_my_proposals`; registry + `tests/common/mcp.rs` + `tests/e2e/helpers/mcp.ts` (AC1)
-- [ ] Admin → System "Proposals" form + route `POST /admin/system/proposals`; validator in `services/admin_system.rs`; locale keys ×4 (AC2, AC5)
-- [ ] Tests: unit, `tests/proposal_history.rs` (DB + router), admin form tests, E2E spec (AC6)
-- [ ] `cargo sqlx prepare` if typed queries change; decisions D-11-15-* logged
+- [x] Migration `20261029120000_proposals_equivalence_key.sql`: `proposals.equivalence_key VARCHAR(700) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL` + `INDEX idx_proposals_equivalence (equivalence_key)`; seed `proposal_resubmission_delay_days = '90'` (AC2, AC3)
+- [x] `services/proposal_history.rs`: `ProposalSubject` (+ `from_items`, `equivalence_key`, JSON), `resubmission_open_from`, delay constants/parse, `list_mine` (AC1, AC3, AC4)
+- [x] `ProposalError::RecentlyRejected` + `is_conflict()`; check in `ProposalService::file_in`; three `class()` updated (AC4)
+- [x] Model: `insert_proposal` stores the key; `latest_rejection(conn, key)`; `resubmission_delay_days(conn)`; summary `rejection_reason`; `subject_lines(ids)` (AC1, AC4)
+- [x] MCP tool `list_my_proposals`; registry + `tests/common/mcp.rs` + `tests/e2e/helpers/mcp.ts` (AC1)
+- [x] Admin → System "Proposals" form + route `POST /admin/system/proposals`; validator in `services/admin_system.rs`; locale keys ×4 (AC2, AC5)
+- [x] Tests: unit, `tests/proposal_history.rs` (DB + router), admin form tests, E2E spec (AC6)
+- [x] `cargo sqlx prepare` if typed queries change; decisions D-11-15-* logged
 
 ## Dev Notes
 
@@ -69,4 +69,24 @@ Claude Opus 5.5
 
 ### Completion Notes List
 
+- The delay is checked in `ProposalService::file_in` right after `lock_filing_key` (series and cover already hold the exclusive key lock before calling it): one rule for the three kinds, no new lock. `check_resubmission` returns the key, stored by `insert_proposal`.
+- No `AppSettings` field: the filing (and the history) read the `settings` row in their own transaction through `parse_resubmission_delay_days` (D-11-15-4). `fetch_setting_rows` (Admin → System) has a key whitelist — the new key had to be added, otherwise the panel always rendered version 1 (caught by the router test).
+- Two existing tests re-filed right after a rejection and now meet the delay by design: `mcp_series_proposals::a_pending_proposal_for_the_same_series_blocks_a_new_one` (now expects the refusal, then back-dates) and `mcp_cover_proposals::a_key_with_too_many_pending_covers_is_refused` ("deciding one" now marks it stale).
+- `docs/route-role-matrix.md`: the new route and the history / equivalence rule.
+- Gates: clippy `-D warnings` clean; `cargo test` 1959 passed / 0 failed; `cargo sqlx prepare --check` clean (no typed query added); waitForTimeout grep clean; `tsc --noEmit` clean; Playwright `CI=true --workers=2` on a reset stack: 372 passed, 2 skipped.
+
 ### File List
+
+- migrations/20261029120000_proposals_equivalence_key.sql (new)
+- src/services/proposal_history.rs (new)
+- src/mcp/tools/list_my_proposals.rs (new)
+- src/routes/admin_system_proposals.rs (new)
+- templates/fragments/admin_system_proposals_form.html (new)
+- tests/proposal_history.rs (new)
+- tests/e2e/specs/journeys/mcp-proposal-history.spec.ts (new)
+- src/services/proposals.rs, src/models/proposal.rs, src/services/mod.rs
+- src/services/series_proposals.rs, src/services/metadata_proposals.rs, src/services/cover_proposals.rs
+- src/services/admin_system.rs, src/routes/admin_system.rs, src/routes/mod.rs, templates/fragments/admin_system_panel.html
+- src/mcp/tools/mod.rs, tests/common/mcp.rs, tests/e2e/helpers/mcp.ts
+- tests/mcp_series_proposals.rs, tests/mcp_cover_proposals.rs
+- locales/{en,fr,de,it}.yml, docs/route-role-matrix.md

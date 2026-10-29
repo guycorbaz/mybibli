@@ -17,6 +17,7 @@ pub mod locking;
 pub mod metadata_diagnosis;
 pub mod metadata_proposals;
 pub mod password;
+pub mod proposal_history;
 pub mod proposals;
 pub mod scan_undo;
 pub mod search;

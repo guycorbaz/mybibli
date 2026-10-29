@@ -7,6 +7,7 @@ pub mod admin_labels;
 pub mod entity_labels;
 pub mod admin_reference_data;
 pub mod admin_system;
+pub mod admin_system_proposals;
 pub mod admin_users;
 pub mod api_v1;
 pub mod auth;
@@ -687,6 +688,12 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .route(
             "/admin/system/sessions",
             axum::routing::post(admin_system::save_sessions_settings),
+        )
+        // Story 11-15 (AR30) — Proposals section: resubmission delay
+        // for rejected agent proposals (days). Read by each filing.
+        .route(
+            "/admin/system/proposals",
+            axum::routing::post(admin_system_proposals::save_proposals_settings),
         )
         // CR #241 — Admin → API keys (v1.4.0). 4 routes: 1 GET panel +
         // 1 POST create + 1 GET revoke-modal + 1 POST revoke. All

@@ -447,6 +447,7 @@ error:
     provider_timeout_invalid: "Le délai doit être compris entre 1 et 60 secondes."
     bulk_refetch_delay_invalid: "Le délai du re-fetch en lot doit être compris entre 0 et 60000 millisecondes."
     session_timeout_invalid: "Le délai de session doit être compris entre 1 et 720 heures."
+    resubmission_delay_invalid: "Le délai doit être un nombre entier de jours entre 0 et 3650."
     version_mismatch: "Les paramètres ont été modifiés par un autre administrateur — rechargez et réessayez"
     provider_version_mismatch: "%{provider} a été modifié par un autre administrateur — rechargez et réessayez"
   code:
@@ -1012,6 +1013,10 @@ admin:
     session_timeout_label: "Délai d'inactivité de session (heures)"
     session_timeout_help: "Durée pendant laquelle une session connectée reste active sans activité, de 1 heure à 720 (30 jours). Définit aussi la durée de vie du cookie de session dans le navigateur. Appliqué à la prochaine requête — les sessions déjà ouvertes ne sont pas coupées rétroactivement. Par défaut : 4 heures."
     btn_save_sessions: "Enregistrer les préférences de session"
+    section_proposals: "Propositions"
+    resubmission_delay_label: "Délai avant qu'une proposition refusée puisse être soumise à nouveau (jours)"
+    resubmission_delay_help: "Combien de temps un agent IA doit attendre avant de déposer à nouveau une proposition équivalente à une proposition refusée par un bibliothécaire (même type et même série, titre ou ensemble de champs). De 0 (aucun délai) à %{max} jours. Appliqué à la prochaine proposition, sans redémarrage. Par défaut : 90 jours."
+    btn_save_proposals: "Enregistrer les réglages des propositions"
     # v1.7.9 fix #334 — Délais d'attente metadata-chain + provider-health.
     metadata_chain_timeout_label: "Délai d'attente par fournisseur de métadonnées (secondes)"
     metadata_chain_timeout_help: "Temps maximal d'attente d'un fournisseur avant de passer au suivant dans la chaîne. Par défaut 5. Augmentez si votre DNS ou TLS est lent (fibre rurale, VPN, satellite). Bornes 1–60. Appliqué au prochain scan — sans redémarrage."
@@ -1117,6 +1122,7 @@ success:
     timeouts_saved: "Délais d'attente enregistrés — appliqués au prochain scan / tour de ping, pas de redémarrage requis"
     provider_timeouts_saved: "Délais par fournisseur enregistrés — appliqués au prochain scan, pas de redémarrage requis"
     sessions_saved: "Préférences de session enregistrées — appliquées à la prochaine requête, pas de redémarrage requis"
+    proposals_saved: "Réglages des propositions enregistrés — appliqués à la prochaine proposition, sans redémarrage"
     no_changes: "Aucune modification"
     provider_set: "Clé %{provider} enregistrée"
     provider_cleared: "Clé %{provider} effacée"

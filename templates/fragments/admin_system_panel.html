@@ -49,4 +49,11 @@
         <h3 id="admin-system-sessions-heading" class="text-lg font-semibold mb-3">{{ section_sessions }}</h3>
         {{ sessions_form_html|safe }}
     </section>
+
+    {# Story 11-15 (AR30) — Proposals section. Delay before a rejected
+       agent proposal may be resubmitted. #}
+    <section aria-labelledby="admin-system-proposals-heading">
+        <h3 id="admin-system-proposals-heading" class="text-lg font-semibold mb-3">{{ section_proposals }}</h3>
+        {{ proposals_form_html|safe }}
+    </section>
 </section>

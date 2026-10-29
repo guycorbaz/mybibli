@@ -145,6 +145,7 @@ pub(crate) struct AdminSystemPanel {
     pub section_valuation: String,
     pub section_logging: String,
     pub section_sessions: String,
+    pub section_proposals: String,
     pub loans_form_html: String,
     pub providers_form_html: String,
     pub timeouts_form_html: String,
@@ -153,6 +154,7 @@ pub(crate) struct AdminSystemPanel {
     pub valuation_form_html: String,
     pub log_form_html: String,
     pub sessions_form_html: String,
+    pub proposals_form_html: String,
 }
 
 #[derive(Template)]
@@ -340,12 +342,12 @@ fn helper_text_for(value: &str, loc: &'static str) -> String {
 /// 409s forever (`log_level` was stuck this way; the two #334 timeout keys
 /// carried the same latent bug — they only survived while their version was
 /// still 1).
-async fn fetch_setting_rows(
+pub(crate) async fn fetch_setting_rows(
     pool: &DbPool,
 ) -> Result<HashMap<String, (String, i32)>, AppError> {
     let rows: Vec<(String, String, i32)> = sqlx::query_as(
         "SELECT setting_key, setting_value, version FROM settings \
-         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
+         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) AND deleted_at IS NULL",
     )
     .bind(KEY_OVERDUE_THRESHOLD)
     .bind(KEY_DEFAULT_LANGUAGE)
@@ -359,6 +361,7 @@ async fn fetch_setting_rows(
     .bind(KEY_PROVIDER_HEALTH_TIMEOUT)
     .bind(KEY_SESSION_TIMEOUT_HOURS)
     .bind(KEY_BULK_REFETCH_DELAY)
+    .bind(crate::services::proposal_history::KEY_RESUBMISSION_DELAY_DAYS)
     .fetch_all(pool)
     .await?;
     let mut map = HashMap::new();
@@ -806,6 +809,9 @@ pub async fn render_panel_html(
     let log_form_html = render_log_form(csrf, loc, &log_level, log_level_version)?;
     let sessions_form_html =
         render_sessions_form(csrf, loc, session_timeout_hours, session_timeout_version)?;
+    let proposals_form_html = crate::routes::admin_system_proposals::render_from_rows(
+        csrf, loc, &rows,
+    )?;
 
     AdminSystemPanel {
         panel_heading: rust_i18n::t!("admin.system.panel_heading", locale = loc).to_string(),
@@ -817,6 +823,8 @@ pub async fn render_panel_html(
             .to_string(),
         section_logging: rust_i18n::t!("admin.system.section_logging", locale = loc).to_string(),
         section_sessions: rust_i18n::t!("admin.system.section_sessions", locale = loc).to_string(),
+        section_proposals: rust_i18n::t!("admin.system.section_proposals", locale = loc)
+            .to_string(),
         loans_form_html,
         providers_form_html,
         timeouts_form_html,
@@ -825,6 +833,7 @@ pub async fn render_panel_html(
         valuation_form_html,
         log_form_html,
         sessions_form_html,
+        proposals_form_html,
     }
     .render()
     .map_err(|_| AppError::Internal("admin system panel render failed".to_string()))
@@ -997,7 +1006,7 @@ pub async fn save_sessions_settings(
 /// `HX-Trigger: validation-error` so `static/js/csrf.js`'s `htmx:beforeSwap`
 /// listener flips `shouldSwap = true` despite HTMX 2.0's 4xx-no-swap default.
 /// Caller passes the rendered form fragment and the validation error message.
-fn validation_error_response(form_html: String, error_msg: String) -> Response {
+pub(crate) fn validation_error_response(form_html: String, error_msg: String) -> Response {
     use axum::http::StatusCode;
     use axum::http::header;
     let feedback = feedback_html("error", &error_msg, "");
@@ -1613,7 +1622,7 @@ async fn run_provider_update(
 
 // ─── Feedback helper ──────────────────────────────────────────────
 
-fn success_feedback(loc: &'static str, key: &str) -> String {
+pub(crate) fn success_feedback(loc: &'static str, key: &str) -> String {
     let msg = rust_i18n::t!(key, locale = loc).to_string();
     feedback_html("success", &msg, "")
 }

@@ -535,6 +535,16 @@ async fn a_pending_proposal_for_the_same_series_blocks_a_new_one(pool: DbPool) {
     ProposalService::transition(&pool, first, &Decision::MarkStale)
         .await
         .unwrap();
+    // Story 11-15: a rejected proposal blocks an equivalent one for the
+    // resubmission delay (simulated clock: back-date the rejection); a
+    // stale one does not block.
+    let msg = agent.err("propose_series_attach", attach.clone()).await;
+    assert!(msg.contains("was rejected on"), "{msg}");
+    sqlx::query("UPDATE proposals SET decided_at = NOW() - INTERVAL 91 DAY WHERE id = ?")
+        .bind(pending)
+        .execute(&pool)
+        .await
+        .unwrap();
     let refiled = proposal_id(&agent.ok("propose_series_attach", attach.clone()).await);
     agent.ok("propose_series_create", create).await;
     assert_eq!(proposal_count(&pool).await, 4);
