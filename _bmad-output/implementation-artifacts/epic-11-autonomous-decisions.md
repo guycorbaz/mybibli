@@ -1138,3 +1138,41 @@ Tests: second of two attaches / creates, concurrent creations (one accepted, one
 **Chosen:** button names use the line summary cut at 80 characters (a description is up to 10 000); `same_as_current` ignores a `current_truncated` baseline; the E2E "no edit after the decision" check targets `data-action` rather than the button name.
 **Accepted (Low):** a tome's edit form focuses its title field (the first text input) rather than its position; focus returns to `<body>` after Save re-renders the body (same as #538 for decisions).
 **Reversible:** yes.
+
+## § 11-20 — Side-by-side view for metadata and covers (part of #493)
+
+### D-11-20-1 — Sprint-status: the story line plus the line-2 header
+**Context:** Rule 16 and the common brief.
+**Chosen:** only `11-20-proposal-side-by-side-view` and the `# last_updated:` header change on this branch.
+**Reversible:** yes.
+
+### D-11-20-2 — Metadata: one two-column table per compared line, inside the existing card [PRODUCT]
+**Context:** AC "each field shows its current and proposed values side by side"; 11-19 hangs Edit / Remove buttons and the inline edit slot on each line's card (`<li data-line>`); phone width.
+**Chosen:** each `field` / `contributors` line renders a `<table data-compare>` — caption = the field's name and its change badge, `<th scope="col">` "Current" / "Proposed" ("To add" for contributors), one row — inside the card, so the edit / remove machinery and the selectors other specs use (`[data-proposed]`, `[data-edit-note]`) stay. Two equal fixed columns at every width (long values wrap), so "side by side" holds on a phone too; `current_date` and the truncation note stay with the current value.
+**Rejected:** one table for the whole proposal (the inline edit form would need a spanning row, and five columns do not fit a phone); stacking the columns at phone width (no longer side by side, and `display:block` cells lose table semantics in some screen readers).
+**Reversible:** yes.
+
+### D-11-20-3 — Change badges against the filed value, in text [PRODUCT]
+**Context:** "changed fields are highlighted by more than colour alone (WCAG)"; filing drops unchanged fields and 11-19 refuses an edit back to the current value, so nearly every line is a change.
+**Chosen:** a pure `proposal_review::change_of` classifies each compared line against `current` **as filed** (the staleness baseline, D-11-13-2; the comparison never re-reads the live title): **New** (empty today; contributors, which are always additions), **Changed**, **Unchanged** (odd data only — kept honest rather than hidden; a truncated baseline is never "unchanged"). The badge is text in the caption (`data-change`), and the proposed cell of a new / changed line carries a thick left border and medium weight; colour only reinforces.
+**Rejected:** a diff of the text inside long values (descriptions): noisy, and the badge answers "what changes" at a glance.
+**Reversible:** yes.
+
+### D-11-20-4 — Edited lines: the agent's original in the comparison, the note says who and when [PRODUCT]
+**Context:** 11-19 wrote "Edited by X on D. The assistant proposed: …" under every edited line; the brief asks the comparison to show the edited value against `current` and to indicate the edit.
+**Chosen:** for a compared line, the Proposed cell shows the edited value (what acceptance applies, `[data-proposed]`) and below it "The assistant proposed: <original>" (`[data-original]`, escaped); the note under the card becomes "Edited by X on D." (`proposals.edit_note_by`) so the original is not printed twice. Series lines keep 11-19's full note (they are not compared).
+**Reversible:** yes.
+
+### D-11-20-5 — Cover: current first, the placeholder when there is none, a text flag from the live cover [PRODUCT]
+**Context:** "the current cover (or the placeholder) and the proposed image are shown side by side, and a replacement is flagged"; 11-16 showed proposed then current, "No cover" as text.
+**Chosen:** current then proposed (same order as the metadata tables), two columns at every width (images shrink, at most 150 px); no cover → the app's placeholder look (media-type icon, `role="img"` with the localized "No cover" name — the `cover` macro's English `alt` is not reused); the proposed image keeps the thick border of a proposed value. The flag is text: "Accepting replaces the current cover." / "The title has no cover: accepting adds this one.", read from the **live** cover shown beside it (a cover changed since filing makes acceptance refuse as stale anyway, 11-18). `TitleBrief` gains the media type (`CAST(media_type AS CHAR)`); an unknown value falls back to the `book` icon rather than building a path. The accepted-cover view (11-18) is unchanged.
+**Reversible:** yes.
+
+### D-11-20-6 — The staged-image route is 11-16's, unchanged
+**Context:** AC "served by an authenticated route (`/proposals/{id}/cover`, Librarian and Admin), not under `/covers/`" with unit tests (anonymous redirected, Librarian 200).
+**Chosen:** the route, its predicate and its tests exist since 11-16 (D-11-16-4); the new router test re-asserts anonymous → login and Librarian 200 from the side-by-side page, and that neither the staged name nor `/covers/.staging` reaches it.
+**Reversible:** yes.
+
+### D-11-20-7 — E2E scope; a shared helper for proposal journeys
+**Chosen:** `proposal-side-by-side.spec.ts` (spec id `SB`, no series): from a blank browser, a metadata proposal compared (new and changed badges, current publisher next to the proposed one, agent markup as text), the subtitle edited → edited value and the agent's original; a cover for a title without one (placeholder, image loaded through the authenticated route, "adds"), accepted, then a second cover (current cover next to the proposed one, "replaces"); axe on each view, no horizontal scroll at 360 px. The key / scan / accept steps live in a new `helpers/proposals.ts`; the older proposal specs keep their local copies (out of scope). `series-proposal-edit.spec.ts` reads the original from `[data-original]` now.
+**Reversible:** yes.

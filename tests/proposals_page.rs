@@ -923,3 +923,167 @@ async fn the_modal_refuses_a_missing_or_garbled_version(pool: DbPool) {
     }
     assert_eq!(decision_of(&pool, id).await.0, "pending");
 }
+
+// ─── Story 11-20: side by side ────────────────────────────────────
+
+/// The `<td>` cells of the page's comparison tables, in order.
+fn compare_tables(html: &str) -> Vec<&str> {
+    html.split("<table data-compare").skip(1).collect()
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn metadata_is_compared_side_by_side_with_text_badges(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let (lib, _) = librarian(&pool, &f).await;
+    let title = seed_title(&pool, "Côte à côte").await;
+    sqlx::query("UPDATE titles SET publisher = 'Ancien <éditeur>' WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let id = file_metadata(
+        &f,
+        title,
+        json!({
+            "subtitle": "<b>Nouveau</b>",
+            "publisher": "Nouvel éditeur",
+            "contributors": [{"name": "Illustratrice", "role": "Illustrateur"}]
+        }),
+    )
+    .await;
+    let (status, html) = lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    let tables = compare_tables(&html);
+    assert_eq!(tables.len(), 3, "one table per compared line");
+    for t in &tables {
+        assert!(t.contains("<caption"), "caption names the field");
+        assert_eq!(t.matches("<th scope=\"col\"").count(), 2);
+    }
+    // Subtitle: empty today → "Nouveau" badge; escaped proposed value.
+    let subtitle = tables[0];
+    assert!(subtitle.contains("Sous-titre"));
+    assert!(subtitle.contains("data-change=\"new\""));
+    assert!(subtitle.contains(">Nouveau</span>"));
+    assert!(subtitle.contains(">Actuel</th>"));
+    assert!(subtitle.contains(">Proposé</th>"));
+    assert!(subtitle.contains("&#60;b&#62;Nouveau&#60;/b&#62;"));
+    assert!(!html.contains("<b>Nouveau</b>"), "agent value rendered as HTML");
+    // Publisher: a different value → "Modifié", current value escaped.
+    let publisher = tables[1];
+    assert!(publisher.contains("data-change=\"changed\""));
+    assert!(publisher.contains(">Modifié</span>"));
+    assert!(publisher.contains("Ancien &#60;éditeur&#62;"));
+    assert!(publisher.contains("Nouvel éditeur"));
+    // Contributors: additions.
+    let contributors = tables[2];
+    assert!(contributors.contains("data-change=\"new\""));
+    assert!(contributors.contains(">À ajouter</th>"));
+    assert!(contributors.contains("Illustratrice (Illustrateur)"));
+    // No edit yet: no original value shown.
+    assert!(!html.contains("data-original"));
+    assert!(!html.contains("proposals."), "raw locale key leaked");
+    assert!(!html.contains("style=\""), "CSP: no inline style");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_edited_line_shows_the_agent_original_in_the_comparison(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let (lib, _) = librarian(&pool, &f).await;
+    let title = seed_title(&pool, "Ligne modifiée").await;
+    let id = file_metadata(
+        &f,
+        title,
+        json!({"subtitle": "Sous-titre <agent>", "publisher": "Éditeur"}),
+    )
+    .await;
+    let item: u64 = sqlx::query_scalar(
+        "SELECT id FROM proposal_items WHERE proposal_id = ? AND deleted_at IS NULL ORDER BY id LIMIT 1",
+    )
+    .bind(id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let v = version_of(&pool, id).await;
+    let (status, body) = lib
+        .post_form(
+            &f.agent.app,
+            &format!("/proposals/{id}/items/{item}"),
+            &format!("version={v}&value=Sous-titre+corrig%C3%A9"),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    let tables = compare_tables(&html);
+    let edited = tables[0];
+    assert!(edited.contains("<div data-proposed class=\"whitespace-pre-line\">Sous-titre corrigé</div>"));
+    assert!(edited.contains("data-original"));
+    assert!(edited.contains("proposait"), "the original is labelled");
+    assert!(edited.contains("Sous-titre &#60;agent&#62;"), "agent original, escaped");
+    assert!(edited.contains("data-change=\"new\""), "compared with the filed current");
+    // The note says who and when; the original is not repeated there.
+    let note = html
+        .split("data-edit-note")
+        .nth(1)
+        .and_then(|s| s.split("</p>").next())
+        .unwrap();
+    assert!(note.contains("Modifiée par pp-lib le "), "{note}");
+    assert!(!note.contains("proposait"), "{note}");
+    // The other line was not edited.
+    assert!(!tables[1].contains("data-original"));
+    assert_eq!(html.matches("data-edit-note").count(), 1);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_cover_is_compared_with_the_placeholder_or_the_current_cover(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let (lib, _) = librarian(&pool, &f).await;
+    let title = seed_title(&pool, "Sans couverture").await;
+    sqlx::query("UPDATE titles SET media_type = 'cd' WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let first = file_cover(&f, title).await;
+    let name = staged_file_of(&pool, first).await;
+    let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{first}")).await;
+    let compare = html.split("data-cover-compare").nth(1).unwrap();
+    // Current first (the placeholder, named), then the proposed image.
+    let placeholder = compare.find("proposal-current-cover-placeholder").unwrap();
+    let staged = compare.find("proposal-staged-cover").unwrap();
+    assert!(placeholder < staged, "current before proposed");
+    assert!(compare.contains("role=\"img\" aria-label=\"Pas de couverture\""));
+    assert!(compare.contains("src=\"/static/icons/cd.svg\""));
+    assert!(html.contains(&format!("src=\"/proposals/{first}/cover\"")));
+    assert!(!html.contains(&name), "the staged name never reaches the page");
+    assert!(!html.contains("/covers/.staging"));
+    assert!(html.contains("data-cover-flag=\"new\""));
+    assert!(!html.contains("data-cover-flag=\"replace\""));
+    assert!(!html.contains("proposals."), "raw locale key leaked");
+
+    // The title has a cover now: the next proposal replaces it.
+    sqlx::query("UPDATE titles SET cover_image_url = '/covers/1.jpg?v=7' WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (_, html) = lib.get(&f.agent.app, &format!("/proposals/{first}")).await;
+    assert!(html.contains("id=\"proposal-current-cover\" src=\"/covers/1.jpg?v=7\""));
+    assert!(!html.contains("proposal-current-cover-placeholder"));
+    assert!(html.contains("data-cover-flag=\"replace\""));
+    assert!(html.contains("remplace la couverture actuelle"));
+
+    // The staged image route stays Librarian-only.
+    let res = get_anonymous(&f.agent.app, &format!("/proposals/{first}/cover")).await;
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
+    let res = lib
+        .send(
+            &f.agent.app,
+            "GET",
+            &format!("/proposals/{first}/cover"),
+            "",
+            false,
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::OK);
+}

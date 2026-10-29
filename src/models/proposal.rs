@@ -997,7 +997,8 @@ impl ProposalModel {
         }
         let placeholders = vec!["?"; ids.len()].join(", ");
         let sql = format!(
-            "SELECT id, CAST(title AS CHAR) AS title, CAST(cover_image_url AS CHAR) AS cover_image_url \
+            "SELECT id, CAST(title AS CHAR) AS title, CAST(cover_image_url AS CHAR) AS cover_image_url, \
+             CAST(media_type AS CHAR) AS media_type \
              FROM titles WHERE id IN ({placeholders}) AND deleted_at IS NULL"
         );
         let mut q = sqlx::query(&sql);
@@ -1010,6 +1011,7 @@ impl ProposalModel {
                 TitleBrief {
                     title: r.try_get("title")?,
                     cover_image_url: r.try_get("cover_image_url")?,
+                    media_type: r.try_get("media_type")?,
                 },
             );
         }
@@ -1172,6 +1174,8 @@ pub struct ItemTrailRow {
 pub struct TitleBrief {
     pub title: String,
     pub cover_image_url: Option<String>,
+    /// Story 11-20 — the media type (the cover placeholder's icon).
+    pub media_type: String,
 }
 
 #[cfg(test)]

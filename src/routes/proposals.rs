@@ -23,7 +23,7 @@ use crate::services::acceptance::{self, AcceptOutcome, CoverDirs};
 use crate::services::proposal_accept;
 use crate::services::proposal_edit;
 use crate::services::proposal_review::{
-    self, LineView, ReviewDetail, ReviewError, display_utc, kind_filter_value, kind_label,
+    self, Change, LineView, ReviewDetail, ReviewError, display_utc, kind_filter_value, kind_label,
     parse_kind_filter, parse_status_filter, status_filter_value, status_label,
 };
 use crate::services::proposals::MAX_REJECTION_REASON_CHARS;
@@ -217,6 +217,9 @@ pub struct DetailBody {
     /// Story 11-19 — per line (index-aligned with `lines`): "edited by
     /// X on D — the assistant proposed: …", empty when not edited.
     pub edit_notes: Vec<String>,
+    /// Story 11-20 — per line (index-aligned): the change badge of a
+    /// compared line ("New", "Changed", "Unchanged"), empty otherwise.
+    pub change_labels: Vec<String>,
     /// Story 11-19 — per line (index-aligned): the line as a sentence,
     /// naming the Edit / Remove buttons for screen readers.
     pub line_summaries: Vec<String>,
@@ -305,19 +308,40 @@ impl DetailBody {
         let edit_notes = d
             .lines
             .iter()
-            .map(|line| match &line.edit {
-                Some(e) => rust_i18n::t!(
-                    "proposals.edit_note",
-                    locale = loc,
-                    by =
-                        e.by.clone()
-                            .unwrap_or_else(|| l.t("editor_unknown"))
-                            .as_str(),
-                    at = e.at.map(display_utc).unwrap_or_default().as_str(),
-                    original = proposal_edit::line_summary(&e.original, loc).as_str()
-                )
-                .to_string(),
-                None => String::new(),
+            .map(|line| {
+                let Some(e) = &line.edit else {
+                    return String::new();
+                };
+                let by = e.by.clone().unwrap_or_else(|| l.t("editor_unknown"));
+                let at = e.at.map(display_utc).unwrap_or_default();
+                // Story 11-20 — a compared line shows the agent's original
+                // in its comparison: the note says who and when only.
+                if line.change != Change::None {
+                    rust_i18n::t!(
+                        "proposals.edit_note_by",
+                        locale = loc,
+                        by = by.as_str(),
+                        at = at.as_str()
+                    )
+                    .to_string()
+                } else {
+                    rust_i18n::t!(
+                        "proposals.edit_note",
+                        locale = loc,
+                        by = by.as_str(),
+                        at = at.as_str(),
+                        original = proposal_edit::line_summary(&e.original, loc).as_str()
+                    )
+                    .to_string()
+                }
+            })
+            .collect();
+        let change_labels = d
+            .lines
+            .iter()
+            .map(|line| match line.change {
+                Change::None => String::new(),
+                c => l.t(&format!("change_{}", c.as_str())),
             })
             .collect();
         let removed_lines = d
@@ -353,6 +377,7 @@ impl DetailBody {
             })
             .collect();
         DetailBody {
+            change_labels,
             line_summaries,
             can_edit: d.can_edit,
             edit_notes,

@@ -315,15 +315,80 @@ pub struct LineView {
     pub current_truncated: bool,
     pub contributors_current: Vec<ContributorView>,
     pub contributors_proposed: Vec<ContributorView>,
+    /// Story 11-20 — how the proposed value compares with the current
+    /// one (`field` / `contributors` lines; [`change_of`]).
+    pub change: Change,
     // cover
     pub replaces_existing: bool,
     pub current_cover_url: String,
+    /// Story 11-20 — the live title's placeholder icon
+    /// ([`placeholder_icon`] of its media type).
+    pub current_media_type: String,
     pub cover_media_type: String,
     pub width: String,
     pub height: String,
     pub bytes: String,
     // unknown
     pub raw_json: String,
+}
+
+/// Story 11-20 — how a compared line's proposed value relates to the
+/// current one. Shown as a text badge (WCAG 1.4.1: never colour alone).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Change {
+    /// Not a compared line.
+    #[default]
+    None,
+    /// The field is empty today, or contributors are added.
+    New,
+    /// The proposed value differs from the current one.
+    Changed,
+    /// The proposed value is the current one.
+    Unchanged,
+}
+
+impl Change {
+    /// The `data-change` value and label key suffix (`""` for `None`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Change::None => "",
+            Change::New => "new",
+            Change::Changed => "changed",
+            Change::Unchanged => "unchanged",
+        }
+    }
+}
+
+/// Story 11-20 — compare a line's proposed value with the value recorded
+/// at filing (`current`, the staleness baseline — never the live title).
+/// A truncated baseline cannot equal the proposed value; contributors
+/// are always additions.
+pub fn change_of(line: &LineView) -> Change {
+    match line.line {
+        "field" => match line.current.as_deref().map(str::trim) {
+            None | Some("") => Change::New,
+            Some(_) if line.current_truncated => Change::Changed,
+            Some(cur) if cur == line.proposed.trim() => Change::Unchanged,
+            Some(_) => Change::Changed,
+        },
+        "contributors" if line.contributors_proposed.is_empty() => Change::Unchanged,
+        "contributors" => Change::New,
+        _ => Change::None,
+    }
+}
+
+/// Story 11-20 — the placeholder icon of a title without a cover
+/// (`/static/icons/{icon}.svg`); an unknown media type falls back to
+/// `book` rather than building a path from it.
+pub fn placeholder_icon(media_type: &str) -> &'static str {
+    match media_type {
+        "bd" => "bd",
+        "cd" => "cd",
+        "dvd" => "dvd",
+        "magazine" => "magazine",
+        "report" => "report",
+        _ => "book",
+    }
 }
 
 /// Story 11-19 — a librarian's edit of a live line.
@@ -486,7 +551,9 @@ pub fn parse_line(target: Option<ProposalTarget>, values: &Value, loc: &str) -> 
         }),
         _ => None,
     };
-    parsed.unwrap_or_else(|| unknown(values))
+    let mut line = parsed.unwrap_or_else(|| unknown(values));
+    line.change = change_of(&line);
+    line
 }
 
 /// A proposal as the detail page shows it.
@@ -589,6 +656,7 @@ pub async fn review_detail(
                     if let Some(t) = names.titles.get(&id) {
                         line.target_name = Some(t.title.clone());
                         line.current_cover_url = t.cover_image_url.clone().unwrap_or_default();
+                        line.current_media_type = placeholder_icon(&t.media_type).to_string();
                     }
                 }
             }
@@ -992,6 +1060,89 @@ mod tests {
         assert_eq!(c.line, "contributors");
         assert_eq!(c.contributors_proposed[0].name, "B");
         assert!(c.current_truncated);
+    }
+
+    #[test]
+    fn compared_lines_name_their_change() {
+        let field = |v: Value| parse_line(title(9), &v, "en").change;
+        // Empty today → new; a different value → changed.
+        assert_eq!(
+            field(json!({"line":"field","field":"subtitle","current":null,"proposed":"S"})),
+            Change::New
+        );
+        assert_eq!(
+            field(json!({"line":"field","field":"subtitle","current":"  ","proposed":"S"})),
+            Change::New
+        );
+        assert_eq!(
+            field(json!({"line":"field","field":"publisher","current":"A","proposed":"B"})),
+            Change::Changed
+        );
+        // The same value (odd data: filing drops it) is said to be so.
+        assert_eq!(
+            field(json!({"line":"field","field":"publisher","current":"A ","proposed":"A"})),
+            Change::Unchanged
+        );
+        // A year compares with the recorded year, not the date.
+        assert_eq!(
+            field(
+                json!({"line":"field","field":"publication_year","current":1999,"current_date":"1999-05-02","proposed":1999})
+            ),
+            Change::Unchanged
+        );
+        assert_eq!(
+            field(
+                json!({"line":"field","field":"publication_year","current":1999,"proposed":2001})
+            ),
+            Change::Changed
+        );
+        // A truncated baseline never equals the proposed value.
+        assert_eq!(
+            field(
+                json!({"line":"field","field":"description","current":"A","proposed":"A","current_truncated":true})
+            ),
+            Change::Changed
+        );
+        // Contributors are additions.
+        assert_eq!(
+            field(
+                json!({"line":"field","field":"contributors","current":[],"proposed":[{"name":"B","role":"R","role_id":1}]})
+            ),
+            Change::New
+        );
+        assert_eq!(
+            field(json!({"line":"field","field":"contributors","current":[],"proposed":[]})),
+            Change::Unchanged
+        );
+        // Other lines are not compared.
+        assert_eq!(
+            field(json!({"line":"cover","staged_file":"x.jpg"})),
+            Change::None
+        );
+        assert_eq!(Change::None.as_str(), "");
+        assert_eq!(Change::New.as_str(), "new");
+        assert_eq!(Change::Changed.as_str(), "changed");
+        assert_eq!(Change::Unchanged.as_str(), "unchanged");
+    }
+
+    #[test]
+    fn change_badges_exist_in_every_locale() {
+        for loc in ["en", "fr", "de", "it"] {
+            for c in [Change::New, Change::Changed, Change::Unchanged] {
+                let key = format!("proposals.change_{}", c.as_str());
+                let label = rust_i18n::t!(&key, locale = loc).to_string();
+                assert!(!label.starts_with("proposals."), "{loc} {key}");
+            }
+        }
+    }
+
+    #[test]
+    fn placeholder_icons_are_known_media_types() {
+        for t in ["book", "bd", "cd", "dvd", "magazine", "report"] {
+            assert_eq!(placeholder_icon(t), t);
+        }
+        assert_eq!(placeholder_icon("../x"), "book");
+        assert_eq!(placeholder_icon(""), "book");
     }
 
     #[test]

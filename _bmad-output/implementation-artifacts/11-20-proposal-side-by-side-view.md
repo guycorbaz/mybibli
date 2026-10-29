@@ -33,12 +33,12 @@ so that I can decide at a glance.
 
 ## Tasks / Subtasks
 
-- [ ] `proposal_review.rs`: `LineView.change` + pure `change_of`; `TitleBrief.media_type` → `LineView.current_media_type` (AC1, AC2, AC4)
-- [ ] `routes/proposals.rs::DetailBody`: change labels, cover flag, short edit note for compared lines (AC2–AC4)
-- [ ] Template: comparison table for field / contributors lines, cover side by side with flag and placeholder (AC1–AC4, AC6)
-- [ ] Locale keys ×4 (AC6)
-- [ ] Tests: unit, `tests/proposals_page.rs`, E2E `proposal-side-by-side.spec.ts`, `series-proposal-edit.spec.ts` note assertion (AC7)
-- [ ] Decisions D-11-20-*
+- [x] `proposal_review.rs`: `LineView.change` + pure `change_of`; `TitleBrief.media_type` → `LineView.current_media_type` (AC1, AC2, AC4)
+- [x] `routes/proposals.rs::DetailBody`: change labels, cover flag, short edit note for compared lines (AC2–AC4)
+- [x] Template: comparison table for field / contributors lines, cover side by side with flag and placeholder (AC1–AC4, AC6)
+- [x] Locale keys ×4 (AC6)
+- [x] Tests: unit, `tests/proposals_page.rs`, E2E `proposal-side-by-side.spec.ts`, `series-proposal-edit.spec.ts` note assertion (AC7)
+- [x] Decisions D-11-20-*
 
 ## Dev Notes
 
@@ -70,4 +70,22 @@ Claude Opus 5.5 (claude-opus-5-5)
 
 ### Completion Notes List
 
+- `services/proposal_review.rs`: `Change` + pure `change_of` (against the filed `current`), `placeholder_icon`; `LineView.change`, `LineView.current_media_type`; `TitleBrief.media_type` (`models/proposal.rs`, dynamic query, `CAST(… AS CHAR)`).
+- `routes/proposals.rs::DetailBody`: `change_labels`; compared lines get the short note `proposals.edit_note_by`.
+- `fragments/proposal_detail_body.html`: `<table data-compare>` per field / contributors line (caption + badge, `th scope="col"`, `[data-current]`, `[data-proposed]`, `[data-original]`); cover: current (or placeholder) then proposed in a two-column grid, `[data-cover-flag]`.
+- Locale keys ×4: `change_new`, `change_changed`, `change_unchanged`, `original_value`, `edit_note_by`, `cover_flag_new`, `cover_flag_replace`.
+- Tests: unit (`compared_lines_name_their_change`, `change_badges_exist_in_every_locale`, `placeholder_icons_are_known_media_types`); `tests/proposals_page.rs` (3 new); E2E `proposal-side-by-side.spec.ts` (new, helper `helpers/proposals.ts`), `series-proposal-edit.spec.ts` (original read from `[data-original]`).
+- Decisions D-11-20-1..7.
+
 ### File List
+
+- src/models/proposal.rs
+- src/services/proposal_review.rs
+- src/routes/proposals.rs
+- templates/fragments/proposal_detail_body.html
+- locales/{en,fr,de,it}.yml
+- tests/proposals_page.rs
+- tests/e2e/helpers/proposals.ts (new)
+- tests/e2e/specs/journeys/proposal-side-by-side.spec.ts (new)
+- tests/e2e/specs/journeys/series-proposal-edit.spec.ts
+- _bmad-output/implementation-artifacts/epic-11-autonomous-decisions.md
