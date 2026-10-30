@@ -8,7 +8,7 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 
 ## Changelog
 
-- **2026-10-30** — Added **Epic 12: Proposals, after a first real use** (#502, #542, #560, #561), with new requirements FR148–FR151 (FR149 refines FR140) and UX-DR35. Decided by the project lead on 2026-10-30, after the first production agent session; ships as v1.22.0 together with the #558 fix already on `main`. The sidebar (#547) is planned as Epic 13; the base path (#492) comes later.
+- **2026-10-30** — Added **Epic 12: Proposals, after a first real use** (#502, #542, #560, #561, #563), with new requirements FR148–FR152 (FR149 refines FR140, FR152 extends FR132) and UX-DR35. Decided by the project lead on 2026-10-30, after the first production agent session; ships as v1.22.0 together with the #558 fix already on `main`. The sidebar (#547) is planned as Epic 13; the base path (#492) comes later.
 - **2026-10-27** — Added **Epic 11: An AI assistant proposes, the librarian decides** (MCP server #493 + fixes #494–#497), with new requirements FR122–FR147, NFR42–NFR48, AR27–AR31, UX-DR31–UX-DR34. Decided in the party-mode session of 2026-10-27. Epic 10 retro action A5 ("no more Epic N+1") is deliberately reversed for this epic.
 - **2026-04-13** — Inserted new **Epic 6: Pipeline CI/CD et fiabilité** between Epic 5 closure and original Epic 6. Renumbered: original Epic 6 (Accès multi-rôle & Sécurité) → Epic 7; original Epic 7 (Administration & Configuration) → Epic 8; original Epic 8 (Polish UX & Accessibilité) → Epic 9. Historical documents (old story files, old retros, readiness report) updated in the same pass for consistency. FR assignments did not change — only the epic labels that hold them.
 
@@ -171,6 +171,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - FR149: Staleness is judged per field (refines FR140): accepting a proposal is refused, and the proposal marked stale, only when something the proposal touches changed since it was filed — for a metadata proposal its proposed fields and contributors, for a cover proposal the cover; series proposals keep their current rules
 - FR150: The MCP agent is told which metadata providers mybibli queries for each media type, worded so that a provider that found nothing at the last lookup is a lower priority, not an exclusion — its records may have improved since
 - FR151: Each row of the proposals list leads unmistakably to the proposal, and shows what is proposed at a glance (fields for a metadata proposal, a thumbnail for a cover proposal)
+- FR152: The agent can propose a correction of a title's main title (extends FR132): spelling, punctuation, capitalisation, or the real title of a record that only carries its ISBN
 
 ### NonFunctional Requirements
 
@@ -359,7 +360,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 | FR137-FR140 | 11 | Proposals page: review, accept / reject, edit before accepting, staleness |
 | FR141-FR143 | 11 | Expected tomes, wishlist from series detail, access to the proposals page |
 | FR144-FR147 | 11 | Accepted fields protected from re-fetch, expected-tome auto-settle at scan, decision trail, manual expected-tome CRUD |
-| FR148-FR151 | 12 | ISBN with separators, per-field staleness, providers already searched, readable proposals list |
+| FR148-FR152 | 12 | ISBN with separators, per-field staleness, providers already searched, readable proposals list, title correction |
 
 **NFR Distribution:**
 - NFR1-NFR5, NFR7-NFR10, NFR12, NFR14, NFR22-NFR24, NFR26-NFR28, NFR30-NFR32, NFR34-NFR35, NFR38 (foundation) → Epic 1
@@ -389,7 +390,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR31, UX-DR32, UX-DR33, UX-DR34 → Epic 11
 - UX-DR35 → Epic 12
 
-**Coverage: 151/151 FRs, 48/48 NFRs, 31/31 ARs, 35/35 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30.)
+**Coverage: 152/152 FRs, 48/48 NFRs, 31/31 ARs, 35/35 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30.)
 
 ## Epic List
 
@@ -2363,12 +2364,12 @@ So that I can use the feature without reading the code.
 
 ### Epic 12: Proposals, after a first real use
 
-The first production agent session (2026-10-30: 352 proposals filed, 245 accepted, 190 titles improved) showed where the proposal workflow rubs: a cover accepted on a title made every other pending proposal for that title stale (55 of about 300 decisions), the agent spent its first effort on the very providers mybibli had just exhausted, and the proposals list led the librarian to the title page instead of the proposal. The epic smooths those three points and adds a small scan fix (#502).
+The first production agent session (2026-10-30: 352 proposals filed, 245 accepted, 190 titles improved) showed where the proposal workflow rubs: a cover accepted on a title made every other pending proposal for that title stale (55 of about 300 decisions), the agent spent its first effort on the very providers mybibli had just exhausted, and the proposals list led the librarian to the title page instead of the proposal. The same day, an agent asked to check the spelling of every title could not propose a single correction: the main title is not a proposable field. The epic smooths those four points and adds a small scan fix (#502).
 
-**FRs:** FR148–FR151 (FR149 refines FR140)
+**FRs:** FR148–FR152 (FR149 refines FR140, FR152 extends FR132)
 **NFRs:** none new (NFR3 CSP, NFR12 a11y, NFR42–NFR48 unchanged)
 **UX-DRs:** UX-DR35
-**Issues:** #502, #542, #560, #561 (and #535 items 1–2, reviewed in Story 12.2)
+**Issues:** #502, #542, #560, #561, #563 (and #535 items 1–2, reviewed in Story 12.2)
 
 **Release.** v1.22.0 at the close of the epic, after its retrospective. It also carries the #558 fix (truncated JPEG covers refused), merged on `main` on 2026-10-30; the v1.21.1 documentation already on `main` is rewritten into the v1.22.0 sweep (Foundation Rule #19).
 
@@ -2377,7 +2378,7 @@ The first production agent session (2026-10-30: 352 proposals filed, 245 accepte
 - #560: static option — no migration; per-title lookup attempts stay a possible follow-up. Providers that found nothing are a lower priority for the agent, never an exclusion.
 - Next: Epic 13 is the sidebar (#547), unless a bug needs fixing first; the base path (#492) comes later.
 
-**Sequencing.** 12.1 → 12.2 → 12.3 → 12.4 (independent, any order; 12.2 first among the proposal stories as the largest) → 12.5 (epic smoke, Foundation Rule #7) → 12.6 → retrospective → release v1.22.0.
+**Sequencing.** 12.1 → 12.2 → 12.3 → 12.4 → 12.5 (independent, any order; 12.2 first among the proposal stories as the largest, 12.5 after it so a title correction is judged per field) → 12.6 (epic smoke, Foundation Rule #7) → 12.7 → retrospective → release v1.22.0.
 
 **Stories:**
 
@@ -2489,36 +2490,66 @@ So that I review quickly and never land on the title page by mistake.
 **And** templates audit, unit tests for the row view model, and E2E (click the row → detail page; thumbnail present for a cover proposal) cover it
 **And** the manual's *The list* section is updated (EN + FR)
 
-#### Story 12.5: Epic 12 smoke test (Foundation Rule #7)
+#### Story 12.5: The title can be proposed (closes #563)
+
+As a librarian working with an agent,
+I want the agent to be able to propose a correction of a title's main title,
+So that spelling mistakes, and records that only carry their ISBN as a title, can be fixed through the review workflow.
+
+**Covers:** FR152
+
+**Acceptance Criteria:**
+
+**Given** `propose_title_metadata`
+**When** the agent passes `title` among the fields
+**Then** a metadata proposal is filed with a `title` line showing the current and the proposed value, under the same rules as the other fields (sources required, unchanged value dropped, closed schema)
+
+**Given** a proposed title that is empty or blank, or longer than the `titles.title` column
+**When** it is filed
+**Then** it is refused field by field with an explicit message — a proposal never empties a field
+
+**Given** a pending proposal correcting the title
+**When** it is accepted
+**Then** the title is written, added to `manually_edited_fields` (a later automatic re-fetch never overwrites it), and the title page, search and lists show the new title
+
+**Given** a pending proposal correcting the title
+**When** the title was edited by hand meanwhile
+**Then** accepting it is refused as stale (per-field rule of Story 12.2)
+
+**And** the librarian can edit the proposed title before accepting it (Story 11.19 rules), and remove the line like any metadata line
+**And** the tool description lists `title` and says a correction must cite its source; the registry test stays green; `title` is added to the equivalence key's field set (Story 11.15) so a rejected title correction blocks an equivalent one for the delay
+**And** unit tests (validation, item shape), DB integration tests (file, accept, stale, edit) and E2E (an agent proposes a corrected title, the librarian accepts it, the title page shows it) cover it
+
+#### Story 12.6: Epic 12 smoke test (Foundation Rule #7)
 
 As the project,
 I want one end-to-end journey from a blank browser through the epic's core flow,
 So that the epic is proven done.
 
-**Covers:** Foundation Rule #7 (FR148–FR151 end to end)
+**Covers:** Foundation Rule #7 (FR148–FR152 end to end)
 
 **Acceptance Criteria:**
 
 **Given** a blank browser with no injected cookie
 **When** the test runs
-**Then** it chains: admin login through `loginAs` → a hyphenated ISBN typed on `/catalog` creates the title → a `propose` key is created → a scripted MCP client reads the instructions (book providers named), files a metadata proposal and a cover proposal on that title → on the proposals list, the cover row shows its thumbnail and the metadata row its fields → open the cover proposal from the row and accept it → open the metadata proposal and accept it → both are applied, neither is stale
+**Then** it chains: admin login through `loginAs` → a hyphenated ISBN typed on `/catalog` creates the title → a `propose` key is created → a scripted MCP client reads the instructions (book providers named), files a metadata proposal correcting the title and adding a description, and a cover proposal, on that title → on the proposals list, the cover row shows its thumbnail and the metadata row its fields → open the cover proposal from the row and accept it → open the metadata proposal and accept it → both are applied (the corrected title shows on the title page), neither is stale
 
 **And** data is isolated (`specIsbn`, unique names); no `waitForTimeout`
 **And** the test is green under `CI=true npx playwright test --workers=2` (Foundation Rule #13)
 **And** if this test fails, the epic is not done
 
-#### Story 12.6: Documentation
+#### Story 12.7: Documentation
 
 As an operator,
 I want the manual to describe the new behaviour,
 So that the proposal workflow is documented as it now works.
 
-**Covers:** FR148–FR151 (documentation)
+**Covers:** FR148–FR152 (documentation)
 
 **Acceptance Criteria:**
 
 **Given** the user manual (English and French)
-**Then** chapter 13 describes per-field staleness, what the agent is told about providers, and the new list; the scan chapter mentions typed ISBNs with separators
+**Then** chapter 13 describes per-field staleness, what the agent is told about providers, title corrections, and the new list; the scan chapter mentions typed ISBNs with separators
 **And** the PDFs are rebuilt
 **And** `CLAUDE.md` reflects the new staleness rule in the proposal-lifecycle pattern
 **And** release documentation (Foundation Rule #19, v1.22.0, replacing the v1.21.1 wording already on `main`) is done at release time, not in this story
