@@ -5,7 +5,7 @@
  * /catalog → Admin → API keys → create a `propose` key → as a separate
  * agent client: `tools/list` lists `propose_cover` → `get_title` gives
  * the version → `propose_cover` files a pending cover proposal → a
- * non-image is refused → the title is unchanged (same cover state, same
+ * non-image is refused → a truncated JPEG is refused (#558) → the title is unchanged (same cover state, same
  * version) → the staging area is not served under /covers → the key is
  * revoked and the agent is turned away.
  *
@@ -24,6 +24,12 @@ const SOURCE = "https://example.org/couverture";
 /** A valid 1×1 RGBA PNG. */
 const PNG_1X1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+/**
+ * A 16×24 JPEG cut 30 bytes short, inside its scan data (#558): the
+ * decoder alone would accept it and paint the missing rows grey.
+ */
+const TRUNCATED_JPEG =
+  "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAYABADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDwnStK2Y+X/wCtXc6XpWzHy/8A1qv6XpWzHy//AFq6bS9K2Y+WvPxuY/Ub63v+H+d/w/L1+GM25uXU6PS9K2Y=";
 
 test.describe("Story 11-14 — MCP cover proposal tool", () => {
   test("an agent proposes a cover without touching the catalog", async ({ page, baseURL }) => {
@@ -96,6 +102,16 @@ test.describe("Story 11-14 — MCP cover proposal tool", () => {
       });
       expect(refused.isError).toBe(true);
       expect(refused.content[0].text).toContain("not a JPEG, PNG, WebP or GIF");
+
+      // A JPEG cut short: refused, nothing filed (#558).
+      const truncated = await mcpCallTool(agent, key, "propose_cover", {
+        title_id: titleId,
+        image_base64: TRUNCATED_JPEG,
+        media_type: "image/jpeg",
+        sources: [SOURCE],
+      });
+      expect(truncated.isError).toBe(true);
+      expect(truncated.content[0].text).toContain("Image data is incomplete");
 
       // The catalog did not change.
       const after = (await mcpCallTool(agent, key, "get_title", { id: titleId })).structuredContent;

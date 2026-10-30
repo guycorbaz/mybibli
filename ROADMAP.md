@@ -32,12 +32,14 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.21.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.21.0)**
-(2026-10-29) — AI agents, under supervision: a built-in MCP server
-through which an AI agent proposes series, missing tomes, metadata and
-covers, and a Proposals page where the librarian decides. Expected
-tomes and the sticky navigation bar ship with it. **Six additive
-migrations.** The section below has the detail; every release before it
+**Current stable: [`v1.21.1`](https://github.com/guycorbaz/mybibli/releases/tag/v1.21.1)**
+(2026-10-30) — one production fix: a truncated JPEG cover is refused
+instead of being stored as a strip of image over grey
+([#558](https://github.com/guycorbaz/mybibli/issues/558)). **No
+migration.** It patches v1.21.0 (2026-10-29) — AI agents, under
+supervision: a built-in MCP server through which an AI agent proposes
+series, missing tomes, metadata and covers, and a Proposals page where
+the librarian decides. The sections below has the detail; every release before it
 has its own section further down, and this is the file that carries
 them — the README quotes only the current release, and the website
 tells the same story for a different audience.
@@ -49,6 +51,21 @@ a base-path setting for reverse proxies
 collapsible left sidebar in place of the top navigation bar
 ([#547](https://github.com/guycorbaz/mybibli/issues/547)). Everything
 else open lives in the issue tracker.
+
+## v1.21.1 — truncated covers refused *(shipped)*
+
+Shipped 2026-10-30. One fix, found the day after v1.21.0 by the first
+real agent run against the production catalog. **No migration.**
+
+- **A truncated JPEG cover is refused**
+  ([#558](https://github.com/guycorbaz/mybibli/issues/558)). The image
+  decoder accepted a JPEG cut short and painted the missing rows grey;
+  9 of 53 covers proposed by an agent arrived that way. Every cover
+  path — agent proposal, provider download, manual upload — now checks
+  that a JPEG runs to its end-of-image marker, and refuses it otherwise
+  ("Image data is incomplete"). PNG, WebP and GIF were already refused
+  when cut short. Covers already staged are not re-checked: reject the
+  grey ones on the Proposals page.
 
 ## v1.21.0 — AI agents, under supervision *(shipped)*
 

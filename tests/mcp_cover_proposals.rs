@@ -44,6 +44,17 @@ fn png(w: u32, h: u32) -> Vec<u8> {
     out
 }
 
+fn jpeg(w: u32, h: u32) -> Vec<u8> {
+    let mut out = Vec::new();
+    image::DynamicImage::new_rgb8(w, h)
+        .write_to(
+            &mut std::io::Cursor::new(&mut out),
+            image::ImageFormat::Jpeg,
+        )
+        .unwrap();
+    out
+}
+
 fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
@@ -175,6 +186,9 @@ async fn refused_images_leave_nothing_behind(pool: DbPool) {
     oversized[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
     let mut broken_png = png_bytes.clone();
     broken_png.truncate(20);
+    // #558: a JPEG cut short decodes without error (missing rows painted grey).
+    let full_jpeg = jpeg(64, 96);
+    let truncated_jpeg = full_jpeg[..full_jpeg.len() / 2].to_vec();
 
     let cases: Vec<(Value, &str)> = vec![
         (
@@ -188,6 +202,10 @@ async fn refused_images_leave_nothing_behind(pool: DbPool) {
         ),
         (args(title, &png_bytes, "image/bmp"), "is not accepted"),
         (args(title, &broken_png, "image/png"), "cannot be read"),
+        (
+            args(title, &truncated_jpeg, "image/jpeg"),
+            "Image data is incomplete",
+        ),
         (
             json!({"title_id": title, "image_base64": format!("data:image/png;base64,{}", b64(&png_bytes)),
                    "media_type": "image/png", "sources": [SRC]}),

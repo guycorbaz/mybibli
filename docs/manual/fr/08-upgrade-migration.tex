@@ -148,6 +148,32 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
+\section{Nouveautés de la 1.21.1}\label{sec:whats-new-1.21.1}
+
+La version 1.21.1 est une version corrective sur la 1.21.0.
+\emph{Aucune migration}, aucun réglage modifié --- on récupère
+l'image, on recrée le conteneur, c'est tout. Elle porte une
+correction, trouvée dès le premier passage d'un agent sur un vrai
+catalogue.
+
+\begin{itemize}
+  \item \textbf{\#558 \string— une couverture JPEG tronquée est
+        refusée.} Le décodeur d'images acceptait un JPEG coupé avant
+        sa fin : il gardait les lignes lues et peignait le reste en
+        gris. Une couverture proposée par un agent, téléchargée chez
+        un fournisseur ou envoyée à la main pouvait ainsi n'être
+        qu'une bande d'image au-dessus d'un aplat gris. mybibli
+        vérifie désormais qu'un JPEG va jusqu'à son marqueur de fin,
+        et le refuse sinon (\emph{Image data is incomplete} pour un
+        agent). Les formats PNG, WebP et GIF étaient déjà refusés
+        lorsqu'ils étaient tronqués.
+
+        Les couvertures proposées avant la mise à jour ne sont pas
+        revérifiées : refusez sur la page Propositions celles qui
+        s'affichent à moitié grises, avant de les faire proposer à
+        nouveau.
+\end{itemize}
+
 \section{Nouveautés de la 1.21.0}\label{sec:whats-new-1.21.0}
 
 La version 1.21.0 est une version mineure sur la 1.20.1 ; elle clôt

@@ -139,6 +139,28 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
+\section{What's new in 1.21.1}\label{sec:whats-new-1.21.1}
+
+Version 1.21.1 is a patch release on top of 1.21.0. \emph{No
+migration}, no setting changed --- pull the image, recreate the
+container, done. It carries one fix, found by the first agent run
+against a real catalog.
+
+\begin{itemize}
+  \item \textbf{\#558 \string— a truncated JPEG cover is refused.} The
+        image decoder accepted a JPEG cut short: it kept the rows it
+        read and painted the rest grey. A cover proposed by an agent,
+        downloaded from a provider or uploaded by hand could thus be a
+        strip of image over a flat grey area. mybibli now checks that a
+        JPEG runs to its end-of-image marker and refuses it otherwise
+        (\emph{Image data is incomplete} for an agent). PNG, WebP and
+        GIF were already refused when cut short.
+
+        Covers proposed before the upgrade are not re-checked: reject
+        the ones that show half grey on the Proposals page before
+        having them proposed again.
+\end{itemize}
+
 \section{What's new in 1.21.0}\label{sec:whats-new-1.21.0}
 
 Version 1.21.0 is a minor release on 1.20.1 and closes the epic that
