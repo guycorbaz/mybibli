@@ -1,6 +1,6 @@
 # Story 12.1: ISBN with hyphens or spaces
 
-Status: review
+Status: done
 
 GitHub issue: #502 (type:code-review-finding, deferred from the 11-1 review). Covers: FR148. Epic 12 — first story; ships in v1.22.0 at the epic close.
 
@@ -60,11 +60,13 @@ Code review 2026-10-30, round 1 (Blind Hunter, Edge Case Hunter, Acceptance Audi
 - [x] [Review][Patch] Completion Notes: home scan logs only the raw code at debug level (not the normalised form); `catalog.rs` delta split corrected — Low [this file]
 - [x] [Review][Defer] ISBN entry points outside scan/search do not normalise (manual title creation stores the ISBN as typed → duplicate on rescan; wish list "By ISBN"; pasted `ISBN` prefix; SQL `REPLACE` copy in `models/expected_tome.rs`; no ISBN-10 conversion in title edit) — deferred, pre-existing → #565
 
+Round 2 (2026-10-30, full pass): **0 Medium+**. 3 Low, all patched: separator-only UPC on title edit stored `''` instead of NULL → `utils::identifier_without_separators` for ISBN and UPC, unit-tested (also covers the untested call site); Dev Notes separator list updated.
+
 Dismissed (13): spaced 10-digit numbers with a valid mod-11 checksum read as ISBN-10 (identical to the bare form since 11-1); separated UPC/ISSN/bad ISBN-10 → `unknown` (deliberate, AC3); client-side checksum skipped for hyphenated input (server authoritative, `create_from_isbn` refuses); numeric free text compacted in search (falls back to full text on `trimmed`); expected tomes accepting Unicode dashes (intended widening); search routing for separated non-978 13-digit codes (lookup miss → full text on `trimmed`, verified); bad-checksum divergence scan vs search (by design); `normalized_code` on whitespace-only difference (callers trim first); home-search E2E not proving the lookup path (DB test covers it); spaced E2E not reusing the hyphenated title (behaviour covered); no DB test of the bare stored ISBN (unit + E2E cover); two Low wording nits.
 
 ## Dev Notes
 
-- **Compaction rule (do not change it):** `compact_isbn` removes `char::is_whitespace` (covers U+00A0 non-breaking space and U+202F narrow NBSP) and `-` plus `U+2010..=U+2015` (hyphen, non-breaking hyphen, figure dash, en dash, em dash, horizontal bar), and returns the compact form **only** when something was removed and the result is ISBN-shaped. That shape test is deliberately loose (any 13 digits); `detect_code_type` must therefore re-check that the compact form really classifies as `isbn` before using it (AC3) — otherwise `400-1234-567890` would turn from `unknown` into `upc`, a behaviour change nobody asked for.
+- **Compaction rule:** `compact_isbn` removes `char::is_whitespace` (covers U+00A0 non-breaking space and U+202F narrow NBSP) and `-` plus `U+2010..=U+2015` (hyphen, non-breaking hyphen, figure dash, en dash, em dash, horizontal bar) — widened in review round 1 to U+2212, U+FE63, U+FF0D and the invisible U+00AD, U+200B, U+2060, U+FEFF (see `utils::is_isbn_separator`), and returns the compact form **only** when something was removed and the result is ISBN-shaped. That shape test is deliberately loose (any 13 digits); `detect_code_type` must therefore re-check that the compact form really classifies as `isbn` before using it (AC3) — otherwise `400-1234-567890` would turn from `unknown` into `upc`, a behaviour change nobody asked for.
 - **Why keep the raw classification for non-ISBN compactions:** a typed EAN/UPC with separators is not a real input path (scanners never emit separators — #502), and the media-type selector a `upc` classification triggers would be a new UI path to test. Out of scope.
 - **ISBN-10 after compaction:** call `utils::isbn10_to_isbn13(&compact)`; it already accepts `x`. `detect_code` (search) upper-cases its input, the scan path does not — pass the compact form as is.
 - **Order in `detect_code_type`:** V-code / L-code checks first are unaffected (a 5-char `V0042` has no separator, and `compact_isbn` never returns a 5-char string). Put the compaction attempt right before the existing ISBN-13 branch.

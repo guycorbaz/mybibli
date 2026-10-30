@@ -139,6 +139,13 @@ pub fn strip_isbn_separators(input: &str) -> String {
     input.chars().filter(|c| !is_isbn_separator(*c)).collect()
 }
 
+/// A typed identifier (ISBN, UPC) without its separators; `None` when
+/// nothing is left — the title edit form's "clear the column" (CR #272,
+/// story 12-1 review).
+pub fn identifier_without_separators(input: &str) -> Option<String> {
+    Some(strip_isbn_separators(input)).filter(|s| !s.is_empty())
+}
+
 /// An identifier as printed on a book or copied from a page —
 /// `978-2-07-036024-6`, `2 07 036024 X`, Unicode hyphens or dashes,
 /// non-breaking spaces — without those separators, when what remains is
@@ -776,6 +783,18 @@ mod tests {
         assert_eq!(strip_isbn_separators("978\u{ff0d}2\u{fe63}07036024-6"), "9782070360246");
         assert_eq!(strip_isbn_separators("Spider-Man 3"), "SpiderMan3");
         assert_eq!(strip_isbn_separators(""), "");
+    }
+
+    #[test]
+    fn identifier_without_separators_clears_a_separator_only_value() {
+        assert_eq!(
+            identifier_without_separators("978\u{2013}2\u{a0}07 036024-6").as_deref(),
+            Some("9782070360246")
+        );
+        assert_eq!(identifier_without_separators(" 0 12345 67890 5 ").as_deref(), Some("012345678905"));
+        for blank in ["", "  ", "-", "\u{2014}", "\u{00ad}"] {
+            assert_eq!(identifier_without_separators(blank), None, "{blank:?}");
+        }
     }
 
     #[test]
