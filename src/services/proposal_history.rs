@@ -493,14 +493,14 @@ impl ProposalHistoryService {
             else {
                 continue;
             };
-            if !by_title.contains_key(&title_id) {
+            if let std::collections::hash_map::Entry::Vacant(slot) = by_title.entry(title_id) {
                 let prefix = metadata_key_prefix(title_id);
                 let found = ProposalModel::rejections_with_key_prefix(&mut conn, &prefix)
                     .await?
                     .into_iter()
                     .map(|(k, last)| (k, last.decided_at))
                     .collect();
-                by_title.insert(title_id, found);
+                slot.insert(found);
             }
             let rejections = by_title[&title_id].clone();
             if let Some((at, _)) =
