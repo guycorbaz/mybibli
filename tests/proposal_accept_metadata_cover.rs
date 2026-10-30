@@ -767,3 +767,106 @@ async fn an_accepted_cover_stops_the_background_cover_download(pool: DbPool) {
     assert_eq!(accept(&f, &pool, id).await.0, StatusCode::OK);
     assert!(cover_is_manual(&pool, title).await);
 }
+
+// ─── Story 12-2 review ────────────────────────────────────────────────
+
+// A re-identified title (renamed, another ISBN) outdates its proposals:
+// the per-field checks would not see it.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_renamed_title_outdates_metadata_and_cover(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Le Sceptre d'Ottokar").await;
+    let meta = file_metadata(&f, title, json!({"publisher": "Casterman"})).await;
+    let cover = file_cover(&f, title, 10).await;
+    sqlx::query("UPDATE titles SET title = 'Le Crabe aux pinces d''or', version = version + 1 WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for id in [meta, cover] {
+        let (status, body) = accept(&f, &pool, id).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(body.contains("le titre a été modifié ou supprimé"), "{body}");
+        assert_eq!(decision(&pool, id).await.0, "stale");
+    }
+    assert_eq!(fields(&pool, title).await.1, None);
+    assert_eq!(cover_url(&pool, title).await, None);
+}
+
+// A metadata proposal accepted on the same field outdates the other one.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_second_proposal_on_the_same_field_goes_stale(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = dated_title(&pool, "Tintin en Amérique").await;
+    let a = file_metadata(&f, title, json!({"publisher": "Casterman"})).await;
+    let b = file_metadata(&f, title, json!({"publisher": "Hachette"})).await;
+    assert_eq!(accept(&f, &pool, a).await.0, StatusCode::OK);
+    let (status, body) = accept(&f, &pool, b).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("le champ « Éditeur » du titre a été modifié"),
+        "{body}"
+    );
+    assert_eq!(decision(&pool, b).await.0, "stale");
+    assert_eq!(fields(&pool, title).await.1.as_deref(), Some("Casterman"));
+}
+
+// A cover proposal on a deleted title goes stale.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_cover_proposal_on_a_deleted_title_goes_stale(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Les Cigares du pharaon").await;
+    let cover = file_cover(&f, title, 10).await;
+    sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = accept(&f, &pool, cover).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(decision(&pool, cover).await.0, "stale");
+}
+
+// Two cover proposals: the first accepted, its image not yet installed
+// (the URL is written after the commit) — the second still goes stale.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_cover_accepted_but_not_yet_installed_outdates_the_other(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Le Temple du Soleil").await;
+    let first = file_cover(&f, title, 10).await;
+    let second = file_cover(&f, title, 200).await;
+    assert_eq!(accept(&f, &pool, first).await.0, StatusCode::OK);
+    // Simulate the window before `install` writes the URL.
+    sqlx::query("UPDATE titles SET cover_image_url = NULL WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = accept(&f, &pool, second).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(decision(&pool, second).await.0, "stale");
+}
+
+// A cut baseline (`current_truncated`) keeps the version rule.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_truncated_baseline_goes_stale_when_the_title_moved(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = dated_title(&pool, "Les 7 Boules de cristal").await;
+    let id = file_metadata(&f, title, json!({"publisher": "Casterman"})).await;
+    sqlx::query(
+        "UPDATE proposal_items SET proposed_values = JSON_SET(proposed_values, '$.current_truncated', true) \
+         WHERE proposal_id = ?",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE titles SET description = 'Réécrite', version = version + 1 WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(decision(&pool, id).await.0, "stale");
+}

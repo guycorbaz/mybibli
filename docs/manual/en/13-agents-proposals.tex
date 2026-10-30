@@ -483,10 +483,13 @@ now, or make the change by hand.
 Only what a proposal touches counts. Accepting a cover does not
 outdate a pending metadata proposal for the same title, and accepting
 a description does not outdate a proposal for its publisher: decide
-them in any order. A metadata proposal becomes outdated only if one of
+them in any order. A metadata proposal becomes outdated when one of
 \emph{its} fields changed since it was filed (edited by hand, by
-another accepted proposal, or by a metadata download), and a cover
-proposal only if the title's cover changed.
+another accepted proposal, or by a metadata download), a cover
+proposal when the title's cover changed --- and both when the title
+itself was deleted or re-identified (its name, ISBN or media type
+corrected) or a proposed contributor role was deleted. Editing a field
+the proposal does not touch outdates nothing.
 
 Revoking a key (section~\ref{sec:agents-revoke}) also marks all its
 pending proposals as outdated; the detail page then says they were

@@ -124,10 +124,18 @@ async fn files_one_item_per_changed_field_with_its_current_value(pool: DbPool) {
     assert_eq!(detail.proposal.status, ProposalStatus::Pending);
     assert_eq!(detail.proposal.api_key_id, propose_key_id(&pool).await);
     assert_eq!(detail.proposal.sources, vec![SRC.to_string()]);
+    // Story 12-2: every item records the title's identity at filing.
     let values: Vec<_> = detail
         .items
         .iter()
-        .map(|i| i.proposed_values.clone())
+        .map(|i| {
+            let mut v = i.proposed_values.clone();
+            let identity = v.as_object_mut().unwrap().remove("identity");
+            let identity = identity.expect("identity snapshot");
+            assert!(identity["title"].is_string(), "{identity}");
+            assert!(identity["media_type"].is_string(), "{identity}");
+            v
+        })
         .collect();
     assert_eq!(
         values,

@@ -792,3 +792,37 @@ async fn only_an_admin_may_set_the_delay(pool: DbPool) {
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     assert_eq!(delay_row(&pool).await, ("90".to_string(), 1));
 }
+
+/// Story 12-2 (review): a rejection blocks what the librarian rejected —
+/// a line removed before the decision is not blocked.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_line_removed_before_the_rejection_is_not_blocked(pool: DbPool) {
+    let agent = Agent::new(&pool).await;
+    let title = seed_title(&pool, "Retirée").await;
+    let by = decider(&pool).await;
+    let first = id_of(
+        &agent
+            .ok(
+                "propose_title_metadata",
+                metadata(title, json!({"subtitle": "A", "publisher": "P"})),
+            )
+            .await,
+    );
+    sqlx::query(
+        "UPDATE proposal_items SET deleted_at = NOW() WHERE proposal_id = ? \
+         AND JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.field')) = 'publisher'",
+    )
+    .bind(first)
+    .execute(&pool)
+    .await
+    .unwrap();
+    reject(&pool, by, first, None).await;
+    // The publisher was removed, not rejected: filed.
+    agent
+        .ok("propose_title_metadata", metadata(title, json!({"publisher": "Q"})))
+        .await;
+    // The subtitle was rejected: refused.
+    agent
+        .err("propose_title_metadata", metadata(title, json!({"subtitle": "B"})))
+        .await;
+}

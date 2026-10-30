@@ -11,11 +11,13 @@
 //!    with the filing rules ([`validate_fields`]) — a malformed proposal
 //!    is refused, not marked stale (D-11-17-6);
 //! 2. [`ProposalService::check_staleness_in`] locks the title and marks
-//!    the proposal `stale` when it was changed (`version`) or deleted;
-//! 3. under that lock the title's live values are compared with the
-//!    `current` value each item recorded at filing (#521): a field
-//!    changed by a writer that does not bump `version` is found here.
-//!    An item marked `current_truncated` relies on `version` alone.
+//!    the proposal `stale` when it was deleted — a moved `version` alone
+//!    no longer outdates a metadata proposal (story 12-2, #542, FR149);
+//! 3. under that lock, [`crate::services::proposals::title_moved`]
+//!    (re-identified title; `version` for a `current_truncated` or
+//!    pre-12-2 item), then the title's live values are compared with the
+//!    `current` value each item recorded at filing: only a change of a
+//!    field the proposal touches outdates it.
 //!    Contributors only add (D-11-13-4): their `current` list is display
 //!    only, but a proposed contributor whose role was deleted since is a
 //!    conflict. A conflict marks the proposal `stale`;
@@ -46,7 +48,7 @@ use crate::models::proposal::{ProposalItemRow, ProposalKind, ProposalTargetTable
 use crate::models::title::{ProposedFieldWrites, TitleModel};
 use crate::services::acceptance::{
     AcceptConflict, AcceptError, AcceptOutcome, StaleCause, in_retried_transaction,
-    lock_pending_in, mark_stale_in,
+    lock_pending_in, mark_stale_in, mark_title_moved_in,
 };
 use crate::services::contributor::ContributorService;
 use crate::services::metadata_proposals::{
@@ -330,6 +332,9 @@ async fn accept_in(
                 "proposal title gone although not stale".to_string(),
             ))
         })?;
+    if crate::services::proposals::title_moved(&items, &title) {
+        return mark_title_moved_in(conn, id, &items).await;
+    }
     if let Some(s) = stored.scalars.iter().find(|s| field_changed(s, &title)) {
         return mark_stale_in(
             conn,
@@ -463,6 +468,43 @@ mod tests {
             proposed_values_json: v.to_string(),
             version: 1,
         }
+    }
+
+    // Story 12-2 (review): what the per-field checks cannot see.
+    #[test]
+    fn title_moved_detects_identity_and_legacy_cases() {
+        use crate::models::proposal::{ProposalTarget, ProposalTargetTable};
+        use crate::services::proposals::{title_identity, title_moved};
+        let t = title();
+        let item = |values: Value, version: i32| ProposalItemRow {
+            id: 1,
+            proposal_id: 1,
+            target: Some(ProposalTarget {
+                table: ProposalTargetTable::Titles,
+                id: t.id,
+            }),
+            target_version: Some(version),
+            proposed_values_json: values.to_string(),
+            version: 1,
+        };
+        let same = title_identity(&t);
+        let moved = t.version + 1;
+        // Identity unchanged: a moved version alone is not enough.
+        assert!(!title_moved(&[item(json!({"identity": same}), moved)], &t));
+        // Identity changed (name, ISBN or media type): moved.
+        let mut renamed = same.clone();
+        renamed["title"] = json!("Autre œuvre");
+        assert!(title_moved(&[item(json!({"identity": renamed}), t.version)], &t));
+        let mut isbn = same.clone();
+        isbn["isbn"] = json!("9782070360246");
+        assert!(title_moved(&[item(json!({"identity": isbn}), t.version)], &t));
+        // A cut baseline keeps the version rule.
+        let cut = json!({"identity": same, "current_truncated": true});
+        assert!(title_moved(&[item(cut.clone(), moved)], &t));
+        assert!(!title_moved(&[item(cut, t.version)], &t));
+        // Filed before 12-2 (no snapshot): the version rule.
+        assert!(title_moved(&[item(json!({}), moved)], &t));
+        assert!(!title_moved(&[item(json!({}), t.version)], &t));
     }
 
     fn title() -> TitleModel {

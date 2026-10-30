@@ -525,11 +525,14 @@ Seul compte ce que la proposition touche. Accepter une couverture ne
 rend pas périmée une proposition de métadonnées en attente pour le
 même titre, et accepter une description ne rend pas périmée une
 proposition d'éditeur : décidez-les dans l'ordre que vous voulez. Une
-proposition de métadonnées ne devient périmée que si l'un de
-\emph{ses} champs a changé depuis son dépôt (à la main, par une autre
-proposition acceptée ou par un téléchargement de métadonnées), et une
-proposition de couverture seulement si la couverture du titre a
-changé.
+proposition de métadonnées devient périmée quand l'un de \emph{ses}
+champs a changé depuis son dépôt (à la main, par une autre proposition
+acceptée ou par un téléchargement de métadonnées), une proposition de
+couverture quand la couverture du titre a changé --- et les deux quand
+le titre lui-même a été supprimé ou ré-identifié (son nom, son ISBN ou
+son type de média corrigé) ou qu'un rôle de contributeur proposé a été
+supprimé. Modifier un champ que la proposition ne touche pas ne rend
+rien périmé.
 
 Révoquer une clé (section~\ref{sec:agents-revoke}) rend aussi
 périmées toutes ses propositions en attente ; la page de détail

@@ -562,6 +562,47 @@ impl ProposalModel {
         Ok(found)
     }
 
+    /// Story 12-2 (review) — overwrite a proposal's equivalence key (a
+    /// rejection records the key of its live lines).
+    pub async fn set_equivalence_key(
+        conn: &mut MySqlConnection,
+        id: u64,
+        key: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query("UPDATE proposals SET equivalence_key = ? WHERE id = ?")
+            .bind(key)
+            .bind(id)
+            .execute(&mut *conn)
+            .await?;
+        Ok(())
+    }
+
+    /// Story 12-2 (review) — whether another live cover proposal on the
+    /// title was accepted at or after `since` (this proposal's filing).
+    /// Its image is installed after its commit, so until then the URL
+    /// alone does not show that the cover changed.
+    pub async fn cover_accepted_since(
+        conn: &mut MySqlConnection,
+        title_id: u64,
+        since: NaiveDateTime,
+        except_id: u64,
+    ) -> Result<bool, AppError> {
+        let found: Option<u64> = sqlx::query_scalar(
+            "SELECT p.id FROM proposals p \
+             JOIN proposal_items i ON i.proposal_id = p.id AND i.deleted_at IS NULL \
+             WHERE p.deleted_at IS NULL AND p.kind = 'cover' AND p.status = 'accepted' \
+               AND p.id <> ? AND i.target_table = 'titles' AND i.target_id = ? \
+               AND p.decided_at >= ? \
+             LIMIT 1",
+        )
+        .bind(except_id)
+        .bind(title_id)
+        .bind(since)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found.is_some())
+    }
+
     /// Story 11-12 — the oldest live pending `series_create` proposal
     /// whose series line (`"line": "series"`, no target) proposes `name`,
     /// compared case- and accent-insensitively. Both sides are converted

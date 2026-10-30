@@ -36,7 +36,11 @@
 //!   value was too long to fit the 64 KiB item cap next to the proposed
 //!   one ([`fit_item`]): the string lost its tail, or the list its last
 //!   entries. The field-level baseline is then incomplete; staleness
-//!   relies on `version`.
+//!   relies on `version` for that item (story 12-2,
+//!   `proposals::title_moved`).
+//! - **`"identity"`** (story 12-2) — the title's name, ISBN and media
+//!   type at filing (`proposals::title_identity`): a re-identified title
+//!   outdates the proposal.
 //!
 //! `current` is the value at filing, kept as filed (11-19 edits
 //! `proposed` only; to re-validate an edit it calls [`validate_fields`]
@@ -823,6 +827,7 @@ impl MetadataProposalService {
         } else {
             Vec::new()
         };
+        let identity = crate::services::proposals::title_identity(&title);
         let current = CurrentValues {
             subtitle: title.subtitle,
             description: title.description,
@@ -853,10 +858,14 @@ impl MetadataProposalService {
             sources,
             items: items
                 .into_iter()
-                .map(|(_, values)| NewProposalItem {
-                    target: Some(target),
-                    expected_version: Some(version),
-                    proposed_values: fit_item(values),
+                .map(|(_, mut values)| {
+                    // Story 12-2 (review): the title's identity at filing.
+                    values["identity"] = identity.clone();
+                    NewProposalItem {
+                        target: Some(target),
+                        expected_version: Some(version),
+                        proposed_values: fit_item(values),
+                    }
                 })
                 .collect(),
         };

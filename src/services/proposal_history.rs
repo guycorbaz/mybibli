@@ -9,9 +9,15 @@
 //! - `series_create` — the proposed series name, folded like
 //!   [`fold_name`] (case, accents, inner whitespace ignored);
 //! - `series_attach` — the series id (the series line's target);
-//! - `metadata` — the title id **and** the same set of fields (the
-//!   items' `field` keys, order ignored);
-//! - `cover` — the title id.
+//! - `metadata` — the title id **and** the set of fields (the items'
+//!   `field` keys, order ignored); since story 12-2 (#535) a rejection
+//!   blocks every filing that **shares a field** with it
+//!   ([`newest_overlapping_rejection`]), and a rejection records the key
+//!   of its live lines (a line removed before the decision is not
+//!   blocked);
+//! - `cover` — the title id and the image's SHA-256 (`fingerprint`,
+//!   story 12-2): a rejection blocks only the same image; a cover filed
+//!   before has the legacy key `cover:titles/{id}` and blocks nothing new.
 //!
 //! The subject is read from the items as filed (the shapes documented in
 //! `series_proposals`, `metadata_proposals`, `cover_proposals`) and
@@ -39,7 +45,8 @@ use sqlx::MySqlConnection;
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::PaginatedList;
-use crate::models::proposal::{LatestRejection, 
+use crate::models::proposal::{
+    LatestRejection,
     ProposalFilter, ProposalKind, ProposalModel, ProposalStatus, ProposalTarget,
     ProposalTargetTable, SubjectLineRow,
 };
@@ -343,14 +350,24 @@ async fn newest_overlapping_rejection(
 ) -> Result<Option<(LatestRejection, BTreeSet<String>)>, AppError> {
     let prefix = metadata_key_prefix(title_id);
     let rows = ProposalModel::rejections_with_key_prefix(conn, &prefix).await?;
-    Ok(rows.into_iter().find_map(|(key, rejection)| {
-        let overlap: BTreeSet<String> = metadata_key_fields(&key, &prefix)
+    Ok(newest_overlap(rows, &prefix, fields))
+}
+
+/// The first of `rows` (newest first) whose key shares a field with
+/// `fields`, with the shared fields (pure — unit tested).
+fn newest_overlap<R>(
+    rows: Vec<(String, R)>,
+    prefix: &str,
+    fields: &BTreeSet<String>,
+) -> Option<(R, BTreeSet<String>)> {
+    rows.into_iter().find_map(|(key, rejection)| {
+        let overlap: BTreeSet<String> = metadata_key_fields(&key, prefix)
             .into_iter()
             .filter(|f| fields.contains(*f))
             .map(str::to_string)
             .collect();
         (!overlap.is_empty()).then_some((rejection, overlap))
-    }))
+    })
 }
 
 /// The rejection that blocks a filing (FR136).
@@ -467,17 +484,29 @@ impl ProposalHistoryService {
         let latest = ProposalModel::latest_rejection_dates(&mut conn, &keys).await?;
         // Story 12-2 (#535): a rejected metadata proposal reopens when no
         // live rejection sharing one of its fields blocks any more.
+        // One prefix query per title on the page, not per row.
         let mut overlapping: HashMap<u64, NaiveDateTime> = HashMap::new();
+        let mut by_title: HashMap<u64, Vec<(String, NaiveDateTime)>> = HashMap::new();
         for r in rows.iter().filter(|r| r.status == ProposalStatus::Rejected) {
             let Some((title_id, fields)) =
                 r.equivalence_key.as_deref().and_then(parse_metadata_key)
             else {
                 continue;
             };
-            if let Some((last, _)) =
-                newest_overlapping_rejection(&mut conn, title_id, &fields).await?
+            if !by_title.contains_key(&title_id) {
+                let prefix = metadata_key_prefix(title_id);
+                let found = ProposalModel::rejections_with_key_prefix(&mut conn, &prefix)
+                    .await?
+                    .into_iter()
+                    .map(|(k, last)| (k, last.decided_at))
+                    .collect();
+                by_title.insert(title_id, found);
+            }
+            let rejections = by_title[&title_id].clone();
+            if let Some((at, _)) =
+                newest_overlap(rejections, &metadata_key_prefix(title_id), &fields)
             {
-                overlapping.insert(r.id, last.decided_at);
+                overlapping.insert(r.id, at);
             }
         }
         drop(conn);
@@ -556,6 +585,35 @@ mod tests {
             items,
         })
         .map(|s| s.equivalence_key())
+    }
+
+    #[test]
+    fn newest_overlap_takes_the_newest_rejection_sharing_a_field() {
+        let prefix = "metadata:titles/7:";
+        let rows = vec![
+            ("metadata:titles/7:dewey_code".to_string(), 3),
+            ("metadata:titles/7:description,publisher".to_string(), 2),
+            ("metadata:titles/7:publisher".to_string(), 1),
+        ];
+        let set = |f: &[&str]| f.iter().map(|s| s.to_string()).collect::<BTreeSet<_>>();
+        assert_eq!(
+            newest_overlap(rows.clone(), prefix, &set(&["publisher", "subtitle"])),
+            Some((2, set(&["publisher"])))
+        );
+        assert_eq!(
+            newest_overlap(rows.clone(), prefix, &set(&["dewey_code", "description"])),
+            Some((3, set(&["dewey_code"])))
+        );
+        assert_eq!(newest_overlap(rows, prefix, &set(&["subtitle"])), None);
+        // A key of another title's prefix never matches.
+        assert_eq!(
+            newest_overlap(
+                vec![("metadata:titles/70:publisher".to_string(), 9)],
+                prefix,
+                &set(&["publisher"])
+            ),
+            None
+        );
     }
 
     #[test]

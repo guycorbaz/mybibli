@@ -4,8 +4,10 @@
 //! Each kind applies its proposal in **one transaction** run by
 //! [`in_retried_transaction`]: the proposal row is locked and its
 //! `version` compared with the one the librarian saw
-//! ([`lock_pending_in`]), the targets are re-checked (version **and**
-//! the catalog state a version does not record, #521), then either the
+//! ([`lock_pending_in`]), the targets are re-checked (deleted, and for
+//! series kinds a moved version — metadata and cover are judged per
+//! field since story 12-2, #542 — plus the catalog state a version does
+//! not record, #521), then either the
 //! proposal is marked `stale` (an `Ok` outcome, committed) or the
 //! decision is recorded and the change applied. Any error rolls the
 //! transaction back: nothing applied, the proposal still `pending`. A
@@ -264,6 +266,30 @@ pub(crate) async fn lock_pending_in(
         return Err(AcceptError::NothingToApply);
     }
     Ok((kind, items))
+}
+
+/// Story 12-2 (review) — mark a metadata or cover proposal `stale`
+/// because its title moved ([`crate::services::proposals::title_moved`]):
+/// reported like a changed target ("the title was changed or deleted").
+pub(crate) async fn mark_title_moved_in<A>(
+    conn: &mut MySqlConnection,
+    id: u64,
+    items: &[ProposalItemRow],
+) -> Result<AcceptOutcome<A>, AcceptError> {
+    match ProposalService::transition_in(conn, id, &Decision::MarkStale).await? {
+        Transition::Decided(_) | Transition::WentStale(_) => {}
+    }
+    let targets = items
+        .iter()
+        .filter_map(|i| {
+            i.target.map(|target| StaleTarget {
+                item_id: i.id,
+                target,
+                reason: crate::services::proposals::StaleReason::Changed,
+            })
+        })
+        .collect();
+    Ok(AcceptOutcome::Stale(StaleCause::Targets(targets)))
 }
 
 /// Mark the proposal `stale` for `conflict` (the caller commits).

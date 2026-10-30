@@ -10,8 +10,11 @@
 //! - **listing** and **detail**;
 //! - **transitions** — only `pending` → `accepted` / `rejected` /
 //!   `stale`; nothing leaves a final state;
-//! - **staleness** — an item whose target was deleted or whose
-//!   `version` moved since filing makes a pending proposal `stale`.
+//! - **staleness** — an item whose target was deleted makes a pending
+//!   proposal `stale`; so does a moved `version`, for series proposals
+//!   only ([`version_counts`]). Metadata and cover proposals are judged
+//!   per field by their acceptance (story 12-2, #542), plus
+//!   [`title_moved`] (identity snapshot, cut baselines, legacy items).
 //!
 //! Errors are a typed [`ProposalError`] with agent-facing English
 //! messages (D-11-9-2): the MCP tools of stories 11-12..11-14 turn the
@@ -595,6 +598,37 @@ pub fn normalize_rejection_reason(reason: Option<&str>) -> Result<Option<String>
     Ok(Some(r.to_string()))
 }
 
+/// Story 12-2 (review) — what identifies a title, recorded in every
+/// metadata and cover item at filing (`"identity"`): its name, ISBN and
+/// media type. The per-field checks cannot see a re-identified title (a
+/// mistaken record corrected by hand); this snapshot can.
+pub fn title_identity(title: &crate::models::title::TitleModel) -> Value {
+    serde_json::json!({
+        "title": title.title,
+        "isbn": title.isbn,
+        "media_type": title.media_type,
+    })
+}
+
+/// Whether a metadata or cover proposal's title moved in a way its
+/// per-field checks do not see (pure — unit tested): an item's identity
+/// snapshot differs from the live title, or an item carries no snapshot
+/// (filed before story 12-2) or a cut baseline (`current_truncated`) and
+/// the title's `version` moved since filing — those keep the pre-12-2
+/// rule.
+pub fn title_moved(items: &[ProposalItemRow], title: &crate::models::title::TitleModel) -> bool {
+    let live = title_identity(title);
+    items.iter().filter(|i| i.target.is_some()).any(|item| {
+        let values: Value = serde_json::from_str(&item.proposed_values_json).unwrap_or(Value::Null);
+        let version_moved = item.target_version != Some(title.version);
+        match values.get("identity") {
+            Some(identity) if *identity != live => true,
+            Some(_) => values.get("current_truncated") == Some(&Value::Bool(true)) && version_moved,
+            None => version_moved,
+        }
+    })
+}
+
 /// Whether a target at another `version` than at filing makes a proposal
 /// of `kind` stale. Series proposals: yes (their live checks, #521, come
 /// on top). Metadata and cover proposals: no — staleness is per field
@@ -946,6 +980,24 @@ impl ProposalService {
             if !targets.is_empty() {
                 Self::apply_update(conn, id, &stale_update()).await?;
                 return Ok(Transition::WentStale(targets));
+            }
+        }
+        if matches!(decision, Decision::Reject { .. }) {
+            // Story 12-2 (review): what the rejection blocks is what the
+            // librarian rejected — the live lines, not the ones the agent
+            // filed (a line removed before the decision blocks nothing).
+            let Some(kind) = ProposalModel::find(conn, id).await?.map(|p| p.kind) else {
+                return Err(ProposalError::NotFound { id });
+            };
+            let lines = ProposalModel::subject_lines(conn, &[id]).await?;
+            let subject_lines: Vec<_> = lines
+                .iter()
+                .map(crate::services::proposal_history::SubjectLine::from_row)
+                .collect();
+            if let Some(subject) =
+                crate::services::proposal_history::ProposalSubject::from_lines(kind, &subject_lines)
+            {
+                ProposalModel::set_equivalence_key(conn, id, &subject.equivalence_key()).await?;
             }
         }
         Self::apply_update(conn, id, &update).await?;

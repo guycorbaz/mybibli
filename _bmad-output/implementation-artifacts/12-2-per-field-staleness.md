@@ -62,6 +62,24 @@ Data model: no migration (`equivalence_key` is `VARCHAR`, `proposal_items.propos
 - [x] T7 — E2E (AC13)
 - [x] T8 — gates: clippy `--all-targets -D warnings`, targeted tests (lib `services::proposals`, `services::proposal_history`, `services::*acceptance`, `services::cover_proposals`; DB `proposal_*`, `mcp_*proposals`), `cargo sqlx prepare --check` if a typed query is added; full suites once on the final code before the single push
 
+### Review Findings
+
+Code review 2026-10-30, round 1 (Blind Hunter, Edge Case Hunter, Acceptance Auditor): 0 decision-needed, 12 patch, 0 defer, 9 dismissed. **Dropping the version check removed protections the per-field checks did not cover** — patched by keeping `version` exactly where no field-level baseline exists, and by an identity snapshot.
+
+- [x] [Review][Patch] **High** — a `current_truncated` item had no staleness check left (silent overwrite of a hand edit) → `proposals::title_moved`: such an item keeps the `version` rule [src/services/proposals.rs, metadata_acceptance.rs]
+- [x] [Review][Patch] **High** — a cover replaced by a manual upload kept the same URL `/covers/{id}.jpg` → every cover write (upload `routes/titles.rs`, fetch `tasks/metadata_fetch.rs::store_fetched_cover`) now stores a cache-busted URL like an accepted cover, so `cover_changed` sees any change of image (also makes browsers drop the old image)
+- [x] [Review][Patch] Medium — a re-identified title (name / ISBN / media type corrected) no longer outdated its proposals → `"identity"` snapshot in every metadata and cover item at filing (`proposals::title_identity`), compared at acceptance (`title_moved`); items filed before 12-2 (no snapshot) keep the `version` rule
+- [x] [Review][Patch] Medium — two covers accepted back to back: the first image is installed after its commit, so the URL did not show it → `ProposalModel::cover_accepted_since` (another cover proposal on the title accepted since filing) outdates [src/services/cover_acceptance.rs]
+- [x] [Review][Patch] Medium — a line removed before the rejection kept blocking its field (key frozen at filing) → `transition_in` recomputes the equivalence key from the live lines on `Reject` (`ProposalModel::set_equivalence_key`)
+- [x] [Review][Patch] Medium — module docs contradicted the code (`proposals.rs`, `proposal_history.rs`, `acceptance.rs`, `cover_acceptance.rs`, `metadata_acceptance.rs`, `metadata_proposals.rs`, `cover_proposals.rs` item shape) → rewritten
+- [x] [Review][Patch] Medium — no unit test of the overlap logic → pure `newest_overlap` + unit test; N+1 in `list_mine` → one prefix query per title
+- [x] [Review][Patch] Low — missing DB tests: cover on a deleted title (AC6), second proposal on the same field (AC3), re-identified title, cover race, truncated baseline, removed line before rejection → added
+- [x] [Review][Patch] Low — manual "only" sentence omitted deleted title / role; CLAUDE.md still said "versions" and "title + field set" → fixed (EN + FR, PDFs rebuilt)
+- [x] [Review][Patch] Low — misplaced doc comment on `cover_fingerprint`; `use` formatting → fixed
+- [x] [Review][Patch] Low — exact-JSON test of filed metadata items now strips and checks `identity` [tests/mcp_metadata_proposals.rs]
+
+Dismissed (9): fingerprint evadable by re-encoding / encoder upgrade (accepted by the #535 decision "same image" = same staged bytes; noted); rejecting contributors blocks other contributor additions (same as before for a contributors-only proposal; per-field granularity by design); legacy metadata rejections now block per field (intended — release note); legacy cover rejection's `resubmittable_from` (cosmetic, rare); `resubmittable_from` is the date for the full field set (documented as such); `stale_targets_on` returning empty for an unknown id (only a display helper; the decision paths return `NotFound`); extra `find` in `transition_in` (one PK read under the row lock); `debug_assert` on the LIKE prefix (prefix built from a `u64`); snapshot-vs-lock tests moved to `SeriesAttach` (the metadata/cover reads are the same locking reads, `find_by_id_in(.., true)`, covered by the per-field DB tests).
+
 ## Dev Notes
 
 - **Where the rule lives.** One place decides which reasons count for which kind — a `fn counts_as_stale(kind, reason)` or a parameter on `stale_reasons`. Do not special-case metadata/cover in two call sites with copied conditions (Rule #1).
@@ -120,7 +138,10 @@ claude-opus-5-5
 - `src/services/proposal_history.rs` — fingerprinted cover subject/key, per-field metadata rejection lookup, history; unit tests
 - `src/services/cover_proposals.rs` — `cover_fingerprint`, `fingerprint` in the cover line; unit tests
 - `src/services/proposal_review.rs` — pattern update
-- `src/models/proposal.rs` — `SubjectLineRow::fingerprint`, `rejections_with_key_prefix`
+- `src/models/proposal.rs` — `SubjectLineRow::fingerprint`, `rejections_with_key_prefix`, `cover_accepted_since`, `set_equivalence_key`
+- `src/services/acceptance.rs`, `metadata_acceptance.rs`, `cover_acceptance.rs`, `metadata_proposals.rs` — identity snapshot / `title_moved`, cover race, docs (review)
+- `src/routes/titles.rs`, `src/tasks/metadata_fetch.rs` — cache-busted cover URL on upload and fetch (review)
+- `tests/mcp_metadata_proposals.rs` — identity in filed items (review)
 - `src/mcp/tools/list_my_proposals.rs` — equivalence wording
 - `tests/proposal_accept_metadata_cover.rs`, `tests/proposals_service.rs`, `tests/proposal_history.rs` — DB tests
 - `tests/e2e/specs/journeys/metadata-cover-proposal-accept.spec.ts` — journey 2
