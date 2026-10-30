@@ -111,7 +111,7 @@ claude-opus-5-5
 - T4: `SearchService::search` calls `detect_code(&compact_isbn(trimmed))`; every fallback keeps `trimmed`. `search_catalog` (MCP) uses the moved helper. Unit test on the compacted detection; DB tests: `search_isbn10.rs` +2, `home_scan_redirect.rs` +2.
 - T5: `catalog-isbn-separators.spec.ts` (specId `IH`), 4 tests, green on a reset stack and again on the non-reset stack (rerunnable).
 - T6 (targeted): lib tests `utils::`, `routes::catalog::tests::test_detect`, `services::search::`, `services::expected_tomes::` 89 passed; DB tests `search_isbn10`, `home_scan_redirect`, `mcp_catalog_read_tools` green; `tsc --noEmit` clean; flake grep clean; E2E targeted 9/9 (new spec + `catalog-isbn10.spec.ts`).
-- Rule #12: `catalog.rs` 3,104 → 3,175 lines after review (production +18, unit tests +53).
+- Rule #12: `catalog.rs` 3,104 → 3,177 lines after review (+73: production +20, unit tests +53).
 
 ### File List
 
