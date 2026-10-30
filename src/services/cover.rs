@@ -275,6 +275,63 @@ pub fn detected_cover_media_type(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// Whether a JPEG runs all the way to its end-of-image marker (#558).
+///
+/// The `image` crate decodes a truncated JPEG without an error: it keeps
+/// the rows it could read and paints the rest mid-grey. PNG, WebP and GIF
+/// decoders do fail on a short read, so only JPEG needs this check.
+///
+/// Walks the marker segments from SOI: a sized segment is skipped by its
+/// length (an EXIF thumbnail, with its own EOI, stays inside its APP1), a
+/// scan is followed through its entropy-coded data (`FF 00` stuffing and
+/// RSTn markers belong to it) up to the next marker. Complete when EOI is
+/// reached; bytes after it are ignored. Running out of bytes first means
+/// the file was cut short. Pure.
+fn jpeg_is_complete(bytes: &[u8]) -> bool {
+    if !bytes.starts_with(&[0xFF, 0xD8]) {
+        return false;
+    }
+    let mut i = 2;
+    loop {
+        // A marker: one or more 0xFF fill bytes, then the marker code.
+        if bytes.get(i) != Some(&0xFF) {
+            return false;
+        }
+        while bytes.get(i) == Some(&0xFF) {
+            i += 1;
+        }
+        let Some(&marker) = bytes.get(i) else {
+            return false;
+        };
+        i += 1;
+        match marker {
+            0xD9 => return true,
+            0x01 | 0xD0..=0xD7 => continue,
+            _ => {}
+        }
+        let (Some(&hi), Some(&lo)) = (bytes.get(i), bytes.get(i + 1)) else {
+            return false;
+        };
+        let len = usize::from(u16::from_be_bytes([hi, lo]));
+        if len < 2 || i + len > bytes.len() {
+            return false;
+        }
+        i += len;
+        if marker == 0xDA {
+            // Entropy-coded data, up to the first marker that is neither
+            // a stuffed 0xFF nor a restart marker.
+            loop {
+                match (bytes.get(i), bytes.get(i + 1)) {
+                    (Some(0xFF), Some(0x00 | 0xD0..=0xD7)) => i += 2,
+                    (Some(0xFF), Some(_)) => break,
+                    (Some(_), _) => i += 1,
+                    (None, _) => return false,
+                }
+            }
+        }
+    }
+}
+
 /// Ceiling on what one decode may allocate (issue #479).
 ///
 /// [`MAX_COVER_SIZE`] bounds the *compressed* input, which says nothing
@@ -332,6 +389,14 @@ pub fn encode_cover(bytes: &[u8]) -> Result<EncodedCover, CoverError> {
             "Image too large: {} bytes (max {MAX_COVER_SIZE})",
             bytes.len()
         )));
+    }
+
+    if detected_cover_media_type(bytes) == Some("image/jpeg") && !jpeg_is_complete(bytes) {
+        return Err(CoverError::InvalidImage(
+            "Image data is incomplete: the JPEG ends before its end-of-image marker \
+             (truncated download or copy). Send the whole file."
+                .to_string(),
+        ));
     }
 
     // Decode image (auto-detect format: JPEG, PNG, GIF, WebP, etc.)
@@ -540,6 +605,75 @@ mod tests {
         assert!(
             matches!(encode_cover(&big), Err(CoverError::InvalidImage(m)) if m.contains("too large"))
         );
+    }
+
+    fn jpeg_bytes(w: u32, h: u32) -> Vec<u8> {
+        let img = image::RgbImage::from_fn(w, h, |x, y| {
+            image::Rgb([
+                (x * 7 % 256) as u8,
+                (y * 3 % 256) as u8,
+                ((x ^ y) % 256) as u8,
+            ])
+        });
+        let mut out = Vec::new();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut Cursor::new(&mut out), image::ImageFormat::Jpeg)
+            .unwrap();
+        out
+    }
+
+    #[test]
+    fn a_whole_jpeg_is_complete_even_with_bytes_after_its_end() {
+        let jpeg = jpeg_bytes(64, 96);
+        assert!(jpeg_is_complete(&jpeg));
+        let mut padded = jpeg.clone();
+        padded.extend_from_slice(&[0, 0, 0, 0xFF, 0xD8]);
+        assert!(
+            jpeg_is_complete(&padded),
+            "trailing bytes after EOI are ignored"
+        );
+        assert!(encode_cover(&padded).is_ok());
+    }
+
+    #[test]
+    fn a_truncated_jpeg_is_incomplete_wherever_it_is_cut() {
+        let jpeg = jpeg_bytes(64, 96);
+        // Every cut: inside the headers, inside the scan, just before EOI.
+        for cut in (2..jpeg.len()).step_by(7).chain([jpeg.len() - 1]) {
+            assert!(
+                !jpeg_is_complete(&jpeg[..cut]),
+                "cut at {cut} of {}",
+                jpeg.len()
+            );
+        }
+        assert!(!jpeg_is_complete(b"not a jpeg"));
+    }
+
+    #[test]
+    fn an_eoi_inside_a_segment_does_not_complete_a_truncated_jpeg() {
+        // An APP1 segment carrying its own SOI..EOI, as an EXIF thumbnail does.
+        let jpeg = jpeg_bytes(32, 32);
+        let thumb = [0xFF, 0xD8, 0xFF, 0xD9];
+        let mut with_app1 = vec![0xFF, 0xD8, 0xFF, 0xE1, 0x00, (2 + thumb.len()) as u8];
+        with_app1.extend_from_slice(&thumb);
+        with_app1.extend_from_slice(&jpeg[2..]);
+        assert!(jpeg_is_complete(&with_app1));
+        let cut = &with_app1[..with_app1.len() / 2];
+        assert!(!jpeg_is_complete(cut));
+    }
+
+    /// #558: the decoder would accept this and paint the missing rows grey.
+    #[test]
+    fn encode_cover_refuses_a_truncated_jpeg() {
+        let jpeg = jpeg_bytes(200, 300);
+        for frac in [2, 8] {
+            let cut = &jpeg[..jpeg.len() / frac];
+            assert!(
+                matches!(encode_cover(cut), Err(CoverError::InvalidImage(m)) if m.contains("incomplete")),
+                "cut to 1/{frac}"
+            );
+        }
+        assert!(encode_cover(&jpeg).is_ok());
     }
 
     #[test]
