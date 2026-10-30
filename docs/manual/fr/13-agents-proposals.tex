@@ -112,13 +112,20 @@ lecture seule ou en lecture + écriture y est refusée. Utilisez une clé
 par agent : la révoquer (section~\ref{sec:agents-revoke}) arrête alors
 exactement cet agent.
 
-\section{Étape 2 --- autoriser l'adresse utilisée par l'agent}
+\section{Étape 2 --- autoriser le nom sous lequel l'agent appelle mybibli}
 \label{sec:agents-hosts}
 
 Pour se défendre du \emph{DNS rebinding} (une page web qui amène un
 navigateur à parler à votre NAS sous un nom étranger), le point
 d'entrée ne répond qu'aux requêtes dont l'en-tête \texttt{Host}
-figure sur une liste. Deux variables d'environnement, lues au
+figure sur une liste. Cet en-tête porte le nom (ou l'adresse) du
+\emph{serveur} tel que l'agent l'a écrit dans son adresse --- pour
+\texttt{http://nas.local:8080/api/mcp}, c'est
+\texttt{nas.local:8080}. Il ne dit rien de la machine sur laquelle
+tourne l'agent : la liste ne filtre pas les clients, tous les
+ordinateurs de votre réseau qui appellent la même adresse envoient le
+même \texttt{Host}, et un sous-réseau n'y aurait aucun sens. C'est la
+clé propositions qui contrôle l'accès. Deux variables d'environnement, lues au
 démarrage, la règlent (chapitre~\ref{ch:installation}, tableau de la
 section~\ref{sec:env-vars}) :
 
@@ -130,9 +137,10 @@ section~\ref{sec:env-vars}) :
         définie ou vide : \texttt{localhost,127.0.0.1,::1} --- ce qui
         ne suffit que si l'agent tourne sur la machine qui héberge
         mybibli. Une valeur définie \emph{remplace} celle par
-        défaut : sur un NAS, listez chaque nom et chaque adresse que
-        l'agent utilise, et gardez les noms locaux si un client local
-        en a besoin :
+        défaut : sur un NAS, listez chaque nom et chaque adresse sous
+        lesquels les agents atteignent le NAS (son nom d'hôte, son
+        adresse IP si un agent l'utilise), et gardez les noms locaux
+        si un client local en a besoin :
 \begin{lstlisting}
 MYBIBLI_MCP_ALLOWED_HOSTS=nas.local,192.168.1.10,localhost
 \end{lstlisting}
