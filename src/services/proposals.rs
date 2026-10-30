@@ -983,19 +983,31 @@ impl ProposalService {
             }
         }
         if matches!(decision, Decision::Reject { .. }) {
-            // Story 12-2 (review): what the rejection blocks is what the
-            // librarian rejected — the live lines, not the ones the agent
-            // filed (a line removed before the decision blocks nothing).
+            // Story 12-2 (review): what a metadata rejection blocks is what
+            // the librarian rejected — the live lines, not the ones the
+            // agent filed (a line removed before the decision blocks
+            // nothing). Other kinds keep the key of the agent's filing (an
+            // edited series name must still block the agent's own name).
             let Some(kind) = ProposalModel::find(conn, id).await?.map(|p| p.kind) else {
                 return Err(ProposalError::NotFound { id });
             };
-            let lines = ProposalModel::subject_lines(conn, &[id]).await?;
+            let lines = if kind == ProposalKind::Metadata {
+                ProposalModel::subject_lines(conn, &[id]).await?
+            } else {
+                Vec::new()
+            };
             let subject_lines: Vec<_> = lines
                 .iter()
                 .map(crate::services::proposal_history::SubjectLine::from_row)
                 .collect();
-            if let Some(subject) =
-                crate::services::proposal_history::ProposalSubject::from_lines(kind, &subject_lines)
+            if let Some(subject) = (!subject_lines.is_empty())
+                .then(|| {
+                    crate::services::proposal_history::ProposalSubject::from_lines(
+                        kind,
+                        &subject_lines,
+                    )
+                })
+                .flatten()
             {
                 ProposalModel::set_equivalence_key(conn, id, &subject.equivalence_key()).await?;
             }

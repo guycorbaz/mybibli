@@ -78,6 +78,15 @@ Code review 2026-10-30, round 1 (Blind Hunter, Edge Case Hunter, Acceptance Audi
 - [x] [Review][Patch] Low — misplaced doc comment on `cover_fingerprint`; `use` formatting → fixed
 - [x] [Review][Patch] Low — exact-JSON test of filed metadata items now strips and checks `identity` [tests/mcp_metadata_proposals.rs]
 
+Round 2 (2026-10-30, full pass): 1 Medium, 4 Low.
+- [x] [Review][Patch] **Medium** — `cover_accepted_since` was a plain read: under REPEATABLE READ, B's snapshot predates its wait for the title lock, so two *simultaneous* cover acceptances both passed → `LOCK IN SHARE MODE` [src/models/proposal.rs]
+- [x] [Review][Patch] Low — recomputing the key at rejection also applied to `series_create` (an edited series name would unblock the agent's own name) → metadata only [src/services/proposals.rs]
+- [Review][Dismiss] Low — a cover filed before the release and rejected after it keeps the legacy key (blocks nothing) → **release note** (see below)
+- [Review][Dismiss] Low — `decided_at >= created_at` to the second may outdate a cover filed in the same second as another's acceptance (fail-safe; one re-filing at most)
+- [Review][Dismiss→12.7] Low — proposals still pending at the release carry no `identity` and keep the version rule (#542 behaviour) until re-filed → **release note** and manual sentence in Story 12.7
+
+**Release notes (v1.22.0, Story 12.7):** proposals pending at the upgrade keep the old staleness rule (a cover accepted on their title still outdates them) — have the agent re-file them to benefit; metadata rejections from before the upgrade now block per field; cover rejections from before (and covers filed before but rejected after) block nothing new.
+
 Dismissed (9): fingerprint evadable by re-encoding / encoder upgrade (accepted by the #535 decision "same image" = same staged bytes; noted); rejecting contributors blocks other contributor additions (same as before for a contributors-only proposal; per-field granularity by design); legacy metadata rejections now block per field (intended — release note); legacy cover rejection's `resubmittable_from` (cosmetic, rare); `resubmittable_from` is the date for the full field set (documented as such); `stale_targets_on` returning empty for an unknown id (only a display helper; the decision paths return `NotFound`); extra `find` in `transition_in` (one PK read under the row lock); `debug_assert` on the LIKE prefix (prefix built from a `u64`); snapshot-vs-lock tests moved to `SeriesAttach` (the metadata/cover reads are the same locking reads, `find_by_id_in(.., true)`, covered by the per-field DB tests).
 
 ## Dev Notes

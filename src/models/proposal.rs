@@ -580,7 +580,10 @@ impl ProposalModel {
     /// Story 12-2 (review) — whether another live cover proposal on the
     /// title was accepted at or after `since` (this proposal's filing).
     /// Its image is installed after its commit, so until then the URL
-    /// alone does not show that the cover changed.
+    /// alone does not show that the cover changed. A locking read (share
+    /// mode): under REPEATABLE READ a plain read would use the snapshot
+    /// taken before this transaction waited for the title lock, and miss
+    /// an acceptance committed meanwhile (review round 2).
     pub async fn cover_accepted_since(
         conn: &mut MySqlConnection,
         title_id: u64,
@@ -593,7 +596,7 @@ impl ProposalModel {
              WHERE p.deleted_at IS NULL AND p.kind = 'cover' AND p.status = 'accepted' \
                AND p.id <> ? AND i.target_table = 'titles' AND i.target_id = ? \
                AND p.decided_at >= ? \
-             LIMIT 1",
+             LIMIT 1 LOCK IN SHARE MODE",
         )
         .bind(except_id)
         .bind(title_id)
