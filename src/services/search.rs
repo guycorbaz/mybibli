@@ -153,7 +153,9 @@ impl SearchService {
             .await;
         }
 
-        match detect_code(trimmed) {
+        // Story 12-1 (#502): an ISBN typed with separators is looked up
+        // bare; every fallback keeps the query as typed.
+        match detect_code(&crate::utils::compact_isbn(trimmed)) {
             CodeType::VCode(code) => {
                 tracing::info!(code = %code, "V-code lookup");
                 let result = VolumeModel::find_by_label_with_title(pool, &code).await?;
@@ -276,7 +278,7 @@ impl SearchService {
     ) -> Result<PaginatedList<SearchResult>, AppError> {
         let page = search.page.max(1);
         let trimmed = search.query.trim();
-        let exact: Option<Vec<TitleModel>> = match detect_code(&compact_code(trimmed)) {
+        let exact: Option<Vec<TitleModel>> = match detect_code(&crate::utils::compact_isbn(trimmed)) {
             CodeType::VCode(code) => VolumeModel::find_by_label_with_title(pool, &code)
                 .await?
                 .map(|(_volume, title)| vec![title]),
@@ -360,27 +362,6 @@ impl SearchService {
     }
 }
 
-/// An identifier as an agent may copy it — `978-2-07-036024-6`,
-/// `2 07 036024 X`, Unicode hyphens or dashes, non-breaking spaces —
-/// without those separators, when what remains
-/// is shaped like an ISBN-10/13; any other query is returned unchanged
-/// (a title containing a hyphen stays text).
-fn compact_code(query: &str) -> String {
-    let compact: String = query
-        .chars()
-        .filter(|c| !(c.is_whitespace() || matches!(c, '-' | '\u{2010}'..='\u{2015}')))
-        .collect();
-    let isbn_shaped = (compact.len() == 13 && compact.chars().all(|c| c.is_ascii_digit()))
-        || (compact.len() == 10
-            && compact.as_bytes()[..9].iter().all(u8::is_ascii_digit)
-            && compact.ends_with(|c: char| c.is_ascii_digit() || c == 'X' || c == 'x'));
-    if compact.len() != query.len() && isbn_shaped {
-        compact
-    } else {
-        query.to_string()
-    }
-}
-
 /// Whether an exact hit satisfies the agent's filters.
 fn catalog_filters_match(search: &CatalogSearch, title: &TitleModel) -> bool {
     search
@@ -426,23 +407,6 @@ mod tests {
             manually_edited_fields: None,
             version: 1,
         }
-    }
-
-    #[test]
-    fn compact_code_strips_separators_from_isbn_shapes_only() {
-        assert_eq!(compact_code("978-2-07-036024-6"), "9782070360246");
-        assert_eq!(compact_code("978 2 07 036024 6"), "9782070360246");
-        assert_eq!(compact_code("2-07-036024-x"), "207036024x");
-        assert_eq!(
-            compact_code("978\u{2011}2\u{2013}07\u{a0}036024\t6"),
-            "9782070360246"
-        );
-        assert_eq!(compact_code("9782070360246"), "9782070360246");
-        assert_eq!(compact_code("Spider-Man"), "Spider-Man");
-        assert_eq!(compact_code("1984 - 2001"), "1984 - 2001");
-        assert_eq!(compact_code("V0042"), "V0042");
-        // Multi-byte input never panics on the byte slice.
-        assert_eq!(compact_code("é-é-é-é-é"), "é-é-é-é-é");
     }
 
     #[test]
@@ -495,6 +459,21 @@ mod tests {
             detect_code("9782070360246"),
             CodeType::Isbn("9782070360246".to_string())
         );
+    }
+
+    // Story 12-1 (#502): the web search compacts before `detect_code`.
+    #[test]
+    fn test_detect_compacted_isbn_with_separators() {
+        let detect = |q: &str| detect_code(&crate::utils::compact_isbn(q));
+        assert_eq!(
+            detect("978-2-07-036024-6"),
+            CodeType::Isbn("9782070360246".to_string())
+        );
+        assert_eq!(
+            detect("0-201-63361-2"),
+            CodeType::Isbn("9780201633610".to_string())
+        );
+        assert_eq!(detect("Spider-Man 3"), CodeType::Text);
     }
 
     #[test]

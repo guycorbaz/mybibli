@@ -1,5 +1,6 @@
 //! Story 11-1 (#497) — a home-page search by ISBN-10 finds the title
-//! stored under its ISBN-13.
+//! stored under its ISBN-13. Story 12-1 (#502) — so does a search by an
+//! ISBN-10 or ISBN-13 typed with separators.
 //!
 //! Before 11-1, `search::detect_code` accepted the ISBN-10 shape but looked
 //! it up verbatim, so `TitleModel::find_by_isbn` never matched (titles keep
@@ -54,4 +55,32 @@ async fn search_by_bad_checksum_isbn10_does_not_match(pool: MySqlPool) {
         .expect("create title");
 
     assert!(search_ids(&pool, "2205001214").await.is_empty());
+}
+
+// Story 12-1 (#502) — separators are dropped before the ISBN lookup.
+#[sqlx::test(migrations = "./migrations")]
+async fn search_by_isbn_with_separators_finds_title(pool: MySqlPool) {
+    let (title, _) = TitleService::create_from_isbn(&pool, "9782205001211", None)
+        .await
+        .expect("create title");
+
+    for q in [
+        "978-2-205-00121-1",
+        "978 2 205 00121 1",
+        "2-205-00121-3",
+        "2 205 00121 3",
+        "978\u{2010}2\u{2010}205\u{2010}00121\u{2010}1",
+    ] {
+        assert_eq!(search_ids(&pool, q).await, vec![title.id], "{q}");
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn search_with_hyphenated_text_stays_fulltext(pool: MySqlPool) {
+    TitleService::create_from_isbn(&pool, "9782205001211", None)
+        .await
+        .expect("create title");
+
+    // Not an ISBN once compacted: full-text search on the query as typed.
+    assert!(search_ids(&pool, "Spider-Man 3").await.is_empty());
 }

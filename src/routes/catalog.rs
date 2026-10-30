@@ -394,6 +394,28 @@ pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
             normalized_code: None,
         };
     }
+    // Story 12-1 (#502): an ISBN typed with separators (`978-2-205-00121-1`,
+    // `2 205 00121 3`) is an ISBN, carried bare. Only an ISBN classification
+    // of the compact form is kept; anything else falls through to the
+    // classification of the input as typed.
+    let compact = crate::utils::compact_isbn(code);
+    if compact != code {
+        let isbn13 = if (compact.starts_with("978") || compact.starts_with("979"))
+            && compact.len() == 13
+        {
+            Some(compact)
+        } else {
+            crate::utils::isbn10_to_isbn13(&compact)
+        };
+        if let Some(isbn13) = isbn13 {
+            return CodeDetection {
+                code_type: "isbn",
+                inferred_media_type: Some(MediaType::Book),
+                inferred_code_type: Some(CodeType::Isbn),
+                normalized_code: Some(isbn13),
+            };
+        }
+    }
     if (code.starts_with("978") || code.starts_with("979")) && code.len() == 13 {
         return CodeDetection {
             code_type: "isbn",
@@ -2893,6 +2915,59 @@ mod tests {
         // 977-prefix but shorter than 13 digits → falls through to UPC
         let d = detect_code_type("9771234567");
         assert_eq!(d.code_type, "upc");
+    }
+
+    // Story 12-1 (#502) — ISBN typed with separators.
+    #[test]
+    fn test_detect_code_type_isbn13_with_separators_is_carried_bare() {
+        for code in [
+            "978-2-205-00121-1",
+            "978 2 205 00121 1",
+            "978\u{2010}2\u{2010}205\u{2010}00121\u{2010}1",
+            "978\u{a0}2\u{a0}205\u{a0}00121\u{a0}1",
+        ] {
+            let d = detect_code_type(code);
+            assert_eq!(d.code_type, "isbn", "{code}");
+            assert_eq!(d.inferred_media_type, Some(crate::models::media_type::MediaType::Book));
+            assert_eq!(d.normalized_code.as_deref(), Some("9782205001211"), "{code}");
+        }
+    }
+
+    #[test]
+    fn test_detect_code_type_isbn10_with_separators_becomes_isbn13() {
+        for (code, isbn13) in [
+            ("2-205-00121-3", "9782205001211"),
+            ("2 205 00121 3", "9782205001211"),
+            ("0-8044-2957-X", "9780804429573"),
+            ("0-8044-2957-x", "9780804429573"),
+        ] {
+            let d = detect_code_type(code);
+            assert_eq!(d.code_type, "isbn", "{code}");
+            assert_eq!(d.normalized_code.as_deref(), Some(isbn13), "{code}");
+        }
+    }
+
+    #[test]
+    fn test_detect_code_type_non_isbn_with_separators_keeps_raw_classification() {
+        // Not 978/979, bad mod-11 checksum, ISSN-EAN, text: the compact form
+        // is not an ISBN, so the input as typed is classified (as before).
+        for code in ["400-1234-567890", "2-205-00121-4", "977-1234-567003", "Spider-Man 3"] {
+            let d = detect_code_type(code);
+            assert_eq!(d.code_type, "unknown", "{code}");
+            assert_eq!(d.normalized_code, None, "{code}");
+        }
+        // A bad EAN check digit is still an `isbn` shape, like its bare form;
+        // `create_from_isbn` refuses it downstream.
+        let d = detect_code_type("978-2-205-00121-9");
+        assert_eq!(d.code_type, "isbn");
+        assert_eq!(d.normalized_code.as_deref(), Some("9782205001219"));
+    }
+
+    #[test]
+    fn test_detect_code_type_bare_codes_take_the_unchanged_path() {
+        assert_eq!(detect_code_type("9782205001211").normalized_code, None);
+        assert_eq!(detect_code_type("V0042").code_type, "vcode");
+        assert_eq!(detect_code_type("12345678").code_type, "upc");
     }
 
     // Story 11-1 (#497) — ISBN-10 at scan.

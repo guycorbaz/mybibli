@@ -234,17 +234,13 @@ impl ExpectedTomeError {
 }
 
 /// Normalise an ISBN given for an expected tome (pure — unit tested):
-/// trimmed, hyphens and spaces removed; empty → `None`; a valid ISBN-10
+/// separators removed (`utils::strip_isbn_separators`, story 12-1); empty → `None`; a valid ISBN-10
 /// becomes its ISBN-13 (story 11-1 helper); an ISBN-13 must start with
 /// 978 / 979 (a book EAN — the only codes `/catalog/scan` treats as
 /// ISBNs) and pass its checksum; anything else is refused.
 pub fn normalize_isbn(raw: Option<&str>) -> Result<Option<String>, ExpectedTomeError> {
     let Some(raw) = raw else { return Ok(None) };
-    let compact: String = raw
-        .trim()
-        .chars()
-        .filter(|c| *c != '-' && !c.is_whitespace())
-        .collect();
+    let compact = crate::utils::strip_isbn_separators(raw);
     if compact.is_empty() {
         return Ok(None);
     }
@@ -896,6 +892,13 @@ mod tests {
         assert_eq!(
             normalize_isbn(Some("978 0134 685991")).unwrap().as_deref(),
             Some("9780134685991")
+        );
+        // Story 12-1: the shared separator rule also drops Unicode dashes.
+        assert_eq!(
+            normalize_isbn(Some("978\u{2010}2\u{2013}07\u{a0}036024\u{2011}6"))
+                .unwrap()
+                .as_deref(),
+            Some("9782070360246")
         );
     }
 

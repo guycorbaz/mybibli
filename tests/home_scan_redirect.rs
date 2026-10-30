@@ -254,6 +254,28 @@ async fn home_scan_isbn10_unknown_falls_back_to_catalog_with_isbn13(pool: MySqlP
     assert_eq!(hx, Some("/catalog?code=9780804429573".to_string()));
 }
 
+// Story 12-1 (#502) — an ISBN typed with separators is looked up and
+// forwarded bare.
+#[sqlx::test(migrations = "./migrations")]
+async fn home_scan_isbn_with_separators_redirects_to_title(pool: MySqlPool) {
+    let g = first_genre_id(&pool).await;
+    let id = insert_title_with_isbn(&pool, "Blueberry", "9782205001211", g).await;
+    let router = app(pool);
+
+    for code in ["978-2-205-00121-1", "978 2 205 00121 1", "2-205-00121-3"] {
+        let (status, hx, _loc) = scan_htmx(&router, code).await;
+        assert_eq!(status, StatusCode::OK, "{code}");
+        assert_eq!(hx, Some(format!("/title/{id}")), "{code}");
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn home_scan_isbn_with_separators_unknown_falls_back_bare(pool: MySqlPool) {
+    let (status, hx, _loc) = scan_htmx(&app(pool), "978-0-00-000000-2").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(hx, Some("/catalog?code=9780000000002".to_string()));
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn home_scan_isbn10_bad_checksum_is_forwarded_unchanged(pool: MySqlPool) {
     let (status, hx, _loc) = scan_htmx(&app(pool), "2205001214").await;

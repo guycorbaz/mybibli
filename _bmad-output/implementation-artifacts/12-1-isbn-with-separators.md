@@ -1,6 +1,6 @@
 # Story 12.1: ISBN with hyphens or spaces
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #502 (type:code-review-finding, deferred from the 11-1 review). Covers: FR148. Epic 12 — first story; ships in v1.22.0 at the epic close.
 
@@ -38,13 +38,13 @@ Data model: unchanged (`titles.isbn` holds 13 bare digits). No migration. No new
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `src/utils.rs`: move `compact_code` → `pub fn compact_isbn(input: &str) -> String` (same body, same doc, mention FR148/#502 and 11-7), move its unit test; `services/search.rs::search_catalog` calls it (AC6, AC7)
-- [ ] T1b — `utils::strip_isbn_separators` shared by `compact_isbn` and `expected_tomes::normalize_isbn` (AC6); `normalize_isbn` tests stay green, add one with a Unicode hyphen
-- [ ] T2 — `detect_code_type` (AC1–AC3, AC9): compute `compact = utils::compact_isbn(code)`; when `compact != code`, classify the compact form and **keep that result only if it is `isbn`** (ISBN-13 `978/979` + 13 digits, or a valid ISBN-10 → ISBN-13), returning it with `normalized_code = Some(<bare ISBN-13>)`; otherwise fall through to today's classification of the raw `code`. Bare inputs take today's path untouched. Unit tests.
-- [ ] T3 — `handle_scan` / `home_scan.rs`: no code change expected (they already rebind on `normalized_code`) — verify, and log the raw and normalised forms as 11-1 does (AC1, AC4)
-- [ ] T4 — `SearchService::search` (l. 156): `detect_code(&utils::compact_isbn(trimmed))`; every fallback keeps `trimmed` (AC5). Unit test on `detect_code` with compacted input; DB integration tests
-- [ ] T5 — E2E `tests/e2e/specs/journeys/catalog-isbn-separators.spec.ts` (specId `IH`): reuse the `scanExpectingIsbn` / `titleExistsEntries` idiom of `catalog-isbn10.spec.ts` (rerunnable against a non-reset stack); build the hyphenated forms from `specIsbn("IH", n)` / `specIsbn10`-style derivation (AC8)
-- [ ] T6 — gates: clippy `--all-targets -D warnings`, targeted `cargo test` (lib `utils::`, `routes::catalog::`, `services::search::`; DB tests `search_*`, `home_scan_redirect`), `tsc --noEmit`, flake grep, targeted E2E; full suites once on the final code before the single push
+- [x] T1 — `src/utils.rs`: move `compact_code` → `pub fn compact_isbn(input: &str) -> String` (same body, same doc, mention FR148/#502 and 11-7), move its unit test; `services/search.rs::search_catalog` calls it (AC6, AC7)
+- [x] T1b — `utils::strip_isbn_separators` shared by `compact_isbn` and `expected_tomes::normalize_isbn` (AC6); `normalize_isbn` tests stay green, add one with a Unicode hyphen
+- [x] T2 — `detect_code_type` (AC1–AC3, AC9): compute `compact = utils::compact_isbn(code)`; when `compact != code`, classify the compact form and **keep that result only if it is `isbn`** (ISBN-13 `978/979` + 13 digits, or a valid ISBN-10 → ISBN-13), returning it with `normalized_code = Some(<bare ISBN-13>)`; otherwise fall through to today's classification of the raw `code`. Bare inputs take today's path untouched. Unit tests.
+- [x] T3 — `handle_scan` / `home_scan.rs`: no code change expected (they already rebind on `normalized_code`) — verify, and log the raw and normalised forms as 11-1 does (AC1, AC4)
+- [x] T4 — `SearchService::search` (l. 156): `detect_code(&utils::compact_isbn(trimmed))`; every fallback keeps `trimmed` (AC5). Unit test on `detect_code` with compacted input; DB integration tests
+- [x] T5 — E2E `tests/e2e/specs/journeys/catalog-isbn-separators.spec.ts` (specId `IH`): reuse the `scanExpectingIsbn` / `titleExistsEntries` idiom of `catalog-isbn10.spec.ts` (rerunnable against a non-reset stack); build the hyphenated forms from `specIsbn("IH", n)` / `specIsbn10`-style derivation (AC8)
+- [x] T6 — gates: clippy `--all-targets -D warnings`, targeted `cargo test` (lib `utils::`, `routes::catalog::`, `services::search::`; DB tests `search_*`, `home_scan_redirect`), `tsc --noEmit`, flake grep, targeted E2E; full suites once on the final code before the single push
 
 ## Dev Notes
 
@@ -82,10 +82,28 @@ Data model: unchanged (`titles.isbn` holds 13 bare digits). No migration. No new
 
 ### Agent Model Used
 
+claude-opus-5-5
+
 ### Debug Log References
 
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created
+- T1/T1b: `utils::is_isbn_separator` (private), `utils::strip_isbn_separators`, `utils::compact_isbn` (moved from `search.rs::compact_code`, same contract, test moved); `expected_tomes::normalize_isbn` now uses the shared separator rule (widening: Unicode hyphens/dashes accepted; new assertion).
+- T2: `detect_code_type` tries the compact form first when separators were removed and keeps it only for an `isbn` classification (978/979 + 13 digits, or valid ISBN-10 → ISBN-13), with `normalized_code = Some(bare ISBN-13)`; otherwise the raw input is classified as before. Four new unit tests (ISBN-13 with separators incl. U+2010 and NBSP, ISBN-10 with `X`/`x`, AC3 negatives → `unknown`, bare codes unchanged).
+- T3: no change needed — `handle_scan` (l. 482–484) and `home_scan.rs` already log raw + normalised forms and rebind on `normalized_code`.
+- T4: `SearchService::search` calls `detect_code(&compact_isbn(trimmed))`; every fallback keeps `trimmed`. `search_catalog` (MCP) uses the moved helper. Unit test on the compacted detection; DB tests: `search_isbn10.rs` +2, `home_scan_redirect.rs` +2.
+- T5: `catalog-isbn-separators.spec.ts` (specId `IH`), 4 tests, green on a reset stack and again on the non-reset stack (rerunnable).
+- T6 (targeted): lib tests `utils::`, `routes::catalog::tests::test_detect`, `services::search::`, `services::expected_tomes::` 89 passed; DB tests `search_isbn10`, `home_scan_redirect`, `mcp_catalog_read_tools` green; `tsc --noEmit` clean; flake grep clean; E2E targeted 9/9 (new spec + `catalog-isbn10.spec.ts`).
+- Rule #12: `catalog.rs` 3,104 → 3,179 lines (+75: 21 production, 54 unit tests).
 
 ### File List
+
+- `src/utils.rs` — `is_isbn_separator`, `strip_isbn_separators`, `compact_isbn` + tests
+- `src/routes/catalog.rs` — compaction step in `detect_code_type` + 4 unit tests
+- `src/services/search.rs` — `compact_code` removed; web search and `search_catalog` use `utils::compact_isbn`; unit test
+- `src/services/expected_tomes.rs` — `normalize_isbn` on `utils::strip_isbn_separators`; test assertion
+- `tests/search_isbn10.rs` — 2 DB tests
+- `tests/home_scan_redirect.rs` — 2 DB tests
+- `tests/e2e/specs/journeys/catalog-isbn-separators.spec.ts` — new, 4 E2E tests
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 12-1 → review

@@ -105,6 +105,40 @@ pub fn isbn10_to_isbn13(code: &str) -> Option<String> {
     Some(isbn13)
 }
 
+/// Whether `c` separates the groups of an ISBN as it is printed, typed or
+/// copied: any whitespace (non-breaking spaces included), `-`, and the
+/// Unicode hyphens and dashes U+2010..=U+2015.
+fn is_isbn_separator(c: char) -> bool {
+    c.is_whitespace() || matches!(c, '-' | '\u{2010}'..='\u{2015}')
+}
+
+/// `input` without its ISBN separators ([`is_isbn_separator`]) — the one
+/// separator rule shared by every ISBN entry point (story 12-1, #502).
+pub fn strip_isbn_separators(input: &str) -> String {
+    input.chars().filter(|c| !is_isbn_separator(*c)).collect()
+}
+
+/// An identifier as printed on a book or copied from a page —
+/// `978-2-07-036024-6`, `2 07 036024 X`, Unicode hyphens or dashes,
+/// non-breaking spaces — without those separators, when what remains is
+/// shaped like an ISBN-10/13; any other input is returned unchanged (a
+/// title containing a hyphen stays text). The shape test is loose (any 13
+/// digits): a caller that classifies must still check the compact form.
+/// Story 11-7 (MCP search), shared with the scan and the web search by
+/// story 12-1 (FR148, #502).
+pub fn compact_isbn(input: &str) -> String {
+    let compact = strip_isbn_separators(input);
+    let isbn_shaped = (compact.len() == 13 && compact.chars().all(|c| c.is_ascii_digit()))
+        || (compact.len() == 10
+            && compact.as_bytes()[..9].iter().all(u8::is_ascii_digit)
+            && compact.ends_with(|c: char| c.is_ascii_digit() || c == 'X' || c == 'x'));
+    if compact.len() != input.len() && isbn_shaped {
+        compact
+    } else {
+        input.to_string()
+    }
+}
+
 /// Whether a Dewey code is made only of digits, `.` and `/` (the
 /// lite rule of the API v1 metadata PATCH, reused by the metadata
 /// proposal of story 11-13). An empty string passes: callers decide
@@ -689,6 +723,33 @@ mod tests {
             ean13_check_digit(&isbn13),
             isbn13[12..].parse::<u32>().ok()
         );
+    }
+
+    #[test]
+    fn compact_isbn_strips_separators_from_isbn_shapes_only() {
+        assert_eq!(compact_isbn("978-2-07-036024-6"), "9782070360246");
+        assert_eq!(compact_isbn("978 2 07 036024 6"), "9782070360246");
+        assert_eq!(compact_isbn("2-07-036024-x"), "207036024x");
+        assert_eq!(
+            compact_isbn("978\u{2011}2\u{2013}07\u{a0}036024\t6"),
+            "9782070360246"
+        );
+        assert_eq!(compact_isbn("9782070360246"), "9782070360246");
+        assert_eq!(compact_isbn("Spider-Man"), "Spider-Man");
+        assert_eq!(compact_isbn("1984 - 2001"), "1984 - 2001");
+        assert_eq!(compact_isbn("V0042"), "V0042");
+        // Multi-byte input never panics on the byte slice.
+        assert_eq!(compact_isbn("é-é-é-é-é"), "é-é-é-é-é");
+    }
+
+    #[test]
+    fn strip_isbn_separators_removes_every_separator_kind() {
+        assert_eq!(
+            strip_isbn_separators(" 978-2\u{2010}205\u{202f}00121\u{2014}1 "),
+            "9782205001211"
+        );
+        assert_eq!(strip_isbn_separators("Spider-Man 3"), "SpiderMan3");
+        assert_eq!(strip_isbn_separators(""), "");
     }
 
     #[test]
