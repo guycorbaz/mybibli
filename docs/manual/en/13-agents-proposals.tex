@@ -101,12 +101,19 @@ Only a propose key opens \texttt{/api/mcp}; a read-only or
 read-write key is refused there. Use one key per agent: revoking it
 (section~\ref{sec:agents-revoke}) then stops exactly that agent.
 
-\section{Step 2 --- allow the address the agent uses}
+\section{Step 2 --- allow the name the agent calls mybibli by}
 \label{sec:agents-hosts}
 
 To defend against \emph{DNS rebinding} (a web page tricking a browser
 into talking to your NAS under a foreign name), the endpoint answers
-only requests whose \texttt{Host} header is on a list. Two environment
+only requests whose \texttt{Host} header is on a list. That header
+carries the name (or address) of the \emph{server} as the agent typed
+it in its URL --- for \texttt{http://nas.local:8080/api/mcp}, it is
+\texttt{nas.local:8080}. It says nothing about the machine the agent
+runs on: the list does not filter clients, every computer of your
+network calling the same URL sends the same \texttt{Host}, and a
+subnet would make no sense there. Access is controlled by the
+\emph{propose} key. Two environment
 variables, read at start-up, control it (chapter~\ref{ch:installation},
 table of section~\ref{sec:env-vars}):
 
@@ -118,8 +125,9 @@ table of section~\ref{sec:env-vars}):
         \texttt{localhost,127.0.0.1,::1} --- enough only when the
         agent runs on the machine that hosts mybibli. A set value
         \emph{replaces} the default, so on a NAS list every name and
-        address the agent uses, and keep the loopback names if a
-        local client needs them:
+        address under which agents reach the NAS (its host name, its
+        IP address if an agent uses it), and keep the loopback names
+        if a local client needs them:
 \begin{lstlisting}
 MYBIBLI_MCP_ALLOWED_HOSTS=nas.local,192.168.1.10,localhost
 \end{lstlisting}
