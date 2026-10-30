@@ -8,6 +8,7 @@ inputDocuments: [prd.md, architecture.md, ux-design-specification.md]
 
 ## Changelog
 
+- **2026-10-30** — Added **Epic 12: Proposals, after a first real use** (#502, #542, #560, #561), with new requirements FR148–FR151 (FR149 refines FR140) and UX-DR35. Decided by the project lead on 2026-10-30, after the first production agent session; ships as v1.22.0 together with the #558 fix already on `main`. The sidebar (#547) is planned as Epic 13; the base path (#492) comes later.
 - **2026-10-27** — Added **Epic 11: An AI assistant proposes, the librarian decides** (MCP server #493 + fixes #494–#497), with new requirements FR122–FR147, NFR42–NFR48, AR27–AR31, UX-DR31–UX-DR34. Decided in the party-mode session of 2026-10-27. Epic 10 retro action A5 ("no more Epic N+1") is deliberately reversed for this epic.
 - **2026-04-13** — Inserted new **Epic 6: Pipeline CI/CD et fiabilité** between Epic 5 closure and original Epic 6. Renumbered: original Epic 6 (Accès multi-rôle & Sécurité) → Epic 7; original Epic 7 (Administration & Configuration) → Epic 8; original Epic 8 (Polish UX & Accessibilité) → Epic 9. Historical documents (old story files, old retros, readiness report) updated in the same pass for consistency. FR assignments did not change — only the epic labels that hold them.
 
@@ -166,6 +167,10 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - FR145: When a title whose ISBN matches an expected tome is cataloged, it is attached to the series at that position and the expected tome is settled (same mechanism as the wishlist auto-link, CR #242)
 - FR146: Accepting or rejecting a proposal records who decided and when
 - FR147: Librarian can add, edit and delete expected tomes by hand from a series' detail page
+- FR148: An ISBN typed in its printed form — with hyphens or spaces, ISBN-10 or ISBN-13 — is recognised at scan and in search like the bare digits
+- FR149: Staleness is judged per field (refines FR140): accepting a proposal is refused, and the proposal marked stale, only when something the proposal touches changed since it was filed — for a metadata proposal its proposed fields and contributors, for a cover proposal the cover; series proposals keep their current rules
+- FR150: The MCP agent is told which metadata providers mybibli queries for each media type, worded so that a provider that found nothing at the last lookup is a lower priority, not an exclusion — its records may have improved since
+- FR151: Each row of the proposals list leads unmistakably to the proposal, and shows what is proposed at a glance (fields for a metadata proposal, a thumbnail for a cover proposal)
 
 ### NonFunctional Requirements
 
@@ -290,6 +295,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR32: Navigation entry to the proposals page with a pending-count badge; the navigation bar is not compacted; the `lg` breakpoint is checked for overflow with an admin's full link set
 - UX-DR33: "Pending proposals" dashboard indicator on the home page, following the existing home-indicator pattern
 - UX-DR34: Series detail lists expected tomes among the positions, each with an "Add to wishlist" action
+- UX-DR35: Proposals list row: one obvious link into the proposal, the catalog link secondary and labelled; a proposed-cover thumbnail and the list of proposed fields; keyboard- and screen-reader-accessible, mobile card mode included
 
 ### FR Coverage Map
 
@@ -353,6 +359,7 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 | FR137-FR140 | 11 | Proposals page: review, accept / reject, edit before accepting, staleness |
 | FR141-FR143 | 11 | Expected tomes, wishlist from series detail, access to the proposals page |
 | FR144-FR147 | 11 | Accepted fields protected from re-fetch, expected-tome auto-settle at scan, decision trail, manual expected-tome CRUD |
+| FR148-FR151 | 12 | ISBN with separators, per-field staleness, providers already searched, readable proposals list |
 
 **NFR Distribution:**
 - NFR1-NFR5, NFR7-NFR10, NFR12, NFR14, NFR22-NFR24, NFR26-NFR28, NFR30-NFR32, NFR34-NFR35, NFR38 (foundation) → Epic 1
@@ -380,8 +387,9 @@ This document provides the complete epic and story breakdown for mybibli, decomp
 - UX-DR7, UX-DR20, UX-DR21 → Epic 8
 - UX-DR4, UX-DR6 (complete), UX-DR8, UX-DR13, UX-DR26, UX-DR28 → Epic 9
 - UX-DR31, UX-DR32, UX-DR33, UX-DR34 → Epic 11
+- UX-DR35 → Epic 12
 
-**Coverage: 147/147 FRs, 48/48 NFRs, 31/31 ARs, 34/34 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27.)
+**Coverage: 151/151 FRs, 48/48 NFRs, 31/31 ARs, 35/35 UX-DRs — ZERO orphans.** (Epic 11 added 2026-10-27; Epic 12 added 2026-10-30.)
 
 ## Epic List
 
@@ -2352,3 +2360,165 @@ So that I can use the feature without reading the code.
 **And** `CLAUDE.md` documents the new patterns: the `src/mcp/` layer, the proposal lifecycle, expected tomes, cover staging and its purge
 **And** `docs/auth-threat-model.md` covers the new surface: the `propose` scope, `/api/mcp`, `Origin` / `Host` validation, agent content treated as untrusted
 **And** release documentation (Foundation Rule #19) is done at release time, not in this story
+
+### Epic 12: Proposals, after a first real use
+
+The first production agent session (2026-10-30: 352 proposals filed, 245 accepted, 190 titles improved) showed where the proposal workflow rubs: a cover accepted on a title made every other pending proposal for that title stale (55 of about 300 decisions), the agent spent its first effort on the very providers mybibli had just exhausted, and the proposals list led the librarian to the title page instead of the proposal. The epic smooths those three points and adds a small scan fix (#502).
+
+**FRs:** FR148–FR151 (FR149 refines FR140)
+**NFRs:** none new (NFR3 CSP, NFR12 a11y, NFR42–NFR48 unchanged)
+**UX-DRs:** UX-DR35
+**Issues:** #502, #542, #560, #561 (and #535 items 1–2, reviewed in Story 12.2)
+
+**Release.** v1.22.0 at the close of the epic, after its retrospective. It also carries the #558 fix (truncated JPEG covers refused), merged on `main` on 2026-10-30; the v1.21.1 documentation already on `main` is rewritten into the v1.22.0 sweep (Foundation Rule #19).
+
+**Key decisions (project lead, 2026-10-30).**
+- #542: staleness per field — a hand edit to a touched field still makes the proposal stale; nothing is ever overwritten.
+- #560: static option — no migration; per-title lookup attempts stay a possible follow-up. Providers that found nothing are a lower priority for the agent, never an exclusion.
+- Next: Epic 13 is the sidebar (#547), unless a bug needs fixing first; the base path (#492) comes later.
+
+**Sequencing.** 12.1 → 12.2 → 12.3 → 12.4 (independent, any order; 12.2 first among the proposal stories as the largest) → 12.5 (epic smoke, Foundation Rule #7) → 12.6 → retrospective → release v1.22.0.
+
+**Stories:**
+
+#### Story 12.1: ISBN with hyphens or spaces (closes #502)
+
+As a librarian,
+I want an ISBN typed as printed on the book to be recognised,
+So that typing `978-2-205-00121-1` finds or creates the same title as scanning it.
+
+**Covers:** FR148
+
+**Acceptance Criteria:**
+
+**Given** an ISBN-13 or ISBN-10 typed with hyphens or single spaces (`978-2-205-00121-1`, `2-205-00121-3`, `2 205 00121 3`)
+**When** it is entered on `/catalog`
+**Then** it is classified `isbn`, normalised to the ISBN-13 digits, and handled exactly as the bare code (existing title returned, or title created and fetched)
+
+**Given** the same input in the home search
+**When** it is searched
+**Then** the title stored under the ISBN-13 is found
+
+**Given** a code that is not an ISBN once the separators are removed (bad checksum, wrong length, other characters)
+**When** it is entered
+**Then** the current classification applies unchanged (no new false positive)
+
+**And** separator stripping lives in one helper in `src/utils.rs` used by `routes::catalog::detect_code_type` and `services::search::detect_code` (Foundation Rule #1), next to `isbn10_to_isbn13`
+**And** unit tests cover hyphens, spaces, ISBN-10 with `X`, mixed separators and the negative cases; E2E covers a typed hyphenated ISBN on `/catalog` and in the home search
+
+#### Story 12.2: Per-field staleness (closes #542)
+
+As a librarian,
+I want accepting a cover not to make the same title's metadata proposal stale, and the reverse,
+So that I can review an agent's proposals in any order without having them filed again.
+
+**Covers:** FR149
+
+**Acceptance Criteria:**
+
+**Given** a pending metadata proposal and a pending cover proposal on the same title
+**When** the cover proposal is accepted, then the metadata proposal
+**Then** both apply; the second is not stale
+
+**Given** two pending metadata proposals on the same title touching disjoint fields
+**When** both are accepted in turn
+**Then** both apply
+
+**Given** a pending metadata proposal for `description`
+**When** the description is edited by hand (or by another accepted proposal) before it is accepted
+**Then** accepting it applies nothing and marks it stale, with the current reason copy
+
+**Given** a pending metadata proposal adding contributors
+**When** a contributor it proposes was credited in the same role meanwhile
+**Then** the existing contributor rule applies (already-credited ones are skipped) and the proposal is not stale for that reason alone
+
+**Given** a pending cover proposal
+**When** the title's cover changed since filing (accepted proposal, upload, fetch)
+**Then** accepting it is refused as stale
+
+**And** the comparison uses the values recorded per item at filing (`current`), re-read under the existing lock order (proposal → items → targets) in `services/acceptance.rs::check_staleness_in`; series proposals keep their version and live-state checks (#521)
+**And** a title deleted since filing still makes any proposal on it stale
+**And** #535 items 1–2 (metadata field-set equivalence, title-wide cover rejection) are brought to the project lead at story validation, since per-field staleness touches the same notion of "the same proposal"; whatever is decided is either done here or left in #535
+**And** unit tests cover the per-kind comparison; DB integration tests cover the five scenarios above under concurrency-safe locking; E2E covers accepting a cover then a metadata proposal on the same title, both applied
+**And** `CLAUDE.md` (proposal lifecycle) and the manual's *Outdated proposals* section are updated
+
+#### Story 12.3: Tell the agent where mybibli already searched (closes #560)
+
+As a librarian working with an agent,
+I want the agent to know which sources mybibli already queried,
+So that it looks elsewhere first instead of repeating the same lookups.
+
+**Covers:** FR150
+
+**Acceptance Criteria:**
+
+**Given** an MCP client
+**When** it initialises
+**Then** the server instructions name, per media type, the metadata and cover providers mybibli queries, built from the provider registry (not a hand-maintained list), in English
+
+**Given** `list_titles_with_incomplete_metadata` and `list_titles_without_cover`
+**When** the agent reads their descriptions
+**Then** they say that the listed titles went through that provider chain without a usable result at their last lookup, that other sources should come first, and that those providers may hold the record now
+
+**And** keyed providers without a key (OMDb, TMDb, Google Books) are named only when configured, read at request time like the rest of `AppSettings`
+**And** the registry test of `src/mcp/tools/mod.rs` stays green (closed schemas, read tools `read_only`); the text is checked by a unit test (providers present, "may" wording, no exclusion wording)
+**And** E2E (`mcp-read-tools.spec.ts`) asserts the `initialize` instructions name the book providers
+
+#### Story 12.4: A readable proposals list (closes #561)
+
+As a librarian,
+I want each row of the proposals list to take me to the proposal and show what it proposes,
+So that I review quickly and never land on the title page by mistake.
+
+**Covers:** FR151, UX-DR35
+
+**Acceptance Criteria:**
+
+**Given** the proposals list
+**When** it renders
+**Then** each row has one primary link into `/proposals/{id}` and the catalog link is secondary and labelled (e.g. "View title"), with no nested interactive elements
+
+**Given** a metadata proposal row
+**Then** it lists the proposed fields (localized labels)
+
+**Given** a pending cover proposal row
+**Then** it shows a small thumbnail of the proposed image (librarian-only, through `GET /proposals/{id}/cover`), lazily loaded, with alt text
+
+**And** the mobile card mode shows the same information; axe-core passes on `/proposals`; CSP stays strict (no inline style or script)
+**And** the UX choice (whole-row link vs primary subject link, proposal number column or not) is made at story creation with a quick mock-up, then recorded in #561
+**And** templates audit, unit tests for the row view model, and E2E (click the row → detail page; thumbnail present for a cover proposal) cover it
+**And** the manual's *The list* section is updated (EN + FR)
+
+#### Story 12.5: Epic 12 smoke test (Foundation Rule #7)
+
+As the project,
+I want one end-to-end journey from a blank browser through the epic's core flow,
+So that the epic is proven done.
+
+**Covers:** Foundation Rule #7 (FR148–FR151 end to end)
+
+**Acceptance Criteria:**
+
+**Given** a blank browser with no injected cookie
+**When** the test runs
+**Then** it chains: admin login through `loginAs` → a hyphenated ISBN typed on `/catalog` creates the title → a `propose` key is created → a scripted MCP client reads the instructions (book providers named), files a metadata proposal and a cover proposal on that title → on the proposals list, the cover row shows its thumbnail and the metadata row its fields → open the cover proposal from the row and accept it → open the metadata proposal and accept it → both are applied, neither is stale
+
+**And** data is isolated (`specIsbn`, unique names); no `waitForTimeout`
+**And** the test is green under `CI=true npx playwright test --workers=2` (Foundation Rule #13)
+**And** if this test fails, the epic is not done
+
+#### Story 12.6: Documentation
+
+As an operator,
+I want the manual to describe the new behaviour,
+So that the proposal workflow is documented as it now works.
+
+**Covers:** FR148–FR151 (documentation)
+
+**Acceptance Criteria:**
+
+**Given** the user manual (English and French)
+**Then** chapter 13 describes per-field staleness, what the agent is told about providers, and the new list; the scan chapter mentions typed ISBNs with separators
+**And** the PDFs are rebuilt
+**And** `CLAUDE.md` reflects the new staleness rule in the proposal-lifecycle pattern
+**And** release documentation (Foundation Rule #19, v1.22.0, replacing the v1.21.1 wording already on `main`) is done at release time, not in this story
