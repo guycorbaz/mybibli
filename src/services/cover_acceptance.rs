@@ -93,6 +93,13 @@ pub fn parse_items(items: &[ProposalItemRow]) -> Result<StoredCover, String> {
 
 /// Story 12-2 (review): another cover proposal for the title accepted
 /// since this one was filed — its image may not be installed yet.
+///
+/// Lock order: this share-locks other proposals' rows **after** the
+/// title row, the reverse of proposal → items → title. Two simultaneous
+/// decisions on one title may then deadlock; `in_retried_transaction`
+/// retries on 40001 and the loser re-runs behind the title lock (correct
+/// outcome; with three or more simultaneous decisions the retry budget
+/// can run out — single-librarian load, accepted, review round 3).
 async fn cover_accepted_since_filing(
     conn: &mut MySqlConnection,
     id: u64,

@@ -1,6 +1,6 @@
 # Story 12.2: Per-field staleness
 
-Status: review
+Status: done
 
 GitHub issues: #542 (type:change-request) — closes it; #535 items 1–2 (type:code-review-finding) — decided 2026-10-30, done here (items 3–5 stay open in #535). Covers: FR149 (refines FR140); resubmission rule of FR136 refined per the #535 decision. Epic 12 — second story; ships in v1.22.0.
 
@@ -84,6 +84,8 @@ Round 2 (2026-10-30, full pass): 1 Medium, 4 Low.
 - [Review][Dismiss] Low — a cover filed before the release and rejected after it keeps the legacy key (blocks nothing) → **release note** (see below)
 - [Review][Dismiss] Low — `decided_at >= created_at` to the second may outdate a cover filed in the same second as another's acceptance (fail-safe; one re-filing at most)
 - [Review][Dismiss→12.7] Low — proposals still pending at the release carry no `identity` and keep the version rule (#542 behaviour) until re-filed → **release note** and manual sentence in Story 12.7
+
+Round 3 (2026-10-30, full pass): **0 Medium+**. 2 Low: the share-locking read takes other proposals' rows after the title lock (reverse order; a simultaneous decision on the same title may deadlock and is retried — documented on `cover_accepted_since_filing`); the one-second cache-buster granularity (two cover writes and a filing in the same second — dismissed, unreachable in practice).
 
 **Release notes (v1.22.0, Story 12.7):** proposals pending at the upgrade keep the old staleness rule (a cover accepted on their title still outdates them) — have the agent re-file them to benefit; metadata rejections from before the upgrade now block per field; cover rejections from before (and covers filed before but rejected after) block nothing new.
 
