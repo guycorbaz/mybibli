@@ -746,13 +746,9 @@ pub async fn update_title(
     // from ISBN so a "978-2-07-036024-6" pasted from a barcode reader
     // gets accepted (the provider chain stores the canonical 13-digit
     // form). Empty → None ("clear the column").
-    let isbn = form.isbn.as_ref().map(|s| {
-        s.chars().filter(|c| !c.is_whitespace() && *c != '-').collect::<String>()
-    }).filter(|s| !s.is_empty());
+    let isbn = form.isbn.as_deref().and_then(crate::utils::identifier_without_separators);
     let issn = non_empty(&form.issn).map(|s| s.replace('-', ""));
-    let upc = non_empty(&form.upc).map(|s| {
-        s.chars().filter(|c| !c.is_whitespace() && *c != '-').collect::<String>()
-    });
+    let upc = form.upc.as_deref().and_then(crate::utils::identifier_without_separators);
 
     // ISBN-13 checksum guard. Only validate if the user actually
     // changed the value (a corrupt existing ISBN should still
