@@ -521,11 +521,15 @@ contributeur a été supprimé ---,
 nouvelle proposition fondée sur le catalogue tel qu'il est
 aujourd'hui, ou faites la modification à la main.
 
-Accepter une proposition qui écrit des champs ou une couverture
-modifie le titre : les autres propositions en attente pour ce même
-titre deviennent alors périmées quand vous tentez de les accepter.
-Décidez-les dans l'ordre qui vous convient, et demandez à l'agent de
-déposer à nouveau ce qui compte encore.
+Seul compte ce que la proposition touche. Accepter une couverture ne
+rend pas périmée une proposition de métadonnées en attente pour le
+même titre, et accepter une description ne rend pas périmée une
+proposition d'éditeur : décidez-les dans l'ordre que vous voulez. Une
+proposition de métadonnées ne devient périmée que si l'un de
+\emph{ses} champs a changé depuis son dépôt (à la main, par une autre
+proposition acceptée ou par un téléchargement de métadonnées), et une
+proposition de couverture seulement si la couverture du titre a
+changé.
 
 Révoquer une clé (section~\ref{sec:agents-revoke}) rend aussi
 périmées toutes ses propositions en attente ; la page de détail
@@ -546,8 +550,11 @@ Après un refus, une proposition \emph{équivalente} est refusée pendant
 un certain temps, pour qu'un agent ne dépose pas la même chose encore
 et encore. Équivalente signifie de même type et de même objet : la
 même série (une nouvelle série par son nom, sans tenir compte de la
-casse ni des accents), le même titre \emph{et} le même ensemble de
-champs pour des métadonnées, le même titre pour une couverture. La
+casse ni des accents) ; pour des métadonnées, le même titre et
+\emph{l'un quelconque} des champs refusés --- un éditeur refusé bloque
+toute proposition qui comprend l'éditeur, l'année restant libre ; pour
+une couverture, le même titre \emph{et la même image} --- une autre
+image peut être proposée tout de suite. La
 règle vaut pour toutes les clés : créer une nouvelle clé ne la remet
 pas à zéro.
 

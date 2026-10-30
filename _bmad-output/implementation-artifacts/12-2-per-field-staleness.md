@@ -1,6 +1,6 @@
 # Story 12.2: Per-field staleness
 
-Status: ready-for-dev
+Status: review
 
 GitHub issues: #542 (type:change-request) — closes it; #535 items 1–2 (type:code-review-finding) — decided 2026-10-30, done here (items 3–5 stay open in #535). Covers: FR149 (refines FR140); resubmission rule of FR136 refined per the #535 decision. Epic 12 — second story; ships in v1.22.0.
 
@@ -53,14 +53,14 @@ Data model: no migration (`equivalence_key` is `VARCHAR`, `proposal_items.propos
 
 ## Tasks / Subtasks
 
-- [ ] T1 — kind-aware staleness in `proposals.rs`: `stale_reasons` gains the proposal kind (or a `StaleRule`), `check_staleness_in` and `transition_in` read the kind and pass it (AC6–AC8); unit tests
-- [ ] T2 — metadata / cover acceptance: keep `field_changed` / `RoleGone` / `cover_changed` as the live checks; confirm their order with T1 (AC1–AC5); DB tests
-- [ ] T3 — cover fingerprint: `sha2` dependency, fingerprint in `cover_item`, `ProposalSubject::Cover { title_id, fingerprint: Option<String> }` read from the line, key `cover:titles/{id}:{fp}` (legacy `cover:titles/{id}` when absent) (AC9); unit + DB tests
-- [ ] T4 — metadata per-field resubmission: model query for live rejections with the title's key prefix inside the delay; overlap computed in Rust from the stored key's field list; `check_resubmission` and `list_mine` use it (AC10, AC11); unit + DB tests
-- [ ] T5 — agent wording: `list_my_proposals` description (AC11); grep the propose tools' descriptions for the old equivalence wording
-- [ ] T6 — `CLAUDE.md`, module docs, manual (AC12)
-- [ ] T7 — E2E (AC13)
-- [ ] T8 — gates: clippy `--all-targets -D warnings`, targeted tests (lib `services::proposals`, `services::proposal_history`, `services::*acceptance`, `services::cover_proposals`; DB `proposal_*`, `mcp_*proposals`), `cargo sqlx prepare --check` if a typed query is added; full suites once on the final code before the single push
+- [x] T1 — kind-aware staleness in `proposals.rs`: `stale_reasons` gains the proposal kind (or a `StaleRule`), `check_staleness_in` and `transition_in` read the kind and pass it (AC6–AC8); unit tests
+- [x] T2 — metadata / cover acceptance: keep `field_changed` / `RoleGone` / `cover_changed` as the live checks; confirm their order with T1 (AC1–AC5); DB tests
+- [x] T3 — cover fingerprint: `sha2` dependency, fingerprint in `cover_item`, `ProposalSubject::Cover { title_id, fingerprint: Option<String> }` read from the line, key `cover:titles/{id}:{fp}` (legacy `cover:titles/{id}` when absent) (AC9); unit + DB tests
+- [x] T4 — metadata per-field resubmission: model query for live rejections with the title's key prefix inside the delay; overlap computed in Rust from the stored key's field list; `check_resubmission` and `list_mine` use it (AC10, AC11); unit + DB tests
+- [x] T5 — agent wording: `list_my_proposals` description (AC11); grep the propose tools' descriptions for the old equivalence wording
+- [x] T6 — `CLAUDE.md`, module docs, manual (AC12)
+- [x] T7 — E2E (AC13)
+- [x] T8 — gates: clippy `--all-targets -D warnings`, targeted tests (lib `services::proposals`, `services::proposal_history`, `services::*acceptance`, `services::cover_proposals`; DB `proposal_*`, `mcp_*proposals`), `cargo sqlx prepare --check` if a typed query is added; full suites once on the final code before the single push
 
 ## Dev Notes
 
@@ -98,10 +98,31 @@ Data model: no migration (`equivalence_key` is `VARCHAR`, `proposal_items.propos
 
 ### Agent Model Used
 
+claude-opus-5-5
+
 ### Debug Log References
 
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created
+- T1: `services::proposals::version_counts(kind)` (series kinds only) — the one place deciding whether a moved `version` outdates; `stale_reasons(kind, …)`; `stale_targets_on` and `transition_in` (Accept branch) read the proposal's kind via `ProposalModel::find` on the already-locked row. Unit: the existing table test now also asserts metadata/cover ignore `Changed`; `only_series_kinds_count_versions`.
+- T2: metadata/cover acceptance unchanged — `field_changed` / `RoleGone` / `cover_changed` are now the whole rule after the deleted-target check. DB (`proposal_accept_metadata_cover.rs`): the #542 assertion **inverted** (`the_second_cover_proposal_goes_stale_after_the_first_is_accepted`: the metadata proposal is now accepted); `metadata_goes_stale_when_the_title_was_edited` replaced by `…is_not_stale_when_an_untouched_field_was_edited` (AC4) + `…goes_stale_when_a_touched_field_was_edited` (AC3) + `…when_the_title_was_deleted` (AC6); new `a_cover_still_applies_after_metadata_was_accepted` (AC1 reverse), `metadata_proposals_on_disjoint_fields_both_apply` (AC2). `proposals_service.rs`: three generic version-staleness tests moved to `SeriesAttach` (the mechanism they test is now series-only); new `a_moved_title_version_does_not_outdate_metadata_or_cover` through `transition` (AC8).
+- T3: `sha2 = "0.10"` (already in the lock as a transitive dependency); `cover_proposals::cover_fingerprint` (SHA-256 hex of the staged re-encoded JPEG) stored as `fingerprint` in the cover line; `SubjectLine`/`SubjectLineRow` read it (`JSON_EXTRACT '$.fingerprint'`); `ProposalSubject::Cover { title_id, fingerprint }` → key `cover:titles/{id}:{fp}`, legacy `cover:titles/{id}` when absent; describe → "this cover image for title N". Unit + DB (`the_same_cover_image_is_refused_and_nothing_stays_staged`, `a_legacy_cover_rejection_blocks_no_new_cover`).
+- T4: `ProposalModel::rejections_with_key_prefix` (prefix `LIKE`, served by `idx_proposals_equivalence`); `proposal_history::{metadata_key_prefix, metadata_key_fields, parse_metadata_key, newest_overlapping_rejection}`; `check_resubmission` refuses on the newest overlapping rejection and names only the shared fields; `list_mine` computes `resubmittable_from` from it for rejected metadata rows. DB: `metadata_same_title_and_field_is_refused_inside_the_delay` (`{subtitle, publisher}` refused after `{subtitle}` rejected, `{publisher}` filed).
+- T5: `list_my_proposals` description states the new equivalence; no propose-tool description carried the old wording.
+- T6: `CLAUDE.md` § Proposal lifecycle rewritten (the "#542 open — do not change without the user" sentence replaced by the decided rule); manual ch. 13 EN + FR (*Outdated proposals*, resubmission paragraph); PDFs rebuilt.
+- T7: `metadata-cover-proposal-accept.spec.ts` journey 2 rewritten — the second cover is outdated, the metadata proposal is accepted and its subtitle shows on the title page.
 
 ### File List
+
+- `Cargo.toml`, `Cargo.lock` — `sha2`
+- `src/services/proposals.rs` — `version_counts`, kind-aware `stale_reasons`, `stale_targets_on`, `transition_in`; unit tests
+- `src/services/proposal_history.rs` — fingerprinted cover subject/key, per-field metadata rejection lookup, history; unit tests
+- `src/services/cover_proposals.rs` — `cover_fingerprint`, `fingerprint` in the cover line; unit tests
+- `src/services/proposal_review.rs` — pattern update
+- `src/models/proposal.rs` — `SubjectLineRow::fingerprint`, `rejections_with_key_prefix`
+- `src/mcp/tools/list_my_proposals.rs` — equivalence wording
+- `tests/proposal_accept_metadata_cover.rs`, `tests/proposals_service.rs`, `tests/proposal_history.rs` — DB tests
+- `tests/e2e/specs/journeys/metadata-cover-proposal-accept.spec.ts` — journey 2
+- `CLAUDE.md`; `docs/manual/{en,fr}/13-agents-proposals.tex`; `docs/manual/mybibli-manual-{en,fr}.pdf`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 12-2 status line

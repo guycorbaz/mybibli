@@ -107,8 +107,9 @@ impl McpTool for ListMyProposals {
          an equivalent proposal is accepted again: the newest rejection of an equivalent \
          proposal (by any key) plus the library's resubmission delay, at most 3650 days; it \
          may be in the past, and it is null when the proposal has no subject (it then blocks nothing). Equivalent means the same kind and target: the same series name (case and accents \
-         ignored) for a creation, the same series for additions, the same title and the same \
-         set of fields for metadata, the same title for a cover. Before that instant an \
+         ignored) for a creation, the same series for additions, the same title and at least \
+         one shared field for metadata (a rejection blocks each of its fields), the same title \
+         and the same image for a cover (another image is not blocked). Before that instant an \
          equivalent proposal is refused, whichever key files it — read the reason and propose \
          something else. Dates are RFC 3339 UTC. Read-only."
     }
@@ -197,7 +198,7 @@ mod tests {
             decided_at: Some(at),
             rejection_reason: Some("Blurry".into()),
             item_count: 1,
-            subject: Some(ProposalSubject::Cover { title_id: 4 }),
+            subject: Some(ProposalSubject::Cover { title_id: 4, fingerprint: None }),
             resubmittable_from: Some(at),
         });
         assert_eq!(

@@ -11,10 +11,11 @@
  * contributor and the proposed cover; the accepted cover proposal shows
  * the cover now installed. Journey 3: #531 on the title page.
  *
- * Journey 2 (stale): the agent files two cover proposals and a metadata
- * proposal for one title → the librarian accepts the first cover → the
- * second cover and the metadata proposal are now outdated: accepting
- * them says so and changes nothing.
+ * Journey 2 (per-field staleness, story 12-2, #542): the agent files two
+ * cover proposals and a metadata proposal for one title → the librarian
+ * accepts the first cover → the second cover is now outdated (the cover
+ * changed): accepting it says so and changes nothing → the metadata
+ * proposal touches no cover: accepting it applies the subtitle.
  *
  * Spec ID "MA". Creates no series (#528); every proposal targets this
  * spec's own titles. The key is revoked at the end.
@@ -181,7 +182,10 @@ test.describe("Story 11-18 — accept a metadata or cover proposal", () => {
     await revoke(page, key.label);
   });
 
-  test("proposals made outdated by an accepted cover change nothing", async ({ page, baseURL }) => {
+  test("an accepted cover outdates the other cover, not the metadata proposal", async ({
+    page,
+    baseURL,
+  }) => {
     const key = await newKey(page, "accept-stale");
     expect(baseURL, "baseURL must be configured").toBeTruthy();
     const agent = await playwrightRequest.newContext({ baseURL: baseURL! });
@@ -194,7 +198,7 @@ test.describe("Story 11-18 — accept a metadata or cover proposal", () => {
       const second = await fileOk(agent, key.plaintext, "propose_cover", cover);
       const meta = await fileOk(agent, key.plaintext, "propose_title_metadata", {
         title_id: titleId,
-        fields: { subtitle: "Jamais appliqué MA" },
+        fields: { subtitle: "Appliqué malgré la couverture MA" },
       });
 
       await acceptProposal(page, first);
@@ -203,20 +207,24 @@ test.describe("Story 11-18 — accept a metadata or cover proposal", () => {
         "accepted",
       );
 
-      for (const id of [second, meta]) {
-        await acceptProposal(page, id);
-        await expect(page.locator("#proposal-detail-body")).toHaveAttribute(
-          "data-proposal-status",
-          "stale",
-        );
-        await expect(
-          page.locator("#feedback-list .feedback-entry").filter({ hasText: OUTDATED }),
-        ).toBeVisible({ timeout: 10000 });
-        await expect(page.locator("#proposal-accept-button")).toHaveCount(0);
-      }
+      await acceptProposal(page, second);
+      await expect(page.locator("#proposal-detail-body")).toHaveAttribute(
+        "data-proposal-status",
+        "stale",
+      );
+      await expect(
+        page.locator("#feedback-list .feedback-entry").filter({ hasText: OUTDATED }),
+      ).toBeVisible({ timeout: 10000 });
+      await expect(page.locator("#proposal-accept-button")).toHaveCount(0);
+
+      await acceptProposal(page, meta);
+      await expect(page.locator("#proposal-detail-body")).toHaveAttribute(
+        "data-proposal-status",
+        "accepted",
+      );
 
       await page.goto(`/title/${titleId}`);
-      await expect(page.locator("main")).not.toContainText("Jamais appliqué MA");
+      await expect(page.locator("main")).toContainText("Appliqué malgré la couverture MA");
     } finally {
       await agent.dispose();
     }

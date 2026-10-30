@@ -329,6 +329,17 @@ pub fn decode_image(image_base64: &str, declared: &'static str) -> Result<Vec<u8
 }
 
 /// The proposal item (see the module doc for the contract).
+/// SHA-256 (lower-case hex) of the re-encoded image — what makes two
+/// cover proposals "the same image" for the resubmission delay (story
+/// 12-2, #535). The re-encode is deterministic for the same pixels.
+pub fn cover_fingerprint(jpeg: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(jpeg)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 pub fn cover_item(
     staged_file: &str,
     current: Option<&str>,
@@ -340,6 +351,7 @@ pub fn cover_item(
     json!({
         "line": "cover",
         "staged_file": staged_file,
+        "fingerprint": cover_fingerprint(&encoded.jpeg),
         "replaces_existing": current.is_some(),
         "current": current,
         "media_type": media_type,
@@ -683,6 +695,7 @@ mod tests {
             cover_item(name, Some("/covers/4.jpg?v=1"), "image/png", 99, &encoded),
             json!({
                 "line": "cover", "staged_file": name, "replaces_existing": true,
+                "fingerprint": "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
                 "current": "/covers/4.jpg?v=1", "media_type": "image/png",
                 "original_bytes": 99, "width": 400, "height": 600, "bytes": 3
             })
@@ -692,6 +705,15 @@ mod tests {
             assert_eq!(v["replaces_existing"], false);
             assert_eq!(v["current"], Value::Null);
         }
+    }
+
+    #[test]
+    fn fingerprint_is_the_sha256_of_the_staged_bytes() {
+        let a = cover_fingerprint(&[1, 2, 3]);
+        assert_eq!(a.len(), 64);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert_eq!(a, cover_fingerprint(&[1, 2, 3]), "deterministic");
+        assert_ne!(a, cover_fingerprint(&[1, 2, 4]));
     }
 
     #[test]

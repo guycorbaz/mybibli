@@ -480,10 +480,13 @@ applied} and the proposal becomes \emph{Outdated}; the message says
 why. Ask the agent for a new proposal based on the catalog as it is
 now, or make the change by hand.
 
-Accepting a proposal that writes fields or a cover changes the title,
-so the other pending proposals for the same title become outdated when
-you try to accept them. Decide them in the order you prefer, and ask the agent to
-file again what still matters.
+Only what a proposal touches counts. Accepting a cover does not
+outdate a pending metadata proposal for the same title, and accepting
+a description does not outdate a proposal for its publisher: decide
+them in any order. A metadata proposal becomes outdated only if one of
+\emph{its} fields changed since it was filed (edited by hand, by
+another accepted proposal, or by a metadata download), and a cover
+proposal only if the title's cover changed.
 
 Revoking a key (section~\ref{sec:agents-revoke}) also marks all its
 pending proposals as outdated; the detail page then says they were
@@ -503,9 +506,11 @@ rejected.
 After a rejection, an \emph{equivalent} proposal is refused for a
 while, so an agent does not file the same thing again and again.
 Equivalent means the same kind and the same subject: the same series
-(a new series by its name, ignoring case and accents), the same title
-\emph{and} the same set of fields for metadata, the same title for a
-cover. The rule applies to every key: creating a new key does not
+(a new series by its name, ignoring case and accents); for metadata,
+the same title and \emph{any one} of the rejected fields --- a rejected
+publisher blocks every proposal that includes the publisher, while the
+year stays open; for a cover, the same title \emph{and the same image}
+--- another image can be proposed at once. The rule applies to every key: creating a new key does not
 reset it.
 
 The delay is set in \textbf{Administration \(\rightarrow\) System

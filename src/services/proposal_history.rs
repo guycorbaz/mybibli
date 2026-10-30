@@ -30,7 +30,7 @@
 //! filing transaction, so a change applies to the very next filing.
 //! Instants come from the database clock (sessions run in UTC).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use chrono::{Duration, NaiveDateTime};
 use serde_json::{Value, json};
@@ -39,7 +39,7 @@ use sqlx::MySqlConnection;
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::PaginatedList;
-use crate::models::proposal::{
+use crate::models::proposal::{LatestRejection, 
     ProposalFilter, ProposalKind, ProposalModel, ProposalStatus, ProposalTarget,
     ProposalTargetTable, SubjectLineRow,
 };
@@ -113,6 +113,8 @@ pub struct SubjectLine<'a> {
     pub field: Option<&'a str>,
     /// `proposed_values.name` (the series line of a creation).
     pub name: Option<&'a str>,
+    /// `proposed_values.fingerprint` (cover items, story 12-2).
+    pub fingerprint: Option<&'a str>,
 }
 
 impl<'a> SubjectLine<'a> {
@@ -124,6 +126,7 @@ impl<'a> SubjectLine<'a> {
             line: row.line.as_deref(),
             field: row.field.as_deref(),
             name: row.name.as_deref(),
+            fingerprint: row.fingerprint.as_deref(),
         }
     }
 
@@ -135,6 +138,7 @@ impl<'a> SubjectLine<'a> {
             line: s("line"),
             field: s("field"),
             name: s("name"),
+            fingerprint: s("fingerprint"),
         }
     }
 }
@@ -162,8 +166,12 @@ pub enum ProposalSubject {
         title_id: u64,
         fields: BTreeSet<String>,
     },
+    /// `fingerprint`: the proposed image's SHA-256 (story 12-2, #535 —
+    /// a rejection blocks only the same image); `None` for a cover
+    /// proposal filed before it.
     Cover {
         title_id: u64,
+        fingerprint: Option<String>,
     },
 }
 
@@ -208,8 +216,14 @@ impl ProposalSubject {
             ProposalKind::Cover => lines
                 .iter()
                 .find(|l| l.line == Some("cover"))
-                .and_then(|l| target_of(l, ProposalTargetTable::Titles))
-                .map(|title_id| ProposalSubject::Cover { title_id }),
+                .and_then(|l| {
+                    target_of(l, ProposalTargetTable::Titles).map(|title_id| {
+                        ProposalSubject::Cover {
+                            title_id,
+                            fingerprint: l.fingerprint.map(str::to_string),
+                        }
+                    })
+                }),
         }
     }
 
@@ -242,7 +256,16 @@ impl ProposalSubject {
                     .collect::<Vec<_>>()
                     .join(",")
             ),
-            ProposalSubject::Cover { title_id } => format!("cover:titles/{title_id}"),
+            ProposalSubject::Cover {
+                title_id,
+                fingerprint: Some(fp),
+            } => format!("cover:titles/{title_id}:{fp}"),
+            // Filed before story 12-2: blocks only legacy-keyed filings,
+            // i.e. nothing filed since (intended — #535).
+            ProposalSubject::Cover {
+                title_id,
+                fingerprint: None,
+            } => format!("cover:titles/{title_id}"),
         };
         key.chars().take(MAX_EQUIVALENCE_KEY_CHARS).collect()
     }
@@ -255,7 +278,7 @@ impl ProposalSubject {
             ProposalSubject::Metadata { title_id, fields } => {
                 json!({ "title_id": title_id, "fields": fields })
             }
-            ProposalSubject::Cover { title_id } => json!({ "title_id": title_id }),
+            ProposalSubject::Cover { title_id, .. } => json!({ "title_id": title_id }),
         }
     }
 
@@ -276,9 +299,58 @@ impl ProposalSubject {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            ProposalSubject::Cover { title_id } => format!("cover of title {title_id}"),
+            ProposalSubject::Cover { title_id, .. } => {
+                format!("this cover image for title {title_id}")
+            }
         }
     }
+}
+
+/// `metadata:titles/{id}:` — the key prefix of every metadata proposal on
+/// a title.
+fn metadata_key_prefix(title_id: u64) -> String {
+    format!("metadata:titles/{title_id}:")
+}
+
+/// The field set recorded in a metadata equivalence key (the part after
+/// [`metadata_key_prefix`]); empty when the key has another shape.
+fn metadata_key_fields<'k>(key: &'k str, prefix: &str) -> BTreeSet<&'k str> {
+    key.strip_prefix(prefix)
+        .map(|rest| rest.split(',').filter(|f| !f.is_empty()).collect())
+        .unwrap_or_default()
+}
+
+/// The title and the field set of a metadata equivalence key; `None` for
+/// any other key.
+fn parse_metadata_key(key: &str) -> Option<(u64, BTreeSet<String>)> {
+    let rest = key.strip_prefix("metadata:titles/")?;
+    let (id, _) = rest.split_once(':')?;
+    let title_id: u64 = id.parse().ok()?;
+    let fields = metadata_key_fields(key, &metadata_key_prefix(title_id))
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    Some((title_id, fields))
+}
+
+/// Story 12-2 (#535, FR136): a rejected metadata proposal blocks each of
+/// its fields. The newest live rejection on `title_id` whose fields meet
+/// `fields`, with the fields they share (empty set: nothing overlaps).
+async fn newest_overlapping_rejection(
+    conn: &mut MySqlConnection,
+    title_id: u64,
+    fields: &BTreeSet<String>,
+) -> Result<Option<(LatestRejection, BTreeSet<String>)>, AppError> {
+    let prefix = metadata_key_prefix(title_id);
+    let rows = ProposalModel::rejections_with_key_prefix(conn, &prefix).await?;
+    Ok(rows.into_iter().find_map(|(key, rejection)| {
+        let overlap: BTreeSet<String> = metadata_key_fields(&key, &prefix)
+            .into_iter()
+            .filter(|f| fields.contains(*f))
+            .map(str::to_string)
+            .collect();
+        (!overlap.is_empty()).then_some((rejection, overlap))
+    }))
 }
 
 /// The rejection that blocks a filing (FR136).
@@ -310,14 +382,31 @@ pub async fn check_resubmission(
     if delay_days == 0 {
         return Ok(Some(key));
     }
-    let Some(last) = ProposalModel::latest_rejection(conn, &key).await? else {
-        return Ok(Some(key));
+    // Metadata: any rejection sharing a field blocks (story 12-2, #535);
+    // the other kinds: the same key.
+    let (last, blocked_subject) = match &subject {
+        ProposalSubject::Metadata { title_id, fields } => {
+            match newest_overlapping_rejection(conn, *title_id, fields).await? {
+                Some((last, overlap)) => (
+                    last,
+                    ProposalSubject::Metadata {
+                        title_id: *title_id,
+                        fields: overlap,
+                    },
+                ),
+                None => return Ok(Some(key)),
+            }
+        }
+        _ => match ProposalModel::latest_rejection(conn, &key).await? {
+            Some(last) => (last, subject.clone()),
+            None => return Ok(Some(key)),
+        },
     };
     match blocked_until(last.decided_at, last.now, delay_days) {
         None => Ok(Some(key)),
         Some(open_from) => Err(ProposalError::RecentlyRejected(Box::new(
             BlockingRejection {
-                subject: subject.describe(),
+                subject: blocked_subject.describe(),
                 rejected_at: last.decided_at,
                 open_from,
                 delay_days,
@@ -376,6 +465,21 @@ impl ProposalHistoryService {
             .filter_map(|r| r.equivalence_key.as_deref())
             .collect();
         let latest = ProposalModel::latest_rejection_dates(&mut conn, &keys).await?;
+        // Story 12-2 (#535): a rejected metadata proposal reopens when no
+        // live rejection sharing one of its fields blocks any more.
+        let mut overlapping: HashMap<u64, NaiveDateTime> = HashMap::new();
+        for r in rows.iter().filter(|r| r.status == ProposalStatus::Rejected) {
+            let Some((title_id, fields)) =
+                r.equivalence_key.as_deref().and_then(parse_metadata_key)
+            else {
+                continue;
+            };
+            if let Some((last, _)) =
+                newest_overlapping_rejection(&mut conn, title_id, &fields).await?
+            {
+                overlapping.insert(r.id, last.decided_at);
+            }
+        }
         drop(conn);
 
         let items = rows
@@ -393,7 +497,7 @@ impl ProposalHistoryService {
                     resubmittable_from: (r.status == ProposalStatus::Rejected)
                         .then_some(r.equivalence_key.as_ref())
                         .flatten()
-                        .and_then(|k| latest.get(k))
+                        .and_then(|k| overlapping.get(&r.id).or_else(|| latest.get(k)))
                         .map(|at| resubmission_open_from(*at, delay_days)),
                     proposal_id: r.id,
                     kind: r.kind,
@@ -452,6 +556,27 @@ mod tests {
             items,
         })
         .map(|s| s.equivalence_key())
+    }
+
+    #[test]
+    fn metadata_keys_parse_back_to_title_and_fields() {
+        let key = key_of(
+            ProposalKind::Metadata,
+            ["publisher", "description"]
+                .iter()
+                .map(|f| item(title(7), json!({"line": "field", "field": f, "proposed": "x"})))
+                .collect(),
+        )
+        .unwrap();
+        let (id, fields) = parse_metadata_key(&key).unwrap();
+        assert_eq!(id, 7);
+        assert_eq!(
+            fields,
+            ["description", "publisher"].iter().map(|s| s.to_string()).collect()
+        );
+        assert_eq!(parse_metadata_key("cover:titles/7:ab"), None);
+        assert_eq!(parse_metadata_key("metadata:titles/x:a"), None);
+        assert!(metadata_key_fields("metadata:titles/7:", "metadata:titles/7:").is_empty());
     }
 
     #[test]
@@ -583,6 +708,24 @@ mod tests {
         assert_eq!(meta(4, &[]), None);
     }
 
+    // Story 12-2 (#535): a fingerprinted cover is keyed by title AND image.
+    #[test]
+    fn cover_key_is_the_title_and_the_image() {
+        let cover = |id, fp: &str| {
+            key_of(
+                ProposalKind::Cover,
+                vec![item(
+                    title(id),
+                    json!({"line": "cover", "staged_file": "a.jpg", "fingerprint": fp}),
+                )],
+            )
+        };
+        assert_eq!(cover(7, "ab12").as_deref(), Some("cover:titles/7:ab12"));
+        assert_ne!(cover(7, "ab12"), cover(7, "cd34"), "another image");
+        assert_ne!(cover(8, "ab12"), cover(7, "ab12"), "another title");
+    }
+
+    // A cover filed before story 12-2 has no fingerprint: legacy key.
     #[test]
     fn cover_key_is_the_title() {
         let cover = |id| {
@@ -631,8 +774,8 @@ mod tests {
             json!({"series_id": 2})
         );
         assert_eq!(
-            ProposalSubject::Cover { title_id: 9 }.describe(),
-            "cover of title 9"
+            ProposalSubject::Cover { title_id: 9, fingerprint: None }.describe(),
+            "this cover image for title 9"
         );
     }
 }

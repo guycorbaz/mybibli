@@ -1,7 +1,7 @@
 //! Story 11-18 (#493) — accepting a `metadata` or `cover` proposal
 //! (FR138, FR140, FR144, FR146): fields and contributors written in one
 //! transaction, the staged cover promoted after the commit, staleness by
-//! version and by the values recorded at filing (#521), the missing
+//! the values recorded at filing (per field since story 12-2, #542; #521), the missing
 //! staged file refused (#533), re-download protection (#232), and the
 //! removed-contributor regression (#531) — through the real router.
 //!
@@ -340,12 +340,33 @@ async fn contributors_are_reused_created_skipped_and_reactivated(pool: DbPool) {
     assert_eq!(fields(&pool, title).await.5, version_before);
 }
 
+// Story 12-2 (#542, FR149): staleness is per field — an edit of a field
+// the proposal does not touch (version bumped) no longer outdates it.
 #[sqlx::test(migrations = "./migrations")]
-async fn metadata_goes_stale_when_the_title_was_edited(pool: DbPool) {
+async fn metadata_is_not_stale_when_an_untouched_field_was_edited(pool: DbPool) {
     let f = fx(&pool).await;
     let title = dated_title(&pool, "Tintin au Tibet").await;
     let id = file_metadata(&f, title, json!({"publisher": "Casterman"})).await;
     sqlx::query("UPDATE titles SET subtitle = 'x', version = version + 1 WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(decision(&pool, id).await.0, "accepted");
+    let after = fields(&pool, title).await;
+    assert_eq!(after.1.as_deref(), Some("Casterman"));
+    assert_eq!(after.0.as_deref(), Some("x"), "the hand edit is kept");
+}
+
+// A hand edit of a touched field (version bumped) still outdates it.
+#[sqlx::test(migrations = "./migrations")]
+async fn metadata_goes_stale_when_a_touched_field_was_edited(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = dated_title(&pool, "Vol 714 pour Sydney").await;
+    let id = file_metadata(&f, title, json!({"publisher": "Casterman"})).await;
+    sqlx::query("UPDATE titles SET publisher = 'Hachette', version = version + 1 WHERE id = ?")
         .bind(title)
         .execute(&pool)
         .await
@@ -357,11 +378,31 @@ async fn metadata_goes_stale_when_the_title_was_edited(pool: DbPool) {
         "{body}"
     );
     assert!(
-        body.contains("le titre a été modifié ou supprimé"),
+        body.contains("le champ « Éditeur » du titre a été modifié"),
         "{body}"
     );
     assert_eq!(decision(&pool, id).await, ("stale".to_string(), None));
-    assert_eq!(fields(&pool, title).await.1, None);
+    assert_eq!(fields(&pool, title).await.1.as_deref(), Some("Hachette"));
+}
+
+// A title deleted since filing still outdates a metadata proposal.
+#[sqlx::test(migrations = "./migrations")]
+async fn metadata_goes_stale_when_the_title_was_deleted(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = dated_title(&pool, "Coke en stock").await;
+    let id = file_metadata(&f, title, json!({"publisher": "Casterman"})).await;
+    sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("le titre a été modifié ou supprimé"),
+        "{body}"
+    );
+    assert_eq!(decision(&pool, id).await.0, "stale");
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -573,9 +614,42 @@ async fn the_second_cover_proposal_goes_stale_after_the_first_is_accepted(pool: 
     let (status, body) = accept(&f, &pool, second).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(decision(&pool, second).await.0, "stale");
-    // The cover bumped the title's version: the metadata one goes stale too.
+    // Story 12-2 (#542): the cover bumped the title's version, but the
+    // metadata proposal touches no cover — it applies.
     assert_eq!(accept(&f, &pool, metadata).await.0, StatusCode::OK);
-    assert_eq!(decision(&pool, metadata).await.0, "stale");
+    assert_eq!(decision(&pool, metadata).await.0, "accepted");
+    assert_eq!(fields(&pool, title).await.1.as_deref(), Some("Casterman"));
+}
+
+// Story 12-2 (#542): the reverse order — metadata first, then the cover.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_cover_still_applies_after_metadata_was_accepted(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Le Lotus bleu").await;
+    let cover = file_cover(&f, title, 10).await;
+    let metadata = file_metadata(&f, title, json!({"publisher": "Casterman"})).await;
+    assert_eq!(accept(&f, &pool, metadata).await.0, StatusCode::OK);
+    assert_eq!(decision(&pool, metadata).await.0, "accepted");
+    let (status, body) = accept(&f, &pool, cover).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(decision(&pool, cover).await.0, "accepted");
+    assert!(cover_url(&pool, title).await.is_some());
+}
+
+// Story 12-2 (#542): two metadata proposals on disjoint fields both apply.
+#[sqlx::test(migrations = "./migrations")]
+async fn metadata_proposals_on_disjoint_fields_both_apply(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = dated_title(&pool, "Objectif Lune").await;
+    let a = file_metadata(&f, title, json!({"publisher": "Casterman"})).await;
+    let b = file_metadata(&f, title, json!({"subtitle": "Tintin"})).await;
+    assert_eq!(accept(&f, &pool, a).await.0, StatusCode::OK);
+    assert_eq!(accept(&f, &pool, b).await.0, StatusCode::OK);
+    assert_eq!(decision(&pool, a).await.0, "accepted");
+    assert_eq!(decision(&pool, b).await.0, "accepted");
+    let after = fields(&pool, title).await;
+    assert_eq!(after.0.as_deref(), Some("Tintin"));
+    assert_eq!(after.1.as_deref(), Some("Casterman"));
 }
 
 #[sqlx::test(migrations = "./migrations")]

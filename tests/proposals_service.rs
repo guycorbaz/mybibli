@@ -642,6 +642,27 @@ async fn concurrent_deciders_cannot_both_win(pool: MySqlPool) {
     assert_eq!(d.version, 2);
 }
 
+// Story 12-2 (#542, FR149): a metadata or cover proposal is not stale
+// because its title's version moved — its kind checks the fields it
+// touches; only a deleted title outdates it here.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_moved_title_version_does_not_outdate_metadata_or_cover(pool: MySqlPool) {
+    let key = insert_key(&pool, "k").await;
+    let user = insert_user(&pool, "lib-per-field").await;
+    for kind in [ProposalKind::Metadata, ProposalKind::Cover] {
+        let title = insert_title(&pool, "T").await;
+        let id = file(&pool, &proposal(kind, key, &[title_target(title)])).await;
+        bump_version(&pool, "titles", title).await;
+        assert!(
+            ProposalService::stale_targets(&pool, id).await.unwrap().is_empty(),
+            "{kind:?}"
+        );
+        ProposalService::transition(&pool, id, &Decision::Accept { by: user })
+            .await
+            .unwrap_or_else(|e| panic!("{kind:?}: {e:?}"));
+    }
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn accepting_a_stale_proposal_marks_it_stale(pool: MySqlPool) {
     let key = insert_key(&pool, "k").await;
@@ -649,7 +670,7 @@ async fn accepting_a_stale_proposal_marks_it_stale(pool: MySqlPool) {
     let title = insert_title(&pool, "T").await;
     let id = file(
         &pool,
-        &proposal(ProposalKind::Metadata, key, &[title_target(title)]),
+        &proposal(ProposalKind::SeriesAttach, key, &[title_target(title)]),
     )
     .await;
     bump_version(&pool, "titles", title).await;
@@ -932,7 +953,7 @@ async fn staleness_in_a_rolled_back_transaction_changes_nothing(pool: MySqlPool)
     let title = insert_title(&pool, "T").await;
     let id = file(
         &pool,
-        &proposal(ProposalKind::Metadata, key, &[title_target(title)]),
+        &proposal(ProposalKind::SeriesAttach, key, &[title_target(title)]),
     )
     .await;
     bump_version(&pool, "titles", title).await;
@@ -1039,7 +1060,7 @@ async fn accept_sees_changes_committed_after_its_snapshot(pool: MySqlPool) {
     let title = insert_title(&pool, "T").await;
     let id = file(
         &pool,
-        &proposal(ProposalKind::Metadata, key, &[title_target(title)]),
+        &proposal(ProposalKind::SeriesAttach, key, &[title_target(title)]),
     )
     .await;
 

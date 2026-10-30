@@ -190,6 +190,8 @@ pub struct SubjectLineRow {
     pub line: Option<String>,
     pub field: Option<String>,
     pub name: Option<String>,
+    /// `proposed_values.fingerprint` (cover items, story 12-2).
+    pub fingerprint: Option<String>,
 }
 
 /// Story 11-15 — the newest live rejection of an equivalence key, with
@@ -877,6 +879,43 @@ impl ProposalModel {
         Ok(out)
     }
 
+    /// Story 12-2 (#535) — the live rejections whose equivalence key
+    /// starts with `prefix` (e.g. `metadata:titles/7:`), newest first,
+    /// each with its key; `now` is the database clock. Plain read. The
+    /// prefix is built by the caller from a numeric id: it holds no `%`,
+    /// `_` or `\`, so it needs no `LIKE` escaping.
+    pub async fn rejections_with_key_prefix(
+        conn: &mut MySqlConnection,
+        prefix: &str,
+    ) -> Result<Vec<(String, LatestRejection)>, AppError> {
+        debug_assert!(!prefix.contains(['%', '_', '\\']));
+        let rows = sqlx::query(
+            "SELECT id, api_key_id, CAST(equivalence_key AS CHAR) AS k, \
+             CAST(decided_at AS DATETIME) AS decided_at, rejection_reason, \
+             CAST(NOW() AS DATETIME) AS now_at FROM proposals \
+             WHERE equivalence_key LIKE CONCAT(?, '%') AND status = 'rejected' \
+               AND deleted_at IS NULL AND decided_at IS NOT NULL \
+             ORDER BY decided_at DESC, id DESC",
+        )
+        .bind(prefix)
+        .fetch_all(&mut *conn)
+        .await?;
+        rows.iter()
+            .map(|r| {
+                Ok((
+                    r.try_get("k")?,
+                    LatestRejection {
+                        proposal_id: r.try_get("id")?,
+                        api_key_id: r.try_get("api_key_id")?,
+                        decided_at: r.try_get("decided_at")?,
+                        rejection_reason: r.try_get("rejection_reason")?,
+                        now: r.try_get("now_at")?,
+                    },
+                ))
+            })
+            .collect()
+    }
+
     /// The subject parts (target, `line`, `field`, `name`) of the live
     /// series / field / cover lines of the given proposals, in filing
     /// order. Title and expected-tome lines are skipped (a series
@@ -892,7 +931,8 @@ impl ProposalModel {
         let sql = format!(
             "SELECT proposal_id, target_table, CAST(target_id AS SIGNED) AS target_id, line, \
                     CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.field')) AS CHAR) AS field, \
-                    CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.name')) AS CHAR) AS name \
+                    CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.name')) AS CHAR) AS name, \
+                    CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.fingerprint')) AS CHAR) AS fingerprint \
              FROM (SELECT id, proposal_id, target_table, target_id, proposed_values, \
                           CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.line')) AS CHAR) AS line \
                    FROM proposal_items \
@@ -914,6 +954,7 @@ impl ProposalModel {
                     line: r.try_get("line")?,
                     field: r.try_get("field")?,
                     name: r.try_get("name")?,
+                    fingerprint: r.try_get("fingerprint")?,
                 })
             })
             .collect()
