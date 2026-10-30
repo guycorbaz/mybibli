@@ -400,9 +400,7 @@ pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
     // classification of the input as typed.
     let compact = crate::utils::compact_isbn(code);
     if compact != code {
-        let isbn13 = if (compact.starts_with("978") || compact.starts_with("979"))
-            && compact.len() == 13
-        {
+        let isbn13 = if crate::utils::is_isbn13_shaped(&compact) {
             Some(compact)
         } else {
             crate::utils::isbn10_to_isbn13(&compact)
@@ -416,7 +414,7 @@ pub(crate) fn detect_code_type(code: &str) -> CodeDetection {
             };
         }
     }
-    if (code.starts_with("978") || code.starts_with("979")) && code.len() == 13 {
+    if crate::utils::is_isbn13_shaped(code) {
         return CodeDetection {
             code_type: "isbn",
             inferred_media_type: Some(MediaType::Book),

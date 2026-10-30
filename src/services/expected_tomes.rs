@@ -893,7 +893,15 @@ mod tests {
             normalize_isbn(Some("978 0134 685991")).unwrap().as_deref(),
             Some("9780134685991")
         );
-        // Story 12-1: the shared separator rule also drops Unicode dashes.
+        // Story 12-1: the shared separator rule also drops Unicode dashes,
+        // for an ISBN-10 too; a non-ISBN stays refused.
+        assert_eq!(
+            normalize_isbn(Some("2\u{2010}205\u{2013}00121\u{2011}3"))
+                .unwrap()
+                .as_deref(),
+            Some("9782205001211")
+        );
+        assert!(normalize_isbn(Some("400\u{2010}1234\u{2013}567890")).is_err());
         assert_eq!(
             normalize_isbn(Some("978\u{2010}2\u{2013}07\u{a0}036024\u{2011}6"))
                 .unwrap()

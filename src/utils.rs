@@ -106,10 +106,31 @@ pub fn isbn10_to_isbn13(code: &str) -> Option<String> {
 }
 
 /// Whether `c` separates the groups of an ISBN as it is printed, typed or
-/// copied: any whitespace (non-breaking spaces included), `-`, and the
-/// Unicode hyphens and dashes U+2010..=U+2015.
+/// copied: any whitespace (non-breaking spaces included), `-`, the Unicode
+/// hyphens and dashes U+2010..=U+2015, the minus sign U+2212, the small
+/// and fullwidth hyphen-minus U+FE63 / U+FF0D, and the invisible
+/// characters a web page leaves in copied text (soft hyphen U+00AD,
+/// zero-width space U+200B, word joiner U+2060, BOM U+FEFF).
 fn is_isbn_separator(c: char) -> bool {
-    c.is_whitespace() || matches!(c, '-' | '\u{2010}'..='\u{2015}')
+    c.is_whitespace()
+        || matches!(
+            c,
+            '-' | '\u{2010}'..='\u{2015}'
+                | '\u{2212}'
+                | '\u{FE63}'
+                | '\u{FF0D}'
+                | '\u{00AD}'
+                | '\u{200B}'
+                | '\u{2060}'
+                | '\u{FEFF}'
+        )
+}
+
+/// Whether `code` has the shape `/catalog/scan` treats as an ISBN-13: 13
+/// characters starting `978` / `979` (the checksum is checked downstream,
+/// by `TitleService::create_from_isbn`). Story 12-1.
+pub fn is_isbn13_shaped(code: &str) -> bool {
+    (code.starts_with("978") || code.starts_with("979")) && code.len() == 13
 }
 
 /// `input` without its ISBN separators ([`is_isbn_separator`]) — the one
@@ -748,6 +769,11 @@ mod tests {
             strip_isbn_separators(" 978-2\u{2010}205\u{202f}00121\u{2014}1 "),
             "9782205001211"
         );
+        assert_eq!(
+            strip_isbn_separators("978\u{00ad}2\u{200b}07\u{2060}036024\u{2212}6\u{feff}"),
+            "9782070360246"
+        );
+        assert_eq!(strip_isbn_separators("978\u{ff0d}2\u{fe63}07036024-6"), "9782070360246");
         assert_eq!(strip_isbn_separators("Spider-Man 3"), "SpiderMan3");
         assert_eq!(strip_isbn_separators(""), "");
     }

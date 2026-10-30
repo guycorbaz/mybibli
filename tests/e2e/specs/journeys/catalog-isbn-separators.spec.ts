@@ -52,11 +52,12 @@ async function scanExpectingIsbn(page: Page, code: string, isbn13: string) {
       .filter({ hasText: isbn13 })
       .or(titleExistsEntries(page).nth(before)),
   ).toBeVisible({ timeout: 10000 });
+  // Let every pending swap land before asserting what must NOT be there.
+  await page.waitForLoadState("networkidle");
   await expect(page.locator('#feedback-list [role="group"]')).toHaveCount(0);
   await expect(
     page.locator('#feedback-list .feedback-entry[data-feedback-variant="warning"]'),
   ).toHaveCount(0);
-  await page.waitForLoadState("networkidle");
 }
 
 /** Scan a code whose title is already catalogued: one more info entry. */

@@ -76,11 +76,17 @@ async fn search_by_isbn_with_separators_finds_title(pool: MySqlPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn search_with_hyphenated_text_stays_fulltext(pool: MySqlPool) {
-    TitleService::create_from_isbn(&pool, "9782205001211", None)
+async fn search_with_separated_text_stays_fulltext(pool: MySqlPool) {
+    let (title, _) = TitleService::create_from_isbn(&pool, "9782205001211", None)
         .await
         .expect("create title");
+    sqlx::query("UPDATE titles SET title = 'Chihuahua Pearl' WHERE id = ?")
+        .bind(title.id)
+        .execute(&pool)
+        .await
+        .expect("rename title");
 
-    // Not an ISBN once compacted: full-text search on the query as typed.
-    assert!(search_ids(&pool, "Spider-Man 3").await.is_empty());
+    // Separators removed, still not an ISBN shape: the full-text search
+    // runs on the query as typed and finds the title by its name.
+    assert_eq!(search_ids(&pool, "Chihuahua Pearl").await, vec![title.id]);
 }

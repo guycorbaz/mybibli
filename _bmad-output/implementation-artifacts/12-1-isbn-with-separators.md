@@ -46,6 +46,22 @@ Data model: unchanged (`titles.isbn` holds 13 bare digits). No migration. No new
 - [x] T5 — E2E `tests/e2e/specs/journeys/catalog-isbn-separators.spec.ts` (specId `IH`): reuse the `scanExpectingIsbn` / `titleExistsEntries` idiom of `catalog-isbn10.spec.ts` (rerunnable against a non-reset stack); build the hyphenated forms from `specIsbn("IH", n)` / `specIsbn10`-style derivation (AC8)
 - [x] T6 — gates: clippy `--all-targets -D warnings`, targeted `cargo test` (lib `utils::`, `routes::catalog::`, `services::search::`; DB tests `search_*`, `home_scan_redirect`), `tsc --noEmit`, flake grep, targeted E2E; full suites once on the final code before the single push
 
+### Review Findings
+
+Code review 2026-10-30, round 1 (Blind Hunter, Edge Case Hunter, Acceptance Auditor): 0 decision-needed, 8 patch, 1 defer (5 items, #565), 13 dismissed.
+
+- [x] [Review][Patch] Invisible / exotic copy-paste separators not stripped (U+00AD, U+200B, U+2060, U+FEFF, U+2212, U+FE63, U+FF0D) — Medium [src/utils.rs `is_isbn_separator`]
+- [x] [Review][Patch] Title edit (CR #272) kept its own narrower separator rule for ISBN and UPC — Medium, AC6 [src/routes/titles.rs ~l. 749]
+- [x] [Review][Patch] Full-text fallback test proved nothing (empty result either way) — Medium; now renames the title and asserts it is found. Note: a hyphenated text query (`Spider-Man 3`) finds nothing in MariaDB boolean full-text mode (`-` = exclusion) — pre-existing, unrelated [tests/search_isbn10.rs]
+- [x] [Review][Patch] Epic-level status flip (`epic-12: in-progress`) in a story PR — Medium (Rule #16; epic 11 flipped its status in a release / chore PR) — reverted to `backlog` [sprint-status.yaml]
+- [x] [Review][Patch] The 978/979 ISBN-13 shape test was duplicated in `detect_code_type` — Low, Rule #1 → `utils::is_isbn13_shaped` [src/routes/catalog.rs]
+- [x] [Review][Patch] E2E "no selector / no warning" assertions ran before `networkidle` — Low [catalog-isbn-separators.spec.ts]
+- [x] [Review][Patch] Expected-tome test did not cover an ISBN-10 with Unicode dashes nor a refused non-ISBN — Low [src/services/expected_tomes.rs]
+- [x] [Review][Patch] Completion Notes: home scan logs only the raw code at debug level (not the normalised form); `catalog.rs` delta split corrected — Low [this file]
+- [x] [Review][Defer] ISBN entry points outside scan/search do not normalise (manual title creation stores the ISBN as typed → duplicate on rescan; wish list "By ISBN"; pasted `ISBN` prefix; SQL `REPLACE` copy in `models/expected_tome.rs`; no ISBN-10 conversion in title edit) — deferred, pre-existing → #565
+
+Dismissed (13): spaced 10-digit numbers with a valid mod-11 checksum read as ISBN-10 (identical to the bare form since 11-1); separated UPC/ISSN/bad ISBN-10 → `unknown` (deliberate, AC3); client-side checksum skipped for hyphenated input (server authoritative, `create_from_isbn` refuses); numeric free text compacted in search (falls back to full text on `trimmed`); expected tomes accepting Unicode dashes (intended widening); search routing for separated non-978 13-digit codes (lookup miss → full text on `trimmed`, verified); bad-checksum divergence scan vs search (by design); `normalized_code` on whitespace-only difference (callers trim first); home-search E2E not proving the lookup path (DB test covers it); spaced E2E not reusing the hyphenated title (behaviour covered); no DB test of the bare stored ISBN (unit + E2E cover); two Low wording nits.
+
 ## Dev Notes
 
 - **Compaction rule (do not change it):** `compact_isbn` removes `char::is_whitespace` (covers U+00A0 non-breaking space and U+202F narrow NBSP) and `-` plus `U+2010..=U+2015` (hyphen, non-breaking hyphen, figure dash, en dash, em dash, horizontal bar), and returns the compact form **only** when something was removed and the result is ISBN-shaped. That shape test is deliberately loose (any 13 digits); `detect_code_type` must therefore re-check that the compact form really classifies as `isbn` before using it (AC3) — otherwise `400-1234-567890` would turn from `unknown` into `upc`, a behaviour change nobody asked for.
@@ -91,19 +107,20 @@ claude-opus-5-5
 - Ultimate context engine analysis completed - comprehensive developer guide created
 - T1/T1b: `utils::is_isbn_separator` (private), `utils::strip_isbn_separators`, `utils::compact_isbn` (moved from `search.rs::compact_code`, same contract, test moved); `expected_tomes::normalize_isbn` now uses the shared separator rule (widening: Unicode hyphens/dashes accepted; new assertion).
 - T2: `detect_code_type` tries the compact form first when separators were removed and keeps it only for an `isbn` classification (978/979 + 13 digits, or valid ISBN-10 → ISBN-13), with `normalized_code = Some(bare ISBN-13)`; otherwise the raw input is classified as before. Four new unit tests (ISBN-13 with separators incl. U+2010 and NBSP, ISBN-10 with `X`/`x`, AC3 negatives → `unknown`, bare codes unchanged).
-- T3: no change needed — `handle_scan` (l. 482–484) and `home_scan.rs` already log raw + normalised forms and rebind on `normalized_code`.
+- T3: no change needed — `handle_scan` (l. 482–484) logs raw + normalised forms and rebinds on `normalized_code`; `home_scan.rs` rebinds the same way (it logs only the raw code, at debug level, unchanged).
 - T4: `SearchService::search` calls `detect_code(&compact_isbn(trimmed))`; every fallback keeps `trimmed`. `search_catalog` (MCP) uses the moved helper. Unit test on the compacted detection; DB tests: `search_isbn10.rs` +2, `home_scan_redirect.rs` +2.
 - T5: `catalog-isbn-separators.spec.ts` (specId `IH`), 4 tests, green on a reset stack and again on the non-reset stack (rerunnable).
 - T6 (targeted): lib tests `utils::`, `routes::catalog::tests::test_detect`, `services::search::`, `services::expected_tomes::` 89 passed; DB tests `search_isbn10`, `home_scan_redirect`, `mcp_catalog_read_tools` green; `tsc --noEmit` clean; flake grep clean; E2E targeted 9/9 (new spec + `catalog-isbn10.spec.ts`).
-- Rule #12: `catalog.rs` 3,104 → 3,179 lines (+75: 21 production, 54 unit tests).
+- Rule #12: `catalog.rs` 3,104 → 3,175 lines after review (production +18, unit tests +53).
 
 ### File List
 
-- `src/utils.rs` — `is_isbn_separator`, `strip_isbn_separators`, `compact_isbn` + tests
+- `src/utils.rs` — `is_isbn_separator`, `strip_isbn_separators`, `compact_isbn`, `is_isbn13_shaped` + tests
 - `src/routes/catalog.rs` — compaction step in `detect_code_type` + 4 unit tests
 - `src/services/search.rs` — `compact_code` removed; web search and `search_catalog` use `utils::compact_isbn`; unit test
 - `src/services/expected_tomes.rs` — `normalize_isbn` on `utils::strip_isbn_separators`; test assertion
 - `tests/search_isbn10.rs` — 2 DB tests
 - `tests/home_scan_redirect.rs` — 2 DB tests
 - `tests/e2e/specs/journeys/catalog-isbn-separators.spec.ts` — new, 4 E2E tests
-- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 12-1 → review
+- `src/routes/titles.rs` — title edit on `utils::strip_isbn_separators` (review patch)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 12-1 status line only (epic line left at `backlog`, Rule #16)
