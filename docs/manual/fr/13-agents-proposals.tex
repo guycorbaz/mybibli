@@ -51,7 +51,9 @@ Avec une clé \emph{propositions}, un agent peut :
   \item proposer une nouvelle série, ou des ajouts à une série
         existante (des titres que vous possédez, et des \emph{tomes
         attendus} que vous n'avez pas encore) ;
-  \item proposer des valeurs pour le sous-titre, la description,
+  \item proposer une correction du titre principal (orthographe,
+        ponctuation, ou le vrai titre d'une fiche qui ne porte que son
+        ISBN), et des valeurs pour le sous-titre, la description,
         l'éditeur, l'année de publication, le code Dewey d'un titre,
         et des contributeurs à ajouter ;
   \item proposer une image de couverture ;
@@ -388,7 +390,7 @@ n'est pas configurée n'est pas cité. Pour mémoire :
         attendus.
   \item[\texttt{propose\_series\_attach}] Des titres à placer dans une
         série existante, et/ou des tomes attendus à lui ajouter.
-  \item[\texttt{propose\_title\_metadata}] Sous-titre, description,
+  \item[\texttt{propose\_title\_metadata}] Une correction du titre, le sous-titre, la description,
         éditeur, année de publication, code Dewey et contributeurs à
         ajouter, pour un titre.
   \item[\texttt{propose\_cover}] Une image de couverture pour un titre
@@ -537,8 +539,9 @@ proposition de métadonnées devient périmée quand l'un de \emph{ses}
 champs a changé depuis son dépôt (à la main, par une autre proposition
 acceptée ou par un téléchargement de métadonnées), une proposition de
 couverture quand la couverture du titre a changé --- et les deux quand
-le titre lui-même a été supprimé ou ré-identifié (son nom, son ISBN ou
-son type de média corrigé) ou qu'un rôle de contributeur proposé a été
+le titre lui-même a été supprimé ou ré-identifié à la main (son nom,
+son ISBN ou son type de média corrigé ; une correction de titre acceptée
+depuis une proposition laisse les autres propositions valables) ou qu'un rôle de contributeur proposé a été
 supprimé. Modifier un champ que la proposition ne touche pas ne rend
 rien périmé.
 

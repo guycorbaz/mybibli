@@ -562,6 +562,39 @@ impl ProposalModel {
         Ok(found)
     }
 
+    /// Story 12-5 (#563) — after a title correction accepted through
+    /// proposal `except_id`, rewrite `identity.title` from `old` to `new`
+    /// in the live items of the other pending proposals on the title.
+    /// Runs in the decision transaction, after the title row lock: it
+    /// takes row locks on other proposals' items in the reverse order of
+    /// proposal → items → title (same as 12-2's cover read) — a
+    /// simultaneous decision on the title may deadlock and is retried; a
+    /// simultaneous *edit* of another proposal on the title (11-19, not
+    /// retried) may lose the deadlock and report an error to its
+    /// librarian (two librarians on one title — accepted).
+    pub async fn carry_identity_title(
+        conn: &mut MySqlConnection,
+        title_id: u64,
+        except_id: u64,
+        old: &str,
+        new: &str,
+    ) -> Result<u64, AppError> {
+        let done = sqlx::query(
+            "UPDATE proposal_items i JOIN proposals p ON p.id = i.proposal_id \
+             SET i.proposed_values = JSON_SET(i.proposed_values, '$.identity.title', ?) \
+             WHERE p.status = 'pending' AND p.deleted_at IS NULL AND i.deleted_at IS NULL \
+               AND p.id <> ? AND i.target_table = 'titles' AND i.target_id = ? \
+               AND JSON_UNQUOTE(JSON_EXTRACT(i.proposed_values, '$.identity.title')) = ?",
+        )
+        .bind(new)
+        .bind(except_id)
+        .bind(title_id)
+        .bind(old)
+        .execute(&mut *conn)
+        .await?;
+        Ok(done.rows_affected())
+    }
+
     /// Story 12-2 (review) — overwrite a proposal's equivalence key (a
     /// rejection records the key of its live lines).
     pub async fn set_equivalence_key(

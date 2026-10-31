@@ -231,6 +231,35 @@ test.describe("Story 11-18 — accept a metadata or cover proposal", () => {
     await revoke(page, key.label);
   });
 
+  // Story 12-5 (#563): an agent proposes a corrected title; the librarian
+  // accepts it and the title page shows it.
+  test("an agent's title correction is accepted and shown", async ({ page, baseURL }) => {
+    const key = await newKey(page, "accept-title");
+    const agent = await playwrightRequest.newContext({ baseURL: baseURL! });
+    try {
+      await page.context().clearCookies();
+      await loginAs(page, "librarian");
+      const titleId = await scanSettledTitle(page, agent, key.plaintext, 4);
+      const corrected = `Titre corrigé MA ${Date.now()}`;
+      const id = await fileOk(agent, key.plaintext, "propose_title_metadata", {
+        title_id: titleId,
+        fields: { title: corrected },
+      });
+      await page.goto(`/proposals/${id}`);
+      await expect(page.locator("#proposal-detail-body")).toContainText(corrected);
+      await acceptProposal(page, id);
+      await expect(page.locator("#proposal-detail-body")).toHaveAttribute(
+        "data-proposal-status",
+        "accepted",
+      );
+      await page.goto(`/title/${titleId}`);
+      await expect(page.locator("h1")).toContainText(corrected);
+    } finally {
+      await agent.dispose();
+    }
+    await revoke(page, key.label);
+  });
+
   test("#531 — a contributor removed from a title can be added back", async ({ page }) => {
     await page.context().clearCookies();
     await loginAs(page, "librarian");

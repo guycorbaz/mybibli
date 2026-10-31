@@ -1282,6 +1282,7 @@ proposals:
   reject_reason_label: "Motivo (facoltativo)"
   reject_reason_help: "Al massimo %{max} caratteri."
   rejected_feedback: "Proposta n. %{id} rifiutata."
+  field_title: "Titolo"
   field_subtitle: "Sottotitolo"
   field_description: "Descrizione"
   field_publisher: "Editore"

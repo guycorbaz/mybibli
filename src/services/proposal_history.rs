@@ -302,7 +302,7 @@ impl ProposalSubject {
                 "{} of title {title_id}",
                 fields
                     .iter()
-                    .map(String::as_str)
+                    .map(|f| format!("`{f}`"))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
@@ -819,7 +819,7 @@ mod tests {
             m.to_json(),
             json!({"title_id": 3, "fields": ["description", "subtitle"]})
         );
-        assert_eq!(m.describe(), "description, subtitle of title 3");
+        assert_eq!(m.describe(), "`description`, `subtitle` of title 3");
         assert_eq!(
             ProposalSubject::SeriesCreate {
                 name: "Yakari".into()

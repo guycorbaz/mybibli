@@ -13,6 +13,8 @@ pub use super::title_search::SearchResult;
 /// (`None` = not proposed, left as it is).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ProposedFieldWrites<'a> {
+    /// Story 12-5 (#563) — never empty (`titles.title` is NOT NULL).
+    pub title: Option<&'a str>,
     pub subtitle: Option<&'a str>,
     pub description: Option<&'a str>,
     pub publisher: Option<&'a str>,
@@ -299,6 +301,14 @@ impl TitleModel {
         manually_edited_json: &str,
     ) -> Result<(), AppError> {
         let mut sets: Vec<&str> = Vec::new();
+        if let Some(t) = fields.title {
+            if t.trim().is_empty() {
+                return Err(AppError::Internal(
+                    "a proposal never empties the title".to_string(),
+                ));
+            }
+            sets.push("title = ?");
+        }
         if fields.subtitle.is_some() {
             sets.push("subtitle = ?");
         }
@@ -320,7 +330,7 @@ impl TitleModel {
             sets.iter().map(|s| format!("{s}, ")).collect::<String>()
         );
         let mut q = sqlx::query(&sql);
-        for v in [fields.subtitle, fields.description, fields.publisher]
+        for v in [fields.title, fields.subtitle, fields.description, fields.publisher]
             .into_iter()
             .flatten()
         {
