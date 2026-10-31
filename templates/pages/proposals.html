@@ -35,8 +35,9 @@
         <p class="mt-2 text-sm text-stone-500 dark:text-stone-400">{{ l.t("empty_body") }}</p>
     </div>
     {% else %}
-    {# Story 11-21 (#545) — `relative`: the sr-only header label is
-       absolutely positioned; without a positioned ancestor its containing
+    {# Story 11-21 (#545) — `relative`: the sr-only texts (story 12-4: the
+       " — proposal #N" suffix of each subject link) are absolutely
+       positioned; without a positioned ancestor its containing
        block was the viewport, so it escaped this scroll box and widened
        the whole page at phone width. Below `sm` the Filed / Key / Items
        columns are dropped (shown on the detail page) so the list fits a
@@ -64,7 +65,7 @@
                             {% if let Some(alt) = r.thumb_alt %}<img src="/proposals/{{ r.id }}/cover" alt="{{ alt }}" loading="lazy" width="32" height="48" class="w-8 h-12 object-cover rounded border border-stone-200 dark:border-stone-700 shrink-0">{% endif %}
                             <div class="min-w-0">
                                 <a href="/proposals/{{ r.id }}" class="font-medium text-indigo-600 dark:text-indigo-400 hover:underline break-words">{{ r.target_text }}<span class="sr-only"> — {{ r.link_sr }}</span></a>
-                                {% if let Some((href, label)) = r.view %}<a href="{{ href }}" class="ml-2 text-xs text-stone-500 dark:text-stone-400 hover:underline whitespace-nowrap">{{ label }}</a>{% endif %}
+                                {% if let Some((href, label)) = r.view %}<a href="{{ href }}" class="ml-2 inline-block py-1 text-xs text-stone-600 dark:text-stone-400 underline decoration-stone-300 dark:decoration-stone-600 hover:decoration-current whitespace-nowrap">{{ label }}<span class="sr-only"> — {{ r.target_text }}</span></a>{% endif %}
                                 {% if let Some(fields) = r.proposed_fields %}<div class="mt-0.5 text-xs text-stone-600 dark:text-stone-400" data-proposed-fields>{{ fields }}</div>{% endif %}
                             </div>
                         </div>

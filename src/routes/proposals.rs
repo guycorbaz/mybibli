@@ -57,7 +57,6 @@ pub struct ListRow {
     pub id: u64,
     pub kind_label: String,
     pub target_text: String,
-    pub target_href: Option<String>,
     pub filed: String,
     pub key_label: String,
     pub status: &'static str,
@@ -89,10 +88,9 @@ pub fn row_extras(
     use crate::models::proposal::ProposalKind;
     use crate::services::proposal_history::ProposalSubject;
     let view = target_href.map(|href| {
-        let key = if href.starts_with("/series/") {
-            "proposals.view_series"
-        } else {
-            "proposals.view_title"
+        let key = match kind {
+            ProposalKind::SeriesCreate | ProposalKind::SeriesAttach => "proposals.view_series",
+            ProposalKind::Metadata | ProposalKind::Cover => "proposals.view_title",
         };
         (href.to_string(), rust_i18n::t!(key, locale = loc).to_string())
     });
@@ -103,6 +101,9 @@ pub fn row_extras(
                 .filter(|f| fields.contains(**f))
                 .map(|f| proposal_review::field_label(f, loc))
                 .collect();
+            if labels.is_empty() {
+                return (view, None, None);
+            }
             Some(
                 rust_i18n::t!(
                     "proposals.row_proposed",
@@ -212,7 +213,6 @@ pub async fn proposals_page(
             id: e.summary.id,
             kind_label: kind_label(e.summary.kind, loc),
             target_text,
-            target_href,
             filed: display_utc(e.summary.created_at),
             key_label: e
                 .summary

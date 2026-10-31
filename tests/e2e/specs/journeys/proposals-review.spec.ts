@@ -27,6 +27,7 @@ import { specIsbn } from "../../helpers/isbn";
 import { titleIdFromSkeleton } from "../../helpers/catalog";
 import { createApiKey, revokeApiKey } from "../../helpers/api-keys";
 import { mcpCallTool } from "../../helpers/mcp";
+import { checkAccessibility } from "../../helpers/accessibility";
 
 const SOURCE = "https://example.org/revue?x=1";
 const REJECTED =
@@ -35,7 +36,6 @@ const REJECT_BUTTON = /^(Reject|Refuser|Ablehnen|Rifiuta)$/;
 const PNG_1X1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
-/** The accessible name of a row's "Open" link. */
 /** Story 12-4 (#561): the subject link, named "<subject> — proposal #N". */
 function openName(id: number): RegExp {
   return new RegExp(`(proposal #|proposition n° |Vorschlag Nr\\. |proposta n\\. )${id}$`);
@@ -203,6 +203,8 @@ test.describe("Story 11-16 — proposals page", () => {
       await expect
         .poll(() => thumb.evaluate((el) => (el as HTMLImageElement).naturalWidth))
         .toBeGreaterThan(0);
+      // Story 12-4 (AC4): the list with its new rows passes axe.
+      await checkAccessibility(page);
       await coverRow.getByRole("link", { name: openName(proposalId) }).click();
       const img = page.locator("#proposal-staged-cover");
       await expect(img).toBeVisible();

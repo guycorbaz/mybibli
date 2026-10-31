@@ -1,6 +1,6 @@
 # Story 12.4: A readable proposals list
 
-Status: review
+Status: in-progress
 
 GitHub issue: #561 (type:change-request) — closes it. Covers: FR151, UX-DR35. Epic 12 — fourth story; ships in v1.22.0.
 
@@ -42,6 +42,24 @@ Observed on 2026-10-30: the librarian repeatedly clicked the subject (then a lin
 - [x] T4 — tests (AC6), E2E
 - [x] T5 — manual (AC7)
 - [x] T6 — gates
+
+### Review Findings
+
+Code review 2026-10-31, round 1 (combined pass): 1 Medium, 13 Low.
+
+- [x] [Review][Patch] **Medium** — AC4 "axe passes on `/proposals`" had no test → `checkAccessibility(page)` on the list with a thumbnail row (`proposals-review.spec.ts`), green
+- [x] [Review][Patch] Low — "View title" links identical for screen readers and barely recognisable → sr-only " — <subject>" suffix, underlined, `py-1` (target size)
+- [x] [Review][Patch] Low — "Proposed:" could render empty when no known field → no line then
+- [x] [Review][Patch] Low — series/title view label derived from the URL shape → from the proposal kind
+- [x] [Review][Patch] Low — dead `ListRow.target_href` → removed
+- [x] [Review][Patch] Low — manual: thumbnail is *next to* the subject; example labels as the UI writes them → EN + FR fixed, PDFs rebuilt
+- [x] [Review][Patch] Low — stale comments (template `relative` note, duplicated JSDoc) → fixed
+- [x] [Review][Patch] Low — negative "no Open column" assertion only in English → EN + FR
+- [Review][Dismiss] Low — a pending cover whose staged file is missing shows a broken 32×48 thumbnail (rare: staging volume lost; the detail page already says "cover missing"; checking the file per row would add disk I/O to every list render)
+- [Review][Dismiss] Low — 25 `no-store` thumbnail requests per page (librarian-only, single tenant)
+- [Review][Dismiss] Low — unknown-shape subject shows "—" as link text (no such proposal is ever filed)
+- [Review][Dismiss] Low — rustfmt layout of the `ListRow` literal / test placement (cosmetic, no fmt gate)
+- [Review][Dismiss] Low — 360 px check on a decided proposal only (layout risk low: 32 px + gap, `break-words`, `sm:` columns hidden)
 
 ## Dev Notes
 

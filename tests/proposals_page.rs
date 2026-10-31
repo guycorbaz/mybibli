@@ -299,7 +299,10 @@ async fn a_row_leads_to_the_proposal_and_shows_what_it_proposes(pool: DbPool) {
         "fields line"
     );
     assert!(html.contains(&format!("src=\"/proposals/{cover}/cover\"")), "thumbnail");
-    assert!(!html.contains("Open proposal"), "no Open column");
+    assert!(
+        !html.contains("Open proposal") && !html.contains("Ouvrir la proposition"),
+        "no Open column"
+    );
     assert!(!html.contains("proposals."), "raw locale key leaked");
 
     // Rejected: the staged file is gone, no thumbnail any more.
