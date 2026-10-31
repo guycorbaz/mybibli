@@ -1,6 +1,6 @@
 # Story 12.5: The title can be proposed
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #563 (type:change-request) — closes it. Covers: FR152 (extends FR132). Epic 12 — fifth story (after 12.2); ships in v1.22.0.
 
@@ -31,13 +31,13 @@ Story 12.2 records an **identity snapshot** (`title`, `isbn`, `media_type`) in e
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `metadata_proposals.rs`: `title` in `PROPOSABLE_FIELDS` (first), `MAX_TITLE_CHARS = 500`, `ProposedFields::title`, `CurrentValues::title`, validation, `diff_against`
-- [ ] T2 — `metadata_acceptance.rs`: `field_changed` live value, `ProposedFieldWrites::title` + the UPDATE (`models/title.rs`), manually-edited tracking, carry-forward (`ProposalModel::carry_identity_title`)
-- [ ] T3 — `proposal_edit.rs` (edit a `title` line), `proposal_review.rs::field_label` + locale key `proposals.field_title` in en/fr/de/it
-- [ ] T4 — MCP tool schema + description (`propose_title_metadata.rs`)
-- [ ] T5 — tests (AC8), E2E
-- [ ] T6 — manual ch. 13 (proposable fields list) EN + FR or note for 12.7; CLAUDE.md § Proposal lifecycle (carry forward)
-- [ ] T7 — gates
+- [x] T1 — `metadata_proposals.rs`: `title` in `PROPOSABLE_FIELDS` (first), `MAX_TITLE_CHARS = 500`, `ProposedFields::title`, `CurrentValues::title`, validation, `diff_against`
+- [x] T2 — `metadata_acceptance.rs`: `field_changed` live value, `ProposedFieldWrites::title` + the UPDATE (`models/title.rs`), manually-edited tracking, carry-forward (`ProposalModel::carry_identity_title`)
+- [x] T3 — `proposal_edit.rs` (edit a `title` line), `proposal_review.rs::field_label` + locale key `proposals.field_title` in en/fr/de/it
+- [x] T4 — MCP tool schema + description (`propose_title_metadata.rs`)
+- [x] T5 — tests (AC8), E2E
+- [x] T6 — manual ch. 13 (proposable fields list) EN + FR or note for 12.7; CLAUDE.md § Proposal lifecycle (carry forward)
+- [x] T7 — gates
 
 ## Dev Notes
 
@@ -56,8 +56,26 @@ Story 12.2 records an **identity snapshot** (`title`, `isbn`, `media_type`) in e
 
 ### Agent Model Used
 
+claude-opus-5-5
+
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created
+- T1: `title` first in `PROPOSABLE_FIELDS` (7 fields), `MAX_TITLE_CHARS = 500`, `ProposedFields::title`, `CurrentValues::title` (always `Some` — `titles.title` is NOT NULL), validated by the existing single-line `text()` (blank → `Blank`, > 500 → `TooLongChars`), diffed like `subtitle`. Tests that used `title` as the "not proposable" example now use `isbn` / `genre`; the refusal message lists `title` first.
+- T2: `field_changed` reads the live `title`; `ProposedFieldWrites::title` + `title = ?` in `apply_proposed_fields_in` (a `debug_assert` that it is never blank); `title` added to `manually_edited_fields`; `ProposalModel::carry_identity_title` rewrites `identity.title` (old → new) in the other pending items on the title, in the decision transaction (lock order documented).
+- T3: `proposal_edit::proposed_value` handles `title` (one-line input, as every field but `description`); `proposal_review::field_label` + `proposals.field_title` in en/fr/de/it (`locale_parity` green).
+- T4: `propose_title_metadata` schema gains `title` (`minLength 1`, `maxLength 500`), description explains the correction and asks for a source; "one of the seven above".
+- T5: unit (validation, diff/drop), DB (`proposal_accept_metadata_cover.rs` +4: accept/protected/version, stale after hand edit, carry forward keeps a metadata and a cover proposal acceptable, hand edit still outdates; `proposal_history.rs` +1: title rejection blocks title only), E2E (`metadata-cover-proposal-accept.spec.ts`: corrected title accepted and shown in the title page `h1`).
+- T6: manual ch. 13 EN + FR (what an agent can propose), PDFs rebuilt; `CLAUDE.md` § Proposal lifecycle (carry forward).
+- T7 (targeted): lib `services::metadata`, `mcp::`, `services::proposal` 153 passed; DB `proposal_accept_metadata_cover` 29, `proposal_history` 15, `mcp_metadata_proposals` 9, `locale_parity` green; E2E targeted 4/4.
 
 ### File List
+
+- `src/services/metadata_proposals.rs`, `metadata_acceptance.rs`, `proposal_edit.rs`, `proposal_review.rs`
+- `src/models/title.rs` (`ProposedFieldWrites::title`), `src/models/proposal.rs` (`carry_identity_title`)
+- `src/mcp/tools/propose_title_metadata.rs`
+- `locales/{en,fr,de,it}.yml` — `proposals.field_title`
+- `tests/proposal_accept_metadata_cover.rs`, `tests/proposal_history.rs`
+- `tests/e2e/specs/journeys/metadata-cover-proposal-accept.spec.ts`
+- `docs/manual/{en,fr}/13-agents-proposals.tex`, PDFs; `CLAUDE.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 12-5 line

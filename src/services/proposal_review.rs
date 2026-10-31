@@ -91,6 +91,7 @@ pub fn status_label(status: ProposalStatus, loc: &str) -> String {
 /// shown as is (escaped by the template).
 pub fn field_label(field: &str, loc: &str) -> String {
     let key = match field {
+        "title" => "proposals.field_title",
         "subtitle" => "proposals.field_subtitle",
         "description" => "proposals.field_description",
         "publisher" => "proposals.field_publisher",

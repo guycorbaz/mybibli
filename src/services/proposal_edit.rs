@@ -643,6 +643,7 @@ pub fn edited_proposed(
 /// The stored `proposed` value of `field` from validated fields.
 fn proposed_value(field: &str, valid: &ProposedFields) -> Option<Value> {
     match field {
+        "title" => valid.title.as_ref().map(|v| json!(v)),
         "subtitle" => valid.subtitle.as_ref().map(|v| json!(v)),
         "description" => valid.description.as_ref().map(|v| json!(v)),
         "publisher" => valid.publisher.as_ref().map(|v| json!(v)),

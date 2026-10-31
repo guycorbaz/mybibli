@@ -1296,6 +1296,7 @@ proposals:
   reject_reason_label: "Begründung (optional)"
   reject_reason_help: "Höchstens %{max} Zeichen."
   rejected_feedback: "Vorschlag Nr. %{id} abgelehnt."
+  field_title: "Titel"
   field_subtitle: "Untertitel"
   field_description: "Beschreibung"
   field_publisher: "Verlag"

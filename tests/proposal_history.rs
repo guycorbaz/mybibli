@@ -826,3 +826,25 @@ async fn a_line_removed_before_the_rejection_is_not_blocked(pool: DbPool) {
         .err("propose_title_metadata", metadata(title, json!({"subtitle": "B"})))
         .await;
 }
+
+/// Story 12-5 (#563): a rejected title correction blocks another title
+/// proposal for the delay; the other fields stay open.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_rejected_title_correction_blocks_the_title_only(pool: DbPool) {
+    let agent = Agent::new(&pool).await;
+    let title = seed_title(&pool, "Titre fautif").await;
+    let by = decider(&pool).await;
+    let first = id_of(
+        &agent
+            .ok("propose_title_metadata", metadata(title, json!({"title": "Titre corrigé"})))
+            .await,
+    );
+    reject(&pool, by, first, Some("Not the printed title")).await;
+    let msg = agent
+        .err("propose_title_metadata", metadata(title, json!({"title": "Autre correction"})))
+        .await;
+    assert!(msg.contains("title of title"), "{msg}");
+    agent
+        .ok("propose_title_metadata", metadata(title, json!({"publisher": "P"})))
+        .await;
+}

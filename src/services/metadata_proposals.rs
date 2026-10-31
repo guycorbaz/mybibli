@@ -81,7 +81,8 @@ use crate::services::proposals::{
 use crate::utils::dewey_code_chars_valid;
 
 /// The fields an agent may propose, in item order.
-pub const PROPOSABLE_FIELDS: [&str; 6] = [
+pub const PROPOSABLE_FIELDS: [&str; 7] = [
+    "title",
     "subtitle",
     "description",
     "publisher",
@@ -89,6 +90,8 @@ pub const PROPOSABLE_FIELDS: [&str; 6] = [
     "dewey_code",
     "contributors",
 ];
+/// `titles.title` width (story 12-5, #563).
+pub const MAX_TITLE_CHARS: usize = 500;
 /// `titles.subtitle` width.
 pub const MAX_SUBTITLE_CHARS: usize = 500;
 /// `titles.publisher` width.
@@ -369,6 +372,8 @@ pub struct ProposedContributor {
 /// The proposed fields, validated (`None` = not proposed).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProposedFields {
+    /// Story 12-5 (#563) — a correction of the main title.
+    pub title: Option<String>,
     pub subtitle: Option<String>,
     pub description: Option<String>,
     pub publisher: Option<String>,
@@ -380,6 +385,7 @@ pub struct ProposedFields {
 /// The title's current values the proposal is compared with.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CurrentValues {
+    pub title: Option<String>,
     pub subtitle: Option<String>,
     pub description: Option<String>,
     pub publisher: Option<String>,
@@ -625,6 +631,7 @@ pub fn validate_fields(
             }
         };
         match key.as_str() {
+            "title" => single(text(value, MAX_TITLE_CHARS, false).map(|v| out.title = Some(v))),
             "subtitle" => {
                 single(text(value, MAX_SUBTITLE_CHARS, false).map(|v| out.subtitle = Some(v)))
             }
@@ -678,6 +685,7 @@ pub fn diff_against(
                 ));
             }
         };
+    text_field("title", &proposed.title, &current.title, false);
     text_field("subtitle", &proposed.subtitle, &current.subtitle, false);
     text_field(
         "description",
@@ -829,6 +837,7 @@ impl MetadataProposalService {
         };
         let identity = crate::services::proposals::title_identity(&title);
         let current = CurrentValues {
+            title: Some(title.title),
             subtitle: title.subtitle,
             description: title.description,
             publisher: title.publisher,
@@ -966,7 +975,7 @@ mod tests {
     fn every_bad_field_is_reported_at_once() {
         let errors = field_errors(json!({
             "isbn": "9782070360246",
-            "title": "Other",
+            "genre": "Other",
             "subtitle": "   ",
             "publisher": 12,
             "publication_year": 999,
@@ -975,7 +984,7 @@ mod tests {
         }));
         assert_eq!(errors.len(), 7, "{errors:?}");
         assert_eq!(problem_of(&errors, "isbn"), FieldProblem::NotProposable);
-        assert_eq!(problem_of(&errors, "title"), FieldProblem::NotProposable);
+        assert_eq!(problem_of(&errors, "genre"), FieldProblem::NotProposable);
         assert_eq!(problem_of(&errors, "subtitle"), FieldProblem::Blank);
         assert!(matches!(
             problem_of(&errors, "publisher"),
@@ -999,7 +1008,7 @@ mod tests {
         }
         .to_string();
         assert!(msg.starts_with("7 fields were refused, nothing was filed:"));
-        assert!(msg.contains("`isbn` cannot be proposed; the fields an agent may propose are subtitle, description, publisher, publication_year, dewey_code, contributors"));
+        assert!(msg.contains("`isbn` cannot be proposed; the fields an agent may propose are title, subtitle, description, publisher, publication_year, dewey_code, contributors"));
     }
 
     #[test]
@@ -1145,6 +1154,7 @@ mod tests {
 
     fn current() -> CurrentValues {
         CurrentValues {
+            title: Some("Le Petit Prince".into()),
             subtitle: Some("Roman".into()),
             description: None,
             publisher: Some("Gallimard ".into()),
@@ -1154,9 +1164,45 @@ mod tests {
         }
     }
 
+    // Story 12-5 (#563): the title is proposable, never blank, ≤ 500 chars.
+    #[test]
+    fn title_is_validated_like_a_single_line_text() {
+        let ok = validate_fields(&fields(json!({"title": "  Le  Petit   Prince "})), &[], 2026)
+            .unwrap();
+        assert_eq!(ok.title.as_deref(), Some("Le Petit Prince"));
+        for bad in [json!(""), json!("   "), json!("a".repeat(MAX_TITLE_CHARS + 1)), json!(3)] {
+            assert!(
+                validate_fields(&fields(json!({ "title": bad })), &[], 2026).is_err(),
+                "{bad}"
+            );
+        }
+        assert_eq!(PROPOSABLE_FIELDS[0], "title");
+    }
+
+    #[test]
+    fn a_title_correction_is_an_item_and_an_unchanged_title_is_dropped() {
+        let fix = ProposedFields {
+            title: Some("Le Petit Prince (édition illustrée)".into()),
+            ..Default::default()
+        };
+        let (items, unchanged) = diff_against(&fix, &current());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].0, "title");
+        assert_eq!(items[0].1["current"], json!("Le Petit Prince"));
+        assert!(unchanged.is_empty());
+        let same = ProposedFields {
+            title: Some("Le Petit Prince".into()),
+            ..Default::default()
+        };
+        let (items, unchanged) = diff_against(&same, &current());
+        assert!(items.is_empty());
+        assert_eq!(unchanged, vec!["title"]);
+    }
+
     #[test]
     fn unchanged_fields_are_dropped_and_items_follow_the_documented_shapes() {
         let proposed = ProposedFields {
+            title: None,
             subtitle: Some("Roman".into()),
             description: Some("Desc".into()),
             publisher: Some("Gallimard".into()),

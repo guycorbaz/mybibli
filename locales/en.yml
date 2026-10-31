@@ -1312,6 +1312,7 @@ proposals:
   reject_reason_label: "Reason (optional)"
   reject_reason_help: "At most %{max} characters."
   rejected_feedback: "Proposal #%{id} rejected."
+  field_title: "Title"
   field_subtitle: "Subtitle"
   field_description: "Description"
   field_publisher: "Publisher"

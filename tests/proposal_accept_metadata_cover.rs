@@ -870,3 +870,77 @@ async fn a_truncated_baseline_goes_stale_when_the_title_moved(pool: DbPool) {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(decision(&pool, id).await.0, "stale");
 }
+
+// ─── Story 12-5: the title can be proposed ───────────────────────────
+
+async fn title_name(pool: &DbPool, id: u64) -> (String, Option<String>) {
+    sqlx::query_as("SELECT title, CAST(manually_edited_fields AS CHAR) FROM titles WHERE id = ?")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_title_correction_is_filed_accepted_and_protected(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Le Petit Prnce").await;
+    let id = file_metadata(&f, title, json!({"title": "Le Petit Prince"})).await;
+    let version_before = fields(&pool, title).await.5;
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(decision(&pool, id).await.0, "accepted");
+    let (name, edited_json) = title_name(&pool, title).await;
+    assert_eq!(name, "Le Petit Prince");
+    assert!(edited(&edited_json).contains(&"title".to_string()), "{edited_json:?}");
+    assert_eq!(fields(&pool, title).await.5, version_before + 1);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_title_correction_goes_stale_after_a_hand_edit_of_the_title(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Vol 714 pr Sydney").await;
+    let id = file_metadata(&f, title, json!({"title": "Vol 714 pour Sydney"})).await;
+    sqlx::query("UPDATE titles SET title = 'Vol 714 pour Sidney', version = version + 1 WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(decision(&pool, id).await.0, "stale");
+    assert_eq!(title_name(&pool, title).await.0, "Vol 714 pour Sidney");
+}
+
+// The accepted correction carries the new title into the identity of the
+// other pending proposals: they stay acceptable (12-2 identity check).
+#[sqlx::test(migrations = "./migrations")]
+async fn an_accepted_title_correction_does_not_outdate_the_others(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Tintin au Congoo").await;
+    let fix = file_metadata(&f, title, json!({"title": "Tintin au Congo"})).await;
+    let meta = file_metadata(&f, title, json!({"publisher": "Casterman"})).await;
+    let cover = file_cover(&f, title, 10).await;
+    assert_eq!(accept(&f, &pool, fix).await.0, StatusCode::OK);
+    for id in [meta, cover] {
+        let (status, body) = accept(&f, &pool, id).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(decision(&pool, id).await.0, "accepted", "{id}");
+    }
+    assert_eq!(fields(&pool, title).await.1.as_deref(), Some("Casterman"));
+}
+
+// A title changed by hand still outdates the other pending proposals.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_title_changed_by_hand_still_outdates_pending_proposals(pool: DbPool) {
+    let f = fx(&pool).await;
+    let title = seed_title(&pool, "Les Bijoux de la Castafiore").await;
+    let meta = file_metadata(&f, title, json!({"publisher": "Casterman"})).await;
+    sqlx::query("UPDATE titles SET title = 'Autre œuvre', version = version + 1 WHERE id = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(accept(&f, &pool, meta).await.0, StatusCode::OK);
+    assert_eq!(decision(&pool, meta).await.0, "stale");
+}

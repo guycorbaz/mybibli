@@ -254,6 +254,7 @@ fn compared(value: Option<&str>, multiline: bool) -> Option<String> {
 pub fn field_changed(scalar: &StoredScalar, title: &TitleModel) -> bool {
     let live_text = |field: &str| -> Option<&str> {
         match field {
+            "title" => Some(title.title.as_str()),
             "subtitle" => title.subtitle.as_deref(),
             "description" => title.description.as_deref(),
             "publisher" => title.publisher.as_deref(),
@@ -384,6 +385,7 @@ async fn accept_in(
         .publication_year
         .and_then(|y| NaiveDate::from_ymd_opt(y, 1, 1));
     let writes = ProposedFieldWrites {
+        title: valid.title.as_deref(),
         subtitle: valid.subtitle.as_deref(),
         description: valid.description.as_deref(),
         publisher: valid.publisher.as_deref(),
@@ -396,6 +398,7 @@ async fn accept_in(
         .iter()
         .map(|s| s.field)
         .filter(|f| match *f {
+            "title" => writes.title.is_some(),
             "subtitle" => writes.subtitle.is_some(),
             "description" => writes.description.is_some(),
             "publisher" => writes.publisher.is_some(),
@@ -421,6 +424,20 @@ async fn accept_in(
             &title.manually_edited_with(&edited),
         )
         .await?;
+        // Story 12-5 (#563): a title correction accepted through a
+        // proposal is no re-identification — carry the new title into the
+        // identity snapshot of the other pending items on this title, so
+        // they stay acceptable (12-2's `title_moved`).
+        if let Some(new_title) = writes.title {
+            crate::models::proposal::ProposalModel::carry_identity_title(
+                conn,
+                title.id,
+                id,
+                &title.title,
+                new_title,
+            )
+            .await?;
+        }
     }
 
     let mut applied = AppliedMetadata {
@@ -583,7 +600,7 @@ mod tests {
             vec![row(
                 1,
                 7,
-                json!({"line":"field","field":"title","proposed":"x"}),
+                json!({"line":"field","field":"isbn","proposed":"x"}),
             )],
             vec![row(1, 7, ok.clone()), row(2, 7, ok.clone())],
             vec![

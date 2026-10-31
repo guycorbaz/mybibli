@@ -9,7 +9,7 @@ use super::proposal_args::{filed_document, sources_property, tool_error};
 use crate::mcp::tool::{McpTool, ToolContext, ToolError, ToolFuture};
 use crate::services::metadata_proposals::{
     MAX_CONTRIBUTORS, MAX_DESCRIPTION_CHARS, MAX_DEWEY_CHARS, MAX_PUBLISHER_CHARS,
-    MAX_SUBTITLE_CHARS, MetadataProposalRequest, MetadataProposalService,
+    MAX_SUBTITLE_CHARS, MAX_TITLE_CHARS, MetadataProposalRequest, MetadataProposalService,
 };
 
 pub struct ProposeTitleMetadata;
@@ -52,8 +52,10 @@ impl McpTool for ProposeTitleMetadata {
     }
 
     fn description(&self) -> &'static str {
-        "Propose values for a title's missing or wrong information: `subtitle`, \
-         `description`, `publisher`, `publication_year`, `dewey_code`, and `contributors` \
+        "Propose values for a title's missing or wrong information: `title` (a correction \
+         of the main title — spelling, punctuation, capitalisation, or the real title of a \
+         record that only carries its ISBN as a title; cite the page that shows it), \
+         `subtitle`, `description`, `publisher`, `publication_year`, `dewey_code`, and `contributors` \
          to add (each with its name and one of the library's contributor roles, as get_title \
          shows them, e.g. \"Auteur\"). Read the title with get_title first and pass its \
          `version`. Every proposal needs `sources`: the http(s) URLs where you found the \
@@ -65,9 +67,9 @@ impl McpTool for ProposeTitleMetadata {
          `unchanged_fields`. Refused with an explanation when: the title id is unknown or \
          deleted, or its `version` no longer matches (read it again); every proposed value \
          is already the title's; `fields` is empty. Refused field by field, every bad field \
-         named at once and nothing filed, when: a field is not one of the six above; a value \
+         named at once and nothing filed, when: a field is not one of the seven above; a value \
          is not of the expected type, or empty (a proposal completes a title, it never \
-         erases a value); `subtitle` exceeds 500 characters, `publisher` 255, `description` \
+         erases a value); `title` or `subtitle` exceeds 500 characters, `publisher` 255, `description` \
          10000, `dewey_code` 32; a single-line value contains a control character (line \
          breaks and tabs are allowed in `description` only); `dewey_code` is not made of \
          digits, '.' and '/' with at least one digit; `publication_year` is before 1000 or after next year; \
@@ -97,6 +99,12 @@ impl McpTool for ProposeTitleMetadata {
                     "minProperties": 1,
                     "description": "The values you propose; give only the fields you found.",
                     "properties": {
+                        "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": MAX_TITLE_CHARS,
+                            "description": "A correction of the main title, one line (spelling, punctuation, capitalisation, or the real title of a record named after its ISBN)."
+                        },
                         "subtitle": {
                             "type": "string",
                             "minLength": 1,
@@ -222,6 +230,7 @@ mod tests {
     fn schema_bounds_follow_the_service() {
         let s = ProposeTitleMetadata.input_schema();
         let f = &s["properties"]["fields"]["properties"];
+        assert_eq!(f["title"]["maxLength"], 500);
         assert_eq!(f["subtitle"]["maxLength"], 500);
         assert_eq!(f["publisher"]["maxLength"], 255);
         assert_eq!(f["description"]["maxLength"], 10_000);
