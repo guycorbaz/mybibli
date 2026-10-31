@@ -248,6 +248,13 @@ pub trait MetadataProvider: Send + Sync {
     /// Whether this provider supports the given media type.
     fn supports_media_type(&self, media_type: &MediaType) -> bool;
 
+    /// Whether a lookup actually queries a source right now (story 12-3,
+    /// #560): `false` for a keyed provider without its key, or a stub.
+    /// What the MCP agent is told mybibli searched.
+    fn is_active(&self) -> bool {
+        true
+    }
+
     /// Look up metadata by ISBN-13.
     async fn lookup_by_isbn(&self, isbn: &str) -> Result<Option<MetadataResult>, MetadataError>;
 

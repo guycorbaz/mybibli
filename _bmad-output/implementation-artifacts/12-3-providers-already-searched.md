@@ -1,6 +1,6 @@
 # Story 12.3: Tell the agent where mybibli already searched
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #560 (type:change-request) — closes it. Covers: FR150. Epic 12 — third story; ships in v1.22.0.
 
@@ -38,12 +38,12 @@ Static option (no migration): the agent is told which providers mybibli queries 
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `MetadataProvider::is_active(&self) -> bool { true }`; overrides: `GoogleBooksProvider`, `OmdbProvider`, `TmdbProvider` (key present in their settings Arc), `BdgestProvider` (false); unit tests
-- [ ] T2 — pure builder `mcp::instructions::server_instructions(chains: &[(MediaType, Vec<String>)], cover_sources: &[&str]) -> String` (new small module, or in `transport.rs` if it stays tiny — keep rmcp confined), and `ProviderRegistry::active_chain_names(&MediaType) -> Vec<String>`; `get_info` builds it from `self.state.registry`; cover sources as a `pub const COVER_FALLBACK_SOURCES` next to `resolve_cover_url_with_fallback`
-- [ ] T3 — list tool descriptions (AC4)
-- [ ] T4 — E2E assertion in `mcp-read-tools.spec.ts` (AC5)
-- [ ] T5 — manual ch. 13 (EN + FR): one paragraph on what the agent is told (or note it for Story 12.7)
-- [ ] T6 — gates (targeted, then full once before the single push)
+- [x] T1 — `MetadataProvider::is_active(&self) -> bool { true }`; overrides: `GoogleBooksProvider`, `OmdbProvider`, `TmdbProvider` (key present in their settings Arc), `BdgestProvider` (false); unit tests
+- [x] T2 — pure builder `mcp::instructions::server_instructions(chains: &[(MediaType, Vec<String>)], cover_sources: &[&str]) -> String` (new small module, or in `transport.rs` if it stays tiny — keep rmcp confined), and `ProviderRegistry::active_chain_names(&MediaType) -> Vec<String>`; `get_info` builds it from `self.state.registry`; cover sources as a `pub const COVER_FALLBACK_SOURCES` next to `resolve_cover_url_with_fallback`
+- [x] T3 — list tool descriptions (AC4)
+- [x] T4 — E2E assertion in `mcp-read-tools.spec.ts` (AC5)
+- [x] T5 — manual ch. 13 (EN + FR): one paragraph on what the agent is told (or note it for Story 12.7)
+- [x] T6 — gates (targeted, then full once before the single push)
 
 ## Dev Notes
 
@@ -61,8 +61,26 @@ Static option (no migration): the agent is told which providers mybibli queries 
 
 ### Agent Model Used
 
+claude-opus-5-5
+
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created
+- T1: `MetadataProvider::is_active` (default `true`); `false` for `OmdbProvider` / `TmdbProvider` without a key and for the `BdgestProvider` stub. Google Books works without a key (lower quota) and stays active; Comic Vine is only registered with its key. Unit tests per provider.
+- T2: new `src/mcp/instructions.rs` (pure `server_instructions`), `ProviderRegistry::active_chain_names` (display names via `metadata_source_display_name`, chain order, dedup), `services::cover::COVER_FALLBACK_SOURCES`; `transport.rs::instructions(&AppState)` builds the text on every `get_info` (sync; settings read through the providers' own std `RwLock`). The static `INSTRUCTIONS` const is gone; its unit test now checks the builder.
+- T3: `list_titles_with_incomplete_metadata` / `list_titles_without_cover` descriptions point at the instructions ("look elsewhere first — those sources may hold the record now").
+- T4: `mcp-endpoint.spec.ts` (the spec that sends `initialize`; `mcp-read-tools.spec.ts` does not) asserts the instructions name `- book: BnF`, Open Library, "Search other sources first", "may hold the record now".
+- T5: manual ch. 13 EN + FR, tools section intro; PDFs rebuilt.
+- T6 (targeted): lib `metadata::` + `mcp::` 234 passed; DB `mcp_endpoint`, `mcp_interop`, `mcp_catalog_read_tools` green; `tsc --noEmit` clean.
 
 ### File List
+
+- `src/metadata/provider.rs` — `is_active`
+- `src/metadata/{omdb,tmdb,bdgest}.rs` — overrides + tests
+- `src/metadata/registry.rs` — `active_chain_names` + test
+- `src/services/cover.rs` — `COVER_FALLBACK_SOURCES`
+- `src/mcp/instructions.rs` (new), `src/mcp/mod.rs`, `src/mcp/transport.rs`
+- `src/mcp/tools/list_titles_with_incomplete_metadata.rs`, `list_titles_without_cover.rs` — descriptions
+- `tests/e2e/specs/journeys/mcp-endpoint.spec.ts`
+- `docs/manual/{en,fr}/13-agents-proposals.tex`, PDFs
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 12-3 line

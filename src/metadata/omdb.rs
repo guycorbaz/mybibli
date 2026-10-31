@@ -46,6 +46,10 @@ impl OmdbProvider {
 
 #[async_trait]
 impl MetadataProvider for OmdbProvider {
+    fn is_active(&self) -> bool {
+        self.current_api_key().is_some()
+    }
+
     fn name(&self) -> &str {
         "omdb"
     }
@@ -192,6 +196,22 @@ mod tests {
         assert!(provider.supports_media_type(&MediaType::Dvd));
         assert!(!provider.supports_media_type(&MediaType::Book));
         assert!(!provider.supports_media_type(&MediaType::Cd));
+    }
+
+    // Story 12-3 (#560): named to the MCP agent only with its key.
+    #[test]
+    fn is_active_only_with_a_key() {
+        let with = |key: &str| {
+            OmdbProvider::new(
+                Client::new(),
+                Arc::new(RwLock::new(AppSettings {
+                    omdb_api_key: key.to_string(),
+                    ..AppSettings::default()
+                })),
+            )
+        };
+        assert!(with("k").is_active());
+        assert!(!with("").is_active());
     }
 
     #[test]

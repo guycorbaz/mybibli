@@ -18,6 +18,11 @@ impl BdgestProvider {
 
 #[async_trait]
 impl MetadataProvider for BdgestProvider {
+    /// A stub: it queries nothing (story 12-3).
+    fn is_active(&self) -> bool {
+        false
+    }
+
     fn name(&self) -> &str {
         "bdgest"
     }
@@ -46,6 +51,12 @@ mod tests {
         assert!(provider.supports_media_type(&MediaType::Bd));
         assert!(!provider.supports_media_type(&MediaType::Book));
         assert!(!provider.supports_media_type(&MediaType::Cd));
+    }
+
+    // Story 12-3: a stub queries nothing — never named to the agent.
+    #[test]
+    fn a_stub_is_not_active() {
+        assert!(!BdgestProvider::new().is_active());
     }
 
     #[test]
