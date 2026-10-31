@@ -1,6 +1,6 @@
 # Story 12.6: Epic 12 smoke test (Foundation Rule #7)
 
-Status: review
+Status: done
 
 Covers: Foundation Rule #7 (FR148–FR152 end to end). Epic 12 — sixth story; ships in v1.22.0.
 
@@ -32,6 +32,10 @@ claude-opus-5-5
 
 - One test, ~3 s: hyphenated ISBN → `get_title` polled until the background fetch settled (publisher "Test Publisher", `isbn` bare) → `initialize` instructions (`/^- book: BnF, /m`, "Search other sources first") → `propose_title_metadata` (title + description, pinned `version`) and `propose_cover` (1×1 PNG) → list: thumbnail loaded (`naturalWidth > 0`), `[data-proposed-fields]` names Title and Description → subject link (accessible name "… proposal #N") opens the cover, accept → back to the list, subject link opens the metadata proposal (still pending), accept → title page `h1` shows the corrected title, the cover `img[src^="/covers/{id}.jpg?v="]` is visible.
 - Green on a reset stack and again on the same stack (per-run ISBN stamp).
+
+### Review Findings
+
+Code review 2026-10-31 (one pass): **0 Medium+**, 7 Low. Patched: the accepted description is asserted on the title page too; the mock-server assumption (no cover for an "EZ" ISBN) is documented in the spec header. Dismissed: key left active if `newProposeKey` fails after creation (same as the epic-11 smoke); page-1 presence under heavy parallel filing (needs > 23 filings in between); lazy thumbnail below the fold (same root); key/scan order vs the epic wording (cosmetic); a 25 h-multiple re-run collision (negligible).
 
 ### File List
 

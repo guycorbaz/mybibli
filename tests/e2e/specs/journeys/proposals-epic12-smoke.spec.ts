@@ -19,6 +19,9 @@
  * Spec ID "EZ"; the ISBN sequence carries a per-run stamp, so a re-run on
  * a non-reset stack meets none of an earlier run's titles. Creates no
  * series (#528); nothing is rejected (no resubmission delay applies).
+ * The mock metadata server serves no cover for an "EZ" ISBN, so the
+ * background fetch never writes `cover_image_url` between the filing and
+ * the acceptance (which would rightly outdate the cover proposal).
  */
 import { test, expect, request as playwrightRequest } from "@playwright/test";
 import { revokeApiKey } from "../../helpers/api-keys";
@@ -163,6 +166,7 @@ test.describe("Epic 12 smoke — proposals, after a first real use", () => {
       // Both applied: the corrected title and the installed cover.
       await page.goto(`/title/${titleId}`);
       await expect(page.locator("h1")).toContainText(corrected);
+      await expect(page.locator("main")).toContainText("Une description trouvée ailleurs.");
       await expect(page.locator(`img[src^="/covers/${titleId}.jpg?v="]`).first()).toBeVisible({
         timeout: 10000,
       });
