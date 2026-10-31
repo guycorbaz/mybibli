@@ -202,6 +202,9 @@ impl Names {
 pub struct ListEntry {
     pub summary: ProposalSummaryRow,
     pub target: TargetLabel,
+    /// What the live lines are about (story 12-4: the proposed fields of
+    /// a metadata proposal); `None` for items of no known shape.
+    pub subject: Option<ProposalSubject>,
 }
 
 /// One page (25) of live proposals, newest first, with their targets.
@@ -222,7 +225,7 @@ pub async fn list_page(
         let mut conn = pool.acquire().await?;
         ProposalModel::subject_lines(&mut conn, &ids).await?
     };
-    let subjects: HashMap<u64, Option<ProposalSubject>> = list
+    let mut subjects: HashMap<u64, Option<ProposalSubject>> = list
         .items
         .iter()
         .map(|r| {
@@ -243,9 +246,13 @@ pub async fn list_page(
     } = list;
     let entries = items
         .into_iter()
-        .map(|summary| ListEntry {
-            target: TargetLabel::of(subjects.get(&summary.id).and_then(Option::as_ref), &names),
-            summary,
+        .map(|summary| {
+            let subject = subjects.remove(&summary.id).flatten();
+            ListEntry {
+                target: TargetLabel::of(subject.as_ref(), &names),
+                subject,
+                summary,
+            }
         })
         .collect();
     Ok(PaginatedList::new(
