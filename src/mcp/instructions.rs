@@ -29,14 +29,16 @@ pub fn server_instructions(chains: &[(String, Vec<String>)], cover_sources: &[&s
     out.push_str(
         "\n\nSources mybibli queries automatically, in this order, when a title with a code \
          (ISBN, ISSN, UPC) is catalogued or its metadata is downloaded again. The chain stops \
-         at the first source that has a record, so a title listed by \
+         at the first source that has a record (the later ones are asked at most to complete \
+         a few cataloguing fields), so a title listed by \
          list_titles_with_incomplete_metadata or list_titles_without_cover was looked up in \
          at least the first of them at its last lookup (in none if it has no code):\n",
     );
     out.push_str(&lines.join("\n"));
     if !cover_sources.is_empty() {
         out.push_str(&format!(
-            "\n- covers (books and comics with an ISBN): the metadata source's own cover, then {}",
+            "\n- covers (books and comics with an ISBN, once a metadata source has found the \
+             title): that source's own cover, then {}",
             cover_sources.join(", ")
         ));
     }
@@ -70,7 +72,7 @@ mod tests {
         assert!(text.contains("- bd: BnF, Google Books"), "{text}");
         assert!(!text.contains("- dvd:"), "an empty chain is left out: {text}");
         assert!(
-            text.contains("- covers (books and comics with an ISBN): the metadata source's own cover, then Inventaire, Open Library Covers"),
+            text.contains("once a metadata source has found the title): that source's own cover, then Inventaire, Open Library Covers"),
             "{text}"
         );
     }

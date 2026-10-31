@@ -59,7 +59,7 @@ Code review 2026-10-31, round 1 (one combined pass: adversarial, edge cases, acc
 - [Review][Dismiss] Low — K10plus named although it only completes zones (it is queried; the Dev Notes ask for "queried" without internals)
 - [Review][Dismiss] Low — builder takes `String` media labels instead of `MediaType` (no effect)
 
-Round 2 note: the Medium was a wording issue on a ~1 KB text, fixed and re-checked by the builder's unit tests (new assertion on "stops at the first source"); no code path changed.
+Round 2 (2026-10-31): 1 Medium, 2 Low — all wording, all patched: the cover fallbacks run only once a metadata source found the title (covers line says so); the list-tool sentences now say the sources "may already have been asked" (a title without a code was asked nothing); the chain line mentions that later sources may still complete a few cataloguing fields (#439 zone pass). No code path changed; the builder's unit tests updated.
 
 ## Dev Notes
 
