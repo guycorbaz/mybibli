@@ -944,3 +944,49 @@ async fn a_title_changed_by_hand_still_outdates_pending_proposals(pool: DbPool) 
     assert_eq!(accept(&f, &pool, meta).await.0, StatusCode::OK);
     assert_eq!(decision(&pool, meta).await.0, "stale");
 }
+
+// ─── Story 12-6 CI: lock scope of the acceptance's extra reads ──────
+
+// The carry-forward UPDATE (12-5) and the cover-race read (12-2) must lock
+// only the accepted title's rows: a rejection of a proposal on another
+// title must not wait for them. Before the fix, both scanned the
+// library-wide status index and the rejection timed out / deadlocked.
+#[sqlx::test(migrations = "./migrations")]
+async fn an_acceptance_on_one_title_does_not_lock_proposals_of_another(pool: DbPool) {
+    use mybibli::models::proposal::ProposalModel;
+    use mybibli::services::proposals::{Decision, ProposalService};
+    let f = fx(&pool).await;
+    let a = seed_title(&pool, "Titre A").await;
+    let b = seed_title(&pool, "Titre B").await;
+    let _a_meta = file_metadata(&f, a, json!({"publisher": "Casterman"})).await;
+    let _a_cover = file_cover(&f, a, 10).await;
+    let b_meta = file_metadata(&f, b, json!({"publisher": "Dupuis"})).await;
+
+    // Transaction 1: what an acceptance on title A runs, kept open.
+    let mut tx1 = pool.begin().await.unwrap();
+    ProposalModel::carry_identity_title(&mut tx1, a, 0, "Titre A", "Titre A corrigé")
+        .await
+        .unwrap();
+    ProposalModel::cover_accepted_since(
+        &mut tx1,
+        a,
+        chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap(),
+        0,
+    )
+    .await
+    .unwrap();
+
+    // Transaction 2: reject the proposal on title B — must not wait.
+    let mut tx2 = pool.begin().await.unwrap();
+    sqlx::query("SET SESSION innodb_lock_wait_timeout = 2")
+        .execute(&mut *tx2)
+        .await
+        .unwrap();
+    let _decided =
+        ProposalService::transition_in(&mut tx2, b_meta, &Decision::Reject { by: f.lib_id, reason: None })
+        .await
+        .expect("rejecting a proposal of another title must not wait for title A's locks");
+    tx2.commit().await.unwrap();
+    tx1.rollback().await.unwrap();
+    assert_eq!(decision(&pool, b_meta).await.0, "rejected");
+}

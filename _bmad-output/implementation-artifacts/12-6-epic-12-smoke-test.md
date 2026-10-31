@@ -37,8 +37,14 @@ claude-opus-5-5
 
 Code review 2026-10-31 (one pass): **0 Medium+**, 7 Low. Patched: the accepted description is asserted on the title page too; the mock-server assumption (no cover for an "EZ" ISBN) is documented in the spec header. Dismissed: key left active if `newProposeKey` fails after creation (same as the epic-11 smoke); page-1 presence under heavy parallel filing (needs > 23 filings in between); lazy thumbnail below the fold (same root); key/scan order vs the epic wording (cosmetic); a 25 h-multiple re-run collision (negligible).
 
+### CI finding (2026-10-31) — a real deadlock, fixed here
+
+The first CI run of this branch failed `proposals-review.spec.ts:179` (the reject modal stayed open): the server answered **500 — MariaDB 1213 deadlock**. Running the new smoke in parallel exposed it: accepting a title correction (12-5) ran `carry_identity_title` as `UPDATE proposal_items … JOIN proposals … WHERE status = 'pending'`, which share-locked **every pending proposal of the library** through `idx_proposals_status`; a rejection on another title (not retried) deadlocked with it. `cover_accepted_since` (12-2) had the same JOIN shape. Fix: both queries start on the title's items (`FORCE INDEX (idx_proposal_items_target)` + `STRAIGHT_JOIN`), and the carry-forward is a plain id read followed by an `UPDATE … WHERE id IN (…)` on those items only. Regression test `an_acceptance_on_one_title_does_not_lock_proposals_of_another` (`tests/proposal_accept_metadata_cover.rs`): with an acceptance's locks held on title A, rejecting a proposal of title B completes — verified to fail (1205 lock wait timeout) without the fix.
+
 ### File List
 
 - `tests/e2e/specs/journeys/proposals-epic12-smoke.spec.ts` (new)
+- `src/models/proposal.rs` — lock scope of `carry_identity_title` / `cover_accepted_since` (CI deadlock fix)
+- `tests/proposal_accept_metadata_cover.rs` — regression test
 - `_bmad-output/implementation-artifacts/12-6-epic-12-smoke-test.md` (new)
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — 12-6 line
