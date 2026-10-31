@@ -37,7 +37,11 @@ La page d'accueil est le tableau de bord. De haut en bas :
   \item \textbf{Champ de scan.}\index{champ de scan} Un champ
         focalisé qui accepte un ISBN, un code V ou un code L. La
         couche scanner-guard route l'entrée vers la bonne page
-        selon le préfixe.
+        selon le préfixe. Un ISBN saisi à la main peut garder les
+        tirets ou les espaces imprimés sur le livre
+        (\texttt{978-2-205-00121-1}, \texttt{2 205 00121 3}) :
+        mybibli les retire et traite l'ISBN-13 nu, au scan comme
+        dans la recherche.
   \item \textbf{Bandeau d'indicateurs.} Ajouts récents, prêts en
         retard, séries avec lacunes, volumes non rangés — chaque
         clic ouvre la liste filtrée correspondante.
