@@ -1,6 +1,6 @@
 # Story 12.3: Tell the agent where mybibli already searched
 
-Status: review
+Status: done
 
 GitHub issue: #560 (type:change-request) — closes it. Covers: FR150. Epic 12 — third story; ships in v1.22.0.
 
@@ -45,6 +45,22 @@ Static option (no migration): the agent is told which providers mybibli queries 
 - [x] T5 — manual ch. 13 (EN + FR): one paragraph on what the agent is told (or note it for Story 12.7)
 - [x] T6 — gates (targeted, then full once before the single push)
 
+### Review Findings
+
+Code review 2026-10-31, round 1 (one combined pass: adversarial, edge cases, acceptance): 1 Medium, 8 Low.
+
+- [x] [Review][Patch] **Medium** — the text claimed a listed title "went through" every source; the chain stops at the first source that has a record (and a title without a code is looked up nowhere) → instructions and both list descriptions reworded ("stops at the first source…", "those after the first may never have been asked") [src/mcp/instructions.rs, list tools]
+- [x] [Review][Patch] Low — cover fallbacks run only for an ISBN → "covers (books and comics with an ISBN)"
+- [x] [Review][Patch] Low — doc comments displaced (`ProviderRegistry::len`, `resolve_cover_url_with_fallback`) → restored
+- [x] [Review][Patch] Low — E2E "Open Library" matched the covers line → anchored regex on the book line
+- [x] [Review][Patch] Low — manual wording (one covers line, ISBN only, "checks them again" is advice) → EN + FR fixed, PDFs rebuilt
+- [x] [Review][Patch] Low — Completion Notes: Comic Vine is not registered at all → fixed
+- [x] [Review][Patch] Low — `last_updated` date → 2026-10-31
+- [Review][Dismiss] Low — K10plus named although it only completes zones (it is queried; the Dev Notes ask for "queried" without internals)
+- [Review][Dismiss] Low — builder takes `String` media labels instead of `MediaType` (no effect)
+
+Round 2 note: the Medium was a wording issue on a ~1 KB text, fixed and re-checked by the builder's unit tests (new assertion on "stops at the first source"); no code path changed.
+
 ## Dev Notes
 
 - `get_info` is synchronous and called per request (stateless server) — the builder must be cheap (a few string joins); no `.await`.
@@ -66,7 +82,7 @@ claude-opus-5-5
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created
-- T1: `MetadataProvider::is_active` (default `true`); `false` for `OmdbProvider` / `TmdbProvider` without a key and for the `BdgestProvider` stub. Google Books works without a key (lower quota) and stays active; Comic Vine is only registered with its key. Unit tests per provider.
+- T1: `MetadataProvider::is_active` (default `true`); `false` for `OmdbProvider` / `TmdbProvider` without a key and for the `BdgestProvider` stub. Google Books works without a key (lower quota) and stays active; Comic Vine is not registered at all (commented out in `main.rs`). Unit tests per provider.
 - T2: new `src/mcp/instructions.rs` (pure `server_instructions`), `ProviderRegistry::active_chain_names` (display names via `metadata_source_display_name`, chain order, dedup), `services::cover::COVER_FALLBACK_SOURCES`; `transport.rs::instructions(&AppState)` builds the text on every `get_info` (sync; settings read through the providers' own std `RwLock`). The static `INSTRUCTIONS` const is gone; its unit test now checks the builder.
 - T3: `list_titles_with_incomplete_metadata` / `list_titles_without_cover` descriptions point at the instructions ("look elsewhere first — those sources may hold the record now").
 - T4: `mcp-endpoint.spec.ts` (the spec that sends `initialize`; `mcp-read-tools.spec.ts` does not) asserts the instructions name `- book: BnF`, Open Library, "Search other sources first", "may hold the record now".

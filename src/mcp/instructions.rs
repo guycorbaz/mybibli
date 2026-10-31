@@ -27,23 +27,25 @@ pub fn server_instructions(chains: &[(String, Vec<String>)], cover_sources: &[&s
         return out;
     }
     out.push_str(
-        "\n\nSources mybibli already queries automatically, in this order, when a title is \
-         catalogued or its metadata is downloaded again — a title listed by \
-         list_titles_with_incomplete_metadata or list_titles_without_cover went through them \
-         without a usable result at its last lookup:\n",
+        "\n\nSources mybibli queries automatically, in this order, when a title with a code \
+         (ISBN, ISSN, UPC) is catalogued or its metadata is downloaded again. The chain stops \
+         at the first source that has a record, so a title listed by \
+         list_titles_with_incomplete_metadata or list_titles_without_cover was looked up in \
+         at least the first of them at its last lookup (in none if it has no code):\n",
     );
     out.push_str(&lines.join("\n"));
     if !cover_sources.is_empty() {
         out.push_str(&format!(
-            "\n- covers: the metadata source's own cover, then {}",
+            "\n- covers (books and comics with an ISBN): the metadata source's own cover, then {}",
             cover_sources.join(", ")
         ));
     }
     out.push_str(
         "\n\nSearch other sources first (national and union library catalogs, publishers, \
          booksellers, Wikidata, specialised databases). The sources above update their \
-         catalogs, so they may hold the record now: check them again when other sources \
-         find nothing. Cite every page you rely on in `sources`.",
+         catalogs, and those after the first may never have been asked: they may hold the \
+         record now — check them when other sources find nothing. Cite every page you rely \
+         on in `sources`.",
     );
     out
 }
@@ -68,7 +70,7 @@ mod tests {
         assert!(text.contains("- bd: BnF, Google Books"), "{text}");
         assert!(!text.contains("- dvd:"), "an empty chain is left out: {text}");
         assert!(
-            text.contains("- covers: the metadata source's own cover, then Inventaire, Open Library Covers"),
+            text.contains("- covers (books and comics with an ISBN): the metadata source's own cover, then Inventaire, Open Library Covers"),
             "{text}"
         );
     }
@@ -79,6 +81,7 @@ mod tests {
         assert!(text.contains("search other sources first"));
         assert!(text.contains("may hold the record now"));
         assert!(text.contains("at its last lookup"));
+        assert!(text.contains("stops at the first source that has a record"));
         for forbidden in ["do not use", "never use", "don't use", "skip ", "avoid "] {
             assert!(!text.contains(forbidden), "{forbidden}");
         }

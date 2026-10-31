@@ -35,7 +35,6 @@ impl ProviderRegistry {
             .collect()
     }
 
-    /// Number of registered providers.
     /// Story 12-3 (#560) — the readable names of the providers that
     /// actually query for `media_type` ([`MetadataProvider::is_active`]),
     /// in chain order, without duplicates.
@@ -50,6 +49,7 @@ impl ProviderRegistry {
         names
     }
 
+    /// Number of registered providers.
     pub fn len(&self) -> usize {
         self.providers.len()
     }

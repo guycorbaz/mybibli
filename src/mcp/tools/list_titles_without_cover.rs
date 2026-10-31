@@ -48,10 +48,9 @@ impl McpTool for ListTitlesWithoutCover {
          `page` equals `total_pages`. Each item has the same shape as in search_titles: \
          title id (use get_title for the ISBN and the full record), title, subtitle, media \
          type, genre, main contributor, number of volumes, `has_cover` (always false here), \
-         publication date and Dewey code. Deleted titles never appear. These titles went \
-         through mybibli's cover sources (named in the server instructions) without a usable \
-         cover at their last lookup: look elsewhere first — those sources may hold one now. \
-         Read-only."
+         publication date and Dewey code. Deleted titles never appear. mybibli's cover \
+         sources (named in the server instructions) gave no cover for these titles at their \
+         last lookup: look elsewhere first — those sources may hold one now. Read-only."
     }
 
     fn input_schema(&self) -> Value {

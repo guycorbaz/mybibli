@@ -207,6 +207,12 @@ fn inventaire_image_hash(json: &serde_json::Value, uri: &str) -> Option<String> 
         .map(str::to_string)
 }
 
+/// Story 12-3 (#560) — the cover sources [`resolve_cover_url_with_fallback`]
+/// tries after the metadata provider's own cover, in order (named to the
+/// MCP agent).
+pub const COVER_FALLBACK_SOURCES: [&str; 3] =
+    ["BnF legal-deposit scans", "Inventaire", "Open Library Covers"];
+
 /// Resolve a cover URL combining the resolving provider's `cover_url` and
 /// the cover-only fallbacks. Single source of truth used by every code
 /// path that downloads a cover for a resolved metadata result (fix #228 —
@@ -225,12 +231,6 @@ fn inventaire_image_hash(json: &serde_json::Value, uri: &str) -> Option<String> 
 ///
 /// Never panics, never bubbles errors — the worst outcome is a title
 /// landing cover-less.
-/// Story 12-3 (#560) — the cover sources [`resolve_cover_url_with_fallback`]
-/// tries after the metadata provider's own cover, in order (named to the
-/// MCP agent).
-pub const COVER_FALLBACK_SOURCES: [&str; 3] =
-    ["BnF legal-deposit scans", "Inventaire", "Open Library Covers"];
-
 pub async fn resolve_cover_url_with_fallback(
     client: &reqwest::Client,
     metadata: &MetadataResult,

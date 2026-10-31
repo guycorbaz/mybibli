@@ -60,8 +60,7 @@ test.describe("Story 11-6 — MCP endpoint", () => {
       // Story 12-3 (#560): the instructions name the sources mybibli
       // already queries — a lower priority for the agent, not an exclusion.
       const instructions: string = initBody.result.instructions;
-      expect(instructions).toContain("- book: BnF");
-      expect(instructions).toContain("Open Library");
+      expect(instructions).toMatch(/^- book: BnF, .*Open Library$/m);
       expect(instructions).toContain("Search other sources first");
       expect(instructions).toContain("may hold the record now");
       expect(init.headers()["mcp-session-id"]).toBeUndefined();
