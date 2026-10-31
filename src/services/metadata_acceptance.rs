@@ -442,7 +442,8 @@ async fn accept_in(
 
     let mut applied = AppliedMetadata {
         title_id: title.id,
-        title: title.title.clone(),
+        // The title as it now reads (a correction names the new one).
+        title: writes.title.map(str::to_string).unwrap_or_else(|| title.title.clone()),
         fields,
         contributors_added: Vec::new(),
         contributors_present: Vec::new(),
@@ -704,6 +705,10 @@ mod tests {
             baseline,
             proposed: json!("x"),
         };
+        // Story 12-5: the title is compared like the other one-line fields.
+        assert!(!field_changed(&s("title", Baseline::Text(Some("T".into()))), &t));
+        assert!(!field_changed(&s("title", Baseline::Text(Some(" T ".into()))), &t));
+        assert!(field_changed(&s("title", Baseline::Text(Some("Autre".into()))), &t));
         // Spacing / line endings alone are no change.
         assert!(!field_changed(
             &s("subtitle", Baseline::Text(Some("Un roman".into()))),

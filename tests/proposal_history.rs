@@ -322,7 +322,7 @@ async fn metadata_same_title_and_field_is_refused_inside_the_delay(pool: DbPool)
             metadata(title, json!({"subtitle": "B", "publisher": "P"})),
         )
         .await;
-    assert!(msg.contains("subtitle of title"), "{msg}");
+    assert!(msg.contains("`subtitle` of title"), "{msg}");
     assert!(!msg.contains("publisher"), "{msg}");
     assert_eq!(proposal_count(&pool).await, 1);
 
@@ -843,7 +843,7 @@ async fn a_rejected_title_correction_blocks_the_title_only(pool: DbPool) {
     let msg = agent
         .err("propose_title_metadata", metadata(title, json!({"title": "Autre correction"})))
         .await;
-    assert!(msg.contains("title of title"), "{msg}");
+    assert!(msg.contains("`title` of title"), "{msg}");
     agent
         .ok("propose_title_metadata", metadata(title, json!({"publisher": "P"})))
         .await;

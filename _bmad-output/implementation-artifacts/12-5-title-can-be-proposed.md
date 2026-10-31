@@ -1,6 +1,6 @@
 # Story 12.5: The title can be proposed
 
-Status: review
+Status: in-progress
 
 GitHub issue: #563 (type:change-request) — closes it. Covers: FR152 (extends FR132). Epic 12 — fifth story (after 12.2); ships in v1.22.0.
 
@@ -38,6 +38,21 @@ Story 12.2 records an **identity snapshot** (`title`, `isbn`, `media_type`) in e
 - [x] T5 — tests (AC8), E2E
 - [x] T6 — manual ch. 13 (proposable fields list) EN + FR or note for 12.7; CLAUDE.md § Proposal lifecycle (carry forward)
 - [x] T7 — gates
+
+### Review Findings
+
+Code review 2026-10-31, round 1 (combined pass): 1 Medium, 9 Low.
+
+- [x] [Review][Patch] **Medium** — AC8 unit tests missing for `field_changed` on `title` and for editing a `title` line → added (`metadata_acceptance` `compares_in_normal_form_and_by_date`, `proposal_edit::a_title_line_is_edited_and_never_blank`)
+- [x] [Review][Patch] Low — the success message named the record by its old (misspelt) title → `AppliedMetadata.title` is the title as it now reads
+- [x] [Review][Patch] Low — the "never empty" guard was a `debug_assert` → a real check returning an error in `apply_proposed_fields_in`
+- [x] [Review][Patch] Low — manual: re-identification outdates only when done **by hand** → EN + FR nuanced, PDFs rebuilt
+- [x] [Review][Patch] Low — lock comment did not mention a concurrent *edit* (not retried) → documented on `carry_identity_title`
+- [x] [Review][Patch] Low — agent message "title of title 42" ambiguous → field names in backticks ("`title` of title 42"); assertions updated
+- [Review][Dismiss] Low — items without identity (pre-12-2) or `current_truncated` are not carried forward (they keep the version rule by design — release note of 12-2 already covers pending pre-upgrade proposals)
+- [Review][Dismiss] Low — SQL collation of the carry-forward comparison (trailing spaces / case): marginal, the stored identity is the normalised live title
+- [Review][Dismiss] Low — a whitespace-only or NFD-only title correction is "unchanged" (normal form, as for every one-line field)
+- [Review][Dismiss] Low — AC5 met through `title_moved` before `FieldChanged` (both detect it; documented)
 
 ## Dev Notes
 

@@ -1303,6 +1303,24 @@ mod tests {
         vec![(1, "Auteur".to_string()), (2, "Illustrateur".to_string())]
     }
 
+    // Story 12-5 (#563): a `title` line is edited like a one-line field.
+    #[test]
+    fn a_title_line_is_edited_and_never_blank() {
+        let old = json!({"line": "field", "field": "title", "current": "Le Petit Prnce", "proposed": "Le Petit Prince"});
+        assert_eq!(
+            edited_proposed(&old, &form(&[("value", " Le  Petit  Prince ")]), &roles(), 2026).unwrap(),
+            json!("Le Petit Prince")
+        );
+        assert!(matches!(
+            edited_proposed(&old, &form(&[("value", "  ")]), &roles(), 2026),
+            Err(EditError::Field { ref field, problem: FieldProblem::Blank }) if field == "title"
+        ));
+        assert!(matches!(
+            edited_proposed(&old, &form(&[("value", &"a".repeat(501))]), &roles(), 2026),
+            Err(EditError::Field { problem: FieldProblem::TooLongChars { .. }, .. })
+        ));
+    }
+
     #[test]
     fn scalar_edits_follow_the_filing_rules() {
         let old = json!({"line": "field", "field": "subtitle", "current": null, "proposed": "x"});

@@ -568,7 +568,10 @@ impl ProposalModel {
     /// Runs in the decision transaction, after the title row lock: it
     /// takes row locks on other proposals' items in the reverse order of
     /// proposal → items → title (same as 12-2's cover read) — a
-    /// simultaneous decision on the title may deadlock and is retried.
+    /// simultaneous decision on the title may deadlock and is retried; a
+    /// simultaneous *edit* of another proposal on the title (11-19, not
+    /// retried) may lose the deadlock and report an error to its
+    /// librarian (two librarians on one title — accepted).
     pub async fn carry_identity_title(
         conn: &mut MySqlConnection,
         title_id: u64,

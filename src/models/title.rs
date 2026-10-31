@@ -302,7 +302,11 @@ impl TitleModel {
     ) -> Result<(), AppError> {
         let mut sets: Vec<&str> = Vec::new();
         if let Some(t) = fields.title {
-            debug_assert!(!t.trim().is_empty(), "a proposal never empties the title");
+            if t.trim().is_empty() {
+                return Err(AppError::Internal(
+                    "a proposal never empties the title".to_string(),
+                ));
+            }
             sets.push("title = ?");
         }
         if fields.subtitle.is_some() {
