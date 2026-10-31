@@ -579,19 +579,37 @@ impl ProposalModel {
         old: &str,
         new: &str,
     ) -> Result<u64, AppError> {
-        let done = sqlx::query(
-            "UPDATE proposal_items i JOIN proposals p ON p.id = i.proposal_id \
-             SET i.proposed_values = JSON_SET(i.proposed_values, '$.identity.title', ?) \
-             WHERE p.status = 'pending' AND p.deleted_at IS NULL AND i.deleted_at IS NULL \
-               AND p.id <> ? AND i.target_table = 'titles' AND i.target_id = ? \
-               AND JSON_UNQUOTE(JSON_EXTRACT(i.proposed_values, '$.identity.title')) = ?",
+        // Two steps (CI deadlock, story 12-6): a multi-table UPDATE …
+        // JOIN proposals filtered on `status = 'pending'` share-locked
+        // every pending proposal of the library through
+        // `idx_proposals_status`, and deadlocked with a rejection on
+        // another title. The ids come from a plain read starting on the
+        // title's items; the UPDATE then locks those item rows only.
+        let ids: Vec<u64> = sqlx::query_scalar(
+            "SELECT i.id FROM proposal_items i FORCE INDEX (idx_proposal_items_target) \
+             STRAIGHT_JOIN proposals p ON p.id = i.proposal_id \
+             WHERE i.target_table = 'titles' AND i.target_id = ? AND i.deleted_at IS NULL \
+               AND p.status = 'pending' AND p.deleted_at IS NULL AND p.id <> ?",
         )
-        .bind(new)
-        .bind(except_id)
         .bind(title_id)
-        .bind(old)
-        .execute(&mut *conn)
+        .bind(except_id)
+        .fetch_all(&mut *conn)
         .await?;
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let placeholders = vec!["?"; ids.len()].join(", ");
+        let sql = format!(
+            "UPDATE proposal_items \
+             SET proposed_values = JSON_SET(proposed_values, '$.identity.title', ?) \
+             WHERE id IN ({placeholders}) AND deleted_at IS NULL \
+               AND JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.identity.title')) = ?"
+        );
+        let mut q = sqlx::query(&sql).bind(new);
+        for id in &ids {
+            q = q.bind(id);
+        }
+        let done = q.bind(old).execute(&mut *conn).await?;
         Ok(done.rows_affected())
     }
 
@@ -624,15 +642,18 @@ impl ProposalModel {
         except_id: u64,
     ) -> Result<bool, AppError> {
         let found: Option<u64> = sqlx::query_scalar(
-            "SELECT p.id FROM proposals p \
-             JOIN proposal_items i ON i.proposal_id = p.id AND i.deleted_at IS NULL \
-             WHERE p.deleted_at IS NULL AND p.kind = 'cover' AND p.status = 'accepted' \
-               AND p.id <> ? AND i.target_table = 'titles' AND i.target_id = ? \
-               AND p.decided_at >= ? \
+            // Starts on the title's items (CI deadlock, story 12-6): the
+            // share locks stay on this title's items and their proposals,
+            // never on a status range of the whole library.
+            "SELECT p.id FROM proposal_items i FORCE INDEX (idx_proposal_items_target) \
+             STRAIGHT_JOIN proposals p ON p.id = i.proposal_id \
+             WHERE i.target_table = 'titles' AND i.target_id = ? AND i.deleted_at IS NULL \
+               AND p.deleted_at IS NULL AND p.kind = 'cover' AND p.status = 'accepted' \
+               AND p.id <> ? AND p.decided_at >= ? \
              LIMIT 1 LOCK IN SHARE MODE",
         )
-        .bind(except_id)
         .bind(title_id)
+        .bind(except_id)
         .bind(since)
         .fetch_optional(&mut *conn)
         .await?;
