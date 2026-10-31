@@ -61,6 +61,8 @@ Code review 2026-10-31, round 1 (one combined pass: adversarial, edge cases, acc
 
 Round 2 (2026-10-31): 1 Medium, 2 Low — all wording, all patched: the cover fallbacks run only once a metadata source found the title (covers line says so); the list-tool sentences now say the sources "may already have been asked" (a title without a code was asked nothing); the chain line mentions that later sources may still complete a few cataloguing fields (#439 zone pass). No code path changed; the builder's unit tests updated.
 
+Round 3 (2026-10-31, full pass): **0 Medium+**. 1 Low patched — "was normally looked up" (a cache hit, a key added later or a global timeout mean no source was asked at the last lookup).
+
 ## Dev Notes
 
 - `get_info` is synchronous and called per request (stateless server) — the builder must be cheap (a few string joins); no `.await`.

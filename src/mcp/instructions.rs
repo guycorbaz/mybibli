@@ -31,8 +31,8 @@ pub fn server_instructions(chains: &[(String, Vec<String>)], cover_sources: &[&s
          (ISBN, ISSN, UPC) is catalogued or its metadata is downloaded again. The chain stops \
          at the first source that has a record (the later ones are asked at most to complete \
          a few cataloguing fields), so a title listed by \
-         list_titles_with_incomplete_metadata or list_titles_without_cover was looked up in \
-         at least the first of them at its last lookup (in none if it has no code):\n",
+         list_titles_with_incomplete_metadata or list_titles_without_cover was normally \
+         looked up in at least the first of them at its last lookup (in none if it has no code):\n",
     );
     out.push_str(&lines.join("\n"));
     if !cover_sources.is_empty() {
