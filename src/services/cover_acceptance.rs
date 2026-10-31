@@ -10,15 +10,18 @@
 //!    proposal stays pending: the librarian rejects it;
 //! 2. **one transaction** (shared steps in
 //!    [`crate::services::acceptance`]): lock, `version`, items,
-//!    [`ProposalService::check_staleness_in`] (title changed or deleted),
+//!    [`ProposalService::check_staleness_in`] (title deleted — a moved
+//!    `version` no longer counts for a cover, story 12-2, #542), then
+//!    [`crate::services::proposals::title_moved`] (re-identified title),
 //!    then the live `cover_image_url` compared with the `current` value
-//!    recorded at filing — the background cover fetch does not bump
-//!    `titles.version` (#521), so a cover fetched since is found here; a
-//!    mismatch marks the proposal `stale`. Otherwise the decision is
-//!    recorded, `cover_image_url` marked as manually edited (FR144 — a
-//!    background cover fetch landing before the promotion leaves the
-//!    title alone) and `titles.version` bumped, so another pending cover
-//!    or metadata proposal for the title goes stale at its own acceptance;
+//!    recorded at filing — every cover write (upload, fetch, accepted
+//!    proposal) stores a cache-busted URL, so any change of image changes
+//!    it — and another cover proposal accepted since filing (its image is
+//!    installed only after its commit); either marks the proposal
+//!    `stale`. Otherwise the decision is recorded, `cover_image_url`
+//!    marked as manually edited (FR144 — a background cover fetch landing
+//!    before the promotion leaves the title alone) and `titles.version`
+//!    bumped — which outdates no metadata proposal any more;
 //! 3. **after** the commit, [`cover_staging::promote`] moves the file to
 //!    `covers/{title_id}.jpg` (replacing the current cover), then
 //!    `cover_image_url` is set with a cache-busting suffix. If the
@@ -39,7 +42,7 @@ use crate::models::proposal::{
 use crate::models::title::TitleModel;
 use crate::services::acceptance::{
     AcceptConflict, AcceptError, AcceptOutcome, CoverDirs, StaleCause, in_retried_transaction,
-    lock_pending_in, mark_stale_in,
+    lock_pending_in, mark_stale_in, mark_title_moved_in,
 };
 use crate::services::cover_staging;
 use crate::services::proposals::{Decision, ProposalService, Transition};
@@ -86,6 +89,26 @@ pub fn parse_items(items: &[ProposalItemRow]) -> Result<StoredCover, String> {
         staged_file,
         current,
     })
+}
+
+/// Story 12-2 (review): another cover proposal for the title accepted
+/// since this one was filed — its image may not be installed yet.
+///
+/// Lock order: this share-locks other proposals' rows **after** the
+/// title row, the reverse of proposal → items → title. Two simultaneous
+/// decisions on one title may then deadlock; `in_retried_transaction`
+/// retries on 40001 and the loser re-runs behind the title lock (correct
+/// outcome; with three or more simultaneous decisions the retry budget
+/// can run out — single-librarian load, accepted, review round 3).
+async fn cover_accepted_since_filing(
+    conn: &mut MySqlConnection,
+    id: u64,
+    title_id: u64,
+) -> Result<bool, AppError> {
+    let Some(filed_at) = ProposalModel::find(conn, id).await?.map(|p| p.created_at) else {
+        return Ok(false);
+    };
+    ProposalModel::cover_accepted_since(conn, title_id, filed_at, id).await
 }
 
 /// Whether the live cover differs from the one recorded at filing
@@ -205,7 +228,12 @@ async fn accept_in(
                 "proposal title gone although not stale".to_string(),
             ))
         })?;
-    if cover_changed(stored.current.as_deref(), title.cover_image_url.as_deref()) {
+    if crate::services::proposals::title_moved(&items, &title) {
+        return mark_title_moved_in(conn, id, &items).await;
+    }
+    if cover_changed(stored.current.as_deref(), title.cover_image_url.as_deref())
+        || cover_accepted_since_filing(conn, id, title.id).await?
+    {
         return mark_stale_in(conn, id, AcceptConflict::CoverChanged).await;
     }
     match ProposalService::transition_in(conn, id, &Decision::Accept { by: user_id }).await? {

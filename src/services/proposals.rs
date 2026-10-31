@@ -10,8 +10,11 @@
 //! - **listing** and **detail**;
 //! - **transitions** — only `pending` → `accepted` / `rejected` /
 //!   `stale`; nothing leaves a final state;
-//! - **staleness** — an item whose target was deleted or whose
-//!   `version` moved since filing makes a pending proposal `stale`.
+//! - **staleness** — an item whose target was deleted makes a pending
+//!   proposal `stale`; so does a moved `version`, for series proposals
+//!   only ([`version_counts`]). Metadata and cover proposals are judged
+//!   per field by their acceptance (story 12-2, #542), plus
+//!   [`title_moved`] (identity snapshot, cut baselines, legacy items).
 //!
 //! Errors are a typed [`ProposalError`] with agent-facing English
 //! messages (D-11-9-2): the MCP tools of stories 11-12..11-14 turn the
@@ -595,14 +598,61 @@ pub fn normalize_rejection_reason(reason: Option<&str>) -> Result<Option<String>
     Ok(Some(r.to_string()))
 }
 
-/// The items whose target is gone, soft-deleted, or at another version
-/// than the one recorded at filing. `states` holds, per table, the rows
-/// read now (absent = no longer exists). Items without a target are
-/// never stale.
+/// Story 12-2 (review) — what identifies a title, recorded in every
+/// metadata and cover item at filing (`"identity"`): its name, ISBN and
+/// media type. The per-field checks cannot see a re-identified title (a
+/// mistaken record corrected by hand); this snapshot can.
+pub fn title_identity(title: &crate::models::title::TitleModel) -> Value {
+    serde_json::json!({
+        "title": title.title,
+        "isbn": title.isbn,
+        "media_type": title.media_type,
+    })
+}
+
+/// Whether a metadata or cover proposal's title moved in a way its
+/// per-field checks do not see (pure — unit tested): an item's identity
+/// snapshot differs from the live title, or an item carries no snapshot
+/// (filed before story 12-2) or a cut baseline (`current_truncated`) and
+/// the title's `version` moved since filing — those keep the pre-12-2
+/// rule.
+pub fn title_moved(items: &[ProposalItemRow], title: &crate::models::title::TitleModel) -> bool {
+    let live = title_identity(title);
+    items.iter().filter(|i| i.target.is_some()).any(|item| {
+        let values: Value = serde_json::from_str(&item.proposed_values_json).unwrap_or(Value::Null);
+        let version_moved = item.target_version != Some(title.version);
+        match values.get("identity") {
+            Some(identity) if *identity != live => true,
+            Some(_) => values.get("current_truncated") == Some(&Value::Bool(true)) && version_moved,
+            None => version_moved,
+        }
+    })
+}
+
+/// Whether a target at another `version` than at filing makes a proposal
+/// of `kind` stale. Series proposals: yes (their live checks, #521, come
+/// on top). Metadata and cover proposals: no — staleness is per field
+/// (story 12-2, #542, FR149): the acceptance compares what the proposal
+/// touches (`FieldChanged`, `RoleGone`, `CoverChanged`), so accepting a
+/// cover no longer outdates a metadata proposal on the same title.
+pub fn version_counts(kind: ProposalKind) -> bool {
+    match kind {
+        ProposalKind::SeriesCreate | ProposalKind::SeriesAttach => true,
+        ProposalKind::Metadata | ProposalKind::Cover => false,
+    }
+}
+
+/// The items of a proposal of `kind` whose target is gone, soft-deleted,
+/// or — when [`version_counts`] for the kind — at another version than
+/// the one recorded at filing. `states` holds, per table, the rows read
+/// now (absent = no longer exists). Items without a target are never
+/// stale.
 pub fn stale_reasons(
+    kind: ProposalKind,
     items: &[ProposalItemRow],
     states: &HashMap<ProposalTargetTable, HashMap<u64, TargetRowState>>,
 ) -> Vec<StaleTarget> {
+    let version_counts = version_counts(kind);
     items
         .iter()
         .filter_map(|item| {
@@ -610,7 +660,9 @@ pub fn stale_reasons(
             let reason = match states.get(&target.table).and_then(|m| m.get(&target.id)) {
                 None => StaleReason::Deleted,
                 Some(s) if s.deleted => StaleReason::Deleted,
-                Some(s) if Some(s.version) != item.target_version => StaleReason::Changed,
+                Some(s) if version_counts && Some(s.version) != item.target_version => {
+                    StaleReason::Changed
+                }
                 Some(_) => return None,
             };
             Some(StaleTarget {
@@ -671,10 +723,13 @@ async fn stale_targets_on(
     id: u64,
     lock: bool,
 ) -> Result<Vec<StaleTarget>, AppError> {
+    let Some(kind) = ProposalModel::find(conn, id).await?.map(|p| p.kind) else {
+        return Ok(Vec::new());
+    };
     let items = ProposalModel::items(conn, id, lock).await?;
     let states =
         read_target_states(conn, items.iter().filter_map(|i| i.target), false, lock).await?;
-    Ok(stale_reasons(&items, &states))
+    Ok(stale_reasons(kind, &items, &states))
 }
 
 /// Run `f` in a transaction: committed when `f` succeeds, rolled back
@@ -910,6 +965,10 @@ impl ProposalService {
             return Err(ProposalError::UnknownDecider { user_id });
         }
         if matches!(decision, Decision::Accept { .. }) {
+            let kind = ProposalModel::find(conn, id)
+                .await?
+                .ok_or(ProposalError::NotFound { id })?
+                .kind;
             let items = ProposalModel::items(conn, id, true).await?;
             if items.is_empty() {
                 return Err(ProposalError::NothingToApply { id });
@@ -917,10 +976,40 @@ impl ProposalService {
             let states =
                 read_target_states(conn, items.iter().filter_map(|i| i.target), false, true)
                     .await?;
-            let targets = stale_reasons(&items, &states);
+            let targets = stale_reasons(kind, &items, &states);
             if !targets.is_empty() {
                 Self::apply_update(conn, id, &stale_update()).await?;
                 return Ok(Transition::WentStale(targets));
+            }
+        }
+        if matches!(decision, Decision::Reject { .. }) {
+            // Story 12-2 (review): what a metadata rejection blocks is what
+            // the librarian rejected — the live lines, not the ones the
+            // agent filed (a line removed before the decision blocks
+            // nothing). Other kinds keep the key of the agent's filing (an
+            // edited series name must still block the agent's own name).
+            let Some(kind) = ProposalModel::find(conn, id).await?.map(|p| p.kind) else {
+                return Err(ProposalError::NotFound { id });
+            };
+            let lines = if kind == ProposalKind::Metadata {
+                ProposalModel::subject_lines(conn, &[id]).await?
+            } else {
+                Vec::new()
+            };
+            let subject_lines: Vec<_> = lines
+                .iter()
+                .map(crate::services::proposal_history::SubjectLine::from_row)
+                .collect();
+            if let Some(subject) = (!subject_lines.is_empty())
+                .then(|| {
+                    crate::services::proposal_history::ProposalSubject::from_lines(
+                        kind,
+                        &subject_lines,
+                    )
+                })
+                .flatten()
+            {
+                ProposalModel::set_equivalence_key(conn, id, &subject.equivalence_key()).await?;
             }
         }
         Self::apply_update(conn, id, &update).await?;
@@ -1340,7 +1429,7 @@ mod tests {
         states.insert(Titles, titles);
         states.insert(Series, series);
 
-        let stale = stale_reasons(&items, &states);
+        let stale = stale_reasons(ProposalKind::SeriesAttach, &items, &states);
         let got: Vec<(u64, StaleReason)> = stale.iter().map(|s| (s.item_id, s.reason)).collect();
         assert_eq!(
             got,
@@ -1350,12 +1439,32 @@ mod tests {
                 (6, StaleReason::Deleted),
             ]
         );
+        // Story 12-2 (#542): for metadata and cover, a moved version is not
+        // stale — only a deleted or missing target is.
+        for kind in [ProposalKind::Metadata, ProposalKind::Cover] {
+            let stale = stale_reasons(kind, &items, &states);
+            let got: Vec<(u64, StaleReason)> =
+                stale.iter().map(|s| (s.item_id, s.reason)).collect();
+            assert_eq!(
+                got,
+                vec![(4, StaleReason::Deleted), (6, StaleReason::Deleted)],
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_series_kinds_count_versions() {
+        assert!(version_counts(ProposalKind::SeriesCreate));
+        assert!(version_counts(ProposalKind::SeriesAttach));
+        assert!(!version_counts(ProposalKind::Metadata));
+        assert!(!version_counts(ProposalKind::Cover));
     }
 
     #[test]
     fn stale_reasons_ignores_untargeted_items() {
         let items = vec![row(1, None, None), row(2, None, None)];
-        assert!(stale_reasons(&items, &HashMap::new()).is_empty());
+        assert!(stale_reasons(ProposalKind::SeriesCreate, &items, &HashMap::new()).is_empty());
     }
 
     #[test]

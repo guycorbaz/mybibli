@@ -275,7 +275,7 @@ async fn history_reopening_follows_the_newest_equivalent_rejection(pool: DbPool)
 // ─── Resubmission delay (FR136) ───────────────────────────────────
 
 #[sqlx::test(migrations = "./migrations")]
-async fn metadata_same_title_and_field_set_is_refused_inside_the_delay(pool: DbPool) {
+async fn metadata_same_title_and_field_is_refused_inside_the_delay(pool: DbPool) {
     let agent = Agent::new(&pool).await;
     let title = seed_title(&pool, "Délai").await;
     let by = decider(&pool).await;
@@ -314,11 +314,23 @@ async fn metadata_same_title_and_field_set_is_refused_inside_the_delay(pool: DbP
     assert!(msg.contains(&reopen), "{msg} should name {reopen}");
     assert_eq!(proposal_count(&pool).await, 1);
 
-    // Another set of fields or another title: filed.
+    // Story 12-2 (#535): a rejection blocks each of its fields — a set
+    // that still includes `subtitle` is refused, naming that field.
+    let msg = agent
+        .err(
+            "propose_title_metadata",
+            metadata(title, json!({"subtitle": "B", "publisher": "P"})),
+        )
+        .await;
+    assert!(msg.contains("subtitle of title"), "{msg}");
+    assert!(!msg.contains("publisher"), "{msg}");
+    assert_eq!(proposal_count(&pool).await, 1);
+
+    // Another field of the same title, or another title: filed.
     agent
         .ok(
             "propose_title_metadata",
-            metadata(title, json!({"subtitle": "B", "publisher": "P"})),
+            metadata(title, json!({"publisher": "P"})),
         )
         .await;
     let other_title = seed_title(&pool, "Autre").await;
@@ -511,7 +523,7 @@ async fn the_setting_applies_to_the_next_filing(pool: DbPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn a_cover_for_the_same_title_is_refused_and_nothing_stays_staged(pool: DbPool) {
+async fn the_same_cover_image_is_refused_and_nothing_stays_staged(pool: DbPool) {
     let dir = tempfile::tempdir().unwrap();
     let covers = dir.path().join("covers");
     let agent = Agent {
@@ -535,13 +547,51 @@ async fn a_cover_for_the_same_title_is_refused_and_nothing_stays_staged(pool: Db
     };
     let first = id_of(&agent.ok("propose_cover", png(4)).await);
     reject(&pool, by, first, None).await;
+    // Story 12-2 (#535): the same image is refused ...
     let staged_before = std::fs::read_dir(&staging).unwrap().count();
-    let msg = agent.err("propose_cover", png(5)).await;
-    assert!(msg.contains(&format!("cover of title {title}")), "{msg}");
+    let msg = agent.err("propose_cover", png(4)).await;
+    assert!(msg.contains(&format!("cover image for title {title}")), "{msg}");
     assert_eq!(std::fs::read_dir(&staging).unwrap().count(), staged_before);
     assert_eq!(proposal_count(&pool).await, 1);
+    // ... another image of the same title is filed.
+    agent.ok("propose_cover", png(5)).await;
+    assert_eq!(proposal_count(&pool).await, 2);
     back_date(&pool, first, 90).await;
-    agent.ok("propose_cover", png(6)).await;
+    agent.ok("propose_cover", png(4)).await;
+    assert_eq!(proposal_count(&pool).await, 3);
+}
+
+/// Story 12-2 (#535): a cover rejected before fingerprints existed
+/// (legacy key `cover:titles/{id}`) blocks no new cover proposal.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_legacy_cover_rejection_blocks_no_new_cover(pool: DbPool) {
+    let dir = tempfile::tempdir().unwrap();
+    let covers = dir.path().join("covers");
+    let agent = Agent {
+        app: router_with_covers(&pool, &covers),
+        key: seed_key(&pool, ApiKeyScope::Propose).await,
+    };
+    let title = seed_title(&pool, "Ancienne").await;
+    let by = decider(&pool).await;
+    let mut out = Vec::new();
+    image::DynamicImage::new_rgb8(4, 4)
+        .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+        .unwrap();
+    let args = json!({
+        "title_id": title,
+        "image_base64": base64::engine::general_purpose::STANDARD.encode(&out),
+        "media_type": "image/png",
+        "sources": [SRC]
+    });
+    let first = id_of(&agent.ok("propose_cover", args.clone()).await);
+    reject(&pool, by, first, None).await;
+    sqlx::query("UPDATE proposals SET equivalence_key = ? WHERE id = ?")
+        .bind(format!("cover:titles/{title}"))
+        .bind(first)
+        .execute(&pool)
+        .await
+        .unwrap();
+    agent.ok("propose_cover", args).await;
     assert_eq!(proposal_count(&pool).await, 2);
 }
 
@@ -741,4 +791,38 @@ async fn only_an_admin_may_set_the_delay(pool: DbPool) {
         .await;
     assert_eq!(res.status(), StatusCode::SEE_OTHER);
     assert_eq!(delay_row(&pool).await, ("90".to_string(), 1));
+}
+
+/// Story 12-2 (review): a rejection blocks what the librarian rejected —
+/// a line removed before the decision is not blocked.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_line_removed_before_the_rejection_is_not_blocked(pool: DbPool) {
+    let agent = Agent::new(&pool).await;
+    let title = seed_title(&pool, "Retirée").await;
+    let by = decider(&pool).await;
+    let first = id_of(
+        &agent
+            .ok(
+                "propose_title_metadata",
+                metadata(title, json!({"subtitle": "A", "publisher": "P"})),
+            )
+            .await,
+    );
+    sqlx::query(
+        "UPDATE proposal_items SET deleted_at = NOW() WHERE proposal_id = ? \
+         AND JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.field')) = 'publisher'",
+    )
+    .bind(first)
+    .execute(&pool)
+    .await
+    .unwrap();
+    reject(&pool, by, first, None).await;
+    // The publisher was removed, not rejected: filed.
+    agent
+        .ok("propose_title_metadata", metadata(title, json!({"publisher": "Q"})))
+        .await;
+    // The subtitle was rejected: refused.
+    agent
+        .err("propose_title_metadata", metadata(title, json!({"subtitle": "B"})))
+        .await;
 }

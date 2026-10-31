@@ -590,7 +590,12 @@ pub async fn store_fetched_cover(
         "UPDATE titles SET cover_image_url = ?, updated_at = NOW() \
          WHERE id = ? AND deleted_at IS NULL",
     )
-    .bind(format!("/covers/{title_id}.jpg"))
+    // Story 12-2 (review): a cache-busted URL, so every cover write
+    // changes the stored URL — what a pending cover proposal compares.
+    .bind(crate::services::cover_acceptance::cache_busted(
+        &format!("/covers/{title_id}.jpg"),
+        chrono::Utc::now().timestamp(),
+    ))
     .bind(title_id)
     .execute(&mut *tx)
     .await?;

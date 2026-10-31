@@ -129,7 +129,7 @@ impl TargetLabel {
                 name: names.series.get(series_id).cloned(),
             },
             Some(ProposalSubject::Metadata { title_id, .. })
-            | Some(ProposalSubject::Cover { title_id }) => TargetLabel::Title {
+            | Some(ProposalSubject::Cover { title_id, .. }) => TargetLabel::Title {
                 id: *title_id,
                 name: names.titles.get(title_id).map(|t| t.title.clone()),
             },
@@ -1261,7 +1261,7 @@ mod tests {
         );
         assert_eq!(t.href().as_deref(), Some("/series/2"));
         assert_eq!(t.text("en"), "Tintin");
-        let gone = TargetLabel::of(Some(&ProposalSubject::Cover { title_id: 5 }), &names);
+        let gone = TargetLabel::of(Some(&ProposalSubject::Cover { title_id: 5, fingerprint: None }), &names);
         assert_eq!(gone.href(), None);
         assert!(gone.text("en").contains('5'));
         let new = TargetLabel::of(

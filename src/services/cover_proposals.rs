@@ -20,9 +20,14 @@
 //! ```json
 //! {"line": "cover", "staged_file": "<32 hex>.jpg", "replaces_existing": bool,
 //!  "current": "<cover_image_url>" | null, "media_type": "image/png",
-//!  "original_bytes": 48213, "width": 400, "height": 600, "bytes": 31877}
+//!  "original_bytes": 48213, "width": 400, "height": 600, "bytes": 31877,
+//!  "fingerprint": "<64 hex>", "identity": {"title": …, "isbn": …, "media_type": …}}
 //! ```
 //!
+//! - `fingerprint` — SHA-256 of the staged image (story 12-2, #535): the
+//!   equivalence key, so a rejection blocks only the same image.
+//! - `identity` — the title's identity at filing (story 12-2,
+//!   `proposals::title_identity`).
 //! - `staged_file` — the file in `<COVERS_DIR>/.staging`; never shown to
 //!   the agent. Check it with `cover_staging::is_staged_name` (the
 //!   staging functions do) before building a path. 11-16 serves it to
@@ -328,6 +333,17 @@ pub fn decode_image(image_base64: &str, declared: &'static str) -> Result<Vec<u8
     Ok(bytes)
 }
 
+/// SHA-256 (lower-case hex) of the re-encoded image — what makes two
+/// cover proposals "the same image" for the resubmission delay (story
+/// 12-2, #535). The re-encode is deterministic for the same pixels.
+pub fn cover_fingerprint(jpeg: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(jpeg)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 /// The proposal item (see the module doc for the contract).
 pub fn cover_item(
     staged_file: &str,
@@ -340,6 +356,7 @@ pub fn cover_item(
     json!({
         "line": "cover",
         "staged_file": staged_file,
+        "fingerprint": cover_fingerprint(&encoded.jpeg),
         "replaces_existing": current.is_some(),
         "current": current,
         "media_type": media_type,
@@ -423,6 +440,7 @@ impl CoverProposalService {
             pinned: req.version.is_some(),
             title_id: title.id,
             version,
+            identity: crate::services::proposals::title_identity(&title),
             current_cover: title.cover_image_url,
             declared,
             original,
@@ -444,6 +462,8 @@ struct FilingJob {
     title_id: u64,
     version: i32,
     current_cover: Option<String>,
+    /// The title's identity at filing (story 12-2 review).
+    identity: Value,
     declared: &'static str,
     original: Vec<u8>,
     sources: Vec<String>,
@@ -468,13 +488,14 @@ impl FilingJob {
         let staged_file = cover_staging::stage(&self.staging_dir, &encoded.jpeg)
             .await
             .map_err(CoverProposalError::Staging)?;
-        let values = cover_item(
+        let mut values = cover_item(
             &staged_file,
             self.current_cover.as_deref(),
             self.declared,
             original_bytes,
             &encoded,
         );
+        values["identity"] = self.identity;
         let replaces_existing = values["replaces_existing"] == json!(true);
         let target = ProposalTarget {
             table: ProposalTargetTable::Titles,
@@ -683,6 +704,7 @@ mod tests {
             cover_item(name, Some("/covers/4.jpg?v=1"), "image/png", 99, &encoded),
             json!({
                 "line": "cover", "staged_file": name, "replaces_existing": true,
+                "fingerprint": "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
                 "current": "/covers/4.jpg?v=1", "media_type": "image/png",
                 "original_bytes": 99, "width": 400, "height": 600, "bytes": 3
             })
@@ -692,6 +714,15 @@ mod tests {
             assert_eq!(v["replaces_existing"], false);
             assert_eq!(v["current"], Value::Null);
         }
+    }
+
+    #[test]
+    fn fingerprint_is_the_sha256_of_the_staged_bytes() {
+        let a = cover_fingerprint(&[1, 2, 3]);
+        assert_eq!(a.len(), 64);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert_eq!(a, cover_fingerprint(&[1, 2, 3]), "deterministic");
+        assert_ne!(a, cover_fingerprint(&[1, 2, 4]));
     }
 
     #[test]

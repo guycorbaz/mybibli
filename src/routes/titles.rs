@@ -1326,6 +1326,13 @@ pub async fn upload_cover(
         crate::services::cover::CoverError::Io(msg) => AppError::Internal(msg),
         crate::services::cover::CoverError::Network(msg) => AppError::Internal(msg),
     })?;
+    // Story 12-2 (review): cache-busted like an accepted cover, so every
+    // cover write changes the stored URL (a pending cover proposal
+    // compares it) and browsers drop the previous image.
+    let cover_url = crate::services::cover_acceptance::cache_busted(
+        &cover_url,
+        chrono::Utc::now().timestamp(),
+    );
 
     // Persist the new URL + mark cover as manually-edited so future
     // re-fetches don't overwrite it (idempotent — adding "cover_image_url"
