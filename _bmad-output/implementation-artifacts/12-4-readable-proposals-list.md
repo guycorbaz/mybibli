@@ -1,6 +1,6 @@
 # Story 12.4: A readable proposals list
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #561 (type:change-request) — closes it. Covers: FR151, UX-DR35. Epic 12 — fourth story; ships in v1.22.0.
 
@@ -36,12 +36,12 @@ Observed on 2026-10-30: the librarian repeatedly clicked the subject (then a lin
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `ListEntry` keeps the subject; `ListRow` gains `proposed_fields: Option<String>`, `thumb: bool`, `view: Option<(String, String)>` (href, label), `link_sr`
-- [ ] T2 — template rows (AC1–AC4)
-- [ ] T3 — locales (AC5)
-- [ ] T4 — tests (AC6), E2E
-- [ ] T5 — manual (AC7)
-- [ ] T6 — gates
+- [x] T1 — `ListEntry` keeps the subject; `ListRow` gains `proposed_fields: Option<String>`, `thumb: bool`, `view: Option<(String, String)>` (href, label), `link_sr`
+- [x] T2 — template rows (AC1–AC4)
+- [x] T3 — locales (AC5)
+- [x] T4 — tests (AC6), E2E
+- [x] T5 — manual (AC7)
+- [x] T6 — gates
 
 ## Dev Notes
 
@@ -57,8 +57,24 @@ Observed on 2026-10-30: the librarian repeatedly clicked the subject (then a lin
 
 ### Agent Model Used
 
+claude-opus-5-5
+
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created
+- T1: `ListEntry.subject` kept (no extra query); `ListRow` gains `link_sr`, `view`, `proposed_fields`, `thumb_alt` (replaces `open_aria`); pure `routes::proposals::row_extras(kind, status, subject, target_text, target_href, loc)` decides them (fields in `PROPOSABLE_FIELDS` order with `field_label`; thumbnail only for a *pending* cover; "View title"/"View series" from the href).
+- T2: the subject cell holds the thumbnail (32×48, `loading=lazy`, alt), the subject link to `/proposals/{id}` (sr-only " — proposal #N"), the small catalog link, and the "Proposed:" line (`data-proposed-fields`); the Open column is gone. One `a[href="/proposals/{id}"]` per row.
+- T3: `proposals.{view_title, view_series, row_proposed, thumb_alt, row_link_sr}` in en/fr/de/it; `open` / `open_aria` removed (only this template used them); `locale_parity` green.
+- T4: unit `row_extras_follow_kind_status_and_target`; DB `a_row_leads_to_the_proposal_and_shows_what_it_proposes` (one primary link, View title, fields line, thumbnail, none once rejected, no Open); E2E `proposals-review.spec.ts` link-name helper now matches the subject link and the cover journey asserts the row thumbnail loads; `proposals-access.spec.ts` 360 px check unchanged (selector by href).
+- T5: manual ch. 13 "The list" EN + FR, PDFs rebuilt.
+- T6 (targeted): lib `routes::proposals` + `templates_audit` 23 passed; DB `proposals_page` 24, `locale_parity` green; E2E `proposals-review`, `proposals-access`, `series-epic11-smoke` 5/5.
 
 ### File List
+
+- `src/services/proposal_review.rs` — `ListEntry.subject`
+- `src/routes/proposals.rs` — `ListRow`, `row_extras`, unit test
+- `templates/pages/proposals.html` — rows
+- `locales/{en,fr,de,it}.yml`
+- `tests/proposals_page.rs`; `tests/e2e/specs/journeys/proposals-review.spec.ts`, `proposals-access.spec.ts`
+- `docs/manual/{en,fr}/13-agents-proposals.tex`, PDFs
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — 12-4 line

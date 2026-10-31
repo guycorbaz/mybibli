@@ -51,23 +51,28 @@
                     <th scope="col" class="hidden sm:table-cell px-3 py-2">{{ l.t("col_key") }}</th>
                     <th scope="col" class="px-3 py-2">{{ l.t("col_status") }}</th>
                     <th scope="col" class="hidden sm:table-cell px-3 py-2 text-right">{{ l.t("col_items") }}</th>
-                    <th scope="col" class="px-3 py-2"><span class="sr-only">{{ l.t("open") }}</span></th>
                 </tr>
             </thead>
             <tbody>
                 {% for r in rows %}
                 <tr data-proposal-id="{{ r.id }}" class="border-b border-stone-100 dark:border-stone-800 last:border-b-0 hover:bg-stone-50 dark:hover:bg-stone-800/50">
                     <td class="px-3 py-2 text-stone-700 dark:text-stone-300">{{ r.kind_label }}</td>
+                    {# Story 12-4 (#561): the subject opens the proposal; the
+                       catalog page is a secondary, labelled link. #}
                     <td class="px-3 py-2">
-                        {% if let Some(href) = r.target_href %}<a href="{{ href }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ r.target_text }}</a>{% else %}<span class="text-stone-700 dark:text-stone-300">{{ r.target_text }}</span>{% endif %}
+                        <div class="flex items-start gap-2">
+                            {% if let Some(alt) = r.thumb_alt %}<img src="/proposals/{{ r.id }}/cover" alt="{{ alt }}" loading="lazy" width="32" height="48" class="w-8 h-12 object-cover rounded border border-stone-200 dark:border-stone-700 shrink-0">{% endif %}
+                            <div class="min-w-0">
+                                <a href="/proposals/{{ r.id }}" class="font-medium text-indigo-600 dark:text-indigo-400 hover:underline break-words">{{ r.target_text }}<span class="sr-only"> — {{ r.link_sr }}</span></a>
+                                {% if let Some((href, label)) = r.view %}<a href="{{ href }}" class="ml-2 text-xs text-stone-500 dark:text-stone-400 hover:underline whitespace-nowrap">{{ label }}</a>{% endif %}
+                                {% if let Some(fields) = r.proposed_fields %}<div class="mt-0.5 text-xs text-stone-600 dark:text-stone-400" data-proposed-fields>{{ fields }}</div>{% endif %}
+                            </div>
+                        </div>
                     </td>
                     <td class="hidden sm:table-cell px-3 py-2 text-xs tabular-nums text-stone-500 dark:text-stone-400 whitespace-nowrap">{{ r.filed }}</td>
                     <td class="hidden sm:table-cell px-3 py-2 text-stone-700 dark:text-stone-300">{{ r.key_label }}</td>
                     <td class="px-3 py-2">{% let badge_status = r.status %}{% let badge_label = r.status_label.as_str() %}{% let badge_class = r.status_class %}{% include "components/proposal_status_badge.html" %}</td>
                     <td class="hidden sm:table-cell px-3 py-2 text-right tabular-nums text-stone-700 dark:text-stone-300">{{ r.item_count }}</td>
-                    <td class="px-3 py-2 text-right">
-                        <a href="/proposals/{{ r.id }}" aria-label="{{ r.open_aria }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ l.t("open") }}</a>
-                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

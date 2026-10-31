@@ -64,7 +64,60 @@ pub struct ListRow {
     pub status_label: String,
     pub status_class: &'static str,
     pub item_count: i64,
-    pub open_aria: String,
+    /// Story 12-4 (#561) — hidden text completing the subject link's
+    /// accessible name ("proposal #N").
+    pub link_sr: String,
+    /// "View title" / "View series": the catalog page of a live target.
+    pub view: Option<(String, String)>,
+    /// "Proposed: …" — the field labels of a metadata proposal.
+    pub proposed_fields: Option<String>,
+    /// Alt text of the staged-cover thumbnail (pending cover proposals
+    /// only — the staged file is gone once decided).
+    pub thumb_alt: Option<String>,
+}
+
+/// Story 12-4 (#561) — the parts of a list row beyond the summary
+/// (pure — unit tested).
+pub fn row_extras(
+    kind: crate::models::proposal::ProposalKind,
+    status: ProposalStatus,
+    subject: Option<&crate::services::proposal_history::ProposalSubject>,
+    target_text: &str,
+    target_href: Option<&str>,
+    loc: &str,
+) -> (Option<(String, String)>, Option<String>, Option<String>) {
+    use crate::models::proposal::ProposalKind;
+    use crate::services::proposal_history::ProposalSubject;
+    let view = target_href.map(|href| {
+        let key = if href.starts_with("/series/") {
+            "proposals.view_series"
+        } else {
+            "proposals.view_title"
+        };
+        (href.to_string(), rust_i18n::t!(key, locale = loc).to_string())
+    });
+    let proposed_fields = match subject {
+        Some(ProposalSubject::Metadata { fields, .. }) if !fields.is_empty() => {
+            let labels: Vec<String> = crate::services::metadata_proposals::PROPOSABLE_FIELDS
+                .iter()
+                .filter(|f| fields.contains(**f))
+                .map(|f| proposal_review::field_label(f, loc))
+                .collect();
+            Some(
+                rust_i18n::t!(
+                    "proposals.row_proposed",
+                    locale = loc,
+                    fields = labels.join(", ").as_str()
+                )
+                .to_string(),
+            )
+        }
+        _ => None,
+    };
+    let thumb_alt = (kind == ProposalKind::Cover && status == ProposalStatus::Pending).then(|| {
+        rust_i18n::t!("proposals.thumb_alt", locale = loc, title = target_text).to_string()
+    });
+    (view, proposed_fields, thumb_alt)
 }
 
 #[derive(Template)]
@@ -144,11 +197,22 @@ pub async fn proposals_page(
     let rows = list
         .items
         .into_iter()
-        .map(|e| ListRow {
+        .map(|e| {
+            let target_text = e.target.text(loc);
+            let target_href = e.target.href();
+            let (view, proposed_fields, thumb_alt) = row_extras(
+                e.summary.kind,
+                e.summary.status,
+                e.subject.as_ref(),
+                &target_text,
+                target_href.as_deref(),
+                loc,
+            );
+            ListRow {
             id: e.summary.id,
             kind_label: kind_label(e.summary.kind, loc),
-            target_text: e.target.text(loc),
-            target_href: e.target.href(),
+            target_text,
+            target_href,
             filed: display_utc(e.summary.created_at),
             key_label: e
                 .summary
@@ -158,8 +222,12 @@ pub async fn proposals_page(
             status_label: status_label(e.summary.status, loc),
             status_class: status_class(e.summary.status),
             item_count: e.summary.item_count,
-            open_aria: rust_i18n::t!("proposals.open_aria", locale = loc, id = e.summary.id)
+            link_sr: rust_i18n::t!("proposals.row_link_sr", locale = loc, id = e.summary.id)
                 .to_string(),
+            view,
+            proposed_fields,
+            thumb_alt,
+        }
         })
         .collect();
     let (sv, kv) = (status_filter_value(status), kind_filter_value(kind));
@@ -875,6 +943,53 @@ pub(crate) fn render<T: Template>(template: &T, name: &'static str) -> Result<Re
 
 #[cfg(test)]
 mod tests {
+    // Story 12-4 (#561): what a list row shows beyond the summary.
+    #[test]
+    fn row_extras_follow_kind_status_and_target() {
+        use crate::models::proposal::ProposalKind;
+        use crate::services::proposal_history::ProposalSubject;
+        let meta = ProposalSubject::Metadata {
+            title_id: 7,
+            fields: ["publisher", "title"].iter().map(|s| s.to_string()).collect(),
+        };
+        let (view, fields, thumb) = row_extras(
+            ProposalKind::Metadata,
+            ProposalStatus::Pending,
+            Some(&meta),
+            "Tintin",
+            Some("/title/7"),
+            "en",
+        );
+        assert_eq!(view, Some(("/title/7".to_string(), "View title".to_string())));
+        // Fields in the documented order, localized.
+        assert_eq!(fields.as_deref(), Some("Proposed: Title, Publisher"));
+        assert_eq!(thumb, None);
+
+        let (view, fields, thumb) =
+            row_extras(ProposalKind::Cover, ProposalStatus::Pending, None, "Tintin", Some("/title/7"), "en");
+        assert_eq!(view.unwrap().1, "View title");
+        assert_eq!(fields, None);
+        assert_eq!(thumb.as_deref(), Some("Proposed cover for Tintin"));
+        // Decided: the staged file is gone — no thumbnail.
+        let (_, _, thumb) =
+            row_extras(ProposalKind::Cover, ProposalStatus::Rejected, None, "Tintin", None, "en");
+        assert_eq!(thumb, None);
+
+        let (view, _, _) = row_extras(
+            ProposalKind::SeriesAttach,
+            ProposalStatus::Pending,
+            None,
+            "Astérix",
+            Some("/series/3"),
+            "fr",
+        );
+        assert_eq!(view, Some(("/series/3".to_string(), "Voir la série".to_string())));
+        // A target no longer live: no catalog link.
+        let (view, _, _) =
+            row_extras(ProposalKind::Metadata, ProposalStatus::Stale, None, "x", None, "en");
+        assert_eq!(view, None);
+    }
+
     use super::*;
 
     #[test]

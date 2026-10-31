@@ -274,6 +274,47 @@ async fn the_list_filters_by_status_and_kind_and_names_targets(pool: DbPool) {
     assert!(!html.contains(&row(created)));
 }
 
+/// Story 12-4 (#561): the subject opens the proposal; "View title" goes to
+/// the catalog; a metadata row lists its fields, a pending cover row
+/// shows its thumbnail; no "Open" column.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_row_leads_to_the_proposal_and_shows_what_it_proposes(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let (lib, lib_id) = librarian(&pool, &f).await;
+    let title = seed_title(&pool, "Lisible").await;
+    let meta = file_metadata(&f, title, json!({"subtitle": "S", "publisher": "P"})).await;
+    let cover = file_cover(&f, title).await;
+    let (_, html) = lib.get(&f.agent.app, "/proposals").await;
+    for id in [meta, cover] {
+        assert_eq!(
+            html.matches(&format!("href=\"/proposals/{id}\"")).count(),
+            1,
+            "one primary link for {id}"
+        );
+    }
+    assert!(html.contains(&format!("href=\"/title/{title}\"")), "View title link");
+    assert!(html.contains("View title") || html.contains("Voir le titre"), "{html}");
+    assert!(
+        html.contains("Proposed: Subtitle, Publisher") || html.contains("Proposé : Sous-titre, Éditeur"),
+        "fields line"
+    );
+    assert!(html.contains(&format!("src=\"/proposals/{cover}/cover\"")), "thumbnail");
+    assert!(!html.contains("Open proposal"), "no Open column");
+    assert!(!html.contains("proposals."), "raw locale key leaked");
+
+    // Rejected: the staged file is gone, no thumbnail any more.
+    mybibli::services::proposals::ProposalService::transition(
+        &pool,
+        cover,
+        &mybibli::services::proposals::Decision::Reject { by: lib_id, reason: None },
+    )
+    .await
+    .unwrap();
+    let (_, html) = lib.get(&f.agent.app, "/proposals?status=all&kind=all&page=1").await;
+    assert!(html.contains(&format!("data-proposal-id=\"{cover}\"")));
+    assert!(!html.contains(&format!("src=\"/proposals/{cover}/cover\"")), "no thumbnail once decided");
+}
+
 #[sqlx::test(migrations = "./migrations")]
 async fn the_list_paginates_and_keeps_the_filters(pool: DbPool) {
     let f = fixture(&pool).await;
