@@ -1,5 +1,5 @@
 # generated: 2026-03-29
-# last_updated: 2026-10-31 (Story 12-5 implemented (review); 12-3 done; 12-2 done; 12-1 done. Epic 12 planned — proposals after a first real use (#502, #542, #560, #561, #563), release v1.22.0 at close. The v1.21.1 patch (#558, on main) was withdrawn before any image was published and rides v1.22.0. Previously 2026-10-29: v1.21.0 — closing release of epic 11 (#493): MCP server on /api/mcp with twelve tools, propose API keys, Proposals page (review, edit, accept, reject, staleness, 90-day resubmission delay), expected tomes + wish list, cover staging in the covers volume, sticky navigation bar switching to the menu below 1280 px (#496). Six additive migrations. Epic-11 retrospective → done; epic-11 → done.)
+# last_updated: 2026-10-31 (Story 12-5 done (code review clean after 2 rounds); 12-3 done; 12-2 done; 12-1 done. Epic 12 planned — proposals after a first real use (#502, #542, #560, #561, #563), release v1.22.0 at close. The v1.21.1 patch (#558, on main) was withdrawn before any image was published and rides v1.22.0. Previously 2026-10-29: v1.21.0 — closing release of epic 11 (#493): MCP server on /api/mcp with twelve tools, propose API keys, Proposals page (review, edit, accept, reject, staleness, 90-day resubmission delay), expected tomes + wish list, cover staging in the covers volume, sticky navigation bar switching to the menu below 1280 px (#496). Six additive migrations. Epic-11 retrospective → done; epic-11 → done.)
 # project: mybibli
 # project_key: NOKEY
 # tracking_system: file-system
@@ -256,7 +256,7 @@ development_status:
   12-2-per-field-staleness: done
   12-3-providers-already-searched: done
   12-4-readable-proposals-list: backlog
-  12-5-title-can-be-proposed: review
+  12-5-title-can-be-proposed: done
   12-6-epic-12-smoke-test: backlog
   12-7-epic-12-documentation: backlog
   epic-12-retrospective: optional

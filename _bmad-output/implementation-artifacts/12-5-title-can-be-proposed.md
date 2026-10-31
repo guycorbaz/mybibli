@@ -1,6 +1,6 @@
 # Story 12.5: The title can be proposed
 
-Status: in-progress
+Status: done
 
 GitHub issue: #563 (type:change-request) — closes it. Covers: FR152 (extends FR132). Epic 12 — fifth story (after 12.2); ships in v1.22.0.
 
@@ -53,6 +53,8 @@ Code review 2026-10-31, round 1 (combined pass): 1 Medium, 9 Low.
 - [Review][Dismiss] Low — SQL collation of the carry-forward comparison (trailing spaces / case): marginal, the stored identity is the normalised live title
 - [Review][Dismiss] Low — a whitespace-only or NFD-only title correction is "unchanged" (normal form, as for every one-line field)
 - [Review][Dismiss] Low — AC5 met through `title_moved` before `FieldChanged` (both detect it; documented)
+
+Round 2 (2026-10-31, full pass): **0 Medium+**. 2 Low: the manual's tool reference omitted the title → fixed (EN + FR); `carry_identity_title`'s JOIN may lock other pending proposal rows if the optimizer starts from the status index (short transaction, single-tenant load — dismissed, noted).
 
 ## Dev Notes
 
