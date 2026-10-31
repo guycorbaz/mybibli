@@ -108,7 +108,10 @@ impl McpTool for ListTitlesWithIncompleteMetadata {
          (1-based) until `page` equals `total_pages`. Each item gives the title id (use \
          get_title for the full record), title, subtitle, media type, genre, ISBN, main \
          contributor, publication date, whether a cover exists, and `missing`: every field \
-         the title lacks. Deleted titles and contributors never count. Read-only."
+         the title lacks. Deleted titles and contributors never count. mybibli's metadata \
+         sources (named in the server instructions, with when they are asked) may already \
+         have been asked for these titles without a complete record: look elsewhere first — those sources may hold the record now. \
+         Read-only."
     }
 
     fn input_schema(&self) -> Value {

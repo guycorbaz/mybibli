@@ -319,7 +319,13 @@ every start.
 \label{sec:agents-tools}
 
 The agent discovers the tools by itself; each carries a description
-written for it. For reference:
+written for it. When it connects, mybibli also tells it which sources
+it queries automatically: the metadata providers of each media type in
+their order (the lookup stops at the first one that has the title), and
+the cover sources tried for books and comics with an ISBN. The agent is
+asked to search elsewhere first, and told that those sources update
+their catalogs and may hold a record now. A provider whose key is not configured is
+not named. For reference:
 
 \subsubsection*{Reading}
 

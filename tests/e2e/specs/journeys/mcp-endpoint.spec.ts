@@ -3,7 +3,8 @@
  *
  * Real journey from a blank browser: loginAs(admin) → scan an ISBN in
  * /catalog (creates a title) → Admin → API keys → create a `propose` key
- * → an MCP client session over plain HTTP: `initialize` (2025-11-25) →
+ * → an MCP client session over plain HTTP: `initialize` (2025-11-25,
+ * its instructions name the sources mybibli queries — story 12-3) →
  * `tools/list` lists `get_title` → `tools/call get_title` returns the
  * scanned title; a session-less 2026-07-28 call works too → a `read` key
  * is refused (403) → both keys are revoked.
@@ -56,6 +57,12 @@ test.describe("Story 11-6 — MCP endpoint", () => {
       const initBody = await init.json();
       expect(initBody.result.protocolVersion).toBe("2025-11-25");
       expect(initBody.result.serverInfo.name).toBe("mybibli");
+      // Story 12-3 (#560): the instructions name the sources mybibli
+      // already queries — a lower priority for the agent, not an exclusion.
+      const instructions: string = initBody.result.instructions;
+      expect(instructions).toMatch(/^- book: BnF, .*Open Library$/m);
+      expect(instructions).toContain("Search other sources first");
+      expect(instructions).toContain("may hold the record now");
       expect(init.headers()["mcp-session-id"]).toBeUndefined();
 
       const legacy = { "MCP-Protocol-Version": "2025-11-25" };

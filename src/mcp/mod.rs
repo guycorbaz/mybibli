@@ -25,6 +25,7 @@
 //!   NFR46). A hand-written transport would replace it alone.
 
 mod config;
+mod instructions;
 pub mod tool;
 mod tools;
 mod transport;

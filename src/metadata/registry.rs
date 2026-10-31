@@ -35,6 +35,20 @@ impl ProviderRegistry {
             .collect()
     }
 
+    /// Story 12-3 (#560) — the readable names of the providers that
+    /// actually query for `media_type` ([`MetadataProvider::is_active`]),
+    /// in chain order, without duplicates.
+    pub fn active_chain_names(&self, media_type: &MediaType) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        for p in self.chain_for(media_type).into_iter().filter(|p| p.is_active()) {
+            let name = crate::metadata::provider::metadata_source_display_name(p.name());
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        names
+    }
+
     /// Number of registered providers.
     pub fn len(&self) -> usize {
         self.providers.len()
@@ -78,6 +92,51 @@ mod tests {
         ) -> Result<Option<MetadataResult>, MetadataError> {
             Ok(None)
         }
+    }
+
+    struct Inactive;
+
+    #[async_trait]
+    impl MetadataProvider for Inactive {
+        fn name(&self) -> &str {
+            "bdgest"
+        }
+        fn supports_media_type(&self, _media_type: &MediaType) -> bool {
+            true
+        }
+        fn is_active(&self) -> bool {
+            false
+        }
+        async fn lookup_by_isbn(
+            &self,
+            _isbn: &str,
+        ) -> Result<Option<MetadataResult>, MetadataError> {
+            Ok(None)
+        }
+    }
+
+    // Story 12-3 (#560): readable names, chain order, inactive ones out.
+    #[test]
+    fn active_chain_names_are_readable_ordered_and_active_only() {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(Inactive));
+        registry.register(Box::new(MockProvider {
+            name: "BnF",
+            media_types: vec![MediaType::Book],
+        }));
+        registry.register(Box::new(MockProvider {
+            name: "google_books",
+            media_types: vec![MediaType::Book],
+        }));
+        registry.register(Box::new(MockProvider {
+            name: "musicbrainz",
+            media_types: vec![MediaType::Cd],
+        }));
+        assert_eq!(
+            registry.active_chain_names(&MediaType::Book),
+            vec!["BnF".to_string(), "Google Books".to_string()]
+        );
+        assert_eq!(registry.active_chain_names(&MediaType::Dvd), Vec::<String>::new());
     }
 
     #[test]
