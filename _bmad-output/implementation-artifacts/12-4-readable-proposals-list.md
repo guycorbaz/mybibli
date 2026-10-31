@@ -1,6 +1,6 @@
 # Story 12.4: A readable proposals list
 
-Status: in-progress
+Status: done
 
 GitHub issue: #561 (type:change-request) — closes it. Covers: FR151, UX-DR35. Epic 12 — fourth story; ships in v1.22.0.
 
@@ -60,6 +60,8 @@ Code review 2026-10-31, round 1 (combined pass): 1 Medium, 13 Low.
 - [Review][Dismiss] Low — unknown-shape subject shows "—" as link text (no such proposal is ever filed)
 - [Review][Dismiss] Low — rustfmt layout of the `ListRow` literal / test placement (cosmetic, no fmt gate)
 - [Review][Dismiss] Low — 360 px check on a decided proposal only (layout risk low: 32 px + gap, `break-words`, `sm:` columns hidden)
+
+Round 2 (2026-10-31, full pass): **0 Medium+**; 2 cosmetic Low (fmt layout of the `ListRow` literal, test above `use super::*`) — dismissed (no fmt gate).
 
 ## Dev Notes
 
