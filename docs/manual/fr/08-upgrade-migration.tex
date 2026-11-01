@@ -148,31 +148,51 @@ Chaque release mybibli publie une page GitHub Release avec :
 Lisez les notes avant de mettre à jour. Les breaking changes
 portent une étiquette \emph{Breaking} bien visible.
 
-\section{Nouveautés de la 1.21.1}\label{sec:whats-new-1.21.1}
+\section{Nouveautés de la 1.22.0}\label{sec:whats-new-1.22.0}
 
-La version 1.21.1 est une version corrective sur la 1.21.0.
-\emph{Aucune migration}, aucun réglage modifié --- on récupère
-l'image, on recrée le conteneur, c'est tout. Elle porte une
-correction, trouvée dès le premier passage d'un agent sur un vrai
-catalogue.
+La version 1.22.0 clôt l'epic 12, planifiée à partir de la première
+séance en production avec un agent IA. \emph{Aucune migration}, aucun
+réglage modifié --- on récupère l'image, on recrée le conteneur
+(\texttt{docker compose up -d}), c'est tout.
 
 \begin{itemize}
-  \item \textbf{\#558 \string— une couverture JPEG tronquée est
-        refusée.} Le décodeur d'images acceptait un JPEG coupé avant
-        sa fin : il gardait les lignes lues et peignait le reste en
-        gris. Une couverture proposée par un agent, téléchargée chez
-        un fournisseur ou envoyée à la main pouvait ainsi n'être
-        qu'une bande d'image au-dessus d'un aplat gris. mybibli
-        vérifie désormais qu'un JPEG va jusqu'à son marqueur de fin,
-        et le refuse sinon (\emph{Image data is incomplete} pour un
-        agent). Les formats PNG, WebP et GIF étaient déjà refusés
-        lorsqu'ils étaient tronqués.
-
-        Les couvertures proposées avant la mise à jour ne sont pas
-        revérifiées : refusez sur la page Propositions celles qui
-        s'affichent à moitié grises, avant de les faire proposer à
-        nouveau.
+  \item \textbf{\#542 \string— examiner les propositions dans
+        n'importe quel ordre.} Accepter une couverture ne rend plus
+        périmée une proposition de métadonnées du même titre, ni
+        l'inverse. Une proposition ne devient périmée que si ce
+        qu'elle touche a changé (un champ, la couverture), si son
+        titre a été supprimé ou ré-identifié à la main, ou si un rôle
+        de contributeur proposé a été supprimé
+        (chapitre~\ref{ch:agents}).
+  \item \textbf{\#535 \string— refus par champ et par image.} Une
+        proposition de métadonnées refusée bloque chacun de ses champs
+        pendant le délai de nouvelle soumission ; une couverture
+        refusée ne bloque que la même image.
+  \item \textbf{\#560 \string— l'agent sait où mybibli a cherché.} À
+        la connexion, il apprend quelles sources mybibli interroge pour
+        chaque type de média, et cherche d'abord ailleurs.
+  \item \textbf{\#563 \string— corrections de titre.} Un agent peut
+        proposer une correction du titre principal ; une correction
+        acceptée laisse les autres propositions en attente valables.
+  \item \textbf{\#561 \string— une liste des propositions lisible.}
+        L'objet ouvre la proposition, \emph{Voir le titre} mène à la
+        fiche, une ligne liste les champs proposés et une couverture en
+        attente montre une miniature.
+  \item \textbf{\#502 \string— les ISBN saisis avec tirets ou espaces}
+        sont reconnus au scan et dans la recherche.
+  \item \textbf{\#558 \string— les couvertures JPEG tronquées sont
+        refusées} au lieu d'être enregistrées comme une bande d'image
+        sur un aplat gris. (Ce correctif avait d'abord été préparé comme
+        1.21.1, jamais publiée.)
 \end{itemize}
+
+\paragraph{Après la mise à jour.} Les propositions encore en attente
+gardent l'ancienne règle (une couverture acceptée sur leur titre les
+rend encore périmées) : faites-les déposer à nouveau par l'agent pour
+en profiter. Les refus de métadonnées antérieurs bloquent désormais
+champ par champ ; les refus de couverture antérieurs ne bloquent plus
+rien de nouveau --- les couvertures refusées parce que tronquées
+peuvent être proposées à nouveau.
 
 \section{Nouveautés de la 1.21.0}\label{sec:whats-new-1.21.0}
 

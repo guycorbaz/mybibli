@@ -32,40 +32,69 @@ mybibli follows [Semantic Versioning](https://semver.org/) 2.0.
 
 ## Now
 
-**Current stable: [`v1.21.1`](https://github.com/guycorbaz/mybibli/releases/tag/v1.21.1)**
-(2026-10-30) — one production fix: a truncated JPEG cover is refused
-instead of being stored as a strip of image over grey
-([#558](https://github.com/guycorbaz/mybibli/issues/558)). **No
-migration.** It patches v1.21.0 (2026-10-29) — AI agents, under
-supervision: a built-in MCP server through which an AI agent proposes
-series, missing tomes, metadata and covers, and a Proposals page where
-the librarian decides. The sections below has the detail; every release before it
-has its own section further down, and this is the file that carries
-them — the README quotes only the current release, and the website
-tells the same story for a different audience.
+**Current stable: [`v1.22.0`](https://github.com/guycorbaz/mybibli/releases/tag/v1.22.0)**
+(2026-11-01) — proposals, after a first real use: proposals can be
+reviewed in any order (staleness per field), the agent is told where
+mybibli already searched, it can correct a title, the proposals list
+leads straight to each proposal, and ISBNs typed with hyphens are
+recognised. **No migration.** The section below has the detail; every
+release before it has its own section further down, and this is the
+file that carries them — the README quotes only the current release,
+and the website tells the same story for a different audience.
 
-**Next:** no epic is scheduled yet. Two change requests are the
-candidates, to be ordered together because both touch the page shell:
-a base-path setting for reverse proxies
-([#492](https://github.com/guycorbaz/mybibli/issues/492)) and a
-collapsible left sidebar in place of the top navigation bar
-([#547](https://github.com/guycorbaz/mybibli/issues/547)). Everything
-else open lives in the issue tracker.
+**Next:** epic 13 — a collapsible left sidebar in place of the top
+navigation bar ([#547](https://github.com/guycorbaz/mybibli/issues/547)),
+unless a bug comes first; then epic 14 — agent proposals of a volume's
+purchase price and current value, to estimate what a collection is
+worth ([#564](https://github.com/guycorbaz/mybibli/issues/564)). The
+base-path setting for reverse proxies
+([#492](https://github.com/guycorbaz/mybibli/issues/492)) comes later.
+Everything else open lives in the issue tracker.
 
-## v1.21.1 — truncated covers refused *(shipped)*
+## v1.22.0 — proposals, after a first real use *(shipped)*
 
-Shipped 2026-10-30. One fix, found the day after v1.21.0 by the first
-real agent run against the production catalog. **No migration.**
+Shipped 2026-11-01. The closing release of epic 12, planned from the
+first production agent session (2026-10-30: 352 proposals filed, 245
+accepted, 190 titles improved). **No migration.**
 
-- **A truncated JPEG cover is refused**
-  ([#558](https://github.com/guycorbaz/mybibli/issues/558)). The image
-  decoder accepted a JPEG cut short and painted the missing rows grey;
-  9 of 53 covers proposed by an agent arrived that way. Every cover
-  path — agent proposal, provider download, manual upload — now checks
-  that a JPEG runs to its end-of-image marker, and refuses it otherwise
-  ("Image data is incomplete"). PNG, WebP and GIF were already refused
-  when cut short. Covers already staged are not re-checked: reject the
-  grey ones on the Proposals page.
+- **Review in any order — staleness per field**
+  ([#542](https://github.com/guycorbaz/mybibli/issues/542)). Accepting a
+  cover no longer outdates a metadata proposal on the same title, nor the
+  reverse. A proposal goes stale only when something it touches changed
+  (a field, the cover), its title was deleted or re-identified by hand,
+  or a proposed contributor role was deleted. Every cover write now
+  stores a cache-busted URL.
+- **Rejections by field and by image**
+  ([#535](https://github.com/guycorbaz/mybibli/issues/535)). A rejected
+  metadata proposal blocks each of its fields for the resubmission
+  delay; a rejected cover blocks only the same image, so another image
+  can be proposed at once.
+- **The agent is told where mybibli already searched**
+  ([#560](https://github.com/guycorbaz/mybibli/issues/560)). The MCP
+  server's instructions list, per media type, the providers mybibli
+  queries and how the lookup stops, so an agent looks elsewhere first —
+  those sources may hold the record now.
+- **The title can be proposed**
+  ([#563](https://github.com/guycorbaz/mybibli/issues/563)). An agent can
+  correct a title's main title (spelling, or the real title of a record
+  named after its ISBN); an accepted correction keeps the other pending
+  proposals valid.
+- **A readable proposals list**
+  ([#561](https://github.com/guycorbaz/mybibli/issues/561)). The subject
+  opens the proposal, "View title" leads to the catalog, a line lists the
+  proposed fields and a pending cover shows a thumbnail.
+- **ISBN typed with hyphens or spaces**
+  ([#502](https://github.com/guycorbaz/mybibli/issues/502)) is recognised
+  at scan and in search.
+- **Truncated JPEG covers refused**
+  ([#558](https://github.com/guycorbaz/mybibli/issues/558)) — the fix
+  first prepared as v1.21.1, which was withdrawn before any image was
+  published.
+
+Upgrade notes: proposals still pending at the upgrade keep the previous
+staleness rule — have the agent file them again to benefit; metadata
+rejections from before the upgrade now block per field; cover
+rejections from before block nothing new.
 
 ## v1.21.0 — AI agents, under supervision *(shipped)*
 
