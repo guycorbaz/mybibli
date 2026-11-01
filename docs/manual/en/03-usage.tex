@@ -35,7 +35,10 @@ The home page is the dashboard. From top to bottom:
   \item \textbf{Scan field.}\index{scan field} A focused input that
         accepts an ISBN, a V-code or an L-code. The scanner-guard
         layer routes the input to the right page depending on its
-        prefix.
+        prefix. An ISBN typed by hand may keep the hyphens or spaces
+        printed on the book (\texttt{978-2-205-00121-1},
+        \texttt{2 205 00121 3}): mybibli removes them and handles
+        the bare ISBN-13, at scan as in the search.
   \item \textbf{Indicators row.} Recent additions, overdue loans,
         series with gaps, unshelved volumes — each click jumps to
         the filtered list.
