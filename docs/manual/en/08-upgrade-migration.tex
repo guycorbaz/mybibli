@@ -139,27 +139,46 @@ Every mybibli release publishes a GitHub Release page with:
 Read the notes before upgrading. Breaking changes are tagged with a
 prominent \emph{Breaking} label.
 
-\section{What's new in 1.21.1}\label{sec:whats-new-1.21.1}
+\section{What's new in 1.22.0}\label{sec:whats-new-1.22.0}
 
-Version 1.21.1 is a patch release on top of 1.21.0. \emph{No
-migration}, no setting changed --- pull the image, recreate the
-container, done. It carries one fix, found by the first agent run
-against a real catalog.
+Version 1.22.0 closes epic 12, planned from the first production
+session with an AI agent. \emph{No migration}, no setting changed ---
+pull the image, recreate the container (\texttt{docker compose up -d}),
+done.
 
 \begin{itemize}
-  \item \textbf{\#558 \string— a truncated JPEG cover is refused.} The
-        image decoder accepted a JPEG cut short: it kept the rows it
-        read and painted the rest grey. A cover proposed by an agent,
-        downloaded from a provider or uploaded by hand could thus be a
-        strip of image over a flat grey area. mybibli now checks that a
-        JPEG runs to its end-of-image marker and refuses it otherwise
-        (\emph{Image data is incomplete} for an agent). PNG, WebP and
-        GIF were already refused when cut short.
-
-        Covers proposed before the upgrade are not re-checked: reject
-        the ones that show half grey on the Proposals page before
-        having them proposed again.
+  \item \textbf{\#542 \string— review proposals in any order.} Accepting
+        a cover no longer outdates a metadata proposal on the same title,
+        nor the reverse. A proposal goes stale only when something it
+        touches changed (a field, the cover), its title was deleted or
+        re-identified by hand, or a proposed contributor role was
+        deleted (chapter~\ref{ch:agents}).
+  \item \textbf{\#535 \string— rejections by field and by image.} A
+        rejected metadata proposal blocks each of its fields for the
+        resubmission delay; a rejected cover blocks only the same image.
+  \item \textbf{\#560 \string— the agent knows where mybibli searched.}
+        When it connects, it is told which sources mybibli queries for
+        each media type, and searches elsewhere first.
+  \item \textbf{\#563 \string— title corrections.} An agent can propose
+        a correction of a title's main title; an accepted correction
+        keeps the other pending proposals valid.
+  \item \textbf{\#561 \string— a readable proposals list.} The subject
+        opens the proposal, \emph{View title} leads to the catalog, a
+        line lists the proposed fields and a pending cover shows a
+        thumbnail.
+  \item \textbf{\#502 \string— ISBNs typed with hyphens or spaces} are
+        recognised at scan and in search.
+  \item \textbf{\#558 \string— truncated JPEG covers are refused}
+        instead of being stored as a strip of image over grey. (This fix
+        was first prepared as 1.21.1, which was never published.)
 \end{itemize}
+
+\paragraph{After the upgrade.} Proposals still pending keep the
+previous rule (a cover accepted on their title still outdates them):
+have the agent file them again to benefit. Metadata rejections made
+before the upgrade now block per field; cover rejections made before it
+block nothing new --- covers you rejected as truncated can be proposed
+again.
 
 \section{What's new in 1.21.0}\label{sec:whats-new-1.21.0}
 
