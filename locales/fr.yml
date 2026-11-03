@@ -1103,6 +1103,8 @@ admin:
     error_already_revoked: "Cette clé a déjà été révoquée."
     error_version_conflict: "Cette clé a été modifiée par un autre administrateur. Rechargez le panneau."
 saved_searches:
+  # Story 13-7 (#586) — the "added since" date is not part of a saved search.
+  date_not_saved: "Le filtre de date n'est pas enregistré avec la recherche."
   toggle_label: "Recherches sauvegardées"
   name_label: "Nom de la recherche"
   name_placeholder: "Nommer cette recherche"

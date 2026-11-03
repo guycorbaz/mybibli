@@ -1,6 +1,6 @@
 # Story 13.7: Date added — pages, search and the agent
 
-Status: review
+Status: done
 
 GitHub issue: #586 (type:change-request). Covers: FR153. Epic 13; ships in v1.23.0.
 
@@ -61,7 +61,7 @@ Date added + the technical `updated_at` (display only). No "modified by hand" da
 - The dates were added to the shared `TitleDetail` DTO, so `/api/v1/titles/{id}` gains them too (additive). `list_titles_without_cover` items also gain the two dates, since they share `TitleItem`.
 - `search_titles` items also carry `last_added_at`. Without it, an agent cannot see why an old title matches `added_since` (a new volume).
 - Saved searches deliberately do not store `added_since`: an absolute date goes stale, and the table has no column for it (documented in `home_added_since.rs`).
-- The browse table shows the date as ISO `YYYY-MM-DD`; the row partial has no locale.
+- The browse table date is localized like the pages (review L4: the row partial takes `row_lang`).
 - Days are UTC days. A volume entered between 00:00 and 01:00/02:00 Swiss time counts for the previous UTC day.
 - In the web search, an exact V-code / ISBN hit ignores the date filter, consistent with the genre filter there. In MCP the filter applies, consistent with its other filters.
 - The search field's `hx-include` is now scoped to `#filter-tags [name=…]` plus `#browse-added-since`. The new form's hidden inputs share the names `sort`/`dir`/`filter`, which would otherwise send duplicate params (#367 failure mode). A small `browse-mode.js` hook refreshes the form's hidden params from the URL on submit.
@@ -70,3 +70,19 @@ Date added + the technical `updated_at` (display only). No "modified by hand" da
 **Files over 2000 lines (all were already over before this story):** `src/routes/home.rs` 2582 (+18), `src/routes/titles.rs` 2768 (+15), `src/routes/catalog.rs` 3212 (+12). The new logic went into new modules.
 
 **Tests:** unit tests (utils date helpers, `date_added`, `home_added_since` including a render test, sort key / dir in `title_search`, `args::added_since`, `search_titles` args, volume page dates). DB tests in `tests/date_added.rs` (7). The E2E spec is `tests/e2e/specs/journeys/date-added.spec.ts` (specId DA). `series-selector-recent-table.spec.ts` was updated: the table now has 6 header columns.
+
+### Dev Notes (review)
+
+- **UTC day boundaries (L1, deferred to #602):** "added since <date>" starts at 00:00 UTC, and the page dates are UTC calendar days. Time-zone handling for the instance is tracked in #602.
+- **Web vs MCP exact hits (L5, dismissed):** in the web search an exact ISBN / V-code hit ignores `added_since`, as it already ignores the genre filter. The MCP `search_titles` applies all its filters to exact hits, `added_since` included. This is intentional.
+
+### Review Findings
+
+Code review, round 1 of a7d9298: no Medium or higher findings, 6 Low. A single round.
+
+- [x] [Review][Defer] L1 — UTC day boundaries. Kept UTC; see Dev Notes; tracked in #602.
+- [x] [Review][Patch] L2 — `list_recent_active` (home "Recent additions") now orders by `last_added_at DESC, t.id DESC`, the date its table shows. DB test `recent_additions_rank_by_latest_addition`.
+- [x] [Review][Patch] L3 — the "added since" form leaves out an indicator filter: the date replaces the indicator view (single-active-filter contract). `AddedSinceControl::form_filter`, `INDICATOR_FILTER_NAMES` (locked against the parser), and the `browse-mode.js` submit hook skips indicator names. Route test `the_form_leaves_an_indicator_filter_out`.
+- [x] [Review][Patch] L4 — the browse-table date uses `format_date_localized` (`SearchResult::added_date(locale)`, `row_lang` in the row partial).
+- [x] [Review][Dismiss] L5 — web exact hits ignore `added_since`, MCP applies it; see Dev Notes.
+- [x] [Review][Patch] L6 — the save-search form shows "The date filter is not saved with the search." while a date filter is active (`saved_searches.date_not_saved`, 4 locales). Render test in `routes::saved_searches`.

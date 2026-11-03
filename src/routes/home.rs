@@ -797,6 +797,7 @@ pub async fn home(
             &cur_filter,
             &cur_sort,
             &cur_dir,
+            added_since_date.is_some(),
         )
         .await?
     } else {
@@ -814,7 +815,11 @@ pub async fn home(
         scan_failed_fallback: rust_i18n::t!("home.scan_failed_fallback", locale = loc).to_string(),
         query_encoded: url_encode(&query),
         active_filter: params.filter.clone().unwrap_or_default(),
-        added_since: super::home_added_since::AddedSinceControl::new(added_since_date, loc),
+        added_since: super::home_added_since::AddedSinceControl::new(
+            added_since_date,
+            params.filter.as_deref(),
+            loc,
+        ),
         current_sort: results
             .as_ref()
             .and_then(|r| r.sort.clone())

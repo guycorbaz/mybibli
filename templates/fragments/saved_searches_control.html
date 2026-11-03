@@ -24,6 +24,7 @@
             <input type="hidden" name="ss_filter" value="{{ cur_filter|e }}">
             <input type="hidden" name="ss_sort" value="{{ cur_sort|e }}">
             <input type="hidden" name="ss_dir" value="{{ cur_dir|e }}">
+            {% if !date_not_saved_hint.is_empty() %}<p id="saved-search-date-hint" class="text-xs text-stone-500 dark:text-stone-400">{{ date_not_saved_hint }}</p>{% endif %}
             <label for="saved-search-name" class="sr-only">{{ name_label }}</label>
             <input id="saved-search-name" name="name" type="text" required maxlength="255"
                    placeholder="{{ name_placeholder }}"

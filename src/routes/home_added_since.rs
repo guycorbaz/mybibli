@@ -61,10 +61,19 @@ pub struct AddedSinceControl {
     pub clear_label: String,
     /// Header of the "date added" column / sort option.
     pub col_label: String,
+    /// The `filter` the form carries: the active one, unless it is an
+    /// indicator filter — the date then replaces it (single-active-filter
+    /// contract), else the date would be ignored.
+    pub form_filter: String,
+    /// The indicator filter names, space-separated, for the form's submit
+    /// hook (`static/js/browse-mode.js`), which re-reads `filter` from the
+    /// URL and must leave those out too.
+    pub indicator_filters: String,
 }
 
 impl AddedSinceControl {
-    pub(crate) fn new(date: Option<NaiveDate>, loc: &str) -> Self {
+    pub(crate) fn new(date: Option<NaiveDate>, active_filter: Option<&str>, loc: &str) -> Self {
+        let names = super::home_indicators::INDICATOR_FILTER_NAMES;
         AddedSinceControl {
             value: date
                 .map(|d| d.format("%Y-%m-%d").to_string())
@@ -74,6 +83,11 @@ impl AddedSinceControl {
             apply_label: rust_i18n::t!("browse.added_since_apply", locale = loc).to_string(),
             clear_label: rust_i18n::t!("browse.added_since_clear", locale = loc).to_string(),
             col_label: rust_i18n::t!("search.col.added", locale = loc).to_string(),
+            form_filter: active_filter
+                .filter(|f| !names.contains(f))
+                .unwrap_or_default()
+                .to_string(),
+            indicator_filters: names.join(" "),
         }
     }
 
@@ -134,12 +148,14 @@ mod tests {
 
     #[test]
     fn control_is_active_only_with_a_date() {
-        let on = AddedSinceControl::new(Some(d(2026, 10, 31)), "en");
+        let on = AddedSinceControl::new(Some(d(2026, 10, 31)), Some("genre:3"), "en");
+        assert_eq!(on.form_filter, "genre:3");
         assert!(on.is_active());
         assert_eq!(on.value, "2026-10-31");
         assert_eq!(on.label, "Added since");
         assert_eq!(on.col_label, "Added");
-        let off = AddedSinceControl::new(None, "fr");
+        let off = AddedSinceControl::new(None, None, "fr");
+        assert_eq!(off.form_filter, "");
         assert!(!off.is_active());
         assert_eq!(off.query_suffix, "");
         assert_eq!(off.label, "Ajoutés depuis le");
@@ -158,7 +174,7 @@ mod tests {
             3,
             0,
         );
-        t.added_since = AddedSinceControl::new(Some(d(2026, 10, 31)), "en");
+        t.added_since = AddedSinceControl::new(Some(d(2026, 10, 31)), None, "en");
         let item = crate::models::title::SearchResult {
             id: 9,
             title: "Fondation".to_string(),
@@ -223,5 +239,34 @@ mod tests {
         assert!(html.contains(r#"name="added_since" value="""#));
         assert!(!html.contains(r#"id="browse-added-since-clear""#));
         assert!(!html.contains("added_since=2026"));
+    }
+
+    /// Review L3 — on an indicator view, the form does not carry the
+    /// indicator filter (it would make the server drop the date): the
+    /// date replaces the indicator view.
+    #[test]
+    fn the_form_leaves_an_indicator_filter_out() {
+        use askama::Template;
+        for indicator in super::super::home_indicators::INDICATOR_FILTER_NAMES {
+            let c = AddedSinceControl::new(None, Some(indicator), "en");
+            assert_eq!(c.form_filter, "", "{indicator}");
+            assert!(c.indicator_filters.split(' ').any(|n| n == indicator));
+        }
+        let mut t = crate::routes::home::tests::make_test_home_template_with_counts(
+            "librarian",
+            true,
+            3,
+            3,
+            0,
+        );
+        t.active_filter = "recent-cataloged".to_string();
+        t.added_since = AddedSinceControl::new(None, Some("recent-cataloged"), "en");
+        let html = t.render().expect("render");
+        let start = html.find(r#"id="browse-added-since-form""#).expect("form");
+        let form = &html[start..start + html[start..].find("</form>").unwrap()];
+        assert!(!form.contains(r#"name="filter""#), "{form}");
+        assert!(form.contains(
+            r#"data-indicator-filters="unshelved overdue gaps recent-cataloged recent-returns""#
+        ));
     }
 }

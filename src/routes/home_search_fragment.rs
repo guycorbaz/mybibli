@@ -53,7 +53,7 @@ pub(super) fn render_search_fragment(
                 r#"<table class="browse-table w-full text-sm text-left"><tbody>"#,
             );
             for item in &paginated.items {
-                html.push_str(&render_search_table_row(item));
+                html.push_str(&render_search_table_row(item, loc));
             }
             html.push_str("</tbody></table></div>");
 
@@ -127,10 +127,11 @@ fn render_search_row(
 #[template(path = "components/browse_table_row.html")]
 struct BrowseTableRowTemplate<'a> {
     item: &'a SearchResult,
+    row_lang: &'a str,
 }
 
-fn render_search_table_row(item: &SearchResult) -> String {
-    BrowseTableRowTemplate { item }
+fn render_search_table_row(item: &SearchResult, row_lang: &str) -> String {
+    BrowseTableRowTemplate { item, row_lang }
         .render()
         .unwrap_or_else(|e| {
             tracing::warn!(title_id = item.id, error = %e, "browse table row render failed");
@@ -337,11 +338,11 @@ mod tests {
             last_added_at: chrono::NaiveDate::from_ymd_opt(2026, 10, 31)
                 .and_then(|d| d.and_hms_opt(23, 59, 0)),
         };
-        let html = render_search_table_row(&item);
+        let html = render_search_table_row(&item, "de");
         assert!(html.trim_start().starts_with("<tr"), "row starts with <tr>: {html}");
         assert_eq!(html.matches("<td").count(), 7, "seven cells: {html}");
         assert!(
-            html.contains(r#"data-col="added">2026-10-31</td>"#),
+            html.contains(r#"data-col="added">31.10.2026</td>"#),
             "latest addition date: {html}"
         );
         assert!(html.contains(r#"href="/title/7""#));

@@ -304,9 +304,11 @@
            inputs share names with the #filter-tags ones, which is why the
            search field's hx-include is scoped to #filter-tags (a duplicate
            `sort=` makes the Query extractor reject the request, see #367). #}
-        <form id="browse-added-since-form" method="get" action="/" class="flex items-center gap-2">
+        <form id="browse-added-since-form" method="get" action="/" class="flex items-center gap-2"
+              data-indicator-filters="{{ added_since.indicator_filters }}">
             <input type="hidden" name="q" value="{{ query }}">
-            {% if !active_filter.is_empty() %}<input type="hidden" name="filter" value="{{ active_filter }}">{% endif %}
+            {# An indicator filter is left out: the date replaces it (single-active-filter contract). #}
+            {% if !added_since.form_filter.is_empty() %}<input type="hidden" name="filter" value="{{ added_since.form_filter }}">{% endif %}
             <input type="hidden" name="sort" value="{{ current_sort }}">
             <input type="hidden" name="dir" value="{{ current_dir }}">
             <label class="text-xs text-stone-500 dark:text-stone-400" for="browse-added-since">{{ added_since.label }}:</label>
@@ -451,7 +453,7 @@
                                 </thead>
                                 <tbody>
                                     {% for item in paginated.items %}
-                                    {% include "components/browse_table_row.html" %}
+                                    {% let row_lang = base.lang.as_str() %}{% include "components/browse_table_row.html" %}
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -690,7 +692,7 @@
                             </thead>
                             <tbody>
                                 {% for item in recent_additions %}
-                                {% include "components/browse_table_row.html" %}
+                                {% let row_lang = base.lang.as_str() %}{% include "components/browse_table_row.html" %}
                                 {% endfor %}
                             </tbody>
                         </table>

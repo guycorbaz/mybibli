@@ -258,6 +258,17 @@ const SEARCH_SIDE_BARE_FILTERS: &[&str] = &["uncategorized", "no_volumes", "no_c
 /// are likewise ignored silently. Remaining bare-name values that
 /// don't match the closed enum are logged at WARN and ignored —
 /// surfaces a typo or a stale link without breaking the page.
+/// Story 13-7 (#586) — the `?filter=` values [`parse_indicator_filter`]
+/// recognizes (the "added since" form leaves them out: the date replaces
+/// an indicator view). Locked against the parser by a unit test.
+pub(crate) const INDICATOR_FILTER_NAMES: [&str; 5] = [
+    "unshelved",
+    "overdue",
+    "gaps",
+    "recent-cataloged",
+    "recent-returns",
+];
+
 pub(crate) fn parse_indicator_filter(filter: &Option<String>) -> Option<IndicatorFilter> {
     match filter.as_deref() {
         Some("unshelved") => Some(IndicatorFilter::Unshelved),
@@ -448,6 +459,13 @@ mod tests {
     #[test]
     fn recent_activity_window_constant_is_seven_days() {
         assert_eq!(RECENT_ACTIVITY_DAYS, 7);
+    }
+
+    #[test]
+    fn indicator_filter_names_are_exactly_the_parsed_ones() {
+        for name in INDICATOR_FILTER_NAMES {
+            assert!(parse_indicator_filter(&Some(name.to_string())).is_some(), "{name}");
+        }
     }
 
     #[test]

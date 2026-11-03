@@ -1077,6 +1077,8 @@ admin:
     error_already_revoked: "Questa chiave è già stata revocata."
     error_version_conflict: "Questa chiave è stata modificata da un altro amministratore. Ricarica il pannello."
 saved_searches:
+  # Story 13-7 (#586) — the "added since" date is not part of a saved search.
+  date_not_saved: "Il filtro per data non viene salvato con la ricerca."
   toggle_label: "Ricerche salvate"
   name_label: "Nome della ricerca"
   name_placeholder: "Assegna un nome a questa ricerca"

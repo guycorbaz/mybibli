@@ -1091,6 +1091,8 @@ admin:
     error_already_revoked: "Dieser Schlüssel wurde bereits widerrufen."
     error_version_conflict: "Dieser Schlüssel wurde durch einen anderen Administrator geändert. Bitte das Panel neu laden."
 saved_searches:
+  # Story 13-7 (#586) — the "added since" date is not part of a saved search.
+  date_not_saved: "Der Datumsfilter wird nicht mit der Suche gespeichert."
   toggle_label: "Gespeicherte Suchen"
   name_label: "Name der Suche"
   name_placeholder: "Diese Suche benennen"

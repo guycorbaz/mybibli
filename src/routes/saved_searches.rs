@@ -96,6 +96,9 @@ struct SavedSearchControl {
     cur_filter: String,
     cur_sort: String,
     cur_dir: String,
+    /// Story 13-7 (#586) — shown in the save form while an "added since"
+    /// date filter is active (the date is not saved); empty otherwise.
+    date_not_saved_hint: String,
     toggle_label: String,
     name_label: String,
     name_placeholder: String,
@@ -220,6 +223,7 @@ pub(crate) async fn render_control_html(
     cur_filter: &str,
     cur_sort: &str,
     cur_dir: &str,
+    date_filter_active: bool,
 ) -> Result<String, AppError> {
     let searches = SavedSearchModel::list_all(pool).await?;
     let rows = searches.iter().map(|s| make_row(s, loc)).collect();
@@ -229,6 +233,11 @@ pub(crate) async fn render_control_html(
         cur_filter: cur_filter.to_string(),
         cur_sort: cur_sort.to_string(),
         cur_dir: cur_dir.to_string(),
+        date_not_saved_hint: if date_filter_active {
+            rust_i18n::t!("saved_searches.date_not_saved", locale = loc).to_string()
+        } else {
+            String::new()
+        },
         toggle_label: rust_i18n::t!("saved_searches.toggle_label", locale = loc).to_string(),
         name_label: rust_i18n::t!("saved_searches.name_label", locale = loc).to_string(),
         name_placeholder: rust_i18n::t!("saved_searches.name_placeholder", locale = loc)
@@ -397,4 +406,37 @@ pub async fn delete(
         }],
     }
     .into_response_with_hx_trigger("modal-close"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Story 13-7 review L6 — the save form says the date filter is not
+    /// saved, only while one is active.
+    #[test]
+    fn save_form_warns_that_the_date_filter_is_not_saved() {
+        let control = |hint: &str| SavedSearchControl {
+            csrf_token: "t".into(),
+            cur_q: String::new(),
+            cur_filter: String::new(),
+            cur_sort: "title".into(),
+            cur_dir: "asc".into(),
+            date_not_saved_hint: hint.into(),
+            toggle_label: "Saved searches".into(),
+            name_label: "Name".into(),
+            name_placeholder: "Name".into(),
+            save_label: "Save".into(),
+            rows: Vec::new(),
+            empty_label: "None".into(),
+            edit_label: "Rename".into(),
+            delete_label: "Delete".into(),
+        };
+        let hint = rust_i18n::t!("saved_searches.date_not_saved", locale = "en").to_string();
+        let html = control(&hint).render().expect("render");
+        assert!(html.contains("id=\"saved-search-date-hint\""));
+        assert!(html.contains("The date filter is not saved"), "{html}");
+        let html = control("").render().expect("render");
+        assert!(!html.contains("saved-search-date-hint"));
+    }
 }

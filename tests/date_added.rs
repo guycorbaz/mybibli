@@ -261,6 +261,20 @@ async fn recently_catalogued_counts_titles_with_a_new_volume(pool: DbPool) {
     assert_eq!(n, 3);
 }
 
+/// Review L2 — the home "Recent additions" list ranks a title by its
+/// latest addition, the date its table shows: an old title given a
+/// volume today comes before the 30-day-old title.
+#[sqlx::test(migrations = "./migrations")]
+async fn recent_additions_rank_by_latest_addition(pool: DbPool) {
+    let f = fixture(&pool).await;
+    let rows = TitleModel::list_recent_active(&pool, 10).await.unwrap();
+    let ids: Vec<u64> = rows.iter().map(|r| r.id).collect();
+    let pos = |id| ids.iter().position(|&i| i == id).unwrap();
+    assert!(pos(f.old_with_new_volume) < pos(f.old_alone), "{ids:?}");
+    assert!(pos(f.new_title) < pos(f.old_alone), "{ids:?}");
+    assert_eq!(*ids.last().unwrap(), f.old_with_deleted_volume, "{ids:?}");
+}
+
 // ─── AC5 — MCP ──────────────────────────────────────────────────────
 
 #[sqlx::test(migrations = "./migrations")]

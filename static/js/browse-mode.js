@@ -121,6 +121,9 @@
     var form = document.getElementById("browse-added-since-form");
     if (!form || form.dataset.wired === "true") return;
     form.dataset.wired = "true";
+    // Indicator filters are left out: the date replaces an indicator view
+    // (single-active-filter contract, the server would drop the date).
+    var indicators = (form.dataset.indicatorFilters || "").split(" ");
     form.addEventListener("submit", function () {
       var params = new URLSearchParams(window.location.search);
       ["q", "filter", "sort", "dir"].forEach(function (name) {
@@ -128,7 +131,7 @@
         if (old) old.remove();
         // The URL wins when it names the param; else the page-load value.
         var value = params.has(name) ? params.get(name) : old ? old.value : "";
-        if (value === "" && name === "filter") return;
+        if (name === "filter" && (value === "" || indicators.indexOf(value) !== -1)) return;
         var input = document.createElement("input");
         input.type = "hidden";
         input.name = name;

@@ -45,11 +45,12 @@ pub struct SearchResult {
 }
 
 impl SearchResult {
-    /// The latest addition date as `YYYY-MM-DD` (browse table cell), or
-    /// an em dash when unknown.
-    pub fn added_date(&self) -> String {
+    /// The latest addition date in the convention of `locale` (browse
+    /// table cell, [`crate::utils::format_date_localized`]), or an em dash
+    /// when unknown.
+    pub fn added_date(&self, locale: &str) -> String {
         self.last_added_at
-            .map(|d| d.format("%Y-%m-%d").to_string())
+            .map(|d| crate::utils::format_date_localized(d.date(), locale))
             .unwrap_or_else(|| "\u{2014}".to_string())
     }
 }
@@ -351,8 +352,10 @@ impl TitleModel {
         ))
     }
 
-    /// List the N most recently created active titles, fully enriched for
-    /// TitleCard rendering (story 9-2).
+    /// List the N most recently added active titles, fully enriched for
+    /// TitleCard rendering (story 9-2). Story 13-7 (#586): ordered by the
+    /// latest addition date (the title or one of its live volumes), the
+    /// date the table shows.
     ///
     /// Single SQL round-trip — mirrors the projection used by `active_search`
     /// (genre name, primary contributor subquery with "Auteur" preference,
@@ -373,7 +376,7 @@ impl TitleModel {
              FROM titles t \
              LEFT JOIN genres g ON t.genre_id = g.id AND g.deleted_at IS NULL \
              WHERE t.deleted_at IS NULL \
-             ORDER BY t.created_at DESC, t.id DESC \
+             ORDER BY last_added_at DESC, t.id DESC \
              LIMIT ?",
             search_projection()
         );
@@ -586,7 +589,14 @@ mod tests {
             created_at: None,
             last_added_at: None,
         };
-        assert_eq!(result.added_date(), "\u{2014}");
+        assert_eq!(result.added_date("fr"), "\u{2014}");
+        let dated = SearchResult {
+            last_added_at: chrono::NaiveDate::from_ymd_opt(2026, 10, 31)
+                .and_then(|d| d.and_hms_opt(9, 0, 0)),
+            ..result.clone()
+        };
+        assert_eq!(dated.added_date("fr"), "31/10/2026");
+        assert_eq!(dated.added_date("en"), "2026-10-31");
         assert_eq!(result.id, 1);
         assert_eq!(result.title, "L'Étranger");
         assert_eq!(result.primary_contributor, Some("Albert Camus".to_string()));
