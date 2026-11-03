@@ -1483,7 +1483,7 @@ proposals:
   label_note: "Note de l'assistant"
   summary_label: "Étiquette « %{label} » sur %{target}"
   accept_modal_label: "Accepter pose l'étiquette « %{label} » sur %{target}."
-  accept_modal_note_label: "Si la notice ou l'étiquette a été supprimée, ou si l'étiquette a été posée entre-temps, rien n'est modifié et la proposition est marquée comme dépassée."
+  accept_modal_note_label: "Si la notice ou l'étiquette a été supprimée, ou si l'étiquette a été posée entre-temps, rien n'est modifié et la proposition est marquée comme périmée."
   applied_label: "%{target} porte désormais l'étiquette « %{label} »."
   open_volume: "Ouvrir le volume"
   stale_why_label_target_gone: "le titre ou le volume qu'elle marque a été supprimé après le dépôt de la proposition."
