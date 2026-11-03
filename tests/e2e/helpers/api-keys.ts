@@ -16,14 +16,19 @@ export const SCOPE_LABEL: Record<ApiKeyScope, RegExp> = {
   propose: /Read \+ propose|Lecture \+ propositions|Lesen \+ vorschlagen|Lettura \+ proposte/i,
 };
 
-/** Create a key with a unique label; returns the label and the plaintext. */
+/**
+ * Create a key with a unique label; returns the label and the plaintext.
+ * With `exactLabel`, `labelPrefix` is used as the whole label (the caller
+ * made it unique), so it is known before the creation.
+ */
 export async function createApiKey(
   page: Page,
   scope: ApiKeyScope,
   labelPrefix = "agent",
+  { exactLabel = false }: { exactLabel?: boolean } = {},
 ): Promise<{ label: string; plaintext: string }> {
   await page.goto("/admin?tab=api_keys");
-  const label = `${labelPrefix}-${crypto.randomUUID().slice(0, 8)}`;
+  const label = exactLabel ? labelPrefix : `${labelPrefix}-${crypto.randomUUID().slice(0, 8)}`;
 
   await page.locator("#admin-api-keys-label").fill(label);
   const radio = page.getByRole("radio", { name: SCOPE_LABEL[scope] });

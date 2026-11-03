@@ -38,3 +38,16 @@ so that the epic is proven done.
 - **DRY:** the label-creation step of `mcp-label-proposal.spec.ts` moved to a new helper `tests/e2e/helpers/labels.ts::createLabel`, used by both specs.
 - **Gates:** `npx tsc --noEmit` clean; flake grep clean; on a fresh stack (`E2E_HOST_PORT=18080 ./scripts/e2e-reset.sh`) `CI=true npx playwright test epic13-smoke mcp-label-proposal --workers=2` → 2 passed; the smoke re-run twice more on the non-reset stack → passed both times. The full suite at 2 workers was left to the orchestrator's final gate (per the dev brief).
 - No product code changed; no bug found.
+
+### Review Findings
+
+Round 1 (2026-11-03) — 1 Medium, 5 Low, all patched:
+
+- [x] [Review][Patch] M1 — the "added since" step did not prove filtering (the date sort put the title first anyway). Now: full-text search on the title, today → the title is listed, tomorrow → it is not. Decision (coordinator): the filter is not exercised on an exact-ISBN query, because on the web an exact ISBN/V-code hit means "show me this book" and bypasses the browse filters by design (13-7 review, L5, dismissed; the MCP applies `added_since`). The smoke had surfaced it: `/?q=<isbn>&added_since=<tomorrow>` still lists the title. The title text ("Le Mystère des tomes", the fixed mock title) is shared across runs, so the search is sorted by date added, newest first, to keep the title on page 1. The tomorrow check proves the filter, not the sort.
+- [x] [Review][Patch] L2 — the double read is now proved directly: a `page.on("request")` listener checks that exactly one `POST /catalog/scan` carries the V-code.
+- [x] [Review][Patch] L3 — after the move, the old title page no longer lists the V-code.
+- [x] [Review][Patch] L4 — the key label is fixed before `createApiKey` (new optional `{ exactLabel }` in `helpers/api-keys.ts`, backward compatible); `afterEach` revokes it only when its row exists.
+- [x] [Review][Patch] L5 — wider draws and an accurate comment: V-code V2000–V3999 from the clock in seconds (`% 2000`, no repeat within 33 min; only the suite-wide random generators of loans/home-search/home can reach it); the L-code pair is drawn in bucket 8 among codes `/locations` does not list yet; second ISBN on seconds `% 100000`; location names carry the full seconds stamp.
+- [x] [Review][Patch] L6 — `utcDay()` documents that the server cuts days in UTC (#602) and that a run straddling midnight UTC is an accepted risk.
+
+Gates after round 1: tsc and flake grep clean; fresh stack, smoke alone twice → passed; smoke + home + date-added + volume-move + mcp-label-proposal at `CI=true --workers=2 --retries=0` → 21 passed.
