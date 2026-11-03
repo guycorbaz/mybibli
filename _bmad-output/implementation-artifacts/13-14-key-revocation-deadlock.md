@@ -1,6 +1,6 @@
 # Story 13.14: Concurrent key revocations no longer deadlock
 
-Status: ready-for-dev
+Status: done
 
 GitHub issue: #554, item 1 (type:known-failure). Covers: bug fix. Epic 13 — scheduled first (it reddens CI); ships in v1.23.0.
 
@@ -33,7 +33,23 @@ CI run 41604087139 (PR #592, docs only), compose log: `request error 500 … 121
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `FORCE INDEX` in `lock_pending_of_key`; `.sqlx` if the query is a macro (it is `query_scalar` — dynamic, no cache)
-- [ ] T2 — retry loop in `revoke_key`
-- [ ] T3 — regression test (AC3)
-- [ ] T4 — gates (clippy, targeted DB tests, full suites once before the push)
+- [x] T1 — `FORCE INDEX` in `lock_pending_of_key`; `.sqlx` if the query is a macro (it is `query_scalar` — dynamic, no cache)
+- [x] T2 — retry loop in `revoke_key`
+- [x] T3 — regression test (AC3)
+- [x] T4 — gates (clippy, targeted DB tests, full suites once before the push)
+
+### Review Findings
+
+Code review 2026-11-03, round 1 (independent reviewer): 0 High, 1 Medium, 4 Low.
+
+- [x] [Review][Patch] The retry — the real guarantee — was never exercised: the lock-scope test also passes without `FORCE INDEX` on a small table, and the constant test only restated the constant — Medium. Added `a_deadlocked_revocation_is_retried_and_succeeds`: a heavier blocker transaction holds the key's proposal, the revocation takes the key row and waits, the blocker asks for the key row, InnoDB rolls back the revocation, which is retried and succeeds. Verified to fail with `REVOKE_MAX_ATTEMPTS = 1`; six repeated runs green. Tautological test removed.
+- [x] [Review][Patch] `innodb_lock_wait_timeout = 2` handed back to the pool — Low; reset to `DEFAULT` before the rollback.
+- [x] [Review][Dismiss] `FOR UPDATE` through the key index also locks the key's decided proposals — Low; harmless for a revocation.
+- [x] [Review][Dismiss] Retry loop duplicates the acceptance one (`in_retried_transaction`) — Low; the acceptance helper is typed for `AcceptOutcome`; a generic `retry_on_deadlock` is left for a third use (rule of three).
+- [x] [Review][Dismiss] Immediate retry without delay — Low; the survivor keeps its locks and the retry simply waits for its commit.
+
+Round 2: the Medium is fixed and verified; no Medium+ left.
+
+## Completion Notes
+
+- The lock-scope test does not reproduce the optimizer's choice of the status index (MariaDB already picks the key index on a small table); `FORCE INDEX` makes the plan explicit, and the deadlock retry is the guarantee, proven by the new test.

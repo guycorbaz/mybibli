@@ -1240,11 +1240,6 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn revocation_retries_are_bounded() {
-        assert_eq!(REVOKE_MAX_ATTEMPTS, 3);
-    }
-
     fn srcs(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
     }
