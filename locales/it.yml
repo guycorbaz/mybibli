@@ -386,6 +386,7 @@ error:
   volume_move_target_gone: "L'esemplare non è stato spostato perché il titolo scelto non esiste più: forse è appena stato eliminato. Ripeti la ricerca e scegli un altro titolo."
   volume_move_volume_gone: "L'esemplare non è stato spostato perché non esiste più: forse è appena stato eliminato. Ricarica la pagina per vedere il catalogo aggiornato."
   volume_move_stale: "L'esemplare non è stato spostato perché nel frattempo qualcuno lo ha modificato. Chiudi questa finestra, ricarica la pagina e riprova."
+  volume_move_bad_form: "L'esemplare non è stato spostato perché il modulo era incompleto. Chiudi questa finestra, ricarica la pagina e riprova."
   # Issue #403 — inviato al client tramite la data island #i18n-bundle
   # e letto da static/js/mybibli.js (feedback htmx:responseError).
   # %{status} sostituito lato client.
@@ -510,6 +511,7 @@ volume:
   move_confirmation: "%{label} passerà da «%{from}» a «%{to}». Etichetta, collocazione e prestiti lo seguono."
   move_confirm: "Sposta"
   move_done: "%{label} spostato da «%{from}» a «%{to}»."
+  title_field: "Titolo:"
 location:
   tree_title: Ubicazioni
   add_root: Aggiungi ubicazione principale

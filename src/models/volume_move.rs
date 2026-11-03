@@ -1,7 +1,8 @@
 //! Story 13-8 (#580) — the SQL behind "move a volume to another title":
-//! the title picker of the move modal and the locked reads + optimistic
-//! UPDATE of the move itself. The decisions live in
-//! `services::volume_move`.
+//! the title picker of the move modal, the locked reads + optimistic
+//! UPDATE of the move itself, and the locked reads of the title delete
+//! that must not race a move. The decisions live in
+//! `services::volume_move` and `TitleService::delete_without_volumes`.
 
 use sqlx::Row;
 
@@ -147,4 +148,35 @@ pub async fn set_title_in(
     .execute(&mut *conn)
     .await?;
     Ok(done.rows_affected())
+}
+
+/// Title `id` locked for a delete (`FOR UPDATE`), `true` when it is live.
+/// A move share-locks its target ([`title_is_live_in`]), so the delete
+/// waits for an in-flight move to commit — and a move arriving after the
+/// lock waits for the delete, then sees the title gone.
+pub async fn lock_title_for_delete_in(
+    conn: &mut sqlx::MySqlConnection,
+    id: u64,
+) -> Result<bool, AppError> {
+    let row: Option<(u64,)> =
+        sqlx::query_as("SELECT id FROM titles WHERE id = ? AND deleted_at IS NULL FOR UPDATE")
+            .bind(id)
+            .fetch_optional(&mut *conn)
+            .await?;
+    Ok(row.is_some())
+}
+
+/// Live volumes of title `id` (a plain read: taken after
+/// [`lock_title_for_delete_in`], its snapshot already includes any move
+/// committed while the delete waited).
+pub async fn count_live_volumes_in(
+    conn: &mut sqlx::MySqlConnection,
+    title_id: u64,
+) -> Result<i64, AppError> {
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM volumes WHERE title_id = ? AND deleted_at IS NULL")
+            .bind(title_id)
+            .fetch_one(&mut *conn)
+            .await?;
+    Ok(n)
 }

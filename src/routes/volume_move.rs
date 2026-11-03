@@ -72,6 +72,7 @@ pub struct VolumeMoveSelectionTemplate {
 pub struct VolumeTitleRowTemplate {
     pub title_row_id: u64,
     pub title_row_name: String,
+    pub title_row_label: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,9 +89,28 @@ pub struct SelectionQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct MoveForm {
-    pub version: i32,
+    /// Lenient: a missing or malformed version is answered with a
+    /// localized FeedbackEntry, not axum's plain-text 422.
+    #[serde(default)]
+    pub version: String,
     #[serde(default)]
     pub title_id: String,
+}
+
+/// Longest picker query searched (characters); the rest is ignored.
+pub const MAX_QUERY_CHARS: usize = 200;
+
+/// `query` cut to [`MAX_QUERY_CHARS`] characters (on a char boundary).
+pub(crate) fn bounded_query(query: &str) -> &str {
+    match query.char_indices().nth(MAX_QUERY_CHARS) {
+        Some((end, _)) => &query[..end],
+        None => query,
+    }
+}
+
+/// A form `version`: an integer, else `None`.
+pub(crate) fn parse_version(raw: &str) -> Option<i32> {
+    raw.trim().parse::<i32>().ok()
 }
 
 /// A form/query `title_id`: a positive id, else no target.
@@ -207,11 +227,12 @@ pub async fn move_candidates(
     let loc = locale.0;
     gate(&session, id, loc)?;
     let volume = live_volume(&state, id, loc).await?;
-    let candidates = volume_move::search_candidates(&state.pool, &query.q, volume.title_id).await?;
+    let q = bounded_query(&query.q);
+    let candidates = volume_move::search_candidates(&state.pool, q, volume.title_id).await?;
     let html = render(
         VolumeMoveCandidatesTemplate {
             volume_id: volume.id,
-            query_empty: query.q.trim().is_empty(),
+            query_empty: q.trim().is_empty(),
             candidates,
             empty_label: rust_i18n::t!("volume.move_no_candidates", locale = loc).to_string(),
         },
@@ -281,11 +302,14 @@ pub async fn move_volume(
 ) -> Result<Response, AppError> {
     let loc = locale.0;
     gate(&session, id, loc)?;
+    let version = parse_version(&form.version).ok_or_else(|| {
+        AppError::BadRequest(rust_i18n::t!("error.volume_move_bad_form", locale = loc).to_string())
+    })?;
 
     let moved = VolumeService::move_to_title(
         &state.pool,
         id,
-        form.version,
+        version,
         parse_title_id(&form.title_id),
         session.user_id,
         loc,
@@ -310,6 +334,7 @@ pub async fn move_volume(
         VolumeTitleRowTemplate {
             title_row_id: moved.to_title_id,
             title_row_name: to_name,
+            title_row_label: rust_i18n::t!("volume.title_field", locale = loc).to_string(),
         },
         "title row",
     )?;
@@ -464,5 +489,34 @@ mod tests {
         assert!(html.contains("data-modal-default-focus"));
         assert!(html.contains(r#"hx-get="/volume/4/move/candidates""#));
         assert!(!html.contains("“<A>”"));
+    }
+
+    #[test]
+    fn the_picker_query_is_bounded_on_a_char_boundary() {
+        let long = "é".repeat(250);
+        assert_eq!(bounded_query(&long).chars().count(), MAX_QUERY_CHARS);
+        assert_eq!(bounded_query("Spirou"), "Spirou");
+    }
+
+    #[test]
+    fn a_malformed_version_is_rejected() {
+        assert_eq!(parse_version("3"), Some(3));
+        assert_eq!(parse_version(" 4 "), Some(4));
+        assert_eq!(parse_version(""), None);
+        assert_eq!(parse_version("x1"), None);
+    }
+
+    #[test]
+    fn the_title_row_label_is_localized_text() {
+        let html = VolumeTitleRowTemplate {
+            title_row_id: 3,
+            title_row_name: "<A>".to_string(),
+            title_row_label: "Titre :".to_string(),
+        }
+        .render()
+        .unwrap();
+        assert!(html.contains("Titre :"));
+        assert!(html.contains(r#"href="/title/3""#));
+        assert!(!html.contains("<A>"));
     }
 }

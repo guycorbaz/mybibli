@@ -54,6 +54,7 @@ fn make_test_volume_detail_template(
         audit_button_label_clear: "Checked".to_string(),
         record_dates: crate::utils::RecordDates::default(),
         move_label: "Move to another title".to_string(),
+        title_label: "Title:".to_string(),
     }
 }
 

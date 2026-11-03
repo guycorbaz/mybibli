@@ -16,6 +16,38 @@ pub const DEFAULT_GENRE_NAME: &str = "Non classé";
 pub struct TitleService;
 
 impl TitleService {
+    /// Soft-delete title `id` if it has no live volume — one transaction:
+    /// the title row is locked first (`FOR UPDATE`), then the volumes are
+    /// counted, then the row is soft-deleted. Story 13-8: a volume move
+    /// share-locks its target title, so a move and a delete of the target
+    /// serialise — the delete either sees the moved volume (refused) or
+    /// commits first and the move finds the title gone.
+    ///
+    /// Errors: `NotFound` (title missing or already deleted), `Conflict`
+    /// (`title.delete_blocked_has_volumes`).
+    pub async fn delete_without_volumes(
+        pool: &DbPool,
+        id: u64,
+        loc: &str,
+    ) -> Result<(), AppError> {
+        use crate::models::volume_move::{count_live_volumes_in, lock_title_for_delete_in};
+        let mut tx = pool.begin().await?;
+        if !lock_title_for_delete_in(&mut tx, id).await? {
+            return Err(AppError::NotFound(
+                rust_i18n::t!("error.not_found", locale = loc).to_string(),
+            ));
+        }
+        if count_live_volumes_in(&mut tx, id).await? > 0 {
+            return Err(AppError::Conflict(
+                rust_i18n::t!("title.delete_blocked_has_volumes", locale = loc).to_string(),
+            ));
+        }
+        crate::services::soft_delete::SoftDeleteService::soft_delete_in(&mut tx, "titles", id)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Validate an ISBN-13 checksum using the modulo-10 algorithm
     /// with alternating weights 1 and 3.
     pub fn validate_isbn13_checksum(isbn: &str) -> bool {

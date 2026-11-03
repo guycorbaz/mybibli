@@ -395,6 +395,7 @@ error:
   volume_move_target_gone: "Le volume n’a pas été déplacé, car le titre choisi n’existe plus — il vient peut-être d’être supprimé. Relancez la recherche et choisissez un autre titre."
   volume_move_volume_gone: "Le volume n’a pas été déplacé, car il n’existe plus — il vient peut-être d’être supprimé. Rechargez la page pour voir le catalogue à jour."
   volume_move_stale: "Le volume n’a pas été déplacé, car quelqu’un l’a modifié entre-temps. Fermez cette fenêtre, rechargez la page et recommencez."
+  volume_move_bad_form: "Le volume n’a pas été déplacé, car le formulaire était incomplet. Fermez cette fenêtre, rechargez la page et recommencez."
   # Issue #403 — émis vers le client via le data island #i18n-bundle
   # et lu par static/js/mybibli.js (feedback htmx:responseError).
   # %{status} substitué côté client.
@@ -521,6 +522,7 @@ volume:
   move_confirmation: "%{label} passera de « %{from} » à « %{to} ». Son label, son emplacement et ses prêts le suivent."
   move_confirm: "Déplacer"
   move_done: "%{label} déplacé de « %{from} » vers « %{to} »."
+  title_field: "Titre :"
 location:
   tree_title: Emplacements
   add_root: Ajouter un emplacement racine

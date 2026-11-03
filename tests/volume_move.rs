@@ -528,3 +528,142 @@ async fn an_anonymous_visitor_cannot_move(pool: DbPool) {
     let (_, page) = anon.get(&app, &format!("/volume/{id}")).await;
     assert!(!page.contains("/move-modal"));
 }
+
+// ─── Review round 1 — title delete vs move, malformed form ───────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_title_delete_refuses_a_title_with_volumes(pool: DbPool) {
+    use mybibli::services::title::TitleService;
+    let with = add_title(&pool, "Avec volume", "book", "Roman", None).await;
+    add_volume(&pool, with, "V7811", None).await;
+    let empty = add_title(&pool, "Sans volume", "book", "Roman", None).await;
+
+    let err = TitleService::delete_without_volumes(&pool, with, "en")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+    TitleService::delete_without_volumes(&pool, empty, "en")
+        .await
+        .unwrap();
+    let err = TitleService::delete_without_volumes(&pool, empty, "en")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+}
+
+/// A move holding its share lock on the target makes the title delete
+/// wait; once the move commits, the delete sees the volume and refuses.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_title_delete_waits_for_an_in_flight_move(pool: DbPool) {
+    use mybibli::models::volume_move::{lock_volume_in, set_title_in, title_is_live_in};
+    use mybibli::services::title::TitleService;
+    let from = add_title(&pool, "Départ", "book", "Roman", None).await;
+    let to = add_title(&pool, "Cible", "book", "Roman", None).await;
+    let id = add_volume(&pool, from, "V7812", None).await;
+
+    let mut move_tx = pool.begin().await.unwrap();
+    let v = lock_volume_in(&mut move_tx, id).await.unwrap().unwrap();
+    assert!(title_is_live_in(&mut move_tx, to).await.unwrap());
+    assert_eq!(
+        set_title_in(&mut move_tx, id, v.version, to).await.unwrap(),
+        1
+    );
+
+    let delete_pool = pool.clone();
+    let delete =
+        tokio::spawn(
+            async move { TitleService::delete_without_volumes(&delete_pool, to, "en").await },
+        );
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(
+        !delete.is_finished(),
+        "the delete must wait for the move's lock"
+    );
+
+    move_tx.commit().await.unwrap();
+    let err = delete.await.unwrap().unwrap_err();
+    assert!(matches!(err, AppError::Conflict(_)), "{err:?}");
+    assert_eq!(title_id_of(&pool, id).await, to);
+    let (deleted,): (Option<chrono::NaiveDateTime>,) =
+        sqlx::query_as("SELECT CAST(deleted_at AS DATETIME) FROM titles WHERE id = ?")
+            .bind(to)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(deleted.is_none(), "the target title stays live");
+}
+
+/// A title delete holding its row lock makes the move wait; once the
+/// delete commits, the move finds the target gone and writes nothing.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_move_waits_for_an_in_flight_title_delete(pool: DbPool) {
+    use mybibli::models::volume_move::lock_title_for_delete_in;
+    use mybibli::services::soft_delete::SoftDeleteService;
+    let from = add_title(&pool, "Départ", "book", "Roman", None).await;
+    let to = add_title(&pool, "Cible", "book", "Roman", None).await;
+    let id = add_volume(&pool, from, "V7813", None).await;
+
+    let mut delete_tx = pool.begin().await.unwrap();
+    assert!(lock_title_for_delete_in(&mut delete_tx, to).await.unwrap());
+    SoftDeleteService::soft_delete_in(&mut delete_tx, "titles", to)
+        .await
+        .unwrap();
+
+    let move_pool = pool.clone();
+    let mv = tokio::spawn(async move {
+        VolumeService::move_to_title(&move_pool, id, 1, Some(to), None, "en").await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(
+        !mv.is_finished(),
+        "the move must wait for the delete's lock"
+    );
+
+    delete_tx.commit().await.unwrap();
+    let err = mv.await.unwrap().unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+    assert_eq!(title_id_of(&pool, id).await, from);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_malformed_version_gets_a_localized_feedback_entry(pool: DbPool) {
+    seed_admin(&pool, "mv_admin").await;
+    let app = router(&pool);
+    let browser = Browser::login(&app, "mv_admin").await;
+    let from = add_title(&pool, "Départ", "book", "Roman", None).await;
+    let to = add_title(&pool, "Arrivée", "book", "Roman", None).await;
+    let id = add_volume(&pool, from, "V7814", None).await;
+
+    for body in [
+        format!("version=abc&title_id={to}"),
+        format!("title_id={to}"),
+    ] {
+        let res = send(
+            &app,
+            &browser,
+            "POST",
+            &format!("/volume/{id}/move"),
+            &body,
+            true,
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST, "{body}");
+        let html = body_string(res).await;
+        assert!(html.contains("feedback-entry"), "{html}");
+        assert!(html.contains("le formulaire était incomplet"), "{html}");
+    }
+    assert_eq!(title_id_of(&pool, id).await, from);
+
+    // A 300-character query is accepted (cut to 200), not an error.
+    let long = "a".repeat(300);
+    let res = send(
+        &app,
+        &browser,
+        "GET",
+        &format!("/volume/{id}/move/candidates?q={long}"),
+        "",
+        false,
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+}

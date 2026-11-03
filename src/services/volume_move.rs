@@ -77,8 +77,15 @@ pub struct VolumeMoved {
 impl VolumeService {
     /// Move live volume `volume_id`, read at `version`, to the live title
     /// `target`. One transaction: the volume row is locked, then the
-    /// target title (shared lock, so it cannot be deleted meanwhile); the
-    /// UPDATE is optimistic (`WHERE version = ?`). Refusals — no target,
+    /// target title is share-locked. The title delete
+    /// (`TitleService::delete_without_volumes`) takes that row `FOR
+    /// UPDATE` before counting volumes, so the two serialise: a delete
+    /// already holding the lock makes the move wait, then refuse with
+    /// `TargetGone`; a move holding its share lock makes the delete wait,
+    /// then refuse because the title has a volume. Other writers that
+    /// soft-delete titles without that lock (Trash, auto-purge of rows
+    /// already deleted) are out of this guarantee. The UPDATE is
+    /// optimistic (`WHERE version = ?`). Refusals — no target,
     /// same title, deleted/unknown target, deleted volume, stale version —
     /// write nothing and carry a localized message.
     pub async fn move_to_title(

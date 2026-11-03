@@ -1,6 +1,6 @@
 # Story 13.8: Move a volume to another title
 
-Status: review
+Status: done
 
 GitHub issue: #580 (type:change-request). Covers: FR154, UX-DR36. Epic 13; ships in v1.23.0.
 
@@ -94,4 +94,19 @@ A volume on loan can be moved; the loan follows the volume (it keeps its label, 
 - The confirm button is not disabled before a target is picked. Disabling it would have needed new JS. Instead, the search field lives outside the form (so Enter cannot submit), and a confirm without a pick gets an explicit localized refusal in the modal.
 - The "Title:" / "Label:" labels of the volume page are still hard-coded English (pre-existing). The shared title-row fragment keeps the same text.
 - The second point of #580 ("a scan of a shared ISBN should offer a choice") is out of scope here.
+
+### Review Findings
+
+Code review, a single round on `1359952`: no Medium+ findings, 3 Low findings plus 1 minor, all applied in the `fix(13-8)` commit.
+
+- [x] **[Low] L1 — a title delete could race a move.** The title delete counted volumes, then soft-deleted, with no lock, so a volume moved to that title in between could end up under a deleted title.
+  - Fix: the delete is now one transaction, `TitleService::delete_without_volumes` (`src/services/title.rs`). It locks the title `FOR UPDATE`, then counts live volumes, then soft-deletes via the new `SoftDeleteService::soft_delete_in`.
+  - Both title-delete routes use it: `DELETE /title/{id}` (`title_lifecycle.rs`) and the legacy `DELETE /catalog/title/{id}` (`catalog.rs`).
+  - The move share-locks its target, so the two now serialise. The comment of `move_to_title` was corrected to say this, and its limits.
+  - DB tests: `a_title_delete_waits_for_an_in_flight_move`, `a_move_waits_for_an_in_flight_title_delete` and `the_title_delete_refuses_a_title_with_volumes`.
+- [x] **[Low] L2 — E2E V-codes could collide.** They were a random pick among 50 inside home.spec's range (≥ V1000). They now come from a clock counter in V0480–V0579, which no other spec uses.
+- [x] **[Low] L3 — unbounded query and plain 422.**
+  - The picker query is cut to 200 characters (`bounded_query`).
+  - `version` is read leniently. A missing or malformed value gives a localized FeedbackEntry (`error.volume_move_bad_form`, 4 locales) instead of axum's plain 422. Tested by unit tests and `a_malformed_version_gets_a_localized_feedback_entry`.
+- [x] **[Minor] Hard-coded "Title:" label.** The title row's "Title:" is now the key `volume.title_field` in 4 locales.
 

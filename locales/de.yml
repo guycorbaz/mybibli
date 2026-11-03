@@ -392,6 +392,7 @@ error:
   volume_move_target_gone: "Das Exemplar wurde nicht verschoben, weil der gewählte Titel nicht mehr existiert – er wurde vielleicht gerade gelöscht. Suchen Sie erneut und wählen Sie einen anderen Titel."
   volume_move_volume_gone: "Das Exemplar wurde nicht verschoben, weil es nicht mehr existiert – es wurde vielleicht gerade gelöscht. Laden Sie die Seite neu, um den aktuellen Katalog zu sehen."
   volume_move_stale: "Das Exemplar wurde nicht verschoben, weil es inzwischen jemand geändert hat. Schließen Sie dieses Fenster, laden Sie die Seite neu und versuchen Sie es erneut."
+  volume_move_bad_form: "Das Exemplar wurde nicht verschoben, weil das Formular unvollständig war. Schließen Sie dieses Fenster, laden Sie die Seite neu und versuchen Sie es erneut."
   # Issue #403 — über die #i18n-bundle-Dateninsel an den Client
   # geliefert, gelesen von static/js/mybibli.js (htmx:responseError-
   # Feedback). %{status} wird clientseitig ersetzt.
@@ -518,6 +519,7 @@ volume:
   move_confirmation: "%{label} wird von „%{from}“ zu „%{to}“ verschoben. Etikett, Standort und Ausleihen gehen mit."
   move_confirm: "Verschieben"
   move_done: "%{label} von „%{from}“ zu „%{to}“ verschoben."
+  title_field: "Titel:"
 location:
   tree_title: Standorte
   add_root: Hauptstandort hinzufügen

@@ -2234,14 +2234,16 @@ pub async fn delete_title(
 
     let pool = &state.pool;
 
-    // Check for active child volumes before soft-deleting title
-    let active_volumes = VolumeModel::count_by_title(pool, id).await.unwrap_or(0);
-    if active_volumes > 0 {
-        let message = rust_i18n::t!("error.delete_has_references").to_string();
-        return Ok(Html(feedback_html("warning", &message, "")));
+    // Refuse while the title has live volumes. Story 13-8: count and
+    // delete under the title row lock, so a concurrent volume move to
+    // this title cannot slip by (`TitleService::delete_without_volumes`).
+    match crate::services::title::TitleService::delete_without_volumes(pool, id, locale.0).await {
+        Err(AppError::Conflict(_)) => {
+            let message = rust_i18n::t!("error.delete_has_references").to_string();
+            return Ok(Html(feedback_html("warning", &message, "")));
+        }
+        other => other?,
     }
-
-    crate::services::soft_delete::SoftDeleteService::soft_delete(pool, "titles", id).await?;
 
     let message = rust_i18n::t!("feedback.deleted").to_string();
     Ok(Html(feedback_html("success", &message, "")))
@@ -2421,6 +2423,8 @@ pub struct VolumeDetailTemplate {
     pub record_dates: crate::utils::RecordDates,
     /// Story 13-8 (#580) — "Move to another title" (Librarian+).
     pub move_label: String,
+    /// Story 13-8 — the "Title:" label of the title row.
+    pub title_label: String,
 }
 
 pub async fn volume_detail(
@@ -2565,6 +2569,7 @@ pub async fn volume_detail(
         audit_button_label_mark: rust_i18n::t!("volume.mark_under_audit", locale = loc).to_string(),
         audit_button_label_clear: rust_i18n::t!("volume.mark_checked", locale = loc).to_string(),
         move_label: rust_i18n::t!("volume.move_button", locale = loc).to_string(),
+        title_label: rust_i18n::t!("volume.title_field", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),

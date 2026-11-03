@@ -396,6 +396,7 @@ error:
   volume_move_target_gone: "The volume was not moved because the chosen title no longer exists — it may just have been deleted. Search again and pick another title."
   volume_move_volume_gone: "The volume was not moved because it no longer exists — it may just have been deleted. Reload the page to see the catalog as it is now."
   volume_move_stale: "The volume was not moved because someone changed it in the meantime. Close this window, reload the page and try again."
+  volume_move_bad_form: "The volume was not moved because the form was incomplete. Close this window, reload the page and try again."
   # Issue #403 — emitted to the client via the #i18n-bundle data
   # island and read by static/js/mybibli.js (htmx:responseError
   # feedback). %{status} substituted client-side.
@@ -525,6 +526,7 @@ volume:
   move_confirmation: "%{label} will move from “%{from}” to “%{to}”. Its label, location and loans go with it."
   move_confirm: "Move"
   move_done: "%{label} moved from “%{from}” to “%{to}”."
+  title_field: "Title:"
 location:
   tree_title: Locations
   add_root: Add root location

@@ -50,7 +50,7 @@
     <div class="mt-6 space-y-4">
         {# Story 13-8 — wrapped so a move can replace it out of band. #}
         <div id="volume-title-row">
-        {% let title_row_id = volume.title_id %}{% let title_row_name = title_name.as_str() %}{% include "fragments/volume_title_row.html" %}
+        {% let title_row_id = volume.title_id %}{% let title_row_name = title_name.as_str() %}{% let title_row_label = title_label.as_str() %}{% include "fragments/volume_title_row.html" %}
         </div>
 
         <div class="flex items-center gap-3">
