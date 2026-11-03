@@ -1066,7 +1066,12 @@ impl ProposalModel {
         api_key_id: u64,
     ) -> Result<Vec<u64>, AppError> {
         Ok(sqlx::query_scalar(
-            "SELECT id FROM proposals WHERE api_key_id = ? AND status = 'pending' \
+            // Story 13-14 (#554): start from the key index, never from the
+            // status range — two concurrent revocations deadlocked when the
+            // optimizer could lock the library-wide pending range
+            // (lock-scope rule, epic 12 retro A1).
+            "SELECT id FROM proposals FORCE INDEX (idx_proposals_api_key) \
+             WHERE api_key_id = ? AND status = 'pending' \
              AND deleted_at IS NULL ORDER BY id FOR UPDATE",
         )
         .bind(api_key_id)
