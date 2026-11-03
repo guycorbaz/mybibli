@@ -15,6 +15,9 @@ pub struct DueRetry {
     pub title_id: u64,
     /// Background retries already run for this enqueue.
     pub attempts: u32,
+    /// Row version when read: the task's writes are guarded by it, so an
+    /// enqueue landing while a retry runs is neither erased nor overwritten.
+    pub version: i32,
 }
 
 pub struct MetadataRetryModel;
@@ -22,12 +25,13 @@ pub struct MetadataRetryModel;
 impl MetadataRetryModel {
     /// Queue `title_id` for a retry `delay_secs` from now.
     ///
-    /// A title already queued (live row) keeps its row untouched — its
-    /// attempts and next attempt stay as they are, so a librarian
-    /// re-scanning a throttled title cannot postpone its retry forever. A
-    /// soft-deleted row (a previous enqueue that ended) is revived with
-    /// `attempts = 0`. MariaDB evaluates the `ON DUPLICATE KEY UPDATE`
-    /// assignments left to right, so `deleted_at = NULL` comes last.
+    /// A title already queued (live row) keeps its attempts and next
+    /// attempt, so a librarian re-scanning a throttled title cannot
+    /// postpone its retry forever; its `version` is still bumped so a retry
+    /// running meanwhile does not dequeue it. A soft-deleted row (a
+    /// previous enqueue that ended) is revived with `attempts = 0`. MariaDB
+    /// evaluates the `ON DUPLICATE KEY UPDATE` assignments left to right, so
+    /// `deleted_at = NULL` comes last.
     pub async fn enqueue(pool: &DbPool, title_id: u64, delay_secs: u64) -> Result<(), AppError> {
         sqlx::query(
             "INSERT INTO metadata_fetch_retries (title_id, attempts, next_attempt_at) \
@@ -35,7 +39,7 @@ impl MetadataRetryModel {
              ON DUPLICATE KEY UPDATE \
                attempts = IF(deleted_at IS NULL, attempts, 0), \
                next_attempt_at = IF(deleted_at IS NULL, next_attempt_at, VALUES(next_attempt_at)), \
-               version = IF(deleted_at IS NULL, version, version + 1), \
+               version = version + 1, \
                deleted_at = NULL",
         )
         .bind(title_id)
@@ -49,7 +53,7 @@ impl MetadataRetryModel {
     /// first.
     pub async fn due_batch(pool: &DbPool, limit: u32) -> Result<Vec<DueRetry>, AppError> {
         let rows = sqlx::query(
-            "SELECT title_id, attempts FROM metadata_fetch_retries \
+            "SELECT title_id, attempts, version FROM metadata_fetch_retries \
              WHERE deleted_at IS NULL AND next_attempt_at <= NOW() \
              ORDER BY next_attempt_at ASC, id ASC \
              LIMIT ?",
@@ -61,9 +65,11 @@ impl MetadataRetryModel {
             .map(|r| {
                 let title_id: u64 = r.try_get("title_id")?;
                 let attempts: i32 = r.try_get("attempts")?;
+                let version: i32 = r.try_get("version")?;
                 Ok(DueRetry {
                     title_id,
                     attempts: u32::try_from(attempts).unwrap_or(0),
+                    version,
                 })
             })
             .collect::<Result<Vec<_>, sqlx::Error>>()
@@ -71,30 +77,47 @@ impl MetadataRetryModel {
     }
 
     /// Record `attempts` retries run so far and push the next one
-    /// `delay_secs` from now. No-op on a row dequeued meanwhile (e.g. by a
-    /// successful manual re-download).
+    /// `delay_secs` from now — only if the row is still the one `row` read
+    /// (same `version`, still live). Returns whether the row was written.
     pub async fn reschedule(
         pool: &DbPool,
-        title_id: u64,
+        row: &DueRetry,
         attempts: u32,
         delay_secs: u64,
-    ) -> Result<(), AppError> {
-        sqlx::query(
+    ) -> Result<bool, AppError> {
+        let result = sqlx::query(
             "UPDATE metadata_fetch_retries \
              SET attempts = ?, next_attempt_at = NOW() + INTERVAL ? SECOND, \
                  version = version + 1 \
-             WHERE title_id = ? AND deleted_at IS NULL",
+             WHERE title_id = ? AND version = ? AND deleted_at IS NULL",
         )
         .bind(attempts)
         .bind(delay_secs)
-        .bind(title_id)
+        .bind(row.title_id)
+        .bind(row.version)
         .execute(pool)
         .await?;
-        Ok(())
+        Ok(result.rows_affected() > 0)
     }
 
-    /// Take `title_id` off the queue (soft delete). Returns whether a live
-    /// row was dequeued.
+    /// Take the row `row` read off the queue (soft delete), unless it was
+    /// written since (a concurrent enqueue keeps it live).
+    pub async fn dequeue_read(pool: &DbPool, row: &DueRetry) -> Result<bool, AppError> {
+        let result = sqlx::query(
+            "UPDATE metadata_fetch_retries \
+             SET deleted_at = NOW(), version = version + 1 \
+             WHERE title_id = ? AND version = ? AND deleted_at IS NULL",
+        )
+        .bind(row.title_id)
+        .bind(row.version)
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Take `title_id` off the queue (soft delete), whatever its version: a
+    /// lookup outside the retry task ended not throttled. Returns whether a
+    /// live row was dequeued.
     pub async fn dequeue(pool: &DbPool, title_id: u64) -> Result<bool, AppError> {
         let result = sqlx::query(
             "UPDATE metadata_fetch_retries \

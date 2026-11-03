@@ -308,7 +308,9 @@ async fn a_deleted_title_is_skipped_and_dequeued(pool: MySqlPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn a_title_already_resolved_is_skipped_and_dequeued(pool: MySqlPool) {
+async fn a_title_already_resolved_once_is_still_retried(pool: MySqlPool) {
+    // Review M2 — a throttled re-download / backfill of a title that has
+    // metadata is retried too: the row means "latest lookup throttled".
     let isbn = "9799999913287";
     let id = seed_scanned_title(&pool, isbn).await;
     sqlx::query("UPDATE titles SET metadata_source = 'google_books' WHERE id = ?")
@@ -321,8 +323,8 @@ async fn a_title_already_resolved_is_skipped_and_dequeued(pool: MySqlPool) {
 
     let stats = tick(&state).await.expect("tick");
 
-    assert_eq!(calls.load(Ordering::SeqCst), 0);
-    assert_eq!(stats.skipped, 1);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(stats.done, 1);
     assert_eq!(queue_rows(&pool, id).await, (0, 1));
 }
 
@@ -340,15 +342,158 @@ async fn rows_not_yet_due_are_left_alone(pool: MySqlPool) {
     assert_eq!(queue_rows(&pool, id).await, (1, 1));
 }
 
-// ─── Manual re-download — found drops a queued retry ───────────────
+// ─── Queue rule: every lookup that ends not throttled dequeues ─────
 
 #[sqlx::test(migrations = "./migrations")]
-async fn metadata_found_elsewhere_drops_a_queued_retry(pool: MySqlPool) {
+async fn a_scan_fetch_that_finds_metadata_dequeues_the_title(pool: MySqlPool) {
     let isbn = "9799999913300";
     let id = seed_scanned_title(&pool, isbn).await;
     seed_due_row(&pool, id, 2).await;
+    let (state, _) = state_with(&pool, Behaviour::Found);
 
-    mybibli::tasks::metadata_retry::note_chain_outcome(&pool, id, true, false, "test").await;
+    scan_fetch(&state, id, isbn).await;
+
+    assert_eq!(queue_rows(&pool, id).await, (0, 1));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn bulk_loop_outcome_enqueues_throttled_and_dequeues_the_rest(pool: MySqlPool) {
+    // The bulk loop calls `note_fetch_outcome` once per title with its final
+    // outcome (after its own in-run retries); its HTTP path waits minutes of
+    // back-off, so the decision it calls is tested here.
+    use mybibli::tasks::metadata_fetch::FetchOutcome;
+    use mybibli::tasks::metadata_retry::note_fetch_outcome;
+    let id = seed_scanned_title(&pool, "9799999913317").await;
+
+    note_fetch_outcome(&pool, id, FetchOutcome::Throttled, "bulk").await;
+    assert_eq!(queue_rows(&pool, id).await, (1, 1));
+    note_fetch_outcome(&pool, id, FetchOutcome::NotFound, "bulk").await;
+    assert_eq!(queue_rows(&pool, id).await, (0, 1));
+}
+
+// ─── Review M1 / L2 / L3 ───────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_failing_row_does_not_stop_the_batch(pool: MySqlPool) {
+    // The oldest due row cannot be dequeued: its title is deleted (so the
+    // task skips it) and a trigger makes the dequeue write fail.
+    let bad = seed_scanned_title(&pool, "9799999913324").await;
+    sqlx::query("UPDATE titles SET deleted_at = NOW() WHERE id = ?")
+        .bind(bad)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql(&format!(
+        "CREATE TRIGGER fail_dequeue BEFORE UPDATE ON metadata_fetch_retries \
+         FOR EACH ROW BEGIN \
+           IF NEW.title_id = {bad} AND NEW.deleted_at IS NOT NULL THEN \
+             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'dequeue refused'; \
+           END IF; \
+         END"
+    ))
+    .execute(&pool)
+    .await
+    .expect("create trigger");
+    sqlx::query(
+        "INSERT INTO metadata_fetch_retries (title_id, attempts, next_attempt_at) \
+         VALUES (?, 1, NOW() - INTERVAL 2 HOUR)",
+    )
+    .bind(bad)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let good = seed_scanned_title(&pool, "9799999913331").await;
+    seed_due_row(&pool, good, 0).await;
+    let (state, calls) = state_with(&pool, Behaviour::Found);
+
+    let stats = tick(&state).await.expect("tick survives a failing row");
+
+    assert_eq!(stats.errors, 1);
+    assert_eq!(stats.done, 1, "the next row is processed");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(queue_rows(&pool, good).await, (0, 1));
+    assert_eq!(
+        live_row(&pool, bad).await,
+        (1, true),
+        "the failing row is pushed back, attempts unchanged"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_enqueue_landing_during_a_retry_is_not_erased(pool: MySqlPool) {
+    use mybibli::models::metadata_retry::MetadataRetryModel;
+    let id = seed_scanned_title(&pool, "9799999913348").await;
+    seed_due_row(&pool, id, 1).await;
+    let row = MetadataRetryModel::due_batch(&pool, 10).await.unwrap()[0];
+    // A scan throttled meanwhile re-enqueues the (live) title.
+    MetadataRetryModel::enqueue(&pool, id, 900).await.unwrap();
+
+    assert!(!MetadataRetryModel::dequeue_read(&pool, &row).await.unwrap());
+    assert!(
+        !MetadataRetryModel::reschedule(&pool, &row, 2, 3_600)
+            .await
+            .unwrap()
+    );
+    assert_eq!(queue_rows(&pool, id).await, (1, 1), "still queued");
+    assert_eq!(live_row(&pool, id).await.0, 1, "attempts untouched");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn the_tick_waits_while_a_bulk_run_is_in_progress(pool: MySqlPool) {
+    let id = seed_scanned_title(&pool, "9799999913355").await;
+    seed_due_row(&pool, id, 0).await;
+    let (state, calls) = state_with(&pool, Behaviour::Found);
+    mybibli::services::bulk_cover_fetch::try_start(&state.bulk_cover_fetch, 10).unwrap();
+
+    let stats = tick(&state).await.expect("tick");
+
+    assert!(stats.deferred_for_bulk_run);
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(queue_rows(&pool, id).await, (1, 1));
+}
+
+// ─── Manual re-download (HTTP) ─────────────────────────────────────
+
+async fn redownload(state: mybibli::AppState, pool: &MySqlPool, id: u64) -> axum::http::StatusCode {
+    common::web::seed_admin(pool, "retry_admin").await;
+    let router = mybibli::routes::build_router_with_mcp(state, mybibli::mcp::McpConfig::default());
+    let browser = common::web::Browser::login(&router, "retry_admin").await;
+    let (status, _) = browser
+        .post_form(&router, &format!("/title/{id}/redownload"), "")
+        .await;
+    status
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_throttled_redownload_enqueues_the_title(pool: MySqlPool) {
+    let id = seed_scanned_title(&pool, "9799999913362").await;
+    let (state, _) = state_with(&pool, Behaviour::Unavailable);
+
+    assert!(redownload(state, &pool, id).await.is_success());
+
+    assert_eq!(queue_rows(&pool, id).await, (1, 1));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_redownload_that_applies_metadata_dequeues_the_title(pool: MySqlPool) {
+    let id = seed_scanned_title(&pool, "9799999913379").await;
+    seed_due_row(&pool, id, 1).await;
+    let (state, _) = state_with(&pool, Behaviour::Found);
+
+    assert!(redownload(state, &pool, id).await.is_success());
+
+    let title = TitleModel::find_by_id(&pool, id).await.unwrap().unwrap();
+    assert_eq!(title.title, "Resolved on retry", "applied first");
+    assert_eq!(queue_rows(&pool, id).await, (0, 1));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_redownload_with_a_genuine_miss_dequeues_the_title(pool: MySqlPool) {
+    let id = seed_scanned_title(&pool, "9799999913386").await;
+    seed_due_row(&pool, id, 1).await;
+    let (state, _) = state_with(&pool, Behaviour::Empty);
+
+    assert!(redownload(state, &pool, id).await.is_success());
 
     assert_eq!(queue_rows(&pool, id).await, (0, 1));
 }

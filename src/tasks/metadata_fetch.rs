@@ -84,10 +84,11 @@ pub enum FetchOutcome {
 ///
 /// Thin wrapper over [`fetch_metadata_chain_outcome`] for the
 /// scan-time call sites that don't consume the outcome. Story 13-2
-/// (#583): a [`FetchOutcome::Throttled`] run queues the title for a
-/// later retry ([`crate::tasks::metadata_retry`]). The bulk loop and the
-/// retry task call [`fetch_metadata_chain_outcome`] directly and own
-/// their own retry decision, so they never enqueue from here.
+/// (#583): the outcome is recorded in the retry queue
+/// ([`crate::tasks::metadata_retry`]) — a [`FetchOutcome::Throttled`] run
+/// queues the title, any other outcome dequeues it. The bulk loop and the
+/// retry task call [`fetch_metadata_chain_outcome`] directly and record
+/// their own final decision.
 #[allow(clippy::too_many_arguments)]
 pub async fn fetch_metadata_chain(
     pool: DbPool,

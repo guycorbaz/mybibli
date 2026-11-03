@@ -463,8 +463,8 @@ fn spawn_bulk_bnf_worker(
                 }
             };
 
-            // Story 13-2 — the in-run retries are exhausted and the title is
-            // still throttled: hand it to the background retry queue.
+            // Story 13-2 — record the title's final outcome (after the in-run
+            // retries): still throttled → background retry queue; else dequeued.
             crate::tasks::metadata_retry::note_fetch_outcome(
                 &pool_clone,
                 title.id,

@@ -3,30 +3,39 @@
 //! When a provider is saturated (Google Books' 503 storms), the chain comes
 //! back empty-handed with `throttled = true`. Before this story that title
 //! landed in the same terminal state as a genuine miss and was never looked
-//! up again. Now:
+//! up again.
 //!
-//! * **Enqueue.** The scan-time fetch ([`super::metadata_fetch::fetch_metadata_chain`]),
-//!   the manual re-download (`routes::titles::redownload_metadata`) and the
-//!   bulk cover-refetch / metadata-backfill loop — once its own in-run
-//!   retries (`services::bulk_cover_fetch::THROTTLE_RETRY_BACKOFF`) are
-//!   exhausted, never on each throttled attempt — record the title in
-//!   `metadata_fetch_retries` ([`crate::models::metadata_retry`]). A genuine
-//!   miss is never queued. The delivery row (`pending_metadata_updates`) is
-//!   still marked failed as before.
-//! * **Retry.** [`spawn`] runs [`tick`] every [`TICK_INTERVAL_SECS`]: at most
-//!   [`BATCH_SIZE`] due rows, oldest first, one title at a time with the
-//!   admin-configured inter-title pause (`bulk_refetch_delay_ms`, #419) so
-//!   a retry wave cannot itself start a 503 storm. Each title goes through
-//!   [`super::metadata_fetch::fetch_metadata_chain_outcome`] with
-//!   `force_refresh = true` — the very path a scan takes, so
-//!   `manually_edited_fields` is respected and the cover is downloaded.
-//! * **Schedule.** [`RETRY_SCHEDULE_SECS`]: 15 min, 1 h, 4 h, 12 h, 24 h after
-//!   the previous attempt; a title still throttled after the last tier is
-//!   dequeued with a warning.
+//! **Queue rule.** A live row in `metadata_fetch_retries`
+//! ([`crate::models::metadata_retry`]) means "this title's latest lookup was
+//! throttled". Every lookup records its end through [`record_lookup`] /
+//! [`note_fetch_outcome`]: a throttled miss enqueues the title, anything
+//! else dequeues it. The lookups are:
 //!
-//! The retry calls the `_outcome` function directly, not the scan wrapper,
-//! so a throttled retry never re-enqueues itself: [`tick`] owns the
-//! reschedule.
+//! * the scan-time fetch ([`super::metadata_fetch::fetch_metadata_chain`]);
+//! * the manual re-download (`routes::titles::redownload_metadata` — a found
+//!   result dequeues only once applied, in that handler or in
+//!   `confirm_metadata`);
+//! * the bulk cover-refetch / metadata-backfill loop, once per title after
+//!   its own in-run retries (`services::bulk_cover_fetch::THROTTLE_RETRY_BACKOFF`),
+//!   never on each throttled attempt;
+//! * the retry task itself, which owns the reschedule ([`verdict`]).
+//!
+//! The delivery row (`pending_metadata_updates`) is still marked failed as
+//! before.
+//!
+//! **Retry.** [`spawn`] runs [`tick`] every [`TICK_INTERVAL_SECS`]: at most
+//! [`BATCH_SIZE`] due rows, oldest first, one title at a time with the
+//! admin-configured inter-title pause (`bulk_refetch_delay_ms`, #419) so a
+//! retry wave cannot itself start a 503 storm; skipped entirely while a bulk
+//! run is in progress. Each title goes through
+//! [`super::metadata_fetch::fetch_metadata_chain_outcome`] with
+//! `force_refresh = true` — the very path a scan takes, so
+//! `manually_edited_fields` is respected and the cover is downloaded. A row
+//! that fails (DB error) is logged and pushed back; it never stops the batch.
+//!
+//! **Schedule.** [`RETRY_SCHEDULE_SECS`]: 15 min, 1 h, 4 h, 12 h, 24 h after
+//! the previous attempt; a title still throttled after the last tier is
+//! dequeued with a warning.
 
 use std::time::Duration;
 
@@ -61,82 +70,87 @@ pub fn retry_delay_secs(attempts_done: u32) -> Option<u64> {
     RETRY_SCHEDULE_SECS.get(attempts_done as usize).copied()
 }
 
-/// What a fetch outcome does to the queue.
+/// Delay before a row whose processing failed is looked at again: its
+/// current back-off slot, never less than one tick (no hot retry of a
+/// failing row).
+pub fn push_back_delay_secs(attempts_done: u32) -> u64 {
+    retry_delay_secs(attempts_done)
+        .unwrap_or(TICK_INTERVAL_SECS)
+        .max(TICK_INTERVAL_SECS)
+}
+
+/// What the end of a lookup does to the queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueueAction {
     /// Throttled with no result: look the title up again later.
     Enqueue,
-    /// Metadata found: a queued retry has nothing left to do.
+    /// Anything else (found, genuine miss, failure): nothing left to retry.
     Dequeue,
-    /// Anything else (a genuine miss is final, as before).
-    Nothing,
 }
 
-/// The enqueue decision for a chain run: `found` = the chain returned
-/// metadata, `throttled` = a provider answered 429/503.
-pub fn queue_action(found: bool, throttled: bool) -> QueueAction {
-    match (found, throttled) {
-        (true, _) => QueueAction::Dequeue,
-        (false, true) => QueueAction::Enqueue,
-        (false, false) => QueueAction::Nothing,
+/// The queue rule: only a throttled miss keeps (or puts) the title queued.
+pub fn queue_action(throttled_miss: bool) -> QueueAction {
+    if throttled_miss {
+        QueueAction::Enqueue
+    } else {
+        QueueAction::Dequeue
     }
 }
 
-/// Queue a throttled title (first delay of the schedule). Never fails the
-/// caller: a queue error only costs the retry, and is logged.
-pub async fn enqueue_throttled(pool: &DbPool, title_id: u64, context: &'static str) {
-    let delay_secs = RETRY_SCHEDULE_SECS[0];
-    match MetadataRetryModel::enqueue(pool, title_id, delay_secs).await {
-        Ok(()) => tracing::info!(
-            title_id,
-            attempts = 0,
-            delay_secs,
-            context,
-            "Throttled metadata fetch queued for a later retry"
-        ),
-        Err(e) => tracing::warn!(
-            title_id,
-            context,
-            error = %e,
-            "Failed to queue a throttled metadata fetch for retry"
-        ),
-    }
-}
-
-/// Apply [`queue_action`] for a chain run seen outside the retry task
-/// (manual re-download). A found result dequeues the title so the task
-/// does not repeat a lookup the librarian just made.
-pub async fn note_chain_outcome(
+/// Record the end of a lookup made outside the retry task (see the queue
+/// rule in the module docs). Never fails the caller: a queue error only
+/// costs the retry, and is logged.
+pub async fn record_lookup(
     pool: &DbPool,
     title_id: u64,
-    found: bool,
-    throttled: bool,
+    throttled_miss: bool,
     context: &'static str,
 ) {
-    match queue_action(found, throttled) {
-        QueueAction::Enqueue => enqueue_throttled(pool, title_id, context).await,
-        QueueAction::Dequeue => match MetadataRetryModel::dequeue(pool, title_id).await {
-            Ok(true) => tracing::info!(title_id, context, "Metadata found; queued retry dropped"),
-            Ok(false) => {}
-            Err(e) => {
-                tracing::warn!(title_id, error = %e, "Failed to drop a queued metadata retry")
+    match queue_action(throttled_miss) {
+        QueueAction::Enqueue => {
+            let delay_secs = RETRY_SCHEDULE_SECS[0];
+            match MetadataRetryModel::enqueue(pool, title_id, delay_secs).await {
+                Ok(()) => tracing::info!(
+                    title_id,
+                    attempts = 0,
+                    delay_secs,
+                    context,
+                    "Throttled metadata fetch queued for a later retry"
+                ),
+                Err(e) => tracing::warn!(
+                    title_id,
+                    context,
+                    error = %e,
+                    "Failed to queue a throttled metadata fetch for retry"
+                ),
             }
+        }
+        QueueAction::Dequeue => match MetadataRetryModel::dequeue(pool, title_id).await {
+            Ok(true) => tracing::info!(
+                title_id,
+                context,
+                "Lookup ended not throttled; queued retry dropped"
+            ),
+            Ok(false) => {}
+            Err(e) => tracing::warn!(
+                title_id,
+                context,
+                error = %e,
+                "Failed to drop a queued metadata retry"
+            ),
         },
-        QueueAction::Nothing => {}
     }
 }
 
-/// Enqueue a title whose background fetch ended [`FetchOutcome::Throttled`].
-/// Other outcomes leave the queue alone.
+/// [`record_lookup`] for a background fetch outcome (scan wrapper, bulk
+/// loop).
 pub async fn note_fetch_outcome(
     pool: &DbPool,
     title_id: u64,
     outcome: FetchOutcome,
     context: &'static str,
 ) {
-    if outcome == FetchOutcome::Throttled {
-        enqueue_throttled(pool, title_id, context).await;
-    }
+    record_lookup(pool, title_id, outcome == FetchOutcome::Throttled, context).await;
 }
 
 /// What the task does with a row after its retry.
@@ -171,96 +185,183 @@ pub fn verdict(outcome: FetchOutcome, attempts_before: u32) -> RetryVerdict {
 pub struct TickStats {
     /// Titles actually looked up again.
     pub retried: usize,
-    /// Rows dequeued without a lookup (title deleted, already resolved by
-    /// a provider, no lookup code left).
+    /// Rows dequeued without a lookup (title deleted, no lookup code left).
     pub skipped: usize,
     pub done: usize,
     pub rescheduled: usize,
     pub given_up: usize,
+    /// Rows whose processing failed; logged and pushed back.
+    pub errors: usize,
+    /// The whole tick was skipped because a bulk run is in progress.
+    pub deferred_for_bulk_run: bool,
+}
+
+/// Settings snapshot for one tick.
+struct TickContext {
+    timeout_secs: u64,
+    per_provider_timeouts: crate::metadata::chain::ProviderTimeouts,
+}
+
+/// AC5 — a pause between two lookups (not before the first one).
+struct Pacer {
+    delay_ms: u64,
+    looked_up_one: bool,
+}
+
+impl Pacer {
+    async fn before_lookup(&mut self) {
+        if self.looked_up_one && self.delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
+        }
+        self.looked_up_one = true;
+    }
+}
+
+/// What happened to one row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowResult {
+    Skipped,
+    Done,
+    Rescheduled,
+    GaveUp,
 }
 
 /// One pass of the retry task: take the due batch and retry each title in
 /// turn. Callable on its own (tests); [`spawn`] calls it on a timer.
 pub async fn tick(state: &AppState) -> Result<TickStats, AppError> {
-    let due = MetadataRetryModel::due_batch(&state.pool, BATCH_SIZE).await?;
     let mut stats = TickStats::default();
+    // L3 — a bulk refetch / backfill run already loads the providers.
+    if crate::services::bulk_cover_fetch::snapshot(&state.bulk_cover_fetch).running {
+        tracing::debug!("Metadata retry tick skipped: a bulk metadata run is in progress");
+        stats.deferred_for_bulk_run = true;
+        return Ok(stats);
+    }
+    let due = MetadataRetryModel::due_batch(&state.pool, BATCH_SIZE).await?;
     if due.is_empty() {
         return Ok(stats);
     }
     // Snapshot the settings once per tick, as the bulk loop does per run.
-    let timeout_secs = state
-        .settings
-        .read()
-        .map(|s| s.metadata_fetch_timeout_secs)
-        .unwrap_or(30);
-    let per_provider_timeouts = state.metadata_chain_provider_timeouts();
-    let delay_ms = state.bulk_refetch_delay_ms();
+    let ctx = TickContext {
+        timeout_secs: state
+            .settings
+            .read()
+            .map(|s| s.metadata_fetch_timeout_secs)
+            .unwrap_or(30),
+        per_provider_timeouts: state.metadata_chain_provider_timeouts(),
+    };
+    let mut pacer = Pacer {
+        delay_ms: state.bulk_refetch_delay_ms(),
+        looked_up_one: false,
+    };
 
-    let mut looked_up_one = false;
     for row in due {
-        let Some(job) = prepare(&state.pool, row).await? else {
-            stats.skipped += 1;
-            continue;
-        };
-        // AC5 — no burst: a pause between two lookups.
-        if looked_up_one && delay_ms > 0 {
-            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-        }
-        looked_up_one = true;
-        stats.retried += 1;
-
-        let outcome = crate::tasks::metadata_fetch::fetch_metadata_chain_outcome(
-            state.pool.clone(),
-            row.title_id,
-            job.code,
-            job.code_type,
-            job.media_type,
-            state.registry.clone(),
-            timeout_secs,
-            per_provider_timeouts.clone(),
-            state.http_client.clone(),
-            state.covers_dir.clone(),
-            true,
-        )
-        .await;
-
-        match verdict(outcome, row.attempts) {
-            RetryVerdict::Done => {
-                MetadataRetryModel::dequeue(&state.pool, row.title_id).await?;
-                stats.done += 1;
-                tracing::info!(
-                    title_id = row.title_id,
-                    attempts = row.attempts + 1,
-                    outcome = ?outcome,
-                    "Metadata retry finished; title dequeued"
-                );
-            }
-            RetryVerdict::Reschedule {
-                attempts,
-                delay_secs,
-            } => {
-                MetadataRetryModel::reschedule(&state.pool, row.title_id, attempts, delay_secs)
-                    .await?;
-                stats.rescheduled += 1;
-                tracing::info!(
-                    title_id = row.title_id,
-                    attempts,
-                    delay_secs,
-                    "Metadata retry throttled again; rescheduled"
-                );
-            }
-            RetryVerdict::GiveUp { attempts } => {
-                MetadataRetryModel::dequeue(&state.pool, row.title_id).await?;
-                stats.given_up += 1;
+        match retry_row(state, &row, &ctx, &mut pacer).await {
+            Ok(RowResult::Skipped) => stats.skipped += 1,
+            Ok(RowResult::Done) => stats.done += 1,
+            Ok(RowResult::Rescheduled) => stats.rescheduled += 1,
+            Ok(RowResult::GaveUp) => stats.given_up += 1,
+            Err(e) => {
+                // M1 — one failing row neither stops the batch nor stays
+                // due (it would block the head of the queue and be hit
+                // again on every tick).
+                stats.errors += 1;
+                let delay_secs = push_back_delay_secs(row.attempts);
                 tracing::warn!(
                     title_id = row.title_id,
-                    attempts,
-                    "Metadata retry still throttled after the last attempt; giving up"
+                    attempts = row.attempts,
+                    delay_secs,
+                    error = %e,
+                    "Metadata retry failed for this title; pushed back"
                 );
+                if let Err(e) =
+                    MetadataRetryModel::reschedule(&state.pool, &row, row.attempts, delay_secs)
+                        .await
+                {
+                    tracing::warn!(
+                        title_id = row.title_id,
+                        error = %e,
+                        "Failed to push back a metadata retry"
+                    );
+                }
             }
         }
     }
+    stats.retried = stats.done + stats.rescheduled + stats.given_up;
     Ok(stats)
+}
+
+/// Retry one due row. Writes are guarded by the version `due_batch` read,
+/// so a concurrent enqueue wins over this run's decision.
+async fn retry_row(
+    state: &AppState,
+    row: &DueRetry,
+    ctx: &TickContext,
+    pacer: &mut Pacer,
+) -> Result<RowResult, AppError> {
+    let job = match prepare(&state.pool, row.title_id).await? {
+        Ok(job) => job,
+        Err(reason) => {
+            MetadataRetryModel::dequeue_read(&state.pool, row).await?;
+            tracing::info!(
+                title_id = row.title_id,
+                attempts = row.attempts,
+                reason,
+                "Metadata retry skipped; title dequeued"
+            );
+            return Ok(RowResult::Skipped);
+        }
+    };
+
+    pacer.before_lookup().await;
+    let outcome = crate::tasks::metadata_fetch::fetch_metadata_chain_outcome(
+        state.pool.clone(),
+        row.title_id,
+        job.code,
+        job.code_type,
+        job.media_type,
+        state.registry.clone(),
+        ctx.timeout_secs,
+        ctx.per_provider_timeouts.clone(),
+        state.http_client.clone(),
+        state.covers_dir.clone(),
+        true,
+    )
+    .await;
+
+    Ok(match verdict(outcome, row.attempts) {
+        RetryVerdict::Done => {
+            MetadataRetryModel::dequeue_read(&state.pool, row).await?;
+            tracing::info!(
+                title_id = row.title_id,
+                attempts = row.attempts + 1,
+                outcome = ?outcome,
+                "Metadata retry finished; title dequeued"
+            );
+            RowResult::Done
+        }
+        RetryVerdict::Reschedule {
+            attempts,
+            delay_secs,
+        } => {
+            MetadataRetryModel::reschedule(&state.pool, row, attempts, delay_secs).await?;
+            tracing::info!(
+                title_id = row.title_id,
+                attempts,
+                delay_secs,
+                "Metadata retry throttled again; rescheduled"
+            );
+            RowResult::Rescheduled
+        }
+        RetryVerdict::GiveUp { attempts } => {
+            MetadataRetryModel::dequeue_read(&state.pool, row).await?;
+            tracing::warn!(
+                title_id = row.title_id,
+                attempts,
+                "Metadata retry still throttled after the last attempt; giving up"
+            );
+            RowResult::GaveUp
+        }
+    })
 }
 
 /// What a retry needs to call the chain.
@@ -270,41 +371,24 @@ struct RetryJob {
     media_type: crate::models::media_type::MediaType,
 }
 
-/// Re-read the title of a due row. `None` (and the row dequeued) when there
-/// is nothing to retry: the title was deleted, a provider has resolved it
-/// since (`metadata_source` set), or it no longer carries a lookup code.
-async fn prepare(pool: &DbPool, row: DueRetry) -> Result<Option<RetryJob>, AppError> {
-    let reason = match TitleModel::find_by_id(pool, row.title_id).await? {
-        None => "title deleted",
-        Some(title) => {
-            if TitleModel::find_metadata_source(pool, title.id)
-                .await?
-                .is_some()
-            {
-                "title already resolved by a provider"
-            } else if let Some((code, code_type)) = title.lookup_code() {
-                let media_type = title
-                    .media_type
-                    .parse::<crate::models::media_type::MediaType>()
-                    .unwrap_or(crate::models::media_type::MediaType::Book);
-                return Ok(Some(RetryJob {
-                    code,
-                    code_type,
-                    media_type,
-                }));
-            } else {
-                "title has no lookup code"
-            }
-        }
+/// Re-read the title of a due row: the job to run, or why there is nothing
+/// to retry (deleted title, no lookup code left).
+async fn prepare(pool: &DbPool, title_id: u64) -> Result<Result<RetryJob, &'static str>, AppError> {
+    let Some(title) = TitleModel::find_by_id(pool, title_id).await? else {
+        return Ok(Err("title deleted"));
     };
-    MetadataRetryModel::dequeue(pool, row.title_id).await?;
-    tracing::info!(
-        title_id = row.title_id,
-        attempts = row.attempts,
-        reason,
-        "Metadata retry skipped; title dequeued"
-    );
-    Ok(None)
+    let Some((code, code_type)) = title.lookup_code() else {
+        return Ok(Err("title has no lookup code"));
+    };
+    let media_type = title
+        .media_type
+        .parse::<crate::models::media_type::MediaType>()
+        .unwrap_or(crate::models::media_type::MediaType::Book);
+    Ok(Ok(RetryJob {
+        code,
+        code_type,
+        media_type,
+    }))
 }
 
 /// Spawn the retry task: a tick every [`TICK_INTERVAL_SECS`] after a short
@@ -323,6 +407,8 @@ pub fn spawn(state: AppState) {
                     done = stats.done,
                     rescheduled = stats.rescheduled,
                     given_up = stats.given_up,
+                    errors = stats.errors,
+                    deferred_for_bulk_run = stats.deferred_for_bulk_run,
                     "Metadata retry tick completed"
                 ),
                 Ok(_) => {}
@@ -351,15 +437,16 @@ mod tests {
     }
 
     #[test]
-    fn only_a_throttled_miss_is_enqueued() {
-        assert_eq!(queue_action(false, true), QueueAction::Enqueue);
-        assert_eq!(
-            queue_action(false, false),
-            QueueAction::Nothing,
-            "genuine miss is final"
-        );
-        assert_eq!(queue_action(true, true), QueueAction::Dequeue);
-        assert_eq!(queue_action(true, false), QueueAction::Dequeue);
+    fn push_back_is_never_shorter_than_a_tick() {
+        assert_eq!(push_back_delay_secs(0), 900);
+        assert_eq!(push_back_delay_secs(4), 86_400);
+        assert_eq!(push_back_delay_secs(9), TICK_INTERVAL_SECS);
+    }
+
+    #[test]
+    fn only_a_throttled_miss_stays_queued() {
+        assert_eq!(queue_action(true), QueueAction::Enqueue);
+        assert_eq!(queue_action(false), QueueAction::Dequeue);
     }
 
     #[test]
