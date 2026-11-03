@@ -31,6 +31,24 @@ impl MetadataCacheModel {
         }
     }
 
+    /// Story 13-4 (#578) — soft-delete the live cache rows whose description
+    /// holds a `<` or an `&…;`: entries cached before Google Books and Comic
+    /// Vine answers were converted to plain text. A row does not say which
+    /// provider answered, so every such row goes (the next lookup asks the
+    /// providers again). Run once, under the `data_repairs` marker. Returns
+    /// the number of rows purged.
+    pub async fn purge_markup_descriptions(pool: &DbPool) -> Result<u64, AppError> {
+        let result = sqlx::query(
+            "UPDATE metadata_cache SET deleted_at = NOW() \
+             WHERE deleted_at IS NULL \
+               AND (JSON_UNQUOTE(JSON_EXTRACT(response, '$.description')) LIKE '%<%' \
+                 OR JSON_UNQUOTE(JSON_EXTRACT(response, '$.description')) LIKE '%&%;%')",
+        )
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
     /// Insert or update cached metadata response for an ISBN.
     pub async fn upsert(
         pool: &DbPool,

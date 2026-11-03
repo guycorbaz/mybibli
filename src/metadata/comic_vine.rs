@@ -110,11 +110,12 @@ fn parse_comic_vine_response(
         .and_then(|v| v.as_str())
         .map(String::from);
 
+    // Story 13-4 (#578): Comic Vine answers with HTML.
     let description = issue
         .get("description")
         .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(String::from);
+        .map(crate::utils::html_to_plain_text)
+        .filter(|s| !s.is_empty());
 
     Ok(Some(MetadataResult {
         title,
@@ -168,6 +169,23 @@ mod tests {
         assert_eq!(result.authors, vec!["Frank Miller", "Klaus Janson"]);
         assert_eq!(result.publication_date.as_deref(), Some("1986-02"));
         assert!(result.cover_url.is_some());
+    }
+
+    /// Story 13-4 (#578) — the HTML description becomes plain text; markup
+    /// alone is no description.
+    #[test]
+    fn an_html_description_is_parsed_as_plain_text() {
+        let parse = |d: &str| {
+            let json = serde_json::json!({
+                "results": [{"name": "X", "volume": {"name": "V"}, "description": d}]
+            });
+            parse_comic_vine_response(&json).unwrap().unwrap().description
+        };
+        assert_eq!(
+            parse("<p>An <i>epic</i> tale</p><p>Part&nbsp;2</p>").as_deref(),
+            Some("An epic tale\n\nPart\u{a0}2")
+        );
+        assert_eq!(parse("<p><br></p>"), None);
     }
 
     #[test]

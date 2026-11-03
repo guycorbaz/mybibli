@@ -177,9 +177,7 @@ impl ChainExecutor {
             Ok(Some(cached)) => {
                 tracing::info!(code = %code, "Metadata chain: cache hit");
                 return ChainOutcome {
-                    // Story 13-4 (#578): an entry cached before the plain-
-                    // text normalisation may still carry HTML.
-                    result: Some(cached.normalize_empty_strings()),
+                    result: Some(cached),
                     throttled: false,
                     // #202 — the cache stores the merged payload without
                     // provenance, so the source is unknown here, NOT absent.

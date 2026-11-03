@@ -69,21 +69,76 @@ fn html_named_entity(name: &str) -> Option<char> {
         .map(|(_, c)| *c)
 }
 
+/// Longest `&…;` looked at, in bytes (`&` included).
+const MAX_ENTITY_LEN: usize = 32;
+
+/// Windows-1252 characters of the C1 range, 0x80–0x9F (HTML5 numeric
+/// character reference replacement table); `None` for the five unassigned
+/// code points.
+fn windows_1252(c: char) -> Option<char> {
+    const TABLE: [Option<char>; 32] = [
+        Some('\u{20AC}'),
+        None,
+        Some('\u{201A}'),
+        Some('\u{0192}'),
+        Some('\u{201E}'),
+        Some('\u{2026}'),
+        Some('\u{2020}'),
+        Some('\u{2021}'),
+        Some('\u{02C6}'),
+        Some('\u{2030}'),
+        Some('\u{0160}'),
+        Some('\u{2039}'),
+        Some('\u{0152}'),
+        None,
+        Some('\u{017D}'),
+        None,
+        None,
+        Some('\u{2018}'),
+        Some('\u{2019}'),
+        Some('\u{201C}'),
+        Some('\u{201D}'),
+        Some('\u{2022}'),
+        Some('\u{2013}'),
+        Some('\u{2014}'),
+        Some('\u{02DC}'),
+        Some('\u{2122}'),
+        Some('\u{0161}'),
+        Some('\u{203A}'),
+        Some('\u{0153}'),
+        None,
+        Some('\u{017E}'),
+        Some('\u{0178}'),
+    ];
+    let code = c as u32;
+    if (0x80..=0x9F).contains(&code) {
+        TABLE[(code - 0x80) as usize]
+    } else {
+        None
+    }
+}
+
 /// Decode character references once: `&#xHH;`, `&#NN;`, the five named XML
 /// entities and, with `html_named`, the HTML named entities above. Anything
 /// else (malformed or unknown) is kept verbatim. No Unicode normalisation:
 /// callers apply NFC themselves.
 ///
 /// C0 controls other than tab / LF / CR are kept as their reference (never
-/// smuggled into the catalogue); C1 controls (MARC 21 non-sort markers) are
-/// dropped.
+/// smuggled into the catalogue). A reference into 128–159 is the
+/// Windows-1252 character in HTML mode; otherwise (XML mode — MARC 21
+/// non-sort markers — and the five unassigned code points) it is dropped.
 pub fn decode_char_references(raw: &str, html_named: bool) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut rest = raw;
     while let Some(amp) = rest.find('&') {
         out.push_str(&rest[..amp]);
         let candidate = &rest[amp..];
-        let decoded = candidate.find(';').and_then(|semi| {
+        // An entity name is short (`&#x10FFFF;`, `&thinsp;`): look for its
+        // `;` in the next few bytes only, so a text full of bare `&` is
+        // scanned once, not once per `&` (review L1). A farther `;` would
+        // make an unknown entity, kept verbatim anyway.
+        let window = &candidate.as_bytes()[..candidate.len().min(MAX_ENTITY_LEN)];
+        let decoded = window.iter().position(|&b| b == b';').and_then(|semi| {
             let entity = &candidate[1..semi];
             // Some(Some(c)): push c; Some(None): drop the reference; None:
             // keep it verbatim.
@@ -104,6 +159,11 @@ pub fn decode_char_references(raw: &str, html_named: bool) -> String {
                     };
                     match code.and_then(char::from_u32) {
                         Some(c) if c < ' ' && !matches!(c, '\t' | '\n' | '\r') => None,
+                        // HTML: a reference into 128–159 means the Windows-
+                        // 1252 character (`&#146;` is ’), as browsers read it.
+                        Some(c) if html_named && windows_1252(c).is_some() => {
+                            windows_1252(c).map(Some)
+                        }
                         Some(c) if ('\u{80}'..='\u{9f}').contains(&c) => Some(None),
                         other => other.map(Some),
                     }
@@ -154,25 +214,37 @@ fn tag_break(name: &str) -> TagBreak {
     }
 }
 
-/// End (exclusive byte index into `s`) of the tag starting at `s[0] == '<'`,
-/// honouring quoted attribute values (a `>` inside quotes does not close
-/// the tag). `None` when `s` does not start a tag: `<` followed by anything
-/// but a letter, `/` + letter, `!` or `?` is prose (`a < b`, `<3`), and an
-/// unterminated tag is kept as text.
-fn tag_end(s: &str) -> Option<usize> {
+/// What a `<` opens.
+enum TagScan {
+    /// A tag ending at this exclusive byte index.
+    Tag(usize),
+    /// Prose: `<` followed by anything but a letter, `/` + letter, `!` or
+    /// `?` (`a < b`, `<3`), or a would-be tag interrupted by another `<`.
+    NotATag,
+    /// A tag (or comment) the input ends inside: it and everything after it
+    /// are text. Stopping there keeps the scan linear — no later `<` is
+    /// re-scanned to the end of the input (review L1).
+    Unterminated,
+}
+
+/// Scan the tag starting at `s[0] == '<'`, honouring quoted attribute
+/// values (a `>` inside quotes does not close the tag).
+fn tag_end(s: &str) -> TagScan {
     let mut chars = s[1..].chars();
-    let first = chars.next()?;
-    let starts_tag = match first {
-        c if c.is_ascii_alphabetic() => true,
-        '/' => chars.next().is_some_and(|c| c.is_ascii_alphabetic()),
-        '!' | '?' => true,
+    let starts_tag = match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() => true,
+        Some('/') => chars.next().is_some_and(|c| c.is_ascii_alphabetic()),
+        Some('!' | '?') => true,
         _ => false,
     };
     if !starts_tag {
-        return None;
+        return TagScan::NotATag;
     }
     if let Some(comment) = s.strip_prefix("<!--") {
-        return comment.find("-->").map(|i| 4 + i + 3);
+        return match comment.find("-->") {
+            Some(i) => TagScan::Tag(4 + i + 3),
+            None => TagScan::Unterminated,
+        };
     }
     let mut quote: Option<char> = None;
     for (i, c) in s.char_indices().skip(1) {
@@ -180,12 +252,12 @@ fn tag_end(s: &str) -> Option<usize> {
             (Some(q), c) if c == q => quote = None,
             (Some(_), _) => {}
             (None, '"' | '\'') => quote = Some(c),
-            (None, '>') => return Some(i + 1),
-            (None, '<') => return None,
+            (None, '>') => return TagScan::Tag(i + 1),
+            (None, '<') => return TagScan::NotATag,
             _ => {}
         }
     }
-    None
+    TagScan::Unterminated
 }
 
 /// Lower-cased element name of a tag (`<P class=x>` → `p`, `</li>` → `li`)
@@ -224,9 +296,7 @@ pub fn html_to_plain_text(raw: &str) -> String {
         return raw.to_string();
     }
     // Whether the text carries markup decides how its own whitespace reads.
-    let has_tag = raw
-        .match_indices('<')
-        .any(|(i, _)| tag_end(&raw[i..]).is_some());
+    let has_tag = has_tag(raw);
     let mut text = String::with_capacity(raw.len());
     let mut skip_until: Option<String> = None;
     let mut rest = raw;
@@ -235,12 +305,19 @@ pub fn html_to_plain_text(raw: &str) -> String {
             push_source_text(&mut text, &rest[..lt], has_tag);
         }
         let at = &rest[lt..];
-        let Some(end) = tag_end(at) else {
-            if skip_until.is_none() {
-                text.push('<');
+        let end = match tag_end(at) {
+            TagScan::Tag(end) => end,
+            TagScan::NotATag => {
+                if skip_until.is_none() {
+                    text.push('<');
+                }
+                rest = &at[1..];
+                continue;
             }
-            rest = &at[1..];
-            continue;
+            TagScan::Unterminated => {
+                rest = at;
+                break;
+            }
         };
         let tag = &at[..end];
         rest = &at[end..];
@@ -272,6 +349,19 @@ pub fn html_to_plain_text(raw: &str) -> String {
 
     let decoded = decode_char_references(&text, true);
     tidy_lines(&decoded).nfc().collect()
+}
+
+/// Does `raw` carry at least one complete tag? Linear: stops at the first
+/// tag, or at the first unterminated one (nothing after it is a tag).
+fn has_tag(raw: &str) -> bool {
+    for (i, _) in raw.match_indices('<') {
+        match tag_end(&raw[i..]) {
+            TagScan::Tag(_) => return true,
+            TagScan::NotATag => {}
+            TagScan::Unterminated => return false,
+        }
+    }
+    false
 }
 
 /// Append a run of source text. In HTML (`collapse`), the source's line
@@ -481,6 +571,42 @@ mod tests {
     fn the_conversion_is_stable_on_its_own_output() {
         let once = html_to_plain_text("<p>Un <b>a</b> &amp; b</p><p>c</p>");
         assert_eq!(html_to_plain_text(&once), once);
+    }
+
+    #[test]
+    fn an_unterminated_tag_leaves_the_rest_as_text() {
+        assert_eq!(
+            html_to_plain_text("<b>x</b> <a \"y <i>z</i>"),
+            "x <a \"y <i>z</i>"
+        );
+        assert_eq!(html_to_plain_text("a<!-- b <p>c"), "a<!-- b <p>c");
+    }
+
+    /// Review L1 — hostile inputs are scanned in linear time (a quadratic
+    /// scan of 200k characters would take minutes, not milliseconds).
+    #[test]
+    fn hostile_inputs_are_scanned_linearly() {
+        let n = 200_000;
+        for unit in ["<!--", "&", "<a \"", "&#", "<a <b "] {
+            let raw = unit.repeat(n / unit.len());
+            let out = html_to_plain_text(&raw);
+            assert!(!out.is_empty() || raw.is_empty(), "{unit}");
+        }
+        let amps = "&".repeat(n);
+        assert_eq!(decode_char_references(&amps, false), amps);
+    }
+
+    /// Review L2 — HTML numeric references into 128–159 are Windows-1252;
+    /// the XML (MARC) mode still drops them.
+    #[test]
+    fn c1_references_are_windows_1252_in_html_mode() {
+        assert_eq!(
+            html_to_plain_text("l&#146;eau &#150; &#147;x&#148; &#128;"),
+            "l’eau – “x” €"
+        );
+        // Unassigned in Windows-1252: dropped.
+        assert_eq!(html_to_plain_text("a&#129;b"), "ab");
+        assert_eq!(decode_char_references("a&#146;b", false), "ab");
     }
 
     #[test]

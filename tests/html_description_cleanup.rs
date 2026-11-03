@@ -2,14 +2,18 @@
 //! converted to plain text at startup.
 //!
 //! DB integration tests of the data step
-//! (`services::title::convert_html_descriptions`).
+//! (`services::title::convert_html_descriptions`) and of its run-once
+//! wrapper (`repair_html_descriptions_once`, `data_repairs` marker).
 //!
 //! Run locally:
 //!     docker compose -f tests/docker-compose.rust-test.yml up -d
 //!     SQLX_OFFLINE=true DATABASE_URL='mysql://root:root_test@localhost:3307/mybibli_rust_test' \
 //!         cargo test --test html_description_cleanup
 
-use mybibli::services::title::{DescriptionCleanup, convert_html_descriptions};
+use mybibli::services::title::{
+    DescriptionCleanup, HTML_DESCRIPTIONS_REPAIR, convert_html_descriptions,
+    repair_html_descriptions_once,
+};
 use sqlx::MySqlPool;
 
 async fn title_with(
@@ -124,33 +128,61 @@ async fn a_deleted_title_is_left_alone(pool: MySqlPool) {
     );
 }
 
+/// Review M1 — the repair runs once per database: a description already
+/// converted to `<b>x</b>` (from `&lt;b&gt;x&lt;/b&gt;`) is healthy text
+/// the conversion would rewrite, so the second boot must not touch it.
 #[sqlx::test(migrations = "./migrations")]
-async fn the_cleanup_is_idempotent(pool: MySqlPool) {
-    let id = title_with(&pool, "Titeuf", Some(TITEUF), None).await;
-    // Its plain text still holds `&` and `;`: selected again next run.
-    let amp = title_with(&pool, "Amp", Some("<p>Tom &amp; Jerry; R&amp;D</p>"), None).await;
-    let first = convert_html_descriptions(&pool).await.expect("first run");
-    assert_eq!(first.converted, 2);
-    let after_first = (
-        description_of(&pool, id).await,
-        description_of(&pool, amp).await,
-    );
-    assert_eq!(after_first.1.0.as_deref(), Some("Tom & Jerry; R&D"));
+async fn the_repair_runs_once_and_leaves_converted_text_alone(pool: MySqlPool) {
+    let id = title_with(&pool, "Escaped", Some("&lt;b&gt;x&lt;/b&gt;"), None).await;
 
-    let second = convert_html_descriptions(&pool).await.expect("second run");
-    assert_eq!(
-        second,
-        DescriptionCleanup {
-            unchanged: 1,
-            ..DescriptionCleanup::default()
-        }
-    );
-    assert_eq!(
-        (
+    let first = repair_html_descriptions_once(&pool)
+        .await
+        .expect("first boot")
+        .expect("a fresh database runs the repair");
+    assert_eq!(first.converted, 1);
+    let after_first = description_of(&pool, id).await;
+    assert_eq!(after_first.0.as_deref(), Some("<b>x</b>"));
+
+    for boot in 2..=3 {
+        let again = repair_html_descriptions_once(&pool).await.expect("boot");
+        assert_eq!(again, None, "boot {boot}: the marker is present, no-op");
+        assert_eq!(
             description_of(&pool, id).await,
-            description_of(&pool, amp).await
-        ),
-        after_first,
-        "no write, no version bump"
-    );
+            after_first,
+            "boot {boot}: no write, no version bump"
+        );
+    }
+    let markers: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM data_repairs WHERE name = ?")
+        .bind(HTML_DESCRIPTIONS_REPAIR)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(markers, 1);
+}
+
+/// Cache rows cached before the providers converted their HTML are purged;
+/// a plain one stays.
+#[sqlx::test(migrations = "./migrations")]
+async fn cache_rows_with_markup_descriptions_are_purged(pool: MySqlPool) {
+    for (code, description) in [
+        ("9780000000101", "<p>Cached <b>HTML</b></p>"),
+        ("9780000000102", "Caf&eacute;"),
+        ("9780000000103", "Plain cached text"),
+    ] {
+        sqlx::query("INSERT INTO metadata_cache (code, response) VALUES (?, ?)")
+            .bind(code)
+            .bind(serde_json::json!({"title": "T", "description": description}))
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let report = convert_html_descriptions(&pool).await.expect("convert");
+    assert_eq!(report.cache_purged, 2);
+    let live: Vec<String> = sqlx::query_scalar(
+        "SELECT code FROM metadata_cache WHERE deleted_at IS NULL ORDER BY code",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(live, vec!["9780000000103".to_string()]);
 }

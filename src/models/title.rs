@@ -1088,12 +1088,6 @@ impl TitleModel {
             .ok_or_else(|| AppError::Internal("Failed to retrieve updated title".to_string()))
     }
 
-    /// Parse the manually_edited_fields JSON column into a Vec<String>.
-    ///
-    /// Returns an empty Vec when the column is NULL. If the JSON is present but
-    /// malformed (not an array of strings), logs a warning and returns empty —
-    /// a fail-open that weakens the metadata-fetch guard for a single corrupt
-    /// row, but surfaces the corruption in logs instead of silently masking it.
     /// Story 13-4 (#578) — the description's paragraphs for display, one
     /// escaped `<p>` each (`utils::description_paragraphs`); empty without
     /// a description.
@@ -1104,6 +1098,12 @@ impl TitleModel {
             .unwrap_or_default()
     }
 
+    /// Parse the manually_edited_fields JSON column into a Vec<String>.
+    ///
+    /// Returns an empty Vec when the column is NULL. If the JSON is present but
+    /// malformed (not an array of strings), logs a warning and returns empty —
+    /// a fail-open that weakens the metadata-fetch guard for a single corrupt
+    /// row, but surfaces the corruption in logs instead of silently masking it.
     pub fn parsed_manually_edited_fields(&self) -> Vec<String> {
         let Some(raw) = self.manually_edited_fields.as_deref() else {
             return Vec::new();

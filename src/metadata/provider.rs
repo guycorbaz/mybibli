@@ -62,14 +62,7 @@ impl MetadataResult {
     pub fn normalize_empty_strings(mut self) -> Self {
         self.title = normalize_empty(self.title);
         self.subtitle = normalize_empty(self.subtitle);
-        // Story 13-4 (#578): Google Books and Comic Vine answer with HTML;
-        // every provider and every chain merge passes here, so the catalogue
-        // only ever stores plain text. Before the empty check: markup-only
-        // descriptions (`<p><br></p>`) become absent.
-        self.description = normalize_empty(
-            self.description
-                .map(|d| crate::utils::html_to_plain_text(&d)),
-        );
+        self.description = normalize_empty(self.description);
         self.publisher = normalize_empty(self.publisher);
         self.publication_date = normalize_empty(self.publication_date);
         self.cover_url = normalize_empty(self.cover_url);
@@ -456,25 +449,20 @@ mod tests {
         );
     }
 
-    /// Story 13-4 (#578) — an HTML description becomes plain text at the
-    /// single normalisation point; markup alone becomes absent.
+    /// Story 13-4 (#578), review L3 — HTML cleaning belongs to the providers
+    /// that answer with HTML (Google Books, Comic Vine); the shared
+    /// normalisation leaves other text alone (BnF `<<…>>`, `&`).
     #[test]
-    fn metadata_result_normalize_turns_an_html_description_into_plain_text() {
-        let html = MetadataResult {
-            description: Some("<p><b>Grandis un peu !</b></p><p>Suite&nbsp;&amp; fin</p>".into()),
+    fn metadata_result_normalize_does_not_strip_markup_like_text() {
+        let result = MetadataResult {
+            description: Some("<<Le>> Petit Prince &amp; <b>moi</b>".into()),
             ..MetadataResult::default()
         }
         .normalize_empty_strings();
         assert_eq!(
-            html.description.as_deref(),
-            Some("Grandis un peu !\n\nSuite\u{a0}& fin")
+            result.description.as_deref(),
+            Some("<<Le>> Petit Prince &amp; <b>moi</b>")
         );
-        let markup_only = MetadataResult {
-            description: Some("<p><br></p>".into()),
-            ..MetadataResult::default()
-        }
-        .normalize_empty_strings();
-        assert!(markup_only.description.is_none());
     }
 
     #[test]

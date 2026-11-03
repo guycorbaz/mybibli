@@ -492,12 +492,14 @@ pub struct DescriptionCleanup {
     pub converted: usize,
     /// `description` is in `manually_edited_fields`: never rewritten.
     pub hand_edited: usize,
-    /// Already plain text (`a < b`, `R&D;` — nothing to convert).
+    /// Nothing to convert (`a < b`, `R&D;`).
     pub unchanged: usize,
     /// The row changed between the read and the update (version guard).
     pub superseded: usize,
     /// A per-title DB error, logged; the run goes on.
     pub errors: usize,
+    /// `metadata_cache` rows purged (description with markup).
+    pub cache_purged: u64,
 }
 
 /// Story 13-4 (#578) — is `description` among a title's hand-edited
@@ -512,17 +514,32 @@ pub fn description_is_hand_edited(manually_edited_fields: Option<&str>) -> bool 
     }
 }
 
+/// Name of the story 13-4 repair in `data_repairs`.
+pub const HTML_DESCRIPTIONS_REPAIR: &str = "13-4-html-descriptions-to-plain-text";
+
+/// Story 13-4 (#578) — run [`convert_html_descriptions`] once per database
+/// (`services::data_repairs::run_once`); `None` when it already ran.
+pub async fn repair_html_descriptions_once(
+    pool: &DbPool,
+) -> Result<Option<DescriptionCleanup>, AppError> {
+    crate::services::data_repairs::run_once(pool, HTML_DESCRIPTIONS_REPAIR, || {
+        convert_html_descriptions(pool)
+    })
+    .await
+}
+
 /// Story 13-4 (#578) — descriptions stored before v1.23.0 may carry the
-/// providers' HTML (Google Books, Comic Vine). One-shot startup repair:
-/// every live title whose description contains `<` or `&…;` gets its
+/// providers' HTML (Google Books, Comic Vine). Startup repair: every live
+/// title whose description contains `<` or `&…;` gets its
 /// [`crate::utils::html_to_plain_text`] form (cleared when nothing but
 /// markup), under optimistic locking — unless `description` is in its
-/// `manually_edited_fields` (a hand-typed text is never rewritten).
-/// Idempotent: a converted description is plain text, which the
-/// conversion leaves as it is (counted `unchanged` on the next boot). The
-/// one exception is a double-encoded source (`&amp;lt;b&amp;gt;`): entities
-/// are decoded once per run, so its `&lt;b&gt;` turns into the text `<b>`
-/// on the next boot and stops there. Logs one `info` line with the counts.
+/// `manually_edited_fields` (a hand-typed text is never rewritten). The
+/// `metadata_cache` rows whose description holds markup are purged.
+///
+/// **Not idempotent by itself** — a converted description may hold `<b>` or
+/// `&lt;` as text, which a second run would convert again — so it runs
+/// once, through [`repair_html_descriptions_once`]. Logs one `info` line
+/// with the counts.
 pub async fn convert_html_descriptions(pool: &DbPool) -> Result<DescriptionCleanup, AppError> {
     let mut report = DescriptionCleanup::default();
     for candidate in TitleModel::list_descriptions_with_markup(pool).await? {
@@ -556,8 +573,11 @@ pub async fn convert_html_descriptions(pool: &DbPool) -> Result<DescriptionClean
             }
         }
     }
+    report.cache_purged =
+        crate::models::metadata_cache::MetadataCacheModel::purge_markup_descriptions(pool).await?;
     tracing::info!(
         converted = report.converted,
+        cache_purged = report.cache_purged,
         skipped_hand_edited = report.hand_edited,
         skipped_unchanged = report.unchanged,
         skipped_superseded = report.superseded,

@@ -12,6 +12,7 @@ pub mod cover_acceptance;
 pub mod cover_proposals;
 pub mod cover_staging;
 pub mod dashboard;
+pub mod data_repairs;
 pub mod expected_tomes;
 pub mod loans;
 pub mod locations;
