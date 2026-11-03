@@ -308,6 +308,9 @@ pub struct DetailBody {
     pub accepted_cover: bool,
     pub cover_alt: String,
     pub omnibus_labels: Vec<String>,
+    /// Story 13-11 — per line, the expected tomes it fills (empty when
+    /// none).
+    pub fill_labels: Vec<String>,
     pub current_date_labels: Vec<String>,
     pub cover_dims: Vec<String>,
     /// Per line: the live target's name, or "#id (no longer in the
@@ -339,6 +342,7 @@ impl DetailBody {
                 None => String::new(),
             })
             .collect();
+        let fill_labels = d.lines.iter().map(|line| fill_label(line, loc)).collect();
         let current_date_labels = d
             .lines
             .iter()
@@ -504,10 +508,35 @@ impl DetailBody {
             accepted_cover: p.kind == crate::models::proposal::ProposalKind::Cover
                 && p.status == ProposalStatus::Accepted,
             omnibus_labels,
+            fill_labels,
             current_date_labels,
             cover_dims,
         }
     }
+}
+
+/// Story 13-11 — "Fills expected tome N “T” (ISBN …)." for each tome a
+/// title line fills, one sentence each; empty when it fills none.
+pub fn fill_label(line: &crate::services::proposal_review::LineView, loc: &str) -> String {
+    line.fills
+        .iter()
+        .map(|t| match &t.isbn {
+            Some(isbn) => rust_i18n::t!(
+                "proposals.fills_tome",
+                locale = loc,
+                position = t.position,
+                title = t.title.as_str(),
+                isbn = isbn.as_str()
+            ),
+            None => rust_i18n::t!(
+                "proposals.fills_tome_no_isbn",
+                locale = loc,
+                position = t.position,
+                title = t.title.as_str()
+            ),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[derive(Template)]
@@ -943,6 +972,39 @@ pub(crate) fn render<T: Template>(template: &T, name: &'static str) -> Result<Re
 
 #[cfg(test)]
 mod tests {
+    // Story 13-11 (review round 1): the tomes a title line fills.
+    #[test]
+    fn fill_labels_name_each_tome_in_every_locale() {
+        use crate::models::expected_tome::TomeSlot;
+        use crate::services::proposal_review::LineView;
+        let line = LineView {
+            fills: vec![
+                TomeSlot {
+                    id: 1,
+                    position: 4,
+                    title: "Quatre".into(),
+                    isbn: Some("9782070360246".into()),
+                },
+                TomeSlot {
+                    id: 2,
+                    position: 5,
+                    title: "Cinq".into(),
+                    isbn: None,
+                },
+            ],
+            ..LineView::default()
+        };
+        for loc in ["en", "fr", "de", "it"] {
+            let label = super::fill_label(&line, loc);
+            assert!(!label.contains("proposals."), "{loc}: {label}");
+            assert!(
+                label.contains("Quatre") && label.contains("9782070360246") && label.contains("Cinq"),
+                "{loc}: {label}"
+            );
+        }
+        assert!(super::fill_label(&LineView::default(), "en").is_empty());
+    }
+
     // Story 12-4 (#561): what a list row shows beyond the summary.
     #[test]
     fn row_extras_follow_kind_status_and_target() {

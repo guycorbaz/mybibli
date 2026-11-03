@@ -420,6 +420,12 @@ async fn attach_refusals_write_nothing(pool: DbPool) {
     assign(&pool, held, series, 1).await;
     add_tome(&pool, series, 4, "Spirou 4", Some("9782803600212")).await;
     let t = seed_title(&pool, "Spirou 2").await;
+    let other_isbn = seed_title(&pool, "Pas Spirou 4").await;
+    sqlx::query("UPDATE titles SET isbn = '9782070360246' WHERE id = ?")
+        .bind(other_isbn)
+        .execute(&pool)
+        .await
+        .unwrap();
     let deleted_series = add_series(&pool, "Old", "open", None).await;
     soft_delete(&pool, "series", deleted_series).await;
 
@@ -476,13 +482,16 @@ async fn attach_refusals_write_nothing(pool: DbPool) {
             base(json!({"titles": [{"title_id": 999_999, "position": 2}]})),
             "No title with id 999999".into(),
         ),
-        // Review round 1: a title line on an expected tome's position,
-        // also through an omnibus range.
+        // Story 13-11 (supersedes review round 1): a title line may fill
+        // an expected tome, but not one whose ISBN names another book (an
+        // omnibus line is exempt: its edition has its own ISBN — accepted,
+        // see proposal_accept_series).
         (
-            base(
-                json!({"titles": [{"title_id": t, "position": 3, "is_omnibus": true, "end_position": 5}]}),
+            base(json!({"titles": [{"title_id": other_isbn, "position": 4}]})),
+            format!(
+                "Title {other_isbn} (ISBN 9782070360246) cannot fill position 4: the series \
+                 expects the tome \"Spirou 4\" there with another ISBN (9782803600212)"
             ),
-            "already expects the tome \"Spirou 4\" at position 4".into(),
         ),
     ];
     for (args, expected) in cases {

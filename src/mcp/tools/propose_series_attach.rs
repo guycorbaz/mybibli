@@ -63,14 +63,18 @@ impl McpTool for ProposeSeriesAttach {
          several positions), and/or to record tomes of that series the library does not own \
          yet (`expected_tomes`: position, title, optional ISBN). Give at least one title or \
          expected tome, and `sources`: the http(s) URLs where you found the information. Read \
-         the series with get_series first: proposed positions must be free. This files ONE \
+         the series with get_series first: proposed positions must be free, except that a \
+         title may take the position of an expected tome the series does not hold yet — the \
+         owned title then fills that tome, settled when the proposal is accepted. This files ONE \
          proposal for a librarian to accept, edit or reject; it does not change the catalog. \
          Returns `proposal_id` and `status` (`pending`). Refused with an explanation when: the \
          series id is unknown or deleted; a proposal for this series is still pending (the \
          message gives its id); a title id is unknown or deleted, is already in the series, \
          or is listed twice; a position is below 1, above 10000, above a closed series' total, \
-         used twice in the proposal (omnibus ranges included), or already held by a title or \
-         named by an expected tome of the series; `end_position` is given without \
+         used twice in the proposal (omnibus ranges included), or already held by a title; \
+         an expected tome is placed on the position of an expected tome of the series; a \
+         title (not an omnibus over several positions) fills an expected tome whose ISBN is not its own (both ISBNs \
+         known and different); `end_position` is given without \
          `is_omnibus`, or an omnibus lacks it or covers more than 100 positions; `titles` and \
          `expected_tomes` hold more than 999 entries together; an expected tome has no title, \
          an invalid ISBN or an ISBN the series (or this proposal) already expects; \

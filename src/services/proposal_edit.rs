@@ -59,8 +59,8 @@ use crate::services::proposal_review::{LineView, field_label, status_label};
 use crate::services::series_acceptance::{self, StoredSeries};
 use crate::services::series_proposals::{
     LineRef, MAX_OMNIBUS_SPAN, MAX_POSITION, MAX_SERIES_NAME_CHARS, SeriesProposalError,
-    ValidLines, ValidTitle, ValidTome, check_against_series, create_series_line, validate_lines,
-    validate_series_name, validate_total,
+    ValidLines, ValidTitle, ValidTome, check_against_series, create_series_line, title_isbns_in,
+    validate_lines, validate_series_name, validate_total,
 };
 
 /// Which line cannot be removed.
@@ -298,6 +298,18 @@ fn series_hint(e: &SeriesProposalError, loc: &str) -> String {
             locale = loc,
             isbn = isbn.as_str(),
             title = tome_title.as_str()
+        ),
+        E::TomeIsbnMismatch {
+            position,
+            tome_title,
+            tome_isbn,
+            ..
+        } => t!(
+            "proposals.edit_error_tome_isbn_mismatch",
+            locale = loc,
+            position = position,
+            title = tome_title.as_str(),
+            isbn = tome_isbn.as_str()
         ),
         _ => t!("proposals.edit_error_invalid", locale = loc),
     }
@@ -830,7 +842,10 @@ async fn edit_line_in(
             if let (Some(one), Some(s)) = (one, &series) {
                 let held = TitleSeriesModel::held_positions_in(conn, s.id).await?;
                 let slots = ExpectedTomeModel::live_slots_in(conn, s.id).await?;
-                check_against_series(&one, &held, &slots)?;
+                // Story 13-11 — a title line may fill an expected tome
+                // unless the two ISBNs differ (same rule as filing).
+                let title_isbns = title_isbns_in(conn, &one).await?;
+                check_against_series(&one, &held, &slots, &title_isbns)?;
             }
             // A creation: no active series may carry the new name.
             if let EditedSeriesLine::Series { name } = &line
@@ -1584,6 +1599,13 @@ mod tests {
             EditError::Series(SeriesProposalError::TomeIsbnTaken {
                 isbn: "9782012101360".into(),
                 tome_title: "T".into(),
+            }),
+            EditError::Series(SeriesProposalError::TomeIsbnMismatch {
+                title_id: 1,
+                title_isbn: "9782070360246".into(),
+                position: 4,
+                tome_title: "T".into(),
+                tome_isbn: "9782012101360".into(),
             }),
             EditError::Field {
                 field: "subtitle".into(),

@@ -53,6 +53,13 @@ pub enum AcceptConflict {
     TomePositionTaken { position: i32, tome_title: String },
     /// A live expected tome already carries a proposed tome's ISBN.
     TomeIsbnTaken { isbn: String, tome_title: String },
+    /// Story 13-11 — a title line fills an expected tome whose ISBN is
+    /// not the title's (the tome's ISBN changed since filing, say).
+    TomeIsbnMismatch {
+        position: i32,
+        tome_title: String,
+        tome_isbn: String,
+    },
     /// A proposed position is above the series' closed total.
     BeyondTotal { position: i32, total: i32 },
     /// Story 11-18 — a title field no longer holds the value recorded at

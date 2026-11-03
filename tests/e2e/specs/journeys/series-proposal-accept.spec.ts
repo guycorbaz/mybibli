@@ -12,6 +12,12 @@
  * librarian then renames → accepting says the proposal is outdated and
  * nothing was added; the series page shows no expected tome.
  *
+ * Journey 3 (story 13-11, #588): the librarian declares an expected
+ * tome without ISBN at position 2 → the agent proposes the scanned
+ * (owned) title at that position — no longer refused → the librarian
+ * accepts → the series page shows the title at position 2 and no
+ * expected tome left.
+ *
  * Spec ID "SA". The file name sorts after `classification-fieldset`,
  * `dewey-code` and `empty-states`, which assume no series exists
  * (D-11-11-6, #528). Series names carry a per-run stamp.
@@ -200,6 +206,73 @@ test.describe("Story 11-17 — accept a series proposal", () => {
       await page.goto(`/series/${seriesId}`);
       await expect(page.locator("h1")).toContainText(`${name}-renamed`);
       await expect(page.getByText("SA tome jamais ajouté")).toHaveCount(0);
+    } finally {
+      await agent.dispose();
+      await revoke(page, key.label);
+    }
+  });
+
+  test("an owned title proposed at an expected position fills that tome", async ({
+    page,
+    baseURL,
+  }) => {
+    const key = await newKey(page, "accept-fill");
+    expect(baseURL, "baseURL must be configured").toBeTruthy();
+    const agent = await playwrightRequest.newContext({ baseURL: baseURL! });
+    try {
+      await page.context().clearCookies();
+      await loginAs(page, "librarian");
+      const titleId = await scanSettledTitle(page, agent, key.plaintext, 3);
+
+      const name = `SA-Fill-${Date.now()}`;
+      await page.goto("/series/new");
+      await page.locator("#series-name").fill(name);
+      await page.locator("#series-type").selectOption("closed");
+      await page.locator("#series-total").fill("3");
+      await page.getByRole("button", { name: /^(Save|Enregistrer|Speichern|Salva)$/i }).click();
+      await page.waitForURL(/\/series\/\d+$/);
+      const seriesId = Number(page.url().match(/\/series\/(\d+)$/)![1]);
+
+      // The librarian declares tome 2 (no ISBN).
+      await page.locator("#add-expected-tome").click();
+      await page.waitForURL(/\/expected-tomes\/new$/);
+      await page.locator("#expected-tome-position").fill("2");
+      await page.locator("#expected-tome-title").fill("SA tome deux attendu");
+      await page.locator('main button[type="submit"]').last().click();
+      await page.waitForURL(/\/series\/\d+$/);
+      await expect(
+        page.locator("[data-expected-tome]").filter({ hasText: "SA tome deux attendu" }),
+      ).toBeVisible();
+
+      // The agent proposes the owned title at that position: filed.
+      const filed = await mcpCallTool(agent, key.plaintext, "propose_series_attach", {
+        series_id: seriesId,
+        titles: [{ title_id: titleId, position: 2 }],
+        sources: [SOURCE],
+      });
+      expect(filed.isError, JSON.stringify(filed.content)).toBe(false);
+      const proposalId = filed.structuredContent.proposal_id as number;
+
+      await page.goto(`/proposals/${proposalId}`);
+      await acceptFromDetail(page);
+      await expect(page.locator("#proposal-detail-body")).toHaveAttribute(
+        "data-proposal-status",
+        "accepted",
+      );
+      await expect(
+        page.locator("#feedback-list .feedback-entry").filter({ hasText: ACCEPTED }),
+      ).toBeVisible({ timeout: 10000 });
+
+      // The tome is owned: the title holds position 2, no expected tome left.
+      await page.goto(`/series/${seriesId}`);
+      await expect(page.locator(`a[href="/title/${titleId}"]`).first()).toBeVisible();
+      await expect(page.locator("[data-expected-tome]")).toHaveCount(0);
+      const detail = await mcpCallTool(agent, key.plaintext, "get_series", { id: seriesId });
+      const tomes = detail.structuredContent.expected_tomes as {
+        position: number;
+        settled_title_id: number | null;
+      }[];
+      expect(tomes.map((t) => [t.position, t.settled_title_id])).toEqual([[2, titleId]]);
     } finally {
       await agent.dispose();
       await revoke(page, key.label);

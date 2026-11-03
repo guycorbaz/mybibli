@@ -79,6 +79,7 @@
                 <span class="tabular-nums text-stone-500 dark:text-stone-400">{{ l.t("col_position") }} {{ line.position }}</span> —
                 {% if line.target_name.is_some() %}<a href="/title/{{ line.target_id.unwrap_or_default() }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ body.target_texts[loop.index0] }}</a>{% else %}{{ body.target_texts[loop.index0] }}{% endif %}
                 {% if line.end_position.is_some() %}<span class="ml-2 text-xs text-stone-500 dark:text-stone-400">{{ body.omnibus_labels[loop.index0] }}</span>{% endif %}
+                {% if !line.fills.is_empty() %}<p data-fills-tome class="mt-1 text-xs text-stone-600 dark:text-stone-300">{{ body.fill_labels[loop.index0] }}</p>{% endif %}
             {% else if line.line.eq("tome") %}
                 <span class="text-stone-500 dark:text-stone-400">{{ l.t("tomes_heading") }} —</span>
                 <span class="tabular-nums">{{ l.t("col_position") }} {{ line.position }}</span> —

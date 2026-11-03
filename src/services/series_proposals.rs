@@ -28,17 +28,38 @@
 //!    `proposal` (`ExpectedTomeOrigin::Proposal`); the origin follows
 //!    from the line type and is not stored.
 //!
+//! ## Expected tomes and title lines (story 13-11, supersedes D-11-12-10)
+//!
+//! A title line may sit on the position of a live expected tome the
+//! series does not hold yet: the owned title **fills** that tome.
+//! Filing accepts it when the tome has no ISBN, when the title has none
+//! (the librarian judges), or when both ISBNs are the same book (ISBN-13
+//! comparison); it refuses it with [`SeriesProposalError::TomeIsbnMismatch`]
+//! when both are known and differ ([`isbn_conflict`]). An omnibus line
+//! covering more than one position fills every tome in its range
+//! without any ISBN comparison (a one-position omnibus is compared like
+//! a single line, review round 2): an omnibus edition carries its
+//! own ISBN, never one of a single tome, so the librarian judges it on
+//! the review screen, which names the tomes each title line fills
+//! (code review round 1). Acceptance re-runs the rule on the live
+//! catalog (a mismatch then marks the proposal stale), attaches the
+//! title and settles each filled tome with it in the same transaction
+//! ([`filled_tomes`]). The librarian's line edit applies the same rule.
+//! An expected-tome line on a tome's position is still refused
+//! (`TomePositionTaken`).
+//!
 //! Errors are a typed [`SeriesProposalError`] with agent-facing English
 //! messages (D-11-9-2 precedent).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use serde_json::{Value, json};
+use sqlx::MySqlConnection;
 
 use crate::db::DbPool;
 use crate::error::AppError;
-use crate::models::expected_tome::TomeSlot;
+use crate::models::expected_tome::{ExpectedTomeModel, TomeSlot};
 use crate::models::proposal::{ProposalKind, ProposalModel, ProposalTarget, ProposalTargetTable};
 use crate::models::series::{HeldPosition, SeriesType};
 use crate::services::expected_tomes::{
@@ -209,6 +230,15 @@ pub enum SeriesProposalError {
         isbn: String,
         tome_title: String,
     },
+    /// Story 13-11 — a title line fills an expected tome whose ISBN is
+    /// not the title's.
+    TomeIsbnMismatch {
+        title_id: u64,
+        title_isbn: String,
+        position: i32,
+        tome_title: String,
+        tome_isbn: String,
+    },
     TargetChanged {
         target: ProposalTarget,
         expected: i32,
@@ -228,6 +258,7 @@ impl Refusal for SeriesProposalError {
             | PositionHeld { .. }
             | TomePositionTaken { .. }
             | TomeIsbnTaken { .. }
+            | TomeIsbnMismatch { .. }
             | TargetChanged { .. } => RefusalClass::Conflict,
             Tome {
                 error: ExpectedTomeError::Database(_),
@@ -401,6 +432,18 @@ impl fmt::Display for SeriesProposalError {
                 "The series already expects ISBN {isbn} (tome \"{tome_title}\"): remove that \
                  line."
             ),
+            TomeIsbnMismatch {
+                title_id,
+                title_isbn,
+                position,
+                tome_title,
+                tome_isbn,
+            } => write!(
+                f,
+                "Title {title_id} (ISBN {title_isbn}) cannot fill position {position}: the series \
+                 expects the tome \"{tome_title}\" there with another ISBN ({tome_isbn}). Check \
+                 the position with get_series, or leave this title out."
+            ),
             TargetChanged {
                 target,
                 expected,
@@ -496,6 +539,26 @@ pub struct ValidTitle {
 impl ValidTitle {
     pub fn end(&self) -> i32 {
         self.end_position.unwrap_or(self.position)
+    }
+}
+
+/// Story 13-11 — the ISBN-13 of the tome a title line may not fill
+/// (pure — unit tested): `Some` only for a single-position line (an
+/// omnibus covering more than one position has its own ISBN and is not
+/// compared — a one-position "omnibus" is compared like a single line)
+/// whose title ISBN and tome ISBN are both known and differ.
+pub fn isbn_conflict(
+    position: i32,
+    end: i32,
+    title_isbn: Option<&str>,
+    tome_isbn: Option<&str>,
+) -> Option<String> {
+    if end > position {
+        return None;
+    }
+    match (title_isbn, normalize_isbn(tome_isbn)) {
+        (Some(title), Ok(Some(tome))) if tome != title => Some(tome),
+        _ => None,
     }
 }
 
@@ -730,16 +793,19 @@ pub fn create_series_line(name: &str, series_type: SeriesType, total: Option<i32
 }
 
 /// Check validated lines against a series as it is (pure — unit
-/// tested; story 11-17 extracted it from `propose_attach` so filing and
-/// acceptance apply the same rules): a title already in the series, a
-/// position held by a live title, a title line on the position of a live
-/// expected tome (D-11-12-10), a tome line on a held or tome-taken
-/// position, a tome ISBN another live tome carries. The first problem
-/// found is returned.
+/// tested; story 11-17 extracted it from `propose_attach` so filing,
+/// acceptance and the line edit apply the same rules): a title already
+/// in the series, a position held by a live title, a title line filling
+/// an expected tome whose ISBN differs from the title's (story 13-11,
+/// single-position lines only — an omnibus has its own ISBN;
+/// `title_isbns` maps a title id to its ISBN-13, see [`title_isbns_in`]),
+/// a tome line on a held or tome-taken position, a tome ISBN another
+/// live tome carries. The first problem found is returned.
 pub fn check_against_series(
     lines: &ValidLines,
     held: &[HeldPosition],
     tomes: &[TomeSlot],
+    title_isbns: &HashMap<u64, String>,
 ) -> Result<(), SeriesProposalError> {
     for t in &lines.titles {
         if let Some(row) = held.iter().find(|p| p.title_id == t.title_id) {
@@ -760,15 +826,31 @@ pub fn check_against_series(
             });
         }
         // A settled tome's position is held by its title (above); an
-        // unsettled one names a gap a title line must not fill
-        // silently (D-11-12-10).
-        if let Some(tome) = tomes
-            .iter()
-            .find(|e| (t.position..=t.end()).contains(&e.position))
+        // unsettled one is a gap the owned title fills — unless both
+        // ISBNs are known and name different books (story 13-11,
+        // supersedes D-11-12-10). An omnibus edition has its own ISBN,
+        // never a single tome's: its ISBN is not compared, the librarian
+        // judges on the review screen (13-11 review rounds 1-2).
+        if let Some(title_isbn) = title_isbns.get(&t.title_id)
+            && let Some((tome, tome_isbn)) = tomes
+                .iter()
+                .filter(|e| (t.position..=t.end()).contains(&e.position))
+                .find_map(|e| {
+                    isbn_conflict(
+                        t.position,
+                        t.end(),
+                        Some(title_isbn.as_str()),
+                        e.isbn.as_deref(),
+                    )
+                    .map(|i| (e, i))
+                })
         {
-            return Err(SeriesProposalError::TomePositionTaken {
+            return Err(SeriesProposalError::TomeIsbnMismatch {
+                title_id: t.title_id,
+                title_isbn: title_isbn.clone(),
                 position: tome.position,
                 tome_title: tome.title.clone(),
+                tome_isbn,
             });
         }
     }
@@ -797,6 +879,47 @@ pub fn check_against_series(
         }
     }
     Ok(())
+}
+
+/// Story 13-11 — the expected tomes the title lines fill (pure — unit
+/// tested): every live tome inside a title line's range, as
+/// `(tome id, title id)`. Meant for lines [`check_against_series`]
+/// accepted, so no title holds those positions.
+pub fn filled_tomes(lines: &ValidLines, tomes: &[TomeSlot]) -> Vec<(u64, u64)> {
+    lines
+        .titles
+        .iter()
+        .flat_map(|t| {
+            tomes
+                .iter()
+                .filter(move |e| (t.position..=t.end()).contains(&e.position))
+                .map(move |e| (e.id, t.title_id))
+        })
+        .collect()
+}
+
+/// Story 13-11 — the ISBN-13 of each title line's title, for
+/// [`check_against_series`]. A title without an ISBN, or with a stored
+/// value that is not a valid ISBN, is left out (its ISBN is unknown: it
+/// may fill any tome, the librarian judges). Share-locks the title rows
+/// inside a transaction (useful for the line edit; acceptance already
+/// holds them since its staleness step); on an autocommit connection
+/// (filing) it is a plain read.
+pub async fn title_isbns_in(
+    conn: &mut MySqlConnection,
+    lines: &ValidLines,
+) -> Result<HashMap<u64, String>, AppError> {
+    let ids: Vec<u64> = lines.titles.iter().map(|t| t.title_id).collect();
+    Ok(ExpectedTomeModel::live_title_isbns_in(conn, &ids)
+        .await?
+        .into_iter()
+        .filter_map(|(id, raw)| {
+            normalize_isbn(Some(&raw))
+                .ok()
+                .flatten()
+                .map(|isbn| (id, isbn))
+        })
+        .collect())
 }
 
 pub struct SeriesProposalService;
@@ -871,12 +994,17 @@ impl SeriesProposalService {
             .expected_tomes
             .iter()
             .map(|e| TomeSlot {
+                id: e.id,
                 position: e.position,
                 title: e.title.clone(),
                 isbn: e.isbn.clone(),
             })
             .collect();
-        check_against_series(&lines, &held, &slots)?;
+        let title_isbns = {
+            let mut conn = pool.acquire().await.map_err(AppError::from)?;
+            title_isbns_in(&mut conn, &lines).await?
+        };
+        check_against_series(&lines, &held, &slots, &title_isbns)?;
 
         let series_line = NewProposalItem {
             target: Some(ProposalTarget {
@@ -1374,5 +1502,110 @@ mod tests {
             error: ExpectedTomeError::Database(AppError::Internal("x".into())),
         };
         assert_eq!(tome_db.class(), RefusalClass::Internal);
+    }
+
+    fn slot(id: u64, position: i32, isbn: Option<&str>) -> TomeSlot {
+        TomeSlot {
+            id,
+            position,
+            title: format!("Tome {position}"),
+            isbn: isbn.map(String::from),
+        }
+    }
+
+    fn valid(titles: &[TitleLine]) -> ValidLines {
+        validate_lines(titles, &[], None).unwrap()
+    }
+
+    const ISBN_A: &str = "9782070360246";
+    const ISBN_B: &str = "9782012101360";
+
+    #[test]
+    fn a_title_line_fills_a_tome_without_isbn_or_with_its_own() {
+        // Story 13-11 (supersedes D-11-12-10).
+        let lines = valid(&[title(7, 3)]);
+        let none = HashMap::new();
+        let with_a = HashMap::from([(7, ISBN_A.to_string())]);
+        // The tome has no ISBN: filled, whatever the title carries.
+        let bare = [slot(30, 3, None)];
+        assert!(check_against_series(&lines, &[], &bare, &none).is_ok());
+        assert!(check_against_series(&lines, &[], &bare, &with_a).is_ok());
+        // The title has no ISBN: filled, the librarian judges.
+        let tome_a = [slot(30, 3, Some(ISBN_A))];
+        assert!(check_against_series(&lines, &[], &tome_a, &none).is_ok());
+        // Same book: filled; a stored ISBN-10 spelling is the same book.
+        assert!(check_against_series(&lines, &[], &tome_a, &with_a).is_ok());
+        let tome_a10 = [slot(30, 3, Some("2070360245"))];
+        assert!(check_against_series(&lines, &[], &tome_a10, &with_a).is_ok());
+        assert_eq!(filled_tomes(&lines, &tome_a), vec![(30, 7)]);
+        // A tome elsewhere is not filled.
+        assert!(filled_tomes(&lines, &[slot(31, 4, None)]).is_empty());
+    }
+
+    #[test]
+    fn a_title_line_cannot_fill_a_tome_of_another_isbn() {
+        let lines = valid(&[title(7, 3)]);
+        let with_b = HashMap::from([(7, ISBN_B.to_string())]);
+        let e =
+            check_against_series(&lines, &[], &[slot(30, 3, Some(ISBN_A))], &with_b).unwrap_err();
+        assert!(matches!(
+            &e,
+            SeriesProposalError::TomeIsbnMismatch { title_id: 7, position: 3, tome_isbn, title_isbn, .. }
+                if tome_isbn == ISBN_A && title_isbn == ISBN_B
+        ));
+        assert_eq!(e.class(), RefusalClass::Conflict);
+        let msg = e.to_string();
+        assert!(msg.contains("Title 7") && msg.contains(ISBN_A) && msg.contains(ISBN_B));
+    }
+
+    #[test]
+    fn an_omnibus_fills_every_tome_in_its_range() {
+        let lines = valid(&[omnibus(7, 2, 4)]);
+        let tomes = [
+            slot(20, 2, None),
+            slot(40, 4, Some(ISBN_A)),
+            slot(50, 5, None),
+        ];
+        assert!(check_against_series(&lines, &[], &tomes, &HashMap::new()).is_ok());
+        assert_eq!(filled_tomes(&lines, &tomes), vec![(20, 7), (40, 7)]);
+        // The omnibus has its own ISBN, never a single tome's: not
+        // compared, it fills every tome of its range (review round 1).
+        let own = HashMap::from([(7, ISBN_B.to_string())]);
+        assert!(check_against_series(&lines, &[], &tomes, &own).is_ok());
+        // A single-position line of another ISBN is still refused.
+        let single = valid(&[title(7, 4)]);
+        assert!(matches!(
+            check_against_series(&single, &[], &tomes, &own),
+            Err(SeriesProposalError::TomeIsbnMismatch { position: 4, .. })
+        ));
+    }
+
+    #[test]
+    fn a_one_position_omnibus_is_compared_like_a_single_line() {
+        // Review round 2: `end_position` == `position` covers one tome;
+        // only a range of more than one position skips the comparison.
+        let lines = valid(&[omnibus(7, 4, 4)]);
+        let with_b = HashMap::from([(7, ISBN_B.to_string())]);
+        assert!(matches!(
+            check_against_series(&lines, &[], &[slot(40, 4, Some(ISBN_A))], &with_b),
+            Err(SeriesProposalError::TomeIsbnMismatch { position: 4, .. })
+        ));
+        assert_eq!(
+            isbn_conflict(4, 4, Some(ISBN_B), Some(ISBN_A)),
+            Some(ISBN_A.into())
+        );
+        assert_eq!(isbn_conflict(4, 5, Some(ISBN_B), Some(ISBN_A)), None);
+        assert_eq!(isbn_conflict(4, 4, None, Some(ISBN_A)), None);
+        assert_eq!(isbn_conflict(4, 4, Some(ISBN_B), None), None);
+        assert_eq!(isbn_conflict(4, 4, Some(ISBN_A), Some("2070360245")), None);
+    }
+
+    #[test]
+    fn a_tome_line_on_a_tome_position_is_still_refused() {
+        let lines = validate_lines(&[], &[tome(3, "T3", None)], None).unwrap();
+        assert!(matches!(
+            check_against_series(&lines, &[], &[slot(30, 3, None)], &HashMap::new()),
+            Err(SeriesProposalError::TomePositionTaken { position: 3, .. })
+        ));
     }
 }

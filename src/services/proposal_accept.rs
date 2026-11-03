@@ -164,10 +164,18 @@ pub fn applied_messages(id: u64, applied: &AppliedSeries, loc: &str) -> (String,
             settled = applied.tomes_settled
         )
     );
-    let suggestion = applied
-        .tomes_skipped
-        .iter()
-        .map(|s| {
+    // Story 13-11 — expected tomes settled by a placed title.
+    let filled = (applied.tomes_filled > 0).then(|| {
+        rust_i18n::t!(
+            "proposals.applied_filled",
+            locale = loc,
+            count = applied.tomes_filled
+        )
+        .to_string()
+    });
+    let suggestion = filled
+        .into_iter()
+        .chain(applied.tomes_skipped.iter().map(|s| {
             rust_i18n::t!(
                 "proposals.applied_skipped",
                 locale = loc,
@@ -177,7 +185,7 @@ pub fn applied_messages(id: u64, applied: &AppliedSeries, loc: &str) -> (String,
                 owner_position = s.owner_position
             )
             .to_string()
-        })
+        }))
         .collect::<Vec<_>>()
         .join(" ");
     (message, suggestion)
@@ -363,6 +371,17 @@ pub fn stale_why_of(kind: ProposalKind, cause: &StaleCause, loc: &str) -> String
                 locale = loc,
                 isbn = isbn.as_str(),
                 tome = tome_title.as_str()
+            ),
+            AcceptConflict::TomeIsbnMismatch {
+                position,
+                tome_title,
+                tome_isbn,
+            } => t!(
+                "proposals.stale_why_tome_isbn_mismatch",
+                locale = loc,
+                position = position,
+                tome = tome_title.as_str(),
+                isbn = tome_isbn.as_str()
             ),
             AcceptConflict::BeyondTotal { position, total } => t!(
                 "proposals.stale_why_beyond_total",
@@ -586,6 +605,7 @@ mod tests {
             series_name: "Astérix".into(),
             created: true,
             titles_attached: 2,
+            tomes_filled: 1,
             tomes_created: 3,
             tomes_settled: 1,
             tomes_skipped: vec![SkippedTome {
@@ -621,6 +641,11 @@ mod tests {
                 isbn: "9782070360246".into(),
                 tome_title: "X".into(),
             }),
+            StaleCause::Conflict(AcceptConflict::TomeIsbnMismatch {
+                position: 4,
+                tome_title: "X".into(),
+                tome_isbn: "9782070360246".into(),
+            }),
             StaleCause::Conflict(AcceptConflict::BeyondTotal {
                 position: 9,
                 total: 5,
@@ -651,12 +676,21 @@ mod tests {
             assert!(s.contains("Owned") && s.contains("T4"), "{loc}: {s}");
             let attached = AppliedSeries {
                 created: false,
+                tomes_filled: 0,
                 tomes_skipped: vec![],
                 ..applied.clone()
             };
             let (m, s) = applied_messages(7, &attached, loc);
             no_raw_key(&m);
             assert!(s.is_empty());
+            // Story 13-11 — the filled tomes are counted.
+            let filled = AppliedSeries {
+                tomes_filled: 2,
+                ..attached.clone()
+            };
+            let (_, s) = applied_messages(7, &filled, loc);
+            no_raw_key(&s);
+            assert!(s.contains('2'), "{loc}: {s}");
             for c in &causes {
                 let (m, s) = stale_messages(7, c, loc);
                 no_raw_key(&m);

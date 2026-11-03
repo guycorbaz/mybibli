@@ -128,6 +128,9 @@ pub struct SeriesShape {
 /// Story 11-17 — the slot a live expected tome occupies in its series.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TomeSlot {
+    /// Story 13-11 — the tome's id, to settle it when an owned title
+    /// fills its position.
+    pub id: u64,
     pub position: i32,
     pub title: String,
     pub isbn: Option<String>,
@@ -179,7 +182,7 @@ impl ExpectedTomeModel {
         series_id: u64,
     ) -> Result<Vec<TomeSlot>, AppError> {
         let rows = sqlx::query(
-            "SELECT position, CAST(title AS CHAR) AS title, CAST(isbn AS CHAR) AS isbn \
+            "SELECT id, position, CAST(title AS CHAR) AS title, CAST(isbn AS CHAR) AS isbn \
              FROM series_expected_tomes \
              WHERE series_id = ? AND deleted_at IS NULL \
              ORDER BY position ASC, id ASC LOCK IN SHARE MODE",
@@ -190,6 +193,7 @@ impl ExpectedTomeModel {
         rows.iter()
             .map(|r| {
                 Ok(TomeSlot {
+                    id: r.try_get("id")?,
                     position: r.try_get("position")?,
                     title: r.try_get("title")?,
                     isbn: r.try_get("isbn")?,
@@ -492,6 +496,37 @@ impl ExpectedTomeModel {
                 .fetch_optional(pool)
                 .await?;
         Ok(isbn.flatten())
+    }
+
+    /// Story 13-11 — the stored ISBN of each live title among
+    /// `title_ids`, read with a share lock on those title rows (by
+    /// primary key). Acceptance already holds them exclusively (step 4
+    /// locks the targets: series → titles → tomes), so there the lock
+    /// adds nothing; it matters for the line edit, which locks only the
+    /// series and tomes before, so the ISBN it compares stays put until
+    /// its transaction ends. Titles without an ISBN are left out.
+    pub async fn live_title_isbns_in(
+        conn: &mut MySqlConnection,
+        title_ids: &[u64],
+    ) -> Result<Vec<(u64, String)>, AppError> {
+        if title_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = vec!["?"; title_ids.len()].join(", ");
+        let sql = format!(
+            "SELECT id, CAST(isbn AS CHAR) AS isbn FROM titles \
+             WHERE id IN ({placeholders}) AND deleted_at IS NULL AND isbn IS NOT NULL \
+             LOCK IN SHARE MODE"
+        );
+        let mut query = sqlx::query(&sql);
+        for id in title_ids {
+            query = query.bind(id);
+        }
+        let rows = query.fetch_all(&mut *conn).await?;
+        rows.iter()
+            .map(|r| Ok((r.try_get("id")?, r.try_get("isbn")?)))
+            .collect::<Result<Vec<_>, sqlx::Error>>()
+            .map_err(AppError::Database)
     }
 
     /// Positions of the live assignment rows of `title_id` in the series.
