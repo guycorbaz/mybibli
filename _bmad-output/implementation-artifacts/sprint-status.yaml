@@ -266,7 +266,7 @@ development_status:
   # session and the agent session that enriched the comics.
   # #574, #576-#586, #588. FRs: FR153-FR160 | UX-DRs: UX-DR36, UX-DR37
   # Release: v1.23.0 at epic close.
-  # Sequencing: 13-1..13-5 (fixes, any order) -> 13-6 .. 13-10 -> 13-11
+  # Sequencing: 13-14 first (reddens CI) -> 13-1..13-5 (fixes, any order) -> 13-6 .. 13-10 -> 13-11
   #   (after 13-10: both touch series positions) -> 13-12 (epic smoke,
   #   Rule #7) -> 13-13 -> retrospective -> release.
   # Next: Epic 14 = sidebar (#547); Epic 15 = agent price / value (#564).
@@ -284,4 +284,5 @@ development_status:
   13-11-owned-title-fills-expected-tome: backlog
   13-12-epic-13-smoke-test: backlog
   13-13-epic-13-documentation: backlog
+  13-14-key-revocation-deadlock: backlog
   epic-13-retrospective: optional

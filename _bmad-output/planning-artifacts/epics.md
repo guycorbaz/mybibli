@@ -2574,7 +2574,7 @@ The first mass entry session (2026-10-31 → 2026-11-02: about 260 volumes scann
 **FRs:** FR153–FR160
 **NFRs:** none new (NFR3 CSP, NFR12 a11y, NFR42–NFR48 unchanged)
 **UX-DRs:** UX-DR36, UX-DR37
-**Issues:** #574, #576, #577, #578, #579, #580, #581, #582, #583, #584, #585, #586, #588
+**Issues:** #574, #576, #577, #578, #579, #580, #581, #582, #583, #584, #585, #586, #588; #554 item 1
 
 **Release.** v1.23.0 at the close of the epic, after its retrospective.
 
@@ -2587,7 +2587,7 @@ The first mass entry session (2026-10-31 → 2026-11-02: about 260 volumes scann
 - #588: added to the epic on 2026-11-03 — it blocks about 51 attachments the agent prepared.
 - The sidebar (#547) moves to Epic 14; agent purchase price / value (#564) to Epic 15; the other agent requests (#587, #589, #590, #591) to a later epic.
 
-**Sequencing.** 13.1 → 13.2 → 13.3 → 13.4 → 13.5 (fixes, independent) → 13.6 → 13.7 → 13.8 → 13.9 → 13.10 → 13.11 (13.11 after 13.10: both touch series positions) → 13.12 (epic smoke, Foundation Rule #7) → 13.13 → retrospective → release v1.23.0.
+**Sequencing.** 13.14 (found while planning: it reddens CI) → 13.1 → 13.2 → 13.3 → 13.4 → 13.5 (fixes, independent) → 13.6 → 13.7 → 13.8 → 13.9 → 13.10 → 13.11 (13.11 after 13.10: both touch series positions) → 13.12 (epic smoke, Foundation Rule #7) → 13.13 → retrospective → release v1.23.0.
 
 **Stories:**
 
@@ -2877,3 +2877,22 @@ So that cataloguing is documented as it now works.
 **And** the PDFs are rebuilt
 **And** `CLAUDE.md` reflects new patterns (anomaly proposals, tome hint)
 **And** release documentation (Foundation Rule #19, v1.23.0) is done at release time, not in this story
+
+#### Story 13.14: Concurrent key revocations no longer deadlock (#554, item 1)
+
+As an administrator,
+I want revoking an API key always to succeed,
+So that a revocation never answers "Server error" — and the CI suite stops failing on it.
+
+**Covers:** bug fix (found while planning the epic: CI run 41604087139, `1213 (40001): Deadlock found` on `POST /admin/api-keys/{id}/revoke` while another key was revoked 1 ms apart)
+
+**Acceptance Criteria:**
+
+**Given** two keys revoked at the same time, each with pending proposals
+**When** both revocations run
+**Then** both succeed; each marks only its own key's pending proposals stale
+
+**And** `ProposalModel::lock_pending_of_key` starts from the key index (`FORCE INDEX (idx_proposals_api_key)`), never from the status range — the epic 12 retro A1 lock-scope rule — and the revocation transaction is retried on deadlock (40001) only, like acceptance
+**And** a lock-scope regression test (`a_revocation_does_not_lock_proposals_of_another_key`, two connections) proves one revocation does not wait on the other key's proposals
+**And** #554 item 1 is closed by this story (item 2 stays open)
+
