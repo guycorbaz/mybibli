@@ -230,7 +230,7 @@ feedback:
   volume_duplicate: "Le label %{label} est déjà assigné à %{title}. Scannez un autre label."
   volume_already_recorded: "Le label %{label} est déjà enregistré pour ce titre."
   volume_on_other_title: "Le label %{label} est déjà attribué à « %{title} »%{isbn}."
-  volume_on_other_title_hint: "Scannez un autre label pour ce livre, ou ouvrez le volume pour le vérifier."
+  volume_on_other_title_hint: "Scannez un autre label pour ce livre, ou ouvrez le volume : depuis sa page, vous pouvez le déplacer vers le bon titre."
   volume_open_link: "Ouvrir le volume %{label}"
   volume_owner_isbn_suffix: " (ISBN %{isbn})"
   volume_on_unknown_title: "Le label %{label} est déjà attribué à un autre titre."
@@ -389,6 +389,13 @@ series:
   omnibus_help_text: "Cochez quand le livre regroupe plusieurs volumes de la série (par ex. une intégrale tomes 1–3). Le formulaire révèle alors un champ 'Position de fin' pour que le titre couvre une plage de positions au lieu d'une seule."
   select_series: "Sélectionner une série..."
 error:
+  # Story 13-8 (#580) — déplacer un volume vers un autre titre.
+  volume_move_no_target: "Le volume n’a pas été déplacé, car aucun titre n’a été choisi. Cherchez le titre, choisissez-le dans la liste, puis confirmez."
+  volume_move_same_title: "Le volume n’a pas été déplacé, car il est déjà rattaché à ce titre. Choisissez un autre titre dans la liste."
+  volume_move_target_gone: "Le volume n’a pas été déplacé, car le titre choisi n’existe plus — il vient peut-être d’être supprimé. Relancez la recherche et choisissez un autre titre."
+  volume_move_volume_gone: "Le volume n’a pas été déplacé, car il n’existe plus — il vient peut-être d’être supprimé. Rechargez la page pour voir le catalogue à jour."
+  volume_move_stale: "Le volume n’a pas été déplacé, car quelqu’un l’a modifié entre-temps. Fermez cette fenêtre, rechargez la page et recommencez."
+  volume_move_bad_form: "Le volume n’a pas été déplacé, car le formulaire était incomplet. Fermez cette fenêtre, rechargez la page et recommencez."
   # Issue #403 — émis vers le client via le data island #i18n-bundle
   # et lu par static/js/mybibli.js (feedback htmx:responseError).
   # %{status} substitué côté client.
@@ -504,6 +511,18 @@ volume:
   delete_modal_title: "Supprimer le volume %{label} ?"
   delete_modal_body: "Cela retire le volume du catalogue. L'action est réversible depuis le panneau Corbeille de l'admin dans les 30 jours."
   delete_modal_confirm: "Supprimer"
+  # Story 13-8 (#580) — déplacer un volume vers un autre titre.
+  move_button: "Déplacer vers un autre titre"
+  move_modal_title: "Déplacer le volume %{label}"
+  move_modal_intro: "%{label} est rattaché à « %{title} ». Cherchez le titre auquel il appartient vraiment, par titre ou par ISBN."
+  move_search_label: "Titre ou ISBN"
+  move_search_placeholder: "Rechercher un titre…"
+  move_no_candidates: "Aucun autre titre ne correspond à cette recherche."
+  move_nothing_picked: "Aucun titre choisi pour l’instant."
+  move_confirmation: "%{label} passera de « %{from} » à « %{to} ». Son label, son emplacement et ses prêts le suivent."
+  move_confirm: "Déplacer"
+  move_done: "%{label} déplacé de « %{from} » vers « %{to} »."
+  title_field: "Titre :"
 location:
   tree_title: Emplacements
   add_root: Ajouter un emplacement racine

@@ -228,7 +228,7 @@ feedback:
   volume_duplicate: "Label %{label} is already assigned to %{title}. Scan a different label."
   volume_already_recorded: "Label %{label} is already recorded for this title."
   volume_on_other_title: "Label %{label} is already assigned to “%{title}”%{isbn}."
-  volume_on_other_title_hint: "Scan another label for this book, or open the volume to check it."
+  volume_on_other_title_hint: "Scan another label for this book, or open the volume: from its page you can move it to the right title."
   volume_open_link: "Open volume %{label}"
   volume_owner_isbn_suffix: " (ISBN %{isbn})"
   volume_on_unknown_title: "Label %{label} is already assigned to another title."
@@ -390,6 +390,13 @@ series:
   omnibus_help_text: "Check this when the book bundles multiple volumes of the series (e.g. an omnibus collecting volumes 1–3). The form then reveals an 'End position' field so the title covers a range of series positions instead of just one."
   select_series: "Select a series..."
 error:
+  # Story 13-8 (#580) — move a volume to another title.
+  volume_move_no_target: "The volume was not moved because no title was chosen. Search for the title, pick it in the list, then confirm."
+  volume_move_same_title: "The volume was not moved because it is already under this title. Pick another title in the list."
+  volume_move_target_gone: "The volume was not moved because the chosen title no longer exists — it may just have been deleted. Search again and pick another title."
+  volume_move_volume_gone: "The volume was not moved because it no longer exists — it may just have been deleted. Reload the page to see the catalog as it is now."
+  volume_move_stale: "The volume was not moved because someone changed it in the meantime. Close this window, reload the page and try again."
+  volume_move_bad_form: "The volume was not moved because the form was incomplete. Close this window, reload the page and try again."
   # Issue #403 — emitted to the client via the #i18n-bundle data
   # island and read by static/js/mybibli.js (htmx:responseError
   # feedback). %{status} substituted client-side.
@@ -508,6 +515,18 @@ volume:
   delete_modal_title: "Delete volume %{label}?"
   delete_modal_body: "This removes the volume from the catalog. The action is reversible from the admin Trash panel within 30 days."
   delete_modal_confirm: "Delete"
+  # Story 13-8 (#580) — move a volume to another title.
+  move_button: "Move to another title"
+  move_modal_title: "Move volume %{label}"
+  move_modal_intro: "%{label} is under “%{title}”. Find the title it really belongs to, by title or ISBN."
+  move_search_label: "Title or ISBN"
+  move_search_placeholder: "Search for a title…"
+  move_no_candidates: "No other title matches this search."
+  move_nothing_picked: "No title chosen yet."
+  move_confirmation: "%{label} will move from “%{from}” to “%{to}”. Its label, location and loans go with it."
+  move_confirm: "Move"
+  move_done: "%{label} moved from “%{from}” to “%{to}”."
+  title_field: "Title:"
 location:
   tree_title: Locations
   add_root: Add root location

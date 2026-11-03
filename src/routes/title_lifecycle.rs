@@ -114,14 +114,9 @@ pub async fn delete_title(
 
     // Same guard as the modal — the modal request and the destructive
     // action are two HTTP round-trips, a volume could land between them.
-    let volume_count = VolumeModel::count_by_title(pool, id).await?;
-    if volume_count > 0 {
-        return Err(AppError::Conflict(
-            rust_i18n::t!("title.delete_blocked_has_volumes", locale = loc).to_string(),
-        ));
-    }
-
-    crate::services::soft_delete::SoftDeleteService::soft_delete(pool, "titles", id).await?;
+    // Story 13-8: count and delete under the title row lock, so a volume
+    // moved to this title meanwhile (which share-locks it) cannot slip by.
+    crate::services::title::TitleService::delete_without_volumes(pool, id, loc).await?;
 
     // Audit row — attribution travels via session.user_id. Details carry
     // the title + identifiers so an admin reviewing the trail later sees

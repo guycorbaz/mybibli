@@ -37,6 +37,17 @@ impl SoftDeleteService {
     /// Soft-delete an entity by setting `deleted_at = NOW()`.
     /// Table name is validated against a whitelist to prevent SQL injection.
     pub async fn soft_delete(pool: &DbPool, table: &str, id: u64) -> Result<(), AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::soft_delete_in(&mut conn, table, id).await
+    }
+
+    /// [`Self::soft_delete`] on the given connection, so a caller can run
+    /// it inside its own transaction (story 13-8: the title delete).
+    pub async fn soft_delete_in(
+        conn: &mut sqlx::MySqlConnection,
+        table: &str,
+        id: u64,
+    ) -> Result<(), AppError> {
         if !ALLOWED_TABLES.contains(&table) {
             return Err(AppError::BadRequest(format!(
                 "Invalid entity type: {table}"
@@ -48,7 +59,7 @@ impl SoftDeleteService {
             table
         );
 
-        let result = sqlx::query(&query_str).bind(id).execute(pool).await?;
+        let result = sqlx::query(&query_str).bind(id).execute(&mut *conn).await?;
 
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound(

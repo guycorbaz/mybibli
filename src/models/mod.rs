@@ -23,6 +23,7 @@ pub mod title_search;
 pub mod trash;
 pub mod user;
 pub mod volume;
+pub mod volume_move;
 pub mod volume_state;
 pub mod wishlist;
 
