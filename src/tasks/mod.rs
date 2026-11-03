@@ -1,5 +1,6 @@
 pub mod anonymous_session_purge;
 pub mod auto_purge_scheduler;
+pub mod isbn10_upc_refetch;
 pub mod log_purge;
 pub mod metadata_fetch;
 pub mod metadata_retry;

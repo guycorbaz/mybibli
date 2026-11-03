@@ -348,6 +348,126 @@ impl TitleService {
     }
 }
 
+/// Story 13-3 (#584) — selection predicate of the startup conversion: the
+/// ISBN-13 a UPC converts to when it is a valid ISBN-10, `None` for any
+/// other UPC (other length, failed checksum, stray characters).
+pub fn isbn10_upc_target(upc: &str) -> Option<String> {
+    crate::utils::isbn10_to_isbn13(upc)
+}
+
+/// Story 13-3 (#584) — a title converted by [`convert_isbn10_upc_titles`],
+/// whose metadata the caller looks up again under its new ISBN.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConvertedTitle {
+    pub title_id: u64,
+    pub isbn13: String,
+    pub media_type: String,
+}
+
+/// Story 13-3 (#584) — what one run of [`convert_isbn10_upc_titles`] did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Isbn10UpcConversion {
+    pub converted: Vec<ConvertedTitle>,
+    /// Another live title already holds the ISBN-13: left unchanged.
+    pub collisions: usize,
+    /// Ten characters that are no ISBN-10 (failed checksum, letters).
+    pub not_isbn10: usize,
+    /// The row changed between the read and the update (version guard).
+    pub superseded: usize,
+    /// A per-title DB error, logged; the run goes on.
+    pub errors: usize,
+}
+
+/// Story 13-3 (#584) — titles catalogued before v1.21.0 with an ISBN-10
+/// carry it in `upc` (the scan classified it as a UPC), so every provider
+/// misses them. Each live title with no ISBN and a UPC passing the ISBN-10
+/// checksum gets `isbn = <ISBN-13>`, `upc = NULL` (optimistic locking),
+/// unless another live title already holds that ISBN-13 (left unchanged,
+/// warned — no merge, see #591). Idempotent: a converted title no longer
+/// matches. Does not fetch anything — the caller spawns the re-fetch of
+/// the returned titles. Logs one `info` line with the counts.
+pub async fn convert_isbn10_upc_titles(pool: &DbPool) -> Result<Isbn10UpcConversion, AppError> {
+    let mut report = Isbn10UpcConversion::default();
+    for candidate in TitleModel::list_isbn10_shaped_upc(pool).await? {
+        let Some(isbn13) = isbn10_upc_target(&candidate.upc) else {
+            report.not_isbn10 += 1;
+            continue;
+        };
+        match convert_one(pool, &candidate, &isbn13).await {
+            Ok(Step::Converted) => report.converted.push(ConvertedTitle {
+                title_id: candidate.id,
+                isbn13,
+                media_type: candidate.media_type,
+            }),
+            Ok(Step::Collision) => report.collisions += 1,
+            Ok(Step::Superseded) => report.superseded += 1,
+            Err(e) => {
+                report.errors += 1;
+                tracing::warn!(
+                    title_id = candidate.id,
+                    upc = %candidate.upc,
+                    error = %e,
+                    "ISBN-10 stored as UPC: conversion failed for this title; left unchanged"
+                );
+            }
+        }
+    }
+    tracing::info!(
+        converted = report.converted.len(),
+        skipped_collision = report.collisions,
+        skipped_not_isbn10 = report.not_isbn10,
+        skipped_superseded = report.superseded,
+        errors = report.errors,
+        "ISBN-10 stored as UPC: startup conversion done (#584)"
+    );
+    Ok(report)
+}
+
+enum Step {
+    Converted,
+    Collision,
+    Superseded,
+}
+
+async fn convert_one(
+    pool: &DbPool,
+    candidate: &crate::models::title::Isbn10UpcCandidate,
+    isbn13: &str,
+) -> Result<Step, AppError> {
+    if let Some(holder) = TitleModel::find_by_isbn(pool, isbn13).await? {
+        tracing::warn!(
+            title_id = candidate.id,
+            holder_title_id = holder.id,
+            upc = %candidate.upc,
+            isbn = %isbn13,
+            "ISBN-10 stored as UPC: another title already holds this ISBN; left unchanged (see #591)"
+        );
+        return Ok(Step::Collision);
+    }
+    if !TitleModel::convert_upc_to_isbn(
+        pool,
+        candidate.id,
+        candidate.version,
+        &candidate.upc,
+        isbn13,
+    )
+    .await?
+    {
+        tracing::info!(
+            title_id = candidate.id,
+            "ISBN-10 stored as UPC: title changed meanwhile; left unchanged"
+        );
+        return Ok(Step::Superseded);
+    }
+    tracing::info!(
+        title_id = candidate.id,
+        upc = %candidate.upc,
+        isbn = %isbn13,
+        "ISBN-10 stored as UPC converted to its ISBN-13"
+    );
+    Ok(Step::Converted)
+}
+
 /// Form data for manual title creation.
 ///
 /// Fix #323 (v1.7.4) — the four `Option<i32>` numeric fields route
@@ -579,6 +699,40 @@ fn non_empty_option(s: &Option<String>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Story 13-3 (#584) — the selection predicate on the production codes
+    /// and on what must be left alone.
+    #[test]
+    fn isbn10_upc_target_selects_valid_isbn10_only() {
+        // Titles 99, 174, 271, 282 of the 2026-11-02 bulk re-download.
+        assert_eq!(
+            isbn10_upc_target("2862270164").as_deref(),
+            Some("9782862270166")
+        );
+        assert_eq!(
+            isbn10_upc_target("2604000288").as_deref(),
+            Some("9782604000280")
+        );
+        assert_eq!(
+            isbn10_upc_target("2205001213").as_deref(),
+            Some("9782205001211")
+        );
+        assert_eq!(
+            isbn10_upc_target("2205011502").as_deref(),
+            Some("9782205011500")
+        );
+        assert_eq!(
+            isbn10_upc_target("080442957X").as_deref(),
+            Some("9780804429573")
+        );
+        // Title 478 fails the ISBN-10 checksum.
+        assert_eq!(isbn10_upc_target("2205025062"), None);
+        // A real UPC-A, an EAN-13, other lengths.
+        assert_eq!(isbn10_upc_target("036000291452"), None);
+        assert_eq!(isbn10_upc_target("9782205001211"), None);
+        assert_eq!(isbn10_upc_target("12345678"), None);
+        assert_eq!(isbn10_upc_target(""), None);
+    }
 
     /// Fix #323 — locks the empty-string handling on the four
     /// `Option<i32>` form fields on the manual title-create form.

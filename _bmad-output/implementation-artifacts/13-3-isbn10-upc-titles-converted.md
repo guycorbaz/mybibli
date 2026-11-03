@@ -1,6 +1,6 @@
 # Story 13.3: ISBN-10 titles stored as UPC are converted
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #584 (type:bug, severity:medium). Covers: bug fix (data). Epic 13; ships in v1.23.0.
 
@@ -36,8 +36,20 @@ Titles 99 (`2862270164`), 174 (`2604000288`), 271 (`2205001213`), 282 (`22050115
 
 ## Tasks / Subtasks
 
-- [ ] T1 — model query: candidate rows (`isbn IS NULL AND upc IS NOT NULL AND CHAR_LENGTH(upc) = 10 AND deleted_at IS NULL`), conversion UPDATE with version check
-- [ ] T2 — service `services::title::convert_isbn10_upc_titles(pool) -> Vec<(title_id, isbn13)>` (pure selection in Rust via `isbn10_to_isbn13`)
-- [ ] T3 — `main.rs`: call after migrations, then spawn the re-fetches sequentially (one task looping over the list)
-- [ ] T4 — tests (AC6); `cargo sqlx prepare`
-- [ ] T5 — gates; full suites once on the final code before the single push
+- [x] T1 — model query: candidate rows (`isbn IS NULL AND upc IS NOT NULL AND CHAR_LENGTH(upc) = 10 AND deleted_at IS NULL`), conversion UPDATE with version check
+- [x] T2 — service `services::title::convert_isbn10_upc_titles(pool) -> Vec<(title_id, isbn13)>` (pure selection in Rust via `isbn10_to_isbn13`)
+- [x] T3 — `main.rs`: call after migrations, then spawn the re-fetches sequentially (one task looping over the list)
+- [x] T4 — tests (AC6); `cargo sqlx prepare`
+- [x] T5 — gates; full suites once on the final code before the single push
+
+## Completion Notes
+
+- **Model** (`src/models/title.rs`): `Isbn10UpcCandidate`, `TitleModel::list_isbn10_shaped_upc` (`isbn IS NULL AND upc IS NOT NULL AND CHAR_LENGTH(upc) = 10 AND deleted_at IS NULL`, oldest first) and `TitleModel::convert_upc_to_isbn` (`isbn = ?, upc = NULL, version = version + 1` guarded by `id`, `version`, `isbn IS NULL`, the read `upc` and `deleted_at IS NULL`; returns `false` when superseded). Dynamic `sqlx::query`, so no `.sqlx/` change.
+- **Service** (`src/services/title.rs`): `isbn10_upc_target` (selection predicate, wraps `utils::isbn10_to_isbn13`) and `convert_isbn10_upc_titles(pool) -> Isbn10UpcConversion` (converted `Vec<ConvertedTitle { title_id, isbn13, media_type }>` plus collision / not-ISBN-10 / superseded / error counts). The spec's `Vec<(title_id, isbn13)>` is extended with the media type (the re-fetch needs it) and the skip counts (logged). Collision = `TitleModel::find_by_isbn` finds a live holder → `warn` with `title_id` and `holder_title_id`, title unchanged. A per-title DB error is logged and the run continues. One `info` line with all counts per run (AC4). `manually_edited_fields` is not touched (AC5).
+- **Re-fetch task** (new `src/tasks/isbn10_upc_refetch.rs`): `spawn(state, titles)` (no-op for an empty list; 30 s warm-up) and `run(state, titles)` — sequential lookups through the scan wrapper `tasks::metadata_fetch::fetch_metadata_chain` with `CodeType::Isbn` and `force_refresh = true`, paced by `bulk_refetch_delay_ms` between titles; a throttled lookup is queued by story 13-2's retry queue.
+- **`src/main.rs`**: the data step runs after migrations, the seed gate, the startup purge and the legacy env-var migration, before the settings load; non-fatal (`error` log, empty list). The re-fetch is spawned right after `TcpListener::bind`, so startup is never delayed.
+- **`upc` readers checked**: the title edit form, title detail, MCP `get_title` / `title_lifecycle` JSON and the `has_code` guards all read the three identifier columns together — the title keeps a code (its ISBN). `TitleModel::find_by_upc` (scan of a UPC) would no longer match the 10-character code, but since v1.21.0 that code is classified `isbn` and looked up by its ISBN-13, which now matches; a home search by the ISBN-10 also resolves to the ISBN-13 (story 11-1, `tests/search_isbn10.rs`).
+- **Tests**: unit `services::title::tests::isbn10_upc_target_selects_valid_isbn10_only` (production codes, title 478, UPC-A, EAN-13, other lengths). DB integration `tests/upc_isbn10_conversion.rs` (10 tests): conversion (+ `X` check digit, version bump, hand-edit list unchanged), collision, deleted holder is no collision, two titles with the same ISBN-10 (second one collides), left alone (bad checksum, UPC-A, short code, already-ISBN, deleted), idempotence, version / UPC guard of the UPDATE; plus the re-fetch `run` with a stub provider: looked up by ISBN-13 in order, throttled → queued for retry, hand-edited title survives.
+- **E2E**: none. No UI change; the conversion is a boot-time data repair, and the E2E stack cannot hold a pre-v1.21.0 UPC title before boot without seeding the DB behind the app (a dedicated migration or a manual SQL step before the container starts). The DB integration tests are the proof.
+- **Note**: a collided title stays a candidate, so its `warn` repeats at every boot until #591 (merge) resolves it — intended, it keeps the case visible.
+- No file over 2000 lines (`src/models/title.rs` 1766).
