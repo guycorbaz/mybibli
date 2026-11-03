@@ -25,6 +25,7 @@ use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::PaginatedList;
 use crate::models::contributor_role::ContributorRoleModel;
+use crate::models::expected_tome::{ExpectedTomeModel, TomeSlot};
 use crate::models::proposal::{
     ProposalFilter, ProposalKind, ProposalModel, ProposalStatus, ProposalSummaryRow,
     ProposalTarget, ProposalTargetTable, TitleBrief,
@@ -314,6 +315,9 @@ pub struct LineView {
     pub end_position: Option<String>,
     pub tome_title: String,
     pub isbn: Option<String>,
+    /// Story 13-11 — the live expected tomes a pending attach's title
+    /// line would fill (by position), for the librarian to judge.
+    pub fills: Vec<TomeSlot>,
     // field / contributors
     pub field: String,
     pub field_label: String,
@@ -732,6 +736,7 @@ pub async fn review_detail(
             line
         })
         .collect();
+    let lines = with_fills(pool, &detail.proposal, lines).await?;
     let removed = trail
         .iter()
         .filter(|t| t.removed)
@@ -777,6 +782,55 @@ pub async fn review_detail(
         roles,
         has_staged_cover,
     }))
+}
+
+/// Story 13-11 (review round 1) — on a pending `series_attach`, name
+/// the live expected tomes each title line would fill.
+async fn with_fills(
+    pool: &DbPool,
+    proposal: &Proposal,
+    mut lines: Vec<LineView>,
+) -> Result<Vec<LineView>, AppError> {
+    let series_id = lines
+        .iter()
+        .find(|l| l.line == "series_target")
+        .and_then(|l| l.target_id);
+    let (ProposalKind::SeriesAttach, ProposalStatus::Pending, Some(series_id)) =
+        (proposal.kind, proposal.status, series_id)
+    else {
+        return Ok(lines);
+    };
+    let tomes: Vec<TomeSlot> = ExpectedTomeModel::list_by_series(pool, series_id)
+        .await?
+        .into_iter()
+        .map(|t| TomeSlot {
+            id: t.id,
+            position: t.position,
+            title: t.title,
+            isbn: t.isbn,
+        })
+        .collect();
+    for line in lines.iter_mut().filter(|l| l.line == "title") {
+        line.fills = fills_of(line, &tomes);
+    }
+    Ok(lines)
+}
+
+/// The tomes inside a title line's range (pure — unit tested).
+pub fn fills_of(line: &LineView, tomes: &[TomeSlot]) -> Vec<TomeSlot> {
+    let Ok(start) = line.position.parse::<i32>() else {
+        return Vec::new();
+    };
+    let end = line
+        .end_position
+        .as_deref()
+        .and_then(|e| e.parse::<i32>().ok())
+        .unwrap_or(start);
+    tomes
+        .iter()
+        .filter(|t| (start..=end).contains(&t.position))
+        .cloned()
+        .collect()
 }
 
 /// The staged JPEG of a pending cover proposal; `None` when the proposal
@@ -1077,6 +1131,28 @@ mod tests {
             (tome.line, tome.tome_title.as_str(), tome.isbn),
             ("tome", "<b>T</b>", None)
         );
+    }
+
+    #[test]
+    fn a_title_line_names_the_tomes_it_fills() {
+        // Story 13-11 (review round 1).
+        let slot = |id: u64, position: i32| TomeSlot {
+            id,
+            position,
+            title: format!("T{position}"),
+            isbn: None,
+        };
+        let tomes = [slot(1, 2), slot(2, 3), slot(3, 5)];
+        let single = parse_line(title(7), &json!({"line":"title","position":3}), "en");
+        assert_eq!(fills_of(&single, &tomes), vec![slot(2, 3)]);
+        let omnibus = parse_line(
+            title(7),
+            &json!({"line":"title","position":2,"is_omnibus":true,"end_position":4}),
+            "en",
+        );
+        assert_eq!(fills_of(&omnibus, &tomes), vec![slot(1, 2), slot(2, 3)]);
+        let elsewhere = parse_line(title(7), &json!({"line":"title","position":9}), "en");
+        assert!(fills_of(&elsewhere, &tomes).is_empty());
     }
 
     #[test]

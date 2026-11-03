@@ -26,7 +26,10 @@
 //!    (origin `proposal`, auto-settle rules of D-11-10-*). A title line
 //!    on the position of a live expected tome fills it (story 13-11):
 //!    the title is attached and the tome settled with it, on the tome
-//!    rows share-locked in step 5 under the series lock.
+//!    rows share-locked in step 5 under the series lock (then the
+//!    titles' ISBNs, share-locked by primary key: series → tomes →
+//!    titles). An omnibus line's ISBN is not compared (its edition has
+//!    its own ISBN).
 //!
 //! A deadlock is retried (up to three attempts) by [`accept`]. The
 //! kind-independent pieces live in [`crate::services::acceptance`].

@@ -1066,3 +1066,91 @@ async fn a_fill_of_another_isbn_is_refused_at_filing(pool: DbPool) {
         .unwrap();
     assert_eq!(n, 0);
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_omnibus_with_its_own_isbn_fills_every_tome_of_its_range(pool: DbPool) {
+    // Review round 1 (M1, L2): an omnibus edition's ISBN is never a
+    // single tome's — not compared; the review screen names the tomes it
+    // fills so the librarian judges.
+    let f = fx(&pool).await;
+    let sid = closed_series(&pool, "XIII Mystery", 6).await;
+    add_tome(&pool, sid, 2, "Mystery 2", Some(ISBN_A)).await;
+    add_tome(&pool, sid, 3, "Mystery 3", None).await;
+    add_tome(&pool, sid, 5, "Mystery 5", None).await;
+    let omnibus = add_title(&pool, "Intégrale 2-3", "book", "Roman", Some(ISBN_B)).await;
+    let id = file(
+        &f,
+        "propose_series_attach",
+        json!({"series_id": sid,
+               "titles": [{"title_id": omnibus, "position": 2, "is_omnibus": true, "end_position": 3}],
+               "sources": [SRC]}),
+    )
+    .await;
+    let (status, page) = f.lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    let page = text(page);
+    assert!(page.contains("data-fills-tome"), "{page}");
+    assert!(
+        page.contains(&format!(
+            "Remplit le tome attendu 2 « Mystery 2 » (ISBN {ISBN_A}). Remplit le tome attendu 3 « Mystery 3 » (sans ISBN)."
+        )),
+        "{page}"
+    );
+    assert!(!page.contains("Mystery 5 » ("), "{page}");
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(decision(&pool, id).await.0, "accepted");
+    let settled: Vec<(i32, Option<u64>)> = tomes(&pool, sid)
+        .await
+        .into_iter()
+        .map(|t| (t.0, t.4))
+        .collect();
+    assert_eq!(
+        settled,
+        vec![(2, Some(omnibus)), (3, Some(omnibus)), (5, None)]
+    );
+    // Once decided, the review screen no longer computes fills.
+    let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    assert!(!page.contains("data-fills-tome"), "{page}");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_pending_attach_touching_no_expected_position_applies_unchanged(pool: DbPool) {
+    // Review round 1 (L3): the item shapes did not change, so a pending
+    // proposal filed before 13-11 is this one — a title and a tome line
+    // on free positions of a series that expects another tome. It
+    // applies exactly as before: nothing filled, the other tome intact.
+    let f = fx(&pool).await;
+    let sid = closed_series(&pool, "Buck Danny", 6).await;
+    add_tome(&pool, sid, 5, "Buck 5", Some(ISBN_A)).await;
+    let t = add_title(&pool, "Buck 1", "book", "Roman", Some(ISBN_B)).await;
+    let id = file(
+        &f,
+        "propose_series_attach",
+        json!({"series_id": sid,
+               "titles": [{"title_id": t, "position": 1}],
+               "expected_tomes": [{"position": 2, "title": "Buck 2"}],
+               "sources": [SRC]}),
+    )
+    .await;
+    let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    assert!(!page.contains("data-fills-tome"), "{page}");
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        !body.contains("Tomes attendus désormais possédés"),
+        "{body}"
+    );
+    assert_eq!(positions(&pool, sid).await, vec![(t, 1, false)]);
+    let tomes = tomes(&pool, sid).await;
+    assert_eq!(
+        tomes
+            .iter()
+            .map(|t| (t.0, t.1.as_str(), t.3.as_str(), t.4))
+            .collect::<Vec<_>>(),
+        vec![
+            (2, "Buck 2", "proposal", None),
+            (5, "Buck 5", "manual", None)
+        ]
+    );
+}

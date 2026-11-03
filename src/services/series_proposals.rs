@@ -35,8 +35,11 @@
 //! Filing accepts it when the tome has no ISBN, when the title has none
 //! (the librarian judges), or when both ISBNs are the same book (ISBN-13
 //! comparison); it refuses it with [`SeriesProposalError::TomeIsbnMismatch`]
-//! when both are known and differ. An omnibus line follows the rule for
-//! every tome in its range. Acceptance re-runs the rule on the live
+//! when both are known and differ. An omnibus line fills every tome in
+//! its range without any ISBN comparison: an omnibus edition carries its
+//! own ISBN, never one of a single tome, so the librarian judges it on
+//! the review screen, which names the tomes each title line fills
+//! (code review round 1). Acceptance re-runs the rule on the live
 //! catalog (a mismatch then marks the proposal stale), attaches the
 //! title and settles each filled tome with it in the same transaction
 //! ([`filled_tomes`]). The librarian's line edit applies the same rule.
@@ -771,7 +774,8 @@ pub fn create_series_line(name: &str, series_type: SeriesType, total: Option<i32
 /// tested; story 11-17 extracted it from `propose_attach` so filing,
 /// acceptance and the line edit apply the same rules): a title already
 /// in the series, a position held by a live title, a title line filling
-/// an expected tome whose ISBN differs from the title's (story 13-11;
+/// an expected tome whose ISBN differs from the title's (story 13-11,
+/// single-position lines only — an omnibus has its own ISBN;
 /// `title_isbns` maps a title id to its ISBN-13, see [`title_isbns_in`]),
 /// a tome line on a held or tome-taken position, a tome ISBN another
 /// live tome carries. The first problem found is returned.
@@ -802,8 +806,11 @@ pub fn check_against_series(
         // A settled tome's position is held by its title (above); an
         // unsettled one is a gap the owned title fills — unless both
         // ISBNs are known and name different books (story 13-11,
-        // supersedes D-11-12-10).
-        if let Some(title_isbn) = title_isbns.get(&t.title_id)
+        // supersedes D-11-12-10). An omnibus edition has its own ISBN,
+        // never a single tome's: its ISBN is not compared, the librarian
+        // judges on the review screen (13-11 review round 1).
+        if t.end_position.is_none()
+            && let Some(title_isbn) = title_isbns.get(&t.title_id)
             && let Some((tome, tome_isbn)) = tomes
                 .iter()
                 .filter(|e| (t.position..=t.end()).contains(&e.position))
@@ -868,7 +875,9 @@ pub fn filled_tomes(lines: &ValidLines, tomes: &[TomeSlot]) -> Vec<(u64, u64)> {
 /// Story 13-11 — the ISBN-13 of each title line's title, for
 /// [`check_against_series`]. A title without an ISBN, or with a stored
 /// value that is not a valid ISBN, is left out (its ISBN is unknown: it
-/// may fill any tome, the librarian judges).
+/// may fill any tome, the librarian judges). Share-locks the title rows
+/// inside a transaction (acceptance, edit: after the series and tome
+/// locks); on an autocommit connection (filing) it is a plain read.
 pub async fn title_isbns_in(
     conn: &mut MySqlConnection,
     lines: &ValidLines,
@@ -1532,10 +1541,14 @@ mod tests {
         ];
         assert!(check_against_series(&lines, &[], &tomes, &HashMap::new()).is_ok());
         assert_eq!(filled_tomes(&lines, &tomes), vec![(20, 7), (40, 7)]);
-        // One tome of the range names another book: refused.
-        let with_b = HashMap::from([(7, ISBN_B.to_string())]);
+        // The omnibus has its own ISBN, never a single tome's: not
+        // compared, it fills every tome of its range (review round 1).
+        let own = HashMap::from([(7, ISBN_B.to_string())]);
+        assert!(check_against_series(&lines, &[], &tomes, &own).is_ok());
+        // A single-position line of another ISBN is still refused.
+        let single = valid(&[title(7, 4)]);
         assert!(matches!(
-            check_against_series(&lines, &[], &tomes, &with_b),
+            check_against_series(&single, &[], &tomes, &own),
             Err(SeriesProposalError::TomeIsbnMismatch { position: 4, .. })
         ));
     }

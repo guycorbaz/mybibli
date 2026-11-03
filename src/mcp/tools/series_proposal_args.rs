@@ -63,7 +63,7 @@ pub fn titles_property() -> Value {
     json!({
         "type": "array",
         "maxItems": MAX_LINES,
-        "description": "Titles the library already holds, each with its position in the series (at most 999 entries in `titles` and `expected_tomes` together). Find title ids with search_titles; a tome the library does not own goes in `expected_tomes` instead. A title placed on the position of an expected tome of the series fills that tome (refused when both ISBNs are known and differ).",
+        "description": "Titles the library already holds, each with its position in the series (at most 999 entries in `titles` and `expected_tomes` together). Find title ids with search_titles; a tome the library does not own goes in `expected_tomes` instead. A title placed on the position of an expected tome of the series fills that tome (refused when both ISBNs are known and differ, except for an omnibus, whose own ISBN is not compared).",
         "items": {
             "type": "object",
             "properties": {

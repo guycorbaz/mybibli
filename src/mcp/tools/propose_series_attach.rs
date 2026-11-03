@@ -73,8 +73,8 @@ impl McpTool for ProposeSeriesAttach {
          or is listed twice; a position is below 1, above 10000, above a closed series' total, \
          used twice in the proposal (omnibus ranges included), or already held by a title; \
          an expected tome is placed on the position of an expected tome of the series; a \
-         title fills an expected tome whose ISBN is not its own (both ISBNs known and \
-         different); `end_position` is given without \
+         title (not an omnibus) fills an expected tome whose ISBN is not its own (both ISBNs \
+         known and different); `end_position` is given without \
          `is_omnibus`, or an omnibus lacks it or covers more than 100 positions; `titles` and \
          `expected_tomes` hold more than 999 entries together; an expected tome has no title, \
          an invalid ISBN or an ISBN the series (or this proposal) already expects; \

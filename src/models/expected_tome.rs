@@ -499,8 +499,11 @@ impl ExpectedTomeModel {
     }
 
     /// Story 13-11 — the stored ISBN of each live title among
-    /// `title_ids` (a plain read: callers that need it stable hold the
-    /// title locks already). Titles without an ISBN are left out.
+    /// `title_ids`, read with a share lock on those title rows (by
+    /// primary key), so the ISBN acceptance compares stays put until
+    /// the transaction ends; taken after the series and tome locks
+    /// (lock order … → tomes → titles). Titles without an ISBN are left
+    /// out.
     pub async fn live_title_isbns_in(
         conn: &mut MySqlConnection,
         title_ids: &[u64],
@@ -511,7 +514,8 @@ impl ExpectedTomeModel {
         let placeholders = vec!["?"; title_ids.len()].join(", ");
         let sql = format!(
             "SELECT id, CAST(isbn AS CHAR) AS isbn FROM titles \
-             WHERE id IN ({placeholders}) AND deleted_at IS NULL AND isbn IS NOT NULL"
+             WHERE id IN ({placeholders}) AND deleted_at IS NULL AND isbn IS NOT NULL \
+             LOCK IN SHARE MODE"
         );
         let mut query = sqlx::query(&sql);
         for id in title_ids {

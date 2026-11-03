@@ -483,20 +483,15 @@ async fn attach_refusals_write_nothing(pool: DbPool) {
             "No title with id 999999".into(),
         ),
         // Story 13-11 (supersedes review round 1): a title line may fill
-        // an expected tome, but not one whose ISBN names another book —
-        // also through an omnibus range.
+        // an expected tome, but not one whose ISBN names another book (an
+        // omnibus line is exempt: its edition has its own ISBN — accepted,
+        // see proposal_accept_series).
         (
             base(json!({"titles": [{"title_id": other_isbn, "position": 4}]})),
             format!(
                 "Title {other_isbn} (ISBN 9782070360246) cannot fill position 4: the series \
                  expects the tome \"Spirou 4\" there with another ISBN (9782803600212)"
             ),
-        ),
-        (
-            base(
-                json!({"titles": [{"title_id": other_isbn, "position": 3, "is_omnibus": true, "end_position": 5}]}),
-            ),
-            "cannot fill position 4".into(),
         ),
     ];
     for (args, expected) in cases {

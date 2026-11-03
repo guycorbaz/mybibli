@@ -1311,6 +1311,8 @@ proposals:
   tomes_heading: "Erwartete Bände"
   col_position: "Position"
   omnibus: "Sammelband, Positionen %{start} bis %{end}"
+  fills_tome: "Füllt den erwarteten Band %{position} „%{title}“ (ISBN %{isbn})."
+  fills_tome_no_isbn: "Füllt den erwarteten Band %{position} „%{title}“ (ohne ISBN)."
   no_isbn: "ohne ISBN"
   current: "Aktuell"
   proposed: "Vorgeschlagen"

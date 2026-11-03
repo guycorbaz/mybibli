@@ -1327,6 +1327,8 @@ proposals:
   tomes_heading: "Expected tomes"
   col_position: "Position"
   omnibus: "Omnibus, positions %{start} to %{end}"
+  fills_tome: "Fills the expected tome %{position} “%{title}” (ISBN %{isbn})."
+  fills_tome_no_isbn: "Fills the expected tome %{position} “%{title}” (no ISBN)."
   no_isbn: "no ISBN"
   current: "Current"
   proposed: "Proposed"
