@@ -81,10 +81,11 @@ impl GoogleBooksProvider {
                 .get("subtitle")
                 .and_then(|v| v.as_str())
                 .map(String::from),
+            // Story 13-4 (#578): Google Books answers with HTML.
             description: info
                 .get("description")
                 .and_then(|v| v.as_str())
-                .map(String::from),
+                .map(crate::utils::html_to_plain_text),
             authors: info
                 .get("authors")
                 .and_then(|v| v.as_array())
@@ -204,6 +205,19 @@ mod tests {
                 }
             }]
         })
+    }
+
+    /// Story 13-4 (#578) — the HTML description becomes plain text.
+    #[test]
+    fn an_html_description_is_parsed_as_plain_text() {
+        let mut json = sample_response();
+        json["items"][0]["volumeInfo"]["description"] =
+            serde_json::json!("<p><b>Grandis un peu !</b></p><p>Caf&eacute;</p>");
+        let result = GoogleBooksProvider::parse_response(&json).unwrap();
+        assert_eq!(
+            result.description.as_deref(),
+            Some("Grandis un peu !\n\nCafé")
+        );
     }
 
     #[test]

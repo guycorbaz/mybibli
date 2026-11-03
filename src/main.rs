@@ -297,6 +297,18 @@ async fn main() {
         );
     }
 
+    // Story 13-4 (#578): descriptions stored before v1.23.0 may carry the
+    // providers' HTML. Data repair to plain text (hand-edited descriptions
+    // excepted), run once per database under a `data_repairs` marker: its
+    // result cannot be told apart from healthy text, so it must not re-run.
+    // Non-fatal, like the step above; a failed run is retried next boot.
+    if let Err(e) = mybibli::services::description_repair::repair_html_descriptions_once(&pool).await {
+        tracing::error!(
+            error = %e,
+            "HTML description: startup conversion failed (non-fatal, continuing)"
+        );
+    }
+
     // Load application settings from database
     let app_settings = AppSettings::load_from_db(&pool)
         .await

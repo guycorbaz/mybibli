@@ -144,61 +144,9 @@ pub fn controlfield(xml: &str, tag: &str) -> Option<String> {
 pub fn decode_xml_text(raw: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
 
-    let mut out = String::with_capacity(raw.len());
-    let mut rest = raw;
-    while let Some(amp) = rest.find('&') {
-        out.push_str(&rest[..amp]);
-        let candidate = &rest[amp..];
-        let decoded = candidate.find(';').and_then(|semi| {
-            let entity = &candidate[1..semi];
-            // Some(Some(c)): push c; Some(None): drop the reference; None:
-            // keep it verbatim.
-            let ch: Option<Option<char>> = match entity {
-                "amp" => Some(Some('&')),
-                "lt" => Some(Some('<')),
-                "gt" => Some(Some('>')),
-                "quot" => Some(Some('"')),
-                "apos" => Some(Some('\'')),
-                _ => {
-                    let code = if let Some(hex) =
-                        entity.strip_prefix("#x").or_else(|| entity.strip_prefix("#X"))
-                    {
-                        u32::from_str_radix(hex, 16).ok()
-                    } else if let Some(dec) = entity.strip_prefix('#') {
-                        dec.parse::<u32>().ok()
-                    } else {
-                        None
-                    };
-                    match code.and_then(char::from_u32) {
-                        // C0 controls other than tab / LF / CR are forbidden
-                        // in XML 1.0: keep the reference verbatim rather than
-                        // smuggle a NUL or ESC into the catalogue.
-                        Some(c) if c < ' ' && !matches!(c, '\t' | '\n' | '\r') => None,
-                        // C1 controls are legal but invisible; MARC 21 uses
-                        // them as non-sort markers (U+0088/89, U+0098/9C
-                        // around a leading article). Drop them.
-                        Some(c) if ('\u{80}'..='\u{9f}').contains(&c) => Some(None),
-                        other => other.map(Some),
-                    }
-                }
-            };
-            ch.map(|c| (c, semi + 1))
-        });
-        match decoded {
-            Some((c, consumed)) => {
-                if let Some(c) = c {
-                    out.push(c);
-                }
-                rest = &candidate[consumed..];
-            }
-            None => {
-                out.push('&');
-                rest = &candidate[1..];
-            }
-        }
-    }
-    out.push_str(rest);
-    out.nfc().collect()
+    crate::utils::decode_char_references(raw, false)
+        .nfc()
+        .collect()
 }
 
 /// Abbreviations whose final period is part of the word, not MARC's closing

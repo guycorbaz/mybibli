@@ -449,6 +449,22 @@ mod tests {
         );
     }
 
+    /// Story 13-4 (#578), review L3 — HTML cleaning belongs to the providers
+    /// that answer with HTML (Google Books, Comic Vine); the shared
+    /// normalisation leaves other text alone (BnF `<<…>>`, `&`).
+    #[test]
+    fn metadata_result_normalize_does_not_strip_markup_like_text() {
+        let result = MetadataResult {
+            description: Some("<<Le>> Petit Prince &amp; <b>moi</b>".into()),
+            ..MetadataResult::default()
+        }
+        .normalize_empty_strings();
+        assert_eq!(
+            result.description.as_deref(),
+            Some("<<Le>> Petit Prince &amp; <b>moi</b>")
+        );
+    }
+
     #[test]
     fn metadata_result_normalize_drops_empty_optional_strings() {
         // Mix of empty / whitespace / real values across every
