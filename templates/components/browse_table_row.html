@@ -1,0 +1,21 @@
+{# Shared browse-table row (#577). Single source of truth for the list-mode
+   `<tr>` of a SearchResult, used by the home page's #browse-results table,
+   the #recent-additions table, and the Rust HTMX search-fragment builder
+   (routes/home_search_fragment.rs::render_search_table_row).
+   Calling convention: `item` is the loop variable (a SearchResult). #}
+<tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50">
+    <td class="px-3 py-2">
+        <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5" aria-hidden="true">
+    </td>
+    <td class="px-3 py-2">
+        <a href="/title/{{ item.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ item.title }}</a>
+    </td>
+    <td class="px-3 py-2 text-stone-600 dark:text-stone-400">
+        {% match item.primary_contributor %}{% when Some with (name) %}{{ name }}{% when None %}—{% endmatch %}
+    </td>
+    <td class="px-3 py-2 text-stone-600 dark:text-stone-400">{{ item.genre_name }}</td>
+    <td class="px-3 py-2 text-stone-600 dark:text-stone-400">
+        {% match item.dewey_code %}{% when Some with (d) %}<code class="font-mono text-xs">{{ d }}</code>{% when None %}—{% endmatch %}
+    </td>
+    <td class="px-3 py-2 text-right tabular-nums text-stone-600 dark:text-stone-400">{{ item.volume_count }}</td>
+</tr>

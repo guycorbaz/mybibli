@@ -41,7 +41,7 @@ test.describe("Cover Image Journey", () => {
     await page.goto("/");
 
     // Look for any title link in the list
-    const titleRow = page.locator("table tbody tr").first();
+    const titleRow = page.locator("#browse-results table tbody tr").first(); // scoped: #recent-additions (13-5) also renders a table
     if ((await titleRow.count()) > 0) {
       await titleRow.click();
       await page.waitForSelector('img[alt^="Cover of"], [role="img"][aria-label="No cover available"]', { timeout: 5000 });
@@ -65,7 +65,7 @@ test.describe("Cover Image Journey", () => {
 
     // Navigate to title detail
     await page.goto("/");
-    const titleLink = page.locator("table tbody tr").first();
+    const titleLink = page.locator("#browse-results table tbody tr").first(); // scoped: #recent-additions (13-5) also renders a table
     if ((await titleLink.count()) > 0) {
       await titleLink.click();
       await page.waitForSelector('img[alt^="Cover of"], [role="img"][aria-label="No cover available"]', { timeout: 5000 });

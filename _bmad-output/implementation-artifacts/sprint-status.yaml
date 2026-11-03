@@ -275,7 +275,7 @@ development_status:
   13-2-throttled-fetch-retried: done
   13-3-isbn10-upc-titles-converted: done
   13-4-descriptions-as-plain-text: done
-  13-5-series-selector-and-recent-additions-table: backlog
+  13-5-series-selector-and-recent-additions-table: done
   13-6-full-location-path: backlog
   13-7-date-added: backlog
   13-8-move-volume-to-another-title: backlog

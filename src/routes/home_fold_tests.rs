@@ -80,4 +80,92 @@ mod tests {
             "the fold <details> must not carry a bare `group` class, got {details}"
         );
     }
+
+    fn recent_item(id: u64, title: &str) -> crate::models::title::SearchResult {
+        crate::models::title::SearchResult {
+            id,
+            title: title.to_string(),
+            subtitle: None,
+            media_type: "book".to_string(),
+            genre_name: "Roman".to_string(),
+            primary_contributor: Some("Test Author".to_string()),
+            volume_count: 4,
+            cover_image_url: None,
+            publication_date: None,
+            dewey_code: None,
+        }
+    }
+
+    /// #577 — Recent additions renders BOTH the browse table (list mode)
+    /// and the card grid (grid mode) inside a `data-browse-mode-container`,
+    /// so browse-mode.js / browse.css apply the chosen mode to it exactly
+    /// as they do to #browse-results.
+    #[test]
+    fn recent_additions_renders_table_and_cards_under_a_mode_container() {
+        let mut template = make_test_home_template_with_counts("anonymous", false, 0, 0, 0);
+        template.recent_additions = vec![
+            recent_item(11, "First Recent"),
+            recent_item(12, "Second Recent"),
+        ];
+        let html = template.render().expect("render");
+        let section = slice_section(&html, "recent-additions");
+
+        let container = opening_tag(section, "<div id=\"recent-additions-results\"");
+        assert!(
+            container.contains("data-browse-mode-container"),
+            "the results wrapper must be a browse-mode container, got {container}"
+        );
+        assert!(
+            classes(container).contains(&"browse-list"),
+            "server default is list mode (the table), got {container}"
+        );
+
+        let table_idx = section
+            .find("<table class=\"browse-table")
+            .expect("browse table missing");
+        let cards_idx = section
+            .find("<div class=\"browse-cards\"")
+            .expect("card wrapper missing");
+        assert!(
+            table_idx < cards_idx,
+            "the table precedes the cards (as in #browse-results)"
+        );
+
+        let table = &section[table_idx..cards_idx];
+        assert_eq!(
+            table.matches("<tr class=\"border-b").count(),
+            2,
+            "one row per item"
+        );
+        assert!(table.contains("href=\"/title/11\"") && table.contains("href=\"/title/12\""));
+        assert_eq!(
+            table.matches("scope=\"col\"").count(),
+            5,
+            "five labelled columns"
+        );
+        assert!(
+            !table.contains("hx-get"),
+            "recent-additions headers must not sort #browse-results"
+        );
+        assert_eq!(
+            section[cards_idx..]
+                .matches("class=\"title-card group\"")
+                .count(),
+            2,
+            "one card per item"
+        );
+    }
+
+    /// #577 — #browse-results is a browse-mode container too, so one
+    /// toggle drives both surfaces.
+    #[test]
+    fn browse_results_is_a_browse_mode_container() {
+        let template = make_test_home_template_with_counts("anonymous", false, 0, 0, 0);
+        let html = template.render().expect("render");
+        let start = html
+            .find("<div id=\"browse-results\"")
+            .expect("#browse-results missing");
+        let tag = &html[start..start + html[start..].find('>').expect("tag closes")];
+        assert!(tag.contains("data-browse-mode-container"), "got {tag}");
+    }
 }
