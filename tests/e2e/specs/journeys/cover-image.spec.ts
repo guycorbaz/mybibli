@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { waitForDuplicateScanWindow } from "../../helpers/scanner";
 
 const COVER_ISBN = "9780201633610"; // Google Books mock — Design Patterns, has thumbnail URL
 const NO_COVER_ISBN = specIsbn("CI", 1); // Synthetic metadata — no cover
@@ -22,6 +23,7 @@ test.describe("Cover Image Journey", () => {
 
     // Trigger OOB delivery by scanning again (PendingUpdates middleware)
     // Bounded to 15s to cover BnF timeout + Google Books fallback under CI load.
+    await waitForDuplicateScanWindow(page); // #574: a re-scan, not a double read
     await scanField.fill(COVER_ISBN);
     await scanField.press("Enter");
 

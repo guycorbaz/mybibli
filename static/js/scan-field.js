@@ -88,9 +88,38 @@
         feedbackList.insertAdjacentHTML("afterbegin", html);
     }
 
+    // #574 — a scanner sometimes reads the same barcode twice in a burst
+    // (observed 0.17–1 s apart). The second read of an identical code within
+    // this window is dropped client-side: the first one already did the work,
+    // and posting it again only produced a "label already assigned" refusal.
+    var DUPLICATE_SCAN_WINDOW_MS = 1000;
+
+    // Pure decision, exposed for tests: is `code` at time `now` a repeat of
+    // the last posted scan `last` ({code, at} or null)?
+    function isDuplicateScan(last, code, now) {
+        return !!last && last.code === code && now - last.at < DUPLICATE_SCAN_WINDOW_MS;
+    }
+
     function initScanFields() {
         var fields = document.querySelectorAll("[data-mybibli-scan-field]");
         fields.forEach(function (field) {
+            // Last code this field posted, and when ({code, at}).
+            var lastPost = null;
+            // A failed post did no work: forget it, so re-pressing Enter on
+            // the code the error handler restored (mybibli.js) is not taken
+            // for a double read. Only the failure of THAT code's post clears
+            // the memory; a successful post stays remembered.
+            function forgetFailedScanPost(e) {
+                var cfg = (e.detail || {}).requestConfig || {};
+                if (cfg.path !== "/catalog/scan" || !lastPost) return;
+                var failedCode = cfg.formData && typeof cfg.formData.get === "function"
+                    ? cfg.formData.get("code")
+                    : (cfg.parameters || {}).code;
+                if (failedCode === lastPost.code) lastPost = null;
+            }
+            document.body.addEventListener("htmx:responseError", forgetFailedScanPost);
+            document.body.addEventListener("htmx:sendError", forgetFailedScanPost);
+            document.body.addEventListener("htmx:timeout", forgetFailedScanPost);
             field.addEventListener("keydown", function (e) {
                 if (e.key !== "Enter") return;
 
@@ -125,6 +154,16 @@
                     }
                 }
 
+                var now = Date.now();
+                if (isDuplicateScan(lastPost, code, now)) {
+                    field.value = "";
+                    return;
+                }
+                lastPost = { code: code, at: now };
+                // Exposed so E2E specs that deliberately re-scan the same code
+                // can wait the window out (helpers/scanner.ts).
+                field.setAttribute("data-last-scan-at", String(now));
+
                 // Store last scan code for error recovery (restored by mybibli.js HTMX error handler)
                 window.mybibliLastScanCode = code;
 
@@ -152,4 +191,5 @@
     window.mybibliDetectPrefix = detectPrefix;
     window.mybibliValidateIsbn13 = validateIsbn13;
     window.mybibliValidateVcode = validateVcode;
+    window.mybibliIsDuplicateScan = isDuplicateScan;
 })();

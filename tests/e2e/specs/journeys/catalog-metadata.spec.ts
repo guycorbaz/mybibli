@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { waitForDuplicateScanWindow } from "../../helpers/scanner";
 
 const VALID_ISBN = specIsbn("CM", 1);
 const COUNTER_ISBN = specIsbn("CM", 2); // Unique ISBN for session counter test
@@ -47,6 +48,7 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
 
     // Second scan: triggers PendingUpdates middleware to deliver resolved data.
     // Timeout bounded to 15s to cover BnF timeout + Google Books fallback under CI load.
+    await waitForDuplicateScanWindow(page); // #574: a re-scan, not a double read
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
 
@@ -88,8 +90,9 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     await expect(errorEntry).toBeVisible({ timeout: 5000 });
   });
 
-  // AC6: Already-assigned V-code error
-  test("already assigned V-code shows error with title name", async ({
+  // AC6 (#585): a label already recorded for the title in context is an
+  // info naming the label, never the old "already assigned" error.
+  test("already recorded V-code re-scanned under its title shows info", async ({
     page,
   }) => {
     // CR #300: unique ISBN so the title has no prior volumes and the V0055
@@ -113,15 +116,18 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     );
     await expect(volFeedback.first()).toBeVisible({ timeout: 5000 });
 
-    // Try to assign same V-code again
+    // Scan the same V-code again, once the double-read window is over
+    await waitForDuplicateScanWindow(page);
     await scanField.fill("V0055");
     await scanField.press("Enter");
 
-    // Should get error about already assigned
-    const errorEntry = page.locator(
-      '.feedback-entry[data-feedback-variant="error"]'
-    );
-    await expect(errorEntry).toBeVisible({ timeout: 5000 });
+    const infoEntry = page
+      .locator('.feedback-entry[data-feedback-variant="info"]')
+      .filter({ hasText: /V0055/ });
+    await expect(infoEntry).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.locator('.feedback-entry[data-feedback-variant="error"]')
+    ).toHaveCount(0);
   });
 
   // AC8: Mock metadata server for deterministic E2E
@@ -145,6 +151,7 @@ test.describe("Scan Feedback & Async Metadata (Story 1-7)", () => {
     await expect(banner).not.toHaveClass(/hidden/, { timeout: 5000 });
 
     // Trigger delivery; bounded to 15s for BnF timeout + Google Books fallback under CI load.
+    await waitForDuplicateScanWindow(page); // #574: a re-scan, not a double read
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
 
