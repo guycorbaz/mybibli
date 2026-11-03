@@ -45,6 +45,20 @@
                 {% if let Some(sub) = title.subtitle %}
                     <p class="text-lg text-stone-500 dark:text-stone-400">{{ sub }}</p>
                 {% endif %}
+                {# Story 13-10 (#579) — the tome number as the title's own: one
+                   entry per series membership (the authoritative position), or
+                   the non-authoritative detected hint when in no series. The
+                   series name is plain text here: the Series section below
+                   carries the link. #}
+                {% if !series_assignments.is_empty() %}
+                <p id="title-tome" class="mt-1 flex flex-wrap gap-x-3 text-sm font-medium text-stone-700 dark:text-stone-300">
+                    {% for sa in series_assignments %}
+                    <span data-tome-series="{{ sa.series_id }}">{{ sa.tome_label(base.lang.as_str()) }} · {{ sa.series_name }}</span>
+                    {% endfor %}
+                </p>
+                {% else if let Some(detected) = tome.detected_label %}
+                <p id="title-tome" class="mt-1 text-sm font-medium text-stone-700 dark:text-stone-300" data-tome-detected>{{ detected }}</p>
+                {% endif %}
                 <div class="mt-4 flex flex-wrap gap-4 text-sm text-stone-600 dark:text-stone-400">
                     <span class="inline-flex items-center gap-1">
                         <img src="/static/icons/{{ title.media_type }}.svg" alt="" class="w-4 h-4" aria-hidden="true">
@@ -214,12 +228,26 @@
                     {% for sa in series_assignments %}
                     <li class="flex items-center gap-2">
                         <a href="/series/{{ sa.series_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ sa.series_name }}</a>
-                        {% if let Some(end) = sa.position_end %}
-                        <span class="text-stone-500">(#{{ sa.position_start }}-{{ end }})</span>
-                        {% else %}
-                        <span class="text-stone-500">(#{{ sa.position_start }})</span>
-                        {% endif %}
+                        <span class="text-stone-500" data-series-position="{{ sa.id }}">{{ sa.tome_label(base.lang.as_str()) }}</span>
                         {% if base.role == "librarian" || base.role == "admin" %}
+                        {% if !sa.is_omnibus %}
+                        {# Story 13-10 (AC5) — edit the position in place. #}
+                        <details class="inline-block" data-position-edit="{{ sa.id }}">
+                            <summary class="cursor-pointer text-xs text-indigo-600 dark:text-indigo-400 hover:underline">{{ tome.label_change }}</summary>
+                            <form method="POST" action="/title/{{ title.id }}/series/{{ sa.id }}/position"
+                                  hx-post="/title/{{ title.id }}/series/{{ sa.id }}/position"
+                                  class="mt-1 inline-flex items-end gap-2">
+                                <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
+                                <input type="hidden" name="version" value="{{ sa.version }}">
+                                <label for="position-edit-{{ sa.id }}" class="sr-only">{{ tome.label_new_position }} — {{ sa.series_name }}</label>
+                                <input type="number" id="position-edit-{{ sa.id }}" name="position_number" min="1" required
+                                       value="{{ sa.position_start }}"
+                                       class="w-20 rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 text-sm">
+                                <button type="submit"
+                                        class="px-2 py-1 text-xs font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700">{{ tome.label_save }}</button>
+                            </form>
+                        </details>
+                        {% endif %}
                         {% if sa.is_omnibus %}
                         <form method="POST" action="/title/{{ title.id }}/series-remove" class="inline">
                             <input type="hidden" name="_csrf_token" value="{{ base.csrf_token|e }}">
@@ -257,6 +285,7 @@
                     <div>
                         <label for="assign-position" class="block text-xs text-stone-600 dark:text-stone-400">{{ label_position }}</label>
                         <input type="number" id="assign-position" name="position_number" min="1" required
+                               {% if let Some(n) = tome.prefill %}value="{{ n }}"{% endif %}
                                class="mt-1 w-20 rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 text-sm">
                     </div>
                     <div class="relative flex items-center gap-2">

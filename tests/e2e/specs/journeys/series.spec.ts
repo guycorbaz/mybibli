@@ -327,9 +327,10 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
   });
 
   // CR #336 — series-detail card layout: filled cells render as cards
-  // with cover (or fallback icon), "Vol. N" label, and title name.
-  // Empty positions also surface "Vol. N" alongside the missing marker.
-  test("series detail renders card grid with covers, Vol. N, and title", async ({
+  // with cover (or fallback icon), "Tome N" label, and title name.
+  // Empty positions also surface "Tome N" alongside the missing marker.
+  // Story 13-10 (#579): the label is "Tome" / "Volume" / "Band" / "Tomo".
+  test("series detail renders card grid with covers, Tome N, and title", async ({
     page,
   }) => {
     const SERIES_NAME = `SE-Cards-${Date.now()}`;
@@ -385,15 +386,15 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
     await expect(filledCard).toHaveCount(1);
     await expect(filledCard.locator("img")).toHaveCount(1);
 
-    // The card surfaces "Vol. 2" (EN+FR+IT) or "Bd. 2" (DE)
-    await expect(filledCard).toContainText(/Vol\.\s*2|Bd\.\s*2/);
+    // The card surfaces "Tome 2" (FR), "Volume 2" (EN), "Band 2" (DE), "Tomo 2" (IT)
+    await expect(filledCard).toContainText(/(Tome|Volume|Band|Tomo)\s*2/);
 
-    // Gap cards (#1 and #3) also surface "Vol. 1" / "Vol. 3" so the
+    // Gap cards (#1 and #3) also surface "Tome 1" / "Tome 3" so the
     // collector can see which slots are missing at a glance
     const gapCards = grid.locator("div[role='gridcell']");
     await expect(gapCards).toHaveCount(2);
-    await expect(gapCards.nth(0)).toContainText(/Vol\.\s*1|Bd\.\s*1/);
-    await expect(gapCards.nth(1)).toContainText(/Vol\.\s*3|Bd\.\s*3/);
+    await expect(gapCards.nth(0)).toContainText(/(Tome|Volume|Band|Tomo)\s*1/);
+    await expect(gapCards.nth(1)).toContainText(/(Tome|Volume|Band|Tomo)\s*3/);
   });
 
   // AC6: Omnibus covering 3 positions fills gap grid
@@ -443,7 +444,10 @@ test.describe("Series Assignment & Gap Detection (Story 5-4)", () => {
     await expect(
       page.locator(`a[href^="/series/"]:has-text("${SERIES_NAME}")`),
     ).toBeVisible();
-    await expect(page.getByText("#3-5").first()).toBeVisible();
+    // Story 13-10 (#579): an omnibus reads "Tomes 3–5" (localized).
+    await expect(
+      page.getByText(/(Tomes|Volumes|Bände|Tomi)\s*3–5/).first(),
+    ).toBeVisible();
 
     // Navigate to series detail and verify gap grid
     await page.goto(seriesUrl);

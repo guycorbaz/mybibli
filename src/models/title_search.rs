@@ -42,9 +42,17 @@ pub struct SearchResult {
     /// `created_at` and its newest live volume's (UTC). The browse
     /// "date added" sort orders by it.
     pub last_added_at: Option<chrono::NaiveDateTime>,
+    /// Story 13-10 (#579) — the positions the title holds in live series
+    /// (ascending; empty when in none), shown as "Tome N".
+    pub tome_positions: Vec<i32>,
 }
 
 impl SearchResult {
+    /// "Tome N" / "Tomes N–M" in `locale`, `None` outside any series.
+    pub fn tome_label(&self, locale: &str) -> Option<String> {
+        crate::services::tome::positions_label(&self.tome_positions, locale)
+    }
+
     /// The latest addition date in the convention of `locale` (browse
     /// table cell, [`crate::utils::format_date_localized`]), or an em dash
     /// when unknown.
@@ -54,6 +62,13 @@ impl SearchResult {
             .unwrap_or_else(|| "\u{2014}".to_string())
     }
 }
+
+/// Story 13-10 (#579) — the positions a title `t` holds in live series,
+/// comma-separated ascending (NULL when none).
+pub(crate) const TOME_POSITIONS_SQL: &str = "(SELECT CAST(GROUP_CONCAT(DISTINCT ts.position_number ORDER BY ts.position_number \
+       SEPARATOR ',') AS CHAR) FROM title_series ts \
+       JOIN series s ON s.id = ts.series_id AND s.deleted_at IS NULL \
+       WHERE ts.title_id = t.id AND ts.deleted_at IS NULL)";
 
 /// The columns every `SearchResult` query selects from the title aliased
 /// `t` and its genre aliased `g`. Shared by `active_search`,
@@ -67,7 +82,8 @@ pub(crate) fn search_projection() -> String {
          (SELECT COUNT(*) FROM volumes v WHERE v.title_id = t.id \
            AND v.deleted_at IS NULL) AS volume_count, \
          CAST(t.created_at AS DATETIME) AS created_at, \
-         {} AS last_added_at",
+         {} AS last_added_at, \
+         {TOME_POSITIONS_SQL} AS tome_positions",
         crate::models::date_added::LAST_ADDED_AT_SQL
     )
 }
@@ -90,6 +106,11 @@ pub(crate) fn search_result_from_row(r: &sqlx::mysql::MySqlRow) -> SearchResult 
         dewey_code: r.try_get("dewey_code").unwrap_or(None),
         created_at: r.try_get("created_at").unwrap_or(None),
         last_added_at: r.try_get("last_added_at").unwrap_or(None),
+        tome_positions: crate::services::tome::parse_positions(
+            r.try_get::<Option<String>, _>("tome_positions")
+                .unwrap_or(None)
+                .as_deref(),
+        ),
     }
 }
 
@@ -588,6 +609,7 @@ mod tests {
             dewey_code: None,
             created_at: None,
             last_added_at: None,
+            tome_positions: Vec::new(),
         };
         assert_eq!(result.added_date("fr"), "\u{2014}");
         let dated = SearchResult {

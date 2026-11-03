@@ -7,8 +7,10 @@
    Calling convention:
    - Askama include: `{% for item in … %}{% include "components/title_card.html" %}{% endfor %}`
      where `label_no_cover` + `volume_short_label` are fields on the parent
-     page struct (HomeTemplate) and `item` is the loop variable (a SearchResult).
-   - Rust standalone: `TitleCardTemplate { item, label_no_cover, volume_short_label }.render()`
+     page struct (HomeTemplate), `item` is the loop variable (a SearchResult)
+     and `card_lang` the page locale (story 13-10: the "Tome N" line), set
+     with `{% let card_lang = base.lang.as_str() %}` before the include.
+   - Rust standalone: `TitleCardTemplate { item, label_no_cover, volume_short_label, card_lang }.render()`
      in routes/home_search_fragment.rs, which reuses this exact file so the
      HTMX search fragment can never drift from the page render.
 
@@ -32,6 +34,7 @@
         </div>
         <div class="title-card-info">
             <p class="title-card-title">{{ item.title }}</p>
+            {% if let Some(tome) = item.tome_label(card_lang) %}<p class="title-card-tome" data-tome>{{ tome }}</p>{% endif %}
             <p class="title-card-contributor">{{ item.primary_contributor.as_deref().unwrap_or("") }}</p>
             <p class="title-card-meta">{{ item.genre_name }}{% if let Some(d) = item.publication_date %} · {{ d.format("%Y") }}{% endif %}</p>
             <p class="title-card-volumes">{{ item.volume_count }} {{ volume_short_label }}</p>

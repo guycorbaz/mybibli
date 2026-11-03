@@ -83,6 +83,8 @@ pub struct TitleDetailTemplate {
     pub label_delete_title: String,
     pub has_code: bool,
     pub series_assignments: Vec<TitleSeriesAssignment>,
+    /// Story 13-10 (#579) — detected tome hint + position-edit labels.
+    pub tome: crate::services::tome::TitleTomeView,
     /// `(id, name)` of every live series (#576 — unpaginated).
     pub all_series: Vec<(u64, String)>,
     pub label_series: String,
@@ -192,7 +194,9 @@ pub async fn title_detail(
             loc,
         );
         let base = crate::utils::base_context(&session, loc, "title", &uri, state.session_timeout_secs());
+        let tome = crate::services::tome::TitleTomeView::load(pool, title.id, !series_assignments.is_empty(), loc).await?;
         let template = TitleDetailTemplate {
+            tome,
             base,
             title,
             genre_name,
@@ -538,6 +542,8 @@ fn metadata_display_html(
 #[derive(Template)]
 #[template(path = "fragments/title_edit_form.html")]
 struct TitleEditFormTemplate {
+    /// Story 13-10 (AC6) — the stored title holds a tome marker.
+    tome_hint: Option<String>,
     title: TitleModel,
     genres: Vec<GenreModel>,
     label_title: String,
@@ -594,6 +600,7 @@ pub async fn title_edit_form(
     let genres = GenreModel::list_active(pool).await?;
 
     let template = TitleEditFormTemplate {
+        tome_hint: crate::services::tome::manual_title_hint(&title.title, loc),
         title,
         genres,
         label_title: rust_i18n::t!("metadata.field.title", locale = loc).to_string(),
@@ -965,7 +972,7 @@ pub async fn update_title(
         "success",
         &rust_i18n::t!("metadata.save_changes", locale = loc),
         "",
-    );
+    ) + &crate::services::tome::manual_title_hint_html(&updated.title, loc);
     html.push_str(&format!(
         r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
     ));
@@ -1031,7 +1038,7 @@ pub async fn redownload_metadata(
     )
     .await;
 
-    let metadata = match outcome.result {
+    let mut metadata = match outcome.result {
         Some(m) => m,
         None => {
             // Story 13-2 — a throttled miss is retried later; a genuine one dequeues.
@@ -1065,6 +1072,10 @@ pub async fn redownload_metadata(
     let resolved_cover_url =
         resolve_cover_url_with_fallback(&state.http_client, &metadata, &code, &code_type).await;
 
+    // Story 13-10 (#579) — strip the tome marker from the proposed title.
+    if let Some(n) = crate::services::tome::prepare_metadata_title(&mut metadata, &title) {
+        crate::services::tome::record_detected_tome(pool, id, n).await;
+    }
     let manually_edited = title.parsed_manually_edited_fields();
 
     if manually_edited.is_empty() {
@@ -2151,6 +2162,7 @@ mod tests {
             label_delete_title: "Delete title".to_string(),
             has_code: true,
             series_assignments: vec![],
+            tome: Default::default(),
             all_series: vec![],
             label_series: "Series".to_string(),
             label_assign: "Add to series".to_string(),
@@ -2310,6 +2322,7 @@ mod tests {
             label_delete_title: "Delete title".to_string(),
             has_code: true,
             series_assignments: vec![],
+            tome: Default::default(),
             all_series: vec![],
             label_series: "Series".to_string(),
             label_assign: "Add to series".to_string(),
@@ -2446,6 +2459,7 @@ mod tests {
             label_delete_title: "Delete title".to_string(),
             has_code: false,
             series_assignments: vec![],
+            tome: Default::default(),
             all_series: vec![],
             label_series: "Series".to_string(),
             label_assign: "Add to series".to_string(),

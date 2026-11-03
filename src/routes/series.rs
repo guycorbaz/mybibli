@@ -288,7 +288,7 @@ pub async fn series_detail_page(
         positions,
         position_label: rust_i18n::t!("series.position", locale = loc).to_string(),
         missing_label: rust_i18n::t!("series.missing_volume", locale = loc).to_string(),
-        volume_short_label: rust_i18n::t!("series.volume_short", locale = loc).to_string(),
+        volume_short_label: rust_i18n::t!("tome.word", locale = loc).to_string(),
         grid_label: format!(
             "{} — {}",
             rust_i18n::t!("series.list_title", locale = loc),

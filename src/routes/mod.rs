@@ -44,6 +44,7 @@ pub mod series;
 pub mod series_expected_tomes;
 pub mod setup;
 pub mod titles;
+pub mod title_tome;
 pub mod volume_move;
 pub mod wishlist;
 
@@ -238,6 +239,10 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .route(
             "/title/{id}/series-remove",
             axum::routing::post(titles::unassign_omnibus_from_series),
+        )
+        .route(
+            "/title/{id}/series/{assignment_id}/position",
+            axum::routing::post(title_tome::change_position),
         )
         .route(
             "/contributor/{id}",

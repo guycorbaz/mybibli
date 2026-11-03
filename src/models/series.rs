@@ -500,6 +500,16 @@ pub struct TitleSeriesAssignment {
     pub position_start: i32,
     pub position_end: Option<i32>,
     pub is_omnibus: bool,
+    /// Story 13-10 — the row's `version` (the position edit's optimistic
+    /// lock); for an omnibus range, the first row's.
+    pub version: i32,
+}
+
+impl TitleSeriesAssignment {
+    /// Story 13-10 (#579) — "Tome N" / "Tomes N–M", localized.
+    pub fn tome_label(&self, loc: &str) -> String {
+        crate::services::tome::tome_label(self.position_start, self.position_end, loc)
+    }
 }
 
 /// Story 11-17 — a position of a series held by a live title.
@@ -644,7 +654,8 @@ impl TitleSeriesModel {
         title_id: u64,
     ) -> Result<Vec<TitleSeriesAssignment>, AppError> {
         let rows = sqlx::query(
-            "SELECT ts.id, ts.series_id, s.name AS series_name, ts.position_number, ts.is_omnibus \
+            "SELECT ts.id, ts.series_id, s.name AS series_name, ts.position_number, ts.is_omnibus, \
+             ts.version \
              FROM title_series ts \
              JOIN series s ON ts.series_id = s.id \
              WHERE ts.title_id = ? AND ts.deleted_at IS NULL AND s.deleted_at IS NULL \
@@ -662,6 +673,7 @@ impl TitleSeriesModel {
             let series_name: String = row.try_get("series_name").map_err(AppError::Database)?;
             let pos: i32 = row.try_get("position_number").map_err(AppError::Database)?;
             let is_omnibus: bool = row.try_get("is_omnibus").map_err(AppError::Database)?;
+            let version: i32 = row.try_get("version").map_err(AppError::Database)?;
 
             if is_omnibus {
                 // Try to extend the last entry if it's the same omnibus group
@@ -681,6 +693,7 @@ impl TitleSeriesModel {
                     position_start: pos,
                     position_end: Some(pos),
                     is_omnibus: true,
+                    version,
                 });
             } else {
                 result.push(TitleSeriesAssignment {
@@ -690,6 +703,7 @@ impl TitleSeriesModel {
                     position_start: pos,
                     position_end: None,
                     is_omnibus: false,
+                    version,
                 });
             }
         }

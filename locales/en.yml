@@ -370,7 +370,6 @@ series:
   # CR #336 — short prefix for the volume number on series-detail cards
   # (e.g. "Vol. 3"). Stays untranslated in DE/IT below because "Vol." is
   # a borrowed abbreviation in those languages too.
-  volume_short: "Vol."
   ongoing: "ongoing, last known: #%{position}"
   no_assignments: "Not assigned to any series."
   sort:
@@ -1478,3 +1477,15 @@ proposals:
 record_dates:
   added_on: "Added on %{date}"
   modified_on: "Modified on %{date}"
+# Story 13-10 (#579) — the tome number (title_series.position_number).
+tome:
+  single: "Volume %{n}"
+  range: "Volumes %{start}–%{end}"
+  several: "Volumes %{list}"
+  detected: "Volume %{n} (detected)"
+  word: "Volume"
+  change_position: "Change"
+  new_position: "New position"
+  save_position: "Save"
+  omnibus_not_editable: "An omnibus covers several positions and cannot be moved here. Remove it from the series, then assign it again with the new range."
+  manual_hint: "This title contains a volume number (%{label}). The title was saved as typed; to keep it clean, remove the number from the title and set it as the title's position in its series."

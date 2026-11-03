@@ -312,6 +312,7 @@ mod tests {
             dewey_code: None,
             created_at: None,
             last_added_at: None,
+            tome_positions: Vec::new(),
         }
     }
 

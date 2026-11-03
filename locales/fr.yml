@@ -369,7 +369,6 @@ series:
   assigned: "Assigné à %{series} à la position %{position}."
   unassigned: "Retiré de la série."
   missing_volume: "Volume manquant #"
-  volume_short: "Vol."
   ongoing: "en cours, dernier connu : #%{position}"
   no_assignments: "Non assigné à aucune série."
   sort:
@@ -1474,3 +1473,15 @@ proposals:
 record_dates:
   added_on: "Ajouté le %{date}"
   modified_on: "Modifié le %{date}"
+# Story 13-10 (#579) — le numéro de tome (title_series.position_number).
+tome:
+  single: "Tome %{n}"
+  range: "Tomes %{start}–%{end}"
+  several: "Tomes %{list}"
+  detected: "Tome %{n} (détecté)"
+  word: "Tome"
+  change_position: "Modifier"
+  new_position: "Nouvelle position"
+  save_position: "Enregistrer"
+  omnibus_not_editable: "Une intégrale couvre plusieurs positions et ne peut pas être déplacée ici. Retirez-la de la série, puis réattribuez-la avec la nouvelle plage."
+  manual_hint: "Ce titre contient un numéro de tome (%{label}). Le titre a été enregistré tel que saisi ; pour le garder propre, retirez le numéro du titre et indiquez-le comme position du titre dans sa série."

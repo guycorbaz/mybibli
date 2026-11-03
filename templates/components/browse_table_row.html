@@ -10,6 +10,8 @@
     </td>
     <td class="px-3 py-2">
         <a href="/title/{{ item.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ item.title }}</a>
+        {# Story 13-10 (#579) — the tome number from the series position(s). #}
+        {% if let Some(tome) = item.tome_label(row_lang) %}<span class="ml-1 text-xs text-stone-500 dark:text-stone-400 whitespace-nowrap" data-tome>{{ tome }}</span>{% endif %}
     </td>
     <td class="px-3 py-2 text-stone-600 dark:text-stone-400">
         {% match item.primary_contributor %}{% when Some with (name) %}{{ name }}{% when None %}—{% endmatch %}

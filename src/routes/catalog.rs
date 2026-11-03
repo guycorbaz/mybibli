@@ -1707,7 +1707,9 @@ pub async fn create_title(
                     rust_i18n::t!("feedback.title_created_suggestion", locale = loc).to_string();
 
                 let resp = HtmxResponse {
-                    main: feedback_html("success", &message, &suggestion) + &banners,
+                    main: feedback_html("success", &message, &suggestion)
+                        + &banners
+                        + &crate::services::tome::manual_title_hint_html(&title.title, loc),
                     oob: vec![
                         OobUpdate { swap_mode: Default::default(),
                             target: "context-banner".to_string(),
@@ -2425,6 +2427,8 @@ pub struct VolumeDetailTemplate {
     pub move_label: String,
     /// Story 13-8 — the "Title:" label of the title row.
     pub title_label: String,
+    /// Story 13-10 (#579) — "Tome N" of the title, when in a series.
+    pub tome_label: Option<String>,
 }
 
 pub async fn volume_detail(
@@ -2441,6 +2445,7 @@ pub async fn volume_detail(
         .await?
         .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found", locale = loc).to_string()))?;
 
+    let volume_title_id = volume.title_id;
     let title = crate::models::title::TitleModel::find_by_id(pool, volume.title_id)
         .await?
         .map(|t| t.title)
@@ -2570,6 +2575,7 @@ pub async fn volume_detail(
         audit_button_label_clear: rust_i18n::t!("volume.mark_checked", locale = loc).to_string(),
         move_label: rust_i18n::t!("volume.move_button", locale = loc).to_string(),
         title_label: rust_i18n::t!("volume.title_field", locale = loc).to_string(),
+        tome_label: crate::services::tome::title_positions_label(pool, volume_title_id, loc).await?,
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),

@@ -44,6 +44,26 @@ BNF_KNOWN_ISBNS = {
     },
 }
 
+# Story 13-10 (#579) — specIsbn("TN", seq) with seq >= 1000: a provider
+# title carrying a tome marker. Stored as "Le Mystère des tomes" with 3 as
+# the detected tome. A range (not one ISBN) so each test attempt scans a
+# fresh title — a retry never meets the state an earlier attempt left.
+TOME_MARKER_RECORD = {
+    "title": "Tome 3 : Le Mystère des tomes",
+    "subtitle": "",
+    "author_surname": "Tomeur",
+    "author_forename": "Jean",
+    "publisher": "Glénat",
+    "date": "2024",
+    "language": "fre",
+}
+
+
+def is_tome_marker_isbn(isbn):
+    """specIsbn("TN", seq >= 1000): 978 + 84 + 78 + seq(5) + check."""
+    return len(isbn) == 13 and isbn.startswith("9788478") and int(isbn[7:12]) >= 1000
+
+
 # --- Google Books known ISBNs (only for ISBNs NOT in BnF, to test fallback) ---
 GOOGLE_BOOKS_KNOWN_ISBNS = {
     "9780134685991": {
@@ -291,6 +311,8 @@ class MockMetadataHandler(http.server.BaseHTTPRequestHandler):
 
         if isbn and isbn in BNF_KNOWN_ISBNS:
             body = make_sru_response(BNF_KNOWN_ISBNS[isbn])
+        elif isbn and is_tome_marker_isbn(isbn):
+            body = make_sru_response(TOME_MARKER_RECORD)
         elif isbn and isbn not in NO_METADATA_ISBNS:
             # Catch-all: return synthetic metadata for any unknown ISBN
             # (supports per-spec unique ISBN generation in E2E tests)

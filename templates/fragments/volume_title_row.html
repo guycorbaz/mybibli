@@ -4,4 +4,6 @@
 <div class="flex items-center gap-3">
     <span class="text-sm font-medium text-stone-500 dark:text-stone-400 w-32">{{ title_row_label }}</span>
     <a href="/title/{{ title_row_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ title_row_name }}</a>
+    {# Story 13-10 (#579) — the tome number from the series position(s). #}
+    {% if let Some(tome) = title_row_tome %}<span class="text-sm text-stone-500 dark:text-stone-400" data-tome>{{ tome }}</span>{% endif %}
 </div>

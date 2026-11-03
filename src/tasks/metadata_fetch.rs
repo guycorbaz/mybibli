@@ -280,7 +280,18 @@ pub async fn update_title_from_metadata(
         None => return Ok(()),
     };
 
+    // Story 13-10 (#579) — a tome marker never stays in a provider title;
+    // its number is routed below once the write landed.
+    let mut metadata = metadata.clone();
+    let tome = crate::services::tome::prepare_metadata_title(&mut metadata, &snapshot);
+    let metadata = &metadata;
+
     let rows = do_update(pool, title_id, metadata, &snapshot).await?;
+    if rows > 0
+        && let Some(n) = tome
+    {
+        crate::services::tome::record_detected_tome(pool, title_id, n).await;
+    }
     if rows == 0 {
         tracing::info!(
             title_id = title_id,
