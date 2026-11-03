@@ -316,6 +316,7 @@ async fn get_title_is_enriched_for_the_agent(pool: DbPool) {
     assert_eq!(volumes[0]["label"], "V0201");
     assert_eq!(volumes[0]["location_name"], "Étagère A");
     assert_eq!(volumes[0]["location_label"], "L0007");
+    assert_eq!(volumes[0]["location_path"], "Étagère A", "story 13-6 — full path");
     assert_eq!(
         doc["series"],
         json!([{"series_id": series, "series_name": "Tintin", "position": 5,

@@ -420,6 +420,7 @@ impl VolumeModel {
         let rows = sqlx::query(
             "SELECT v.id, v.label, v.version, \
                     sl.name AS location_name, sl.label AS location_label, \
+                    CAST(sl.id AS SIGNED) AS location_id, \
                     vs.name AS condition_name \
              FROM volumes v \
              LEFT JOIN storage_locations sl \
@@ -433,14 +434,32 @@ impl VolumeModel {
         .fetch_all(pool)
         .await?;
 
+        let location_ids: Vec<Option<u64>> = rows
+            .iter()
+            .map(|r| {
+                r.try_get::<Option<i64>, _>("location_id")
+                    .ok()
+                    .flatten()
+                    .map(|v| v as u64)
+            })
+            .collect();
+        // Story 13-6 — full paths from one query, only when a volume is shelved.
+        let paths = if location_ids.iter().any(Option::is_some) {
+            crate::models::location::LocationModel::all_paths(pool).await?
+        } else {
+            std::collections::HashMap::new()
+        };
+
         Ok(rows
             .into_iter()
-            .map(|r| VolumeWithLocation {
+            .zip(location_ids)
+            .map(|(r, location_id)| VolumeWithLocation {
                 id: r.try_get("id").unwrap_or(0),
                 label: r.try_get("label").unwrap_or_default(),
                 version: r.try_get("version").unwrap_or(0),
                 location_name: r.try_get("location_name").ok(),
                 location_label: r.try_get("location_label").ok(),
+                location_path: location_id.and_then(|id| paths.get(&id).cloned()),
                 condition_name: r.try_get("condition_name").ok(),
             })
             .collect())
@@ -782,6 +801,9 @@ pub struct VolumeWithLocation {
     pub version: i32,
     pub location_name: Option<String>,
     pub location_label: Option<String>,
+    /// Story 13-6 — the full path root → leaf ("Maison → Salon → Étagère 3"),
+    /// `None` exactly when `location_name` is.
+    pub location_path: Option<String>,
     pub condition_name: Option<String>,
 }
 
@@ -1228,7 +1250,37 @@ mod tests {
         // V0042 has location "Salon" (label L0001) and the default state.
         assert_eq!(got[1].location_name.as_deref(), Some("Salon"));
         assert_eq!(got[1].location_label.as_deref(), Some("L0001"));
+        assert_eq!(got[1].location_path.as_deref(), Some("Salon"));
+        assert_eq!(got[0].location_path, None);
         assert!(got[1].condition_name.is_some());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn find_by_title_carries_the_full_location_path(pool: sqlx::MySqlPool) {
+        // Story 13-6 — a volume on a nested location shows root → leaf.
+        let house = seed_location(&pool, "Maison", "L0011").await;
+        let room = seed_location(&pool, "Salon", "L0012").await;
+        let shelf = seed_location(&pool, "Étagère 3", "L0013").await;
+        sqlx::query("UPDATE storage_locations SET parent_id = ? WHERE id = ?")
+            .bind(house)
+            .bind(room)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE storage_locations SET parent_id = ? WHERE id = ?")
+            .bind(room)
+            .bind(shelf)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let (title_id, _) = seed_title_with_volume(&pool, "V0013", Some(shelf)).await;
+
+        let got = VolumeModel::find_by_title(&pool, title_id).await.unwrap();
+        assert_eq!(got[0].location_name.as_deref(), Some("Étagère 3"));
+        assert_eq!(
+            got[0].location_path.as_deref(),
+            Some("Maison → Salon → Étagère 3")
+        );
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -1286,5 +1338,6 @@ mod tests {
         assert_eq!(got.len(), 1, "volume must remain visible");
         assert_eq!(got[0].location_name, None);
         assert_eq!(got[0].location_label, None);
+        assert_eq!(got[0].location_path, None);
     }
 }

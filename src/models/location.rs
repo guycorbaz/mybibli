@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::Row;
 
 use crate::db::DbPool;
@@ -170,39 +172,40 @@ impl LocationModel {
         }
     }
 
-    /// Walk the parent chain to build a breadcrumb path like "Salon → Bibliothèque 1 → Étagère 3"
+    /// Walk the parent chain to build a breadcrumb path like "Salon → Bibliothèque 1 → Étagère 3".
+    ///
+    /// Story 13-6 — the walk runs in memory over [`Self::load_path_nodes`]
+    /// (one query), through the same [`assemble_path`] as [`Self::all_paths`].
     pub async fn get_path(pool: &DbPool, id: u64) -> Result<String, AppError> {
-        const MAX_DEPTH: usize = 20;
-        let mut segments: Vec<String> = Vec::new();
-        let mut current_id = Some(id);
+        let nodes = Self::load_path_nodes(pool).await?;
+        Ok(join_path(&assemble_path(&nodes, id)))
+    }
 
-        while let Some(cid) = current_id {
-            if segments.len() >= MAX_DEPTH {
-                tracing::warn!(
-                    id = id,
-                    "Location path exceeded MAX_DEPTH, possible circular reference"
-                );
-                break;
-            }
-            let row = sqlx::query(
-                "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name FROM storage_locations WHERE id = ? AND deleted_at IS NULL",
-            )
-            .bind(cid)
-            .fetch_optional(pool)
-            .await?;
+    /// Story 13-6 — every live location's full path, keyed by id, built
+    /// from ONE query. Listings that show many volumes look their
+    /// locations up here instead of walking the parents per row (N+1).
+    pub async fn all_paths(pool: &DbPool) -> Result<HashMap<u64, String>, AppError> {
+        let nodes = Self::load_path_nodes(pool).await?;
+        Ok(paths_for_all(&nodes))
+    }
 
-            match row {
-                Some(r) => {
-                    let name: String = r.try_get("name")?;
-                    segments.push(name);
-                    current_id = r.try_get::<Option<i64>, _>("parent_id")?.map(|v| v as u64);
-                }
-                None => break,
-            }
+    /// The live `storage_locations` reduced to what a path needs:
+    /// `id → (parent_id, name)`.
+    async fn load_path_nodes(pool: &DbPool) -> Result<PathNodes, AppError> {
+        let rows = sqlx::query(
+            "SELECT id, CAST(parent_id AS SIGNED) AS parent_id, name \
+             FROM storage_locations WHERE deleted_at IS NULL",
+        )
+        .fetch_all(pool)
+        .await?;
+        let mut nodes = PathNodes::with_capacity(rows.len());
+        for r in &rows {
+            let id: u64 = r.try_get("id")?;
+            let parent = r.try_get::<Option<i64>, _>("parent_id")?.map(|v| v as u64);
+            let name: String = r.try_get("name")?;
+            nodes.insert(id, (parent, name));
         }
-
-        segments.reverse();
-        Ok(segments.join(" → "))
+        Ok(nodes)
     }
 
     /// Load all non-deleted locations ordered for tree building.
@@ -366,34 +369,8 @@ impl LocationModel {
     /// Walk the parent chain and return structured segments for linked breadcrumbs.
     /// Returns `[(id, "Maison"), (id, "Salon"), (id, "Étagère 3")]` from root to leaf.
     pub async fn get_path_segments(pool: &DbPool, id: u64) -> Result<Vec<(u64, String)>, AppError> {
-        const MAX_DEPTH: usize = 20;
-        let mut segments: Vec<(u64, String)> = Vec::new();
-        let mut current_id = Some(id);
-
-        while let Some(cid) = current_id {
-            if segments.len() >= MAX_DEPTH {
-                break;
-            }
-            let row = sqlx::query(
-                "SELECT id, CAST(parent_id AS SIGNED) as parent_id, name FROM storage_locations WHERE id = ? AND deleted_at IS NULL",
-            )
-            .bind(cid)
-            .fetch_optional(pool)
-            .await?;
-
-            match row {
-                Some(r) => {
-                    let loc_id: u64 = r.try_get("id")?;
-                    let name: String = r.try_get("name")?;
-                    segments.push((loc_id, name));
-                    current_id = r.try_get::<Option<i64>, _>("parent_id")?.map(|v| v as u64);
-                }
-                None => break,
-            }
-        }
-
-        segments.reverse();
-        Ok(segments)
+        let nodes = Self::load_path_nodes(pool).await?;
+        Ok(assemble_path(&nodes, id))
     }
 
     /// Get the version of a location (for optimistic locking forms).
@@ -407,6 +384,62 @@ impl LocationModel {
         row.map(|r| r.0)
             .ok_or_else(|| AppError::NotFound(rust_i18n::t!("error.not_found").to_string()))
     }
+}
+
+/// Live locations reduced to `id → (parent_id, name)`, the input of the
+/// in-memory path assembly.
+pub(crate) type PathNodes = HashMap<u64, (Option<u64>, String)>;
+
+/// Depth guard of the parent walk: a cycle in `parent_id` (never created by
+/// the app, but possible through a hand edit) stops here instead of looping.
+const PATH_MAX_DEPTH: usize = 20;
+
+/// Separator between the segments of a location path.
+pub const PATH_SEPARATOR: &str = " → ";
+
+/// Story 13-6 — the single implementation of the parent walk. Returns the
+/// segments `(id, name)` from root to `id`. The walk stops at a root, at a
+/// parent that is missing (soft-deleted or unknown) and at
+/// [`PATH_MAX_DEPTH`] segments (cycle guard). An unknown `id` gives an
+/// empty path.
+pub(crate) fn assemble_path(nodes: &PathNodes, id: u64) -> Vec<(u64, String)> {
+    let mut segments: Vec<(u64, String)> = Vec::new();
+    let mut current_id = Some(id);
+    while let Some(cid) = current_id {
+        if segments.len() >= PATH_MAX_DEPTH {
+            tracing::warn!(
+                id = id,
+                "Location path exceeded MAX_DEPTH, possible circular reference"
+            );
+            break;
+        }
+        match nodes.get(&cid) {
+            Some((parent, name)) => {
+                segments.push((cid, name.clone()));
+                current_id = *parent;
+            }
+            None => break,
+        }
+    }
+    segments.reverse();
+    segments
+}
+
+/// Join assembled segments into the displayed path.
+pub(crate) fn join_path(segments: &[(u64, String)]) -> String {
+    segments
+        .iter()
+        .map(|(_, name)| name.as_str())
+        .collect::<Vec<_>>()
+        .join(PATH_SEPARATOR)
+}
+
+/// Every node's full path, keyed by id.
+pub(crate) fn paths_for_all(nodes: &PathNodes) -> HashMap<u64, String> {
+    nodes
+        .keys()
+        .map(|&id| (id, join_path(&assemble_path(nodes, id))))
+        .collect()
 }
 
 #[cfg(test)]
@@ -524,5 +557,95 @@ mod tests {
     async fn find_id_by_label_returns_none_for_nonexistent(pool: sqlx::MySqlPool) {
         let got = LocationModel::find_id_by_label(&pool, "L9999").await.unwrap();
         assert_eq!(got, None);
+    }
+
+    // ─── Story 13-6 — path assembly ────────────────────────────────
+
+    fn nodes(rows: &[(u64, Option<u64>, &str)]) -> PathNodes {
+        rows.iter()
+            .map(|&(id, parent, name)| (id, (parent, name.to_string())))
+            .collect()
+    }
+
+    #[test]
+    fn assemble_path_walks_from_root_to_leaf() {
+        let n = nodes(&[(1, None, "Maison"), (2, Some(1), "Salon"), (3, Some(2), "Étagère 3")]);
+        assert_eq!(join_path(&assemble_path(&n, 3)), "Maison → Salon → Étagère 3");
+        assert_eq!(
+            assemble_path(&n, 3),
+            vec![(1, "Maison".to_string()), (2, "Salon".to_string()), (3, "Étagère 3".to_string())]
+        );
+    }
+
+    #[test]
+    fn assemble_path_of_a_root_is_its_name() {
+        let n = nodes(&[(1, None, "Maison")]);
+        assert_eq!(join_path(&assemble_path(&n, 1)), "Maison");
+    }
+
+    #[test]
+    fn assemble_path_stops_at_a_missing_parent() {
+        // Parent 9 is soft-deleted (absent from the live nodes): the walk
+        // stops there, as the per-level query did.
+        let n = nodes(&[(2, Some(9), "Salon"), (3, Some(2), "Étagère 3")]);
+        assert_eq!(join_path(&assemble_path(&n, 3)), "Salon → Étagère 3");
+    }
+
+    #[test]
+    fn assemble_path_of_an_unknown_id_is_empty() {
+        let n = nodes(&[(1, None, "Maison")]);
+        assert!(assemble_path(&n, 42).is_empty());
+        assert_eq!(join_path(&assemble_path(&n, 42)), "");
+    }
+
+    #[test]
+    fn assemble_path_is_bounded_on_a_cycle() {
+        let n = nodes(&[(1, Some(2), "A"), (2, Some(1), "B")]);
+        assert_eq!(assemble_path(&n, 1).len(), PATH_MAX_DEPTH);
+    }
+
+    #[test]
+    fn paths_for_all_covers_every_node() {
+        let n = nodes(&[(1, None, "Maison"), (2, Some(1), "Salon")]);
+        let all = paths_for_all(&n);
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[&1], "Maison");
+        assert_eq!(all[&2], "Maison → Salon");
+    }
+
+    async fn insert_node(pool: &sqlx::MySqlPool, name: &str, label: &str, parent: Option<u64>) -> u64 {
+        sqlx::query(
+            "INSERT INTO storage_locations (name, node_type, label, parent_id) VALUES (?, 'room', ?, ?)",
+        )
+        .bind(name)
+        .bind(label)
+        .bind(parent)
+        .execute(pool)
+        .await
+        .unwrap()
+        .last_insert_id()
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn all_paths_builds_a_three_level_tree_and_skips_deleted_nodes(pool: sqlx::MySqlPool) {
+        let house = insert_node(&pool, "Maison", "L0901", None).await;
+        let room = insert_node(&pool, "Salon", "L0902", Some(house)).await;
+        let shelf = insert_node(&pool, "Étagère 3", "L0903", Some(room)).await;
+        let gone = insert_node(&pool, "Cave", "L0904", Some(house)).await;
+        sqlx::query("UPDATE storage_locations SET deleted_at = NOW() WHERE id = ?")
+            .bind(gone)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let all = LocationModel::all_paths(&pool).await.unwrap();
+        assert_eq!(all.get(&shelf).map(String::as_str), Some("Maison → Salon → Étagère 3"));
+        assert_eq!(all.get(&room).map(String::as_str), Some("Maison → Salon"));
+        assert_eq!(all.get(&house).map(String::as_str), Some("Maison"));
+        assert!(!all.contains_key(&gone), "a soft-deleted location has no path");
+        // `get_path` and `get_path_segments` share the same assembly.
+        assert_eq!(LocationModel::get_path(&pool, shelf).await.unwrap(), all[&shelf]);
+        let segs = LocationModel::get_path_segments(&pool, shelf).await.unwrap();
+        assert_eq!(segs.iter().map(|s| s.0).collect::<Vec<_>>(), vec![house, room, shelf]);
     }
 }
