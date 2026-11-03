@@ -91,6 +91,9 @@ pub fn row_extras(
         let key = match kind {
             ProposalKind::SeriesCreate | ProposalKind::SeriesAttach => "proposals.view_series",
             ProposalKind::Metadata | ProposalKind::Cover => "proposals.view_title",
+            // Story 13-9 — a label marks a title or a volume.
+            ProposalKind::LabelAttach if href.starts_with("/volume/") => "proposals.view_volume",
+            ProposalKind::LabelAttach => "proposals.view_title",
         };
         (href.to_string(), rust_i18n::t!(key, locale = loc).to_string())
     });
@@ -209,6 +212,12 @@ pub async fn proposals_page(
                 target_href.as_deref(),
                 loc,
             );
+            // Story 13-9 — a label proposal names its label.
+            let proposed_fields = proposed_fields.or_else(|| {
+                e.label_name.as_deref().map(|label| {
+                    rust_i18n::t!("proposals.row_label", locale = loc, label = label).to_string()
+                })
+            });
             ListRow {
             id: e.summary.id,
             kind_label: kind_label(e.summary.kind, loc),
@@ -1050,6 +1059,25 @@ mod tests {
         let (view, _, _) =
             row_extras(ProposalKind::Metadata, ProposalStatus::Stale, None, "x", None, "en");
         assert_eq!(view, None);
+        // Story 13-9 — a label proposal links its volume or its title.
+        let (view, _, _) = row_extras(
+            ProposalKind::LabelAttach,
+            ProposalStatus::Pending,
+            None,
+            "V0009 — Tintin",
+            Some("/volume/9"),
+            "en",
+        );
+        assert_eq!(view, Some(("/volume/9".to_string(), "View volume".to_string())));
+        let (view, _, _) = row_extras(
+            ProposalKind::LabelAttach,
+            ProposalStatus::Pending,
+            None,
+            "Tintin",
+            Some("/title/4"),
+            "en",
+        );
+        assert_eq!(view.unwrap().1, "View title");
     }
 
     use super::*;

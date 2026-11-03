@@ -286,7 +286,7 @@ impl LabelTarget {
         }
     }
 
-    fn id(self) -> u64 {
+    pub fn id(self) -> u64 {
         match self {
             LabelTarget::Title(id) | LabelTarget::Volume(id) => id,
         }
@@ -306,44 +306,121 @@ impl LabelModel {
     /// duplicate request on a double click and the user's intent is satisfied
     /// either way.
     pub async fn attach(pool: &DbPool, target: LabelTarget, label_id: u64) -> Result<(), AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::attach_in(&mut conn, target, label_id).await
+    }
+
+    /// Story 13-9 — [`Self::attach`] on the caller's connection (an
+    /// accepted label proposal attaches inside its decision transaction).
+    ///
+    /// One upsert on the composite UNIQUE: a new link is inserted, a
+    /// detached one brought back (`version` bumped), a live one left as
+    /// it is. No read-then-write, so no locking read on the join table:
+    /// two acceptances on different records only take insert-intention
+    /// locks there, which never conflict (lock-scope rule, epic 12 retro
+    /// A1) — and an attach that raced in is simply absorbed.
+    pub async fn attach_in(
+        conn: &mut sqlx::MySqlConnection,
+        target: LabelTarget,
+        label_id: u64,
+    ) -> Result<(), AppError> {
         let table = target.table();
         let fk = target.fk_column();
-
-        // Select the nullity as a boolean rather than the TIMESTAMP itself:
-        // per CLAUDE.md, a TIMESTAMP column read through a dynamic query needs
-        // `CAST(col AS DATETIME)` or SQLx rejects it, and the date is not
-        // wanted here — only whether the link is currently detached.
-        let existing: Option<(u64, bool)> = sqlx::query_as(&format!(
-            "SELECT id, (deleted_at IS NOT NULL) AS is_detached \
-             FROM {table} WHERE {fk} = ? AND label_id = ? LIMIT 1"
+        // `version` is assigned before `deleted_at`: MariaDB evaluates the
+        // assignments left to right, so it still sees the old `deleted_at`.
+        sqlx::query(&format!(
+            "INSERT INTO {table} ({fk}, label_id) VALUES (?, ?) \
+             ON DUPLICATE KEY UPDATE \
+                 version = IF(deleted_at IS NULL, version, version + 1), \
+                 deleted_at = NULL"
         ))
         .bind(target.id())
         .bind(label_id)
-        .fetch_optional(pool)
+        .execute(&mut *conn)
         .await?;
+        Ok(())
+    }
 
-        match existing {
-            Some((_, false)) => Ok(()), // already attached
-            Some((link_id, true)) => {
-                sqlx::query(&format!(
-                    "UPDATE {table} SET deleted_at = NULL, version = version + 1 WHERE id = ?"
-                ))
-                .bind(link_id)
-                .execute(pool)
-                .await?;
-                Ok(())
-            }
-            None => {
-                sqlx::query(&format!(
-                    "INSERT INTO {table} ({fk}, label_id) VALUES (?, ?)"
-                ))
-                .bind(target.id())
-                .bind(label_id)
-                .execute(pool)
-                .await?;
-                Ok(())
-            }
+    /// Story 13-9 — a live label by id on the caller's connection. With
+    /// `lock`, a share lock (`LOCK IN SHARE MODE`) keeps it from being
+    /// renamed or deleted until the transaction ends.
+    pub async fn find_by_id_in(
+        conn: &mut sqlx::MySqlConnection,
+        id: u64,
+        lock: bool,
+    ) -> Result<Option<LabelModel>, AppError> {
+        let lock = if lock { " LOCK IN SHARE MODE" } else { "" };
+        let row = sqlx::query(&format!(
+            "SELECT id, name, color, version FROM labels WHERE id = ? AND deleted_at IS NULL{lock}"
+        ))
+        .bind(id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        row.as_ref().map(Self::from_row).transpose()
+    }
+
+    /// Story 13-9 — the live label named exactly `name` (byte for byte:
+    /// case and accents count), on the caller's connection. Plain read.
+    pub async fn find_by_exact_name_in(
+        conn: &mut sqlx::MySqlConnection,
+        name: &str,
+    ) -> Result<Option<LabelModel>, AppError> {
+        let row = sqlx::query(
+            "SELECT id, name, color, version FROM labels \
+             WHERE CAST(name AS BINARY) = CAST(? AS BINARY) AND deleted_at IS NULL \
+             ORDER BY id LIMIT 1",
+        )
+        .bind(name)
+        .fetch_optional(&mut *conn)
+        .await?;
+        row.as_ref().map(Self::from_row).transpose()
+    }
+
+    /// Story 13-9 — whether `label_id` is live on `target` (plain read).
+    pub async fn is_attached_in(
+        conn: &mut sqlx::MySqlConnection,
+        target: LabelTarget,
+        label_id: u64,
+    ) -> Result<bool, AppError> {
+        let table = target.table();
+        let fk = target.fk_column();
+        let found: Option<u64> = sqlx::query_scalar(&format!(
+            "SELECT id FROM {table} WHERE {fk} = ? AND label_id = ? AND deleted_at IS NULL LIMIT 1"
+        ))
+        .bind(target.id())
+        .bind(label_id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found.is_some())
+    }
+
+    /// Story 13-9 — the live labels of each of `volume_ids` (alphabetical),
+    /// in one query; volumes without a label are absent.
+    pub async fn list_for_volumes(
+        pool: &DbPool,
+        volume_ids: &[u64],
+    ) -> Result<std::collections::HashMap<u64, Vec<LabelModel>>, AppError> {
+        let mut out: std::collections::HashMap<u64, Vec<LabelModel>> =
+            std::collections::HashMap::new();
+        if volume_ids.is_empty() {
+            return Ok(out);
         }
+        let placeholders = vec!["?"; volume_ids.len()].join(", ");
+        let sql = format!(
+            "SELECT vl.volume_id, l.id, l.name, l.color, l.version FROM volume_labels vl \
+             JOIN labels l ON l.id = vl.label_id AND l.deleted_at IS NULL \
+             WHERE vl.volume_id IN ({placeholders}) AND vl.deleted_at IS NULL \
+             ORDER BY l.name"
+        );
+        let mut q = sqlx::query(&sql);
+        for id in volume_ids {
+            q = q.bind(id);
+        }
+        for r in q.fetch_all(pool).await? {
+            let volume_id: u64 = r.try_get("volume_id")?;
+            out.entry(volume_id).or_default().push(Self::from_row(&r)?);
+        }
+        Ok(out)
     }
 
     /// Detach by soft-deleting the link. Silent when nothing was attached:

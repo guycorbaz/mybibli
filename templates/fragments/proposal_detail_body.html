@@ -172,6 +172,18 @@
                 {% if let Some((flag, text)) = body.cover_flags[loop.index0] %}
                 <p data-cover-flag="{{ flag }}" class="mt-2 font-medium {% if flag == &"replace" %}text-amber-800 dark:text-amber-300{% else %}text-stone-900 dark:text-stone-100{% endif %}">{{ text }}</p>
                 {% endif %}
+            {% else if line.line.eq("label") %}
+                {# Story 13-9 — a label on a title or a volume; the note is agent text, escaped. #}
+                <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("label_record") }}</dt>
+                    <dd data-label-target class="text-stone-900 dark:text-stone-100">{% if let Some(href) = line.target_href %}<a href="{{ href }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ body.target_texts[loop.index0] }}</a>{% else %}{{ body.target_texts[loop.index0] }}{% endif %}</dd>
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("label_label") }}</dt>
+                    <dd data-label-name class="font-medium text-stone-900 dark:text-stone-100">{% if let Some(label_id) = line.label_id %}<a href="/labels/{{ label_id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{ line.label_name }}</a>{% else %}{{ line.label_name }}{% endif %}</dd>
+                    {% if let Some(note) = line.note %}
+                    <dt class="text-stone-500 dark:text-stone-400">{{ l.t("label_note") }}</dt>
+                    <dd data-label-note class="text-stone-900 dark:text-stone-100 whitespace-pre-line">{{ note }}</dd>
+                    {% endif %}
+                </dl>
             {% else %}
                 <div class="text-stone-500 dark:text-stone-400">{{ l.t("unknown_line") }}</div>
                 <pre class="mt-1 text-xs whitespace-pre-wrap break-all text-stone-700 dark:text-stone-300">{{ line.raw_json }}</pre>

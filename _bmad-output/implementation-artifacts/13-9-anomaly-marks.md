@@ -1,6 +1,6 @@
 # Story 13.9: The agent proposes a label on a doubtful record
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #581 (type:change-request). Covers: FR155, FR156 (as revised), UX-DR37 (as revised). Epic 13; ships in v1.23.0.
 
@@ -38,8 +38,31 @@ Reuse the existing **entity labels** (CR #443: librarian-defined labels attached
 
 ## Tasks / Subtasks
 
-- [ ] T1 — migration (ENUM kind) + model/service for the new kind (filing, equivalence key, acceptance, review labels)
-- [ ] T2 — MCP tools `list_labels`, `propose_label`; `get_title` labels
-- [ ] T3 — web review rendering + i18n (4 locales)
-- [ ] T4 — tests (AC6), `cargo sqlx prepare` if macros change
-- [ ] T5 — CLAUDE.md notes; gates; full suites once before the single push
+- [x] T1 — migration (ENUM kind) + model/service for the new kind (filing, equivalence key, acceptance, review labels)
+- [x] T2 — MCP tools `list_labels`, `propose_label`; `get_title` labels
+- [x] T3 — web review rendering + i18n (4 locales)
+- [x] T4 — tests (AC6), `cargo sqlx prepare` if macros change
+- [x] T5 — CLAUDE.md notes; gates; full suites once before the single push
+
+## Completion Notes
+
+**What was done**
+- Migration `20261104090000_proposals_label_attach.sql`: `proposals.kind` gains `label_attach` (appended); `proposal_items.target_table` gains `volumes` (a label may target a volume).
+- Model: `ProposalKind::LabelAttach`, `ProposalTargetTable::Volumes` (+ `noun()`), `SubjectLineRow.label_id` (and `name` falls back to `label_name`), `ProposalModel::{live_volume_briefs[_in], pending_label_attach}` (duplicate read from the target index), `VolumeBrief`. `LabelModel::{attach_in (upsert), find_by_id_in, find_by_exact_name_in, is_attached_in, list_for_volumes}`; `attach` now delegates to `attach_in`.
+- Services: new `label_proposals.rs` (filing, refusals, item shape documented, `library_labels`) and `label_acceptance.rs` (acceptance). `ProposalSubject::LabelAttach` with key `label:<table>/<id>:<label_id>`; `version_counts` false; acceptance dispatch, `AcceptConflict::{LabelGone, LabelAttached}`, `Applied::Label`; review (`TargetLabel::Volume`, `label` line with note and label link, list row "Label: …"); edit refuses edit/removal of the single label line; localized modal/outcome/stale copy (4 locales).
+- MCP: `list_labels` (read-only), `propose_label`; `get_title` returns `labels` and `volumes[].labels` (the `/api/v1` document is unchanged — `labels` is skipped there); `list_my_proposals` docs; registry + `PROPOSE_TOOLS`, `tests/common/mcp.rs`, `MCP_TOOLS` updated. `initialize` instructions do not enumerate tools: unchanged.
+- CLAUDE.md "Proposal lifecycle": label proposals paragraph.
+
+**Decisions / deviations**
+- "Already attached meanwhile" → `stale` (convention of the series kinds, #521). A hand attach committed in the instant between the transaction snapshot and the target lock is absorbed by the upsert (accepted, nothing added) — no locking read on the join table, so two acceptances on different records never contend (a `FOR UPDATE` on a missing link would take gap locks and deadlock on insert).
+- Label by name: byte-exact match as specified; the refusal lists the library's labels.
+- Revocation needed no change (`revoke_key` stales every pending proposal; no staged file).
+- No `sqlx::query!` macro added: no `.sqlx` change.
+
+**Tests**
+- Unit: label_proposals, label_acceptance, list_labels, propose_label, proposal_history (key), proposal_review (line + target), proposal_accept (outcomes, 4 locales), proposal_edit (keep/editable), routes row_extras.
+- DB integration `tests/mcp_label_proposals.rs` (11 tests, incl. lock-scope `an_acceptance_on_one_record_does_not_lock_proposals_of_another`).
+- E2E `tests/e2e/specs/journeys/mcp-label-proposal.spec.ts` (specId `LB`, V-codes V4500–V4999).
+- Full suites not run here (the orchestrator runs them once before the push).
+
+No file above 2000 lines (largest touched: `proposal_edit.rs` 1723).

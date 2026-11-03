@@ -455,6 +455,8 @@ impl fmt::Display for SeriesProposalError {
                 match target.table {
                     ProposalTargetTable::Titles => "Title",
                     ProposalTargetTable::Series => "Series",
+                    // Never a series proposal's target.
+                    ProposalTargetTable::Volumes => "Volume",
                 },
                 target.id
             ),

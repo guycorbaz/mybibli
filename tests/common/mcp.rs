@@ -19,14 +19,16 @@ pub const V_LEGACY: &str = "2025-11-25";
 pub const V_MODERN: &str = "2026-07-28";
 
 /// Every tool `/api/mcp` serves, sorted by name.
-pub const ALL_TOOLS: [&str; 12] = [
+pub const ALL_TOOLS: [&str; 14] = [
     "get_series",
     "get_title",
+    "list_labels",
     "list_my_proposals",
     "list_series",
     "list_titles_with_incomplete_metadata",
     "list_titles_without_cover",
     "propose_cover",
+    "propose_label",
     "propose_series_attach",
     "propose_series_create",
     "propose_title_metadata",
@@ -35,8 +37,9 @@ pub const ALL_TOOLS: [&str; 12] = [
 ];
 
 /// The tools that file proposals (stories 11-12..11-14); the others read.
-pub const PROPOSE_TOOLS: [&str; 4] = [
+pub const PROPOSE_TOOLS: [&str; 5] = [
     "propose_cover",
+    "propose_label",
     "propose_series_attach",
     "propose_series_create",
     "propose_title_metadata",

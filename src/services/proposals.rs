@@ -266,16 +266,11 @@ impl fmt::Display for ProposalError {
                 "The proposal was refused: its items take {bytes} bytes together, more than the \
                  {MAX_PROPOSAL_VALUES_BYTES} allowed; split it."
             ),
-            ProposalError::TargetNotFound { index, table, id } => {
-                let what = match table {
-                    ProposalTargetTable::Titles => "title",
-                    ProposalTargetTable::Series => "series",
-                };
-                write!(
-                    f,
-                    "Item {index} was refused: {what} {id} does not exist or was deleted."
-                )
-            }
+            ProposalError::TargetNotFound { index, table, id } => write!(
+                f,
+                "Item {index} was refused: {} {id} does not exist or was deleted.",
+                table.noun()
+            ),
             ProposalError::TargetChanged {
                 index,
                 table,
@@ -286,10 +281,7 @@ impl fmt::Display for ProposalError {
                 f,
                 "Item {index} was refused: {} {id} changed since you read it (version {expected}, \
                  now {current}). Read it again and file the proposal on its current state.",
-                match table {
-                    ProposalTargetTable::Titles => "title",
-                    ProposalTargetTable::Series => "series",
-                }
+                table.noun()
             ),
             ProposalError::NothingToApply { id } => write!(
                 f,
@@ -638,7 +630,9 @@ pub fn title_moved(items: &[ProposalItemRow], title: &crate::models::title::Titl
 pub fn version_counts(kind: ProposalKind) -> bool {
     match kind {
         ProposalKind::SeriesCreate | ProposalKind::SeriesAttach => true,
-        ProposalKind::Metadata | ProposalKind::Cover => false,
+        // Story 13-9 — a label proposal is judged by its acceptance: the
+        // target and the label must be live, the label not yet attached.
+        ProposalKind::Metadata | ProposalKind::Cover | ProposalKind::LabelAttach => false,
     }
 }
 
