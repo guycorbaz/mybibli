@@ -1,6 +1,6 @@
 # Story 13.11: An owned title fills an expected tome by proposal
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #588 (type:change-request). Covers: FR159. Epic 13 (added by the project lead on 2026-11-03); ships in v1.23.0. After Story 13.10 (both touch series positions).
 
@@ -35,8 +35,19 @@ About 51 `propose_series_attach` lines refused with "The series already expects 
 
 ## Tasks / Subtasks
 
-- [ ] T1 — rule change in `check_against_series` (+ new refusal variant, message, mapping)
-- [ ] T2 — acceptance: attach + settle in the transaction (reuse `expected_tomes` settle helpers on the caller's connection)
-- [ ] T3 — edit path
-- [ ] T4 — docs (module docs, CLAUDE.md, tool description)
-- [ ] T5 — tests; gates; full suites once before the single push
+- [x] T1 — rule change in `check_against_series` (+ new refusal variant, message, mapping)
+- [x] T2 — acceptance: attach + settle in the transaction (reuse `expected_tomes` settle helpers on the caller's connection)
+- [x] T3 — edit path
+- [x] T4 — docs (module docs, CLAUDE.md, tool description)
+- [x] T5 — tests; gates; full suites once before the single push
+
+## Completion Notes
+
+- **Rule (T1).** `series_proposals::check_against_series` takes a new `title_isbns: &HashMap<u64, String>` (ISBN-13 of each title line's title, built by the new `title_isbns_in(conn, lines)` over the new `ExpectedTomeModel::live_title_isbns_in`; both sides normalised with `expected_tomes::normalize_isbn`, so an ISBN-10 spelling is the same book; an unparsable stored title ISBN counts as unknown). A title line covering a live tome is now accepted unless both ISBNs are known and differ → new `SeriesProposalError::TomeIsbnMismatch` (class `Conflict` → `ToolError::Refused`, English agent message). Omnibus lines check every tome of their range. Tome lines on a tome's position are still refused (`TomePositionTaken`). `TomeSlot` gained the tome `id`.
+- **Acceptance (T2).** `series_acceptance::accept_in` re-runs the rule on the live state (share-locked tomes under the series lock); a mismatch maps to the new `AcceptConflict::TomeIsbnMismatch` (stale, new copy `proposals.stale_why_tome_isbn_mismatch`); a position taken meanwhile stays `PositionHeld` (stale). After `assign_in` / `assign_omnibus_in` (which clear `detected_tome`, 13-10), each filled tome (`filled_tomes`, pure) is settled with `ExpectedTomeModel::mark_settled_in` in the same transaction. Lock order unchanged: proposal → items → series → targets/tomes; no status-range scan. `AppliedSeries.tomes_filled` is reported in the success entry (`proposals.applied_filled`). Existing pending proposals whose lines touch no tome position apply exactly as before.
+- **Edit (T3).** `proposal_edit` passes the title ISBNs to the same check; new localized copy `proposals.edit_error_tome_isbn_mismatch`.
+- **Docs (T4).** Module docs of `series_proposals.rs` (new section superseding D-11-12-10) and `series_acceptance.rs`; CLAUDE.md "Expected tomes" and "Proposal lifecycle"; `propose_series_attach` description and the `titles` schema description (registry wording kept).
+- **Tests (T5).** Unit: `series_proposals` (no ISBN, same ISBN incl. ISBN-10 spelling, different ISBN, omnibus over two tomes, tome line still refused), `series_acceptance::conflicts_are_named_from_the_catalog`, `proposal_accept::every_outcome_is_localized`, `proposal_edit::errors_are_localized_in_every_locale`. DB: `tests/proposal_accept_series.rs` (+4: file + accept fills four tomes incl. omnibus and series page shows none expected; position taken → stale; tome ISBN changed → stale; mismatch refused at filing), `tests/mcp_series_proposals.rs` (refusal cases updated), `tests/proposal_edit.rs` (+1). E2E: third journey in `series-proposal-accept.spec.ts` (specId SA, seq 3). Gates run: clippy --all-targets -D warnings (clean); lib unit tests of the touched modules; DB tests proposal_accept_series, mcp_series_proposals, proposal_edit, expected_tomes, locale_parity (all green); Playwright series-proposal-accept, series-proposal-edit, mcp-series-proposals, series-expected-tomes at --workers=2 (11 passed); tsc --noEmit clean; no waitForTimeout.
+- New locale keys in en/fr/de/it: `proposals.applied_filled`, `proposals.stale_why_tome_isbn_mismatch`, `proposals.edit_error_tome_isbn_mismatch`.
+- Files touched: `src/models/expected_tome.rs`, `src/services/{series_proposals,series_acceptance,acceptance,proposal_accept,proposal_edit}.rs`, `src/mcp/tools/{propose_series_attach,series_proposal_args}.rs`, `locales/*.yml`, `CLAUDE.md`, `tests/{proposal_accept_series,mcp_series_proposals,proposal_edit}.rs`, `tests/e2e/specs/journeys/series-proposal-accept.spec.ts`. No file above 2000 lines (largest touched: `proposal_edit.rs` 1705). `proposal_edit.rs` was not rustfmt-clean before, so it was left unformatted. No `sqlx::query!` macro changed (no `.sqlx/` update).
+- Deviation: none of substance; the success entry's filled-tome count (`applied_filled`) is an addition for the librarian's feedback.

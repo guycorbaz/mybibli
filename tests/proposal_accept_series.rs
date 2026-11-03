@@ -911,3 +911,158 @@ async fn any_owner_of_the_isbn_already_in_the_series_skips_the_tome(pool: DbPool
         "{body}"
     );
 }
+
+// ─── Story 13-11: an owned title fills an expected tome ───────────
+
+async fn add_tome(pool: &DbPool, series_id: u64, position: i32, title: &str, isbn: Option<&str>) {
+    ExpectedTomeService::create(
+        pool,
+        series_id,
+        &ExpectedTomeInput {
+            position,
+            title,
+            isbn,
+        },
+        ExpectedTomeOrigin::Manual,
+    )
+    .await
+    .unwrap();
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn accepting_a_title_on_an_expected_position_settles_the_tome(pool: DbPool) {
+    let f = fx(&pool).await;
+    let sid = closed_series(&pool, "Tintin", 6).await;
+    // Tome 3 carries ISBN_A (the title's), tome 4 has none, tome 5 none
+    // (covered by the omnibus 5..6 with tome 6, no ISBN either).
+    add_tome(&pool, sid, 3, "Tintin 3", Some(ISBN_A)).await;
+    add_tome(&pool, sid, 4, "Tintin 4", None).await;
+    add_tome(&pool, sid, 5, "Tintin 5", None).await;
+    add_tome(&pool, sid, 6, "Tintin 6", None).await;
+    let t3 = add_title(&pool, "Le Lotus", "book", "Roman", Some(ISBN_A)).await;
+    let t4 = seed_title(&pool, "Sans ISBN").await;
+    let t56 = seed_title(&pool, "Intégrale 5-6").await;
+    let id = file(
+        &f,
+        "propose_series_attach",
+        json!({"series_id": sid,
+               "titles": [{"title_id": t3, "position": 3},
+                          {"title_id": t4, "position": 4},
+                          {"title_id": t56, "position": 5, "is_omnibus": true, "end_position": 6}],
+               "sources": [SRC]}),
+    )
+    .await;
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("Tomes attendus désormais possédés : 4."),
+        "{body}"
+    );
+    assert_eq!(decision(&pool, id).await.0, "accepted");
+    assert_eq!(
+        positions(&pool, sid).await,
+        vec![
+            (t3, 3, false),
+            (t4, 4, false),
+            (t56, 5, true),
+            (t56, 6, true)
+        ]
+    );
+    let settled: Vec<(i32, Option<u64>)> = tomes(&pool, sid)
+        .await
+        .into_iter()
+        .map(|t| (t.0, t.4))
+        .collect();
+    assert_eq!(
+        settled,
+        vec![(3, Some(t3)), (4, Some(t4)), (5, Some(t56)), (6, Some(t56))]
+    );
+    // The series page shows the positions owned, no expected tome left.
+    let (status, page) = f.lib.get(&f.agent.app, &format!("/series/{sid}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!page.contains("data-expected-tome="), "{page}");
+    assert!(
+        page.contains("Le Lotus") && page.contains("Sans ISBN"),
+        "{page}"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_fill_whose_position_was_taken_meanwhile_goes_stale(pool: DbPool) {
+    let f = fx(&pool).await;
+    let sid = closed_series(&pool, "Spirou", 6).await;
+    add_tome(&pool, sid, 2, "Spirou 2", None).await;
+    let t = seed_title(&pool, "Proposé").await;
+    let other = seed_title(&pool, "Arrivé avant").await;
+    let id = file(
+        &f,
+        "propose_series_attach",
+        json!({"series_id": sid, "titles": [{"title_id": t, "position": 2}], "sources": [SRC]}),
+    )
+    .await;
+    assign(&pool, other, sid, 2).await;
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_stale_and_untouched(&pool, id, &body).await;
+    assert!(
+        body.contains("la position 2 est maintenant occupée par « Arrivé avant »"),
+        "{body}"
+    );
+    assert_eq!(positions(&pool, sid).await, vec![(other, 2, false)]);
+    assert_eq!(tomes(&pool, sid).await[0].4, None);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_tome_isbn_changed_since_filing_makes_the_fill_stale(pool: DbPool) {
+    let f = fx(&pool).await;
+    let sid = closed_series(&pool, "Durango", 6).await;
+    add_tome(&pool, sid, 2, "Durango 2", None).await;
+    let t = add_title(&pool, "Durango deux", "book", "Roman", Some(ISBN_A)).await;
+    let id = file(
+        &f,
+        "propose_series_attach",
+        json!({"series_id": sid, "titles": [{"title_id": t, "position": 2}], "sources": [SRC]}),
+    )
+    .await;
+    sqlx::query("UPDATE series_expected_tomes SET isbn = ? WHERE series_id = ?")
+        .bind(ISBN_B)
+        .bind(sid)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, body) = accept(&f, &pool, id).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_stale_and_untouched(&pool, id, &body).await;
+    assert!(
+        body.contains(&format!(
+            "le tome attendu « Durango 2 » à la position 2 porte désormais l'ISBN {ISBN_B}"
+        )),
+        "{body}"
+    );
+    assert!(positions(&pool, sid).await.is_empty());
+    assert_eq!(tomes(&pool, sid).await[0].4, None);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_fill_of_another_isbn_is_refused_at_filing(pool: DbPool) {
+    let f = fx(&pool).await;
+    let sid = closed_series(&pool, "Thorgal", 6).await;
+    add_tome(&pool, sid, 2, "Thorgal 2", Some(ISBN_B)).await;
+    let t = add_title(&pool, "Autre livre", "book", "Roman", Some(ISBN_A)).await;
+    let msg = f
+        .agent
+        .err(
+            "propose_series_attach",
+            json!({"series_id": sid, "titles": [{"title_id": t, "position": 2}], "sources": [SRC]}),
+        )
+        .await;
+    assert!(
+        msg.contains(&format!("Title {t} (ISBN {ISBN_A}) cannot fill position 2")),
+        "{msg}"
+    );
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM proposals")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 0);
+}

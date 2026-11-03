@@ -23,7 +23,10 @@
 //!    same positions);
 //! 6. [`ProposalService::transition_in`] records the decision (FR146) and
 //!    the lines are applied — series, then titles, then expected tomes
-//!    (origin `proposal`, auto-settle rules of D-11-10-*).
+//!    (origin `proposal`, auto-settle rules of D-11-10-*). A title line
+//!    on the position of a live expected tome fills it (story 13-11):
+//!    the title is attached and the tome settled with it, on the tome
+//!    rows share-locked in step 5 under the series lock.
 //!
 //! A deadlock is retried (up to three attempts) by [`accept`]. The
 //! kind-independent pieces live in [`crate::services::acceptance`].
@@ -52,8 +55,8 @@ use crate::services::acceptance::{in_retried_transaction, lock_pending_in, mark_
 use crate::services::expected_tomes::{ExpectedTomeInput, ExpectedTomeService, closed_total_of};
 use crate::services::proposals::{Decision, ProposalService, Transition};
 use crate::services::series_proposals::{
-    SeriesProposalError, TitleLine, TomeLine, ValidLines, check_against_series, validate_lines,
-    validate_series_name, validate_total,
+    SeriesProposalError, TitleLine, TomeLine, ValidLines, check_against_series, filled_tomes,
+    title_isbns_in, validate_lines, validate_series_name, validate_total,
 };
 
 /// The series line of a stored proposal.
@@ -227,6 +230,16 @@ impl AcceptConflict {
                 isbn: isbn.clone(),
                 tome_title: tome_title.clone(),
             },
+            E::TomeIsbnMismatch {
+                position,
+                tome_title,
+                tome_isbn,
+                ..
+            } => AcceptConflict::TomeIsbnMismatch {
+                position: *position,
+                tome_title: tome_title.clone(),
+                tome_isbn: tome_isbn.clone(),
+            },
             E::SeriesExists { name, .. } => AcceptConflict::SeriesExists { name: name.clone() },
             _ => return None,
         })
@@ -250,6 +263,9 @@ pub struct AppliedSeries {
     /// `true` for a `series_create`.
     pub created: bool,
     pub titles_attached: usize,
+    /// Story 13-11 — live expected tomes settled by a title line placed
+    /// on their position.
+    pub tomes_filled: usize,
     pub tomes_created: usize,
     /// Of the created tomes, those settled at once by a title carrying
     /// their ISBN.
@@ -359,6 +375,9 @@ async fn accept_in(
     }
 
     // Re-validation against the catalog as it is now (step 5).
+    // Story 13-11 — the expected tomes the title lines fill (an attach
+    // only: a new series has no tome yet).
+    let mut fills: Vec<(u64, u64)> = Vec::new();
     let (lines, conflict) = match (&stored.series, &create, &shape) {
         (_, Some(c), _) => {
             let lines = validate_lines(&stored.titles, &stored.tomes, c.total).map_err(invalid)?;
@@ -377,8 +396,12 @@ async fn accept_in(
                     let held = TitleSeriesModel::held_positions_in(conn, *series_id).await?;
                     let slots: Vec<TomeSlot> =
                         ExpectedTomeModel::live_slots_in(conn, *series_id).await?;
-                    match check_against_series(&lines, &held, &slots) {
-                        Ok(()) => None,
+                    let title_isbns = title_isbns_in(conn, &lines).await?;
+                    match check_against_series(&lines, &held, &slots, &title_isbns) {
+                        Ok(()) => {
+                            fills = filled_tomes(&lines, &slots);
+                            None
+                        }
                         Err(e) => Some(
                             AcceptConflict::from_check(&e, &held)
                                 .ok_or_else(|| AcceptError::Invalid(e.to_string()))?,
@@ -433,12 +456,23 @@ async fn accept_in(
             }
         }
     }
+    // The title now holds the tome's position: the tome is settled.
+    for &(tome_id, title_id) in &fills {
+        ExpectedTomeModel::mark_settled_in(conn, tome_id, title_id).await?;
+        tracing::info!(
+            proposal_id = id,
+            tome_id,
+            title_id,
+            "Expected tome filled by an accepted series proposal"
+        );
+    }
 
     let mut applied = AppliedSeries {
         series_id,
         series_name,
         created,
         titles_attached: lines.titles.len(),
+        tomes_filled: fills.len(),
         tomes_created: 0,
         tomes_settled: 0,
         tomes_skipped: Vec::new(),
@@ -483,6 +517,7 @@ mod tests {
     use crate::models::proposal::ProposalTarget;
     use crate::services::series_proposals::{ValidTitle, ValidTome};
     use serde_json::json;
+    use std::collections::HashMap;
 
     fn row(id: u64, target: Option<(ProposalTargetTable, u64)>, v: Value) -> ProposalItemRow {
         ProposalItemRow {
@@ -665,7 +700,7 @@ mod tests {
             title: "Le Lotus bleu".into(),
         }];
         let l = lines(&[(7, 4, None)], &[]);
-        let e = check_against_series(&l, &held, &[]).unwrap_err();
+        let e = check_against_series(&l, &held, &[], &HashMap::new()).unwrap_err();
         assert_eq!(
             AcceptConflict::from_check(&e, &held),
             Some(AcceptConflict::TitleInSeries {
@@ -674,7 +709,7 @@ mod tests {
             })
         );
         let l = lines(&[(8, 1, Some(3))], &[]);
-        let e = check_against_series(&l, &held, &[]).unwrap_err();
+        let e = check_against_series(&l, &held, &[], &HashMap::new()).unwrap_err();
         assert_eq!(
             AcceptConflict::from_check(&e, &held),
             Some(AcceptConflict::PositionHeld {
@@ -683,12 +718,13 @@ mod tests {
             })
         );
         let slots = vec![TomeSlot {
+            id: 50,
             position: 5,
             title: "Tome 5".into(),
             isbn: Some("9782070360246".into()),
         }];
         let l = lines(&[], &[5]);
-        let e = check_against_series(&l, &[], &slots).unwrap_err();
+        let e = check_against_series(&l, &[], &slots, &HashMap::new()).unwrap_err();
         assert_eq!(
             AcceptConflict::from_check(&e, &[]),
             Some(AcceptConflict::TomePositionTaken {
@@ -698,7 +734,7 @@ mod tests {
         );
         let mut l = lines(&[], &[6]);
         l.tomes[0].isbn = Some("9782070360246".into());
-        let e = check_against_series(&l, &[], &slots).unwrap_err();
+        let e = check_against_series(&l, &[], &slots, &HashMap::new()).unwrap_err();
         assert_eq!(
             AcceptConflict::from_check(&e, &[]),
             Some(AcceptConflict::TomeIsbnTaken {
@@ -706,7 +742,30 @@ mod tests {
                 tome_title: "Tome 5".into()
             })
         );
-        assert!(check_against_series(&lines(&[(9, 3, None)], &[4]), &held, &slots).is_ok());
+        assert!(
+            check_against_series(
+                &lines(&[(9, 3, None)], &[4]),
+                &held,
+                &slots,
+                &HashMap::new()
+            )
+            .is_ok()
+        );
+        // Story 13-11 — a title line fills the tome at position 5 unless
+        // its ISBN names another book.
+        let l = lines(&[(9, 5, None)], &[]);
+        assert!(check_against_series(&l, &[], &slots, &HashMap::new()).is_ok());
+        assert_eq!(filled_tomes(&l, &slots), vec![(50, 9)]);
+        let other = HashMap::from([(9, "9782012101360".to_string())]);
+        let e = check_against_series(&l, &[], &slots, &other).unwrap_err();
+        assert_eq!(
+            AcceptConflict::from_check(&e, &[]),
+            Some(AcceptConflict::TomeIsbnMismatch {
+                position: 5,
+                tome_title: "Tome 5".into(),
+                tome_isbn: "9782070360246".into()
+            })
+        );
         assert_eq!(
             AcceptConflict::from_check(&SeriesProposalError::NameRequired, &[]),
             None

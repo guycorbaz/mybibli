@@ -945,3 +945,41 @@ async fn stale_proposals_gone_series_and_unchanged_values_are_refused(pool: DbPo
     );
     assert_eq!(version_of(&pool, id).await, v);
 }
+
+/// Story 13-11 — moving a title line onto an expected tome follows the
+/// filing rule: allowed, unless both ISBNs are known and differ.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_title_line_edit_may_fill_an_expected_tome(pool: DbPool) {
+    let f = fx(&pool).await;
+    let series = closed_series(&pool, "Série attendue", 8).await;
+    for (position, isbn) in [(4, Some("9780134685991")), (5, None)] {
+        sqlx::query(
+            "INSERT INTO series_expected_tomes (series_id, position, title, isbn, origin) \
+             VALUES (?, ?, ?, ?, 'manual')",
+        )
+        .bind(series)
+        .bind(position)
+        .bind(format!("Attendu {position}"))
+        .bind(isbn)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let t = add_title(&pool, "Possédé", "book", "Roman", Some("9782070360246")).await;
+    let id = file(
+        &f,
+        "propose_series_attach",
+        json!({"series_id": series, "titles": [{"title_id": t, "position": 2}], "sources": [SRC]}),
+    )
+    .await;
+    let items = item_ids(&pool, id).await;
+    let v = version_of(&pool, id).await;
+    let (status, body) = edit(&f, id, items[1], v, "position=4").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body.contains("La position 4 est le tome attendu « Attendu 4 » (ISBN 9780134685991), un autre livre que ce titre"),
+        "{body}"
+    );
+    let (status, body) = edit(&f, id, items[1], v, "position=5").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+}
