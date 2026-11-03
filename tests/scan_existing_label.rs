@@ -160,3 +160,62 @@ async fn an_existing_label_without_title_context_still_asks_for_an_isbn(pool: Db
 fn rust_i18n_free_no_title() -> [&'static str; 2] {
     ["No title selected", "Aucun titre sélectionné"]
 }
+
+/// Review 13-1 M1 — with an active location that was deleted meanwhile, a
+/// same-title re-scan must say the volume was NOT shelved, never show the
+/// "already recorded" info as if all was well.
+#[sqlx::test(migrations = "./migrations")]
+async fn deleted_active_location_says_not_shelved_not_already_recorded(pool: DbPool) {
+    let (router, browser) = setup(&pool).await;
+    let title = seed_title(&pool, "Spirou").await;
+    add_volume(&pool, title, "V0584", None).await;
+    let (node_type,): (String,) = sqlx::query_as(
+        "SELECT name FROM location_node_types WHERE deleted_at IS NULL ORDER BY id LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let loc_id = sqlx::query(
+        "INSERT INTO storage_locations (label, name, node_type, parent_id) VALUES ('L0584', 'Shelf', ?, NULL)",
+    )
+    .bind(node_type)
+    .execute(&pool)
+    .await
+    .unwrap()
+    .last_insert_id();
+    SessionModel::set_current_title(&pool, &browser.cookie, title)
+        .await
+        .unwrap();
+    SessionModel::set_active_location(&pool, &browser.cookie, loc_id)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE storage_locations SET deleted_at = NOW() WHERE id = ?")
+        .bind(loc_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let before = volume_row(&pool, "V0584").await;
+
+    let (status, body) = browser
+        .post_form(&router, "/catalog/scan", "code=V0584")
+        .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("border-amber-500"),
+        "warning expected: {body}"
+    );
+    assert!(
+        body.contains("no longer exists") || body.contains("n&#x27;existe plus"),
+        "{body}"
+    );
+    assert!(!body.contains("border-blue-500"), "no false info: {body}");
+    assert_eq!(volume_row(&pool, "V0584").await, before, "volume not moved");
+    assert_eq!(
+        SessionModel::get_active_location(&pool, &browser.cookie)
+            .await
+            .unwrap(),
+        None,
+        "stale active location cleared"
+    );
+}

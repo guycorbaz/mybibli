@@ -73,17 +73,25 @@ pub fn same_title_feedback(label: &str, loc: &str) -> String {
     )
 }
 
-/// Warning entry: the label is on another title. Names the owner, says what
-/// to do, and links to the volume page. `feedback_html_with_link` escapes
-/// the message, the hint, the href and the link label (AC6) — nothing is
-/// pre-escaped here, which would double-escape.
-pub fn other_title_feedback(label: &str, volume_id: u64, owner: &str, loc: &str) -> String {
-    let message = rust_i18n::t!(
-        "feedback.volume_on_other_title",
-        locale = loc,
-        label = label,
-        owner = owner
-    );
+/// Warning entry: the label is on another title. Names the owner (`None`
+/// when the owner title cannot be read — the message then says "another
+/// title"), says what to do, and links to the volume page.
+/// `feedback_html_with_link` escapes the message, the hint, the href and the
+/// link label (AC6) — nothing is pre-escaped here, which would double-escape.
+pub fn other_title_feedback(label: &str, volume_id: u64, owner: Option<&str>, loc: &str) -> String {
+    let message = match owner {
+        Some(owner) => rust_i18n::t!(
+            "feedback.volume_on_other_title",
+            locale = loc,
+            label = label,
+            owner = owner
+        ),
+        None => rust_i18n::t!(
+            "feedback.volume_on_unknown_title",
+            locale = loc,
+            label = label
+        ),
+    };
     // Story 13.8 (move a volume) will change this hint to "move it from its
     // page"; it is a key of its own so that change is a locale edit only.
     let hint = rust_i18n::t!("feedback.volume_on_other_title_hint", locale = loc);
@@ -94,6 +102,27 @@ pub fn other_title_feedback(label: &str, volume_id: u64, owner: &str, loc: &str)
         &hint,
         &format!("/volume/{volume_id}"),
         &link_label,
+    )
+}
+
+/// Error entry: shelving an existing label at the active location failed
+/// (the UPDATE errored). Never falls through to the "already recorded" info,
+/// which would claim success for a volume that did not move.
+pub fn shelve_failed_feedback(label: &str, loc: &str) -> String {
+    feedback_html(
+        "error",
+        &rust_i18n::t!("feedback.volume_shelve_failed", locale = loc, label = label),
+        "",
+    )
+}
+
+/// Warning entry: the active location vanished between being chosen and
+/// this scan; the volume was not shelved and the context was cleared.
+pub fn active_location_gone_feedback(label: &str, loc: &str) -> String {
+    feedback_html(
+        "warning",
+        &rust_i18n::t!("feedback.active_location_gone", locale = loc, label = label),
+        "",
     )
 }
 
@@ -116,10 +145,9 @@ pub async fn existing_label_response(
         }
         ExistingLabelCase::OtherTitle => {
             let owner = TitleModel::find_by_id(pool, existing.title_id).await?;
-            let owner = match &owner {
-                Some(t) => owner_label(&t.title, t.isbn.as_deref(), loc),
-                None => "?".to_string(),
-            };
+            let owner = owner
+                .as_ref()
+                .map(|t| owner_label(&t.title, t.isbn.as_deref(), loc));
             tracing::info!(
                 label = %existing.label,
                 volume_id = existing.id,
@@ -127,7 +155,7 @@ pub async fn existing_label_response(
                 context_title_id,
                 "Existing label scanned under another title; nothing written"
             );
-            other_title_feedback(&existing.label, existing.id, &owner, loc)
+            other_title_feedback(&existing.label, existing.id, owner.as_deref(), loc)
         }
     };
     Ok(Html(html).into_response())
@@ -181,7 +209,7 @@ mod tests {
 
     #[test]
     fn other_title_feedback_is_warning_with_volume_link() {
-        let html = other_title_feedback("V1527", 42, "Les Gorilles (ISBN 978)", "en");
+        let html = other_title_feedback("V1527", 42, Some("Les Gorilles (ISBN 978)"), "en");
         assert!(html.contains("border-amber-500"), "warning variant: {html}");
         assert!(html.contains("V1527"));
         assert!(html.contains("Les Gorilles"));
@@ -191,7 +219,7 @@ mod tests {
 
     #[test]
     fn other_title_feedback_escapes_the_owner() {
-        let html = other_title_feedback("V0001", 1, "<script>alert(1)</script> & co", "en");
+        let html = other_title_feedback("V0001", 1, Some("<script>alert(1)</script> & co"), "en");
         assert!(!html.contains("<script>"), "{html}");
         assert!(html.contains("&lt;script&gt;"));
         assert!(html.contains("&amp; co"));
@@ -205,5 +233,28 @@ mod tests {
             !html.contains("already recorded"),
             "fr copy expected: {html}"
         );
+    }
+
+    #[test]
+    fn other_title_feedback_without_owner_says_another_title() {
+        let html = other_title_feedback("V0002", 3, None, "en");
+        assert!(html.contains("another title"), "{html}");
+        assert!(!html.contains("“?”") && !html.contains("\"?\""), "{html}");
+        assert!(html.contains(r#"href="/volume/3""#));
+    }
+
+    #[test]
+    fn shelve_failed_is_an_error_and_never_the_recorded_info() {
+        let html = shelve_failed_feedback("V0003", "en");
+        assert!(html.contains("border-red-500"), "{html}");
+        assert!(html.contains("V0003"));
+        assert!(!html.contains("already recorded"));
+    }
+
+    #[test]
+    fn active_location_gone_is_a_warning() {
+        let html = active_location_gone_feedback("V0004", "en");
+        assert!(html.contains("border-amber-500"), "{html}");
+        assert!(html.contains("no longer exists"));
     }
 }

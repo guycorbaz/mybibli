@@ -66,3 +66,14 @@ so that I am never shown an error for something I did right.
 - **Tests** — 9 unit tests in the new module; `tests/scan_existing_label.rs` (4 DB tests: same title → info + nothing written; other title → warning naming escaped owner + ISBN + link, volume unchanged; new label still created; no title context still `volume_no_title`); E2E `scan-duplicates-existing-label.spec.ts` (specId `DL`, V0590–V0592).
 - **Deviation / side effect** — the client guard applies to every code type (as specified), so existing specs that re-scanned the same code right after the first scan would have had the second scan dropped. Seven sites got a `waitForDuplicateScanWindow(page)` (catalog-cd-sequence, catalog-metadata ×2, catalog-title, cover-image, provider-chain ×3). Two tests asserted the old "already assigned" error on a same-title re-scan and were rewritten to the new info behaviour (catalog-volume AC2, catalog-metadata AC6).
 - **File size** — `src/routes/catalog.rs` is 3,191 lines (was 3,177; +14, mostly comments); still above Rule #12 as before.
+
+### Review Findings
+
+Round 1 (independent reviewer, on f30e7f3): 0 High, 1 Medium, 5 Low.
+
+- [x] [Review][Patch] M1 — a failed shelve or a deleted active location fell through to the #585 branch and showed "already recorded" for a volume that did not move. Now a failed `update_location` returns an error (`feedback.volume_shelve_failed`, Rule #9 copy) and a vanished active location returns a warning (`feedback.active_location_gone`) after clearing it; regression test `deleted_active_location_says_not_shelved_not_already_recorded` in `tests/scan_existing_label.rs`.
+- [x] [Review][Patch] L1 — a failed scan post is forgotten (`htmx:responseError` / `htmx:sendError` on `/catalog/scan`), so re-pressing Enter on the restored code is not dropped; a successful post is still remembered.
+- [x] [Review][Patch] L2 — owner title unreadable → new key `feedback.volume_on_unknown_title` ("…already assigned to another title") instead of a bare "?".
+- [x] [Review][Patch] L3 — `catalog-volume.spec.ts` waits for the "already in your catalog" info specifically.
+- [x] [Review][Patch] L4 — wording: en/de/fr/it say "assigned to / zugeordnet / attribué à / assegnata a"; it uses "esemplare" in the hint and link.
+- [x] [Review][Patch] L5 — a `Conflict` from `create_volume` now shows its own (user-facing) message at warning level instead of `error.internal`.

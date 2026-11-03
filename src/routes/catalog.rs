@@ -659,11 +659,18 @@ pub async fn handle_scan(
                                     return Ok(resp.into_response());
                                 }
                                 Err(e) => {
-                                    tracing::warn!(error = %e, "Failed to shelve existing volume at active location");
+                                    tracing::error!(error = %e, code = %code, "Failed to shelve existing volume at active location");
+                                    // Review 13-1 M1: say so, never fall through
+                                    // to the #585 "already recorded" info.
+                                    return Ok(Html(super::catalog_existing_label::shelve_failed_feedback(&code, loc)).into_response());
                                 }
                             }
-                        } else if let Some(token) = &session.token {
-                            let _ = SessionModel::clear_active_location(pool, token).await;
+                        } else {
+                            if let Some(token) = &session.token {
+                                let _ = SessionModel::clear_active_location(pool, token).await;
+                            }
+                            tracing::info!(loc_id, code = %code, "Active location gone; existing volume not shelved");
+                            return Ok(Html(super::catalog_existing_label::active_location_gone_feedback(&code, loc)).into_response());
                         }
                     }
                 }
@@ -1019,6 +1026,8 @@ pub async fn handle_scan(
                         }
                         let (level, message) = match &e {
                             AppError::BadRequest(msg) => ("error", msg.clone()),
+                            // Already user-facing copy (e.g. volume_label_race).
+                            AppError::Conflict(msg) => ("warning", msg.clone()),
                             // #441 — defence in depth. The guard above catches
                             // the deleted-active-title case before we get here,
                             // but if a title is deleted between that check and

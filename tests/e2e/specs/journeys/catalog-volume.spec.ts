@@ -74,7 +74,9 @@ test.describe("Volume Management", () => {
     await scanField.fill(isbn);
     await scanField.press("Enter");
     await expect(
-      page.locator('.feedback-entry[data-feedback-variant="info"]').first(),
+      page
+        .locator('.feedback-entry[data-feedback-variant="info"]')
+        .filter({ hasText: /already in your catalog|déjà dans votre catalogue/i }),
     ).toBeVisible({ timeout: 5000 });
     await scanField.fill("V0043");
     await scanField.press("Enter");
