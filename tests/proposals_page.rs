@@ -360,15 +360,17 @@ async fn the_detail_shows_items_escaped_and_sources_in_a_new_tab(pool: DbPool) {
     let id = file_metadata(
         &f,
         title,
-        json!({"description": "<script>alert(1)</script>\nLigne 2", "publication_year": 1999}),
+        // Story 13-4: a known HTML element is stripped at filing; an unknown
+        // one stays text and must still be escaped on display.
+        json!({"description": "<bible>alert(1)</bible>\nLigne 2", "publication_year": 1999}),
     )
     .await;
     let (status, html) = lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
     assert_eq!(status, StatusCode::OK);
     assert!(html.contains("id=\"feedback-list\""));
-    assert!(html.contains("&#60;script&#62;alert(1)&#60;/script&#62;"));
+    assert!(html.contains("&#60;bible&#62;alert(1)&#60;/bible&#62;"));
     assert!(
-        !html.contains("<script>alert(1)"),
+        !html.contains("<bible>alert(1)"),
         "agent value rendered as HTML"
     );
     assert!(html.contains(
