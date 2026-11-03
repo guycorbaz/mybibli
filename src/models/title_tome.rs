@@ -30,6 +30,29 @@ pub enum TwinRow {
     Deleted(u64),
 }
 
+/// Story 13-10 (review L5) — one position a title holds in a live series.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TomeMembership {
+    pub series_id: u64,
+    pub series_name: String,
+    pub position: i32,
+}
+
+/// Separators of the memberships column a list query aggregates (control
+/// characters, never part of a series name).
+pub const MEMBERSHIP_SEP: char = '\u{1e}';
+pub const FIELD_SEP: char = '\u{1f}';
+
+/// The memberships of a title `t` in live series, aggregated for a list
+/// query (`services::tome::parse_memberships` reads it back), ordered by
+/// series name, series id, position; NULL in none.
+pub const MEMBERSHIPS_SQL: &str = "(SELECT CAST(GROUP_CONCAT(\
+     CONCAT(ts.series_id, '\u{1f}', ts.position_number, '\u{1f}', s.name) \
+     ORDER BY s.name, ts.series_id, ts.position_number SEPARATOR '\u{1e}') AS CHAR) \
+     FROM title_series ts \
+     JOIN series s ON s.id = ts.series_id AND s.deleted_at IS NULL \
+     WHERE ts.title_id = t.id AND ts.deleted_at IS NULL)";
+
 pub struct TitleTomeModel;
 
 impl TitleTomeModel {
@@ -63,6 +86,21 @@ impl TitleTomeModel {
             .map_err(AppError::Database)
     }
 
+    /// The memberships of a live title, as list rows show them.
+    pub async fn memberships(
+        pool: &DbPool,
+        title_id: u64,
+    ) -> Result<Vec<TomeMembership>, AppError> {
+        let sql = format!("SELECT {MEMBERSHIPS_SQL} AS m FROM titles t WHERE t.id = ?");
+        let raw: Option<Option<String>> = sqlx::query_scalar(&sql)
+            .bind(title_id)
+            .fetch_optional(pool)
+            .await?;
+        Ok(crate::services::tome::parse_memberships(
+            raw.flatten().as_deref(),
+        ))
+    }
+
     /// Store the hint when the title sits in no live series (one
     /// statement, so an attach landing meanwhile wins). Returns whether
     /// the row was written.
@@ -85,16 +123,48 @@ impl TitleTomeModel {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Clear the hint (after a series is attached by hand).
-    pub async fn clear_detected_tome(pool: &DbPool, title_id: u64) -> Result<(), AppError> {
-        sqlx::query(
-            "UPDATE titles SET detected_tome = NULL, updated_at = updated_at \
-             WHERE id = ? AND detected_tome IS NOT NULL",
-        )
-        .bind(title_id)
-        .execute(pool)
-        .await?;
+    /// Clear the hint once the title sits in a series — called by every
+    /// attach (`TitleSeriesModel::assign_in` / `assign_omnibus_in`: hand
+    /// assignment, scan auto-settle, series proposal acceptance), on the
+    /// attach's own connection, after its series / tome / title locks
+    /// (lock order unchanged). A plain read first, so the title row is
+    /// write-locked only when a hint is actually set.
+    pub async fn clear_detected_tome_in(
+        conn: &mut sqlx::MySqlConnection,
+        title_id: u64,
+    ) -> Result<(), AppError> {
+        let set: Option<Option<i32>> =
+            sqlx::query_scalar("SELECT detected_tome FROM titles WHERE id = ?")
+                .bind(title_id)
+                .fetch_optional(&mut *conn)
+                .await?;
+        if matches!(set, Some(Some(_))) {
+            sqlx::query(
+                "UPDATE titles SET detected_tome = NULL, updated_at = updated_at WHERE id = ?",
+            )
+            .bind(title_id)
+            .execute(&mut *conn)
+            .await?;
+        }
         Ok(())
+    }
+
+    /// The series of the live membership `assignment_id` of `title_id`
+    /// (plain read: the caller locks that series row next).
+    pub async fn membership_series_in(
+        conn: &mut sqlx::MySqlConnection,
+        title_id: u64,
+        assignment_id: u64,
+    ) -> Result<Option<u64>, AppError> {
+        let id: Option<u64> = sqlx::query_scalar(
+            "SELECT series_id FROM title_series \
+             WHERE id = ? AND title_id = ? AND deleted_at IS NULL",
+        )
+        .bind(assignment_id)
+        .bind(title_id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(id)
     }
 
     /// The live membership `assignment_id` of `title_id` in a live

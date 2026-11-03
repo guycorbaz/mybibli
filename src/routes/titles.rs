@@ -600,7 +600,7 @@ pub async fn title_edit_form(
     let genres = GenreModel::list_active(pool).await?;
 
     let template = TitleEditFormTemplate {
-        tome_hint: crate::services::tome::manual_title_hint(&title.title, loc),
+        tome_hint: crate::services::tome::manual_title_hint(&title.title, &title.media_type, loc),
         title,
         genres,
         label_title: rust_i18n::t!("metadata.field.title", locale = loc).to_string(),
@@ -972,7 +972,7 @@ pub async fn update_title(
         "success",
         &rust_i18n::t!("metadata.save_changes", locale = loc),
         "",
-    ) + &crate::services::tome::manual_title_hint_html(&updated.title, loc);
+    ) + &crate::services::tome::manual_title_hint_html(&updated.title, &updated.media_type, loc);
     html.push_str(&format!(
         r#"<div id="title-feedback" hx-swap-oob="innerHTML">{feedback}</div>"#
     ));
@@ -1072,10 +1072,9 @@ pub async fn redownload_metadata(
     let resolved_cover_url =
         resolve_cover_url_with_fallback(&state.http_client, &metadata, &code, &code_type).await;
 
-    // Story 13-10 (#579) — strip the tome marker from the proposed title.
-    if let Some(n) = crate::services::tome::prepare_metadata_title(&mut metadata, &title) {
-        crate::services::tome::record_detected_tome(pool, id, n).await;
-    }
+    // Story 13-10 (#579) — strip the tome marker from the proposed title;
+    // its number is recorded once the title is saved (review L3).
+    let tome = crate::services::tome::strip_metadata_title(&mut metadata, &title.media_type);
     let manually_edited = title.parsed_manually_edited_fields();
 
     if manually_edited.is_empty() {
@@ -1088,6 +1087,7 @@ pub async fn redownload_metadata(
             resolved_cover_url.as_deref(),
         )
         .await?;
+        crate::services::tome::record_confirmed_tome(pool, id, &updated.title, metadata.title.as_deref(), tome).await;
         crate::tasks::metadata_retry::record_lookup(pool, id, false, "redownload").await;
         let genre_name = GenreModel::find_name_by_id(pool, updated.genre_id).await?;
         let has_code = true;
@@ -1113,6 +1113,7 @@ pub async fn redownload_metadata(
 
     if conflicts.is_empty() && auto_updates.is_empty() {
         // No actual changes: the title already holds the result (13-2: dequeue).
+        crate::services::tome::record_confirmed_tome(pool, id, &title.title, metadata.title.as_deref(), tome).await;
         crate::tasks::metadata_retry::record_lookup(pool, id, false, "redownload").await;
         let genre_name = GenreModel::find_name_by_id(pool, title.genre_id).await?;
         let mut html = metadata_display_html(&title, &genre_name, &session, true, loc);
@@ -1134,6 +1135,7 @@ pub async fn redownload_metadata(
         conflicts,
         auto_updates,
         new_title: metadata.title.clone().unwrap_or_default(),
+        new_detected_tome: tome,
         new_subtitle: metadata.subtitle.clone().unwrap_or_default(),
         new_description: metadata.description.clone().unwrap_or_default(),
         new_publisher: metadata.publisher.clone().unwrap_or_default(),
@@ -1175,6 +1177,9 @@ pub struct MetadataConfirmForm {
     pub version: i32,
     #[serde(default)]
     pub new_title: String,
+    /// Story 13-10 — the tome number the preview stripped from `new_title`.
+    #[serde(default, deserialize_with = "crate::routes::series::deserialize_optional_i32")]
+    pub new_detected_tome: Option<i32>,
     #[serde(default)]
     pub new_subtitle: String,
     #[serde(default)]
@@ -1682,6 +1687,7 @@ pub async fn confirm_metadata(
     .await?;
     // Story 13-2 — the re-downloaded result is applied: nothing left to retry.
     crate::tasks::metadata_retry::record_lookup(pool, id, false, "redownload").await;
+    crate::services::tome::record_confirmed_tome(pool, id, &updated.title, Some(&form.new_title), form.new_detected_tome).await;
 
     // Download new cover if URL provided and accepted
     if !form.new_cover_url.is_empty() && form.accept_cover.is_some() {
@@ -1850,6 +1856,7 @@ struct MetadataConfirmTemplate {
     conflicts: Vec<FieldConflict>,
     auto_updates: Vec<String>,
     new_title: String,
+    new_detected_tome: Option<i32>,
     new_subtitle: String,
     new_description: String,
     new_publisher: String,

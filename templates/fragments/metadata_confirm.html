@@ -6,6 +6,8 @@
         <input type="hidden" name="version" value="{{ version }}">
         <!-- Pass new metadata values as hidden fields -->
         <input type="hidden" name="new_title" value="{{ new_title }}">
+        {# Story 13-10 — the tome number stripped from new_title, recorded on confirm. #}
+        <input type="hidden" name="new_detected_tome" value="{% if let Some(n) = new_detected_tome %}{{ n }}{% endif %}">
         <input type="hidden" name="new_subtitle" value="{{ new_subtitle }}">
         <input type="hidden" name="new_description" value="{{ new_description }}">
         <input type="hidden" name="new_publisher" value="{{ new_publisher }}">

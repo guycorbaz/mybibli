@@ -105,7 +105,7 @@ test.describe("The tome number (story 13-10, #579)", () => {
     await page.locator("button[hx-get$='/edit']").first().click();
     const titleField = page.locator("#edit-title");
     await expect(titleField).toBeVisible({ timeout: 5000 });
-    const handTitle = `Saga TN T5 : à la main ${Date.now()}`;
+    const handTitle = `Saga TN Tome 5 : à la main ${Date.now()}`;
     await titleField.fill(handTitle);
     await page.locator("#edit-title-submit").click();
 

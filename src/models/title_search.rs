@@ -43,8 +43,8 @@ pub struct SearchResult {
     /// "date added" sort orders by it.
     pub last_added_at: Option<chrono::NaiveDateTime>,
     /// Story 13-10 (#579) — the positions the title holds in live series
-    /// (ascending; empty when in none), shown as "Tome N".
-    pub tome_positions: Vec<i32>,
+    /// (empty when in none), shown as "Tome N".
+    pub tome_positions: Vec<crate::models::title_tome::TomeMembership>,
 }
 
 impl SearchResult {
@@ -63,13 +63,6 @@ impl SearchResult {
     }
 }
 
-/// Story 13-10 (#579) — the positions a title `t` holds in live series,
-/// comma-separated ascending (NULL when none).
-pub(crate) const TOME_POSITIONS_SQL: &str = "(SELECT CAST(GROUP_CONCAT(DISTINCT ts.position_number ORDER BY ts.position_number \
-       SEPARATOR ',') AS CHAR) FROM title_series ts \
-       JOIN series s ON s.id = ts.series_id AND s.deleted_at IS NULL \
-       WHERE ts.title_id = t.id AND ts.deleted_at IS NULL)";
-
 /// The columns every `SearchResult` query selects from the title aliased
 /// `t` and its genre aliased `g`. Shared by `active_search`,
 /// `list_recent_active` and `list_recent_cataloged`.
@@ -83,8 +76,9 @@ pub(crate) fn search_projection() -> String {
            AND v.deleted_at IS NULL) AS volume_count, \
          CAST(t.created_at AS DATETIME) AS created_at, \
          {} AS last_added_at, \
-         {TOME_POSITIONS_SQL} AS tome_positions",
-        crate::models::date_added::LAST_ADDED_AT_SQL
+         {} AS tome_positions",
+        crate::models::date_added::LAST_ADDED_AT_SQL,
+        crate::models::title_tome::MEMBERSHIPS_SQL
     )
 }
 
@@ -106,7 +100,7 @@ pub(crate) fn search_result_from_row(r: &sqlx::mysql::MySqlRow) -> SearchResult 
         dewey_code: r.try_get("dewey_code").unwrap_or(None),
         created_at: r.try_get("created_at").unwrap_or(None),
         last_added_at: r.try_get("last_added_at").unwrap_or(None),
-        tome_positions: crate::services::tome::parse_positions(
+        tome_positions: crate::services::tome::parse_memberships(
             r.try_get::<Option<String>, _>("tome_positions")
                 .unwrap_or(None)
                 .as_deref(),

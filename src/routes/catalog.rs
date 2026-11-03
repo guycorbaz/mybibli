@@ -1709,7 +1709,7 @@ pub async fn create_title(
                 let resp = HtmxResponse {
                     main: feedback_html("success", &message, &suggestion)
                         + &banners
-                        + &crate::services::tome::manual_title_hint_html(&title.title, loc),
+                        + &crate::services::tome::manual_title_hint_html(&title.title, &title.media_type, loc),
                     oob: vec![
                         OobUpdate { swap_mode: Default::default(),
                             target: "context-banner".to_string(),

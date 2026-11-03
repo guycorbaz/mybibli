@@ -562,6 +562,9 @@ impl TitleSeriesModel {
             .bind(id)
             .execute(&mut *conn)
             .await?;
+            // Story 13-10 — the detected tome hint has served its purpose.
+            crate::models::title_tome::TitleTomeModel::clear_detected_tome_in(conn, title_id)
+                .await?;
             return Ok(id);
         }
 
@@ -576,7 +579,11 @@ impl TitleSeriesModel {
         .await;
 
         match result {
-            Ok(r) => Ok(r.last_insert_id()),
+            Ok(r) => {
+                crate::models::title_tome::TitleTomeModel::clear_detected_tome_in(conn, title_id)
+                    .await?;
+                Ok(r.last_insert_id())
+            }
             Err(sqlx::Error::Database(e)) if e.message().contains("Duplicate entry") => {
                 Err(AppError::BadRequest(
                     rust_i18n::t!("series.position_taken", position = position_number).to_string(),
@@ -777,6 +784,7 @@ impl TitleSeriesModel {
                 }
             }
         }
+        crate::models::title_tome::TitleTomeModel::clear_detected_tome_in(tx, title_id).await?;
         Ok(())
     }
 

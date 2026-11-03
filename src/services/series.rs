@@ -216,8 +216,6 @@ impl SeriesService {
         }
 
         let id = TitleSeriesModel::assign(pool, title_id, series_id, position_number).await?;
-        // Story 13-10 — the detected tome number has served its purpose.
-        crate::services::tome::clear_detected_tome(pool, title_id).await;
         // Story 11-10 — a hand assignment can fill an expected tome.
         crate::services::expected_tomes::ExpectedTomeService::settle_for_title_id(pool, title_id)
             .await;
@@ -263,7 +261,6 @@ impl SeriesService {
         }
 
         TitleSeriesModel::assign_omnibus(pool, title_id, series_id, start, end).await?;
-        crate::services::tome::clear_detected_tome(pool, title_id).await;
         crate::services::expected_tomes::ExpectedTomeService::settle_for_title_id(pool, title_id)
             .await;
         Ok(())

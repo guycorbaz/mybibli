@@ -75,3 +75,21 @@ so that series read cleanly and titles sort correctly.
 - An omnibus range is not editable inline (remove and re-assign); a localized message says so.
 - The hint is only cleared by hand attaches from the title page/service; series attaches through proposal acceptance or scan auto-settle leave it in place (it is hidden while the title is in a series), to keep the epic-12 lock scope of those transactions untouched.
 - T8's full suites are left to the orchestrator's final gate.
+
+## Dev Notes
+
+- **Shared positions (review L6, dismissed):** like `SeriesService::assign_title`, the position edit refuses only a position the *same* title already holds in the series; another title may hold the same position (existing behaviour, #524 "rendered, not prevented").
+- **Lock order:** the position edit locks the series row, then the `title_series` rows, then (in the settle after commit) the tomes. The hint is cleared inside `TitleSeriesModel::assign_in` / `assign_omnibus_in`, i.e. last in every attach transaction (hand assignment, scan auto-settle: series → tomes → `title_series`; series proposal acceptance: proposal → items → series → targets incl. the title row → apply), after a plain read so the title row is write-locked only when a hint is set.
+
+### Review Findings
+
+Round 1 (on 306fd8a): 1 Medium, 7 Low — all addressed.
+
+- [x] **M1** — the parser ran for every media type and truncated real titles ("Symphonie n° 9", "Chanel N°5", "Kill Bill Vol. 1", "Aktion T4"…). Now gated by `MarkerSet`: `bd` knows every marker; `book` only Tome / Tomo / Volume / Vol. / Band; cd / dvd / magazine / report are never parsed (a magazine number never reaches `detected_tome`). Also for every media: `Vol` needs its dot ("Vol 93 : le récit"), `T` must be compact or dotted ("T 34 : un char de légende"). Per-media test table (`MEDIA_CASES`) with every reported case, plus an ingestion DB test.
+- [x] **L1** — determiner list extended (ce, cet, cette, son, sa, ses, ma, mes, ton, ta, tes, notre, votre, leur, leurs, this, that, his, her, their, dem, den; der/die/das/il/lo/la already there); "Ce tome 2 : x" untouched (tested).
+- [x] **L2** — the hint is cleared in `TitleSeriesModel::assign_in` / `assign_omnibus_in` (every attach path; service-level clear removed); `get_title` returns `detected_tome: null` while the title is in a series. Tests: attach by proposal acceptance, scan auto-settle, `get_title` in a series.
+- [x] **L3** — re-download: the preview only strips; the number travels in a hidden `new_detected_tome` field and is recorded at confirmation when the saved title is the proposed cleaned title (`confirmed_tome`), also for a hand-edited title whose librarian accepts it; the direct-apply and no-change branches record after the write. Tests: unit `confirmed_tome`, DB preview→confirm (kept hand title / accepted clean title / no number).
+- [x] **L4** — `change_position` locks the series row first (`ExpectedTomeModel::lock_series_in`) and reads the closed total from it.
+- [x] **L5** — list / volume labels group per series: one series "Tome 3" / "Tomes 3–5"; several "Tome 3 · A, Tome 4 · B" (`TomeMembership`, `MEMBERSHIPS_SQL`). Unit + DB test.
+- [x] **L6** — dismissed, documented in Dev Notes.
+- [x] **L7** — tests added: re-download path, a left position becomes a gap named by its tome again, media-type false positives. E2E manual-title case now uses a book marker ("Tome 5") since "T5" is a comic-only marker.

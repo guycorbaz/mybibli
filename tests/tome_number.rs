@@ -476,3 +476,247 @@ async fn get_title_exposes_the_detected_tome(pool: DbPool) {
     let doc = agent.ok("get_title", json!({"id": id})).await;
     assert_eq!(doc["detected_tome"], 3);
 }
+
+// ─── Code review round 1 ─────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn ingestion_never_parses_music_films_or_magazines(pool: DbPool) {
+    // Review M1.
+    for (media, genre, raw) in [
+        ("cd", "Roman", "Symphonie n° 9"),
+        ("cd", "Roman", "Tome 3 : Le Mystère"),
+        ("dvd", "Roman", "Kill Bill Vol. 1"),
+        ("magazine", "Roman", "Spirou n° 4123"),
+        ("book", "Roman", "Agent No 7"),
+    ] {
+        let id = add_title(&pool, "x", media, genre, None).await;
+        update_title_from_metadata(&pool, id, &metadata(raw))
+            .await
+            .unwrap();
+        assert_eq!(title_text(&pool, id).await, raw, "{media}");
+        assert_eq!(detected(&pool, id).await, None, "{media}");
+    }
+    // A book knows the long markers.
+    let id = add_title(&pool, "x", "book", "Roman", None).await;
+    update_title_from_metadata(&pool, id, &metadata("Harry Potter, tome 1 : à l'école"))
+        .await
+        .unwrap();
+    assert_eq!(title_text(&pool, id).await, "Harry Potter : à l'école");
+    assert_eq!(detected(&pool, id).await, Some(1));
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn an_attach_by_proposal_clears_the_hint(pool: DbPool) {
+    // Review L2: every attach path clears the hint.
+    let agent = Agent::new(&pool).await;
+    seed_admin(&pool, "tome_admin").await;
+    let b = Browser::login(&agent.app, "tome_admin").await;
+    let id = add_title(&pool, "Le Mystère", "bd", "BD", None).await;
+    set_detected(&pool, id, 3).await;
+    let s = add_series(&pool, "Mystères", "open", None).await;
+    let proposal = agent
+        .ok(
+            "propose_series_attach",
+            json!({"series_id": s, "titles": [{"title_id": id, "position": 3}],
+                   "sources": ["https://example.org/s"]}),
+        )
+        .await["proposal_id"]
+        .as_u64()
+        .unwrap();
+    let v: i32 = sqlx::query_scalar("SELECT version FROM proposals WHERE id = ?")
+        .bind(proposal)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let (status, body) = b
+        .post_form(
+            &agent.app,
+            &format!("/proposals/{proposal}/accept"),
+            &format!("version={v}"),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(live_positions(&pool, id, s).await, vec![3]);
+    assert_eq!(detected(&pool, id).await, None);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_scan_settle_attach_clears_the_hint(pool: DbPool) {
+    let i = isbn(5150);
+    let s = add_series(&pool, "Lucky Luke", "closed", Some(10)).await;
+    ExpectedTomeService::create(
+        &pool,
+        s,
+        &ExpectedTomeInput {
+            position: 2,
+            title: "Tome 2",
+            isbn: Some(&i),
+        },
+        ExpectedTomeOrigin::Manual,
+    )
+    .await
+    .unwrap();
+    let id = add_title(&pool, "Lucky Luke 2", "bd", "BD", Some(&i)).await;
+    set_detected(&pool, id, 2).await;
+    ExpectedTomeService::settle_for_title(&pool, id, &i)
+        .await
+        .unwrap();
+    assert_eq!(live_positions(&pool, id, s).await, vec![2]);
+    assert_eq!(detected(&pool, id).await, None);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn get_title_hides_the_hint_while_in_a_series(pool: DbPool) {
+    let id = add_title(&pool, "Le Mystère", "bd", "BD", None).await;
+    set_detected(&pool, id, 3).await;
+    let s = add_series(&pool, "Mystères", "open", None).await;
+    assign(&pool, id, s, 5, false).await;
+    let agent = Agent::new(&pool).await;
+    let doc = agent.ok("get_title", json!({"id": id})).await;
+    assert!(doc["detected_tome"].is_null(), "{doc}");
+}
+
+/// The re-download confirmation form, as `metadata_confirm.html` posts it.
+fn confirm_body(version: i32, new_title: &str, tome: &str, accept_title: bool) -> String {
+    let mut body = format!(
+        "version={version}&new_title={}&new_detected_tome={tome}&new_language=fr",
+        new_title.replace(' ', "+")
+    );
+    if accept_title {
+        body.push_str("&accept_title=on");
+    }
+    body
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn re_download_records_the_number_only_when_the_clean_title_is_saved(pool: DbPool) {
+    // Review L3: the number travels with the confirmation form and is
+    // recorded at confirmation, for a hand-edited title too.
+    let (app, b) = browser(&pool).await;
+    let hand = add_title(&pool, "Mon titre", "bd", "BD", None).await;
+    sqlx::query("UPDATE titles SET manually_edited_fields = '[\"title\"]' WHERE id = ?")
+        .bind(hand)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let version = |id| {
+        let pool = pool.clone();
+        async move {
+            TitleModel::find_by_id(&pool, id)
+                .await
+                .unwrap()
+                .unwrap()
+                .version
+        }
+    };
+
+    // Kept the hand title: the number is not recorded.
+    let v = version(hand).await;
+    let res = b
+        .send(
+            &app,
+            "POST",
+            &format!("/title/{hand}/confirm-metadata"),
+            &confirm_body(v, "Le Mystère", "3", false),
+            true,
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(title_text(&pool, hand).await, "Mon titre");
+    assert_eq!(detected(&pool, hand).await, None);
+
+    // Accepted the cleaned provider title: recorded.
+    let v = version(hand).await;
+    let res = b
+        .send(
+            &app,
+            "POST",
+            &format!("/title/{hand}/confirm-metadata"),
+            &confirm_body(v, "Le Mystère", "3", true),
+            true,
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(title_text(&pool, hand).await, "Le Mystère");
+    assert_eq!(detected(&pool, hand).await, Some(3));
+
+    // An empty hidden field (no marker found) records nothing.
+    let plain = add_title(&pool, "Autre", "bd", "BD", None).await;
+    let v = version(plain).await;
+    let res = b
+        .send(
+            &app,
+            "POST",
+            &format!("/title/{plain}/confirm-metadata"),
+            &confirm_body(v, "Autre chose", "", false),
+            true,
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(detected(&pool, plain).await, None);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_left_position_becomes_a_gap_again(pool: DbPool) {
+    // Review L7: a tome settled at the old position reads as a gap again.
+    let (app, b) = browser(&pool).await;
+    let i = isbn(6160);
+    let s = add_series(&pool, "Spirou", "closed", Some(3)).await;
+    let id = add_title(&pool, "Spirou 1", "bd", "BD", Some(&i)).await;
+    let a = assign(&pool, id, s, 1, false).await;
+    let tome = ExpectedTomeService::create(
+        &pool,
+        s,
+        &ExpectedTomeInput {
+            position: 1,
+            title: "La Mauvaise Tête",
+            isbn: Some(&i),
+        },
+        ExpectedTomeOrigin::Manual,
+    )
+    .await
+    .unwrap()
+    .id;
+    let (_, html) = b.get(&app, &format!("/series/{s}")).await;
+    assert!(
+        !html.contains(&format!(r#"data-expected-tome="{tome}""#)),
+        "settled"
+    );
+
+    let v = version_of(&pool, a).await;
+    let res = b
+        .send(
+            &app,
+            "POST",
+            &format!("/title/{id}/series/{a}/position"),
+            &format!("version={v}&position_number=2"),
+            true,
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let (_, html) = b.get(&app, &format!("/series/{s}")).await;
+    assert!(
+        html.contains(&format!(r#"data-expected-tome="{tome}""#)),
+        "position 1 is a gap named by its tome again"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn list_rows_label_each_series_separately(pool: DbPool) {
+    // Review L5.
+    let (app, b) = browser(&pool).await;
+    let id = add_title(&pool, "Zorglub Quartz", "bd", "BD", None).await;
+    let a = add_series(&pool, "Alpha", "open", None).await;
+    let z = add_series(&pool, "Zeta", "open", None).await;
+    assign(&pool, id, a, 3, false).await;
+    assign(&pool, id, z, 4, false).await;
+    let (_, html) = b.get(&app, "/?q=Quartz").await;
+    let label = |n: i32, s: &str| format!("Tome {n} \u{b7} {s}");
+    let en = |n: i32, s: &str| format!("Volume {n} \u{b7} {s}");
+    assert!(
+        (html.contains(&label(3, "Alpha")) && html.contains(&label(4, "Zeta")))
+            || (html.contains(&en(3, "Alpha")) && html.contains(&en(4, "Zeta"))),
+        "per-series labels"
+    );
+    assert!(!html.contains("Tomes 3–4") && !html.contains("Volumes 3–4"));
+}
