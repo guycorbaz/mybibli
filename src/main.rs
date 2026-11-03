@@ -285,6 +285,18 @@ async fn main() {
         );
     }
 
+    // Story 13-3 (#584): titles catalogued before v1.21.0 with an ISBN-10
+    // carry it in `upc`. One-shot, idempotent data repair: convert them to
+    // their ISBN-13 now; each converted title is queued for the metadata
+    // retry task (story 13-2), which looks it up again in the background.
+    // Non-fatal — a failed repair must never stop the app from booting.
+    if let Err(e) = mybibli::services::title::convert_isbn10_upc_titles(&pool).await {
+        tracing::error!(
+            error = %e,
+            "ISBN-10 stored as UPC: startup conversion failed (non-fatal, continuing)"
+        );
+    }
+
     // Load application settings from database
     let app_settings = AppSettings::load_from_db(&pool)
         .await
