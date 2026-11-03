@@ -52,8 +52,9 @@ test.describe("Volume Management", () => {
     await expect(banner).toContainText("vol", { timeout: 3000 });
   });
 
-  // AC2: Reject duplicate V-code
-  test("scan same V-code again shows error feedback", async ({ page }) => {
+  // AC2 (#585): re-scanning the ISBN + label pair of a volume already
+  // recorded for this title is an info, never an error.
+  test("scan same ISBN and V-code again shows info, not an error", async ({ page }) => {
     const isbn = specIsbn("CV", 4);
     await page.goto("/catalog");
     const scanField = page.locator("#scan-field");
@@ -69,14 +70,23 @@ test.describe("Volume Management", () => {
       '.feedback-entry[data-feedback-variant="success"]',
     );
 
-    // Try same V-code again
+    // The pair again (the ISBN in between means this is no double read)
+    await scanField.fill(isbn);
+    await scanField.press("Enter");
+    await expect(
+      page.locator('.feedback-entry[data-feedback-variant="info"]').first(),
+    ).toBeVisible({ timeout: 5000 });
     await scanField.fill("V0043");
     await scanField.press("Enter");
 
-    const errorEntry = page.locator(
-      '.feedback-entry[data-feedback-variant="error"]',
-    );
-    await expect(errorEntry).toBeVisible({ timeout: 5000 });
+    await expect(
+      page
+        .locator('.feedback-entry[data-feedback-variant="info"]')
+        .filter({ hasText: /V0043/ }),
+    ).toBeVisible({ timeout: 5000 });
+    await expect(
+      page.locator('.feedback-entry[data-feedback-variant="error"]'),
+    ).toHaveCount(0);
   });
 
   // AC3: V-code without current title

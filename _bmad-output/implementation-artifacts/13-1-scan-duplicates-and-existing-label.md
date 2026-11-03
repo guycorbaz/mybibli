@@ -1,6 +1,6 @@
 # Story 13.1: Scan duplicates and an existing label
 
-Status: ready-for-dev
+Status: review
 
 GitHub issues: #574 (type:bug), #585 (type:bug). Covers: bug fixes. Epic 13 — first story; ships in v1.23.0 at the epic close.
 
@@ -42,16 +42,27 @@ so that I am never shown an error for something I did right.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — `scan-field.js`: `DUPLICATE_SCAN_WINDOW_MS`, remember `{code, at}` of the last post; skip identical within the window (AC1)
-- [ ] T2 — `catalog.rs` V-code arm: after the active-location branch and the title-context checks, if `existing_vol_lookup` is `Some`, delegate to the new helper (AC2–AC4); keep the delta in `catalog.rs` minimal
-- [ ] T3 — helper module: decision + message, `html_escape`, owner ISBN lookup (AC3, AC6)
-- [ ] T4 — logging levels (AC5)
-- [ ] T5 — locale keys in en/fr/de/it; `touch src/lib.rs`; `cargo test --test locale_parity`
-- [ ] T6 — tests (AC7)
-- [ ] T7 — gates: clippy `--all-targets -D warnings`, targeted `cargo test`, `sqlx prepare --check`, templates audit, `tsc --noEmit`, flake grep, targeted E2E; full suites once on the final code before the single push
+- [x] T1 — `scan-field.js`: `DUPLICATE_SCAN_WINDOW_MS`, remember `{code, at}` of the last post; skip identical within the window (AC1)
+- [x] T2 — `catalog.rs` V-code arm: after the active-location branch and the title-context checks, if `existing_vol_lookup` is `Some`, delegate to the new helper (AC2–AC4); keep the delta in `catalog.rs` minimal
+- [x] T3 — helper module: decision + message, `html_escape`, owner ISBN lookup (AC3, AC6)
+- [x] T4 — logging levels (AC5)
+- [x] T5 — locale keys in en/fr/de/it; `touch src/lib.rs`; `cargo test --test locale_parity`
+- [x] T6 — tests (AC7)
+- [x] T7 — gates: clippy `--all-targets -D warnings`, targeted `cargo test`, `sqlx prepare --check`, templates audit, `tsc --noEmit`, flake grep, targeted E2E; full suites once on the final code before the single push
 
 ## Dev Notes
 
 - The double read is client-side only: both posts go through the same field handler, so a timestamp in the closure suffices; no session write per scan (the DB is slow during the nightly backups).
 - `existing_vol` already carries `title_id`; the owner title comes from `TitleModel::find_by_id` (`title`, `isbn`).
 - Do not change `resolve_duplicate_label`: it still guards the INSERT race (two tabs creating the same new label).
+
+## Completion Notes
+
+- **AC1** — `static/js/scan-field.js`: `DUPLICATE_SCAN_WINDOW_MS = 1000`, pure `isDuplicateScan(last, code, now)` (exposed as `window.mybibliIsDuplicateScan`), per-field `{code, at}` of the last post; an identical code within the window is dropped and the field cleared, silently. The field also carries `data-last-scan-at` so E2E specs that deliberately re-scan the same code can wait the window out (`waitForDuplicateScanWindow` in `tests/e2e/helpers/scanner.ts`, a `waitForFunction`, no `waitForTimeout`).
+- **AC2/AC3/AC6** — new `src/routes/catalog_existing_label.rs` (209 lines): `decide` (pure), `owner_label` (title + ISBN; the ISBN is not repeated when the title text still IS the ISBN, before metadata arrives), `same_title_feedback` (info), `other_title_feedback` (warning + plain `<a href="/volume/{id}">`), `existing_label_response`. Escaping is done once, by `feedback_html` / `feedback_html_with_link` (they escape message, hint, href and link label; pre-escaping would double-escape). The "open the volume to check it" advice is its own key, `feedback.volume_on_other_title_hint`, so Story 13.8 only edits locales.
+- **AC4** — `catalog.rs` V-code arm: the existing-volume lookup is borrowed instead of moved, and after the title-context checks an existing live label returns through the helper. The CR #300 guard condition lost its `!existing_vol_was_some` (always true at that point now). Shelve, new-label, soft-deleted-label (#442) and no-title paths unchanged.
+- **AC5** — `create_volume` errors: `BadRequest`/`Conflict` → `warn`, others `error`; the new branches log `info`.
+- **Locales** — `feedback.volume_already_recorded`, `volume_on_other_title`, `volume_on_other_title_hint`, `volume_open_link`, `volume_owner_with_isbn` in en/fr/de/it.
+- **Tests** — 9 unit tests in the new module; `tests/scan_existing_label.rs` (4 DB tests: same title → info + nothing written; other title → warning naming escaped owner + ISBN + link, volume unchanged; new label still created; no title context still `volume_no_title`); E2E `scan-duplicates-existing-label.spec.ts` (specId `DL`, V0590–V0592).
+- **Deviation / side effect** — the client guard applies to every code type (as specified), so existing specs that re-scanned the same code right after the first scan would have had the second scan dropped. Seven sites got a `waitForDuplicateScanWindow(page)` (catalog-cd-sequence, catalog-metadata ×2, catalog-title, cover-image, provider-chain ×3). Two tests asserted the old "already assigned" error on a same-title re-scan and were rewritten to the new info behaviour (catalog-volume AC2, catalog-metadata AC6).
+- **File size** — `src/routes/catalog.rs` is 3,191 lines (was 3,177; +14, mostly comments); still above Rule #12 as before.

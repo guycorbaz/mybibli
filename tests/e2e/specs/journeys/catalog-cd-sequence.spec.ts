@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { waitForDuplicateScanWindow } from "../../helpers/scanner";
 
 /**
  * #440 — cataloging several CDs in a row.
@@ -80,6 +81,7 @@ test.describe("Cataloging consecutive CDs (#440)", () => {
     // Same disc again — the cookie arm used to discard `is_new` and replay the
     // whole provider chain, showing the "fetching metadata" skeleton for a
     // title already in the catalog.
+    await waitForDuplicateScanWindow(page); // #574: a re-scan, not a double read
     await scan(page, CD_FIRST);
 
     const feedback = page.locator(".feedback-entry").first();

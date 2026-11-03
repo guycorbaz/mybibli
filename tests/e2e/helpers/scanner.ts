@@ -52,3 +52,27 @@ export async function simulateTyping(
   await page.locator(selector).focus();
   await page.keyboard.type(text, { delay: 100 });
 }
+
+/**
+ * #574 — `scan-field.js` drops a code identical to the previous one posted
+ * less than `DUPLICATE_SCAN_WINDOW_MS` (1000 ms) earlier: a scanner double
+ * read. A spec that deliberately re-scans the same code (a librarian
+ * scanning a book again) must first let that window elapse. Waits on the
+ * `data-last-scan-at` stamp the field carries — no `waitForTimeout`.
+ */
+export const DUPLICATE_SCAN_WINDOW_MS = 1000;
+
+export async function waitForDuplicateScanWindow(
+  page: Page,
+  selector = "[data-mybibli-scan-field]",
+): Promise<void> {
+  await page.waitForFunction(
+    ({ sel, windowMs }) => {
+      const field = document.querySelector(sel);
+      const at = Number(field?.getAttribute("data-last-scan-at") ?? 0);
+      return Date.now() - at >= windowMs;
+    },
+    { sel: selector, windowMs: DUPLICATE_SCAN_WINDOW_MS },
+    { polling: 100 },
+  );
+}

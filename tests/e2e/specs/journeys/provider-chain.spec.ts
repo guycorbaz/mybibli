@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
+import { waitForDuplicateScanWindow } from "../../helpers/scanner";
 
 // ISBN known to BnF mock (primary provider)
 const BNF_ISBN = "9782070360246";
@@ -32,6 +33,7 @@ test.describe("Provider Chain & Fallback (Story 3-1)", () => {
 
     // Scanning again proves the title was created: the response says so
     // directly, so this assertion does not depend on the background fetch.
+    await waitForDuplicateScanWindow(page); // #574: a re-scan, not a double read
     await scanField.fill(GOOGLE_BOOKS_ISBN);
     await scanField.press("Enter");
 
@@ -78,6 +80,7 @@ test.describe("Provider Chain & Fallback (Story 3-1)", () => {
 
     // Scan again to confirm title was created despite no metadata.
     // Bounded to 15s for all-providers-fail scenario under CI load.
+    await waitForDuplicateScanWindow(page); // #574: a re-scan, not a double read
     await scanField.fill(UNKNOWN_ISBN);
     await scanField.press("Enter");
 
@@ -114,6 +117,7 @@ test.describe("Provider Chain & Fallback (Story 3-1)", () => {
     const banner = page.locator("#context-banner");
     await expect(banner).not.toHaveClass(/hidden/, { timeout: 5000 });
 
+    await waitForDuplicateScanWindow(page); // #574: a re-scan, not a double read
     await scanField.fill(BNF_ISBN);
     await scanField.press("Enter");
 

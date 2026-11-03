@@ -586,8 +586,7 @@ pub async fn handle_scan(
 
                 // If volume already exists and batch location is active, shelve it
                 let existing_vol_lookup = VolumeModel::find_by_label(pool, &code).await?;
-                let existing_vol_was_some = existing_vol_lookup.is_some();
-                if let Some(existing_vol) = existing_vol_lookup {
+                if let Some(existing_vol) = &existing_vol_lookup {
                     let active_loc = match &session.token {
                         Some(token) => SessionModel::get_active_location(pool, token)
                             .await
@@ -723,6 +722,15 @@ pub async fn handle_scan(
                     return Ok(resp.into_response());
                 }
 
+                // #585 — the label already labels a live volume: never try to
+                // create it again; say whose it is instead.
+                if let Some(existing_vol) = &existing_vol_lookup {
+                    return super::catalog_existing_label::existing_label_response(
+                        pool, existing_vol, title_id, loc,
+                    )
+                    .await;
+                }
+
                 // CR #300: phantom-volume guard. `current_title_id` is sticky
                 // (set on ISBN scan, never cleared) — scanning a fresh V-code
                 // for ANOTHER physical book without re-scanning its ISBN would
@@ -732,9 +740,9 @@ pub async fn handle_scan(
                 // confirmation modal instead of creating blind. Multi-copy
                 // titles (legitimate N volumes under one ISBN) just click
                 // Confirm; accidental stale-title attaches click Cancel.
-                // Only fires when the V-code is genuinely NEW (a re-scan of an
-                // existing V-code keeps its DUPLICATE_LABEL error path).
-                if !existing_vol_was_some && !form.confirmed {
+                // Only reached when the V-code is genuinely NEW (an existing
+                // live label returned above, #585).
+                if !form.confirmed {
                     let already_has =
                         VolumeModel::count_by_title(pool, title_id).await.unwrap_or(0);
                     if already_has >= 1 {
@@ -1002,7 +1010,13 @@ pub async fn handle_scan(
                         Ok(Html(feedback_html("success", &message, "")).into_response())
                     }
                     Err(e) => {
-                        tracing::error!(error = %e, code = %code, "V-code scan failed");
+                        // #585 — a refusal of the librarian's input is not a
+                        // server fault: warn, keep `error` for the rest.
+                        if matches!(e, AppError::BadRequest(_) | AppError::Conflict(_)) {
+                            tracing::warn!(error = %e, code = %code, "V-code scan refused");
+                        } else {
+                            tracing::error!(error = %e, code = %code, "V-code scan failed");
+                        }
                         let (level, message) = match &e {
                             AppError::BadRequest(msg) => ("error", msg.clone()),
                             // #441 — defence in depth. The guard above catches

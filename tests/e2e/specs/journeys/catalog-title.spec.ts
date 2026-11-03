@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../../helpers/auth";
 import { specIsbn } from "../../helpers/isbn";
+import { waitForDuplicateScanWindow } from "../../helpers/scanner";
 
 const VALID_ISBN = specIsbn("CT", 1);
 // Invalid ISBN-13 (wrong checksum — last digit changed)
@@ -44,6 +45,7 @@ test.describe("Title CRUD & ISBN Scanning", () => {
     await page.waitForLoadState("networkidle");
 
     // Second scan shows existing
+    await waitForDuplicateScanWindow(page); // #574: a re-scan, not a double read
     await scanField.fill(VALID_ISBN);
     await scanField.press("Enter");
 
