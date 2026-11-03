@@ -1,6 +1,6 @@
 # Story 13.6: The full location of a volume in every list
 
-Status: review
+Status: done
 
 GitHub issue: #582 (type:change-request). Covers: FR160. Epic 13; ships in v1.23.0.
 
@@ -54,6 +54,16 @@ Other volume listings to check at story start (grep `storage_locations` joins an
 
 **T4 — tests.** Unit (location.rs): nested, root, missing parent, unknown id, cycle bound, `paths_for_all`. DB: `all_paths_builds_a_three_level_tree_and_skips_deleted_nodes` (also checks `get_path` / `get_path_segments` agree), `find_by_title_carries_the_full_location_path` + path assertions in the existing `find_by_title` tests, `list_volumes_for_carries_the_full_location_path`, `location_path` assertion in `tests/mcp_catalog_read_tools.rs`. E2E: `tests/e2e/specs/journeys/location-full-path.spec.ts` (3-level tree, shelve, full path + L-code in the table, mobile card wraps without horizontal scroll, axe on both); new helper `createChildLocation` in `tests/e2e/helpers/locations.ts`.
 
-**Deviations.** E2E specId is `FP`, not `LP`: `LP` is already used by `labels-page.spec.ts`. Codes randomised in unused bands L6000–L6999 / V7000–V7999. Separator stays `" → "` (AC1 "same separator as `get_path`"), not the `›` of the AC2 example.
+**Deviations.** E2E specId is `FP`, not `LP`: `LP` is already used by `labels-page.spec.ts`. Codes derived from the clock: `specLcode` bucket 6 (L6000–L6998) and V0600–V0999 (no hardcoded V-code of another spec, disjoint from home.spec.ts). Separator stays `" → "` (AC1 "same separator as `get_path`"), not the `›` of the AC2 example.
 
 **File sizes.** No touched file above 2000 lines (largest: `src/models/volume.rs`, 1343). `src/routes/titles.rs` (2753, pre-existing) was not touched.
+
+### Review Findings
+
+Single round on 7884ba4 — no Medium+ finding; Low findings applied:
+- [x] [Low] `VolumeModel::find_by_title` swallowed a `location_id` decode error (`.ok().flatten()`) — now propagated with `?`.
+- [x] [Low] Title page: a location deleted between the volume query and the path load left the cell empty — table and cards fall back to `location_name` when `location_path` is `None`.
+- [x] [Low] E2E codes were random (collision-prone) — now clock-derived in `specLcode` bucket 6 and V0600–V0999, disjoint from home.spec.ts's V1000+ band. Residual: `loans.spec.ts::uniqueVcode` spans the whole V0000–V9999 space, so no V band is disjoint from it.
+- [x] [Low] `createChildLocation` matched the parent edit link by `aria-label*=` substring — now by exact accessible name.
+- [x] [Low] `list_volumes_for` loaded `all_paths` even when no labelled volume is shelved — now only when one is.
+- Dismissed: "→" read as "right arrow" by screen readers (pre-existing on the volume page); audit/label lists covered by integration tests only (accepted).

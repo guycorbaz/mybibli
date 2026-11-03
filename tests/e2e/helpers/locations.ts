@@ -36,9 +36,12 @@ export async function createChildLocation(
   lcode: string,
 ): Promise<string> {
   await page.goto("/locations");
-  const parentEditLink = page
-    .locator(`a[aria-label*="${parentName}"][href*="/edit"]`)
-    .first();
+  // Exact accessible name ("Edit {name}", rendered by routes/locations.rs)
+  // so a parent whose name is a prefix of another never matches it.
+  const parentEditLink = page.getByRole("link", {
+    name: `Edit ${parentName}`,
+    exact: true,
+  });
   await expect(parentEditLink).toBeVisible({ timeout: 5000 });
   const parentId = (await parentEditLink.getAttribute("href"))?.match(
     /\/locations\/(\d+)/,

@@ -523,10 +523,14 @@ impl LabelModel {
 
         // Story 13-6 — full location paths from one query; a soft-deleted
         // location has no path, so the volume shows none (as before).
-        let paths = if rows.is_empty() {
-            std::collections::HashMap::new()
-        } else {
+        let any_shelved = rows.iter().any(|r| {
+            r.try_get::<Option<i64>, _>("location_id")
+                .is_ok_and(|id| id.is_some())
+        });
+        let paths = if any_shelved {
             crate::models::location::LocationModel::all_paths(pool).await?
+        } else {
+            std::collections::HashMap::new()
         };
         let items = rows
             .iter()

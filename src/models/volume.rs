@@ -438,11 +438,9 @@ impl VolumeModel {
             .iter()
             .map(|r| {
                 r.try_get::<Option<i64>, _>("location_id")
-                    .ok()
-                    .flatten()
-                    .map(|v| v as u64)
+                    .map(|id| id.map(|v| v as u64))
             })
-            .collect();
+            .collect::<Result<_, _>>()?;
         // Story 13-6 — full paths from one query, only when a volume is shelved.
         let paths = if location_ids.iter().any(Option::is_some) {
             crate::models::location::LocationModel::all_paths(pool).await?
