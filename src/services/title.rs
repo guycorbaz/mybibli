@@ -383,9 +383,13 @@ pub struct Isbn10UpcConversion {
 /// misses them. Each live title with no ISBN and a UPC passing the ISBN-10
 /// checksum gets `isbn = <ISBN-13>`, `upc = NULL` (optimistic locking),
 /// unless another live title already holds that ISBN-13 (left unchanged,
-/// warned — no merge, see #591). Idempotent: a converted title no longer
-/// matches. Does not fetch anything — the caller spawns the re-fetch of
-/// the returned titles. Logs one `info` line with the counts.
+/// warned — no merge, see #591). Only print media types are candidates
+/// (book, BD, magazine, report). Idempotent: a converted title no longer
+/// matches. Each converted title is put on the story 13-2 retry queue
+/// (`metadata_fetch_retries`), due now, in the same transaction as its
+/// UPDATE: the retry task looks it up again by its ISBN-13 with
+/// `force_refresh`, paced and isolated per title, and a stop before that
+/// lookup loses nothing. Logs one `info` line with the counts.
 pub async fn convert_isbn10_upc_titles(pool: &DbPool) -> Result<Isbn10UpcConversion, AppError> {
     let mut report = Isbn10UpcConversion::default();
     for candidate in TitleModel::list_isbn10_shaped_upc(pool).await? {
@@ -434,18 +438,24 @@ async fn convert_one(
     candidate: &crate::models::title::Isbn10UpcCandidate,
     isbn13: &str,
 ) -> Result<Step, AppError> {
+    // Exact-string match on `titles.isbn` among live titles: a soft-deleted
+    // holder is no collision, so restoring it later can leave two live
+    // titles with one ISBN — the duplicates case of #591 (merge), which
+    // this repair does not attempt.
     if let Some(holder) = TitleModel::find_by_isbn(pool, isbn13).await? {
         tracing::warn!(
             title_id = candidate.id,
             holder_title_id = holder.id,
             upc = %candidate.upc,
             isbn = %isbn13,
+            media_type = %candidate.media_type,
             "ISBN-10 stored as UPC: another title already holds this ISBN; left unchanged (see #591)"
         );
         return Ok(Step::Collision);
     }
+    let mut tx = pool.begin().await?;
     if !TitleModel::convert_upc_to_isbn(
-        pool,
+        &mut *tx,
         candidate.id,
         candidate.version,
         &candidate.upc,
@@ -453,17 +463,22 @@ async fn convert_one(
     )
     .await?
     {
+        tx.rollback().await?;
         tracing::info!(
             title_id = candidate.id,
             "ISBN-10 stored as UPC: title changed meanwhile; left unchanged"
         );
         return Ok(Step::Superseded);
     }
+    // Due now: the retry task's next tick looks it up again by ISBN.
+    crate::models::metadata_retry::MetadataRetryModel::enqueue(&mut *tx, candidate.id, 0).await?;
+    tx.commit().await?;
     tracing::info!(
         title_id = candidate.id,
         upc = %candidate.upc,
         isbn = %isbn13,
-        "ISBN-10 stored as UPC converted to its ISBN-13"
+        media_type = %candidate.media_type,
+        "ISBN-10 stored as UPC converted to its ISBN-13; metadata re-fetch queued"
     );
     Ok(Step::Converted)
 }

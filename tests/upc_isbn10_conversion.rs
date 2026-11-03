@@ -277,47 +277,73 @@ async fn a_stale_version_is_not_overwritten(pool: MySqlPool) {
     );
 }
 
-/// The re-fetch the caller spawns looks each converted title up by its
-/// ISBN-13, in order, through the scan wrapper.
+/// `(live, due now)` of the title's retry-queue row.
+async fn queue_row(pool: &MySqlPool, title_id: u64) -> Option<(bool, bool)> {
+    let row: Option<(i64, i64)> = sqlx::query_as(
+        "SELECT CAST(deleted_at IS NULL AS SIGNED), CAST(next_attempt_at <= NOW() AS SIGNED) \
+         FROM metadata_fetch_retries WHERE title_id = ?",
+    )
+    .bind(title_id)
+    .fetch_optional(pool)
+    .await
+    .expect("read queue row");
+    row.map(|(live, due)| (live == 1, due == 1))
+}
+
+/// Review M1 — the re-fetch is persisted: each converted title is on the
+/// retry queue, due now; one tick of the retry task looks it up by its
+/// ISBN-13 and dequeues it.
 #[sqlx::test(migrations = "./migrations")]
-async fn converted_titles_are_looked_up_again_by_isbn(pool: MySqlPool) {
+async fn converted_titles_are_queued_then_looked_up_again_by_isbn(pool: MySqlPool) {
     let first = title_with(&pool, "2205001213", None, Some("2205001213")).await;
     let second = title_with(&pool, "2604000288", None, Some("2604000288")).await;
-    let report = convert_isbn10_upc_titles(&pool).await.expect("convert");
-    let (state, asked) = state_with(&pool, false);
+    let bad = title_with(&pool, "Title 478", None, Some("2205025062")).await;
 
-    mybibli::tasks::isbn10_upc_refetch::run(&state, report.converted).await;
+    convert_isbn10_upc_titles(&pool).await.expect("convert");
 
+    assert_eq!(queue_row(&pool, first).await, Some((true, true)));
+    assert_eq!(queue_row(&pool, second).await, Some((true, true)));
     assert_eq!(
-        *asked.lock().unwrap(),
-        vec!["9782205001211".to_string(), "9782604000280".to_string()]
+        queue_row(&pool, bad).await,
+        None,
+        "nothing queued for a skipped title"
     );
+
+    let (state, asked) = state_with(&pool, false);
+    mybibli::tasks::metadata_retry::tick(&state)
+        .await
+        .expect("tick");
+
+    let asked = asked.lock().unwrap().clone();
+    assert!(asked.contains(&"9782205001211".to_string()));
+    assert!(asked.contains(&"9782604000280".to_string()));
     for id in [first, second] {
         let title = TitleModel::find_by_id(&pool, id)
             .await
             .expect("find")
             .expect("live title");
         assert_eq!(title.title, "Found under its ISBN");
+        assert_eq!(queue_row(&pool, id).await, Some((false, true)), "dequeued");
     }
 }
 
-/// A throttled re-fetch lands in the story 13-2 retry queue.
+/// A throttled re-fetch stays on the retry queue, rescheduled.
 #[sqlx::test(migrations = "./migrations")]
-async fn a_throttled_refetch_is_queued_for_retry(pool: MySqlPool) {
+async fn a_throttled_refetch_stays_queued(pool: MySqlPool) {
     let id = title_with(&pool, "2205011502", None, Some("2205011502")).await;
-    let report = convert_isbn10_upc_titles(&pool).await.expect("convert");
-    let (state, _) = state_with(&pool, true);
+    convert_isbn10_upc_titles(&pool).await.expect("convert");
+    let (state, asked) = state_with(&pool, true);
 
-    mybibli::tasks::isbn10_upc_refetch::run(&state, report.converted).await;
+    mybibli::tasks::metadata_retry::tick(&state)
+        .await
+        .expect("tick");
 
-    let live: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM metadata_fetch_retries WHERE title_id = ? AND deleted_at IS NULL",
-    )
-    .bind(id)
-    .fetch_one(&pool)
-    .await
-    .expect("count queue rows");
-    assert_eq!(live, 1);
+    assert!(asked.lock().unwrap().contains(&"9782205011500".to_string()));
+    assert_eq!(
+        queue_row(&pool, id).await,
+        Some((true, false)),
+        "rescheduled"
+    );
 }
 
 /// AC5 — a field edited by hand survives the re-fetch.
@@ -329,15 +355,44 @@ async fn the_refetch_respects_hand_edited_fields(pool: MySqlPool) {
         .execute(&pool)
         .await
         .expect("mark title hand-edited");
-    let report = convert_isbn10_upc_titles(&pool).await.expect("convert");
+    convert_isbn10_upc_titles(&pool).await.expect("convert");
     let (state, asked) = state_with(&pool, false);
 
-    mybibli::tasks::isbn10_upc_refetch::run(&state, report.converted).await;
+    mybibli::tasks::metadata_retry::tick(&state)
+        .await
+        .expect("tick");
 
-    assert_eq!(*asked.lock().unwrap(), vec!["9782862270166".to_string()]);
+    assert!(asked.lock().unwrap().contains(&"9782862270166".to_string()));
     let title = TitleModel::find_by_id(&pool, id)
         .await
         .expect("find")
         .expect("live title");
     assert_eq!(title.title, "My own title");
+}
+
+/// Review L2 — only print media types are candidates: a CD or DVD whose
+/// UPC happens to pass the ISBN-10 checksum is left alone.
+#[sqlx::test(migrations = "./migrations")]
+async fn non_print_media_types_are_left_alone(pool: MySqlPool) {
+    let cd = title_with(&pool, "A CD", None, Some("2205001213")).await;
+    let dvd = title_with(&pool, "A DVD", None, Some("2604000288")).await;
+    let magazine = title_with(&pool, "A magazine", None, Some("2862270164")).await;
+    for (id, media) in [(cd, "cd"), (dvd, "dvd"), (magazine, "magazine")] {
+        sqlx::query("UPDATE titles SET media_type = ? WHERE id = ?")
+            .bind(media)
+            .bind(id)
+            .execute(&pool)
+            .await
+            .expect("set media type");
+    }
+    let before_cd = identifiers(&pool, cd).await;
+    let before_dvd = identifiers(&pool, dvd).await;
+
+    let report = convert_isbn10_upc_titles(&pool).await.expect("convert");
+
+    let ids = converted_ids(&report.converted);
+    assert!(!ids.contains(&cd) && !ids.contains(&dvd));
+    assert_eq!(identifiers(&pool, cd).await, before_cd);
+    assert_eq!(identifiers(&pool, dvd).await, before_dvd);
+    assert!(ids.contains(&magazine), "a magazine is a print type");
 }

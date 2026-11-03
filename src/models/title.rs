@@ -463,8 +463,9 @@ impl TitleModel {
         Ok(row.and_then(|(source,)| source).filter(|s| !s.is_empty()))
     }
 
-    /// Story 13-3 (#584) — live titles without an ISBN whose UPC has the
-    /// length of an ISBN-10: the candidates of the startup conversion
+    /// Story 13-3 (#584) — live print titles (book, BD, magazine, report:
+    /// the media types an ISBN can identify) without an ISBN whose UPC has
+    /// the length of an ISBN-10: the candidates of the startup conversion
     /// (`services::title::convert_isbn10_upc_titles`), which keeps only
     /// the codes passing the ISBN-10 checksum. Oldest first.
     pub async fn list_isbn10_shaped_upc(
@@ -473,6 +474,7 @@ impl TitleModel {
         let rows: Vec<(u64, String, String, i32)> = sqlx::query_as(
             "SELECT id, upc, media_type, version FROM titles \
              WHERE isbn IS NULL AND upc IS NOT NULL AND CHAR_LENGTH(upc) = 10 \
+               AND media_type IN ('book', 'bd', 'magazine', 'report') \
                AND deleted_at IS NULL \
              ORDER BY id ASC",
         )
@@ -494,13 +496,16 @@ impl TitleModel {
     /// the row changed meanwhile (version, ISBN set, UPC changed, deleted).
     /// `manually_edited_fields` is left alone: this is a data repair, not a
     /// hand edit.
-    pub async fn convert_upc_to_isbn(
-        pool: &DbPool,
+    pub async fn convert_upc_to_isbn<'e, E>(
+        executor: E,
         id: u64,
         version: i32,
         upc: &str,
         isbn13: &str,
-    ) -> Result<bool, AppError> {
+    ) -> Result<bool, AppError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::MySql>,
+    {
         let result = sqlx::query(
             "UPDATE titles SET isbn = ?, upc = NULL, \
              version = version + 1, updated_at = NOW() \
@@ -511,7 +516,7 @@ impl TitleModel {
         .bind(id)
         .bind(version)
         .bind(upc)
-        .execute(pool)
+        .execute(executor)
         .await?;
         Ok(result.rows_affected() == 1)
     }

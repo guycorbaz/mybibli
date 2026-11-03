@@ -32,7 +32,14 @@ impl MetadataRetryModel {
     /// previous enqueue that ended) is revived with `attempts = 0`. MariaDB
     /// evaluates the `ON DUPLICATE KEY UPDATE` assignments left to right, so
     /// `deleted_at = NULL` comes last.
-    pub async fn enqueue(pool: &DbPool, title_id: u64, delay_secs: u64) -> Result<(), AppError> {
+    ///
+    /// Takes any executor, so a caller can enqueue inside its own
+    /// transaction (story 13-3: the ISBN-10 conversion enqueues each
+    /// converted title with its UPDATE).
+    pub async fn enqueue<'e, E>(executor: E, title_id: u64, delay_secs: u64) -> Result<(), AppError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::MySql>,
+    {
         sqlx::query(
             "INSERT INTO metadata_fetch_retries (title_id, attempts, next_attempt_at) \
              VALUES (?, 0, NOW() + INTERVAL ? SECOND) \
@@ -44,7 +51,7 @@ impl MetadataRetryModel {
         )
         .bind(title_id)
         .bind(delay_secs)
-        .execute(pool)
+        .execute(executor)
         .await?;
         Ok(())
     }

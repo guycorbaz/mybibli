@@ -287,20 +287,15 @@ async fn main() {
 
     // Story 13-3 (#584): titles catalogued before v1.21.0 with an ISBN-10
     // carry it in `upc`. One-shot, idempotent data repair: convert them to
-    // their ISBN-13 now; their metadata is fetched again in the background
-    // once the listener is bound (below). Non-fatal — a failed repair must
-    // never stop the app from booting.
-    let isbn10_converted =
-        match mybibli::services::title::convert_isbn10_upc_titles(&pool).await {
-            Ok(report) => report.converted,
-            Err(e) => {
-                tracing::error!(
-                    error = %e,
-                    "ISBN-10 stored as UPC: startup conversion failed (non-fatal, continuing)"
-                );
-                Vec::new()
-            }
-        };
+    // their ISBN-13 now; each converted title is queued for the metadata
+    // retry task (story 13-2), which looks it up again in the background.
+    // Non-fatal — a failed repair must never stop the app from booting.
+    if let Err(e) = mybibli::services::title::convert_isbn10_upc_titles(&pool).await {
+        tracing::error!(
+            error = %e,
+            "ISBN-10 stored as UPC: startup conversion failed (non-fatal, continuing)"
+        );
+    }
 
     // Load application settings from database
     let app_settings = AppSettings::load_from_db(&pool)
@@ -547,8 +542,6 @@ async fn main() {
         );
     }
 
-    // Kept for the story 13-3 re-fetch, spawned once the listener is bound.
-    let refetch_state = state.clone();
     let app = routes::build_router(state).layer(logging::trace_layer());
 
     // Start server
@@ -558,10 +551,6 @@ async fn main() {
         .expect("Failed to bind to address");
 
     tracing::info!(%addr, "Server listening");
-
-    // Story 13-3 (#584): look the converted titles up again, one by one,
-    // in the background — never delays startup.
-    mybibli::tasks::isbn10_upc_refetch::spawn(refetch_state, isbn10_converted);
 
     axum::serve(listener, app).await.expect("Server failed");
 }
