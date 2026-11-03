@@ -101,8 +101,11 @@ impl TitleTomeModel {
         ))
     }
 
-    /// Store the hint (one statement on the title row only: no locking
-    /// read of `title_series` / `series`, review round 2 L2). The caller
+    /// Store the hint (one statement on the title row; review round 3 L3:
+    /// guarded by a `title_series`-only NOT EXISTS — no join to `series`,
+    /// so the lock footprint stays the title row plus that title's
+    /// membership rows; a membership of a soft-deleted series also
+    /// blocks the write, harmless for a hint). The caller
     /// read the memberships first with a plain query; an attach racing
     /// between that read and this write either clears the hint after it
     /// (`clear_detected_tome_in`) or leaves it in place, hidden while the
@@ -114,7 +117,9 @@ impl TitleTomeModel {
     ) -> Result<(), AppError> {
         sqlx::query(
             "UPDATE titles SET detected_tome = ?, updated_at = updated_at \
-             WHERE id = ? AND deleted_at IS NULL",
+             WHERE id = ? AND deleted_at IS NULL \
+             AND NOT EXISTS (SELECT 1 FROM title_series ts \
+                 WHERE ts.title_id = titles.id AND ts.deleted_at IS NULL)",
         )
         .bind(number)
         .bind(title_id)

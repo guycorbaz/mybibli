@@ -124,8 +124,8 @@ pub fn split_for_media_type(raw: &str, media_type: &str) -> (String, Option<i32>
 pub fn split_tome_marker(raw: &str, set: MarkerSet) -> (String, Option<i32>) {
     let s = raw.trim();
     let chars: Vec<(usize, char)> = s.char_indices().collect();
-    // Every marker of the set, as (start, end, number, needs a separator
-    // before it).
+    // Every marker of the set, as (start, end, number, matched word,
+    // between brackets).
     let mut hits = Vec::new();
     for (k, &(i, c)) in chars.iter().enumerate() {
         if k > 0 && !chars[k - 1].1.is_whitespace() {
@@ -140,19 +140,23 @@ pub fn split_tome_marker(raw: &str, set: MarkerSet) -> (String, Option<i32>) {
             let after = s[inner + len..].trim_start();
             if after.starts_with(close) {
                 let end = s.len() - after.len() + close.len_utf8();
-                hits.push((i, end, n, LEFT_SEP_WORDS.contains(&word)));
+                hits.push((i, end, n, word, true));
             }
         } else if let Some((len, n, word)) = match_marker(&s[i..], set) {
-            hits.push((i, i + len, n, LEFT_SEP_WORDS.contains(&word)));
+            hits.push((i, i + len, n, word, false));
         }
     }
     // Review round 2 (M1): two markers ("Intégrale T1 à T3", "T1, T2,
     // T3", "Volume 1 - Volume 2") name a range or a list, not this
     // title's number — the title is left alone.
-    if let [(start, end, n, needs_sep)] = hits.as_slice()
-        && let Some(cleaned) = rebuild(&s[..*start], &s[*end..], *needs_sep)
-    {
-        return (cleaned, Some(*n));
+    if let [(start, end, n, word, bracketed)] = hits.as_slice() {
+        let marker = MarkerContext {
+            needs_left_sep: LEFT_SEP_WORDS.contains(word),
+            bare_t: *word == "t" && !bracketed,
+        };
+        if let Some(cleaned) = shape(&s[..*start], &s[*end..], marker) {
+            return (cleaned, Some(*n));
+        }
     }
     (raw.to_string(), None)
 }
@@ -233,44 +237,84 @@ fn strip_prefix_ignore_ascii_case<'a>(t: &'a str, prefix: &str) -> Option<&'a st
         .then(|| &t[prefix.len()..])
 }
 
-/// Join what surrounds a marker; `None` when the context is not one of a
-/// marker (see [`split_tome_marker`]).
-fn rebuild(left_raw: &str, right_raw: &str, needs_left_sep: bool) -> Option<String> {
+/// What [`shape`] needs to know of the marker it frames.
+#[derive(Debug, Clone, Copy)]
+struct MarkerContext {
+    /// "Band" / "Bd.": only at the start or after a separator.
+    needs_left_sep: bool,
+    /// A bare "T12" (not bracketed): never at the end without a
+    /// separator before it ("Opération T4", "Aktion T4").
+    bare_t: bool,
+}
+
+/// The separators a shape accepts around a marker (review round 3).
+const SHAPE_SEPARATORS: [char; 5] = [':', '-', '\u{2013}', '.', ','];
+
+/// Review round 3 (M1) — the parser accepts known shapes only; anything
+/// else leaves the title untouched (a false negative costs a hand edit, a
+/// false positive rewrites a title for good). With `MARKER N` the single
+/// marker of the title:
+///
+/// * (A) leading — `MARKER N SEP REST`;
+/// * (B) trailing — `LEFT [SEP] MARKER N` (a trailing `.` is dropped);
+/// * (C) middle — `LEFT [SEP] MARKER N SEP REST`.
+///
+/// `SEP` is one of `:` `-` `–` `.` `,`; a dash stands between spaces,
+/// the others are followed by a space. `REST` starts with a letter (after
+/// optional opening quotes) — never a digit, so "Tome 1 - 2", "T1, 2 et
+/// 3", "T. 3 - 1917" (a range or a list) stay untouched. `LEFT` holds a
+/// letter, ends with a letter or a closing quote / bracket, and its last
+/// word is neither an article nor a connector; a `.` before the marker
+/// is a separator only after a word of three letters or more ("Dr. No 1",
+/// "Mademoiselle J. T.3", "Le Spirou de... T4" stay untouched). The left
+/// separator is optional in (C) so the issue's own "Titeuf T12 : …"
+/// shape is kept.
+fn shape(left_raw: &str, right_raw: &str, marker: MarkerContext) -> Option<String> {
+    // Right side: end of title, or SEP + REST.
     let right = right_raw.trim_start();
-    let (right_sep, after) = match right.chars().next() {
+    let (right_sep, rest) = match right.chars().next() {
         None => (None, ""),
-        Some(c) if SEPARATORS.contains(&c) => {
-            let rest = &right[c.len_utf8()..];
-            if !(rest.is_empty() || rest.starts_with(char::is_whitespace)) {
+        Some(c) if SHAPE_SEPARATORS.contains(&c) => {
+            if (c == '-' || c == '\u{2013}') && !right_raw.starts_with(char::is_whitespace) {
                 return None;
             }
-            (Some(c), rest.trim_start())
+            let after = &right[c.len_utf8()..];
+            if !(after.is_empty() || after.starts_with(char::is_whitespace)) {
+                return None;
+            }
+            (Some(c), after.trim_start())
         }
         Some(_) => return None,
     };
+    if !rest.is_empty() {
+        let first = rest
+            .trim_start_matches(['"', '\'', '\u{ab}', '\u{201c}', '\u{2018}', ' '])
+            .chars()
+            .next()?;
+        if !first.is_alphabetic() {
+            return None;
+        }
+    }
+    // Left side: start of title, or LEFT [SEP].
     let left = left_raw.trim_end();
     let (left_core, left_sep) = match left.chars().last() {
-        Some(c) if SEPARATORS.contains(&c) => (left[..left.len() - c.len_utf8()].trim_end(), true),
-        _ => (left, false),
-    };
-    if needs_left_sep && !left_core.is_empty() && !left_sep {
-        return None;
-    }
-    let cleaned = match (left_core.is_empty(), after.is_empty()) {
-        (true, true) => return None,
-        (true, false) => after.to_string(),
-        (false, true) => left_core.to_string(),
-        (false, false) => {
-            let sep = right_sep.unwrap_or('-');
-            let sep = if sep == ',' || sep == '.' {
-                format!("{sep} ")
-            } else {
-                format!(" {sep} ")
-            };
-            format!("{left_core}{sep}{after}")
+        Some(c) if SHAPE_SEPARATORS.contains(&c) => {
+            let core = &left[..left.len() - c.len_utf8()];
+            if (c == '-' || c == '\u{2013}') && !core.ends_with(char::is_whitespace) {
+                return None;
+            }
+            (core.trim_end(), Some(c))
         }
+        _ => (left, None),
     };
     if !left_core.is_empty() {
+        let last = left_core.chars().last()?;
+        let closing = ['"', '\'', '\u{bb}', '\u{201d}', '\u{2019}', ')', ']'];
+        if !(last.is_alphabetic() || closing.contains(&last))
+            || !left_core.chars().any(char::is_alphabetic)
+        {
+            return None;
+        }
         let last_word = left_core
             .rsplit(char::is_whitespace)
             .next()
@@ -279,11 +323,29 @@ fn rebuild(left_raw: &str, right_raw: &str, needs_left_sep: bool) -> Option<Stri
         if DETERMINERS.contains(&last_word.as_str()) || CONNECTORS.contains(&last_word.as_str()) {
             return None;
         }
+        // Review round 3 (L1): an abbreviation's dot is not a separator.
+        if left_sep == Some('.') && last_word.chars().count() <= 2 {
+            return None;
+        }
+        if left_sep.is_none() && (marker.needs_left_sep || (marker.bare_t && rest.is_empty())) {
+            return None;
+        }
     }
-    cleaned
-        .chars()
-        .any(char::is_alphanumeric)
-        .then_some(cleaned)
+    let cleaned = match (left_core.is_empty(), rest.is_empty()) {
+        (true, true) => return None,
+        (true, false) => rest.to_string(),
+        (false, true) => left_core.to_string(),
+        (false, false) => {
+            let sep = right_sep.unwrap_or('-');
+            let sep = if sep == ',' || sep == '.' {
+                format!("{sep} ")
+            } else {
+                format!(" {sep} ")
+            };
+            format!("{left_core}{sep}{rest}")
+        }
+    };
+    Some(cleaned)
 }
 
 /// A provider's own tome number (pure — unit tested): the UNIMARC 225$v
@@ -693,10 +755,12 @@ mod tests {
             "Lucky Luke, L'Évasion des Dalton",
             Some(7),
         ),
+        // Round 3: a REST starting with a digit is the range shape ("T1 -
+        // 3"), indistinguishable from this year — untouched.
         (
             "L'Homme de l'année T. 3 - 1917",
-            "L'Homme de l'année - 1917",
-            Some(3),
+            "L'Homme de l'année T. 3 - 1917",
+            None,
         ),
         // Markers at the end.
         ("Les Tuniques bleues n°12", "Les Tuniques bleues", Some(12)),
@@ -713,7 +777,12 @@ mod tests {
         ("Tex Willer, tomo 3", "Tex Willer", Some(3)),
         ("Batman #12", "Batman", Some(12)),
         ("Spirou et Fantasio - T05", "Spirou et Fantasio", Some(5)),
-        ("Gaston T19.", "Gaston", Some(19)),
+        // Round 3: a bare trailing "T19" without a separator before it is
+        // refused, so "Opération T4" / "Aktion T4" stay untouched; the
+        // separated form still splits.
+        ("Gaston T19.", "Gaston T19.", None),
+        ("Gaston - T19.", "Gaston", Some(19)),
+        ("Opération T4", "Opération T4", None),
         ("Calvin and Hobbes No. 2", "Calvin and Hobbes", Some(2)),
         ("Astérix (Tome 12)", "Astérix", Some(12)),
         ("Yoko Tsuno [T. 4]", "Yoko Tsuno", Some(4)),
@@ -781,6 +850,38 @@ mod tests {
         ("Intégrale et T3 : fin", "Intégrale et T3 : fin", None),
         ("Livre 1 & Tome 2 : x", "Livre 1 & Tome 2 : x", None),
         ("Tome 1 à 3 : Intégrale", "Tome 1 à 3 : Intégrale", None),
+        // Review round 3 (M1) — a range or a list with bare numbers.
+        ("L'Intégrale T1 - 3", "L'Intégrale T1 - 3", None),
+        (
+            "Thorgal Intégrale Tome 1 - 3",
+            "Thorgal Intégrale Tome 1 - 3",
+            None,
+        ),
+        ("Coffret Tome 1, 2, 3", "Coffret Tome 1, 2, 3", None),
+        ("Spirou T1, 2 et 3", "Spirou T1, 2 et 3", None),
+        ("XIII T1 – 2", "XIII T1 – 2", None),
+        ("Astérix T1 - 2 - 3", "Astérix T1 - 2 - 3", None),
+        ("Tome 1 - 2", "Tome 1 - 2", None),
+        ("Tome 3 : ...", "Tome 3 : ...", None),
+        ("Tome 3 - « Le Retour »", "« Le Retour »", Some(3)),
+        // Review round 3 (L1) — an abbreviation's or an ellipsis' dot.
+        (
+            "Le Spirou de... T4 : Le Journal d'un ingénu",
+            "Le Spirou de... T4 : Le Journal d'un ingénu",
+            None,
+        ),
+        (
+            "Mademoiselle J. T.3 - Le Monde",
+            "Mademoiselle J. T.3 - Le Monde",
+            None,
+        ),
+        ("Dr. No 1", "Dr. No 1", None),
+        (
+            "Thorgal. Tome 3 : Le Pays Qâ",
+            "Thorgal : Le Pays Qâ",
+            Some(3),
+        ),
+        ("Thorgal-Tome 3 : x", "Thorgal-Tome 3 : x", None),
     ];
 
     /// Review M1 — (media type, input, expected title, expected number):
@@ -874,6 +975,29 @@ mod tests {
         ("book", "Volume 1 - Volume 2", "Volume 1 - Volume 2", None),
         ("book", "Tome 1, Tome 2 : x", "Tome 1, Tome 2 : x", None),
         ("bd", "Le Scorpion T1 - T2", "Le Scorpion T1 - T2", None),
+        // Review round 3 (M1).
+        ("book", "Volume 1 - 2 : x", "Volume 1 - 2 : x", None),
+        ("bd", "L'Intégrale T1 - 3", "L'Intégrale T1 - 3", None),
+        ("bd", "Coffret Tome 1, 2, 3", "Coffret Tome 1, 2, 3", None),
+        ("bd", "Spirou T1, 2 et 3", "Spirou T1, 2 et 3", None),
+        ("bd", "XIII T1 – 2", "XIII T1 – 2", None),
+        ("bd", "Astérix T1 - 2 - 3", "Astérix T1 - 2 - 3", None),
+        ("bd", "Tome 1 - 2", "Tome 1 - 2", None),
+        ("bd", "Aktion T4", "Aktion T4", None),
+        // Review round 3 (L1).
+        (
+            "bd",
+            "Le Spirou de... T4 : Le Journal d'un ingénu",
+            "Le Spirou de... T4 : Le Journal d'un ingénu",
+            None,
+        ),
+        ("bd", "Dr. No 1", "Dr. No 1", None),
+        (
+            "bd",
+            "Mademoiselle J. T.3 - Le Monde",
+            "Mademoiselle J. T.3 - Le Monde",
+            None,
+        ),
     ];
 
     #[test]
