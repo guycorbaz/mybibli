@@ -1,6 +1,6 @@
 # Story 13.5: Every series in the selector, Recent additions in table mode
 
-Status: review
+Status: done
 
 GitHub issues: #576 (type:bug, medium), #577 (type:bug, low). Covers: bug fixes. Epic 13; ships in v1.23.0.
 
@@ -44,3 +44,12 @@ so that the 26th series is reachable and the home page is consistent.
 **Gates run.** `cargo clippy --all-targets -D warnings` clean; `cargo test --lib -- routes::home routes::titles templates_audit models::series` 182 passed; `cargo test --test series_list_all_names` 2 passed; `npx tsc --noEmit`, flake gate, home-page selector gate OK; Playwright (fresh stack, `--workers=2`): new spec + home, browse-toggle, home-search, series, series-epic11-smoke, mcp-gaps-tools, accessibility-full, csp-headers, dewey-code — 72 passed, 1 skipped. No locale change.
 
 **Files over 2000 lines.** `src/routes/titles.rs` 2753 (was 2750; +3 lines, no new logic added there).
+
+### Review Findings
+
+Code review round 1 of 3d9f7fe — single round: no Medium+ (4 Low).
+
+- [x] [Review][Defer] L1 — `GET /api/v1/series` still returns page 1 only (`src/routes/api_v1.rs`) → issue #599.
+- [x] [Review][Dismiss] L2 — on mobile, list mode shows the 6-column table, like `#browse-results` (consistent).
+- [x] [Review][Dismiss] L3 — brief table flash in grid mode when the fold is remembered open — pre-existing for `#browse-results`; the fold is closed by default.
+- [x] [Review][Patch] L4 — `render_search_table_row` and `render_search_row` (`src/routes/home_search_fragment.rs`) log the render error with `tracing::warn!` before falling back to an empty string.

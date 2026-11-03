@@ -108,7 +108,10 @@ fn render_search_row(
         volume_short_label,
     }
     .render()
-    .unwrap_or_default()
+    .unwrap_or_else(|e| {
+        tracing::warn!(title_id = item.id, error = %e, "title card render failed");
+        String::new()
+    })
 }
 
 /// Fix #315 — list-mode `<tr>` for the HTMX search-fragment swap, so the
@@ -123,7 +126,12 @@ struct BrowseTableRowTemplate<'a> {
 }
 
 fn render_search_table_row(item: &SearchResult) -> String {
-    BrowseTableRowTemplate { item }.render().unwrap_or_default()
+    BrowseTableRowTemplate { item }
+        .render()
+        .unwrap_or_else(|e| {
+            tracing::warn!(title_id = item.id, error = %e, "browse table row render failed");
+            String::new()
+        })
 }
 
 fn render_pagination_oob(
