@@ -1,6 +1,6 @@
 # Story 13.10: The tome number
 
-Status: review
+Status: done
 
 GitHub issue: #579 (type:change-request). Covers: FR157, FR158. Epic 13; ships in v1.23.0. Before Story 13.11 (both touch series positions).
 
@@ -81,6 +81,12 @@ so that series read cleanly and titles sort correctly.
 - **Shared positions (review L6, dismissed):** like `SeriesService::assign_title`, the position edit refuses only a position the *same* title already holds in the series; another title may hold the same position (existing behaviour, #524 "rendered, not prevented").
 - **Lock order:** the position edit locks the series row, then the `title_series` rows, then (in the settle after commit) the tomes. The hint is cleared inside `TitleSeriesModel::assign_in` / `assign_omnibus_in`, i.e. last in every attach transaction (hand assignment, scan auto-settle: series → tomes → `title_series`; series proposal acceptance: proposal → items → series → targets incl. the title row → apply), after a plain read so the title row is write-locked only when a hint is set.
 
+- **Known limits of the parser (accepted, review round 4)** — also in the `services::tome` module docs:
+  - comic (`bd`) titles whose own name has the shape of a real tome marker are split: "L'Ennemi public n°1", "Le Prisonnier n°6", "Public Enemy #1", "Opération T4 : …", "Aktion T4 - …", "Panzer T34 : …", "Chanel N°5 : …". **Remedy:** the librarian edits the title by hand; `title` is then in `manually_edited_fields` and no later metadata download rewrites it;
+  - false negatives by design: anything outside the three accepted shapes keeps its marker (ranges, lists, a number right after the marker's number, year-shaped numbers ≥ 1000 in a book, a trailing bare "T19", a marker right after a preposition / connector / article such as "Le Tome 2 : …");
+  - cosmetic losses: in the middle shape the right-hand separator is kept and spacing normalised ("Harry Potter, tome 1 : …" → "Harry Potter : …"; "Thorgal. Tome 3 : …" → "Thorgal : …").
+- **Deadlock (review round 4 L5):** the guarded hint UPDATE (`NOT EXISTS` on `title_series`) can, rarely, deadlock with a concurrent hand assignment; the hand assignment (`TitleSeriesModel::assign`) retries once on SQLSTATE 40001, and the hint write is best effort (logged).
+
 ### Review Findings
 
 Round 1 (on 306fd8a): 1 Medium, 7 Low — all addressed.
@@ -109,3 +115,9 @@ Round 3 (on fee9e45): 1 Medium, 3 Low — addressed.
   Previous cases adjusted, with reasons: "L'Homme de l'année T. 3 - 1917" is now untouched (a REST starting with a digit is the range shape "T1 - 3" and cannot be told apart from a year); "Gaston T19." is now untouched (bare trailing "T" without a separator — the "Opération T4" trade-off); "Gaston - T19." still splits.
 - [x] **L1** — a `.` before the marker is a separator only after a word of three letters or more and never after another `.`: "Le Spirou de... T4 : …", "Mademoiselle J. T.3 - …", "Dr. No 1" untouched (tested); "Thorgal. Tome 3 : …" still splits.
 - [x] **L3** — the hint UPDATE is guarded again by `NOT EXISTS (SELECT 1 FROM title_series ts WHERE ts.title_id = titles.id AND ts.deleted_at IS NULL)` — `title_series` only, no join to `series`.
+
+Round 4 (on 4be643d): no Medium+ left — closed.
+
+- [x] **L1** — for `book`, numbers ≥ 1000 are years, not tomes: "Tome 1789 : la Révolution", "Vol. 1968 : la révolte" untouched; comics keep the whole range ("Batman #1000"). Tested.
+- [x] **L2 / L3 / L4** — documented as known limits (prepositions / articles before a marker, cosmetic separator losses, false negatives) in Dev Notes and the parser module docs, together with the comic false positives ("L'Ennemi public n°1", "Public Enemy #1", "Opération T4 : …", "Panzer T34 : …", "Chanel N°5 : …") and their remedy (hand edit → protected by `manually_edited_fields`).
+- [x] **L5** — `TitleSeriesModel::assign` retries its transaction once on a deadlock (`acceptance::is_deadlock`).

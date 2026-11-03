@@ -532,11 +532,26 @@ impl TitleSeriesModel {
     ) -> Result<u64, AppError> {
         // One transaction (review round 2 L3): the insert and the clear of
         // the detected-tome hint commit together, so a committed assign
-        // never reports an error.
-        let mut tx = pool.begin().await?;
-        let id = Self::assign_in(&mut tx, title_id, series_id, position_number).await?;
-        tx.commit().await?;
-        Ok(id)
+        // never reports an error. Retried once on a deadlock (review round
+        // 4 L5: the guarded hint write of a concurrent metadata fetch).
+        let mut attempt = 1;
+        loop {
+            let mut tx = pool.begin().await?;
+            match Self::assign_in(&mut tx, title_id, series_id, position_number).await {
+                Ok(id) => {
+                    tx.commit().await?;
+                    return Ok(id);
+                }
+                Err(AppError::Database(e))
+                    if attempt == 1 && crate::services::acceptance::is_deadlock(&e) =>
+                {
+                    drop(tx);
+                    attempt += 1;
+                    tracing::info!(title_id, series_id, "Series assignment deadlocked; retrying once");
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     /// [`Self::assign`] on a caller-held connection, so it can run inside

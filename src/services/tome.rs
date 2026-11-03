@@ -14,6 +14,20 @@
 //!   person or an accepted proposal and is never changed silently).
 //! * [`change_position`] — the position edit of one membership.
 //! * Labels: [`tome_label`], [`positions_label`], [`detected_label`].
+//!
+//! Known limits of the parser (accepted, review round 4):
+//! * a comic title whose own name has the shape of a tome marker is split
+//!   — "L'Ennemi public n°1", "Le Prisonnier n°6", "Public Enemy #1",
+//!   "Opération T4 : …", "Aktion T4 - …", "Panzer T34 : …", "Chanel N°5 :
+//!   …" (as `bd`). Remedy: the librarian edits the title by hand; it is
+//!   then in `manually_edited_fields` and never rewritten again;
+//! * false negatives are accepted by design: anything outside the three
+//!   shapes of [`split_tome_marker`] keeps its marker (a range, a list, a
+//!   number right after, a year-shaped number in a book, a trailing bare
+//!   "T19", a marker after a preposition or connector);
+//! * cosmetic losses: the separator kept between the two halves of a
+//!   middle marker is the right one ("Harry Potter, tome 1 : …" →
+//!   "Harry Potter : …"), and spacing around it is normalised.
 
 use std::collections::HashSet;
 
@@ -149,7 +163,12 @@ pub fn split_tome_marker(raw: &str, set: MarkerSet) -> (String, Option<i32>) {
     // Review round 2 (M1): two markers ("Intégrale T1 à T3", "T1, T2,
     // T3", "Volume 1 - Volume 2") name a range or a list, not this
     // title's number — the title is left alone.
-    if let [(start, end, n, word, bracketed)] = hits.as_slice() {
+    if let [(start, end, n, word, bracketed)] = hits.as_slice()
+        // Review round 4 (L1): in a book, a four-digit number is a year
+        // ("Tome 1789 : la Révolution"), not a tome; comics keep the
+        // whole range ("Batman #1000").
+        && !(set == MarkerSet::Book && *n >= 1000)
+    {
         let marker = MarkerContext {
             needs_left_sep: LEFT_SEP_WORDS.contains(word),
             bare_t: *word == "t" && !bracketed,
@@ -1037,12 +1056,28 @@ mod tests {
     #[test]
     fn upper_bound_is_accepted_and_beyond_refused() {
         assert_eq!(
-            split_tome_marker("Tome 10000 : Fin", MarkerSet::Book).1,
+            split_tome_marker("Tome 10000 : Fin", MarkerSet::Comic).1,
             Some(10_000)
         );
         assert_eq!(
-            split_tome_marker("Tome 10001 : Fin", MarkerSet::Book).1,
+            split_tome_marker("Tome 10001 : Fin", MarkerSet::Comic).1,
             None
+        );
+    }
+
+    #[test]
+    fn a_book_number_of_four_digits_is_a_year() {
+        // Review round 4 (L1).
+        for raw in ["Tome 1789 : la Révolution", "Vol. 1968 : la révolte"] {
+            assert_eq!(split_for_media_type(raw, "book"), (raw.to_string(), None));
+        }
+        assert_eq!(
+            split_for_media_type("Tome 999 : Fin", "book"),
+            ("Fin".to_string(), Some(999))
+        );
+        assert_eq!(
+            split_for_media_type("Batman #1000", "bd"),
+            ("Batman".to_string(), Some(1000))
         );
     }
 
