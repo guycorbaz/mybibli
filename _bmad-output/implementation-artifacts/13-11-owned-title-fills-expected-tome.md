@@ -1,6 +1,6 @@
 # Story 13.11: An owned title fills an expected tome by proposal
 
-Status: review
+Status: done
 
 GitHub issue: #588 (type:change-request). Covers: FR159. Epic 13 (added by the project lead on 2026-11-03); ships in v1.23.0. After Story 13.10 (both touch series positions).
 
@@ -26,7 +26,7 @@ About 51 `propose_series_attach` lines refused with "The series already expects 
 
 ## Acceptance Criteria
 
-1. **AC1 — filing.** A title line at a position covered by an unsettled expected tome is accepted at filing when the tome has no ISBN, or its ISBN equals the title's ISBN (ISBN-13 comparison; title without ISBN + tome with ISBN → accepted, the librarian judges); refused with a new explicit English message when both ISBNs are known and differ (`TomeIsbnMismatch`, mapped to `ToolError::Refused`). An omnibus line (range) follows the same rule for every tome in its range.
+1. **AC1 — filing.** A title line at a position covered by an unsettled expected tome is accepted at filing when the tome has no ISBN, or its ISBN equals the title's ISBN (ISBN-13 comparison; title without ISBN + tome with ISBN → accepted, the librarian judges); refused with a new explicit English message when both ISBNs are known and differ (`TomeIsbnMismatch`, mapped to `ToolError::Refused`). An omnibus line covering more than one position fills every tome in its range **without** ISBN comparison — an omnibus edition has its own ISBN (amended by code review round 1, M1; a one-position omnibus is compared like a single line, round 2); the review screen names the tomes each title line will fill so the librarian judges.
 2. **AC2 — acceptance settles.** Accepting such a proposal attaches the title at its position(s) and settles the expected tome(s) by it, inside the acceptance transaction, respecting the lock order (proposal → items → series → tomes → titles) and the series staleness rules (version + live state, #521).
 3. **AC3 — staleness.** If the position became held by another title meanwhile, or the tome's ISBN changed to a different one, acceptance marks the proposal stale (existing reason copy or a new one).
 4. **AC4 — edit.** The librarian's line edit (11-19) applies the same rule (AC1) instead of the old refusal.
@@ -35,7 +35,7 @@ About 51 `propose_series_attach` lines refused with "The series already expects 
 
 ## Tasks / Subtasks
 
-- [x] T1 — rule change in `check_against_series` (+ new refusal variant, message, mapping)
+- [x] T1 — rule change in `check_against_series` (+ new refusal variant, message, mapping; ISBN compared for single-position lines only — review round 1)
 - [x] T2 — acceptance: attach + settle in the transaction (reuse `expected_tomes` settle helpers on the caller's connection)
 - [x] T3 — edit path
 - [x] T4 — docs (module docs, CLAUDE.md, tool description)
@@ -60,3 +60,11 @@ Round 1 (of 2031d47) — 1 Medium, 3 Low, all fixed:
 - [x] **L1** — `ExpectedTomeModel::live_title_isbns_in` now reads with `LOCK IN SHARE MODE` (title rows by primary key, after the series and tome locks: series → tomes → titles); a plain read on filing's autocommit connection. Doc comments fixed (`expected_tome.rs`, `title_isbns_in`, `series_acceptance` module doc).
 - [x] **L2** — the review screen of a pending `series_attach` names the expected tomes each title line fills ("Fills the expected tome 5 “Title” (ISBN …)." / "(no ISBN)."), computed from the live tomes (`proposal_review::with_fills` / pure `fills_of`, `routes::proposals::fill_label`, `data-fills-tome` paragraph, Askama-escaped; keys `proposals.fills_tome` / `fills_tome_no_isbn` in en/fr/de/it). Tests: unit `a_title_line_names_the_tomes_it_fills`, `fill_labels_name_each_tome_in_every_locale`; DB render in `an_omnibus_with_its_own_isbn_fills_every_tome_of_its_range` (shown while pending, gone once decided).
 - [x] **L3** — DB test `a_pending_attach_touching_no_expected_position_applies_unchanged` (item shapes are unchanged, so a proposal filed before 13-11 is identical to one filed now): title + tome lines on free positions of a series expecting another tome apply as before, nothing filled, no fill notice.
+
+Round 2 (of f3cddd1) — 0 Medium+, 5 Low, all fixed:
+
+- [x] **L1** — lock-order wording corrected (`series_acceptance.rs` module doc, `live_title_isbns_in` / `title_isbns_in` docs, CLAUDE.md): in acceptance the titles are already locked by the staleness step (series → titles → tomes); the share lock matters for the line edit.
+- [x] **L2** — a one-position "omnibus" (`end_position == position`, allowed by validation) is compared like a single line: the exemption needs `end > position`. Shared pure helper `series_proposals::isbn_conflict` (used by the check and the review note). Unit test `a_one_position_omnibus_is_compared_like_a_single_line`.
+- [x] **L3** — the review note lists only the tomes that will be filled: unsettled tomes, and for a single-position line only a same or unknown ISBN (`fills_of` takes the title's ISBN-13). Unit test extended; DB: `a_tome_isbn_changed_since_filing_makes_the_fill_stale` sees the note, then not once the tome names another book.
+- [x] **L4** — AC1 / T1 amended to the round-1 decision.
+- [x] **L5** — `proposal_edit::a_title_line_edit_may_fill_an_expected_tome`: single → omnibus 4..5 over a tome of another ISBN is accepted.

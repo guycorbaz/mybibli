@@ -1024,12 +1024,19 @@ async fn a_tome_isbn_changed_since_filing_makes_the_fill_stale(pool: DbPool) {
         json!({"series_id": sid, "titles": [{"title_id": t, "position": 2}], "sources": [SRC]}),
     )
     .await;
+    // Review round 2 (L3): the review note lists the tome while the fill
+    // is possible, and drops it once the tome names another book.
+    let note = "Remplit le tome attendu 2 « Durango 2 » (sans ISBN).";
+    let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    assert!(text(page).contains(note));
     sqlx::query("UPDATE series_expected_tomes SET isbn = ? WHERE series_id = ?")
         .bind(ISBN_B)
         .bind(sid)
         .execute(&pool)
         .await
         .unwrap();
+    let (_, page) = f.lib.get(&f.agent.app, &format!("/proposals/{id}")).await;
+    assert!(!page.contains("data-fills-tome"), "{page}");
     let (status, body) = accept(&f, &pool, id).await;
     assert_eq!(status, StatusCode::OK);
     assert_stale_and_untouched(&pool, id, &body).await;

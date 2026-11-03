@@ -500,10 +500,11 @@ impl ExpectedTomeModel {
 
     /// Story 13-11 — the stored ISBN of each live title among
     /// `title_ids`, read with a share lock on those title rows (by
-    /// primary key), so the ISBN acceptance compares stays put until
-    /// the transaction ends; taken after the series and tome locks
-    /// (lock order … → tomes → titles). Titles without an ISBN are left
-    /// out.
+    /// primary key). Acceptance already holds them exclusively (step 4
+    /// locks the targets: series → titles → tomes), so there the lock
+    /// adds nothing; it matters for the line edit, which locks only the
+    /// series and tomes before, so the ISBN it compares stays put until
+    /// its transaction ends. Titles without an ISBN are left out.
     pub async fn live_title_isbns_in(
         conn: &mut MySqlConnection,
         title_ids: &[u64],

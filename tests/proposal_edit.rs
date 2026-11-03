@@ -980,6 +980,18 @@ async fn a_title_line_edit_may_fill_an_expected_tome(pool: DbPool) {
         body.contains("La position 4 est le tome attendu « Attendu 4 » (ISBN 9780134685991), un autre livre que ce titre"),
         "{body}"
     );
+    // Review round 2: as an omnibus over 4..5 the same title is
+    // accepted — an omnibus edition has its own ISBN, not compared.
+    let (status, body) = edit(
+        &f,
+        id,
+        items[1],
+        v,
+        "position=4&is_omnibus=on&end_position=5",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let v = version_of(&pool, id).await;
     let (status, body) = edit(&f, id, items[1], v, "position=5").await;
     assert_eq!(status, StatusCode::OK, "{body}");
 }

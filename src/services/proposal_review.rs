@@ -32,7 +32,9 @@ use crate::models::proposal::{
 };
 use crate::services::cover_staging;
 use crate::services::proposal_edit;
+use crate::services::expected_tomes::normalize_isbn;
 use crate::services::proposal_history::{ProposalSubject, SubjectLine};
+use crate::services::series_proposals::isbn_conflict;
 use crate::services::proposals::{
     Decision, Proposal, ProposalDetail, ProposalError, ProposalItem, ProposalService, Transition,
 };
@@ -800,9 +802,11 @@ async fn with_fills(
     else {
         return Ok(lines);
     };
+    // Only unsettled tomes are filled (a settled one's position is held).
     let tomes: Vec<TomeSlot> = ExpectedTomeModel::list_by_series(pool, series_id)
         .await?
         .into_iter()
+        .filter(|t| t.settled_title_id.is_none())
         .map(|t| TomeSlot {
             id: t.id,
             position: t.position,
@@ -810,14 +814,31 @@ async fn with_fills(
             isbn: t.isbn,
         })
         .collect();
+    let title_ids: Vec<u64> = lines
+        .iter()
+        .filter(|l| l.line == "title")
+        .filter_map(|l| l.target_id)
+        .collect();
+    let isbns: HashMap<u64, String> = {
+        let mut conn = pool.acquire().await?;
+        ExpectedTomeModel::live_title_isbns_in(&mut conn, &title_ids)
+            .await?
+            .into_iter()
+            .filter_map(|(id, raw)| Some((id, normalize_isbn(Some(&raw)).ok().flatten()?)))
+            .collect()
+    };
     for line in lines.iter_mut().filter(|l| l.line == "title") {
-        line.fills = fills_of(line, &tomes);
+        let isbn = line.target_id.and_then(|id| isbns.get(&id));
+        line.fills = fills_of(line, &tomes, isbn.map(String::as_str));
     }
     Ok(lines)
 }
 
-/// The tomes inside a title line's range (pure — unit tested).
-pub fn fills_of(line: &LineView, tomes: &[TomeSlot]) -> Vec<TomeSlot> {
+/// The tomes a title line would fill (pure — unit tested): those inside
+/// its range, minus — for a single-position line — a tome whose ISBN
+/// names another book than the title's (`title_isbn`, ISBN-13), which
+/// acceptance would refuse ([`isbn_conflict`]).
+pub fn fills_of(line: &LineView, tomes: &[TomeSlot], title_isbn: Option<&str>) -> Vec<TomeSlot> {
     let Ok(start) = line.position.parse::<i32>() else {
         return Vec::new();
     };
@@ -829,6 +850,7 @@ pub fn fills_of(line: &LineView, tomes: &[TomeSlot]) -> Vec<TomeSlot> {
     tomes
         .iter()
         .filter(|t| (start..=end).contains(&t.position))
+        .filter(|t| isbn_conflict(start, end, title_isbn, t.isbn.as_deref()).is_none())
         .cloned()
         .collect()
 }
@@ -1144,15 +1166,27 @@ mod tests {
         };
         let tomes = [slot(1, 2), slot(2, 3), slot(3, 5)];
         let single = parse_line(title(7), &json!({"line":"title","position":3}), "en");
-        assert_eq!(fills_of(&single, &tomes), vec![slot(2, 3)]);
+        assert_eq!(fills_of(&single, &tomes, None), vec![slot(2, 3)]);
         let omnibus = parse_line(
             title(7),
             &json!({"line":"title","position":2,"is_omnibus":true,"end_position":4}),
             "en",
         );
-        assert_eq!(fills_of(&omnibus, &tomes), vec![slot(1, 2), slot(2, 3)]);
+        assert_eq!(
+            fills_of(&omnibus, &tomes, Some("9782012101360")),
+            vec![slot(1, 2), slot(2, 3)]
+        );
         let elsewhere = parse_line(title(7), &json!({"line":"title","position":9}), "en");
-        assert!(fills_of(&elsewhere, &tomes).is_empty());
+        assert!(fills_of(&elsewhere, &tomes, None).is_empty());
+        // Review round 2: a single line does not list a tome of another
+        // ISBN (acceptance would refuse it); same or unknown ISBN listed.
+        let with_isbn = [TomeSlot {
+            isbn: Some("9782070360246".into()),
+            ..slot(2, 3)
+        }];
+        assert!(fills_of(&single, &with_isbn, Some("9782012101360")).is_empty());
+        assert_eq!(fills_of(&single, &with_isbn, Some("9782070360246")).len(), 1);
+        assert_eq!(fills_of(&single, &with_isbn, None).len(), 1);
     }
 
     #[test]
