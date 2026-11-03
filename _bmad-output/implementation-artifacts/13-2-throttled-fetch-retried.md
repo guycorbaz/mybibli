@@ -1,6 +1,6 @@
 # Story 13.2: A throttled metadata fetch is retried
 
-Status: review
+Status: done
 
 GitHub issue: #583 (type:bug, severity:medium). Covers: bug fix. Epic 13; ships in v1.23.0.
 
@@ -46,6 +46,7 @@ Google Books answered HTTP 503 several hundred times; eight titles (335, 337, 89
 
 - The task needs the same inputs as the scan path (`ProviderRegistry`, timeouts, `reqwest::Client`, `covers_dir`): take them from `AppState` exactly as `routes/catalog.rs` does when it spawns `fetch_metadata_chain`.
 - Trash restore (review L1, accepted): a title soft-deleted while queued has its row dequeued by the next tick; restoring the title from Trash does not re-enqueue it — a re-download does if the provider is still saturated.
+- Concurrent lookup during a retry (review round 2, L3, accepted): a scan throttled while the task retries the same title bumps the row's `version`, so the task's write is skipped ("superseded") and the row stays due as the scan left it; the title may then be looked up once more on the next tick. Bounded to one extra lookup per such collision.
 - Deployment follow-up (not code): after v1.23.0, the eight production titles of #583 can simply be re-downloaded by hand.
 
 ## Completion Notes
@@ -80,3 +81,10 @@ Code review round 1 of 885c804 (0 High, 2 Medium, 6 Low).
 - [x] [Review][Patch] L4 — re-download dequeues only after the update succeeded (direct apply, no-change result, or `confirm_metadata` after `update_metadata`).
 - [x] [Review][Patch] L5 — router-level tests of `/title/{id}/redownload` (throttled → enqueue, applied → dequeue, genuine miss → dequeue), bulk decision test, M1 isolation test; E2E justification in Completion Notes.
 - [x] [Review][Patch] L6 — `context` field added to the dequeue-failure warn (now in `record_lookup`).
+
+**Round 2** (0 Medium+, 4 Low, all handled):
+
+- [x] [Review][Patch] L1 — a failing row's push-back now burns an attempt (`push_back`), and once the schedule is exhausted the row is dropped with an `error` log; isolation test asserts `attempts` 1 → 2; unit test `push_back_burns_an_attempt_and_ends_with_the_schedule`.
+- [x] [Review][Patch] L2 — every guarded write branches on its result; a blocked write logs "superseded by a concurrent lookup" (`RowResult::Superseded`, `TickStats.superseded`).
+- [x] [Review][Patch] L3 — extra lookup after a concurrent throttled scan documented in Dev Notes (accepted, bounded).
+- [x] [Review][Patch] L4 — the bulk-run flag is re-checked before each row; the batch stops and the remaining rows stay due.

@@ -70,13 +70,13 @@ pub fn retry_delay_secs(attempts_done: u32) -> Option<u64> {
     RETRY_SCHEDULE_SECS.get(attempts_done as usize).copied()
 }
 
-/// Delay before a row whose processing failed is looked at again: its
-/// current back-off slot, never less than one tick (no hot retry of a
-/// failing row).
-pub fn push_back_delay_secs(attempts_done: u32) -> u64 {
-    retry_delay_secs(attempts_done)
-        .unwrap_or(TICK_INTERVAL_SECS)
-        .max(TICK_INTERVAL_SECS)
+/// Push-back of a row whose processing failed (DB error): it counts as an
+/// attempt, so a row that always fails ends like a throttled one —
+/// `Some((attempts, delay_secs))` with the next back-off slot (never less
+/// than one tick), `None` once the schedule is exhausted (dequeue).
+pub fn push_back(attempts_before: u32) -> Option<(u32, u64)> {
+    let attempts = attempts_before.saturating_add(1);
+    retry_delay_secs(attempts).map(|d| (attempts, d.max(TICK_INTERVAL_SECS)))
 }
 
 /// What the end of a lookup does to the queue.
@@ -190,8 +190,12 @@ pub struct TickStats {
     pub done: usize,
     pub rescheduled: usize,
     pub given_up: usize,
-    /// Rows whose processing failed; logged and pushed back.
+    /// Rows whose processing failed; logged and pushed back (or dropped
+    /// once the schedule is exhausted).
     pub errors: usize,
+    /// Rows looked up whose write was blocked by the version guard: a
+    /// concurrent lookup recorded its own outcome meanwhile.
+    pub superseded: usize,
     /// The whole tick was skipped because a bulk run is in progress.
     pub deferred_for_bulk_run: bool,
 }
@@ -221,6 +225,7 @@ impl Pacer {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RowResult {
     Skipped,
+    Superseded,
     Done,
     Rescheduled,
     GaveUp,
@@ -230,8 +235,8 @@ enum RowResult {
 /// turn. Callable on its own (tests); [`spawn`] calls it on a timer.
 pub async fn tick(state: &AppState) -> Result<TickStats, AppError> {
     let mut stats = TickStats::default();
-    // L3 — a bulk refetch / backfill run already loads the providers.
-    if crate::services::bulk_cover_fetch::snapshot(&state.bulk_cover_fetch).running {
+    // A bulk refetch / backfill run already loads the providers.
+    if bulk_run_in_progress(state) {
         tracing::debug!("Metadata retry tick skipped: a bulk metadata run is in progress");
         stats.deferred_for_bulk_run = true;
         return Ok(stats);
@@ -255,39 +260,74 @@ pub async fn tick(state: &AppState) -> Result<TickStats, AppError> {
     };
 
     for row in due {
+        // A bulk run started meanwhile: stop here, the rest stays due.
+        if bulk_run_in_progress(state) {
+            tracing::debug!("Metadata retry batch stopped: a bulk metadata run started");
+            stats.deferred_for_bulk_run = true;
+            break;
+        }
         match retry_row(state, &row, &ctx, &mut pacer).await {
             Ok(RowResult::Skipped) => stats.skipped += 1,
+            Ok(RowResult::Superseded) => stats.superseded += 1,
             Ok(RowResult::Done) => stats.done += 1,
             Ok(RowResult::Rescheduled) => stats.rescheduled += 1,
             Ok(RowResult::GaveUp) => stats.given_up += 1,
             Err(e) => {
-                // M1 — one failing row neither stops the batch nor stays
-                // due (it would block the head of the queue and be hit
-                // again on every tick).
+                // One failing row neither stops the batch nor stays due (it
+                // would block the head of the queue); it burns an attempt.
                 stats.errors += 1;
-                let delay_secs = push_back_delay_secs(row.attempts);
-                tracing::warn!(
-                    title_id = row.title_id,
-                    attempts = row.attempts,
-                    delay_secs,
-                    error = %e,
-                    "Metadata retry failed for this title; pushed back"
-                );
-                if let Err(e) =
-                    MetadataRetryModel::reschedule(&state.pool, &row, row.attempts, delay_secs)
-                        .await
-                {
-                    tracing::warn!(
-                        title_id = row.title_id,
-                        error = %e,
-                        "Failed to push back a metadata retry"
-                    );
-                }
+                push_back_failed_row(&state.pool, &row, &e).await;
             }
         }
     }
-    stats.retried = stats.done + stats.rescheduled + stats.given_up;
+    stats.retried = stats.done + stats.rescheduled + stats.given_up + stats.superseded;
     Ok(stats)
+}
+
+fn bulk_run_in_progress(state: &AppState) -> bool {
+    crate::services::bulk_cover_fetch::snapshot(&state.bulk_cover_fetch).running
+}
+
+/// Push back (or, schedule exhausted, drop) a row whose processing failed.
+async fn push_back_failed_row(pool: &DbPool, row: &DueRetry, error: &AppError) {
+    let written = match push_back(row.attempts) {
+        Some((attempts, delay_secs)) => {
+            tracing::warn!(
+                title_id = row.title_id,
+                attempts,
+                delay_secs,
+                error = %error,
+                "Metadata retry failed for this title; pushed back"
+            );
+            MetadataRetryModel::reschedule(pool, row, attempts, delay_secs).await
+        }
+        None => {
+            tracing::error!(
+                title_id = row.title_id,
+                attempts = row.attempts,
+                error = %error,
+                "Metadata retry keeps failing for this title; dropped from the queue"
+            );
+            MetadataRetryModel::dequeue_read(pool, row).await
+        }
+    };
+    if let Err(e) = written {
+        tracing::warn!(
+            title_id = row.title_id,
+            error = %e,
+            "Failed to push back a metadata retry"
+        );
+    }
+}
+
+/// Log a guarded write blocked by a concurrent lookup.
+fn log_superseded(row: &DueRetry) -> RowResult {
+    tracing::info!(
+        title_id = row.title_id,
+        attempts = row.attempts,
+        "Metadata retry superseded by a concurrent lookup; queue row left as it is"
+    );
+    RowResult::Superseded
 }
 
 /// Retry one due row. Writes are guarded by the version `due_batch` read,
@@ -301,7 +341,9 @@ async fn retry_row(
     let job = match prepare(&state.pool, row.title_id).await? {
         Ok(job) => job,
         Err(reason) => {
-            MetadataRetryModel::dequeue_read(&state.pool, row).await?;
+            if !MetadataRetryModel::dequeue_read(&state.pool, row).await? {
+                return Ok(log_superseded(row));
+            }
             tracing::info!(
                 title_id = row.title_id,
                 attempts = row.attempts,
@@ -330,7 +372,9 @@ async fn retry_row(
 
     Ok(match verdict(outcome, row.attempts) {
         RetryVerdict::Done => {
-            MetadataRetryModel::dequeue_read(&state.pool, row).await?;
+            if !MetadataRetryModel::dequeue_read(&state.pool, row).await? {
+                return Ok(log_superseded(row));
+            }
             tracing::info!(
                 title_id = row.title_id,
                 attempts = row.attempts + 1,
@@ -343,7 +387,9 @@ async fn retry_row(
             attempts,
             delay_secs,
         } => {
-            MetadataRetryModel::reschedule(&state.pool, row, attempts, delay_secs).await?;
+            if !MetadataRetryModel::reschedule(&state.pool, row, attempts, delay_secs).await? {
+                return Ok(log_superseded(row));
+            }
             tracing::info!(
                 title_id = row.title_id,
                 attempts,
@@ -353,7 +399,9 @@ async fn retry_row(
             RowResult::Rescheduled
         }
         RetryVerdict::GiveUp { attempts } => {
-            MetadataRetryModel::dequeue_read(&state.pool, row).await?;
+            if !MetadataRetryModel::dequeue_read(&state.pool, row).await? {
+                return Ok(log_superseded(row));
+            }
             tracing::warn!(
                 title_id = row.title_id,
                 attempts,
@@ -437,10 +485,11 @@ mod tests {
     }
 
     #[test]
-    fn push_back_is_never_shorter_than_a_tick() {
-        assert_eq!(push_back_delay_secs(0), 900);
-        assert_eq!(push_back_delay_secs(4), 86_400);
-        assert_eq!(push_back_delay_secs(9), TICK_INTERVAL_SECS);
+    fn push_back_burns_an_attempt_and_ends_with_the_schedule() {
+        assert_eq!(push_back(0), Some((1, 3_600)));
+        assert_eq!(push_back(3), Some((4, 86_400)));
+        assert_eq!(push_back(4), None, "a row that always fails is dropped");
+        assert!(RETRY_SCHEDULE_SECS.iter().all(|d| *d >= TICK_INTERVAL_SECS));
     }
 
     #[test]

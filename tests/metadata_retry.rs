@@ -414,8 +414,8 @@ async fn a_failing_row_does_not_stop_the_batch(pool: MySqlPool) {
     assert_eq!(queue_rows(&pool, good).await, (0, 1));
     assert_eq!(
         live_row(&pool, bad).await,
-        (1, true),
-        "the failing row is pushed back, attempts unchanged"
+        (2, true),
+        "the failing row is pushed back and burns an attempt"
     );
 }
 
