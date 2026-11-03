@@ -93,3 +93,12 @@ Round 1 (on 306fd8a): 1 Medium, 7 Low — all addressed.
 - [x] **L5** — list / volume labels group per series: one series "Tome 3" / "Tomes 3–5"; several "Tome 3 · A, Tome 4 · B" (`TomeMembership`, `MEMBERSHIPS_SQL`). Unit + DB test.
 - [x] **L6** — dismissed, documented in Dev Notes.
 - [x] **L7** — tests added: re-download path, a left position becomes a gap named by its tome again, media-type false positives. E2E manual-title case now uses a book marker ("Tome 5") since "T5" is a comic-only marker.
+
+Round 2 (on 1996042): 1 Medium, 5 Low — all addressed.
+
+- [x] **M1** — a title with more than one marker of the active set ("Intégrale T1 à T3", "T1 & T2", "T1, T2, T3", "Thorgal - Tome 1 - Tome 2", "Le Scorpion T1 - T2", book "Volume 1 - Volume 2", "Tome 1, Tome 2 : x") is left untouched with no hint; a connector right before the marker (&, à, a, et, and, to, und, bis, au) refuses the split ("Intégrale et T3 : fin"). The dash is not a connector (it is a separator: "Thorgal - Tome 29 - …" must still split); "T1 - T2" is caught by the two-marker rule. A connector right after the marker already failed (no separator). All cases in the tables, per media type.
+- [x] **L1** — "Band" / "Bd." only at the start of the title or after a separator: "Rock Band 2", "Boy Band 3 : x", "Jazz Band 1920 : x", "Die Schlümpfe Bd. 5" untouched; "Die Chroniken, Band 2", "Die Schlümpfe, Bd. 5", "Band 3 : …" stripped.
+- [x] **L2** — `set_detected_tome` is a single UPDATE on the title row, no subquery; the memberships are read first with a plain query (`record_detected_tome`). A racing attach clears the hint after it or leaves it hidden while in a series (documented on the model).
+- [x] **L3** — `TitleSeriesModel::assign` runs the insert and the hint clear in one transaction.
+- [x] **L4** — documented on `clear_detected_tome_in`: the plain read sees the REPEATABLE READ snapshot and may miss a hint committed meanwhile; it stays hidden while the title is in a series.
+- [x] **L5** — tests assert `titles.version` and `updated_at` unchanged when the hint is written (`record_detected_tome`, the fetch path's routing step) and cleared (proposal acceptance, hand assignment).

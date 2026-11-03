@@ -530,8 +530,13 @@ impl TitleSeriesModel {
         series_id: u64,
         position_number: i32,
     ) -> Result<u64, AppError> {
-        let mut conn = pool.acquire().await?;
-        Self::assign_in(&mut conn, title_id, series_id, position_number).await
+        // One transaction (review round 2 L3): the insert and the clear of
+        // the detected-tome hint commit together, so a committed assign
+        // never reports an error.
+        let mut tx = pool.begin().await?;
+        let id = Self::assign_in(&mut tx, title_id, series_id, position_number).await?;
+        tx.commit().await?;
+        Ok(id)
     }
 
     /// [`Self::assign`] on a caller-held connection, so it can run inside

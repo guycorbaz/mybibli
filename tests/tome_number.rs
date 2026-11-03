@@ -69,6 +69,28 @@ async fn set_detected(pool: &DbPool, title_id: u64, n: i32) {
         .unwrap();
 }
 
+/// Review round 2 (L5) — backdate `updated_at` so an ON UPDATE refresh
+/// would show in [`stamp`].
+async fn backdate(pool: &DbPool, title_id: u64) {
+    sqlx::query("UPDATE titles SET updated_at = '2020-01-01 00:00:00' WHERE id = ?")
+        .bind(title_id)
+        .execute(pool)
+        .await
+        .unwrap();
+}
+
+/// `(version, updated_at)` of a title.
+async fn stamp(pool: &DbPool, title_id: u64) -> (i32, String) {
+    sqlx::query_as(
+        "SELECT version, CAST(DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS CHAR) \
+         FROM titles WHERE id = ?",
+    )
+    .bind(title_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
 async fn title_text(pool: &DbPool, title_id: u64) -> String {
     TitleModel::find_by_id(pool, title_id)
         .await
@@ -488,6 +510,8 @@ async fn ingestion_never_parses_music_films_or_magazines(pool: DbPool) {
         ("dvd", "Roman", "Kill Bill Vol. 1"),
         ("magazine", "Roman", "Spirou n° 4123"),
         ("book", "Roman", "Agent No 7"),
+        ("bd", "BD", "Intégrale T1 à T3"),
+        ("book", "Roman", "Rock Band 2"),
     ] {
         let id = add_title(&pool, "x", media, genre, None).await;
         update_title_from_metadata(&pool, id, &metadata(raw))
@@ -513,6 +537,8 @@ async fn an_attach_by_proposal_clears_the_hint(pool: DbPool) {
     let b = Browser::login(&agent.app, "tome_admin").await;
     let id = add_title(&pool, "Le Mystère", "bd", "BD", None).await;
     set_detected(&pool, id, 3).await;
+    backdate(&pool, id).await;
+    let before = stamp(&pool, id).await;
     let s = add_series(&pool, "Mystères", "open", None).await;
     let proposal = agent
         .ok(
@@ -538,6 +564,40 @@ async fn an_attach_by_proposal_clears_the_hint(pool: DbPool) {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(live_positions(&pool, id, s).await, vec![3]);
     assert_eq!(detected(&pool, id).await, None);
+    assert_eq!(
+        stamp(&pool, id).await,
+        before,
+        "the clear bumps no version / updated_at"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn writing_the_hint_bumps_no_version_or_updated_at(pool: DbPool) {
+    // Review round 2 (L5): the routing step of the fetch path.
+    let id = add_title(&pool, "Le Mystère", "bd", "BD", None).await;
+    backdate(&pool, id).await;
+    let before = stamp(&pool, id).await;
+    mybibli::services::tome::record_detected_tome(&pool, id, 3).await;
+    assert_eq!(detected(&pool, id).await, Some(3));
+    assert_eq!(stamp(&pool, id).await, before);
+    // In a series: nothing is written.
+    let s = add_series(&pool, "Mystères", "open", None).await;
+    assign(&pool, id, s, 5, false).await;
+    mybibli::services::tome::record_detected_tome(&pool, id, 4).await;
+    assert_eq!(detected(&pool, id).await, Some(3));
+    assert_eq!(stamp(&pool, id).await, before);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn a_hand_assign_clears_the_hint_in_its_transaction(pool: DbPool) {
+    let id = add_title(&pool, "Le Mystère", "bd", "BD", None).await;
+    set_detected(&pool, id, 3).await;
+    backdate(&pool, id).await;
+    let before = stamp(&pool, id).await;
+    let s = add_series(&pool, "Mystères", "open", None).await;
+    SeriesService::assign_title(&pool, id, s, 3).await.unwrap();
+    assert_eq!(detected(&pool, id).await, None);
+    assert_eq!(stamp(&pool, id).await, before);
 }
 
 #[sqlx::test(migrations = "./migrations")]

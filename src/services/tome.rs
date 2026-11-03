@@ -124,38 +124,54 @@ pub fn split_for_media_type(raw: &str, media_type: &str) -> (String, Option<i32>
 pub fn split_tome_marker(raw: &str, set: MarkerSet) -> (String, Option<i32>) {
     let s = raw.trim();
     let chars: Vec<(usize, char)> = s.char_indices().collect();
+    // Every marker of the set, as (start, end, number, needs a separator
+    // before it).
+    let mut hits = Vec::new();
     for (k, &(i, c)) in chars.iter().enumerate() {
         if k > 0 && !chars[k - 1].1.is_whitespace() {
             continue;
         }
-        let span = if c == '(' || c == '[' {
+        if c == '(' || c == '[' {
             let close = if c == '(' { ')' } else { ']' };
             let inner = i + c.len_utf8();
-            let Some((len, n)) = match_marker(&s[inner..], set) else {
+            let Some((len, n, word)) = match_marker(&s[inner..], set) else {
                 continue;
             };
             let after = s[inner + len..].trim_start();
-            if !after.starts_with(close) {
-                continue;
+            if after.starts_with(close) {
+                let end = s.len() - after.len() + close.len_utf8();
+                hits.push((i, end, n, LEFT_SEP_WORDS.contains(&word)));
             }
-            (s.len() - after.len() + close.len_utf8(), n)
-        } else {
-            let Some((len, n)) = match_marker(&s[i..], set) else {
-                continue;
-            };
-            (i + len, n)
-        };
-        if let Some(cleaned) = rebuild(&s[..i], &s[span.0..]) {
-            return (cleaned, Some(span.1));
+        } else if let Some((len, n, word)) = match_marker(&s[i..], set) {
+            hits.push((i, i + len, n, LEFT_SEP_WORDS.contains(&word)));
         }
+    }
+    // Review round 2 (M1): two markers ("Intégrale T1 à T3", "T1, T2,
+    // T3", "Volume 1 - Volume 2") name a range or a list, not this
+    // title's number — the title is left alone.
+    if let [(start, end, n, needs_sep)] = hits.as_slice()
+        && let Some(cleaned) = rebuild(&s[..*start], &s[*end..], *needs_sep)
+    {
+        return (cleaned, Some(*n));
     }
     (raw.to_string(), None)
 }
 
+/// Marker words that are also common words ("Rock Band 2", "Boy Band
+/// 3"): accepted only at the start of the title or after a separator
+/// ("Die Chroniken, Band 2").
+const LEFT_SEP_WORDS: [&str; 2] = ["band", "bd"];
+
+/// Words that, right before a marker, join it to another number ("Livre
+/// 1 et Tome 2", "Intégrale à Tome 3"). The dash is a separator, not a
+/// connector: "T1 - T2" is caught by the two-marker rule.
+const CONNECTORS: [&str; 9] = ["&", "à", "a", "et", "and", "to", "und", "bis", "au"];
+
 /// A marker at the start of `t`: bytes consumed and the number.
-fn match_marker(t: &str, set: MarkerSet) -> Option<(usize, i32)> {
+fn match_marker(t: &str, set: MarkerSet) -> Option<(usize, i32, &'static str)> {
     let comic = set == MarkerSet::Comic;
     let mut rest = None;
+    let mut matched = "n\u{b0}";
     for (word, dot, comic_only) in MARKER_WORDS {
         if comic_only && !comic {
             continue;
@@ -174,6 +190,7 @@ fn match_marker(t: &str, set: MarkerSet) -> Option<(usize, i32)> {
                 (Dot::CompactOrDotted, None) => return None,
             };
             rest = Some(after);
+            matched = word;
             break;
         }
     }
@@ -206,7 +223,7 @@ fn match_marker(t: &str, set: MarkerSet) -> Option<(usize, i32)> {
     if !(1..=MAX_TOME).contains(&n) {
         return None;
     }
-    Some((t.len() - tail.len(), n))
+    Some((t.len() - tail.len(), n, matched))
 }
 
 /// `t` without the ASCII `prefix`, compared case-insensitively.
@@ -218,7 +235,7 @@ fn strip_prefix_ignore_ascii_case<'a>(t: &'a str, prefix: &str) -> Option<&'a st
 
 /// Join what surrounds a marker; `None` when the context is not one of a
 /// marker (see [`split_tome_marker`]).
-fn rebuild(left_raw: &str, right_raw: &str) -> Option<String> {
+fn rebuild(left_raw: &str, right_raw: &str, needs_left_sep: bool) -> Option<String> {
     let right = right_raw.trim_start();
     let (right_sep, after) = match right.chars().next() {
         None => (None, ""),
@@ -232,10 +249,13 @@ fn rebuild(left_raw: &str, right_raw: &str) -> Option<String> {
         Some(_) => return None,
     };
     let left = left_raw.trim_end();
-    let left_core = match left.chars().last() {
-        Some(c) if SEPARATORS.contains(&c) => left[..left.len() - c.len_utf8()].trim_end(),
-        _ => left,
+    let (left_core, left_sep) = match left.chars().last() {
+        Some(c) if SEPARATORS.contains(&c) => (left[..left.len() - c.len_utf8()].trim_end(), true),
+        _ => (left, false),
     };
+    if needs_left_sep && !left_core.is_empty() && !left_sep {
+        return None;
+    }
     let cleaned = match (left_core.is_empty(), after.is_empty()) {
         (true, true) => return None,
         (true, false) => after.to_string(),
@@ -256,7 +276,7 @@ fn rebuild(left_raw: &str, right_raw: &str) -> Option<String> {
             .next()
             .unwrap_or("")
             .to_lowercase();
-        if DETERMINERS.contains(&last_word.as_str()) {
+        if DETERMINERS.contains(&last_word.as_str()) || CONNECTORS.contains(&last_word.as_str()) {
             return None;
         }
     }
@@ -353,8 +373,8 @@ pub async fn record_detected_tome(pool: &DbPool, title_id: u64, number: i32) {
         }
         return;
     }
-    match TitleTomeModel::set_detected_tome_if_unattached(pool, title_id, number).await {
-        Ok(_) => tracing::debug!(title_id, detected = number, "Detected tome number recorded"),
+    match TitleTomeModel::set_detected_tome(pool, title_id, number).await {
+        Ok(()) => tracing::debug!(title_id, detected = number, "Detected tome number recorded"),
         Err(e) => tracing::warn!(error = %e, title_id, "Detected tome number write failed"),
     }
 }
@@ -688,7 +708,8 @@ mod tests {
         ("Les Schtroumpfs nº 5", "Les Schtroumpfs", Some(5)),
         ("One Piece Vol. 100", "One Piece", Some(100)),
         ("Naruto, Volume 3", "Naruto", Some(3)),
-        ("Die Schlümpfe Bd. 5", "Die Schlümpfe", Some(5)),
+        ("Die Schlümpfe, Bd. 5", "Die Schlümpfe", Some(5)),
+        ("Die Schlümpfe Bd. 5", "Die Schlümpfe Bd. 5", None),
         ("Tex Willer, tomo 3", "Tex Willer", Some(3)),
         ("Batman #12", "Batman", Some(12)),
         ("Spirou et Fantasio - T05", "Spirou et Fantasio", Some(5)),
@@ -747,6 +768,19 @@ mod tests {
             None,
         ),
         ("Vol 93 : le récit", "Vol 93 : le récit", None),
+        // Review round 2 (M1) — two markers or a connector: untouched.
+        ("Intégrale T1 à T3", "Intégrale T1 à T3", None),
+        ("T1 & T2", "T1 & T2", None),
+        ("T1, T2, T3", "T1, T2, T3", None),
+        (
+            "Thorgal - Tome 1 - Tome 2",
+            "Thorgal - Tome 1 - Tome 2",
+            None,
+        ),
+        ("Le Scorpion T1 - T2", "Le Scorpion T1 - T2", None),
+        ("Intégrale et T3 : fin", "Intégrale et T3 : fin", None),
+        ("Livre 1 & Tome 2 : x", "Livre 1 & Tome 2 : x", None),
+        ("Tome 1 à 3 : Intégrale", "Tome 1 à 3 : Intégrale", None),
     ];
 
     /// Review M1 — (media type, input, expected title, expected number):
@@ -829,7 +863,17 @@ mod tests {
             "À la recherche du temps perdu : Sodome et Gomorrhe",
             Some(4),
         ),
-        ("book", "Der Zauberberg Band 2", "Der Zauberberg", Some(2)),
+        ("book", "Die Chroniken, Band 2", "Die Chroniken", Some(2)),
+        ("book", "Band 3 : Die Rückkehr", "Die Rückkehr", Some(3)),
+        // Review round 2 (L1) — "Band" inside a plain phrase is a word.
+        ("book", "Rock Band 2", "Rock Band 2", None),
+        ("book", "Boy Band 3 : x", "Boy Band 3 : x", None),
+        ("book", "Jazz Band 1920 : x", "Jazz Band 1920 : x", None),
+        ("bd", "Rock Band 2", "Rock Band 2", None),
+        // Review round 2 (M1) — two markers in a book.
+        ("book", "Volume 1 - Volume 2", "Volume 1 - Volume 2", None),
+        ("book", "Tome 1, Tome 2 : x", "Tome 1, Tome 2 : x", None),
+        ("bd", "Le Scorpion T1 - T2", "Le Scorpion T1 - T2", None),
     ];
 
     #[test]

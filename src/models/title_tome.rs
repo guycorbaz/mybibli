@@ -101,26 +101,26 @@ impl TitleTomeModel {
         ))
     }
 
-    /// Store the hint when the title sits in no live series (one
-    /// statement, so an attach landing meanwhile wins). Returns whether
-    /// the row was written.
-    pub async fn set_detected_tome_if_unattached(
+    /// Store the hint (one statement on the title row only: no locking
+    /// read of `title_series` / `series`, review round 2 L2). The caller
+    /// read the memberships first with a plain query; an attach racing
+    /// between that read and this write either clears the hint after it
+    /// (`clear_detected_tome_in`) or leaves it in place, hidden while the
+    /// title is in a series — both acceptable for a non-authoritative hint.
+    pub async fn set_detected_tome(
         pool: &DbPool,
         title_id: u64,
         number: i32,
-    ) -> Result<bool, AppError> {
-        let result = sqlx::query(
-            "UPDATE titles t SET t.detected_tome = ?, t.updated_at = t.updated_at \
-             WHERE t.id = ? AND t.deleted_at IS NULL \
-             AND NOT EXISTS (SELECT 1 FROM title_series ts \
-                 JOIN series s ON s.id = ts.series_id AND s.deleted_at IS NULL \
-                 WHERE ts.title_id = t.id AND ts.deleted_at IS NULL)",
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            "UPDATE titles SET detected_tome = ?, updated_at = updated_at \
+             WHERE id = ? AND deleted_at IS NULL",
         )
         .bind(number)
         .bind(title_id)
         .execute(pool)
         .await?;
-        Ok(result.rows_affected() > 0)
+        Ok(())
     }
 
     /// Clear the hint once the title sits in a series — called by every
@@ -128,7 +128,11 @@ impl TitleTomeModel {
     /// assignment, scan auto-settle, series proposal acceptance), on the
     /// attach's own connection, after its series / tome / title locks
     /// (lock order unchanged). A plain read first, so the title row is
-    /// write-locked only when a hint is actually set.
+    /// write-locked only when a hint is actually set. Under REPEATABLE
+    /// READ that read sees the transaction's snapshot and may miss a hint
+    /// committed meanwhile (review round 2 L4): the hint then stays, but
+    /// it is hidden everywhere while the title is in a series (title page,
+    /// `get_title`) and only cleared by the next attach.
     pub async fn clear_detected_tome_in(
         conn: &mut sqlx::MySqlConnection,
         title_id: u64,
