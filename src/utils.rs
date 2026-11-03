@@ -349,6 +349,76 @@ pub fn format_percent(value: f64, locale: &str) -> String {
     }
 }
 
+/// Story 13-7 (#586) — a calendar date in the numeric convention of
+/// `locale`: `2026-11-03` (en, ISO 8601), `03/11/2026` (fr, it),
+/// `03.11.2026` (de). Unknown locales fall back to ISO 8601.
+pub fn format_date_localized(date: chrono::NaiveDate, locale: &str) -> String {
+    let pattern = match locale {
+        "fr" | "it" => "%d/%m/%Y",
+        "de" => "%d.%m.%Y",
+        _ => "%Y-%m-%d",
+    };
+    date.format(pattern).to_string()
+}
+
+/// Story 13-7 (#586) — a bare calendar date `YYYY-MM-DD` (the value of an
+/// `<input type="date">` and of the browse `added_since` URL parameter).
+pub fn parse_iso_date(value: &str) -> Option<chrono::NaiveDate> {
+    chrono::NaiveDate::parse_from_str(value.trim(), "%Y-%m-%d").ok()
+}
+
+/// Story 13-7 (#586) — the lower bound of an "added since" filter, as a
+/// UTC instant: `YYYY-MM-DD` (midnight UTC that day), an RFC 3339 /
+/// ISO 8601 instant with offset or `Z` (converted to UTC), or a naive
+/// `YYYY-MM-DDTHH:MM[:SS]` (read as UTC). `None` for anything else.
+pub fn parse_added_since(value: &str) -> Option<chrono::NaiveDateTime> {
+    let value = value.trim();
+    if let Some(date) = parse_iso_date(value) {
+        return date.and_hms_opt(0, 0, 0);
+    }
+    if let Ok(instant) = chrono::DateTime::parse_from_rfc3339(value) {
+        return Some(instant.naive_utc());
+    }
+    ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"]
+        .iter()
+        .find_map(|f| chrono::NaiveDateTime::parse_from_str(value, f).ok())
+}
+
+/// Story 13-7 (#586) — the localized "Added on …" / "Modified on …" lines
+/// of the title and volume pages (`templates/components/record_dates.html`).
+/// Empty strings when the dates are unknown; the component then renders
+/// nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RecordDates {
+    pub added_on: String,
+    pub modified_on: String,
+}
+
+impl RecordDates {
+    pub fn new(
+        timestamps: Option<crate::models::date_added::RecordTimestamps>,
+        locale: &str,
+    ) -> Self {
+        let Some(ts) = timestamps else {
+            return Self::default();
+        };
+        RecordDates {
+            added_on: rust_i18n::t!(
+                "record_dates.added_on",
+                locale = locale,
+                date = format_date_localized(ts.created_at.date(), locale)
+            )
+            .to_string(),
+            modified_on: rust_i18n::t!(
+                "record_dates.modified_on",
+                locale = locale,
+                date = format_date_localized(ts.updated_at.date(), locale)
+            )
+            .to_string(),
+        }
+    }
+}
+
 /// Story 9-16 — base-layout connection-lost overlay i18n bundle.
 ///
 /// Page templates that extend `layouts/base.html` carry the 4 strings
@@ -1168,5 +1238,76 @@ mod tests {
             !json.contains('<') && !json.contains('>'),
             "bundle must escape < and > to \\u003c / \\u003e: {json}"
         );
+    }
+
+    // Story 13-7 (#586) — dates.
+
+    #[test]
+    fn format_date_localized_follows_the_locale_convention() {
+        let d = chrono::NaiveDate::from_ymd_opt(2026, 11, 3).unwrap();
+        assert_eq!(format_date_localized(d, "en"), "2026-11-03");
+        assert_eq!(format_date_localized(d, "fr"), "03/11/2026");
+        assert_eq!(format_date_localized(d, "it"), "03/11/2026");
+        assert_eq!(format_date_localized(d, "de"), "03.11.2026");
+        assert_eq!(format_date_localized(d, "xx"), "2026-11-03");
+    }
+
+    #[test]
+    fn parse_added_since_accepts_a_date_or_an_instant() {
+        let at = |y, m, d, h, mi, s| {
+            chrono::NaiveDate::from_ymd_opt(y, m, d)
+                .unwrap()
+                .and_hms_opt(h, mi, s)
+                .unwrap()
+        };
+        assert_eq!(parse_added_since("2026-10-31"), Some(at(2026, 10, 31, 0, 0, 0)));
+        assert_eq!(parse_added_since(" 2026-10-31 "), Some(at(2026, 10, 31, 0, 0, 0)));
+        assert_eq!(
+            parse_added_since("2026-10-31T08:15:00Z"),
+            Some(at(2026, 10, 31, 8, 15, 0))
+        );
+        // An offset is converted to UTC.
+        assert_eq!(
+            parse_added_since("2026-10-31T08:15:00+01:00"),
+            Some(at(2026, 10, 31, 7, 15, 0))
+        );
+        assert_eq!(
+            parse_added_since("2026-10-31T08:15:30"),
+            Some(at(2026, 10, 31, 8, 15, 30))
+        );
+        assert_eq!(parse_added_since("2026-10-31T08:15"), Some(at(2026, 10, 31, 8, 15, 0)));
+        for bad in ["", "yesterday", "31/10/2026", "2026-13-01", "2026-02-30", "2026-10-31 08:15"] {
+            assert_eq!(parse_added_since(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn parse_iso_date_requires_year_month_day() {
+        assert_eq!(
+            parse_iso_date("2026-11-03"),
+            chrono::NaiveDate::from_ymd_opt(2026, 11, 3)
+        );
+        assert_eq!(parse_iso_date("03.11.2026"), None);
+        assert_eq!(parse_iso_date(""), None);
+    }
+
+    #[test]
+    fn record_dates_are_localized_and_empty_when_unknown() {
+        let ts = crate::models::date_added::RecordTimestamps {
+            created_at: chrono::NaiveDate::from_ymd_opt(2026, 10, 31)
+                .unwrap()
+                .and_hms_opt(9, 0, 0)
+                .unwrap(),
+            updated_at: chrono::NaiveDate::from_ymd_opt(2026, 11, 3)
+                .unwrap()
+                .and_hms_opt(18, 30, 0)
+                .unwrap(),
+        };
+        let en = RecordDates::new(Some(ts), "en");
+        assert_eq!(en.added_on, "Added on 2026-10-31");
+        assert_eq!(en.modified_on, "Modified on 2026-11-03");
+        let fr = RecordDates::new(Some(ts), "fr");
+        assert_eq!(fr.added_on, "Ajouté le 31/10/2026");
+        assert_eq!(RecordDates::new(None, "en"), RecordDates::default());
     }
 }

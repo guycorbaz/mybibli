@@ -15,10 +15,12 @@ use serde::Serialize;
 use crate::db::DbPool;
 use crate::error::AppError;
 use crate::models::contributor::TitleContributorModel;
+use crate::models::date_added::{DatedTable, find_timestamps};
 use crate::models::genre::GenreModel;
 use crate::models::series::TitleSeriesModel;
 use crate::models::title::TitleModel;
 use crate::models::volume::VolumeModel;
+use crate::services::proposal_history::rfc3339_utc;
 
 #[derive(Debug, Serialize)]
 pub struct TitleDetail {
@@ -46,6 +48,11 @@ pub struct TitleDetail {
     pub volumes: Vec<TitleDetailVolume>,
     pub series: Vec<TitleDetailSeries>,
     pub version: i32,
+    /// Story 13-7 (#586) — when the title was entered and last changed
+    /// (ISO 8601, UTC). `updated_at` moves on any change to the row,
+    /// including a background metadata refresh.
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -65,6 +72,8 @@ pub struct TitleDetailVolume {
     /// ("Maison → Salon → Étagère 3"); `location_name` stays the leaf.
     pub location_path: Option<String>,
     pub condition_name: Option<String>,
+    /// Story 13-7 (#586) — when the volume was entered (ISO 8601, UTC).
+    pub created_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,6 +99,7 @@ pub async fn build_title_detail(
     // empty string for an orphan-FK soft-deleted genre — same shape
     // the home dashboard uses).
     let genre_name_str = GenreModel::find_name_by_id(pool, title.genre_id).await?;
+    let timestamps = find_timestamps(pool, DatedTable::Titles, title.id).await?;
     let genre_name = if genre_name_str.is_empty() {
         None
     } else {
@@ -113,6 +123,7 @@ pub async fn build_title_detail(
             location_label: v.location_label,
             location_path: v.location_path,
             condition_name: v.condition_name,
+            created_at: v.created_at.map(rfc3339_utc),
         })
         .collect();
     let series: Vec<TitleDetailSeries> = series_raw
@@ -153,6 +164,8 @@ pub async fn build_title_detail(
         volumes,
         series,
         version: title.version,
+        created_at: timestamps.map(|t| rfc3339_utc(t.created_at)),
+        updated_at: timestamps.map(|t| rfc3339_utc(t.updated_at)),
     })
 }
 

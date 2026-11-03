@@ -52,6 +52,7 @@ fn make_test_volume_detail_template(
         under_audit_chip_label: "To check".to_string(),
         audit_button_label_mark: "Mark to check".to_string(),
         audit_button_label_clear: "Checked".to_string(),
+        record_dates: crate::utils::RecordDates::default(),
     }
 }
 
@@ -316,4 +317,21 @@ fn volume_detail_anonymous_with_loan_renders_date_only_no_borrower_marker() {
     // No borrower link or prefix should appear.
     assert!(!html.contains("/borrower/"));
     assert!(!html.contains("On loan to "));
+}
+
+/// Story 13-7 (#586) — the page shows when the volume was added and last
+/// changed, and nothing when the dates are unknown.
+#[test]
+fn volume_detail_renders_record_dates_when_known() {
+    let mut template = make_test_volume_detail_template("anonymous", None);
+    let html = template.render().expect("render");
+    assert!(!html.contains("id=\"record-dates\""));
+    template.record_dates = crate::utils::RecordDates {
+        added_on: "Added on 2026-10-31".to_string(),
+        modified_on: "Modified on 2026-11-03".to_string(),
+    };
+    let html = template.render().expect("render");
+    assert!(html.contains("id=\"record-dates\""));
+    assert!(html.contains("Added on 2026-10-31"));
+    assert!(html.contains("Modified on 2026-11-03"));
 }

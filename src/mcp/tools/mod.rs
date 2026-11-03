@@ -25,6 +25,7 @@ use super::tool::{ToolContext, ToolError, ToolRegistry};
 use crate::models::title::SearchResult;
 use crate::models::{DEFAULT_PAGE_SIZE, PaginatedList};
 use crate::services::search::{GenreLookup, SearchService};
+use crate::services::proposal_history::rfc3339_utc;
 use crate::services::title_detail::has_cover;
 
 /// Every tool the endpoint serves.
@@ -88,6 +89,11 @@ struct TitleItem {
     has_cover: bool,
     publication_date: Option<String>,
     dewey_code: Option<String>,
+    /// Story 13-7 (#586) — when the title was entered (ISO 8601, UTC).
+    created_at: Option<String>,
+    /// Story 13-7 (#586) — its latest addition: the later of `created_at`
+    /// and its newest volume's creation (ISO 8601, UTC).
+    last_added_at: Option<String>,
 }
 
 impl From<SearchResult> for TitleItem {
@@ -103,6 +109,8 @@ impl From<SearchResult> for TitleItem {
             has_cover: has_cover(r.cover_image_url.as_deref()),
             publication_date: iso_date(r.publication_date),
             dewey_code: r.dewey_code,
+            created_at: r.created_at.map(rfc3339_utc),
+            last_added_at: r.last_added_at.map(rfc3339_utc),
         }
     }
 }

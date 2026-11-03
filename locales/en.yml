@@ -126,6 +126,10 @@ browse:
   grid_view: Grid view
   display_mode: Display mode
   sort_by: "Sort by"
+  # Story 13-7 (#586) — "added since <date>" browse filter.
+  added_since: "Added since"
+  added_since_apply: "Apply"
+  added_since_clear: "Clear"
 home:
   title: mybibli
   subtitle: Your personal media library
@@ -292,6 +296,8 @@ search:
     genre: Genre
     volumes: Volumes
     dewey: Dewey
+    # Story 13-7 (#586) — latest addition date (title or one of its volumes).
+    added: "Added"
   sort_aria_asc: "Sort by %{column} ascending"
   sort_aria_desc: "Sort by %{column} descending"
   connection_lost: "Connection lost — check your network."
@@ -1101,6 +1107,8 @@ admin:
     error_already_revoked: "This key has already been revoked."
     error_version_conflict: "This key was modified by another administrator. Reload the panel."
 saved_searches:
+  # Story 13-7 (#586) — the "added since" date is not part of a saved search.
+  date_not_saved: "The date filter is not saved with the search."
   toggle_label: "Saved searches"
   name_label: "Search name"
   name_placeholder: "Name this search"
@@ -1447,3 +1455,7 @@ proposals:
   stale_why_cover_changed: "the title's cover was changed after the proposal was filed."
   error_cover_missing: "The proposed image is no longer available, so nothing was changed and the proposal is still pending. Reject it and ask the assistant to propose the cover again."
   cover_accepted: "Proposal accepted — the title's current cover"
+# Story 13-7 (#586) — creation / last-change dates on the title and volume pages.
+record_dates:
+  added_on: "Added on %{date}"
+  modified_on: "Modified on %{date}"

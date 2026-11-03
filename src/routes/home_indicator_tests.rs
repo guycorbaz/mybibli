@@ -310,6 +310,8 @@ mod tests {
             cover_image_url: None,
             publication_date: None,
             dewey_code: None,
+            created_at: None,
+            last_added_at: None,
         }
     }
 

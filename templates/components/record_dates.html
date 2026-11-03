@@ -1,0 +1,10 @@
+{# Story 13-7 (#586) — "Added on …" / "Modified on …" of a title or a volume.
+   Calling convention: the page struct has a `record_dates: crate::utils::RecordDates`
+   field (localized strings, empty when the dates are unknown). #}
+{% if !record_dates.added_on.is_empty() %}
+<p id="record-dates" class="mt-2 text-xs text-stone-500 dark:text-stone-400">
+    <span data-record-date="added">{{ record_dates.added_on }}</span>
+    <span aria-hidden="true">·</span>
+    <span data-record-date="modified">{{ record_dates.modified_on }}</span>
+</p>
+{% endif %}

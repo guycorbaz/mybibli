@@ -91,6 +91,25 @@ pub fn genre(value: Option<String>) -> Result<Option<String>, ToolError> {
     Ok(Some(text("genre", value)?).filter(|g| !g.is_empty()))
 }
 
+/// Story 13-7 (#586) — validate an optional `added_since` filter: a
+/// date `YYYY-MM-DD` (from midnight UTC that day) or an ISO 8601 instant
+/// (`2026-10-31T08:00:00Z`, an offset, or no offset = UTC); empty or
+/// absent means no filter. Returns the UTC lower bound.
+pub fn added_since(value: Option<String>) -> Result<Option<chrono::NaiveDateTime>, ToolError> {
+    let value = text("added_since", value)?;
+    if value.is_empty() {
+        return Ok(None);
+    }
+    crate::utils::parse_added_since(&value)
+        .map(Some)
+        .ok_or_else(|| {
+            ToolError::InvalidArguments(format!(
+                "`added_since` must be a date YYYY-MM-DD or an ISO 8601 date-time such as \
+                 2026-10-31T08:00:00Z (got \"{value}\")"
+            ))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,5 +185,38 @@ mod tests {
         assert_eq!(genre(Some("  ".into())), Ok(None));
         assert_eq!(genre(Some(" Roman ".into())), Ok(Some("Roman".into())));
         assert!(genre(Some("g".repeat(MAX_QUERY_CHARS + 1))).is_err());
+    }
+
+    #[test]
+    fn added_since_accepts_dates_and_instants_and_rejects_the_rest() {
+        let midnight = chrono::NaiveDate::from_ymd_opt(2026, 10, 31)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap();
+        assert_eq!(added_since(Some("2026-10-31".into())), Ok(Some(midnight)));
+        assert_eq!(
+            added_since(Some("2026-10-31T01:00:00+01:00".into())),
+            Ok(Some(midnight))
+        );
+        assert_eq!(added_since(None), Ok(None));
+        assert_eq!(added_since(Some("  ".into())), Ok(None));
+        for bad in [
+            "Saturday",
+            "31.10.2026",
+            "2026-10-32",
+            "x".repeat(201).as_str(),
+        ] {
+            assert!(
+                matches!(
+                    added_since(Some(bad.to_string())),
+                    Err(ToolError::InvalidArguments(_))
+                ),
+                "{bad}"
+            );
+        }
+        let Err(ToolError::InvalidArguments(msg)) = added_since(Some("Saturday".into())) else {
+            panic!("expected an argument error");
+        };
+        assert!(msg.contains("YYYY-MM-DD"), "{msg}");
     }
 }

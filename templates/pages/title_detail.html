@@ -85,6 +85,7 @@
                         <span>{{ source_label }}</span>
                     </p>
                 {% endif %}
+                {% include "components/record_dates.html" %}
                 {# #389 — UNIMARC-zone metadata (palier 1). Each row renders only when present. #}
                 {% if let Some(sor) = title.statement_of_responsibility %}
                     <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">{{ label_statement_of_responsibility }}: {{ sor }}</p>

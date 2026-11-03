@@ -70,6 +70,7 @@ impl McpTool for ListTitlesWithoutCover {
                     genre_id,
                     page,
                     no_cover_only: true,
+                    added_since: None,
                 },
             )
             .await?;

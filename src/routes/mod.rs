@@ -18,6 +18,7 @@ pub mod catalog_existing_label;
 pub mod catalog_isbn_banners;
 pub mod contributors;
 pub mod home;
+pub mod home_added_since;
 pub mod home_indicators;
 pub mod saved_searches;
 pub mod home_scan;

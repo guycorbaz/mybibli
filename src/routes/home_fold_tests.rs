@@ -93,6 +93,8 @@ mod tests {
             cover_image_url: None,
             publication_date: None,
             dewey_code: None,
+            created_at: None,
+            last_added_at: None,
         }
     }
 
@@ -140,8 +142,8 @@ mod tests {
         assert!(table.contains("href=\"/title/11\"") && table.contains("href=\"/title/12\""));
         assert_eq!(
             table.matches("scope=\"col\"").count(),
-            5,
-            "five labelled columns"
+            6,
+            "six labelled columns (story 13-7 adds \"Added\")"
         );
         assert!(
             !table.contains("hx-get"),

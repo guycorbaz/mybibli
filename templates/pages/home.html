@@ -29,7 +29,7 @@
                hx-swap="innerHTML"
                hx-push-url="true"
                hx-sync="this:replace"
-               hx-include="[name='filter'],[name='sort'],[name='dir']"
+               hx-include="#filter-tags [name='filter'],#filter-tags [name='sort'],#filter-tags [name='dir'],#browse-added-since"
                data-debounce="100"
                data-scanner-threshold="100"
                data-connection-lost="{{ connection_lost }}"
@@ -70,7 +70,7 @@
         <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-sm" role="status" aria-label="{{ aria_active_filter }}{{ genre.name }}{{ aria_press_to_remove }}">
             {{ genre.name }}
             <button type="button"
-                    hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+                    hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
                     hx-target="#browse-results"
                     hx-swap="innerHTML"
                     hx-push-url="true"
@@ -78,8 +78,8 @@
                     aria-label="{{ remove_filter_aria }}">&times;</button>
         </span>
         {% else %}
-        <a href="/?q={{ query_encoded }}&amp;filter=genre:{{ genre.id }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
-           hx-get="/?q={{ query_encoded }}&amp;filter=genre:{{ genre.id }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+        <a href="/?q={{ query_encoded }}&amp;filter=genre:{{ genre.id }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
+           hx-get="/?q={{ query_encoded }}&amp;filter=genre:{{ genre.id }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
            hx-target="#browse-results"
            hx-swap="innerHTML"
            hx-push-url="true"
@@ -98,7 +98,7 @@
         <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-sm" role="status" aria-label="{{ aria_active_filter }}{{ label_uncategorized }}{{ aria_press_to_remove }}">
             {{ label_uncategorized }}
             <button type="button"
-                    hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+                    hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
                     hx-target="#browse-results"
                     hx-swap="innerHTML"
                     hx-push-url="true"
@@ -106,8 +106,8 @@
                     aria-label="{{ remove_filter_aria }}">&times;</button>
         </span>
         {% else %}
-        <a href="/?q={{ query_encoded }}&amp;filter=uncategorized&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
-           hx-get="/?q={{ query_encoded }}&amp;filter=uncategorized&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+        <a href="/?q={{ query_encoded }}&amp;filter=uncategorized&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
+           hx-get="/?q={{ query_encoded }}&amp;filter=uncategorized&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
            hx-target="#browse-results"
            hx-swap="innerHTML"
            hx-push-url="true"
@@ -124,7 +124,7 @@
         <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 text-sm" role="status" aria-label="{{ aria_active_filter }}{{ label_no_volumes }}{{ aria_press_to_remove }}">
             {{ label_no_volumes }}
             <button type="button"
-                    hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+                    hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
                     hx-target="#browse-results"
                     hx-swap="innerHTML"
                     hx-push-url="true"
@@ -132,8 +132,8 @@
                     aria-label="{{ remove_filter_aria }}">&times;</button>
         </span>
         {% else %}
-        <a href="/?q={{ query_encoded }}&amp;filter=no_volumes&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
-           hx-get="/?q={{ query_encoded }}&amp;filter=no_volumes&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+        <a href="/?q={{ query_encoded }}&amp;filter=no_volumes&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
+           hx-get="/?q={{ query_encoded }}&amp;filter=no_volumes&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
            hx-target="#browse-results"
            hx-swap="innerHTML"
            hx-push-url="true"
@@ -151,7 +151,7 @@
         <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 text-sm" role="status" aria-label="{{ aria_active_filter }}{{ label_no_cover_filter }}{{ aria_press_to_remove }}">
             {{ label_no_cover_filter }}
             <button type="button"
-                    hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+                    hx-get="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
                     hx-target="#browse-results"
                     hx-swap="innerHTML"
                     hx-push-url="true"
@@ -159,8 +159,8 @@
                     aria-label="{{ remove_filter_aria }}">&times;</button>
         </span>
         {% else %}
-        <a href="/?q={{ query_encoded }}&amp;filter=no_cover&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
-           hx-get="/?q={{ query_encoded }}&amp;filter=no_cover&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}"
+        <a href="/?q={{ query_encoded }}&amp;filter=no_cover&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
+           hx-get="/?q={{ query_encoded }}&amp;filter=no_cover&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{{ added_since.query_suffix }}"
            hx-target="#browse-results"
            hx-swap="innerHTML"
            hx-push-url="true"
@@ -274,8 +274,8 @@
     </div>
 
     <!-- Browse toggle + sort -->
-    <div class="w-full max-w-4xl mt-6 flex items-center justify-between">
-        <div class="flex items-center gap-3">
+    <div class="w-full max-w-4xl mt-6 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-3 min-w-0">
         {# CR #367 — saved-searches control (Librarian+); the whole control
            is server-rendered in routes::home so it carries the current
            browse state + localized strings. #}
@@ -294,8 +294,32 @@
                 <option value="title:desc" {% if current_sort == "title" && current_dir == "desc" %}selected{% endif %}>{{ col_title }} &#9660;</option>
                 <option value="genre_name:asc" {% if current_sort == "genre_name" && current_dir == "asc" %}selected{% endif %}>{{ col_genre }} &#9650;</option>
                 <option value="genre_name:desc" {% if current_sort == "genre_name" && current_dir == "desc" %}selected{% endif %}>{{ col_genre }} &#9660;</option>
+                <option value="date_added:desc" {% if current_sort == "date_added" && current_dir == "desc" %}selected{% endif %}>{{ added_since.col_label }} &#9660;</option>
+                <option value="date_added:asc" {% if current_sort == "date_added" && current_dir == "asc" %}selected{% endif %}>{{ added_since.col_label }} &#9650;</option>
             </select>
         </div>
+        {# Story 13-7 (#586) — "added since <date>" filter. A plain GET form
+           (no JS, no CSRF: it changes nothing) that keeps the other browse
+           params; the URL carries `added_since=YYYY-MM-DD`. Its hidden
+           inputs share names with the #filter-tags ones, which is why the
+           search field's hx-include is scoped to #filter-tags (a duplicate
+           `sort=` makes the Query extractor reject the request, see #367). #}
+        <form id="browse-added-since-form" method="get" action="/" class="flex flex-wrap items-center gap-2 min-w-0"
+              data-indicator-filters="{{ added_since.indicator_filters }}">
+            <input type="hidden" name="q" value="{{ query }}">
+            {# An indicator filter is left out: the date replaces it (single-active-filter contract). #}
+            {% if !added_since.form_filter.is_empty() %}<input type="hidden" name="filter" value="{{ added_since.form_filter }}">{% endif %}
+            <input type="hidden" name="sort" value="{{ current_sort }}">
+            <input type="hidden" name="dir" value="{{ current_dir }}">
+            <label class="text-xs text-stone-500 dark:text-stone-400" for="browse-added-since">{{ added_since.label }}:</label>
+            <input type="date" id="browse-added-since" name="added_since" value="{{ added_since.value }}"
+                   class="min-w-0 text-xs border border-stone-300 dark:border-stone-600 rounded px-2 py-1 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300">
+            <button type="submit" class="text-xs px-2 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800">{{ added_since.apply_label }}</button>
+            {% if added_since.is_active() %}
+            <a id="browse-added-since-clear" href="/?q={{ query_encoded }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+               class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">{{ added_since.clear_label }}</a>
+            {% endif %}
+        </form>
         </div>
         <div role="radiogroup" aria-label="{{ browse_mode_label }}" class="flex border border-stone-300 dark:border-stone-600 rounded-md overflow-hidden">
             <button type="button" data-browse-mode="list" role="radio" aria-checked="true" aria-label="{{ browse_list_label }}"
@@ -318,7 +342,7 @@
                     {% if paginated.items.is_empty() %}
                     <div class="text-center text-stone-500 dark:text-stone-400">
                         <svg class="mx-auto w-12 h-12 text-stone-300 dark:text-stone-600 mb-3 mt-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                        {% if !active_filter.is_empty() %}
+                        {% if !active_filter.is_empty() || added_since.is_active() %}
                         {% call status_message::status_message(
                             "empty",
                             filter_empty_heading,
@@ -365,8 +389,8 @@
                                     <tr>
                                         <th class="px-3 py-2 w-10" aria-hidden="true"></th>
                                         <th class="px-3 py-2" aria-sort="{% if current_sort == "title" %}{% if current_dir == "asc" %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
-                                            <a href="/?q={{ query_encoded }}&amp;sort=title&amp;dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
-                                               hx-get="/?q={{ query_encoded }}&amp;sort=title&amp;dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                            <a href="/?q={{ query_encoded }}&amp;sort=title&amp;dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
+                                               hx-get="/?q={{ query_encoded }}&amp;sort=title&amp;dir={% if current_sort == "title" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
                                                hx-target="#browse-results"
                                                hx-swap="innerHTML"
                                                hx-push-url="true"
@@ -375,8 +399,8 @@
                                             </a>
                                         </th>
                                         <th class="px-3 py-2" aria-sort="{% if current_sort == "primary_contributor" %}{% if current_dir == "asc" %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
-                                            <a href="/?q={{ query_encoded }}&amp;sort=primary_contributor&amp;dir={% if current_sort == "primary_contributor" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
-                                               hx-get="/?q={{ query_encoded }}&amp;sort=primary_contributor&amp;dir={% if current_sort == "primary_contributor" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                            <a href="/?q={{ query_encoded }}&amp;sort=primary_contributor&amp;dir={% if current_sort == "primary_contributor" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
+                                               hx-get="/?q={{ query_encoded }}&amp;sort=primary_contributor&amp;dir={% if current_sort == "primary_contributor" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
                                                hx-target="#browse-results"
                                                hx-swap="innerHTML"
                                                hx-push-url="true"
@@ -385,8 +409,8 @@
                                             </a>
                                         </th>
                                         <th class="px-3 py-2" aria-sort="{% if current_sort == "genre_name" %}{% if current_dir == "asc" %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
-                                            <a href="/?q={{ query_encoded }}&amp;sort=genre_name&amp;dir={% if current_sort == "genre_name" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
-                                               hx-get="/?q={{ query_encoded }}&amp;sort=genre_name&amp;dir={% if current_sort == "genre_name" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                            <a href="/?q={{ query_encoded }}&amp;sort=genre_name&amp;dir={% if current_sort == "genre_name" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
+                                               hx-get="/?q={{ query_encoded }}&amp;sort=genre_name&amp;dir={% if current_sort == "genre_name" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
                                                hx-target="#browse-results"
                                                hx-swap="innerHTML"
                                                hx-push-url="true"
@@ -395,8 +419,8 @@
                                             </a>
                                         </th>
                                         <th class="px-3 py-2" aria-sort="{% if current_sort == "dewey_code" %}{% if current_dir == "asc" %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
-                                            <a href="/?q={{ query_encoded }}&amp;sort=dewey_code&amp;dir={% if current_sort == "dewey_code" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
-                                               hx-get="/?q={{ query_encoded }}&amp;sort=dewey_code&amp;dir={% if current_sort == "dewey_code" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                            <a href="/?q={{ query_encoded }}&amp;sort=dewey_code&amp;dir={% if current_sort == "dewey_code" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
+                                               hx-get="/?q={{ query_encoded }}&amp;sort=dewey_code&amp;dir={% if current_sort == "dewey_code" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
                                                hx-target="#browse-results"
                                                hx-swap="innerHTML"
                                                hx-push-url="true"
@@ -405,8 +429,8 @@
                                             </a>
                                         </th>
                                         <th class="px-3 py-2 text-right" aria-sort="{% if current_sort == "volume_count" %}{% if current_dir == "asc" %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
-                                            <a href="/?q={{ query_encoded }}&amp;sort=volume_count&amp;dir={% if current_sort == "volume_count" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
-                                               hx-get="/?q={{ query_encoded }}&amp;sort=volume_count&amp;dir={% if current_sort == "volume_count" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}&amp;page=1"
+                                            <a href="/?q={{ query_encoded }}&amp;sort=volume_count&amp;dir={% if current_sort == "volume_count" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
+                                               hx-get="/?q={{ query_encoded }}&amp;sort=volume_count&amp;dir={% if current_sort == "volume_count" && current_dir == "asc" %}desc{% else %}asc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
                                                hx-target="#browse-results"
                                                hx-swap="innerHTML"
                                                hx-push-url="true"
@@ -414,11 +438,22 @@
                                                 {{ col_volumes }} {% if current_sort == "volume_count" %}{% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
                                             </a>
                                         </th>
+                                        {# Story 13-7 (#586) — latest addition date; first click sorts newest first. #}
+                                        <th class="px-3 py-2" aria-sort="{% if current_sort == "date_added" %}{% if current_dir == "asc" %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+                                            <a href="/?q={{ query_encoded }}&amp;sort=date_added&amp;dir={% if current_sort == "date_added" && current_dir == "desc" %}asc{% else %}desc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
+                                               hx-get="/?q={{ query_encoded }}&amp;sort=date_added&amp;dir={% if current_sort == "date_added" && current_dir == "desc" %}asc{% else %}desc{% endif %}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}&amp;page=1"
+                                               hx-target="#browse-results"
+                                               hx-swap="innerHTML"
+                                               hx-push-url="true"
+                                               class="hover:text-stone-700 dark:hover:text-stone-200">
+                                                {{ added_since.col_label }} {% if current_sort == "date_added" %}{% if current_dir == "asc" %}▲{% else %}▼{% endif %}{% endif %}
+                                            </a>
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for item in paginated.items %}
-                                    {% include "components/browse_table_row.html" %}
+                                    {% let row_lang = base.lang.as_str() %}{% include "components/browse_table_row.html" %}
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -432,8 +467,8 @@
             {% if let Some(paginated) = results %}
                 {% if paginated.total_pages > 1 %}
                     {% if paginated.has_previous() %}
-                    <a href="/?q={{ query_encoded }}&amp;page={{ paginated.page - 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                       hx-get="/?q={{ query_encoded }}&amp;page={{ paginated.page - 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+                    <a href="/?q={{ query_encoded }}&amp;page={{ paginated.page - 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}"
+                       hx-get="/?q={{ query_encoded }}&amp;page={{ paginated.page - 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}"
                        hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
                        class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">&laquo; {{ pagination_previous }}</a>
                     {% endif %}
@@ -446,8 +481,8 @@
                             {% if *p == paginated.page %}
                             <span class="px-3 py-1 rounded bg-indigo-600 text-white text-sm" aria-current="page">{{ p }}</span>
                             {% else %}
-                            <a href="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                               hx-get="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+                            <a href="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}"
+                               hx-get="/?q={{ query_encoded }}&amp;page={{ p }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}"
                                hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
                                class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">{{ p }}</a>
                             {% endif %}
@@ -456,8 +491,8 @@
                         {% endmatch %}
                     {% endfor %}
                     {% if paginated.has_next() %}
-                    <a href="/?q={{ query_encoded }}&amp;page={{ paginated.page + 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
-                       hx-get="/?q={{ query_encoded }}&amp;page={{ paginated.page + 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}"
+                    <a href="/?q={{ query_encoded }}&amp;page={{ paginated.page + 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}"
+                       hx-get="/?q={{ query_encoded }}&amp;page={{ paginated.page + 1 }}&amp;sort={{ current_sort }}&amp;dir={{ current_dir }}{% if !active_filter.is_empty() %}&amp;filter={{ active_filter }}{% endif %}{{ added_since.query_suffix }}"
                        hx-target="#browse-results" hx-swap="innerHTML" hx-push-url="true"
                        class="px-3 py-1 rounded border border-stone-300 dark:border-stone-600 hover:bg-stone-100 dark:hover:bg-stone-800 text-sm">{{ pagination_next }} &raquo;</a>
                     {% endif %}
@@ -652,11 +687,12 @@
                                     <th scope="col" class="px-3 py-2">{{ col_genre }}</th>
                                     <th scope="col" class="px-3 py-2">{{ col_dewey }}</th>
                                     <th scope="col" class="px-3 py-2 text-right">{{ col_volumes }}</th>
+                                    <th scope="col" class="px-3 py-2">{{ added_since.col_label }}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for item in recent_additions %}
-                                {% include "components/browse_table_row.html" %}
+                                {% let row_lang = base.lang.as_str() %}{% include "components/browse_table_row.html" %}
                                 {% endfor %}
                             </tbody>
                         </table>

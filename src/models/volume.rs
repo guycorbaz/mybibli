@@ -421,7 +421,8 @@ impl VolumeModel {
             "SELECT v.id, v.label, v.version, \
                     sl.name AS location_name, sl.label AS location_label, \
                     CAST(sl.id AS SIGNED) AS location_id, \
-                    vs.name AS condition_name \
+                    vs.name AS condition_name, \
+                    CAST(v.created_at AS DATETIME) AS created_at \
              FROM volumes v \
              LEFT JOIN storage_locations sl \
                ON v.location_id = sl.id AND sl.deleted_at IS NULL \
@@ -459,6 +460,7 @@ impl VolumeModel {
                 location_label: r.try_get("location_label").ok(),
                 location_path: location_id.and_then(|id| paths.get(&id).cloned()),
                 condition_name: r.try_get("condition_name").ok(),
+                created_at: r.try_get("created_at").ok(),
             })
             .collect())
     }
@@ -803,6 +805,8 @@ pub struct VolumeWithLocation {
     /// `None` exactly when `location_name` is.
     pub location_path: Option<String>,
     pub condition_name: Option<String>,
+    /// Story 13-7 (#586) — when the volume was entered (UTC).
+    pub created_at: Option<chrono::NaiveDateTime>,
 }
 
 /// A volume with its title metadata, for location contents display.

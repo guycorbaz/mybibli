@@ -2,7 +2,8 @@
    `<tr>` of a SearchResult, used by the home page's #browse-results table,
    the #recent-additions table, and the Rust HTMX search-fragment builder
    (routes/home_search_fragment.rs::render_search_table_row).
-   Calling convention: `item` is the loop variable (a SearchResult). #}
+   Calling convention: `item` is the loop variable (a SearchResult) and
+   `row_lang` the page locale (story 13-7: localized "Added" date). #}
 <tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50">
     <td class="px-3 py-2">
         <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5" aria-hidden="true">
@@ -18,4 +19,6 @@
         {% match item.dewey_code %}{% when Some with (d) %}<code class="font-mono text-xs">{{ d }}</code>{% when None %}—{% endmatch %}
     </td>
     <td class="px-3 py-2 text-right tabular-nums text-stone-600 dark:text-stone-400">{{ item.volume_count }}</td>
+    {# Story 13-7 (#586) — latest addition date (title or one of its volumes), localized. #}
+    <td class="px-3 py-2 tabular-nums whitespace-nowrap text-stone-600 dark:text-stone-400" data-col="added">{{ item.added_date(row_lang) }}</td>
 </tr>
