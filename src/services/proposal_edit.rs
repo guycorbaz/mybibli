@@ -376,6 +376,7 @@ pub fn keep_of(kind: ProposalKind, line: &LineView, live_lines: usize) -> Option
         "series_new" | "series_target" => Some(Keep::SeriesLine),
         "cover" => Some(Keep::Cover),
         _ if kind == ProposalKind::Cover => Some(Keep::Cover),
+        _ if kind == ProposalKind::LabelAttach => Some(Keep::LastLine),
         "field" | "contributors" if kind == ProposalKind::Metadata && live_lines <= 1 => {
             Some(Keep::LastLine)
         }
@@ -396,6 +397,8 @@ fn keep_reason(kind: ProposalKind, values: &Value, live_lines: usize) -> Option<
         Some("series") => Some(Keep::SeriesLine),
         Some("cover") => Some(Keep::Cover),
         _ if kind == ProposalKind::Cover => Some(Keep::Cover),
+        // Story 13-9 — a label proposal's single line.
+        _ if kind == ProposalKind::LabelAttach => Some(Keep::LastLine),
         _ if kind == ProposalKind::Metadata && live_lines <= 1 => Some(Keep::LastLine),
         _ => None,
     }
@@ -809,7 +812,8 @@ async fn edit_line_in(
         .map_err(|e| EditError::Invalid(e.to_string()))?;
 
     let new = match kind {
-        ProposalKind::Cover => return Err(EditError::NotEditable),
+        // A label proposal is accepted or rejected as it is (story 13-9).
+        ProposalKind::Cover | ProposalKind::LabelAttach => return Err(EditError::NotEditable),
         ProposalKind::SeriesCreate | ProposalKind::SeriesAttach => {
             let raw = raw_series_values(&old, form)?;
             // An attach: its series as it is now (row lock, the order of
@@ -933,7 +937,7 @@ pub fn has_lines_to_apply(kind: ProposalKind, lines: &[LineView]) -> bool {
     match kind {
         ProposalKind::SeriesAttach => lines.iter().any(|l| matches!(l.line, "title" | "tome")),
         ProposalKind::Metadata => !lines.is_empty(),
-        ProposalKind::SeriesCreate | ProposalKind::Cover => true,
+        ProposalKind::SeriesCreate | ProposalKind::Cover | ProposalKind::LabelAttach => true,
     }
 }
 
@@ -1006,6 +1010,14 @@ pub fn line_summary(line: &LineView, loc: &str) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
                 .as_str()
+        )
+        .to_string(),
+        // Story 13-9.
+        "label" => t!(
+            "proposals.summary_label",
+            locale = loc,
+            label = line.label_name.as_str(),
+            target = target().as_str()
         )
         .to_string(),
         _ => line.raw_json.clone(),
@@ -1487,6 +1499,8 @@ mod tests {
         assert!(editable(Metadata, &view("contributors")));
         assert!(!editable(Cover, &view("cover")));
         assert!(!editable(Metadata, &view("unknown")));
+        assert!(!editable(LabelAttach, &view("label")));
+        assert!(!removable(LabelAttach, &view("label"), 1));
 
         assert!(!removable(SeriesCreate, &view("series_new"), 3));
         assert!(!removable(SeriesAttach, &view("series_target"), 3));
@@ -1513,6 +1527,10 @@ mod tests {
         assert_eq!(
             keep_reason(Cover, &json!({"line": "cover"}), 1),
             Some(Keep::Cover)
+        );
+        assert_eq!(
+            keep_reason(LabelAttach, &json!({"line": "label"}), 1),
+            Some(Keep::LastLine)
         );
         assert_eq!(
             keep_reason(Metadata, &json!({"line": "field"}), 1),

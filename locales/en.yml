@@ -1478,6 +1478,21 @@ proposals:
   stale_why_cover_changed: "the title's cover was changed after the proposal was filed."
   error_cover_missing: "The proposed image is no longer available, so nothing was changed and the proposal is still pending. Reject it and ask the assistant to propose the cover again."
   cover_accepted: "Proposal accepted — the title's current cover"
+  # Story 13-9 (#581) — label proposals.
+  row_label: "Label: “%{label}”"
+  kind_label_attach: "Label"
+  view_volume: "View volume"
+  label_record: "Marked record"
+  label_label: "Label"
+  label_note: "Note from the assistant"
+  summary_label: "Label “%{label}” on %{target}"
+  accept_modal_label: "Accepting attaches the label “%{label}” to %{target}."
+  accept_modal_note_label: "If the record or the label was deleted, or the label was attached in the meantime, nothing is changed and the proposal is marked outdated."
+  applied_label: "%{target} now carries the label “%{label}”."
+  open_volume: "Open the volume"
+  stale_why_label_target_gone: "the title or volume it marks was deleted after the proposal was filed."
+  stale_why_label_gone: "the label “%{label}” was deleted."
+  stale_why_label_attached: "the label “%{label}” is already on the record."
 # Story 13-7 (#586) — creation / last-change dates on the title and volume pages.
 record_dates:
   added_on: "Added on %{date}"

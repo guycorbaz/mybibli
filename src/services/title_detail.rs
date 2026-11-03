@@ -17,6 +17,7 @@ use crate::error::AppError;
 use crate::models::contributor::TitleContributorModel;
 use crate::models::date_added::{DatedTable, find_timestamps};
 use crate::models::genre::GenreModel;
+use crate::models::label::{LabelModel, LabelTarget};
 use crate::models::series::TitleSeriesModel;
 use crate::models::title::TitleModel;
 use crate::models::volume::VolumeModel;
@@ -74,6 +75,26 @@ pub struct TitleDetailVolume {
     pub condition_name: Option<String>,
     /// Story 13-7 (#586) — when the volume was entered (ISO 8601, UTC).
     pub created_at: Option<String>,
+    /// Story 13-9 (#581) — the labels the volume carries. Filled for the
+    /// MCP `get_title` only; absent from the `/api/v1` document.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub labels: Option<Vec<LabelRef>>,
+}
+
+/// Story 13-9 — a label as an agent reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LabelRef {
+    pub id: u64,
+    pub name: String,
+}
+
+impl From<LabelModel> for LabelRef {
+    fn from(l: LabelModel) -> Self {
+        LabelRef {
+            id: l.id,
+            name: l.name,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -124,6 +145,7 @@ pub async fn build_title_detail(
             location_path: v.location_path,
             condition_name: v.condition_name,
             created_at: v.created_at.map(rfc3339_utc),
+            labels: None,
         })
         .collect();
     let series: Vec<TitleDetailSeries> = series_raw
@@ -197,6 +219,9 @@ pub struct AgentTitleDetail {
     /// Always `null` once it is in one (the positions in `series` are the
     /// authoritative numbers).
     pub detected_tome: Option<i32>,
+    /// Story 13-9 (#581) — the labels the title carries (each volume
+    /// lists its own in `volumes[].labels`).
+    pub labels: Vec<LabelRef>,
 }
 
 /// Whether a stored cover URL denotes an actual cover.
@@ -213,8 +238,26 @@ pub async fn find_agent_title_detail(
     let Some(title) = TitleModel::find_by_id(pool, id).await? else {
         return Ok(None);
     };
-    let detail = build_title_detail(pool, &title).await?;
+    let mut detail = build_title_detail(pool, &title).await?;
+    let volume_ids: Vec<u64> = detail.volumes.iter().map(|v| v.id).collect();
+    let mut volume_labels = LabelModel::list_for_volumes(pool, &volume_ids).await?;
+    for v in &mut detail.volumes {
+        v.labels = Some(
+            volume_labels
+                .remove(&v.id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(LabelRef::from)
+                .collect(),
+        );
+    }
+    let labels = LabelModel::list_for(pool, LabelTarget::Title(id))
+        .await?
+        .into_iter()
+        .map(LabelRef::from)
+        .collect();
     Ok(Some(AgentTitleDetail {
+        labels,
         has_cover: has_cover(title.cover_image_url.as_deref()),
         manually_edited_fields: title.parsed_manually_edited_fields(),
         detected_tome: if detail.series.is_empty() {

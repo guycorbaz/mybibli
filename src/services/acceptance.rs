@@ -17,7 +17,8 @@
 //! - `metadata`: [`crate::services::metadata_acceptance`] (11-18);
 //! - `cover`: [`crate::services::cover_acceptance`] (11-18) — its staged
 //!   file is promoted **after** the commit (no file I/O inside a
-//!   decision transaction, D-11-9-12).
+//!   decision transaction, D-11-9-12);
+//! - `label_attach`: [`crate::services::label_acceptance`] (13-9).
 //!
 //! [`accept`] dispatches on the proposal's kind.
 
@@ -33,6 +34,7 @@ use crate::error::AppError;
 use crate::models::proposal::{ProposalItemRow, ProposalKind, ProposalModel, ProposalStatus};
 use crate::services::cover_acceptance::{self, AppliedCover};
 use crate::services::expected_tomes::ExpectedTomeError;
+use crate::services::label_acceptance::{self, AppliedLabel};
 use crate::services::metadata_acceptance::{self, AppliedMetadata};
 use crate::services::proposals::{
     Decision, ProposalError, ProposalService, StaleTarget, Transition,
@@ -70,6 +72,11 @@ pub enum AcceptConflict {
     RoleGone { role: String },
     /// Story 11-18 — the title's cover changed since filing.
     CoverChanged,
+    /// Story 13-9 — the proposed label was deleted (its name at filing).
+    LabelGone { label: String },
+    /// Story 13-9 — the label is already on the record (attached by hand
+    /// since filing).
+    LabelAttached { label: String },
 }
 
 /// Why an accept went stale.
@@ -317,6 +324,7 @@ pub enum Applied {
     Series(AppliedSeries),
     Metadata(AppliedMetadata),
     Cover(AppliedCover),
+    Label(AppliedLabel),
 }
 
 fn wrap<A>(outcome: AcceptOutcome<A>, f: impl FnOnce(A) -> Applied) -> AcceptOutcome<Applied> {
@@ -363,6 +371,10 @@ pub async fn accept(
         ProposalKind::Cover => wrap(
             cover_acceptance::accept(pool, dirs, id, user_id, version).await?,
             Applied::Cover,
+        ),
+        ProposalKind::LabelAttach => wrap(
+            label_acceptance::accept(pool, id, user_id, version).await?,
+            Applied::Label,
         ),
     };
     Ok((kind, outcome))

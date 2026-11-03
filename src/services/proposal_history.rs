@@ -17,7 +17,9 @@
 //!   blocked);
 //! - `cover` — the title id and the image's SHA-256 (`fingerprint`,
 //!   story 12-2): a rejection blocks only the same image; a cover filed
-//!   before has the legacy key `cover:titles/{id}` and blocks nothing new.
+//!   before has the legacy key `cover:titles/{id}` and blocks nothing new;
+//! - `label_attach` (story 13-9) — the target (title or volume) and the
+//!   label id: `label:titles/{id}:{label_id}` / `label:volumes/{id}:{label_id}`.
 //!
 //! The subject is read from the items as filed (the shapes documented in
 //! `series_proposals`, `metadata_proposals`, `cover_proposals`) and
@@ -122,6 +124,8 @@ pub struct SubjectLine<'a> {
     pub name: Option<&'a str>,
     /// `proposed_values.fingerprint` (cover items, story 12-2).
     pub fingerprint: Option<&'a str>,
+    /// `proposed_values.label_id` (label items, story 13-9).
+    pub label_id: Option<u64>,
 }
 
 impl<'a> SubjectLine<'a> {
@@ -134,6 +138,7 @@ impl<'a> SubjectLine<'a> {
             field: row.field.as_deref(),
             name: row.name.as_deref(),
             fingerprint: row.fingerprint.as_deref(),
+            label_id: row.label_id,
         }
     }
 
@@ -146,6 +151,7 @@ impl<'a> SubjectLine<'a> {
             field: s("field"),
             name: s("name"),
             fingerprint: s("fingerprint"),
+            label_id: values.get("label_id").and_then(Value::as_u64),
         }
     }
 }
@@ -179,6 +185,11 @@ pub enum ProposalSubject {
     Cover {
         title_id: u64,
         fingerprint: Option<String>,
+    },
+    /// Story 13-9 — a label on a title or a volume (`target`).
+    LabelAttach {
+        target: ProposalTarget,
+        label_id: u64,
     },
 }
 
@@ -231,6 +242,21 @@ impl ProposalSubject {
                         }
                     })
                 }),
+            ProposalKind::LabelAttach => lines
+                .iter()
+                .find(|l| l.line == Some("label"))
+                .and_then(|l| {
+                    let target = l.target.filter(|t| {
+                        matches!(
+                            t.table,
+                            ProposalTargetTable::Titles | ProposalTargetTable::Volumes
+                        )
+                    })?;
+                    Some(ProposalSubject::LabelAttach {
+                        target,
+                        label_id: l.label_id?,
+                    })
+                }),
         }
     }
 
@@ -273,6 +299,9 @@ impl ProposalSubject {
                 title_id,
                 fingerprint: None,
             } => format!("cover:titles/{title_id}"),
+            ProposalSubject::LabelAttach { target, label_id } => {
+                format!("label:{}/{}:{label_id}", target.table.as_str(), target.id)
+            }
         };
         key.chars().take(MAX_EQUIVALENCE_KEY_CHARS).collect()
     }
@@ -286,6 +315,12 @@ impl ProposalSubject {
                 json!({ "title_id": title_id, "fields": fields })
             }
             ProposalSubject::Cover { title_id, .. } => json!({ "title_id": title_id }),
+            ProposalSubject::LabelAttach { target, label_id } => match target.table {
+                ProposalTargetTable::Volumes => {
+                    json!({ "volume_id": target.id, "label_id": label_id })
+                }
+                _ => json!({ "title_id": target.id, "label_id": label_id }),
+            },
         }
     }
 
@@ -308,6 +343,9 @@ impl ProposalSubject {
             ),
             ProposalSubject::Cover { title_id, .. } => {
                 format!("this cover image for title {title_id}")
+            }
+            ProposalSubject::LabelAttach { target, label_id } => {
+                format!("label {label_id} on {} {}", target.table.noun(), target.id)
             }
         }
     }
@@ -805,6 +843,50 @@ mod tests {
                 vec![item(title(7), json!({"line": "field", "field": "cover"}))]
             )
         );
+    }
+
+    // Story 13-9 — a label proposal is keyed by its target and its label.
+    #[test]
+    fn label_key_is_the_target_and_the_label() {
+        let volume = |id| {
+            Some(ProposalTarget {
+                table: ProposalTargetTable::Volumes,
+                id,
+            })
+        };
+        let label = |target, label_id: u64| {
+            key_of(
+                ProposalKind::LabelAttach,
+                vec![item(
+                    target,
+                    json!({"line": "label", "label_id": label_id, "label_name": "Code douteux"}),
+                )],
+            )
+        };
+        assert_eq!(label(volume(7), 3).as_deref(), Some("label:volumes/7:3"));
+        assert_eq!(label(title(7), 3).as_deref(), Some("label:titles/7:3"));
+        assert_ne!(label(volume(7), 3), label(volume(7), 4), "another label");
+        assert_ne!(label(volume(8), 3), label(volume(7), 3), "another volume");
+        // A series target or a line without label id has no subject.
+        assert_eq!(label(series(7), 3), None);
+        assert_eq!(
+            key_of(
+                ProposalKind::LabelAttach,
+                vec![item(volume(7), json!({"line": "label"}))]
+            ),
+            None
+        );
+        let s = ProposalSubject::LabelAttach {
+            target: volume(7).unwrap(),
+            label_id: 3,
+        };
+        assert_eq!(s.to_json(), json!({"volume_id": 7, "label_id": 3}));
+        assert_eq!(s.describe(), "label 3 on volume 7");
+        let t = ProposalSubject::LabelAttach {
+            target: title(9).unwrap(),
+            label_id: 3,
+        };
+        assert_eq!(t.to_json(), json!({"title_id": 9, "label_id": 3}));
     }
 
     #[test]

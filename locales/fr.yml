@@ -1474,6 +1474,21 @@ proposals:
   stale_why_cover_changed: "la couverture du titre a été changée après le dépôt de la proposition."
   error_cover_missing: "L'image proposée n'est plus disponible : rien n'a été modifié et la proposition est toujours en attente. Refusez-la et demandez à l'assistant de proposer à nouveau la couverture."
   cover_accepted: "Proposition acceptée — couverture actuelle du titre"
+  # Story 13-9 (#581) — label proposals.
+  row_label: "Étiquette : « %{label} »"
+  kind_label_attach: "Étiquette"
+  view_volume: "Voir le volume"
+  label_record: "Notice marquée"
+  label_label: "Étiquette"
+  label_note: "Note de l'assistant"
+  summary_label: "Étiquette « %{label} » sur %{target}"
+  accept_modal_label: "Accepter pose l'étiquette « %{label} » sur %{target}."
+  accept_modal_note_label: "Si la notice ou l'étiquette a été supprimée, ou si l'étiquette a été posée entre-temps, rien n'est modifié et la proposition est marquée comme dépassée."
+  applied_label: "%{target} porte désormais l'étiquette « %{label} »."
+  open_volume: "Ouvrir le volume"
+  stale_why_label_target_gone: "le titre ou le volume qu'elle marque a été supprimé après le dépôt de la proposition."
+  stale_why_label_gone: "l'étiquette « %{label} » a été supprimée."
+  stale_why_label_attached: "l'étiquette « %{label} » est déjà sur la notice."
 # Story 13-7 (#586) — creation / last-change dates on the title and volume pages.
 record_dates:
   added_on: "Ajouté le %{date}"

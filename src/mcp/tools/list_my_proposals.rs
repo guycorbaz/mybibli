@@ -96,20 +96,22 @@ impl McpTool for ListMyProposals {
         "List the proposals filed with YOUR API key (never another key's), newest first, 25 \
          per page; pass `page` (1-based) until `page` equals `total_pages`. Filter with \
          `status` (`pending`, `accepted`, `rejected`, `stale`) and `kind` (`series_create`, \
-         `series_attach`, `metadata`, `cover`). Each item gives `proposal_id`, `kind`, \
+         `series_attach`, `metadata`, `cover`, `label_attach`). Each item gives `proposal_id`, `kind`, \
          `status`, `filed_at`, `decided_at` (null while pending; set when a librarian \
          accepted or rejected it, or when it went stale because its target changed or the \
          key was revoked), `rejection_reason` (the librarian's optional explanation, null \
          otherwise), `item_count`, and `subject`: what it was about — `{series_name}` for a \
          series creation, `{series_id}` for additions to a series, `{title_id, fields}` for \
-         metadata, `{title_id}` for a cover (as the proposal now stands; a librarian may have \
+         metadata, `{title_id}` for a cover, `{title_id, label_id}` or `{volume_id, label_id}` \
+         for a label (as the proposal now stands; a librarian may have \
          edited it). For a rejected proposal, `resubmittable_from` is the instant from which \
          an equivalent proposal is accepted again: the newest rejection of an equivalent \
          proposal (by any key) plus the library's resubmission delay, at most 3650 days; it \
          may be in the past, and it is null when the proposal has no subject (it then blocks nothing). Equivalent means the same kind and target: the same series name (case and accents \
          ignored) for a creation, the same series for additions, the same title and at least \
          one shared field for metadata (a rejection blocks each of its fields), the same title \
-         and the same image for a cover (another image is not blocked). Before that instant an \
+         and the same image for a cover (another image is not blocked), the same label on the \
+         same title or volume for a label. Before that instant an \
          equivalent proposal is refused, whichever key files it — read the reason and propose \
          something else. Dates are RFC 3339 UTC. Read-only."
     }
@@ -173,7 +175,7 @@ mod tests {
         );
         let err = parse_args(json!({"kind": "series"})).unwrap_err();
         assert!(
-            matches!(&err, ToolError::InvalidArguments(m) if m.contains("series_create, series_attach, metadata, cover")),
+            matches!(&err, ToolError::InvalidArguments(m) if m.contains("series_create, series_attach, metadata, cover, label_attach")),
             "{err:?}"
         );
         for bad in [json!({"page": 0}), json!({"api_key_id": 2}), json!([1])] {

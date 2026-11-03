@@ -8,6 +8,7 @@ use crate::error::AppError;
 use crate::models::proposal::{ProposalKind, ProposalStatus};
 use crate::services::acceptance::{AcceptConflict, AcceptError, Applied, StaleCause};
 use crate::services::cover_acceptance::AppliedCover;
+use crate::services::label_acceptance::AppliedLabel;
 use crate::services::metadata_acceptance::AppliedMetadata;
 use crate::services::proposal_review::{ReviewDetail, ReviewError, TargetLabel, field_label};
 use crate::services::series_acceptance::AppliedSeries;
@@ -35,6 +36,22 @@ pub fn modal_sentences(detail: &ReviewDetail, loc: &str) -> Vec<String> {
     }
     let title = detail.target.text(loc);
     let mut out = Vec::new();
+    if kind == ProposalKind::LabelAttach {
+        // Story 13-9.
+        for line in detail.lines.iter().filter(|l| l.line == "label") {
+            out.push(
+                t!(
+                    "proposals.accept_modal_label",
+                    locale = loc,
+                    label = line.label_name.as_str(),
+                    target = title.as_str()
+                )
+                .to_string(),
+            );
+        }
+        out.push(t!("proposals.accept_modal_note_label", locale = loc).to_string());
+        return out;
+    }
     if kind == ProposalKind::Cover {
         out.push(
             t!(
@@ -316,7 +333,35 @@ pub fn applied_entry(id: u64, applied: &Applied, loc: &str) -> String {
                 &t!("proposals.open_title", locale = loc),
             )
         }
+        Applied::Label(a) => feedback_html_with_link(
+            "success",
+            &label_message(id, a, loc),
+            "",
+            &a.href(),
+            &t!(
+                match a.target {
+                    crate::models::label::LabelTarget::Volume(_) => "proposals.open_volume",
+                    crate::models::label::LabelTarget::Title(_) => "proposals.open_title",
+                },
+                locale = loc
+            ),
+        ),
     }
+}
+
+/// Story 13-9 — the success message of a label acceptance.
+pub fn label_message(id: u64, applied: &AppliedLabel, loc: &str) -> String {
+    use rust_i18n::t;
+    format!(
+        "{} {}",
+        t!("proposals.accepted_feedback", locale = loc, id = id),
+        t!(
+            "proposals.applied_label",
+            locale = loc,
+            label = applied.label_name.as_str(),
+            target = applied.target_name.as_str()
+        )
+    )
 }
 
 /// The warning entry (HTML) of an acceptance that went stale.
@@ -335,6 +380,9 @@ pub fn stale_why(cause: &StaleCause, loc: &str) -> String {
 pub fn stale_why_of(kind: ProposalKind, cause: &StaleCause, loc: &str) -> String {
     use rust_i18n::t;
     match cause {
+        StaleCause::Targets(_) if kind == ProposalKind::LabelAttach => {
+            t!("proposals.stale_why_label_target_gone", locale = loc)
+        }
         StaleCause::Targets(_) if !is_series(kind) => {
             t!("proposals.stale_why_title_changed", locale = loc)
         }
@@ -400,6 +448,16 @@ pub fn stale_why_of(kind: ProposalKind, cause: &StaleCause, loc: &str) -> String
                 role = role.as_str()
             ),
             AcceptConflict::CoverChanged => t!("proposals.stale_why_cover_changed", locale = loc),
+            AcceptConflict::LabelGone { label } => t!(
+                "proposals.stale_why_label_gone",
+                locale = loc,
+                label = label.as_str()
+            ),
+            AcceptConflict::LabelAttached { label } => t!(
+                "proposals.stale_why_label_attached",
+                locale = loc,
+                label = label.as_str()
+            ),
         },
     }
     .to_string()
@@ -569,6 +627,48 @@ mod tests {
             let m = error_localized(&AcceptError::CoverMissing, loc);
             no_raw_key(&m);
         }
+    }
+
+    // Story 13-9 — every label outcome is localized and links the record.
+    #[test]
+    fn label_outcomes_are_localized() {
+        use crate::models::label::LabelTarget;
+        let applied = AppliedLabel {
+            target: LabelTarget::Volume(9),
+            label_name: "Code douteux".into(),
+            target_name: "V0009 — Tintin".into(),
+        };
+        for loc in LOCALES {
+            let m = label_message(7, &applied, loc);
+            no_raw_key(&m);
+            assert!(
+                m.contains("Code douteux") && m.contains("V0009"),
+                "{loc}: {m}"
+            );
+            let html = applied_entry(7, &Applied::Label(applied.clone()), loc);
+            assert!(html.contains("/volume/9"), "{html}");
+            for cause in [
+                StaleCause::Targets(vec![]),
+                StaleCause::Conflict(AcceptConflict::LabelGone {
+                    label: "Code douteux".into(),
+                }),
+                StaleCause::Conflict(AcceptConflict::LabelAttached {
+                    label: "Code douteux".into(),
+                }),
+            ] {
+                let (m, h) = stale_messages_of(7, ProposalKind::LabelAttach, &cause, loc);
+                no_raw_key(&m);
+                no_raw_key(&h);
+            }
+        }
+        let gone = stale_why_of(
+            ProposalKind::LabelAttach,
+            &StaleCause::Conflict(AcceptConflict::LabelGone {
+                label: "Code douteux".into(),
+            }),
+            "en",
+        );
+        assert!(gone.contains("Code douteux"), "{gone}");
     }
 
     #[test]

@@ -26,14 +26,18 @@ pub enum ProposalKind {
     SeriesAttach,
     Metadata,
     Cover,
+    /// Story 13-9 (#581) — attach one of the library's labels to a title
+    /// or a volume.
+    LabelAttach,
 }
 
 impl ProposalKind {
-    pub const ALL: [ProposalKind; 4] = [
+    pub const ALL: [ProposalKind; 5] = [
         ProposalKind::SeriesCreate,
         ProposalKind::SeriesAttach,
         ProposalKind::Metadata,
         ProposalKind::Cover,
+        ProposalKind::LabelAttach,
     ];
 
     pub fn as_str(&self) -> &'static str {
@@ -42,6 +46,7 @@ impl ProposalKind {
             ProposalKind::SeriesAttach => "series_attach",
             ProposalKind::Metadata => "metadata",
             ProposalKind::Cover => "cover",
+            ProposalKind::LabelAttach => "label_attach",
         }
     }
 
@@ -99,16 +104,31 @@ impl ProposalStatus {
 pub enum ProposalTargetTable {
     Titles,
     Series,
+    /// Story 13-9 (#581) — a label proposal on a volume.
+    Volumes,
 }
 
 impl ProposalTargetTable {
-    pub const ALL: [ProposalTargetTable; 2] =
-        [ProposalTargetTable::Titles, ProposalTargetTable::Series];
+    pub const ALL: [ProposalTargetTable; 3] = [
+        ProposalTargetTable::Titles,
+        ProposalTargetTable::Series,
+        ProposalTargetTable::Volumes,
+    ];
 
     pub fn as_str(&self) -> &'static str {
         match self {
             ProposalTargetTable::Titles => "titles",
             ProposalTargetTable::Series => "series",
+            ProposalTargetTable::Volumes => "volumes",
+        }
+    }
+
+    /// The English noun agent-facing messages use for a row of the table.
+    pub fn noun(&self) -> &'static str {
+        match self {
+            ProposalTargetTable::Titles => "title",
+            ProposalTargetTable::Series => "series",
+            ProposalTargetTable::Volumes => "volume",
         }
     }
 
@@ -189,9 +209,13 @@ pub struct SubjectLineRow {
     pub target: Option<ProposalTarget>,
     pub line: Option<String>,
     pub field: Option<String>,
+    /// `proposed_values.name` (a series line), or `label_name` (a label
+    /// line, story 13-9).
     pub name: Option<String>,
     /// `proposed_values.fingerprint` (cover items, story 12-2).
     pub fingerprint: Option<String>,
+    /// `proposed_values.label_id` (label items, story 13-9).
+    pub label_id: Option<u64>,
 }
 
 /// Story 11-15 — the newest live rejection of an equivalence key, with
@@ -1058,7 +1082,7 @@ impl ProposalModel {
     }
 
     /// The subject parts (target, `line`, `field`, `name`) of the live
-    /// series / field / cover lines of the given proposals, in filing
+    /// series / field / cover / label lines of the given proposals, in filing
     /// order. Title and expected-tome lines are skipped (a series
     /// proposal may carry up to 999 of them).
     pub async fn subject_lines(
@@ -1072,13 +1096,15 @@ impl ProposalModel {
         let sql = format!(
             "SELECT proposal_id, target_table, CAST(target_id AS SIGNED) AS target_id, line, \
                     CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.field')) AS CHAR) AS field, \
-                    CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.name')) AS CHAR) AS name, \
-                    CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.fingerprint')) AS CHAR) AS fingerprint \
+                    CAST(JSON_UNQUOTE(COALESCE(JSON_EXTRACT(proposed_values, '$.name'), \
+                         JSON_EXTRACT(proposed_values, '$.label_name'))) AS CHAR) AS name, \
+                    CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.fingerprint')) AS CHAR) AS fingerprint, \
+                    CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.label_id')) AS SIGNED) AS label_id \
              FROM (SELECT id, proposal_id, target_table, target_id, proposed_values, \
                           CAST(JSON_UNQUOTE(JSON_EXTRACT(proposed_values, '$.line')) AS CHAR) AS line \
                    FROM proposal_items \
                    WHERE proposal_id IN ({placeholders}) AND deleted_at IS NULL) i \
-             WHERE line IN ('series', 'field', 'cover') \
+             WHERE line IN ('series', 'field', 'cover', 'label') \
              ORDER BY proposal_id, id"
         );
         let mut q = sqlx::query(&sql);
@@ -1096,6 +1122,9 @@ impl ProposalModel {
                     field: r.try_get("field")?,
                     name: r.try_get("name")?,
                     fingerprint: r.try_get("fingerprint")?,
+                    label_id: r
+                        .try_get::<Option<i64>, _>("label_id")?
+                        .and_then(|v| u64::try_from(v).ok()),
                 })
             })
             .collect()
@@ -1217,6 +1246,76 @@ impl ProposalModel {
             );
         }
         Ok(out)
+    }
+
+    /// Story 13-9 — live volumes among `ids` with their live title (for
+    /// the proposals page labels). A deleted volume, or one whose title is
+    /// deleted, is absent.
+    pub async fn live_volume_briefs(
+        pool: &DbPool,
+        ids: &[u64],
+    ) -> Result<HashMap<u64, VolumeBrief>, AppError> {
+        let mut conn = pool.acquire().await?;
+        Self::live_volume_briefs_in(&mut conn, ids).await
+    }
+
+    /// [`Self::live_volume_briefs`] on the given connection (plain read).
+    pub async fn live_volume_briefs_in(
+        conn: &mut MySqlConnection,
+        ids: &[u64],
+    ) -> Result<HashMap<u64, VolumeBrief>, AppError> {
+        let mut out = HashMap::new();
+        if ids.is_empty() {
+            return Ok(out);
+        }
+        let placeholders = vec!["?"; ids.len()].join(", ");
+        let sql = format!(
+            "SELECT v.id, CAST(v.label AS CHAR) AS code, v.title_id, CAST(t.title AS CHAR) AS title \
+             FROM volumes v JOIN titles t ON t.id = v.title_id AND t.deleted_at IS NULL \
+             WHERE v.id IN ({placeholders}) AND v.deleted_at IS NULL"
+        );
+        let mut q = sqlx::query(&sql);
+        for id in ids {
+            q = q.bind(id);
+        }
+        for r in q.fetch_all(&mut *conn).await? {
+            out.insert(
+                r.try_get("id")?,
+                VolumeBrief {
+                    code: r.try_get("code")?,
+                    title_id: r.try_get("title_id")?,
+                    title: r.try_get("title")?,
+                },
+            );
+        }
+        Ok(out)
+    }
+
+    /// Story 13-9 — the oldest live pending `label_attach` proposal whose
+    /// live item puts `label_id` on `table`/`id`. A plain read that starts
+    /// from the target index (lock-scope rule, epic 12 retro A1); called
+    /// after [`Self::lock_filing_key_exclusive`], it sees every filing
+    /// committed before that lock was granted (D-11-12-13).
+    pub async fn pending_label_attach(
+        conn: &mut MySqlConnection,
+        table: ProposalTargetTable,
+        id: u64,
+        label_id: u64,
+    ) -> Result<Option<u64>, AppError> {
+        let found: Option<u64> = sqlx::query_scalar(
+            "SELECT p.id FROM proposal_items i FORCE INDEX (idx_proposal_items_target) \
+             STRAIGHT_JOIN proposals p ON p.id = i.proposal_id \
+             WHERE i.target_table = ? AND i.target_id = ? AND i.deleted_at IS NULL \
+               AND p.kind = 'label_attach' AND p.status = 'pending' AND p.deleted_at IS NULL \
+               AND CAST(JSON_UNQUOTE(JSON_EXTRACT(i.proposed_values, '$.label_id')) AS SIGNED) = ? \
+             ORDER BY p.id ASC LIMIT 1",
+        )
+        .bind(table.as_str())
+        .bind(id)
+        .bind(label_id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        Ok(found)
     }
 
     /// Names of the live series among `ids`. Deleted series are absent.
@@ -1368,6 +1467,15 @@ pub struct ItemTrailRow {
     pub edited_by_name: Option<String>,
     pub edited_at: Option<NaiveDateTime>,
     pub removed: bool,
+}
+
+/// Story 13-9 — a live volume as the proposals page names it: its code
+/// and its title.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VolumeBrief {
+    pub code: String,
+    pub title_id: u64,
+    pub title: String,
 }
 
 /// A live title as the proposals page names it (story 11-16).

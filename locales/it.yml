@@ -1448,6 +1448,21 @@ proposals:
   stale_why_cover_changed: "la copertina del titolo è stata cambiata dopo il deposito della proposta."
   error_cover_missing: "L'immagine proposta non è più disponibile, quindi non è stato modificato nulla e la proposta è ancora in attesa. Rifiutala e chiedi all'assistente di proporre di nuovo la copertina."
   cover_accepted: "Proposta accettata — copertina attuale del titolo"
+  # Story 13-9 (#581) — label proposals.
+  row_label: "Etichetta: «%{label}»"
+  kind_label_attach: "Etichetta"
+  view_volume: "Vedi il volume"
+  label_record: "Scheda segnalata"
+  label_label: "Etichetta"
+  label_note: "Nota dell'assistente"
+  summary_label: "Etichetta «%{label}» su %{target}"
+  accept_modal_label: "Accettando si applica l'etichetta «%{label}» a %{target}."
+  accept_modal_note_label: "Se la scheda o l'etichetta è stata eliminata, o se l'etichetta è stata applicata nel frattempo, non viene modificato nulla e la proposta viene segnata come superata."
+  applied_label: "%{target} porta ora l'etichetta «%{label}»."
+  open_volume: "Apri il volume"
+  stale_why_label_target_gone: "il titolo o il volume che segnala è stato eliminato dopo il deposito della proposta."
+  stale_why_label_gone: "l'etichetta «%{label}» è stata eliminata."
+  stale_why_label_attached: "l'etichetta «%{label}» è già sulla scheda."
 # Story 13-7 (#586) — creation / last-change dates on the title and volume pages.
 record_dates:
   added_on: "Aggiunto il %{date}"

@@ -5,12 +5,14 @@
 mod args;
 mod get_series;
 mod get_title;
+mod list_labels;
 mod list_my_proposals;
 mod list_series;
 mod list_titles_with_incomplete_metadata;
 mod list_titles_without_cover;
 mod proposal_args;
 mod propose_cover;
+mod propose_label;
 mod propose_series_attach;
 mod propose_series_create;
 mod propose_title_metadata;
@@ -43,12 +45,15 @@ pub fn registry() -> ToolRegistry {
         .with(propose_series_attach::ProposeSeriesAttach)
         .with(propose_title_metadata::ProposeTitleMetadata)
         .with(propose_cover::ProposeCover)
+        .with(list_labels::ListLabels)
+        .with(propose_label::ProposeLabel)
 }
 
 /// The tools that file proposals (story 11-12 on); every other tool reads.
 #[cfg(test)]
-const PROPOSE_TOOLS: [&str; 4] = [
+const PROPOSE_TOOLS: [&str; 5] = [
     "propose_cover",
+    "propose_label",
     "propose_series_attach",
     "propose_series_create",
     "propose_title_metadata",
@@ -195,11 +200,13 @@ mod tests {
             [
                 "get_series",
                 "get_title",
+                "list_labels",
                 "list_my_proposals",
                 "list_series",
                 "list_titles_with_incomplete_metadata",
                 "list_titles_without_cover",
                 "propose_cover",
+                "propose_label",
                 "propose_series_attach",
                 "propose_series_create",
                 "propose_title_metadata",

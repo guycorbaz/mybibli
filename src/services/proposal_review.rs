@@ -28,7 +28,7 @@ use crate::models::contributor_role::ContributorRoleModel;
 use crate::models::expected_tome::{ExpectedTomeModel, TomeSlot};
 use crate::models::proposal::{
     ProposalFilter, ProposalKind, ProposalModel, ProposalStatus, ProposalSummaryRow,
-    ProposalTarget, ProposalTargetTable, TitleBrief,
+    ProposalTarget, ProposalTargetTable, TitleBrief, VolumeBrief,
 };
 use crate::services::cover_staging;
 use crate::services::proposal_edit;
@@ -75,6 +75,7 @@ pub fn kind_label(kind: ProposalKind, loc: &str) -> String {
         ProposalKind::SeriesAttach => "proposals.kind_series_attach",
         ProposalKind::Metadata => "proposals.kind_metadata",
         ProposalKind::Cover => "proposals.kind_cover",
+        ProposalKind::LabelAttach => "proposals.kind_label_attach",
     };
     rust_i18n::t!(key, locale = loc).to_string()
 }
@@ -120,6 +121,9 @@ pub enum TargetLabel {
     Series { id: u64, name: Option<String> },
     /// An existing title; `name` is `None` when it is no longer live.
     Title { id: u64, name: Option<String> },
+    /// Story 13-9 — an existing volume; `name` ("V0042 — title") is
+    /// `None` when it is no longer live.
+    Volume { id: u64, name: Option<String> },
     /// Items of no known shape.
     Unknown,
 }
@@ -137,6 +141,16 @@ impl TargetLabel {
                 id: *title_id,
                 name: names.titles.get(title_id).map(|t| t.title.clone()),
             },
+            Some(ProposalSubject::LabelAttach { target, .. }) => match target.table {
+                ProposalTargetTable::Volumes => TargetLabel::Volume {
+                    id: target.id,
+                    name: names.volume_name(target.id),
+                },
+                _ => TargetLabel::Title {
+                    id: target.id,
+                    name: names.titles.get(&target.id).map(|t| t.title.clone()),
+                },
+            },
             None => TargetLabel::Unknown,
         }
     }
@@ -146,6 +160,7 @@ impl TargetLabel {
         match self {
             TargetLabel::Series { id, name: Some(_) } => Some(format!("/series/{id}")),
             TargetLabel::Title { id, name: Some(_) } => Some(format!("/title/{id}")),
+            TargetLabel::Volume { id, name: Some(_) } => Some(format!("/volume/{id}")),
             _ => None,
         }
     }
@@ -160,8 +175,11 @@ impl TargetLabel {
             )
             .to_string(),
             TargetLabel::Series { name: Some(n), .. }
-            | TargetLabel::Title { name: Some(n), .. } => n.clone(),
-            TargetLabel::Series { id, name: None } | TargetLabel::Title { id, name: None } => {
+            | TargetLabel::Title { name: Some(n), .. }
+            | TargetLabel::Volume { name: Some(n), .. } => n.clone(),
+            TargetLabel::Series { id, name: None }
+            | TargetLabel::Title { id, name: None }
+            | TargetLabel::Volume { id, name: None } => {
                 rust_i18n::t!("proposals.target_gone", locale = loc, id = id).to_string()
             }
             TargetLabel::Unknown => "—".to_string(),
@@ -174,26 +192,39 @@ impl TargetLabel {
 struct Names {
     titles: HashMap<u64, TitleBrief>,
     series: HashMap<u64, String>,
+    /// Story 13-9 — live volumes (label proposals).
+    volumes: HashMap<u64, VolumeBrief>,
 }
 
 impl Names {
+    /// A live volume as the page names it: "V0042 — title".
+    fn volume_name(&self, id: u64) -> Option<String> {
+        self.volumes
+            .get(&id)
+            .map(|v| format!("{} — {}", v.code, v.title))
+    }
+
     async fn load(
         pool: &DbPool,
         targets: impl Iterator<Item = ProposalTarget>,
     ) -> Result<Self, AppError> {
         let mut title_ids = HashSet::new();
         let mut series_ids = HashSet::new();
+        let mut volume_ids = HashSet::new();
         for t in targets {
             match t.table {
                 ProposalTargetTable::Titles => title_ids.insert(t.id),
                 ProposalTargetTable::Series => series_ids.insert(t.id),
+                ProposalTargetTable::Volumes => volume_ids.insert(t.id),
             };
         }
         let title_ids: Vec<u64> = title_ids.into_iter().collect();
         let series_ids: Vec<u64> = series_ids.into_iter().collect();
+        let volume_ids: Vec<u64> = volume_ids.into_iter().collect();
         Ok(Names {
             titles: ProposalModel::live_title_briefs(pool, &title_ids).await?,
             series: ProposalModel::live_series_names(pool, &series_ids).await?,
+            volumes: ProposalModel::live_volume_briefs(pool, &volume_ids).await?,
         })
     }
 }
@@ -208,6 +239,8 @@ pub struct ListEntry {
     /// What the live lines are about (story 12-4: the proposed fields of
     /// a metadata proposal); `None` for items of no known shape.
     pub subject: Option<ProposalSubject>,
+    /// Story 13-9 — the label a label proposal attaches (name at filing).
+    pub label_name: Option<String>,
 }
 
 /// One page (25) of live proposals, newest first, with their targets.
@@ -251,7 +284,12 @@ pub async fn list_page(
         .into_iter()
         .map(|summary| {
             let subject = subjects.remove(&summary.id).flatten();
+            let label_name = lines
+                .iter()
+                .find(|l| l.proposal_id == summary.id && l.line.as_deref() == Some("label"))
+                .and_then(|l| l.name.clone());
             ListEntry {
+                label_name,
                 target: TargetLabel::of(subject.as_ref(), &names),
                 subject,
                 summary,
@@ -290,7 +328,7 @@ impl ContributorView {
 
 /// One item of a proposal, ready for display. `line` says which fields
 /// are meaningful: `series_new`, `series_target`, `title`, `tome`,
-/// `field`, `contributors`, `cover`, `unknown`.
+/// `field`, `contributors`, `cover`, `label`, `unknown`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LineView {
     pub line: &'static str,
@@ -342,6 +380,17 @@ pub struct LineView {
     pub width: String,
     pub height: String,
     pub bytes: String,
+    // label (story 13-9)
+    /// The label's name at filing.
+    pub label_name: String,
+    /// The label's id (its `/labels/{id}` page).
+    pub label_id: Option<u64>,
+    /// The agent's note to the librarian.
+    pub note: Option<String>,
+    /// The labelled record is a volume (else a title).
+    pub on_volume: bool,
+    /// The live record's page.
+    pub target_href: Option<String>,
     // unknown
     pub raw_json: String,
 }
@@ -596,6 +645,22 @@ pub fn parse_line(target: Option<ProposalTarget>, values: &Value, loc: &str) -> 
             bytes: text_of(s("bytes")).unwrap_or_default(),
             ..LineView::default()
         }),
+        Some("label") => target
+            .filter(|t| {
+                matches!(
+                    t.table,
+                    ProposalTargetTable::Titles | ProposalTargetTable::Volumes
+                )
+            })
+            .map(|t| LineView {
+                line: "label",
+                target_id: Some(t.id),
+                on_volume: t.table == ProposalTargetTable::Volumes,
+                label_name: text_of(s("label_name")).unwrap_or_default(),
+                label_id: s("label_id").and_then(Value::as_u64),
+                note: text_of(s("note")).filter(|n| !n.trim().is_empty()),
+                ..LineView::default()
+            }),
         _ => None,
     };
     let mut line = parsed.unwrap_or_else(|| unknown(values));
@@ -699,6 +764,14 @@ pub async fn review_detail(
         if let Some(id) = line.target_id {
             match line.line {
                 "series_target" => line.target_name = names.series.get(&id).cloned(),
+                "label" if line.on_volume => {
+                    line.target_name = names.volume_name(id);
+                    line.target_href = line.target_name.as_ref().map(|_| format!("/volume/{id}"));
+                }
+                "label" => {
+                    line.target_name = names.titles.get(&id).map(|t| t.title.clone());
+                    line.target_href = line.target_name.as_ref().map(|_| format!("/title/{id}"));
+                }
                 _ => {
                     if let Some(t) = names.titles.get(&id) {
                         line.target_name = Some(t.title.clone());
@@ -711,7 +784,9 @@ pub async fn review_detail(
         line
     };
     let kind = detail.proposal.kind;
-    let can_edit = detail.proposal.status == ProposalStatus::Pending && kind != ProposalKind::Cover;
+    // Cover and label proposals are accepted or rejected as they are.
+    let can_edit = detail.proposal.status == ProposalStatus::Pending
+        && !matches!(kind, ProposalKind::Cover | ProposalKind::LabelAttach);
     let live_lines = detail.items.len();
     let lines: Vec<LineView> = detail
         .items
@@ -1355,6 +1430,38 @@ mod tests {
         assert_eq!((c.width.as_str(), c.height.as_str()), ("400", "600"));
     }
 
+    // Story 13-9.
+    #[test]
+    fn label_line_parses() {
+        let volume = Some(ProposalTarget {
+            table: ProposalTargetTable::Volumes,
+            id: 9,
+        });
+        let l = parse_line(
+            volume,
+            &json!({"line": "label", "label_id": 3, "label_name": "Code douteux", "note": "ISBN"}),
+            "en",
+        );
+        assert_eq!(l.line, "label");
+        assert!(l.on_volume);
+        assert_eq!(
+            (l.target_id, l.label_id, l.label_name.as_str(), l.note.as_deref()),
+            (Some(9), Some(3), "Code douteux", Some("ISBN"))
+        );
+        let t = parse_line(
+            title(4),
+            &json!({"line": "label", "label_id": 3, "label_name": "X", "note": null}),
+            "en",
+        );
+        assert!(!t.on_volume);
+        assert_eq!(t.note, None);
+        // A label on a series is no known shape.
+        assert_eq!(
+            parse_line(series(2), &json!({"line": "label", "label_id": 3}), "en").line,
+            "unknown"
+        );
+    }
+
     #[test]
     fn unknown_shapes_fall_back_to_json() {
         for (target, v) in [
@@ -1390,6 +1497,27 @@ mod tests {
         );
         assert!(new.text("en").contains("Lucky Luke"));
         assert_eq!(TargetLabel::of(None, &names), TargetLabel::Unknown);
+        // Story 13-9 — a label proposal names its volume, or its title.
+        names.volumes.insert(
+            9,
+            VolumeBrief {
+                code: "V0009".into(),
+                title_id: 4,
+                title: "Tintin au Tibet".into(),
+            },
+        );
+        let target = |table, id| ProposalSubject::LabelAttach {
+            target: ProposalTarget { table, id },
+            label_id: 3,
+        };
+        let v = TargetLabel::of(Some(&target(ProposalTargetTable::Volumes, 9)), &names);
+        assert_eq!(v.href().as_deref(), Some("/volume/9"));
+        assert_eq!(v.text("en"), "V0009 — Tintin au Tibet");
+        let gone = TargetLabel::of(Some(&target(ProposalTargetTable::Volumes, 10)), &names);
+        assert_eq!(gone.href(), None);
+        assert!(gone.text("en").contains("10"));
+        let t = TargetLabel::of(Some(&target(ProposalTargetTable::Titles, 5)), &names);
+        assert!(matches!(t, TargetLabel::Title { id: 5, name: None }));
     }
 
     #[test]
