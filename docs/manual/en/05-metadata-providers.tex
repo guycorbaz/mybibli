@@ -106,6 +106,28 @@ when (a) the chain succeeded \emph{and} (b) the resolving provider
 gave no \texttt{cover\_url}, so a title for which no source has a
 cover anywhere will land cover-less without retry storms.
 
+\subsection*{Descriptions are stored as plain text}
+
+Google Books and Comic Vine return their descriptions as HTML. Since
+1.23.0 mybibli converts them to plain text when they are downloaded:
+tags are removed, paragraph and line breaks are kept, and entities
+such as \texttt{\&eacute;} or \texttt{\&lt;} become the characters
+they stand for. The title page shows the description as paragraphs,
+never \texttt{<p>} or \texttt{\&lt;b\&gt;}. Descriptions from the
+other providers are taken as they come (the BnF writes
+\texttt{<<Le>>} around a leading article, and that is text). A
+description proposed by an AI agent is converted the same way when it
+is filed; a description you type yourself is never converted.
+
+Descriptions downloaded before 1.23.0 are repaired once, at the first
+start of 1.23.0: every stored description that holds markup is
+converted, as are the descriptions of pending proposals, and cached
+provider answers that hold markup are discarded so they are fetched
+again. A description edited by hand --- or accepted from a proposal ---
+is left untouched, markup included: edit it yourself if needed. The
+repair runs once per database and never again
+(section~\ref{sec:startup-repairs}).
+
 \subsection*{When no provider has a cover: upload your own}
 
 Some titles will never receive a cover from the automatic chain. In
@@ -239,6 +261,29 @@ will not trigger remote 429 responses. If a provider does return
 consulted instead — the catalog flow never blocks waiting for a
 rate-limited provider.
 
+\subsection*{A lookup that met a saturated provider is retried}
+
+When a provider is saturated it answers \emph{429 Too Many Requests}
+or \emph{503 Service Unavailable}; Google Books does so by the
+hundred on some days. If the chain ends without a result \emph{and} at
+least one provider answered that way, the miss is not taken as final:
+since 1.23.0 the title is put on a retry queue and looked up again
+later, automatically, after 15~minutes, then 1~hour, 4~hours,
+12~hours and 24~hours. A lookup that finds the title, or that ends
+with an honest ``nobody holds this code'', takes it off the queue;
+after the fifth throttled retry mybibli gives up and logs a warning.
+A miss without any saturated provider is never retried.
+
+The retries run in the background, one title at a time, with the
+pause of the \emph{Bulk cover-refetch delay} setting between titles,
+and they wait while a bulk cover re-fetch or backfill is running, so
+a retry wave cannot itself saturate a provider. They follow the same
+path as a scan: fields edited by hand are kept, and a cover is
+downloaded if one is found. Pressing \emph{Re-download metadata}
+yourself is still possible at any time; a successful re-download takes
+the title off the queue. The operator's view of the queue is in
+section~\ref{sec:startup-repairs}.
+
 \begin{warning}
 Never commit a real API key to git. The \texttt{.env} file is in
 \texttt{.gitignore} for this reason; \texttt{.env.example} carries
@@ -298,6 +343,21 @@ If you would rather reason it out yourself, walk this list:
         anything. The genre \texttt{Non classé} is the default for
         any title that came in without classification data.
 \end{enumerate}
+
+\subsection*{Old titles whose ISBN-10 was stored as a UPC}
+
+Before 1.21.0, a ten-digit ISBN scanned or typed in was stored as a
+UPC code, and every provider then missed the book. At its first
+start, 1.23.0 converts these titles: a printed title (book, comic,
+magazine, report) with no ISBN and a ten-character UPC that is a
+valid ISBN-10 gets the corresponding ISBN-13 and loses the UPC, and
+its metadata is looked up again in the background, through the retry
+queue above, now by ISBN. Fields edited by hand are kept. A UPC that
+fails the ISBN-10 checksum is left as it is, as are titles of other
+media types. When another title already holds that ISBN-13, the title
+is left unchanged and a warning names both titles at every start, until
+you resolve the duplicate by hand. The conversion is idempotent: once
+done, it finds nothing more to convert.
 
 If the fields are still empty after configuring the right keys
 and waiting a few seconds, open an issue on the project repo with

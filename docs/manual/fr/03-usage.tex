@@ -46,7 +46,18 @@ La page d'accueil est le tableau de bord. De haut en bas :
         retard, séries avec lacunes, volumes non rangés — chaque
         clic ouvre la liste filtrée correspondante.
   \item \textbf{Activité récente.} Les sept derniers jours de
-        catalogage et de retours.
+        catalogage et de retours. Un titre compte comme
+        \emph{catalogué récemment} quand le titre lui-même, ou l'un de
+        ses volumes, a été ajouté pendant ces sept jours
+        (section~\ref{sec:added-since}).
+  \item \textbf{Ajouts récents.} Les titres qui ont reçu quelque chose
+        en dernier --- le titre lui-même ou un nouveau volume, selon ce
+        qui est le plus récent. Ils suivent la bascule \emph{Vue liste}
+        / \emph{Vue grille} du catalogue situé en dessous : en vue
+        liste, ils apparaissent dans le même tableau (avec sa colonne
+        \emph{Ajouté}), en vue grille sous forme de cartes. La bascule
+        change les deux à la fois, et le choix est conservé à la visite
+        suivante.
 \end{itemize}
 
 \section{Cataloguer un nouveau titre via code-barres}\label{sec:catalog-scan}
@@ -82,6 +93,39 @@ temps est consacré à scanner, pas à attendre mybibli — la
 récupération de métadonnées est asynchrone, vous n'avez donc pas à
 attendre qu'elle se termine avant de passer au volume suivant.
 \end{tip}
+
+\subsection*{Scanner un code V déjà utilisé}
+\label{sec:scan-existing-vcode}
+
+Une pile de livres scannée en vitesse produit des répétitions. Depuis
+la 1.23.0, mybibli les distingue au lieu de répondre à chacune par une
+erreur :
+
+\begin{itemize}
+  \item \textbf{Une double lecture de la douchette.} Le même code
+        arrivant deux fois en moins d'une seconde dans le même champ de
+        scan n'est lu qu'une fois : la seconde lecture est ignorée sans
+        message et le champ est vidé. Cela vaut pour tous les types de
+        code. Le même code scanné à nouveau après cette seconde est
+        traité normalement.
+  \item \textbf{Un code V du titre en cours.} Scanner à nouveau l'ISBN
+        et le code V d'un livre déjà catalogué (sans lieu actif) ne
+        crée rien ; un message d'information l'indique : \emph{« Le
+        label V0042 est déjà enregistré pour ce titre. »}
+  \item \textbf{Un code V d'un autre titre.} Le code V n'est pas
+        déplacé et rien n'est créé. Un avertissement nomme le titre qui
+        le porte, avec son ISBN s'il en a un, renvoie à la page du
+        volume, et suggère de scanner un autre label pour le livre
+        en main ou d'ouvrir le volume : depuis sa page, on peut le
+        déplacer vers le bon titre (section~\ref{sec:move-volume-title}).
+  \item \textbf{Un rangement qui n'a pas eu lieu.} Avec un lieu actif,
+        scanner un code V range le volume à cet endroit. Si la
+        modification n'a pas pu être enregistrée, ou si le lieu actif a
+        été supprimé entre-temps, le message dit que le volume
+        \emph{n'a pas été rangé} et ce qu'il faut faire (scanner à
+        nouveau le code V, ou scanner un autre code L) ; un lieu actif
+        supprimé est abandonné.
+\end{itemize}
 
 \subsection*{Imprimer de nouvelles planches d'étiquettes}
 
@@ -142,7 +186,51 @@ l'ancienne.
 Les recherches sauvegardées capturent les critères de navigation
 existants (requête, une puce de filtre, colonne et sens de tri) — ce
 n'est pas un constructeur de requêtes libre. Le contrôle n'est visible
-que pour les bibliothécaires et les administrateurs.
+que pour les bibliothécaires et les administrateurs. La date « ajoutés
+depuis le » décrite ci-dessous n'est pas enregistrée avec une
+recherche ; le formulaire d'enregistrement le signale tant qu'un filtre
+de date est actif.
+\end{note}
+
+\subsection{Ce qui a été ajouté depuis un jour donné}\label{sec:added-since}
+
+Depuis la 1.23.0, chaque page de titre et chaque page de volume
+affichent, sous leurs champs principaux, \emph{Ajouté le} (le jour où
+la fiche a été saisie) et \emph{Modifié le} (sa dernière modification,
+téléchargements automatiques de métadonnées compris), dans le format
+de date de la langue de l'interface.
+
+Un titre compte comme \emph{ajouté} pendant une période quand le titre
+lui-même y a été saisi \emph{ou} que l'un de ses volumes l'a été : un
+titre ancien qui a reçu un nouvel exemplaire la semaine dernière fait
+partie des ajouts de la semaine dernière. La même règle vaut à trois
+endroits :
+
+\begin{itemize}
+  \item le champ de date \textbf{Ajoutés depuis le}, à côté du contrôle
+        de tri du catalogue de la page d'accueil : choisissez un jour
+        puis \emph{Appliquer} ; seuls restent les titres ajoutés depuis
+        ce jour (\emph{Effacer} retire le filtre). La date figure dans
+        l'adresse (\texttt{added\_since=AAAA-MM-JJ}) et se combine avec
+        le texte recherché et le tri ;
+  \item la colonne \textbf{Ajouté} du tableau du catalogue et les
+        entrées correspondantes du menu de tri : la date d'un titre y
+        est celle de son dernier ajout (la plus récente entre la sienne
+        et celle de son volume le plus récent), les plus récents
+        d'abord au premier clic ;
+  \item l'indicateur \emph{Catalogués récemment} du tableau de bord,
+        sur ses sept jours.
+\end{itemize}
+
+\begin{note}
+Trois précisions. Les jours sont découpés à minuit UTC, pas à minuit
+heure locale : en Suisse, un volume saisi entre minuit et 1~h (2~h en
+été) compte pour la veille, et les dates affichées sur les pages sont
+elles aussi des jours UTC. Un filtre d'indicateur (\emph{Catalogués
+récemment}, \emph{Prêts en retard}, \dots) remplace le filtre de date, comme
+il remplace le texte recherché --- un seul filtre actif à la fois.
+Enfin, une recherche sur un ISBN ou un code V exact trouve son titre
+quelle que soit la date, comme elle ignore déjà le filtre de genre.
 \end{note}
 
 \section{Étiquettes de gestion}\label{sec:management-labels}
@@ -193,6 +281,23 @@ titres au-dessus des volumes --- chaque ligne menant à sa page de
 détail. C'est tout l'intérêt : une étiquette d'où l'on ne peut pas
 revenir est un mot dans un tiroir.
 
+\subsection*{Marquer les notices douteuses}
+
+Une étiquette de gestion sert aussi à mettre de côté une notice dont
+on doute : un ISBN qui semble appartenir à un autre livre, un volume
+catalogué sous le mauvais titre, une description dans la mauvaise
+langue. Créez une fois une étiquette pour cela --- par exemple
+\emph{Code douteux} ---, posez-la sur le titre ou le volume concerné, et
+sa page \texttt{/labels/\{id\}} devient la liste des notices à
+reprendre. Une fois la notice corrigée, retirez-lui l'étiquette. Il n'y
+a pas de liste d'« anomalies » à part ni de champ de motif : le nom de
+l'étiquette dit de quel doute il s'agit.
+
+Un agent IA qui travaille sur le catalogue peut \emph{proposer} une
+telle étiquette sur un titre ou un volume ; la proposition apparaît
+sur la page Propositions et l'étiquette n'est posée que si vous
+l'acceptez (section~\ref{sec:agents-tools}).
+
 \begin{note}
 Les étiquettes sont internes. Les gestionnaires n'exécutent même pas les
 requêtes pour un visiteur anonyme : rien ne fuit par le catalogue
@@ -213,6 +318,144 @@ public --- pas même le fait qu'une étiquette existe.
 mybibli enregistre le déplacement dans l'historique de lieu du
 volume, vous permettant de retracer où un livre a vécu au fil du
 temps.
+
+Partout où une liste de volumes indique leur lieu --- le tableau et les
+cartes des volumes d'une page de titre, la page d'une étiquette de
+gestion, la liste d'audit ---, ce lieu est donné par son chemin
+complet, par exemple \emph{Maison \textrightarrow{} Salon
+\textrightarrow{} Bibliothèque \textrightarrow{} Étagère 3 (L0042)} :
+deux étagères « Étagère 3 » dans deux pièces différentes ne se
+confondent plus. Un chemin long passe à la ligne sur un écran étroit.
+La page d'un lieu ne liste que les volumes rangés directement à cet
+endroit, sous son propre chemin complet.
+
+\section{Rattacher un volume à un autre titre}\label{sec:move-volume-title}
+
+Un code V collé sur le mauvais livre, ou scanné alors que le mauvais
+titre était en cours --- typiquement un EAN d'éditeur partagé par
+plusieurs albums ---, laisse un volume sous un titre qui n'est pas le
+sien. Depuis la 1.23.0, on peut le déplacer sans le supprimer :
+
+\begin{enumerate}
+  \item Ouvrez la page du volume (Bibliothécaire ou Admin) et cliquez
+        \textbf{Déplacer vers un autre titre}.
+  \item Dans la fenêtre, cherchez le bon titre par son titre ou son
+        ISBN (tirets et espaces admis). Dix titres au plus sont
+        proposés ; le titre actuel du volume ne l'est jamais.
+  \item Choisissez-en un. Une phrase nomme le volume, son titre actuel
+        et le titre cible, et rappelle que son label, son emplacement
+        et ses prêts le suivent.
+  \item Cliquez \textbf{Déplacer}.
+\end{enumerate}
+
+La page du volume affiche alors le nouveau titre, et les deux pages de
+titre listent le volume là où il se trouve désormais. Tout ce qui
+appartient au volume le suit : son code V, son lieu, son état, ses
+valeurs, ses étiquettes de gestion, son drapeau d'audit et ses prêts
+--- y compris un prêt en cours, qui le suit simplement. Les positions
+dans les séries et les tomes attendus appartiennent aux titres et ne
+sont pas touchés. Le déplacement est consigné dans le journal
+(\emph{Volume moved to another title}, avec le volume, les deux titres
+et l'utilisateur).
+
+Le déplacement est refusé, avec une explication dans la fenêtre,
+quand aucun titre n'a été choisi, quand la cible est le titre actuel du
+volume, quand la cible ou le volume a été supprimé entre-temps, ou quand
+quelqu'un d'autre a modifié le volume depuis l'ouverture de la fenêtre
+(rechargez la page et recommencez).
+
+\section{Séries et numéros de tome}\label{sec:tome-number}
+
+Un titre se place dans une série depuis la section \emph{Séries} de sa
+page : choisissez la série, indiquez la position, attribuez. Le menu
+propose toutes les séries de la bibliothèque, par ordre alphabétique.
+
+\subsection*{Le numéro de tome}
+
+La position d'un titre dans sa série \emph{est} son numéro de tome.
+Depuis la 1.23.0, elle s'affiche comme tel : sous le titre de la page
+(\emph{« Tome 3 · Thorgal »} ; \emph{« Volume 3 · Thorgal »} dans
+l'interface anglaise), sur les lignes et les cartes du catalogue, sur
+la page de la série et sur la page du volume. Une intégrale affiche
+\emph{« Tomes 3--5 »} ; un titre présent dans plusieurs séries affiche
+une mention par série.
+
+Pour le changer, cliquez \textbf{Modifier} à côté de la série, dans la
+section \emph{Séries} de la page du titre, saisissez la nouvelle
+position puis \textbf{Enregistrer}. Les règles sont celles d'une
+attribution : une position d'au moins 1, dans les limites du nombre de
+volumes d'une série fermée, et pas une position que le titre occupe
+déjà dans cette série (deux titres différents peuvent partager une
+position : la page de la série le montre, elle ne l'empêche pas). La
+plage d'une intégrale ne se modifie pas là : retirez-la de la série
+puis attribuez-la à nouveau. Après la modification, les tomes attendus
+sont réévalués --- la position quittée redevient une lacune, la
+nouvelle peut résoudre un tome attendu (section~\ref{sec:expected-tomes}).
+
+\subsection*{Les mentions de tome dans les titres téléchargés}
+
+Les fournisseurs mettent souvent le numéro dans le titre : \emph{«
+Thorgal - Tome 29 - Le sacrifice »}, \emph{« Titeuf T12 : \dots »}.
+Quand un téléchargement de métadonnées fixe un titre (au scan, par
+\emph{Re-télécharger les métadonnées}, lors d'une nouvelle tentative
+automatique ou d'un traitement en lot), mybibli retire cette
+mention\index{mention de tome} --- \emph{« Thorgal - Le sacrifice »}
+---, pourvu que le titre n'ait jamais été modifié à la main. Ce qui
+compte comme mention dépend du type de média :
+
+\begin{itemize}
+  \item \textbf{Bandes dessinées} : \emph{Tome}, \emph{Tomo}, \emph{T},
+        \emph{T.}, \emph{Vol.}, \emph{Volume}, \emph{Band}, \emph{Bd.},
+        \emph{n°}, \emph{No}, \emph{\#}, suivis d'un nombre ;
+  \item \textbf{Livres} : seulement \emph{Tome}, \emph{Tomo},
+        \emph{Volume}, \emph{Vol.} et \emph{Band}, et un nombre de 1000
+        ou plus est pris pour une année, pas pour un tome ;
+  \item autres types de média : jamais.
+\end{itemize}
+
+La mention doit se trouver au début du titre, à sa fin, ou entre deux
+parties séparées par un deux-points, un tiret, une virgule ou un point.
+Un titre qui porte plusieurs mentions, une plage ou une liste
+(\emph{« Intégrale T1 à T3 »}, \emph{« T1 - 3 »}) est laissé tel quel.
+Pour une bande dessinée dont le titre ne porte aucune mention, c'est le
+numéro dans la collection de la notice de bibliothèque nationale qui
+est retenu.
+
+Le numéro retiré du titre ne devient une position dans une série que
+si vous la fixez :
+
+\begin{itemize}
+  \item un titre \textbf{hors de toute série} le garde comme indice,
+        affiché sous le titre de la page : \emph{« Tome 3 (détecté)~»}. Quand vous attribuez ensuite une série depuis la page du
+        titre, le champ de position en est déjà rempli. L'indice
+        disparaît dès que le titre est dans une série ; il ne fait
+        jamais foi ;
+  \item un titre \textbf{déjà dans une série} garde ses positions
+        telles quelles.
+\end{itemize}
+
+Avec \emph{Re-télécharger les métadonnées}, l'aperçu montre le titre
+déjà nettoyé ; l'indice est enregistré quand vous confirmez ce titre.
+
+Un titre que vous saisissez vous-même --- à la création ou dans le
+formulaire de modification --- n'est jamais réécrit. S'il contient une
+mention, un message suggère de retirer le numéro du titre et de
+l'indiquer comme position dans la série.
+
+\begin{warning}
+La reconnaissance est volontairement prudente, mais quelques titres de
+bande dessinée ont la forme d'une mention dans leur nom même :
+\emph{« L'Ennemi public n°1 »}, \emph{« Le Prisonnier n°6 »},
+\emph{« Public Enemy \#1 »}, \emph{« Panzer T34 : \dots »}. Ils perdent
+leur numéro au téléchargement. Corrigez le titre une fois à la main :
+un titre modifié à la main est protégé, et aucun téléchargement
+ultérieur ne le change plus.
+\end{warning}
+
+Les titres catalogués avant la 1.23.0 gardent leurs mentions : il n'y a
+pas de nettoyage en lot. Un agent IA peut proposer les corrections ---
+le titre par une proposition de métadonnées, la position par une
+proposition de série (chapitre~\ref{ch:agents}).
 
 \section{Prêts}\label{sec:loans}
 

@@ -192,6 +192,110 @@ out of the volume to long-term storage:
 docker compose cp mybibli:/var/log/mybibli/. ./logs-archive/
 \end{lstlisting}
 
+\section{Background retries and start-up repairs}
+\label{sec:startup-repairs}
+
+Version 1.23.0 adds two start-up repairs and a background retry task
+for metadata lookups. None of them needs configuration; this section says
+what they leave in the database and in the log.
+
+\subsection*{The metadata retry queue}
+
+A lookup that ended without a result because a provider was saturated
+(chapter~\ref{ch:providers}) leaves one row per title in the
+\texttt{metadata\_fetch\_retries}\index{metadata\_fetch\_retries}
+table: the title, the number of attempts made and the time of the next
+one. A live row means ``this title still needs a lookup''; a row is
+soft-deleted when its title is found, found missing everywhere, or
+given up, and is removed for good when its title is purged from the
+trash.
+
+A background task starts two minutes after the server, then wakes
+every five minutes and takes at most twenty due titles, oldest first.
+It skips its turn while a bulk cover re-fetch or backfill is running.
+The log lines, all with the \texttt{title\_id}:
+
+\begin{description}[style=nextline]
+  \item[\texttt{Throttled metadata fetch queued for a later retry}]
+        (\texttt{info}) a scan, a re-download or a bulk run met a
+        saturated provider; the field \texttt{context} says which.
+  \item[\texttt{Metadata retry throttled again; rescheduled}]
+        (\texttt{info}) the retry met a saturated provider again;
+        \texttt{attempts} and \texttt{delay\_secs} give the next step.
+  \item[\texttt{Metadata retry finished; title dequeued}]
+        (\texttt{info}) the retry ran to its end, found or not
+        (\texttt{outcome}).
+  \item[\texttt{Metadata retry skipped; title dequeued}]
+        (\texttt{info}) the title was deleted or has no code left to
+        look up.
+  \item[\texttt{Lookup ended not throttled; queued retry dropped}]
+        (\texttt{info}) another lookup of the same title --- a scan, a
+        re-download --- settled it first.
+  \item[\texttt{Metadata retry still throttled after the last attempt; giving up}]
+        (\texttt{warn}) five retries over about 41 hours all met a
+        saturated provider. The title keeps what it had; a manual
+        \emph{Re-download metadata} remains possible.
+  \item[\texttt{Metadata retry tick completed}]
+        (\texttt{info}) one summary line per round that did something,
+        with its counts.
+\end{description}
+
+To see what is waiting:
+
+\begin{lstlisting}
+docker compose exec db mariadb -u root -p mybibli \
+  -e "SELECT title_id, attempts, next_attempt_at \
+      FROM metadata_fetch_retries WHERE deleted_at IS NULL \
+      ORDER BY next_attempt_at;"
+\end{lstlisting}
+
+\subsection*{One-time data repairs: the \texttt{data\_repairs} table}
+
+Some corrections of stored data must run exactly once per database,
+because their result cannot be told apart from healthy data afterwards.
+Each one, when it succeeds, writes a row with its name and date in the
+\texttt{data\_repairs}\index{data\_repairs} table, in the same
+transaction as the repair; at every later start the row is found and
+the repair is skipped. 1.23.0 brings one:
+\texttt{13-4-html-\allowbreak descriptions-\allowbreak to-\allowbreak plain-\allowbreak text}, the conversion of
+stored HTML descriptions (chapter~\ref{ch:providers}). With its
+counts (converted, hand-edited titles skipped, proposal items
+rewritten, cache rows purged), it logs the line
+
+\texttt{HTML description: startup plain-text conversion done (\#578)}
+
+\noindent then \texttt{Data repair applied}. If it
+fails, the start continues, an \texttt{error} line says so, its
+changes to titles and proposals are rolled back, no marker is written,
+and the repair runs again at the next start. (Discarding the cached
+provider answers runs before, on its own; doing it again is harmless.)
+
+\begin{warning}
+Do not delete rows of \texttt{data\_repairs}: the repair would run a
+second time, on text it has already converted.
+\end{warning}
+
+\subsection*{ISBN-10 titles stored as UPC}
+
+At every start, after the migrations, mybibli looks for printed titles
+whose ten-character UPC is a valid ISBN-10 and gives them their ISBN-13
+(chapter~\ref{ch:providers}); each converted title is put on the retry
+queue above, due at once. One line sums up each start:
+\texttt{ISBN-10 stored as UPC: startup conversion done (\#584)}, with
+the counts converted and skipped. After the first start of 1.23.0 the
+count converted is zero. A title whose ISBN-13 already belongs to
+another title is left unchanged and logged at \texttt{warn} at every
+start (\texttt{ISBN-10 stored as UPC: another title already holds this
+ISBN; left unchanged (see \#591)}, with both ids) until you resolve the duplicate.
+
+\subsection*{API key revocation}
+
+Revoking an agent's key marks its pending proposals as outdated in one
+transaction. If that transaction meets a database deadlock with
+another one --- an acceptance, another revocation --- it is now
+retried, up to three attempts, instead of answering with a server
+error. Lock-wait timeouts are not retried.
+
 \section{Resetting a forgotten administrator password}\label{sec:reset-admin-password}
 
 mybibli has no ``forgot my password'' e-mail flow: a single-tenant
