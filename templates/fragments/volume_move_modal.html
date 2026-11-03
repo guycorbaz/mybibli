@@ -1,0 +1,25 @@
+{# Story 13-8 (#580) — "Move to another title", UX-DR8 Pattern A modal in
+   #modal-slot. The title picker (body_html, OUTSIDE the confirm form so
+   Enter in the search field never submits the move) swaps candidates into
+   #volume-move-candidates; picking one swaps the hidden title_id and the
+   confirmation sentence into #volume-move-selection (inner_form_html,
+   INSIDE the form). On success the move handler answers with a success
+   FeedbackEntry for #feedback-list, an OOB update of the title row and
+   HX-Trigger-After-Swap: modal-close; refusals land in the modal's error
+   region (X-Modal-Confirm + ModalConfirmRetargetGuard). Every piece is an
+   auto-escaped Askama render. CSP-clean. #}
+{% import "components/modal.html" as modal %}
+{% call modal::modal(
+    "warning",
+    title,
+    body_html,
+    confirm_label,
+    cancel_label,
+    action_url,
+    "POST",
+    csrf_token,
+    "#feedback-list",
+    "afterbegin",
+    version,
+    inner_form_html,
+) %}{% endcall %}

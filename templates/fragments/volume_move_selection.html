@@ -1,0 +1,6 @@
+{# Story 13-8 — the picked target of the move (inside the confirm form):
+   the hidden title_id the move posts, and the confirmation sentence naming
+   the volume, its current title and the target. Without a valid pick, no
+   title_id — the move is then refused with "choose a title first". #}
+{% if let Some(id) = title_id %}<input type="hidden" name="title_id" value="{{ id }}">{% endif %}
+<p data-move-confirmation class="text-sm {% if title_id.is_some() %}font-medium text-stone-900 dark:text-stone-100{% else %}italic text-stone-500 dark:text-stone-400{% endif %}">{{ text }}</p>

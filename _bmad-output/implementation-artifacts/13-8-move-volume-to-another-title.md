@@ -1,6 +1,6 @@
 # Story 13.8: Move a volume to another title
 
-Status: ready-for-dev
+Status: review
 
 GitHub issue: #580 (type:change-request). Covers: FR154, UX-DR36. Epic 13; ships in v1.23.0.
 
@@ -41,8 +41,57 @@ A volume on loan can be moved; the loan follows the volume (it keeps its label, 
 
 ## Tasks / Subtasks
 
-- [ ] T1 — model/service `VolumeService::move_to_title`
-- [ ] T2 — routes (modal fragment, title search fragment, POST move) in a new module (e.g. `src/routes/volume_move.rs`; `titles.rs` / `catalog.rs` are above Rule #12)
-- [ ] T3 — templates + i18n (4 locales)
-- [ ] T4 — 13.1 string update (AC5)
-- [ ] T5 — tests; gates; full suites once before the single push
+- [x] T1 — model/service `VolumeService::move_to_title`
+- [x] T2 — routes (modal fragment, title search fragment, POST move) in a new module (e.g. `src/routes/volume_move.rs`; `titles.rs` / `catalog.rs` are above Rule #12)
+- [x] T3 — templates + i18n (4 locales)
+- [x] T4 — 13.1 string update (AC5)
+- [x] T5 — tests; gates; full suites once before the single push
+
+## Completion Notes
+
+**What was done**
+
+- **Model** `src/models/volume_move.rs` (new, 150 lines): the picker query (`search_candidates` — live titles by title text or ISBN, separators stripped, current title excluded, exact-ISBN match first, `LIMIT 10`; `find_candidate`), and the move SQL (`lock_volume_in` `FOR UPDATE`, `title_is_live_in` `LOCK IN SHARE MODE`, `set_title_in` — `UPDATE … SET title_id, version = version + 1 WHERE id = ? AND version = ? AND deleted_at IS NULL`). Dynamic `sqlx::query` only, so no `.sqlx/` change.
+- **Service** `src/services/volume_move.rs` (new, 197 lines): `VolumeService::move_to_title` (an `impl VolumeService` block in its own module). One transaction: lock the volume, compare its version, share-lock the target title, then the pure decision `move_refusal` (`NoTarget` / `SameTitle` / `TargetGone`), then the optimistic UPDATE. Refusals: no target and same title → `BadRequest`, deleted/unknown target and deleted volume → `NotFound`, stale version → `Conflict`, each with its own `error.volume_move_*` message (Rule #9 copy, 4 locales). On success `tracing::info!(volume_id, label, from_title_id, to_title_id, user_id, "Volume moved to another title")`. No audit table: `admin_audit` is for admin actions only, and the spec says logs are enough. Only `title_id` / `version` / `updated_at` change, so the location, condition, values, entity labels (keyed by volume id), audit flag and loans (`loans.volume_id`) stay with the volume. Series membership and expected-tome settlement belong to titles, so they are unchanged. Per-title volume counts are computed live (`COUNT(*)`), not cached.
+- **Routes** `src/routes/volume_move.rs` (new, 468 lines incl. tests), registered in `src/routes/mod.rs`. All are Librarian+ (`require_role_with_return(…, "/volume/{id}")`):
+  - `GET /volume/{id}/move-modal`: HTMX only (405 otherwise, like the delete modal). UX-DR8 macro, variant `warning`, Pattern A.
+  - `GET /volume/{id}/move/candidates?q=`
+  - `GET /volume/{id}/move/selection?title_id=`
+  - `POST /volume/{id}/move`
+- **Modal design.** The picker (intro, search field, candidate list) is in `body_html`, which the macro renders *outside* the confirm form. Enter in the search field therefore never submits the move, and a scanner burst's trailing Enter does nothing. The search field carries `data-modal-default-focus`, as the trash type-to-confirm input does. Picking a candidate (`hx-get` → `#volume-move-selection`, inside the form via `inner_form_html`) brings the hidden `title_id` and the confirmation sentence naming the volume, its current title and the target (title — primary author). Every fragment is an auto-escaped Askama render. A pick the move would refuse (same title, deleted title) shows the refusal and no `title_id`.
+  - `hx-trigger="input changed delay:300ms, search"` is used, with no JS filter and no new JS.
+  - Confirming without a pick → the server refuses with "no title was chosen", shown in the modal error region.
+- **Success response.** A success FeedbackEntry for `#feedback-list` (`afterbegin`), the title row replaced out of band (`#volume-title-row`) and `HX-Trigger-After-Swap: modal-close` (story 11-16 shape, so the OOB lookup runs before modal.js empties the slot). Errors go through `AppError` + `ModalConfirmRetargetGuard` into `data-modal-error`.
+- **Volume page.** `templates/pages/volume_detail.html` gets a `#feedback-list` region, the title row wrapped in `#volume-title-row` (shared fragment `fragments/volume_title_row.html`, bound with `{% let %}` + include) and the "Move to another title" button (Librarian+, `data-modal-trigger`, `hx-target="#modal-slot" hx-swap="innerHTML"`). `VolumeDetailTemplate` gains `move_label` (3 lines added to `catalog.rs`).
+- **AC5.** `feedback.volume_on_other_title_hint` reworded in en/fr/de/it ("…or open the volume: from its page you can move it to the right title"). The comment in `catalog_existing_label.rs` was updated to match.
+- **i18n.** `volume.move_*` (10 keys) and `error.volume_move_*` (5 keys) were added in all four locales.
+
+**Tests** (all green)
+
+- **Unit, `--lib`** (57 passed with the `templates_audit` / `volume_detail` / `catalog_existing_label` filters):
+  - `services::volume_move`: the refusal decisions, and localized messages of the right `AppError` kind in 4 locales.
+  - `routes::volume_move`: `title_id` parsing, the candidate name, escaping of candidates / selection / picker, and the modal shape (no `hx-confirm`, picker outside the form, selection inside it).
+  - `volume_detail_tests::volume_detail_move_button_is_librarian_only`.
+- **DB integration, `tests/volume_move.rs`** (11 passed):
+  - A move changes only the title and version; live counts follow.
+  - Same title refused; no target refused; deleted and unknown target refused; stale version → conflict; deleted volume refused.
+  - An active loan follows the volume: the loan row is unchanged, the target title page lists the volume and the source page does not.
+  - Candidates: live, other titles, by text or by ISBN with separators, limit 10.
+  - Modal / picker / selection render escaped; the modal answers 405 to a direct navigation.
+  - POST: success headers and body; a refusal under `X-Modal-Confirm` gets no retarget; a replayed form → 409.
+  - An anonymous visitor cannot move, and gets no button.
+- **Other test suites.** `locale_parity`, `locale_html_safety`, `scan_existing_label`, `contextual_help_tooltips` and `home_scan_redirect` pass.
+- **E2E** `tests/e2e/specs/journeys/volume-move.spec.ts` (specId `MV`, V-codes V7600–V7699, `loginAs`):
+  - The full journey: scan two titles and a volume, open the volume page, open the modal, run axe-core on the open dialog, type the target ISBN as a scanner burst (`simulateScan` — the scanner guard lets it reach the search field), pick, confirm. Both title pages follow.
+  - Confirm without a pick → the error stays in the modal; Cancel leaves the volume in place.
+  - Run together with `scan-duplicates-existing-label`, `title-detail-volumes` and `scanner-guard`: 17/17 passed (`CI=true --workers=2`).
+- **Gates.** `npx tsc --noEmit` is clean, `cargo clippy --all-targets -- -D warnings` is clean, and the flake gate finds no `waitForTimeout`.
+
+**File sizes.** `src/routes/catalog.rs` is 3215 lines (it was already over the Rule #12 limit; this story adds 3 lines and puts everything else in new modules). No new file is above 2000 lines.
+
+**Deviations / notes**
+
+- The confirm button is not disabled before a target is picked. Disabling it would have needed new JS. Instead, the search field lives outside the form (so Enter cannot submit), and a confirm without a pick gets an explicit localized refusal in the modal.
+- The "Title:" / "Label:" labels of the volume page are still hard-coded English (pre-existing). The shared title-row fragment keeps the same text.
+- The second point of #580 ("a scan of a shared ISBN should offer a choice") is out of scope here.
+

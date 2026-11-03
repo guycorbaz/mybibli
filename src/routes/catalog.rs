@@ -2419,6 +2419,8 @@ pub struct VolumeDetailTemplate {
     pub audit_button_label_clear: String,
     /// Story 13-7 (#586) — "Added on … · Modified on …".
     pub record_dates: crate::utils::RecordDates,
+    /// Story 13-8 (#580) — "Move to another title" (Librarian+).
+    pub move_label: String,
 }
 
 pub async fn volume_detail(
@@ -2562,6 +2564,7 @@ pub async fn volume_detail(
         under_audit_chip_label: rust_i18n::t!("volume.under_audit_chip", locale = loc).to_string(),
         audit_button_label_mark: rust_i18n::t!("volume.mark_under_audit", locale = loc).to_string(),
         audit_button_label_clear: rust_i18n::t!("volume.mark_checked", locale = loc).to_string(),
+        move_label: rust_i18n::t!("volume.move_button", locale = loc).to_string(),
     };
     match template.render() {
         Ok(html) => Ok(Html(html).into_response()),

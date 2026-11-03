@@ -99,8 +99,8 @@ pub fn other_title_feedback(
             label = label
         ),
     };
-    // Story 13.8 (move a volume) will change this hint to "move it from its
-    // page"; it is a key of its own so that change is a locale edit only.
+    // Story 13.8 (#580): the hint says the volume can be moved to the right
+    // title from its page (the "Move to another title" modal).
     let hint = rust_i18n::t!("feedback.volume_on_other_title_hint", locale = loc);
     let link_label = rust_i18n::t!("feedback.volume_open_link", locale = loc, label = label);
     feedback_html_with_link(

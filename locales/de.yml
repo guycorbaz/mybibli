@@ -228,7 +228,7 @@ feedback:
   volume_duplicate: "Etikett %{label} ist bereits %{title} zugeordnet. Bitte ein anderes Etikett scannen."
   volume_already_recorded: "Etikett %{label} ist für diesen Titel bereits erfasst."
   volume_on_other_title: "Etikett %{label} ist bereits „%{title}“%{isbn} zugeordnet."
-  volume_on_other_title_hint: "Scannen Sie ein anderes Etikett für dieses Buch, oder öffnen Sie das Exemplar, um es zu prüfen."
+  volume_on_other_title_hint: "Scannen Sie ein anderes Etikett für dieses Buch, oder öffnen Sie das Exemplar: Auf seiner Seite können Sie es dem richtigen Titel zuordnen."
   volume_open_link: "Exemplar %{label} öffnen"
   volume_owner_isbn_suffix: " (ISBN %{isbn})"
   volume_on_unknown_title: "Etikett %{label} ist bereits einem anderen Titel zugeordnet."
@@ -386,6 +386,12 @@ series:
   omnibus_help_text: "Aktivieren, wenn das Buch mehrere Bände der Serie bündelt (z. B. ein Sammelband mit den Bänden 1–3). Das Formular zeigt dann ein Feld \"Endposition\", damit der Titel einen Bereich von Serienpositionen abdeckt anstatt nur einer."
   select_series: "Eine Serie auswählen…"
 error:
+  # Story 13-8 (#580) — ein Exemplar einem anderen Titel zuordnen.
+  volume_move_no_target: "Das Exemplar wurde nicht verschoben, weil kein Titel gewählt wurde. Suchen Sie den Titel, wählen Sie ihn in der Liste und bestätigen Sie."
+  volume_move_same_title: "Das Exemplar wurde nicht verschoben, weil es diesem Titel bereits zugeordnet ist. Wählen Sie einen anderen Titel in der Liste."
+  volume_move_target_gone: "Das Exemplar wurde nicht verschoben, weil der gewählte Titel nicht mehr existiert – er wurde vielleicht gerade gelöscht. Suchen Sie erneut und wählen Sie einen anderen Titel."
+  volume_move_volume_gone: "Das Exemplar wurde nicht verschoben, weil es nicht mehr existiert – es wurde vielleicht gerade gelöscht. Laden Sie die Seite neu, um den aktuellen Katalog zu sehen."
+  volume_move_stale: "Das Exemplar wurde nicht verschoben, weil es inzwischen jemand geändert hat. Schließen Sie dieses Fenster, laden Sie die Seite neu und versuchen Sie es erneut."
   # Issue #403 — über die #i18n-bundle-Dateninsel an den Client
   # geliefert, gelesen von static/js/mybibli.js (htmx:responseError-
   # Feedback). %{status} wird clientseitig ersetzt.
@@ -501,6 +507,17 @@ volume:
   delete_modal_title: "Exemplar %{label} löschen?"
   delete_modal_body: "Dieses Exemplar wird aus dem Katalog entfernt. Die Aktion ist innerhalb von 30 Tagen über den Admin-Papierkorb umkehrbar."
   delete_modal_confirm: "Löschen"
+  # Story 13-8 (#580) — ein Exemplar einem anderen Titel zuordnen.
+  move_button: "Anderem Titel zuordnen"
+  move_modal_title: "Exemplar %{label} verschieben"
+  move_modal_intro: "%{label} ist „%{title}“ zugeordnet. Suchen Sie den Titel, zu dem es wirklich gehört, nach Titel oder ISBN."
+  move_search_label: "Titel oder ISBN"
+  move_search_placeholder: "Titel suchen…"
+  move_no_candidates: "Kein anderer Titel passt zu dieser Suche."
+  move_nothing_picked: "Noch kein Titel gewählt."
+  move_confirmation: "%{label} wird von „%{from}“ zu „%{to}“ verschoben. Etikett, Standort und Ausleihen gehen mit."
+  move_confirm: "Verschieben"
+  move_done: "%{label} von „%{from}“ zu „%{to}“ verschoben."
 location:
   tree_title: Standorte
   add_root: Hauptstandort hinzufügen

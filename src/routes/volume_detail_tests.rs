@@ -53,6 +53,7 @@ fn make_test_volume_detail_template(
         audit_button_label_mark: "Mark to check".to_string(),
         audit_button_label_clear: "Checked".to_string(),
         record_dates: crate::utils::RecordDates::default(),
+        move_label: "Move to another title".to_string(),
     }
 }
 
@@ -334,4 +335,26 @@ fn volume_detail_renders_record_dates_when_known() {
     assert!(html.contains("id=\"record-dates\""));
     assert!(html.contains("Added on 2026-10-31"));
     assert!(html.contains("Modified on 2026-11-03"));
+}
+
+/// Story 13-8 (#580) — a librarian gets "Move to another title", which
+/// opens the Pattern A modal; an anonymous visitor does not. The title row
+/// carries the id the move's OOB update replaces.
+#[test]
+fn volume_detail_move_button_is_librarian_only() {
+    let html = make_test_volume_detail_template("librarian", None)
+        .render()
+        .expect("render");
+    assert!(html.contains(r#"hx-get="/volume/1/move-modal""#));
+    assert!(html.contains(r##"hx-target="#modal-slot""##));
+    assert!(html.contains("Move to another title"));
+    assert!(html.contains(r#"id="volume-title-row""#));
+    assert!(html.contains(r#"href="/title/10""#));
+    assert!(html.contains(r#"id="feedback-list""#));
+
+    let anonymous = make_test_volume_detail_template("anonymous", None)
+        .render()
+        .expect("render");
+    assert!(!anonymous.contains("/move-modal"));
+    assert!(anonymous.contains(r#"href="/title/10""#));
 }

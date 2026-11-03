@@ -1,0 +1,22 @@
+{# Story 13-8 — candidate titles of the move picker (live titles, current
+   title excluded, at most 10). Each button swaps the selection region. #}
+{% if !query_empty %}
+{% if candidates.is_empty() %}
+<p class="text-sm italic text-stone-500 dark:text-stone-400">{{ empty_label }}</p>
+{% else %}
+<ul class="divide-y divide-stone-200 dark:divide-stone-700 border border-stone-200 dark:border-stone-700 rounded-md">
+    {% for c in candidates %}
+    <li>
+        <button type="button" data-move-candidate
+                hx-get="/volume/{{ volume_id }}/move/selection?title_id={{ c.id }}"
+                hx-target="#volume-move-selection" hx-swap="innerHTML"
+                class="w-full text-left px-3 py-2 text-sm hover:bg-stone-100 dark:hover:bg-stone-800 focus:bg-stone-100 dark:focus:bg-stone-800">
+            <span class="font-medium text-stone-900 dark:text-stone-100">{{ c.title }}</span>
+            {% if let Some(author) = c.primary_contributor %}<span class="text-stone-600 dark:text-stone-400"> — {{ author }}</span>{% endif %}
+            {% if let Some(isbn) = c.isbn %}<span class="block font-mono text-xs text-stone-500 dark:text-stone-400">{{ isbn }}</span>{% endif %}
+        </button>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% endif %}

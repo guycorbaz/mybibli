@@ -224,7 +224,7 @@ feedback:
   volume_duplicate: "L'etichetta %{label} è già assegnata a %{title}. Scansiona un'etichetta diversa."
   volume_already_recorded: "L'etichetta %{label} è già registrata per questo titolo."
   volume_on_other_title: "L'etichetta %{label} è già assegnata a «%{title}»%{isbn}."
-  volume_on_other_title_hint: "Scansiona un'altra etichetta per questo libro, oppure apri l'esemplare per verificarlo."
+  volume_on_other_title_hint: "Scansiona un'altra etichetta per questo libro, oppure apri l'esemplare: dalla sua pagina puoi spostarlo sul titolo giusto."
   volume_open_link: "Apri l'esemplare %{label}"
   volume_owner_isbn_suffix: " (ISBN %{isbn})"
   volume_on_unknown_title: "L'etichetta %{label} è già assegnata a un altro titolo."
@@ -380,6 +380,12 @@ series:
   omnibus_help_text: "Seleziona questa casella quando il libro raggruppa più volumi della serie (es. un omnibus che raccoglie i volumi 1–3). Il modulo mostrerà allora un campo «Posizione finale» in modo che il titolo copra un intervallo di posizioni invece di una sola."
   select_series: "Seleziona una serie…"
 error:
+  # Story 13-8 (#580) — spostare un esemplare su un altro titolo.
+  volume_move_no_target: "L'esemplare non è stato spostato perché non è stato scelto alcun titolo. Cerca il titolo, sceglilo nell'elenco e conferma."
+  volume_move_same_title: "L'esemplare non è stato spostato perché è già associato a questo titolo. Scegli un altro titolo nell'elenco."
+  volume_move_target_gone: "L'esemplare non è stato spostato perché il titolo scelto non esiste più: forse è appena stato eliminato. Ripeti la ricerca e scegli un altro titolo."
+  volume_move_volume_gone: "L'esemplare non è stato spostato perché non esiste più: forse è appena stato eliminato. Ricarica la pagina per vedere il catalogo aggiornato."
+  volume_move_stale: "L'esemplare non è stato spostato perché nel frattempo qualcuno lo ha modificato. Chiudi questa finestra, ricarica la pagina e riprova."
   # Issue #403 — inviato al client tramite la data island #i18n-bundle
   # e letto da static/js/mybibli.js (feedback htmx:responseError).
   # %{status} sostituito lato client.
@@ -493,6 +499,17 @@ volume:
   delete_modal_title: "Eliminare l'esemplare %{label}?"
   delete_modal_body: "L'esemplare viene rimosso dal catalogo. L'azione è reversibile entro 30 giorni dal pannello Cestino dell'amministrazione."
   delete_modal_confirm: "Elimina"
+  # Story 13-8 (#580) — spostare un esemplare su un altro titolo.
+  move_button: "Sposta su un altro titolo"
+  move_modal_title: "Sposta l'esemplare %{label}"
+  move_modal_intro: "%{label} è associato a «%{title}». Cerca il titolo a cui appartiene davvero, per titolo o ISBN."
+  move_search_label: "Titolo o ISBN"
+  move_search_placeholder: "Cerca un titolo…"
+  move_no_candidates: "Nessun altro titolo corrisponde a questa ricerca."
+  move_nothing_picked: "Nessun titolo scelto per ora."
+  move_confirmation: "%{label} passerà da «%{from}» a «%{to}». Etichetta, collocazione e prestiti lo seguono."
+  move_confirm: "Sposta"
+  move_done: "%{label} spostato da «%{from}» a «%{to}»."
 location:
   tree_title: Ubicazioni
   add_root: Aggiungi ubicazione principale

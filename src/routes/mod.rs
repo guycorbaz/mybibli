@@ -44,6 +44,7 @@ pub mod series;
 pub mod series_expected_tomes;
 pub mod setup;
 pub mod titles;
+pub mod volume_move;
 pub mod wishlist;
 
 use axum::Router;
@@ -265,6 +266,24 @@ pub fn build_router_with_mcp(state: AppState, mcp_config: crate::mcp::McpConfig)
         .route(
             "/volume/{id}/delete-modal",
             axum::routing::get(catalog::delete_volume_modal),
+        )
+        // Story 13-8 (#580) — move a volume to another title (UX-DR8
+        // Pattern A modal with a title picker, then the optimistic move).
+        .route(
+            "/volume/{id}/move-modal",
+            axum::routing::get(volume_move::move_modal),
+        )
+        .route(
+            "/volume/{id}/move/candidates",
+            axum::routing::get(volume_move::move_candidates),
+        )
+        .route(
+            "/volume/{id}/move/selection",
+            axum::routing::get(volume_move::move_selection),
+        )
+        .route(
+            "/volume/{id}/move",
+            axum::routing::post(volume_move::move_volume),
         )
         // Series routes
         .route(

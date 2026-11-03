@@ -39,5 +39,6 @@ pub mod title;
 pub mod title_detail;
 pub mod trash;
 pub mod volume;
+pub mod volume_move;
 pub mod volume_audit;
 pub mod wishlist_pdf;
