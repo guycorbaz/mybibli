@@ -313,7 +313,7 @@
 
     <!-- Search results (list/grid) -->
     <div class="w-full max-w-4xl mt-4">
-        <div id="browse-results" class="browse-list">
+        <div id="browse-results" class="browse-list" data-browse-mode-container>
                 {% if let Some(paginated) = results %}
                     {% if paginated.items.is_empty() %}
                     <div class="text-center text-stone-500 dark:text-stone-400">
@@ -418,22 +418,7 @@
                                 </thead>
                                 <tbody>
                                     {% for item in paginated.items %}
-                                    <tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50">
-                                        <td class="px-3 py-2">
-                                            <img src="/static/icons/{{ item.media_type }}.svg" alt="" class="w-5 h-5" aria-hidden="true">
-                                        </td>
-                                        <td class="px-3 py-2">
-                                            <a href="/title/{{ item.id }}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{{ item.title }}</a>
-                                        </td>
-                                        <td class="px-3 py-2 text-stone-600 dark:text-stone-400">
-                                            {% match item.primary_contributor %}{% when Some with (name) %}{{ name }}{% when None %}—{% endmatch %}
-                                        </td>
-                                        <td class="px-3 py-2 text-stone-600 dark:text-stone-400">{{ item.genre_name }}</td>
-                                        <td class="px-3 py-2 text-stone-600 dark:text-stone-400">
-                                            {% match item.dewey_code %}{% when Some with (d) %}<code class="font-mono text-xs">{{ d }}</code>{% when None %}—{% endmatch %}
-                                        </td>
-                                        <td class="px-3 py-2 text-right tabular-nums text-stone-600 dark:text-stone-400">{{ item.volume_count }}</td>
-                                    </tr>
+                                    {% include "components/browse_table_row.html" %}
                                     {% endfor %}
                                 </tbody>
                             </table>
@@ -649,13 +634,38 @@
             {% if recent_additions.is_empty() %}
                 <div class="text-center py-12 text-stone-500 dark:text-stone-400">{{ recent_additions_empty }}</div>
             {% else %}
-                {# Use the existing `.browse-list` parent so the `.title-card-*` rules in
-                   static/css/browse.css apply (cover layout, padding, hover, dark-mode).
-                   The class isn't decorative — it's load-bearing for AC2 visual parity. #}
-                <div class="browse-list mt-3">
-                    {% for item in recent_additions %}
-                    {% include "components/title_card.html" %}
-                    {% endfor %}
+                {# #577 — Recent additions follows the browse mode, like #browse-results:
+                   BOTH renderings are emitted (list mode = the browse table, grid mode =
+                   the card grid) and static/css/browse.css shows one of them, keyed on
+                   the `.browse-list` / `.browse-grid` class that static/js/browse-mode.js
+                   sets on every `[data-browse-mode-container]` (persisted mode on load,
+                   live on toggle). The rows reuse the browse table's row partial; the
+                   headers are plain labels — sorting here would re-sort #browse-results. #}
+                <div id="recent-additions-results" class="browse-list mt-3" data-browse-mode-container>
+                    <div class="browse-table-wrap overflow-x-auto">
+                        <table class="browse-table w-full text-sm text-left">
+                            <thead class="text-xs text-stone-500 dark:text-stone-400 uppercase border-b border-stone-200 dark:border-stone-700">
+                                <tr>
+                                    <th class="px-3 py-2 w-10" aria-hidden="true"></th>
+                                    <th scope="col" class="px-3 py-2">{{ col_title }}</th>
+                                    <th scope="col" class="px-3 py-2">{{ col_contributor }}</th>
+                                    <th scope="col" class="px-3 py-2">{{ col_genre }}</th>
+                                    <th scope="col" class="px-3 py-2">{{ col_dewey }}</th>
+                                    <th scope="col" class="px-3 py-2 text-right">{{ col_volumes }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in recent_additions %}
+                                {% include "components/browse_table_row.html" %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="browse-cards">
+                        {% for item in recent_additions %}
+                        {% include "components/title_card.html" %}
+                        {% endfor %}
+                    </div>
                 </div>
             {% endif %}
         </details>

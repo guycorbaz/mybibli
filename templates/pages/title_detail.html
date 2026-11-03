@@ -248,8 +248,8 @@
                         <select id="assign-series" name="series_id" required
                                 class="mt-1 rounded-md border-stone-300 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-100 text-sm">
                             <option value="">{{ label_select_series }}</option>
-                            {% for s in all_series %}
-                            <option value="{{ s.id }}">{{ s.name }}</option>
+                            {% for (series_id, series_name) in all_series %}
+                            <option value="{{ series_id }}">{{ series_name }}</option>
                             {% endfor %}
                         </select>
                     </div>

@@ -1,6 +1,6 @@
 # Story 13.5: Every series in the selector, Recent additions in table mode
 
-Status: ready-for-dev
+Status: review
 
 GitHub issues: #576 (type:bug, medium), #577 (type:bug, low). Covers: bug fixes. Epic 13; ships in v1.23.0.
 
@@ -29,6 +29,18 @@ so that the 26th series is reachable and the home page is consistent.
 
 ## Tasks / Subtasks
 
-- [ ] T1 — model + route change (#576)
-- [ ] T2 — template + JS (#577)
-- [ ] T3 — tests; gates; full suites once before the single push
+- [x] T1 — model + route change (#576)
+- [x] T2 — template + JS (#577)
+- [x] T3 — tests; gates; full suites once before the single push
+
+## Completion Notes
+
+**#576 — series selector.** `SeriesModel::list_all_names(pool) -> Vec<(u64, String)>` (`src/models/series.rs`): live series, `ORDER BY name, id`, no pagination (dynamic `query_as`, no `.sqlx` change). `src/routes/titles.rs` feeds `#assign-series` from it; the query moved into the full-page branch (the HTMX header refresh never renders the selector). `templates/pages/title_detail.html` destructures the tuple. `grep active_list(`: the only other page-1 consumer is `GET /api/v1/series` (`src/routes/api_v1.rs:249`, returns at most 25 series — a JSON API, not a selector; left as is, flagged here for a follow-up issue). No other series `<select>` exists. Production series count not measured; the plain `<select>` is kept per AC1.
+
+**#577 — Recent additions follows the browse mode.** The browse toggle has two modes: *list* (= the browse table, CR #250) and *grid* (cards); "table mode" in the issue is the list button. New partial `templates/components/browse_table_row.html` is the single source of the list-mode `<tr>`: used by `#browse-results`, by `#recent-additions`, and by the HTMX search fragment (`src/routes/home_search_fragment.rs` now renders it through `BrowseTableRowTemplate` instead of a hand-built string — Rule #1). `#recent-additions` now emits `#recent-additions-results` (`.browse-list` + `data-browse-mode-container`) with the browse table (plain `scope="col"` headers — sortable links would re-sort `#browse-results`) and the `.browse-cards` grid; `static/css/browse.css` already shows one of them per class. `static/js/browse-mode.js` applies the mode to every `[data-browse-mode-container]` (both containers), so toggling is live and the persisted mode applies on load. Deviation: "grid/list as today" — in list mode Recent additions now shows the table (it previously showed a horizontal card stack that no longer exists anywhere else); grid mode shows the card grid. `#recent-cataloged-list` (indicator filter) is unchanged.
+
+**Tests.** DB: `tests/series_list_all_names.rs` (30 series + 2 deleted; empty case). Unit: `home_search_fragment::test_render_search_table_row_uses_shared_partial`, `home_fold_tests::{recent_additions_renders_table_and_cards_under_a_mode_container, browse_results_is_a_browse_mode_container}`. E2E: new `tests/e2e/specs/journeys/series-selector-recent-table.spec.ts` (27 `zzz-RT-<run>-NN` series — the `zzz-` head keeps parallel specs' series on page 1 of `/series`, which `series.spec.ts` relies on; Recent additions table → grid live → reload persists → table, axe in table mode); `home.spec.ts` Recent additions test now clicks the table row link (cards are hidden in the default mode).
+
+**Gates run.** `cargo clippy --all-targets -D warnings` clean; `cargo test --lib -- routes::home routes::titles templates_audit models::series` 182 passed; `cargo test --test series_list_all_names` 2 passed; `npx tsc --noEmit`, flake gate, home-page selector gate OK; Playwright (fresh stack, `--workers=2`): new spec + home, browse-toggle, home-search, series, series-epic11-smoke, mcp-gaps-tools, accessibility-full, csp-headers, dewey-code — 72 passed, 1 skipped. No locale change.
+
+**Files over 2000 lines.** `src/routes/titles.rs` 2753 (was 2750; +3 lines, no new logic added there).

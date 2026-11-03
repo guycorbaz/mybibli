@@ -165,6 +165,18 @@ impl SeriesModel {
         ))
     }
 
+    /// Every live series as `(id, name)`, ordered by name, unpaginated
+    /// (#576): feeds the title page's series selector, which must offer
+    /// all series, not page 1 of `active_list`.
+    pub async fn list_all_names(pool: &DbPool) -> Result<Vec<(u64, String)>, AppError> {
+        let rows: Vec<(u64, String)> = sqlx::query_as(
+            "SELECT id, name FROM series WHERE deleted_at IS NULL ORDER BY name ASC, id ASC",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn active_find_by_name(
         pool: &DbPool,
         name: &str,

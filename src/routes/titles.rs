@@ -81,7 +81,8 @@ pub struct TitleDetailTemplate {
     pub label_delete_title: String,
     pub has_code: bool,
     pub series_assignments: Vec<TitleSeriesAssignment>,
-    pub all_series: Vec<SeriesModel>,
+    /// `(id, name)` of every live series (#576 — unpaginated).
+    pub all_series: Vec<(u64, String)>,
     pub label_series: String,
     pub label_assign: String,
     pub label_position: String,
@@ -130,7 +131,6 @@ pub async fn title_detail(
     let has_code = title.isbn.is_some() || title.issn.is_some() || title.upc.is_some();
     let series_assignments =
         crate::models::series::TitleSeriesModel::find_by_title(pool, title.id).await?;
-    let all_series = SeriesModel::active_list(pool, 1).await?.items;
 
     if is_htmx {
         let html = title_detail_fragment(
@@ -144,6 +144,9 @@ pub async fn title_detail(
         );
         Ok(Html(html).into_response())
     } else {
+        // #576: the selector offers every live series; only the full page
+        // renders it, so the HTMX header refresh skips the query.
+        let all_series = SeriesModel::list_all_names(pool).await?;
         let similar_titles = TitleModel::find_similar(pool, title.id).await?;
         // #202 — provenance badge. Only the full-page render needs it: the HTMX
         // fragment above is the in-place refresh of the header block and does

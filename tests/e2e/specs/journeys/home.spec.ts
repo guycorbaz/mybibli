@@ -90,7 +90,7 @@ test.describe("Home page — Collection at a glance card", () => {
 
 // Story 9-2 — "Recent additions" section.
 test.describe("Home page — Recent additions section", () => {
-  test("anonymous: section visible, first card navigates to /title/:id (or empty-state shown)", async ({
+  test("anonymous: section visible, first row navigates to /title/:id (or empty-state shown)", async ({
     page,
   }) => {
     await page.goto("/");
@@ -108,12 +108,16 @@ test.describe("Home page — Recent additions section", () => {
     const fold = section.locator("details#recent-additions-fold");
     await fold.evaluate((el: HTMLDetailsElement) => (el.open = true));
 
-    const cards = section.locator("article.title-card");
-    const count = await cards.count();
+    // #577 — Recent additions follows the browse mode: the default
+    // (list) mode shows the browse table, the cards are grid-mode only.
+    const rowLinks = section.locator(
+      "table.browse-table tbody tr td a[href^='/title/']",
+    );
+    const count = await rowLinks.count();
 
     if (count > 0) {
-      // Populated catalog → click first card and verify navigation.
-      await cards.first().click();
+      // Populated catalog → click first row link and verify navigation.
+      await rowLinks.first().click();
       await page.waitForURL(/\/title\/\d+/);
     } else {
       // Empty catalog → the inline empty-state is shown instead of hiding

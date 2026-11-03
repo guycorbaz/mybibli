@@ -111,45 +111,19 @@ fn render_search_row(
     .unwrap_or_default()
 }
 
-/// Fix #315 — list-mode `<tr>` for the HTMX search-fragment swap.
-/// Mirrors `templates/pages/home.html`'s table-row markup (icon /
-/// title / contributor / genre / dewey / volume_count) so the
-/// post-swap DOM contains real rows in list mode (the default),
-/// matching the page-level template's initial render. Without this,
-/// the search swap left list mode empty and 3 E2E specs went red
-/// in the first v1.7.1 attempt.
-fn render_search_table_row(item: &SearchResult) -> String {
-    let escaped_title = html_escape(&item.title);
-    let escaped_contributor = item
-        .primary_contributor
-        .as_deref()
-        .map(html_escape)
-        .unwrap_or_default();
-    let escaped_genre = html_escape(&item.genre_name);
-    let escaped_media = html_escape(&item.media_type);
-    let dewey_cell = match &item.dewey_code {
-        Some(d) => format!(
-            r#"<code class="font-mono text-xs">{}</code>"#,
-            html_escape(d)
-        ),
-        None => "—".to_string(),
-    };
-    let contributor_cell = if escaped_contributor.is_empty() {
-        "—".to_string()
-    } else {
-        escaped_contributor
-    };
+/// Fix #315 — list-mode `<tr>` for the HTMX search-fragment swap, so the
+/// post-swap DOM contains real rows in list mode (the default). #577 —
+/// rendered from `templates/components/browse_table_row.html`, the same
+/// partial as the page-level #browse-results and #recent-additions tables,
+/// so the three can never drift. Askama auto-escapes the fields.
+#[derive(Template)]
+#[template(path = "components/browse_table_row.html")]
+struct BrowseTableRowTemplate<'a> {
+    item: &'a SearchResult,
+}
 
-    format!(
-        r##"<tr class="border-b border-stone-100 dark:border-stone-800 hover:bg-stone-50 dark:hover:bg-stone-800/50"><td class="px-3 py-2"><img src="/static/icons/{media}.svg" alt="" class="w-5 h-5" aria-hidden="true"></td><td class="px-3 py-2"><a href="/title/{id}" class="text-indigo-600 dark:text-indigo-400 hover:underline font-medium">{title}</a></td><td class="px-3 py-2 text-stone-600 dark:text-stone-400">{contributor}</td><td class="px-3 py-2 text-stone-600 dark:text-stone-400">{genre}</td><td class="px-3 py-2 text-stone-600 dark:text-stone-400">{dewey}</td><td class="px-3 py-2 text-right tabular-nums text-stone-600 dark:text-stone-400">{vols}</td></tr>"##,
-        id = item.id,
-        media = escaped_media,
-        title = escaped_title,
-        contributor = contributor_cell,
-        genre = escaped_genre,
-        dewey = dewey_cell,
-        vols = item.volume_count,
-    )
+fn render_search_table_row(item: &SearchResult) -> String {
+    BrowseTableRowTemplate { item }.render().unwrap_or_default()
 }
 
 fn render_pagination_oob(
@@ -321,6 +295,35 @@ mod tests {
             table_idx < cards_idx,
             "list-mode .browse-table-wrap must precede grid-mode .browse-cards"
         );
+    }
+
+    /// #577 — the list-mode row comes from the shared
+    /// `components/browse_table_row.html` partial: six cells, escaped
+    /// fields, em dash for a missing contributor / Dewey code.
+    #[test]
+    fn test_render_search_table_row_uses_shared_partial() {
+        let item = SearchResult {
+            id: 7,
+            title: "<Tom & Jerry>".to_string(),
+            subtitle: None,
+            media_type: "book".to_string(),
+            genre_name: "Jeunesse".to_string(),
+            primary_contributor: None,
+            volume_count: 3,
+            cover_image_url: None,
+            publication_date: None,
+            dewey_code: Some("843.914".to_string()),
+        };
+        let html = render_search_table_row(&item);
+        assert!(html.trim_start().starts_with("<tr"), "row starts with <tr>: {html}");
+        assert_eq!(html.matches("<td").count(), 6, "six cells: {html}");
+        assert!(html.contains(r#"href="/title/7""#));
+        assert!(html.contains("&#60;Tom &#38; Jerry&#62;"), "title escaped: {html}");
+        assert!(!html.contains("<Tom"), "raw title must not leak: {html}");
+        assert!(html.contains("/static/icons/book.svg"));
+        assert!(html.contains(r#"<code class="font-mono text-xs">843.914</code>"#));
+        assert!(html.contains('—'), "missing contributor renders an em dash");
+        assert!(html.contains(">3</td>"), "volume count cell: {html}");
     }
 
     #[test]

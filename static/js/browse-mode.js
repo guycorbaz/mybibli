@@ -1,4 +1,4 @@
-// Browse mode toggle: list/grid for search results
+// Browse mode toggle: list (table) / grid for search results and Recent additions
 (function () {
   "use strict";
   var KEY = "mybibli_browse_mode";
@@ -9,10 +9,16 @@
   }
 
   function applyMode(mode) {
-    var container = document.getElementById("browse-results");
-    if (!container) return;
-    container.classList.remove("browse-list", "browse-grid");
-    container.classList.add("browse-" + mode);
+    // #577 — every surface that renders both the browse table and the
+    // card grid carries `data-browse-mode-container` (#browse-results and
+    // the home page's #recent-additions-results); the CSS in browse.css
+    // shows one rendering per the `.browse-list` / `.browse-grid` class.
+    var containers = document.querySelectorAll("[data-browse-mode-container]");
+    if (containers.length === 0) return;
+    containers.forEach(function (container) {
+      container.classList.remove("browse-list", "browse-grid");
+      container.classList.add("browse-" + mode);
+    });
     // CR #250 — list mode uses sortable column headers, so the
     // <select> sort dropdown is redundant; hide it via a class toggle
     // (CSP-friendly — strict policy blocks element.style.* writes,
